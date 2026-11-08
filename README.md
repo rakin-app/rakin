@@ -47,7 +47,7 @@ The first run builds the API image and installs the SPA's packages, a few minute
 
 Services: `caddy` (the single entry point), `api` (FastAPI), `jobs` (background jobs; idle until the first job lands), `postgres`, `web` (the Vite dev server) and a one-shot `migrate` that runs `alembic upgrade head` before `api` and `jobs` start. Editing `backend/` reloads the API and editing `frontend/` hot-reloads the SPA, with no rebuild. Rebuild the API image (`docker compose up --build`) only after changing `backend/pyproject.toml`.
 
-Self-hosters without S3-compatible storage add MinIO: `docker compose --profile selfhost up`.
+Self-hosters without S3-compatible storage add [Garage](https://garagehq.deuxfleurs.fr/): `docker compose --profile selfhost up` also starts it on http://localhost:3900, and a one-shot `garage-init` creates the `rakin` bucket and the API's access key from the `S3_*` values in `.env.example`.
 
 If port 8080 or 5432 is already in use, set `HTTP_PORT` or `POSTGRES_PORT` in `.env`. `docker compose down` stops the stack; `docker compose down -v` also deletes the database.
 

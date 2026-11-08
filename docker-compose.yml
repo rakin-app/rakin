@@ -1,7 +1,7 @@
 # Local dev stack. See README "Run locally".
 #
 #   docker compose up                     # caddy, api, jobs, postgres (+ the Vite dev server)
-#   docker compose --profile selfhost up  # also minio, for self-hosters without S3
+#   docker compose --profile selfhost up  # also Garage, for self-hosters without S3
 #
 # Every value below has a local default, so this runs without a `.env`;
 # copy `.env.example` to `.env` to override any of them.
@@ -14,6 +14,12 @@ x-backend: &backend
   environment: &backend-env
     # Inside the network Postgres is `postgres`, not the host's `localhost`.
     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-rakin}:${POSTGRES_PASSWORD:-rakin}@postgres:5432/${POSTGRES_DB:-rakin}
+    # Object storage for the BlobStore; these point at the `selfhost` Garage.
+    S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://localhost:3900}
+    S3_REGION: ${S3_REGION:-garage}
+    S3_BUCKET: ${S3_BUCKET:-rakin}
+    S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-GKd06e218c3fa3bb3f69e9d09e}
+    S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-af635cf10ca8d78993f886624767e63600cb52fa8e7730c15d026ace93a3f341}
   volumes:
     - ./backend:/srv
 
@@ -86,21 +92,37 @@ services:
       timeout: 5s
       retries: 30
 
-  minio:
-    image: minio/minio
+  # S3-compatible storage for self-hosters; hosted uses a real S3 provider.
+  garage:
+    image: dxflrs/garage:v2.5.0
     profiles: ["selfhost"]
-    command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-rakin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-rakinrakin}
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-57d9a189650872044edafa9a57fe77e8180e79f7979e4ea6a6d3e86d67297576}
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "${GARAGE_S3_PORT:-3900}:3900"
     volumes:
-      - minio_data:/data
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+
+  # One-shot: layout, bucket and the api's key. Safe to re-run.
+  garage-init:
+    build: ./garage
+    profiles: ["selfhost"]
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-57d9a189650872044edafa9a57fe77e8180e79f7979e4ea6a6d3e86d67297576}
+      S3_BUCKET: ${S3_BUCKET:-rakin}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-GKd06e218c3fa3bb3f69e9d09e}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-af635cf10ca8d78993f886624767e63600cb52fa8e7730c15d026ace93a3f341}
+    volumes:
+      # Read-only: the CLI only needs the node key to find and reach the daemon.
+      - garage_meta:/var/lib/garage/meta:ro
+    depends_on:
+      - garage
 
 volumes:
   caddy_data:
   pg_data:
-  minio_data:
+  garage_meta:
+  garage_data:
   web_node_modules:
