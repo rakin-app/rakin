@@ -42,5 +42,11 @@ async function readBody(response: Response): Promise<unknown> {
   const text = await response.text()
   if (text === '') return undefined
   const contentType = response.headers.get('Content-Type') ?? ''
-  return contentType.includes('json') ? JSON.parse(text) : text
+  if (!contentType.includes('json')) return text
+  try {
+    return JSON.parse(text)
+  } catch {
+    // A proxy error page can claim JSON; keep the text so the caller still gets the status.
+    return text
+  }
 }

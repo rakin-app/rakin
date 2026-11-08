@@ -53,6 +53,15 @@ describe('apiFetch', () => {
     expect(error).toMatchObject({ status: 404, body: { detail: 'not found' } })
   })
 
+  it('keeps the status when an error body claims JSON but is malformed', async () => {
+    mockFetch(new Response('<html>Bad Gateway</html>', { status: 502, headers: { 'Content-Type': 'application/json' } }))
+
+    const error = await apiFetch('/api/members').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).toMatchObject({ status: 502, body: '<html>Bad Gateway</html>' })
+  })
+
   it('resolves undefined on 204 No Content', async () => {
     mockFetch(new Response(null, { status: 204 }))
     await expect(apiFetch('/api/members/9', { method: 'DELETE' })).resolves.toBeUndefined()
