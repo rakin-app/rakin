@@ -96,3 +96,66 @@ def throwaway_database(server_url: str) -> Iterator[Database]:
 
 def migrate(database: Database, revision: str = "head") -> None:
     command.upgrade(database.alembic(), revision)
+
+
+def in_gym(gym_id: uuid.UUID | None, sql: str, *args: object) -> Query:
+    """Run `sql` in a transaction, with `app.gym_id` set to `gym_id` if given."""
+
+    async def query(conn: asyncpg.Connection) -> Any:
+        async with conn.transaction():
+            if gym_id is not None:
+                await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
+            return await conn.fetch(sql, *args)
+
+    return query
+
+
+def seed_gym(db: Database, slug: str) -> uuid.UUID:
+    """A gym with one person, staff row, plan, membership, period and ledger entry.
+
+    Seeded as the owner, which FORCEd RLS applies to: it sets `app.gym_id` first.
+    """
+    gym_id = uuid.uuid4()
+
+    async def query(conn: asyncpg.Connection) -> None:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
+            await conn.execute("INSERT INTO gym (id, name, slug) VALUES ($1, $2, $2)", gym_id, slug)
+            person_id = await conn.fetchval(
+                "INSERT INTO person (name) VALUES ($1) RETURNING id", f"owner of {slug}"
+            )
+            await conn.execute(
+                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'owner')",
+                gym_id,
+                person_id,
+            )
+            plan_id = await conn.fetchval(
+                "INSERT INTO plan (gym_id, name, kind, price_clp)"
+                " VALUES ($1, 'Mensual', 'monthly', 45000) RETURNING id",
+                gym_id,
+            )
+            membership_id = await conn.fetchval(
+                "INSERT INTO membership (gym_id, person_id, plan_id, status)"
+                " VALUES ($1, $2, $3, 'active') RETURNING id",
+                gym_id,
+                person_id,
+                plan_id,
+            )
+            period_id = await conn.fetchval(
+                "INSERT INTO billing_period"
+                " (gym_id, membership_id, period_start, period_end, amount_due_clp, due_date)"
+                " VALUES ($1, $2, '2026-11-01', '2026-11-30', 45000, '2026-11-01') RETURNING id",
+                gym_id,
+                membership_id,
+            )
+            await conn.execute(
+                "INSERT INTO ledger_entry"
+                " (gym_id, membership_id, billing_period_id, amount_clp, kind)"
+                " VALUES ($1, $2, $3, 45000, 'charge')",
+                gym_id,
+                membership_id,
+                period_id,
+            )
+
+    run(db.owner_url, query)
+    return gym_id
