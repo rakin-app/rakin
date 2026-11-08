@@ -1,0 +1,26 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options: [Hosted (rakin.app), Self-hosted, Local development]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit

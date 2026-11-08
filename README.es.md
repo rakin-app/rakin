@@ -1,0 +1,30 @@
+# Rakin
+
+Español · **[English](README.md)**
+
+Rakin (*mapudungun: contar*) es una plataforma de código abierto para llevar membresías y mensualidades en academias pequeñas de artes marciales, sea cual sea el deporte. Reemplaza la planilla y el grupo de WhatsApp con que funcionan la mayoría de las academias.
+
+El ciclo: **alumno → plan → vencimiento → recordatorio → llega la transferencia → se valida en el libro → silencio.** En la v1 Rakin no mueve dinero. Registra, recuerda y concilia las transferencias que la academia ya recibe.
+
+> **Estado:** pre-alfa, todavía no hay nada que instalar. Sigue el avance en el [tablero](https://github.com/orgs/rakin-app/projects).
+
+## Qué hace
+
+- **Libro de pagos** donde nada se borra: mensualidades, packs de clases, prepagos, clases sueltas y clases de prueba
+- **Asistencia en cinco segundos** para los coaches, con registro del tema de la clase
+- **Página del alumno** con enlace mágico, sin clave: cuánto debo, cuándo vence y dónde subo el comprobante
+- **Grados, planes y campos personalizados** configurables por academia: sirve igual para BJJ, judo, muay thai o boxeo
+
+No es un CRM, ni un sistema de reservas, ni un procesador de pagos, ni una app nativa. Es una PWA. El correo es el registro oficial y WhatsApp es por donde llegan los recordatorios.
+
+## Para dueños de academia
+
+La versión alojada en **rakin.app** está en preparación. Escríbenos a hola@rakin.app.
+
+## Protección de datos
+
+Quien opera una instancia es el responsable de sus datos según la Ley 21.719.
+
+## Licencia
+
+[AGPL-3.0](LICENSE). El nombre "Rakin" está regulado por [TRADEMARK.md](TRADEMARK.md).

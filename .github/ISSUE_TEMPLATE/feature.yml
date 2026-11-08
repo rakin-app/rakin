@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a change. Check the non-goals in docs/product.md first.
+labels: ["type:feature"]
+body:
+  - type: dropdown
+    id: persona
+    attributes:
+      label: Who is this for?
+      options: [Owner / admin, Coach, Student, Guardian, Self-hoster]
+    validations:
+      required: true
+  - type: textarea
+    id: job
+    attributes:
+      label: What job does it make faster than the spreadsheet?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Principles
+      options:
+        - label: This needs no sport-specific code path
+        - label: This is not in the non-goals list
