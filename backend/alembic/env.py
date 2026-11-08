@@ -14,12 +14,14 @@ from app.settings import get_settings
 config = context.config
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
+# This line sets up loggers basically. Callers that own logging (the tests) opt out.
+if config.config_file_name is not None and config.attributes.get("configure_logging", True):
     fileConfig(config.config_file_name)
 
-# The database URL comes from app settings (DATABASE_URL), not alembic.ini.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# The database URL comes from app settings (MIGRATION_DATABASE_URL), not alembic.ini,
+# unless the caller set one on the Config (as the tests do).
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", get_settings().migration_database_url)
 
 target_metadata = Base.metadata
 

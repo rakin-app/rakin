@@ -1,0 +1,314 @@
+"""Migration 0001 against real Postgres: schema shape, phone identity, roles and RLS.
+
+The migration runs as the bootstrapped owner, a non-superuser; the API's queries run
+as the bootstrapped API user. Only seeding across gyms and catalog reads use the
+superuser.
+"""
+
+import uuid
+from collections.abc import Iterator
+from typing import Any
+
+import asyncpg
+import pytest
+
+from alembic import command
+from tests.conftest import require_test_database_url
+from tests.pg import Database, Query, migrate, run, throwaway_database
+
+pytestmark = pytest.mark.postgres
+
+TENANT_TABLES = {"gym", "staff", "plan", "membership", "billing_period", "ledger_entry"}
+
+
+@pytest.fixture(scope="module")
+def db() -> Iterator[Database]:
+    with throwaway_database(require_test_database_url()) as database:
+        migrate(database)
+        yield database
+
+
+@pytest.fixture
+def scratch_db() -> Iterator[Database]:
+    """A bootstrapped, unmigrated database of its own, for tests that downgrade."""
+    with throwaway_database(require_test_database_url()) as database:
+        yield database
+
+
+def in_gym(gym_id: uuid.UUID | None, sql: str, *args: object) -> Query:
+    """Run `sql` in a transaction, with `app.gym_id` set to `gym_id` if given."""
+
+    async def query(conn: asyncpg.Connection) -> Any:
+        async with conn.transaction():
+            if gym_id is not None:
+                await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
+            return await conn.fetch(sql, *args)
+
+    return query
+
+
+def seed_gym(db: Database, slug: str) -> uuid.UUID:
+    """A gym with one person, staff row, plan, membership, period and ledger entry.
+
+    Seeded as the owner, which FORCEd RLS applies to: it sets `app.gym_id` first.
+    """
+    gym_id = uuid.uuid4()
+
+    async def query(conn: asyncpg.Connection) -> None:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
+            await conn.execute("INSERT INTO gym (id, name, slug) VALUES ($1, $2, $2)", gym_id, slug)
+            person_id = await conn.fetchval(
+                "INSERT INTO person (name) VALUES ($1) RETURNING id", f"owner of {slug}"
+            )
+            await conn.execute(
+                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'owner')",
+                gym_id,
+                person_id,
+            )
+            plan_id = await conn.fetchval(
+                "INSERT INTO plan (gym_id, name, kind, price_clp)"
+                " VALUES ($1, 'Mensual', 'monthly', 45000) RETURNING id",
+                gym_id,
+            )
+            membership_id = await conn.fetchval(
+                "INSERT INTO membership (gym_id, person_id, plan_id, status)"
+                " VALUES ($1, $2, $3, 'active') RETURNING id",
+                gym_id,
+                person_id,
+                plan_id,
+            )
+            period_id = await conn.fetchval(
+                "INSERT INTO billing_period"
+                " (gym_id, membership_id, period_start, period_end, amount_due_clp, due_date)"
+                " VALUES ($1, $2, '2026-11-01', '2026-11-30', 45000, '2026-11-01') RETURNING id",
+                gym_id,
+                membership_id,
+            )
+            await conn.execute(
+                "INSERT INTO ledger_entry"
+                " (gym_id, membership_id, billing_period_id, amount_clp, kind)"
+                " VALUES ($1, $2, $3, 45000, 'charge')",
+                gym_id,
+                membership_id,
+                period_id,
+            )
+
+    run(db.owner_url, query)
+    return gym_id
+
+
+@pytest.fixture(scope="module")
+def two_gyms(db: Database) -> tuple[uuid.UUID, uuid.UUID]:
+    return seed_gym(db, "academia-sur"), seed_gym(db, "dojo-norte")
+
+
+def test_upgrade_downgrade_upgrade_round_trips(scratch_db: Database) -> None:
+    migrate(scratch_db)
+    command.downgrade(scratch_db.alembic(), "base")
+    tables = run(
+        scratch_db.admin_url,
+        lambda c: c.fetch("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"),
+    )
+    assert [t["tablename"] for t in tables] == ["alembic_version"]
+    migrate(scratch_db)
+
+
+def test_tables_are_owned_by_the_non_superuser_owner(db: Database) -> None:
+    owners = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT DISTINCT t.tableowner, r.rolsuper, r.rolbypassrls"
+            " FROM pg_tables t JOIN pg_roles r ON r.rolname = t.tableowner"
+            " WHERE t.schemaname = 'public'"
+        ),
+    )
+    assert [tuple(o) for o in owners] == [("rakin_owner", False, False)]
+
+
+def test_no_timestamp_without_time_zone(db: Database) -> None:
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT table_name, column_name FROM information_schema.columns"
+            " WHERE table_schema = 'public' AND data_type = 'timestamp without time zone'"
+        ),
+    )
+    assert rows == []
+
+
+def test_money_columns_are_integers(db: Database) -> None:
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT column_name, data_type FROM information_schema.columns"
+            " WHERE table_schema = 'public' AND column_name LIKE '%\\_clp'"
+        ),
+    )
+    assert {r["column_name"] for r in rows} == {"price_clp", "amount_due_clp", "amount_clp"}
+    assert {r["data_type"] for r in rows} == {"bigint"}
+
+
+def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> None:
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            """
+            SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
+                   count(p.polname) AS policies
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_policy p ON p.polrelid = c.oid
+            WHERE n.nspname = 'public' AND c.relkind = 'r'
+              AND (c.relname = 'gym' OR EXISTS (
+                  SELECT FROM information_schema.columns col
+                  WHERE col.table_schema = 'public' AND col.table_name = c.relname
+                    AND col.column_name = 'gym_id'))
+            GROUP BY c.relname, c.relrowsecurity, c.relforcerowsecurity
+            """
+        ),
+    )
+    assert {r["relname"] for r in rows} == TENANT_TABLES
+    for r in rows:
+        assert (r["relrowsecurity"], r["relforcerowsecurity"]) == (True, True), r["relname"]
+        assert r["policies"] >= 1, r["relname"]
+
+
+def test_api_user_cannot_bypass_rls(db: Database) -> None:
+    role = run(
+        db.api_url,
+        lambda c: c.fetchrow(
+            "SELECT r.rolsuper, r.rolbypassrls, pg_has_role(current_user, 'rakin_app', 'MEMBER')"
+            " AS member FROM pg_roles r WHERE r.rolname = current_user"
+        ),
+    )
+    assert tuple(role) == (False, False, True)
+
+
+def test_app_role_cannot_log_in_or_bypass_rls(db: Database) -> None:
+    role = run(
+        db.admin_url,
+        lambda c: c.fetchrow(
+            "SELECT rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = 'rakin_app'"
+        ),
+    )
+    assert tuple(role) == (False, False, False)
+
+
+@pytest.mark.parametrize("privilege", ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"])
+def test_app_role_has_no_privilege_on_alembic_version(db: Database, privilege: str) -> None:
+    allowed = run(
+        db.admin_url,
+        lambda c: c.fetchval(
+            "SELECT has_table_privilege('rakin_app', 'alembic_version', $1)", privilege
+        ),
+    )
+    assert allowed is False
+
+
+def test_api_user_cannot_rewrite_the_migration_head(db: Database) -> None:
+    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
+        run(db.api_url, lambda c: c.execute("UPDATE alembic_version SET version_num = 'x'"))
+
+
+@pytest.mark.parametrize(
+    "phone", ["56912345678", "+056912345678", "+56 9 1234 5678", "+1234567890123456", ""]
+)
+def test_phone_must_be_e164(db: Database, phone: str) -> None:
+    with pytest.raises(asyncpg.CheckViolationError):
+        run(
+            db.api_url,
+            lambda c: c.execute("INSERT INTO person (name, phone) VALUES ('x', $1)", phone),
+        )
+
+
+def test_phone_is_unique(db: Database) -> None:
+    insert = "INSERT INTO person (name, phone) VALUES ('x', '+56911112222')"
+    run(db.api_url, lambda c: c.execute(insert))
+    with pytest.raises(asyncpg.UniqueViolationError):
+        run(db.api_url, lambda c: c.execute(insert))
+
+
+def test_people_without_phone_are_allowed(db: Database) -> None:
+    insert = "INSERT INTO person (name) VALUES ('kid')"
+    run(db.api_url, lambda c: c.execute(insert))
+    run(db.api_url, lambda c: c.execute(insert))
+
+
+@pytest.mark.parametrize("user", ["api", "owner"])
+@pytest.mark.parametrize("table", sorted(TENANT_TABLES))
+def test_only_the_current_gym_is_visible(
+    db: Database, two_gyms: tuple[uuid.UUID, uuid.UUID], table: str, user: str
+) -> None:
+    url = db.api_url if user == "api" else db.owner_url
+    sur, norte = two_gyms
+    column = "id" if table == "gym" else "gym_id"
+    sql = f"SELECT DISTINCT {column} AS gym FROM {table}"
+
+    assert [r["gym"] for r in run(url, in_gym(sur, sql))] == [sur]
+    assert [r["gym"] for r in run(url, in_gym(norte, sql))] == [norte]
+
+
+@pytest.mark.parametrize("user", ["api", "owner"])
+@pytest.mark.parametrize("table", sorted(TENANT_TABLES))
+def test_nothing_is_visible_without_a_gym(
+    db: Database, two_gyms: tuple[uuid.UUID, uuid.UUID], table: str, user: str
+) -> None:
+    # FORCE ROW LEVEL SECURITY: the owner is held to the policy just like the API.
+    url = db.api_url if user == "api" else db.owner_url
+    assert run(url, in_gym(None, f"SELECT * FROM {table}")) == []
+
+
+def test_api_cannot_write_into_another_gym(
+    db: Database, two_gyms: tuple[uuid.UUID, uuid.UUID]
+) -> None:
+    sur, norte = two_gyms
+    insert = "INSERT INTO plan (gym_id, name, kind, price_clp) VALUES ($1, 'x', 'dropin', 8000)"
+    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="row-level security"):
+        run(db.api_url, in_gym(sur, insert, norte))
+
+
+def test_api_cannot_move_a_row_to_another_gym(
+    db: Database, two_gyms: tuple[uuid.UUID, uuid.UUID]
+) -> None:
+    sur, norte = two_gyms
+    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="row-level security"):
+        run(db.api_url, in_gym(sur, "UPDATE plan SET gym_id = $1", norte))
+
+
+def test_membership_cannot_use_another_gyms_plan(
+    db: Database, two_gyms: tuple[uuid.UUID, uuid.UUID]
+) -> None:
+    sur, norte = two_gyms
+
+    # As the superuser, which skips RLS: only the foreign key stands in the way.
+    async def query(conn: asyncpg.Connection) -> None:
+        norte_plan = await conn.fetchval("SELECT id FROM plan WHERE gym_id = $1", norte)
+        person = await conn.fetchval("INSERT INTO person (name) VALUES ('y') RETURNING id")
+        await conn.execute(
+            "INSERT INTO membership (gym_id, person_id, plan_id, status)"
+            " VALUES ($1, $2, $3, 'active')",
+            sur,
+            person,
+            norte_plan,
+        )
+
+    with pytest.raises(asyncpg.ForeignKeyViolationError):
+        run(db.admin_url, query)
+
+
+def test_api_cannot_delete_ledger_entries(
+    db: Database, two_gyms: tuple[uuid.UUID, uuid.UUID]
+) -> None:
+    sur, _ = two_gyms
+    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
+        run(db.api_url, in_gym(sur, "DELETE FROM ledger_entry"))
+
+
+def test_job_run_is_unique_per_job_and_date(db: Database) -> None:
+    insert = (
+        "INSERT INTO job_run (job_name, run_date, status) VALUES ('daily', '2026-11-08', 'running')"
+    )
+    run(db.api_url, lambda c: c.execute(insert))
+    with pytest.raises(asyncpg.UniqueViolationError):
+        run(db.api_url, lambda c: c.execute(insert))

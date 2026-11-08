@@ -20,7 +20,13 @@ class Settings(BaseSettings):
 
     environment: Literal["local", "test", "production"] = "local"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
-    database_url: str = "postgresql+asyncpg://rakin:rakin@localhost:5432/rakin"
+    # The API connects as a login user in the `rakin_app` role, which RLS applies to.
+    database_url: str = "postgresql+asyncpg://rakin_api:rakin_api@localhost:5432/rakin"
+    # Migrations run as the role that owns the tables. Both users are created by
+    # `python -m app.db_bootstrap`.
+    migration_database_url: str = (
+        "postgresql+asyncpg://rakin_owner:rakin_owner@localhost:5432/rakin"
+    )
     db_pool_size: int = Field(default=5, ge=1)
     healthz_db_timeout_seconds: float = Field(default=2.0, gt=0)
 
