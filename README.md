@@ -6,7 +6,7 @@ Rakin (*Mapudungun: to count*) is an open-source, sport-agnostic membership and 
 
 The core loop: **member → plan → due date → reminder → bank transfer arrives → validated in the ledger → silence.** Rakin never processes money in v1. It tracks, reminds and reconciles transfers the gym already receives.
 
-> **Status:** pre-alpha. Nothing to run yet. Follow the [roadmap](https://github.com/orgs/rakin-app/projects) and [milestones](https://github.com/rakin-app/rakin/milestones).
+> **Status:** pre-alpha. The [local stack](#run-locally) runs, but there is no product yet. Follow the [roadmap](https://github.com/orgs/rakin-app/projects) and [milestones](https://github.com/rakin-app/rakin/milestones).
 
 ## What it is
 
@@ -28,6 +28,30 @@ FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL (row-level security) · Vite SP
 - [UI design](docs/design/ui-design.html): mobile admin, coach and student screens plus the desktop ledger (open in a browser)
 - [Architecture decisions](docs/adr/): ADRs, starting with the [frontend framework](docs/adr/0001-frontend-framework.md)
 - [Frontend](frontend/README.md): running and checking the SPA
+
+## Run locally
+
+You need [Docker](https://docs.docker.com/get-docker/) with Compose v2.24 or newer, and nothing else: Python, Node and Postgres all run in containers.
+
+```sh
+git clone https://github.com/rakin-app/rakin.git && cd rakin
+cp .env.example .env        # optional: every value has a working local default
+docker compose up
+```
+
+The first run builds the API image and installs the SPA's packages, a few minutes in all. Then:
+
+- http://localhost:8080 serves the SPA, with the API on the same origin
+- http://localhost:8080/healthz returns `{"status":"ok","database":"ok"}` once Postgres answers
+- Postgres is also published on `localhost:5432` (user, password and database `rakin`) for `psql` and the backend's `postgres` tests
+
+Services: `caddy` (the single entry point), `api` (FastAPI), `jobs` (background jobs; idle until the first job lands), `postgres`, `web` (the Vite dev server) and a one-shot `migrate` that runs `alembic upgrade head` before `api` and `jobs` start. Editing `backend/` reloads the API and editing `frontend/` hot-reloads the SPA, with no rebuild. Rebuild the API image (`docker compose up --build`) only after changing `backend/pyproject.toml`.
+
+Self-hosters without S3-compatible storage add MinIO: `docker compose --profile selfhost up`.
+
+If port 8080 or 5432 is already in use, set `HTTP_PORT` or `POSTGRES_PORT` in `.env`. `docker compose down` stops the stack; `docker compose down -v` also deletes the database.
+
+To run the API or the SPA on the host instead, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
 
 ## Self-hosting
 
