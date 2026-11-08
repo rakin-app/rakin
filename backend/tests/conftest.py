@@ -32,5 +32,8 @@ def client(unreachable_app: FastAPI) -> Iterator[TestClient]:
 def postgres_url() -> str:
     url = os.environ.get("TEST_DATABASE_URL")
     if not url:
+        # CI sets REQUIRE_POSTGRES so a missing database fails instead of skipping.
+        if os.environ.get("REQUIRE_POSTGRES"):
+            pytest.fail("REQUIRE_POSTGRES is set but TEST_DATABASE_URL is not")
         pytest.skip("TEST_DATABASE_URL not set")
     return url
