@@ -77,3 +77,17 @@ RLS is **forced**, so it applies to `rakin_owner` as well, not only to the API. 
 Grants name each table; `rakin_app` has no privilege on `alembic_version`. A new table gets its `GRANT` (and, if it carries `gym_id`, its RLS policy) in the migration that creates it.
 
 The Postgres tests create, bootstrap and drop a throwaway database on the `TEST_DATABASE_URL` server, so that URL must be a superuser.
+
+## Seed data
+
+```sh
+uv run python -m app.seed                      # as of today in the gym's timezone
+uv run python -m app.seed --today 2026-11-08   # the day the UI design depicts
+make seed                                      # from the repo root, inside Compose
+```
+
+`app.seed` loads Academia Sur, the demo gym that dev, the 90-day simulation and the self-host demo start from. `app/seed/data.py` is the roster: the members the [UI design](../docs/design/ui-design.html) names, in the standing it shows them in (Felipe Díaz 9 days overdue, Diego Morales's proof waiting, Camila Ortiz paying for Mateo and Sofía), plus filler drawn from a fixed random sequence. `app/seed/build.py` turns it into rows for a seed date with no I/O, so tests check it without a database. The design's numbers hold on any seed date: 64 active memberships and 2 frozen, 6 overdue for $270.000, 3 proofs for $162.000. `gym.settings` carries the BJJ grading scheme (white to black with 4 stripes, and the grey-to-green kids ladder), the custom-field definitions, the bank account and `grace_days` (10).
+
+Loading again inserts nothing: every row's id is a UUIDv5 of its natural key, and rows already there are skipped, never updated, which the append-only ledger requires anyway. The first load stores its date in `gym.settings["seed"]["as_of"]`, and later loads build for that date again, ignoring `--today`. To reseed for another date, start from an empty database (`docker compose down -v`).
+
+The loader connects as the owner (`MIGRATION_DATABASE_URL`) with `app.gym_id` set to the demo gym. Ranks and guardian links have no tables yet (#48, #19): ranks live in `data.py`, checked against the grading scheme, and a guardian is the payer (`claimed_by`) of their dependents' payments. Every guardian also trains, because a person with no membership or staff row is invisible in the gym. Drop-ins have a plan but no memberships, since a drop-in is a single attendance.
