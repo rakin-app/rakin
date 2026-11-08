@@ -1,4 +1,7 @@
-"""Pure domain helpers: CLP money, gym-timezone date math, RUT and phone numbers.
+"""Pure domain rules and helpers: no I/O, no ORM, no framework.
 
-Nothing here touches the database or the web layer, so every module is tested in isolation.
+CLP money, gym-timezone date math, RUT and phone numbers, and the membership and
+ledger-entry state machines. Every module is tested in isolation; the tests in
+`tests/domain` are the contract the ORM models and services must keep
+(docs/technical.md#core-state-machines).
 """
