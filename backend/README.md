@@ -48,6 +48,19 @@ Without the URL it connects with the standard libpq variables (`PGHOST`, `PGPORT
 
 Locally that superuser is the Postgres image's `POSTGRES_USER` (`rakin:rakin`). In production, run it once from an admin shell; the API and Alembic never see the superuser's credentials. Re-running is safe: it resets passwords and attributes to what the settings and this table say. It refuses to turn an existing superuser into either user, and refuses one user for both.
 
+## Tenancy
+
+Every gym-scoped endpoint takes a `TenantSession` (`app/tenancy.py`):
+
+```python
+@router.get("/plans")
+async def list_plans(session: TenantSession) -> list[PlanOut]: ...
+```
+
+It opens one transaction per request and sets `app.gym_id` for that transaction only (`set_config('app.gym_id', …, true)`, the bound-parameter form of `SET LOCAL`), so RLS limits every query to the gym and a missed `WHERE` returns nothing. It commits before the response is sent and rolls back if the endpoint raises. The gym comes from `request.state.tenant`, which the auth layer sets; with none, the request is a 401 and no session is opened. `tests/test_tenancy.py` calls every operation in the OpenAPI schema without a tenant and fails on any that answers something other than 401, outside `PUBLIC_PATHS`.
+
+A new person is invisible until their `membership` or `staff` row exists, so create both in one transaction and generate the person's id client-side: `INSERT … RETURNING` on `person` is held to the read policy and fails before they join.
+
 ## Migrations
 
 ```sh
@@ -55,7 +68,7 @@ uv run alembic revision -m "describe the change"
 uv run alembic upgrade head
 ```
 
-Every table with a `gym_id` (and `gym` itself) is isolated by an RLS policy on `current_setting('app.gym_id')`. With `app.gym_id` unset, those tables return no rows. `person` and `job_run` are global.
+Every table with a `gym_id` (and `gym` itself) is isolated by an RLS policy on `current_setting('app.gym_id')`. With `app.gym_id` unset, those tables return no rows. `person` is global but not globally readable: a read sees only people with a `membership` or `staff` row in the current gym (migration `0003`). `job_run` is global.
 
 RLS is **forced**, so it applies to `rakin_owner` as well, not only to the API. A table owner is normally exempt from its own policies; forcing them means a backfill, seed or one-off script run with the owner's credentials sees and writes only the gym in `app.gym_id`, so a missed `SET` returns nothing there too. Work that spans gyms (the nightly jobs, a gym switcher) sets `app.gym_id` per gym or goes through a `SECURITY DEFINER` function written for it. Only a superuser skips RLS.
 

@@ -121,8 +121,11 @@ def seed_gym(db: Database, slug: str) -> uuid.UUID:
         async with conn.transaction():
             await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
             await conn.execute("INSERT INTO gym (id, name, slug) VALUES ($1, $2, $2)", gym_id, slug)
-            person_id = await conn.fetchval(
-                "INSERT INTO person (name) VALUES ($1) RETURNING id", f"owner of {slug}"
+            # Not `RETURNING id`: until its staff row exists the person is not
+            # visible in this gym, and RETURNING is held to the read policy (0003).
+            person_id = uuid.uuid4()
+            await conn.execute(
+                "INSERT INTO person (id, name) VALUES ($1, $2)", person_id, f"owner of {slug}"
             )
             await conn.execute(
                 "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'owner')",

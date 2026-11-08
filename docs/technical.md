@@ -31,7 +31,7 @@ Anything a gym asks for that doesn't fit these three surfaces is either a non-go
 
 ## Domain model
 
-One Postgres schema. `person` is global; everything else carries `gym_id` and is isolated by row-level security. `membership` is the join between a person and a gym, and the ledger, attendance and grades hang off it.
+One Postgres schema. `person` is global, but a gym reads only the people with a membership or staff row in it; everything else carries `gym_id` and is isolated by row-level security. `membership` is the join between a person and a gym, and the ledger, attendance and grades hang off it.
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
