@@ -15,6 +15,22 @@ x-backend: &backend
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
     DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
     HEALTHZ_DB_TIMEOUT_SECONDS: ${HEALTHZ_DB_TIMEOUT_SECONDS:-2.0}
+    SECRET_KEY: ${SECRET_KEY:-local-only-secret-change-me}
+    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+    MAILER: ${MAILER:-console}
+    MAIL_FROM: ${MAIL_FROM:-Rakin <no-reply@localhost>}
+    SMTP_HOST: ${SMTP_HOST:-localhost}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+    SMTP_USERNAME: ${SMTP_USERNAME:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10.0}
+    MESSENGER: ${MESSENGER:-wame}
+    PAYMENT_RAIL: ${PAYMENT_RAIL:-none}
+    BANK_FEED: ${BANK_FEED:-none}
+    BLOB_STORE: ${BLOB_STORE:-local}
+    BLOB_LOCAL_DIR: ${BLOB_LOCAL_DIR:-var/blobs}
+    BLOB_URL_TTL_SECONDS: ${BLOB_URL_TTL_SECONDS:-900}
     # Inside the network Postgres is `postgres`, not the host's `localhost`.
     DATABASE_URL: postgresql+asyncpg://${POSTGRES_API_USER:-rakin_api}:${POSTGRES_API_PASSWORD:-rakin_api}@postgres:5432/${POSTGRES_DB:-rakin}
     MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_OWNER_USER:-rakin_owner}:${POSTGRES_OWNER_PASSWORD:-rakin_owner}@postgres:5432/${POSTGRES_DB:-rakin}
@@ -28,6 +44,8 @@ x-backend: &backend
     S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-af635cf10ca8d78993f886624767e63600cb52fa8e7730c15d026ace93a3f341}
   volumes:
     - ./backend:/srv
+    # The local BlobStore's files (BLOB_STORE=local), shared by api and jobs.
+    - blobs:/srv/var/blobs
 
 services:
   caddy:
@@ -167,3 +185,4 @@ volumes:
   garage_meta:
   garage_data:
   web_node_modules:
+  blobs:

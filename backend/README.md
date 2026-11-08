@@ -24,9 +24,27 @@ uv run ruff format --check . && uv run ruff check .
 uv run mypy
 uv run pytest
 TEST_DATABASE_URL=postgresql+asyncpg://rakin:rakin@localhost:5432/rakin uv run pytest -m postgres
+(cd .. && docker compose --profile selfhost run --rm garage-init)   # Garage on :3900
+TEST_S3_ENDPOINT_URL=http://localhost:3900 uv run pytest -m s3
 ```
 
-Tests marked `postgres` skip unless `TEST_DATABASE_URL` points at a reachable database. With `REQUIRE_POSTGRES=1` (as in CI) a missing `TEST_DATABASE_URL` fails them instead.
+Tests marked `postgres` skip unless `TEST_DATABASE_URL` points at a reachable database. With `REQUIRE_POSTGRES=1` (as in CI) a missing `TEST_DATABASE_URL` fails them instead. Tests marked `s3` do the same with `TEST_S3_ENDPOINT_URL` and `REQUIRE_S3`; they use the `S3_*` access key and bucket defaults, which `garage-init` creates.
+
+## Integrations
+
+Every external service sits behind an interface in `app/integrations`, and a setting picks the implementation. The defaults need no network and no account, so a self-hosted instance works offline with none configured ([spec](../docs/technical.md#architecture)).
+
+| Interface | Setting | Implementations (default first) |
+| --- | --- | --- |
+| `Mailer` | `MAILER` | `console`: logs each message, sends nothing · `smtp`: any SMTP server (`SMTP_*`, `MAIL_FROM`) |
+| `Messenger` | `MESSENGER` | `wame`: a `wa.me` link the admin sends from their own phone |
+| `BlobStore` | `BLOB_STORE` | `local`: files under `BLOB_LOCAL_DIR` · `s3`: any S3-compatible store (`S3_*`) |
+| `PaymentRail` | `PAYMENT_RAIL` | `none`: no online payment; students transfer and upload a proof |
+| `BankFeed` | `BANK_FEED` | `none`: no transactions; payments are validated by hand |
+
+`create_app` builds them once into `app.state.integrations`; an endpoint takes them with `Depends(get_integrations)`. A `BlobStore` only presigns: the browser PUTs and GETs the bytes itself, so files never pass through the API. The `local` store signs its URLs with `SECRET_KEY` and serves them at `/api/blobs/…`, where the signature, not a session, is the authorisation, as it is for S3.
+
+`tests/integrations` is the contract: each interface's tests run against every implementation, and a new one (SES, the WhatsApp Business API, Fintoc) joins the parametrised list and must pass them. The `BlobStore` contract runs against real Garage, since most of it is about what the server refuses.
 
 ## Database roles
 
