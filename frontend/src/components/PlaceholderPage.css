@@ -1,0 +1,18 @@
+.placeholder-page {
+  padding: 0 var(--space-5);
+}
+
+.placeholder-page__body {
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (min-width: 960px) {
+  .placeholder-page {
+    padding: 0 var(--space-8);
+  }
+}

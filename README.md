@@ -26,6 +26,8 @@ FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL (row-level security) · Vite SP
 - [Product](docs/product.md): personas, principles, scope by release
 - [Technical design](docs/technical.md): domain model, state machines, architecture, operations, compliance
 - [UI design](docs/design/ui-design.html): mobile admin, coach and student screens plus the desktop ledger (open in a browser)
+- [Architecture decisions](docs/adr/): ADRs, starting with the [frontend framework](docs/adr/0001-frontend-framework.md)
+- [Frontend](frontend/README.md): running and checking the SPA
 
 ## Self-hosting
 
