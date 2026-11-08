@@ -30,8 +30,13 @@ if TYPE_CHECKING:
 # Path segments of letters, digits, `.`, `_` and `-`, none starting with a dot: no
 # `..`, no absolute paths, nothing a filesystem or an S3 console treats specially.
 _KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*")
-_CONTENT_TYPE = re.compile(r"[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*")
 MAX_KEY_LENGTH = 512
+# What a transfer proof can be. Anything a browser renders as a document (HTML, SVG)
+# is out: a download served from the app's origin would run its script there. Every
+# store signs the content type into the upload URL, so this binds S3 as well.
+ALLOWED_CONTENT_TYPES = frozenset(
+    {"image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"}
+)
 
 
 def validate_key(key: str) -> str:
@@ -41,8 +46,8 @@ def validate_key(key: str) -> str:
 
 
 def validate_content_type(content_type: str) -> str:
-    if _CONTENT_TYPE.fullmatch(content_type) is None:
-        raise ValueError(f"invalid content type: {content_type!r}")
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        raise ValueError(f"content type not allowed: {content_type!r}")
     return content_type
 
 
@@ -55,7 +60,10 @@ class PresignedUpload:
 
 class BlobStore(Protocol):
     def presign_upload(self, key: str, content_type: str) -> PresignedUpload:
-        """A URL the browser PUTs the file to, with exactly this content type."""
+        """A URL the browser PUTs the file to, with exactly this content type.
+
+        Raises `ValueError` for a content type outside `ALLOWED_CONTENT_TYPES`.
+        """
         ...
 
     def presign_download(self, key: str) -> str:
@@ -159,7 +167,9 @@ class LocalBlobStore:
     async def delete(self, key: str) -> None:
         validate_key(key)
         for path in (self._data(key), self._meta(key)):
-            await asyncio.to_thread(path.unlink, missing_ok=True)
+            # A directory is other keys nested under this one, not this blob.
+            if await asyncio.to_thread(path.is_file):
+                await asyncio.to_thread(path.unlink, missing_ok=True)
 
     def verify(
         self, op: Operation, key: str, content_type: str, expires: str, signature: str
@@ -170,11 +180,16 @@ class LocalBlobStore:
             expires_at = int(expires)
         except ValueError:
             return False
-        expected = self._signature(op, key, content_type, expires_at)
-        return hmac.compare_digest(expected, signature) and self._clock() < expires_at
+        expected = self._signature(op, key, content_type, expires_at).encode()
+        # Bytes: `compare_digest` raises on a `str` with non-ASCII characters.
+        return hmac.compare_digest(expected, signature.encode()) and self._clock() < expires_at
 
     async def write(self, key: str, content_type: str, chunks: AsyncIterable[bytes]) -> None:
-        """Store an upload; raises `ValueError` past `MAX_UPLOAD_BYTES`."""
+        """Store an upload; raises `ValueError` past `MAX_UPLOAD_BYTES`.
+
+        Keys are paths, so one cannot nest under another (`a` and `a/b`): that raises
+        `OSError` and leaves both as they were.
+        """
         data = self._data(key)
         await asyncio.to_thread(data.parent.mkdir, parents=True, exist_ok=True)
         # Written beside the target and renamed into place, so a reader never sees half

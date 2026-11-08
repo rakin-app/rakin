@@ -121,8 +121,8 @@ def test_an_upload_can_be_downloaded(harness: Harness, key: str) -> None:
 
 
 def test_a_second_upload_replaces_the_first(harness: Harness, key: str) -> None:
-    upload(harness, key, b"first", "text/plain")
-    upload(harness, key, b"second", "text/plain")
+    upload(harness, key, b"first", "application/pdf")
+    upload(harness, key, b"second", "application/pdf")
 
     assert harness.http.get(harness.store.presign_download(key)).content == b"second"
 
@@ -192,7 +192,13 @@ def test_unsafe_keys_are_refused(harness: Harness, bad_key: str) -> None:
         harness.store.presign_download(bad_key)
 
 
-@pytest.mark.parametrize("bad_type", ["", "image", "text/html\r\nX-Evil: 1", "Image/PNG"])
-def test_malformed_content_types_are_refused(harness: Harness, key: str, bad_type: str) -> None:
+@pytest.mark.parametrize(
+    "bad_type",
+    ["text/html", "image/svg+xml", "application/xhtml+xml", "text/plain", "", "image/png\r\nX: 1"],
+)
+def test_only_proof_content_types_can_be_uploaded(
+    harness: Harness, key: str, bad_type: str
+) -> None:
+    # HTML and SVG would run script in whoever opens the download.
     with pytest.raises(ValueError, match="content type"):
         harness.store.presign_upload(key, bad_type)

@@ -11,11 +11,18 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, 
 from fastapi.responses import FileResponse
 
 from app.integrations import get_integrations
-from app.integrations.blobstore import LocalBlobStore
+from app.integrations.blobstore import ALLOWED_CONTENT_TYPES, LocalBlobStore
 
 router = APIRouter(prefix=LocalBlobStore.PATH_PREFIX.rstrip("/"))
 
 FORBIDDEN = HTTPException(status.HTTP_403_FORBIDDEN, "invalid or expired signature")
+
+# Downloads come from the app's own origin, unlike S3's, so never let one render as a
+# page there: save it instead, never sniff a type, and sandbox it if opened anyway.
+DOWNLOAD_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "sandbox",
+}
 
 
 def local_store(request: Request) -> LocalBlobStore:
@@ -36,12 +43,20 @@ async def upload(
 ) -> Response:
     store = local_store(request)
     # S3 rejects a PUT whose Content-Type differs from the signed one; so does this.
-    if content_type != ct or not store.verify("put", key, ct, exp, sig):
+    if (
+        content_type != ct
+        or ct not in ALLOWED_CONTENT_TYPES
+        or not store.verify("put", key, ct, exp, sig)
+    ):
         raise FORBIDDEN
     try:
         await store.write(key, ct, request.stream())
     except ValueError as exc:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "key nests under, or holds, another key"
+        ) from exc
     return Response(status_code=status.HTTP_200_OK)
 
 
@@ -59,4 +74,10 @@ async def download(
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such blob")
     path, media_type = found
-    return FileResponse(path, media_type=media_type)
+    return FileResponse(
+        path,
+        media_type=media_type,
+        filename=path.name,
+        content_disposition_type="attachment",
+        headers=DOWNLOAD_HEADERS,
+    )
