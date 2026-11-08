@@ -123,6 +123,20 @@ def test_only_a_validated_payment_moves_lapsed_to_active(entry: LedgerEntry) -> 
         m.record_payment(monthly(S.LAPSED), entry, paid_through=NOV_30)
 
 
+def test_an_active_membership_due_date_never_regresses() -> None:
+    for paid_through in (NOV_30, NOV_30 - timedelta(days=1)):
+        with pytest.raises(ValueError, match="does not extend"):
+            m.record_payment(monthly(), VALIDATED_PAYMENT, paid_through=paid_through)
+
+
+@pytest.mark.parametrize("credits", [None, 0, -1])
+def test_a_credits_pack_cannot_reactivate_without_a_top_up(credits: int | None) -> None:
+    lapsed = m.consume_credits(credits_pack(remaining=1))
+
+    with pytest.raises(ValueError, match="top up"):
+        m.record_payment(lapsed, VALIDATED_PAYMENT, paid_through=NOV_30, credits=credits)
+
+
 def test_a_payment_does_not_unfreeze() -> None:
     frozen = m.freeze(monthly(), date(2026, 11, 10))
 
@@ -157,6 +171,11 @@ def test_cannot_unfreeze_before_the_freeze_started() -> None:
 
     with pytest.raises(ValueError, match="before"):
         m.unfreeze(frozen, date(2026, 11, 9))
+
+
+def test_unfreeze_needs_the_freeze_start_date() -> None:
+    with pytest.raises(InvalidTransition, match="freeze start"):
+        m.unfreeze(monthly(S.FROZEN), NOV_30)
 
 
 def test_unfreeze_needs_a_frozen_membership() -> None:

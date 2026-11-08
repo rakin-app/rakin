@@ -87,7 +87,8 @@ def freeze(membership: Membership, on: date) -> Membership:
 def unfreeze(membership: Membership, on: date) -> Membership:
     """Back to Active, with the due date shifted by the days spent frozen."""
     _move(membership, S.ACTIVE)
-    assert membership.frozen_since is not None
+    if membership.frozen_since is None:
+        raise InvalidTransition("frozen membership has no freeze start date")
     if on < membership.frozen_since:
         raise ValueError("cannot unfreeze before the freeze started")
     period_end = membership.current_period_end
@@ -139,13 +140,20 @@ def record_payment(
 ) -> Membership:
     """A validated payment: Trial converts, Lapsed comes back, Active extends.
 
-    `credits` refills a credits pack; omit it to keep the current balance.
+    `credits` refills a pack: a credits plan needs it, since a pack at zero would
+    lapse again at once. Elsewhere, omit it to keep the current balance. An
+    Active membership's due date only ever moves forward.
     """
     if payment.kind is not EntryKind.PAYMENT or payment.status is not EntryStatus.VALIDATED:
         raise InvalidTransition(
             f"only a validated payment activates a membership, not a {payment.status} "
             f"{payment.kind}"
         )
+    if membership.plan_kind is PlanKind.CREDITS and (credits is None or credits <= 0):
+        raise ValueError("a credits plan payment must top up the pack with credits")
+    end = membership.current_period_end
+    if membership.status is S.ACTIVE and end is not None and paid_through <= end:
+        raise ValueError(f"paid_through {paid_through} does not extend the due date {end}")
     if membership.status is S.FROZEN:
         # Only unfreeze() leaves Frozen: it is what shifts the due date.
         raise InvalidTransition("a frozen membership must be unfrozen before it is paid")
