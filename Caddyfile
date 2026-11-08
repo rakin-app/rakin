@@ -1,0 +1,8 @@
+# Local dev: one origin for the SPA and the API, as in production.
+# API paths go to FastAPI; everything else (including Vite's HMR websocket)
+# goes to the Vite dev server.
+:80 {
+	@api path /api/* /healthz
+	reverse_proxy @api api:8000
+	reverse_proxy web:5173
+}

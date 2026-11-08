@@ -165,7 +165,7 @@ One VPS running Docker Compose carries the first 20 gyms; the only non-negotiabl
 
 **Chosen:** VPS + Compose. Region: São Paulo if the provider has it (≈40 ms from Chile), otherwise US East (≈130 ms); avoid Europe (≈250 ms) for a mobile-first CRUD app.
 
-**Compose services:** `caddy`, `api`, `jobs`, `postgres`, plus `minio` only in the self-host profile (hosted uses real S3-compatible storage).
+**Compose services:** `caddy`, `api`, `jobs`, `postgres`, plus [Garage](https://garagehq.deuxfleurs.fr/) only in the self-host profile (hosted uses real S3-compatible storage). Garage rather than MinIO because MinIO stopped publishing public container images.
 
 **Backups:** nightly `pg_dump` to object storage with 30-day retention, plus continuous WAL archiving with `pgbackrest` or `wal-g` for point-in-time recovery. A restore is rehearsed before the second gym onboards and quarterly after. Proof images are already in object storage with versioning on.
 

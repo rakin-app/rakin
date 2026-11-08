@@ -44,6 +44,8 @@ Migrations never create roles, so the owner needs no `CREATEROLE`. A superuser c
 uv run python -m app.db_bootstrap postgresql://<superuser>:<password>@localhost:5432/rakin
 ```
 
+Without the URL it connects with the standard libpq variables (`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`), which is how Compose's `migrate` runs it: the password needs no URL escaping and stays out of the process arguments.
+
 Locally that superuser is the Postgres image's `POSTGRES_USER` (`rakin:rakin`). In production, run it once from an admin shell; the API and Alembic never see the superuser's credentials. Re-running is safe: it resets passwords and attributes to what the settings and this table say. It refuses to turn an existing superuser into either user, and refuses one user for both.
 
 ## Migrations
