@@ -24,8 +24,15 @@ from tests.conftest import UNREACHABLE_DB, make_settings, require_test_database_
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 
 # Paths that act in no gym. Every other operation must answer 401 without a tenant.
-# The local BlobStore's URLs carry their own signature instead of a session.
-PUBLIC_PATHS = {"/healthz", "/api/blobs/{key}"}
+# The local BlobStore's URLs carry their own signature instead of a session, and
+# sign-in comes before there is one (`tests/test_auth.py` covers each of its routes).
+PUBLIC_PATHS = {
+    "/healthz",
+    "/api/blobs/{key}",
+    "/api/auth/link",
+    "/api/auth/callback",
+    "/api/auth/logout",
+}
 
 TENANT_TABLES = (
     "gym",

@@ -113,7 +113,8 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
             """
         ),
     )
-    assert {r["relname"] for r in rows} == TENANT_TABLES
+    # auth_session (0004) too; tests/test_auth.py covers its policies.
+    assert {r["relname"] for r in rows} == TENANT_TABLES | {"auth_session"}
     for r in rows:
         assert (r["relrowsecurity"], r["relforcerowsecurity"]) == (True, True), r["relname"]
         assert r["policies"] >= 1, r["relname"]

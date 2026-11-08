@@ -50,13 +50,14 @@ Uploads take only the types a transfer proof can be (`ALLOWED_CONTENT_TYPES`: JP
 
 ## Database roles
 
-Three roles, none of them a superuser:
+Four roles, none of them a superuser:
 
 | Role | Setting | What it is |
 | --- | --- | --- |
 | `rakin_owner` | `MIGRATION_DATABASE_URL` | owns the database and every table; Alembic runs as it |
 | `rakin_api` | `DATABASE_URL` | the API's login user, a member of `rakin_app` |
 | `rakin_app` | (none) | holds the table privileges; cannot log in, owns nothing, no `BYPASSRLS` |
+| `rakin_auth` | (none) | owns sign-in's lookups across gyms (see Sign-in); cannot log in, `BYPASSRLS`, reads only `person`, `membership`, `staff` and `auth_session` |
 
 Migrations never create roles, so the owner needs no `CREATEROLE`. A superuser creates the roles once per database, before the first migration, taking each user's name and password from the two settings:
 
@@ -66,7 +67,7 @@ uv run python -m app.db_bootstrap postgresql://<superuser>:<password>@localhost:
 
 Without the URL it connects with the standard libpq variables (`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`), which is how Compose's `migrate` runs it: the password needs no URL escaping and stays out of the process arguments.
 
-Locally that superuser is the Postgres image's `POSTGRES_USER` (`rakin:rakin`). In production, run it once from an admin shell; the API and Alembic never see the superuser's credentials. Re-running is safe: it resets passwords and attributes to what the settings and this table say. It refuses to turn an existing superuser into either user, and refuses one user for both.
+Locally that superuser is the Postgres image's `POSTGRES_USER` (`rakin:rakin`). In production, run it once from an admin shell; the API and Alembic never see the superuser's credentials. Re-running is safe: it resets passwords and attributes to what the settings and this table say. It refuses to turn an existing superuser into either user, and refuses one user for both. A database bootstrapped before `rakin_auth` existed needs one more run before `alembic upgrade` reaches `0004`, which checks for it; Compose's `migrate` runs bootstrap on every start.
 
 ## Tenancy
 
@@ -77,7 +78,7 @@ Every gym-scoped endpoint takes a `TenantSession` (`app/tenancy.py`):
 async def list_plans(session: TenantSession) -> list[PlanOut]: ...
 ```
 
-It opens one transaction per request and sets `app.gym_id` for that transaction only (`set_config('app.gym_id', …, true)`, the bound-parameter form of `SET LOCAL`), so RLS limits every query to the gym and a missed `WHERE` returns nothing. It commits before the response is sent and rolls back if the endpoint raises. The gym comes from `request.state.tenant`, which the auth layer sets; with none, the request is a 401 and no session is opened. `tests/test_tenancy.py` calls every operation in the OpenAPI schema without a tenant and fails on any that answers something other than 401, outside `PUBLIC_PATHS`.
+It opens one transaction per request and sets `app.gym_id` for that transaction only (`set_config('app.gym_id', …, true)`, the bound-parameter form of `SET LOCAL`), so RLS limits every query to the gym and a missed `WHERE` returns nothing. It commits before the response is sent and rolls back if the endpoint raises. The gym comes from `request.state.tenant`, which the session middleware sets (see Sign-in); with none, the request is a 401 and no session is opened. `tests/test_tenancy.py` calls every operation in the OpenAPI schema without a tenant and fails on any that answers something other than 401, outside `PUBLIC_PATHS`.
 
 A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, which `POST /api/people` calls: it finds or creates the person with that phone and writes the gym's `gym_person` record, and returns `(person_id, joined)`. `joined` is false only when the person was already in this gym, which the API answers with a 409 naming them; a phone known only to other gyms answers exactly like a new one (migration `0004`). The API never reads or writes `person`'s other columns: `rakin_app` may select only `id` and `phone`, and may not update it. `membership` and `staff` reference `gym_person (gym_id, person_id)`, so a gym holds rows only for people it has a record of. The migration's downgrade drops every `gym_person` record; it is for development only.
 
@@ -90,6 +91,25 @@ A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, 
 | `PATCH` | `/api/people/{id}` | change `name`, `email`, `rut`, `dob` in this gym's record only; `null` clears an optional field |
 
 Phones are normalised to E.164 Chilean mobiles and RUTs to `76123456-0`; anything else is a 422. The phone is set on create and not editable here, since changing it moves the gym's record to another identity.
+
+## Sign-in
+
+Students and staff sign in with a magic link ([spec](../docs/technical.md#communications)). `app/magiclink` is the mechanism, self-contained so it can become a package: it imports nothing else from `app`. `app/auth.py` plugs Rakin into it: people by email, Postgres, and the mailer.
+
+| Route | What it does |
+| --- | --- |
+| `POST /api/auth/link` `{"email": …}` | emails a link to every person with that address who belongs to a gym. Always a 202, known address or not; a 429 with `Retry-After` past 5 requests per address or 30 per IP in 15 minutes |
+| `GET /api/auth/callback?token=…` | the page the link opens: an "Entrar" button. It does not spend the link, so a mail scanner that fetches it does no harm |
+| `POST /api/auth/callback` | the button. Spends the link and sets the session cookie, then redirects to `/` |
+| `POST /api/auth/logout` | ends the session and clears the cookie |
+
+A link is a signed token (HMAC with `SECRET_KEY`) that expires after 15 minutes and works once; `auth_link` stores only its SHA-256. The session is a 30-day cookie, `__Host-session`, `HttpOnly`, `Secure`, `SameSite=Lax`, and `auth_session` likewise stores only its hash. Both pages are plain HTML forms with no script, so a link works in any browser tab. Browsers accept `Secure` cookies from `http://localhost`, so sign-in works on the Compose stack as is; open the link on the same host name the app is served on.
+
+On each request with the cookie, the session middleware sets `request.state.person_id` and, when the session has a gym, `request.state.tenant`. It never answers 401 itself: `TenantSession` stays the one place a gym-scoped route refuses. A person in exactly one gym signs in to it; a person in several signs in to none yet, and gym routes answer 401 until they pick one (#16).
+
+Sign-in looks across gyms before any gym is set, which RLS forbids even the owner. Migration `0004` does it in `SECURITY DEFINER` functions owned by `rakin_auth`: `auth_people_by_email`, `auth_gyms_of`, `auth_live_session` and `auth_end_session`. `auth_session` is gym-scoped like any table with a `gym_id`, with inserts open, as on `person`.
+
+The rate limits live in the API process's memory, which is right for the single process Rakin runs. They count by client address, so behind a proxy uvicorn must trust its `X-Forwarded-For`: Compose sets `FORWARDED_ALLOW_IPS` on `api`, whose port is not published.
 
 ## Migrations
 

@@ -17,6 +17,12 @@ settings, user and password included:
   migrations grant table privileges to. `rakin_app` cannot log in, owns nothing and
   does not bypass RLS, so row-level security always applies to the API.
 
+It also creates `rakin_auth`, which cannot log in and does bypass RLS. It owns the
+`SECURITY DEFINER` functions sign-in needs before any gym is known (migration
+0004), holds `SELECT` on what they read and nothing else. The owner is made a member
+so the migration can hand it those functions; that also lets the owner
+`SET ROLE rakin_auth`, a deliberate step past RLS like disabling it on a table.
+
 Re-running is safe: missing roles are created, existing ones get their password and
 attributes reset to the above.
 """
@@ -30,9 +36,12 @@ from sqlalchemy.engine import make_url
 from app.settings import Settings, get_settings
 
 APP_ROLE = "rakin_app"
+AUTH_ROLE = "rakin_auth"
 
 # Attributes every role here must have; Postgres takes them on CREATE and ALTER alike.
 SAFE = "NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION"
+# The sign-in lookups' owner: RLS-exempt, and nothing else.
+AUTH = "NOLOGIN NOSUPERUSER BYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION"
 
 
 def to_dsn(url: str) -> str:
@@ -78,6 +87,7 @@ async def bootstrap(admin_url: str | None, settings: Settings) -> None:
         async with conn.transaction():
             await ensure_login(conn, owner, owner_password)
             await ensure_role(conn, APP_ROLE, f"NOLOGIN {SAFE}")
+            await ensure_role(conn, AUTH_ROLE, AUTH)
             await ensure_login(conn, api, api_password)
             owner_ident, api_ident, database = await conn.fetchrow(
                 "SELECT quote_ident($1), quote_ident($2), quote_ident(current_database())",
@@ -85,6 +95,7 @@ async def bootstrap(admin_url: str | None, settings: Settings) -> None:
                 api,
             )
             await conn.execute(f"GRANT {APP_ROLE} TO {api_ident}")
+            await conn.execute(f"GRANT {AUTH_ROLE} TO {owner_ident}")
             # The database owner owns `public` too (via pg_database_owner, Postgres 15+).
             await conn.execute(f"ALTER DATABASE {database} OWNER TO {owner_ident}")
             await conn.execute(f"GRANT ALL ON SCHEMA public TO {owner_ident}")
