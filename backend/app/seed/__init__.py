@@ -22,9 +22,9 @@ from app.seed.data import TIMEZONE
 
 # The primary key a re-run collides on. Any other unique violation (a phone already
 # taken by someone outside the seed, a slug already used) is a real conflict and fails.
-CONFLICT_KEYS = {"staff": "(gym_id, person_id)"}
+CONFLICT_KEYS = {"staff": "(gym_id, person_id)", "gym_person": "(gym_id, person_id)"}
 # `ON CONFLICT` holds the new row to the table's read policy, and a person joins the
-# gym only once their membership exists (0003), so these rows are tried one by one.
+# gym only once their `gym_person` row exists (0004), so these rows are tried one by one.
 NO_ON_CONFLICT = {"person": "person_pkey"}
 
 

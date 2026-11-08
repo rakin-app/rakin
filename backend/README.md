@@ -79,7 +79,17 @@ async def list_plans(session: TenantSession) -> list[PlanOut]: ...
 
 It opens one transaction per request and sets `app.gym_id` for that transaction only (`set_config('app.gym_id', …, true)`, the bound-parameter form of `SET LOCAL`), so RLS limits every query to the gym and a missed `WHERE` returns nothing. It commits before the response is sent and rolls back if the endpoint raises. The gym comes from `request.state.tenant`, which the auth layer sets; with none, the request is a 401 and no session is opened. `tests/test_tenancy.py` calls every operation in the OpenAPI schema without a tenant and fails on any that answers something other than 401, outside `PUBLIC_PATHS`.
 
-A new person is invisible until their `membership` or `staff` row exists, so create both in one transaction and generate the person's id client-side: `INSERT … RETURNING` on `person` is held to the read policy and fails before they join.
+A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, which `POST /api/people` calls: it finds or creates the person with that phone and writes the gym's `gym_person` record, and returns `(person_id, joined)`. `joined` is false only when the person was already in this gym, which the API answers with a 409 naming them; a phone known only to other gyms answers exactly like a new one (migration `0004`). The API never reads or writes `person`'s other columns: `rakin_app` may select only `id` and `phone`, and may not update it.
+
+## People API
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `POST` | `/api/people` | add a person by phone; 201 with this gym's record, 409 `{"detail": {"code": "phone_in_gym", "person_id": …}}` if the phone is already in this gym |
+| `GET` | `/api/people/{id}` | this gym's record; 404 for anyone not in the gym, known elsewhere or not |
+| `PATCH` | `/api/people/{id}` | change `name`, `email`, `rut`, `dob` in this gym's record only; `null` clears an optional field |
+
+Phones are normalised to E.164 Chilean mobiles and RUTs to `76123456-0`; anything else is a 422. The phone is set on create and not editable here, since changing it moves the gym's record to another identity.
 
 ## Migrations
 
@@ -88,7 +98,7 @@ uv run alembic revision -m "describe the change"
 uv run alembic upgrade head
 ```
 
-Every table with a `gym_id` (and `gym` itself) is isolated by an RLS policy on `current_setting('app.gym_id')`. With `app.gym_id` unset, those tables return no rows. `person` is global but not globally readable: a read sees only people with a `membership` or `staff` row in the current gym (migration `0003`). `job_run` is global.
+Every table with a `gym_id` (and `gym` itself) is isolated by an RLS policy on `current_setting('app.gym_id')`. With `app.gym_id` unset, those tables return no rows. `person` is global but not globally readable: a read sees only people with a `gym_person`, `membership` or `staff` row in the current gym (migrations `0003`, `0004`), and the API sees only their `id` and `phone`. `job_run` is global.
 
 RLS is **forced**, so it applies to `rakin_owner` as well, not only to the API. A table owner is normally exempt from its own policies; forcing them means a backfill, seed or one-off script run with the owner's credentials sees and writes only the gym in `app.gym_id`, so a missed `SET` returns nothing there too. Work that spans gyms (the nightly jobs, a gym switcher) sets `app.gym_id` per gym or goes through a `SECURITY DEFINER` function written for it. Only a superuser skips RLS.
 
@@ -110,4 +120,4 @@ make seed                                      # from the repo root, inside Comp
 
 Loading again inserts nothing: every row's id is a UUIDv5 of its natural key, and rows already there are skipped, never updated, which the append-only ledger requires anyway. The first load stores its date in `gym.settings["seed"]["as_of"]`, and later loads build for that date again, ignoring `--today`. To reseed for another date, start from an empty database (`docker compose down -v`).
 
-The loader connects as the owner (`MIGRATION_DATABASE_URL`) with `app.gym_id` set to the demo gym. Ranks and guardian links have no tables yet (#48, #19): ranks live in `data.py`, checked against the grading scheme, and a guardian is the payer (`claimed_by`) of their dependents' payments. Every guardian also trains, because a person with no membership or staff row is invisible in the gym. Drop-ins have a plan but no memberships, since a drop-in is a single attendance.
+The loader connects as the owner (`MIGRATION_DATABASE_URL`) with `app.gym_id` set to the demo gym. Ranks and guardian links have no tables yet (#48, #19): ranks live in `data.py`, checked against the grading scheme, and a guardian is the payer (`claimed_by`) of their dependents' payments. Every person gets a `gym_person` row with the same name, email, RUT and date of birth. Every guardian also trains, so the roster's payers are members too. Drop-ins have a plan but no memberships, since a drop-in is a single attendance.

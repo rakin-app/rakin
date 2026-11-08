@@ -17,7 +17,16 @@ from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_databas
 
 pytestmark = pytest.mark.postgres
 
-TENANT_TABLES = {"gym", "staff", "plan", "membership", "billing_period", "ledger_entry"}
+# At head, so including the tables later migrations add.
+TENANT_TABLES = {
+    "gym",
+    "gym_person",
+    "staff",
+    "plan",
+    "membership",
+    "billing_period",
+    "ledger_entry",
+}
 
 
 @pytest.fixture(scope="module")

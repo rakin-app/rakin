@@ -111,7 +111,8 @@ def in_gym(gym_id: uuid.UUID | None, sql: str, *args: object) -> Query:
 
 
 def seed_gym(db: Database, slug: str) -> uuid.UUID:
-    """A gym with one person, staff row, plan, membership, period and ledger entry.
+    """A gym with one person (a staff and a `gym_person` row), plan, membership, period
+    and ledger entry.
 
     Seeded as the owner, which FORCEd RLS applies to: it sets `app.gym_id` first.
     """
@@ -131,6 +132,12 @@ def seed_gym(db: Database, slug: str) -> uuid.UUID:
                 "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'owner')",
                 gym_id,
                 person_id,
+            )
+            await conn.execute(
+                "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, $3)",
+                gym_id,
+                person_id,
+                f"owner of {slug}",
             )
             plan_id = await conn.fetchval(
                 "INSERT INTO plan (gym_id, name, kind, price_clp)"
