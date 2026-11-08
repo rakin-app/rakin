@@ -49,8 +49,8 @@ claude mcp add --transport stdio github -- npx -y @github/github-mcp-server
 
 Todo → In Progress → In Review → Done
 
-- **Status when starting work**: `In Progress`
-- **Status when in review**: `In Review` (leave blank or omit if your project has no In Review column — the worker will keep the issue at `In Progress` through review)
+- **Status when starting work**: `In progress`
+- **Status when in review**: `In review` (leave blank or omit if your project has no In Review column — the worker will keep the issue at `In Progress` through review)
 - **Status when done**: `Done`
 
 The worker reads these three values and updates the project item's Status field as it moves through the lifecycle: to "starting work" before implementing, to "in review" after opening the PR, and to "done" only after the PM signals `approved-and-merged` via radio.
