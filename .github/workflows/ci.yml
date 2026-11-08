@@ -35,7 +35,8 @@ jobs:
           --health-retries 15
     env:
       ENVIRONMENT: test
-      DATABASE_URL: postgresql+asyncpg://rakin:rakin@localhost:5432/rakin
+      # `DATABASE_URL` and `MIGRATION_DATABASE_URL` keep their defaults: the API and
+      # owner users that `app.db_bootstrap` creates. `rakin` is the superuser.
       TEST_DATABASE_URL: postgresql+asyncpg://rakin:rakin@localhost:5432/rakin
       # A `postgres` test that skips here would pass CI without touching the database.
       REQUIRE_POSTGRES: '1'
@@ -49,6 +50,7 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run ruff check .
       - run: uv run mypy
+      - run: uv run python -m app.db_bootstrap postgresql://rakin:rakin@localhost:5432/rakin
       - run: uv run alembic upgrade head
       - run: uv run pytest
 
