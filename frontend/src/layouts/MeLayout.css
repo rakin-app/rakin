@@ -1,0 +1,9 @@
+.me-shell {
+  min-height: 100dvh;
+}
+
+.me-main {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom));
+}
