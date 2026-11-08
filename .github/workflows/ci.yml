@@ -40,6 +40,9 @@ jobs:
       TEST_DATABASE_URL: postgresql+asyncpg://rakin:rakin@localhost:5432/rakin
       # A `postgres` test that skips here would pass CI without touching the database.
       REQUIRE_POSTGRES: '1'
+      # The S3 BlobStore's contract tests, against the Garage that `garage-init` starts.
+      TEST_S3_ENDPOINT_URL: http://localhost:3900
+      REQUIRE_S3: '1'
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3  # no floating major tag upstream
@@ -52,6 +55,9 @@ jobs:
       - run: uv run mypy
       - run: uv run python -m app.db_bootstrap postgresql://rakin:rakin@localhost:5432/rakin
       - run: uv run alembic upgrade head
+      # The self-host profile's Garage and its bootstrap (layout, key, bucket), as-is.
+      - run: docker compose --profile selfhost run --rm garage-init
+        working-directory: .
       - run: uv run pytest
 
   frontend:

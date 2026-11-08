@@ -49,7 +49,7 @@ Services: `caddy` (the single entry point), `api` (FastAPI), `jobs` (background 
 
 To try it with data, `make seed` (`docker compose run --rm api python -m app.seed`) loads the demo gym, Academia Sur: 71 members across the adults and kids programs, all five plan kinds, and the paid, overdue, pending-proof and frozen memberships the [UI design](docs/design/ui-design.html) shows. It is safe to re-run; see [Seed data](backend/README.md#seed-data).
 
-Self-hosters without S3-compatible storage add [Garage](https://garagehq.deuxfleurs.fr/): `docker compose --profile selfhost up` also starts it on http://localhost:3900, and a one-shot `garage-init` creates the `rakin` bucket and the API's access key from the `S3_*` values in `.env.example`.
+Uploads (payment proofs) go to local disk by default, in the `blobs` volume, and email is written to the API's log instead of sent: every integration has a default that needs no account. To store files in S3-compatible storage instead, set `BLOB_STORE=s3`. Self-hosters without a provider add [Garage](https://garagehq.deuxfleurs.fr/): `docker compose --profile selfhost up` also starts it on http://localhost:3900, and a one-shot `garage-init` creates the `rakin` bucket and the API's access key from the `S3_*` values in `.env.example`.
 
 If port 8080 or 5432 is already in use, set `HTTP_PORT` or `POSTGRES_PORT` in `.env`. Containers get only the variables `docker-compose.yml` passes them: the Postgres superuser reaches `migrate` alone, and the API and migration users come from `POSTGRES_API_*` and `POSTGRES_OWNER_*`. `docker compose down` stops the stack; `docker compose down -v` also deletes the database.
 

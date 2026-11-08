@@ -26,7 +26,8 @@ from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_databas
 GYM_HEADER = b"x-test-gym"
 
 # Paths that act in no gym. Every other operation must answer 401 without a tenant.
-PUBLIC_PATHS = {"/healthz"}
+# The local BlobStore's URLs carry their own signature instead of a session.
+PUBLIC_PATHS = {"/healthz", "/api/blobs/{key}"}
 
 TENANT_TABLES = ("gym", "staff", "plan", "membership", "billing_period", "ledger_entry")
 

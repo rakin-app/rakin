@@ -3,8 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import health
+from app.api import blobs, health
 from app.db import create_engine, create_sessionmaker
+from app.integrations import build_integrations
 from app.logging import configure_logging
 from app.middleware import RequestIdMiddleware
 from app.settings import Settings, get_settings
@@ -26,6 +27,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Rakin API", lifespan=lifespan)
     app.state.settings = settings
+    app.state.integrations = build_integrations(settings)
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
+    if settings.blob_store == "local":
+        app.include_router(blobs.router)
     return app
