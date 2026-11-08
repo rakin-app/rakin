@@ -22,7 +22,7 @@ uv run pytest
 TEST_DATABASE_URL=postgresql+asyncpg://rakin:rakin@localhost:5432/rakin uv run pytest -m postgres
 ```
 
-Tests marked `postgres` skip unless `TEST_DATABASE_URL` points at a reachable database.
+Tests marked `postgres` skip unless `TEST_DATABASE_URL` points at a reachable database. With `REQUIRE_POSTGRES=1` (as in CI) a missing `TEST_DATABASE_URL` fails them instead.
 
 ## Migrations
 

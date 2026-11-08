@@ -1,0 +1,84 @@
+name: ci
+
+# No path filters: `backend`, `frontend` and `dco` are required checks on `main`,
+# and a required check that never runs leaves the PR blocked.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: rakin
+          POSTGRES_PASSWORD: rakin
+          POSTGRES_DB: rakin
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U rakin -d rakin"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://rakin:rakin@localhost:5432/rakin
+      TEST_DATABASE_URL: postgresql+asyncpg://rakin:rakin@localhost:5432/rakin
+      # A `postgres` test that skips here would pass CI without touching the database.
+      REQUIRE_POSTGRES: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3  # no floating major tag upstream
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --locked
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy
+      - run: uv run alembic upgrade head
+      - run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  dco:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: .github/scripts/test-check-dco.sh
+      - run: >-
+          .github/scripts/check-dco.sh
+          "${{ github.event.pull_request.base.sha }}"
+          "${{ github.event.pull_request.head.sha }}"
