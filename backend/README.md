@@ -31,4 +31,12 @@ uv run alembic revision -m "describe the change"
 uv run alembic upgrade head
 ```
 
-Alembic reads `DATABASE_URL` from the same settings as the app.
+Alembic connects with `MIGRATION_DATABASE_URL`, the role that owns the tables. The API connects with `DATABASE_URL`, a login user in the `rakin_app` role that migration 0001 creates. `rakin_app` owns nothing and has no `BYPASSRLS`, so row-level security always applies to the API. After the first migration, create the login user once:
+
+```sh
+psql -U rakin -d rakin -c "CREATE ROLE rakin_api LOGIN PASSWORD 'rakin_api' IN ROLE rakin_app"
+```
+
+Every table with a `gym_id` (and `gym` itself) is isolated by an RLS policy on `current_setting('app.gym_id')`. With `app.gym_id` unset, those tables return no rows. `person` and `job_run` are global.
+
+The migration tests create and drop a throwaway database on the `TEST_DATABASE_URL` server, so that user needs `CREATEDB`.
