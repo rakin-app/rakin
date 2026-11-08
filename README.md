@@ -39,7 +39,7 @@ cp .env.example .env        # optional: every value has a working local default
 docker compose up
 ```
 
-The first run builds the API image and installs the SPA's packages, a few minutes in all. Then:
+The first run builds the API image and installs the SPA's packages, a few minutes in all. Caddy only starts once the API and the dev server pass their healthchecks, so the first page load is not a 502; `docker compose up -d --wait` returns at that point. Then:
 
 - http://localhost:8080 serves the SPA, with the API on the same origin
 - http://localhost:8080/healthz returns `{"status":"ok","database":"ok"}` once Postgres answers
@@ -49,7 +49,7 @@ Services: `caddy` (the single entry point), `api` (FastAPI), `jobs` (background 
 
 Self-hosters without S3-compatible storage add [Garage](https://garagehq.deuxfleurs.fr/): `docker compose --profile selfhost up` also starts it on http://localhost:3900, and a one-shot `garage-init` creates the `rakin` bucket and the API's access key from the `S3_*` values in `.env.example`.
 
-If port 8080 or 5432 is already in use, set `HTTP_PORT` or `POSTGRES_PORT` in `.env`. `docker compose down` stops the stack; `docker compose down -v` also deletes the database.
+If port 8080 or 5432 is already in use, set `HTTP_PORT` or `POSTGRES_PORT` in `.env`. Containers get only the variables `docker-compose.yml` passes them: the Postgres superuser reaches `migrate` alone, and the API and migration users come from `POSTGRES_API_*` and `POSTGRES_OWNER_*`. `docker compose down` stops the stack; `docker compose down -v` also deletes the database.
 
 To run the API or the SPA on the host instead, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
 

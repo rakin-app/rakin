@@ -1,9 +1,14 @@
 """Database roles, created once per database by a superuser, before any migration.
 
     uv run python -m app.db_bootstrap postgresql://postgres:secret@host:5432/rakin
+    PGHOST=host PGUSER=postgres PGPASSWORD=secret PGDATABASE=rakin \
+        uv run python -m app.db_bootstrap
 
-The argument is a superuser connection to the database to bootstrap. The two roles it
-provisions come from the settings, user and password included:
+The argument is a superuser connection to the database to bootstrap. Without it, the
+connection comes from the standard libpq variables (`PGHOST`, `PGPORT`, `PGUSER`,
+`PGPASSWORD`, `PGDATABASE`), which keeps the password out of a URL that would need
+escaping and out of the process arguments. The two roles it provisions come from the
+settings, user and password included:
 
 - `MIGRATION_DATABASE_URL` names the owner: a plain login role that owns the database
   (and so its `public` schema) and every table the migrations create. It is not a
@@ -59,13 +64,14 @@ async def ensure_login(conn: asyncpg.Connection, name: str, password: str) -> No
     await conn.execute(f"ALTER ROLE {ident} PASSWORD {literal}")
 
 
-async def bootstrap(admin_url: str, settings: Settings) -> None:
+async def bootstrap(admin_url: str | None, settings: Settings) -> None:
     owner, owner_password = credentials(settings.migration_database_url)
     api, api_password = credentials(settings.database_url)
     if owner == api:
         raise SystemExit("MIGRATION_DATABASE_URL and DATABASE_URL must use different users")
 
-    conn = await asyncpg.connect(to_dsn(admin_url))
+    # No URL: asyncpg reads the libpq PG* environment variables.
+    conn = await asyncpg.connect(to_dsn(admin_url) if admin_url else None)
     try:
         if not await conn.fetchval("SELECT rolsuper FROM pg_roles WHERE rolname = current_user"):
             raise SystemExit("bootstrap needs a superuser connection")
@@ -88,7 +94,11 @@ async def bootstrap(admin_url: str, settings: Settings) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create the owner and API database roles.")
-    parser.add_argument("admin_url", help="superuser connection to the database to bootstrap")
+    parser.add_argument(
+        "admin_url",
+        nargs="?",
+        help="superuser connection to the database to bootstrap (default: the PG* variables)",
+    )
     args = parser.parse_args()
     asyncio.run(bootstrap(args.admin_url, get_settings()))
 

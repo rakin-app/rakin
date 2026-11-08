@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Iterator
 
 import pytest
+from sqlalchemy.engine import make_url
 
 from app.db_bootstrap import bootstrap
 from tests.conftest import make_settings, require_test_database_url
@@ -35,6 +36,24 @@ def test_both_users_can_log_in(db: Database) -> None:
 
 def test_running_twice_is_harmless(db: Database) -> None:
     asyncio.run(bootstrap(db.admin_url, db.settings))
+    assert run(db.api_url, lambda c: c.fetchval("SELECT current_user")) == "rakin_api"
+
+
+def test_without_a_url_it_connects_with_the_pg_environment_variables(
+    db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    admin = make_url(db.admin_url)
+    for name, value in {
+        "PGHOST": admin.host,
+        "PGPORT": admin.port,
+        "PGUSER": admin.username,
+        "PGPASSWORD": admin.password,
+        "PGDATABASE": admin.database,
+    }.items():
+        monkeypatch.setenv(name, str(value))
+
+    asyncio.run(bootstrap(None, db.settings))
+
     assert run(db.api_url, lambda c: c.fetchval("SELECT current_user")) == "rakin_api"
 
 

@@ -1,7 +1,7 @@
 # One image for `api`, `jobs` and the one-shot `migrate` container.
 FROM python:3.13-slim
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /bin/uv
 
 # The venv lives outside /srv so the dev bind mount of ./backend never hides it.
 ENV UV_COMPILE_BYTECODE=1 \
