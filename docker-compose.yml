@@ -13,7 +13,9 @@ x-backend: &backend
       required: false
   environment: &backend-env
     # Inside the network Postgres is `postgres`, not the host's `localhost`.
-    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-rakin}:${POSTGRES_PASSWORD:-rakin}@postgres:5432/${POSTGRES_DB:-rakin}
+    # The users are the `.env.example` ones that `migrate` bootstraps.
+    DATABASE_URL: postgresql+asyncpg://rakin_api:rakin_api@postgres:5432/${POSTGRES_DB:-rakin}
+    MIGRATION_DATABASE_URL: postgresql+asyncpg://rakin_owner:rakin_owner@postgres:5432/${POSTGRES_DB:-rakin}
     # Object storage for the BlobStore; these point at the `selfhost` Garage.
     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://localhost:3900}
     S3_REGION: ${S3_REGION:-garage}
@@ -46,10 +48,15 @@ services:
       - ./frontend:/app
       - web_node_modules:/app/node_modules
 
-  # Forward-only migrations as a one-shot container, as in production.
+  # One-shot, as in production: create the database roles with the
+  # superuser (safe to re-run), then run forward-only migrations as the owner.
+  # Only this container ever sees the superuser's credentials.
   migrate:
     <<: *backend
-    command: alembic upgrade head
+    environment:
+      <<: *backend-env
+      BOOTSTRAP_DATABASE_URL: postgresql://${POSTGRES_USER:-rakin}:${POSTGRES_PASSWORD:-rakin}@postgres:5432/${POSTGRES_DB:-rakin}
+    command: ["sh", "-c", "python -m app.db_bootstrap \"$$BOOTSTRAP_DATABASE_URL\" && alembic upgrade head"]
     depends_on:
       postgres:
         condition: service_healthy

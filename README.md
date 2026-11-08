@@ -43,9 +43,9 @@ The first run builds the API image and installs the SPA's packages, a few minute
 
 - http://localhost:8080 serves the SPA, with the API on the same origin
 - http://localhost:8080/healthz returns `{"status":"ok","database":"ok"}` once Postgres answers
-- Postgres is also published on `localhost:5432` (user, password and database `rakin`) for `psql` and the backend's `postgres` tests
+- Postgres is also published on `localhost:5432` for `psql` and the backend's `postgres` tests; the superuser is `rakin:rakin`, and the API and migration users are the ones in `.env.example`
 
-Services: `caddy` (the single entry point), `api` (FastAPI), `jobs` (background jobs; idle until the first job lands), `postgres`, `web` (the Vite dev server) and a one-shot `migrate` that runs `alembic upgrade head` before `api` and `jobs` start. Editing `backend/` reloads the API and editing `frontend/` hot-reloads the SPA, with no rebuild. Rebuild the API image (`docker compose up --build`) only after changing `backend/pyproject.toml`.
+Services: `caddy` (the single entry point), `api` (FastAPI), `jobs` (background jobs; idle until the first job lands), `postgres`, `web` (the Vite dev server) and a one-shot `migrate` that creates the database users (`python -m app.db_bootstrap`) and runs `alembic upgrade head` before `api` and `jobs` start. Editing `backend/` reloads the API and editing `frontend/` hot-reloads the SPA, with no rebuild. Rebuild the API image (`docker compose up --build`) only after changing `backend/pyproject.toml`.
 
 Self-hosters without S3-compatible storage add [Garage](https://garagehq.deuxfleurs.fr/): `docker compose --profile selfhost up` also starts it on http://localhost:3900, and a one-shot `garage-init` creates the `rakin` bucket and the API's access key from the `S3_*` values in `.env.example`.
 
