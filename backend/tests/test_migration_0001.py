@@ -91,14 +91,17 @@ def test_no_timestamp_without_time_zone(db: Database) -> None:
 
 
 def test_money_columns_are_integers(db: Database) -> None:
+    # Views' columns included: a `sum` over bigint is numeric unless cast back (0012).
     rows = run(
         db.admin_url,
         lambda c: c.fetch(
-            "SELECT column_name, data_type FROM information_schema.columns"
-            " WHERE table_schema = 'public' AND column_name LIKE '%\\_clp'"
+            "SELECT c.column_name, c.data_type, t.table_type FROM information_schema.columns c"
+            " JOIN information_schema.tables t USING (table_schema, table_name)"
+            " WHERE c.table_schema = 'public' AND c.column_name LIKE '%\\_clp'"
         ),
     )
-    assert {r["column_name"] for r in rows} == {"price_clp", "amount_due_clp", "amount_clp"}
+    tables = {r["column_name"] for r in rows if r["table_type"] == "BASE TABLE"}
+    assert tables == {"price_clp", "amount_due_clp", "amount_clp"}
     assert {r["data_type"] for r in rows} == {"bigint"}
 
 
