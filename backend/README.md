@@ -217,7 +217,7 @@ Derived views over the ledger (`0012`, [spec](../docs/technical.md#domain-model)
 
 - `v_overdue`: a billing period with a validated charge, a due date before today in the gym's timezone, and validated payments and adjustments short of its amount due. Columns: `gym_id`, `billing_period_id`, `membership_id`, `person_id`, `membership_status`, `period_start`, `period_end`, `due_date`, `amount_due_clp`, `paid_clp`, `outstanding_clp`, `days_overdue`. Lapsed and cancelled memberships keep their unpaid periods there; the owner's "Vencido" counts the `active` rows.
 - `v_balance`: per membership with ledger entries, `balance_clp`: charges and refunds less payments and the adjustments on a period. Positive is owed, negative is credit. An adjustment with no period is an overpayment's carried credit, which its payment already counts, so it is left out.
-- `v_monthly_income`: per gym and calendar month (`month`, its first day) in the gym's timezone, `income_clp` and `payments`: the validated payments, by the month each was validated.
+- `v_monthly_income`: per gym and calendar month (`month`, its first day) in the gym's timezone, `income_clp` and `payments`: the validated payments, by the month each was validated. It is the gym's income only for an owner or admin; a member reads the sum of their own and their dependents' payments under the same name, so the dashboard reads it as staff.
 
 `v_inactive` (last attendance more than N days ago) comes with the attendance table (#41).
 

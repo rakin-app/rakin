@@ -289,6 +289,71 @@ def test_a_member_reads_only_their_own(db: Database) -> None:
     assert len(read(db, gym, "v_balance")) == 2
 
 
+def add_guardian(db: Database, gym: uuid.UUID, dependent: uuid.UUID) -> uuid.UUID:
+    """A person in `gym` only as `dependent`'s guardian: no membership, no staff row."""
+    guardian = uuid.uuid4()
+
+    async def query(conn: asyncpg.Connection) -> None:
+        await conn.execute("INSERT INTO person (id, name) VALUES ($1, 'guardian')", guardian)
+        await conn.execute(
+            "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'guardian')",
+            gym,
+            guardian,
+        )
+        await conn.execute(
+            "INSERT INTO guardian_link (gym_id, guardian_person_id, dependent_person_id)"
+            " VALUES ($1, $2, $3)",
+            gym,
+            guardian,
+            dependent,
+        )
+
+    run(db.admin_url, query)
+    return guardian
+
+
+def test_a_guardian_reads_their_dependents_rows(db: Database) -> None:
+    # Through ledger_entry_own (0010), across every join each view makes.
+    gym = new_gym(db)
+    dependent = add_person(db, gym, role=None)
+    add_person(db, gym, role=None)  # someone else's kid
+    guardian = add_guardian(db, gym, dependent)
+
+    async def pay(conn: asyncpg.Connection) -> None:
+        await conn.execute(
+            "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
+            " kind, status, method, validated_at)"
+            " SELECT gym_id, membership_id, billing_period_id, 10000, 'payment', 'validated',"
+            " 'transfer', '2026-10-05T15:00:00Z' FROM ledger_entry"
+            " WHERE kind = 'charge' AND membership_id IN"
+            " (SELECT id FROM membership WHERE person_id = $1)",
+            dependent,
+        )
+
+    run(db.admin_url, pay)
+    [overdue_row] = read(db, gym, "v_overdue", person=guardian)
+    assert overdue_row["person_id"] == dependent
+    assert overdue_row["outstanding_clp"] == 20_000
+    [balance_row] = read(db, gym, "v_balance", person=guardian)
+    assert balance_row["membership_id"] == overdue_row["membership_id"]
+    assert balance_row["balance_clp"] == 20_000
+    [income] = read(db, gym, "v_monthly_income", person=guardian)
+    assert (income["month"], income["income_clp"]) == (date(2026, 10, 1), 10_000)
+
+
+def test_a_second_charge_does_not_list_a_period_twice(db: Database) -> None:
+    gym = new_gym(db)
+    entry(db, gym, "charge", 45_000)
+    assert len(read(db, gym, "v_overdue")) == 1
+
+
+def test_monthly_income_says_whom_it_is_income_for(db: Database) -> None:
+    comment = run(
+        db.admin_url, lambda c: c.fetchval("SELECT obj_description('v_monthly_income'::regclass)")
+    )
+    assert "only for an owner or admin" in comment
+
+
 def test_the_table_owner_reads_the_gym_in_app_gym_id(db: Database) -> None:
     # The nightly jobs and the weekly email act for no person (0006).
     gym = new_gym(db)

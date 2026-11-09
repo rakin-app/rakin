@@ -7,8 +7,8 @@ ledger only for an owner or admin (0006) or a person's own and their dependents'
 entries (0010). Without it a view reads as its owner and those policies would not
 apply.
 
-Each view is built from `ledger_entry` rows, not merely joined to them, so whoever
-may not read an entry gets no row from it rather than a wrong total: a coach sees
+Each view's rows exist only through `ledger_entry` rows the reader can see, so
+whoever may not read an entry gets no row from it rather than a wrong total: a coach sees
 none of the three, where a view driven by `billing_period` or `membership` (which a
 coach may read) would show them every period as unpaid and every balance as zero.
 
@@ -17,9 +17,11 @@ Amounts in the ledger are positive and the kind says which way they go
 
 - `v_overdue`: one row per billing period whose due date is past in the gym's
   timezone and whose validated payments and adjustments (`app.domain.billing`'s
-  `SETTLING_KINDS`) do not cover its amount due. It is driven by the period's
-  validated charge, which the `billing_periods` job writes with every period it
-  bills; a period discounted to nothing has none and is never overdue. It carries
+  `SETTLING_KINDS`) do not cover its amount due. It lists only a period whose
+  validated charge the reader can see, which the `billing_periods` job writes with
+  every period it bills; a period discounted to nothing has none and is never
+  overdue. It is an `EXISTS`, not a join, so a second charge on a period could not
+  list it twice. It carries
   the membership's status, so a reader that counts only Active members, as the
   owner's dashboard does, filters on it. A period due today is not yet overdue.
 - `v_balance`: one row per membership with any ledger entry it can read: charges and
@@ -28,7 +30,10 @@ Amounts in the ledger are positive and the kind says which way they go
   overpayment carries forward (`app.api.ledger`): its payment already counts the
   whole amount paid, so the credit is not subtracted twice.
 - `v_monthly_income`: per gym and calendar month in the gym's timezone, the sum and
-  count of validated payments, by the month each was validated in.
+  count of validated payments, by the month each was validated in. It is the gym's
+  income only for an owner or admin, who read every entry: a member gets the sum
+  of their own and their dependents' payments under the same name. Its
+  `COMMENT ON VIEW` says so.
 
 `v_inactive` (last attendance more than N days ago) waits for the attendance table,
 #41, which creates it.
@@ -62,8 +67,7 @@ SELECT bp.gym_id, bp.id AS billing_period_id, bp.membership_id, m.person_id,
        m.status AS membership_status, bp.period_start, bp.period_end, bp.due_date,
        bp.amount_due_clp, s.paid_clp, bp.amount_due_clp - s.paid_clp AS outstanding_clp,
        {GYM_TODAY} - bp.due_date AS days_overdue
-FROM ledger_entry c
-JOIN billing_period bp ON bp.id = c.billing_period_id
+FROM billing_period bp
 JOIN membership m ON m.id = bp.membership_id
 JOIN gym g ON g.id = bp.gym_id
 CROSS JOIN LATERAL (
@@ -72,7 +76,10 @@ CROSS JOIN LATERAL (
     WHERE e.billing_period_id = bp.id AND e.status = 'validated'
       AND e.kind IN ({SETTLING_KINDS})
 ) s
-WHERE c.kind = 'charge' AND c.status = 'validated'
+WHERE EXISTS (
+    SELECT FROM ledger_entry c
+    WHERE c.billing_period_id = bp.id AND c.kind = 'charge' AND c.status = 'validated'
+)
   AND bp.due_date < {GYM_TODAY}
   AND s.paid_clp < bp.amount_due_clp
 """,
@@ -99,11 +106,21 @@ GROUP BY e.gym_id, month
 """,
 }
 
+COMMENTS = {
+    "v_monthly_income": (
+        "Validated payments per gym and gym-local month. The gym's income only for an"
+        " owner or admin: RLS gives anyone else the sum of the payments they may read."
+    ),
+}
+
 
 def upgrade() -> None:
     for name, query in VIEWS.items():
         op.execute(f"CREATE VIEW {name} WITH (security_invoker = true) AS {query}")
         op.execute(f"GRANT SELECT ON {name} TO {APP_ROLE}")
+    for name, comment in COMMENTS.items():
+        quoted = comment.replace("'", "''")
+        op.execute(f"COMMENT ON VIEW {name} IS '{quoted}'")
 
 
 def downgrade() -> None:
