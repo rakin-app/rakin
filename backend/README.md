@@ -319,6 +319,16 @@ Loading again inserts nothing: every row's id is a UUIDv5 of its natural key, an
 
 The loader connects as the owner (`MIGRATION_DATABASE_URL`) with `app.gym_id` set to the demo gym. Ranks have no table yet (#48): they live in `data.py`, checked against the grading scheme. Each kid has a `guardian_link` to the member who pays for them, who is also the payer (`claimed_by`) of the kid's payments; kids have no phone or email. Every person gets a `gym_person` row with the same name, email, RUT and date of birth. Every guardian in the demo also trains, though a guardian need not. Drop-ins have a plan but no memberships, since a drop-in is a single attendance.
 
+### Try the import
+
+`app/seed/demo_import.csv` is a made-up gym export to try Alumnos → Importar on the seeded gym: 38 rows, semicolon-separated with a BOM, Spanish headers, phones and dates written several ways, plan names in any case, and an `Observaciones` column the import ignores. `demo_import.xlsx` is the same sheet as Excel saves it, with real date cells and some phones stored as numbers. Every name, phone, RUT and `example.cl` address in it is invented.
+
+1. `make seed`, then open http://localhost:8080 and sign in as the owner, `martin.fuentes@example.com`. The link is in the API's log (`docker compose logs api`).
+2. Alumnos → Importar alumnos, upload either file and keep the suggested columns. Every plan matches by name, so there is nothing to choose.
+3. Check without saving. The dry run reports 33 rows to import and 5 refused: 34 people (2 of them guardians named only on their children's rows), 8 guardian links and 28 memberships. The refused rows show one of each refusal: a missing name, a landline, an unknown plan ("Plan familiar"), a due date before the start, and a phone already used higher up. Felipe Díaz is already in the seed, so the row is listed under "Ya existen": the sheet's email is not applied. Julián Ortiz joins Camila Ortiz, a seeded guardian, and Valentín Godoy is a teenager with their own phone and a guardian.
+
+Importing it for real and then again creates nothing the second time. The dates are fixed in the file, so some memberships come in already overdue, more of them as time goes on. `tests/test_member_import.py` holds the dry run to these numbers.
+
 ## Nightly jobs
 
 ```sh
