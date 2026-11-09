@@ -98,6 +98,20 @@ class BlobStore(Protocol):
         ...
 
 
+def s3_client(
+    endpoint_url: str, region: str, access_key_id: str, secret_access_key: str
+) -> "S3Client":
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        region_name=region,
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        # Path-style: Garage and most self-hosted stores have no per-bucket DNS.
+        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+    )
+
+
 class S3BlobStore:
     def __init__(
         self,
@@ -111,15 +125,7 @@ class S3BlobStore:
         ttl_seconds: int,
     ) -> None:
         def client(endpoint: str) -> "S3Client":
-            return boto3.client(
-                "s3",
-                endpoint_url=endpoint,
-                region_name=region,
-                aws_access_key_id=access_key_id,
-                aws_secret_access_key=secret_access_key,
-                # Path-style: Garage and most self-hosted stores have no per-bucket DNS.
-                config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
-            )
+            return s3_client(endpoint, region, access_key_id, secret_access_key)
 
         self.bucket = bucket
         self.ttl_seconds = ttl_seconds

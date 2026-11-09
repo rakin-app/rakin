@@ -22,12 +22,15 @@ from app.integrations import build_integrations
 from app.logging import configure_logging
 from app.magiclink import SessionMiddleware, build_router
 from app.middleware import RequestIdMiddleware
+from app.sentry import init_sentry
 from app.settings import Settings, get_settings
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
+    # Before the app exists, so Sentry's FastAPI integration hooks into it.
+    init_sentry(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

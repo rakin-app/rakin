@@ -13,8 +13,8 @@ SERVICE = re.compile(r"^  ([\w-]+):\n", re.MULTILINE)
 SUPERUSER = ("POSTGRES_USER", "POSTGRES_PASSWORD")
 
 
-def compose_text() -> str:
-    return COMPOSE_FILE.read_text()
+def compose_text(path: Path = COMPOSE_FILE) -> str:
+    return path.read_text()
 
 
 def compose_variables() -> dict[str, set[str | None]]:
@@ -25,9 +25,9 @@ def compose_variables() -> dict[str, set[str | None]]:
     return found
 
 
-def services() -> dict[str, str]:
-    """Each service's block of `docker-compose.yml`, by name."""
-    text = compose_text()
+def services(path: Path = COMPOSE_FILE) -> dict[str, str]:
+    """Each service's block of a Compose file, by name."""
+    text = compose_text(path)
     body = text[text.index("\nservices:\n") : text.index("\nvolumes:\n")]
     names = list(SERVICE.finditer(body))
     return {

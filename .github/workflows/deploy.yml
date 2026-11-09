@@ -1,0 +1,149 @@
+name: deploy
+
+# A release: push a `v*` tag on a commit of `main`, e.g.
+#   git tag -s v0.1.0 -m v0.1.0 && git push origin v0.1.0
+# `release` gives that commit's images (built by images.yml) the tag, and
+# `deploy` runs it on the host over SSH: deploy/deploy.sh pulls, migrates,
+# restarts, and deploy/smoke.sh checks the result. Rollback is a manual run
+# of this workflow with an earlier tag and `rollback` ticked, or
+# `./deploy.sh --rollback <tag>` on the host. See docs/deploy.md.
+#
+# The host comes from repository secrets DEPLOY_HOST, DEPLOY_USER and
+# DEPLOY_SSH_KEY (DEPLOY_KNOWN_HOSTS too, to pin the host key). While any of
+# the first three is unset, `deploy` is skipped and the run still passes.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to run (an existing v* tag)
+        required: true
+      rollback:
+        description: Roll back to it (restart only, no migrations)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One deploy at a time, and never cancel one halfway.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check the tag
+        run: |
+          [[ $TAG =~ ^v[0-9A-Za-z._-]+$ ]] || { echo "::error::'$TAG' is not a v* tag"; exit 1; }
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          fetch-depth: 0
+      - name: Find the commit
+        id: commit
+        run: |
+          sha=$(git rev-parse 'HEAD^{commit}')
+          git merge-base --is-ancestor "$sha" origin/main \
+            || { echo "::error::$TAG ($sha) is not on main, so images.yml never built it"; exit 1; }
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag the commit's images
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          for image in rakin-api rakin-web; do
+            source=ghcr.io/rakin-app/$image:sha-$SHA
+            # A tag pushed right after its merge can beat images.yml here.
+            for _ in $(seq 40); do
+              docker buildx imagetools inspect "$source" >/dev/null 2>&1 && break
+              echo "waiting for $source"
+              sleep 30
+            done
+            docker buildx imagetools create -t "ghcr.io/rakin-app/$image:$TAG" "$source"
+          done
+
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_USER" ] && [ -n "$DEPLOY_SSH_KEY" ]; then
+            echo "enabled=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::notice::DEPLOY_HOST, DEPLOY_USER or DEPLOY_SSH_KEY is unset: $TAG is tagged, not deployed"
+            echo "enabled=false" >>"$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: [release, config]
+    if: needs.config.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: staging
+      url: ${{ vars.DEPLOY_URL || 'https://staging.rakin.app' }}
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/srv/rakin' }}
+      DEPLOY_URL: ${{ vars.DEPLOY_URL || 'https://staging.rakin.app' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" >~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >~/.ssh/known_hosts
+          else
+            echo "::warning::DEPLOY_KNOWN_HOSTS is unset; trusting the host key ssh-keyscan sees"
+            ssh-keyscan -H "$DEPLOY_HOST" >~/.ssh/known_hosts
+          fi
+          printf 'Host deploy\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/deploy\n  StrictHostKeyChecking yes\n' \
+            "$DEPLOY_HOST" "$DEPLOY_USER" >~/.ssh/config
+      - name: Copy the release's Compose file and scripts
+        run: scp deploy/docker-compose.yml deploy/deploy.sh deploy/smoke.sh "deploy:$DEPLOY_DIR/"
+      - name: Run it on the host
+        env:
+          ROLLBACK: ${{ inputs.rollback && '--rollback' || '' }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The token reaches the host on stdin only, and is logged out again.
+          printf '%s\n' "$GHCR_TOKEN" | ssh deploy "
+            set -e
+            docker login ghcr.io -u '$GHCR_USER' --password-stdin >/dev/null
+            trap 'docker logout ghcr.io >/dev/null' EXIT
+            '$DEPLOY_DIR/deploy.sh' $ROLLBACK '$TAG'
+          "
+      - name: Smoke test
+        run: deploy/smoke.sh "$DEPLOY_URL"

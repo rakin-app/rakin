@@ -8,9 +8,9 @@ from tests.conftest import make_settings
 ENV_EXAMPLE = Path(__file__).resolve().parents[2] / ".env.example"
 
 
-def read_env_example() -> dict[str, str]:
+def read_env_example(path: Path = ENV_EXAMPLE) -> dict[str, str]:
     values: dict[str, str] = {}
-    for line in ENV_EXAMPLE.read_text().splitlines():
+    for line in path.read_text().splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
             key, _, value = line.partition("=")

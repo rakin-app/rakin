@@ -1,0 +1,31 @@
+# The hosted Caddy, baked into the `rakin-web` image with the built SPA under
+# /srv (deploy/web.Dockerfile). One origin for the SPA and the API, as in dev.
+# SITE_ADDRESS is a bare host name, so Caddy gets and renews its certificate
+# from Let's Encrypt and redirects HTTP to HTTPS.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	@api path /api/* /healthz
+	handle @api {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		# Vite fingerprints everything under /assets. The rest (index.html, on
+		# every client-side route) is revalidated, so a deploy reaches the
+		# browser on its next load. `header` runs before `try_files`, so it
+		# matches the path the browser asked for.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@pages not path /assets/*
+		header @pages Cache-Control "no-cache"
+		# Client-side routes (the router owns every other path) get the SPA.
+		try_files {path} /index.html
+		file_server
+	}
+}
