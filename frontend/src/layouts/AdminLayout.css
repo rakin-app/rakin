@@ -53,6 +53,28 @@
   color: var(--color-text);
 }
 
+.admin-nav__icon {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Proofs waiting for review, on Pagos. */
+.admin-nav__badge {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--space-1);
+  background: var(--color-accent);
+  border-radius: var(--radius-pill);
+  color: var(--color-inverse-text);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 18px;
+  text-align: center;
+}
+
 /* Desktop: sidebar */
 @media (min-width: 960px) {
   .admin-shell {

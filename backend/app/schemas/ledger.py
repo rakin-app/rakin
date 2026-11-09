@@ -25,7 +25,9 @@ class Method(StrEnum):
 
 
 # Positive: the kind says which way it goes (app.domain.ledger). Capped as a price is,
-# so a value `bigint` cannot hold is a 422 rather than a 500.
+# so a value `bigint` cannot hold, or a typo's extra zeros, is a 422 rather than a 500
+# or an absurd entry. Not capped at what is outstanding: an overpayment is allowed and
+# becomes a credit for the next period (app.domain.billing).
 Amount = Annotated[int, Field(gt=0, le=MAX_PRICE_CLP)]
 Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 
@@ -52,6 +54,8 @@ class Entry(BaseModel):
     claimed_at: datetime | None
     validated_by: uuid.UUID | None
     validated_at: datetime | None
+    # Where the transfer proof is stored, for a payment a student claimed (#35).
+    proof_object_key: str | None
     note: str | None
     created_at: datetime
 

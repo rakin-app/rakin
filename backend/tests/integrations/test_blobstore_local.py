@@ -1,13 +1,13 @@
 """What only the local-disk store does: the parts S3 would do on its own servers."""
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.integrations.blobstore import LocalBlobStore
+from app.integrations.blobstore import LocalBlobStore, StoredBlob
 from app.main import create_app
 from tests.conftest import UNREACHABLE_DB, make_settings
 
@@ -31,16 +31,39 @@ def store(client: TestClient) -> LocalBlobStore:
     return s
 
 
-def test_an_oversized_upload_is_refused_and_leaves_nothing(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("body", [b"x" * 11, b"x" * 9], ids=["larger", "smaller"])
+def test_a_body_of_another_size_than_signed_is_refused_and_leaves_nothing(
+    client: TestClient, tmp_path: Path, body: bytes
 ) -> None:
-    monkeypatch.setattr(LocalBlobStore, "MAX_UPLOAD_BYTES", 10)
-    presigned = store(client).presign_upload("big.pdf", "application/pdf")
+    presigned = store(client).presign_upload("big.pdf", "application/pdf", 10)
 
-    response = client.put(presigned.url, content=b"x" * 11, headers=presigned.headers)
+    response = client.put(presigned.url, content=body, headers=presigned.headers)
 
-    assert response.status_code == 413
+    assert response.status_code == 403
     assert [p.name for p in tmp_path.rglob("*") if p.is_file()] == []
+
+
+@pytest.mark.parametrize("chunks", [[b"x" * 6, b"x" * 6], [b"x" * 9]], ids=["larger", "smaller"])
+def test_a_stream_that_belies_its_content_length_is_not_stored(
+    client: TestClient, tmp_path: Path, chunks: list[bytes]
+) -> None:
+    # The route checks the header; the write checks what actually arrives.
+    async def stream() -> AsyncIterator[bytes]:
+        for chunk in chunks:
+            yield chunk
+
+    with pytest.raises(ValueError, match="signed"):
+        asyncio.run(store(client).write("a.pdf", "application/pdf", 10, stream()))
+    assert [p.name for p in tmp_path.rglob("*") if p.is_file()] == []
+
+
+def test_stat_reports_size_and_type(client: TestClient) -> None:
+    s = store(client)
+    presigned = s.presign_upload("p/a.pdf", "application/pdf", 3)
+    client.put(presigned.url, content=b"pdf", headers=presigned.headers)
+
+    assert asyncio.run(s.stat("p/a.pdf")) == StoredBlob(size=3, content_type="application/pdf")
+    assert asyncio.run(s.stat("p/none.pdf")) is None
 
 
 def test_a_url_signed_with_another_secret_is_refused(client: TestClient, tmp_path: Path) -> None:
@@ -50,7 +73,7 @@ def test_a_url_signed_with_another_secret_is_refused(client: TestClient, tmp_pat
         secret_key="someone-elses-secret-key",
         ttl_seconds=900,
     )
-    presigned = forger.presign_upload("a.png", "image/png")
+    presigned = forger.presign_upload("a.png", "image/png", 1)
 
     assert client.put(presigned.url, content=b"x", headers=presigned.headers).status_code == 403
 
@@ -68,7 +91,7 @@ def test_the_routes_exist_only_for_the_local_store() -> None:
 
 
 def test_a_download_is_an_attachment_that_never_renders(client: TestClient) -> None:
-    presigned = store(client).presign_upload("proofs/p.png", "image/png")
+    presigned = store(client).presign_upload("proofs/p.png", "image/png", 3)
     client.put(presigned.url, content=b"png", headers=presigned.headers)
 
     response = client.get(store(client).presign_download("proofs/p.png"))
@@ -83,7 +106,7 @@ def test_an_upload_url_cannot_be_forged_for_a_type_outside_the_allow_list(
     client: TestClient,
 ) -> None:
     # The route re-checks, in case a URL was signed by a store with a wider list.
-    url = store(client)._sign("put", "x.html", "text/html")
+    url = store(client)._sign("put", "x.html", "text/html", 8)
 
     response = client.put(url, content=b"<script>", headers={"Content-Type": "text/html"})
 
@@ -100,7 +123,7 @@ def test_a_key_nested_under_another_is_a_conflict(
     client: TestClient, first: str, second: str
 ) -> None:
     for k in (first, second):
-        presigned = store(client).presign_upload(k, "image/png")
+        presigned = store(client).presign_upload(k, "image/png", len(k))
         response = client.put(presigned.url, content=k.encode(), headers=presigned.headers)
 
     assert response.status_code == 409

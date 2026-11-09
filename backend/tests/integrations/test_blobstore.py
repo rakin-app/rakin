@@ -18,7 +18,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.integrations import build_blob_store
-from app.integrations.blobstore import BlobStore, LocalBlobStore, S3BlobStore
+from app.integrations.blobstore import (
+    MAX_UPLOAD_BYTES,
+    BlobStore,
+    LocalBlobStore,
+    S3BlobStore,
+    StoredBlob,
+)
 from app.main import create_app
 from tests.conftest import UNREACHABLE_DB, make_settings
 
@@ -106,7 +112,7 @@ def assert_refused(response: httpx.Response) -> None:
 
 
 def upload(h: Harness, key: str, body: bytes, content_type: str = "image/png") -> httpx.Response:
-    presigned = h.store.presign_upload(key, content_type)
+    presigned = h.store.presign_upload(key, content_type, len(body))
     return h.http.put(presigned.url, content=body, headers=presigned.headers)
 
 
@@ -128,7 +134,7 @@ def test_a_second_upload_replaces_the_first(harness: Harness, key: str) -> None:
 
 
 def test_an_upload_with_another_content_type_is_refused(harness: Harness, key: str) -> None:
-    presigned = harness.store.presign_upload(key, "image/png")
+    presigned = harness.store.presign_upload(key, "image/png", len(PNG))
 
     response = harness.http.put(presigned.url, content=PNG, headers={"Content-Type": "text/html"})
 
@@ -187,7 +193,7 @@ def test_delete_removes_the_file_and_tolerates_a_missing_one(harness: Harness, k
 )
 def test_unsafe_keys_are_refused(harness: Harness, bad_key: str) -> None:
     with pytest.raises(ValueError, match="key"):
-        harness.store.presign_upload(bad_key, "image/png")
+        harness.store.presign_upload(bad_key, "image/png", 1)
     with pytest.raises(ValueError, match="key"):
         harness.store.presign_download(bad_key)
 
@@ -201,4 +207,36 @@ def test_only_proof_content_types_can_be_uploaded(
 ) -> None:
     # HTML and SVG would run script in whoever opens the download.
     with pytest.raises(ValueError, match="content type"):
-        harness.store.presign_upload(key, bad_type)
+        harness.store.presign_upload(key, bad_type, 1)
+
+
+@pytest.mark.parametrize("body", [PNG + b"x", PNG[:-1]], ids=["larger", "smaller"])
+def test_an_upload_of_another_size_than_signed_is_refused(
+    harness: Harness, key: str, body: bytes
+) -> None:
+    presigned = harness.store.presign_upload(key, "image/png", len(PNG))
+
+    assert_refused(harness.http.put(presigned.url, content=body, headers=presigned.headers))
+    assert asyncio.run(harness.store.stat(key)) is None
+
+
+@pytest.mark.parametrize("bad_size", [0, -1, MAX_UPLOAD_BYTES + 1, True])
+def test_only_sizes_up_to_the_limit_can_be_uploaded(
+    harness: Harness, key: str, bad_size: int
+) -> None:
+    with pytest.raises(ValueError, match="size"):
+        harness.store.presign_upload(key, "image/png", bad_size)
+
+
+def test_the_largest_upload_is_accepted(harness: Harness, key: str) -> None:
+    body = PNG + bytes(MAX_UPLOAD_BYTES - len(PNG))
+
+    assert upload(harness, key, body).status_code == 200
+    assert asyncio.run(harness.store.stat(key)) == StoredBlob(MAX_UPLOAD_BYTES, "image/png")
+
+
+def test_stat_reports_an_upload_and_none_for_a_missing_key(harness: Harness, key: str) -> None:
+    assert asyncio.run(harness.store.stat(key)) is None
+    upload(harness, key, PNG)
+
+    assert asyncio.run(harness.store.stat(key)) == StoredBlob(len(PNG), "image/png")

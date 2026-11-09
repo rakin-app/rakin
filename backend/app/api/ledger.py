@@ -1,4 +1,5 @@
-"""The current gym's ledger: an admin records a payment ("Registrar pago", #37).
+"""The current gym's ledger: an admin records a payment ("Registrar pago", #37), and
+sees how many proofs wait for review (#35).
 
 `POST /api/ledger/payments` records money the gym received in cash, by a transfer the
 admin saw arrive, or otherwise, against one billing period of a membership. There is
@@ -24,6 +25,7 @@ from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.roles import LedgerSession
 from app.schemas.ledger import Entry, PaymentRecord, Period, RecordedPayment
+from app.schemas.proofs import PendingCount
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 
@@ -31,7 +33,7 @@ NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "billing period not found")
 
 ENTRY_COLUMNS = (
     "id, membership_id, billing_period_id, amount_clp, kind, status, method,"
-    " claimed_by, claimed_at, validated_by, validated_at, note, created_at"
+    " claimed_by, claimed_at, validated_by, validated_at, proof_object_key, note, created_at"
 )
 
 # Who is acting, as `app.tenancy` set it; the recording admin.
@@ -144,3 +146,14 @@ async def record_payment(body: PaymentRecord, session: LedgerSession) -> Recorde
             closed=settled.closed,
         ),
     )
+
+
+@router.get("/pending")
+async def pending(session: LedgerSession) -> PendingCount:
+    """Payments students claimed with a proof, waiting to be validated or rejected: the
+    admin's pending badge."""
+    count = await session.scalar(
+        text("SELECT count(*) FROM ledger_entry WHERE kind = :payment AND status = :pending"),
+        {"payment": EntryKind.PAYMENT.value, "pending": EntryStatus.PENDING.value},
+    )
+    return PendingCount(count=count or 0)
