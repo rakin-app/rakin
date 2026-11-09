@@ -1,4 +1,9 @@
 {% block body %}{% endblock %}
+{% if page_url %}
+
+Tu página: {{ page_url }}
+Este enlace te deja entrar sin contraseña. Sirve una sola vez y vence en {{ page_link_days }} días.
+{% endif %}
 
 --
 {% if gym is defined %}

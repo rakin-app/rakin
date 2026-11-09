@@ -3,6 +3,7 @@
 Rakin's Postgres store and directory have their own tests in `tests/test_auth.py`.
 """
 
+import asyncio
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -118,6 +119,7 @@ class Harness:
     clock: Clock
     store: Store
     outbox: Outbox
+    links: MagicLinks
 
     def request_link(self, email: str, ip: str = "203.0.113.1") -> int:
         response = self.client.post(f"{PREFIX}/link", json={"email": email}, headers={IP: ip})
@@ -135,7 +137,9 @@ def token_of(url: str) -> str:
 
 def make_app(links: MagicLinks) -> FastAPI:
     app = FastAPI()
-    app.include_router(build_router(links, prefix=PREFIX, base_url=BASE_URL))
+    app.include_router(
+        build_router(links, prefix=PREFIX, base_url=BASE_URL, landings=frozenset({"/me"}))
+    )
 
     @app.get("/whoami")
     async def whoami(request: Request) -> dict[str, Any]:
@@ -180,7 +184,7 @@ def harness() -> Iterator[Harness]:
     with TestClient(
         app, base_url=BASE_URL, follow_redirects=False, raise_server_exceptions=False
     ) as client:
-        yield Harness(client, directory, clock, store, outbox)
+        yield Harness(client, directory, clock, store, outbox, links)
 
 
 # --- requesting a link ------------------------------------------------------------
@@ -352,6 +356,43 @@ def test_a_link_expires_after_15_minutes(harness: Harness) -> None:
         400
     )
     assert harness.store.sessions == {}
+
+
+def test_a_link_issued_for_longer_lasts_that_long(harness: Harness) -> None:
+    link = asyncio.run(harness.links.issue(ANA, ttl=timedelta(days=7)))
+    assert link.expires_at == harness.clock.now + timedelta(days=7)
+
+    harness.clock.now += timedelta(days=7) - timedelta(seconds=1)
+    assert harness.client.get(link.url).status_code == 200
+    harness.clock.now += timedelta(seconds=1)
+    assert harness.client.get(link.url).status_code == 400
+
+
+def test_a_link_lands_on_the_page_it_names(harness: Harness) -> None:
+    link = asyncio.run(harness.links.issue(ANA, landing="/me"))
+    assert parse_qs(urlsplit(link.url).query)["next"] == ["/me"]
+
+    page = harness.client.get(link.url).text
+    assert '<input type="hidden" name="next" value="/me">' in page
+    signed_in = harness.client.post(
+        f"{PREFIX}/callback", data={"token": token_of(link.url), "next": "/me"}
+    )
+
+    assert signed_in.status_code == 303
+    assert signed_in.headers["location"] == "/me"
+
+
+@pytest.mark.parametrize("landing", ["https://evil.example/", "//evil.example", "/admin", ""])
+def test_a_page_the_router_does_not_list_lands_on_the_start(harness: Harness, landing: str) -> None:
+    link = asyncio.run(harness.links.issue(ANA, landing=landing))
+
+    page = harness.client.get(link.url).text
+    assert '<input type="hidden" name="next" value="/">' in page
+    # A form posted by hand, past the page.
+    signed_in = harness.client.post(
+        f"{PREFIX}/callback", data={"token": token_of(link.url), "next": landing}
+    )
+    assert signed_in.headers["location"] == "/"
 
 
 @pytest.mark.parametrize("token", ["", "nonsense", "a.1.b"])

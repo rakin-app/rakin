@@ -10,7 +10,8 @@ entry turns validated, the period closes once paid in full, and whatever was pai
 beyond the amount due becomes a validated credit adjustment for a later period. A
 period that is already paid in full is a 409: the admin rejects the proof instead.
 
-Rejecting needs a note, which the student is emailed; the period stays open, since a
+Validating emails the student a receipt (`app.api.ledger.send_receipt`). Rejecting
+needs a note, which the student is emailed; the period stays open, since a
 rejected entry never counts towards it. Both record the reviewing admin in
 `validated_by` and `validated_at`, the ledger's audit columns (docs/technical.md),
 and both are terminal (migration 0002), so a second review of one proof is a 409.
@@ -28,8 +29,15 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.ledger import CURRENT_PERSON, ENTRY_COLUMNS, locked_period, settled
-from app.contacts import Contact, contact_for
+from app.api.ledger import (
+    CURRENT_PERSON,
+    ENTRY_COLUMNS,
+    locked_period,
+    period_facts,
+    send_receipt,
+    settled,
+)
+from app.contacts import Contact
 from app.domain import billing, ledger
 from app.domain.billing import SETTLING_KINDS
 from app.domain.errors import InvalidTransition
@@ -184,9 +192,14 @@ async def _record_review(session: AsyncSession, entry: LedgerEntry, entry_id: uu
 
 
 @router.post("/{entry_id}/validate")
-async def validate(entry_id: uuid.UUID, session: LedgerSession) -> RecordedPayment:
-    """Validate the proof: its payment counts towards the period, and any overpayment
-    becomes a credit."""
+async def validate(
+    entry_id: uuid.UUID,
+    session: LedgerSession,
+    notices: Annotated[Notices, Depends(get_notices)],
+    background: BackgroundTasks,
+) -> RecordedPayment:
+    """Validate the proof: its payment counts towards the period, any overpayment
+    becomes a credit, and the student is emailed a receipt."""
     # Membership, period, then the entry, the order every payment and the lapse job
     # take them in (`locked_period`): a lapse never acts on a payment mid-validation, a
     # payment recorded for the period settles before or after this one, and a second
@@ -206,7 +219,9 @@ async def validate(entry_id: uuid.UUID, session: LedgerSession) -> RecordedPayme
             status.HTTP_409_CONFLICT, "billing period is already paid in full"
         ) from None
     payment = await _record_review(session, settlement.entry, entry_id)
-    return await settled(session, row.id, proof.membership_id, payment, settlement)
+    result = await settled(session, row.id, proof.membership_id, payment, settlement)
+    await send_receipt(session, result, notices, background)
+    return result
 
 
 @router.post("/{entry_id}/reject")
@@ -223,20 +238,8 @@ async def reject(
     pending = LedgerEntry(kind=EntryKind.PAYMENT, amount_clp=proof.amount_clp, note=proof.note)
     entry = await _record_review(session, ledger.reject(pending, body.note), entry_id)
 
-    period = (
-        await session.execute(
-            text(
-                "SELECT bp.period_start, bp.period_end, m.person_id, gp.name AS person_name,"
-                " g.id AS gym_id, g.name AS gym_name FROM billing_period bp"
-                " JOIN membership m ON m.id = bp.membership_id"
-                " JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.person_id"
-                " JOIN gym g ON g.id = m.gym_id WHERE bp.id = :id"
-            ),
-            {"id": proof.billing_period_id},
-        )
-    ).one()
-    contact = await contact_for(session, period.person_id)
-    if contact is None or not contact.email:
+    period, contact = await period_facts(session, proof.billing_period_id)
+    if contact is None:
         logger.info("proof rejected: no email to send it to", extra={"entry_id": str(entry.id)})
         return entry
     notice = proof_rejected(

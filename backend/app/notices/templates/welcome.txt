@@ -1,0 +1,12 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+Te damos la bienvenida a {{ gym }}. {% if dependent_name %}La inscripción de {{ dependent_name }}{% else %}Tu inscripción{% endif %} en el plan {{ plan_name }} quedó lista.
+
+Cómo pagar: {% if bank_account %}transfiere a esta cuenta y sube el comprobante desde tu página.{% else %}transfiere y sube el comprobante desde tu página, donde están los datos de la cuenta.{% endif %}
+
+{% include "_bank_account.txt" %}
+
+Te enviaremos el detalle de cada pago 7 días antes de su vencimiento, y te avisaremos cuando recibamos tu comprobante y cuando el pago quede validado.
+{% endblock %}

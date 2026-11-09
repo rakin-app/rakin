@@ -150,12 +150,21 @@ class MagicLinks:
             sent.append(link)
         return sent
 
-    async def issue(self, recipient: Recipient) -> Link:
-        """A new single-use link for `recipient`, stored and ready to send."""
-        expires_at = self._clock() + self.link_ttl
+    async def issue(
+        self, recipient: Recipient, *, ttl: timedelta | None = None, landing: str | None = None
+    ) -> Link:
+        """A new single-use link for `recipient`, stored and ready to send.
+
+        It expires after `ttl`, `link_ttl` unless given: a link sent unasked, inside a
+        message read days later, needs longer than one the person just asked for.
+        `landing` is where signing in with it lands, if the router lists it among its
+        `landings`; anywhere else lands on its `after_login`.
+        """
+        expires_at = self._clock() + (self.link_ttl if ttl is None else ttl)
         token = self._signer.issue(expires_at)
         await self.store.add_link(hash_token(token), recipient.subject, expires_at)
-        return Link(recipient, f"{self.callback_url}?{urlencode({'token': token})}", expires_at)
+        query = {"token": token} if landing is None else {"token": token, "next": landing}
+        return Link(recipient, f"{self.callback_url}?{urlencode(query)}", expires_at)
 
     def looks_valid(self, token: str) -> bool:
         """Signed here and not expired; says nothing about whether it was used."""

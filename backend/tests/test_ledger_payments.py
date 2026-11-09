@@ -6,6 +6,7 @@ payment for it is a 409, and an overpayment leaves a validated credit adjustment
 """
 
 import asyncio
+import dataclasses
 import uuid
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -25,6 +26,7 @@ from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_plans import add_staff
+from tests.test_proofs import RecordingMailer, sent_notices
 
 IDS = {"membership_id": str(uuid.uuid4()), "billing_period_id": str(uuid.uuid4())}
 PAYMENT: dict[str, Any] = {"amount_clp": 45_000, "method": "cash"}
@@ -81,8 +83,14 @@ def db() -> Iterator[Database]:
 
 
 @pytest.fixture(scope="module")
-def client(db: Database) -> Iterator[TestClient]:
+def mailer() -> RecordingMailer:
+    return RecordingMailer()
+
+
+@pytest.fixture(scope="module")
+def client(db: Database, mailer: RecordingMailer) -> Iterator[TestClient]:
     app = create_app(make_settings(database_url=db.api_url))
+    app.state.integrations = dataclasses.replace(app.state.integrations, mailer=mailer)
     app.add_middleware(FakeAuth)
     with TestClient(app) as c:
         yield c
@@ -170,6 +178,33 @@ def test_records_a_payment_validated_by_the_admin(
     assert row["gym_id"] == sur
     assert (row["status"], row["method"], row["validated_by"]) == ("validated", method, admin)
     assert row["proof_object_key"] is None
+
+
+@pg
+def test_a_recorded_payment_emails_a_receipt(
+    client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    period = new_period(db, sur, due=45_000)
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE gym_person SET email = 'dueno@example.cl' WHERE person_id = $1",
+            seeded_owner(sur),
+        ),
+    )
+    mailer.sent.clear()
+
+    response = record(client, sur, {**period, "amount_clp": 40_000, "method": "cash"})
+
+    assert response.status_code == 201, response.text
+    [email] = mailer.sent
+    assert email.to == "dueno@example.cl"
+    assert email.subject == "Pago validado"
+    assert "validó tu pago de $40.000" in email.text
+    assert "De este período quedan $5.000 por pagar." in email.text
+    assert "Tu página: " in email.text
+    [(template, _, outcome)] = [n for n in sent_notices(db, sur) if n[0] == "receipt"]
+    assert (template, outcome) == ("receipt", "sent")
 
 
 @pg

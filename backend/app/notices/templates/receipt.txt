@@ -1,0 +1,20 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+{{ gym }} validó tu pago de {{ amount_clp | clp }}{% if dependent_name %} de {{ dependent_name }}{% endif %}, por el período del {{ period_start | fecha }} al {{ period_end | fecha }}.
+
+{% if period_outstanding_clp > 0 %}
+De este período quedan {{ period_outstanding_clp | clp }} por pagar.
+{% else %}
+Este período quedó pagado.
+{% endif %}
+
+{% if balance_clp > 0 %}
+Saldo pendiente: {{ balance_clp | clp }}.
+{% elif balance_clp < 0 %}
+Saldo a favor: {{ -balance_clp | clp }}, que se descontará de tus próximos pagos.
+{% else %}
+Estás al día: no tienes saldo pendiente.
+{% endif %}
+{% endblock %}

@@ -4,6 +4,8 @@ Dates are the gym's: a membership starts on a local calendar day, and its stored
 `started_at` is that day's first instant there (migration 0009 for the rest).
 """
 
+import dataclasses
+import json
 import random
 import uuid
 from collections.abc import Iterator
@@ -21,6 +23,8 @@ from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.test_guardians import add_person, new_kid
+from tests.test_proofs import RecordingMailer, sent_notices
 
 pytestmark = pytest.mark.postgres
 
@@ -60,8 +64,14 @@ def norte(db: Database) -> uuid.UUID:
 
 
 @pytest.fixture(scope="module")
-def client(db: Database) -> Iterator[TestClient]:
+def mailer() -> RecordingMailer:
+    return RecordingMailer()
+
+
+@pytest.fixture(scope="module")
+def client(db: Database, mailer: RecordingMailer) -> Iterator[TestClient]:
     app = create_app(make_settings(database_url=db.api_url))
+    app.state.integrations = dataclasses.replace(app.state.integrations, mailer=mailer)
     app.add_middleware(FakeAuth)
     with TestClient(app) as c:
         yield c
@@ -463,3 +473,74 @@ def test_the_upgrade_gives_rows_cancelled_before_it_a_reason() -> None:
             ),
         )
         assert {"cancel_reason", "next_plan_id"}.isdisjoint({r[0] for r in columns})
+
+
+# --- the welcome email ----------------------------------------------------------
+
+BANK = {
+    "bank": "Banco Estado",
+    "account_type": "Cuenta RUT",
+    "holder": "Academia Sur SpA",
+    "rut": "76.123.456-7",
+    "number": "12345678",
+}
+
+
+def test_starting_a_membership_welcomes_the_member(
+    client: TestClient, db: Database, mailer: RecordingMailer
+) -> None:
+    gym = seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE gym SET settings = settings || jsonb_build_object('bank_account', $2::jsonb)"
+            " WHERE id = $1",
+            gym,
+            json.dumps(BANK),
+        ),
+    )
+    ana = add_person(client, gym, "Ana")
+    mailer.sent.clear()
+
+    response = start(client, gym, plan(client, gym, "signup"), ana)
+
+    assert response.status_code == 201, response.text
+    [email] = mailer.sent
+    assert email.to == "ana@example.cl"
+    assert email.subject.startswith("Te damos la bienvenida a academia-")
+    assert "Hola, Ana:" in email.text
+    assert f"Tu inscripción en el plan {PLANS['signup']['name']} quedó lista." in email.text
+    assert "Número: 12345678" in email.text
+    assert "sube el comprobante desde tu página" in email.text
+    # Their first sign-in link, to the student page.
+    [url] = [line for line in email.text.splitlines() if line.startswith("Tu página: ")]
+    assert "/api/auth/callback?token=" in url
+    assert url.endswith("&next=%2Fme")
+    assert sent_notices(db, gym)[-1] == ("welcome", ana, "sent")
+
+
+def test_a_dependents_welcome_goes_to_the_guardian(
+    client: TestClient, db: Database, mailer: RecordingMailer
+) -> None:
+    gym = seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    marta = add_person(client, gym, "Marta")
+    juan = new_kid(client, gym, marta, "Juan")
+    mailer.sent.clear()
+
+    assert start(client, gym, plan(client, gym, "signup"), juan).status_code == 201
+
+    [email] = mailer.sent
+    assert email.to == "marta@example.cl"
+    assert "La inscripción de Juan en el plan" in email.text
+    assert "donde están los datos de la cuenta" in email.text
+    assert sent_notices(db, gym)[-1] == ("welcome", marta, "sent")
+
+
+def test_a_member_with_no_email_is_not_welcomed(
+    client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    mailer.sent.clear()
+
+    assert start(client, sur, plan(client, sur, "signup")).status_code == 201
+
+    assert mailer.sent == []

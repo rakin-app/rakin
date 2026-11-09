@@ -6,10 +6,11 @@ unsubscribing run against real Postgres, through a mailer that keeps what it is 
 
 import asyncio
 import json
+import re
 import uuid
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 from jinja2 import UndefinedError
 
 from alembic import command
+from app.auth import build_notices
 from app.db import create_engine, create_sessionmaker
 from app.integrations.mailer import Email, MailDeliveryError
 from app.main import create_app
@@ -24,7 +26,10 @@ from app.notices import (
     MAGIC_LINK,
     PROOF_RECEIVED,
     PROOF_REJECTED,
+    RECEIPT,
+    STATEMENT,
     TEMPLATES_DIR,
+    WELCOME,
     Notice,
     Notices,
     Outcome,
@@ -63,7 +68,10 @@ def proof_notice(template: Template = PROOF_RECEIVED, **context: Any) -> Notice:
 # --- rendering ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("template", [MAGIC_LINK, PROOF_RECEIVED, PROOF_REJECTED])
+TEMPLATES = [MAGIC_LINK, WELCOME, STATEMENT, PROOF_RECEIVED, RECEIPT, PROOF_REJECTED]
+
+
+@pytest.mark.parametrize("template", TEMPLATES)
 def test_every_template_has_a_subject_a_text_and_an_html_part(template: Template) -> None:
     for suffix in ("subject.txt", "txt", "html"):
         assert (TEMPLATES_DIR / f"{template.name}.{suffix}").is_file()
@@ -136,6 +144,149 @@ def test_a_non_essential_notice_belongs_to_a_gym() -> None:
         Notice(OPTIONAL, "ana@example.cl", PERSON, None, PROOF)
 
 
+BANK = {
+    "bank": "Banco Estado",
+    "account_type": "Cuenta RUT",
+    "holder": "Academia Sur SpA",
+    "rut": "76.123.456-7",
+    "number": "12345678",
+    "email": "pagos@sur.cl",
+}
+
+WELCOMED = {
+    "name": "Ana",
+    "gym": "Academia Sur",
+    "plan_name": "Mensual",
+    "bank_account": BANK,
+    "dependent_name": None,
+}
+
+STATED = {
+    "name": "Ana",
+    "gym": "Academia Sur",
+    "plan_name": "Mensual",
+    "billing_period_id": "00000000-0000-4000-8000-000000000003",
+    "period_start": date(2026, 12, 1),
+    "period_end": date(2026, 12, 31),
+    "due_date": date(2026, 12, 1),
+    "amount_clp": 45000,
+    "bank_account": BANK,
+    "dependent_name": None,
+}
+
+RECEIVED = {
+    **PROOF,
+    "amount_clp": 45000,
+    "period_outstanding_clp": 0,
+    "balance_clp": 0,
+}
+
+PAGE_URL = f"{BASE_URL}/api/auth/callback?token=tok&next=%2Fme"
+
+
+def test_every_notice_but_the_sign_in_link_carries_a_page_link() -> None:
+    assert [t.name for t in TEMPLATES if t.page_link] == [
+        "welcome",
+        "statement",
+        "proof_received",
+        "receipt",
+        "proof_rejected",
+    ]
+
+
+def test_the_page_link_goes_under_the_message() -> None:
+    email = render(proof_notice(), page_url=PAGE_URL)
+
+    assert f"Tu página: {PAGE_URL}\n" in email.text
+    assert "vence en 7 días" in email.text
+    assert email.text.index(PAGE_URL) < email.text.index("--\n")
+    assert email.html is not None
+    assert f'href="{PAGE_URL.replace("&", "&amp;")}"' in email.html
+    assert "Ir a mi página" in email.html
+
+
+def test_without_a_page_link_there_is_no_button() -> None:
+    email = render(proof_notice())
+    assert "Tu página" not in email.text
+    assert email.html is not None and "Ir a mi página" not in email.html
+
+
+def test_the_welcome_says_how_to_pay_and_where_to_upload() -> None:
+    email = render(Notice(WELCOME, "ana@example.cl", PERSON, GYM, WELCOMED))
+
+    assert email.subject == "Te damos la bienvenida a Academia Sur"
+    assert "Tu inscripción en el plan Mensual quedó lista." in email.text
+    assert "transfiere a esta cuenta y sube el comprobante desde tu página" in email.text
+    for line in ("Banco: Banco Estado", "Número: 12345678", "RUT: 76.123.456-7"):
+        assert line in email.text
+    assert email.html is not None and "<strong>Mensual</strong>" in email.html
+
+
+def test_a_welcome_to_a_guardian_names_the_dependent() -> None:
+    context = {**WELCOMED, "name": "Marta", "dependent_name": "Juan"}
+    email = render(Notice(WELCOME, "marta@example.cl", PERSON, GYM, context))
+
+    assert "La inscripción de Juan en el plan Mensual quedó lista." in email.text
+
+
+@pytest.mark.parametrize("template, context", [(WELCOME, WELCOMED), (STATEMENT, STATED)])
+def test_with_no_bank_details_the_page_has_them(template: Template, context: Any) -> None:
+    email = render(
+        Notice(template, "ana@example.cl", PERSON, GYM, {**context, "bank_account": None})
+    )
+
+    assert "donde están los datos de la cuenta" in email.text
+    assert "Banco:" not in email.text
+    assert "\n\n\n" not in email.text
+
+
+def test_a_bank_account_without_an_email_leaves_that_line_out() -> None:
+    bank = {k: v for k, v in BANK.items() if k != "email"}
+    email = render(
+        Notice(STATEMENT, "ana@example.cl", PERSON, GYM, {**STATED, "bank_account": bank})
+    )
+    assert "Correo:" not in email.text
+
+
+def test_the_statement_has_the_amount_due_date_and_bank_details() -> None:
+    email = render(Notice(STATEMENT, "ana@example.cl", PERSON, GYM, STATED))
+
+    assert email.subject == "Tu pago de $45.000 en Academia Sur vence el 01-12-2026"
+    assert "El 01-12-2026 vence el pago de $45.000 en Academia Sur" in email.text
+    assert "período del 01-12-2026 al 31-12-2026" in email.text
+    assert "Titular: Academia Sur SpA" in email.text
+    assert email.html is not None and "<strong>$45.000</strong>" in email.html
+
+
+def test_a_statement_to_a_guardian_names_the_dependent() -> None:
+    context = {**STATED, "name": "Marta", "dependent_name": "Juan"}
+    email = render(Notice(STATEMENT, "marta@example.cl", PERSON, GYM, context))
+    assert "$45.000 de Juan en Academia Sur" in email.text
+
+
+@pytest.mark.parametrize(
+    "left, balance, says",
+    [
+        (0, 0, ["Este período quedó pagado.", "Estás al día"]),
+        (5000, 5000, ["quedan $5.000 por pagar", "Saldo pendiente: $5.000."]),
+        (0, -3000, ["Este período quedó pagado.", "Saldo a favor: $3.000"]),
+    ],
+)
+def test_the_receipt_has_the_period_and_the_balance(
+    left: int, balance: int, says: list[str]
+) -> None:
+    context = {**RECEIVED, "period_outstanding_clp": left, "balance_clp": balance}
+    email = render(Notice(RECEIPT, "ana@example.cl", PERSON, GYM, context))
+
+    assert email.subject == "Pago validado"
+    assert "validó tu pago de $45.000, por el período del 01-11-2026 al 30-11-2026" in email.text
+    assert email.html is not None
+    html_text = re.sub(r"</?strong>", "", email.html)
+    for said in says:
+        assert said in email.text
+        assert said in html_text
+
+
 # --- the unsubscribe token ------------------------------------------------------
 
 
@@ -190,17 +341,20 @@ def gym(db: Database) -> uuid.UUID:
     return seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
 
 
-def send(db: Database, notice: Notice, outbox: Outbox) -> Outcome:
+def send(db: Database, notice: Notice, outbox: Outbox, *, links: bool = True) -> Outcome:
+    """Send `notice` as the app does; without `links`, with nothing to issue sign-in
+    links with."""
+
     async def go() -> Outcome:
         engine = create_engine(db.settings)
         try:
             sessionmaker = create_sessionmaker(engine)
-            notices = Notices(
-                outbox,
-                lambda: sessionmaker,
-                base_url=BASE_URL,
-                secret_key=db.settings.secret_key,
-            )
+            settings = db.settings.model_copy(update={"public_base_url": BASE_URL})
+            notices = build_notices(settings, outbox, lambda: sessionmaker)
+            if not links:
+                notices = Notices(
+                    outbox, lambda: sessionmaker, base_url=BASE_URL, secret_key=SECRET
+                )
             return await notices.send(notice)
         finally:
             await engine.dispose()
@@ -234,6 +388,76 @@ def test_a_sent_notice_is_recorded_in_its_gym(db: Database, gym: uuid.UUID) -> N
 
 
 @pg
+def test_a_notice_carries_a_7_day_link_to_the_student_page(db: Database, gym: uuid.UUID) -> None:
+    outbox = Outbox()
+
+    send(db, to_owner(gym), outbox)
+
+    [email] = outbox.sent
+    [url] = [
+        line.removeprefix("Tu página: ") for line in email.text.splitlines() if "Tu página" in line
+    ]
+    assert url.startswith(f"{BASE_URL}/api/auth/callback?token=")
+    assert url.endswith("&next=%2Fme")
+    [link] = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT person_id, used_at, expires_at - created_at AS ttl FROM auth_link"
+            " WHERE person_id = $1",
+            seeded_owner(gym),
+        ),
+    )
+    assert link["used_at"] is None
+    assert timedelta(days=7) - timedelta(minutes=1) < link["ttl"] <= timedelta(days=7)
+    # Never written down: the record has the values, not the link.
+    [row] = logged(db, gym)
+    assert "token" not in row["payload"]
+    assert "page_url" not in json.loads(row["payload"])
+
+
+class Issued:
+    """Stands in for `MagicLinks`, keeping whom each link was for."""
+
+    def __init__(self) -> None:
+        self.recipients: list[Any] = []
+
+    async def issue(self, recipient: Any, **_: Any) -> Any:
+        self.recipients.append(recipient)
+        return type("Link", (), {"url": PAGE_URL})()
+
+
+def test_a_notice_without_a_name_is_not_issued_a_link_for_none() -> None:
+    issued = Issued()
+    notices = Notices(
+        Outbox(),
+        lambda: None,  # type: ignore[arg-type, return-value]
+        base_url=BASE_URL,
+        secret_key=SECRET,
+        links=issued,  # type: ignore[arg-type]
+    )
+    notice = replace(proof_notice(), context={k: v for k, v in PROOF.items() if k != "name"})
+
+    assert asyncio.run(notices._page_url(notice)) == PAGE_URL
+
+    [recipient] = issued.recipients
+    assert recipient.name == ""
+
+
+@pg
+def test_a_notice_whose_link_cannot_be_issued_is_recorded_as_failed(
+    db: Database, gym: uuid.UUID
+) -> None:
+    outbox = Outbox()
+
+    assert send(db, to_owner(gym), outbox, links=False) is Outcome.FAILED
+
+    assert outbox.sent == []
+    [row] = logged(db, gym)
+    assert row["status"] == "failed"
+    assert row["error"].startswith("RuntimeError: no sign-in links")
+
+
+@pg
 def test_another_gym_never_reads_the_record(db: Database, gym: uuid.UUID) -> None:
     other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
     send(db, to_owner(gym), Outbox())
@@ -260,6 +484,12 @@ def test_an_address_the_gym_typed_wrong_is_recorded_as_failed(db: Database, gym:
     assert outbox.sent == []
     [row] = logged(db, gym)
     assert (row["status"], row["to_address"]) == ("failed", "ana at example")
+    # No sign-in link is issued for a message that cannot go.
+    links = run(
+        db.admin_url,
+        lambda c: c.fetch("SELECT 1 FROM auth_link WHERE person_id = $1", seeded_owner(gym)),
+    )
+    assert links == []
 
 
 @pg

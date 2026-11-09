@@ -1,0 +1,10 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+El {{ due_date | fecha }} vence el pago de {{ amount_clp | clp }}{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }}: plan {{ plan_name }}, período del {{ period_start | fecha }} al {{ period_end | fecha }}.
+
+Para pagar, {% if bank_account %}transfiere a esta cuenta y sube el comprobante desde tu página.{% else %}transfiere y sube el comprobante desde tu página, donde están los datos de la cuenta.{% endif %}
+
+{% include "_bank_account.txt" %}
+{% endblock %}

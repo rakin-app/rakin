@@ -83,16 +83,24 @@ def build_router(
     prefix: str,
     base_url: str,
     after_login: str = "/",
+    landings: frozenset[str] = frozenset(),
     cookie_name: str = COOKIE_NAME,
     texts: Texts | None = None,
 ) -> APIRouter:
-    """The endpoints, under `prefix`. `base_url` is where browsers reach the app."""
+    """The endpoints, under `prefix`. `base_url` is where browsers reach the app.
+
+    Signing in lands on `after_login`, or on the link's `next` when it is one of
+    `landings`: a fixed list, so a link can never send anyone off the app.
+    """
     if links.callback_url != callback_url(base_url, prefix):
         raise ValueError(f"links point at {links.callback_url}, not this router's callback")
     texts = texts or Texts()
     router = APIRouter(prefix=prefix)
     callback_path = prefix + CALLBACK
     origin = origin_of(base_url)
+
+    def landing(next_: str) -> str:
+        return next_ if next_ in landings else after_login
 
     def page(body: str, status_code: int = status.HTTP_200_OK) -> HTMLResponse:
         document = (
@@ -140,7 +148,10 @@ def build_router(
         return Response(status_code=status.HTTP_202_ACCEPTED)
 
     @router.get(CALLBACK, response_class=HTMLResponse)
-    async def open_link(token: Annotated[str, Query(max_length=512)] = "") -> HTMLResponse:
+    async def open_link(
+        token: Annotated[str, Query(max_length=512)] = "",
+        next_: Annotated[str, Query(alias="next", max_length=512)] = "",
+    ) -> HTMLResponse:
         """The page a link opens: a button that signs in. It does not spend the link."""
         if not links.looks_valid(token):
             return invalid()
@@ -148,6 +159,7 @@ def build_router(
             f"<p>{html.escape(texts.confirm)}</p>"
             f'<form method="post" action="{html.escape(callback_path)}">'
             f'<input type="hidden" name="token" value="{html.escape(token)}">'
+            f'<input type="hidden" name="next" value="{html.escape(landing(next_))}">'
             f'<button type="submit">{html.escape(texts.button)}</button></form>'
         )
 
@@ -162,7 +174,8 @@ def build_router(
         session_token = await links.redeem(form.get("token", [""])[0])
         if session_token is None:
             return invalid()
-        response = RedirectResponse(after_login, status_code=status.HTTP_303_SEE_OTHER)
+        destination = landing(form.get("next", [""])[0])
+        response = RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
         response.set_cookie(
             cookie_name,
             session_token,

@@ -1,0 +1,1 @@
+Tu pago de {{ amount_clp | clp }} en {{ gym }} vence el {{ due_date | fecha }}

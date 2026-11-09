@@ -230,6 +230,65 @@ def test_validating_closes_the_period(client: TestClient, db: Database, sur: uui
 
 
 @pg
+def test_validating_emails_a_receipt(
+    client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    # Last month still owes 10.000; this one is paid in full by the proof.
+    bill(db, sur, ana, [(-30, 45000, 35000, 0), (0, 45000, 0, 0)])
+    period = next(p for p in periods(client, sur, ana) if p["due_date"] == date.today().isoformat())
+    entry = claim(client, sur, ana, period["id"], upload(client, sur, ana), 45000).json()
+    mailer.sent.clear()
+
+    assert validate(client, sur, entry["id"]).status_code == 200
+
+    [email] = mailer.sent
+    assert email.to == "ana@example.cl"
+    assert email.subject == "Pago validado"
+    start, end = date.today(), date.today() + timedelta(days=29)
+    assert f"del {start:%d-%m-%Y} al {end:%d-%m-%Y}" in email.text
+    assert "Este período quedó pagado." in email.text
+    assert "Saldo pendiente: $10.000." in email.text
+    assert "Tu página: http://testserver/api/auth/callback?token=" in email.text
+    assert sent_notices(db, sur)[-1] == ("receipt", ana, "sent")
+
+
+@pg
+def test_a_receipt_for_an_overpayment_shows_the_credit(
+    client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    bill(db, sur, ana, [(0, 30000, 0, 0)])
+    entry = claimed(client, sur, ana, 35000)
+    mailer.sent.clear()
+
+    assert validate(client, sur, entry["id"]).status_code == 200
+
+    [email] = mailer.sent
+    assert "Saldo a favor: $5.000" in email.text
+
+
+@pg
+def test_a_receipt_reaches_the_guardian(
+    client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    bill(db, sur, juan, [(0, 25000, 0, 0)])
+    entry = claimed(client, sur, juan, 20000, by=marta)
+    mailer.sent.clear()
+
+    assert validate(client, sur, entry["id"]).status_code == 200
+
+    [email] = mailer.sent
+    assert email.to == "marta@example.cl"
+    assert "Hola, Marta:" in email.text
+    assert "$20.000 de Juan" in email.text
+    assert "De este período quedan $5.000 por pagar." in email.text
+    assert sent_notices(db, sur)[-1] == ("receipt", marta, "sent")
+
+
+@pg
 def test_an_overpayment_becomes_a_credit(client: TestClient, db: Database, sur: uuid.UUID) -> None:
     ana = add_person(client, sur, "Ana")
     membership = bill(db, sur, ana, [(0, 30000, 10000, 0)])
@@ -315,6 +374,7 @@ def test_rejecting_keeps_the_period_open_and_tells_the_student(
     assert "Hola, Ana:" in email.text
     assert "$40.000" in email.text
     assert "Nota: monto no coincide, falta $5.000" in email.text
+    assert "Tu página: http://testserver/api/auth/callback?token=" in email.text
     assert sent_notices(db, sur)[-1] == ("proof_rejected", ana, "sent")
 
 

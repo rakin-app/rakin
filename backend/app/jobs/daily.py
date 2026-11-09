@@ -11,16 +11,20 @@ import asyncio
 import contextlib
 import logging
 import signal
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, date, datetime
 
 import asyncpg
 
+from app.auth import build_notices
+from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.domain.dates import local_date
-from app.jobs import billing, lapse
+from app.integrations import build_mailer
+from app.jobs import billing, lapse, statements
 from app.jobs.runner import Job, Outcome, Report, run_due
 from app.logging import configure_logging
+from app.notices import Notices
 from app.sentry import init_sentry
 from app.settings import Settings, get_settings
 
@@ -28,6 +32,23 @@ logger = logging.getLogger(__name__)
 
 # In the order they run on each day: a later job may rely on an earlier one's work.
 JOBS: tuple[Job, ...] = (billing.JOB, lapse.JOB)
+
+
+def jobs(notices: Notices) -> tuple[Job, ...]:
+    """Every nightly job: `JOBS`, then the statements for the periods billing wrote."""
+    return (*JOBS, statements.job(notices))
+
+
+@contextlib.asynccontextmanager
+async def mailing(settings: Settings) -> AsyncIterator[Notices]:
+    """Notices as the API sends them: through the app's database user, which
+    `message_log` and sign-in links are written as."""
+    engine = create_engine(settings)
+    try:
+        sessionmaker = create_sessionmaker(engine)
+        yield build_notices(settings, build_mailer(settings), lambda: sessionmaker)
+    finally:
+        await engine.dispose()
 
 
 def today(settings: Settings) -> date:
@@ -84,9 +105,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.every is not None:
         if args.every <= 0:
             parser.error("--every must be positive")
-        asyncio.run(serve(settings, args.every, JOBS))
+
+        async def keep_serving(every: float) -> None:
+            async with mailing(settings) as notices:
+                await serve(settings, every, jobs(notices))
+
+        asyncio.run(keep_serving(args.every))
         return 0
-    report = asyncio.run(run_once(settings, args.today or today(settings), JOBS))
+
+    async def once(day: date) -> Report:
+        async with mailing(settings) as notices:
+            return await run_once(settings, day, jobs(notices))
+
+    report = asyncio.run(once(args.today or today(settings)))
     return 1 if report.outcome is Outcome.FAILED else 0
 
 

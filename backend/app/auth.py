@@ -27,11 +27,14 @@ from app.magiclink import (
     Texts,
     callback_url,
 )
-from app.notices import MAGIC_LINK, Notice, Notices
+from app.notices import MAGIC_LINK, STUDENT_PAGE, Notice, Notices
 from app.settings import Settings
 from app.tenancy import Tenant
 
 PREFIX = "/api/auth"
+
+# Where a link may land other than "/": the student page, for the links in notices.
+LANDINGS = frozenset({STUDENT_PAGE})
 
 # A link is good for 15 minutes, so five per address covers a person who keeps
 # asking; thirty per IP leaves room for a gym's shared wifi.
@@ -176,6 +179,17 @@ def bind_session(session: Session, state: dict[str, Any]) -> None:
     state["person_id"] = person_id
     if session.scope is not None:
         state["tenant"] = Tenant(uuid.UUID(session.scope), person_id)
+
+
+def build_notices(settings: Settings, mailer: Mailer, sessionmaker: Sessionmaker) -> Notices:
+    """Notices with their own sign-in links, for code outside a request: the jobs."""
+    return Notices(
+        mailer,
+        sessionmaker,
+        base_url=settings.public_base_url,
+        secret_key=settings.secret_key,
+        links=build_magic_links(settings, mailer, sessionmaker),
+    )
 
 
 def build_magic_links(settings: Settings, mailer: Mailer, sessionmaker: Sessionmaker) -> MagicLinks:
