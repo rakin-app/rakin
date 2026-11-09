@@ -6,6 +6,8 @@ answer gives no sign of it: the same 201, carrying what this gym entered and thi
 gym's timestamps, whether the phone was new or known (migration 0004). Only a phone
 already in *this* gym is refused, with a 409 naming that person, so the admin can open
 them instead.
+
+Every staff role may use it, coaches included; members may not.
 """
 
 import uuid
@@ -14,8 +16,8 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.roles import StaffSession
 from app.schemas.people import Person, PersonCreate, PersonUpdate, PhoneConflict, PhoneInGym
-from app.tenancy import TenantSession
 
 router = APIRouter(prefix="/api/people", tags=["people"])
 
@@ -43,7 +45,7 @@ async def _get(session: AsyncSession, person_id: uuid.UUID) -> Person:
     status_code=status.HTTP_201_CREATED,
     responses={status.HTTP_409_CONFLICT: {"model": PhoneInGym}},
 )
-async def create_person(body: PersonCreate, session: TenantSession) -> Person:
+async def create_person(body: PersonCreate, session: StaffSession) -> Person:
     result = await session.execute(
         text("SELECT person_id, joined FROM join_gym_by_phone(:phone, :name, :email, :rut, :dob)"),
         body.model_dump(),
@@ -57,12 +59,12 @@ async def create_person(body: PersonCreate, session: TenantSession) -> Person:
 
 
 @router.get("/{person_id}")
-async def get_person(person_id: uuid.UUID, session: TenantSession) -> Person:
+async def get_person(person_id: uuid.UUID, session: StaffSession) -> Person:
     return await _get(session, person_id)
 
 
 @router.patch("/{person_id}")
-async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: TenantSession) -> Person:
+async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: StaffSession) -> Person:
     changes = body.model_dump(exclude_unset=True)
     if changes:
         assignments = ", ".join(f"{column} = :{column}" for column in changes)

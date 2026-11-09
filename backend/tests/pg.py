@@ -98,21 +98,31 @@ def migrate(database: Database, revision: str = "head") -> None:
     command.upgrade(database.alembic(), revision)
 
 
-def in_gym(gym_id: uuid.UUID | None, sql: str, *args: object) -> Query:
-    """Run `sql` in a transaction, with `app.gym_id` set to `gym_id` if given."""
+def in_gym(
+    gym_id: uuid.UUID | None, sql: str, *args: object, person: uuid.UUID | None = None
+) -> Query:
+    """Run `sql` in a transaction, with `app.gym_id` set to `gym_id` and `app.person_id`
+    to `person`, each if given."""
 
     async def query(conn: asyncpg.Connection) -> Any:
         async with conn.transaction():
             if gym_id is not None:
                 await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
+            if person is not None:
+                await conn.execute("SELECT set_config('app.person_id', $1, true)", str(person))
             return await conn.fetch(sql, *args)
 
     return query
 
 
+def seeded_owner(gym_id: uuid.UUID) -> uuid.UUID:
+    """The owner `seed_gym` gives `gym_id`: derived from it, so callers need only the gym."""
+    return uuid.uuid5(gym_id, "owner")
+
+
 def seed_gym(db: Database, slug: str) -> uuid.UUID:
-    """A gym with one person (a staff and a `gym_person` row), plan, membership, period
-    and ledger entry.
+    """A gym with one person, its owner (`seeded_owner`: a staff and a `gym_person`
+    row), and a plan, membership, period and ledger entry.
 
     Seeded as the owner, which FORCEd RLS applies to: it sets `app.gym_id` first.
     """
@@ -124,7 +134,7 @@ def seed_gym(db: Database, slug: str) -> uuid.UUID:
             await conn.execute("INSERT INTO gym (id, name, slug) VALUES ($1, $2, $2)", gym_id, slug)
             # Not `RETURNING id`: until its gym_person row exists the person is not
             # visible in this gym, and RETURNING is held to the read policy (0003).
-            person_id = uuid.uuid4()
+            person_id = seeded_owner(gym_id)
             await conn.execute(
                 "INSERT INTO person (id, name) VALUES ($1, $2)", person_id, f"owner of {slug}"
             )

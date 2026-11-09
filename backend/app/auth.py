@@ -180,9 +180,10 @@ class MailSender:
 
 
 def bind_session(session: Session, state: dict[str, Any]) -> None:
-    state["person_id"] = uuid.UUID(session.subject)
+    person_id = uuid.UUID(session.subject)
+    state["person_id"] = person_id
     if session.scope is not None:
-        state["tenant"] = Tenant(uuid.UUID(session.scope))
+        state["tenant"] = Tenant(uuid.UUID(session.scope), person_id)
 
 
 def build_magic_links(settings: Settings, mailer: Mailer, sessionmaker: Sessionmaker) -> MagicLinks:

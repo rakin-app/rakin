@@ -13,7 +13,15 @@ import pytest
 
 from alembic import command
 from tests.conftest import require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import (
+    Database,
+    in_gym,
+    migrate,
+    run,
+    seed_gym,
+    seeded_owner,
+    throwaway_database,
+)
 
 pytestmark = pytest.mark.postgres
 
@@ -191,8 +199,9 @@ def test_only_the_current_gym_is_visible(
     column = "id" if table == "gym" else "gym_id"
     sql = f"SELECT DISTINCT {column} AS gym FROM {table}"
 
-    assert [r["gym"] for r in run(url, in_gym(sur, sql))] == [sur]
-    assert [r["gym"] for r in run(url, in_gym(norte, sql))] == [norte]
+    # As the gym's owner: the API sees the ledger only for an owner or admin (0006).
+    for gym in (sur, norte):
+        assert [r["gym"] for r in run(url, in_gym(gym, sql, person=seeded_owner(gym)))] == [gym]
 
 
 @pytest.mark.parametrize("user", ["api", "owner"])

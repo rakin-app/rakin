@@ -20,6 +20,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.domain.membership import MembershipStatus, PlanKind
+from app.roles import Role
 
 GYM_NAME = "Academia Sur"
 GYM_SLUG = "academia-sur"
@@ -103,12 +104,6 @@ BANK_ACCOUNT = {
     "number": "000012348821",
     "email": "pagos@academiasur.example.com",
 }
-
-
-class Role(StrEnum):
-    OWNER = "owner"
-    ADMIN = "admin"
-    COACH = "coach"
 
 
 @dataclass(frozen=True)

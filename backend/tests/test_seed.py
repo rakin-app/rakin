@@ -289,8 +289,10 @@ def test_load_is_idempotent(db: Database) -> None:
 @pytest.mark.postgres
 def test_api_user_reads_the_whole_gym(db: Database) -> None:
     seed = load_as_owner(db, DESIGN_DAY).seed
+    # As the gym's owner, who may read the ledger (migration 0006).
+    owner = next(s["person_id"] for s in seed.staff if s["role"] == "owner")
     for table, rows in seed.tables():
-        found = run(db.api_url, in_gym(GYM_ID, f"SELECT count(*) AS n FROM {table}"))
+        found = run(db.api_url, in_gym(GYM_ID, f"SELECT count(*) AS n FROM {table}", person=owner))
         # Every person has a membership or staff row, so RLS hides none of them.
         assert found[0]["n"] == len(rows), table
     assert run(db.api_url, in_gym(None, "SELECT count(*) AS n FROM person"))[0]["n"] == 0
