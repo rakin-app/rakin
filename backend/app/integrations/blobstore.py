@@ -25,6 +25,8 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from app.security import constant_time_equals
+
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
 
@@ -239,9 +241,8 @@ class LocalBlobStore:
             expires_at = int(expires)
         except ValueError:
             return False
-        expected = self._signature(op, key, content_type, size, expires_at).encode()
-        # Bytes: `compare_digest` raises on a `str` with non-ASCII characters.
-        return hmac.compare_digest(expected, signature.encode()) and self._clock() < expires_at
+        expected = self._signature(op, key, content_type, size, expires_at)
+        return constant_time_equals(expected, signature) and self._clock() < expires_at
 
     async def write(
         self, key: str, content_type: str, size: int, chunks: AsyncIterable[bytes]

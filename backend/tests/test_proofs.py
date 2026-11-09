@@ -94,6 +94,19 @@ class RecordingMailer:
         self.sent.append(email)
 
 
+def sent_notices(db: Database, gym: uuid.UUID) -> list[tuple[str, str, str]]:
+    """`gym`'s `message_log`, oldest first: template, addressee and outcome."""
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT template, person_id, status FROM message_log"
+            " WHERE gym_id = $1 ORDER BY sent_at",
+            gym,
+        ),
+    )
+    return [(r["template"], str(r["person_id"]), r["status"]) for r in rows]
+
+
 @pytest.fixture(scope="module")
 def db() -> Iterator[Database]:
     with throwaway_database(require_test_database_url()) as database:
@@ -222,6 +235,7 @@ def test_a_student_uploads_a_proof_and_claims_the_period(
     assert email.subject == "Recibimos tu comprobante"
     assert "$30.000" in email.text
     assert "Hola, Ana:" in email.text
+    assert sent_notices(db, sur) == [("proof_received", ana, "sent")]
 
 
 @pg

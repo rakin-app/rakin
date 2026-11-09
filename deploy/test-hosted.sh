@@ -5,7 +5,7 @@
 # file meet. Needs Docker and port 80; the stack is removed afterwards.
 #
 # Caddy serves plain HTTP on :80 here (SITE_ADDRESS=:80): no certificate,
-# no DNS. Object storage and SES are configured but never reached.
+# no DNS. Object storage and mail (Resend) are configured but never reached.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
