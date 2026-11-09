@@ -2,7 +2,7 @@
 
 For every Active or Trial membership in every gym it asks the domain
 (`app.domain.membership.is_due_to_lapse`) whether the run date lapses it, and if so
-sets `status = 'lapsed'` and writes a `lapsed` plan event (migration 0012) in the same
+sets `status = 'lapsed'` and writes a `lapsed` plan event (migration 0013) in the same
 transaction, for the plan-event emails to send.
 
 - A monthly or prepaid membership lapses once its oldest billing period still unpaid
@@ -15,6 +15,12 @@ transaction, for the plan-event emails to send.
   (`current_period_end`) or at zero credits left.
 - A drop-in is a single attendance and never lapses; a Frozen membership waits for
   its freeze to end (#26), and a Lapsed or Cancelled one has nowhere to lapse to.
+
+A payment recorded while the job runs is never lost to it. Both lock the membership
+row before they decide: the job locks every membership it may lapse and only then reads
+what is unpaid, so a payment that committed first is counted, and one that comes later
+waits for the run to commit and is recorded against a membership already lapsed, as a
+payment after the lapse would be.
 
 It runs after `billing_periods` on each day, so the periods it reads are there. A
 second run on the same date finds the lapsed memberships no longer Active, and the
@@ -44,21 +50,36 @@ NAME = "lapse"
 # RLS holds `gym` to the one in `app.gym_id`.
 SELECT_SETTINGS = "SELECT settings::text FROM gym"
 
-# `unpaid_due` is the due date of the oldest period due by the run date that its
-# settling entries leave short. Locked, so a payment recorded meanwhile waits for it.
-SELECT_LAPSABLE = """
-SELECT m.id, m.status, pl.kind, m.current_period_end, m.credits_remaining,
-       (SELECT min(b.due_date) FROM billing_period b
-        WHERE b.membership_id = m.id AND b.due_date <= $1
-          AND b.amount_due_clp > (
-              SELECT coalesce(sum(e.amount_clp), 0) FROM ledger_entry e
-              WHERE e.billing_period_id = b.id AND e.status = $2
-                AND e.kind = ANY($3::text[]))) AS unpaid_due
+# The memberships that may lapse, locked until the run commits, in id order. A payment
+# locks its membership before it reads or settles anything (`app.api.ledger`), so a
+# payment and a lapse of one membership run one after the other.
+LOCK_LAPSABLE = """
+SELECT m.id
 FROM membership m
 JOIN plan pl ON pl.id = m.plan_id
 WHERE m.status IN ('active', 'trial') AND pl.kind <> 'dropin'
 ORDER BY m.id
 FOR UPDATE OF m
+"""
+
+# Read after the lock, in a statement of its own: in READ COMMITTED each statement takes
+# a fresh snapshot, so this one sees every payment that committed while the lock above
+# waited for it. A `FOR UPDATE` query re-checks only its locked rows once it gets them,
+# not its subqueries, so the unpaid date cannot be read in that same statement.
+# `unpaid_due` is the due date of the oldest period due by the run date that its
+# settling entries leave short.
+SELECT_LAPSABLE = """
+SELECT m.id, m.status, pl.kind, m.current_period_end, m.credits_remaining,
+       (SELECT min(b.due_date) FROM billing_period b
+        WHERE b.membership_id = m.id AND b.due_date <= $2
+          AND b.amount_due_clp > (
+              SELECT coalesce(sum(e.amount_clp), 0) FROM ledger_entry e
+              WHERE e.billing_period_id = b.id AND e.status = $3
+                AND e.kind = ANY($4::text[]))) AS unpaid_due
+FROM membership m
+JOIN plan pl ON pl.id = m.plan_id
+WHERE m.id = ANY($1::uuid[]) AND m.status IN ('active', 'trial')
+ORDER BY m.id
 """
 
 LAPSE = "UPDATE membership SET status = $2 WHERE id = $1"
@@ -85,8 +106,13 @@ async def lapse_gym(conn: asyncpg.Connection, day: date) -> int:
     """Lapse what `day` lapses in the gym in `app.gym_id`; the number lapsed."""
     settings = json.loads(await conn.fetchval(SELECT_SETTINGS))
     grace = memberships.grace_days(settings)
+    locked = [r["id"] for r in await conn.fetch(LOCK_LAPSABLE)]
     rows = await conn.fetch(
-        SELECT_LAPSABLE, day, EntryStatus.VALIDATED.value, [k.value for k in SETTLING_KINDS]
+        SELECT_LAPSABLE,
+        locked,
+        day,
+        EntryStatus.VALIDATED.value,
+        [k.value for k in SETTLING_KINDS],
     )
     lapsed = 0
     for row in rows:

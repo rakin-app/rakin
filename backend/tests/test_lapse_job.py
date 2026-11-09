@@ -4,6 +4,7 @@ Each test lapses a gym of its own (`tests.jobgym`): the job works on every gym, 
 test reads back only its own.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -13,6 +14,7 @@ from datetime import date
 import asyncpg
 import pytest
 
+from app.db_bootstrap import to_dsn
 from app.jobs import daily, lapse, run_due
 from tests.conftest import require_test_database_url
 from tests.jobgym import Gym
@@ -262,6 +264,46 @@ def test_running_the_same_date_again_changes_nothing(gym: Gym) -> None:
 
     assert status(gym, member) == "lapsed"
     assert events(gym, member) == [("lapsed", LAPSES_ON)]
+
+
+def test_a_payment_in_flight_holds_off_the_lapse(gym: Gym) -> None:
+    """The payment holds the membership's lock, as `app.api.ledger` takes it, and has
+    written its entry but not committed. The job waits for it, then counts it: reading
+    "unpaid" in the locking statement itself would use the snapshot from before."""
+    member, period_id = monthly_due_nov_1(gym)
+
+    async def go() -> None:
+        paying = await asyncpg.connect(to_dsn(gym.db.owner_url))
+        nightly = await asyncpg.connect(to_dsn(gym.db.owner_url))
+        try:
+            await paying.execute("BEGIN")
+            await paying.execute("SELECT set_config('app.gym_id', $1, true)", str(gym.id))
+            await paying.execute("SELECT FROM membership WHERE id = $1 FOR UPDATE", member)
+            await paying.execute(
+                "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id,"
+                " amount_clp, kind, status) VALUES ($1, $2, $3, 45000, 'payment', 'validated')",
+                gym.id,
+                member,
+                period_id,
+            )
+
+            async def lapse_run() -> bool:
+                async with nightly.transaction():
+                    return await lapse.lapse_memberships(nightly, LAPSES_ON)
+
+            waiting = asyncio.create_task(lapse_run())
+            await asyncio.sleep(0.5)
+            assert not waiting.done(), "the lapse did not wait for the payment"
+            await paying.execute("COMMIT")
+            assert await waiting is True
+        finally:
+            await paying.close()
+            await nightly.close()
+
+    asyncio.run(go())
+
+    assert status(gym, member) == "active"
+    assert events(gym, member) == []
 
 
 def test_a_gym_reads_only_its_own_plan_events(db: Database) -> None:
