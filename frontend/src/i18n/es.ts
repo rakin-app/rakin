@@ -13,6 +13,7 @@ export const es = {
     students: 'Alumnos',
     classes: 'Clases',
     payments: 'Pagos',
+    pendingBadge: (n: number) => (n === 1 ? '1 comprobante por revisar' : `${n} comprobantes por revisar`),
   },
   admin: {
     today: { title: 'Hoy' },
@@ -78,9 +79,43 @@ export const es = {
   },
   me: {
     home: { title: 'Mi página' },
+    proof: {
+      title: 'Subir comprobante',
+      loading: 'Cargando tus pagos…',
+      error: 'No pudimos cargar tus pagos.',
+      none: 'No tienes pagos pendientes.',
+      periodLabel: 'Qué estás pagando',
+      period: (name: string, plan: string, due: string) => `${name} · ${plan} · vence el ${due}`,
+      outstanding: (amount: string) => `Por pagar: ${amount}`,
+      inReview: (amount: string) => `Comprobante en revisión: ${amount}`,
+      amountLabel: 'Monto transferido (CLP)',
+      fileLabel: 'Comprobante',
+      camera: 'Tomar foto',
+      choose: 'Elegir archivo',
+      chosen: (name: string) => `Archivo: ${name}`,
+      fileHint: 'Foto o captura de la transferencia (JPG, PNG, HEIC) o PDF, hasta 10 MB.',
+      submit: 'Enviar comprobante',
+      sending: 'Enviando…',
+      sent: 'Recibimos tu comprobante. Te avisaremos por correo cuando lo revisemos.',
+      another: 'Subir otro',
+      problem: {
+        type: 'Ese archivo no sirve: sube una foto (JPG, PNG, HEIC) o un PDF.',
+        size: 'El archivo pesa más de 10 MB. Prueba con una captura de pantalla.',
+        empty: 'El archivo está vacío.',
+        amount: 'Escribe el monto que transferiste.',
+      },
+      refused: {
+        paid: 'Ese período ya está pagado.',
+        upload: 'No pudimos subir el archivo. Revisa tu conexión e inténtalo de nuevo.',
+        failed: 'No pudimos enviar el comprobante. Inténtalo de nuevo.',
+      },
+    },
   },
   common: {
     comingSoon: 'Esta sección todavía no está lista.',
+    clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
+    // An ISO day, `2026-12-01`, as Chile writes it: `01-12-2026`.
+    day: (iso: string) => iso.split('-').reverse().join('-'),
   },
   notFound: {
     title: 'Página no encontrada',
