@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import blobs, health, people
+from app.api import blobs, gym, health, people
 from app.auth import PREFIX, TEXTS, bind_session, build_magic_links
 from app.db import create_engine, create_sessionmaker
 from app.integrations import build_integrations
@@ -39,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
     app.include_router(people.router)
+    app.include_router(gym.router)
     app.include_router(
         build_router(links, prefix=PREFIX, base_url=settings.public_base_url, texts=TEXTS)
     )

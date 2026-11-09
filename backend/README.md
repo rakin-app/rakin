@@ -98,6 +98,15 @@ A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, 
 
 Any staff role may use it (`StaffSession`); a member gets a 403. Phones are normalised to E.164 Chilean mobiles and RUTs to `76123456-0`; anything else is a 422. The phone is set on create and not editable here, since changing it moves the gym's record to another identity.
 
+## Gym settings API
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/gym/settings` | the current gym's `name`, `slug`, `timezone`, `grace_days`, `reminder_every_days`, `channels` and `bank_account`; a setting never stored reads as its default (5 grace days, a reminder every 3 days, WhatsApp on, no bank details) |
+| `PATCH` | `/api/gym/settings` | change any of those but `slug`; `channels` and `bank_account` are replaced whole, and `bank_account: null` clears the bank details |
+
+Owner and admin only (`AdminSession`); a coach or member gets a 403, since the bank details decide where students send their money. `name` and `timezone` are columns on `gym`; the rest are keys of `gym.settings`, and the grading scheme and custom fields stored beside them are left untouched. `timezone` must be an IANA name, `grace_days` 0 to 60, `reminder_every_days` 1 to 30. `bank_account` takes `bank`, `account_type` (`Cuenta Corriente`, `Cuenta Vista`, `Cuenta RUT` or `Cuenta de Ahorro`), `holder`, `rut` (normalised to `76123456-0`), `number` and an optional `email` for the transfer notice. Email is always on, so `channels` holds only `whatsapp`.
+
 ## Sign-in
 
 Students and staff sign in with a magic link ([spec](../docs/technical.md#communications)). `app/magiclink` is the mechanism, self-contained so it can become a package: it imports nothing else from `app`. `app/auth.py` plugs Rakin into it: people by email, Postgres, and the mailer.
