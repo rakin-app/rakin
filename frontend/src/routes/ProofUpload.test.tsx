@@ -2,6 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { MyPage } from '../api/me'
 import type { OpenPeriod } from '../api/proofs'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
@@ -41,7 +42,7 @@ type Answer = { status?: number; body?: unknown }
 
 function stubApi(
   periods: OpenPeriod[],
-  answers: { put?: number; claim?: Answer; pending?: Answer; role?: string | null } = {},
+  answers: { put?: number; claim?: Answer; pending?: Answer; role?: string | null; page?: MyPage } = {},
 ) {
   const calls: Call[] = []
   vi.stubGlobal(
@@ -63,6 +64,7 @@ function stubApi(
   function route(url: URL, method: string): Answer {
     if (url.href === UPLOAD_URL && method === 'PUT') return { status: answers.put ?? 200 }
     if (url.pathname === '/api/me/periods') return { body: periods }
+    if (url.pathname === '/api/me/page') return { body: answers.page ?? pageFor(periods) }
     if (url.pathname === '/api/me/proofs') {
       return { status: 201, body: { key: 'proofs/g/ana/k', url: UPLOAD_URL, headers: { 'Content-Type': 'image/jpeg' }, expires_in_seconds: 900 } }
     }
@@ -81,6 +83,26 @@ function renderAt(path: string) {
   render(<App queryClient={queryClient} router={router} />)
 }
 
+/** The student page, its next payment the first of `periods`. */
+function pageFor(periods: OpenPeriod[]): MyPage {
+  const first = periods[0]
+  return {
+    gym_name: 'Academia Sur',
+    timezone: 'America/Santiago',
+    person_id: 'ana',
+    name: 'Ana Rojas',
+    next_payment: first ? { period: first, status: first.pending_clp > 0 ? 'in_review' : 'due' } : null,
+    bank_account: null,
+    payments: [],
+  }
+}
+
+/** Open the student page and tap "Subir comprobante". */
+async function openUpload() {
+  renderAt('/me')
+  await userEvent.click(await screen.findByRole('button', { name: es.me.next.upload }))
+}
+
 const photo = () => new File([new Uint8Array(2048)], 'transferencia.jpg', { type: 'image/jpeg' })
 
 afterEach(() => {
@@ -90,7 +112,7 @@ afterEach(() => {
 describe('Subir comprobante', () => {
   it('uploads the file straight to storage, then claims the period', async () => {
     const calls = stubApi([ANA])
-    renderAt('/me')
+    await openUpload()
 
     await screen.findByRole('heading', { name: copy.title })
     expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('45000')
@@ -113,7 +135,7 @@ describe('Subir comprobante', () => {
 
   it('offers the camera on a phone', async () => {
     stubApi([ANA])
-    renderAt('/me')
+    await openUpload()
 
     const camera = await screen.findByLabelText(copy.camera)
     expect(camera).toHaveAttribute('capture', 'environment')
@@ -122,7 +144,7 @@ describe('Subir comprobante', () => {
 
   it("pays a dependent's period, with what is already in review", async () => {
     const calls = stubApi([ANA, JUAN])
-    renderAt('/me')
+    await openUpload()
 
     const juan = await screen.findByRole('radio', { name: /Juan Rojas/ })
     expect(screen.getByText(copy.inReview('$25.000'))).toBeInTheDocument()
@@ -143,7 +165,7 @@ describe('Subir comprobante', () => {
     ['a file over 10 MB', new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'big.pdf', { type: 'application/pdf' }), copy.problem.size],
   ])('refuses %s before sending anything', async (_, file, message) => {
     const calls = stubApi([ANA])
-    renderAt('/me')
+    await openUpload()
 
     await userEvent.upload(await screen.findByLabelText(copy.choose), file, { applyAccept: false })
 
@@ -154,7 +176,7 @@ describe('Subir comprobante', () => {
 
   it('says so when the storage refuses the upload, and claims nothing', async () => {
     const calls = stubApi([ANA], { put: 403 })
-    renderAt('/me')
+    await openUpload()
 
     await userEvent.upload(await screen.findByLabelText(copy.choose), photo())
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
@@ -165,7 +187,7 @@ describe('Subir comprobante', () => {
 
   it('says so when the period was paid meanwhile', async () => {
     stubApi([ANA], { claim: { status: 409, body: { detail: 'paid' } } })
-    renderAt('/me')
+    await openUpload()
 
     await userEvent.upload(await screen.findByLabelText(copy.choose), photo())
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
@@ -175,7 +197,7 @@ describe('Subir comprobante', () => {
 
   it('uploads a HEIC the picker gave no type as image/heic', async () => {
     const calls = stubApi([ANA])
-    renderAt('/me')
+    await openUpload()
     const heic = new File([new Uint8Array(512)], 'IMG_0042.HEIC', { type: '' })
 
     await userEvent.upload(await screen.findByLabelText(copy.choose), heic)
@@ -191,7 +213,7 @@ describe('Subir comprobante', () => {
 
   it('refuses a file with no type and no known extension', async () => {
     const calls = stubApi([ANA])
-    renderAt('/me')
+    await openUpload()
 
     await userEvent.upload(await screen.findByLabelText(copy.choose), new File(['x'], 'notes', { type: '' }), {
       applyAccept: false,
@@ -201,9 +223,9 @@ describe('Subir comprobante', () => {
     expect(calls.filter((c) => c.method !== 'GET')).toEqual([])
   })
 
-  it('has nothing to pay', async () => {
-    stubApi([])
-    renderAt('/me')
+  it('has nothing to pay once the page is out of date', async () => {
+    stubApi([], { page: pageFor([ANA]) })
+    await openUpload()
 
     expect(await screen.findByText(copy.none)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: copy.submit })).not.toBeInTheDocument()

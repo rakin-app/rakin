@@ -97,7 +97,7 @@ CLAIM = text(
 )
 
 
-def _params(tenant: Tenant, **extra: Any) -> dict[str, Any]:
+def payable_params(tenant: Tenant, **extra: Any) -> dict[str, Any]:
     return {
         "me": tenant.person_id,
         "validated": EntryStatus.VALIDATED.value,
@@ -108,7 +108,7 @@ def _params(tenant: Tenant, **extra: Any) -> dict[str, Any]:
     }
 
 
-def _open_period(row: Any) -> OpenPeriod:
+def to_open_period(row: Any) -> OpenPeriod:
     paid = min(row.paid_clp, row.amount_due_clp)
     return OpenPeriod(
         id=row.id,
@@ -132,8 +132,8 @@ async def open_periods(
 ) -> list[OpenPeriod]:
     """What the signed-in person can pay in this gym, theirs and their dependents',
     earliest due first."""
-    rows = await session.execute(text(OPEN_PERIODS), _params(tenant))
-    return [_open_period(row) for row in rows]
+    rows = await session.execute(text(OPEN_PERIODS), payable_params(tenant))
+    return [to_open_period(row) for row in rows]
 
 
 @router.post("/proofs", status_code=status.HTTP_201_CREATED)
@@ -177,7 +177,7 @@ async def claim_payment(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "proof not uploaded")
 
     row = (
-        await session.execute(text(ONE_PERIOD), _params(tenant, id=body.billing_period_id))
+        await session.execute(text(ONE_PERIOD), payable_params(tenant, id=body.billing_period_id))
     ).one_or_none()
     if row is None:
         raise NOT_FOUND
