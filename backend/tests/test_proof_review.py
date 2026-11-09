@@ -9,13 +9,16 @@ import asyncio
 import dataclasses
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any
 
+import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.db_bootstrap import to_dsn
 from app.main import create_app
 from app.schemas.proofs import ProofRejection
 from tests.auth import FakeAuth, as_gym
@@ -336,6 +339,37 @@ def test_a_rejection_without_a_note_is_refused(
     for note in (None, "", "   "):
         assert reject(client, sur, entry["id"], note).status_code == 422
     assert stored_entry(db, entry["id"])["status"] == "pending"
+
+
+@pg
+def test_validating_waits_for_a_lapse_run_on_the_membership(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    """As recording a payment does (`test_ledger_payments`): the nightly `lapse` job
+    holds the membership until it commits, and validating locks it before reading the
+    period, so it settles after the run instead of beside it."""
+    ana = add_person(client, sur, "Ana")
+    membership = bill(db, sur, ana, [(0, 30000, 0, 0)])
+    entry = claimed(client, sur, ana, 30000)
+
+    async def go() -> None:
+        nightly = await asyncpg.connect(to_dsn(db.admin_url))
+        try:
+            await nightly.execute("BEGIN")
+            await nightly.execute(
+                "SELECT FROM membership WHERE id = $1 FOR NO KEY UPDATE", uuid.UUID(membership)
+            )
+            with ThreadPoolExecutor(1) as pool:
+                validating = asyncio.wrap_future(pool.submit(validate, client, sur, entry["id"]))
+                await asyncio.sleep(0.5)
+                assert not validating.done(), "the validation did not wait for the lapse run"
+                await nightly.execute("COMMIT")
+                response = await validating
+            assert response.status_code == 200, response.text
+        finally:
+            await nightly.close()
+
+    asyncio.run(go())
 
 
 @pg

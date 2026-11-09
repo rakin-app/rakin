@@ -18,7 +18,7 @@ import asyncpg
 
 from app.db_bootstrap import to_dsn
 from app.domain.dates import local_date
-from app.jobs import billing
+from app.jobs import billing, lapse
 from app.jobs.runner import Job, Outcome, Report, run_due
 from app.logging import configure_logging
 from app.sentry import init_sentry
@@ -27,7 +27,7 @@ from app.settings import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 # In the order they run on each day: a later job may rely on an earlier one's work.
-JOBS: tuple[Job, ...] = (billing.JOB,)
+JOBS: tuple[Job, ...] = (billing.JOB, lapse.JOB)
 
 
 def today(settings: Settings) -> date:

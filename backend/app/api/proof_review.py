@@ -96,13 +96,14 @@ QUEUE = """
 
 QUEUE_ORDER = " ORDER BY e.claimed_at, e.id"
 
-# The proof to review, locked so two admins reviewing it at once settle it once.
-PENDING_PROOF = text(
+# The proof to review; locked, so two admins reviewing it at once settle it once.
+PROOF = (
     "SELECT id, membership_id, billing_period_id, amount_clp, status, note, claimed_by"
     " FROM ledger_entry"
     " WHERE id = :id AND kind = :payment AND proof_object_key IS NOT NULL"
-    " AND billing_period_id IS NOT NULL FOR UPDATE"
+    " AND billing_period_id IS NOT NULL"
 )
+PENDING_PROOF = text(PROOF + " FOR UPDATE")
 
 REVIEW = text(
     "UPDATE ledger_entry SET status = :status, note = :note,"
@@ -188,11 +189,17 @@ async def _record_review(session: AsyncSession, entry: LedgerEntry, entry_id: uu
 async def validate(entry_id: uuid.UUID, session: LedgerSession) -> RecordedPayment:
     """Validate the proof: its payment counts towards the period, and any overpayment
     becomes a credit."""
-    # The entry, then its period: a second review of the proof waits on the first and
-    # then finds it reviewed, and a payment recorded for the period settles before or
-    # after this one, never beside it.
+    # Membership, period, then the entry, the order every payment and the lapse job
+    # take them in (`locked_period`): a lapse never acts on a payment mid-validation, a
+    # payment recorded for the period settles before or after this one, and a second
+    # review of the proof waits on the first and then finds it reviewed.
+    found = (
+        await session.execute(text(PROOF), {"id": entry_id, "payment": EntryKind.PAYMENT.value})
+    ).one_or_none()
+    if found is None:
+        raise NOT_FOUND
+    row, period = await locked_period(session, found.billing_period_id, found.membership_id)
     proof = await _pending_proof(session, entry_id)
-    row, period = await locked_period(session, proof.billing_period_id, proof.membership_id)
     pending = LedgerEntry(kind=EntryKind.PAYMENT, amount_clp=proof.amount_clp, note=proof.note)
     try:
         settlement = billing.validate_payment(period, pending)

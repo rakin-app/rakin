@@ -51,14 +51,22 @@ INSERT_ENTRY = text(
 )
 
 
+# Taken before the period's lock, in that order wherever both are taken.
+LOCK_MEMBERSHIP = text("SELECT FROM membership WHERE id = :membership_id FOR UPDATE")
+
+
 async def locked_period(
     session: AsyncSession, period_id: uuid.UUID, membership_id: uuid.UUID
 ) -> tuple[Any, BillingPeriod]:
     """The membership's period, locked until the request ends, and what it has been paid.
 
-    Locked, so two payments recorded or validated at once for one period settle one
+    The membership is locked first, as the nightly `lapse` job locks it before it reads
+    what is unpaid (`app.jobs.lapse`): a payment and a lapse of one membership run one
+    after the other, so the job never lapses a member whose payment is mid-flight. Then
+    the period, so two payments recorded or validated at once for one period settle one
     after the other instead of both finding it open.
     """
+    await session.execute(LOCK_MEMBERSHIP, {"membership_id": membership_id})
     row = (
         await session.execute(
             text(
