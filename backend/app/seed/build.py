@@ -19,6 +19,7 @@ from app.domain.membership import MembershipStatus, PlanKind
 from app.domain.rut import check_digit
 from app.seed.data import (
     BANK_ACCOUNT,
+    CLASS_TYPES,
     CUSTOM_FIELDS,
     GRACE_DAYS,
     GRADING,
@@ -27,6 +28,7 @@ from app.seed.data import (
     HISTORY_PERIODS,
     MEMBERS,
     PLANS,
+    PROGRAMS,
     STAFF,
     TIMEZONE,
     VALIDATOR,
@@ -61,6 +63,9 @@ class Seed:
     # Who pays for each kid (migration 0010).
     guardian_links: list[Row]
     staff: list[Row]
+    # Programs and their class types (migration 0016).
+    programs: list[Row]
+    class_types: list[Row]
     plans: list[Row]
     memberships: list[Row]
     billing_periods: list[Row]
@@ -73,6 +78,8 @@ class Seed:
         yield "gym_person", self.gym_people
         yield "guardian_link", self.guardian_links
         yield "staff", self.staff
+        yield "program", self.programs
+        yield "class_type", self.class_types
         yield "plan", self.plans
         yield "membership", self.memberships
         yield "billing_period", self.billing_periods
@@ -369,12 +376,35 @@ def build(as_of: date) -> Seed:
             }
             for s in STAFF
         ],
+        programs=[
+            {
+                "id": seed_id("program", key),
+                "gym_id": GYM_ID,
+                "name": name,
+                "active": True,
+                "created_at": local(opened),
+            }
+            for key, name in PROGRAMS.items()
+        ],
+        class_types=[
+            {
+                "id": seed_id("class_type", c.key),
+                "gym_id": GYM_ID,
+                "program_id": seed_id("program", c.program),
+                "name": c.name,
+                "credit_cost": c.credit_cost,
+                "active": True,
+                "created_at": local(opened),
+            }
+            for c in CLASS_TYPES
+        ],
         plans=[
             {
                 "id": seed_id("plan", p.key),
                 "gym_id": GYM_ID,
                 "name": p.name,
                 "kind": p.kind.value,
+                "program_id": None if p.program is None else seed_id("program", p.program),
                 "price_clp": p.price_clp,
                 "anchor": p.anchor,
                 "period_months": p.period_months,

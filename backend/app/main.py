@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.api import (
     blobs,
+    class_types,
     guardians,
     gym,
     health,
@@ -14,6 +15,7 @@ from app.api import (
     memberships,
     people,
     plans,
+    programs,
     proof_review,
     proofs,
     unsubscribe,
@@ -60,6 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(me.router)
     app.include_router(proofs.router)
     app.include_router(plans.router)
+    app.include_router(programs.router)
+    app.include_router(class_types.router)
     app.include_router(memberships.router)
     app.include_router(member_import.router)
     app.include_router(gym.router)

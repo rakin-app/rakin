@@ -3,7 +3,7 @@
 Five kinds, each with its own parameters (`app.schemas.plans`). There is no delete: a
 plan is deactivated with `PATCH {"active": false}`, and the database refuses a
 `DELETE` from any role (migration 0007), since memberships and the ledger keep
-pointing at it.
+pointing at it. A `program_id` must be one of the gym's programs, or it is a 422.
 
 Any staff role may read the plans, coaches included; only an owner or admin may
 create or change one. Members may not use it at all.
@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.programs import require_program
 from app.roles import AdminSession, StaffSession
 from app.schemas.plans import (
     COLUMNS,
@@ -53,6 +54,8 @@ async def _get(session: AsyncSession, plan_id: uuid.UUID, *, lock: bool = False)
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_plan(body: PlanCreate, session: AdminSession) -> Plan:
+    if body.program_id is not None:
+        await require_program(session, body.program_id, "program_id")
     columns = to_columns(body)
     result = await session.execute(
         text(
@@ -89,6 +92,8 @@ async def update_plan(plan_id: uuid.UUID, body: PlanUpdate, session: AdminSessio
     active = changes.pop("active", current.active)
     if not changes and active == current.active:
         return current
+    if changes.get("program_id") is not None:
+        await require_program(session, changes["program_id"], "program_id")
 
     # The plan as it would be, checked as a whole against its kind.
     fields = current.model_dump(exclude={"id", "active", "created_at"})

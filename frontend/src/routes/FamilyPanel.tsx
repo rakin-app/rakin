@@ -174,7 +174,7 @@ function LinkExisting({
 
   const matches = useQuery({
     queryKey: ['people', 'link-search', q],
-    queryFn: () => apiFetch<MemberPage>(membersPath({ q, status: [], plan: [] }, 0)),
+    queryFn: () => apiFetch<MemberPage>(membersPath({ q, status: [], plan: [], program: [] }, 0)),
     enabled: q !== '',
     select: (data) =>
       data.items

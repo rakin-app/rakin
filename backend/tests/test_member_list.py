@@ -1,4 +1,5 @@
-"""The member list (Alumnos): search by name, phone or RUT, filter by status and plan.
+"""The member list (Alumnos): search by name, phone or RUT, filter by status, plan and
+program.
 
 Each test seeds its own gym, so the list it reads holds exactly what it put there:
 the seeded owner (active on "Mensual") plus the people it adds.
@@ -216,6 +217,26 @@ def test_filters_by_status_and_plan(client: TestClient, db: Database, gym: uuid.
     assert listing(client, gym, plan_id=str(kids))["total"] == 2
 
 
+def test_filters_by_program_through_the_plan(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    kids, adults = (
+        as_owner(db, gym, "INSERT INTO program (gym_id, name) VALUES ($1, $2) RETURNING id", gym, n)
+        for n in ("Kids", "Adultos")
+    )
+    kids_monthly, kids_pack = add_plan(db, gym, "Kids mensual"), add_plan(db, gym, "Kids pack")
+    for plan in (kids_monthly, kids_pack):
+        as_owner(db, gym, "UPDATE plan SET program_id = $1 WHERE id = $2", kids, plan)
+    for name, plan in [("Ana", kids_monthly), ("Bruno", kids_pack), ("Carla", mensual(db, gym))]:
+        join(db, gym, add_person(client, gym, name), plan, "active")
+
+    assert names(client, gym, program_id=str(kids)) == ["Ana", "Bruno"]
+    assert names(client, gym, program_id=str(kids), q="bru") == ["Bruno"]
+    assert names(client, gym, program_id=[str(kids), str(adults)]) == ["Ana", "Bruno"]
+    # "Mensual" names no program, so its members are in none.
+    assert names(client, gym, program_id=str(adults)) == []
+
+
 def test_the_row_shows_the_latest_membership_not_cancelled(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
@@ -254,6 +275,7 @@ def test_pages(client: TestClient, gym: uuid.UUID) -> None:
     [
         {"status": "gone"},
         {"plan_id": "not-a-uuid"},
+        {"program_id": "not-a-uuid"},
         {"limit": 0},
         {"limit": 201},
         {"offset": -1},
