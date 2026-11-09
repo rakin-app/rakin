@@ -15,7 +15,10 @@ Each `(job, day)` runs in one transaction that also marks its `job_run` row
 `succeeded`, so the work and the record of it commit together or not at all. A
 failure rolls the work back, marks the row `failed`, logs the exception (which Sentry
 receives when `SENTRY_DSN` is set) and stops the run there: later days, and later jobs
-on the same day, may depend on it. The next run retries that day first.
+on the same day, may depend on it. The next run retries that day first. A job that
+works in pieces (per gym, say) may instead roll back only a piece that broke, to a
+savepoint, and return `False`: the rest of its work commits, and the day is failed,
+logged and retried the same way, so the job must be safe to run again on it.
 
 One runner works at a time, under a Postgres advisory lock; a second one exits
 without doing anything. A `running` row found under the lock is therefore left by a

@@ -12,7 +12,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.domain.billing import overpayment_note
+from app.domain.billing import GENERATE_AHEAD_DAYS, discounted, overpayment_note
 from app.domain.dates import add_months
 from app.domain.ledger import EntryKind, EntryStatus
 from app.domain.membership import MembershipStatus, PlanKind
@@ -20,7 +20,6 @@ from app.domain.rut import check_digit
 from app.seed.data import (
     BANK_ACCOUNT,
     CUSTOM_FIELDS,
-    GENERATE_AHEAD_DAYS,
     GRACE_DAYS,
     GRADING,
     GYM_NAME,
@@ -169,7 +168,7 @@ class _Builder:
                 "cancelled_at": local(self.day(spec.due_in), 20) if cancelled else None,
             }
         )
-        amount = plan.price_clp * (100 - spec.discount_pct) // 100
+        amount = discounted(plan.price_clp, spec.discount_pct)
         for index, period in enumerate(periods):
             self._period(spec, membership_id, payer, index, period, amount)
 
