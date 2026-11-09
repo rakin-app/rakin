@@ -27,6 +27,7 @@ from app.schemas.people import (
     MembershipSummary,
     Person,
     PersonCreate,
+    PersonRef,
     PersonUpdate,
     PhoneConflict,
     PhoneInGym,
@@ -51,14 +52,9 @@ def _fold(sql: str) -> str:
     return f"lower(translate({sql}, 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNaeiouun'))"
 
 
-# Everyone this gym has a record of, except staff who hold no membership here, each
-# with the membership the list shows (`MembershipSummary`). RLS keeps every table to
-# the current gym.
-MEMBERS = """
-    SELECT gp.person_id AS id, gp.name, p.phone, gp.rut,
-           m.id AS membership_id, m.status, m.plan_id, pl.name AS plan_name
-    FROM gym_person gp
-    JOIN person p ON p.id = gp.person_id
+# The membership a list row shows for `gp`, a `gym_person` (`MembershipSummary`):
+# `m` and its plan `pl`.
+SHOWN_MEMBERSHIP = """
     LEFT JOIN LATERAL (
         SELECT id, status, plan_id FROM membership
         WHERE gym_id = gp.gym_id AND person_id = gp.person_id
@@ -66,6 +62,22 @@ MEMBERS = """
         LIMIT 1
     ) m ON true
     LEFT JOIN plan pl ON pl.id = m.plan_id
+"""
+
+# Everyone this gym has a record of, except staff who hold no membership here, each
+# with the membership the list shows and their family (0010). RLS keeps every table to
+# the current gym.
+MEMBERS = f"""
+    SELECT gp.person_id AS id, gp.name, p.phone, gp.rut,
+           m.id AS membership_id, m.status, m.plan_id, pl.name AS plan_name,
+           g.person_id AS guardian_id, g.name AS guardian_name,
+           (SELECT count(*) FROM guardian_link d
+            WHERE d.guardian_person_id = gp.person_id) AS dependents
+    FROM gym_person gp
+    JOIN person p ON p.id = gp.person_id
+    {SHOWN_MEMBERSHIP}
+    LEFT JOIN guardian_link gl ON gl.dependent_person_id = gp.person_id
+    LEFT JOIN gym_person g ON g.gym_id = gl.gym_id AND g.person_id = gl.guardian_person_id
     WHERE m.id IS NOT NULL
        OR NOT EXISTS (SELECT FROM staff s WHERE s.person_id = gp.person_id)
 """
@@ -129,18 +141,32 @@ async def list_people(
             name=row.name,
             phone=row.phone,
             rut=row.rut,
-            membership=None
-            if row.membership_id is None
-            else MembershipSummary(
-                id=row.membership_id,
-                status=row.status,
-                plan_id=row.plan_id,
-                plan_name=row.plan_name,
-            ),
+            membership=shown_membership(row),
+            guardian=None
+            if row.guardian_id is None
+            else PersonRef(id=row.guardian_id, name=row.guardian_name),
+            dependents=row.dependents,
         )
         for row in rows
     ]
     return MemberPage(items=items, total=total or 0)
+
+
+def shown_membership(row: Any) -> MembershipSummary | None:
+    """A row's `SHOWN_MEMBERSHIP` columns, as the API answers them."""
+    if row.membership_id is None:
+        return None
+    return MembershipSummary(
+        id=row.membership_id, status=row.status, plan_id=row.plan_id, plan_name=row.plan_name
+    )
+
+
+async def in_gym(session: AsyncSession, person_id: uuid.UUID) -> bool:
+    """Whether this gym has a record of `person_id`."""
+    found = await session.scalar(
+        text("SELECT EXISTS (SELECT FROM gym_person WHERE person_id = :id)"), {"id": person_id}
+    )
+    return bool(found)
 
 
 async def _get(session: AsyncSession, person_id: uuid.UUID) -> Person:

@@ -15,6 +15,9 @@ export type MemberRow = {
     plan_id: string
     plan_name: string
   } | null
+  // Who pays for them, and how many they pay for.
+  guardian: { id: string; name: string } | null
+  dependents: number
 }
 
 export type MemberPage = { items: MemberRow[]; total: number }

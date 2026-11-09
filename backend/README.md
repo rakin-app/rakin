@@ -84,7 +84,7 @@ async def list_entries(session: LedgerSession) -> list[EntryOut]: ...  # owner, 
 
 It opens one transaction per request and sets `app.gym_id` and `app.person_id` for that transaction only (`set_config('app.gym_id', …, true)`, the bound-parameter form of `SET LOCAL`), so RLS limits every query to the gym and a missed `WHERE` returns nothing. It commits before the response is sent and rolls back if the endpoint raises. The gym comes from `request.state.tenant`, which the session middleware sets (see Sign-in); with none, the request is a 401 and no session is opened. `tests/test_tenancy.py` calls every operation in the OpenAPI schema without a tenant and fails on any that answers something other than 401, outside `PUBLIC_PATHS`.
 
-Roles are per gym: a person's role is their `staff` row in the gym the request acts in, read on every request, so the owner of one gym is a plain member at another. A request whose person lacks the role is a 403; a member, with no `staff` row, gets a 403 from every staff endpoint, and `tests/test_roles.py` calls every operation as one to keep it so. Coaches never see the ledger, and RLS holds them to it too (migration `0006`): for `rakin_app`, `ledger_entry` rows need an owner or admin in `app.person_id`, so an endpoint that took the wrong session still returns a coach no entries. A view over the ledger must be created `WITH (security_invoker = true)` for that to reach it.
+Roles are per gym: a person's role is their `staff` row in the gym the request acts in, read on every request, so the owner of one gym is a plain member at another. A request whose person lacks the role is a 403; a member, with no `staff` row, gets a 403 from every staff endpoint, and `tests/test_roles.py` calls every operation as one to keep it so. Coaches never see the ledger, and RLS holds them to it too (migration `0006`): for `rakin_app`, `ledger_entry` rows need an owner or admin in `app.person_id`, so an endpoint that took the wrong session still returns a coach no entries but their own (migration `0010` lets anyone read the entries of their own memberships and their dependents'). A view over the ledger must be created `WITH (security_invoker = true)` for that to reach it.
 
 A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, which `POST /api/people` calls: it finds or creates the person with that phone and writes the gym's `gym_person` record, and returns `(person_id, joined)`. `joined` is false only when the person was already in this gym, which the API answers with a 409 naming them; a phone known only to other gyms answers exactly like a new one (migration `0004`). The API never reads or writes `person`'s other columns: `rakin_app` may select only `id` and `phone`, and may not update it. `membership` and `staff` reference `gym_person (gym_id, person_id)`, so a gym holds rows only for people it has a record of. The migration's downgrade drops every `gym_person` record; it is for development only.
 
@@ -99,7 +99,7 @@ A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, 
 
 Any staff role may use it (`StaffSession`); a member gets a 403. Phones are normalised to E.164 Chilean mobiles and RUTs to `76123456-0`; anything else is a 422. The phone is set on create and not editable here, since changing it moves the gym's record to another identity.
 
-The list holds everyone the gym has a record of except staff with no membership there. Each row carries `id`, `name`, `phone`, `rut` and the `membership` it shows (`id`, `status`, `plan_id`, `plan_name`), or `null`: the person's latest membership that is not cancelled, else their latest. Its parameters:
+The list holds everyone the gym has a record of except staff with no membership there. Each row carries `id`, `name`, `phone`, `rut`, the `membership` it shows (`id`, `status`, `plan_id`, `plan_name`), or `null`: the person's latest membership that is not cancelled, else their latest; and their family: `guardian` (`id`, `name`) or `null`, and `dependents`, how many they pay for. Its parameters:
 
 | Parameter | Matches |
 | --- | --- |
@@ -109,6 +109,23 @@ The list holds everyone the gym has a record of except staff with no membership 
 | `limit`, `offset` | the page: `limit` 1–200, 50 by default |
 
 Filters combine with AND. Filtering by program waits on class types (#42), which is where programs are defined.
+
+## Guardians and dependents
+
+One payer, N dependents: a parent who pays for their kids, who have no phone ([spec](../docs/product.md#users)). `guardian_link` (migration `0010`) records who answers for whom in one gym, isolated by `gym_id`, so a family one gym records is never seen by another gym that shares the parent or a kid.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/people/{id}/family` | `{"guardian": {id, name} \| null, "dependents": [{id, name}, …]}`; 404 for anyone not in the gym |
+| `POST` | `/api/people/{id}/dependents` | `{"person_id": …}` links someone already in the gym; `{"name", "email"?, "rut"?, "dob"?}` adds a new person with no phone. 201 with the guardian's family |
+| `DELETE` | `/api/people/{id}/dependents/{dependent_id}` | unlinks; both stay in the gym. 204, or 404 if they were not linked |
+| `GET` | `/api/me/dependents` | the signed-in person's dependents, each with the `membership` it shows and a `balance`: `owed_clp`, outstanding on periods already due, and `pending_clp`, payments sent but not validated |
+
+The family routes take any staff role, like the rest of the people API. A dependent has one guardian in a gym, and links are one level deep: a guardian is nobody's dependent and a dependent nobody's guardian. Either refusal is a 409, `{"detail": {"code": "has_guardian"}}` or `{"detail": {"code": "one_level"}}`; linking someone to themselves is a 422. A new dependent has no phone, so there is no identity to find elsewhere: each is a new person, in this gym only.
+
+`/api/me` answers only about the person acting, so any session in a gym may use it, member or staff; it is the one group `tests/test_roles.py` lets a member reach. A guardian reads their dependents' ledger entries through `ledger_entry_own` (migration `0010`), which lets anyone read the entries of their own memberships and their dependents', and nothing more; every other entry and every write stays with an owner or admin (`0006`). `owed_clp` settles each period the way `app.domain.billing` does; `v_balance` (#34) may replace it. Grade and attendance join each dependent once their tables exist (#48, #44).
+
+Every notice about someone goes through `app.contacts.contact_for`, which answers with the guardian's own record in this gym when there is one: kids never receive messages, and may have no phone or email to send to.
 
 ## Plans API
 
@@ -160,14 +177,14 @@ Students and staff sign in with a magic link ([spec](../docs/technical.md#commun
 
 | Route | What it does |
 | --- | --- |
-| `POST /api/auth/link` `{"email": …}` | emails a link to every person a gym has on record at that address (`gym_person.email`) with a membership or staff row there. Always a 202, known address or not; a 429 with `Retry-After` past 5 requests per address or 30 per IP in 15 minutes |
+| `POST /api/auth/link` `{"email": …}` | emails a link to every person a gym has on record at that address (`gym_person.email`) with a membership, a staff row or a dependent there. Always a 202, known address or not; a 429 with `Retry-After` past 5 requests per address or 30 per IP in 15 minutes |
 | `GET /api/auth/callback?token=…` | the page the link opens: an "Entrar" button. It does not spend the link, so a mail scanner that fetches it does no harm |
 | `POST /api/auth/callback` | the button. Spends the link and sets the session cookie, then redirects to `/` |
 | `POST /api/auth/logout` | ends the session and clears the cookie |
 
 A link is a signed token (HMAC with `SECRET_KEY`) that expires after 15 minutes and works once; `auth_link` stores only its SHA-256. The session is a 30-day cookie, `__Host-session`, `HttpOnly`, `Secure`, `SameSite=Lax`, and `auth_session` likewise stores only its hash. Both pages are plain HTML forms with no script, so a link works in any browser tab. Browsers accept `Secure` cookies from `http://localhost`, so sign-in works on the Compose stack as is; open the link on the same host name the app is served on.
 
-On each request with the cookie, the session middleware sets `request.state.person_id` and, when the session has a gym, `request.state.tenant`. It never answers 401 itself: `TenantSession` stays the one place a gym-scoped route refuses. A session ends as soon as its person no longer has a membership or staff row in its gym. A person in exactly one gym signs in to it; a person in several signs in to none yet, and gym routes answer 401 until they pick one (#16).
+On each request with the cookie, the session middleware sets `request.state.person_id` and, when the session has a gym, `request.state.tenant`. It never answers 401 itself: `TenantSession` stays the one place a gym-scoped route refuses. A session ends as soon as its person no longer has a membership, a staff row or a dependent in its gym: a parent who only pays for their kids signs in like a member (migration `0010`). A person in exactly one gym signs in to it; a person in several signs in to none yet, and gym routes answer 401 until they pick one (#16).
 
 Sign-in looks across gyms before any gym is set, which RLS forbids even the owner. Migration `0005` does it in `SECURITY DEFINER` functions owned by `rakin_auth`: `auth_people_by_email`, `auth_gyms_of`, `auth_live_session` and `auth_end_session`. `auth_session` is gym-scoped like any table with a `gym_id`, with inserts open, as on `person`.
 
@@ -206,7 +223,7 @@ make seed                                      # from the repo root, inside Comp
 
 Loading again inserts nothing: every row's id is a UUIDv5 of its natural key, and rows already there are skipped, never updated, which the append-only ledger requires anyway. The first load stores its date in `gym.settings["seed"]["as_of"]`, and later loads build for that date again, ignoring `--today`. To reseed for another date, start from an empty database (`docker compose down -v`).
 
-The loader connects as the owner (`MIGRATION_DATABASE_URL`) with `app.gym_id` set to the demo gym. Ranks and guardian links have no tables yet (#48, #19): ranks live in `data.py`, checked against the grading scheme, and a guardian is the payer (`claimed_by`) of their dependents' payments. Every person gets a `gym_person` row with the same name, email, RUT and date of birth. Every guardian also trains, so the roster's payers are members too. Drop-ins have a plan but no memberships, since a drop-in is a single attendance.
+The loader connects as the owner (`MIGRATION_DATABASE_URL`) with `app.gym_id` set to the demo gym. Ranks have no table yet (#48): they live in `data.py`, checked against the grading scheme. Each kid has a `guardian_link` to the member who pays for them, who is also the payer (`claimed_by`) of the kid's payments; kids have no phone or email. Every person gets a `gym_person` row with the same name, email, RUT and date of birth. Every guardian in the demo also trains, though a guardian need not. Drop-ins have a plan but no memberships, since a drop-in is a single attendance.
 
 ## Nightly jobs
 

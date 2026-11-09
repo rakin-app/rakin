@@ -13,7 +13,9 @@ any database work.
 
 The ledger is closed to coaches at the database too (migration 0006): RLS lets the
 API read or write `ledger_entry` only for an owner or admin in `app.person_id`, so an
-endpoint that took the wrong session still returns no ledger rows to a coach.
+endpoint that took the wrong session still returns no ledger rows to a coach. The one
+exception is read-only and about the person acting: anyone may read the entries of
+their own memberships and their dependents' (migration 0010).
 """
 
 from collections.abc import Awaitable, Callable

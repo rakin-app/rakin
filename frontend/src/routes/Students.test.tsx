@@ -17,8 +17,18 @@ const CAMILA: MemberRow = {
   phone: '+56987654321',
   rut: '7654321-6',
   membership: { id: 'm1', status: 'active', plan_id: 'plan-adults', plan_name: 'Mensual adultos' },
+  guardian: null,
+  dependents: 0,
 }
-const DIEGO: MemberRow = { id: 'p2', name: 'Diego Soto', phone: null, rut: null, membership: null }
+const DIEGO: MemberRow = {
+  id: 'p2',
+  name: 'Diego Soto',
+  phone: null,
+  rut: null,
+  membership: null,
+  guardian: null,
+  dependents: 0,
+}
 const PLANS: Plan[] = [
   { id: 'plan-adults', name: 'Mensual adultos', active: true },
   { id: 'plan-old', name: 'Plan 2024', active: false },
@@ -75,8 +85,8 @@ describe('Alumnos', () => {
 
     const rows = within(await list()).getAllByRole('listitem')
     expect(rows.map((row) => row.textContent)).toEqual([
-      'Camila Rojas+56 9 8765 4321 · 7.654.321-6ActivoMensual adultos',
-      `Diego Soto${copy.noPlan}`,
+      `Camila Rojas+56 9 8765 4321 · 7.654.321-6ActivoMensual adultos${es.admin.family.toggle}`,
+      `Diego Soto${copy.noPlan}${es.admin.family.toggle}`,
     ])
     expect(screen.getByText(copy.count(2))).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: copy.clearFilters })).not.toBeInTheDocument()
