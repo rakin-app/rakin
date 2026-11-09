@@ -92,7 +92,7 @@ async def update_plan(plan_id: uuid.UUID, body: PlanUpdate, session: AdminSessio
     active = changes.pop("active", current.active)
     if not changes and active == current.active:
         return current
-    if changes.get("program_id") is not None:
+    if changes.get("program_id") not in (None, current.program_id):
         await require_program(session, changes["program_id"], "program_id")
 
     # The plan as it would be, checked as a whole against its kind.

@@ -95,7 +95,7 @@ async def update_class_type(
 ) -> ClassType:
     current = await _get(session, class_type_id, lock=True)
     changes = body.model_dump(exclude_unset=True)
-    if "program_id" in changes:
+    if "program_id" in changes and changes["program_id"] != current.program_id:
         await require_program(session, changes["program_id"], "program_id")
     columns = {
         **current.model_dump(include={"name", "program_id", "credit_cost", "active"}),

@@ -2,8 +2,9 @@
 
 A program is a group of students the gym names itself: adults, kids, competition.
 There is no delete: class types and plans point at a program, so it is deactivated
-with `PATCH {"active": false}`. A name is unique in the gym, case ignored: a second
-"Kids" is a 409.
+with `PATCH {"active": false}`. Those already pointing at it keep it; none may newly
+name it until it is active again (a 422, `inactive_program`). A name is unique in the
+gym, case ignored: a second "Kids" is a 409.
 
 Any staff role may read them, coaches included; only an owner or admin may create or
 change one, as for plans. Members may not use it at all.
@@ -51,14 +52,20 @@ async def execute_refusing(
 
 
 async def require_program(session: AsyncSession, program_id: uuid.UUID, field: str) -> None:
-    """A 422 on `field` unless `program_id` is one of this gym's programs."""
-    found = await session.scalar(
-        text("SELECT EXISTS (SELECT FROM program WHERE id = :id)"), {"id": program_id}
+    """A 422 on `field` unless `program_id` is one of this gym's active programs.
+
+    Called only when a plan or class type is newly pointed at a program: one already
+    linked to a program that was deactivated since keeps it."""
+    active = await session.scalar(
+        text("SELECT active FROM program WHERE id = :id"), {"id": program_id}
     )
-    if not found:
-        raise RequestValidationError(
-            [{"type": "value_error", "loc": ("body", field), "msg": "no such program in this gym"}]
-        )
+    if active is None:
+        error = {"type": "unknown_program", "msg": "no such program in this gym"}
+    elif not active:
+        error = {"type": "inactive_program", "msg": "the program is deactivated"}
+    else:
+        return
+    raise RequestValidationError([{**error, "loc": ("body", field)}])
 
 
 async def _get(session: AsyncSession, program_id: uuid.UUID, *, lock: bool = False) -> Program:

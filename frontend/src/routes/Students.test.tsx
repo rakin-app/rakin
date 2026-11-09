@@ -177,7 +177,7 @@ describe('Alumnos', () => {
     expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
       copy.allPrograms,
       'Kids',
-      copy.inactivePlan('Competición'),
+      copy.inactiveProgram('Competición'),
     ])
     await userEvent.selectOptions(select, 'program-kids')
 

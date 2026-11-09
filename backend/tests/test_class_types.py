@@ -382,3 +382,47 @@ def test_upgrade_and_downgrade() -> None:
         )
         assert run(scratch.admin_url, lambda c: c.fetchval(column)) == 0
         migrate(scratch)
+
+
+@pg
+def test_nothing_newly_names_a_deactivated_program(client: TestClient, gym: uuid.UUID) -> None:
+    kids, old = program(client, gym, "Kids"), program(client, gym, "Antiguo")
+    fundamentals = class_type(client, gym, {"name": "F", "program_id": old["id"]}).json()
+    plan = client.post(
+        "/api/plans", json={**MONTHLY, "program_id": old["id"]}, headers=as_gym(gym)
+    ).json()
+    dropin = client.post("/api/plans", json=DROPIN, headers=as_gym(gym)).json()
+    patch(client, gym, f"/api/programs/{old['id']}", {"active": False})
+
+    def refused(response: Any) -> None:
+        assert response.status_code == 422, response.text
+        detail = response.json()["detail"]
+        assert [(e["type"], e["loc"]) for e in detail] == [
+            ("inactive_program", ["body", "program_id"])
+        ]
+
+    refused(class_type(client, gym, {"name": "x", "program_id": old["id"]}))
+    refused(
+        client.post("/api/plans", json={**DROPIN, "program_id": old["id"]}, headers=as_gym(gym))
+    )
+    moved = patch(client, gym, f"/api/class-types/{fundamentals['id']}", {"program_id": kids["id"]})
+    refused(patch(client, gym, f"/api/class-types/{moved.json()['id']}", {"program_id": old["id"]}))
+    refused(patch(client, gym, f"/api/plans/{dropin['id']}", {"program_id": old["id"]}))
+
+    # What already names it keeps it, and may be edited, naming it again or not.
+    kept = patch(client, gym, f"/api/plans/{plan['id']}", {"program_id": old["id"], "price_clp": 1})
+    assert (kept.status_code, kept.json()["program_id"]) == (200, old["id"])
+    other = class_type(client, gym, {"name": "G", "program_id": kids["id"]}).json()
+    patch(client, gym, f"/api/programs/{old['id']}", {"active": True})
+    patch(client, gym, f"/api/class-types/{other['id']}", {"program_id": old["id"]})
+    patch(client, gym, f"/api/programs/{old['id']}", {"active": False})
+    renamed = patch(
+        client, gym, f"/api/class-types/{other['id']}", {"program_id": old["id"], "name": "H"}
+    )
+    assert (renamed.status_code, renamed.json()["program_name"]) == (200, "Antiguo")
+
+
+@pg
+def test_an_unknown_program_says_so(client: TestClient, gym: uuid.UUID) -> None:
+    response = class_type(client, gym, {"name": "x", "program_id": str(uuid.uuid4())})
+    assert [e["type"] for e in response.json()["detail"]] == ["unknown_program"]

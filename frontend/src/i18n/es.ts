@@ -86,6 +86,7 @@ export const es = {
       inactivePlan: (name: string) => `${name} (inactivo)`,
       programLabel: 'Programa',
       allPrograms: 'Todos los programas',
+      inactiveProgram: (name: string) => `${name} (programa inactivo)`,
       clearFilters: 'Limpiar filtros',
       count: (n: number) => (n === 1 ? '1 alumno' : `${n.toLocaleString('es-CL')} alumnos`),
       pickPlan: 'Elegir un plan…',

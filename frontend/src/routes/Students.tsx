@@ -160,7 +160,7 @@ export function Students() {
                 <option value="">{copy.allPrograms}</option>
                 {programs.data.map((program) => (
                   <option key={program.id} value={program.id}>
-                    {program.active ? program.name : copy.inactivePlan(program.name)}
+                    {program.active ? program.name : copy.inactiveProgram(program.name)}
                   </option>
                 ))}
               </select>
