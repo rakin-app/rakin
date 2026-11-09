@@ -1,0 +1,279 @@
+"""An admin validates or rejects a student's transfer proof ("Validar comprobante", #36).
+
+`GET /api/ledger/proofs` is the queue: every pending payment a student (or their
+guardian) claimed with a proof (#35), oldest first, each with what the admin needs to
+decide in one tap: the claimed amount against the period it pays, the proof itself,
+the plan, what else the membership owes, and its latest payments.
+
+Validating settles the period as recording a payment does (`app.api.ledger`): the
+entry turns validated, the period closes once paid in full, and whatever was paid
+beyond the amount due becomes a validated credit adjustment for a later period. A
+period that is already paid in full is a 409: the admin rejects the proof instead.
+
+Rejecting needs a note, which the student is emailed; the period stays open, since a
+rejected entry never counts towards it. Both record the reviewing admin in
+`validated_by` and `validated_at`, the ledger's audit columns (docs/technical.md),
+and both are terminal (migration 0002), so a second review of one proof is a 409.
+
+Owner and admin only (`LedgerSession`); RLS holds a coach to it as well (migration 0006).
+"""
+
+import asyncio
+import logging
+import uuid
+from datetime import date
+from typing import Annotated, Any
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.ledger import CURRENT_PERSON, ENTRY_COLUMNS, locked_period, settled
+from app.api.proofs import send_notice
+from app.contacts import Contact, contact_for
+from app.domain import billing, ledger
+from app.domain.billing import SETTLING_KINDS
+from app.domain.errors import InvalidTransition
+from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
+from app.domain.money import format_clp
+from app.integrations import Integrations, get_integrations
+from app.integrations.blobstore import BlobStore
+from app.integrations.mailer import Email
+from app.roles import LedgerSession
+from app.schemas.ledger import Entry, RecordedPayment
+from app.schemas.proofs import ProofRejection, ProofReview, RecentPayment, ReviewPeriod
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/ledger/proofs", tags=["ledger"])
+
+NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "pending proof not found")
+REVIEWED = HTTPException(status.HTTP_409_CONFLICT, "this proof was already reviewed")
+
+# Every pending payment with a proof, oldest claim first. "Prior balance" counts the
+# membership's other periods already due in the gym's timezone, each less what
+# validated payments and credits settle on it, as the guardian page does (`app.api.me`).
+QUEUE = """
+    SELECT e.id, e.membership_id, m.person_id, gp.name AS person_name,
+           e.amount_clp, e.method, e.claimed_at, cg.name AS claimed_by_name,
+           e.proof_object_key, pl.name AS plan_name, pl.kind AS plan_kind, m.anchor_day,
+           bp.id AS period_id, bp.period_start, bp.period_end, bp.due_date,
+           bp.amount_due_clp, coalesce(paid.amount, 0) AS paid_clp,
+           coalesce(prior.amount, 0) AS prior_balance_clp,
+           coalesce(recent.amounts, '{}') AS recent_amounts,
+           coalesce(recent.paid_at, '{}') AS recent_paid_at
+    FROM ledger_entry e
+    JOIN membership m ON m.id = e.membership_id
+    JOIN plan pl ON pl.id = m.plan_id
+    JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.person_id
+    JOIN gym g ON g.id = m.gym_id
+    JOIN billing_period bp ON bp.id = e.billing_period_id
+    LEFT JOIN gym_person cg ON cg.gym_id = e.gym_id AND cg.person_id = e.claimed_by
+    LEFT JOIN LATERAL (
+        SELECT sum(s.amount_clp)::bigint AS amount FROM ledger_entry s
+        WHERE s.billing_period_id = bp.id AND s.status = :validated
+          AND s.kind = ANY(CAST(:settling AS text[]))
+    ) paid ON true
+    LEFT JOIN LATERAL (
+        SELECT sum(greatest(o.amount_due_clp - coalesce((
+                   SELECT sum(s.amount_clp) FROM ledger_entry s
+                   WHERE s.billing_period_id = o.id AND s.status = :validated
+                     AND s.kind = ANY(CAST(:settling AS text[]))), 0), 0))::bigint AS amount
+        FROM billing_period o
+        WHERE o.membership_id = m.id AND o.id <> bp.id
+          AND o.due_date <= (now() AT TIME ZONE g.timezone)::date
+    ) prior ON true
+    LEFT JOIN LATERAL (
+        SELECT array_agg(r.amount_clp ORDER BY r.at DESC) AS amounts,
+               array_agg(r.at ORDER BY r.at DESC) AS paid_at
+        FROM (SELECT p.amount_clp, coalesce(p.claimed_at, p.created_at) AS at
+              FROM ledger_entry p
+              WHERE p.membership_id = m.id AND p.kind = :payment AND p.status = :validated
+              ORDER BY at DESC LIMIT 3) r
+    ) recent ON true
+    WHERE e.kind = :payment AND e.status = :pending AND e.proof_object_key IS NOT NULL
+"""
+
+QUEUE_ORDER = " ORDER BY e.claimed_at, e.id"
+
+# The proof to review, locked so two admins reviewing it at once settle it once.
+PENDING_PROOF = text(
+    "SELECT id, membership_id, billing_period_id, amount_clp, status, note, claimed_by"
+    " FROM ledger_entry"
+    " WHERE id = :id AND kind = :payment AND proof_object_key IS NOT NULL"
+    " AND billing_period_id IS NOT NULL FOR UPDATE"
+)
+
+REVIEW = text(
+    "UPDATE ledger_entry SET status = :status, note = :note,"
+    f" validated_by = {CURRENT_PERSON}, validated_at = now()"
+    f" WHERE id = :id RETURNING {ENTRY_COLUMNS}"
+)
+
+
+def _params(**extra: Any) -> dict[str, Any]:
+    return {
+        "validated": EntryStatus.VALIDATED.value,
+        "pending": EntryStatus.PENDING.value,
+        "payment": EntryKind.PAYMENT.value,
+        "settling": sorted(k.value for k in SETTLING_KINDS),
+        **extra,
+    }
+
+
+async def _review(row: Any, store: BlobStore) -> ProofReview:
+    stored = await store.stat(row.proof_object_key)
+    paid = min(row.paid_clp, row.amount_due_clp)
+    return ProofReview(
+        id=row.id,
+        membership_id=row.membership_id,
+        person_id=row.person_id,
+        person_name=row.person_name,
+        amount_clp=row.amount_clp,
+        method=row.method,
+        claimed_at=row.claimed_at,
+        claimed_by_name=row.claimed_by_name,
+        proof_url=None if stored is None else store.presign_download(row.proof_object_key),
+        proof_content_type=None if stored is None else stored.content_type,
+        plan_name=row.plan_name,
+        plan_kind=row.plan_kind,
+        anchor_day=row.anchor_day,
+        period=ReviewPeriod(
+            id=row.period_id,
+            period_start=row.period_start,
+            period_end=row.period_end,
+            due_date=row.due_date,
+            amount_due_clp=row.amount_due_clp,
+            paid_clp=paid,
+            outstanding_clp=row.amount_due_clp - paid,
+        ),
+        prior_balance_clp=row.prior_balance_clp,
+        last_payments=[
+            RecentPayment(amount_clp=amount, paid_at=at)
+            for amount, at in zip(row.recent_amounts, row.recent_paid_at, strict=True)
+        ],
+        attendance_30d=None,
+    )
+
+
+@router.get("")
+async def queue(
+    session: LedgerSession, integrations: Annotated[Integrations, Depends(get_integrations)]
+) -> list[ProofReview]:
+    """The proofs waiting for review, oldest first: the admin pages through them."""
+    rows = (await session.execute(text(QUEUE + QUEUE_ORDER), _params())).all()
+    store = integrations.blob_store
+    return list(await asyncio.gather(*(_review(row, store) for row in rows)))
+
+
+async def _pending_proof(session: AsyncSession, entry_id: uuid.UUID) -> Any:
+    row = (
+        await session.execute(PENDING_PROOF, {"id": entry_id, "payment": EntryKind.PAYMENT.value})
+    ).one_or_none()
+    if row is None:
+        raise NOT_FOUND
+    if row.status != EntryStatus.PENDING:
+        raise REVIEWED
+    return row
+
+
+async def _record_review(session: AsyncSession, entry: LedgerEntry, entry_id: uuid.UUID) -> Entry:
+    result = await session.execute(
+        REVIEW, {"id": entry_id, "status": entry.status.value, "note": entry.note}
+    )
+    return Entry.model_validate(dict(result.one()._mapping))
+
+
+@router.post("/{entry_id}/validate")
+async def validate(entry_id: uuid.UUID, session: LedgerSession) -> RecordedPayment:
+    """Validate the proof: its payment counts towards the period, and any overpayment
+    becomes a credit."""
+    # The entry, then its period: a second review of the proof waits on the first and
+    # then finds it reviewed, and a payment recorded for the period settles before or
+    # after this one, never beside it.
+    proof = await _pending_proof(session, entry_id)
+    row, period = await locked_period(session, proof.billing_period_id, proof.membership_id)
+    pending = LedgerEntry(kind=EntryKind.PAYMENT, amount_clp=proof.amount_clp, note=proof.note)
+    try:
+        settlement = billing.validate_payment(period, pending)
+    except InvalidTransition:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "billing period is already paid in full"
+        ) from None
+    payment = await _record_review(session, settlement.entry, entry_id)
+    return await settled(session, row.id, proof.membership_id, payment, settlement)
+
+
+@router.post("/{entry_id}/reject")
+async def reject(
+    entry_id: uuid.UUID,
+    body: ProofRejection,
+    session: LedgerSession,
+    integrations: Annotated[Integrations, Depends(get_integrations)],
+    background: BackgroundTasks,
+) -> Entry:
+    """Reject the proof with a note for the student, who is emailed it. The period
+    stays open."""
+    proof = await _pending_proof(session, entry_id)
+    pending = LedgerEntry(kind=EntryKind.PAYMENT, amount_clp=proof.amount_clp, note=proof.note)
+    entry = await _record_review(session, ledger.reject(pending, body.note), entry_id)
+
+    period = (
+        await session.execute(
+            text(
+                "SELECT bp.period_start, bp.period_end, m.person_id, gp.name AS person_name,"
+                " g.name AS gym_name FROM billing_period bp"
+                " JOIN membership m ON m.id = bp.membership_id"
+                " JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.person_id"
+                " JOIN gym g ON g.id = m.gym_id WHERE bp.id = :id"
+            ),
+            {"id": proof.billing_period_id},
+        )
+    ).one()
+    contact = await contact_for(session, period.person_id)
+    if contact is None or not contact.email:
+        logger.info("proof rejected: no email to send it to", extra={"entry_id": str(entry.id)})
+        return entry
+    try:
+        email = proof_rejected(
+            contact,
+            gym=period.gym_name,
+            amount_clp=entry.amount_clp,
+            period_start=period.period_start,
+            period_end=period.period_end,
+            note=body.note,
+            dependent_name=period.person_name if contact.on_behalf_of else None,
+        )
+    # An address the gym typed wrong must not undo the review.
+    except ValueError:
+        logger.warning("proof rejected not sent", extra={"entry_id": str(entry.id)}, exc_info=True)
+        return entry
+    background.add_task(send_notice, integrations.mailer, email, entry.id, "proof rejected")
+    return entry
+
+
+def proof_rejected(
+    contact: Contact,
+    *,
+    gym: str,
+    amount_clp: int,
+    period_start: date,
+    period_end: date,
+    note: str,
+    dependent_name: str | None,
+) -> Email:
+    """The "proof rejected" notice: which proof, the admin's note, and what to do next."""
+    assert contact.email is not None
+    whose = f" de {dependent_name}" if dependent_name else ""
+    return Email(
+        to=contact.email,
+        subject="Revisa tu comprobante",
+        text=(
+            f"Hola, {contact.name}:\n\n"
+            f"{gym} revisó tu comprobante de {format_clp(amount_clp)}{whose},"
+            f" por el período del {period_start:%d-%m-%Y} al {period_end:%d-%m-%Y},"
+            " y no pudo validarlo.\n\n"
+            f"Nota: {note}\n\n"
+            "El pago sigue pendiente. Puedes subir un nuevo comprobante desde tu página.\n"
+        ),
+    )

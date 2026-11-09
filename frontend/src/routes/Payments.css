@@ -1,0 +1,25 @@
+.payments__review {
+  margin: var(--space-3) var(--space-5) 0;
+}
+
+.payments__review-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  background: var(--color-success);
+  border-radius: var(--radius-md);
+  color: var(--color-inverse-text);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.payments__review-link:hover {
+  color: var(--color-inverse-text);
+}
+
+@media (min-width: 960px) {
+  .payments__review {
+    margin-inline: var(--space-8);
+  }
+}

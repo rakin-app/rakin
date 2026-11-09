@@ -13,7 +13,9 @@ import { AdminLayout } from './layouts/AdminLayout'
 import { MeLayout } from './layouts/MeLayout'
 import { MeHome } from './routes/MeHome'
 import { NotFound } from './routes/NotFound'
+import { Payments } from './routes/Payments'
 import { Students, validateStudentsSearch } from './routes/Students'
+import { ValidateProof } from './routes/ValidateProof'
 
 export type RouterContext = {
   queryClient: QueryClient
@@ -61,7 +63,14 @@ const adminClassesRoute = createRoute({
 const adminPaymentsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'pagos',
-  component: () => <PlaceholderPage title={t.admin.payments.title} />,
+  component: Payments,
+})
+
+// "Validar comprobante": the queue of proofs waiting for review.
+const adminProofReviewRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'pagos/comprobantes',
+  component: ValidateProof,
 })
 
 // /me/*: the student page, reached by magic link.
@@ -79,7 +88,7 @@ const meHomeRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  adminRoute.addChildren([adminTodayRoute, adminStudentsRoute, adminClassesRoute, adminPaymentsRoute]),
+  adminRoute.addChildren([adminTodayRoute, adminStudentsRoute, adminClassesRoute, adminPaymentsRoute, adminProofReviewRoute]),
   meRoute.addChildren([meHomeRoute]),
 ])
 

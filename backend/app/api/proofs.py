@@ -227,7 +227,7 @@ async def claim_payment(
         logger.warning("proof received not sent", extra={"entry_id": str(entry.id)}, exc_info=True)
         return entry
     # After the response, which is after the entry has committed.
-    background.add_task(_send, integrations.mailer, email, entry.id)
+    background.add_task(send_notice, integrations.mailer, email, entry.id, "proof received")
     return entry
 
 
@@ -255,9 +255,10 @@ def proof_received(
     )
 
 
-async def _send(mailer: Mailer, email: Email, entry_id: uuid.UUID) -> None:
+async def send_notice(mailer: Mailer, email: Email, entry_id: uuid.UUID, notice: str) -> None:
+    """Send `email` about `entry_id`; run after the response, once the entry has committed."""
     try:
         await mailer.send(email)
     # After the response: there is no one left to tell but the log.
     except MailDeliveryError:
-        logger.warning("proof received not sent", extra={"entry_id": str(entry_id)}, exc_info=True)
+        logger.warning(f"{notice} not sent", extra={"entry_id": str(entry_id)}, exc_info=True)

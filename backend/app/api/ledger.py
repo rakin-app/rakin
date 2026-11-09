@@ -13,6 +13,7 @@ validated credit adjustment with no period, for a later one to use.
 Owner and admin only (`LedgerSession`); RLS holds a coach to it as well (migration 0006).
 """
 
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
@@ -20,7 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import billing
-from app.domain.billing import SETTLING_KINDS, BillingPeriod
+from app.domain.billing import SETTLING_KINDS, BillingPeriod, Settlement
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.roles import LedgerSession
@@ -50,11 +51,13 @@ INSERT_ENTRY = text(
 )
 
 
-async def _period(session: AsyncSession, body: PaymentRecord) -> tuple[Any, BillingPeriod]:
+async def locked_period(
+    session: AsyncSession, period_id: uuid.UUID, membership_id: uuid.UUID
+) -> tuple[Any, BillingPeriod]:
     """The membership's period, locked until the request ends, and what it has been paid.
 
-    Locked, so two payments recorded at once for one period settle one after the other
-    instead of both finding it open.
+    Locked, so two payments recorded or validated at once for one period settle one
+    after the other instead of both finding it open.
     """
     row = (
         await session.execute(
@@ -63,7 +66,7 @@ async def _period(session: AsyncSession, body: PaymentRecord) -> tuple[Any, Bill
                 " FROM billing_period WHERE id = :id AND membership_id = :membership_id"
                 " FOR UPDATE"
             ),
-            {"id": body.billing_period_id, "membership_id": body.membership_id},
+            {"id": period_id, "membership_id": membership_id},
         )
     ).one_or_none()
     if row is None:
@@ -91,7 +94,7 @@ async def _period(session: AsyncSession, body: PaymentRecord) -> tuple[Any, Bill
     return row, period
 
 
-async def _insert(session: AsyncSession, entry: LedgerEntry, **columns: Any) -> Entry:
+async def insert_entry(session: AsyncSession, entry: LedgerEntry, **columns: Any) -> Entry:
     result = await session.execute(
         INSERT_ENTRY,
         {
@@ -108,7 +111,7 @@ async def _insert(session: AsyncSession, entry: LedgerEntry, **columns: Any) -> 
 
 @router.post("/payments", status_code=status.HTTP_201_CREATED)
 async def record_payment(body: PaymentRecord, session: LedgerSession) -> RecordedPayment:
-    row, period = await _period(session, body)
+    row, period = await locked_period(session, body.billing_period_id, body.membership_id)
     payment = LedgerEntry(
         kind=EntryKind.PAYMENT,
         amount_clp=body.amount_clp,
@@ -122,28 +125,39 @@ async def record_payment(body: PaymentRecord, session: LedgerSession) -> Recorde
             status.HTTP_409_CONFLICT, "billing period is already paid in full"
         ) from None
 
-    recorded = await _insert(
+    recorded = await insert_entry(
         session,
         settlement.entry,
         membership_id=body.membership_id,
         billing_period_id=row.id,
         method=body.method.value,
     )
+    return await settled(session, row.id, body.membership_id, recorded, settlement)
+
+
+async def settled(
+    session: AsyncSession,
+    period_id: uuid.UUID,
+    membership_id: uuid.UUID,
+    payment: Entry,
+    settlement: Settlement,
+) -> RecordedPayment:
+    """Record the credit `settlement` leaves, if any, and the period as `payment` leaves it."""
     credit = None
     if settlement.credit is not None:
-        credit = await _insert(
-            session, settlement.credit, membership_id=body.membership_id, billing_period_id=None
+        credit = await insert_entry(
+            session, settlement.credit, membership_id=membership_id, billing_period_id=None
         )
-    settled = settlement.period
+    period = settlement.period
     return RecordedPayment(
-        payment=recorded,
+        payment=payment,
         credit=credit,
         period=Period(
-            id=row.id,
-            amount_due_clp=settled.amount_due_clp,
-            paid_clp=settled.paid_clp,
-            outstanding_clp=settled.outstanding_clp,
-            closed=settled.closed,
+            id=period_id,
+            amount_due_clp=period.amount_due_clp,
+            paid_clp=period.paid_clp,
+            outstanding_clp=period.outstanding_clp,
+            closed=period.closed,
         ),
     )
 

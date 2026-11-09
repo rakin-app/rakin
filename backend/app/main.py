@@ -13,6 +13,7 @@ from app.api import (
     memberships,
     people,
     plans,
+    proof_review,
     proofs,
 )
 from app.auth import PREFIX, TEXTS, bind_session, build_magic_links
@@ -57,6 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(memberships.router)
     app.include_router(gym.router)
     app.include_router(ledger.router)
+    app.include_router(proof_review.router)
     app.include_router(
         build_router(links, prefix=PREFIX, base_url=settings.public_base_url, texts=TEXTS)
     )

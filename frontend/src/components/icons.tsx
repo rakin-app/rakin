@@ -52,3 +52,19 @@ export function PaymentsIcon() {
     </Icon>
   )
 }
+
+export function ChevronLeftIcon() {
+  return (
+    <Icon width={20} height={20}>
+      <path d="M15 18l-6-6 6-6" />
+    </Icon>
+  )
+}
+
+export function ChevronRightIcon() {
+  return (
+    <Icon width={20} height={20}>
+      <path d="M9 18l6-6-6-6" />
+    </Icon>
+  )
+}

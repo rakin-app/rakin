@@ -145,6 +145,18 @@ Keys are `proofs/<gym_id>/<person_id>/<uuid>`, so a claim takes only a key from 
 
 Migration `0012` holds the database to the same rules. `ledger_entry_claim` lets anyone insert exactly one kind of entry, and only for a membership `ledger_entry_own` lets them read: a `pending` `transfer` `payment`, claimed by `app.person_id`, validated by nobody, with a proof under their own prefix. A unique index on `proof_object_key` means one proof backs one entry. An upload that is never claimed stays in storage; sweeping those is left to the retention job.
 
+### Reviewing proofs
+
+An admin validates or rejects each pending proof in one tap ("Validar comprobante", #36). Owner and admin only (`LedgerSession`).
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/ledger/proofs` | the pending proofs, oldest claim first. Each carries the claim (`amount_clp`, `method`, `claimed_at`, `claimed_by_name`), the `period` it pays (dates, `amount_due_clp`, `paid_clp`, `outstanding_clp`), `proof_url` (a presigned GET) and `proof_content_type`, both `null` if the file is missing, the plan (`plan_name`, `plan_kind`, `anchor_day`), `prior_balance_clp` (outstanding on the membership's other periods already due), `last_payments` (its latest three validated payments, newest first) and `attendance_30d`, `null` until attendance is recorded (#44) |
+| `POST` | `/api/ledger/proofs/{id}/validate` | 200 with `{payment, credit, period}`, as `POST /api/ledger/payments` answers: the entry turns `validated`, the period closes once paid in full, and an overpayment becomes a validated credit adjustment with no period. 409 if the period is already paid in full: reject the proof instead |
+| `POST` | `/api/ledger/proofs/{id}/reject` | `{"note"}`, required: 200 with the `rejected` entry carrying the note. The period stays open. The student, or their guardian, is emailed "Revisa tu comprobante" with the note |
+
+Both record the reviewing admin in `validated_by` and `validated_at`, the ledger's audit columns, and both are terminal (`0002`): a proof already reviewed is a 409, and one that is not a pending proof in this gym a 404. Validating locks the entry and then its period, so two admins reviewing one proof settle it once, and a payment recorded for the period meanwhile settles before or after it, never beside it. The receipt email on validation comes with #53.
+
 ## Plans API
 
 | Method | Path | Does |
