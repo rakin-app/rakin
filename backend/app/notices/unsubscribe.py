@@ -9,6 +9,8 @@ import hashlib
 import hmac
 import uuid
 
+from app.security import constant_time_equals
+
 UNSUBSCRIBE_PATH = "/api/mail/unsubscribe"
 
 
@@ -24,7 +26,7 @@ class UnsubscribeSigner:
     def verify(self, token: str) -> tuple[uuid.UUID, uuid.UUID] | None:
         """The (gym, person) `token` was signed for, or `None` if it was not."""
         body, dot, signature = token.partition(".")
-        if not dot or not hmac.compare_digest(signature, self._signature(body)):
+        if not dot or not constant_time_equals(signature, self._signature(body)):
             return None
         try:
             raw = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))

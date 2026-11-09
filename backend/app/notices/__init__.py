@@ -13,7 +13,9 @@ and is not sent, but recorded as `suppressed`, to someone who used it
 (`app.api.unsubscribe`). Essential ones (sign-in links, proofs, receipts) always go.
 
 `send` never raises for a notice it could not send: it runs after the response, where
-there is no one left to tell, so the outcome goes to `message_log` and the log.
+there is no one left to tell, so the outcome goes to `message_log` and the log. That
+includes a template that cannot render, such as one missing a value: a bug, so it is
+logged as an error (and reaches Sentry), and still recorded as `failed`.
 """
 
 import enum
@@ -28,7 +30,14 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Request
-from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
+from jinja2 import (
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+    TemplateError,
+    Undefined,
+    select_autoescape,
+)
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -80,6 +89,17 @@ def _fecha(value: date) -> str:
     return f"{value:%d-%m-%Y}"
 
 
+def _defined[T, R](filter_: Callable[[T], R]) -> Callable[[T], R]:
+    """`filter_`, failing like any other missing value when given one."""
+
+    def apply(value: T) -> R:
+        if isinstance(value, Undefined):
+            value._fail_with_undefined_error()
+        return filter_(value)
+
+    return apply
+
+
 def environment(directory: Path = TEMPLATES_DIR) -> Environment:
     env = Environment(
         loader=FileSystemLoader(directory),
@@ -90,8 +110,8 @@ def environment(directory: Path = TEMPLATES_DIR) -> Environment:
         lstrip_blocks=True,
         keep_trailing_newline=True,
     )
-    env.filters["clp"] = format_clp
-    env.filters["fecha"] = _fecha
+    env.filters["clp"] = _defined(format_clp)
+    env.filters["fecha"] = _defined(_fecha)
     return env
 
 
@@ -155,17 +175,19 @@ class Notices:
                 await self._record(notice, Outcome.SUPPRESSED)
                 return Outcome.SUPPRESSED
             unsubscribe_url = self.unsubscribe_url(notice.gym_id, notice.person_id)
+        extra = {"template": notice.template.name, "person_id": str(notice.person_id)}
         try:
             email = render(notice, unsubscribe_url=unsubscribe_url, env=self._env)
             await self._mailer.send(email)
+        # A template that cannot render is a bug, not a bad day at the relay.
+        except TemplateError as exc:
+            logger.exception("notice not rendered", extra=extra)
+            await self._record(notice, Outcome.FAILED, error=_error(exc))
+            return Outcome.FAILED
         # An address the gym typed wrong is as unsendable as a relay that said no.
         except (MailDeliveryError, ValueError) as exc:
-            logger.warning(
-                "notice not sent",
-                extra={"template": notice.template.name, "person_id": str(notice.person_id)},
-                exc_info=True,
-            )
-            await self._record(notice, Outcome.FAILED, error=str(exc) or type(exc).__name__)
+            logger.warning("notice not sent", extra=extra, exc_info=True)
+            await self._record(notice, Outcome.FAILED, error=_error(exc))
             return Outcome.FAILED
         await self._record(notice, Outcome.SENT)
         return Outcome.SENT
@@ -213,6 +235,11 @@ class Notices:
                 "notice not recorded",
                 extra={"template": notice.template.name, "outcome": outcome.value},
             )
+
+
+def _error(exc: Exception) -> str:
+    """What `message_log` says went wrong: the error's class, and its message."""
+    return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
 
 
 def get_notices(request: Request) -> Notices:

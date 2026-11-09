@@ -92,9 +92,11 @@ def test_values_are_escaped_in_html_and_left_alone_in_text() -> None:
     assert "Nota: <script>alert(1)</script> & más" in email.text
 
 
-def test_a_missing_value_is_an_error_not_a_blank() -> None:
-    context = {k: v for k, v in PROOF.items() if k != "name"}
-    with pytest.raises(UndefinedError, match="name"):
+@pytest.mark.parametrize("missing", ["name", "amount_clp", "period_start"])
+def test_a_missing_value_is_an_error_not_a_blank(missing: str) -> None:
+    # `amount_clp` and `period_start` go through a filter, which must fail the same way.
+    context = {k: v for k, v in PROOF.items() if k != missing}
+    with pytest.raises(UndefinedError, match=missing):
         render(Notice(PROOF_RECEIVED, "ana@example.cl", PERSON, GYM, context))
 
 
@@ -142,7 +144,9 @@ def test_a_token_names_its_gym_and_person() -> None:
     assert signer.verify(signer.sign(GYM, PERSON)) == (GYM, PERSON)
 
 
-@pytest.mark.parametrize("mangle", ["swap", "other-secret", "no-signature", "garbage", "short"])
+@pytest.mark.parametrize(
+    "mangle", ["swap", "other-secret", "no-signature", "garbage", "short", "non-ascii"]
+)
 def test_a_token_that_was_not_signed_here_is_refused(mangle: str) -> None:
     signer = UnsubscribeSigner(SECRET)
     token = signer.sign(GYM, PERSON)
@@ -153,6 +157,7 @@ def test_a_token_that_was_not_signed_here_is_refused(mangle: str) -> None:
         "no-signature": body,
         "garbage": "!!!.???",
         "short": f"AAAA.{signer._signature('AAAA')}",
+        "non-ascii": f"{body}.é{signature[1:]}",
     }[mangle]
     assert signer.verify(forged) is None
 
@@ -255,6 +260,21 @@ def test_an_address_the_gym_typed_wrong_is_recorded_as_failed(db: Database, gym:
     assert outbox.sent == []
     [row] = logged(db, gym)
     assert (row["status"], row["to_address"]) == ("failed", "ana at example")
+
+
+@pg
+def test_a_template_that_cannot_render_is_recorded_as_failed(db: Database, gym: uuid.UUID) -> None:
+    outbox = Outbox()
+    notice = to_owner(gym)
+    notice = replace(notice, context={k: v for k, v in notice.context.items() if k != "name"})
+
+    assert send(db, notice, outbox) is Outcome.FAILED
+
+    assert outbox.sent == []
+    [row] = logged(db, gym)
+    assert row["status"] == "failed"
+    assert row["error"].startswith("UndefinedError: ")
+    assert "name" in row["error"]
 
 
 @pg
@@ -368,6 +388,7 @@ def test_a_bad_token_or_a_stranger_gets_nothing(
     for path in (
         f"{UNSUBSCRIBE_PATH}/{signed_elsewhere}",
         f"{UNSUBSCRIBE_PATH}/garbage",
+        f"{UNSUBSCRIBE_PATH}/abc.%C3%A9",  # non-ASCII, which `compare_digest` refuses
         unsubscribe_path(db, gym, uuid.uuid4()),  # signed, but not one of the gym's people
     ):
         response = client.request(method, path)
