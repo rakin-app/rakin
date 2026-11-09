@@ -61,7 +61,8 @@ def add_plan(db: Database, gym: uuid.UUID, name: str) -> uuid.UUID:
     plan: uuid.UUID = as_owner(
         db,
         gym,
-        "INSERT INTO plan (gym_id, name, kind, price_clp) VALUES ($1, $2, 'monthly', 1)"
+        "INSERT INTO plan (gym_id, name, kind, price_clp, anchor)"
+        " VALUES ($1, $2, 'monthly', 1, 'signup')"
         " RETURNING id",
         gym,
         name,

@@ -42,7 +42,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `guardian_link` | guardian\_person\_id, dependent\_person\_id | one payer, N dependents |
 | `gym` | id, name, slug, timezone, settings jsonb | settings = channels, grace days, reminder cadence, bank details, grading scheme, custom-field definitions |
 | `staff` | person\_id, gym\_id, role (owner, admin, coach) | roles are per gym; coach role cannot read ledger, refused by the API and by RLS on `ledger_entry` |
-| `plan` | id, gym\_id, name, kind, price\_clp, period\_months, credits, credit\_expiry\_days, active | kind ∈ monthly, prepaid, credits, dropin, trial |
+| `plan` | id, gym\_id, name, kind, price\_clp, anchor, period\_months, credits, credit\_expiry\_days, active | kind ∈ monthly, prepaid, credits, dropin, trial; each kind sets only its own parameters; a trial's free classes and free days are `credits` and `credit_expiry_days`; deactivated, never deleted |
 | `membership` | id, person\_id, gym\_id, plan\_id, status, anchor\_day, started\_at, current\_period\_end, credits\_remaining, discount\_pct | status ∈ trial, active, frozen, lapsed, cancelled |
 | `freeze` | membership\_id, from\_date, to\_date, reason | shifts current\_period\_end by the frozen days |
 | `billing_period` | id, membership\_id, period\_start, period\_end, amount\_due\_clp, due\_date | generated nightly; the thing reminders point at |
