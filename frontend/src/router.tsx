@@ -12,6 +12,7 @@ import { t } from './i18n/es'
 import { AdminLayout } from './layouts/AdminLayout'
 import { MeLayout } from './layouts/MeLayout'
 import { NotFound } from './routes/NotFound'
+import { Students, validateStudentsSearch } from './routes/Students'
 
 export type RouterContext = {
   queryClient: QueryClient
@@ -46,7 +47,8 @@ const adminTodayRoute = createRoute({
 const adminStudentsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'alumnos',
-  component: () => <PlaceholderPage title={t.admin.students.title} />,
+  validateSearch: validateStudentsSearch,
+  component: Students,
 })
 
 const adminClassesRoute = createRoute({

@@ -7,8 +7,9 @@ local default; `tests/test_settings.py` enforces that.
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The repo-root `.env`, shared with Docker Compose. Real environment variables win.
@@ -64,6 +65,20 @@ class Settings(BaseSettings):
 
     payment_rail: Literal["none"] = "none"
     bank_feed: Literal["none"] = "none"
+
+    # The nightly jobs (`app/jobs`): a day's run starts once the day has begun here.
+    jobs_timezone: str = "America/Santiago"
+    # Failed jobs are reported to Sentry when set (`app.sentry`); empty sends nothing.
+    sentry_dsn: str = ""
+
+    @field_validator("jobs_timezone")
+    @classmethod
+    def _known_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError(f"unknown timezone {value!r}") from None
+        return value
 
     @model_validator(mode="after")
     def _no_local_secret_in_production(self) -> "Settings":

@@ -17,6 +17,8 @@ x-backend: &backend
     HEALTHZ_DB_TIMEOUT_SECONDS: ${HEALTHZ_DB_TIMEOUT_SECONDS:-2.0}
     SECRET_KEY: ${SECRET_KEY:-local-only-secret-change-me}
     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+    SENTRY_DSN: ${SENTRY_DSN:-}
+    JOBS_TIMEZONE: ${JOBS_TIMEZONE:-America/Santiago}
     MAILER: ${MAILER:-console}
     MAIL_FROM: ${MAIL_FROM:-Rakin <no-reply@localhost>}
     SMTP_HOST: ${SMTP_HOST:-localhost}
@@ -129,11 +131,12 @@ services:
       migrate:
         condition: service_completed_successfully
 
-  # Background jobs (reminders, nightly reconciliation). There is no job
-  # runner yet, so this only keeps the service slot in place.
+  # The nightly jobs (backend/app/jobs). It checks hourly; a day's jobs run on
+  # the first check after it begins, and a check that finds nothing owed does
+  # nothing. Missed days, after downtime, are caught up in order.
   jobs:
     <<: *backend
-    command: ["sh", "-c", "echo 'no jobs registered yet; idling' && exec sleep infinity"]
+    command: ["python", "-m", "app.jobs.daily", "--every", "3600"]
     depends_on:
       migrate:
         condition: service_completed_successfully
