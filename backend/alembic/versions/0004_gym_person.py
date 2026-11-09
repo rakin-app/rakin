@@ -11,6 +11,10 @@ finds or creates the person with that phone and writes this gym's record of them
 and it answers the same way whether the phone was new or not. It reports only whether
 the person was already in this gym, which the gym can see anyway.
 
+A gym holds a membership or a staff row only for someone it has a record of: both
+reference `gym_person (gym_id, person_id)`, added after the backfill. So every person
+a gym sees through `person_read` is one `GET /api/people/{id}` can answer for.
+
 To make that hold at the database too, `rakin_app` can read only `person.id` and
 `person.phone` (the phone the gym itself entered) and can no longer update `person`.
 The other columns are what the first gym entered, or later the person's own record;
@@ -22,6 +26,11 @@ everyone else. `person_lookup` lets the owner read every person while
 `app.person_lookup` is `on`, which the function sets only around its own lookup. The
 policy names the owner, so the API's role setting it achieves nothing; an owner
 session setting it by hand is a deliberate act, as with `DISABLE TRIGGER` in 0002.
+
+The downgrade is lossy. It drops `gym_person`, so every gym's own record goes, and
+`person` keeps only what the first gym entered. Someone added through the API who has
+no membership or staff row yet stops being visible in any gym. Downgrades are for
+development, not production.
 
 Revision ID: 0004
 Revises: 0003
@@ -57,6 +66,9 @@ def in_current_gym(*tables: str) -> str:
 
 IN_CURRENT_GYM_0003 = in_current_gym("membership", "staff")
 IN_CURRENT_GYM = in_current_gym("gym_person", "membership", "staff")
+
+# The tables whose rows need the gym's record of their person.
+GYM_PERSON_TABLES = ("membership", "staff")
 
 # The columns `rakin_app` may read on `person`.
 VISIBLE_PERSON_COLUMNS = "id, phone"
@@ -98,6 +110,11 @@ def upgrade() -> None:
     """)
     for table in ("person", "membership", "staff"):
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
+    for table in GYM_PERSON_TABLES:
+        op.execute(
+            f"ALTER TABLE {table} ADD CONSTRAINT {table}_gym_person_fkey"
+            " FOREIGN KEY (gym_id, person_id) REFERENCES gym_person (gym_id, person_id)"
+        )
 
     op.execute(f"GRANT SELECT, INSERT, UPDATE ON gym_person TO {APP_ROLE}")
     op.execute("ALTER TABLE gym_person ENABLE ROW LEVEL SECURITY")
@@ -176,4 +193,6 @@ def downgrade() -> None:
         f"CREATE POLICY person_update ON person FOR UPDATE"
         f" USING {IN_CURRENT_GYM_0003} WITH CHECK {IN_CURRENT_GYM_0003}"
     )
+    for table in GYM_PERSON_TABLES:
+        op.execute(f"ALTER TABLE {table} DROP CONSTRAINT {table}_gym_person_fkey")
     op.execute("DROP TABLE gym_person")

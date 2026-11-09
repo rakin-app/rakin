@@ -332,6 +332,35 @@ def test_outside_the_function_the_lookup_opens_nothing_to_the_api(
 
 
 @pg
+@pytest.mark.parametrize("table", ["membership", "staff"])
+def test_a_gym_holds_rows_only_for_people_it_has_a_record_of(
+    db: Database, sur: uuid.UUID, norte: uuid.UUID, table: str
+) -> None:
+    insert = {
+        "membership": "INSERT INTO membership (gym_id, person_id, plan_id, status)"
+        " SELECT $1, $2, id, 'active' FROM plan WHERE gym_id = $1",
+        "staff": "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')",
+    }[table]
+
+    # As the owner, in the gym, so RLS allows the row and only the foreign key refuses.
+    async def query(conn: asyncpg.Connection) -> None:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(norte))
+            person = uuid.uuid4()
+            await conn.execute("INSERT INTO person (id, name) VALUES ($1, 'x')", person)
+            await conn.execute(
+                "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'x')",
+                norte,
+                person,
+            )
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(sur))
+            await conn.execute(insert, sur, person)
+
+    with pytest.raises(asyncpg.ForeignKeyViolationError, match=f"{table}_gym_person_fkey"):
+        run(db.owner_url, query)
+
+
+@pg
 def test_backfill_gives_every_member_and_staff_a_record() -> None:
     with throwaway_database(require_test_database_url()) as db:
         migrate(db, "0003")

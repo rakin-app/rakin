@@ -231,6 +231,9 @@ def test_membership_cannot_use_another_gyms_plan(
         norte_plan = await conn.fetchval("SELECT id FROM plan WHERE gym_id = $1", norte)
         person = await conn.fetchval("INSERT INTO person (name) VALUES ('y') RETURNING id")
         await conn.execute(
+            "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'y')", sur, person
+        )
+        await conn.execute(
             "INSERT INTO membership (gym_id, person_id, plan_id, status)"
             " VALUES ($1, $2, $3, 'active')",
             sur,
@@ -238,7 +241,7 @@ def test_membership_cannot_use_another_gyms_plan(
             norte_plan,
         )
 
-    with pytest.raises(asyncpg.ForeignKeyViolationError):
+    with pytest.raises(asyncpg.ForeignKeyViolationError, match="membership_gym_id_plan_id_fkey"):
         run(db.admin_url, query)
 
 

@@ -154,6 +154,10 @@ def gyms(db: Database) -> Gyms:
             "INSERT INTO person (id, name) VALUES ($1, 'shared'), ($2, 'orphan')", shared, orphan
         )
         await conn.execute(
+            "INSERT INTO gym_person (gym_id, person_id, name) SELECT id, $1, 'shared' FROM gym",
+            shared,
+        )
+        await conn.execute(
             "INSERT INTO membership (gym_id, person_id, plan_id, status)"
             " SELECT gym_id, $1, id, 'active' FROM plan",
             shared,
@@ -276,8 +280,9 @@ def test_a_person_can_be_created_and_joined_in_one_transaction(db: Database, gym
             await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gyms.sur))
             await conn.execute("INSERT INTO person (id, name) VALUES ($1, 'new')", person_id)
             assert await conn.fetch("SELECT FROM person WHERE id = $1", person_id) == []
+            # The gym's record of them is what joins them (migration 0004).
             await conn.execute(
-                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')",
+                "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'new')",
                 gyms.sur,
                 person_id,
             )
