@@ -12,14 +12,15 @@ the email) holds, so finding a row needs the token it hashes.
 Everything sign-in does before a gym is known has to look across gyms, and RLS is
 FORCEd for the owner too. So it goes through `SECURITY DEFINER` functions owned by
 `rakin_auth` (`app.db_bootstrap`), which bypasses RLS and may touch only what they
-need: who an email address belongs to, which gyms a person is in, a live session by
-hash (only while its person still belongs to its gym), and ending one. The API may
-call them and gets back only what sign-in needs.
+need: who an email address belongs to (by each gym's own `gym_person` record), which
+gyms a person is in, a live session by hash (only while its person still belongs to
+its gym), and ending one. The API may call them and gets back only what sign-in
+needs.
 
 Run `python -m app.db_bootstrap` before this migration: it creates `rakin_auth`.
 
-Revision ID: 0004
-Revises: 0003
+Revision ID: 0005
+Revises: 0004
 Create Date: 2026-11-08
 
 """
@@ -28,8 +29,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0004"
-down_revision: str | Sequence[str] | None = "0003"
+revision: str = "0005"
+down_revision: str | Sequence[str] | None = "0004"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -69,12 +70,16 @@ FUNCTIONS = {
 CREATE FUNCTION auth_people_by_email(address text)
 RETURNS TABLE (person_id uuid, name text, email text)
 LANGUAGE sql STABLE {DEFINER} AS $$
-    SELECT p.id, p.name, p.email
-    FROM public.person p
-    WHERE lower(p.email) = lower(btrim(address))
-      AND (EXISTS (SELECT FROM public.membership m WHERE m.person_id = p.id)
-           OR EXISTS (SELECT FROM public.staff s WHERE s.person_id = p.id))
-    ORDER BY p.created_at, p.id
+    -- Each gym's own record of the person (0004), where they have a membership or
+    -- staff row in that gym. One row per person: the oldest matching record.
+    SELECT DISTINCT ON (g.person_id) g.person_id, g.name, g.email
+    FROM public.gym_person g
+    WHERE lower(g.email) = lower(btrim(address))
+      AND (EXISTS (SELECT FROM public.membership m
+                   WHERE m.person_id = g.person_id AND m.gym_id = g.gym_id)
+           OR EXISTS (SELECT FROM public.staff s
+                      WHERE s.person_id = g.person_id AND s.gym_id = g.gym_id))
+    ORDER BY g.person_id, g.created_at
     LIMIT 10
 $$
 """,
@@ -127,7 +132,7 @@ def upgrade() -> None:
     # asyncpg runs one statement per call.
     for statement in TABLES:
         op.execute(statement)
-    op.execute("CREATE INDEX person_email_lower_idx ON person (lower(email))")
+    op.execute("CREATE INDEX gym_person_email_lower_idx ON gym_person (lower(email))")
     op.execute(f"GRANT SELECT, INSERT, UPDATE ON auth_link, auth_session TO {APP_ROLE}")
 
     op.execute("ALTER TABLE auth_session ENABLE ROW LEVEL SECURITY")
@@ -139,7 +144,7 @@ def upgrade() -> None:
     op.execute("CREATE POLICY auth_session_insert ON auth_session FOR INSERT WITH CHECK (true)")
 
     op.execute(f"GRANT USAGE ON SCHEMA public TO {AUTH_ROLE}")
-    op.execute(f"GRANT SELECT ON person, membership, staff TO {AUTH_ROLE}")
+    op.execute(f"GRANT SELECT ON gym_person, membership, staff TO {AUTH_ROLE}")
     op.execute(f"GRANT SELECT, UPDATE ON auth_session TO {AUTH_ROLE}")
     # A new owner needs CREATE on the schema at the moment it takes a function over,
     # and no longer.
@@ -155,7 +160,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     for signature in FUNCTIONS:
         op.execute(f"DROP FUNCTION {signature}")
-    op.execute(f"REVOKE SELECT ON person, membership, staff FROM {AUTH_ROLE}")
+    op.execute(f"REVOKE SELECT ON gym_person, membership, staff FROM {AUTH_ROLE}")
     op.execute(f"REVOKE USAGE ON SCHEMA public FROM {AUTH_ROLE}")
-    op.execute("DROP INDEX person_email_lower_idx")
+    op.execute("DROP INDEX gym_person_email_lower_idx")
     op.execute("DROP TABLE auth_session, auth_link")

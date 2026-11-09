@@ -53,7 +53,7 @@ Sessionmaker = Callable[[], async_sessionmaker[AsyncSession]]
 
 
 class PeopleDirectory:
-    """People by email, across gyms, through the `SECURITY DEFINER` lookups (0004)."""
+    """People by email, across gyms, through the `SECURITY DEFINER` lookups (0005)."""
 
     def __init__(self, sessionmaker: Sessionmaker) -> None:
         self._sessionmaker = sessionmaker
@@ -77,9 +77,9 @@ class PeopleDirectory:
 
 
 class PostgresStore:
-    """`auth_link` and `auth_session`, keyed by token hash (0004).
+    """`auth_link` and `auth_session`, keyed by token hash (0005).
 
-    A session is read and ended before any gym is set, so through the lookups 0004
+    A session is read and ended before any gym is set, so through the lookups 0005
     defines rather than the RLS-scoped table.
     """
 

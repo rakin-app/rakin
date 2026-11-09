@@ -19,7 +19,7 @@ settings, user and password included:
 
 It also creates `rakin_auth`, which cannot log in and does bypass RLS. It owns the
 `SECURITY DEFINER` functions sign-in needs before any gym is known (migration
-0004), holds `SELECT` on what they read and nothing else. The owner is made a member
+0005), with only the privileges those need. The owner is made a member
 so the migration can hand it those functions; that also lets the owner
 `SET ROLE rakin_auth`, a deliberate step past RLS like disabling it on a table.
 

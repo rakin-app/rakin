@@ -50,9 +50,10 @@ class Outbox:
 class People:
     sur: uuid.UUID
     norte: uuid.UUID
-    ana: uuid.UUID  # ana@example.cl, a member of Sur
-    shared: uuid.UUID  # shared@example.cl, a member of both gyms
-    orphan: uuid.UUID  # orphan@example.cl, in no gym
+    ana: uuid.UUID  # Sur's record: Ana, Ana@Example.cl, a member
+    shared: uuid.UUID  # a member of both; Sur has shared@example.cl, Norte another address
+    orphan: uuid.UUID  # Sur has a record, orphan@example.cl, but no membership or staff row
+    legacy: uuid.UUID  # legacy@example.cl only on `person`, which sign-in does not read
 
 
 @pytest.fixture(scope="module")
@@ -62,35 +63,51 @@ def db() -> Iterator[Database]:
         yield database
 
 
+async def add_person(
+    conn: asyncpg.Connection,
+    person: uuid.UUID,
+    records: dict[uuid.UUID, tuple[str, str | None]],
+    *,
+    member: bool = True,
+) -> None:
+    """A person and each gym's (name, email) record of them, as members of those gyms."""
+    await conn.execute("INSERT INTO person (id, name) VALUES ($1, 'x')", person)
+    for gym, (name, email) in records.items():
+        await conn.execute(
+            "INSERT INTO gym_person (gym_id, person_id, name, email) VALUES ($1, $2, $3, $4)",
+            gym,
+            person,
+            name,
+            email,
+        )
+        if member:
+            await conn.execute(
+                "INSERT INTO membership (gym_id, person_id, plan_id, status)"
+                " SELECT gym_id, $1, id, 'active' FROM plan WHERE gym_id = $2",
+                person,
+                gym,
+            )
+
+
 @pytest.fixture(scope="module")
 def people(db: Database) -> People:
     sur, norte = seed_gym(db, "academia-sur"), seed_gym(db, "dojo-norte")
-    ana, shared, orphan = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    ana, shared, orphan, legacy = (uuid.uuid4() for _ in range(4))
 
     # As the superuser, which skips RLS, to write across both gyms at once.
     async def query(conn: asyncpg.Connection) -> None:
-        await conn.execute(
-            "INSERT INTO person (id, name, email) VALUES"
-            " ($1, 'Ana', 'Ana@Example.cl'), ($2, 'Shared', 'shared@example.cl'),"
-            " ($3, 'Orphan', 'orphan@example.cl')",
-            ana,
+        await add_person(conn, ana, {sur: ("Ana", "Ana@Example.cl")})
+        await add_person(
+            conn,
             shared,
-            orphan,
+            {sur: ("Shared", "shared@example.cl"), norte: ("Shared", "s.norte@example.cl")},
         )
-        await conn.execute(
-            "INSERT INTO membership (gym_id, person_id, plan_id, status)"
-            " SELECT gym_id, $1, id, 'active' FROM plan WHERE gym_id = $2",
-            ana,
-            sur,
-        )
-        await conn.execute(
-            "INSERT INTO membership (gym_id, person_id, plan_id, status)"
-            " SELECT gym_id, $1, id, 'active' FROM plan",
-            shared,
-        )
+        await add_person(conn, orphan, {sur: ("Orphan", "orphan@example.cl")}, member=False)
+        await add_person(conn, legacy, {sur: ("Legacy", None)})
+        await conn.execute("UPDATE person SET email = 'legacy@example.cl' WHERE id = $1", legacy)
 
     run(db.admin_url, query)
-    return People(sur, norte, ana, shared, orphan)
+    return People(sur, norte, ana, shared, orphan, legacy)
 
 
 @dataclass
@@ -174,10 +191,19 @@ def test_a_person_in_several_gyms_signs_in_to_no_gym_yet(
     assert harness.client.get("/test/setting").status_code == 401
 
 
-def test_nobody_outside_a_gym_gets_a_link(harness: Harness) -> None:
-    response = harness.client.post("/api/auth/link", json={"email": "orphan@example.cl"})
+@pytest.mark.parametrize("address", ["orphan@example.cl", "legacy@example.cl"])
+def test_only_a_gyms_record_of_a_member_or_staff_gets_a_link(
+    harness: Harness, address: str
+) -> None:
+    response = harness.client.post("/api/auth/link", json={"email": address})
     assert response.status_code == 202
     assert harness.outbox.sent == []
+
+
+def test_either_gyms_record_of_a_shared_person_reaches_them(harness: Harness) -> None:
+    for address in ("shared@example.cl", "s.norte@example.cl"):
+        harness.client.post("/api/auth/link", json={"email": address})
+    assert [e.to for e in harness.outbox.sent] == ["shared@example.cl", "s.norte@example.cl"]
 
 
 def test_the_link_is_stored_hashed_and_spent_once(
@@ -278,21 +304,12 @@ def test_leaving_the_gym_ends_the_session(
     person, address = uuid.uuid4(), f"{uuid.uuid4().hex[:8]}@example.cl"
 
     async def join(conn: asyncpg.Connection) -> None:
-        await conn.execute(
-            "INSERT INTO person (id, name, email) VALUES ($1, 'Leaving', $2)", person, address
-        )
+        await add_person(conn, person, {people.sur: ("Leaving", address)}, member=row != "staff")
         if row == "staff":
             await conn.execute(
                 "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')",
                 people.sur,
                 person,
-            )
-        else:
-            await conn.execute(
-                "INSERT INTO membership (gym_id, person_id, plan_id, status)"
-                " SELECT gym_id, $1, id, 'active' FROM plan WHERE gym_id = $2",
-                person,
-                people.sur,
             )
 
     run(db.admin_url, join)
@@ -327,7 +344,7 @@ def test_the_email_lookup_reads_across_gyms_but_not_beyond_people_in_one(
     db: Database, people: People
 ) -> None:
     lookup = "SELECT * FROM auth_people_by_email($1)"
-    assert run(db.api_url, in_gym(None, "SELECT * FROM person")) == []
+    assert run(db.api_url, in_gym(None, "SELECT id FROM person")) == []
     [ana] = run(db.api_url, in_gym(None, lookup, " ANA@example.CL"))
     assert dict(ana) == {"person_id": people.ana, "name": "Ana", "email": "Ana@Example.cl"}
     assert run(db.api_url, in_gym(None, lookup, "orphan@example.cl")) == []
@@ -376,7 +393,7 @@ def test_rakin_auth_cannot_log_in_and_holds_only_what_the_lookups_read(db: Datab
         ),
     )
     assert {(g["table_name"], g["privilege_type"]) for g in grants} == {
-        ("person", "SELECT"),
+        ("gym_person", "SELECT"),
         ("membership", "SELECT"),
         ("staff", "SELECT"),
         ("auth_session", "SELECT"),
