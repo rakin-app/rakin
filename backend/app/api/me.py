@@ -1,8 +1,8 @@
 """The signed-in person's own side of the gym: what the student page (/me) reads.
 
 Any session in a gym may use it, staff or member, since it answers only about the
-person acting. For now that is their staff role, if any, and a guardian's dependents
-(migration 0010); the rest of the page comes with #64 and #65.
+person acting: their staff role, if any, a guardian's dependents (migration 0010), and
+the student page itself (#65).
 """
 
 import uuid
@@ -14,11 +14,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
+from app.api.proofs import OPEN_PERIODS, payable_params, to_open_period
 from app.domain.billing import SETTLING_KINDS
 from app.domain.dates import local_date
 from app.domain.ledger import EntryKind, EntryStatus
 from app.roles import role_in_gym
 from app.schemas.guardians import Balance, Dependent
+from app.schemas.me import MyPage, MyPayment, NextPayment, NextPaymentStatus
 from app.schemas.people import MyRole
 from app.tenancy import Tenant, TenantSession, current_tenant
 
@@ -46,6 +48,27 @@ DEPENDENTS = f"""
     WHERE gl.guardian_person_id = :guardian
     ORDER BY lower(gp.name), gp.person_id
 """
+
+# The payments on the person's memberships and their dependents', newest first, and by
+# the period paid among those recorded at once. Only a
+# rejection's note is shown: it is written for the student, and other notes are not.
+PAYMENTS = """
+    SELECT e.id, m.person_id, gp.name AS person_name, e.amount_clp, e.status,
+           bp.period_start, e.claimed_at, e.validated_at,
+           CASE WHEN e.status = :rejected THEN e.note END AS note, e.created_at
+    FROM ledger_entry e
+    JOIN membership m ON m.id = e.membership_id
+    JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.person_id
+    LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
+    WHERE e.kind = :payment
+      AND (m.person_id = :me OR m.person_id IN (
+          SELECT g.dependent_person_id FROM guardian_link g WHERE g.guardian_person_id = :me))
+    ORDER BY e.created_at DESC, bp.period_start DESC NULLS LAST, e.id
+    LIMIT :limit
+"""
+
+# How far back "Mis pagos" goes: a year of monthly payments.
+PAYMENTS_SHOWN = 12
 
 
 async def _today(session: AsyncSession, gym_id: uuid.UUID) -> date:
@@ -88,3 +111,55 @@ async def my_dependents(
         )
         for row in rows
     ]
+
+
+@router.get("/page")
+async def my_page(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
+) -> MyPage:
+    """The student page: what is due next and where to pay it, and what was paid."""
+    gym = (
+        await session.execute(
+            text(
+                "SELECT name, timezone, settings -> 'bank_account' AS bank_account"
+                " FROM gym WHERE id = :id"
+            ),
+            {"id": tenant.gym_id},
+        )
+    ).one()
+    name = await session.scalar(
+        text("SELECT name FROM gym_person WHERE person_id = :me"), {"me": tenant.person_id}
+    )
+    today = local_date(datetime.now(UTC), str(gym.timezone))
+
+    first = (await session.execute(text(OPEN_PERIODS), payable_params(tenant))).first()
+    next_payment = None
+    if first is not None:
+        period = to_open_period(first)
+        status: NextPaymentStatus = (
+            "in_review"
+            if period.pending_clp > 0
+            else "overdue"
+            if period.due_date < today
+            else "due"
+        )
+        next_payment = NextPayment(period=period, status=status)
+
+    payments = await session.execute(
+        text(PAYMENTS),
+        {
+            "me": tenant.person_id,
+            "payment": EntryKind.PAYMENT.value,
+            "rejected": EntryStatus.REJECTED.value,
+            "limit": PAYMENTS_SHOWN,
+        },
+    )
+    return MyPage(
+        gym_name=gym.name,
+        timezone=gym.timezone,
+        person_id=tenant.person_id,
+        name=name or "",
+        next_payment=next_payment,
+        bank_account=gym.bank_account,
+        payments=[MyPayment.model_validate(dict(row._mapping)) for row in payments],
+    )
