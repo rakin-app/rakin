@@ -55,6 +55,8 @@ class Seed:
     as_of: date
     gym: Row
     people: list[Row]
+    # The gym's own record of each person (migration 0004): what `person` holds.
+    gym_people: list[Row]
     staff: list[Row]
     plans: list[Row]
     memberships: list[Row]
@@ -65,6 +67,7 @@ class Seed:
         """Each table's rows, in an order the foreign keys accept."""
         yield "gym", [self.gym]
         yield "person", self.people
+        yield "gym_person", self.gym_people
         yield "staff", self.staff
         yield "plan", self.plans
         yield "membership", self.memberships
@@ -309,6 +312,7 @@ def build(as_of: date) -> Seed:
 
     opened = add_months(as_of, -60)
     staff_people = [_person(s.key, s.name, joined=opened, kid=False) for s in STAFF]
+    people = [*staff_people, *builder.people]
     return Seed(
         as_of=as_of,
         gym={
@@ -326,7 +330,17 @@ def build(as_of: date) -> Seed:
             },
             "created_at": local(opened),
         },
-        people=[*staff_people, *builder.people],
+        people=people,
+        gym_people=[
+            {
+                "gym_id": GYM_ID,
+                "person_id": p["id"],
+                **{c: p[c] for c in ("name", "email", "rut", "dob")},
+                "created_at": p["created_at"],
+                "updated_at": p["created_at"],
+            }
+            for p in people
+        ],
         staff=[
             {
                 "gym_id": GYM_ID,

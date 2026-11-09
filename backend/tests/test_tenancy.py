@@ -1,7 +1,7 @@
 """Tenancy: the per-request `app.gym_id`, and two gyms that never see each other.
 
 The app under test is the real one with a test router mounted: its endpoints read
-every gym-scoped table through `TenantSession`. A test middleware stands in for the
+every gym-scoped table through `TenantSession`. `tests.auth.FakeAuth` stands in for the
 auth layer and puts the `X-Test-Gym` header's gym in `request.state.tenant`.
 """
 
@@ -16,20 +16,26 @@ import pytest
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from sqlalchemy import text
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.main import create_app
-from app.tenancy import Tenant, TenantSession
+from app.tenancy import TenantSession
+from tests.auth import FakeAuth, as_gym
 from tests.conftest import UNREACHABLE_DB, make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
-
-GYM_HEADER = b"x-test-gym"
 
 # Paths that act in no gym. Every other operation must answer 401 without a tenant.
 # The local BlobStore's URLs carry their own signature instead of a session.
 PUBLIC_PATHS = {"/healthz", "/api/blobs/{key}"}
 
-TENANT_TABLES = ("gym", "staff", "plan", "membership", "billing_period", "ledger_entry")
+TENANT_TABLES = (
+    "gym",
+    "gym_person",
+    "staff",
+    "plan",
+    "membership",
+    "billing_period",
+    "ledger_entry",
+)
 
 router = APIRouter(prefix="/test")
 
@@ -38,7 +44,11 @@ router = APIRouter(prefix="/test")
 async def rows(table: str, session: TenantSession) -> list[dict[str, Any]]:
     if table not in (*TENANT_TABLES, "person"):
         raise HTTPException(404)
-    result = await session.execute(text(f"SELECT to_jsonb(t) AS row FROM {table} t"))
+    # The API may read only a person's id and phone (migration 0004).
+    columns = "id, phone" if table == "person" else "*"
+    result = await session.execute(
+        text(f"SELECT to_jsonb(t) AS row FROM (SELECT {columns} FROM {table}) t")
+    )
     return [r.row for r in result]
 
 
@@ -72,30 +82,12 @@ async def create_plan(session: TenantSession, fail: bool = False) -> None:
         raise HTTPException(409, "after the insert")
 
 
-class FakeAuth:
-    """The auth layer's job, for the tests: header in, `request.state.tenant` out."""
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http":
-            gym = dict(scope["headers"]).get(GYM_HEADER)
-            if gym is not None:
-                scope.setdefault("state", {})["tenant"] = Tenant(uuid.UUID(gym.decode()))
-        await self.app(scope, receive, send)
-
-
 def tenant_app(database_url: str) -> FastAPI:
     # One pooled connection, so consecutive requests provably share it.
     app = create_app(make_settings(database_url=database_url, db_pool_size=1))
     app.include_router(router)
     app.add_middleware(FakeAuth)
     return app
-
-
-def as_gym(gym_id: uuid.UUID) -> dict[str, str]:
-    return {GYM_HEADER.decode(): str(gym_id)}
 
 
 def unscoped_routes(app: FastAPI) -> list[str]:
@@ -160,6 +152,10 @@ def gyms(db: Database) -> Gyms:
     async def query(conn: asyncpg.Connection) -> None:
         await conn.execute(
             "INSERT INTO person (id, name) VALUES ($1, 'shared'), ($2, 'orphan')", shared, orphan
+        )
+        await conn.execute(
+            "INSERT INTO gym_person (gym_id, person_id, name) SELECT id, $1, 'shared' FROM gym",
+            shared,
         )
         await conn.execute(
             "INSERT INTO membership (gym_id, person_id, plan_id, status)"
@@ -247,27 +243,32 @@ def test_a_write_commits_and_a_failed_request_rolls_back(
 @pytest.mark.parametrize("user", ["api", "owner"])
 def test_no_person_is_visible_without_a_gym(db: Database, gyms: Gyms, user: str) -> None:
     url = db.api_url if user == "api" else db.owner_url
-    assert run(url, in_gym(None, "SELECT * FROM person")) == []
+    assert run(url, in_gym(None, "SELECT id FROM person")) == []
 
 
 @pg
 def test_a_person_in_another_gym_cannot_be_read_by_id(db: Database, gyms: Gyms) -> None:
     norte_owner = run(db.api_url, in_gym(gyms.norte, "SELECT person_id FROM staff"))[0][0]
     assert (
-        run(db.api_url, in_gym(gyms.sur, "SELECT * FROM person WHERE id = $1", norte_owner)) == []
+        run(db.api_url, in_gym(gyms.sur, "SELECT id FROM person WHERE id = $1", norte_owner)) == []
     )
 
 
 @pg
-def test_a_person_in_another_gym_cannot_be_updated(db: Database, gyms: Gyms) -> None:
-    async def rename(conn: asyncpg.Connection) -> str:
-        async with conn.transaction():
-            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gyms.sur))
-            return str(
-                await conn.execute("UPDATE person SET name = 'x' WHERE id = $1", gyms.orphan)
-            )
+def test_no_gym_can_update_a_person(db: Database, gyms: Gyms) -> None:
+    # Not even one of its own: a gym edits its `gym_person` record (migration 0004).
+    rename = "UPDATE person SET name = 'x' WHERE id = $1"
+    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
+        run(db.api_url, in_gym(gyms.sur, rename, gyms.shared))
 
-    assert run(db.api_url, rename) == "UPDATE 0"
+
+@pg
+@pytest.mark.parametrize("column", ["name", "email", "rut", "dob", "created_at"])
+def test_a_gym_reads_only_a_persons_id_and_phone(db: Database, gyms: Gyms, column: str) -> None:
+    # What another gym entered, or when the phone was first seen, would leak.
+    query = f"SELECT {column} FROM person WHERE id = $1"
+    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
+        run(db.api_url, in_gym(gyms.sur, query, gyms.shared))
 
 
 @pg
@@ -279,8 +280,9 @@ def test_a_person_can_be_created_and_joined_in_one_transaction(db: Database, gym
             await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gyms.sur))
             await conn.execute("INSERT INTO person (id, name) VALUES ($1, 'new')", person_id)
             assert await conn.fetch("SELECT FROM person WHERE id = $1", person_id) == []
+            # The gym's record of them is what joins them (migration 0004).
             await conn.execute(
-                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')",
+                "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'new')",
                 gyms.sur,
                 person_id,
             )

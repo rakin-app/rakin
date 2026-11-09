@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import blobs, health
+from app.api import blobs, health, people
 from app.db import create_engine, create_sessionmaker
 from app.integrations import build_integrations
 from app.logging import configure_logging
@@ -30,6 +30,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.integrations = build_integrations(settings)
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
+    app.include_router(people.router)
     if settings.blob_store == "local":
         app.include_router(blobs.router)
     return app

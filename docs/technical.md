@@ -31,11 +31,14 @@ Anything a gym asks for that doesn't fit these three surfaces is either a non-go
 
 ## Domain model
 
-One Postgres schema. `person` is global, but a gym reads only the people with a membership or staff row in it; everything else carries `gym_id` and is isolated by row-level security. `membership` is the join between a person and a gym, and the ledger, attendance and grades hang off it.
+One Postgres schema. `person` is the global identity, one row per phone; what a gym knows about someone lives in `gym_person`, that gym's own record of them. Everything but `person` carries `gym_id` and is isolated by row-level security, and a gym reads only its own people's `person.id` and `person.phone`. `membership` is the join between a person and a gym's plan, and the ledger, attendance and grades hang off it.
+
+Adding someone by a phone another gym already has attaches the existing person, and the gym cannot tell: the answer is the same as for a new phone, and it holds only what this gym entered. Two gyms sharing a member each keep and edit their own name, email, RUT and date of birth for them, so a phone typed in one gym never reveals another gym's record or memberships.
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `person` | id, phone (E.164, unique), email, name, rut, dob | global; phone is the identity because it is what WhatsApp uses |
+| `person` | id, phone (E.164, unique), email, name, rut, dob | global; phone is the identity because it is what WhatsApp uses; email, name, rut and dob are the person's own record, never shown to a gym |
+| `gym_person` | gym\_id, person\_id, name, email, rut, dob, created\_at, updated\_at | a gym's own record of a person; one per gym and person, edited only by that gym |
 | `guardian_link` | guardian\_person\_id, dependent\_person\_id | one payer, N dependents |
 | `gym` | id, name, slug, timezone, settings jsonb | settings = channels, grading scheme, custom-field definitions, reminder cadence |
 | `staff` | person\_id, gym\_id, role (owner, admin, coach) | coach role cannot read ledger |
