@@ -34,14 +34,14 @@ x-backend: &backend
     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?the URL browsers reach the app at}
     SENTRY_DSN: ${SENTRY_DSN:-}
     JOBS_TIMEZONE: ${JOBS_TIMEZONE:-America/Santiago}
-    # SES over SMTP: the region's email-smtp endpoint and SMTP credentials.
+    # Resend over SMTP: smtp.resend.com, user `resend`, an API key as the password.
     MAILER: ${MAILER:-smtp}
-    MAIL_FROM: ${MAIL_FROM:?a sender SES has verified}
-    SMTP_HOST: ${SMTP_HOST:?email-smtp.<region>.amazonaws.com}
+    MAIL_FROM: ${MAIL_FROM:?a sender on a domain Resend has verified}
+    SMTP_HOST: ${SMTP_HOST:?smtp.resend.com}
     SMTP_PORT: ${SMTP_PORT:-587}
     SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
-    SMTP_USERNAME: ${SMTP_USERNAME:?SES SMTP username}
-    SMTP_PASSWORD: ${SMTP_PASSWORD:?SES SMTP password}
+    SMTP_USERNAME: ${SMTP_USERNAME:?resend}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:?a Resend API key with sending access}
     SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10.0}
     MESSENGER: ${MESSENGER:-wame}
     PAYMENT_RAIL: ${PAYMENT_RAIL:-none}

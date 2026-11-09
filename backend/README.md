@@ -36,7 +36,7 @@ Every external service sits behind an interface in `app/integrations`, and a set
 
 | Interface | Setting | Implementations (default first) |
 | --- | --- | --- |
-| `Mailer` | `MAILER` | `console`: logs each message, sends nothing · `smtp`: any SMTP server (`SMTP_*`, `MAIL_FROM`) |
+| `Mailer` | `MAILER` | `console`: logs each message, sends nothing · `smtp`: any SMTP server (`SMTP_*`, `MAIL_FROM`); hosted Rakin uses Resend's (`smtp.resend.com`) |
 | `Messenger` | `MESSENGER` | `wame`: a `wa.me` link the admin sends from their own phone |
 | `BlobStore` | `BLOB_STORE` | `local`: files under `BLOB_LOCAL_DIR` · `s3`: any S3-compatible store (`S3_*`) |
 | `PaymentRail` | `PAYMENT_RAIL` | `none`: no online payment; students transfer and upload a proof |
@@ -48,7 +48,7 @@ Uploads take only the types a transfer proof can be (`ALLOWED_CONTENT_TYPES`: JP
 
 With `BLOB_STORE=s3` the browser PUTs to `S3_PUBLIC_ENDPOINT_URL`, another origin than the app's, so the bucket needs a CORS rule allowing `PUT` (with a `Content-Type` header) and `GET` from `PUBLIC_BASE_URL`. `python -m app.blob_cors` prints that rule, `--apply` sets it through `PutBucketCors` (which Garage, R2 and S3 all take; Garage's CLI has no CORS command, so `garage-init` does not), and `--check` sends the browser's preflight and reports the answer. Setting it needs a key allowed to change the bucket: on Garage the api's key is (`garage-init` makes it the owner), on R2 or S3 pass an admin key for that run ([deploy.md](../docs/deploy.md#first-deploy-only-the-buckets-cors-rule)). The `local` store is same-origin and needs none.
 
-`tests/integrations` is the contract: each interface's tests run against every implementation, and a new one (SES, the WhatsApp Business API, Fintoc) joins the parametrised list and must pass them. The `BlobStore` contract runs against real Garage, since most of it is about what the server refuses.
+`tests/integrations` is the contract: each interface's tests run against every implementation, and a new one (the WhatsApp Business API, Fintoc) joins the parametrised list and must pass them. The `BlobStore` contract runs against real Garage, since most of it is about what the server refuses.
 
 ## Database roles
 
@@ -140,6 +140,7 @@ A student who paid by transfer uploads the proof, and the payment waits, pending
 | `POST` | `/api/me/payments` | `{"billing_period_id", "amount_clp", "proof_key"}`: 201 with a `pending` `transfer` payment, `claimed_by` the person acting and `proof_object_key` the key. 422 if the key is not one of the person's own uploads or the file is not there, 404 for a period that is not theirs or a dependent's, 409 for a period paid in full or a proof already claimed |
 | `GET` | `/api/ledger/pending` | `{"count"}`: payments waiting for review in the gym, the admin's badge. Owner and admin only |
 | `GET` | `/api/me/role` | `{"role"}`: the signed-in person's staff role here, `owner`, `admin` or `coach`, or `null` for a member. The admin nav asks for the pending count only for an owner or admin, so a coach never polls a 403 |
+| `GET` | `/api/me/page` | the student page, "Mi página" (#65): `gym_name`, `timezone`, `person_id`, `name`; `next_payment`, the first of `/api/me/periods` with a `status` (`in_review` when a proof claims it, `overdue` past its due date, else `due`), or `null` when nothing is owed; the gym's `bank_account` (`null` until set); and `payments`, the person's and their dependents' payment entries, newest first, at most 12, each with its `status`, `period_start`, `claimed_at`, `validated_at` and, for a rejection only, the admin's `note`. Belt and attendance join it with their tables (#48, #44) |
 
 Keys are `proofs/<gym_id>/<person_id>/<uuid>`, so a claim takes only a key from the person's own prefix, and the API checks with `stat` that the file arrived before it records anything: a failed or abandoned upload leaves no pending entry. A claim does not settle the period; validating it does (#36). `amount_clp` is capped at the price ceiling (100,000,000), not at what is outstanding: an overpayment is allowed and becomes a credit when validated. The browser names the type from the file's extension when the picker gives none, as a desktop Chrome does for `.heic`. After the entry commits, `app.contacts.contact_for` decides who gets the "Recibimos tu comprobante" email: the student, or their guardian for a dependent. A failed send is logged and never undoes the claim.
 
@@ -156,6 +157,16 @@ An admin validates or rejects each pending proof in one tap ("Validar comprobant
 | `POST` | `/api/ledger/proofs/{id}/reject` | `{"note"}`, required: 200 with the `rejected` entry carrying the note. The period stays open. The student, or their guardian, is emailed "Revisa tu comprobante" with the note. A note the claim already carried is kept ahead of it, as `<claim note> — rechazado: <note>`; the email carries the admin's note only |
 
 Both record the reviewing admin in `validated_by` and `validated_at`, the ledger's audit columns, and both are terminal (`0002`): a proof already reviewed is a 409, and one that is not a pending proof in this gym a 404. Validating locks the membership, its period and then the entry, the order recording a payment and the nightly `lapse` job take them in: a lapse run waits for it, a payment recorded for the period meanwhile settles before or after it, never beside it, and two admins reviewing one proof settle it once. The receipt email on validation comes with #53.
+
+### A membership's ledger
+
+The member detail ("Ficha de alumno", #60) reads one membership's money. Owner and admin only (`LedgerSession`); a coach sees the member and their plan through the people and memberships APIs, never this.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/ledger/memberships/{id}` | `{open_periods, owed_clp, entries}`. `open_periods`: every period validated payments and credit leave short, oldest first (the one a payment settles next), each with dates, `amount_due_clp`, `paid_clp`, `outstanding_clp`, `due` (due today or before in the gym's timezone) and `days_overdue` (0 on or before the due date). `owed_clp`: what the `due` ones still owe. `entries`: the membership's latest 100 entries, newest first, each with its `kind`, `status`, `amount_clp`, `method`, the `period_start` of its period (`null` for a carried credit), `note`, and who reviewed it (`validated_by_name`, `validated_at`, `null` while pending). 404 for a membership not in this gym |
+
+A pending claim counts towards nothing until it is validated, as everywhere else (`app.domain.billing`).
 
 ## Plans API
 

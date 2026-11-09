@@ -29,10 +29,9 @@ from app.api.ledger import ENTRY_COLUMNS
 from app.contacts import Contact, contact_for
 from app.domain.billing import SETTLING_KINDS
 from app.domain.ledger import EntryKind, EntryStatus
-from app.domain.money import format_clp
 from app.integrations import Integrations, get_integrations
 from app.integrations.blobstore import ALLOWED_CONTENT_TYPES, MAX_UPLOAD_BYTES
-from app.integrations.mailer import Email, MailDeliveryError, Mailer
+from app.notices import PROOF_RECEIVED, Notice, Notices, get_notices
 from app.schemas.ledger import Entry, Method
 from app.schemas.proofs import OpenPeriod, ProofClaim, ProofUpload, ProofUploadRequest
 from app.tenancy import Tenant, TenantSession, current_tenant
@@ -97,7 +96,7 @@ CLAIM = text(
 )
 
 
-def _params(tenant: Tenant, **extra: Any) -> dict[str, Any]:
+def payable_params(tenant: Tenant, **extra: Any) -> dict[str, Any]:
     return {
         "me": tenant.person_id,
         "validated": EntryStatus.VALIDATED.value,
@@ -108,7 +107,7 @@ def _params(tenant: Tenant, **extra: Any) -> dict[str, Any]:
     }
 
 
-def _open_period(row: Any) -> OpenPeriod:
+def to_open_period(row: Any) -> OpenPeriod:
     paid = min(row.paid_clp, row.amount_due_clp)
     return OpenPeriod(
         id=row.id,
@@ -132,8 +131,8 @@ async def open_periods(
 ) -> list[OpenPeriod]:
     """What the signed-in person can pay in this gym, theirs and their dependents',
     earliest due first."""
-    rows = await session.execute(text(OPEN_PERIODS), _params(tenant))
-    return [_open_period(row) for row in rows]
+    rows = await session.execute(text(OPEN_PERIODS), payable_params(tenant))
+    return [to_open_period(row) for row in rows]
 
 
 @router.post("/proofs", status_code=status.HTTP_201_CREATED)
@@ -161,6 +160,7 @@ async def claim_payment(
     tenant: Annotated[Tenant, Depends(current_tenant)],
     session: TenantSession,
     integrations: Annotated[Integrations, Depends(get_integrations)],
+    notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> Entry:
     """Record a pending transfer for one period, backed by an uploaded proof."""
@@ -177,7 +177,7 @@ async def claim_payment(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "proof not uploaded")
 
     row = (
-        await session.execute(text(ONE_PERIOD), _params(tenant, id=body.billing_period_id))
+        await session.execute(text(ONE_PERIOD), payable_params(tenant, id=body.billing_period_id))
     ).one_or_none()
     if row is None:
         raise NOT_FOUND
@@ -213,52 +213,44 @@ async def claim_payment(
     if contact is None or not contact.email:
         logger.info("proof received: no email to send it to", extra={"entry_id": str(entry.id)})
         return entry
-    try:
-        email = proof_received(
-            contact,
-            gym=str(gym_name),
-            amount_clp=entry.amount_clp,
-            period_start=row.period_start,
-            period_end=row.period_end,
-            dependent_name=row.person_name if contact.on_behalf_of else None,
-        )
-    # An address the gym typed wrong must not cost the student their claim.
-    except ValueError:
-        logger.warning("proof received not sent", extra={"entry_id": str(entry.id)}, exc_info=True)
-        return entry
-    # After the response, which is after the entry has committed.
-    background.add_task(send_notice, integrations.mailer, email, entry.id, "proof received")
+    notice = proof_received(
+        contact,
+        gym_id=tenant.gym_id,
+        gym=str(gym_name),
+        amount_clp=entry.amount_clp,
+        period_start=row.period_start,
+        period_end=row.period_end,
+        dependent_name=row.person_name if contact.on_behalf_of else None,
+    )
+    # After the response, which is after the entry has committed. An address the gym
+    # typed wrong is a failed send in `message_log`, and must not cost the claim.
+    background.add_task(notices.send, notice)
     return entry
 
 
 def proof_received(
     contact: Contact,
     *,
+    gym_id: uuid.UUID,
     gym: str,
     amount_clp: int,
     period_start: date,
     period_end: date,
     dependent_name: str | None,
-) -> Email:
+) -> Notice:
     """The "proof received" notice: what was claimed, and that someone will review it."""
     assert contact.email is not None
-    whose = f" de {dependent_name}" if dependent_name else ""
-    return Email(
+    return Notice(
+        PROOF_RECEIVED,
         to=contact.email,
-        subject="Recibimos tu comprobante",
-        text=(
-            f"Hola, {contact.name}:\n\n"
-            f"Recibimos tu comprobante de {format_clp(amount_clp)}{whose} en {gym},"
-            f" por el período del {period_start:%d-%m-%Y} al {period_end:%d-%m-%Y}.\n\n"
-            "Lo revisaremos y te avisaremos cuando el pago quede validado.\n"
-        ),
+        person_id=contact.person_id,
+        gym_id=gym_id,
+        context={
+            "name": contact.name,
+            "gym": gym,
+            "amount_clp": amount_clp,
+            "period_start": period_start,
+            "period_end": period_end,
+            "dependent_name": dependent_name,
+        },
     )
-
-
-async def send_notice(mailer: Mailer, email: Email, entry_id: uuid.UUID, notice: str) -> None:
-    """Send `email` about `entry_id`; run after the response, once the entry has committed."""
-    try:
-        await mailer.send(email)
-    # After the response: there is no one left to tell but the log.
-    except MailDeliveryError:
-        logger.warning(f"{notice} not sent", extra={"entry_id": str(entry_id)}, exc_info=True)

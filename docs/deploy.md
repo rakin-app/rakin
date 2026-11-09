@@ -57,7 +57,7 @@ Generate the deploy key on your machine, not the host: `ssh-keygen -t ed25519 -f
 ## 2. DNS, mail and storage
 
 - **DNS** (Cloudflare): an `A` (and `AAAA`) record `staging` → the VPS, **DNS only** (grey cloud), so Caddy terminates TLS and gets its certificate from Let's Encrypt over port 80.
-- **SES**: verify `rakin.app` (DKIM records in Cloudflare), request production access, and create SMTP credentials. They go in `SMTP_USERNAME` / `SMTP_PASSWORD`, with `SMTP_HOST=email-smtp.<region>.amazonaws.com`.
+- **Resend**: add and verify `rakin.app` (its DKIM, SPF and return-path records in Cloudflare, DNS only), then create an API key with sending access for that domain. It goes in `SMTP_PASSWORD`; `SMTP_HOST=smtp.resend.com`, `SMTP_USERNAME=resend`, and port 587 with `SMTP_SECURITY=starttls`, as `deploy/.env.example` has them. There is no sandbox to leave: a verified domain sends to anyone.
 - **Object storage**: a bucket in R2 (or S3), with object versioning on where the provider offers it. Create a key scoped to that bucket with object read and write for the api (`S3_*` in `.env`), and separately an admin token for the one-off CORS step below.
 - **Sentry**: a project for the api; its DSN goes in `SENTRY_DSN`. The api and the jobs both report there.
 

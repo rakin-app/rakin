@@ -52,7 +52,8 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `attendance` | session\_id, membership\_id, marked\_by, marked\_at, credits\_consumed | unique (session, membership) |
 | `grade_event` | membership\_id, rank\_key, sub\_rank, awarded\_at, awarded\_by, note | promotion log |
 | `person_field_value` | person\_id, gym\_id, field\_key, value jsonb | custom fields; sensitive keys encrypted |
-| `message_log` | gym\_id, person\_id, channel, template, sent\_at, payload jsonb | audit of every reminder and notice |
+| `message_log` | gym\_id, person\_id, channel, template, to\_address, status, error, sent\_at, payload jsonb | audit of every email sent: one row per attempt, status ∈ sent, failed, suppressed; payload is what the template was rendered from, never a magic link's URL; sign-in links belong to no gym and have no gym\_id; append-only |
+| `mail_unsubscribe` | gym\_id, person\_id, created\_at | one-click unsubscribe from that gym's non-essential notices |
 | `badge_token` | membership\_id, token, issued\_at, expires\_at | signed QR for cross-gym verification |
 | `agreement` | gym\_a\_id, gym\_b\_id, rule jsonb, active | v2: reciprocal terms |
 | `visit` | person\_id, host\_gym\_id, home\_membership\_id, agreement\_id, at | v2: cross-gym visit log |
@@ -117,7 +118,9 @@ Email is the system of record; WhatsApp is where the reminder gets read. Neither
 | Announcements | email + copy-to-WhatsApp text | admin sends | one message to a program or everyone |
 | Inactive nudge | wa.me from retention list | 14 / 30 days without attendance | automation is v2 |
 
-**Email:** Amazon SES by default, SMTP fallback for self-hosters. Verified domain, DKIM, SPF, DMARC `p=quarantine` from day one; transactional only, no marketing content, one-click unsubscribe for non-essential notices. Expected cost: cents per gym per month.
+**Email:** hosted Rakin sends from `@rakin.app` through [Resend](https://resend.com)'s SMTP relay (`smtp.resend.com`, user `resend`, the API key as password), with the same `SmtpMailer` self-hosters point at any SMTP server; no provider SDK. Resend rather than Amazon SES because it needs no AWS account just for mail and no sandbox approval before the first real send. Verified domain, DKIM, SPF, DMARC `p=quarantine` from day one; transactional only, no marketing content. Expected cost: cents per gym per month.
+
+Every email is a template in `backend/app/notices/templates`, Spanish text and HTML from the same values, and every attempt is a `message_log` row with its outcome. Notices are essential (sign-in links, statements, proofs, receipts) or not (plan events, announcements). A non-essential one carries a one-click unsubscribe link in its footer and as `List-Unsubscribe` with `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058); the link is a signed token for the gym and the person, opening it shows a button, and a `POST` (the button, or the mail client's one click) records a `mail_unsubscribe` row. From then on that gym's non-essential notices to them are recorded as `suppressed` instead of sent. Essential notices always go.
 
 **WhatsApp:** v1 uses `https://wa.me/<phone>?text=<template>` links so the admin sends from their own phone with zero Meta involvement. v2 adds the WhatsApp Business API as an opt-in plugin: requires Meta business verification and template approval; budget ≈ USD 0.05 per template message, so ≈ USD 7/month for a 70-student gym at 2 reminders each.
 
@@ -136,7 +139,7 @@ flowchart LR
       A --> P
     end
     A -->|presigned PUT| S[(S3-compatible storage)]
-    A --> E[SES / SMTP]
+    A --> E[Resend SMTP / any SMTP]
     A --> Y[Sentry]
     A -. v2 .-> B[BankFeed: Fintoc / Khipu]
     A -. v2 .-> W[WhatsApp Business API]
@@ -152,7 +155,7 @@ Caddy terminates TLS and serves the built SPA; FastAPI is the only thing that ta
 | Frontend | one Vite SPA, `/admin` and `/me` route trees, TanStack Query, `vite-plugin-pwa`, Spanish strings in one i18n file | one build, PWA for free, English later |
 | Jobs | APScheduler or system cron running `python -m app.jobs.daily`; `job_run` table for idempotency | three jobs do not justify Celery or Redis |
 | Files | presigned PUT to S3-compatible storage; key stored on `ledger_entry` | proofs never pass through the API process |
-| Email | SES via provider interface; SMTP fallback | self-host without AWS |
+| Email | SMTP behind the `Mailer` interface: Resend's relay hosted, any SMTP server self-hosted | one implementation for both; no AWS account or sandbox approval just for mail |
 | Time | UTC in the database, `gym.timezone` for all due-date math | Chile shifts DST; naive local arithmetic will drift |
 | Money | integer CLP, no decimals | CLP has no cents; avoids float bugs |
 | Reporting | SQL views (`v_overdue`, `v_balance`, `v_inactive`, `v_monthly_income`) | no warehouse, no dbt, no DuckDB in year one |

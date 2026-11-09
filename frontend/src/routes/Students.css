@@ -111,8 +111,14 @@
 }
 
 .students__name {
+  color: var(--color-text);
   font-weight: var(--font-weight-semibold);
   overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.students__name:hover {
+  color: var(--color-accent);
 }
 
 .students__details,

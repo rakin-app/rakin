@@ -24,6 +24,7 @@ from app.integrations.mailer import Email
 from app.magiclink import COOKIE_NAME, Session
 from app.magiclink.tokens import hash_token
 from app.main import create_app
+from app.notices import Notices
 from tests.conftest import require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 from tests.test_tenancy import router as tenant_routes
@@ -131,7 +132,14 @@ def harness(db: Database, people: People) -> Iterator[Harness]:
     app: FastAPI = create_app(db.settings.model_copy(update={"public_base_url": BASE_URL}))
     app.include_router(tenant_routes)
     outbox = Outbox()
-    app.state.magic_links.sender = MailSender(outbox)
+    app.state.magic_links.sender = MailSender(
+        Notices(
+            outbox,
+            lambda: app.state.sessionmaker,
+            base_url=BASE_URL,
+            secret_key=db.settings.secret_key,
+        )
+    )
     with TestClient(app, base_url=BASE_URL, follow_redirects=False) as client:
         yield Harness(client, outbox)
 
@@ -179,6 +187,27 @@ def test_the_email_is_in_spanish_and_carries_the_link(harness: Harness) -> None:
     assert email.subject == "Tu enlace para entrar a Rakin"
     assert email.text.startswith("Hola, Ana:")
     assert f"{BASE_URL}/api/auth/callback?token=" in email.text
+    assert email.html is not None and "Entrar a Rakin" in email.html
+
+
+def test_each_link_is_logged_in_no_gym_without_its_url(
+    harness: Harness, people: People, db: Database
+) -> None:
+    harness.client.post("/api/auth/link", json={"email": "ana@example.cl"})
+
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT * FROM message_log WHERE person_id = $1 ORDER BY sent_at DESC LIMIT 1",
+            people.ana,
+        ),
+    )
+    [row] = [dict(r) for r in rows]
+    assert (row["gym_id"], row["template"], row["status"]) == (None, "magic_link", "sent")
+    assert row["to_address"] == "Ana@Example.cl"
+    assert "token" not in row["payload"] and "url" not in row["payload"]
+    # No gym reads it, Ana's own included.
+    assert run(db.api_url, in_gym(people.sur, "SELECT 1 FROM message_log")) == []
 
 
 def test_a_person_in_several_gyms_signs_in_to_no_gym_yet(

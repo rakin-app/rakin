@@ -16,6 +16,7 @@ from app.api import (
     plans,
     proof_review,
     proofs,
+    unsubscribe,
 )
 from app.auth import PREFIX, TEXTS, bind_session, build_magic_links
 from app.db import create_engine, create_sessionmaker
@@ -64,6 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(gym.router)
     app.include_router(ledger.router)
     app.include_router(proof_review.router)
+    app.include_router(unsubscribe.router)
     app.include_router(
         build_router(links, prefix=PREFIX, base_url=settings.public_base_url, texts=TEXTS)
     )

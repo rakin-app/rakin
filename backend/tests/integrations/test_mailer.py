@@ -154,7 +154,37 @@ def test_each_message_goes_out_once(harness: Harness) -> None:
 )
 def test_header_injection_and_bad_addresses_never_reach_a_mailer(fields: dict[str, str]) -> None:
     with pytest.raises(ValueError):
-        Email(text="...", **fields)
+        Email(to=fields["to"], subject=fields["subject"], text="...")
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        ("List-Unsubscribe", "<https://x>\r\nBcc: everyone@example.cl"),
+        ("X-Evil\nBcc", "everyone@example.cl"),
+        ("Bad Name", "x"),
+        ("Bad:Name", "x"),
+        ("To", "everyone@example.cl"),
+        ("subject", "Otra cosa"),
+    ],
+)
+def test_extra_headers_cannot_inject_or_override(header: tuple[str, str]) -> None:
+    with pytest.raises(ValueError):
+        Email(to="ana@example.cl", subject="Hola", text="...", headers=(header,))
+
+
+def test_smtp_sends_the_extra_headers(smtp_stub: SmtpStub) -> None:
+    headers = (
+        ("List-Unsubscribe", "<https://rakin.test/api/mail/unsubscribe/t>"),
+        ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
+    )
+    message = Email(to="ana@example.cl", subject="Aviso", text="...", headers=headers)
+
+    asyncio.run(smtp_mailer(smtp_stub.port).send(message))
+
+    [received] = smtp_stub.messages
+    assert received["List-Unsubscribe"] == "<https://rakin.test/api/mail/unsubscribe/t>"
+    assert received["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
 
 
 def test_smtp_sends_the_html_alternative_and_the_sender(smtp_stub: SmtpStub) -> None:

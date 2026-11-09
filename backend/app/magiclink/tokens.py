@@ -12,6 +12,8 @@ import hmac
 import secrets
 from datetime import UTC, datetime
 
+from app.security import constant_time_equals
+
 NONCE_BYTES = 32
 
 
@@ -37,8 +39,7 @@ class LinkSigner:
         """When a token this signer issued expires, or None if it did not issue it."""
         body, _, signature = token.rpartition(".")
         _, _, expiry = body.rpartition(".")
-        # Bytes: `compare_digest` raises on a `str` with non-ASCII characters.
-        if not body or not hmac.compare_digest(self._signature(body).encode(), signature.encode()):
+        if not body or not constant_time_equals(self._signature(body), signature):
             return None
         try:
             return datetime.fromtimestamp(int(expiry), UTC)

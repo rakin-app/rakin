@@ -3,6 +3,21 @@
  * inline copy (enforced by `react/jsx-no-literals` in eslint.config.js).
  * English, when it comes, is a second file with the same shape.
  */
+const MONTHS = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+] as const
+
 export const es = {
   app: {
     name: 'rakin',
@@ -168,6 +183,59 @@ export const es = {
         failed: 'No pudimos guardar el cambio. Inténtalo de nuevo.',
       },
     },
+    member: {
+      back: 'Volver a Alumnos',
+      loading: 'Cargando ficha…',
+      error: 'No pudimos cargar la ficha.',
+      notFound: 'No encontramos a este alumno.',
+      retry: 'Reintentar',
+      since: (month: string) => `desde ${month}`,
+      noPlan: 'Sin plan',
+      paymentLabel: 'Estado de pago',
+      dueDay: (plan: string, day: number) => `${plan} · vence el ${day}`,
+      until: (plan: string, day: string) => `${plan} · hasta el ${day}`,
+      overdue: (days: number) => `Vencido ${days} d`,
+      pendingMonth: (month: string) => `${month} pendiente`,
+      pendingPeriods: (n: number) => `${n} períodos pendientes`,
+      nextDue: (day: string) => `vence el ${day}`,
+      upToDate: 'al día',
+      ledgerError: 'No pudimos cargar los pagos.',
+      record: 'Registrar pago',
+      form: {
+        title: 'Registrar pago',
+        period: 'Período',
+        periodOption: (month: string, amount: string) => `${month} · ${amount} por pagar`,
+        amount: 'Monto recibido (CLP)',
+        method: 'Medio de pago',
+        methods: { cash: 'Efectivo', transfer: 'Transferencia', other: 'Otro' },
+        note: 'Nota (opcional)',
+        submit: (amount: string) => `Registrar ${amount}`,
+        cancel: 'Cancelar',
+        working: 'Guardando…',
+        amountNeeded: 'Escribe el monto recibido.',
+        recorded: (amount: string) => `Pago registrado: ${amount}.`,
+        credit: (amount: string) => ` Quedan ${amount} a favor.`,
+        refused: {
+          paid: 'Ese período ya está pagado.',
+          failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
+        },
+      },
+      ledger: {
+        title: 'Libro',
+        empty: 'Sin movimientos todavía.',
+        charge: (month: string) => `Cargo ${month}`,
+        payment: (month: string) => `Pago ${month}`,
+        adjustment: (month: string) => `Ajuste ${month}`,
+        credit: 'Saldo a favor',
+        refund: 'Devolución',
+        generated: (day: string) => `generado ${day}`,
+        unpaid: 'sin pago',
+        validatedBy: (name: string) => `validó ${name}`,
+        pending: 'por validar',
+        rejected: 'rechazado',
+        method: { transfer: 'transferencia', cash: 'efectivo', other: 'otro' },
+      },
+    },
     classes: { title: 'Clases' },
     payments: {
       title: 'Libro de pagos',
@@ -228,7 +296,55 @@ export const es = {
     },
   },
   me: {
-    home: { title: 'Mi página' },
+    home: {
+      title: 'Mi página',
+      hello: (firstName: string) => `Hola, ${firstName}`,
+      loading: 'Cargando tu página…',
+      error: 'No pudimos cargar tu página.',
+      retry: 'Reintentar',
+      signedIn: 'Entraste con un enlace de tu correo. No necesitas clave.',
+    },
+    next: {
+      title: 'Próximo pago',
+      status: {
+        in_review: 'Comprobante en revisión',
+        overdue: 'Atrasado',
+        due: 'Por pagar',
+        paid: 'Al día',
+      },
+      // `whose`: the dependent it is for, when it is not the student's own.
+      due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
+      paidUp: 'No tienes pagos pendientes.',
+      bankLabel: 'Datos para transferir',
+      bank: 'Banco',
+      holder: 'Titular',
+      rut: 'RUT',
+      number: 'N.º cuenta',
+      // `Cuenta Vista` → `Cta. Vista`, as the card writes it.
+      bankName: (bank: string, accountType: string) => `${bank} · ${accountType.replace(/^Cuenta\b/, 'Cta.')}`,
+      noBank: 'La academia todavía no publica sus datos para transferir.',
+      copy: 'Copiar datos',
+      copied: 'Datos copiados',
+      copyFailed: 'No pudimos copiar. Mantén presionado para copiar a mano.',
+      // What "Copiar datos" puts on the clipboard, in full: the card masks the RUT
+      // and account number, the transfer form needs them whole.
+      copyText: (a: { bank: string; account_type: string; holder: string; rut: string; number: string; email: string | null }) =>
+        [a.holder, `RUT ${a.rut}`, a.bank, a.account_type, `N.º ${a.number}`, a.email]
+          .filter(Boolean)
+          .join('\n'),
+      upload: 'Subir comprobante',
+    },
+    history: {
+      title: 'Mis pagos',
+      empty: 'Todavía no hay pagos.',
+      payment: 'Pago',
+      month: (month: string, whose: string | null) => (whose ? `${month} · ${whose}` : month),
+      sent: (when: string) => `comprobante enviado ${when}`,
+      validated: (when: string) => `validado ${when}`,
+      rejected: (when: string, note: string | null) => (note ? `rechazado ${when}: ${note}` : `rechazado ${when}`),
+      status: { pending: 'En revisión', rejected: 'Rechazado' },
+      today: (time: string) => `hoy ${time}`,
+    },
     proof: {
       title: 'Subir comprobante',
       loading: 'Cargando tus pagos…',
@@ -266,6 +382,21 @@ export const es = {
     clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
     // An ISO day, `2026-12-01`, as Chile writes it: `01-12-2026`.
     day: (iso: string) => iso.split('-').reverse().join('-'),
+    // An ISO day as a sentence says it: `10 de noviembre`.
+    longDay: (iso: string) => `${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]}`,
+    // An ISO day as a list row says it: `8 oct`.
+    shortDay: (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)}`,
+    // The month an ISO day falls in, as a heading: `Noviembre`, or `Noviembre 2025` outside `year`.
+    month: (iso: string, year: string) => {
+      const name = MONTHS[Number(iso.slice(5, 7)) - 1]!
+      const label = name[0]!.toUpperCase() + name.slice(1)
+      return iso.slice(0, 4) === year ? label : `${label} ${iso.slice(0, 4)}`
+    },
+    // A normalised RUT, `76432109-K`, as Chile writes it: `76.432.109-K`.
+    rut: (rut: string) => {
+      const [body = '', digit = ''] = rut.split('-')
+      return `${Number(body).toLocaleString('es-CL')}-${digit}`
+    },
     today: 'hoy',
   },
   notFound: {

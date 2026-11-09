@@ -12,6 +12,7 @@ import { t } from './i18n/es'
 import { AdminLayout } from './layouts/AdminLayout'
 import { MeLayout } from './layouts/MeLayout'
 import { MeHome } from './routes/MeHome'
+import { MemberDetail } from './routes/MemberDetail'
 import { MemberImport } from './routes/MemberImport'
 import { NotFound } from './routes/NotFound'
 import { Payments } from './routes/Payments'
@@ -55,11 +56,19 @@ const adminStudentsRoute = createRoute({
   component: Students,
 })
 
-// "Importar alumnos": the gym's spreadsheet, brought over.
+// "Importar alumnos": the gym's spreadsheet, brought over. A static path, so it wins
+// over `alumnos/$personId`.
 const adminImportRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'alumnos/importar',
   component: MemberImport,
+})
+
+// "Ficha de alumno": one member, their plan and, for who reads the ledger, their money.
+const adminMemberRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'alumnos/$personId',
+  component: MemberDetail,
 })
 
 const adminClassesRoute = createRoute({
@@ -96,7 +105,15 @@ const meHomeRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  adminRoute.addChildren([adminTodayRoute, adminStudentsRoute, adminImportRoute, adminClassesRoute, adminPaymentsRoute, adminProofReviewRoute]),
+  adminRoute.addChildren([
+    adminTodayRoute,
+    adminStudentsRoute,
+    adminImportRoute,
+    adminMemberRoute,
+    adminClassesRoute,
+    adminPaymentsRoute,
+    adminProofReviewRoute,
+  ]),
   meRoute.addChildren([meHomeRoute]),
 ])
 
