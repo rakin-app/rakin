@@ -36,7 +36,7 @@ Every external service sits behind an interface in `app/integrations`, and a set
 
 | Interface | Setting | Implementations (default first) |
 | --- | --- | --- |
-| `Mailer` | `MAILER` | `console`: logs each message, sends nothing · `smtp`: any SMTP server (`SMTP_*`, `MAIL_FROM`) |
+| `Mailer` | `MAILER` | `console`: logs each message, sends nothing · `smtp`: any SMTP server (`SMTP_*`, `MAIL_FROM`); hosted Rakin uses Resend's (`smtp.resend.com`) |
 | `Messenger` | `MESSENGER` | `wame`: a `wa.me` link the admin sends from their own phone |
 | `BlobStore` | `BLOB_STORE` | `local`: files under `BLOB_LOCAL_DIR` · `s3`: any S3-compatible store (`S3_*`) |
 | `PaymentRail` | `PAYMENT_RAIL` | `none`: no online payment; students transfer and upload a proof |
@@ -48,7 +48,7 @@ Uploads take only the types a transfer proof can be (`ALLOWED_CONTENT_TYPES`: JP
 
 With `BLOB_STORE=s3` the browser PUTs to `S3_PUBLIC_ENDPOINT_URL`, another origin than the app's, so the bucket needs a CORS rule allowing `PUT` (with a `Content-Type` header) and `GET` from `PUBLIC_BASE_URL`. `python -m app.blob_cors` prints that rule, `--apply` sets it through `PutBucketCors` (which Garage, R2 and S3 all take; Garage's CLI has no CORS command, so `garage-init` does not), and `--check` sends the browser's preflight and reports the answer. Setting it needs a key allowed to change the bucket: on Garage the api's key is (`garage-init` makes it the owner), on R2 or S3 pass an admin key for that run ([deploy.md](../docs/deploy.md#first-deploy-only-the-buckets-cors-rule)). The `local` store is same-origin and needs none.
 
-`tests/integrations` is the contract: each interface's tests run against every implementation, and a new one (SES, the WhatsApp Business API, Fintoc) joins the parametrised list and must pass them. The `BlobStore` contract runs against real Garage, since most of it is about what the server refuses.
+`tests/integrations` is the contract: each interface's tests run against every implementation, and a new one (the WhatsApp Business API, Fintoc) joins the parametrised list and must pass them. The `BlobStore` contract runs against real Garage, since most of it is about what the server refuses.
 
 ## Database roles
 

@@ -393,7 +393,7 @@ def test_the_demo_gym_credit_is_a_negative_balance(db: Database) -> None:
 def test_downgrade_drops_the_views() -> None:
     with throwaway_database(require_test_database_url()) as database:
         migrate(database)
-        command.downgrade(database.alembic(), "-1")
+        command.downgrade(database.alembic(), "0013")
         found = run(
             database.admin_url,
             lambda c: c.fetch("SELECT viewname FROM pg_views WHERE schemaname = 'public'"),

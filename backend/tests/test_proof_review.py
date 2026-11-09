@@ -26,7 +26,15 @@ from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_guardians import add_person, bill, new_kid
 from tests.test_plans import add_staff
-from tests.test_proofs import RecordingMailer, claim, pending, periods, stored_entry, upload
+from tests.test_proofs import (
+    RecordingMailer,
+    claim,
+    pending,
+    periods,
+    sent_notices,
+    stored_entry,
+    upload,
+)
 
 # --- input rules, no database -----------------------------------------------------
 
@@ -307,6 +315,7 @@ def test_rejecting_keeps_the_period_open_and_tells_the_student(
     assert "Hola, Ana:" in email.text
     assert "$40.000" in email.text
     assert "Nota: monto no coincide, falta $5.000" in email.text
+    assert sent_notices(db, sur)[-1] == ("proof_rejected", ana, "sent")
 
 
 @pg

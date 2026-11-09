@@ -29,16 +29,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.ledger import CURRENT_PERSON, ENTRY_COLUMNS, locked_period, settled
-from app.api.proofs import send_notice
 from app.contacts import Contact, contact_for
 from app.domain import billing, ledger
 from app.domain.billing import SETTLING_KINDS
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
-from app.domain.money import format_clp
 from app.integrations import Integrations, get_integrations
 from app.integrations.blobstore import BlobStore
-from app.integrations.mailer import Email
+from app.notices import PROOF_REJECTED, Notice, Notices, get_notices
 from app.roles import LedgerSession
 from app.schemas.ledger import Entry, RecordedPayment
 from app.schemas.proofs import ProofRejection, ProofReview, RecentPayment, ReviewPeriod
@@ -216,7 +214,7 @@ async def reject(
     entry_id: uuid.UUID,
     body: ProofRejection,
     session: LedgerSession,
-    integrations: Annotated[Integrations, Depends(get_integrations)],
+    notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> Entry:
     """Reject the proof with a note for the student, who is emailed it. The period
@@ -229,7 +227,7 @@ async def reject(
         await session.execute(
             text(
                 "SELECT bp.period_start, bp.period_end, m.person_id, gp.name AS person_name,"
-                " g.name AS gym_name FROM billing_period bp"
+                " g.id AS gym_id, g.name AS gym_name FROM billing_period bp"
                 " JOIN membership m ON m.id = bp.membership_id"
                 " JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.person_id"
                 " JOIN gym g ON g.id = m.gym_id WHERE bp.id = :id"
@@ -241,46 +239,47 @@ async def reject(
     if contact is None or not contact.email:
         logger.info("proof rejected: no email to send it to", extra={"entry_id": str(entry.id)})
         return entry
-    try:
-        email = proof_rejected(
-            contact,
-            gym=period.gym_name,
-            amount_clp=entry.amount_clp,
-            period_start=period.period_start,
-            period_end=period.period_end,
-            note=body.note,
-            dependent_name=period.person_name if contact.on_behalf_of else None,
-        )
-    # An address the gym typed wrong must not undo the review.
-    except ValueError:
-        logger.warning("proof rejected not sent", extra={"entry_id": str(entry.id)}, exc_info=True)
-        return entry
-    background.add_task(send_notice, integrations.mailer, email, entry.id, "proof rejected")
+    notice = proof_rejected(
+        contact,
+        gym_id=period.gym_id,
+        gym=period.gym_name,
+        amount_clp=entry.amount_clp,
+        period_start=period.period_start,
+        period_end=period.period_end,
+        note=body.note,
+        dependent_name=period.person_name if contact.on_behalf_of else None,
+    )
+    # An address the gym typed wrong is a failed send in `message_log`, and must not
+    # undo the review.
+    background.add_task(notices.send, notice)
     return entry
 
 
 def proof_rejected(
     contact: Contact,
     *,
+    gym_id: uuid.UUID,
     gym: str,
     amount_clp: int,
     period_start: date,
     period_end: date,
     note: str,
     dependent_name: str | None,
-) -> Email:
+) -> Notice:
     """The "proof rejected" notice: which proof, the admin's note, and what to do next."""
     assert contact.email is not None
-    whose = f" de {dependent_name}" if dependent_name else ""
-    return Email(
+    return Notice(
+        PROOF_REJECTED,
         to=contact.email,
-        subject="Revisa tu comprobante",
-        text=(
-            f"Hola, {contact.name}:\n\n"
-            f"{gym} revisó tu comprobante de {format_clp(amount_clp)}{whose},"
-            f" por el período del {period_start:%d-%m-%Y} al {period_end:%d-%m-%Y},"
-            " y no pudo validarlo.\n\n"
-            f"Nota: {note}\n\n"
-            "El pago sigue pendiente. Puedes subir un nuevo comprobante desde tu página.\n"
-        ),
+        person_id=contact.person_id,
+        gym_id=gym_id,
+        context={
+            "name": contact.name,
+            "gym": gym,
+            "amount_clp": amount_clp,
+            "period_start": period_start,
+            "period_end": period_end,
+            "note": note,
+            "dependent_name": dependent_name,
+        },
     )

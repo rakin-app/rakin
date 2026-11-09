@@ -1,11 +1,13 @@
 """Outgoing email: the system of record for every notice a student or guardian gets.
 
 `ConsoleMailer` writes each message to the log and sends nothing; `SmtpMailer` hands it
-to any SMTP server, for self-hosters without AWS. SES arrives with the email pipeline.
+to any SMTP server. Hosted Rakin sends through Resend's SMTP relay; self-hosters point it
+at their own. What the messages say, and the record of each, is `app.notices`.
 """
 
 import asyncio
 import logging
+import re
 import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -25,12 +27,18 @@ class Email:
     subject: str
     text: str
     html: str | None = None
+    # Extra headers, such as `List-Unsubscribe`; never `From`, `To` or `Subject`.
+    headers: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         # A newline in a header field is header injection, never a real value.
-        for name in ("to", "subject"):
-            if any(c in getattr(self, name) for c in "\r\n"):
-                raise ValueError(f"{name} must be a single line")
+        fields = [self.to, self.subject, *(part for header in self.headers for part in header)]
+        if any(c in field for field in fields for c in "\r\n"):
+            raise ValueError("header fields must be single lines")
+        for name, _ in self.headers:
+            # RFC 5322 field names: printable ASCII but space and colon.
+            if name.lower() in ("from", "to", "subject") or not re.fullmatch(r"[!-9;-~]+", name):
+                raise ValueError(f"not an extra header: {name!r}")
         if "@" not in parseaddr(self.to)[1]:
             raise ValueError(f"not an email address: {self.to!r}")
 
@@ -47,7 +55,12 @@ class ConsoleMailer:
     async def send(self, email: Email) -> None:
         logger.info(
             "mail (console, not sent)",
-            extra={"mail_to": email.to, "mail_subject": email.subject, "mail_text": email.text},
+            extra={
+                "mail_to": email.to,
+                "mail_subject": email.subject,
+                "mail_text": email.text,
+                "mail_headers": dict(email.headers),
+            },
         )
 
 
@@ -76,6 +89,8 @@ class SmtpMailer:
         message["From"] = self.sender
         message["To"] = email.to
         message["Subject"] = email.subject
+        for name, value in email.headers:
+            message[name] = value
         message.set_content(email.text)
         if email.html is not None:
             message.add_alternative(email.html, subtype="html")

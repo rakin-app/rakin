@@ -1,0 +1,7 @@
+{% extends "_layout.html" %}
+{% block title %}Recibimos tu comprobante{% endblock %}
+{% block body %}
+<p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+<p style="margin:0 0 16px;">Recibimos tu comprobante de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }}, por el período del {{ period_start | fecha }} al {{ period_end | fecha }}.</p>
+<p style="margin:0;">Lo revisaremos y te avisaremos cuando el pago quede validado.</p>
+{% endblock %}

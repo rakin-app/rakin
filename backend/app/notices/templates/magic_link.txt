@@ -1,0 +1,10 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+Para entrar a Rakin, abre este enlace:
+
+{{ url }}
+
+Vence en 15 minutos y sirve una sola vez. Si no lo pediste, ignora este correo.
+{% endblock %}

@@ -1,0 +1,8 @@
+{% extends "_layout.html" %}
+{% block title %}Revisa tu comprobante{% endblock %}
+{% block body %}
+<p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+<p style="margin:0 0 16px;">{{ gym }} revisó tu comprobante de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %}, por el período del {{ period_start | fecha }} al {{ period_end | fecha }}, y no pudo validarlo.</p>
+<p style="margin:0 0 16px;padding:12px 16px;background:#fafafa;border-left:3px solid #d4d4d8;white-space:pre-line;">{{ note }}</p>
+<p style="margin:0;">El pago sigue pendiente. Puedes subir un nuevo comprobante desde tu página.</p>
+{% endblock %}

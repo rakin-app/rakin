@@ -9,7 +9,6 @@ gym, `request.state.tenant`. It never answers 401 itself: `app.tenancy` stays th
 place a gym-scoped route refuses an anonymous request.
 """
 
-import logging
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import datetime
@@ -18,7 +17,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.integrations.mailer import Email, MailDeliveryError, Mailer
+from app.integrations.mailer import Mailer
 from app.magiclink import (
     Link,
     MagicLinks,
@@ -28,10 +27,9 @@ from app.magiclink import (
     Texts,
     callback_url,
 )
+from app.notices import MAGIC_LINK, Notice, Notices
 from app.settings import Settings
 from app.tenancy import Tenant
-
-logger = logging.getLogger(__name__)
 
 PREFIX = "/api/auth"
 
@@ -154,29 +152,23 @@ class PostgresStore:
 
 
 class MailSender:
-    def __init__(self, mailer: Mailer) -> None:
-        self._mailer = mailer
+    """Sends each link as the `magic_link` notice. It belongs to no gym, and its URL
+    is never written to `message_log`."""
+
+    def __init__(self, notices: Notices) -> None:
+        self._notices = notices
 
     async def send(self, link: Link) -> None:
         recipient = link.recipient
-        try:
-            await self._mailer.send(
-                Email(
-                    to=recipient.address,
-                    subject="Tu enlace para entrar a Rakin",
-                    text=(
-                        f"Hola, {recipient.name}:\n\n"
-                        f"Para entrar a Rakin, abre este enlace:\n\n{link.url}\n\n"
-                        "Vence en 15 minutos y sirve una sola vez. "
-                        "Si no lo pediste, ignora este correo.\n"
-                    ),
-                )
+        await self._notices.send(
+            Notice(
+                MAGIC_LINK,
+                to=recipient.address,
+                person_id=uuid.UUID(recipient.subject),
+                gym_id=None,
+                context={"name": recipient.name, "url": link.url},
             )
-        # After the response: there is no one left to tell but the log.
-        except (MailDeliveryError, ValueError):
-            logger.warning(
-                "magic link not sent", extra={"person_id": recipient.subject}, exc_info=True
-            )
+        )
 
 
 def bind_session(session: Session, state: dict[str, Any]) -> None:
@@ -192,7 +184,14 @@ def build_magic_links(settings: Settings, mailer: Mailer, sessionmaker: Sessionm
         callback_url=callback_url(settings.public_base_url, PREFIX),
         directory=PeopleDirectory(sessionmaker),
         store=PostgresStore(sessionmaker),
-        sender=MailSender(mailer),
+        sender=MailSender(
+            Notices(
+                mailer,
+                sessionmaker,
+                base_url=settings.public_base_url,
+                secret_key=settings.secret_key,
+            )
+        ),
         per_address=MemoryRateLimiter(limit=PER_ADDRESS[0], window_seconds=PER_ADDRESS[1]),
         per_ip=MemoryRateLimiter(limit=PER_IP[0], window_seconds=PER_IP[1]),
     )
