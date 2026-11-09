@@ -1,4 +1,4 @@
-"""Guardians and dependents (migration 0008): the links, the rules they hold, who a
+"""Guardians and dependents (migration 0009): the links, the rules they hold, who a
 notice goes to, and what a guardian sees of each kid.
 
 One payer, N dependents, and kids have no phone. Links belong to one gym: the other
@@ -20,6 +20,7 @@ from sqlalchemy import text
 from alembic import command
 from app.contacts import Contact, contact_for
 from app.db import create_engine, create_sessionmaker
+from app.db_bootstrap import to_dsn
 from app.main import create_app
 from app.schemas.guardians import LinkDependent, NewDependent
 from tests.auth import FakeAuth, as_gym
@@ -209,6 +210,43 @@ def test_links_are_one_level_deep(client: TestClient, sur: uuid.UUID) -> None:
         assert response.json() == {"detail": {"code": "one_level"}}
     # Nothing was written by either refusal.
     assert family(client, sur, grandma) == {"guardian": None, "dependents": []}
+
+
+@pg
+def test_concurrent_links_cannot_make_a_chain(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    """A→B and B→C in two open transactions: the second waits for the first, then sees
+    its row and is refused. Without the trigger's lock both would commit."""
+    a, b, c = (add_person(client, sur, n) for n in ("Cadena A", "Cadena B", "Cadena C"))
+    link = (
+        "INSERT INTO guardian_link (gym_id, guardian_person_id, dependent_person_id)"
+        " VALUES ($1, $2, $3)"
+    )
+
+    async def go() -> None:
+        first = await asyncpg.connect(to_dsn(db.api_url))
+        second = await asyncpg.connect(to_dsn(db.api_url))
+        try:
+            for conn in (first, second):
+                await conn.execute("BEGIN")
+                await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(sur))
+            await first.execute(link, sur, uuid.UUID(a), uuid.UUID(b))
+            waiting = asyncio.create_task(second.execute(link, sur, uuid.UUID(b), uuid.UUID(c)))
+            await asyncio.sleep(0.5)
+            assert not waiting.done(), "the second link did not wait for the first"
+            await first.execute("COMMIT")
+            with pytest.raises(asyncpg.CheckViolationError, match="the guardian is a dependent"):
+                await waiting
+        finally:
+            await first.close()
+            await second.close()
+
+    asyncio.run(go())
+    assert family(client, sur, b) == {
+        "guardian": {"id": a, "name": "Cadena A"},
+        "dependents": [],
+    }
 
 
 @pg
@@ -499,10 +537,10 @@ def test_a_guardian_who_does_not_train_can_sign_in(
 
 
 @pg
-def test_downgrade_to_0007_and_back() -> None:
+def test_downgrade_to_0008_and_back() -> None:
     with throwaway_database(require_test_database_url()) as scratch:
         migrate(scratch)
-        command.downgrade(scratch.alembic(), "0007")
+        command.downgrade(scratch.alembic(), "0008")
         tables = "SELECT to_regclass('guardian_link') IS NULL"
         assert run(scratch.admin_url, lambda c: c.fetchval(tables)) is True
         migrate(scratch)

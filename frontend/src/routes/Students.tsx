@@ -208,11 +208,10 @@ function MemberItem({ row }: { row: MemberRow }) {
           </button>
         </div>
       </div>
-      {open && (
-        <div id={panelId}>
-          <FamilyPanel person={row} />
-        </div>
-      )}
+      {/* Always there, so `aria-controls` names an element; filled only when open. */}
+      <div id={panelId} hidden={!open}>
+        {open && <FamilyPanel person={row} />}
+      </div>
     </li>
   )
 }

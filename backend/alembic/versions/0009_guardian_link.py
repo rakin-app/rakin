@@ -12,7 +12,13 @@ Rules held by the table:
   A guardian has any number of dependents.
 - One level only. A guardian is nobody's dependent and a dependent is nobody's
   guardian, so contact always resolves in one step (`app.contacts`). A trigger
-  refuses the link with `check_violation` (SQLSTATE 23514).
+  refuses the link with `check_violation` (SQLSTATE 23514). It first takes a
+  transaction-level advisory lock on the gym, so link writes in one gym run one at a
+  time: without it, A→B and B→C inserted concurrently would each find no conflicting
+  row (neither sees the other's uncommitted insert) and both commit, leaving B on both
+  sides. The second waits for the first to commit and then sees its row, since each
+  statement in READ COMMITTED takes a fresh snapshot after the lock is granted. Link
+  writes are rare, so serialising them per gym costs nothing that matters.
 - Nobody is their own guardian.
 
 `rakin_app` may add and remove links: a link is not history, unlike the ledger.
@@ -29,8 +35,8 @@ Two more things change with it:
   write, to an owner or admin. A coach who trains reads their own payments and no one
   else's.
 
-Revision ID: 0008
-Revises: 0007
+Revision ID: 0009
+Revises: 0008
 Create Date: 2026-11-09
 
 """
@@ -39,8 +45,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0008"
-down_revision: str | Sequence[str] | None = "0007"
+revision: str = "0009"
+down_revision: str | Sequence[str] | None = "0008"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -145,6 +151,9 @@ def upgrade() -> None:
         CREATE FUNCTION guardian_link_one_level() RETURNS trigger
         LANGUAGE plpgsql AS $$
         BEGIN
+            -- Serialise link writes per gym, so the checks below see every committed
+            -- link; see the docstring.
+            PERFORM pg_advisory_xact_lock(hashtext('guardian_link:' || NEW.gym_id::text));
             IF EXISTS (SELECT FROM guardian_link
                        WHERE gym_id = NEW.gym_id AND dependent_person_id = NEW.guardian_person_id)
             THEN

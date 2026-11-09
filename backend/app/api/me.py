@@ -1,7 +1,7 @@
 """The signed-in person's own side of the gym: what the student page (/me) reads.
 
 Any session in a gym may use it, staff or member, since it answers only about the
-person acting. For now that is a guardian's dependents (migration 0008); the rest of
+person acting. For now that is a guardian's dependents (migration 0009); the rest of
 the page comes with #64 and #65.
 """
 
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/me", tags=["me"])
 
 # Each of the guardian's dependents, with the membership the list shows and their
 # balance over every membership they hold here. The ledger is read through
-# `ledger_entry_own` (0008): a guardian sees their dependents' entries and no others.
+# `ledger_entry_own` (0009): a guardian sees their dependents' entries and no others.
 DEPENDENTS = f"""
     SELECT gp.person_id AS id, gp.name,
            m.id AS membership_id, m.status, m.plan_id, pl.name AS plan_name,

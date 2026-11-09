@@ -104,6 +104,20 @@ describe('Familia', () => {
     expect(screen.getByText(es.admin.students.dependentsCount(1))).toBeInTheDocument()
   })
 
+  it('controls a panel that is there, hidden, while closed', async () => {
+    stubApi({ camila: { guardian: null, dependents: [] } })
+    renderStudents()
+    const toggle = await screen.findByRole('button', { name: copy.toggleLabel('Camila Ortiz') })
+    const panel = document.getElementById(toggle.getAttribute('aria-controls')!)
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(panel).not.toBeNull()
+    expect(panel).not.toBeVisible()
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(panel).toBeVisible()
+  })
+
   it('adds a new dependent with no phone', async () => {
     const calls = stubApi({ camila: { guardian: null, dependents: [{ id: 'mateo', name: 'Mateo Ortiz' }] } })
     renderStudents()

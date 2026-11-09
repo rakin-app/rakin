@@ -114,7 +114,7 @@ class MemberRow(BaseModel):
     phone: str | None
     rut: str | None
     membership: MembershipSummary | None
-    # Who pays for them in this gym, and how many they pay for (migration 0008).
+    # Who pays for them in this gym, and how many they pay for (migration 0009).
     guardian: PersonRef | None
     dependents: int
 
