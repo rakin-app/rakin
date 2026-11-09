@@ -14,7 +14,15 @@ import pytest
 
 from alembic import command
 from tests.conftest import require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import (
+    Database,
+    in_gym,
+    migrate,
+    run,
+    seed_gym,
+    seeded_owner,
+    throwaway_database,
+)
 
 pytestmark = pytest.mark.postgres
 
@@ -154,7 +162,7 @@ def test_settling_does_not_carry_other_changes_along(
         " validated_at = now(), amount_clp = 40000 WHERE id = $1"
     )
     with pytest.raises(asyncpg.RestrictViolationError, match="can change"):
-        run(url_of(db, user), in_gym(gym, sql, entry, admin_id))
+        run(url_of(db, user), in_gym(gym, sql, entry, admin_id, person=seeded_owner(gym)))
     assert fetch_entry(db, entry)["status"] == "pending"
 
 
@@ -167,7 +175,7 @@ def test_api_can_validate_a_pending_entry(
         "UPDATE ledger_entry SET status = 'validated', validated_by = $2,"
         " validated_at = now(), note = 'ok' WHERE id = $1"
     )
-    run(db.api_url, in_gym(gym, sql, entry, admin_id))
+    run(db.api_url, in_gym(gym, sql, entry, admin_id, person=seeded_owner(gym)))
     after = fetch_entry(db, entry)
     assert (after["status"], after["validated_by"], after["note"]) == ("validated", admin_id, "ok")
     assert {k: after[k] for k in IMMUTABLE} == {k: before[k] for k in IMMUTABLE}
@@ -179,7 +187,7 @@ def test_api_can_reject_a_pending_entry(db: Database, gym: uuid.UUID, admin_id: 
         "UPDATE ledger_entry SET status = 'rejected', validated_by = $2,"
         " validated_at = now(), note = 'comprobante ilegible' WHERE id = $1"
     )
-    run(db.api_url, in_gym(gym, sql, entry, admin_id))
+    run(db.api_url, in_gym(gym, sql, entry, admin_id, person=seeded_owner(gym)))
     assert fetch_entry(db, entry)["status"] == "rejected"
 
 
@@ -196,7 +204,7 @@ def test_a_settled_entry_cannot_change(
     before = fetch_entry(db, entry)
     sql = f"UPDATE ledger_entry SET {assignment} WHERE id = $1"
     with pytest.raises(asyncpg.RestrictViolationError, match="only pending entries can change"):
-        run(url_of(db, user), in_gym(gym, sql, entry))
+        run(url_of(db, user), in_gym(gym, sql, entry, person=seeded_owner(gym)))
     assert fetch_entry(db, entry) == before
 
 

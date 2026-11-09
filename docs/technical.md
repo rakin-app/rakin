@@ -41,7 +41,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `gym_person` | gym\_id, person\_id, name, email, rut, dob, created\_at, updated\_at | a gym's own record of a person; one per gym and person, edited only by that gym |
 | `guardian_link` | guardian\_person\_id, dependent\_person\_id | one payer, N dependents |
 | `gym` | id, name, slug, timezone, settings jsonb | settings = channels, grading scheme, custom-field definitions, reminder cadence |
-| `staff` | person\_id, gym\_id, role (owner, admin, coach) | coach role cannot read ledger |
+| `staff` | person\_id, gym\_id, role (owner, admin, coach) | roles are per gym; coach role cannot read ledger, refused by the API and by RLS on `ledger_entry` |
 | `plan` | id, gym\_id, name, kind, price\_clp, period\_months, credits, credit\_expiry\_days, active | kind ∈ monthly, prepaid, credits, dropin, trial |
 | `membership` | id, person\_id, gym\_id, plan\_id, status, anchor\_day, started\_at, current\_period\_end, credits\_remaining, discount\_pct | status ∈ trial, active, frozen, lapsed, cancelled |
 | `freeze` | membership\_id, from\_date, to\_date, reason | shifts current\_period\_end by the frozen days |
