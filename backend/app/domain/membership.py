@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from enum import StrEnum
 
+from app.domain.dates import is_past_grace
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 
@@ -170,7 +171,12 @@ def unfreeze(membership: Membership, on: date) -> Membership:
 
 
 def is_due_to_lapse(membership: Membership, today: date, grace: int = DEFAULT_GRACE_DAYS) -> bool:
-    """Whether the nightly job should flip this membership to Lapsed today."""
+    """Whether the nightly job should flip this membership to Lapsed on `today`.
+
+    A credits pack or a trial lapses with no grace, the day after its last day or at
+    zero credits. A recurring one is next due the day after it is paid through, and
+    lapses once that due date is past the grace (`app.domain.dates.is_past_grace`).
+    """
     end = membership.current_period_end
     if membership.status is S.TRIAL or membership.plan_kind is PlanKind.CREDITS:
         if membership.status not in (S.TRIAL, S.ACTIVE):
@@ -179,7 +185,7 @@ def is_due_to_lapse(membership: Membership, today: date, grace: int = DEFAULT_GR
         expired = end is not None and today > end
         return out_of_credits or expired
     if membership.status is S.ACTIVE:
-        return end is not None and today > end + timedelta(days=grace)
+        return end is not None and is_past_grace(end + timedelta(days=1), grace, today)
     return False
 
 
