@@ -17,7 +17,7 @@ from app.auth import build_notices
 from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.integrations.mailer import Email, MailDeliveryError
-from app.jobs import billing, daily, lapse, statements
+from app.jobs import billing, daily, freezes, lapse, statements
 from app.notices import Notices
 from tests.conftest import require_test_database_url
 from tests.jobgym import Gym
@@ -196,13 +196,14 @@ def test_a_statement_asks_only_for_what_is_still_owed(gym: Gym) -> None:
     assert "vence el pago de $30.000" in email.text
 
 
-@pytest.mark.parametrize("why", ["paid", "cancelled", "free"])
+# A frozen membership's periods wait for the freeze to end, which moved them past it.
+@pytest.mark.parametrize("why", ["paid", "cancelled", "frozen", "free"])
 def test_no_statement_for_nothing_owed(gym: Gym, why: str) -> None:
     to = address(gym)
     if why == "free":
         gym.bill(gym.member("signup", NOV_8), NOV_15, NOV_15 + timedelta(days=29), 0)
     else:
-        membership = billed(gym, NOV_15, status="cancelled" if why == "cancelled" else "active")
+        membership = billed(gym, NOV_15, status=why if why != "paid" else "active")
         if why == "paid":
             pay(gym, membership, NOV_15, 45_000, "validated")
     outbox = Outbox()
@@ -269,6 +270,7 @@ def test_statements_run_nightly_after_billing() -> None:
     notices = Notices(Outbox(), lambda: None, base_url="https://x", secret_key="s" * 32)  # type: ignore[arg-type, return-value]
 
     assert [job.name for job in daily.jobs(notices)] == [
+        freezes.NAME,
         billing.NAME,
         lapse.NAME,
         statements.NAME,

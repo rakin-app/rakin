@@ -2,7 +2,8 @@
 
 A membership moves right as time passes and returns to Active only when a
 payment is validated. A freeze is a side trip that shifts the due date by the
-frozen days. Cancelled is terminal, and carries the reason it was cancelled for.
+frozen days (`freeze`). Cancelled is terminal, and carries the reason it was
+cancelled for.
 
 A plan change waits for the next period: the periods already billed keep the plan
 they were billed on, and the new one applies from the first period not yet billed
@@ -19,6 +20,9 @@ from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 
 DEFAULT_GRACE_DAYS = 5
+
+# The longest freeze: a year, past which a date is more likely a typo than a plan.
+MAX_FREEZE_DAYS = 365
 
 
 class PlanKind(StrEnum):
@@ -55,7 +59,9 @@ class Membership:
     current_period_end: date | None = None
     # Credits left on a credits plan, free classes left on a trial.
     credits_remaining: int | None = None
+    # A freeze's first day, and the day it ends, when the membership is Active again.
     frozen_since: date | None = None
+    frozen_until: date | None = None
     # The day of the month a monthly plan bills on; `None` on every other kind.
     anchor_day: int | None = None
     cancel_reason: str | None = None
@@ -171,22 +177,64 @@ def plan_change_starts(
     return last + timedelta(days=1)
 
 
-def freeze(membership: Membership, on: date) -> Membership:
+def freeze(
+    membership: Membership,
+    from_date: date,
+    to_date: date,
+    *,
+    billed_through: date | None = None,
+) -> Membership:
+    """Frozen from `from_date` until `to_date`, the day it is Active again.
+
+    The days in between are not charged: the due date moves past them as the freeze
+    starts, so a member reads the date they will next pay on all through it. The
+    paid-through date moves by the frozen days, and a monthly plan's anchor day to the
+    day after it, so later periods bill from there. A recurring membership resumes
+    billing after the later of its paid-through date and `billed_through`, the end of
+    its last billing period that started before `from_date`, so that is what moves.
+    Periods starting on or after `from_date` move by the frozen days too
+    (`app.api.memberships`), and keep their place after it.
+
+    A credits pack's expiry moves the same way. Only an Active membership freezes.
+    """
     _move(membership, S.FROZEN)
-    return replace(membership, status=S.FROZEN, frozen_since=on)
+    days = (to_date - from_date).days
+    if days <= 0:
+        raise ValueError("a freeze ends after the day it starts")
+    if days > MAX_FREEZE_DAYS:
+        raise ValueError(f"a freeze lasts at most {MAX_FREEZE_DAYS} days, not {days}")
+    end = membership.current_period_end
+    if membership.plan_kind in RECURRING and billed_through is not None:
+        end = billed_through if end is None else max(end, billed_through)
+    anchor = membership.anchor_day
+    if end is not None:
+        end += timedelta(days=days)
+        if anchor is not None:
+            anchor = (end + timedelta(days=1)).day
+    return replace(
+        membership,
+        status=S.FROZEN,
+        current_period_end=end,
+        anchor_day=anchor,
+        frozen_since=from_date,
+        frozen_until=to_date,
+    )
+
+
+def is_due_to_unfreeze(membership: Membership, today: date) -> bool:
+    """Whether the nightly job should return this frozen membership to Active on `today`."""
+    until = membership.frozen_until
+    return membership.status is S.FROZEN and until is not None and today >= until
 
 
 def unfreeze(membership: Membership, on: date) -> Membership:
-    """Back to Active, with the due date shifted by the days spent frozen."""
+    """Back to Active on the day its freeze ends; `freeze` already moved the due date."""
     _move(membership, S.ACTIVE)
-    if membership.frozen_since is None:
-        raise InvalidTransition("frozen membership has no freeze start date")
-    if on < membership.frozen_since:
-        raise ValueError("cannot unfreeze before the freeze started")
-    period_end = membership.current_period_end
-    if period_end is not None:
-        period_end += on - membership.frozen_since
-    return replace(membership, status=S.ACTIVE, current_period_end=period_end, frozen_since=None)
+    if membership.frozen_until is None:
+        raise InvalidTransition("frozen membership has no freeze end date")
+    if not is_due_to_unfreeze(membership, on):
+        raise InvalidTransition(f"membership is frozen until {membership.frozen_until}")
+    return replace(membership, status=S.ACTIVE, frozen_since=None, frozen_until=None)
 
 
 def is_due_to_lapse(membership: Membership, today: date, grace: int = DEFAULT_GRACE_DAYS) -> bool:
@@ -252,7 +300,7 @@ def record_payment(
     if membership.status is S.ACTIVE and end is not None and paid_through <= end:
         raise ValueError(f"paid_through {paid_through} does not extend the due date {end}")
     if membership.status is S.FROZEN:
-        # Only unfreeze() leaves Frozen: it is what shifts the due date.
+        # Only unfreeze() leaves Frozen, on the day the freeze ends.
         raise InvalidTransition("a frozen membership must be unfrozen before it is paid")
     if membership.status is not S.ACTIVE:
         _move(membership, S.ACTIVE)

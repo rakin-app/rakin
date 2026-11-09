@@ -1,6 +1,6 @@
 import { infiniteQueryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
-import type { Method, TimelineEntry } from './member'
+import type { FreezeLine, Method, TimelineEntry } from './member'
 
 export const BOOK_FILTERS = ['all', 'pending', 'overdue', 'kids'] as const
 /** `all` and `kids` are the month's entries; `pending` and `overdue` how the gym stands today. */
@@ -37,6 +37,14 @@ export type BookEntry = {
   validated_by_name: string | null
 }
 
+/** A freeze line in the book (backend `BookFreeze`): no money, listed among the entries. */
+export type BookFreeze = FreezeLine & {
+  membership_id: string
+  plan_name: string
+  person: PersonRef
+  guardian: PersonRef | null
+}
+
 export type BookKpis = {
   // The month's.
   collected_clp: number
@@ -61,6 +69,8 @@ export type LedgerBook = {
   kpis: BookKpis
   items: BookEntry[]
   total: number
+  // The month's freeze lines, newest first; none on `pending` and `overdue`. Not paged.
+  freezes: BookFreeze[]
 }
 
 export const BOOK_PAGE_SIZE = 50

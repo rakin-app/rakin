@@ -15,6 +15,14 @@ export type Person = {
 
 export type PlanKind = 'monthly' | 'prepaid' | 'credits' | 'dropin' | 'trial'
 
+/** A freeze (backend `Freeze`): from its first day until `to_date`, the day it is Active again. */
+export type Freeze = {
+  id: string
+  from_date: string
+  to_date: string
+  reason: string
+}
+
 /** A membership of a plan (backend `Membership`). */
 export type Membership = {
   id: string
@@ -28,6 +36,8 @@ export type Membership = {
   // Paid through, or the last day of a pack or trial.
   current_period_end: string | null
   credits_remaining: number | null
+  // The freeze it is in, while frozen.
+  freeze: Freeze | null
 }
 
 export type Method = 'cash' | 'transfer' | 'other'
@@ -60,6 +70,17 @@ export type TimelineEntry = {
   validated_at: string | null
 }
 
+/** A freeze starting or ending, a ledger line with no amount (backend `FreezeLine`). */
+export type FreezeLine = {
+  freeze_id: string
+  edge: 'start' | 'end'
+  // The day it started or ended; today at the latest.
+  day: string
+  from_date: string
+  to_date: string
+  reason: string
+}
+
 /** One membership's money (backend `MembershipLedger`). Owner and admin only. */
 export type MembershipLedger = {
   // Oldest first: the first is the one a payment settles next.
@@ -68,6 +89,8 @@ export type MembershipLedger = {
   owed_clp: number
   // Newest first.
   entries: TimelineEntry[]
+  // Each freeze's start and end so far, newest first.
+  freezes: FreezeLine[]
 }
 
 export type PaymentRecord = {
@@ -106,6 +129,16 @@ export function membershipLedgerQuery(membershipId: string) {
 
 export function recordPayment(body: PaymentRecord): Promise<RecordedPayment> {
   return apiFetch<RecordedPayment>('/api/ledger/payments', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export type FreezeRequest = { to_date: string; reason: string }
+
+/** Freeze from today until `to_date`: the due date moves past the frozen days. */
+export function freezeMembership(membershipId: string, body: FreezeRequest): Promise<Membership> {
+  return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/freeze`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 }
 
 /** The membership the detail shows, as the member list does: the latest one not
