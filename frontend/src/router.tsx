@@ -12,6 +12,7 @@ import { t } from './i18n/es'
 import { AdminLayout } from './layouts/AdminLayout'
 import { MeLayout } from './layouts/MeLayout'
 import { MeHome } from './routes/MeHome'
+import { MemberImport } from './routes/MemberImport'
 import { NotFound } from './routes/NotFound'
 import { Payments } from './routes/Payments'
 import { Students, validateStudentsSearch } from './routes/Students'
@@ -54,6 +55,13 @@ const adminStudentsRoute = createRoute({
   component: Students,
 })
 
+// "Importar alumnos": the gym's spreadsheet, brought over.
+const adminImportRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'alumnos/importar',
+  component: MemberImport,
+})
+
 const adminClassesRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'clases',
@@ -88,7 +96,7 @@ const meHomeRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  adminRoute.addChildren([adminTodayRoute, adminStudentsRoute, adminClassesRoute, adminPaymentsRoute, adminProofReviewRoute]),
+  adminRoute.addChildren([adminTodayRoute, adminStudentsRoute, adminImportRoute, adminClassesRoute, adminPaymentsRoute, adminProofReviewRoute]),
   meRoute.addChildren([meHomeRoute]),
 ])
 

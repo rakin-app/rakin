@@ -302,3 +302,9 @@
   color: var(--color-text-subtle);
   cursor: default;
 }
+
+.students__import {
+  align-self: flex-start;
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+}

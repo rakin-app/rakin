@@ -1,6 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { getRouteApi } from '@tanstack/react-router'
+import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
+import { myRoleQuery, readsLedger } from '../api/me'
 import {
   MEMBERSHIP_STATUSES,
   membersQuery,
@@ -54,6 +55,8 @@ export function Students() {
   const members = useInfiniteQuery({ ...membersQuery(filters), placeholderData: keepPreviousData })
   // Without plans (an older API, a failed request) the list still works, unfiltered by plan.
   const plans = useQuery(plansQuery)
+  // Importing starts memberships, which only an owner or admin may.
+  const role = useQuery(myRoleQuery())
 
   const toggleStatus = (value: MembershipStatus) => {
     // In the chips' order, whatever the clicks', so a filter has one URL and one cache key.
@@ -77,6 +80,11 @@ export function Students() {
     <>
       <PageHeader title={copy.title} />
       <div className="students">
+        {readsLedger(role.data) && (
+          <Link to="/admin/alumnos/importar" className="students__import">
+            {copy.importLink}
+          </Link>
+        )}
         <div role="search" className="students__filters">
           <label htmlFor={searchId} className="visually-hidden">
             {copy.searchLabel}
