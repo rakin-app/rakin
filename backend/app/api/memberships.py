@@ -3,7 +3,7 @@
 A membership starts on a calendar day in the gym's timezone, and its anchor day and
 `current_period_end` follow from its plan (`app.domain.membership.start`). A plan
 change waits for the next period: it is stored as pending, from the first day not yet
-paid for or billed, and billing applies it then (migration 0008). Proration is v2.
+paid for or billed, and billing applies it then (migration 0009). Proration is v2.
 Cancelling is terminal and needs a reason; the database refuses any later change to
 a cancelled row.
 
@@ -118,7 +118,8 @@ def _conflict(error: InvalidTransition) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, str(error))
 
 
-def _unprocessable(error: ValueError) -> HTTPException:
+# OverflowError: a date past the edge of `date`'s range, which the schema keeps far off.
+def _unprocessable(error: ValueError | OverflowError) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error))
 
 
@@ -140,7 +141,7 @@ async def create_membership(
     started_on = body.started_on or local_date(datetime.now(UTC), timezone)
     try:
         started = domain.start(terms, started_on)
-    except ValueError as error:
+    except (ValueError, OverflowError) as error:
         raise _unprocessable(error) from None
 
     result = await session.execute(
@@ -203,7 +204,7 @@ async def change_plan(
         starts_on = domain.plan_change_starts(current, terms.kind, billed_through=billed_through)
     except InvalidTransition as error:
         raise _conflict(error) from None
-    except ValueError as error:
+    except (ValueError, OverflowError) as error:
         raise _unprocessable(error) from None
     await session.execute(
         text("UPDATE membership SET next_plan_id = :plan, next_plan_from = :from WHERE id = :id"),

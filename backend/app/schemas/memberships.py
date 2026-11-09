@@ -6,12 +6,17 @@ a pending plan change takes effect.
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 
+from app.domain.dates import add_months
 from app.domain.membership import MembershipStatus, PlanKind
+
+# How far `started_on` may be from today: room to backfill a gym's history or book a
+# start ahead, and far from the edge of `date`'s range.
+STARTED_ON_WINDOW_YEARS = 5
 
 Reason = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 
@@ -23,6 +28,18 @@ class MembershipCreate(BaseModel):
     plan_id: uuid.UUID
     # Today in the gym's timezone when omitted; a past day records an existing member.
     started_on: date | None = None
+
+    @field_validator("started_on")
+    @classmethod
+    def _near_today(cls, value: date | None) -> date | None:
+        # UTC's today, a day either side of any gym's; the window is years wide.
+        today = datetime.now(UTC).date()
+        months = 12 * STARTED_ON_WINDOW_YEARS
+        if value is not None and not add_months(today, -months) <= value <= add_months(
+            today, months
+        ):
+            raise ValueError(f"started_on must be within {STARTED_ON_WINDOW_YEARS} years of today")
+        return value
 
 
 class PlanChange(BaseModel):

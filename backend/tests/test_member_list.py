@@ -80,7 +80,7 @@ def join(
     db: Database, gym: uuid.UUID, person: str, plan: uuid.UUID, status: str, days_ago: int = 0
 ) -> str:
     started = datetime.now(UTC) - timedelta(days=days_ago)
-    # A cancelled membership carries its reason and when (migration 0008).
+    # A cancelled membership carries its reason and when (migration 0009).
     cancelled = status == "cancelled"
     membership = as_owner(
         db,

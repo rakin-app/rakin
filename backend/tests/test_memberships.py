@@ -1,7 +1,7 @@
 """Memberships: starting one on each kind, changing plan next period, cancelling for good.
 
 Dates are the gym's: a membership starts on a local calendar day, and its stored
-`started_at` is that day's first instant there (migration 0008 for the rest).
+`started_at` is that day's first instant there (migration 0009 for the rest).
 """
 
 import random
@@ -15,8 +15,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from alembic import command
-from app.domain.dates import local_date, start_of_local_day
+from app.domain.dates import add_months, local_date, start_of_local_day
 from app.main import create_app
+from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
@@ -175,6 +176,22 @@ def test_start_defaults_to_today_in_the_gyms_timezone(client: TestClient, db: Da
     started_on = date.fromisoformat(response.json()["started_on"])
     assert started_on in {before, after}
     assert response.json()["anchor_day"] == started_on.day
+
+
+@pytest.mark.parametrize("started_on", ["0001-01-01", "9999-12-31", "2015-01-01", "2040-01-01"])
+def test_start_refuses_a_day_years_from_today(
+    client: TestClient, sur: uuid.UUID, started_on: str
+) -> None:
+    # Not a 500 from date arithmetic past the edge of `date`'s range.
+    response = start(client, sur, plan(client, sur, "credits"), started_on=started_on)
+    assert response.status_code == 422
+    assert "within 5 years" in response.text
+
+
+def test_start_takes_a_day_within_the_window(client: TestClient, sur: uuid.UUID) -> None:
+    near = add_months(datetime.now(UTC).date(), -12 * STARTED_ON_WINDOW_YEARS + 1)
+    response = start(client, sur, plan(client, sur, "signup"), started_on=near.isoformat())
+    assert response.status_code == 201, response.text
 
 
 def test_a_dropin_is_not_a_membership(client: TestClient, sur: uuid.UUID) -> None:
@@ -372,7 +389,7 @@ def test_coaches_read_memberships_and_only_owner_or_admin_change_them(
     assert codes == ((201, 200, 200) if writes else (403, 403, 403))
 
 
-# --- the table on its own (migration 0008) --------------------------------------------
+# --- the table on its own (migration 0009) --------------------------------------------
 
 
 def test_a_cancelled_row_is_final_for_every_role(
@@ -430,7 +447,7 @@ def test_a_pending_plan_is_this_gyms(
 
 def test_the_upgrade_gives_rows_cancelled_before_it_a_reason() -> None:
     with throwaway_database(require_test_database_url()) as database:
-        migrate(database, "0007")
+        migrate(database, "0008")
         gym = seed_gym(database, "antes")
         run(database.admin_url, lambda c: c.execute("UPDATE membership SET status = 'cancelled'"))
         migrate(database)
@@ -438,7 +455,7 @@ def test_the_upgrade_gives_rows_cancelled_before_it_a_reason() -> None:
         assert (row["gym_id"], row["cancel_reason"]) == (gym, "sin motivo registrado")
         assert row["cancelled_at"] is not None
 
-        command.downgrade(database.alembic(), "0007")
+        command.downgrade(database.alembic(), "0008")
         columns = run(
             database.admin_url,
             lambda c: c.fetch(

@@ -192,6 +192,14 @@ def test_an_unpaid_new_membership_changes_from_its_start() -> None:
     assert m.plan_change_starts(started, PlanKind.PREPAID) == NOV_15
 
 
+def test_dates_past_the_edge_of_the_range_overflow() -> None:
+    # The API keeps `started_on` near today; this is the backstop it maps to a 422.
+    with pytest.raises(OverflowError):
+        m.start(m.PlanTerms(PlanKind.MONTHLY, anchor="signup"), date.min)
+    with pytest.raises(OverflowError):
+        m.plan_change_starts(monthly(current_period_end=date.max), PlanKind.MONTHLY)
+
+
 def test_a_cancelled_membership_does_not_change_plan() -> None:
     with pytest.raises(InvalidTransition):
         m.plan_change_starts(monthly(S.CANCELLED), PlanKind.MONTHLY)

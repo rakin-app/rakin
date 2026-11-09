@@ -10,12 +10,14 @@ does for the ledger. Violations raise `restrict_violation` (SQLSTATE 23001).
 
 A plan change takes effect next period (proration is v2): `next_plan_id` is the plan
 and `next_plan_from` the first day it applies, the start of the first period not yet
-billed. Billing prices a period starting on or after that day at `next_plan_id`, and
-moves it into `plan_id` then. Both are set or both null, and a cancelled membership
+billed. Billing (#31) prices a period starting on or after that day at `next_plan_id`,
+and moves it into `plan_id` then, recomputing `anchor_day` as
+`app.domain.membership.anchor_day(new_terms, next_plan_from)`: the 1st or that day on a
+monthly plan, null on a prepaid one. Both are set or both null, and a cancelled membership
 has none pending.
 
-Revision ID: 0008
-Revises: 0007
+Revision ID: 0009
+Revises: 0008
 Create Date: 2026-11-09
 
 """
@@ -24,8 +26,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0008"
-down_revision: str | Sequence[str] | None = "0007"
+revision: str = "0009"
+down_revision: str | Sequence[str] | None = "0008"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
