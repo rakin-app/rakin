@@ -6,6 +6,7 @@ its recipient). Accounts are opaque strings here, `subject`s, and so is a sessio
 `scope`: whatever the application wants a session to start in, such as a tenant.
 """
 
+import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,8 @@ from urllib.parse import urlencode
 
 from app.magiclink.ratelimit import RateLimiter
 from app.magiclink.tokens import LinkSigner, hash_token, new_session_token
+
+logger = logging.getLogger(__name__)
 
 LINK_TTL = timedelta(minutes=15)
 SESSION_TTL = timedelta(days=30)
@@ -129,15 +132,23 @@ class MagicLinks:
                 raise RateLimited(retry_after)
 
     async def send_links(self, address: str) -> list[Link]:
-        """Issue and send a link to every account at `address`; none if there are none.
+        """Issue and send a link to every account at `address`; returns those sent.
 
         Run it after answering the request: it is all the work a known address costs
         and an unknown one does not.
         """
-        links = [await self.issue(r) for r in await self.directory.recipients(address)]
-        for link in links:
-            await self.sender.send(link)
-        return links
+        sent = []
+        for recipient in await self.directory.recipients(address):
+            # One failure must not cost the others theirs (a parent and child share an
+            # address). The log names the account, never the link.
+            try:
+                link = await self.issue(recipient)
+                await self.sender.send(link)
+            except Exception:
+                logger.exception("magic link not sent", extra={"subject": recipient.subject})
+                continue
+            sent.append(link)
+        return sent
 
     async def issue(self, recipient: Recipient) -> Link:
         """A new single-use link for `recipient`, stored and ready to send."""

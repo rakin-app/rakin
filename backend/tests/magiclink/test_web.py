@@ -99,8 +99,11 @@ class Store:
 @dataclass
 class Outbox:
     sent: list[Link] = field(default_factory=list)
+    refuse: set[str] = field(default_factory=set)  # subjects whose send raises
 
     async def send(self, link: Link) -> None:
+        if link.recipient.subject in self.refuse:
+            raise ConnectionError("mail server said no")
         self.sent.append(link)
 
     def url_for(self, recipient: Recipient) -> str:
@@ -196,6 +199,22 @@ def test_each_account_at_a_shared_address_gets_its_own_link(harness: Harness) ->
     harness.request_link("familia@example.cl")
     assert [link.recipient for link in harness.outbox.sent] == [CAMILA, MATEO]
     assert harness.outbox.url_for(CAMILA) != harness.outbox.url_for(MATEO)
+
+
+def test_a_failed_send_does_not_stop_the_others(
+    harness: Harness, caplog: pytest.LogCaptureFixture
+) -> None:
+    harness.outbox.refuse = {CAMILA.subject}
+
+    assert harness.request_link(CAMILA.address) == 202
+
+    assert [link.recipient for link in harness.outbox.sent] == [MATEO]
+    [failure] = [r for r in caplog.records if r.message == "magic link not sent"]
+    assert failure.__dict__["subject"] == CAMILA.subject
+    # Both links were stored; the log carries neither.
+    assert len(harness.store.links) == 2
+    logged = caplog.text + repr(failure.__dict__)
+    assert "token=" not in logged and "callback" not in logged
 
 
 def test_an_unknown_address_gets_the_same_answer_and_nothing_is_sent(harness: Harness) -> None:
