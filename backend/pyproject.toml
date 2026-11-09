@@ -18,6 +18,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "boto3-stubs[s3]>=1.43.126",
+    "freezegun>=1.5.5",
     "httpx>=0.28.1",
     "mypy>=2.4.1",
     "pytest>=9.2.0",
