@@ -2,7 +2,8 @@
 how many proofs wait for review (#35), reads one membership's ledger for the member
 detail ("Ficha de alumno", #60), lists what is overdue for the owner's dashboard
 ("Hoy", #58), and reads the whole gym's ledger for the ledger book ("Libro de pagos",
-#39).
+#39). The member detail and the book list freezes (#26) among the entries, as lines
+with no amount where each started and ended.
 
 `POST /api/ledger/payments` records money the gym received in cash, by a transfer the
 admin saw arrive, or otherwise, against one billing period of a membership. There is
@@ -38,9 +39,11 @@ from app.roles import LedgerSession
 from app.schemas.ledger import (
     BookEntry,
     BookFilter,
+    BookFreeze,
     BookKpis,
     BookPeriod,
     Entry,
+    FreezeLine,
     LedgerBook,
     MembershipLedger,
     OpenPeriod,
@@ -379,6 +382,10 @@ async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) ->
         open_periods=open_periods,
         owed_clp=sum(p.outstanding_clp for p in open_periods if p.due),
         entries=[TimelineEntry.model_validate(row, from_attributes=True) for row in entries],
+        freezes=[
+            FreezeLine.model_validate(row, from_attributes=True)
+            for row in await session.execute(MEMBERSHIP_FREEZES, {"id": membership_id})
+        ],
     )
 
 
@@ -387,6 +394,23 @@ GYM_CLOCK = """
     SELECT g.timezone, (now() AT TIME ZONE g.timezone)::date AS today
     FROM gym g WHERE g.id = current_setting('app.gym_id')::uuid
 """
+
+# Each freeze's start and end as lines, the end once it has come, in the gym's timezone.
+FREEZE_EDGES = f"""
+    SELECT f.id AS freeze_id, f.membership_id, edge.kind AS edge, edge.day,
+           f.from_date, f.to_date, f.reason
+    FROM membership_freeze f
+    CROSS JOIN ({GYM_CLOCK}) t
+    CROSS JOIN LATERAL (VALUES ('start', f.from_date), ('end', f.to_date)) AS edge (kind, day)
+    WHERE edge.day <= t.today
+"""
+
+# Newest first; a freeze starting the day another ended is the newer of the two lines.
+FREEZE_ORDER = "fe.day DESC, fe.edge = 'start' DESC, fe.freeze_id"
+
+MEMBERSHIP_FREEZES = text(
+    f"SELECT fe.* FROM ({FREEZE_EDGES}) fe WHERE fe.membership_id = :id ORDER BY {FREEZE_ORDER}"
+)
 
 # An entry's gym-local day, for `e`, a `ledger_entry`, and `t`, `GYM_CLOCK`.
 ENTRY_DAY = "(e.created_at AT TIME ZONE t.timezone)::date"
@@ -441,6 +465,27 @@ BOOK_FILTERS = {
         " (SELECT billing_period_id FROM v_overdue WHERE membership_status = 'active')"
     ),
     BookFilter.KIDS: f"{IN_MONTH} AND gl.dependent_person_id IS NOT NULL",
+}
+
+# The month's freeze lines as the book lists them, with whose membership it is, as
+# `BOOK_ROWS` has it.
+BOOK_FREEZES = f"""
+    SELECT fe.*, pl.name AS plan_name, m.person_id, mp.name AS person_name,
+           gl.guardian_person_id AS guardian_id, gp.name AS guardian_name
+    FROM ({FREEZE_EDGES}) fe
+    JOIN membership m ON m.id = fe.membership_id
+    JOIN plan pl ON pl.id = m.plan_id
+    JOIN gym_person mp ON mp.gym_id = m.gym_id AND mp.person_id = m.person_id
+    LEFT JOIN guardian_link gl
+        ON gl.gym_id = m.gym_id AND gl.dependent_person_id = m.person_id
+    LEFT JOIN gym_person gp ON gp.gym_id = gl.gym_id AND gp.person_id = gl.guardian_person_id
+    WHERE fe.day >= :month AND fe.day < (:month + interval '1 month')::date
+"""
+
+# What each filter keeps of `BOOK_FREEZES`; a filter of money owed keeps none.
+BOOK_FREEZE_FILTERS = {
+    BookFilter.ALL: "true",
+    BookFilter.KIDS: "gl.dependent_person_id IS NOT NULL",
 }
 
 # The membership statuses whose periods "Esperado" counts (`BOOK_KPIS`).
@@ -521,6 +566,13 @@ async def ledger_book(
             BOOK_KPIS, {"month": shown, "expected_statuses": list(EXPECTED_STATUSES)}
         )
     ).one()
+    freezes = []
+    if book_filter in BOOK_FREEZE_FILTERS:
+        freeze_rows = await session.execute(
+            text(f"{BOOK_FREEZES} AND {BOOK_FREEZE_FILTERS[book_filter]} ORDER BY {FREEZE_ORDER}"),
+            {"month": shown},
+        )
+        freezes = [book_freeze(row) for row in freeze_rows]
     return LedgerBook(
         month=shown,
         months=months,
@@ -528,6 +580,24 @@ async def ledger_book(
         kpis=BookKpis.model_validate(kpis, from_attributes=True),
         items=[book_entry(row) for row in rows],
         total=total or 0,
+        freezes=freezes,
+    )
+
+
+def book_freeze(row: Any) -> BookFreeze:
+    return BookFreeze(
+        freeze_id=row.freeze_id,
+        edge=row.edge,
+        day=row.day,
+        from_date=row.from_date,
+        to_date=row.to_date,
+        reason=row.reason,
+        membership_id=row.membership_id,
+        plan_name=row.plan_name,
+        person=PersonRef(id=row.person_id, name=row.person_name),
+        guardian=None
+        if row.guardian_id is None
+        else PersonRef(id=row.guardian_id, name=row.guardian_name),
     )
 
 

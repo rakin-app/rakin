@@ -93,6 +93,7 @@ function pageFor(periods: OpenPeriod[]): MyPage {
     name: 'Ana Rojas',
     next_payment: first ? { period: first, status: first.pending_clp > 0 ? 'in_review' : 'due' } : null,
     bank_account: null,
+    rank: null,
     payments: [],
   }
 }

@@ -58,6 +58,7 @@ function diego(over: Partial<MyPage> = {}): MyPage {
     name: 'Diego Morales',
     next_payment: { period: NOVEMBER, status: 'in_review' },
     bank_account: BANK,
+    rank: null,
     payments: [
       payment({ id: 'e-nov', status: 'pending', period_start: NOVEMBER.period_start, claimed_at: new Date().toISOString(), validated_at: null }),
       payment({ id: 'e-oct' }),
@@ -183,6 +184,28 @@ describe('Mi página', () => {
     expect(await screen.findByText(copy.next.noBank)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: copy.next.copy })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: copy.next.upload })).toBeInTheDocument()
+  })
+
+  it('shows the belt and since when', async () => {
+    stubPage(
+      diego({
+        rank: { rank_key: 'purple', rank_label: 'Morada', sub_rank: '1', sub_rank_label: '1 grado', awarded_on: '2025-06-14' },
+      }),
+    )
+    renderMe()
+
+    const card = within(await screen.findByRole('region', { name: copy.training.title }))
+    expect(card.getByText(copy.training.belt)).toBeInTheDocument()
+    expect(card.getByText('Morada · 1 grado')).toBeInTheDocument()
+    expect(card.getByText('desde 14 jun 2025')).toBeInTheDocument()
+  })
+
+  it('has no belt card until the gym records a rank', async () => {
+    stubPage(diego())
+    renderMe()
+
+    await screen.findByRole('heading', { level: 1, name: 'Hola, Diego' })
+    expect(screen.queryByRole('region', { name: copy.training.title })).not.toBeInTheDocument()
   })
 
   it('is paid up', async () => {

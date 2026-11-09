@@ -16,8 +16,8 @@ started or reassigned is the API's check.
 A topic or notes are absent (null) rather than blank. A session is never deleted:
 `rakin_app` may read, add and change them.
 
-Revision ID: 0017
-Revises: 0016
+Revision ID: 0019
+Revises: 0018
 Create Date: 2026-11-09
 
 """
@@ -26,8 +26,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0017"
-down_revision: str | Sequence[str] | None = "0016"
+revision: str = "0019"
+down_revision: str | Sequence[str] | None = "0018"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

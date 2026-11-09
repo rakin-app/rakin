@@ -1,6 +1,6 @@
 """The current gym's sessions: the day's classes, start one, write its topic and notes.
 
-A session is one class actually held (migration 0017). There is no timetable: a coach
+A session is one class actually held (migration 0019). There is no timetable: a coach
 starts one ad hoc when the class begins, of one of the gym's active class types, and
 writes its topic and notes during or after class. The day's sessions are those whose
 `starts_at` falls on that calendar day in the gym's timezone, today by default.

@@ -12,7 +12,11 @@ from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.domain.membership import Membership, MembershipStatus, PlanKind
 
 S = MembershipStatus
+NOV_10 = date(2026, 11, 10)
+NOV_24 = date(2026, 11, 24)
 NOV_30 = date(2026, 11, 30)
+DEC_10 = date(2026, 12, 10)
+DEC_24 = date(2026, 12, 24)
 VALIDATED_PAYMENT = LedgerEntry(EntryKind.PAYMENT, 30_000, EntryStatus.VALIDATED)
 
 
@@ -60,7 +64,7 @@ def test_a_dropin_is_not_a_membership() -> None:
 
 # Every action, keyed by the status it leads to, so each invalid source can be tried.
 ACTIONS: dict[MembershipStatus, Callable[[Membership], Membership]] = {
-    S.FROZEN: lambda ms: m.freeze(ms, NOV_30),
+    S.FROZEN: lambda ms: m.freeze(ms, NOV_30, NOV_30 + timedelta(days=14)),
     S.CANCELLED: lambda ms: m.cancel(ms, "se mudó"),
     S.ACTIVE: lambda ms: m.record_payment(ms, VALIDATED_PAYMENT, paid_through=NOV_30),
     S.LAPSED: lambda ms: m.lapse(ms, NOV_30 + timedelta(days=60)),
@@ -77,7 +81,12 @@ INVALID = [
 
 @pytest.mark.parametrize(("source", "target"), INVALID)
 def test_invalid_transitions_raise(source: MembershipStatus, target: MembershipStatus) -> None:
-    ms = monthly(source, frozen_since=NOV_30 if source is S.FROZEN else None)
+    frozen = source is S.FROZEN
+    ms = monthly(
+        source,
+        frozen_since=NOV_30 if frozen else None,
+        frozen_until=NOV_30 + timedelta(days=14) if frozen else None,
+    )
 
     with pytest.raises(InvalidTransition):
         ACTIONS[target](ms)
@@ -316,7 +325,7 @@ def test_a_credits_pack_cannot_reactivate_without_a_top_up(credits: int | None) 
 
 
 def test_a_payment_does_not_unfreeze() -> None:
-    frozen = m.freeze(monthly(), date(2026, 11, 10))
+    frozen = m.freeze(monthly(), NOV_10, NOV_24)
 
     with pytest.raises(InvalidTransition, match="unfrozen"):
         m.record_payment(frozen, VALIDATED_PAYMENT, paid_through=date(2026, 12, 31))
@@ -334,35 +343,105 @@ def test_a_payment_can_refill_a_credits_pack() -> None:
 # --- freeze -----------------------------------------------------------------------------
 
 
-def test_freeze_shifts_the_due_date_by_the_frozen_days() -> None:
-    frozen = m.freeze(monthly(), date(2026, 11, 10))
+def test_freeze_shifts_the_due_date_by_the_frozen_days_as_it_starts() -> None:
+    frozen = m.freeze(monthly(anchor_day=1), NOV_10, NOV_24)
 
-    thawed = m.unfreeze(frozen, date(2026, 11, 24))
+    assert frozen.status is S.FROZEN
+    assert frozen.current_period_end == NOV_30 + timedelta(days=14)
+    # Next due Dec 15, so it bills on the 15th from then on.
+    assert frozen.anchor_day == 15
+    assert (frozen.frozen_since, frozen.frozen_until) == (NOV_10, NOV_24)
+
+
+def test_freeze_moves_past_the_last_period_billed_before_it() -> None:
+    # Paid through Nov 30 at the start, since billed through Dec 31: the Dec period
+    # started before the freeze, so billing resumes 14 days after it ends.
+    frozen = m.freeze(
+        monthly(current_period_end=date(2026, 11, 4), anchor_day=5),
+        DEC_10,
+        DEC_24,
+        billed_through=date(2027, 1, 4),
+    )
+
+    assert frozen.current_period_end == date(2027, 1, 18)
+    assert frozen.anchor_day == 19
+
+
+def test_freeze_keeps_a_later_paid_through_date() -> None:
+    frozen = m.freeze(monthly(), NOV_10, NOV_24, billed_through=date(2026, 11, 4))
+
+    assert frozen.current_period_end == NOV_30 + timedelta(days=14)
+
+
+def test_freeze_moves_a_credits_pack_expiry() -> None:
+    frozen = m.freeze(credits_pack(), NOV_10, NOV_24, billed_through=date(2027, 1, 4))
+
+    assert frozen.current_period_end == NOV_30 + timedelta(days=14)
+    assert frozen.anchor_day is None
+
+
+def test_freeze_keeps_a_prepaid_plan_without_an_anchor_day() -> None:
+    prepaid = Membership(PlanKind.PREPAID, S.ACTIVE, current_period_end=NOV_30)
+
+    assert m.freeze(prepaid, NOV_10, NOV_24).anchor_day is None
+
+
+@pytest.mark.parametrize("days", [0, -1])
+def test_a_freeze_ends_after_it_starts(days: int) -> None:
+    with pytest.raises(ValueError, match="ends after"):
+        m.freeze(monthly(), NOV_10, NOV_10 + timedelta(days=days))
+
+
+def test_a_freeze_lasts_at_most_a_year() -> None:
+    m.freeze(monthly(), NOV_10, NOV_10 + timedelta(days=m.MAX_FREEZE_DAYS))
+    with pytest.raises(ValueError, match="at most"):
+        m.freeze(monthly(), NOV_10, NOV_10 + timedelta(days=m.MAX_FREEZE_DAYS + 1))
+
+
+@pytest.mark.parametrize("source", [S.TRIAL, S.FROZEN, S.LAPSED, S.CANCELLED])
+def test_only_an_active_membership_freezes(source: MembershipStatus) -> None:
+    with pytest.raises(InvalidTransition):
+        m.freeze(monthly(source), NOV_10, NOV_24)
+
+
+def test_unfreeze_on_the_day_the_freeze_ends_keeps_the_due_date() -> None:
+    frozen = m.freeze(monthly(), NOV_10, NOV_24)
+
+    thawed = m.unfreeze(frozen, NOV_24)
 
     assert thawed.status is S.ACTIVE
     assert thawed.current_period_end == NOV_30 + timedelta(days=14)
-    assert thawed.frozen_since is None
+    assert (thawed.frozen_since, thawed.frozen_until) == (None, None)
 
 
-def test_cannot_unfreeze_before_the_freeze_started() -> None:
-    frozen = m.freeze(monthly(), date(2026, 11, 10))
+def test_cannot_unfreeze_before_the_freeze_ends() -> None:
+    frozen = m.freeze(monthly(), NOV_10, NOV_24)
 
-    with pytest.raises(ValueError, match="before"):
-        m.unfreeze(frozen, date(2026, 11, 9))
+    assert not m.is_due_to_unfreeze(frozen, NOV_24 - timedelta(days=1))
+    assert m.is_due_to_unfreeze(frozen, NOV_24)
+    with pytest.raises(InvalidTransition, match="frozen until"):
+        m.unfreeze(frozen, NOV_24 - timedelta(days=1))
 
 
-def test_unfreeze_needs_the_freeze_start_date() -> None:
-    with pytest.raises(InvalidTransition, match="freeze start"):
+def test_a_late_run_still_unfreezes() -> None:
+    frozen = m.freeze(monthly(), NOV_10, NOV_24)
+
+    assert m.unfreeze(frozen, NOV_30).status is S.ACTIVE
+
+
+def test_unfreeze_needs_the_freeze_end_date() -> None:
+    with pytest.raises(InvalidTransition, match="freeze end"):
         m.unfreeze(monthly(S.FROZEN), NOV_30)
 
 
 def test_unfreeze_needs_a_frozen_membership() -> None:
+    assert not m.is_due_to_unfreeze(monthly(frozen_until=NOV_24), NOV_30)
     with pytest.raises(InvalidTransition):
         m.unfreeze(monthly(), NOV_30)
 
 
 def test_a_frozen_membership_does_not_lapse() -> None:
-    frozen = m.freeze(monthly(), date(2026, 11, 10))
+    frozen = m.freeze(monthly(), NOV_10, NOV_24)
 
     assert not m.is_due_to_lapse(frozen, NOV_30 + timedelta(days=90))
 

@@ -1,8 +1,8 @@
 """The student page ("Mi página", #65): what the signed-in person reads about themselves.
 
 One document for the page: the next payment and where to transfer it, and the payments
-already sent with how each was reviewed. The belt and attendance cards join it with
-their tables (#48, #44).
+already sent with how each was reviewed, and the person's belt. The attendance card
+joins it with its table (#44).
 """
 
 import uuid
@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.domain.ledger import EntryStatus
+from app.schemas.grades import Rank
 from app.schemas.gym import BankAccount
 from app.schemas.proofs import OpenPeriod
 
@@ -56,5 +57,7 @@ class MyPage(BaseModel):
     next_payment: NextPayment | None
     # Where to transfer; `None` until the gym sets it (`PATCH /api/gym/settings`).
     bank_account: BankAccount | None
+    # Their latest promotion here (`grade_event`, 0018); `None` until they have one.
+    rank: Rank | None
     # Newest first, at most `PAYMENTS_SHOWN`.
     payments: list[MyPayment]

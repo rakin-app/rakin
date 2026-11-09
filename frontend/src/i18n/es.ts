@@ -236,17 +236,37 @@ export const es = {
       notFound: 'No encontramos a este alumno.',
       retry: 'Reintentar',
       since: (month: string) => `desde ${month}`,
+      // `Azul · 2 grados · desde mar 2024`: the rank, and a member since.
+      rankSince: (rank: string, month: string) => `${rank} · desde ${month}`,
       noPlan: 'Sin plan',
       paymentLabel: 'Estado de pago',
       dueDay: (plan: string, day: number) => `${plan} · vence el ${day}`,
       until: (plan: string, day: string) => `${plan} · hasta el ${day}`,
       overdue: (days: number) => `Vencido ${days} d`,
+      frozenUntil: (day: string) => `Congelado · vuelve el ${day}`,
       pendingMonth: (month: string) => `${month} pendiente`,
       pendingPeriods: (n: number) => `${n} períodos pendientes`,
       nextDue: (day: string) => `vence el ${day}`,
       upToDate: 'al día',
       ledgerError: 'No pudimos cargar los pagos.',
       record: 'Registrar pago',
+      freeze: 'Congelar',
+      freezeForm: {
+        title: 'Congelar membresía',
+        until: 'Vuelve el',
+        untilHint: 'Desde hoy hasta ese día no se cobra: el próximo pago se corre esos días.',
+        reason: 'Motivo',
+        submit: 'Confirmar congelación',
+        cancel: 'Cancelar',
+        working: 'Guardando…',
+        untilNeeded: 'Elige un día después de hoy.',
+        reasonNeeded: 'Escribe el motivo.',
+        done: (day: string) => `Membresía congelada. Vuelve el ${day}.`,
+        refused: {
+          notActive: 'Solo una membresía activa se puede congelar.',
+          failed: 'No pudimos congelar la membresía. Inténtalo de nuevo.',
+        },
+      },
       form: {
         title: 'Registrar pago',
         period: 'Período',
@@ -266,6 +286,34 @@ export const es = {
           failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
         },
       },
+      grading: {
+        title: 'Graduación',
+        error: 'No pudimos cargar la graduación.',
+        none: 'Sin graduación registrada.',
+        since: (day: string) => `desde ${day}`,
+        award: 'Registrar graduación',
+        log: 'Historial',
+        by: (name: string) => `registró ${name}`,
+        form: {
+          title: 'Registrar graduación',
+          rank: 'Rango',
+          ranks: 'Adultos',
+          kids: 'Kids',
+          subRank: 'Grado',
+          date: 'Fecha',
+          note: 'Nota (opcional)',
+          submit: 'Registrar',
+          cancel: 'Cancelar',
+          working: 'Guardando…',
+          done: (rank: string) => `Graduación registrada: ${rank}.`,
+          refused: {
+            awarded_in_future: 'La fecha no puede ser posterior a hoy.',
+            no_membership: 'Para registrar una graduación, el alumno necesita un plan.',
+            grading_scheme_invalid: 'Revisa el sistema de grados del gimnasio antes de registrar.',
+            failed: 'No pudimos registrar la graduación. Inténtalo de nuevo.',
+          },
+        },
+      },
       ledger: {
         title: 'Libro',
         empty: 'Sin movimientos todavía.',
@@ -280,6 +328,9 @@ export const es = {
         pending: 'por validar',
         rejected: 'rechazado',
         method: { transfer: 'transferencia', cash: 'efectivo', other: 'otro' },
+        freezeStart: 'Congelación',
+        freezeEnd: 'Fin de congelación',
+        returns: (day: string) => `vuelve el ${day}`,
       },
     },
     classes: {
@@ -358,7 +409,7 @@ export const es = {
         status: 'Estado',
         amount: 'Monto',
       },
-      kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución' },
+      kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
       method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },
       credit: 'A favor',
       status: {
@@ -369,6 +420,8 @@ export const es = {
         paid: 'Pagado',
         open: (day: string) => `Abierto · vence ${day}`,
         overdue: (days: number) => `Vencido ${days} d`,
+        freezeStart: 'Inicio',
+        freezeEnd: 'Fin',
       },
       empty: 'No hay asientos para mostrar.',
       showing: (shown: number, total: number, month: string | null) =>
@@ -469,6 +522,11 @@ export const es = {
           .join('\n'),
       upload: 'Subir comprobante',
     },
+    training: {
+      title: 'Mi entrenamiento',
+      belt: 'Cinturón',
+      since: (day: string) => `desde ${day}`,
+    },
     history: {
       title: 'Mis pagos',
       empty: 'Todavía no hay pagos.',
@@ -515,12 +573,17 @@ export const es = {
   common: {
     comingSoon: 'Esta sección todavía no está lista.',
     clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
+    // Where an amount would go on a line that moves no money.
+    noAmount: '—',
+    span: (from: string, to: string) => `${from} – ${to}`,
     // An ISO day, `2026-12-01`, as Chile writes it: `01-12-2026`.
     day: (iso: string) => iso.split('-').reverse().join('-'),
     // An ISO day as a sentence says it: `10 de noviembre`.
     longDay: (iso: string) => `${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]}`,
     // An ISO day as a list row says it: `8 oct`.
     shortDay: (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)}`,
+    // An ISO day with its year: `14 jun 2025`.
+    dayYear: (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)} ${iso.slice(0, 4)}`,
     // The month an ISO day falls in, as a heading: `Noviembre`, or `Noviembre 2025` outside `year`.
     month: (iso: string, year: string) => {
       const name = MONTHS[Number(iso.slice(5, 7)) - 1]!

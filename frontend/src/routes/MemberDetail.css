@@ -197,6 +197,25 @@
   font-size: var(--text-sm);
 }
 
+.member__rank {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.member__rank-label {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.1;
+}
+
+/* A form inside a card: the card is its frame. */
+.member__form--inset {
+  padding: 0;
+  border: 0;
+}
+
 .member__section {
   display: flex;
   flex-direction: column;
@@ -232,6 +251,17 @@
 
 .member__entry--owed {
   --tone: var(--color-warning);
+}
+
+/* A freeze moves no money: a hollow dot on a sunken row, set apart from the entries. */
+.member__entry--freeze {
+  background: var(--color-surface-sunken);
+  --tone: var(--color-text-subtle);
+}
+
+.member__entry--freeze .member__dot {
+  background: transparent;
+  border: 2px solid var(--tone);
 }
 
 .member__dot {
