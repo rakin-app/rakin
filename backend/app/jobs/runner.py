@@ -47,8 +47,10 @@ FINISH = "UPDATE job_run SET status = $2, finished_at = now() WHERE id = $1"
 @dataclass(frozen=True)
 class Job:
     name: str
-    # Runs inside the transaction that marks the day succeeded; raise to fail it.
-    run: Callable[[asyncpg.Connection, date], Awaitable[None]]
+    # Runs inside the transaction that marks the day succeeded; raise to fail it and
+    # roll its work back. Returning `False` fails the day too but keeps the work, for a
+    # job that rolled back only the part that broke (to a savepoint) and did the rest.
+    run: Callable[[asyncpg.Connection, date], Awaitable[bool | None]]
 
 
 class Outcome(StrEnum):
@@ -100,11 +102,15 @@ async def _run_one(conn: asyncpg.Connection, job: Job, day: date) -> bool:
     started = time.monotonic()
     try:
         async with conn.transaction():
-            await job.run(conn, day)
-            await conn.execute(FINISH, run_id, "succeeded")
+            complete = await job.run(conn, day) is not False
+            await conn.execute(FINISH, run_id, "succeeded" if complete else "failed")
     except Exception:
         await conn.execute(FINISH, run_id, "failed")
         logger.exception("job failed", extra={**log, "seconds": _since(started)})
+        return False
+    if not complete:
+        # The job logged what broke; its other work is committed.
+        logger.error("job incomplete", extra={**log, "seconds": _since(started)})
         return False
     logger.info("job succeeded", extra={**log, "seconds": _since(started)})
     return True

@@ -196,6 +196,31 @@ def test_a_failure_rolls_back_and_stops_the_run(
 
 
 @pytest.mark.postgres
+def test_a_job_returning_false_keeps_its_work_and_fails_the_day(
+    db: Database, names: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    async def incomplete(conn: asyncpg.Connection, day: date) -> bool:
+        await conn.execute("INSERT INTO job_effect (job, day) VALUES ($1, $2)", partial.name, day)
+        return False
+
+    partial = Job(f"{names}-1", incomplete)
+    later = recording(f"{names}-2")
+
+    with caplog.at_level(logging.INFO, logger="app.jobs.runner"):
+        report = run_jobs(db, [partial, later], DAY)
+
+    assert report == Report(Outcome.FAILED, [(partial.name, DAY)])
+    assert effects(db, names) == [(partial.name, DAY)]
+    assert runs(db, names) == {(partial.name, DAY): ("failed", True)}
+    [failure] = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert failure.getMessage() == "job incomplete"
+    assert failure.__dict__["job"] == partial.name
+
+    # Retried first on the next run, like any failed day.
+    assert run_jobs(db, [recording(partial.name)], DAY).ran == [(partial.name, DAY)]
+
+
+@pytest.mark.postgres
 def test_a_failed_day_is_retried_first(db: Database, names: str) -> None:
     broken_day = DAY + timedelta(days=1)
     flaky = recording(f"{names}-a", fail_on={broken_day})

@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from app.domain.billing import GENERATE_AHEAD_DAYS
 from app.domain.membership import MembershipStatus, PlanKind
 from app.roles import Role
 
@@ -27,8 +28,6 @@ GYM_SLUG = "academia-sur"
 TIMEZONE = "America/Santiago"
 # Felipe Díaz is 9 days overdue in the design and still Active.
 GRACE_DAYS = 10
-# Billing periods are generated this many days before they fall due (#31).
-GENERATE_AHEAD_DAYS = 7
 # How far back a member's paid history goes, in billing periods.
 HISTORY_PERIODS = 6
 
