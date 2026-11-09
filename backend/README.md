@@ -77,6 +77,7 @@ Every gym-scoped endpoint takes a `TenantSession` (`app/tenancy.py`), through th
 @router.get("/plans")
 async def list_plans(session: StaffSession) -> list[PlanOut]: ...  # owner, admin, coach
 
+
 @router.get("/ledger")
 async def list_entries(session: LedgerSession) -> list[EntryOut]: ...  # owner, admin
 ```
