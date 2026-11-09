@@ -222,4 +222,10 @@ uv run python -m app.jobs.daily --today 2026-11-08   # as if it were that date
 
 Days are dates in `JOBS_TIMEZONE` (`America/Santiago`). One runner works at a time, under a Postgres advisory lock: a second one logs that and does nothing, and a `running` row found under the lock, left by a runner that died, is run again. The runner connects as the owner (`MIGRATION_DATABASE_URL`), as the seed does, so RLS still holds it to one gym: a job that works per gym sets `app.gym_id` for each.
 
+The owner cannot see which gyms exist with no `app.gym_id` set, so a per-gym job asks `jobs_gym_ids()` (`0010`), a `SECURITY DEFINER` lookup that returns only gym ids and that only the owner may call.
+
+The jobs, in order:
+
+- `billing_periods` (`app/jobs/billing.py`): for every Active membership, writes each billing period that falls due within 7 days, with a validated `charge` ledger entry for its amount (the plan's price less `discount_pct`, rounded down to a whole peso; a period discounted to nothing has no charge). A monthly plan owes a period per cycle from its anchor day, a prepaid one a block of `period_months`, a credits pack or a drop-in a single charge, a trial nothing. A period falls due on its first day. A pending plan change prices the first period starting on or after `next_plan_from` and becomes the plan then, with `anchor_day` recomputed. It picks up after the latest period (or the paid-through date, if later), so re-running a date writes nothing.
+
 Set `SENTRY_DSN` to report failures to Sentry (`app/sentry.py`): every `ERROR` log line becomes an event, so a failed job, or a run that could not reach the database, arrives there with its traceback. Empty, the default, sends nothing.

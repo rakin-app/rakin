@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 import asyncpg
 import pytest
 
+from app.domain.billing import GENERATE_AHEAD_DAYS
 from app.domain.dates import add_months
 from app.domain.membership import Membership, MembershipStatus, PlanKind, is_due_to_lapse
 from app.domain.phone import normalize_phone
@@ -18,7 +19,6 @@ from app.domain.rut import is_valid_rut
 from app.seed import Loaded, load
 from app.seed.build import GYM_ID, Row, Seed, build, local, seed_id
 from app.seed.data import (
-    GENERATE_AHEAD_DAYS,
     GRACE_DAYS,
     GRADING,
     KIDS_LADDER,

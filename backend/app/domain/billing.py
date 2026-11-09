@@ -1,4 +1,12 @@
-"""Settling billing periods against validated ledger entries.
+"""Generating billing periods, and settling them against validated ledger entries.
+
+The nightly job generates each period `GENERATE_AHEAD_DAYS` before it falls due, on
+its first day (`due_periods`). A monthly membership owes one period per cycle, from
+its anchor day to the day before the next; a prepaid one a block of `period_months`;
+a credits pack (or a drop-in) a single charge for the whole of it; a trial nothing.
+Each is priced at the plan's price less the membership's discount, in whole pesos.
+A pending plan change prices the first period starting on or after its day at the new
+plan, which becomes the membership's plan from then on.
 
 A period closes once validated payments (and credit carried in from an earlier
 overpayment) cover its amount due. Whatever is paid beyond that becomes a credit
@@ -7,14 +15,23 @@ period, so the period stays open.
 """
 
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, timedelta
 
 from app.domain import ledger
+from app.domain import membership as memberships
+from app.domain.dates import add_months
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
+from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
 from app.domain.money import format_clp
 
 SETTLING_KINDS = frozenset({EntryKind.PAYMENT, EntryKind.ADJUSTMENT})
+
+# A period is generated this many days before it falls due (docs/technical.md).
+GENERATE_AHEAD_DAYS = 7
+
+# The kinds charged once, for the whole of what was bought.
+SINGLE_CHARGE = frozenset({PlanKind.CREDITS, PlanKind.DROPIN})
 
 
 @dataclass(frozen=True)
@@ -74,3 +91,115 @@ def validate_payment(period: BillingPeriod, entry: LedgerEntry) -> Settlement:
     if period.closed:
         raise InvalidTransition("billing period is already closed")
     return apply(period, ledger.validate(entry))
+
+
+@dataclass(frozen=True)
+class Plan:
+    """What billing reads from a `plan` row."""
+
+    terms: PlanTerms
+    price_clp: int
+    # A prepaid plan's block length.
+    period_months: int | None = None
+
+
+@dataclass(frozen=True)
+class Billable:
+    """A membership as billing sees it."""
+
+    plan: Plan
+    status: MembershipStatus
+    # The calendar day it started, in the gym's timezone.
+    started_on: date
+    current_period_end: date | None = None
+    # The latest billing period's end; `None` before the first one.
+    billed_through: date | None = None
+    anchor_day: int | None = None
+    discount_pct: int = 0
+    # A pending plan change: the plan, and the first day it applies (migration 0009).
+    next_plan: Plan | None = None
+    next_plan_from: date | None = None
+
+
+@dataclass(frozen=True)
+class Billing:
+    """The periods a membership owes, and its plan and anchor day after them."""
+
+    periods: tuple[BillingPeriod, ...]
+    # True when the pending plan change was applied: `plan` and `anchor_day` replace
+    # the membership's own, and the change is no longer pending.
+    plan_changed: bool
+    plan: Plan
+    anchor_day: int | None
+
+
+def discounted(price_clp: int, discount_pct: int) -> int:
+    """`price_clp` less `discount_pct` percent, rounded down to a whole peso."""
+    if not 0 <= discount_pct <= 100:
+        raise ValueError(f"discount_pct must be 0..100, got {discount_pct}")
+    return price_clp * (100 - discount_pct) // 100
+
+
+def _next_anchor(after: date, anchor_day: int) -> date:
+    """The first date after `after` on `anchor_day` (clamped to the end of a short month)."""
+    same_month = add_months(after, 0, anchor_day=anchor_day)
+    return same_month if same_month > after else add_months(after, 1, anchor_day=anchor_day)
+
+
+def _period_end(plan: Plan, start: date, anchor_day: int | None) -> date:
+    kind = plan.terms.kind
+    if kind is PlanKind.MONTHLY:
+        return _next_anchor(start, anchor_day or start.day) - timedelta(days=1)
+    if kind is PlanKind.PREPAID:
+        if plan.period_months is None:
+            raise ValueError("a prepaid plan has period_months")
+        return add_months(start, plan.period_months) - timedelta(days=1)
+    if kind is PlanKind.CREDITS:
+        days = plan.terms.credit_expiry_days
+        if days is None:
+            raise ValueError("a credits plan has credit_expiry_days")
+        return start + timedelta(days=days - 1)
+    if kind is PlanKind.DROPIN:
+        return start
+    raise ValueError(f"a {kind} plan is not billed")
+
+
+def _first_unbilled(billable: Billable) -> date | None:
+    """The first day the membership has not been billed for, or `None` if it never
+    will be again: a single charge already made."""
+    if billable.plan.terms.kind in SINGLE_CHARGE:
+        return billable.started_on if billable.billed_through is None else None
+    ends = [d for d in (billable.current_period_end, billable.billed_through) if d is not None]
+    return max(ends) + timedelta(days=1) if ends else billable.started_on
+
+
+def due_periods(billable: Billable, today: date, *, ahead: int = GENERATE_AHEAD_DAYS) -> Billing:
+    """Every period `billable` owes that falls due by `today + ahead`, oldest first.
+
+    Only an Active membership is billed: a trial is free, a frozen one waits for its
+    due date to shift, and a lapsed or cancelled one is not charged further. A period
+    falls due on its first day, so a run after downtime catches up every period
+    missed, one per cycle.
+    """
+    plan, anchor_day = billable.plan, billable.anchor_day
+    unchanged = Billing((), plan_changed=False, plan=plan, anchor_day=anchor_day)
+    if billable.status is not MembershipStatus.ACTIVE or plan.terms.kind is PlanKind.TRIAL:
+        return unchanged
+    start = _first_unbilled(billable)
+    horizon = today + timedelta(days=ahead)
+    pending, pending_from = billable.next_plan, billable.next_plan_from
+    changed = False
+    # A monthly row from before anchor days were stored bills on the day it resumes.
+    fallback_anchor = start.day if start is not None else None
+    periods: list[BillingPeriod] = []
+    while start is not None and start <= horizon:
+        if pending is not None and pending_from is not None and start >= pending_from:
+            if pending.terms.kind not in memberships.RECURRING:
+                raise ValueError(f"a plan change moves to a monthly or prepaid plan, not {pending}")
+            plan, anchor_day = pending, memberships.anchor_day(pending.terms, pending_from)
+            pending, changed = None, True
+        end = _period_end(plan, start, anchor_day or fallback_anchor)
+        amount = discounted(plan.price_clp, billable.discount_pct)
+        periods.append(BillingPeriod(start, end, amount_due_clp=amount, due_date=start))
+        start = end + timedelta(days=1) if plan.terms.kind not in SINGLE_CHARGE else None
+    return Billing(tuple(periods), plan_changed=changed, plan=plan, anchor_day=anchor_day)
