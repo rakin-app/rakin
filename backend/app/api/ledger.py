@@ -1,7 +1,8 @@
 """The current gym's ledger: an admin records a payment ("Registrar pago", #37), sees
-how many proofs wait for review (#35), and reads one membership's ledger for the
-member detail ("Ficha de alumno", #60), and lists what is overdue for the owner's
-dashboard ("Hoy", #58).
+how many proofs wait for review (#35), reads one membership's ledger for the member
+detail ("Ficha de alumno", #60), lists what is overdue for the owner's dashboard
+("Hoy", #58), and reads the whole gym's ledger for the ledger book ("Libro de pagos",
+#39).
 
 `POST /api/ledger/payments` records money the gym received in cash, by a transfer the
 admin saw arrive, or otherwise, against one billing period of a membership. There is
@@ -16,9 +17,10 @@ Owner and admin only (`LedgerSession`); RLS holds a coach to it as well (migrati
 """
 
 import uuid
-from typing import Any
+from datetime import date
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,13 +30,19 @@ from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.roles import LedgerSession
 from app.schemas.ledger import (
+    BookEntry,
+    BookFilter,
+    BookKpis,
+    BookPeriod,
     Entry,
+    LedgerBook,
     MembershipLedger,
     OpenPeriod,
     Overdue,
     OverduePeriod,
     PaymentRecord,
     Period,
+    PersonRef,
     RecordedPayment,
     TimelineEntry,
 )
@@ -270,6 +278,183 @@ async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) ->
         open_periods=open_periods,
         owed_clp=sum(p.outstanding_clp for p in open_periods if p.due),
         entries=[TimelineEntry.model_validate(row, from_attributes=True) for row in entries],
+    )
+
+
+# The gym's timezone and today in it; every month the book shows is a gym-local one.
+GYM_CLOCK = """
+    SELECT g.timezone, (now() AT TIME ZONE g.timezone)::date AS today
+    FROM gym g WHERE g.id = current_setting('app.gym_id')::uuid
+"""
+
+# An entry's gym-local day, for `e`, a `ledger_entry`, and `t`, `GYM_CLOCK`.
+ENTRY_DAY = "(e.created_at AT TIME ZONE t.timezone)::date"
+
+# The months with entries, newest first. RLS keeps them to the gym.
+BOOK_MONTHS = text(
+    f"""
+    SELECT DISTINCT date_trunc('month', {ENTRY_DAY})::date AS month
+    FROM ledger_entry e CROSS JOIN ({GYM_CLOCK}) t
+    ORDER BY month DESC
+    """
+)
+
+# The ledger as the book lists it: each entry with whose membership it is, the
+# guardian who pays for them, and its period settled as `OPEN_PERIODS` settles it.
+BOOK_ROWS = f"""
+    SELECT e.id, e.created_at, e.kind, e.status, e.amount_clp, e.method, e.note,
+           e.membership_id, pl.name AS plan_name,
+           m.person_id, mp.name AS person_name,
+           gl.guardian_person_id AS guardian_id, gp.name AS guardian_name,
+           bp.period_start, bp.period_end, bp.due_date,
+           bp.amount_due_clp - least(coalesce(paid.amount, 0), bp.amount_due_clp)
+               AS outstanding_clp,
+           CASE WHEN coalesce(paid.amount, 0) < bp.amount_due_clp
+                THEN greatest(t.today - bp.due_date, 0) ELSE 0 END AS days_overdue,
+           vp.name AS validated_by_name
+    FROM ledger_entry e
+    CROSS JOIN ({GYM_CLOCK}) t
+    JOIN membership m ON m.id = e.membership_id
+    JOIN plan pl ON pl.id = m.plan_id
+    JOIN gym_person mp ON mp.gym_id = m.gym_id AND mp.person_id = m.person_id
+    LEFT JOIN guardian_link gl
+        ON gl.gym_id = m.gym_id AND gl.dependent_person_id = m.person_id
+    LEFT JOIN gym_person gp ON gp.gym_id = gl.gym_id AND gp.person_id = gl.guardian_person_id
+    LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
+    LEFT JOIN LATERAL (
+        SELECT sum(s.amount_clp)::bigint AS amount FROM ledger_entry s
+        WHERE s.billing_period_id = bp.id AND s.status = 'validated'
+          AND s.kind = ANY(CAST(:settling AS text[]))
+    ) paid ON bp.id IS NOT NULL
+    LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
+"""
+
+IN_MONTH = f"{ENTRY_DAY} >= :month AND {ENTRY_DAY} < (:month + interval '1 month')::date"
+
+# What each filter keeps of `BOOK_ROWS`.
+BOOK_FILTERS = {
+    BookFilter.ALL: IN_MONTH,
+    BookFilter.PENDING: "e.kind = 'payment' AND e.status = 'pending'",
+    BookFilter.OVERDUE: (
+        "e.kind = 'charge' AND e.billing_period_id IN"
+        " (SELECT billing_period_id FROM v_overdue WHERE membership_status = 'active')"
+    ),
+    BookFilter.KIDS: f"{IN_MONTH} AND gl.dependent_person_id IS NOT NULL",
+}
+
+# The membership statuses whose periods "Esperado" counts (`BOOK_KPIS`).
+EXPECTED_STATUSES = ("active", "lapsed")
+
+# The book's KPIs. Collected and expected are the month's; pending and overdue, and the
+# membership counts, are how the gym stands today. Overdue counts active memberships
+# only, as the owner's "Vencido" does (`v_overdue`).
+#
+# Expected ("Esperado") is what is owed for the month: the periods falling due in it of
+# active and lapsed memberships, since a lapsed member still owes what was billed. A
+# cancelled membership's periods are not expected, and neither are a trial's or a
+# frozen one's.
+BOOK_KPIS = text(
+    """
+    SELECT
+        (SELECT coalesce(sum(income_clp), 0)::bigint FROM v_monthly_income
+         WHERE month = :month) AS collected_clp,
+        (SELECT coalesce(sum(payments), 0)::bigint FROM v_monthly_income
+         WHERE month = :month) AS collected_payments,
+        pending.amount AS pending_clp, pending.n AS pending_payments,
+        overdue.amount AS overdue_clp, overdue.members AS overdue_members,
+        overdue.avg_days AS overdue_avg_days,
+        (SELECT coalesce(sum(bp.amount_due_clp), 0)::bigint FROM billing_period bp
+         JOIN membership m ON m.id = bp.membership_id
+         WHERE m.status = ANY(CAST(:expected_statuses AS text[]))
+           AND bp.due_date >= :month AND bp.due_date < (:month + interval '1 month')::date)
+            AS expected_clp,
+        (SELECT count(*) FROM membership WHERE status = 'active') AS active_memberships,
+        (SELECT count(*) FROM membership WHERE status = 'frozen') AS frozen_memberships
+    FROM (
+        SELECT coalesce(sum(amount_clp), 0)::bigint AS amount, count(*) AS n
+        FROM ledger_entry WHERE kind = 'payment' AND status = 'pending'
+    ) pending
+    CROSS JOIN (
+        SELECT coalesce(sum(outstanding), 0)::bigint AS amount, count(*) AS members,
+               coalesce(avg(days), 0)::float AS avg_days
+        FROM (
+            SELECT person_id, sum(outstanding_clp) AS outstanding, max(days_overdue) AS days
+            FROM v_overdue WHERE membership_status = 'active' GROUP BY person_id
+        ) per_member
+    ) overdue
+    """
+)
+
+BOOK_PAGE_MAX = 200
+
+
+@router.get("/book")
+async def ledger_book(
+    session: LedgerSession,
+    # Any day of the month to show; the current one in the gym's timezone by default.
+    month: date | None = None,
+    book_filter: Annotated[BookFilter, Query(alias="filter")] = BookFilter.ALL,
+    limit: Annotated[int, Query(ge=1, le=BOOK_PAGE_MAX)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> LedgerBook:
+    """The gym's ledger, every entry newest first, with the month's KPIs ("Libro de
+    pagos", #39). Owner and admin only: a coach never sees money."""
+    clock = (await session.execute(text(GYM_CLOCK))).one()
+    current = clock.today.replace(day=1)
+    shown = month.replace(day=1) if month else current
+    with_entries = [row.month for row in await session.execute(BOOK_MONTHS)]
+    months = sorted({*with_entries, current, shown}, reverse=True)
+
+    params: dict[str, Any] = {
+        "month": shown,
+        "settling": sorted(k.value for k in SETTLING_KINDS),
+    }
+    matching = f"{BOOK_ROWS} WHERE {BOOK_FILTERS[book_filter]}"
+    total = await session.scalar(text(f"SELECT count(*) FROM ({matching}) f"), params)
+    rows = await session.execute(
+        text(f"{matching} ORDER BY e.created_at DESC, e.id DESC LIMIT :limit OFFSET :offset"),
+        {**params, "limit": limit, "offset": offset},
+    )
+    kpis = (
+        await session.execute(
+            BOOK_KPIS, {"month": shown, "expected_statuses": list(EXPECTED_STATUSES)}
+        )
+    ).one()
+    return LedgerBook(
+        month=shown,
+        months=months,
+        timezone=clock.timezone,
+        kpis=BookKpis.model_validate(kpis, from_attributes=True),
+        items=[book_entry(row) for row in rows],
+        total=total or 0,
+    )
+
+
+def book_entry(row: Any) -> BookEntry:
+    return BookEntry(
+        id=row.id,
+        created_at=row.created_at,
+        kind=row.kind,
+        status=row.status,
+        amount_clp=row.amount_clp,
+        method=row.method,
+        note=row.note,
+        membership_id=row.membership_id,
+        plan_name=row.plan_name,
+        person=PersonRef(id=row.person_id, name=row.person_name),
+        guardian=None
+        if row.guardian_id is None
+        else PersonRef(id=row.guardian_id, name=row.guardian_name),
+        period=None
+        if row.period_start is None
+        else BookPeriod(
+            period_start=row.period_start,
+            period_end=row.period_end,
+            due_date=row.due_date,
+            outstanding_clp=row.outstanding_clp,
+            days_overdue=row.days_overdue,
+        ),
+        validated_by_name=row.validated_by_name,
     )
 
 

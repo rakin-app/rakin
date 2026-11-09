@@ -124,6 +124,86 @@ class MembershipLedger(BaseModel):
     entries: list[TimelineEntry]
 
 
+class BookFilter(StrEnum):
+    """The ledger book's filters ("Libro de pagos", #39)."""
+
+    # Every entry made in the month.
+    ALL = "all"
+    # Payments waiting for review, of any month: the queue as it stands today.
+    PENDING = "pending"
+    # The charges of active memberships' periods overdue today (`v_overdue`), of any month.
+    OVERDUE = "overdue"
+    # The month's entries on dependents' memberships: the kids a guardian pays for.
+    KIDS = "kids"
+
+
+class PersonRef(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
+class BookPeriod(BaseModel):
+    """The billing period an entry belongs to, settled as `app.domain.billing` does."""
+
+    period_start: date
+    period_end: date
+    due_date: date
+    outstanding_clp: int
+    # Whole days past the due date in the gym's timezone while unpaid; 0 otherwise.
+    days_overdue: int
+
+
+class BookEntry(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    kind: EntryKind
+    status: EntryStatus
+    amount_clp: int
+    method: Method | None
+    note: str | None
+    membership_id: uuid.UUID
+    plan_name: str
+    # Whose membership it is, and who pays for them when they are a dependent.
+    person: PersonRef
+    guardian: PersonRef | None
+    # Null for a credit carried to a later period.
+    period: BookPeriod | None
+    validated_by_name: str | None
+
+
+class BookKpis(BaseModel):
+    # Validated payments, by the month each was validated in (`v_monthly_income`).
+    collected_clp: int
+    collected_payments: int
+    # Payments waiting for review, today.
+    pending_clp: int
+    pending_payments: int
+    # Outstanding on active memberships' overdue periods, today (`v_overdue`).
+    overdue_clp: int
+    overdue_members: int
+    # Per overdue member, the days since their oldest unpaid period fell due, averaged.
+    overdue_avg_days: float
+    # What is owed for the month: the periods falling due in it, of active and lapsed
+    # memberships. Cancelled, trial and frozen ones are not counted.
+    expected_clp: int
+    # Memberships as they stand today.
+    active_memberships: int
+    frozen_memberships: int
+
+
+class LedgerBook(BaseModel):
+    """The gym's ledger for a month: its KPIs and a page of entries, newest first."""
+
+    # The first day of the month shown, and of every month with entries, newest first.
+    month: date
+    months: list[date]
+    timezone: str
+    kpis: BookKpis
+    items: list[BookEntry]
+    # Entries the filter matches, across every page.
+    total: int
+
+
 class OverduePeriod(BaseModel):
     """A period of an Active membership past its due date and not paid in full (`v_overdue`)."""
 

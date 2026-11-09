@@ -1,11 +1,29 @@
 import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from './api/queryClient'
 import { App } from './App'
 import { es } from './i18n/es'
 import { createAppRouter } from './router'
+
+// An owner, who sees every tab; anything else the screens ask for is not found.
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input) => {
+      const owner = new URL(String(input), 'http://localhost').pathname === '/api/me/role'
+      return new Response(JSON.stringify(owner ? { role: 'owner' } : { detail: 'Not Found' }), {
+        status: owner ? 200 : 404,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }),
+  )
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function renderAt(path: string) {
   const queryClient = createQueryClient()
@@ -19,6 +37,8 @@ describe('/admin route tree', () => {
     renderAt('/admin')
 
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    // Pagos joins once the role is known to read the ledger.
+    await within(nav).findByRole('link', { name: es.nav.payments })
     const links = within(nav).getAllByRole('link')
     expect(links.map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases', 'Pagos'])
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
@@ -40,6 +60,7 @@ describe('/admin route tree', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: es.nav.label })
+    await within(nav).findByRole('link', { name: es.nav.payments })
     const current = within(nav)
       .getAllByRole('link')
       .filter((link) => link.getAttribute('aria-current') === 'page')
@@ -50,7 +71,7 @@ describe('/admin route tree', () => {
     const router = renderAt('/admin')
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
 
-    await userEvent.click(within(nav).getByRole('link', { name: es.nav.payments }))
+    await userEvent.click(await within(nav).findByRole('link', { name: es.nav.payments }))
 
     expect(await screen.findByRole('heading', { level: 1, name: es.admin.payments.title })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/admin/pagos')

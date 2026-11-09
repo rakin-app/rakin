@@ -32,6 +32,9 @@ export function AdminLayout() {
   const role = useQuery(myRoleQuery())
   const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
   const badge = pending.data ?? 0
+  // Pagos is money: shown only once the role is known to read the ledger, so a coach
+  // never sees the tab, not even while the role loads.
+  const navItems = readsLedger(role.data) ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.to !== '/admin/pagos')
 
   return (
     <div className="admin-shell">
@@ -40,7 +43,7 @@ export function AdminLayout() {
           {t.app.name}
         </span>
         <ul className="admin-nav__list">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <li key={item.to}>
               <Link to={item.to} activeOptions={{ exact: item.exact ?? false }} className="admin-nav__link">
                 <span className="admin-nav__icon">

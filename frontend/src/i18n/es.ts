@@ -188,6 +188,53 @@ export const es = {
     classes: { title: 'Clases' },
     payments: {
       title: 'Libro de pagos',
+      subtitle: 'Cada línea es un asiento: cargos, pagos, ajustes. Nada se borra; las correcciones son asientos nuevos.',
+      coachesOnly: 'Los coaches no ven esta sección.',
+      loading: 'Cargando el libro…',
+      error: 'No pudimos cargar el libro de pagos.',
+      retry: 'Reintentar',
+      month: 'Período',
+      kpisLabel: 'Resumen del mes',
+      kpis: {
+        collected: 'Cobrado',
+        collectedDetail: (n: number) => (n === 1 ? '1 pago validado' : `${n} pagos validados`),
+        pending: 'Por validar',
+        pendingDetail: (n: number) => (n === 1 ? '1 comprobante' : `${n} comprobantes`),
+        overdue: 'Vencido',
+        overdueDetail: (members: number, days: string) =>
+          `${members === 1 ? '1 alumno' : `${members} alumnos`} · ${days} días promedio`,
+        expected: 'Esperado',
+        expectedDetail: (active: number, frozen: number) =>
+          `${active === 1 ? '1 membresía activa' : `${active} membresías activas`}` +
+          (frozen ? ` · ${frozen === 1 ? '1 congelada' : `${frozen} congeladas`}` : ''),
+      },
+      filtersLabel: 'Filtrar asientos',
+      filters: { all: 'Todos', pending: 'Por validar', overdue: 'Vencidos', kids: 'Kids' },
+      columns: {
+        date: 'Fecha',
+        student: 'Alumno',
+        kind: 'Asiento',
+        period: 'Período',
+        method: 'Medio',
+        status: 'Estado',
+        amount: 'Monto',
+      },
+      kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución' },
+      method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },
+      credit: 'A favor',
+      status: {
+        pending: 'Por validar',
+        validated: 'Validado',
+        validatedBy: (name: string) => `Validado · ${name}`,
+        rejected: 'Rechazado',
+        paid: 'Pagado',
+        open: (day: string) => `Abierto · vence ${day}`,
+        overdue: (days: number) => `Vencido ${days} d`,
+      },
+      empty: 'No hay asientos para mostrar.',
+      showing: (shown: number, total: number, month: string | null) =>
+        `Mostrando ${shown} de ${total} ${total === 1 ? 'asiento' : 'asientos'}${month ? ` de ${month}` : ''}`,
+      more: 'Cargar más',
       review: (n: number) => (n === 1 ? 'Revisar 1 comprobante' : `Revisar ${n} comprobantes`),
     },
     review: {
