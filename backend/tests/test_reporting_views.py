@@ -1,4 +1,4 @@
-"""Migration 0012's reporting views against real Postgres, read as the API user under RLS.
+"""Migration 0014's reporting views against real Postgres, read as the API user under RLS.
 
 Most tests give a gym of its own (`seed_gym`: one membership, a period due
 2026-11-01 and its 45.000 charge) a ledger history and read the views back as its
@@ -393,7 +393,7 @@ def test_the_demo_gym_credit_is_a_negative_balance(db: Database) -> None:
 def test_downgrade_drops_the_views() -> None:
     with throwaway_database(require_test_database_url()) as database:
         migrate(database)
-        command.downgrade(database.alembic(), "0011")
+        command.downgrade(database.alembic(), "-1")
         found = run(
             database.admin_url,
             lambda c: c.fetch("SELECT viewname FROM pg_views WHERE schemaname = 'public'"),

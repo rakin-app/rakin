@@ -83,7 +83,8 @@ def new_entry(db: Database, gym: uuid.UUID, status: str = "pending") -> uuid.UUI
                  claimed_by, claimed_at, proof_object_key, bank_tx_ref)
             SELECT gym_id, membership_id, billing_period_id, 45000, 'payment', $2, 'transfer',
                    (SELECT person_id FROM staff WHERE gym_id = $1), '2026-11-01T12:00:00Z',
-                   'proofs/a.jpg', 'TX-1'
+                   -- One per entry: a proof backs one entry (0012).
+                   'proofs/' || gen_random_uuid() || '.jpg', 'TX-1'
             FROM ledger_entry WHERE gym_id = $1 AND kind = 'charge'
             RETURNING id
             """,

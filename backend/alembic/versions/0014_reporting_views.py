@@ -38,8 +38,8 @@ Amounts in the ledger are positive and the kind says which way they go
 `v_inactive` (last attendance more than N days ago) waits for the attendance table,
 #41, which creates it.
 
-Revision ID: 0012
-Revises: 0011
+Revision ID: 0014
+Revises: 0012
 Create Date: 2026-11-09
 
 """
@@ -48,8 +48,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0012"
-down_revision: str | Sequence[str] | None = "0011"
+revision: str = "0014"
+down_revision: str | Sequence[str] | None = "0012"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

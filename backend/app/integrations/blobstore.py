@@ -23,6 +23,7 @@ from urllib.parse import quote, urlencode
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
@@ -37,6 +38,10 @@ MAX_KEY_LENGTH = 512
 ALLOWED_CONTENT_TYPES = frozenset(
     {"image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"}
 )
+# The largest upload any store takes. A phone photo of a transfer is a few MB, a bank's
+# PDF receipt far less. Every store signs the exact size into the upload URL, so a
+# client cannot send more than it asked for.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 def validate_key(key: str) -> str:
@@ -51,23 +56,41 @@ def validate_content_type(content_type: str) -> str:
     return content_type
 
 
+def validate_size(size: int) -> int:
+    if isinstance(size, bool) or not isinstance(size, int) or not 0 < size <= MAX_UPLOAD_BYTES:
+        raise ValueError(f"size must be 1 to {MAX_UPLOAD_BYTES} bytes, got {size!r}")
+    return size
+
+
 @dataclass(frozen=True)
 class PresignedUpload:
     url: str
-    # Send these with the PUT, unchanged; the signature covers them.
+    # Send these with the PUT, unchanged; the signature covers them. It covers the
+    # body's size as well, which a browser sends as `Content-Length` on its own.
     headers: dict[str, str]
 
 
-class BlobStore(Protocol):
-    def presign_upload(self, key: str, content_type: str) -> PresignedUpload:
-        """A URL the browser PUTs the file to, with exactly this content type.
+@dataclass(frozen=True)
+class StoredBlob:
+    size: int
+    content_type: str
 
-        Raises `ValueError` for a content type outside `ALLOWED_CONTENT_TYPES`.
+
+class BlobStore(Protocol):
+    def presign_upload(self, key: str, content_type: str, size: int) -> PresignedUpload:
+        """A URL the browser PUTs the file to, with exactly this content type and size.
+
+        Raises `ValueError` for a content type outside `ALLOWED_CONTENT_TYPES` or a size
+        outside 1 to `MAX_UPLOAD_BYTES`.
         """
         ...
 
     def presign_download(self, key: str) -> str:
         """A URL the browser GETs the file from."""
+        ...
+
+    async def stat(self, key: str) -> StoredBlob | None:
+        """The stored file's size and content type, or None if there is none."""
         ...
 
     async def delete(self, key: str) -> None:
@@ -105,13 +128,15 @@ class S3BlobStore:
         self._client = client(endpoint_url)
         self._presigner = client(public_endpoint_url)
 
-    def presign_upload(self, key: str, content_type: str) -> PresignedUpload:
+    def presign_upload(self, key: str, content_type: str, size: int) -> PresignedUpload:
         url = self._presigner.generate_presigned_url(
             "put_object",
             Params={
                 "Bucket": self.bucket,
                 "Key": validate_key(key),
                 "ContentType": validate_content_type(content_type),
+                # Signed as `content-length`: the store refuses a body of any other size.
+                "ContentLength": validate_size(size),
             },
             ExpiresIn=self.ttl_seconds,
         )
@@ -123,6 +148,16 @@ class S3BlobStore:
             Params={"Bucket": self.bucket, "Key": validate_key(key)},
             ExpiresIn=self.ttl_seconds,
         )
+
+    async def stat(self, key: str) -> StoredBlob | None:
+        validate_key(key)
+        try:
+            head = await asyncio.to_thread(self._client.head_object, Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return None
+            raise
+        return StoredBlob(size=head["ContentLength"], content_type=head["ContentType"])
 
     async def delete(self, key: str) -> None:
         validate_key(key)
@@ -140,7 +175,6 @@ class LocalBlobStore:
     """
 
     PATH_PREFIX = "/api/blobs/"
-    MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
     def __init__(
         self,
@@ -157,12 +191,23 @@ class LocalBlobStore:
         self._secret = hashlib.sha256(b"rakin-blobstore\0" + secret_key.encode()).digest()
         self._clock = clock
 
-    def presign_upload(self, key: str, content_type: str) -> PresignedUpload:
-        url = self._sign("put", validate_key(key), validate_content_type(content_type))
+    def presign_upload(self, key: str, content_type: str, size: int) -> PresignedUpload:
+        url = self._sign(
+            "put", validate_key(key), validate_content_type(content_type), validate_size(size)
+        )
         return PresignedUpload(url=url, headers={"Content-Type": content_type})
 
     def presign_download(self, key: str) -> str:
-        return self._sign("get", validate_key(key), "")
+        return self._sign("get", validate_key(key), "", None)
+
+    async def stat(self, key: str) -> StoredBlob | None:
+        validate_key(key)
+        found = await asyncio.to_thread(self.stored, key)
+        if found is None:
+            return None
+        path, content_type = found
+        size = (await asyncio.to_thread(path.stat)).st_size
+        return StoredBlob(size=size, content_type=content_type)
 
     async def delete(self, key: str) -> None:
         validate_key(key)
@@ -172,20 +217,30 @@ class LocalBlobStore:
                 await asyncio.to_thread(path.unlink, missing_ok=True)
 
     def verify(
-        self, op: Operation, key: str, content_type: str, expires: str, signature: str
+        self,
+        op: Operation,
+        key: str,
+        content_type: str,
+        size: int | None,
+        expires: str,
+        signature: str,
     ) -> bool:
-        """Whether a URL's query was signed by `presign_*` and has not expired."""
+        """Whether a URL's query was signed by `presign_*` and has not expired.
+
+        `size` is the upload's (None for a download)."""
         try:
             validate_key(key)
             expires_at = int(expires)
         except ValueError:
             return False
-        expected = self._signature(op, key, content_type, expires_at).encode()
+        expected = self._signature(op, key, content_type, size, expires_at).encode()
         # Bytes: `compare_digest` raises on a `str` with non-ASCII characters.
         return hmac.compare_digest(expected, signature.encode()) and self._clock() < expires_at
 
-    async def write(self, key: str, content_type: str, chunks: AsyncIterable[bytes]) -> None:
-        """Store an upload; raises `ValueError` past `MAX_UPLOAD_BYTES`.
+    async def write(
+        self, key: str, content_type: str, size: int, chunks: AsyncIterable[bytes]
+    ) -> None:
+        """Store an upload of exactly `size` bytes; raises `ValueError` for any other.
 
         Keys are paths, so one cannot nest under another (`a` and `a/b`): that raises
         `OSError` and leaves both as they were.
@@ -197,13 +252,15 @@ class LocalBlobStore:
         fd, tmp_name = await asyncio.to_thread(tempfile.mkstemp, dir=data.parent, prefix=".up-")
         tmp = Path(tmp_name)
         try:
-            size = 0
+            received = 0
             with os.fdopen(fd, "wb") as out:
                 async for chunk in chunks:
-                    size += len(chunk)
-                    if size > self.MAX_UPLOAD_BYTES:
-                        raise ValueError("upload too large")
+                    received += len(chunk)
+                    if received > size:
+                        raise ValueError("upload larger than signed")
                     await asyncio.to_thread(out.write, chunk)
+            if received != size:
+                raise ValueError("upload smaller than signed")
             meta = self._meta(key)
             await asyncio.to_thread(meta.parent.mkdir, parents=True, exist_ok=True)
             await asyncio.to_thread(meta.write_text, content_type)
@@ -219,16 +276,21 @@ class LocalBlobStore:
         content_type = meta.read_text() if meta.is_file() else "application/octet-stream"
         return data, content_type
 
-    def _sign(self, op: Operation, key: str, content_type: str) -> str:
+    def _sign(self, op: Operation, key: str, content_type: str, size: int | None) -> str:
         expires_at = int(self._clock()) + self.ttl_seconds
         query = {"op": op, "exp": str(expires_at)}
         if content_type:
             query["ct"] = content_type
-        query["sig"] = self._signature(op, key, content_type, expires_at)
+        if size is not None:
+            query["len"] = str(size)
+        query["sig"] = self._signature(op, key, content_type, size, expires_at)
         return f"{self.base_url}{self.PATH_PREFIX}{quote(key)}?{urlencode(query)}"
 
-    def _signature(self, op: Operation, key: str, content_type: str, expires_at: int) -> str:
-        message = f"{op}\n{key}\n{content_type}\n{expires_at}".encode()
+    def _signature(
+        self, op: Operation, key: str, content_type: str, size: int | None, expires_at: int
+    ) -> str:
+        length = "" if size is None else str(size)
+        message = f"{op}\n{key}\n{content_type}\n{length}\n{expires_at}".encode()
         return hmac.new(self._secret, message, hashlib.sha256).hexdigest()
 
     def _data(self, key: str) -> Path:

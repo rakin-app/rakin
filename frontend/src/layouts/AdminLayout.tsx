@@ -1,5 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { myRoleQuery, readsLedger } from '../api/me'
+import { pendingCountQuery } from '../api/proofs'
 import { ClassesIcon, PaymentsIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import './AdminLayout.css'
@@ -24,6 +27,12 @@ const NAV_ITEMS: readonly NavItem[] = [
  * desktop ledger design. One <nav>, restyled by CSS, so both share a tab order.
  */
 export function AdminLayout() {
+  // Proofs waiting for review, on the Pagos tab: asked for only by those who read
+  // the ledger, so a coach never polls a request that would be refused.
+  const role = useQuery(myRoleQuery())
+  const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
+  const badge = pending.data ?? 0
+
   return (
     <div className="admin-shell">
       <nav className="admin-nav" aria-label={t.nav.label}>
@@ -34,8 +43,18 @@ export function AdminLayout() {
           {NAV_ITEMS.map((item) => (
             <li key={item.to}>
               <Link to={item.to} activeOptions={{ exact: item.exact ?? false }} className="admin-nav__link">
-                {item.icon}
+                <span className="admin-nav__icon">
+                  {item.icon}
+                  {item.to === '/admin/pagos' && badge > 0 && (
+                    <span className="admin-nav__badge" aria-hidden="true">
+                      {badge}
+                    </span>
+                  )}
+                </span>
                 <span>{item.label}</span>
+                {item.to === '/admin/pagos' && badge > 0 && (
+                  <span className="visually-hidden">{t.nav.pendingBadge(badge)}</span>
+                )}
               </Link>
             </li>
           ))}

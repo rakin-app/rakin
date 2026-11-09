@@ -91,7 +91,7 @@ def test_no_timestamp_without_time_zone(db: Database) -> None:
 
 
 def test_money_columns_are_integers(db: Database) -> None:
-    # Views' columns included: a `sum` over bigint is numeric unless cast back (0012).
+    # Views' columns included: a `sum` over bigint is numeric unless cast back (0014).
     rows = run(
         db.admin_url,
         lambda c: c.fetch(

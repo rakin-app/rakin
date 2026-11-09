@@ -1,8 +1,8 @@
 """The signed-in person's own side of the gym: what the student page (/me) reads.
 
 Any session in a gym may use it, staff or member, since it answers only about the
-person acting. For now that is a guardian's dependents (migration 0010); the rest of
-the page comes with #64 and #65.
+person acting. For now that is their staff role, if any, and a guardian's dependents
+(migration 0010); the rest of the page comes with #64 and #65.
 """
 
 import uuid
@@ -17,7 +17,9 @@ from app.api.people import SHOWN_MEMBERSHIP, shown_membership
 from app.domain.billing import SETTLING_KINDS
 from app.domain.dates import local_date
 from app.domain.ledger import EntryKind, EntryStatus
+from app.roles import role_in_gym
 from app.schemas.guardians import Balance, Dependent
+from app.schemas.people import MyRole
 from app.tenancy import Tenant, TenantSession, current_tenant
 
 router = APIRouter(prefix="/api/me", tags=["me"])
@@ -50,6 +52,15 @@ async def _today(session: AsyncSession, gym_id: uuid.UUID) -> date:
     """Today in the gym's timezone: a period due today is owed today."""
     zone = await session.scalar(text("SELECT timezone FROM gym WHERE id = :id"), {"id": gym_id})
     return local_date(datetime.now(UTC), str(zone))
+
+
+@router.get("/role")
+async def my_role(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
+) -> MyRole:
+    """The signed-in person's staff role in this gym, or none for a member: what the
+    admin screens show, such as the pending-proofs badge only to who reads the ledger."""
+    return MyRole(role=await role_in_gym(session, tenant))
 
 
 @router.get("/dependents")
