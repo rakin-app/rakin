@@ -150,8 +150,8 @@ def seed_gym(db: Database, slug: str) -> uuid.UUID:
                 person_id,
             )
             plan_id = await conn.fetchval(
-                "INSERT INTO plan (gym_id, name, kind, price_clp)"
-                " VALUES ($1, 'Mensual', 'monthly', 45000) RETURNING id",
+                "INSERT INTO plan (gym_id, name, kind, price_clp, anchor)"
+                " VALUES ($1, 'Mensual', 'monthly', 45000, 'signup') RETURNING id",
                 gym_id,
             )
             membership_id = await conn.fetchval(

@@ -39,17 +39,20 @@ class PlanSpec:
     name: str
     kind: PlanKind
     price_clp: int
+    # Monthly plans bill on the member's signup day of the month (migration 0007).
+    anchor: str | None = None
     period_months: int | None = None
     # Classes in a pack; free classes on a trial.
     credits: int | None = None
+    # Days a pack lasts; free days on a trial.
     credit_expiry_days: int | None = None
 
 
 PLANS = (
-    PlanSpec("adults", "Mensual adultos", PlanKind.MONTHLY, 45_000),
-    PlanSpec("competition", "Mensual competición", PlanKind.MONTHLY, 60_000),
-    PlanSpec("student", "Estudiante", PlanKind.MONTHLY, 30_000),
-    PlanSpec("kids", "Mensual kids", PlanKind.MONTHLY, 36_000),
+    PlanSpec("adults", "Mensual adultos", PlanKind.MONTHLY, 45_000, anchor="signup"),
+    PlanSpec("competition", "Mensual competición", PlanKind.MONTHLY, 60_000, anchor="signup"),
+    PlanSpec("student", "Estudiante", PlanKind.MONTHLY, 30_000, anchor="signup"),
+    PlanSpec("kids", "Mensual kids", PlanKind.MONTHLY, 36_000, anchor="signup"),
     PlanSpec("prepaid-6", "Prepago 6 meses", PlanKind.PREPAID, 240_000, period_months=6),
     PlanSpec(
         "pack-12", "Pack 12 clases", PlanKind.CREDITS, 45_000, credits=12, credit_expiry_days=60
