@@ -255,6 +255,16 @@ Each row is written in a savepoint of its own: a refused row writes nothing, and
 
 Owner and admin only (`AdminSession`); a coach or member gets a 403, since the bank details decide where students send their money. `name` and `timezone` are columns on `gym`; the rest are keys of `gym.settings`, and the grading scheme and custom fields stored beside them are left untouched. `timezone` must be an IANA name, `grace_days` 0 to 60, `reminder_every_days` 1 to 30. `bank_account` takes `bank`, `account_type` (`Cuenta Corriente`, `Cuenta Vista`, `Cuenta RUT` or `Cuenta de Ahorro`), `holder`, `rut` (normalised to `76123456-0`), `number` and an optional `email` for the transfer notice. Email is always on, so `channels` holds only `whatsapp`.
 
+## Grading scheme API
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/gym/grading-scheme` | the current gym's `ranks`, `kids_ladder` and `goal_metric`; a gym that never set one has none (`{"ranks": [], "kids_ladder": [], "goal_metric": null}`) |
+| `PUT` | `/api/gym/grading-scheme` | replace it whole; answers the scheme as stored |
+| `GET` | `/api/gym/grading-scheme/presets` | the starting points, `[{key, label, scheme}]`: `bjj`, `judo-karate`, `muay-thai` and `none` ([spec](../docs/technical.md#sport-agnostic-design)) |
+
+A scheme is ranks in order, lowest first, each `{key, label, sub_ranks: [{key, label}]}`, plus an optional separate `kids_ladder` of the same shape and a `goal_metric` (`classes_since_promotion`, `time_in_rank` or `null`) for the v2 "ready for promotion" flag. It is stored as `gym.settings["grading"]`, beside the other settings, which a change leaves alone. A preset is applied by sending its scheme, edited or not, to `PUT`; nothing records which preset a scheme came from, and no code branches on it (`app.domain.grading` holds the presets as data). Promotions name a rank and a sub-rank by key, so a rank's key is unique across the ranks and the kids ladder together, and a sub-rank's within its rank. Keys are lower-case letters, digits and single dashes, up to 40 characters; labels 1 to 60. At most 60 ranks per ladder and 20 sub-ranks per rank, and a goal metric needs ranks. Any staff role may read the scheme and the presets, since coaches award promotions against it; only an owner or admin may change it. A stored scheme that no longer fits the model, as one written before a change to it would, is logged and read as a 409 `{"detail": {"code": "grading_scheme_invalid"}}`: re-apply a preset with `PUT`, which replaces it.
+
 ## Sign-in
 
 Students and staff sign in with a magic link ([spec](../docs/technical.md#communications)). `app/magiclink` is the mechanism, self-contained so it can become a package: it imports nothing else from `app`. `app/auth.py` plugs Rakin into it: people by email, Postgres, and the mailer.
@@ -318,6 +328,16 @@ make seed                                      # from the repo root, inside Comp
 Loading again inserts nothing: every row's id is a UUIDv5 of its natural key, and rows already there are skipped, never updated, which the append-only ledger requires anyway. The first load stores its date in `gym.settings["seed"]["as_of"]`, and later loads build for that date again, ignoring `--today`. To reseed for another date, start from an empty database (`docker compose down -v`).
 
 The loader connects as the owner (`MIGRATION_DATABASE_URL`) with `app.gym_id` set to the demo gym. Ranks have no table yet (#48): they live in `data.py`, checked against the grading scheme. Each kid has a `guardian_link` to the member who pays for them, who is also the payer (`claimed_by`) of the kid's payments; kids have no phone or email. Every person gets a `gym_person` row with the same name, email, RUT and date of birth. Every guardian in the demo also trains, though a guardian need not. Drop-ins have a plan but no memberships, since a drop-in is a single attendance.
+
+### Try the import
+
+`app/seed/demo_import.csv` is a made-up gym export to try Alumnos → Importar on the seeded gym: 38 rows, semicolon-separated with a BOM, Spanish headers, phones and dates written several ways, plan names in any case, and an `Observaciones` column the import ignores. `demo_import.xlsx` is the same sheet as Excel saves it, with real date cells and some phones stored as numbers. Every name, phone, RUT and `example.cl` address in it is invented.
+
+1. `make seed`, then open http://localhost:8080 and sign in as the owner, `martin.fuentes@example.com`. The link is in the API's log (`docker compose logs api`).
+2. Alumnos → Importar alumnos, upload either file and keep the suggested columns. Every plan matches by name, so there is nothing to choose.
+3. Check without saving. The dry run reports 33 rows to import and 5 refused: 34 people (2 of them guardians named only on their children's rows), 8 guardian links and 28 memberships. The refused rows show one of each refusal: a missing name, a landline, an unknown plan ("Plan familiar"), a due date before the start, and a phone already used higher up. Felipe Díaz is already in the seed, so the row is listed under "Ya existen": the sheet's email is not applied. Julián Ortiz joins Camila Ortiz, a seeded guardian, and Valentín Godoy is a teenager with their own phone and a guardian.
+
+Importing it for real and then again creates nothing the second time. The dates are fixed in the file, so some memberships come in already overdue, more of them as time goes on. The import refuses a start or due date more than 5 years from today, and the sheet's run from 4 November 2024 to 1 March 2027, so it imports as described until 4 November 2029; after that, bring its oldest dates forward. `tests/test_member_import.py` holds the dry run to these numbers, with the import's clock pinned to the day the sheet was written.
 
 ## Nightly jobs
 

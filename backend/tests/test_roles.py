@@ -126,7 +126,8 @@ def sur_ledger(db: Database, sur: Sur) -> set[str]:
 # --- the API: role x endpoint group -----------------------------------------------
 
 # What each role gets from each group: the staff group is every staff role, the
-# ledger and settings groups owner and admin.
+# ledger and settings groups owner and admin. Any staff role reads the grading scheme;
+# changing it is owner and admin, in `tests/test_grading.py`.
 ALLOWED = {
     ("people", "owner"): True,
     ("people", "admin"): True,
@@ -140,9 +141,17 @@ ALLOWED = {
     ("settings", "admin"): True,
     ("settings", "coach"): False,
     ("settings", "member"): False,
+    ("grading", "owner"): True,
+    ("grading", "admin"): True,
+    ("grading", "coach"): True,
+    ("grading", "member"): False,
 }
 
-URLS = {"ledger": "/test/ledger", "settings": "/api/gym/settings"}
+URLS = {
+    "ledger": "/test/ledger",
+    "settings": "/api/gym/settings",
+    "grading": "/api/gym/grading-scheme",
+}
 
 
 def call(client: TestClient, group: str, gym: uuid.UUID, person: uuid.UUID) -> Any:
@@ -164,7 +173,7 @@ def test_each_role_in_each_endpoint_group(
         assert {r["id"] for r in response.json()} == sur_ledger(db, sur)
 
 
-@pytest.mark.parametrize("group", ["people", "ledger", "settings"])
+@pytest.mark.parametrize("group", ["people", "ledger", "settings", "grading"])
 def test_the_role_is_the_one_in_the_current_gym(client: TestClient, sur: Sur, group: str) -> None:
     # Owner at Norte, so allowed there; a member at Sur, so refused there.
     person = sur.norte_owner_member_of_sur
