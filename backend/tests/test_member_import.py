@@ -1,0 +1,498 @@
+"""Member import against real Postgres: the pilot gym's sheet (anonymised), read, dry-run,
+imported, and imported again without a duplicate.
+
+`tests/fixtures/pilot_sheet.csv` has the pilot's columns and the ways its rows go
+wrong; `tests/member_import` covers reading and checking rows on their own.
+"""
+
+import io
+import uuid
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from openpyxl import Workbook
+
+from app.api import member_import
+from app.main import create_app
+from tests.auth import FakeAuth, as_gym
+from tests.conftest import make_settings, require_test_database_url
+from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.test_people import new_phone
+from tests.test_plans import add_staff
+
+pg = pytest.mark.postgres
+
+PILOT = (Path(__file__).parent / "fixtures" / "pilot_sheet.csv").read_bytes()
+
+PLANS = [
+    {"kind": "monthly", "name": "Mensual", "price_clp": 45_000, "anchor": "signup"},
+    {"kind": "monthly", "name": "Mensual Kids", "price_clp": 35_000, "anchor": "first"},
+    {"kind": "prepaid", "name": "Semestral", "price_clp": 240_000, "period_months": 6},
+    {
+        "kind": "credits",
+        "name": "Pack 12 clases",
+        "price_clp": 45_000,
+        "credits": 12,
+        "credit_expiry_days": 60,
+    },
+    {"kind": "dropin", "name": "Clase suelta", "price_clp": 10_000},
+]
+
+# The pilot sheet's rows that are refused, by row number, and why.
+REFUSED = {
+    6: [{"field": "email", "code": "invalid_email"}],
+    8: [{"field": "plan", "code": "unknown_plan"}],
+    10: [{"field": "phone", "code": "invalid_phone"}],
+    11: [{"field": "due_on", "code": "required"}],
+    12: [{"field": "plan", "code": "dropin_plan"}],
+    14: [{"field": "phone", "code": "repeated"}],
+    15: [{"field": "rut", "code": "invalid_rut"}],
+}
+
+
+@pytest.fixture(scope="module")
+def db() -> Iterator[Database]:
+    with throwaway_database(require_test_database_url()) as database:
+        migrate(database)
+        yield database
+
+
+@pytest.fixture(scope="module")
+def client(db: Database) -> Iterator[TestClient]:
+    app = create_app(make_settings(database_url=db.api_url))
+    app.add_middleware(FakeAuth)
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture
+def gym(db: Database, client: TestClient) -> uuid.UUID:
+    """A fresh gym with the pilot's plans, so each test imports the sheet anew."""
+    gym_id = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    for plan in PLANS:
+        response = client.post("/api/plans", json=plan, headers=as_gym(gym_id))
+        assert response.status_code == 201, response.text
+    return gym_id
+
+
+def upload(client: TestClient, gym: uuid.UUID, data: bytes, **headers: str) -> Any:
+    return client.post(
+        "/api/import/sheet",
+        content=data,
+        headers={"Content-Type": "text/csv", **as_gym(gym), **headers},
+    )
+
+
+def sheet_of(client: TestClient, gym: uuid.UUID, data: bytes = PILOT) -> dict[str, Any]:
+    response = upload(client, gym, data)
+    assert response.status_code == 200, response.text
+    sheet: dict[str, Any] = response.json()
+    return sheet
+
+
+def send(
+    client: TestClient,
+    gym: uuid.UUID,
+    sheet: dict[str, Any],
+    *,
+    dry_run: bool,
+    plans: dict[str, str | None] | None = None,
+    headers: dict[str, str] | None = None,
+) -> Any:
+    body = {
+        "rows": sheet["rows"],
+        "mapping": sheet["mapping"],
+        "plans": plans or {},
+        "dry_run": dry_run,
+    }
+    return client.post("/api/import/members", json=body, headers=headers or as_gym(gym))
+
+
+def imported(client: TestClient, gym: uuid.UUID, sheet: dict[str, Any], **kw: Any) -> Any:
+    response = send(client, gym, sheet, **kw)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def plan_id(client: TestClient, gym: uuid.UUID, name: str) -> str:
+    plans = client.get("/api/plans", headers=as_gym(gym)).json()
+    return str(next(p["id"] for p in plans if p["name"] == name))
+
+
+def people(db: Database, gym: uuid.UUID) -> int:
+    rows = run(db.owner_url, in_gym(gym, "SELECT count(*) FROM gym_person"))
+    count: int = rows[0][0]
+    return count
+
+
+def find(client: TestClient, gym: uuid.UUID, name: str) -> dict[str, Any]:
+    items = client.get("/api/people", params={"q": name}, headers=as_gym(gym)).json()["items"]
+    [person] = [p for p in items if p["name"] == name]
+    return dict(person)
+
+
+def membership_of(client: TestClient, gym: uuid.UUID, name: str) -> dict[str, Any]:
+    person = find(client, gym, name)
+    [membership] = client.get(
+        "/api/memberships", params={"person_id": person["id"]}, headers=as_gym(gym)
+    ).json()
+    return dict(membership)
+
+
+# --- reading the file -------------------------------------------------------------
+
+
+@pg
+def test_the_sheet_comes_back_as_rows_with_a_suggested_mapping(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    sheet = sheet_of(client, gym)
+    assert sheet["headers"][1:3] == ["Nombre", "Apellido"]
+    assert len(sheet["rows"]) == 13
+    assert sheet["rows"][0] == {
+        "number": 2,
+        "cells": [
+            "1",
+            "Camila",
+            "Ortiz Rojas",
+            "12.345.678-5",
+            "14/03/1988",
+            "9 8765 4321",
+            "camila.ortiz@example.cl",
+            "Mensual",
+            "05/12/2026",
+            "",
+            "",
+            "cinturón azul",
+        ],
+    }
+    assert sheet["mapping"] == {
+        "name": 1,
+        "last_name": 2,
+        "rut": 3,
+        "dob": 4,
+        "phone": 5,
+        "email": 6,
+        "plan": 7,
+        "due_on": 8,
+        "guardian_name": 9,
+        "guardian_phone": 10,
+    }
+
+
+@pg
+def test_an_xlsx_reads_the_same_as_its_csv(client: TestClient, gym: uuid.UUID) -> None:
+    csv_sheet = sheet_of(client, gym)
+    workbook = Workbook()
+    worksheet = workbook.active
+    assert worksheet is not None
+    worksheet.append(csv_sheet["headers"])
+    for row in csv_sheet["rows"]:
+        worksheet.append(row["cells"])
+    out = io.BytesIO()
+    workbook.save(out)
+    response = upload(
+        client,
+        gym,
+        out.getvalue(),
+        **{"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+    )
+    assert response.status_code == 200, response.text
+    xlsx_sheet = response.json()
+    # Numbered without the empty row, which the workbook never had.
+    assert [r["cells"] for r in xlsx_sheet["rows"]] == [r["cells"] for r in csv_sheet["rows"]]
+    assert xlsx_sheet["mapping"] == csv_sheet["mapping"]
+
+
+@pg
+def test_an_unreadable_or_empty_file_is_refused(client: TestClient, gym: uuid.UUID) -> None:
+    for data, code in [(b"PK\x03\x04broken", "unreadable"), (b"Nombre\n", "empty")]:
+        response = upload(client, gym, data)
+        assert (response.status_code, response.json()["detail"]) == (422, {"code": code})
+
+
+@pg
+def test_a_file_over_the_limit_is_refused(
+    client: TestClient, gym: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(member_import, "MAX_UPLOAD_BYTES", 100)
+    response = upload(client, gym, PILOT)
+    assert (response.status_code, response.json()["detail"]) == (413, {"code": "too_large"})
+
+
+# --- dry run, import, and again ---------------------------------------------------
+
+
+@pg
+def test_a_dry_run_reports_each_rows_errors_and_writes_nothing(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    before = people(db, gym)
+    report = imported(client, gym, sheet_of(client, gym), dry_run=True)
+
+    assert report["dry_run"] is True
+    assert {r["row"]: r["errors"] for r in report["rows"] if r["errors"]} == REFUSED
+    assert report["summary"] == {
+        "rows": 13,
+        "imported": 6,
+        "refused": 7,
+        # Camila, Mateo, Sofía, Diego, Tomás and his father Rodrigo, Agustín.
+        "people_created": 7,
+        "links_created": 3,
+        "memberships_created": 5,
+    }
+    assert [r["row"] for r in report["rows"]] == [2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15]
+    assert people(db, gym) == before
+
+
+@pg
+def test_the_import_creates_people_guardian_links_and_memberships(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    sheet = sheet_of(client, gym)
+    dry = imported(client, gym, sheet, dry_run=True)
+    report = imported(client, gym, sheet, dry_run=False)
+    # The dry run said exactly what the import did.
+    assert report["rows"] == dry["rows"]
+    assert report["summary"] == dry["summary"]
+
+    camila = find(client, gym, "Camila Ortiz Rojas")
+    assert (camila["phone"], camila["rut"], camila["dependents"]) == (
+        "+56987654321",
+        "12345678-5",
+        2,
+    )
+    for kid in ("Mateo Ortiz", "Sofía Ortiz"):
+        row = find(client, gym, kid)
+        assert (row["phone"], row["guardian"]["id"]) == (None, camila["id"])
+    tomas = find(client, gym, "Tomás Fuentes")
+    rodrigo = find(client, gym, "Rodrigo Fuentes")
+    assert (tomas["guardian"]["id"], rodrigo["phone"], rodrigo["membership"]) == (
+        rodrigo["id"],
+        "+56912340004",
+        None,
+    )
+    assert find(client, gym, "Agustín Castro")["membership"] is None
+
+    # Monthly: paid through the day before it falls due, billing on that day.
+    mensual = membership_of(client, gym, "Camila Ortiz Rojas")
+    assert (mensual["plan_name"], mensual["status"]) == ("Mensual", "active")
+    assert (mensual["current_period_end"], mensual["anchor_day"]) == ("2026-12-04", 5)
+    kids = membership_of(client, gym, "Sofía Ortiz")
+    assert (kids["plan_name"], kids["current_period_end"], kids["anchor_day"]) == (
+        "Mensual Kids",
+        "2026-11-30",
+        1,
+    )
+    semestral = membership_of(client, gym, "Diego Soto Muñoz")
+    assert (semestral["current_period_end"], semestral["anchor_day"]) == ("2027-03-14", None)
+
+
+@pg
+def test_running_it_again_creates_nothing_twice(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    sheet = sheet_of(client, gym)
+    first = imported(client, gym, sheet, dry_run=False)
+    count = people(db, gym)
+
+    again = imported(client, gym, sheet, dry_run=False)
+    assert people(db, gym) == count
+    assert again["summary"] == {
+        **first["summary"],
+        "people_created": 0,
+        "links_created": 0,
+        "memberships_created": 0,
+    }
+    for row in again["rows"]:
+        if not row["errors"]:
+            outcomes = [row[k] for k in ("person", "guardian", "link", "membership")]
+            assert set(outcomes) <= {"existing", None}, row
+            # The same sheet again differs from nothing it wrote.
+            assert row["ignored"] == [], row
+    assert len(membership_of(client, gym, "Camila Ortiz Rojas")["id"]) == 36
+
+
+@pg
+def test_fixing_the_refused_rows_imports_only_them(client: TestClient, gym: uuid.UUID) -> None:
+    sheet = sheet_of(client, gym)
+    imported(client, gym, sheet, dry_run=False)
+    # The admin says what "Beca 50%" is, and the run imports Benjamín and nobody new else.
+    report = imported(
+        client, gym, sheet, dry_run=False, plans={"Beca 50%": plan_id(client, gym, "Mensual")}
+    )
+    benjamin = next(r for r in report["rows"] if r["row"] == 8)
+    assert (benjamin["errors"], benjamin["person"], benjamin["membership"]) == (
+        [],
+        "created",
+        "created",
+    )
+    assert report["summary"]["people_created"] == 1
+    assert membership_of(client, gym, "Benjamín Fuentes")["plan_name"] == "Mensual"
+
+
+@pg
+@pytest.mark.parametrize(
+    ("value", "row_number", "name"),
+    [("Mensual", 2, "Camila Ortiz Rojas"), ("Beca 50%", 8, "Benjamín Fuentes")],
+    ids=["name-matched", "unmatched"],
+)
+def test_a_plan_value_cleared_on_purpose_imports_the_person_with_no_membership(
+    client: TestClient, gym: uuid.UUID, value: str, row_number: int, name: str
+) -> None:
+    report = imported(client, gym, sheet_of(client, gym), dry_run=False, plans={value: None})
+    row = next(r for r in report["rows"] if r["row"] == row_number)
+    assert (row["errors"], row["person"], row["membership"]) == ([], "created", None)
+    assert find(client, gym, name)["membership"] is None
+
+
+@pg
+def test_a_live_membership_keeps_its_plan_and_dates_and_says_so(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    imported(client, gym, sheet_of(client, gym), dry_run=False)
+    mapping = {"name": 0, "phone": 1, "plan": 2, "due_on": 3}
+
+    def again(plan: str, due_on: str) -> Any:
+        sheet = {
+            "rows": [{"number": 2, "cells": ["Camila Ortiz Rojas", "987654321", plan, due_on]}],
+            "mapping": mapping,
+        }
+        [row] = imported(client, gym, sheet, dry_run=True)["rows"]
+        return (row["membership"], row["ignored"])
+
+    assert again("Mensual", "05/12/2026") == ("existing", [])
+    assert again("Semestral", "05/12/2026") == ("existing", ["plan"])
+    assert again("Mensual", "20/12/2026") == ("existing", ["due_on"])
+    assert membership_of(client, gym, "Camila Ortiz Rojas")["current_period_end"] == "2026-12-04"
+
+
+@pg
+def test_a_guardians_own_row_goes_first_wherever_it_is(client: TestClient, gym: uuid.UUID) -> None:
+    mother = new_phone()
+    teen = new_phone()
+    # Lucas's row names his mother by phone alone, above her own row.
+    rows = [["Lucas Díaz", teen, mother], ["Paula Díaz", mother, ""]]
+    sheet = {
+        "rows": [{"number": n, "cells": cells} for n, cells in enumerate(rows, start=2)],
+        "mapping": {"name": 0, "phone": 1, "guardian_phone": 2},
+    }
+    report = imported(client, gym, sheet, dry_run=False)
+    assert [(r["errors"], r["person"]) for r in report["rows"]] == [
+        ([], "created"),
+        ([], "created"),
+    ]
+    assert (report["rows"][0]["guardian"], report["rows"][0]["link"]) == ("existing", "created")
+    assert find(client, gym, "Lucas Díaz")["guardian"]["name"] == "Paula Díaz"
+
+
+@pg
+def test_someone_already_in_the_gym_is_found_by_phone_and_left_as_they_are(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    body = {"phone": "+56987654321", "name": "Cami Ortiz", "email": "cami@example.cl"}
+    assert client.post("/api/people", json=body, headers=as_gym(gym)).status_code == 201
+    report = imported(client, gym, sheet_of(client, gym), dry_run=False)
+
+    assert report["rows"][0]["person"] == "existing"
+    # Kept as the gym has her, and the report names each sheet field that leaves unapplied.
+    assert report["rows"][0]["ignored"] == ["name", "email", "rut", "dob"]
+    cami = find(client, gym, "Cami Ortiz")
+    assert cami["dependents"] == 2
+    assert cami["membership"]["plan_name"] == "Mensual"
+
+
+@pg
+def test_another_gyms_member_joins_this_gym_with_what_the_sheet_says(
+    client: TestClient, gym: uuid.UUID, db: Database
+) -> None:
+    other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
+    phone = new_phone()
+    body = {"phone": phone, "name": "Nombre en otro gimnasio"}
+    assert client.post("/api/people", json=body, headers=as_gym(other)).status_code == 201
+
+    sheet = {
+        "rows": [{"number": 2, "cells": ["Ana Rojas", phone]}],
+        "mapping": {"name": 0, "phone": 1},
+    }
+    report = imported(client, gym, sheet, dry_run=False)
+    assert report["rows"][0]["person"] == "created"
+    assert find(client, gym, "Ana Rojas")["phone"] == phone
+
+
+@pg
+def test_a_link_the_database_refuses_fails_that_row_alone(
+    client: TestClient, gym: uuid.UUID, db: Database
+) -> None:
+    mother = new_phone()
+    teen = new_phone()
+    other = new_phone()
+    # Lucas, with a phone, is Paula's dependent; then a kid names Lucas as guardian, and
+    # Lucas is named again with another guardian.
+    rows = [
+        ["Paula Díaz", mother, "", ""],
+        ["Lucas Díaz", teen, "Paula Díaz", mother],
+        ["Emilia Díaz", "", "Lucas Díaz", teen],
+        ["Pedro Gil", other, "", ""],
+        ["Lucas Díaz", teen, "Pedro Gil", other],
+    ]
+    sheet = {
+        "rows": [{"number": n, "cells": cells} for n, cells in enumerate(rows, start=2)],
+        "mapping": {"name": 0, "phone": 1, "guardian_name": 2, "guardian_phone": 3},
+    }
+    before = people(db, gym)
+    report = imported(client, gym, sheet, dry_run=False)
+
+    assert [r["errors"] for r in report["rows"]] == [
+        [],
+        [],
+        [{"field": "guardian_phone", "code": "one_level"}],
+        [],
+        [{"field": "phone", "code": "repeated"}],
+    ]
+    assert report["rows"][1]["link"] == "created"
+    # Emilia's row wrote nothing: Paula, Lucas and Pedro are the only people added.
+    assert people(db, gym) == before + 3
+
+    lucas_again = {
+        "rows": [{"number": 2, "cells": ["Lucas Díaz", teen, "Pedro Gil", other]}],
+        "mapping": sheet["mapping"],
+    }
+    [row] = imported(client, gym, lucas_again, dry_run=False)["rows"]
+    assert row["errors"] == [{"field": "guardian_phone", "code": "has_guardian"}]
+
+
+@pg
+def test_a_new_guardian_needs_a_name(client: TestClient, gym: uuid.UUID) -> None:
+    sheet = {
+        "rows": [{"number": 2, "cells": ["Emilia", new_phone()]}],
+        "mapping": {"name": 0, "guardian_phone": 1},
+    }
+    [row] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert row["errors"] == [{"field": "guardian_name", "code": "required"}]
+
+
+@pg
+@pytest.mark.parametrize(
+    "mapping",
+    [{"phone": 0}, {"name": 0, "phone": 0}, {"name": 60}],
+    ids=["no-name", "one-column-twice", "column-out-of-range"],
+)
+def test_a_mapping_is_refused(client: TestClient, gym: uuid.UUID, mapping: dict[str, int]) -> None:
+    sheet = {"rows": [{"number": 2, "cells": ["Ana"]}], "mapping": mapping}
+    assert send(client, gym, sheet, dry_run=True).status_code == 422
+
+
+# --- who may ----------------------------------------------------------------------
+
+
+@pg
+def test_a_coach_may_not_import(client: TestClient, db: Database, gym: uuid.UUID) -> None:
+    coach = add_staff(db, gym, "coach")
+    headers = as_gym(gym, coach)
+    assert upload(client, gym, PILOT, **headers).status_code == 403
+    sheet = {"rows": [{"number": 2, "cells": ["Ana"]}], "mapping": {"name": 0}}
+    assert send(client, gym, sheet, dry_run=True, headers=headers).status_code == 403

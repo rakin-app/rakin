@@ -150,6 +150,59 @@ def test_start(terms: m.PlanTerms, expected: Membership) -> None:
     assert m.start(terms, NOV_15) == expected
 
 
+DEC_10 = date(2026, 12, 10)
+
+
+@pytest.mark.parametrize(
+    ("terms", "expected"),
+    [
+        (
+            m.PlanTerms(PlanKind.MONTHLY, anchor="signup"),
+            Membership(PlanKind.MONTHLY, S.ACTIVE, date(2026, 12, 9), anchor_day=10),
+        ),
+        (
+            m.PlanTerms(PlanKind.MONTHLY, anchor="first"),
+            Membership(PlanKind.MONTHLY, S.ACTIVE, date(2026, 12, 9), anchor_day=1),
+        ),
+        (
+            m.PlanTerms(PlanKind.PREPAID),
+            Membership(PlanKind.PREPAID, S.ACTIVE, date(2026, 12, 9)),
+        ),
+        (
+            m.PlanTerms(PlanKind.CREDITS, credits=12, credit_expiry_days=60),
+            Membership(PlanKind.CREDITS, S.ACTIVE, DEC_10, credits_remaining=12),
+        ),
+        (
+            m.PlanTerms(PlanKind.TRIAL, credits=2, credit_expiry_days=14),
+            Membership(PlanKind.TRIAL, S.TRIAL, DEC_10, credits_remaining=2),
+        ),
+    ],
+    ids=["signup", "first", "prepaid", "credits", "trial"],
+)
+def test_an_imported_membership_is_paid_through_the_day_before_its_due_date(
+    terms: m.PlanTerms, expected: Membership
+) -> None:
+    assert m.imported(terms, NOV_15, DEC_10) == expected
+
+
+def test_an_imported_pack_without_a_due_date_starts_as_new() -> None:
+    terms = m.PlanTerms(PlanKind.CREDITS, credits=12, credit_expiry_days=60)
+    assert m.imported(terms, NOV_15, None) == m.start(terms, NOV_15)
+
+
+@pytest.mark.parametrize(
+    ("terms", "due_on", "match"),
+    [
+        (m.PlanTerms(PlanKind.MONTHLY, anchor="signup"), None, "due date"),
+        (m.PlanTerms(PlanKind.DROPIN), DEC_10, "drop-in"),
+    ],
+    ids=["recurring-without-due", "dropin"],
+)
+def test_an_import_refuses(terms: m.PlanTerms, due_on: date | None, match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        m.imported(terms, NOV_15, due_on)
+
+
 def test_a_dropin_does_not_start() -> None:
     with pytest.raises(ValueError, match="drop-in"):
         m.start(m.PlanTerms(PlanKind.DROPIN), NOV_15)

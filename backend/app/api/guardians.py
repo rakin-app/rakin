@@ -71,19 +71,27 @@ async def family(session: AsyncSession, person_id: uuid.UUID) -> Family:
     return Family(guardian=guardian, dependents=dependents)
 
 
-async def _link(session: AsyncSession, guardian: uuid.UUID, dependent: uuid.UUID) -> None:
-    if guardian == dependent:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "nobody is their own guardian")
+async def link(
+    session: AsyncSession, guardian: uuid.UUID, dependent: uuid.UUID
+) -> ConflictCode | None:
+    """Make `dependent` `guardian`'s, or answer why the database refuses to."""
     try:
-        # A savepoint, so a refusal leaves the request's transaction usable for the 409.
+        # A savepoint, so a refusal leaves the request's transaction usable.
         async with session.begin_nested():
             await session.execute(text(LINK), {"guardian": guardian, "dependent": dependent})
     except IntegrityError as error:
         constraint = getattr(getattr(error.orig, "__cause__", None), "constraint_name", None)
         if constraint not in CONFLICTS:
             raise
-        conflict = FamilyConflict(code=CONFLICTS[constraint])
-        raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump()) from None
+        return CONFLICTS[constraint]
+    return None
+
+
+async def _link(session: AsyncSession, guardian: uuid.UUID, dependent: uuid.UUID) -> None:
+    if guardian == dependent:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "nobody is their own guardian")
+    if (code := await link(session, guardian, dependent)) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, FamilyConflict(code=code).model_dump())
 
 
 @router.get("/{person_id}/family")
