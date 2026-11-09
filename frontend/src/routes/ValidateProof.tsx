@@ -12,6 +12,7 @@ import {
   type Validated,
 } from '../api/review'
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
+import { monthName, shortDay } from '../format'
 import { t } from '../i18n/es'
 import './ValidateProof.css'
 
@@ -313,20 +314,6 @@ function refusal(error: unknown): string {
     return detail === 'billing period is already paid in full' ? copy.refused.paid : copy.refused.reviewed
   }
   return copy.refused.failed
-}
-
-// An ISO day (`2026-11-10`) as a local date, not UTC midnight; a timestamp as is.
-function toDate(iso: string): Date {
-  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
-  return day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : new Date(iso)
-}
-
-function shortDay(iso: string): string {
-  return toDate(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
-}
-
-function monthName(iso: string): string {
-  return toDate(iso).toLocaleDateString('es-CL', { month: 'long' })
 }
 
 /** `hoy 14:12`, or `8 nov 14:12` on another day. */

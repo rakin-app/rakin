@@ -1,5 +1,5 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { getRouteApi } from '@tanstack/react-router'
+import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 import {
   MEMBERSHIP_STATUSES,
@@ -181,7 +181,9 @@ function MemberItem({ row }: { row: MemberRow }) {
     <li className="students__item">
       <div className="students__row">
         <div className="students__who">
-          <span className="students__name">{row.name}</span>
+          <Link to="/admin/alumnos/$personId" params={{ personId: row.id }} className="students__name">
+            {row.name}
+          </Link>
           {details.length > 0 && <span className="students__details">{details.join(' · ')}</span>}
           {family && <span className="students__details">{family}</span>}
         </div>

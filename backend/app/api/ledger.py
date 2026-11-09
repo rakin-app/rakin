@@ -1,5 +1,6 @@
-"""The current gym's ledger: an admin records a payment ("Registrar pago", #37), and
-sees how many proofs wait for review (#35).
+"""The current gym's ledger: an admin records a payment ("Registrar pago", #37), sees
+how many proofs wait for review (#35), and reads one membership's ledger for the
+member detail ("Ficha de alumno", #60).
 
 `POST /api/ledger/payments` records money the gym received in cash, by a transfer the
 admin saw arrive, or otherwise, against one billing period of a membership. There is
@@ -25,12 +26,25 @@ from app.domain.billing import SETTLING_KINDS, BillingPeriod, Settlement
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.roles import LedgerSession
-from app.schemas.ledger import Entry, PaymentRecord, Period, RecordedPayment
+from app.schemas.ledger import (
+    Entry,
+    MembershipLedger,
+    OpenPeriod,
+    PaymentRecord,
+    Period,
+    RecordedPayment,
+    TimelineEntry,
+)
 from app.schemas.proofs import PendingCount
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 
 NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "billing period not found")
+NO_MEMBERSHIP = HTTPException(status.HTTP_404_NOT_FOUND, "membership not found")
+
+# The member detail shows this many of a membership's latest entries: years of
+# monthly charges and payments.
+TIMELINE_LIMIT = 100
 
 ENTRY_COLUMNS = (
     "id, membership_id, billing_period_id, amount_clp, kind, status, method,"
@@ -179,3 +193,78 @@ async def pending(session: LedgerSession) -> PendingCount:
         {"payment": EntryKind.PAYMENT.value, "pending": EntryStatus.PENDING.value},
     )
     return PendingCount(count=count or 0)
+
+
+# The membership's periods that validated payments and credit leave short, settled as
+# `locked_period` settles them, with whether each is due by today in the gym's
+# timezone and how many days past due it is.
+OPEN_PERIODS = text(
+    """
+    SELECT bp.id, bp.period_start, bp.period_end, bp.due_date, bp.amount_due_clp,
+           least(coalesce(paid.amount, 0), bp.amount_due_clp) AS paid_clp,
+           bp.due_date <= t.today AS due,
+           greatest(t.today - bp.due_date, 0) AS days_overdue
+    FROM billing_period bp
+    JOIN gym g ON g.id = bp.gym_id
+    CROSS JOIN LATERAL (SELECT (now() AT TIME ZONE g.timezone)::date AS today) t
+    LEFT JOIN LATERAL (
+        SELECT sum(e.amount_clp)::bigint AS amount FROM ledger_entry e
+        WHERE e.billing_period_id = bp.id AND e.status = :validated
+          AND e.kind = ANY(CAST(:settling AS text[]))
+    ) paid ON true
+    WHERE bp.membership_id = :id AND coalesce(paid.amount, 0) < bp.amount_due_clp
+    ORDER BY bp.period_start, bp.id
+    """
+)
+
+TIMELINE = text(
+    """
+    SELECT e.id, e.kind, e.status, e.amount_clp, e.method, e.billing_period_id,
+           bp.period_start, e.note, e.created_at, vp.name AS validated_by_name,
+           e.validated_at
+    FROM ledger_entry e
+    LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
+    LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
+    WHERE e.membership_id = :id
+    ORDER BY e.created_at DESC, e.id DESC
+    LIMIT :limit
+    """
+)
+
+
+@router.get("/memberships/{membership_id}")
+async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) -> MembershipLedger:
+    """What the membership owes, and its latest entries: the member detail's money."""
+    found = await session.scalar(
+        text("SELECT EXISTS (SELECT FROM membership WHERE id = :id)"), {"id": membership_id}
+    )
+    if not found:
+        raise NO_MEMBERSHIP
+    params = {
+        "id": membership_id,
+        "validated": EntryStatus.VALIDATED.value,
+        "settling": sorted(k.value for k in SETTLING_KINDS),
+    }
+    periods = (await session.execute(OPEN_PERIODS, params)).all()
+    entries = (
+        await session.execute(TIMELINE, {"id": membership_id, "limit": TIMELINE_LIMIT})
+    ).all()
+    open_periods = [
+        OpenPeriod(
+            id=row.id,
+            period_start=row.period_start,
+            period_end=row.period_end,
+            due_date=row.due_date,
+            amount_due_clp=row.amount_due_clp,
+            paid_clp=row.paid_clp,
+            outstanding_clp=row.amount_due_clp - row.paid_clp,
+            due=row.due,
+            days_overdue=row.days_overdue,
+        )
+        for row in periods
+    ]
+    return MembershipLedger(
+        open_periods=open_periods,
+        owed_clp=sum(p.outstanding_clp for p in open_periods if p.due),
+        entries=[TimelineEntry.model_validate(row, from_attributes=True) for row in entries],
+    )
