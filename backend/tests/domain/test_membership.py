@@ -60,7 +60,7 @@ def test_a_dropin_is_not_a_membership() -> None:
 # Every action, keyed by the status it leads to, so each invalid source can be tried.
 ACTIONS: dict[MembershipStatus, Callable[[Membership], Membership]] = {
     S.FROZEN: lambda ms: m.freeze(ms, NOV_30),
-    S.CANCELLED: m.cancel,
+    S.CANCELLED: lambda ms: m.cancel(ms, "se mudó"),
     S.ACTIVE: lambda ms: m.record_payment(ms, VALIDATED_PAYMENT, paid_through=NOV_30),
     S.LAPSED: lambda ms: m.lapse(ms, NOV_30 + timedelta(days=60)),
 }
@@ -83,7 +83,7 @@ def test_invalid_transitions_raise(source: MembershipStatus, target: MembershipS
 
 
 def test_cancelled_is_terminal() -> None:
-    cancelled = m.cancel(monthly())
+    cancelled = m.cancel(monthly(), "se mudó")
 
     for action in ACTIONS.values():
         with pytest.raises(InvalidTransition):
@@ -94,7 +94,123 @@ def test_cancelled_is_terminal() -> None:
 
 @pytest.mark.parametrize("source", [S.ACTIVE, S.LAPSED])
 def test_active_and_lapsed_can_be_cancelled(source: MembershipStatus) -> None:
-    assert m.cancel(monthly(source)).status is S.CANCELLED
+    cancelled = m.cancel(monthly(source), "  se mudó  ")
+    assert cancelled.status is S.CANCELLED
+    assert cancelled.cancel_reason == "se mudó"
+
+
+@pytest.mark.parametrize("reason", ["", "   "])
+def test_a_cancellation_needs_a_reason(reason: str) -> None:
+    with pytest.raises(ValueError, match="reason"):
+        m.cancel(monthly(), reason)
+
+
+# --- starting -------------------------------------------------------------------------
+
+NOV_15 = date(2026, 11, 15)
+NOV_14 = date(2026, 11, 14)
+
+
+@pytest.mark.parametrize(
+    ("terms", "expected"),
+    [
+        (
+            m.PlanTerms(PlanKind.MONTHLY, anchor="signup"),
+            Membership(PlanKind.MONTHLY, S.ACTIVE, NOV_14, anchor_day=15),
+        ),
+        (
+            m.PlanTerms(PlanKind.MONTHLY, anchor="first"),
+            Membership(PlanKind.MONTHLY, S.ACTIVE, NOV_14, anchor_day=1),
+        ),
+        (
+            m.PlanTerms(PlanKind.PREPAID),
+            Membership(PlanKind.PREPAID, S.ACTIVE, NOV_14),
+        ),
+        (
+            m.PlanTerms(PlanKind.CREDITS, credits=12, credit_expiry_days=60),
+            Membership(PlanKind.CREDITS, S.ACTIVE, date(2027, 1, 13), credits_remaining=12),
+        ),
+        (
+            m.PlanTerms(PlanKind.TRIAL, credits=2, credit_expiry_days=14),
+            Membership(PlanKind.TRIAL, S.TRIAL, date(2026, 11, 28), credits_remaining=2),
+        ),
+        (
+            m.PlanTerms(PlanKind.TRIAL, credits=2),
+            Membership(PlanKind.TRIAL, S.TRIAL, None, credits_remaining=2),
+        ),
+        (
+            m.PlanTerms(PlanKind.TRIAL, credit_expiry_days=1),
+            Membership(PlanKind.TRIAL, S.TRIAL, NOV_15),
+        ),
+    ],
+    ids=["signup", "first", "prepaid", "credits", "trial", "trial-classes", "trial-one-day"],
+)
+def test_start(terms: m.PlanTerms, expected: Membership) -> None:
+    assert m.start(terms, NOV_15) == expected
+
+
+def test_a_dropin_does_not_start() -> None:
+    with pytest.raises(ValueError, match="drop-in"):
+        m.start(m.PlanTerms(PlanKind.DROPIN), NOV_15)
+
+
+def test_a_new_recurring_membership_is_due_on_its_start_date() -> None:
+    # Paid through the day before, so the first period lapses only after the grace.
+    started = m.start(m.PlanTerms(PlanKind.MONTHLY, anchor="signup"), NOV_15)
+    assert not m.is_due_to_lapse(started, NOV_15 + timedelta(days=m.DEFAULT_GRACE_DAYS - 1))
+    assert m.is_due_to_lapse(started, NOV_15 + timedelta(days=m.DEFAULT_GRACE_DAYS))
+
+
+@pytest.mark.parametrize(
+    ("period_start", "anchor", "day"),
+    [(date(2026, 1, 31), "signup", 31), (date(2026, 1, 31), "first", 1)],
+)
+def test_anchor_day(period_start: date, anchor: str, day: int) -> None:
+    assert m.anchor_day(m.PlanTerms(PlanKind.MONTHLY, anchor=anchor), period_start) == day
+
+
+# --- changing plan ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("source", [S.ACTIVE, S.FROZEN, S.LAPSED])
+def test_a_plan_change_starts_after_the_paid_through_date(source: MembershipStatus) -> None:
+    assert m.plan_change_starts(monthly(source), PlanKind.PREPAID) == date(2026, 12, 1)
+
+
+def test_a_plan_change_waits_for_periods_billed_ahead() -> None:
+    change = m.plan_change_starts(monthly(), PlanKind.MONTHLY, billed_through=date(2026, 12, 31))
+    assert change == date(2027, 1, 1)
+
+
+def test_a_billed_period_before_the_paid_through_date_moves_nothing() -> None:
+    change = m.plan_change_starts(monthly(), PlanKind.MONTHLY, billed_through=date(2026, 10, 31))
+    assert change == date(2026, 12, 1)
+
+
+def test_an_unpaid_new_membership_changes_from_its_start() -> None:
+    started = m.start(m.PlanTerms(PlanKind.MONTHLY, anchor="signup"), NOV_15)
+    assert m.plan_change_starts(started, PlanKind.PREPAID) == NOV_15
+
+
+def test_a_cancelled_membership_does_not_change_plan() -> None:
+    with pytest.raises(InvalidTransition):
+        m.plan_change_starts(monthly(S.CANCELLED), PlanKind.MONTHLY)
+
+
+@pytest.mark.parametrize(
+    ("source", "to"),
+    [
+        (PlanKind.MONTHLY, PlanKind.CREDITS),
+        (PlanKind.MONTHLY, PlanKind.TRIAL),
+        (PlanKind.MONTHLY, PlanKind.DROPIN),
+        (PlanKind.CREDITS, PlanKind.MONTHLY),
+        (PlanKind.TRIAL, PlanKind.MONTHLY),
+    ],
+)
+def test_only_recurring_plans_change(source: PlanKind, to: PlanKind) -> None:
+    ms = Membership(source, S.ACTIVE, NOV_30, credits_remaining=1)
+    with pytest.raises(ValueError, match="monthly or prepaid"):
+        m.plan_change_starts(ms, to)
 
 
 # --- payments ---------------------------------------------------------------------------

@@ -2,7 +2,11 @@
 
 A membership moves right as time passes and returns to Active only when a
 payment is validated. A freeze is a side trip that shifts the due date by the
-frozen days. Cancelled is terminal.
+frozen days. Cancelled is terminal, and carries the reason it was cancelled for.
+
+A plan change waits for the next period: the periods already billed keep the plan
+they were billed on, and the new one applies from the first period not yet billed
+(`plan_change_starts`). Proration is v2.
 """
 
 from collections.abc import Mapping
@@ -51,6 +55,25 @@ class Membership:
     # Credits left on a credits plan, free classes left on a trial.
     credits_remaining: int | None = None
     frozen_since: date | None = None
+    # The day of the month a monthly plan bills on; `None` on every other kind.
+    anchor_day: int | None = None
+    cancel_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class PlanTerms:
+    """What a membership takes from its plan, as the `plan` columns hold it: a trial's
+    free classes and free days are `credits` and `credit_expiry_days` (migration 0007)."""
+
+    kind: PlanKind
+    # A monthly plan's `signup` or `first`.
+    anchor: str | None = None
+    credits: int | None = None
+    credit_expiry_days: int | None = None
+
+
+# The kinds billed period after period, which a plan change can move between.
+RECURRING = frozenset({PlanKind.MONTHLY, PlanKind.PREPAID})
 
 
 def grace_days(gym_settings: Mapping[str, object]) -> int:
@@ -77,6 +100,55 @@ def create(
         raise ValueError("a drop-in is a single attendance, not a membership")
     status = S.TRIAL if plan_kind is PlanKind.TRIAL else S.ACTIVE
     return Membership(plan_kind, status, current_period_end, credits_remaining)
+
+
+def anchor_day(terms: PlanTerms, period_start: date) -> int | None:
+    """The day of the month a membership on `terms` bills on, from `period_start`: that
+    day on a `signup` anchor, the 1st on a `first` one, none off a monthly plan."""
+    if terms.kind is not PlanKind.MONTHLY:
+        return None
+    return 1 if terms.anchor == "first" else period_start.day
+
+
+def start(terms: PlanTerms, started_on: date) -> Membership:
+    """A membership on `terms` from `started_on`, a calendar date in the gym's timezone.
+
+    A monthly or prepaid membership starts with nothing paid: paid through the day
+    before it starts, so its first period falls due on the start date. A credits pack
+    or a trial starts with what it allows: its credits or free classes, and the last
+    day it lasts as `current_period_end` (none for a trial limited by classes alone).
+    """
+    if terms.kind in (PlanKind.CREDITS, PlanKind.TRIAL):
+        days = terms.credit_expiry_days
+        last_day = None if days is None else started_on + timedelta(days=days - 1)
+        return create(terms.kind, current_period_end=last_day, credits_remaining=terms.credits)
+    membership = create(terms.kind, current_period_end=started_on - timedelta(days=1))
+    return replace(membership, anchor_day=anchor_day(terms, started_on))
+
+
+def plan_change_starts(
+    membership: Membership, to: PlanKind, *, billed_through: date | None = None
+) -> date:
+    """The day a change to a plan of kind `to` takes effect: the first day not yet paid
+    for, or past the last billed period's end (`billed_through`), whichever is later.
+
+    Only a recurring membership changes plan, and only to another recurring plan: a
+    pack or a trial ends, and the member starts a new membership (or a trial converts,
+    on payment). A cancelled membership changes nothing.
+    """
+    if membership.status is S.CANCELLED:
+        raise InvalidTransition("a cancelled membership cannot change plan")
+    if membership.plan_kind not in RECURRING or to not in RECURRING:
+        raise ValueError(
+            f"only a monthly or prepaid membership changes plan, to a monthly or prepaid"
+            f" plan, not {membership.plan_kind} to {to}"
+        )
+    if membership.current_period_end is None:
+        raise ValueError("a recurring membership has a paid-through date")
+    last = membership.current_period_end
+    if billed_through is not None and billed_through > last:
+        last = billed_through
+    return last + timedelta(days=1)
 
 
 def freeze(membership: Membership, on: date) -> Membership:
@@ -167,6 +239,9 @@ def record_payment(
     )
 
 
-def cancel(membership: Membership) -> Membership:
+def cancel(membership: Membership, reason: str) -> Membership:
+    """Terminal: a cancelled membership never moves again. `reason` is required."""
     _move(membership, S.CANCELLED)
-    return replace(membership, status=S.CANCELLED)
+    if not reason.strip():
+        raise ValueError("a cancellation needs a reason")
+    return replace(membership, status=S.CANCELLED, cancel_reason=reason.strip())
