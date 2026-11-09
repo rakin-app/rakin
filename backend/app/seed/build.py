@@ -357,6 +357,7 @@ def build(as_of: date) -> Seed:
                 "name": p.name,
                 "kind": p.kind.value,
                 "price_clp": p.price_clp,
+                "anchor": p.anchor,
                 "period_months": p.period_months,
                 "credits": p.credits,
                 "credit_expiry_days": p.credit_expiry_days,

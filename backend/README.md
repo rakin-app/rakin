@@ -98,6 +98,27 @@ A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, 
 
 Any staff role may use it (`StaffSession`); a member gets a 403. Phones are normalised to E.164 Chilean mobiles and RUTs to `76123456-0`; anything else is a 422. The phone is set on create and not editable here, since changing it moves the gym's record to another identity.
 
+## Plans API
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `POST` | `/api/plans` | create a plan of one of the five kinds; 201 with the plan |
+| `GET` | `/api/plans` | the gym's plans, active first, then by name; `?active=true` (or `false`) to filter |
+| `GET` | `/api/plans/{id}` | one plan; 404 for another gym's |
+| `PATCH` | `/api/plans/{id}` | change `name`, `price_clp`, the kind's own parameters, or `active` |
+
+The body is told apart by `kind`, and each kind takes exactly its own parameters ([spec](../docs/technical.md#sport-agnostic-design)); anything else is a 422:
+
+| `kind` | parameters |
+| --- | --- |
+| `monthly` | `price_clp`, `anchor`: `signup` (the member's signup day of the month) or `first` |
+| `prepaid` | `price_clp`, `period_months` |
+| `credits` | `price_clp`, `credits`, `credit_expiry_days` |
+| `dropin` | `price_clp` |
+| `trial` | `free_classes`, `free_days`, or both; no price, a trial is free |
+
+The kind is set on create. A `PATCH` is checked as the whole plan it would leave, so `null` on a required parameter or another kind's parameter is a 422 and nothing changes. A plan is never deleted: `PATCH {"active": false}` deactivates it, `true` brings it back. Any staff role may read plans (`StaffSession`); only an owner or admin may create or change one (`AdminSession`).
+
 ## Sign-in
 
 Students and staff sign in with a magic link ([spec](../docs/technical.md#communications)). `app/magiclink` is the mechanism, self-contained so it can become a package: it imports nothing else from `app`. `app/auth.py` plugs Rakin into it: people by email, Postgres, and the mailer.
@@ -129,6 +150,8 @@ Every table with a `gym_id` (and `gym` itself) is isolated by an RLS policy on `
 RLS is **forced**, so it applies to `rakin_owner` as well, not only to the API. A table owner is normally exempt from its own policies; forcing them means a backfill, seed or one-off script run with the owner's credentials sees and writes only the gym in `app.gym_id`, so a missed `SET` returns nothing there too. Work that spans gyms (the nightly jobs, a gym switcher) sets `app.gym_id` per gym or goes through a `SECURITY DEFINER` function written for it. Only a superuser skips RLS.
 
 `ledger_entry` is append-only for every role, the owner and superusers included: triggers reject `DELETE` and `TRUNCATE`, and an `UPDATE` may change only `status`, `validated_by`, `validated_at` and `note`, and only while the entry is `pending`. Violations raise `restrict_violation` (SQLSTATE 23001). A correction is a new entry. The API reads and writes it only for an owner or admin of the gym in `app.person_id` (`0006`); the owner role, which the seed and jobs use, is scoped by the gym alone.
+
+`plan` rows are never deleted either: triggers reject `DELETE` and `TRUNCATE` for every role (`0007`), since memberships and the ledger point at them; deactivate one with `active = false`. A check holds each row to its kind's parameters, the rest null. A trial keeps its free classes and free days in `credits` and `credit_expiry_days`, with `price_clp` 0.
 
 Grants name each table; `rakin_app` has no privilege on `alembic_version`. A new table gets its `GRANT` (and, if it carries `gym_id`, its RLS policy) in the migration that creates it.
 
