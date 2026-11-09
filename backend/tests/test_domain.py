@@ -94,10 +94,10 @@ def test_overdue_across_spring_forward() -> None:
 def test_grace_across_fall_back() -> None:
     due = date(2026, 3, 31)
     # Lapses on Apr 6 local, the first day beyond due + 5; Apr 6 starts at 04:00 UTC (-04).
-    assert not is_past_grace(due, 5, datetime(2026, 4, 6, 3, 59, tzinfo=UTC), SCL)
-    assert is_past_grace(due, 5, datetime(2026, 4, 6, 4, tzinfo=UTC), SCL)
+    assert not is_past_grace(due, 5, local_date(datetime(2026, 4, 6, 3, 59, tzinfo=UTC), SCL))
+    assert is_past_grace(due, 5, local_date(datetime(2026, 4, 6, 4, tzinfo=UTC), SCL))
     with pytest.raises(ValueError):
-        is_past_grace(due, -1, datetime(2026, 4, 6, tzinfo=UTC), SCL)
+        is_past_grace(due, -1, date(2026, 4, 6))
 
 
 @pytest.mark.parametrize(

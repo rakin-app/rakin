@@ -5,8 +5,10 @@ The period settles as validating a proof does: paid in full closes it, a second
 payment for it is a 409, and an overpayment leaves a validated credit adjustment.
 """
 
+import asyncio
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import asyncpg
@@ -15,6 +17,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from alembic import command
+from app.db_bootstrap import to_dsn
 from app.main import create_app
 from app.schemas.ledger import PaymentRecord
 from app.schemas.plans import MAX_PRICE_CLP
@@ -24,7 +27,8 @@ from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_d
 from tests.test_plans import add_staff
 
 IDS = {"membership_id": str(uuid.uuid4()), "billing_period_id": str(uuid.uuid4())}
-BODY: dict[str, Any] = {**IDS, "amount_clp": 45_000, "method": "cash"}
+PAYMENT: dict[str, Any] = {"amount_clp": 45_000, "method": "cash"}
+BODY: dict[str, Any] = {**IDS, **PAYMENT}
 
 # --- input rules, no database -----------------------------------------------------
 
@@ -291,3 +295,39 @@ def test_upgrade_and_downgrade_0008() -> None:
         migrate(scratch)
         command.downgrade(scratch.alembic(), "0007")
         migrate(scratch)
+
+
+@pg
+def test_a_payment_waits_for_a_lapse_run_holding_the_membership(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    """The nightly `lapse` job holds every membership it may lapse until it commits
+    (`app.jobs.lapse`); a payment locks its membership before it reads its period, so
+    it waits for the run instead of settling a period the job is deciding on.
+
+    Held here `FOR NO KEY UPDATE`, which only the handler's own `FOR UPDATE` waits on:
+    the job's `FOR UPDATE` would also stop the entry's foreign-key check, but only at
+    the insert, after the handler has read the period."""
+    period = new_period(db, sur)
+
+    async def go() -> None:
+        nightly = await asyncpg.connect(to_dsn(db.admin_url))
+        try:
+            await nightly.execute("BEGIN")
+            await nightly.execute(
+                "SELECT FROM membership WHERE id = $1 FOR NO KEY UPDATE",
+                uuid.UUID(period["membership_id"]),
+            )
+            with ThreadPoolExecutor(1) as pool:
+                paying = asyncio.wrap_future(
+                    pool.submit(record, client, sur, {**period, **PAYMENT})
+                )
+                await asyncio.sleep(0.5)
+                assert not paying.done(), "the payment did not wait for the lapse run"
+                await nightly.execute("COMMIT")
+                response = await paying
+            assert response.status_code == 201, response.text
+        finally:
+            await nightly.close()
+
+    asyncio.run(go())

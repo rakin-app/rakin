@@ -36,6 +36,7 @@ import asyncpg
 from app.domain import billing
 from app.domain.billing import Billable, Plan
 from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
+from app.jobs.gyms import MembershipFailed, each_gym
 from app.jobs.runner import Job
 
 logger = logging.getLogger(__name__)
@@ -114,14 +115,6 @@ def _billable(row: asyncpg.Record) -> Billable:
     )
 
 
-class MembershipFailed(Exception):
-    """Billing one membership broke; the cause is chained."""
-
-    def __init__(self, membership_id: object) -> None:
-        super().__init__(f"billing membership {membership_id} failed")
-        self.membership_id = membership_id
-
-
 async def bill_gym(conn: asyncpg.Connection, day: date) -> int:
     """Generate the periods due by `day` plus the lead time in the gym in `app.gym_id`;
     the number of periods written."""
@@ -158,26 +151,9 @@ async def _bill_membership(conn: asyncpg.Connection, row: asyncpg.Record, day: d
 
 async def generate_billing_periods(conn: asyncpg.Connection, day: date) -> bool:
     """Bill every gym; `False` if any failed, whose work alone is rolled back."""
-    complete = True
-    for gym_id in [r[0] for r in await conn.fetch("SELECT jobs_gym_ids()")]:
-        try:
-            async with conn.transaction():  # a savepoint in the runner's transaction
-                # Transaction-local, so it goes with the savepoint.
-                await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
-                await bill_gym(conn, day)
-        except Exception as error:
-            complete = False
-            failed = error.membership_id if isinstance(error, MembershipFailed) else None
-            logger.exception(
-                "billing a gym failed",
-                extra={
-                    "job": NAME,
-                    "run_date": day.isoformat(),
-                    "gym_id": str(gym_id),
-                    "membership_id": None if failed is None else str(failed),
-                },
-            )
-    return complete
+    return await each_gym(
+        conn, day, bill_gym, job=NAME, logger=logger, failure="billing a gym failed"
+    )
 
 
 JOB = Job(NAME, generate_billing_periods)

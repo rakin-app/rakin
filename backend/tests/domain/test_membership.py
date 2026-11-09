@@ -6,6 +6,7 @@ from itertools import product
 import pytest
 
 from app.domain import membership as m
+from app.domain.dates import is_past_grace
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.domain.membership import Membership, MembershipStatus, PlanKind
@@ -157,8 +158,8 @@ def test_a_dropin_does_not_start() -> None:
 def test_a_new_recurring_membership_is_due_on_its_start_date() -> None:
     # Paid through the day before, so the first period lapses only after the grace.
     started = m.start(m.PlanTerms(PlanKind.MONTHLY, anchor="signup"), NOV_15)
-    assert not m.is_due_to_lapse(started, NOV_15 + timedelta(days=m.DEFAULT_GRACE_DAYS - 1))
-    assert m.is_due_to_lapse(started, NOV_15 + timedelta(days=m.DEFAULT_GRACE_DAYS))
+    assert not m.is_due_to_lapse(started, NOV_15 + timedelta(days=m.DEFAULT_GRACE_DAYS))
+    assert m.is_due_to_lapse(started, NOV_15 + timedelta(days=m.DEFAULT_GRACE_DAYS + 1))
 
 
 @pytest.mark.parametrize(
@@ -317,18 +318,26 @@ def test_a_frozen_membership_does_not_lapse() -> None:
 
 
 def test_active_lapses_only_after_the_default_five_day_grace() -> None:
+    # Paid through Nov 30, so due Dec 1: Dec 2 to 6 are the grace, Dec 7 lapses.
     assert m.DEFAULT_GRACE_DAYS == 5
-    assert not m.is_due_to_lapse(monthly(), NOV_30 + timedelta(days=5))
-    assert m.is_due_to_lapse(monthly(), NOV_30 + timedelta(days=6))
+    assert not m.is_due_to_lapse(monthly(), date(2026, 12, 6))
+    assert m.is_due_to_lapse(monthly(), date(2026, 12, 7))
 
-    assert m.lapse(monthly(), NOV_30 + timedelta(days=6)).status is S.LAPSED
+    assert m.lapse(monthly(), date(2026, 12, 7)).status is S.LAPSED
+
+
+def test_lapsing_agrees_with_the_grace_rule_in_dates() -> None:
+    due = NOV_30 + timedelta(days=1)
+    for days in range(15):
+        today = due + timedelta(days=days)
+        assert m.is_due_to_lapse(monthly(), today) is is_past_grace(due, 5, today)
 
 
 def test_grace_is_per_gym() -> None:
     grace = m.grace_days({"grace_days": 10})
 
-    assert not m.is_due_to_lapse(monthly(), NOV_30 + timedelta(days=10), grace)
-    assert m.is_due_to_lapse(monthly(), NOV_30 + timedelta(days=11), grace)
+    assert not m.is_due_to_lapse(monthly(), NOV_30 + timedelta(days=11), grace)
+    assert m.is_due_to_lapse(monthly(), NOV_30 + timedelta(days=12), grace)
 
 
 def test_grace_defaults_when_the_gym_sets_none() -> None:
