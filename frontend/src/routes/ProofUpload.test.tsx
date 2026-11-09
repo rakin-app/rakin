@@ -261,6 +261,9 @@ describe('pending badge', () => {
     // Give a mistaken request the chance to land before checking none did.
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(calls.some((c) => c.url.endsWith('/api/ledger/pending'))).toBe(false)
-    expect(within(nav).getByRole('link', { name: es.nav.payments })).toHaveTextContent(/^Pagos$/)
+    // A coach has no Pagos tab at all (#39); anyone else sees it with no badge.
+    const payments = within(nav).queryByRole('link', { name: es.nav.payments })
+    if (role === 'coach') expect(payments).not.toBeInTheDocument()
+    else expect(payments).toHaveTextContent(/^Pagos$/)
   })
 })

@@ -14,7 +14,7 @@ import { MeLayout } from './layouts/MeLayout'
 import { MeHome } from './routes/MeHome'
 import { MemberDetail } from './routes/MemberDetail'
 import { NotFound } from './routes/NotFound'
-import { Payments } from './routes/Payments'
+import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { Students, validateStudentsSearch } from './routes/Students'
 import { ValidateProof } from './routes/ValidateProof'
 
@@ -68,9 +68,11 @@ const adminClassesRoute = createRoute({
   component: () => <PlaceholderPage title={t.admin.classes.title} />,
 })
 
+// "Libro de pagos": the gym's ledger, for who reads it.
 const adminPaymentsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'pagos',
+  validateSearch: validatePaymentsSearch,
   component: Payments,
 })
 

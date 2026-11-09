@@ -168,6 +168,22 @@ The member detail ("Ficha de alumno", #60) reads one membership's money. Owner a
 
 A pending claim counts towards nothing until it is validated, as everywhere else (`app.domain.billing`).
 
+### The ledger book
+
+"Libro de pagos" (#39) reads the whole gym's ledger. Owner and admin only (`LedgerSession`); a coach gets a 403 and the screen does not ask.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/ledger/book` | `{month, months, timezone, kpis, items, total}`: a page of entries newest first, with the gym's KPIs. Each item carries its `kind`, `status`, `amount_clp`, `method`, `note`, `created_at`, the membership's `plan_name`, its `person` (`id`, `name`) and `guardian` (`id`, `name`, or `null` unless the person is a dependent), its `period` (dates, `outstanding_clp`, settled as the member detail settles it, and `days_overdue`, 0 once paid; `null` for a carried credit) and `validated_by_name` |
+
+| Parameter | Does |
+| --- | --- |
+| `month` | any day of the month to show, in the gym's timezone; the current month by default. `month` answers its first day, and `months` every month with entries plus the current and the shown one, newest first |
+| `filter` | `all` (default): the month's entries. `pending`: payments waiting for review, of any month. `overdue`: the charges of active memberships' periods in `v_overdue`, of any month. `kids`: the month's entries on a dependent's membership (`guardian_link`) |
+| `limit`, `offset` | the page: `limit` 1–200, 50 by default. `total` counts what the filter matches across every page |
+
+`kpis`: `collected_clp` and `collected_payments`, the month's row of `v_monthly_income`; `expected_clp`, what the periods falling due in the month bill; and as the gym stands today, whichever month is shown: `pending_clp` and `pending_payments`, the claims waiting for review; `overdue_clp` and `overdue_members`, outstanding on active memberships' `v_overdue` periods and the people owing it, and `overdue_avg_days`, per such person the days since their oldest unpaid period fell due, averaged; `active_memberships` and `frozen_memberships`.
+
 ## Plans API
 
 | Method | Path | Does |
