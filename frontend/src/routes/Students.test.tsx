@@ -1,0 +1,228 @@
+import { createMemoryHistory } from '@tanstack/react-router'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { MemberPage, MemberRow, Plan } from '../api/people'
+import { createQueryClient } from '../api/queryClient'
+import { App } from '../App'
+import { es } from '../i18n/es'
+import { createAppRouter } from '../router'
+import { formatPhone, formatRut, validateStudentsSearch } from './Students'
+
+const copy = es.admin.students
+
+const CAMILA: MemberRow = {
+  id: 'p1',
+  name: 'Camila Rojas',
+  phone: '+56987654321',
+  rut: '7654321-6',
+  membership: { id: 'm1', status: 'active', plan_id: 'plan-adults', plan_name: 'Mensual adultos' },
+}
+const DIEGO: MemberRow = { id: 'p2', name: 'Diego Soto', phone: null, rut: null, membership: null }
+const PLANS: Plan[] = [
+  { id: 'plan-adults', name: 'Mensual adultos', active: true },
+  { id: 'plan-old', name: 'Plan 2024', active: false },
+]
+
+type Answer = { status?: number; body: unknown }
+
+// Answers by path, and records every /api/people query it was asked.
+function stubApi(people: (params: URLSearchParams) => Answer, plans: Answer = { body: PLANS }) {
+  const asked: URLSearchParams[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(String(input), 'http://localhost')
+      let answer: Answer
+      if (url.pathname === '/api/people') {
+        asked.push(url.searchParams)
+        answer = people(url.searchParams)
+      } else if (url.pathname === '/api/plans') {
+        answer = plans
+      } else {
+        answer = { status: 404, body: { detail: 'Not Found' } }
+      }
+      return new Response(JSON.stringify(answer.body), {
+        status: answer.status ?? 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }),
+  )
+  return asked
+}
+
+function page(items: MemberRow[], total = items.length): Answer {
+  return { body: { items, total } satisfies MemberPage }
+}
+
+function renderAt(path: string) {
+  const queryClient = createQueryClient()
+  const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries: [path] }))
+  render(<App queryClient={queryClient} router={router} />)
+  return router
+}
+
+const list = () => screen.findByRole('list', { name: copy.title })
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('Alumnos', () => {
+  it('lists members with their phone, RUT, status and plan', async () => {
+    stubApi(() => page([CAMILA, DIEGO]))
+    renderAt('/admin/alumnos')
+
+    const rows = within(await list()).getAllByRole('listitem')
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Camila Rojas+56 9 8765 4321 · 7.654.321-6ActivoMensual adultos',
+      `Diego Soto${copy.noPlan}`,
+    ])
+    expect(screen.getByText(copy.count(2))).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.clearFilters })).not.toBeInTheDocument()
+  })
+
+  it('searches by what is typed, once typing pauses', async () => {
+    const asked = stubApi((params) => page(params.get('q') === '9 8765' ? [CAMILA] : [CAMILA, DIEGO]))
+    const router = renderAt('/admin/alumnos')
+    await list()
+
+    await userEvent.type(screen.getByRole('searchbox', { name: copy.searchLabel }), '9 8765')
+
+    await waitFor(() => expect(within(screen.getByRole('list', { name: copy.title })).getAllByRole('listitem')).toHaveLength(1))
+    expect(asked.map((params) => params.get('q'))).toEqual([null, '9 8765'])
+    expect(router.state.location.search).toEqual({ q: '9 8765' })
+  })
+
+  it('filters by status, several at once', async () => {
+    const asked = stubApi(() => page([CAMILA]))
+    const router = renderAt('/admin/alumnos')
+    await list()
+    const statuses = screen.getByRole('group', { name: copy.statusLabel })
+
+    await userEvent.click(within(statuses).getByRole('button', { name: copy.status.lapsed }))
+    await userEvent.click(within(statuses).getByRole('button', { name: copy.status.trial }))
+
+    await waitFor(() => expect(asked.at(-1)?.getAll('status')).toEqual(['trial', 'lapsed']))
+    expect(within(statuses).getByRole('button', { name: copy.status.lapsed })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(statuses).getByRole('button', { name: copy.status.active })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(router.state.location.search).toEqual({ status: ['trial', 'lapsed'] })
+
+    await userEvent.click(within(statuses).getByRole('button', { name: copy.status.lapsed }))
+    await waitFor(() => expect(asked.at(-1)?.getAll('status')).toEqual(['trial']))
+  })
+
+  it('filters by plan, inactive plans marked', async () => {
+    const asked = stubApi(() => page([CAMILA]))
+    renderAt('/admin/alumnos')
+    const select = await screen.findByRole('combobox', { name: copy.planLabel })
+
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      copy.allPlans,
+      'Mensual adultos',
+      copy.inactivePlan('Plan 2024'),
+    ])
+    await userEvent.selectOptions(select, 'plan-old')
+
+    await waitFor(() => expect(asked.at(-1)?.getAll('plan_id')).toEqual(['plan-old']))
+  })
+
+  it('works without the plan filter when plans cannot be read', async () => {
+    stubApi(() => page([CAMILA]), { status: 404, body: { detail: 'Not Found' } })
+    renderAt('/admin/alumnos')
+
+    await list()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('opens with the filters in the URL and clears them all', async () => {
+    const asked = stubApi((params) => page(params.toString().includes('q=') ? [] : [CAMILA]))
+    const router = renderAt('/admin/alumnos?q=%22nadie%22&status=%5B%22frozen%22%5D&plan=%22plan-adults%22')
+
+    expect(await screen.findByText(copy.noMatches)).toBeInTheDocument()
+    const first = asked[0]!
+    expect([first.get('q'), first.getAll('status'), first.getAll('plan_id')]).toEqual([
+      'nadie',
+      ['frozen'],
+      ['plan-adults'],
+    ])
+    expect(screen.getByRole('searchbox')).toHaveValue('nadie')
+
+    await userEvent.click(screen.getByRole('button', { name: copy.clearFilters }))
+
+    await list()
+    expect(router.state.location.search).toEqual({})
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+  })
+
+  it('says so when the gym has no members yet', async () => {
+    stubApi(() => page([]))
+    renderAt('/admin/alumnos')
+    expect(await screen.findByText(copy.empty)).toBeInTheDocument()
+  })
+
+  it('loads the next page on demand', async () => {
+    const many = Array.from({ length: 50 }, (_, i) => ({ ...DIEGO, id: `p${i}`, name: `Alumno ${i}` }))
+    const asked = stubApi((params) => (params.get('offset') === '0' ? page(many, 51) : page([CAMILA], 51)))
+    renderAt('/admin/alumnos')
+    await list()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.more }))
+
+    await waitFor(() => expect(within(screen.getByRole('list', { name: copy.title })).getAllByRole('listitem')).toHaveLength(51))
+    expect(asked.map((params) => params.get('offset'))).toEqual(['0', '50'])
+    expect(screen.queryByRole('button', { name: copy.more })).not.toBeInTheDocument()
+  })
+
+  it('offers a retry when the list fails to load', async () => {
+    let fail = true
+    stubApi(() => (fail ? { status: 403, body: { detail: 'no' } } : page([CAMILA])))
+    renderAt('/admin/alumnos')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.error)
+    fail = false
+    await userEvent.click(screen.getByRole('button', { name: copy.retry }))
+
+    await list()
+  })
+})
+
+describe('validateStudentsSearch', () => {
+  it('keeps known values and drops the rest', () => {
+    expect(validateStudentsSearch({ q: 'ana', status: ['frozen', 'gone', 3], plan: 'x' })).toEqual({
+      q: 'ana',
+      status: ['frozen'],
+      plan: 'x',
+    })
+    expect(validateStudentsSearch({ q: '  ', status: 'trial', plan: 7 })).toEqual({
+      q: undefined,
+      status: ['trial'],
+      plan: undefined,
+    })
+    expect(validateStudentsSearch({})).toEqual({ q: undefined, status: undefined, plan: undefined })
+  })
+})
+
+describe('formatting', () => {
+  it.each([
+    ['+56987654321', '+56 9 8765 4321'],
+    ['+5491123456789', '+5491123456789'],
+  ])('shows phone %s as %s', (phone, shown) => {
+    expect(formatPhone(phone)).toBe(shown)
+  })
+
+  it.each([
+    ['7654321-6', '7.654.321-6'],
+    ['76123456-0', '76.123.456-0'],
+    ['1-9', '1-9'],
+    ['12345678-K', '12.345.678-K'],
+  ])('shows RUT %s as %s', (rut, shown) => {
+    expect(formatRut(rut)).toBe(shown)
+  })
+})

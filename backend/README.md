@@ -92,11 +92,23 @@ A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, 
 
 | Method | Path | Does |
 | --- | --- | --- |
+| `GET` | `/api/people` | the member list (Alumnos), by name, 50 a page: `{"items": […], "total": n}`; see below |
 | `POST` | `/api/people` | add a person by phone; 201 with this gym's record, 409 `{"detail": {"code": "phone_in_gym", "person_id": …}}` if the phone is already in this gym |
 | `GET` | `/api/people/{id}` | this gym's record; 404 for anyone not in the gym, known elsewhere or not |
 | `PATCH` | `/api/people/{id}` | change `name`, `email`, `rut`, `dob` in this gym's record only; `null` clears an optional field |
 
 Any staff role may use it (`StaffSession`); a member gets a 403. Phones are normalised to E.164 Chilean mobiles and RUTs to `76123456-0`; anything else is a 422. The phone is set on create and not editable here, since changing it moves the gym's record to another identity.
+
+The list holds everyone the gym has a record of except staff with no membership there. Each row carries `id`, `name`, `phone`, `rut` and the `membership` it shows (`id`, `status`, `plan_id`, `plan_name`), or `null`: the person's latest membership that is not cancelled, else their latest. Its parameters:
+
+| Parameter | Matches |
+| --- | --- |
+| `q` | the name, ignoring case and accents (`martin` finds `Martín`); and when it holds a digit, the phone or the RUT in any format (`9 8765 4321`, `7.654.321`) |
+| `status` | the row's membership status; repeatable, any of them (`?status=frozen&status=lapsed`) |
+| `plan_id` | the row's membership plan; repeatable, any of them |
+| `limit`, `offset` | the page: `limit` 1–200, 50 by default |
+
+Filters combine with AND. Filtering by program waits on class types (#42), which is where programs are defined.
 
 ## Sign-in
 
