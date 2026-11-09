@@ -1,7 +1,8 @@
 """The current gym's ledger: an admin records a payment ("Registrar pago", #37), sees
 how many proofs wait for review (#35), reads one membership's ledger for the member
-detail ("Ficha de alumno", #60), and reads the whole gym's for the ledger book ("Libro
-de pagos", #39).
+detail ("Ficha de alumno", #60), lists what is overdue for the owner's dashboard
+("Hoy", #58), and reads the whole gym's ledger for the ledger book ("Libro de pagos",
+#39).
 
 `POST /api/ledger/payments` records money the gym received in cash, by a transfer the
 admin saw arrive, or otherwise, against one billing period of a membership. There is
@@ -37,6 +38,8 @@ from app.schemas.ledger import (
     LedgerBook,
     MembershipLedger,
     OpenPeriod,
+    Overdue,
+    OverduePeriod,
     PaymentRecord,
     Period,
     PersonRef,
@@ -438,4 +441,35 @@ def book_entry(row: Any) -> BookEntry:
             days_overdue=row.days_overdue,
         ),
         validated_by_name=row.validated_by_name,
+    )
+
+
+# `v_overdue` keeps the unpaid periods of lapsed and cancelled memberships; the owner's
+# "Vencidos" counts the Active ones (backend README, Reporting views).
+OVERDUE = text(
+    """
+    SELECT o.billing_period_id, o.membership_id, o.person_id, gp.name AS person_name,
+           pl.name AS plan_name, o.period_start, o.due_date, o.outstanding_clp,
+           o.days_overdue
+    FROM v_overdue o
+    JOIN membership m ON m.id = o.membership_id
+    JOIN plan pl ON pl.id = m.plan_id
+    JOIN gym_person gp ON gp.gym_id = o.gym_id AND gp.person_id = o.person_id
+    WHERE o.membership_status = 'active'
+    ORDER BY o.days_overdue DESC, gp.name, o.billing_period_id
+    """
+)
+
+
+@router.get("/overdue")
+async def overdue(session: LedgerSession) -> Overdue:
+    """The Active memberships' periods past due and not paid in full: the owner's
+    "Vencidos" ("Hoy", #58)."""
+    periods = [
+        OverduePeriod.model_validate(row, from_attributes=True)
+        for row in (await session.execute(OVERDUE)).all()
+    ]
+    return Overdue(
+        total_clp=sum(p.outstanding_clp for p in periods),
+        periods=periods,
     )

@@ -184,6 +184,14 @@ A pending claim counts towards nothing until it is validated, as everywhere else
 
 `kpis`: `collected_clp` and `collected_payments`, the month's row of `v_monthly_income`; `expected_clp`, what the periods falling due in the month bill; and as the gym stands today, whichever month is shown: `pending_clp` and `pending_payments`, the claims waiting for review; `overdue_clp` and `overdue_members`, outstanding on active memberships' `v_overdue` periods and the people owing it, and `overdue_avg_days`, per such person the days since their oldest unpaid period fell due, averaged; `active_memberships` and `frozen_memberships`.
 
+### Overdue
+
+The owner's dashboard ("Hoy", #58) lists what is overdue. Owner and admin only (`LedgerSession`).
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/ledger/overdue` | `{total_clp, periods}`: the `v_overdue` rows of Active memberships, longest overdue first, each with `billing_period_id`, `membership_id`, `person_id`, `person_name`, `plan_name`, `period_start`, `due_date`, `outstanding_clp` and `days_overdue`; `total_clp` is what they still owe together. Lapsed and cancelled memberships keep their unpaid periods in the view and are left out here. "Pagó" on each row is `POST /api/ledger/payments` for the period's `outstanding_clp` |
+
 ## Plans API
 
 | Method | Path | Does |

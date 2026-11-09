@@ -34,3 +34,8 @@ export function dayTime(iso: string, timeZone: string): string {
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ''
   return `${part('day')} ${part('month').replace('.', '')} ${part('hour')}:${part('minute')}`
 }
+
+/** `dom 8 nov`. */
+export function weekdayDay(date: Date): string {
+  return date.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')
+}

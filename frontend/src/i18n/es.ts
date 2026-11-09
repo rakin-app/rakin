@@ -31,7 +31,50 @@ export const es = {
     pendingBadge: (n: number) => (n === 1 ? '1 comprobante por revisar' : `${n} comprobantes por revisar`),
   },
   admin: {
-    today: { title: 'Hoy' },
+    today: {
+      title: 'Hoy',
+      heading: (day: string) => `Hoy, ${day}`,
+      countersLabel: 'Resumen',
+      loading: 'Cargando…',
+      retry: 'Reintentar',
+      proofs: {
+        title: 'Por validar',
+        count: (n: number) => (n === 1 ? '1 comprobante' : `${n} comprobantes`),
+        error: 'No pudimos cargar los comprobantes.',
+        empty: 'No hay comprobantes por revisar.',
+        // A guardian who sent the proof for a dependent.
+        sentFor: (sender: string, person: string) => `${sender} (por ${person})`,
+        detail: (amount: string, month: string) => `Transfirió ${amount} · ${month}`,
+        review: 'Revisar',
+        reviewLabel: (name: string) => `Revisar el comprobante de ${name}`,
+      },
+      overdue: {
+        title: 'Vencidos',
+        total: (amount: string) => `${amount} pendientes`,
+        error: 'No pudimos cargar los vencidos.',
+        empty: 'Nadie tiene pagos vencidos.',
+        detail: (days: number, amount: string, plan: string) =>
+          `Venció hace ${days === 1 ? '1 día' : `${days} días`} · ${amount} · ${plan}`,
+        paid: 'Pagó',
+        paidLabel: (name: string) => `Registrar el pago de ${name}`,
+        method: 'Medio de pago',
+        submit: (amount: string) => `Registrar ${amount}`,
+        cancel: 'Cancelar',
+        working: 'Guardando…',
+        recorded: (name: string, amount: string) => `Pago registrado: ${name}, ${amount}.`,
+        refused: {
+          paid: 'Ese período ya está pagado.',
+          failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
+        },
+        showAll: (n: number) => `Ver los ${n} vencidos`,
+      },
+      ago: {
+        now: 'recién',
+        minutes: (n: number) => `hace ${n}\u00a0min`,
+        hours: (n: number) => `hace ${n}\u00a0h`,
+        yesterday: 'ayer',
+      },
+    },
     students: {
       title: 'Alumnos',
       searchLabel: 'Buscar alumno',

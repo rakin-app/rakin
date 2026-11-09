@@ -30,7 +30,8 @@ describe('/admin route tree', () => {
   })
 
   it.each([
-    ['/admin', es.nav.today, es.admin.today.title],
+    // "Hoy, lun 9 nov": today's date follows.
+    ['/admin', es.nav.today, new RegExp(`^${es.admin.today.title},`)],
     ['/admin/alumnos', es.nav.students, es.admin.students.title],
     ['/admin/clases', es.nav.classes, es.admin.classes.title],
     ['/admin/pagos', es.nav.payments, es.admin.payments.title],
@@ -69,7 +70,8 @@ describe('other paths', () => {
   it('redirects / to /admin', async () => {
     const router = renderAt('/')
 
-    expect(await screen.findByRole('heading', { level: 1, name: es.admin.today.title })).toBeInTheDocument()
+    const title = new RegExp(`^${es.admin.today.title},`)
+    expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/admin')
   })
 

@@ -16,6 +16,7 @@ import { MemberDetail } from './routes/MemberDetail'
 import { NotFound } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { Students, validateStudentsSearch } from './routes/Students'
+import { Today } from './routes/Today'
 import { ValidateProof } from './routes/ValidateProof'
 
 export type RouterContext = {
@@ -42,10 +43,11 @@ const adminRoute = createRoute({
   component: AdminLayout,
 })
 
+// "Hoy": what is overdue and what waits for review.
 const adminTodayRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/',
-  component: () => <PlaceholderPage title={t.admin.today.title} />,
+  component: Today,
 })
 
 const adminStudentsRoute = createRoute({

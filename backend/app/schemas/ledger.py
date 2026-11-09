@@ -6,6 +6,8 @@ names the billing period it pays, and is created validated by that admin.
 
 The member detail ("Ficha de alumno", #60) reads one membership's ledger: the periods
 it still owes and its entries, newest first.
+
+The owner's dashboard ("Hoy", #58) reads the gym's overdue periods.
 """
 
 import uuid
@@ -199,3 +201,27 @@ class LedgerBook(BaseModel):
     items: list[BookEntry]
     # Entries the filter matches, across every page.
     total: int
+
+
+class OverduePeriod(BaseModel):
+    """A period of an Active membership past its due date and not paid in full (`v_overdue`)."""
+
+    billing_period_id: uuid.UUID
+    membership_id: uuid.UUID
+    person_id: uuid.UUID
+    person_name: str
+    plan_name: str
+    period_start: date
+    due_date: date
+    outstanding_clp: int
+    # Whole days past the due date in the gym's timezone; at least 1.
+    days_overdue: int
+
+
+class Overdue(BaseModel):
+    """The gym's overdue periods ("Hoy", #58)."""
+
+    # What `periods` still owe, together.
+    total_clp: int
+    # Longest overdue first.
+    periods: list[OverduePeriod]
