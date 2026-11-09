@@ -39,7 +39,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | --- | --- | --- |
 | `person` | id, phone (E.164, unique), email, name, rut, dob | global; phone is the identity because it is what WhatsApp uses; email, name, rut and dob are the person's own record, never shown to a gym |
 | `gym_person` | gym\_id, person\_id, name, email, rut, dob, created\_at, updated\_at | a gym's own record of a person; one per gym and person, edited only by that gym |
-| `guardian_link` | guardian\_person\_id, dependent\_person\_id | one payer, N dependents |
+| `guardian_link` | gym\_id, guardian\_person\_id, dependent\_person\_id, created\_at | one payer, N dependents, per gym; one guardian per dependent, one level deep; the guardian is in the gym through it, and gets every notice about the dependent |
 | `gym` | id, name, slug, timezone, settings jsonb | settings = channels, grace days, reminder cadence, bank details, grading scheme, custom-field definitions |
 | `staff` | person\_id, gym\_id, role (owner, admin, coach) | roles are per gym; coach role cannot read ledger, refused by the API and by RLS on `ledger_entry` |
 | `plan` | id, gym\_id, name, kind, price\_clp, anchor, period\_months, credits, credit\_expiry\_days, active | kind ∈ monthly, prepaid, credits, dropin, trial; each kind sets only its own parameters; a trial's free classes and free days are `credits` and `credit_expiry_days`; deactivated, never deleted |

@@ -57,6 +57,8 @@ class Seed:
     people: list[Row]
     # The gym's own record of each person (migration 0004): what `person` holds.
     gym_people: list[Row]
+    # Who pays for each kid (migration 0008).
+    guardian_links: list[Row]
     staff: list[Row]
     plans: list[Row]
     memberships: list[Row]
@@ -68,6 +70,7 @@ class Seed:
         yield "gym", [self.gym]
         yield "person", self.people
         yield "gym_person", self.gym_people
+        yield "guardian_link", self.guardian_links
         yield "staff", self.staff
         yield "plan", self.plans
         yield "membership", self.memberships
@@ -126,6 +129,8 @@ class _Builder:
         self.memberships: list[Row] = []
         self.periods: list[Row] = []
         self.entries: list[Row] = []
+        # When each member joined, by key.
+        self.joined: dict[str, datetime] = {}
         self.validator = seed_id("person", VALIDATOR)
 
     def day(self, offset: int) -> date:
@@ -139,6 +144,7 @@ class _Builder:
         self.people.append(
             _person(spec.key, spec.name, joined=since, kid=spec.is_kid, phone=spec.phone)
         )
+        self.joined[spec.key] = local(since)
         credits = spec.credits_remaining
         if plan.kind is PlanKind.TRIAL:
             credits = plan.credits if credits is None else credits
@@ -340,6 +346,16 @@ def build(as_of: date) -> Seed:
                 "updated_at": p["created_at"],
             }
             for p in people
+        ],
+        guardian_links=[
+            {
+                "gym_id": GYM_ID,
+                "guardian_person_id": seed_id("person", m.guardian),
+                "dependent_person_id": seed_id("person", m.key),
+                "created_at": builder.joined[m.key],
+            }
+            for m in MEMBERS
+            if m.guardian is not None
         ],
         staff=[
             {

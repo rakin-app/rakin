@@ -103,12 +103,20 @@ class MembershipSummary(BaseModel):
     plan_name: str
 
 
+class PersonRef(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
 class MemberRow(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None
     rut: str | None
     membership: MembershipSummary | None
+    # Who pays for them in this gym, and how many they pay for (migration 0008).
+    guardian: PersonRef | None
+    dependents: int
 
 
 class MemberPage(BaseModel):

@@ -137,6 +137,8 @@ def test_everyone_by_name_with_the_membership_shown(
             "plan_id": str(plan),
             "plan_name": "Mensual kids",
         },
+        "guardian": None,
+        "dependents": 0,
     }
 
 
