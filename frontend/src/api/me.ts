@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
+import type { Rank } from './grading'
 import type { OpenPeriod } from './proofs'
 
 export type StaffRole = 'owner' | 'admin' | 'coach'
@@ -56,6 +57,8 @@ export type MyPage = {
   name: string
   next_payment: { period: OpenPeriod; status: NextPaymentStatus } | null
   bank_account: BankAccount | null
+  // Their latest promotion; null until the gym records one.
+  rank: Rank | null
   // Newest first.
   payments: MyPayment[]
 }

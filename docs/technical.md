@@ -50,7 +50,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `class_type` | id, gym\_id, name, program, credit\_cost | program ∈ adults, kids, competition, … (per gym) |
 | `session` | id, gym\_id, class\_type\_id, starts\_at, coach\_id, topic, notes | one row per class actually held |
 | `attendance` | session\_id, membership\_id, marked\_by, marked\_at, credits\_consumed | unique (session, membership) |
-| `grade_event` | membership\_id, rank\_key, sub\_rank, awarded\_at, awarded\_by, note | promotion log |
+| `grade_event` | gym\_id, membership\_id, rank\_key, sub\_rank, awarded\_on, awarded\_by, note, created\_at | promotion log; keys of the gym's grading scheme; current rank is the latest by awarded\_on over the person's memberships; append-only; one that becomes current writes a `promoted` plan\_event |
 | `person_field_value` | person\_id, gym\_id, field\_key, value jsonb | custom fields; sensitive keys encrypted |
 | `message_log` | gym\_id, person\_id, channel, template, to\_address, status, error, sent\_at, payload jsonb | audit of every email sent: one row per attempt, status ∈ sent, failed, suppressed; payload is what the template was rendered from, never a magic link's URL; sign-in links belong to no gym and have no gym\_id; append-only |
 | `mail_unsubscribe` | gym\_id, person\_id, created\_at | one-click unsubscribe from that gym's non-essential notices |

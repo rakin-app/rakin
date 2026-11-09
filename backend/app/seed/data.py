@@ -6,7 +6,8 @@ with the standing the design shows them in, relative to the seed date, so the de
 "today" (Saturday 8 November 2026) is any day the seed is loaded on. The rest of the
 roster is filler drawn from a fixed random sequence, so every load is the same gym.
 
-Belts have no table yet (#48): ranks live here, checked against the grading scheme.
+Each member's rank, checked against the grading scheme, becomes one `grade_event` row
+(migration 0016), awarded on `MemberSpec.ranked_in` or a day drawn from their time here.
 Each kid names the member who pays for them (`MemberSpec.guardian`), which becomes
 their `guardian_link` row and the payer of their ledger entries. In this gym every
 guardian trains too.
@@ -107,6 +108,8 @@ STAFF = (
 )
 # Who validates payments and records cash.
 VALIDATOR = "martin"
+# Who promotes.
+COACH = "sebastian"
 
 
 class Standing(StrEnum):
@@ -151,6 +154,10 @@ class MemberSpec:
     credits_remaining: int | None = None
     discount_pct: int = 0
     phone: str | None = None
+    # Days from the seed date to the day they were given `rank` (negative is past).
+    # Default: their first day for a first rank with no sub-rank, else a day drawn from
+    # their time here.
+    ranked_in: int | None = None
 
     @property
     def is_kid(self) -> bool:
@@ -185,6 +192,8 @@ NAMED = (
         due_in=2,
         since_months=40,
         at=(0, 14, 12),
+        # "desde 14 jun 2025" on his student page, the design's 8 November 2026.
+        ranked_in=-512,
     ),
     MemberSpec(
         "catalina-reyes",

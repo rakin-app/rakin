@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState } from 'react'
+import { rankLabel } from '../api/grading'
 import { myPageQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
@@ -10,7 +11,8 @@ const copy = t.me
 
 /**
  * "Mi página", the student page: what is due next and where to transfer it,
- * the proof upload, and the payments already sent with how each was reviewed.
+ * the proof upload, their belt, and the payments already sent with how each was
+ * reviewed.
  */
 export function MeHome() {
   const page = useQuery(myPageQuery())
@@ -39,6 +41,7 @@ export function MeHome() {
       <PageHeader eyebrow={page.data.gym_name} title={firstName ? copy.home.hello(firstName) : copy.home.title} />
       <div className="me-home">
         <NextPayment page={page.data} />
+        <Training page={page.data} />
         <History page={page.data} />
         <p className="me-home__footnote">{copy.home.signedIn}</p>
       </div>
@@ -157,6 +160,20 @@ function CopyBank({ account }: { account: BankAccount }) {
         </p>
       )}
     </>
+  )
+}
+
+/** "Mi entrenamiento": the belt, once the gym has recorded one. */
+function Training({ page }: { page: MyPage }) {
+  if (!page.rank) return null
+  return (
+    <section className="training" aria-label={copy.training.title}>
+      <div className="training__card">
+        <span className="training__eyebrow">{copy.training.belt}</span>
+        <span className="training__figure">{rankLabel(page.rank)}</span>
+        <span className="training__detail">{copy.training.since(t.common.dayYear(page.rank.awarded_on))}</span>
+      </div>
+    </section>
   )
 }
 

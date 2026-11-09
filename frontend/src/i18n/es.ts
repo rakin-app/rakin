@@ -233,6 +233,8 @@ export const es = {
       notFound: 'No encontramos a este alumno.',
       retry: 'Reintentar',
       since: (month: string) => `desde ${month}`,
+      // `Azul · 2 grados · desde mar 2024`: the rank, and a member since.
+      rankSince: (rank: string, month: string) => `${rank} · desde ${month}`,
       noPlan: 'Sin plan',
       paymentLabel: 'Estado de pago',
       dueDay: (plan: string, day: number) => `${plan} · vence el ${day}`,
@@ -261,6 +263,34 @@ export const es = {
         refused: {
           paid: 'Ese período ya está pagado.',
           failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
+        },
+      },
+      grading: {
+        title: 'Graduación',
+        error: 'No pudimos cargar la graduación.',
+        none: 'Sin graduación registrada.',
+        since: (day: string) => `desde ${day}`,
+        award: 'Registrar graduación',
+        log: 'Historial',
+        by: (name: string) => `registró ${name}`,
+        form: {
+          title: 'Registrar graduación',
+          rank: 'Rango',
+          ranks: 'Adultos',
+          kids: 'Kids',
+          subRank: 'Grado',
+          date: 'Fecha',
+          note: 'Nota (opcional)',
+          submit: 'Registrar',
+          cancel: 'Cancelar',
+          working: 'Guardando…',
+          done: (rank: string) => `Graduación registrada: ${rank}.`,
+          refused: {
+            awarded_in_future: 'La fecha no puede ser posterior a hoy.',
+            no_membership: 'Para registrar una graduación, el alumno necesita un plan.',
+            grading_scheme_invalid: 'Revisa el sistema de grados del gimnasio antes de registrar.',
+            failed: 'No pudimos registrar la graduación. Inténtalo de nuevo.',
+          },
         },
       },
       ledger: {
@@ -424,6 +454,11 @@ export const es = {
           .join('\n'),
       upload: 'Subir comprobante',
     },
+    training: {
+      title: 'Mi entrenamiento',
+      belt: 'Cinturón',
+      since: (day: string) => `desde ${day}`,
+    },
     history: {
       title: 'Mis pagos',
       empty: 'Todavía no hay pagos.',
@@ -476,6 +511,8 @@ export const es = {
     longDay: (iso: string) => `${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]}`,
     // An ISO day as a list row says it: `8 oct`.
     shortDay: (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)}`,
+    // An ISO day with its year: `14 jun 2025`.
+    dayYear: (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)} ${iso.slice(0, 4)}`,
     // The month an ISO day falls in, as a heading: `Noviembre`, or `Noviembre 2025` outside `year`.
     month: (iso: string, year: string) => {
       const name = MONTHS[Number(iso.slice(5, 7)) - 1]!
