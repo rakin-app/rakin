@@ -114,6 +114,10 @@ services:
       # Docker Desktop (macOS, Windows) does not pass host file events into
       # containers, so --reload has to poll.
       WATCHFILES_FORCE_POLLING: "true"
+      # Take the client address from caddy's X-Forwarded-For, so sign-in's
+      # per-IP rate limit sees browsers rather than caddy. Safe only because
+      # the api is not published: caddy is the one thing that reaches it.
+      FORWARDED_ALLOW_IPS: "*"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
       interval: 5s
