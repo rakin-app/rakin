@@ -78,6 +78,16 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # The hosted stack (deploy/): its scripts, and a boot of the images,
+  # Caddyfile and Compose file a release would ship, from this commit.
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck deploy/*.sh
+      - run: deploy/test-deploy.sh
+      - run: deploy/test-hosted.sh
+
   dco:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

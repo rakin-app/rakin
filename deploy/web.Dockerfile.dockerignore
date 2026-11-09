@@ -1,0 +1,6 @@
+# The web image's build context is the repo root; it needs only these.
+*
+!frontend/
+!deploy/Caddyfile
+frontend/node_modules/
+frontend/dist/

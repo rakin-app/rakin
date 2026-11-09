@@ -1,0 +1,149 @@
+# The hosted stack: staging.rakin.app today, production for the pilot.
+# See docs/deploy.md. It lives on the host as /srv/rakin/docker-compose.yml,
+# next to the host's `.env` (from deploy/.env.example), and runs released
+# images only: nothing here builds, bind-mounts source or reloads.
+#
+#   ./deploy.sh v1.4.0                    # what the deploy workflow runs
+#   docker compose run --rm migrate       # bootstrap + migrations, one-shot
+#   docker compose up -d                  # caddy, api, jobs, postgres
+#
+# Unlike the dev stack there is no Garage (objects live in R2 or S3) and no
+# Vite: caddy is the `rakin-web` image, the built SPA plus deploy/Caddyfile.
+# A variable read with `:?` has no safe default and must be set in `.env`; as in dev,
+# each container gets exactly the variables it lists.
+
+name: rakin
+
+x-logging: &logging
+  # Docker's default keeps every line forever; a 4 GB box fills up.
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-backend: &backend
+  image: ghcr.io/rakin-app/rakin-api:${RAKIN_TAG:?set RAKIN_TAG, the release to run}
+  restart: unless-stopped
+  logging: *logging
+  environment: &backend-env
+    ENVIRONMENT: ${ENVIRONMENT:-production}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+    HEALTHZ_DB_TIMEOUT_SECONDS: ${HEALTHZ_DB_TIMEOUT_SECONDS:-2.0}
+    SECRET_KEY: ${SECRET_KEY:?openssl rand -hex 32}
+    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?the URL browsers reach the app at}
+    SENTRY_DSN: ${SENTRY_DSN:-}
+    JOBS_TIMEZONE: ${JOBS_TIMEZONE:-America/Santiago}
+    # SES over SMTP: the region's email-smtp endpoint and SMTP credentials.
+    MAILER: ${MAILER:-smtp}
+    MAIL_FROM: ${MAIL_FROM:?a sender SES has verified}
+    SMTP_HOST: ${SMTP_HOST:?email-smtp.<region>.amazonaws.com}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+    SMTP_USERNAME: ${SMTP_USERNAME:?SES SMTP username}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:?SES SMTP password}
+    SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10.0}
+    MESSENGER: ${MESSENGER:-wame}
+    PAYMENT_RAIL: ${PAYMENT_RAIL:-none}
+    BANK_FEED: ${BANK_FEED:-none}
+    # R2 or S3; the browser PUTs proofs straight to S3_PUBLIC_ENDPOINT_URL,
+    # which needs the CORS rule from `python -m app.blob_cors --apply`.
+    BLOB_STORE: ${BLOB_STORE:-s3}
+    BLOB_LOCAL_DIR: ${BLOB_LOCAL_DIR:-var/blobs}
+    BLOB_URL_TTL_SECONDS: ${BLOB_URL_TTL_SECONDS:-900}
+    S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:?https://<account>.r2.cloudflarestorage.com}
+    S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:?usually S3_ENDPOINT_URL}
+    S3_REGION: ${S3_REGION:?auto for R2}
+    S3_BUCKET: ${S3_BUCKET:?}
+    S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?}
+    S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_API_USER:-rakin_api}:${POSTGRES_API_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-rakin}
+    MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_OWNER_USER:-rakin_owner}:${POSTGRES_OWNER_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-rakin}
+
+services:
+  caddy:
+    image: ghcr.io/rakin-app/rakin-web:${RAKIN_TAG:?set RAKIN_TAG, the release to run}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      # Caddy gets a Let's Encrypt certificate for this name, so its DNS
+      # record must point here unproxied (Cloudflare's grey cloud).
+      SITE_ADDRESS: ${SITE_ADDRESS:?staging.rakin.app}
+      ACME_EMAIL: ${ACME_EMAIL:?where Let's Encrypt sends expiry notices}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      # Certificates and the ACME account: losing them means re-issuing, and
+      # Let's Encrypt rate-limits that.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # One-shot, run by deploy.sh before `up` (never by `up` itself, hence the
+  # profile): roles, then forward-only migrations. A rollback skips it, since
+  # an older image's Alembic does not know the newer revisions.
+  migrate:
+    <<: *backend
+    profiles: ["migrate"]
+    restart: "no"
+    environment:
+      <<: *backend-env
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-rakin}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      PGDATABASE: ${POSTGRES_DB:-rakin}
+    command: ["sh", "-c", "python -m app.db_bootstrap && alembic upgrade head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      # Only caddy reaches the api (it is not published), so its
+      # X-Forwarded-For is the browser's address.
+      FORWARDED_ALLOW_IPS: "*"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 1m
+      start_interval: 1s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  jobs:
+    <<: *backend
+    command: ["python", "-m", "app.jobs.daily", "--every", "3600"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rakin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:-rakin}
+    # Not published: reach it with `docker compose exec postgres psql`.
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pg_data:

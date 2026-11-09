@@ -28,6 +28,7 @@ FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL (row-level security) · Vite SP
 - [UI design](docs/design/ui-design.html): mobile admin, coach and student screens plus the desktop ledger (open in a browser)
 - [Architecture decisions](docs/adr/): ADRs, starting with the [frontend framework](docs/adr/0001-frontend-framework.md)
 - [Frontend](frontend/README.md): running and checking the SPA
+- [Deploying](docs/deploy.md): the hosted stack on staging.rakin.app: provisioning, releases, rollback
 
 ## Run locally
 
