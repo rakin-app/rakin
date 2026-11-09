@@ -1,4 +1,5 @@
-"""Academia Sur, the demo gym: its plans, grading scheme, staff and members.
+"""Academia Sur, the demo gym: its programs, class types, plans, grading scheme, staff and
+members.
 
 This is the data, not the rows: `app.seed.build` turns it into rows for a given seed
 date. The members the UI design names (`docs/design/ui-design.html`) are written out
@@ -34,12 +35,36 @@ GRACE_DAYS = 10
 HISTORY_PERIODS = 6
 
 
+# The gym's programs (migration 0016), by key.
+PROGRAMS = {"adults": "Adultos", "kids": "Kids", "competition": "Competición"}
+
+
+@dataclass(frozen=True)
+class ClassTypeSpec:
+    key: str
+    program: str
+    name: str
+    credit_cost: int = 1
+
+
+CLASS_TYPES = (
+    ClassTypeSpec("fundamentals", "adults", "Fundamentos"),
+    ClassTypeSpec("advanced", "adults", "Avanzado"),
+    ClassTypeSpec("open-mat", "adults", "Open mat", credit_cost=0),
+    ClassTypeSpec("kids-little", "kids", "Kids 4 a 7 años"),
+    ClassTypeSpec("kids-big", "kids", "Kids 8 a 12 años"),
+    ClassTypeSpec("competition", "competition", "Competición"),
+)
+
+
 @dataclass(frozen=True)
 class PlanSpec:
     key: str
     name: str
     kind: PlanKind
     price_clp: int
+    # The program its members are in; none for a plan open to any class.
+    program: str | None = None
     # Monthly plans bill on the member's signup day of the month (migration 0007).
     anchor: str | None = None
     period_months: int | None = None
@@ -50,11 +75,18 @@ class PlanSpec:
 
 
 PLANS = (
-    PlanSpec("adults", "Mensual adultos", PlanKind.MONTHLY, 45_000, anchor="signup"),
-    PlanSpec("competition", "Mensual competición", PlanKind.MONTHLY, 60_000, anchor="signup"),
-    PlanSpec("student", "Estudiante", PlanKind.MONTHLY, 30_000, anchor="signup"),
-    PlanSpec("kids", "Mensual kids", PlanKind.MONTHLY, 36_000, anchor="signup"),
-    PlanSpec("prepaid-6", "Prepago 6 meses", PlanKind.PREPAID, 240_000, period_months=6),
+    PlanSpec("adults", "Mensual adultos", PlanKind.MONTHLY, 45_000, "adults", anchor="signup"),
+    PlanSpec(
+        "competition",
+        "Mensual competición",
+        PlanKind.MONTHLY,
+        60_000,
+        "competition",
+        anchor="signup",
+    ),
+    PlanSpec("student", "Estudiante", PlanKind.MONTHLY, 30_000, "adults", anchor="signup"),
+    PlanSpec("kids", "Mensual kids", PlanKind.MONTHLY, 36_000, "kids", anchor="signup"),
+    PlanSpec("prepaid-6", "Prepago 6 meses", PlanKind.PREPAID, 240_000, "adults", period_months=6),
     PlanSpec(
         "pack-12", "Pack 12 clases", PlanKind.CREDITS, 45_000, credits=12, credit_expiry_days=60
     ),

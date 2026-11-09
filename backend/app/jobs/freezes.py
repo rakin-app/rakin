@@ -1,6 +1,6 @@
 """The `freezes` job: a frozen membership is Active again on the day its freeze ends.
 
-For every Frozen membership in every gym whose latest freeze (migration 0016) ends by
+For every Frozen membership in every gym whose latest freeze (migration 0017) ends by
 the run date, it asks the domain (`app.domain.membership.unfreeze`) to return it to
 Active, and writes an `unfrozen` plan event (migration 0013) in the same transaction,
 for the plan-event emails to send. The due date is not touched: the freeze moved it
