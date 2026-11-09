@@ -3,10 +3,13 @@
 An admin records a payment the gym received by other means than a student's proof
 ("Registrar pago", #37): cash, a transfer the admin saw arrive, or anything else. It
 names the billing period it pays, and is created validated by that admin.
+
+The member detail ("Ficha de alumno", #60) reads one membership's ledger: the periods
+it still owes and its entries, newest first.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated
 
@@ -74,3 +77,46 @@ class RecordedPayment(BaseModel):
     credit: Entry | None
     # The period as the payment leaves it.
     period: Period
+
+
+class OpenPeriod(BaseModel):
+    """A billing period that validated payments and credit do not yet cover."""
+
+    id: uuid.UUID
+    period_start: date
+    period_end: date
+    due_date: date
+    amount_due_clp: int
+    paid_clp: int
+    outstanding_clp: int
+    # Due today or before, in the gym's timezone: what `owed_clp` counts.
+    due: bool
+    # Whole days past the due date in the gym's timezone; 0 on or before it.
+    days_overdue: int
+
+
+class TimelineEntry(BaseModel):
+    id: uuid.UUID
+    kind: EntryKind
+    status: EntryStatus
+    amount_clp: int
+    method: Method | None
+    # The period it belongs to; null for a credit carried to a later one.
+    billing_period_id: uuid.UUID | None
+    period_start: date | None
+    note: str | None
+    created_at: datetime
+    # Who reviewed it (validated or rejected) and when; null while pending.
+    validated_by_name: str | None
+    validated_at: datetime | None
+
+
+class MembershipLedger(BaseModel):
+    """One membership's money: what it owes and its entries ("Ficha de alumno", #60)."""
+
+    # Oldest first: the first is the one a payment settles next.
+    open_periods: list[OpenPeriod]
+    # Outstanding on the open periods due today or before, in the gym's timezone.
+    owed_clp: int
+    # Newest first, at most `TIMELINE_LIMIT`.
+    entries: list[TimelineEntry]

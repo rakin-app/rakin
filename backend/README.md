@@ -157,6 +157,16 @@ An admin validates or rejects each pending proof in one tap ("Validar comprobant
 
 Both record the reviewing admin in `validated_by` and `validated_at`, the ledger's audit columns, and both are terminal (`0002`): a proof already reviewed is a 409, and one that is not a pending proof in this gym a 404. Validating locks the membership, its period and then the entry, the order recording a payment and the nightly `lapse` job take them in: a lapse run waits for it, a payment recorded for the period meanwhile settles before or after it, never beside it, and two admins reviewing one proof settle it once. The receipt email on validation comes with #53.
 
+### A membership's ledger
+
+The member detail ("Ficha de alumno", #60) reads one membership's money. Owner and admin only (`LedgerSession`); a coach sees the member and their plan through the people and memberships APIs, never this.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/ledger/memberships/{id}` | `{open_periods, owed_clp, entries}`. `open_periods`: every period validated payments and credit leave short, oldest first (the one a payment settles next), each with dates, `amount_due_clp`, `paid_clp`, `outstanding_clp`, `due` (due today or before in the gym's timezone) and `days_overdue` (0 on or before the due date). `owed_clp`: what the `due` ones still owe. `entries`: the membership's latest 100 entries, newest first, each with its `kind`, `status`, `amount_clp`, `method`, the `period_start` of its period (`null` for a carried credit), `note`, and who reviewed it (`validated_by_name`, `validated_at`, `null` while pending). 404 for a membership not in this gym |
+
+A pending claim counts towards nothing until it is validated, as everywhere else (`app.domain.billing`).
+
 ## Plans API
 
 | Method | Path | Does |

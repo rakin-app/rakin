@@ -12,6 +12,7 @@ import { t } from './i18n/es'
 import { AdminLayout } from './layouts/AdminLayout'
 import { MeLayout } from './layouts/MeLayout'
 import { MeHome } from './routes/MeHome'
+import { MemberDetail } from './routes/MemberDetail'
 import { NotFound } from './routes/NotFound'
 import { Payments } from './routes/Payments'
 import { Students, validateStudentsSearch } from './routes/Students'
@@ -54,6 +55,13 @@ const adminStudentsRoute = createRoute({
   component: Students,
 })
 
+// "Ficha de alumno": one member, their plan and, for who reads the ledger, their money.
+const adminMemberRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'alumnos/$personId',
+  component: MemberDetail,
+})
+
 const adminClassesRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'clases',
@@ -88,7 +96,14 @@ const meHomeRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  adminRoute.addChildren([adminTodayRoute, adminStudentsRoute, adminClassesRoute, adminPaymentsRoute, adminProofReviewRoute]),
+  adminRoute.addChildren([
+    adminTodayRoute,
+    adminStudentsRoute,
+    adminMemberRoute,
+    adminClassesRoute,
+    adminPaymentsRoute,
+    adminProofReviewRoute,
+  ]),
   meRoute.addChildren([meHomeRoute]),
 ])
 

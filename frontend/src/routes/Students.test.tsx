@@ -92,6 +92,14 @@ describe('Alumnos', () => {
     expect(screen.queryByRole('button', { name: copy.clearFilters })).not.toBeInTheDocument()
   })
 
+  it("links each member's name to their detail", async () => {
+    stubApi(() => page([CAMILA]))
+    renderAt('/admin/alumnos')
+    await list()
+
+    expect(screen.getByRole('link', { name: 'Camila Rojas' })).toHaveAttribute('href', '/admin/alumnos/p1')
+  })
+
   it('searches by what is typed, once typing pauses', async () => {
     const asked = stubApi((params) => page(params.get('q') === '9 8765' ? [CAMILA] : [CAMILA, DIEGO]))
     const router = renderAt('/admin/alumnos')
