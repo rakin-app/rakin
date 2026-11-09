@@ -62,8 +62,12 @@ def days_overdue(due: date, now: datetime, tz: ZoneInfo | str) -> int:
     return max(0, (local_date(now, tz) - due).days)
 
 
-def is_past_grace(due: date, grace_days: int, now: datetime, tz: ZoneInfo | str) -> bool:
-    """True once the gym-local date is beyond `due + grace_days` (Active -> Lapsed)."""
+def is_past_grace(due: date, grace_days: int, today: date) -> bool:
+    """True once `today`, a gym-local date, is beyond `due + grace_days` (Active -> Lapsed).
+
+    The one statement of the grace rule: `app.domain.membership.is_due_to_lapse` and
+    the nightly `lapse` job decide through it. From an instant, pass `local_date(now, tz)`.
+    """
     if grace_days < 0:
         raise ValueError(f"grace_days must be >= 0, got {grace_days}")
-    return days_overdue(due, now, tz) > grace_days
+    return (today - due).days > grace_days
