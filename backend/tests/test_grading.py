@@ -219,6 +219,43 @@ def test_an_invalid_scheme_is_a_422_and_changes_nothing(client: TestClient, db: 
 
 
 @pg
+def test_a_stored_scheme_that_no_longer_fits_is_a_409_a_put_repairs(
+    client: TestClient, db: Database
+) -> None:
+    gym = seed_gym(db, "dojo-antiguo")
+    # The seed's shape before this model: sub-ranks as a count.
+    old = {"ranks": [{"key": "white", "label": "Blanca", "sub_ranks": 4}]}
+
+    async def store_old(conn: Any) -> None:
+        await conn.execute(
+            "UPDATE gym SET settings = settings || $2::jsonb WHERE id = $1",
+            gym,
+            json.dumps({"grading": old}),
+        )
+
+    run(db.admin_url, store_old)
+    response = client.get(URL, headers=as_gym(gym))
+    assert response.status_code == 409
+    assert response.json() == {"detail": {"code": "grading_scheme_invalid"}}
+
+    assert client.put(URL, json=BJJ, headers=as_gym(gym)).status_code == 200
+    assert client.get(URL, headers=as_gym(gym)).json() == BJJ
+
+
+def test_the_seed_does_not_share_the_preset() -> None:
+    from app.seed.data import GRADING as seeded
+
+    preset = next(p["scheme"] for p in grading.PRESETS if p["key"] == "bjj")
+    assert seeded == preset
+    # Copies all the way down, so editing the seed's never edits the preset served.
+    assert seeded is not preset and seeded["ranks"] is not preset["ranks"]
+    assert seeded["ranks"][0]["sub_ranks"] is not preset["ranks"][0]["sub_ranks"]
+    # Nor does one rank share its sub-ranks with another.
+    first, second = preset["ranks"][0]["sub_ranks"], preset["ranks"][1]["sub_ranks"]
+    assert first == second and first is not second and first[0] is not second[0]
+
+
+@pg
 @pytest.mark.parametrize(("role", "allowed"), [("admin", True), ("coach", False)])
 def test_only_an_owner_or_admin_changes_it(
     client: TestClient, db: Database, role: str, allowed: bool

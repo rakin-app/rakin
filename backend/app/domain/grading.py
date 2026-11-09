@@ -16,7 +16,11 @@ from typing import Any
 def _ladder(
     ranks: list[tuple[str, str]], sub_ranks: list[dict[str, str]] | None = None
 ) -> list[dict[str, Any]]:
-    return [{"key": k, "label": label, "sub_ranks": sub_ranks or []} for k, label in ranks]
+    # Each rank its own copies, so editing one rank's sub-ranks never edits another's.
+    return [
+        {"key": k, "label": label, "sub_ranks": [dict(s) for s in sub_ranks or []]}
+        for k, label in ranks
+    ]
 
 
 STRIPES = [

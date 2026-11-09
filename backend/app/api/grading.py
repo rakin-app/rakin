@@ -3,17 +3,25 @@
 Any staff role may read the scheme and the presets (`StaffSession`), since coaches
 award promotions against it; only an owner or admin may change it (`AdminSession`).
 A preset is applied by sending its scheme, edited or not, to `PUT`.
+
+A stored scheme that no longer fits the model, as one written before a change to it
+would, reads as a 409 `grading_scheme_invalid` rather than a 500: the admin re-applies
+a preset, and the `PUT` that does so replaces it.
 """
 
 import json
+import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import text
 
 from app.roles import AdminSession, StaffSession
 from app.schemas.grading import PRESETS, GradingScheme, Preset
 from app.tenancy import Tenant, current_tenant
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/gym/grading-scheme", tags=["grading"])
 
@@ -25,7 +33,15 @@ async def get_scheme(
     settings = await session.scalar(
         text("SELECT settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
-    return GradingScheme.from_settings(settings)
+    try:
+        return GradingScheme.from_settings(settings)
+    except ValidationError as error:
+        logger.warning(
+            "grading scheme stored for gym %s is invalid: %s",
+            tenant.gym_id,
+            error.errors(include_input=False, include_url=False),
+        )
+        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "grading_scheme_invalid"}) from None
 
 
 @router.put("")

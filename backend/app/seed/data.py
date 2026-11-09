@@ -12,6 +12,7 @@ their `guardian_link` row and the payer of their ledger entries. In this gym eve
 guardian trains too.
 """
 
+import copy
 import random
 import unicodedata
 from collections.abc import Sequence
@@ -61,8 +62,12 @@ PLANS = (
     PlanSpec("trial", "Clase de prueba", PlanKind.TRIAL, 0, credits=2, credit_expiry_days=14),
 )
 
-# The BJJ preset as it comes. Kids start at white, from `RANKS`, and move up the ladder.
-GRADING: dict[str, Any] = next(p["scheme"] for p in grading.PRESETS if p["key"] == "bjj")
+# A copy of the BJJ preset as it comes, so a change here never reaches the preset that
+# `/api/gym/grading-scheme/presets` serves. Kids start at white, from `RANKS`, and move
+# up the ladder.
+GRADING: dict[str, Any] = copy.deepcopy(
+    next(p["scheme"] for p in grading.PRESETS if p["key"] == "bjj")
+)
 RANKS = grading.BJJ_RANKS
 KIDS_LADDER = grading.BJJ_KIDS_LADDER
 STRIPES = len(grading.STRIPES) - 1
