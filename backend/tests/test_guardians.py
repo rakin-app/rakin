@@ -1,4 +1,4 @@
-"""Guardians and dependents (migration 0009): the links, the rules they hold, who a
+"""Guardians and dependents (migration 0010): the links, the rules they hold, who a
 notice goes to, and what a guardian sees of each kid.
 
 One payer, N dependents, and kids have no phone. Links belong to one gym: the other
@@ -537,10 +537,10 @@ def test_a_guardian_who_does_not_train_can_sign_in(
 
 
 @pg
-def test_downgrade_to_0008_and_back() -> None:
+def test_downgrade_to_0009_and_back() -> None:
     with throwaway_database(require_test_database_url()) as scratch:
         migrate(scratch)
-        command.downgrade(scratch.alembic(), "0008")
+        command.downgrade(scratch.alembic(), "0009")
         tables = "SELECT to_regclass('guardian_link') IS NULL"
         assert run(scratch.admin_url, lambda c: c.fetchval(tables)) is True
         migrate(scratch)

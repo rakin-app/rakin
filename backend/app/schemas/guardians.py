@@ -2,7 +2,7 @@
 
 A dependent may have no phone and no email (kids have neither), so adding a new one
 takes a name and nothing else. Without a phone there is no global identity to find,
-so each new dependent is a new person (migration 0009).
+so each new dependent is a new person (migration 0010).
 """
 
 import uuid
@@ -14,7 +14,7 @@ from app.schemas.people import Email, MembershipSummary, Name, PersonRef, Rut
 
 
 class Family(BaseModel):
-    """Who answers for this person, or whom they answer for: never both (0009)."""
+    """Who answers for this person, or whom they answer for: never both (0010)."""
 
     guardian: PersonRef | None
     dependents: list[PersonRef]

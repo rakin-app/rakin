@@ -122,7 +122,7 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
         ),
     )
     # auth_session (0004) too; tests/test_auth.py covers its policies.
-    # `guardian_link` (0009) is empty in `seed_gym`; tests/test_guardians.py isolates it.
+    # `guardian_link` (0010) is empty in `seed_gym`; tests/test_guardians.py isolates it.
     assert {r["relname"] for r in rows} == TENANT_TABLES | {"auth_session", "guardian_link"}
     for r in rows:
         assert (r["relrowsecurity"], r["relforcerowsecurity"]) == (True, True), r["relname"]

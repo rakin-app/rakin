@@ -1,4 +1,4 @@
-"""Family links in the current gym: who pays for whom (migration 0009).
+"""Family links in the current gym: who pays for whom (migration 0010).
 
 A guardian is anyone in the gym; a dependent is either someone already in it or a new
 person added by name alone, with no phone, since kids have none. Every staff role may

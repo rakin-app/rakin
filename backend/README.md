@@ -84,7 +84,7 @@ async def list_entries(session: LedgerSession) -> list[EntryOut]: ...  # owner, 
 
 It opens one transaction per request and sets `app.gym_id` and `app.person_id` for that transaction only (`set_config('app.gym_id', …, true)`, the bound-parameter form of `SET LOCAL`), so RLS limits every query to the gym and a missed `WHERE` returns nothing. It commits before the response is sent and rolls back if the endpoint raises. The gym comes from `request.state.tenant`, which the session middleware sets (see Sign-in); with none, the request is a 401 and no session is opened. `tests/test_tenancy.py` calls every operation in the OpenAPI schema without a tenant and fails on any that answers something other than 401, outside `PUBLIC_PATHS`.
 
-Roles are per gym: a person's role is their `staff` row in the gym the request acts in, read on every request, so the owner of one gym is a plain member at another. A request whose person lacks the role is a 403; a member, with no `staff` row, gets a 403 from every staff endpoint, and `tests/test_roles.py` calls every operation as one to keep it so. Coaches never see the ledger, and RLS holds them to it too (migration `0006`): for `rakin_app`, `ledger_entry` rows need an owner or admin in `app.person_id`, so an endpoint that took the wrong session still returns a coach no entries but their own (migration `0009` lets anyone read the entries of their own memberships and their dependents'). A view over the ledger must be created `WITH (security_invoker = true)` for that to reach it.
+Roles are per gym: a person's role is their `staff` row in the gym the request acts in, read on every request, so the owner of one gym is a plain member at another. A request whose person lacks the role is a 403; a member, with no `staff` row, gets a 403 from every staff endpoint, and `tests/test_roles.py` calls every operation as one to keep it so. Coaches never see the ledger, and RLS holds them to it too (migration `0006`): for `rakin_app`, `ledger_entry` rows need an owner or admin in `app.person_id`, so an endpoint that took the wrong session still returns a coach no entries but their own (migration `0010` lets anyone read the entries of their own memberships and their dependents'). A view over the ledger must be created `WITH (security_invoker = true)` for that to reach it.
 
 A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, which `POST /api/people` calls: it finds or creates the person with that phone and writes the gym's `gym_person` record, and returns `(person_id, joined)`. `joined` is false only when the person was already in this gym, which the API answers with a 409 naming them; a phone known only to other gyms answers exactly like a new one (migration `0004`). The API never reads or writes `person`'s other columns: `rakin_app` may select only `id` and `phone`, and may not update it. `membership` and `staff` reference `gym_person (gym_id, person_id)`, so a gym holds rows only for people it has a record of. The migration's downgrade drops every `gym_person` record; it is for development only.
 
@@ -112,7 +112,7 @@ Filters combine with AND. Filtering by program waits on class types (#42), which
 
 ## Guardians and dependents
 
-One payer, N dependents: a parent who pays for their kids, who have no phone ([spec](../docs/product.md#users)). `guardian_link` (migration `0009`) records who answers for whom in one gym, isolated by `gym_id`, so a family one gym records is never seen by another gym that shares the parent or a kid.
+One payer, N dependents: a parent who pays for their kids, who have no phone ([spec](../docs/product.md#users)). `guardian_link` (migration `0010`) records who answers for whom in one gym, isolated by `gym_id`, so a family one gym records is never seen by another gym that shares the parent or a kid.
 
 | Method | Path | Does |
 | --- | --- | --- |
@@ -123,7 +123,7 @@ One payer, N dependents: a parent who pays for their kids, who have no phone ([s
 
 The family routes take any staff role, like the rest of the people API. A dependent has one guardian in a gym, and links are one level deep: a guardian is nobody's dependent and a dependent nobody's guardian. Either refusal is a 409, `{"detail": {"code": "has_guardian"}}` or `{"detail": {"code": "one_level"}}`; linking someone to themselves is a 422. A new dependent has no phone, so there is no identity to find elsewhere: each is a new person, in this gym only.
 
-`/api/me` answers only about the person acting, so any session in a gym may use it, member or staff; it is the one group `tests/test_roles.py` lets a member reach. A guardian reads their dependents' ledger entries through `ledger_entry_own` (migration `0009`), which lets anyone read the entries of their own memberships and their dependents', and nothing more; every other entry and every write stays with an owner or admin (`0006`). `owed_clp` settles each period the way `app.domain.billing` does; `v_balance` (#34) may replace it. Grade and attendance join each dependent once their tables exist (#48, #44).
+`/api/me` answers only about the person acting, so any session in a gym may use it, member or staff; it is the one group `tests/test_roles.py` lets a member reach. A guardian reads their dependents' ledger entries through `ledger_entry_own` (migration `0010`), which lets anyone read the entries of their own memberships and their dependents', and nothing more; every other entry and every write stays with an owner or admin (`0006`). `owed_clp` settles each period the way `app.domain.billing` does; `v_balance` (#34) may replace it. Grade and attendance join each dependent once their tables exist (#48, #44).
 
 Every notice about someone goes through `app.contacts.contact_for`, which answers with the guardian's own record in this gym when there is one: kids never receive messages, and may have no phone or email to send to.
 
@@ -148,6 +148,20 @@ The body is told apart by `kind`, and each kind takes exactly its own parameters
 
 `price_clp` is at most 100,000,000 and every count at most 2^31−1, the `integer` column's range. The kind is set on create. A `PATCH` locks the plan's row, so concurrent edits apply one after the other, and is checked as the whole plan it would leave, so `null` on a required parameter or another kind's parameter is a 422 and nothing changes. A plan is never deleted: `PATCH {"active": false}` deactivates it, `true` brings it back. Any staff role may read plans (`StaffSession`); only an owner or admin may create or change one (`AdminSession`).
 
+## Memberships API
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `POST` | `/api/memberships` | start `person_id` on `plan_id` from `started_on` (default: today in the gym's timezone; at most 5 years either side of it); 201 with the membership |
+| `GET` | `/api/memberships?person_id=…` | a person's memberships in this gym, latest first |
+| `GET` | `/api/memberships/{id}` | one membership; 404 for another gym's |
+| `POST` | `/api/memberships/{id}/plan-change` | `{"plan_id": …}`: move to that plan from the next period; the membership's own plan withdraws a pending change |
+| `POST` | `/api/memberships/{id}/cancel` | `{"reason": …}`: cancel for good; a reason of 1 to 500 characters is required |
+
+Dates are calendar dates in the gym's timezone (`app.domain.dates`), and `started_at` is stored as the first instant of `started_on` there. What a membership starts with follows its plan (`app.domain.membership.start`): a monthly or prepaid one is paid through the day before it starts, so its first period falls due on the start date, and a monthly one bills on `anchor_day`, its start day for a `signup` anchor or the 1st for a `first` one. A credits pack starts with its credits and lasts `credit_expiry_days`; a trial starts in `trial` with its free classes and free days. A drop-in is not a membership, and a deactivated plan, or a person or plan this gym does not have, is a 422.
+
+A plan change waits for the next period; proration is v2. Only a monthly or prepaid membership changes plan, to another monthly or prepaid plan (a pack or trial ends, and a trial converts on payment). The change is stored as `next_plan` with the day it `starts_on`: the day after the paid-through date, or after the last billed period if billing has run ahead, so a period already billed keeps its plan and amount. Billing (#31) prices a period starting on or after that day at the new plan and moves it into `plan_id`, recomputing `anchor_day` with `domain.anchor_day(new_terms, next_plan_from)`, so a move to a `first` anchor bills on the 1st and a move to prepaid clears it. Cancelling follows the state machine: an active or lapsed membership can be cancelled, a trial or frozen one cannot (409), and a cancelled one changes no more (409). It drops a pending plan change. Any staff role may read memberships; only an owner or admin may start, change or cancel one.
+
 ## Gym settings API
 
 | Method | Path | Does |
@@ -170,7 +184,7 @@ Students and staff sign in with a magic link ([spec](../docs/technical.md#commun
 
 A link is a signed token (HMAC with `SECRET_KEY`) that expires after 15 minutes and works once; `auth_link` stores only its SHA-256. The session is a 30-day cookie, `__Host-session`, `HttpOnly`, `Secure`, `SameSite=Lax`, and `auth_session` likewise stores only its hash. Both pages are plain HTML forms with no script, so a link works in any browser tab. Browsers accept `Secure` cookies from `http://localhost`, so sign-in works on the Compose stack as is; open the link on the same host name the app is served on.
 
-On each request with the cookie, the session middleware sets `request.state.person_id` and, when the session has a gym, `request.state.tenant`. It never answers 401 itself: `TenantSession` stays the one place a gym-scoped route refuses. A session ends as soon as its person no longer has a membership, a staff row or a dependent in its gym: a parent who only pays for their kids signs in like a member (migration `0009`). A person in exactly one gym signs in to it; a person in several signs in to none yet, and gym routes answer 401 until they pick one (#16).
+On each request with the cookie, the session middleware sets `request.state.person_id` and, when the session has a gym, `request.state.tenant`. It never answers 401 itself: `TenantSession` stays the one place a gym-scoped route refuses. A session ends as soon as its person no longer has a membership, a staff row or a dependent in its gym: a parent who only pays for their kids signs in like a member (migration `0010`). A person in exactly one gym signs in to it; a person in several signs in to none yet, and gym routes answer 401 until they pick one (#16).
 
 Sign-in looks across gyms before any gym is set, which RLS forbids even the owner. Migration `0005` does it in `SECURITY DEFINER` functions owned by `rakin_auth`: `auth_people_by_email`, `auth_gyms_of`, `auth_live_session` and `auth_end_session`. `auth_session` is gym-scoped like any table with a `gym_id`, with inserts open, as on `person`.
 
@@ -190,6 +204,8 @@ RLS is **forced**, so it applies to `rakin_owner` as well, not only to the API. 
 `ledger_entry` is append-only for every role, the owner and superusers included: triggers reject `DELETE` and `TRUNCATE`, and an `UPDATE` may change only `status`, `validated_by`, `validated_at` and `note`, and only while the entry is `pending`. Violations raise `restrict_violation` (SQLSTATE 23001). A correction is a new entry. The API reads and writes it only for an owner or admin of the gym in `app.person_id` (`0006`); the owner role, which the seed and jobs use, is scoped by the gym alone.
 
 `plan` rows are never deleted either: triggers reject `DELETE` and `TRUNCATE` for every role (`0007`), since memberships and the ledger point at them; deactivate one with `active = false`. A check holds each row to its kind's parameters, the rest null. A trial keeps its free classes and free days in `credits` and `credit_expiry_days`, with `price_clp` 0.
+
+A cancelled `membership` is final: a trigger rejects any `UPDATE` of it for every role (`0009`), raising `restrict_violation`. Checks hold `cancel_reason` and `cancelled_at` to exactly the cancelled rows, and `next_plan_id` and `next_plan_from` (a plan change waiting for its period) to being set together, never on a cancelled row.
 
 Grants name each table; `rakin_app` has no privilege on `alembic_version`. A new table gets its `GRANT` (and, if it carries `gym_id`, its RLS policy) in the migration that creates it.
 

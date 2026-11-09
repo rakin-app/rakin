@@ -65,7 +65,7 @@ SHOWN_MEMBERSHIP = """
 """
 
 # Everyone this gym has a record of, except staff who hold no membership here, each
-# with the membership the list shows and their family (0009). RLS keeps every table to
+# with the membership the list shows and their family (0010). RLS keeps every table to
 # the current gym.
 MEMBERS = f"""
     SELECT gp.person_id AS id, gp.name, p.phone, gp.rut,

@@ -35,8 +35,8 @@ Two more things change with it:
   write, to an owner or admin. A coach who trains reads their own payments and no one
   else's.
 
-Revision ID: 0009
-Revises: 0008
+Revision ID: 0010
+Revises: 0009
 Create Date: 2026-11-09
 
 """
@@ -45,8 +45,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0009"
-down_revision: str | Sequence[str] | None = "0008"
+revision: str = "0010"
+down_revision: str | Sequence[str] | None = "0009"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

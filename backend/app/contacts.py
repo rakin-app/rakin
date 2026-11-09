@@ -3,7 +3,7 @@
 Kids never receive messages; all comms go to the guardian (docs/technical.md,
 compliance). A dependent may have no phone or email at all, so every email, wa.me
 link and reminder about someone is addressed through `contact_for`, which answers
-with the guardian's own record in this gym when there is one (migration 0009). Links
+with the guardian's own record in this gym when there is one (migration 0010). Links
 are one level deep, so that is always one step.
 """
 
