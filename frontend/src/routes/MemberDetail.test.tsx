@@ -2,6 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { FieldValue, PersonField } from '../api/customFields'
 import type { Membership, MembershipLedger, OpenPeriod, Person, TimelineEntry } from '../api/member'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
@@ -95,11 +96,22 @@ type Stub = {
   memberships?: Membership[]
   ledger?: MembershipLedger
   payment?: Answer
+  fields?: PersonField[]
+  fieldsUpdate?: Answer
 }
 
-function stubApi({ role = 'owner', person, memberships = [MONTHLY], ledger = LEDGER, payment }: Stub = {}) {
+function stubApi({
+  role = 'owner',
+  person,
+  memberships = [MONTHLY],
+  ledger = LEDGER,
+  payment,
+  fields = [],
+  fieldsUpdate,
+}: Stub = {}) {
   const calls: Call[] = []
   let current = ledger
+  let currentFields = fields
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input, init) => {
@@ -123,6 +135,13 @@ function stubApi({ role = 'owner', person, memberships = [MONTHLY], ledger = LED
     if (path === '/api/memberships' && url.searchParams.get('person_id') === 'felipe') return { body: memberships }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
     if (path === '/api/people/felipe/family') return { body: { guardian: null, dependents: [{ id: 'kid', name: 'Tomás Díaz' }] } }
+    if (path === '/api/people/felipe/fields' && method === 'GET') return { body: currentFields }
+    if (path === '/api/people/felipe/fields' && method === 'PATCH') {
+      if (fieldsUpdate) return fieldsUpdate
+      const { values } = calls.at(-1)!.body as { values: Record<string, FieldValue> }
+      currentFields = currentFields.map((f) => (f.key in values ? { ...f, value: values[f.key]! } : f))
+      return { body: currentFields }
+    }
     if (path === '/api/ledger/payments' && method === 'POST') {
       if (payment && (payment.status ?? 201) >= 400) return payment
       current = { open_periods: [], owed_clp: 0, entries: current.entries }
@@ -267,5 +286,91 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.notFound)
+  })
+})
+
+const field = (fields: Partial<PersonField> & Pick<PersonField, 'key' | 'label'>): PersonField => ({
+  type: 'text',
+  options: null,
+  sensitive: false,
+  value: null,
+  ...fields,
+})
+
+const FIELDS: PersonField[] = [
+  field({ key: 'contacto', label: 'Contacto de emergencia', value: 'Ana Díaz +56 9 8765 4321' }),
+  field({ key: 'categoria', label: 'Categoría competencia', type: 'enum', options: ['Gallo', 'Pluma'], value: 'Pluma' }),
+  field({ key: 'peso', label: 'Peso (kg)', type: 'number', value: 72.5 }),
+  field({ key: 'ingreso', label: 'Fecha de ingreso', type: 'date', value: null }),
+  field({ key: 'salud', label: 'Notas médicas', sensitive: true, value: 'Asma' }),
+]
+
+describe('Ficha de alumno: datos', () => {
+  const fields = () => screen.findByRole('region', { name: copy.fields.title })
+
+  it('shows the fields the API answers, sensitive ones marked', async () => {
+    stubApi({ fields: FIELDS })
+    renderAt(PATH)
+
+    const section = await fields()
+    const rows = within(section).getAllByRole('term').map((term) => [term.textContent, term.nextSibling?.textContent])
+    expect(rows).toEqual([
+      ['Contacto de emergencia', 'Ana Díaz +56 9 8765 4321'],
+      ['Categoría competencia', 'Pluma'],
+      ['Peso (kg)', '72,5'],
+      ['Fecha de ingreso', copy.fields.empty],
+      [`Notas médicas${copy.fields.sensitive}`, 'Asma'],
+    ])
+  })
+
+  it('draws nothing when no field is open to the role', async () => {
+    stubApi({ role: 'coach', fields: [] })
+    renderAt(PATH)
+
+    await screen.findByRole('region', { name: es.admin.family.toggle })
+    expect(screen.queryByRole('region', { name: copy.fields.title })).not.toBeInTheDocument()
+  })
+
+  it('saves only the fields that changed', async () => {
+    const calls = stubApi({ fields: FIELDS })
+    renderAt(PATH)
+
+    await userEvent.click(within(await fields()).getByRole('button', { name: copy.fields.edit }))
+    const form = screen.getByRole('form', { name: copy.fields.formTitle })
+    expect(within(form).getByLabelText('Peso (kg)')).toHaveValue('72.5')
+    await userEvent.clear(within(form).getByLabelText('Peso (kg)'))
+    await userEvent.type(within(form).getByLabelText('Peso (kg)'), '74,2')
+    await userEvent.selectOptions(within(form).getByLabelText('Categoría competencia'), '')
+    await userEvent.type(within(form).getByLabelText('Fecha de ingreso'), '2026-03-01')
+    await userEvent.click(within(form).getByRole('button', { name: copy.fields.save }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.fields.saved)
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
+      {
+        method: 'PATCH',
+        path: '/api/people/felipe/fields',
+        body: { values: { categoria: null, peso: 74.2, ingreso: '2026-03-01' } },
+      },
+    ])
+    const section = await fields()
+    expect(within(section).getByText('74,2')).toBeInTheDocument()
+    expect(within(section).getByText('01-03-2026')).toBeInTheDocument()
+  })
+
+  it('marks the fields the API refused', async () => {
+    const refused = { status: 422, body: { detail: { fields: { peso: 'must be a number' } } } }
+    const calls = stubApi({ fields: FIELDS, fieldsUpdate: refused })
+    renderAt(PATH)
+
+    await userEvent.click(within(await fields()).getByRole('button', { name: copy.fields.edit }))
+    const form = screen.getByRole('form', { name: copy.fields.formTitle })
+    await userEvent.clear(within(form).getByLabelText('Peso (kg)'))
+    await userEvent.type(within(form).getByLabelText('Peso (kg)'), 'setenta')
+    await userEvent.click(within(form).getByRole('button', { name: copy.fields.save }))
+
+    expect(await within(form).findByRole('alert')).toHaveTextContent(copy.fields.refused.invalid)
+    expect(within(form).getByLabelText('Peso (kg)')).toHaveAttribute('aria-invalid', 'true')
+    expect(within(form).getByLabelText('Contacto de emergencia')).toHaveAttribute('aria-invalid', 'false')
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ values: { peso: 'setenta' } }])
   })
 })

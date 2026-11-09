@@ -19,6 +19,7 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import { ChevronLeftIcon } from '../components/icons'
 import { monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
+import { CustomFieldsPanel } from './CustomFieldsPanel'
 import { FamilyPanel } from './FamilyPanel'
 import './MemberDetail.css'
 
@@ -33,8 +34,10 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * "Registrar pago".
  * A coach sees the member and their plan, never money.
  *
- * Rank, Congelar, Ajuste, attendance, grading and custom fields join this screen
- * with their own tickets (#48, #26, #38, #44, #20).
+ * Below them, the gym's custom fields the signed-in role may see (#20).
+ *
+ * Rank, Congelar, Ajuste, attendance and grading join this screen with their own
+ * tickets (#48, #26, #38, #44).
  */
 export function MemberDetail() {
   const { personId } = route.useParams()
@@ -87,6 +90,7 @@ export function MemberDetail() {
         <h2 className="member__section-title">{t.admin.family.toggle}</h2>
         <FamilyPanel person={person.data} />
       </section>
+      <CustomFieldsPanel personId={person.data.id} />
     </Shell>
   )
 }

@@ -63,7 +63,7 @@ Generate the deploy key on your machine, not the host: `ssh-keygen -t ed25519 -f
 
 ## 3. The host's `.env`
 
-As `deploy`, copy [`deploy/.env.example`](../deploy/.env.example) to `/srv/rakin/.env`, `chmod 600` it, and fill in every `<...>`: `openssl rand -hex 32` for each password and `SECRET_KEY`. Keep a copy in the team's password manager; the host is the only other place it exists. `RAKIN_TAG` can stay a placeholder: `deploy.sh` writes it.
+As `deploy`, copy [`deploy/.env.example`](../deploy/.env.example) to `/srv/rakin/.env`, `chmod 600` it, and fill in every `<...>`: `openssl rand -hex 32` for each password and `SECRET_KEY`. Keep a copy in the team's password manager; the host is the only other place it exists. `SECRET_KEY` also encrypts sensitive custom fields, so a backup restored under another key has those values unreadable: never rotate it on a live instance. `RAKIN_TAG` can stay a placeholder: `deploy.sh` writes it.
 
 ## 4. GitHub
 

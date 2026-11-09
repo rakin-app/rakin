@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.api import (
     blobs,
+    custom_fields,
     guardians,
     gym,
     health,
@@ -56,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
     app.include_router(people.router)
+    app.include_router(custom_fields.router)
     app.include_router(guardians.router)
     app.include_router(me.router)
     app.include_router(proofs.router)

@@ -127,12 +127,14 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # auth_session (0004) too; tests/test_auth.py covers its policies.
     # `guardian_link` (0010) and `plan_event` (0013) are empty in `seed_gym`;
     # tests/test_guardians.py and tests/test_lapse_job.py isolate them, and
-    # tests/test_notices.py `message_log` and `mail_unsubscribe` (0015).
+    # tests/test_notices.py `message_log` and `mail_unsubscribe` (0015), and
+    # tests/test_custom_fields.py `person_field_value` (0016).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "auth_session",
         "guardian_link",
         "mail_unsubscribe",
         "message_log",
+        "person_field_value",
         "plan_event",
     }
     for r in rows:
