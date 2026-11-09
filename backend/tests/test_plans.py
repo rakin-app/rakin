@@ -153,13 +153,14 @@ def test_a_trial_is_stored_in_the_credits_columns_and_free() -> None:
     assert columns == {
         "name": "Clase de prueba",
         "kind": "trial",
+        "program_id": None,
         "price_clp": 0,
         "anchor": None,
         "period_months": None,
         "credits": 2,
         "credit_expiry_days": 14,
     }
-    assert from_row(columns) == TRIAL
+    assert from_row(columns) == {**TRIAL, "program_id": None}
 
 
 @pytest.mark.parametrize("body", KINDS.values(), ids=KINDS)

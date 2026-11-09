@@ -257,7 +257,7 @@ Owner and admin only (`AdminSession`); a coach or member gets a 403, since the b
 
 ## Custom fields API
 
-Each gym defines its own fields on people (weight class, emergency contact, medical notes): `text`, `number`, `date` or `enum` ([spec](../docs/technical.md#sport-agnostic-design)). The definitions are a list in `gym.settings.custom_fields`, in the order the member detail shows them; values are rows of `person_field_value` (migration 0016), one per person and field.
+Each gym defines its own fields on people (weight class, emergency contact, medical notes): `text`, `number`, `date` or `enum` ([spec](../docs/technical.md#sport-agnostic-design)). The definitions are a list in `gym.settings.custom_fields`, in the order the member detail shows them; values are rows of `person_field_value` (migration 0017), one per person and field.
 
 | Method | Path | Does |
 | --- | --- | --- |

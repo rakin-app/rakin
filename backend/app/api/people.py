@@ -110,11 +110,13 @@ async def list_people(
     # Repeatable, `?status=active&status=trial`. FastAPI copies the defaults per request.
     statuses: Annotated[list[MembershipStatus], Query(alias="status")] = [],  # noqa: B006
     plan_ids: Annotated[list[uuid.UUID], Query(alias="plan_id")] = [],  # noqa: B006
+    program_ids: Annotated[list[uuid.UUID], Query(alias="program_id")] = [],  # noqa: B006
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MemberPage:
     """The member list, by name. Filters combine with AND; several values of one filter
-    with OR. `status` and `plan_id` match the membership each row shows."""
+    with OR. `status`, `plan_id` and `program_id` match the membership each row shows:
+    a member is in a program through their plan (migration 0016)."""
     where: list[str] = []
     params: dict[str, Any] = {}
     if q.strip():
@@ -126,6 +128,11 @@ async def list_people(
     if plan_ids:
         where.append("plan_id = ANY(CAST(:plan_ids AS uuid[]))")
         params["plan_ids"] = plan_ids
+    if program_ids:
+        where.append(
+            "plan_id IN (SELECT id FROM plan WHERE program_id = ANY(CAST(:program_ids AS uuid[])))"
+        )
+        params["program_ids"] = program_ids
     filtered = f"SELECT * FROM ({MEMBERS}) members"
     if where:
         filtered += " WHERE " + " AND ".join(where)
