@@ -39,7 +39,7 @@ Amounts in the ledger are positive and the kind says which way they go
 #41, which creates it.
 
 Revision ID: 0014
-Revises: 0012
+Revises: 0013
 Create Date: 2026-11-09
 
 """
@@ -49,7 +49,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0014"
-down_revision: str | Sequence[str] | None = "0012"
+down_revision: str | Sequence[str] | None = "0013"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
