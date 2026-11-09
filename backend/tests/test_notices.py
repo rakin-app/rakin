@@ -415,6 +415,34 @@ def test_a_notice_carries_a_7_day_link_to_the_student_page(db: Database, gym: uu
     assert "page_url" not in json.loads(row["payload"])
 
 
+class Issued:
+    """Stands in for `MagicLinks`, keeping whom each link was for."""
+
+    def __init__(self) -> None:
+        self.recipients: list[Any] = []
+
+    async def issue(self, recipient: Any, **_: Any) -> Any:
+        self.recipients.append(recipient)
+        return type("Link", (), {"url": PAGE_URL})()
+
+
+def test_a_notice_without_a_name_is_not_issued_a_link_for_none() -> None:
+    issued = Issued()
+    notices = Notices(
+        Outbox(),
+        lambda: None,  # type: ignore[arg-type, return-value]
+        base_url=BASE_URL,
+        secret_key=SECRET,
+        links=issued,  # type: ignore[arg-type]
+    )
+    notice = replace(proof_notice(), context={k: v for k, v in PROOF.items() if k != "name"})
+
+    assert asyncio.run(notices._page_url(notice)) == PAGE_URL
+
+    [recipient] = issued.recipients
+    assert recipient.name == ""
+
+
 @pg
 def test_a_notice_whose_link_cannot_be_issued_is_recorded_as_failed(
     db: Database, gym: uuid.UUID
@@ -456,6 +484,12 @@ def test_an_address_the_gym_typed_wrong_is_recorded_as_failed(db: Database, gym:
     assert outbox.sent == []
     [row] = logged(db, gym)
     assert (row["status"], row["to_address"]) == ("failed", "ana at example")
+    # No sign-in link is issued for a message that cannot go.
+    links = run(
+        db.admin_url,
+        lambda c: c.fetch("SELECT 1 FROM auth_link WHERE person_id = $1", seeded_owner(gym)),
+    )
+    assert links == []
 
 
 @pg

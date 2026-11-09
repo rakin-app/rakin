@@ -47,7 +47,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.money import format_clp
-from app.integrations.mailer import Email, MailDeliveryError, Mailer
+from app.integrations.mailer import Email, MailDeliveryError, Mailer, check_recipient
 from app.magiclink import MagicLinks, Recipient
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
 
@@ -207,9 +207,15 @@ class Notices:
         extra = {"template": notice.template.name, "person_id": str(notice.person_id)}
         page_url = None
         if notice.template.page_link:
-            # The database down, say: the notice cannot go without its link.
             try:
+                # No link for an address no mail reaches: it would never be delivered.
+                check_recipient(notice.to)
                 page_url = await self._page_url(notice)
+            except ValueError as exc:
+                logger.warning("notice not sent", extra=extra, exc_info=True)
+                await self._record(notice, Outcome.FAILED, error=_error(exc))
+                return Outcome.FAILED
+            # The database down, say: the notice cannot go without its link.
             except Exception as exc:
                 logger.exception("notice link not issued", extra=extra)
                 await self._record(notice, Outcome.FAILED, error=_error(exc))
@@ -236,7 +242,9 @@ class Notices:
         if self._links is None:
             raise RuntimeError(f"no sign-in links to send {notice.template.name} with")
         # The name is for a sender to greet with; this link goes inside the notice.
-        recipient = Recipient(str(notice.person_id), notice.to, str(notice.context.get("name")))
+        recipient = Recipient(
+            str(notice.person_id), notice.to, str(notice.context.get("name") or "")
+        )
         link = await self._links.issue(recipient, ttl=PAGE_LINK_TTL, landing=STUDENT_PAGE)
         return link.url
 

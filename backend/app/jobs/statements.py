@@ -12,8 +12,12 @@ skipped. One that failed (an address the gym typed wrong, the relay down) is tri
 again on each later run until its due date. A period of a cancelled membership, or
 one paid in full meanwhile, is not stated at all.
 
-Mail goes out as the job runs, outside its transaction: a day that fails and is run
-again sends only what it had not sent.
+Each gym's statements are read in its savepoint and sent once every gym has been
+read, so no savepoint is open while the relay answers. The runner's transaction for
+the day still is, holding only those reads. Each send, its sign-in link and its
+`message_log` row go through a connection of their own (`Notices`), so they commit
+whatever the day's outcome: a day that fails and is run again sends only what it
+had not sent.
 """
 
 import json
@@ -109,15 +113,19 @@ def _json(value: str | None) -> object:
 def job(notices: Notices) -> Job:
     """The job, sending through `notices`."""
 
-    async def state_gym(conn: asyncpg.Connection, day: date) -> None:
-        for notice in await due_statements(conn, day):
+    async def run(conn: asyncpg.Connection, day: date) -> bool:
+        due: list[Notice] = []
+
+        async def read_gym(conn: asyncpg.Connection, day: date) -> None:
+            due.extend(await due_statements(conn, day))
+
+        complete = await each_gym(
+            conn, day, read_gym, job=NAME, logger=logger, failure="stating a gym failed"
+        )
+        for notice in due:
             # Never raises: a notice it could not send is a `failed` row, tried again
             # tomorrow.
             await notices.send(notice)
-
-    async def run(conn: asyncpg.Connection, day: date) -> bool:
-        return await each_gym(
-            conn, day, state_gym, job=NAME, logger=logger, failure="stating a gym failed"
-        )
+        return complete
 
     return Job(NAME, run)

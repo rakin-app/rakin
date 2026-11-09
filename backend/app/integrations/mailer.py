@@ -21,6 +21,14 @@ class MailDeliveryError(Exception):
     """The message was not accepted for delivery; the caller may retry."""
 
 
+def check_recipient(to: str) -> None:
+    """Raise `ValueError` unless `to` is one address a message can be sent to."""
+    if "\r" in to or "\n" in to:
+        raise ValueError("header fields must be single lines")
+    if "@" not in parseaddr(to)[1]:
+        raise ValueError(f"not an email address: {to!r}")
+
+
 @dataclass(frozen=True)
 class Email:
     to: str
@@ -31,16 +39,15 @@ class Email:
     headers: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
+        check_recipient(self.to)
         # A newline in a header field is header injection, never a real value.
-        fields = [self.to, self.subject, *(part for header in self.headers for part in header)]
+        fields = [self.subject, *(part for header in self.headers for part in header)]
         if any(c in field for field in fields for c in "\r\n"):
             raise ValueError("header fields must be single lines")
         for name, _ in self.headers:
             # RFC 5322 field names: printable ASCII but space and colon.
             if name.lower() in ("from", "to", "subject") or not re.fullmatch(r"[!-9;-~]+", name):
                 raise ValueError(f"not an extra header: {name!r}")
-        if "@" not in parseaddr(self.to)[1]:
-            raise ValueError(f"not an email address: {self.to!r}")
 
 
 class Mailer(Protocol):
