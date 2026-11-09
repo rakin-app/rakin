@@ -12,13 +12,16 @@ fields keep their values but are not shown or written. A sensitive field's value
 stored sealed (`FieldCipher`).
 
 The definitions are a list in `gym.settings`; a change reads it `FOR UPDATE`, so two
-admins editing at once take turns rather than losing each other's change.
+admins editing at once take turns rather than losing each other's change. A value write
+reads it `FOR SHARE`, so it never decides to store a value in the clear while the owner
+is marking that field sensitive: one waits for the other, and sees its outcome.
 """
 
 import json
 import uuid
+from collections import Counter
 from collections.abc import Sequence
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import text
@@ -32,6 +35,8 @@ from app.schemas.custom_fields import (
     FieldDefinition,
     FieldOrder,
     FieldUpdate,
+    OptionInUse,
+    OptionsInUse,
     PersonField,
     PersonFieldsUpdate,
 )
@@ -45,7 +50,7 @@ CurrentTenant = Annotated[Tenant, Depends(current_tenant)]
 
 
 def _cipher(request: Request) -> cf.FieldCipher:
-    return cf.FieldCipher(request.app.state.settings.secret_key)
+    return cf.FieldCipher(request.app.state.settings.field_encryption_key)
 
 
 async def _role(session: AsyncSession, tenant: Tenant) -> Role:
@@ -56,9 +61,9 @@ async def _role(session: AsyncSession, tenant: Tenant) -> Role:
 
 
 async def _definitions(
-    session: AsyncSession, tenant: Tenant, lock: bool = False
+    session: AsyncSession, tenant: Tenant, lock: Literal["", "UPDATE", "SHARE"] = ""
 ) -> list[dict[str, Any]]:
-    sql = "SELECT settings FROM gym WHERE id = :id" + (" FOR UPDATE" if lock else "")
+    sql = "SELECT settings FROM gym WHERE id = :id" + (f" FOR {lock}" if lock else "")
     settings = await session.scalar(text(sql), {"id": tenant.gym_id})
     return cf.definitions(settings or {})
 
@@ -94,8 +99,9 @@ async def create_field(
 ) -> FieldDefinition:
     role = await _role(session, tenant)
     _only_the_owner(role, body.model_fields_set)
-    defs = await _definitions(session, tenant, lock=True)
-    # Keys of fields the caller cannot see count too, but are never named back.
+    defs = await _definitions(session, tenant, lock="UPDATE")
+    # Keys of fields the caller cannot see count too; the random suffix keeps a
+    # clash with one from showing.
     definition = cf.normalize(
         {
             "key": cf.key_for(body.label, (d["key"] for d in defs)),
@@ -115,7 +121,7 @@ async def reorder_fields(
     body: FieldOrder, tenant: CurrentTenant, session: AdminSession
 ) -> list[FieldDefinition]:
     role = await _role(session, tenant)
-    defs = await _definitions(session, tenant, lock=True)
+    defs = await _definitions(session, tenant, lock="UPDATE")
     try:
         defs = cf.reorder(defs, body.keys, role)
     except ValueError as e:
@@ -124,7 +130,9 @@ async def reorder_fields(
     return _answer(defs, role)
 
 
-@router.patch("/api/custom-fields/{key}")
+@router.patch(
+    "/api/custom-fields/{key}", responses={status.HTTP_409_CONFLICT: {"model": OptionsInUse}}
+)
 async def update_field(
     key: str,
     body: FieldUpdate,
@@ -133,14 +141,22 @@ async def update_field(
     session: AdminSession,
 ) -> FieldDefinition:
     role = await _role(session, tenant)
-    defs = await _definitions(session, tenant, lock=True)
+    defs = await _definitions(session, tenant, lock="UPDATE")
     found = next((d for d in defs if d["key"] == key and cf.sees(role, d)), None)
     if found is None:
         raise FIELD_NOT_FOUND
     changes = body.model_dump(exclude_unset=True)
     _only_the_owner(role, set(changes))
-    if "options" in changes and found["type"] is not cf.FieldType.ENUM:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "options are for enum fields")
+    if "options" in changes:
+        if found["type"] is not cf.FieldType.ENUM:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "options are for enum fields"
+            )
+        removed = set(found["options"]) - set(changes["options"])
+        in_use = await _uses(session, tenant, _cipher(request), key, removed) if removed else {}
+        if in_use:
+            conflict = OptionInUse(options=in_use)
+            raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
     if changes.get("sensitive") and not found["sensitive"] and "visible_to" not in changes:
         changes["visible_to"] = cf.VisibleTo.OWNER
     updated = cf.normalize({**found, **changes})
@@ -150,26 +166,46 @@ async def update_field(
     return FieldDefinition.model_validate(updated)
 
 
-async def _reseal(
-    session: AsyncSession, tenant: Tenant, cipher: cf.FieldCipher, key: str, sealed: bool
-) -> None:
-    """Move the field's stored values to `secret` (sealed) or back to `value`."""
+async def _stored(
+    session: AsyncSession, tenant: Tenant, cipher: cf.FieldCipher, key: str
+) -> list[tuple[uuid.UUID, Any]]:
+    """Every value stored under `key`, opened, with its person."""
     rows = await session.execute(
         text("SELECT person_id, value, secret FROM person_field_value WHERE field_key = :key"),
         {"key": key},
     )
-    for row in rows.all():
+    return [
+        (
+            r.person_id,
+            r.value if r.secret is None else cipher.open(tenant.gym_id, r.person_id, key, r.secret),
+        )
+        for r in rows
+    ]
+
+
+async def _uses(
+    session: AsyncSession, tenant: Tenant, cipher: cf.FieldCipher, key: str, options: set[str]
+) -> dict[str, int]:
+    """How many people hold each of `options` under `key`, for those any do."""
+    counts = Counter(v for _, v in await _stored(session, tenant, cipher, key) if v in options)
+    return dict(sorted(counts.items()))
+
+
+async def _reseal(
+    session: AsyncSession, tenant: Tenant, cipher: cf.FieldCipher, key: str, sealed: bool
+) -> None:
+    """Move the field's stored values to `secret` (sealed) or back to `value`."""
+    for person_id, plain in await _stored(session, tenant, cipher, key):
         if sealed:
-            value, secret = None, cipher.seal(tenant.gym_id, row.person_id, key, row.value)
+            value, secret = None, cipher.seal(tenant.gym_id, person_id, key, plain)
         else:
-            plain = cipher.open(tenant.gym_id, row.person_id, key, row.secret)
             value, secret = json.dumps(plain), None
         await session.execute(
             text(
                 "UPDATE person_field_value SET value = CAST(:value AS jsonb), secret = :secret"
                 " WHERE person_id = :person AND field_key = :key"
             ),
-            {"value": value, "secret": secret, "person": row.person_id, "key": key},
+            {"value": value, "secret": secret, "person": person_id, "key": key},
         )
 
 
@@ -218,9 +254,10 @@ async def update_person_fields(
     if not await in_gym(session, person_id):
         raise NOT_FOUND
     role = await _role(session, tenant)
+    # Held to the commit: whether a value is sealed is decided on settled definitions.
     writable = {
         d["key"]: d
-        for d in cf.visible(role, await _definitions(session, tenant))
+        for d in cf.visible(role, await _definitions(session, tenant, lock="SHARE"))
         if not d["archived"]
     }
     errors: dict[str, str] = {}

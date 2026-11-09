@@ -56,7 +56,20 @@ def test_production_refuses_the_local_secret_key() -> None:
     with pytest.raises(ValueError, match="SECRET_KEY"):
         make_settings(environment="production")
 
-    assert make_settings(environment="production", secret_key="x" * 32).secret_key == "x" * 32
+    production = make_settings(
+        environment="production", secret_key="x" * 32, field_encryption_key="y" * 32
+    )
+    assert production.secret_key == "x" * 32
+
+
+def test_production_refuses_the_local_field_encryption_key() -> None:
+    with pytest.raises(ValueError, match="FIELD_ENCRYPTION_KEY"):
+        make_settings(environment="production", secret_key="x" * 32)
+
+    production = make_settings(
+        environment="production", secret_key="x" * 32, field_encryption_key="y" * 32
+    )
+    assert production.field_encryption_key == "y" * 32
 
 
 def test_the_defaults_need_no_network() -> None:

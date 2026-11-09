@@ -59,20 +59,30 @@ def test_who_sees_a_field(visible_to: str, seen_by: set[str]) -> None:
 
 
 @pytest.mark.parametrize(
-    ("label", "taken", "key"),
+    ("label", "key"),
     [
-        ("Contacto de emergencia", [], "contacto_de_emergencia"),
-        ("Peso (kg)", ["peso_kg"], "peso_kg_2"),
-        ("Peso (kg)", ["peso_kg", "peso_kg_2"], "peso_kg_3"),
-        ("Año de ingreso", [], "ano_de_ingreso"),
-        ("1er dan", [], "campo_1er_dan"),
-        ("¿?", [], "campo"),
-        ("x" * 60, [], "x" * 40),
-        ("x" * 60, ["x" * 40], "x" * 38 + "_2"),
+        ("Contacto de emergencia", "contacto_de_emergencia_ab12"),
+        ("Peso (kg)", "peso_kg_ab12"),
+        ("Año de ingreso", "ano_de_ingreso_ab12"),
+        ("1er dan", "campo_1er_dan_ab12"),
+        ("¿?", "campo_ab12"),
+        ("x" * 60, "x" * 35 + "_ab12"),
     ],
 )
-def test_a_key_is_made_from_the_label(label: str, taken: list[str], key: str) -> None:
-    assert key_for(label, taken) == key
+def test_a_key_is_made_from_the_label_and_a_suffix(label: str, key: str) -> None:
+    assert key_for(label, [], suffix=lambda: "ab12") == key
+
+
+def test_a_key_draws_its_suffix_again_until_it_is_free() -> None:
+    draws = iter(["aaaa", "bbbb", "cccc"])
+    taken = ["peso_aaaa", "peso_bbbb"]
+    assert key_for("Peso", taken, suffix=lambda: next(draws)) == "peso_cccc"
+
+
+def test_a_key_is_suffixed_even_when_the_plain_one_is_free() -> None:
+    # So a suffix never says another field, perhaps hidden, holds the plain key.
+    made = key_for("Peso", [])
+    assert made != "peso" and made.startswith("peso_") and len(made) == len("peso_") + 4
 
 
 def test_reorder_moves_what_the_role_sees_and_keeps_the_rest_in_place() -> None:

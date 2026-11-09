@@ -3,7 +3,7 @@
 The rules of a value live in `app.domain.custom_fields`; these are the shapes.
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AfterValidator,
@@ -79,6 +79,19 @@ class FieldUpdate(BaseModel):
         if cleared:
             raise ValueError(f"{', '.join(cleared)} cannot be null")
         return self
+
+
+class OptionInUse(BaseModel):
+    code: Literal["option_in_use"] = "option_in_use"
+    # Each option the change would remove that people still hold, and how many.
+    options: dict[str, int]
+
+
+class OptionsInUse(BaseModel):
+    """409 body: removing these options would leave people holding values no option
+    names. Clear or change those values first."""
+
+    detail: OptionInUse
 
 
 class FieldOrder(BaseModel):
