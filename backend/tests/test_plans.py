@@ -4,6 +4,7 @@ Each kind takes exactly its own parameters, at the API and in the table (migrati
 0007): a body or a row that mixes two kinds is refused, not half-stored.
 """
 
+import asyncio
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -14,8 +15,16 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from alembic import command
+from app.db_bootstrap import to_dsn
 from app.main import create_app
-from app.schemas.plans import PLAN_CREATE, PlanUpdate, from_row, to_columns
+from app.schemas.plans import (
+    INT4_MAX,
+    MAX_PRICE_CLP,
+    PLAN_CREATE,
+    PlanUpdate,
+    from_row,
+    to_columns,
+)
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
@@ -100,6 +109,32 @@ def test_also_accepted(body: dict[str, Any]) -> None:
 def test_create_refuses(body: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         PLAN_CREATE.validate_python(body)
+
+
+# Each bounded field, one past what it may hold: the column's range, or the price cap.
+OVERSIZED = [
+    {**MONTHLY, "price_clp": MAX_PRICE_CLP + 1},
+    {**PREPAID, "period_months": INT4_MAX + 1},
+    {**CREDITS, "credits": INT4_MAX + 1},
+    {**CREDITS, "credit_expiry_days": INT4_MAX + 1},
+    {**TRIAL, "free_classes": INT4_MAX + 1},
+    {**TRIAL, "free_days": INT4_MAX + 1},
+    {**DROPIN, "price_clp": 2**63},
+]
+
+
+@pytest.mark.parametrize("body", OVERSIZED, ids=str)
+def test_create_refuses_a_value_the_column_cannot_hold(body: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        PLAN_CREATE.validate_python(body)
+
+
+@pytest.mark.parametrize(
+    "field", ["price_clp", "period_months", "credits", "credit_expiry_days", "free_days"]
+)
+def test_update_refuses_a_value_the_column_cannot_hold(field: str) -> None:
+    with pytest.raises(ValidationError):
+        PlanUpdate.model_validate({field: max(MAX_PRICE_CLP, INT4_MAX) + 1})
 
 
 def test_update_takes_only_the_fields_sent() -> None:
@@ -233,6 +268,68 @@ def test_create_refuses_a_mixed_body(
     client: TestClient, sur: uuid.UUID, body: dict[str, Any]
 ) -> None:
     assert create(client, sur, body).status_code == 422
+
+
+@pg
+@pytest.mark.parametrize("body", OVERSIZED, ids=str)
+def test_an_oversized_value_is_a_422_not_a_500(
+    client: TestClient, sur: uuid.UUID, body: dict[str, Any]
+) -> None:
+    assert create(client, sur, body).status_code == 422
+    valid = KINDS[body["kind"]]
+    plan = create(client, sur, valid).json()
+    change = {k: v for k, v in body.items() if v != valid.get(k)}
+    assert patch(client, sur, plan["id"], change).status_code == 422
+
+
+@pg
+@pytest.mark.parametrize(
+    "body",
+    [
+        {**MONTHLY, "price_clp": MAX_PRICE_CLP},
+        {**CREDITS, "credits": INT4_MAX, "credit_expiry_days": INT4_MAX},
+        {**TRIAL, "free_classes": INT4_MAX, "free_days": INT4_MAX},
+    ],
+    ids=str,
+)
+def test_the_largest_values_allowed_are_stored(
+    client: TestClient, sur: uuid.UUID, body: dict[str, Any]
+) -> None:
+    response = create(client, sur, body)
+    assert response.status_code == 201
+    assert entered(response.json()) == body
+
+
+@pg
+def test_concurrent_edits_do_not_lose_each_other(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    # Another transaction changes the price and holds the row; a PATCH of the name
+    # meanwhile must wait for it and keep its price, not write back the one it read.
+    plan = create(client, sur, MONTHLY).json()
+
+    async def go() -> Any:
+        conn = await asyncpg.connect(to_dsn(db.owner_url))
+        try:
+            tx = conn.transaction()
+            await tx.start()
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(sur))
+            await conn.execute(
+                "UPDATE plan SET price_clp = 50000 WHERE id = $1", uuid.UUID(plan["id"])
+            )
+            edit = asyncio.create_task(
+                asyncio.to_thread(patch, client, sur, plan["id"], {"name": "Renombrado"})
+            )
+            await asyncio.sleep(0.5)
+            assert not edit.done()  # waiting on the row lock
+            await tx.commit()
+            return await asyncio.wait_for(edit, 10)
+        finally:
+            await conn.close()
+
+    response = asyncio.run(go())
+    assert response.status_code == 200
+    assert (response.json()["name"], response.json()["price_clp"]) == ("Renombrado", 50_000)
 
 
 @pg

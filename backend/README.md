@@ -117,7 +117,7 @@ The body is told apart by `kind`, and each kind takes exactly its own parameters
 | `dropin` | `price_clp` |
 | `trial` | `free_classes`, `free_days`, or both; no price, a trial is free |
 
-The kind is set on create. A `PATCH` is checked as the whole plan it would leave, so `null` on a required parameter or another kind's parameter is a 422 and nothing changes. A plan is never deleted: `PATCH {"active": false}` deactivates it, `true` brings it back. Any staff role may read plans (`StaffSession`); only an owner or admin may create or change one (`AdminSession`).
+`price_clp` is at most 100,000,000 and every count at most 2^31−1, the `integer` column's range. The kind is set on create. A `PATCH` locks the plan's row, so concurrent edits apply one after the other, and is checked as the whole plan it would leave, so `null` on a required parameter or another kind's parameter is a 422 and nothing changes. A plan is never deleted: `PATCH {"active": false}` deactivates it, `true` brings it back. Any staff role may read plans (`StaffSession`); only an owner or admin may create or change one (`AdminSession`).
 
 ## Sign-in
 

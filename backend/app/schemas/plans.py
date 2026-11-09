@@ -17,8 +17,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    NonNegativeInt,
-    PositiveInt,
     StringConstraints,
     TypeAdapter,
     model_validator,
@@ -29,6 +27,13 @@ from app.domain.membership import PlanKind
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 # The day of the month a monthly plan bills on: the member's signup day, or the 1st.
 Anchor = Literal["signup", "first"]
+# Bounded so a value the column cannot hold is a 422, not a driver error and a 500.
+# `period_months`, `credits` and `credit_expiry_days` are `integer`; `price_clp` is
+# `bigint`, capped well below it at a price no gym charges (CLP 100M is about USD 100k).
+INT4_MAX = 2**31 - 1
+MAX_PRICE_CLP = 100_000_000
+Price = Annotated[int, Field(ge=0, le=MAX_PRICE_CLP)]
+Count = Annotated[int, Field(gt=0, le=INT4_MAX)]
 
 
 class _Plan(BaseModel):
@@ -39,26 +44,26 @@ class _Plan(BaseModel):
 
 class MonthlyPlanCreate(_Plan):
     kind: Literal[PlanKind.MONTHLY]
-    price_clp: NonNegativeInt
+    price_clp: Price
     anchor: Anchor
 
 
 class PrepaidPlanCreate(_Plan):
     kind: Literal[PlanKind.PREPAID]
-    price_clp: NonNegativeInt
-    period_months: PositiveInt
+    price_clp: Price
+    period_months: Count
 
 
 class CreditsPlanCreate(_Plan):
     kind: Literal[PlanKind.CREDITS]
-    price_clp: NonNegativeInt
-    credits: PositiveInt
-    credit_expiry_days: PositiveInt
+    price_clp: Price
+    credits: Count
+    credit_expiry_days: Count
 
 
 class DropinPlanCreate(_Plan):
     kind: Literal[PlanKind.DROPIN]
-    price_clp: NonNegativeInt
+    price_clp: Price
 
 
 class TrialPlanCreate(_Plan):
@@ -66,8 +71,8 @@ class TrialPlanCreate(_Plan):
     comes first."""
 
     kind: Literal[PlanKind.TRIAL]
-    free_classes: PositiveInt | None = None
-    free_days: PositiveInt | None = None
+    free_classes: Count | None = None
+    free_days: Count | None = None
 
     @model_validator(mode="after")
     def _limited(self) -> "TrialPlanCreate":
@@ -92,13 +97,13 @@ class PlanUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Name | None = None
-    price_clp: NonNegativeInt | None = None
+    price_clp: Price | None = None
     anchor: Anchor | None = None
-    period_months: PositiveInt | None = None
-    credits: PositiveInt | None = None
-    credit_expiry_days: PositiveInt | None = None
-    free_classes: PositiveInt | None = None
-    free_days: PositiveInt | None = None
+    period_months: Count | None = None
+    credits: Count | None = None
+    credit_expiry_days: Count | None = None
+    free_classes: Count | None = None
+    free_days: Count | None = None
     active: bool | None = None
 
     @model_validator(mode="after")

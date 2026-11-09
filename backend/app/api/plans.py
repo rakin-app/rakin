@@ -42,10 +42,10 @@ def _plan(row: Any) -> Plan:
     return PLAN.validate_python(from_row(dict(row._mapping)))
 
 
-async def _get(session: AsyncSession, plan_id: uuid.UUID) -> Plan:
-    row = (
-        await session.execute(text(f"{SELECT_PLAN} WHERE id = :id"), {"id": plan_id})
-    ).one_or_none()
+async def _get(session: AsyncSession, plan_id: uuid.UUID, *, lock: bool = False) -> Plan:
+    """The plan; with `lock`, its row locked until the request's transaction ends."""
+    sql = f"{SELECT_PLAN} WHERE id = :id{' FOR UPDATE' if lock else ''}"
+    row = (await session.execute(text(sql), {"id": plan_id})).one_or_none()
     if row is None:
         raise NOT_FOUND
     return _plan(row)
@@ -82,7 +82,9 @@ async def get_plan(plan_id: uuid.UUID, session: StaffSession) -> Plan:
 
 @router.patch("/{plan_id}")
 async def update_plan(plan_id: uuid.UUID, body: PlanUpdate, session: AdminSession) -> Plan:
-    current = await _get(session, plan_id)
+    # Locked, so a concurrent edit waits and then merges into this one's result
+    # instead of both writing every column from the same read.
+    current = await _get(session, plan_id, lock=True)
     changes = body.model_dump(exclude_unset=True)
     active = changes.pop("active", current.active)
     if not changes and active == current.active:
