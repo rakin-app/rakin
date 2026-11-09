@@ -20,3 +20,8 @@ export function monthName(iso: string): string {
 export function monthYear(iso: string): string {
   return toDate(iso).toLocaleDateString('es-CL', { month: 'short', year: 'numeric' })
 }
+
+/** `dom 8 nov`. */
+export function weekdayDay(date: Date): string {
+  return date.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')
+}
