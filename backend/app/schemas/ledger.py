@@ -5,7 +5,9 @@ An admin records a payment the gym received by other means than a student's proo
 names the billing period it pays, and is created validated by that admin.
 
 The member detail ("Ficha de alumno", #60) reads one membership's ledger: the periods
-it still owes and its entries, newest first.
+it still owes and its entries, newest first. Both it and the ledger book list a
+membership's freezes (#26) beside the entries, as lines with no amount: one where
+each freeze started, and one where it ended, once it has.
 
 The owner's dashboard ("Hoy", #58) reads the gym's overdue periods.
 """
@@ -113,6 +115,24 @@ class TimelineEntry(BaseModel):
     validated_at: datetime | None
 
 
+class FreezeEdge(StrEnum):
+    START = "start"
+    END = "end"
+
+
+class FreezeLine(BaseModel):
+    """A freeze starting or ending ("Congelación"): no money, only the days it moved."""
+
+    freeze_id: uuid.UUID
+    edge: FreezeEdge
+    # The day it started or ended, in the gym's timezone; today at the latest.
+    day: date
+    from_date: date
+    # The day it ends, when the membership is Active again.
+    to_date: date
+    reason: str
+
+
 class MembershipLedger(BaseModel):
     """One membership's money: what it owes and its entries ("Ficha de alumno", #60)."""
 
@@ -122,6 +142,8 @@ class MembershipLedger(BaseModel):
     owed_clp: int
     # Newest first, at most `TIMELINE_LIMIT`.
     entries: list[TimelineEntry]
+    # Every freeze's start and end so far, newest first.
+    freezes: list[FreezeLine]
 
 
 class BookFilter(StrEnum):
@@ -171,6 +193,15 @@ class BookEntry(BaseModel):
     validated_by_name: str | None
 
 
+class BookFreeze(FreezeLine):
+    """A freeze line in the book: the month's, on the memberships its filter lists."""
+
+    membership_id: uuid.UUID
+    plan_name: str
+    person: PersonRef
+    guardian: PersonRef | None
+
+
 class BookKpis(BaseModel):
     # Validated payments, by the month each was validated in (`v_monthly_income`).
     collected_clp: int
@@ -202,6 +233,9 @@ class LedgerBook(BaseModel):
     items: list[BookEntry]
     # Entries the filter matches, across every page.
     total: int
+    # The month's freeze lines, newest first, for `all` and `kids`; none for `pending`
+    # and `overdue`, which are about money owed. Not paged: a handful a month.
+    freezes: list[BookFreeze]
 
 
 class OverduePeriod(BaseModel):

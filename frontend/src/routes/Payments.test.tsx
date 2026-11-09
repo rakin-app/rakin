@@ -2,7 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { BookEntry, LedgerBook } from '../api/ledger'
+import type { BookEntry, BookFreeze, LedgerBook } from '../api/ledger'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -101,6 +101,20 @@ const BOOK: LedgerBook = {
   },
   items: ENTRIES,
   total: ENTRIES.length,
+  freezes: [],
+}
+
+const SOFIA_FROZEN: BookFreeze = {
+  freeze_id: 'f-sofia',
+  edge: 'start',
+  day: '2026-11-07',
+  from_date: '2026-11-07',
+  to_date: '2026-11-28',
+  reason: 'Viaje familiar',
+  membership_id: 'm-sofia',
+  plan_name: 'Kids',
+  person: { id: 'sofia', name: 'Sofía Ortiz' },
+  guardian: { id: 'camila', name: 'Camila Ortiz' },
 }
 
 type Stub = { role?: 'owner' | 'admin' | 'coach'; book?: (params: URLSearchParams) => LedgerBook }
@@ -173,6 +187,49 @@ describe('Libro de pagos', () => {
       '/admin/pagos/comprobantes',
     )
     expect(screen.getByText(copy.showing(5, 5, 'noviembre'))).toBeInTheDocument()
+  })
+
+  it('lists the month\'s freezes among the entries, after their day\'s, with no amount', async () => {
+    stubApi({ book: () => ({ ...BOOK, freezes: [SOFIA_FROZEN] }) })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map(cells).slice(0, 4).map((row) => row[1])).toEqual([
+      'Diego Morales',
+      'Mateo OrtizApoderado: Camila Ortiz',
+      'Sofía OrtizApoderado: Camila Ortiz',
+      'Andrés Molina',
+    ])
+    expect(cells(rows[2]!)).toEqual([
+      '7 nov',
+      'Sofía OrtizApoderado: Camila Ortiz',
+      copy.kind.freeze,
+      '7 nov – 28 nov',
+      'Viaje familiar',
+      copy.status.freezeStart,
+      es.common.noAmount,
+    ])
+    // Counted as entries are: it is not one.
+    expect(screen.getByText(copy.showing(5, 5, 'noviembre'))).toBeInTheDocument()
+  })
+
+  it('holds a freeze older than the entries loaded until its page is', async () => {
+    // Older than every entry on the first page, newer than the next page's.
+    const early = { ...SOFIA_FROZEN, day: '2026-10-20', from_date: '2026-10-20' }
+    const next = entry({ id: 'older', kind: 'payment', created_at: '2026-10-15T12:00:00Z' })
+    stubApi({
+      book: (params) =>
+        params.get('offset') === '0'
+          ? { ...BOOK, freezes: [early], total: 6 }
+          : { ...BOOK, items: [next], freezes: [early], total: 6 },
+    })
+    renderAt('/admin/pagos')
+    await table()
+
+    expect(screen.queryByText('Sofía Ortiz')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: copy.more }))
+
+    expect(await screen.findByText('Sofía Ortiz')).toBeInTheDocument()
   })
 
   it('filters by chip, keeping the filter in the URL', async () => {

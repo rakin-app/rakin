@@ -1,11 +1,19 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useId } from 'react'
-import { BOOK_FILTERS, ledgerBookQuery, type BookEntry, type BookFilter, type BookKpis } from '../api/ledger'
+import {
+  BOOK_FILTERS,
+  ledgerBookQuery,
+  type BookEntry,
+  type BookFilter,
+  type BookFreeze,
+  type BookKpis,
+  type PersonRef,
+} from '../api/ledger'
 import { myRoleQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
 import { PageHeader } from '../components/PageHeader'
-import { dayTime, monthName, monthYear, shortDay, toDate } from '../format'
+import { dayTime, isoDay, monthName, monthYear, shortDay, toDate } from '../format'
 import { t } from '../i18n/es'
 import './Payments.css'
 
@@ -31,8 +39,9 @@ const route = getRouteApi('/admin/pagos')
  * "Libro de pagos": every ledger entry, newest first, with the month's KPIs. Owner and
  * admin only; a coach is told so and nothing is asked of the API.
  *
- * Reminders and freezes are not ledger entries, and refunds and manual adjustments
- * have no way in yet (#38), so the book lists what the ledger holds today.
+ * Freezes are not ledger entries, but the book lists where each started and ended
+ * among them (#26), as rows with no amount. Reminders are not listed, and refunds and
+ * manual adjustments have no way in yet (#38).
  */
 export function Payments() {
   const role = useQuery(myRoleQuery())
@@ -64,6 +73,7 @@ function Book() {
   // tiles show once "Cargar más" has run.
   const latest = book.data?.pages.at(-1)
   const rows = uniqueEntries(book.data?.pages.flatMap((page) => page.items) ?? [])
+  const lines = latest ? bookLines(rows, latest.freezes, latest.timezone, !book.hasNextPage) : []
   const setSearch = (next: PaymentsSearch) => {
     void navigate({ search: (prev) => ({ ...prev, ...next }), replace: true })
   }
@@ -128,7 +138,7 @@ function Book() {
                   </button>
                 ))}
               </div>
-              {rows.length === 0 ? (
+              {lines.length === 0 ? (
                 <p className="payments__note">{copy.empty}</p>
               ) : (
                 <div className="payments__scroll">
@@ -147,9 +157,13 @@ function Book() {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((entry) => (
-                        <Row key={entry.id} entry={entry} timeZone={latest.timezone} />
-                      ))}
+                      {lines.map((line) =>
+                        line.kind === 'entry' ? (
+                          <Row key={line.entry.id} entry={line.entry} timeZone={latest.timezone} />
+                        ) : (
+                          <FreezeRow key={`${line.line.freeze_id}-${line.line.edge}`} line={line.line} />
+                        ),
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -188,6 +202,23 @@ function uniqueEntries(entries: BookEntry[]): BookEntry[] {
   return entries.filter((entry) => !seen.has(entry.id) && seen.add(entry.id))
 }
 
+type BookLine = { kind: 'entry'; entry: BookEntry } | { kind: 'freeze'; line: BookFreeze }
+
+/** The entries loaded and the month's freeze lines among them, newest first, a freeze
+ *  line after its day's entries. While more entries remain to load, a freeze line older
+ *  than the last one loaded waits for the page it belongs on. */
+function bookLines(entries: BookEntry[], freezes: BookFreeze[], timeZone: string, complete: boolean): BookLine[] {
+  const lines: BookLine[] = []
+  const waiting = [...freezes]
+  for (const entry of entries) {
+    const day = isoDay(entry.created_at, timeZone)
+    while (waiting[0] && waiting[0].day > day) lines.push({ kind: 'freeze', line: waiting.shift()! })
+    lines.push({ kind: 'entry', entry })
+  }
+  if (complete) lines.push(...waiting.map((line) => ({ kind: 'freeze' as const, line })))
+  return lines
+}
+
 function Kpis({ kpis }: { kpis: BookKpis }) {
   const words = copy.kpis
   const days = kpis.overdue_avg_days.toLocaleString('es-CL', { maximumFractionDigits: 1 })
@@ -220,14 +251,7 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
   return (
     <tr>
       <td className="payments__muted">{dayTime(entry.created_at, timeZone)}</td>
-      <td>
-        <Link to="/admin/alumnos/$personId" params={{ personId: entry.person.id }} className="payments__student">
-          {entry.person.name}
-        </Link>
-        {entry.guardian && (
-          <span className="payments__guardian">{t.admin.students.guardianOf(entry.guardian.name)}</span>
-        )}
-      </td>
+      <Student person={entry.person} guardian={entry.guardian} />
       <td>{copy.kind[entry.kind]}</td>
       <td>{periodLabel(entry)}</td>
       <td>{mediumLabel(entry)}</td>
@@ -243,6 +267,36 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
       <td className={`payments__amount payments__amount--${entry.status}`}>
         {entry.kind === 'adjustment' ? `+${clp(entry.amount_clp)}` : clp(entry.amount_clp)}
       </td>
+    </tr>
+  )
+}
+
+function Student({ person, guardian }: { person: PersonRef; guardian: PersonRef | null }) {
+  return (
+    <td>
+      <Link to="/admin/alumnos/$personId" params={{ personId: person.id }} className="payments__student">
+        {person.name}
+      </Link>
+      {guardian && <span className="payments__guardian">{t.admin.students.guardianOf(guardian.name)}</span>}
+    </td>
+  )
+}
+
+/** A freeze starting or ending: the days it covers and why, with no amount. */
+function FreezeRow({ line }: { line: BookFreeze }) {
+  return (
+    <tr className="payments__freeze">
+      <td className="payments__muted">{shortDay(line.day)}</td>
+      <Student person={line.person} guardian={line.guardian} />
+      <td>{copy.kind.freeze}</td>
+      <td>{t.common.span(shortDay(line.from_date), shortDay(line.to_date))}</td>
+      <td>{line.reason}</td>
+      <td>
+        <span className="payments__pill payments__pill--muted">
+          {line.edge === 'start' ? copy.status.freezeStart : copy.status.freezeEnd}
+        </span>
+      </td>
+      <td className="payments__amount payments__muted">{t.common.noAmount}</td>
     </tr>
   )
 }
