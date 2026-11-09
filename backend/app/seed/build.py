@@ -19,6 +19,7 @@ from app.domain.membership import MembershipStatus, PlanKind
 from app.domain.rut import check_digit
 from app.seed.data import (
     BANK_ACCOUNT,
+    CLASS_TYPES,
     COACH,
     CUSTOM_FIELDS,
     GRACE_DAYS,
@@ -28,6 +29,7 @@ from app.seed.data import (
     HISTORY_PERIODS,
     MEMBERS,
     PLANS,
+    PROGRAMS,
     RANKS,
     STAFF,
     TIMEZONE,
@@ -44,6 +46,10 @@ Row = dict[str, Any]
 NAMESPACE = uuid.UUID("0ac7a356-11a0-4d87-b85f-6c8398b269c3")
 ZONE = ZoneInfo(TIMEZONE)
 CANCEL_REASON = "Se cambió de ciudad"
+
+# A frozen member's freeze, in days from the seed date: started a week ago, ends in three.
+FREEZE_DAYS = (-7, 21)
+FREEZE_REASONS = ("Viaje familiar", "Lesión de rodilla")
 
 
 def seed_id(*parts: str) -> uuid.UUID:
@@ -63,11 +69,16 @@ class Seed:
     # Who pays for each kid (migration 0010).
     guardian_links: list[Row]
     staff: list[Row]
+    # Programs and their class types (migration 0017).
+    programs: list[Row]
+    class_types: list[Row]
     plans: list[Row]
     memberships: list[Row]
     billing_periods: list[Row]
     ledger_entries: list[Row]
-    # Each member's current rank (migration 0016).
+    # The frozen members' freezes (migration 0017).
+    freezes: list[Row]
+    # Each member's current rank (migration 0018).
     grade_events: list[Row]
 
     def tables(self) -> Iterator[tuple[str, list[Row]]]:
@@ -77,11 +88,14 @@ class Seed:
         yield "gym_person", self.gym_people
         yield "guardian_link", self.guardian_links
         yield "staff", self.staff
+        yield "program", self.programs
+        yield "class_type", self.class_types
         yield "plan", self.plans
         yield "membership", self.memberships
         yield "grade_event", self.grade_events
         yield "billing_period", self.billing_periods
         yield "ledger_entry", self.ledger_entries
+        yield "membership_freeze", self.freezes
 
 
 def local(day: date, hour: int = 0, minute: int = 0) -> datetime:
@@ -135,6 +149,7 @@ class _Builder:
         self.memberships: list[Row] = []
         self.periods: list[Row] = []
         self.entries: list[Row] = []
+        self.freezes: list[Row] = []
         self.grades: list[Row] = []
         # When each member joined, by key.
         self.joined: dict[str, datetime] = {}
@@ -174,10 +189,27 @@ class _Builder:
                 "cancelled_at": local(self.day(spec.due_in), 20) if cancelled else None,
             }
         )
+        if spec.status is MembershipStatus.FROZEN:
+            self._freeze(spec, membership_id)
         self.grades.append(self._grade(spec, membership_id, since))
         amount = discounted(plan.price_clp, spec.discount_pct)
         for index, period in enumerate(periods):
             self._period(spec, membership_id, payer, index, period, amount)
+
+    def _freeze(self, spec: MemberSpec, membership_id: uuid.UUID) -> None:
+        start, end = (self.day(offset) for offset in FREEZE_DAYS)
+        self.freezes.append(
+            {
+                "id": seed_id("freeze", spec.key),
+                "gym_id": GYM_ID,
+                "membership_id": membership_id,
+                "from_date": start,
+                "to_date": end,
+                "reason": FREEZE_REASONS[len(self.freezes) % len(FREEZE_REASONS)],
+                "created_by": self.validator,
+                "created_at": local(start, 18, 30),
+            }
+        )
 
     def _grade(self, spec: MemberSpec, membership_id: uuid.UUID, since: date) -> Row:
         """The promotion that gave the member their rank, recorded by a coach that night."""
@@ -398,12 +430,35 @@ def build(as_of: date) -> Seed:
             }
             for s in STAFF
         ],
+        programs=[
+            {
+                "id": seed_id("program", key),
+                "gym_id": GYM_ID,
+                "name": name,
+                "active": True,
+                "created_at": local(opened),
+            }
+            for key, name in PROGRAMS.items()
+        ],
+        class_types=[
+            {
+                "id": seed_id("class_type", c.key),
+                "gym_id": GYM_ID,
+                "program_id": seed_id("program", c.program),
+                "name": c.name,
+                "credit_cost": c.credit_cost,
+                "active": True,
+                "created_at": local(opened),
+            }
+            for c in CLASS_TYPES
+        ],
         plans=[
             {
                 "id": seed_id("plan", p.key),
                 "gym_id": GYM_ID,
                 "name": p.name,
                 "kind": p.kind.value,
+                "program_id": None if p.program is None else seed_id("program", p.program),
                 "price_clp": p.price_clp,
                 "anchor": p.anchor,
                 "period_months": p.period_months,
@@ -417,5 +472,6 @@ def build(as_of: date) -> Seed:
         memberships=builder.memberships,
         billing_periods=builder.periods,
         ledger_entries=builder.entries,
+        freezes=builder.freezes,
         grade_events=builder.grades,
     )

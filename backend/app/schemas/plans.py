@@ -6,7 +6,8 @@ The body is told apart by `kind`, and each kind takes exactly its own parameters
 `credit_expiry_days` (migration 0007); `from_row` and `to_columns` translate.
 
 The kind is set on create. An edit changes the name, the price or the kind's own
-parameters, and `active`: a plan is deactivated, never deleted.
+parameters, the program, and `active`: a plan is deactivated, never deleted. Any kind
+may name the program it is for (`program_id`, migration 0016).
 """
 
 import uuid
@@ -40,6 +41,9 @@ class _Plan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Name
+    # The program the plan is for, and so its members' (migration 0016); none for a
+    # plan open to any class, such as a drop-in.
+    program_id: uuid.UUID | None = None
 
 
 class MonthlyPlanCreate(_Plan):
@@ -104,6 +108,8 @@ class PlanUpdate(BaseModel):
     credit_expiry_days: Count | None = None
     free_classes: Count | None = None
     free_days: Count | None = None
+    # `null` takes the plan out of its program.
+    program_id: uuid.UUID | None = None
     active: bool | None = None
 
     @model_validator(mode="after")
@@ -156,7 +162,16 @@ KIND_MODELS: dict[PlanKind, type[_Plan]] = {
 
 # The trial's names for the columns it shares with a credits plan.
 TRIAL_COLUMNS = {"free_classes": "credits", "free_days": "credit_expiry_days"}
-COLUMNS = ("name", "kind", "price_clp", "anchor", "period_months", "credits", "credit_expiry_days")
+COLUMNS = (
+    "name",
+    "kind",
+    "program_id",
+    "price_clp",
+    "anchor",
+    "period_months",
+    "credits",
+    "credit_expiry_days",
+)
 
 
 def from_row(row: dict[str, Any]) -> dict[str, Any]:

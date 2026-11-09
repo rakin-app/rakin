@@ -15,8 +15,8 @@ Isolated by `gym_id` like every tenant table. A promotion is history: `rakin_app
 read and add rows, never change or delete them. A mistake is corrected by awarding the
 right rank, which becomes the current one.
 
-Revision ID: 0016
-Revises: 0015
+Revision ID: 0018
+Revises: 0017
 Create Date: 2026-11-09
 
 """
@@ -25,8 +25,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0016"
-down_revision: str | Sequence[str] | None = "0015"
+revision: str = "0018"
+down_revision: str | Sequence[str] | None = "0017"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

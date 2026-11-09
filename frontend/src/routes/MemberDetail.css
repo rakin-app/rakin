@@ -253,6 +253,17 @@
   --tone: var(--color-warning);
 }
 
+/* A freeze moves no money: a hollow dot on a sunken row, set apart from the entries. */
+.member__entry--freeze {
+  background: var(--color-surface-sunken);
+  --tone: var(--color-text-subtle);
+}
+
+.member__entry--freeze .member__dot {
+  background: transparent;
+  border: 2px solid var(--tone);
+}
+
 .member__dot {
   flex: none;
   width: 8px;

@@ -57,7 +57,7 @@ class MyPage(BaseModel):
     next_payment: NextPayment | None
     # Where to transfer; `None` until the gym sets it (`PATCH /api/gym/settings`).
     bank_account: BankAccount | None
-    # Their latest promotion here (`grade_event`, 0016); `None` until they have one.
+    # Their latest promotion here (`grade_event`, 0018); `None` until they have one.
     rank: Rank | None
     # Newest first, at most `PAYMENTS_SHOWN`.
     payments: list[MyPayment]

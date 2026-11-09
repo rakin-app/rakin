@@ -6,6 +6,7 @@ import {
   MEMBERSHIP_STATUSES,
   membersQuery,
   plansQuery,
+  programsQuery,
   type MemberRow,
   type MembershipStatus,
 } from '../api/people'
@@ -21,6 +22,7 @@ export type StudentsSearch = {
   q?: string
   status?: MembershipStatus[]
   plan?: string
+  program?: string
 }
 
 export function validateStudentsSearch(search: Record<string, unknown>): StudentsSearch {
@@ -28,7 +30,8 @@ export function validateStudentsSearch(search: Record<string, unknown>): Student
   const raw = Array.isArray(search.status) ? search.status : [search.status]
   const status = MEMBERSHIP_STATUSES.filter((s) => raw.includes(s))
   const plan = typeof search.plan === 'string' && search.plan ? search.plan : undefined
-  return { q, status: status.length ? status : undefined, plan }
+  const program = typeof search.program === 'string' && search.program ? search.program : undefined
+  return { q, status: status.length ? status : undefined, plan, program }
 }
 
 const route = getRouteApi('/admin/alumnos')
@@ -40,8 +43,14 @@ export function Students() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const status = search.status ?? []
-  const filters = { q: search.q ?? '', status, plan: search.plan ? [search.plan] : [] }
-  const filtered = filters.q.trim() !== '' || status.length > 0 || search.plan !== undefined
+  const filters = {
+    q: search.q ?? '',
+    status,
+    plan: search.plan ? [search.plan] : [],
+    program: search.program ? [search.program] : [],
+  }
+  const filtered =
+    filters.q.trim() !== '' || status.length > 0 || search.plan !== undefined || search.program !== undefined
 
   const [draft, setDraft] = useState(filters.q)
   useEffect(() => {
@@ -55,6 +64,8 @@ export function Students() {
   const members = useInfiniteQuery({ ...membersQuery(filters), placeholderData: keepPreviousData })
   // Without plans (an older API, a failed request) the list still works, unfiltered by plan.
   const plans = useQuery(plansQuery)
+  // Likewise programs: a gym that has none yet gets no program filter.
+  const programs = useQuery(programsQuery)
   // Importing starts memberships, which only an owner or admin may.
   const role = useQuery(myRoleQuery())
 
@@ -66,6 +77,9 @@ export function Students() {
   const setPlan = (plan: string) => {
     void navigate({ search: (prev) => ({ ...prev, plan: plan || undefined }), replace: true })
   }
+  const setProgram = (program: string) => {
+    void navigate({ search: (prev) => ({ ...prev, program: program || undefined }), replace: true })
+  }
   const clear = () => {
     setDraft('')
     void navigate({ search: {}, replace: true })
@@ -73,6 +87,7 @@ export function Students() {
 
   const searchId = useId()
   const planId = useId()
+  const programId = useId()
   const rows = members.data?.pages.flatMap((page) => page.items) ?? []
   const total = members.data?.pages[0]?.total
 
@@ -126,6 +141,26 @@ export function Students() {
                 {plans.data.map((plan) => (
                   <option key={plan.id} value={plan.id}>
                     {plan.active ? plan.name : copy.inactivePlan(plan.name)}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          {programs.data && programs.data.length > 0 && (
+            <>
+              <label htmlFor={programId} className="visually-hidden">
+                {copy.programLabel}
+              </label>
+              <select
+                id={programId}
+                className="students__plan"
+                value={search.program ?? ''}
+                onChange={(event) => setProgram(event.target.value)}
+              >
+                <option value="">{copy.allPrograms}</option>
+                {programs.data.map((program) => (
+                  <option key={program.id} value={program.id}>
+                    {program.active ? program.name : copy.inactiveProgram(program.name)}
                   </option>
                 ))}
               </select>

@@ -4,7 +4,7 @@ A promotion names a rank and sub-rank of the gym's grading scheme by key, and is
 checked against it when awarded; the labels are the scheme's when read
 (`app.schemas.grades`). It attaches to the membership the person's ficha shows, their
 latest one not cancelled, and their current rank is their latest award over every
-membership here (migration 0016).
+membership here (migration 0018).
 
 Awarding a rank that becomes the person's current one writes a `promoted` plan event
 (0013) in the same transaction, for the plan-event emails (#54); recording an older

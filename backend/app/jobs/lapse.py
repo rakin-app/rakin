@@ -14,7 +14,8 @@ transaction, for the plan-event emails to send.
 - A credits pack or a trial lapses with no grace, the day after its last day
   (`current_period_end`) or at zero credits left.
 - A drop-in is a single attendance and never lapses; a Frozen membership waits for
-  its freeze to end (#26), and a Lapsed or Cancelled one has nowhere to lapse to.
+  its freeze to end (`app.jobs.freezes`), and a Lapsed or Cancelled one has nowhere
+  to lapse to.
 
 A payment recorded while the job runs is never lost to it. Both lock the membership
 row before they decide: the job locks every membership it may lapse and only then reads

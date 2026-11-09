@@ -35,6 +35,11 @@ export function dayTime(iso: string, timeZone: string): string {
   return `${part('day')} ${part('month').replace('.', '')} ${part('hour')}:${part('minute')}`
 }
 
+/** A timestamp's calendar day, `2026-11-08`, in `timeZone` (the browser's by default). */
+export function isoDay(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date(iso))
+}
+
 /** `dom 8 nov`. */
 export function weekdayDay(date: Date): string {
   return date.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')

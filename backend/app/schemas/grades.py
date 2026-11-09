@@ -1,4 +1,4 @@
-"""A person's ranks: the promotion log (`grade_event`, migration 0016) and what it says
+"""A person's ranks: the promotion log (`grade_event`, migration 0018) and what it says
 they hold now.
 
 A promotion stores the keys of the gym's grading scheme; the labels shown are the
