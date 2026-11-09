@@ -192,6 +192,23 @@ Dates are calendar dates in the gym's timezone (`app.domain.dates`), and `starte
 
 A plan change waits for the next period; proration is v2. Only a monthly or prepaid membership changes plan, to another monthly or prepaid plan (a pack or trial ends, and a trial converts on payment). The change is stored as `next_plan` with the day it `starts_on`: the day after the paid-through date, or after the last billed period if billing has run ahead, so a period already billed keeps its plan and amount. Billing (#31) prices a period starting on or after that day at the new plan and moves it into `plan_id`, recomputing `anchor_day` with `domain.anchor_day(new_terms, next_plan_from)`, so a move to a `first` anchor bills on the 1st and a move to prepaid clears it. Cancelling follows the state machine: an active or lapsed membership can be cancelled, a trial or frozen one cannot (409), and a cancelled one changes no more (409). It drops a pending plan change. Any staff role may read memberships; only an owner or admin may start, change or cancel one.
 
+## Member import
+
+Onboarding a gym is mostly bringing its spreadsheet over. The admin uploads the file, says what each column is, checks it, then imports; the SPA's screen is `/admin/alumnos/importar`. Only an owner or admin may, since it starts memberships.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `POST` | `/api/import/sheet` | the file itself as the body, CSV or XLSX, up to 5 MB. Answers `{headers, rows: [{number, cells}], mapping}`, the mapping a suggestion from the headers. Nothing is stored. 413 `{"detail": {"code": "too_large"}}`; 422 with `unreadable`, `empty` or `too_many_rows` (over 2,000) |
+| `POST` | `/api/import/members` | `{rows, mapping, plans?, dry_run}`: the rows sent back, `mapping` field to column (`name` required, one column per field), and `plans` a plan cell's value to the plan it means, for values that are not a plan's name. `dry_run` defaults to true. Answers each row's `errors` and what it did, `created` or `existing`, to the `person`, `guardian`, `link` and `membership`, with a `summary` |
+
+The fields are `name`, `last_name` (joined to the name), `phone`, `email`, `rut`, `dob`, `plan`, `due_on`, `started_on`, `guardian_name` and `guardian_phone`. `app.member_import.sheet` reads an XLSX's first worksheet, or a CSV in UTF-8 or Windows-1252 (Excel in Spanish) with a comma, semicolon or tab; every cell comes back as text, dates as `YYYY-MM-DD`. Dates in cells may be ISO or day first (`05/12/2026`, `5-12-26`). `app.member_import.rows` makes every check that needs only the row, and reports each with its `field` and a `code`: `required`, `repeated`, `invalid_phone`, `invalid_email`, `invalid_rut`, `invalid_date`, `own_guardian`, `unknown_plan`, `inactive_plan`, `dropin_plan` or `due_before_start`.
+
+A row with a phone is an adult, found again by it. A row without one is a dependent: they need `guardian_phone`, and are found by it and their own name among that guardian's dependents. A guardian not yet in the gym is added with `guardian_name`. A row with both is someone with a phone and a guardian, such as a teenager. The links follow the family rules, so `has_guardian` and `one_level` come back as row errors too. A row with a plan gets a membership (`domain.membership.imported`): a monthly or prepaid one is paid through the day before `due_on`, and a monthly one bills on `due_on`'s day, or the 1st on a `first` anchor. It starts on `started_on`, or else today, or `due_on` if that is earlier. A pack or trial starts as it would today, lasting through `due_on` when that is given. A monthly or prepaid plan needs `due_on`.
+
+Each row is written in a savepoint of its own: a refused row writes nothing, and the others still import. A dry run writes every row the same way and then rolls the lot back, so it reports what the database itself refuses, and its report is the import's. Rows with a phone go first, so a kid's row finds the parent the sheet describes further down. Running it again creates nothing twice: whoever is found keeps the record this gym has of them, and someone who already has a membership that is not cancelled keeps it, whatever plan the sheet says. A row refused the first time imports once it is fixed. Phones already known to another gym join this one as `POST /api/people` does, with what the sheet says.
+
+`tests/fixtures/pilot_sheet.csv` stands in for the pilot gym's sheet, with invented people: Excel's semicolon CSV, phones written every which way, kids under their parent, and one row for each way a row goes wrong. `tests/test_member_import.py` runs it end to end; the pilot's real sheet, anonymised, takes its place once we have it.
+
 ## Gym settings API
 
 | Method | Path | Does |

@@ -123,6 +123,36 @@ def _unprocessable(error: ValueError | OverflowError) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error))
 
 
+async def insert_membership(
+    session: AsyncSession,
+    person_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    started: domain.Membership,
+    started_at: datetime,
+) -> uuid.UUID:
+    """Write `started`, a new membership of `person_id` on `plan_id`, in the current gym."""
+    result = await session.execute(
+        text(
+            "INSERT INTO membership (gym_id, person_id, plan_id, status, anchor_day,"
+            " started_at, current_period_end, credits_remaining)"
+            " VALUES (current_setting('app.gym_id')::uuid, :person_id, :plan_id, :status,"
+            " :anchor_day, :started_at, :current_period_end, :credits_remaining)"
+            " RETURNING id"
+        ),
+        {
+            "person_id": person_id,
+            "plan_id": plan_id,
+            "status": started.status.value,
+            "anchor_day": started.anchor_day,
+            "started_at": started_at,
+            "current_period_end": started.current_period_end,
+            "credits_remaining": started.credits_remaining,
+        },
+    )
+    membership_id: uuid.UUID = result.scalar_one()
+    return membership_id
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_membership(
     body: MembershipCreate,
@@ -144,25 +174,10 @@ async def create_membership(
     except (ValueError, OverflowError) as error:
         raise _unprocessable(error) from None
 
-    result = await session.execute(
-        text(
-            "INSERT INTO membership (gym_id, person_id, plan_id, status, anchor_day,"
-            " started_at, current_period_end, credits_remaining)"
-            " VALUES (current_setting('app.gym_id')::uuid, :person_id, :plan_id, :status,"
-            " :anchor_day, :started_at, :current_period_end, :credits_remaining)"
-            " RETURNING id"
-        ),
-        {
-            "person_id": body.person_id,
-            "plan_id": body.plan_id,
-            "status": started.status.value,
-            "anchor_day": started.anchor_day,
-            "started_at": start_of_local_day(started_on, timezone),
-            "current_period_end": started.current_period_end,
-            "credits_remaining": started.credits_remaining,
-        },
+    membership_id = await insert_membership(
+        session, body.person_id, body.plan_id, started, start_of_local_day(started_on, timezone)
     )
-    return await _get(session, result.scalar_one())
+    return await _get(session, membership_id)
 
 
 @router.get("")

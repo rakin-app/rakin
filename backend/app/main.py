@@ -10,6 +10,7 @@ from app.api import (
     health,
     ledger,
     me,
+    member_import,
     memberships,
     people,
     plans,
@@ -59,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(proofs.router)
     app.include_router(plans.router)
     app.include_router(memberships.router)
+    app.include_router(member_import.router)
     app.include_router(gym.router)
     app.include_router(ledger.router)
     app.include_router(proof_review.router)
