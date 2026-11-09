@@ -12,6 +12,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from app.domain.billing import overpayment_note
 from app.domain.dates import add_months
 from app.domain.ledger import EntryKind, EntryStatus
 from app.domain.membership import MembershipStatus, PlanKind
@@ -291,8 +292,6 @@ class _Builder:
             }
         )
         if spec.overpaid_clp:
-            paid = f"{amount + spec.overpaid_clp:,}".replace(",", ".")
-            left = f"{spec.overpaid_clp:,}".replace(",", ".")
             self.entries.append(
                 {
                     **entry,
@@ -303,7 +302,7 @@ class _Builder:
                     "status": EntryStatus.VALIDATED.value,
                     "validated_by": self.validator,
                     "validated_at": validated,
-                    "note": f"Pagó ${paid}, quedan ${left} a favor",
+                    "note": overpayment_note(amount + spec.overpaid_clp, spec.overpaid_clp),
                     "created_at": validated,
                 }
             )

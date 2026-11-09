@@ -12,6 +12,7 @@ from datetime import date
 from app.domain import ledger
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
+from app.domain.money import format_clp
 
 SETTLING_KINDS = frozenset({EntryKind.PAYMENT, EntryKind.ADJUSTMENT})
 
@@ -38,6 +39,11 @@ class Settlement:
     credit: LedgerEntry | None = None
 
 
+def overpayment_note(paid_clp: int, credit_clp: int) -> str:
+    """The credit adjustment's note, which the student reads: what they paid, what is left."""
+    return f"Pagó {format_clp(paid_clp)}, quedan {format_clp(credit_clp)} a favor"
+
+
 def apply(period: BillingPeriod, entry: LedgerEntry) -> Settlement:
     """Count a validated payment or credit adjustment towards `period`."""
     if entry.status is not EntryStatus.VALIDATED:
@@ -56,7 +62,7 @@ def apply(period: BillingPeriod, entry: LedgerEntry) -> Settlement:
             kind=EntryKind.ADJUSTMENT,
             amount_clp=overpaid,
             status=EntryStatus.VALIDATED,
-            note="overpayment carried to the next period",
+            note=overpayment_note(entry.amount_clp, overpaid),
         )
     return Settlement(period=settled, entry=entry, credit=credit)
 

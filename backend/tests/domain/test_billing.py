@@ -38,7 +38,7 @@ def test_overpayment_creates_a_credit_adjustment_for_the_next_period() -> None:
         kind=EntryKind.ADJUSTMENT,
         amount_clp=15_000,
         status=EntryStatus.VALIDATED,
-        note="overpayment carried to the next period",
+        note="Pagó $45.000, quedan $15.000 a favor",
     )
 
     next_period = billing.apply(period(due=30_000), settlement.credit)
