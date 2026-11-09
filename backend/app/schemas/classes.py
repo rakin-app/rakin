@@ -18,7 +18,7 @@ MAX_CREDIT_COST = 100
 CreditCost = Annotated[int, Field(ge=0, le=MAX_CREDIT_COST)]
 
 
-def _never_null(model: BaseModel, *fields: str) -> None:
+def never_null(model: BaseModel, *fields: str) -> None:
     for field in fields:
         if field in model.model_fields_set and getattr(model, field) is None:
             raise ValueError(f"{field} cannot be null")
@@ -40,7 +40,7 @@ class ProgramUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _set(self) -> "ProgramUpdate":
-        _never_null(self, "name", "active")
+        never_null(self, "name", "active")
         return self
 
 
@@ -71,7 +71,7 @@ class ClassTypeUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _set(self) -> "ClassTypeUpdate":
-        _never_null(self, "name", "program_id", "credit_cost", "active")
+        never_null(self, "name", "program_id", "credit_cost", "active")
         return self
 
 
