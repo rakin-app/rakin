@@ -147,3 +147,19 @@ make seed                                      # from the repo root, inside Comp
 Loading again inserts nothing: every row's id is a UUIDv5 of its natural key, and rows already there are skipped, never updated, which the append-only ledger requires anyway. The first load stores its date in `gym.settings["seed"]["as_of"]`, and later loads build for that date again, ignoring `--today`. To reseed for another date, start from an empty database (`docker compose down -v`).
 
 The loader connects as the owner (`MIGRATION_DATABASE_URL`) with `app.gym_id` set to the demo gym. Ranks and guardian links have no tables yet (#48, #19): ranks live in `data.py`, checked against the grading scheme, and a guardian is the payer (`claimed_by`) of their dependents' payments. Every person gets a `gym_person` row with the same name, email, RUT and date of birth. Every guardian also trains, so the roster's payers are members too. Drop-ins have a plan but no memberships, since a drop-in is a single attendance.
+
+## Nightly jobs
+
+```sh
+uv run python -m app.jobs.daily                      # run what is due, once (for cron)
+uv run python -m app.jobs.daily --every 3600         # stay up and check hourly (Compose's `jobs`)
+uv run python -m app.jobs.daily --today 2026-11-08   # as if it were that date
+```
+
+`app/jobs` runs each job once per day ([spec](../docs/technical.md#core-state-machines)). A job is a `Job(name, run)`, where `run(conn, day)` does the day's work on an `asyncpg` connection; `JOBS` in `app/jobs/daily.py` lists them in the order they run on a day, so a later job can rely on an earlier one's work.
+
+`job_run` is the record: a day is done for a job once it holds a `succeeded` row for `(job_name, run_date)`, and a job owes every day from its first row to today that has none. A run that finds nothing owed does nothing; one after downtime catches the missed days up, oldest first, and a job that has never run starts today. Each `(job, day)` is one transaction that also marks its row `succeeded`, so the work and its record commit together. A failure rolls the work back, marks the row `failed`, logs `job failed` with the job and date, and stops the run, since later days and later jobs may depend on it; the next run retries that day first. Run once (no `--every`), it exits 1 on a failure.
+
+Days are dates in `JOBS_TIMEZONE` (`America/Santiago`). One runner works at a time, under a Postgres advisory lock: a second one logs that and does nothing, and a `running` row found under the lock, left by a runner that died, is run again. The runner connects as the owner (`MIGRATION_DATABASE_URL`), as the seed does, so RLS still holds it to one gym: a job that works per gym sets `app.gym_id` for each.
+
+Set `SENTRY_DSN` to report failures to Sentry (`app/sentry.py`): every `ERROR` log line becomes an event, so a failed job, or a run that could not reach the database, arrives there with its traceback. Empty, the default, sends nothing.
