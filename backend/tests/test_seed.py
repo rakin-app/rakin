@@ -134,12 +134,9 @@ def test_grading_scheme() -> None:
     assert ranks == ["white", "blue", "purple", "brown", "black"]
     assert ladder[:3] == ["grey-white", "grey", "grey-black"]
     assert len(ladder) == 12
-    assert GRADING["ranks"][1] == {"key": "blue", "label": "Azul", "sub_ranks": 4}
-    assert GRADING["kids_ladder"][-1] == {
-        "key": "green-black",
-        "label": "Verde y negra",
-        "sub_ranks": 4,
-    }
+    assert GRADING["ranks"][1]["label"] == "Azul"
+    assert GRADING["kids_ladder"][-1]["label"] == "Verde y negra"
+    assert [s["key"] for s in GRADING["ranks"][1]["sub_ranks"]] == ["0", "1", "2", "3", "4"]
     for member in MEMBERS:
         belt, stripes = member.rank
         assert 0 <= stripes <= STRIPES
