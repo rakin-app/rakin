@@ -239,7 +239,7 @@ uv run python -m app.jobs.daily --today 2026-11-08   # as if it were that date
 
 Days are dates in `JOBS_TIMEZONE` (`America/Santiago`). One runner works at a time, under a Postgres advisory lock: a second one logs that and does nothing, and a `running` row found under the lock, left by a runner that died, is run again. The runner connects as the owner (`MIGRATION_DATABASE_URL`), as the seed does, so RLS still holds it to one gym: a job that works per gym sets `app.gym_id` for each.
 
-The owner cannot see which gyms exist with no `app.gym_id` set, so a per-gym job asks `jobs_gym_ids()` (`0010`), a `SECURITY DEFINER` lookup that returns only gym ids and that only the owner may call.
+The owner cannot see which gyms exist with no `app.gym_id` set, so a per-gym job asks `jobs_gym_ids()` (`0011`), a `SECURITY DEFINER` lookup that returns only gym ids and that only the owner may call.
 
 The jobs, in order:
 
