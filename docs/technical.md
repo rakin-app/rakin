@@ -46,7 +46,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `membership` | id, person\_id, gym\_id, plan\_id, status, anchor\_day, started\_at, current\_period\_end, credits\_remaining, discount\_pct | status ∈ trial, active, frozen, lapsed, cancelled |
 | `freeze` | membership\_id, from\_date, to\_date, reason | shifts current\_period\_end by the frozen days |
 | `billing_period` | id, membership\_id, period\_start, period\_end, amount\_due\_clp, due\_date | generated nightly; the thing reminders point at |
-| `ledger_entry` | id, gym\_id, membership\_id, billing\_period\_id, amount\_clp, kind, status, method, claimed\_by, claimed\_at, validated\_by, validated\_at, proof\_object\_key, bank\_tx\_ref, note | kind ∈ charge, payment, adjustment, refund; status ∈ pending, validated, rejected; append-only |
+| `ledger_entry` | id, gym\_id, membership\_id, billing\_period\_id, amount\_clp, kind, status, method, claimed\_by, claimed\_at, validated\_by, validated\_at, proof\_object\_key, bank\_tx\_ref, note | kind ∈ charge, payment, adjustment, refund; status ∈ pending, validated, rejected; method ∈ cash, transfer, other, or none; append-only |
 | `class_type` | id, gym\_id, name, program, credit\_cost | program ∈ adults, kids, competition, … (per gym) |
 | `session` | id, gym\_id, class\_type\_id, starts\_at, coach\_id, topic, notes | one row per class actually held |
 | `attendance` | session\_id, membership\_id, marked\_by, marked\_at, credits\_consumed | unique (session, membership) |
@@ -88,7 +88,7 @@ stateDiagram-v2
     Rejected --> [*]
 ```
 
-Membership moves right as time passes and only moves back to Active when a payment is validated; a freeze is a side trip that shifts the due date by the frozen days. A payment entry is created pending by a student's proof upload or an admin's cash record, and becomes validated by an admin tap or, in v2, a bank match.
+Membership moves right as time passes and only moves back to Active when a payment is validated; a freeze is a side trip that shifts the due date by the frozen days. A payment entry is created pending by a student's proof upload, and becomes validated by an admin tap or, in v2, a bank match. A payment an admin records (cash, a transfer they saw arrive, or other) has no proof to check, so it is created validated by that admin.
 
 Rules the diagram does not show:
 
