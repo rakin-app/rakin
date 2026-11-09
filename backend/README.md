@@ -125,7 +125,7 @@ One payer, N dependents: a parent who pays for their kids, who have no phone ([s
 
 The family routes take any staff role, like the rest of the people API. A dependent has one guardian in a gym, and links are one level deep: a guardian is nobody's dependent and a dependent nobody's guardian. Either refusal is a 409, `{"detail": {"code": "has_guardian"}}` or `{"detail": {"code": "one_level"}}`; linking someone to themselves is a 422. A new dependent has no phone, so there is no identity to find elsewhere: each is a new person, in this gym only.
 
-`/api/me` answers only about the person acting, so any session in a gym may use it, member or staff; it is the one group `tests/test_roles.py` lets a member reach. A guardian reads their dependents' ledger entries through `ledger_entry_own` (migration `0010`), which lets anyone read the entries of their own memberships and their dependents', and nothing more; every other entry and every write stays with an owner or admin (`0006`), but for the pending payment a person claims with a transfer proof (`0012`, see Transfer proofs). `owed_clp` settles each period the way `app.domain.billing` does; `v_balance` (#34) may replace it. Grade and attendance join each dependent once their tables exist (#48, #44).
+`/api/me` answers only about the person acting, so any session in a gym may use it, member or staff; it is the one group `tests/test_roles.py` lets a member reach. A guardian reads their dependents' ledger entries through `ledger_entry_own` (migration `0010`), which lets anyone read the entries of their own memberships and their dependents', and nothing more; every other entry and every write stays with an owner or admin (`0006`), but for the pending payment a person claims with a transfer proof (`0012`, see Transfer proofs). `owed_clp` settles each period the way `app.domain.billing` does. It is not `v_balance`, which nets every validated entry, so a charge written ahead of its due date already counts there. Grade and attendance join each dependent once their tables exist (#48, #44).
 
 Every notice about someone goes through `app.contacts.contact_for`, which answers with the guardian's own record in this gym when there is one: kids never receive messages, and may have no phone or email to send to.
 
@@ -240,6 +240,16 @@ A cancelled `membership` is final: a trigger rejects any `UPDATE` of it for ever
 Grants name each table; `rakin_app` has no privilege on `alembic_version`. A new table gets its `GRANT` (and, if it carries `gym_id`, its RLS policy) in the migration that creates it.
 
 The Postgres tests create, bootstrap and drop a throwaway database on the `TEST_DATABASE_URL` server, so that URL must be a superuser.
+
+## Reporting views
+
+Derived views over the ledger (`0014`, [spec](../docs/technical.md#domain-model)), each `WITH (security_invoker = true)`, so they read as whoever queries them and every table underneath keeps its RLS. Each is built from `ledger_entry` rows, so a coach, who reads no entries (`0006`), gets no row from any of them, and a member reads only their own and their dependents' (`0010`). Only validated entries count.
+
+- `v_overdue`: a billing period with a validated charge, a due date before today in the gym's timezone, and validated payments and adjustments short of its amount due. Columns: `gym_id`, `billing_period_id`, `membership_id`, `person_id`, `membership_status`, `period_start`, `period_end`, `due_date`, `amount_due_clp`, `paid_clp`, `outstanding_clp`, `days_overdue`. Lapsed and cancelled memberships keep their unpaid periods there; the owner's "Vencido" counts the `active` rows.
+- `v_balance`: per membership with ledger entries, `balance_clp`: charges and refunds less payments and the adjustments on a period. Positive is owed, negative is credit. An adjustment with no period is an overpayment's carried credit, which its payment already counts, so it is left out.
+- `v_monthly_income`: per gym and calendar month (`month`, its first day) in the gym's timezone, `income_clp` and `payments`: the validated payments, by the month each was validated. It is the gym's income only for an owner or admin; a member reads the sum of their own and their dependents' payments under the same name, so the dashboard reads it as staff.
+
+`v_inactive` (last attendance more than N days ago) comes with the attendance table (#41).
 
 ## Seed data
 
