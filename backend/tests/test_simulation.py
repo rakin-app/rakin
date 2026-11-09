@@ -22,6 +22,8 @@ The invariants:
 - lapses match grace rules: a membership lapses on exactly the first day the rules say
   it should, stated here independently of `app.domain`, with one `lapsed` event that
   day, and nothing else changes status;
+- freezes end on time: a frozen membership is Active again on the day its freeze ends,
+  with one `unfrozen` event that day, and from then on lapses as any Active one does;
 - DST dates are correct: each window crosses a Santiago clock change, both runs of a
   day read that same date, and `job_run` ends with one succeeded row per job for each
   day of the window, none missing or doubled.
@@ -37,7 +39,7 @@ import random
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -47,7 +49,7 @@ import pytest
 from freezegun import freeze_time
 
 from app.domain.dates import start_of_local_day
-from app.jobs import billing, daily, lapse
+from app.jobs import billing, daily, freezes, lapse
 from app.jobs.runner import Outcome
 from app.seed import load
 from app.seed.build import GYM_ID, build, seed_id
@@ -61,7 +63,7 @@ DAYS = 90
 # Santiago springs forward on 6 Sep 2026 (midnight is skipped) and falls back on
 # 4 Apr 2027 (the last hour of 3 Apr repeats).
 WINDOWS = [date(2026, 8, 1), date(2027, 2, 1)]
-JOBS = [billing.NAME, lapse.NAME]
+JOBS = [freezes.NAME, billing.NAME, lapse.NAME]
 # Periods are generated this many days before they fall due (docs/technical.md); not
 # `app.domain.billing.GENERATE_AHEAD_DAYS`, which is what is being checked.
 AHEAD_DAYS = 7
@@ -104,6 +106,9 @@ class State:
     periods: list[Period]
     entries: list[Entry]
     lapsed_on: dict[uuid.UUID, list[date]]
+    unfrozen_on: dict[uuid.UUID, list[date]]
+    # Each membership's latest freeze's end.
+    frozen_until: dict[uuid.UUID, date]
     balances: dict[uuid.UUID, int]
     grace: int
 
@@ -171,18 +176,33 @@ def fetch_state(db: Database) -> State:
                     " FROM ledger_entry"
                 )
             ]
-            lapsed_on: dict[uuid.UUID, list[date]] = defaultdict(list)
+            events: dict[str, dict[uuid.UUID, list[date]]] = defaultdict(lambda: defaultdict(list))
             for r in await conn.fetch(
-                "SELECT membership_id, occurred_on FROM plan_event WHERE kind = 'lapsed'"
-                " ORDER BY occurred_on"
+                "SELECT kind, membership_id, occurred_on FROM plan_event ORDER BY occurred_on"
             ):
-                lapsed_on[r[0]].append(r[1])
+                events[r[0]][r[1]].append(r[2])
+            frozen_until = {
+                r[0]: r[1]
+                for r in await conn.fetch(
+                    "SELECT DISTINCT ON (membership_id) membership_id, to_date"
+                    " FROM membership_freeze ORDER BY membership_id, from_date DESC"
+                )
+            }
             balances = {
                 r[0]: r[1]
                 for r in await conn.fetch("SELECT membership_id, balance_clp FROM v_balance")
             }
             grace = await conn.fetchval("SELECT (settings ->> 'grace_days')::int FROM gym")
-        return State(members, periods, entries, dict(lapsed_on), balances, grace)
+        return State(
+            members,
+            periods,
+            entries,
+            dict(events["lapsed"]),
+            dict(events["unfrozen"]),
+            frozen_until,
+            balances,
+            grace,
+        )
 
     state: State = run(db.owner_url, go)
     return state
@@ -306,10 +326,20 @@ def should_lapse(state: State, member_id: uuid.UUID, member: Member, day: date) 
 
 
 def check_lapses(before: State, after: State, day: date) -> list[uuid.UUID]:
-    """The memberships that lapsed on `day`, having checked each one should have."""
+    """The memberships that lapsed on `day`, having checked each one should have.
+
+    A freeze ends before anything lapses, so a membership unfrozen on `day` is held to
+    the rules for an Active one from that day on."""
     lapsed = []
     for member_id, was in before.members.items():
         now = after.members[member_id]
+        unfrozen = was.status == "frozen" and after.frozen_until[member_id] <= day
+        assert after.unfrozen_on.get(member_id, []) == [
+            *before.unfrozen_on.get(member_id, []),
+            *([day] if unfrozen else []),
+        ], member_id
+        if unfrozen:
+            was = replace(was, status="active")
         if was.status in ("active", "trial"):
             due = should_lapse(after, member_id, was, day)
             assert (now.status == "lapsed") == due, (member_id, was, now, day)
@@ -377,3 +407,4 @@ def test_ninety_days_of_nightly_jobs(sim: Simulation) -> None:
     assert len(state.periods) > len(build(sim.start).billing_periods)
     assert paid > 0
     assert {"monthly", "credits", "trial"} <= set(lapsed), lapsed
+    assert state.unfrozen_on, "no freeze ended"

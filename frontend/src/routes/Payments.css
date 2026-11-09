@@ -210,6 +210,13 @@
   border-bottom: 0;
 }
 
+/* A freeze moves no money: a sunken row in muted italics, set apart from the entries. */
+.payments__freeze td {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 .payments__muted {
   color: var(--color-text-muted);
   white-space: nowrap;

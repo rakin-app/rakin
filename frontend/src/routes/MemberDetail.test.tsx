@@ -1,10 +1,11 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Membership, MembershipLedger, OpenPeriod, Person, TimelineEntry } from '../api/member'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
+import { isoDay, shortDay } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 
@@ -30,6 +31,7 @@ const MONTHLY: Membership = {
   started_on: '2024-03-30',
   current_period_end: '2026-10-29',
   credits_remaining: null,
+  freeze: null,
 }
 
 const OCTOBER: OpenPeriod = {
@@ -84,6 +86,7 @@ const LEDGER: MembershipLedger = {
     }),
     entry({ id: 'credit', kind: 'adjustment', amount_clp: 5000, note: 'Pagó $50.000; quedan $5.000 a favor' }),
   ],
+  freezes: [],
 }
 
 type Call = { method: string; path: string; body: unknown }
@@ -95,11 +98,14 @@ type Stub = {
   memberships?: Membership[]
   ledger?: MembershipLedger
   payment?: Answer
+  // The freeze's answer; by default the membership comes back frozen until the day asked.
+  freeze?: Answer
 }
 
-function stubApi({ role = 'owner', person, memberships = [MONTHLY], ledger = LEDGER, payment }: Stub = {}) {
+function stubApi({ role = 'owner', person, memberships = [MONTHLY], ledger = LEDGER, payment, freeze }: Stub = {}) {
   const calls: Call[] = []
   let current = ledger
+  let members = memberships
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input, init) => {
@@ -120,12 +126,23 @@ function stubApi({ role = 'owner', person, memberships = [MONTHLY], ledger = LED
     if (path === '/api/me/role') return { body: { role } }
     if (path === '/api/ledger/pending') return { body: { count: 0 } }
     if (path === '/api/people/felipe') return person ?? { body: FELIPE }
-    if (path === '/api/memberships' && url.searchParams.get('person_id') === 'felipe') return { body: memberships }
+    if (path === '/api/memberships' && url.searchParams.get('person_id') === 'felipe') return { body: members }
+    if (path === '/api/memberships/m-felipe/freeze' && method === 'POST') {
+      if (freeze) return freeze
+      const asked = calls.at(-1)!.body as { to_date: string; reason: string }
+      const frozen: Membership = {
+        ...MONTHLY,
+        status: 'frozen',
+        freeze: { id: 'f1', from_date: isoDay(new Date().toISOString()), ...asked },
+      }
+      members = [frozen]
+      return { body: frozen }
+    }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
     if (path === '/api/people/felipe/family') return { body: { guardian: null, dependents: [{ id: 'kid', name: 'Tomás Díaz' }] } }
     if (path === '/api/ledger/payments' && method === 'POST') {
       if (payment && (payment.status ?? 201) >= 400) return payment
-      current = { open_periods: [], owed_clp: 0, entries: current.entries }
+      current = { ...current, open_periods: [], owed_clp: 0 }
       return payment ?? { status: 201, body: { credit: null, period: { outstanding_clp: 0, closed: true } } }
     }
     return { status: 404, body: { detail: 'Not Found' } }
@@ -244,6 +261,91 @@ describe('Ficha de alumno', () => {
     expect(screen.queryByRole('button', { name: copy.record })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: copy.ledger.title })).not.toBeInTheDocument()
     expect(calls.some((c) => c.path.startsWith('/api/ledger/memberships'))).toBe(false)
+  })
+
+  it('freezes the membership until the day chosen, with a reason', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+    const card = await money()
+    const until = isoDay(new Date(Date.now() + 15 * 86_400_000).toISOString())
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    const form = screen.getByRole('form', { name: copy.freezeForm.title })
+    fireEvent.change(within(form).getByLabelText(copy.freezeForm.until), { target: { value: until } })
+    await userEvent.type(within(form).getByLabelText(copy.freezeForm.reason), '  Lesión de rodilla ')
+    await userEvent.click(within(form).getByRole('button', { name: copy.freezeForm.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.freezeForm.done(shortDay(until)))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/memberships/m-felipe/freeze', body: { to_date: until, reason: 'Lesión de rodilla' } },
+    ])
+    // Read again, the header says it is frozen, and it cannot be frozen twice.
+    expect(await within(card).findByText(copy.frozenUntil(shortDay(until)))).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: copy.freeze })).toBeDisabled()
+  })
+
+  it('asks for the day it ends and a reason before freezing', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    await userEvent.click(screen.getByRole('button', { name: copy.freezeForm.submit }))
+
+    const alerts = await screen.findAllByRole('alert')
+    expect(alerts.map((a) => a.textContent)).toEqual([copy.freezeForm.untilNeeded, copy.freezeForm.reasonNeeded])
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+  })
+
+  it('says so when the membership can no longer be frozen', async () => {
+    stubApi({ freeze: { status: 409, body: { detail: 'membership: lapsed → frozen' } } })
+    renderAt(PATH)
+    const card = await money()
+    const until = isoDay(new Date(Date.now() + 15 * 86_400_000).toISOString())
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    fireEvent.change(screen.getByLabelText(copy.freezeForm.until), { target: { value: until } })
+    await userEvent.type(screen.getByLabelText(copy.freezeForm.reason), 'Viaje')
+    await userEvent.click(screen.getByRole('button', { name: copy.freezeForm.submit }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.freezeForm.refused.notActive)
+  })
+
+  it('shows a frozen membership in the header, to a coach as well', async () => {
+    const frozen: Membership = {
+      ...MONTHLY,
+      status: 'frozen',
+      freeze: { id: 'f1', from_date: '2026-11-03', to_date: '2026-11-24', reason: 'Viaje' },
+    }
+    stubApi({ role: 'coach', memberships: [frozen] })
+    renderAt(PATH)
+
+    const card = await money()
+    expect(within(card).getByText(copy.frozenUntil('24 nov'))).toBeInTheDocument()
+    expect(within(card).queryByText(copy.overdue(9))).not.toBeInTheDocument()
+  })
+
+  it('lists freezes in the ledger as lines with no amount', async () => {
+    const line = { freeze_id: 'f1', from_date: '2026-10-10', to_date: '2026-10-24', reason: 'Viaje' }
+    stubApi({
+      ledger: {
+        ...LEDGER,
+        entries: LEDGER.entries.slice(0, 2),
+        freezes: [
+          { ...line, edge: 'end', day: '2026-10-24' },
+          { ...line, edge: 'start', day: '2026-10-10' },
+        ],
+      },
+    })
+    renderAt(PATH)
+
+    const ledger = await screen.findByRole('region', { name: copy.ledger.title })
+    expect(within(ledger).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      `${copy.ledger.freezeEnd}Viaje · 24 oct${es.common.noAmount}`,
+      'Cargo octubregenerado 23 oct · sin pago$45.000',
+      `${copy.ledger.freezeStart}Viaje · vuelve el 24 oct · 10 oct${es.common.noAmount}`,
+      'Pago septiembretransferencia · validó Martín · 2 oct$45.000',
+    ])
   })
 
   it('shows who they pay for', async () => {

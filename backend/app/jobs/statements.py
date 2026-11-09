@@ -10,7 +10,9 @@ the same run and before this one, so a period is usually stated the day it appea
 A period is stated once: one whose statement `message_log` records as sent is
 skipped. One that failed (an address the gym typed wrong, the relay down) is tried
 again on each later run until its due date. A period of a cancelled membership, or
-one paid in full meanwhile, is not stated at all.
+one paid in full meanwhile, is not stated at all, and neither is a frozen one's while
+the freeze lasts: it moved the periods it reaches past its end, and the statement
+goes out when they come due again.
 
 Each gym's statements are read in its savepoint and sent once every gym has been
 read, so no savepoint is open while the relay answers. The runner's transaction for
@@ -55,7 +57,7 @@ LEFT JOIN LATERAL (
       AND e.kind = ANY($3::text[])
 ) paid ON true
 WHERE bp.due_date BETWEEN $1 AND $2
-  AND m.status <> 'cancelled'
+  AND m.status NOT IN ('cancelled', 'frozen')
   AND coalesce(paid.amount, 0) < bp.amount_due_clp
   AND NOT EXISTS (
       SELECT FROM message_log l

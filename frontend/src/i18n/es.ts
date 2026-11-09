@@ -241,12 +241,30 @@ export const es = {
       dueDay: (plan: string, day: number) => `${plan} · vence el ${day}`,
       until: (plan: string, day: string) => `${plan} · hasta el ${day}`,
       overdue: (days: number) => `Vencido ${days} d`,
+      frozenUntil: (day: string) => `Congelado · vuelve el ${day}`,
       pendingMonth: (month: string) => `${month} pendiente`,
       pendingPeriods: (n: number) => `${n} períodos pendientes`,
       nextDue: (day: string) => `vence el ${day}`,
       upToDate: 'al día',
       ledgerError: 'No pudimos cargar los pagos.',
       record: 'Registrar pago',
+      freeze: 'Congelar',
+      freezeForm: {
+        title: 'Congelar membresía',
+        until: 'Vuelve el',
+        untilHint: 'Desde hoy hasta ese día no se cobra: el próximo pago se corre esos días.',
+        reason: 'Motivo',
+        submit: 'Confirmar congelación',
+        cancel: 'Cancelar',
+        working: 'Guardando…',
+        untilNeeded: 'Elige un día después de hoy.',
+        reasonNeeded: 'Escribe el motivo.',
+        done: (day: string) => `Membresía congelada. Vuelve el ${day}.`,
+        refused: {
+          notActive: 'Solo una membresía activa se puede congelar.',
+          failed: 'No pudimos congelar la membresía. Inténtalo de nuevo.',
+        },
+      },
       form: {
         title: 'Registrar pago',
         period: 'Período',
@@ -280,6 +298,9 @@ export const es = {
         pending: 'por validar',
         rejected: 'rechazado',
         method: { transfer: 'transferencia', cash: 'efectivo', other: 'otro' },
+        freezeStart: 'Congelación',
+        freezeEnd: 'Fin de congelación',
+        returns: (day: string) => `vuelve el ${day}`,
       },
     },
     classes: { title: 'Clases' },
@@ -316,7 +337,7 @@ export const es = {
         status: 'Estado',
         amount: 'Monto',
       },
-      kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución' },
+      kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
       method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },
       credit: 'A favor',
       status: {
@@ -327,6 +348,8 @@ export const es = {
         paid: 'Pagado',
         open: (day: string) => `Abierto · vence ${day}`,
         overdue: (days: number) => `Vencido ${days} d`,
+        freezeStart: 'Inicio',
+        freezeEnd: 'Fin',
       },
       empty: 'No hay asientos para mostrar.',
       showing: (shown: number, total: number, month: string | null) =>
@@ -473,6 +496,9 @@ export const es = {
   common: {
     comingSoon: 'Esta sección todavía no está lista.',
     clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
+    // Where an amount would go on a line that moves no money.
+    noAmount: '—',
+    span: (from: string, to: string) => `${from} – ${to}`,
     // An ISO day, `2026-12-01`, as Chile writes it: `01-12-2026`.
     day: (iso: string) => iso.split('-').reverse().join('-'),
     // An ISO day as a sentence says it: `10 de noviembre`.

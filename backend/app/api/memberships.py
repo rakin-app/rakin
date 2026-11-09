@@ -1,17 +1,21 @@
-"""The current gym's memberships: start one, change its plan, cancel it, read them.
+"""The current gym's memberships: start one, change its plan, freeze or cancel it,
+read them.
 
 A membership starts on a calendar day in the gym's timezone, and its anchor day and
 `current_period_end` follow from its plan (`app.domain.membership.start`). A plan
 change waits for the next period: it is stored as pending, from the first day not yet
 paid for or billed, and billing applies it then (migration 0009). Proration is v2.
-Cancelling is terminal and needs a reason; the database refuses any later change to
-a cancelled row.
+A freeze (#26) runs from today until the day it ends, with a reason, and moves the
+due date past the frozen days as it starts: the paid-through date, the billing periods
+not yet started and a pending plan change all move by them, and the nightly `freezes`
+job returns the membership to Active on the day it ends. Cancelling is terminal and
+needs a reason; the database refuses any later change to a cancelled row.
 
 Starting one emails the member, or their guardian, a welcome: how to pay and how to
 upload a proof, with their first sign-in link to the student page.
 
 Any staff role may read memberships; only an owner or admin may start, change or
-cancel one, since that sets what a member is charged. Members may not use it at all.
+freeze or cancel one, since that sets what a member is charged. Members may not use it at all.
 """
 
 import logging
@@ -32,6 +36,8 @@ from app.notices import WELCOME, Notice, Notices, get_notices
 from app.roles import AdminSession, StaffSession
 from app.schemas.memberships import (
     Cancellation,
+    Freeze,
+    FreezeCreate,
     Membership,
     MembershipCreate,
     PendingPlanChange,
@@ -51,11 +57,18 @@ SELECT_MEMBERSHIP = """
            m.status, m.anchor_day, (m.started_at AT TIME ZONE g.timezone)::date AS started_on,
            m.current_period_end, m.credits_remaining, m.discount_pct,
            m.next_plan_id, np.name AS next_plan_name, m.next_plan_from,
-           m.cancel_reason, m.cancelled_at, m.created_at
+           m.cancel_reason, m.cancelled_at, m.created_at,
+           fz.id AS freeze_id, fz.from_date AS freeze_from, fz.to_date AS freeze_to,
+           fz.reason AS freeze_reason
     FROM membership m
     JOIN gym g ON g.id = m.gym_id
     JOIN plan pl ON pl.id = m.plan_id
     LEFT JOIN plan np ON np.id = m.next_plan_id
+    LEFT JOIN LATERAL (
+        SELECT f.id, f.from_date, f.to_date, f.reason FROM membership_freeze f
+        WHERE f.membership_id = m.id AND m.status = 'frozen'
+        ORDER BY f.from_date DESC LIMIT 1
+    ) fz ON true
 """
 
 SELECT_PLAN = """
@@ -73,7 +86,16 @@ def _membership(row: Any) -> Membership:
         pending = PendingPlanChange(
             plan_id=next_plan_id, plan_name=next_plan_name, starts_on=next_plan_from
         )
-    return Membership(**fields, next_plan=pending)
+    freeze_id = fields.pop("freeze_id")
+    freeze_from = fields.pop("freeze_from")
+    freeze_to = fields.pop("freeze_to")
+    freeze_reason = fields.pop("freeze_reason")
+    freeze = None
+    if freeze_id is not None:
+        freeze = Freeze(
+            id=freeze_id, from_date=freeze_from, to_date=freeze_to, reason=freeze_reason
+        )
+    return Membership(**fields, next_plan=pending, freeze=freeze)
 
 
 async def _get(session: AsyncSession, membership_id: uuid.UUID) -> Membership:
@@ -288,6 +310,93 @@ async def change_plan(
         text("UPDATE membership SET next_plan_id = :plan, next_plan_from = :from WHERE id = :id"),
         {"plan": body.plan_id, "from": starts_on, "id": membership_id},
     )
+    return await _get(session, membership_id)
+
+
+# The billing periods a freeze moves, latest first: each moves past the next one's start
+# before that one moves, so no two share a start on the way.
+PERIODS_FROM = text(
+    "SELECT id FROM billing_period WHERE membership_id = :id AND period_start >= :from"
+    " ORDER BY period_start DESC FOR UPDATE"
+)
+
+SHIFT_PERIOD = text(
+    "UPDATE billing_period SET period_start = period_start + CAST(:days AS integer),"
+    " period_end = period_end + CAST(:days AS integer),"
+    " due_date = due_date + CAST(:days AS integer) WHERE id = :id"
+)
+
+# A pending plan change waits for the first day not yet billed, which moves by the
+# frozen days with everything else.
+FREEZE_MEMBERSHIP = text(
+    "UPDATE membership SET status = :status, current_period_end = :end, anchor_day = :anchor,"
+    " next_plan_from = next_plan_from + CAST(:days AS integer) WHERE id = :id"
+)
+
+INSERT_FREEZE = text(
+    "INSERT INTO membership_freeze (gym_id, membership_id, from_date, to_date, reason, created_by)"
+    " VALUES (current_setting('app.gym_id')::uuid, :id, :from, :to, :reason, :by)"
+)
+
+INSERT_FROZEN_EVENT = text(
+    "INSERT INTO plan_event (gym_id, membership_id, kind, occurred_on)"
+    " VALUES (current_setting('app.gym_id')::uuid, :id, 'frozen', :on)"
+    " ON CONFLICT (membership_id, kind, occurred_on) DO NOTHING"
+)
+
+
+@router.post("/{membership_id}/freeze")
+async def freeze_membership(
+    membership_id: uuid.UUID,
+    body: FreezeCreate,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: AdminSession,
+) -> Membership:
+    """Frozen from today, in the gym's timezone, until `to_date`; a `frozen` plan event
+    is written with it, for the plan-event emails."""
+    current, _ = await _locked(session, membership_id)
+    timezone = await session.scalar(
+        text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
+    )
+    today = local_date(datetime.now(UTC), timezone)
+    billed_before = await session.scalar(
+        text(
+            "SELECT max(period_end) FROM billing_period"
+            " WHERE membership_id = :id AND period_start < :from"
+        ),
+        {"id": membership_id, "from": today},
+    )
+    try:
+        frozen = domain.freeze(current, today, body.to_date, billed_through=billed_before)
+    except InvalidTransition as error:
+        raise _conflict(error) from None
+    except (ValueError, OverflowError) as error:
+        raise _unprocessable(error) from None
+
+    days = (body.to_date - today).days
+    for row in await session.execute(PERIODS_FROM, {"id": membership_id, "from": today}):
+        await session.execute(SHIFT_PERIOD, {"id": row.id, "days": days})
+    await session.execute(
+        FREEZE_MEMBERSHIP,
+        {
+            "id": membership_id,
+            "status": frozen.status.value,
+            "end": frozen.current_period_end,
+            "anchor": frozen.anchor_day,
+            "days": days,
+        },
+    )
+    await session.execute(
+        INSERT_FREEZE,
+        {
+            "id": membership_id,
+            "from": today,
+            "to": body.to_date,
+            "reason": body.reason,
+            "by": tenant.person_id,
+        },
+    )
+    await session.execute(INSERT_FROZEN_EVENT, {"id": membership_id, "on": today})
     return await _get(session, membership_id)
 
 

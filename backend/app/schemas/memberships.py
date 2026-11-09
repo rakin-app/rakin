@@ -1,8 +1,9 @@
-"""A person's membership of a plan: start one, change its plan, cancel it, read it.
+"""A person's membership of a plan: start one, change its plan, freeze or cancel it,
+read it.
 
 Dates are calendar dates in the gym's timezone (`app.domain.dates`): `started_on`,
-`current_period_end` (paid through, or the last day of a pack or trial) and the day
-a pending plan change takes effect.
+`current_period_end` (paid through, or the last day of a pack or trial), the day a
+pending plan change takes effect, and a freeze's first and last days.
 """
 
 import uuid
@@ -57,6 +58,23 @@ class Cancellation(BaseModel):
     reason: Reason
 
 
+class FreezeCreate(BaseModel):
+    """A freeze from today until `to_date`, the day the membership is Active again."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    to_date: date
+    reason: Reason
+
+
+class Freeze(BaseModel):
+    id: uuid.UUID
+    # Its first day, and the day it ends, when the membership is Active again.
+    from_date: date
+    to_date: date
+    reason: str
+
+
 class PendingPlanChange(BaseModel):
     plan_id: uuid.UUID
     plan_name: str
@@ -78,6 +96,8 @@ class Membership(BaseModel):
     credits_remaining: int | None
     discount_pct: int
     next_plan: PendingPlanChange | None
+    # The freeze it is in, while Frozen.
+    freeze: Freeze | None
     cancel_reason: str | None
     cancelled_at: datetime | None
     created_at: datetime
