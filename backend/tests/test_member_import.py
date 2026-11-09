@@ -9,6 +9,7 @@ sheet, `app/seed/demo_import.csv` and its XLSX twin, is dry-run against `make se
 import io
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Any
 
@@ -522,12 +523,22 @@ def demo_gym(db: Database) -> dict[str, str]:
     return as_gym(GYM_ID, seed_id("person", "martin"))  # Martín Fuentes
 
 
+class _DemoClock(datetime):
+    """The import's clock, held at the day the demo sheet was written."""
+
+    @classmethod
+    def now(cls, tz: tzinfo | None = None) -> "_DemoClock":
+        return cls(2026, 11, 9, 15, tzinfo=UTC).astimezone(tz)
+
+
 @pg
 @pytest.mark.parametrize("name", ["demo_import.csv", "demo_import.xlsx"])
 def test_the_demo_sheet_dry_runs_against_the_seeded_gym(
-    client: TestClient, demo_gym: dict[str, str], name: str
+    client: TestClient, demo_gym: dict[str, str], name: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Its dates are fixed: they stay inside the import's window until 2030.
+    # The sheet's dates are fixed, and the import refuses a start or due date more than
+    # 5 years from today: as written they all hold until 4 November 2029.
+    monkeypatch.setattr(member_import, "datetime", _DemoClock)
     response = upload(client, GYM_ID, (DEMO / name).read_bytes(), **demo_gym)
     assert response.status_code == 200, response.text
     sheet = response.json()

@@ -327,7 +327,7 @@ The loader connects as the owner (`MIGRATION_DATABASE_URL`) with `app.gym_id` se
 2. Alumnos → Importar alumnos, upload either file and keep the suggested columns. Every plan matches by name, so there is nothing to choose.
 3. Check without saving. The dry run reports 33 rows to import and 5 refused: 34 people (2 of them guardians named only on their children's rows), 8 guardian links and 28 memberships. The refused rows show one of each refusal: a missing name, a landline, an unknown plan ("Plan familiar"), a due date before the start, and a phone already used higher up. Felipe Díaz is already in the seed, so the row is listed under "Ya existen": the sheet's email is not applied. Julián Ortiz joins Camila Ortiz, a seeded guardian, and Valentín Godoy is a teenager with their own phone and a guardian.
 
-Importing it for real and then again creates nothing the second time. The dates are fixed in the file, so some memberships come in already overdue, more of them as time goes on. `tests/test_member_import.py` holds the dry run to these numbers.
+Importing it for real and then again creates nothing the second time. The dates are fixed in the file, so some memberships come in already overdue, more of them as time goes on. The import refuses a start or due date more than 5 years from today, and the sheet's run from 4 November 2024 to 1 March 2027, so it imports as described until 4 November 2029; after that, bring its oldest dates forward. `tests/test_member_import.py` holds the dry run to these numbers, with the import's clock pinned to the day the sheet was written.
 
 ## Nightly jobs
 
