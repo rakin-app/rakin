@@ -39,7 +39,10 @@ const UPLOAD_URL = 'http://storage.test/rakin/proofs/key?X-Amz-Signature=abc'
 type Call = { method: string; url: string; body: unknown; headers: Headers }
 type Answer = { status?: number; body?: unknown }
 
-function stubApi(periods: OpenPeriod[], answers: { put?: number; claim?: Answer; pending?: Answer } = {}) {
+function stubApi(
+  periods: OpenPeriod[],
+  answers: { put?: number; claim?: Answer; pending?: Answer; role?: string | null } = {},
+) {
   const calls: Call[] = []
   vi.stubGlobal(
     'fetch',
@@ -65,6 +68,7 @@ function stubApi(periods: OpenPeriod[], answers: { put?: number; claim?: Answer;
     }
     if (url.pathname === '/api/me/payments') return answers.claim ?? { status: 201, body: {} }
     if (url.pathname === '/api/ledger/pending') return answers.pending ?? { body: { count: 0 } }
+    if (url.pathname === '/api/me/role') return { body: { role: answers.role === undefined ? 'owner' : answers.role } }
     return { status: 404, body: { detail: 'Not Found' } }
   }
 
@@ -169,6 +173,34 @@ describe('Subir comprobante', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.refused.paid)
   })
 
+  it('uploads a HEIC the picker gave no type as image/heic', async () => {
+    const calls = stubApi([ANA])
+    renderAt('/me')
+    const heic = new File([new Uint8Array(512)], 'IMG_0042.HEIC', { type: '' })
+
+    await userEvent.upload(await screen.findByLabelText(copy.choose), heic)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+
+    await screen.findByRole('status')
+    expect(calls.find((c) => c.url.endsWith('/api/me/proofs'))?.body).toEqual({
+      content_type: 'image/heic',
+      size_bytes: 512,
+    })
+  })
+
+  it('refuses a file with no type and no known extension', async () => {
+    const calls = stubApi([ANA])
+    renderAt('/me')
+
+    await userEvent.upload(await screen.findByLabelText(copy.choose), new File(['x'], 'notes', { type: '' }), {
+      applyAccept: false,
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(copy.problem.type)
+    expect(calls.filter((c) => c.method !== 'GET')).toEqual([])
+  })
+
   it('has nothing to pay', async () => {
     stubApi([])
     renderAt('/me')
@@ -189,15 +221,24 @@ describe('pending badge', () => {
     expect(within(payments).getByText('3')).toBeInTheDocument()
   })
 
-  it.each([
-    ['none are pending', { body: { count: 0 } }],
-    ['the role cannot read the ledger', { status: 403, body: { detail: 'forbidden' } }],
-  ])('shows nothing when %s', async (_, pending) => {
-    const calls = stubApi([], { pending })
+  it('shows nothing when none are pending', async () => {
+    const calls = stubApi([], { pending: { body: { count: 0 } }, role: 'admin' })
     renderAt('/admin')
 
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
     await vi.waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/ledger/pending'))).toBe(true))
+    expect(within(nav).getByRole('link', { name: es.nav.payments })).toHaveTextContent(/^Pagos$/)
+  })
+
+  it.each([['coach'], [null]])('never asks for the count as %s, who cannot read the ledger', async (role) => {
+    const calls = stubApi([], { pending: { body: { count: 3 } }, role })
+    renderAt('/admin')
+
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    await vi.waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/me/role'))).toBe(true))
+    // Give a mistaken request the chance to land before checking none did.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(calls.some((c) => c.url.endsWith('/api/ledger/pending'))).toBe(false)
     expect(within(nav).getByRole('link', { name: es.nav.payments })).toHaveTextContent(/^Pagos$/)
   })
 })

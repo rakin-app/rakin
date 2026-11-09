@@ -23,6 +23,7 @@ from pydantic import (
 from app.domain.membership import MembershipStatus
 from app.domain.phone import normalize_phone
 from app.domain.rut import normalize_rut
+from app.roles import Role
 
 # Enough to catch a typo or a phone in the email box; delivery is the real check.
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -123,3 +124,9 @@ class MemberPage(BaseModel):
     items: list[MemberRow]
     # Every match, not just this page's.
     total: int
+
+
+class MyRole(BaseModel):
+    """The person acting's role in the current gym; `None` for a member."""
+
+    role: Role | None

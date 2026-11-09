@@ -8,7 +8,7 @@ file is really there, so a failed upload never leaves a pending entry with nothi
 look at.
 
 Anyone signed in to a gym may claim for their own memberships and their dependents'
-(migration 0011 holds the database to the same). Each person's proofs live under their
+(migration 0012 holds the database to the same). Each person's proofs live under their
 own prefix, `proofs/<gym_id>/<person_id>/`, and a claim takes only a key from it.
 
 The claimant then gets a "proof received" email, or their guardian does
@@ -47,7 +47,7 @@ _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
 
 def proof_prefix(tenant: Tenant) -> str:
-    """Where `tenant`'s proofs are stored; migration 0011 checks the same prefix."""
+    """Where `tenant`'s proofs are stored; migration 0012 checks the same prefix."""
     return f"proofs/{tenant.gym_id}/{tenant.person_id}/"
 
 

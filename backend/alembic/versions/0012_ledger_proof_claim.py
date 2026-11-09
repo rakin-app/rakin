@@ -17,8 +17,8 @@ Validating or rejecting it stays an owner's or admin's (0006, #36).
 One proof backs one entry: `proof_object_key` is unique, so the same upload cannot be
 claimed twice, by a double tap or a replayed request.
 
-Revision ID: 0011
-Revises: 0010
+Revision ID: 0012
+Revises: 0011
 Create Date: 2026-11-09
 
 """
@@ -27,8 +27,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0011"
-down_revision: str | Sequence[str] | None = "0010"
+revision: str = "0012"
+down_revision: str | Sequence[str] | None = "0011"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

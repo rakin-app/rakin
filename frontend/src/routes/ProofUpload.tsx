@@ -147,7 +147,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
           id={ids.choose}
           className="visually-hidden proof__file"
           type="file"
-          accept={PROOF_TYPES.join(',')}
+          accept={[...PROOF_TYPES, '.heic', '.heif'].join(',')}
           aria-describedby={ids.hint}
           onChange={pickFile}
         />

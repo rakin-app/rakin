@@ -39,6 +39,8 @@ class ProofClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     billing_period_id: uuid.UUID
+    # Up to the price ceiling, and possibly more than is outstanding: what was paid
+    # beyond it becomes a credit when an admin validates the claim (#36).
     amount_clp: Amount
     proof_key: Annotated[str, Field(max_length=512)]
 

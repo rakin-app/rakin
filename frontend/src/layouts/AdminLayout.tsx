@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { myRoleQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
 import { ClassesIcon, PaymentsIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
@@ -26,9 +27,10 @@ const NAV_ITEMS: readonly NavItem[] = [
  * desktop ledger design. One <nav>, restyled by CSS, so both share a tab order.
  */
 export function AdminLayout() {
-  // Proofs waiting for review, on the Pagos tab. A coach is refused the ledger, so
-  // the query fails and no badge shows.
-  const pending = useQuery(pendingCountQuery())
+  // Proofs waiting for review, on the Pagos tab: asked for only by those who read
+  // the ledger, so a coach never polls a request that would be refused.
+  const role = useQuery(myRoleQuery())
+  const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
   const badge = pending.data ?? 0
 
   return (

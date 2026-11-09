@@ -29,11 +29,33 @@ type ProofUpload = {
 export const PROOF_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'] as const
 export const MAX_PROOF_BYTES = 10 * 1024 * 1024
 
+export type ProofType = (typeof PROOF_TYPES)[number]
+
+// Some pickers leave `file.type` empty for a type the browser has no name for: a
+// desktop Chrome picking an iPhone's `.heic` is the common one. The extension decides
+// then, still within `PROOF_TYPES`.
+const BY_EXTENSION: Record<string, ProofType> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heic',
+  pdf: 'application/pdf',
+}
+
+/** The proof type to upload `file` as, or null if it is not one. */
+export function proofContentType(file: File): ProofType | null {
+  if (file.type) return (PROOF_TYPES as readonly string[]).includes(file.type) ? (file.type as ProofType) : null
+  const extension = /\.([^.]+)$/.exec(file.name)?.[1]?.toLowerCase()
+  return (extension && BY_EXTENSION[extension]) || null
+}
+
 export type ProofProblem = 'type' | 'size' | 'empty'
 
 export function proofProblem(file: File): ProofProblem | null {
   if (file.size === 0) return 'empty'
-  if (!(PROOF_TYPES as readonly string[]).includes(file.type)) return 'type'
+  if (proofContentType(file) === null) return 'type'
   if (file.size > MAX_PROOF_BYTES) return 'size'
   return null
 }
@@ -69,9 +91,11 @@ export class UploadFailed extends Error {
  * pending payment recorded against its key.
  */
 export async function submitProof(file: File, periodId: string, amountClp: number): Promise<void> {
+  const contentType = proofContentType(file)
+  if (contentType === null) throw new Error(`not a proof type: ${file.name}`)
   const upload = await apiFetch<ProofUpload>('/api/me/proofs', {
     method: 'POST',
-    body: JSON.stringify({ content_type: file.type, size_bytes: file.size }),
+    body: JSON.stringify({ content_type: contentType, size_bytes: file.size }),
   })
   // Not `apiFetch`: the URL may be the storage's own origin. The browser sends
   // the file's size as Content-Length, which the signature covers.
