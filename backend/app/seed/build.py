@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from app.domain.billing import overpayment_note
 from app.domain.dates import add_months
 from app.domain.ledger import EntryKind, EntryStatus
-from app.domain.membership import PlanKind
+from app.domain.membership import MembershipStatus, PlanKind
 from app.domain.rut import check_digit
 from app.seed.data import (
     BANK_ACCOUNT,
@@ -42,6 +42,7 @@ Row = dict[str, Any]
 
 NAMESPACE = uuid.UUID("0ac7a356-11a0-4d87-b85f-6c8398b269c3")
 ZONE = ZoneInfo(TIMEZONE)
+CANCEL_REASON = "Se cambió de ciudad"
 
 
 def seed_id(*parts: str) -> uuid.UUID:
@@ -140,6 +141,7 @@ class _Builder:
         self.people.append(
             _person(spec.key, spec.name, joined=since, kid=spec.is_kid, phone=spec.phone)
         )
+        cancelled = spec.status is MembershipStatus.CANCELLED
         credits = spec.credits_remaining
         if plan.kind is PlanKind.TRIAL:
             credits = plan.credits if credits is None else credits
@@ -156,6 +158,9 @@ class _Builder:
                 "credits_remaining": credits,
                 "discount_pct": spec.discount_pct,
                 "created_at": local(since),
+                # On the due date of the period they did not pay.
+                "cancel_reason": CANCEL_REASON if cancelled else None,
+                "cancelled_at": local(self.day(spec.due_in), 20) if cancelled else None,
             }
         )
         amount = plan.price_clp * (100 - spec.discount_pct) // 100
