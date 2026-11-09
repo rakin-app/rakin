@@ -4,6 +4,7 @@ Each test bills a gym of its own, made here with only the plans and memberships 
 names: the job bills every gym, so a test reads back only its own.
 """
 
+import logging
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
@@ -12,7 +13,7 @@ from typing import Any
 import asyncpg
 import pytest
 
-from app.jobs import billing, daily, run_due
+from app.jobs import Job, Outcome, billing, daily, run_due
 from tests.conftest import require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, throwaway_database
 
@@ -157,12 +158,13 @@ class Gym:
         )
 
 
-def generate(db: Database, day: date) -> None:
-    async def go(conn: asyncpg.Connection) -> None:
+def generate(db: Database, day: date) -> bool:
+    async def go(conn: asyncpg.Connection) -> bool:
         async with conn.transaction():
-            await billing.generate_billing_periods(conn, day)
+            return await billing.generate_billing_periods(conn, day)
 
-    run(db.owner_url, go)
+    complete: bool = run(db.owner_url, go)
+    return complete
 
 
 @pytest.fixture
@@ -317,3 +319,64 @@ def test_the_nightly_runner_runs_it(gym: Gym) -> None:
     run(gym.db.owner_url, go)
 
     assert len(gym.periods(member)) == 1
+
+
+@pytest.fixture
+def broken(db: Database) -> Iterator[tuple[Gym, uuid.UUID, uuid.UUID]]:
+    """A gym with a membership billed fine and one the schedule refuses: a pending change
+    to a credits plan, which only a hand edit could leave. Repaired afterwards, since
+    the job bills every gym in the module's database."""
+    gym = Gym(db)
+    fine = gym.member("signup", date(2026, 11, 12))
+    bad = gym.member("signup", date(2026, 11, 13))
+    gym.sql(
+        "UPDATE membership SET next_plan_id = $2, next_plan_from = '2026-11-13' WHERE id = $1",
+        bad,
+        gym.plans["credits"],
+    )
+    yield gym, fine, bad
+    gym.sql("UPDATE membership SET next_plan_id = NULL, next_plan_from = NULL WHERE id = $1", bad)
+
+
+def test_a_gym_that_fails_is_rolled_back_and_the_others_are_billed(
+    db: Database, broken: tuple[Gym, uuid.UUID, uuid.UUID], caplog: pytest.LogCaptureFixture
+) -> None:
+    bad_gym, fine, bad = broken
+    other = Gym(db)
+    member = other.member("signup", date(2026, 11, 12))
+
+    with caplog.at_level(logging.INFO, logger="app.jobs.billing"):
+        assert generate(db, NOV_8) is False
+
+    assert len(other.periods(member)) == 1
+    # The whole failing gym is rolled back, its sound membership with it.
+    assert bad_gym.periods(fine) == []
+    assert bad_gym.periods(bad) == []
+    [failure] = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert failure.getMessage() == "billing a gym failed"
+    assert failure.__dict__["gym_id"] == str(bad_gym.id)
+    assert failure.__dict__["membership_id"] == str(bad)
+    assert failure.exc_info is not None
+
+
+def test_the_runner_fails_the_day_keeps_the_billed_gyms_and_retries(
+    db: Database, broken: tuple[Gym, uuid.UUID, uuid.UUID]
+) -> None:
+    bad_gym, fine, bad = broken
+    other = Gym(db)
+    member = other.member("signup", date(2026, 11, 12))
+    # A name of its own: `job_run` is shared with the other runner test in this module.
+    job = Job(f"billing-{uuid.uuid4().hex[:8]}", billing.generate_billing_periods)
+
+    async def go(conn: asyncpg.Connection) -> Outcome:
+        return (await run_due(conn, [job], NOV_8)).outcome
+
+    assert run(db.owner_url, go) is Outcome.FAILED
+    assert len(other.periods(member)) == 1
+
+    bad_gym.sql(
+        "UPDATE membership SET next_plan_id = NULL, next_plan_from = NULL WHERE id = $1", bad
+    )
+    assert run(db.owner_url, go) is Outcome.SUCCEEDED
+    assert len(other.periods(member)) == 1
+    assert len(bad_gym.periods(fine)) == 1

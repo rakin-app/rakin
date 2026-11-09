@@ -12,9 +12,23 @@ through, if later), so a second run on the same date finds nothing owed. The
 `(membership_id, period_start)` key backs that up: a period already there is skipped,
 and its charge with it.
 
-The run date is taken as each gym's local date, as for every job (`app.jobs`).
+On its first run a credits pack or drop-in with no period yet is charged once, with a
+period starting on the day it started, even if that day is past; a monthly or prepaid
+membership catches up from its paid-through date. That is accepted because no
+production data predates this job.
+
+Each gym is billed in a savepoint of its own. A gym that fails (a row the schedule
+refuses, say) is rolled back and logged with its id and the membership's, which
+Sentry receives; the other gyms are still billed, and the day is failed so the runner
+reports it and the next run retries it, finding nothing new owed for the gyms that
+were billed.
+
+There is one run date for every gym: the runner's, in `JOBS_TIMEZONE`. Only each
+membership's start date is read in its gym's timezone. A gym in another timezone
+would want its own local date; v1 has none.
 """
 
+import logging
 from datetime import date
 
 import asyncpg
@@ -23,6 +37,8 @@ from app.domain import billing
 from app.domain.billing import Billable, Plan
 from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
 from app.jobs.runner import Job
+
+logger = logging.getLogger(__name__)
 
 NAME = "billing_periods"
 
@@ -98,36 +114,70 @@ def _billable(row: asyncpg.Record) -> Billable:
     )
 
 
+class MembershipFailed(Exception):
+    """Billing one membership broke; the cause is chained."""
+
+    def __init__(self, membership_id: object) -> None:
+        super().__init__(f"billing membership {membership_id} failed")
+        self.membership_id = membership_id
+
+
 async def bill_gym(conn: asyncpg.Connection, day: date) -> int:
     """Generate the periods due by `day` plus the lead time in the gym in `app.gym_id`;
     the number of periods written."""
     written = 0
     for row in await conn.fetch(SELECT_BILLABLE):
-        owed = billing.due_periods(_billable(row), day)
-        for period in owed.periods:
-            period_id = await conn.fetchval(
-                INSERT_PERIOD,
-                row["id"],
-                period.period_start,
-                period.period_end,
-                period.amount_due_clp,
-                period.due_date,
-            )
-            if period_id is None:
-                continue
-            written += 1
-            if period.amount_due_clp > 0:
-                await conn.execute(INSERT_CHARGE, row["id"], period_id, period.amount_due_clp)
-        if owed.plan_changed:
-            await conn.execute(APPLY_PLAN_CHANGE, row["id"], owed.anchor_day)
+        try:
+            written += await _bill_membership(conn, row, day)
+        except Exception as error:
+            raise MembershipFailed(row["id"]) from error
     return written
 
 
-async def generate_billing_periods(conn: asyncpg.Connection, day: date) -> None:
+async def _bill_membership(conn: asyncpg.Connection, row: asyncpg.Record, day: date) -> int:
+    written = 0
+    owed = billing.due_periods(_billable(row), day)
+    for period in owed.periods:
+        period_id = await conn.fetchval(
+            INSERT_PERIOD,
+            row["id"],
+            period.period_start,
+            period.period_end,
+            period.amount_due_clp,
+            period.due_date,
+        )
+        if period_id is None:
+            continue
+        written += 1
+        if period.amount_due_clp > 0:
+            await conn.execute(INSERT_CHARGE, row["id"], period_id, period.amount_due_clp)
+    if owed.plan_changed:
+        await conn.execute(APPLY_PLAN_CHANGE, row["id"], owed.anchor_day)
+    return written
+
+
+async def generate_billing_periods(conn: asyncpg.Connection, day: date) -> bool:
+    """Bill every gym; `False` if any failed, whose work alone is rolled back."""
+    complete = True
     for gym_id in [r[0] for r in await conn.fetch("SELECT jobs_gym_ids()")]:
-        # Transaction-local: the runner's transaction ends with the job.
-        await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
-        await bill_gym(conn, day)
+        try:
+            async with conn.transaction():  # a savepoint in the runner's transaction
+                # Transaction-local, so it goes with the savepoint.
+                await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
+                await bill_gym(conn, day)
+        except Exception as error:
+            complete = False
+            failed = error.membership_id if isinstance(error, MembershipFailed) else None
+            logger.exception(
+                "billing a gym failed",
+                extra={
+                    "job": NAME,
+                    "run_date": day.isoformat(),
+                    "gym_id": str(gym_id),
+                    "membership_id": None if failed is None else str(failed),
+                },
+            )
+    return complete
 
 
 JOB = Job(NAME, generate_billing_periods)
