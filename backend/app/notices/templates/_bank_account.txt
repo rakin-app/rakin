@@ -1,0 +1,10 @@
+{% if bank_account %}
+Banco: {{ bank_account.bank }}
+Tipo de cuenta: {{ bank_account.account_type }}
+Número: {{ bank_account.number }}
+Titular: {{ bank_account.holder }}
+RUT: {{ bank_account.rut }}
+{% if bank_account.get('email') %}
+Correo: {{ bank_account.email }}
+{% endif %}
+{% endif %}

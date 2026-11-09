@@ -109,7 +109,7 @@ Email is the system of record; WhatsApp is where the reminder gets read. Neither
 | Message | Channel (v1) | Trigger | Notes |
 | --- | --- | --- | --- |
 | Welcome + first magic link | email | membership created | sets expectations: how to pay, how to upload proof |
-| Upcoming charge (statement) | email | 7 days before due | amount, due date, bank details, magic link to upload |
+| Upcoming charge (statement) | email | 7 days before due (nightly `statements` job) | amount, due date, bank details, magic link to upload |
 | Reminder | WhatsApp via `wa.me` deep link from admin's overdue list | due date, then every 3 days while overdue (admin taps) | prefilled Spanish template; API automation is v2 |
 | Proof received | email to student, in-app badge to admin | upload | admin sees pending count on dashboard |
 | Payment validated (receipt) | email | validation | includes period covered and running balance |
@@ -126,7 +126,7 @@ Every email is a template in `backend/app/notices/templates`, Spanish text and H
 
 **PWA:** manifest + service worker via `vite-plugin-pwa`. Push notifications are a v2 nicety, not a dependency; every link in every message must work in a plain browser tab. The student page detects iOS Safari outside standalone mode and shows a one-time Add-to-Home-Screen hint.
 
-**Magic links:** signed token, 15-minute expiry, single use, exchanged for a 30-day session cookie. Students never set a password. Staff get optional passwords plus TOTP in v2.
+**Magic links:** signed token, single use, exchanged for a 30-day session cookie. One a person asks for expires in 15 minutes; the one every notice carries to the student page is issued as the notice is sent and expires in 7 days, since a statement is read days before it is due. Students never set a password. Staff get optional passwords plus TOTP in v2.
 
 ## Architecture
 

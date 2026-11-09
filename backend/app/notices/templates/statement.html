@@ -1,0 +1,8 @@
+{% extends "_layout.html" %}
+{% block title %}Tu próximo pago en {{ gym }}{% endblock %}
+{% block body %}
+<p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+<p style="margin:0 0 16px;">El <strong>{{ due_date | fecha }}</strong> vence el pago de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }}: plan {{ plan_name }}, período del {{ period_start | fecha }} al {{ period_end | fecha }}.</p>
+<p style="margin:0 0 16px;">Para pagar, {% if bank_account %}transfiere a esta cuenta y sube el comprobante desde tu página.{% else %}transfiere y sube el comprobante desde tu página, donde están los datos de la cuenta.{% endif %}</p>
+{% include "_bank_account.html" %}
+{% endblock %}

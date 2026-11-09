@@ -7,22 +7,28 @@ paid for or billed, and billing applies it then (migration 0009). Proration is v
 Cancelling is terminal and needs a reason; the database refuses any later change to
 a cancelled row.
 
+Starting one emails the member, or their guardian, a welcome: how to pay and how to
+upload a proof, with their first sign-in link to the student page.
+
 Any staff role may read memberships; only an owner or admin may start, change or
 cancel one, since that sets what a member is charged. Members may not use it at all.
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contacts import Contact, contact_for
 from app.domain import membership as domain
 from app.domain.dates import local_date, start_of_local_day
 from app.domain.errors import InvalidTransition
 from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
+from app.notices import WELCOME, Notice, Notices, get_notices
 from app.roles import AdminSession, StaffSession
 from app.schemas.memberships import (
     Cancellation,
@@ -32,6 +38,8 @@ from app.schemas.memberships import (
     PlanChange,
 )
 from app.tenancy import Tenant, current_tenant
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/memberships", tags=["memberships"])
 
@@ -128,6 +136,8 @@ async def create_membership(
     body: MembershipCreate,
     tenant: Annotated[Tenant, Depends(current_tenant)],
     session: AdminSession,
+    notices: Annotated[Notices, Depends(get_notices)],
+    background: BackgroundTasks,
 ) -> Membership:
     known = await session.scalar(
         text("SELECT true FROM gym_person WHERE person_id = :id"), {"id": body.person_id}
@@ -162,7 +172,60 @@ async def create_membership(
             "credits_remaining": started.credits_remaining,
         },
     )
-    return await _get(session, result.scalar_one())
+    created = await _get(session, result.scalar_one())
+
+    contact = await contact_for(session, created.person_id)
+    if contact is None or not contact.email:
+        logger.info("welcome: no email to send it to", extra={"membership_id": str(created.id)})
+        return created
+    gym = (
+        await session.execute(
+            text("SELECT name, settings -> 'bank_account' AS bank_account FROM gym WHERE id = :id"),
+            {"id": tenant.gym_id},
+        )
+    ).one()
+    dependent = None
+    if contact.on_behalf_of:
+        dependent = await session.scalar(
+            text("SELECT name FROM gym_person WHERE person_id = :id"), {"id": created.person_id}
+        )
+    notice = welcome(
+        contact,
+        gym_id=tenant.gym_id,
+        gym=gym.name,
+        plan_name=created.plan_name,
+        bank_account=gym.bank_account,
+        dependent_name=dependent,
+    )
+    # After the response, which is after the membership has committed.
+    background.add_task(notices.send, notice)
+    return created
+
+
+def welcome(
+    contact: Contact,
+    *,
+    gym_id: uuid.UUID,
+    gym: str,
+    plan_name: str,
+    bank_account: dict[str, Any] | None,
+    dependent_name: str | None,
+) -> Notice:
+    """The welcome: the plan, how to pay it and where to upload the proof."""
+    assert contact.email is not None
+    return Notice(
+        WELCOME,
+        to=contact.email,
+        person_id=contact.person_id,
+        gym_id=gym_id,
+        context={
+            "name": contact.name,
+            "gym": gym,
+            "plan_name": plan_name,
+            "bank_account": bank_account,
+            "dependent_name": dependent_name,
+        },
+    )
 
 
 @router.get("")

@@ -11,20 +11,27 @@ It settles the period as validating a proof does (`app.domain.billing`): a perio
 already paid in full is a 409, and whatever is paid beyond the amount due becomes a
 validated credit adjustment with no period, for a later one to use.
 
+Either way the student, or their guardian, is emailed a receipt (`receipt_for`): the
+period the payment covers, what is left of it, and the membership's running balance.
+
 Owner and admin only (`LedgerSession`); RLS holds a coach to it as well (migration 0006).
 """
 
+import logging
 import uuid
-from typing import Any
+from datetime import date
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contacts import Contact, contact_for
 from app.domain import billing
 from app.domain.billing import SETTLING_KINDS, BillingPeriod, Settlement
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
+from app.notices import RECEIPT, Notice, Notices, get_notices
 from app.roles import LedgerSession
 from app.schemas.ledger import (
     Entry,
@@ -36,6 +43,8 @@ from app.schemas.ledger import (
     TimelineEntry,
 )
 from app.schemas.proofs import PendingCount
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 
@@ -132,7 +141,12 @@ async def insert_entry(session: AsyncSession, entry: LedgerEntry, **columns: Any
 
 
 @router.post("/payments", status_code=status.HTTP_201_CREATED)
-async def record_payment(body: PaymentRecord, session: LedgerSession) -> RecordedPayment:
+async def record_payment(
+    body: PaymentRecord,
+    session: LedgerSession,
+    notices: Annotated[Notices, Depends(get_notices)],
+    background: BackgroundTasks,
+) -> RecordedPayment:
     row, period = await locked_period(session, body.billing_period_id, body.membership_id)
     payment = LedgerEntry(
         kind=EntryKind.PAYMENT,
@@ -154,7 +168,9 @@ async def record_payment(body: PaymentRecord, session: LedgerSession) -> Recorde
         billing_period_id=row.id,
         method=body.method.value,
     )
-    return await settled(session, row.id, body.membership_id, recorded, settlement)
+    result = await settled(session, row.id, body.membership_id, recorded, settlement)
+    await send_receipt(session, result, notices, background)
+    return result
 
 
 async def settled(
@@ -181,6 +197,92 @@ async def settled(
             outstanding_clp=period.outstanding_clp,
             closed=period.closed,
         ),
+    )
+
+
+# Who a notice about a period goes to, and what it says about it. RLS keeps it to the
+# current gym.
+PERIOD_FACTS = text(
+    "SELECT bp.period_start, bp.period_end, m.person_id, gp.name AS person_name,"
+    " g.id AS gym_id, g.name AS gym_name FROM billing_period bp"
+    " JOIN membership m ON m.id = bp.membership_id"
+    " JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.person_id"
+    " JOIN gym g ON g.id = m.gym_id WHERE bp.id = :id"
+)
+
+# The membership's running balance (`v_balance`, 0014): owed if positive, credit if not.
+BALANCE = text(
+    "SELECT coalesce(sum(balance_clp), 0)::bigint FROM v_balance WHERE membership_id = :id"
+)
+
+
+async def period_facts(session: AsyncSession, period_id: uuid.UUID) -> tuple[Any, Contact | None]:
+    """The period a notice is about, and whom to send it to: `None` if no one."""
+    facts = (await session.execute(PERIOD_FACTS, {"id": period_id})).one()
+    contact = await contact_for(session, facts.person_id)
+    return facts, (contact if contact is not None and contact.email else None)
+
+
+async def send_receipt(
+    session: AsyncSession,
+    recorded: RecordedPayment,
+    notices: Notices,
+    background: BackgroundTasks,
+) -> None:
+    """Email the receipt for a validated payment, after the response, which is after
+    the payment has committed."""
+    payment = recorded.payment
+    assert payment.billing_period_id is not None
+    facts, contact = await period_facts(session, payment.billing_period_id)
+    if contact is None:
+        logger.info("receipt: no email to send it to", extra={"entry_id": str(payment.id)})
+        return
+    balance = await session.scalar(BALANCE, {"id": payment.membership_id})
+    notice = receipt(
+        contact,
+        gym_id=facts.gym_id,
+        gym=facts.gym_name,
+        amount_clp=payment.amount_clp,
+        period_start=facts.period_start,
+        period_end=facts.period_end,
+        period_outstanding_clp=recorded.period.outstanding_clp,
+        balance_clp=int(balance or 0),
+        dependent_name=facts.person_name if contact.on_behalf_of else None,
+    )
+    # An address the gym typed wrong is a failed send in `message_log`, and must not
+    # undo the payment.
+    background.add_task(notices.send, notice)
+
+
+def receipt(
+    contact: Contact,
+    *,
+    gym_id: uuid.UUID,
+    gym: str,
+    amount_clp: int,
+    period_start: date,
+    period_end: date,
+    period_outstanding_clp: int,
+    balance_clp: int,
+    dependent_name: str | None,
+) -> Notice:
+    """The receipt: what was paid, the period it covers, and the balance it leaves."""
+    assert contact.email is not None
+    return Notice(
+        RECEIPT,
+        to=contact.email,
+        person_id=contact.person_id,
+        gym_id=gym_id,
+        context={
+            "name": contact.name,
+            "gym": gym,
+            "amount_clp": amount_clp,
+            "period_start": period_start,
+            "period_end": period_end,
+            "period_outstanding_clp": period_outstanding_clp,
+            "balance_clp": balance_clp,
+            "dependent_name": dependent_name,
+        },
     )
 
 

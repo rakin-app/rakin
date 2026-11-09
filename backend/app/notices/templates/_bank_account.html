@@ -1,0 +1,12 @@
+{% if bank_account %}
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px;font-size:15px;">
+<tr><td style="padding:2px 16px 2px 0;color:#52525b;">Banco</td><td>{{ bank_account.bank }}</td></tr>
+<tr><td style="padding:2px 16px 2px 0;color:#52525b;">Tipo de cuenta</td><td>{{ bank_account.account_type }}</td></tr>
+<tr><td style="padding:2px 16px 2px 0;color:#52525b;">Número</td><td>{{ bank_account.number }}</td></tr>
+<tr><td style="padding:2px 16px 2px 0;color:#52525b;">Titular</td><td>{{ bank_account.holder }}</td></tr>
+<tr><td style="padding:2px 16px 2px 0;color:#52525b;">RUT</td><td>{{ bank_account.rut }}</td></tr>
+{% if bank_account.get('email') %}
+<tr><td style="padding:2px 16px 2px 0;color:#52525b;">Correo</td><td>{{ bank_account.email }}</td></tr>
+{% endif %}
+</table>
+{% endif %}

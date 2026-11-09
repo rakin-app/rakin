@@ -17,7 +17,7 @@ from app.api import (
     proofs,
     unsubscribe,
 )
-from app.auth import PREFIX, TEXTS, bind_session, build_magic_links
+from app.auth import LANDINGS, PREFIX, TEXTS, bind_session, build_magic_links
 from app.db import create_engine, create_sessionmaker
 from app.integrations import build_integrations
 from app.logging import configure_logging
@@ -65,7 +65,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(proof_review.router)
     app.include_router(unsubscribe.router)
     app.include_router(
-        build_router(links, prefix=PREFIX, base_url=settings.public_base_url, texts=TEXTS)
+        build_router(
+            links,
+            prefix=PREFIX,
+            base_url=settings.public_base_url,
+            landings=LANDINGS,
+            texts=TEXTS,
+        )
     )
     if settings.blob_store == "local":
         app.include_router(blobs.router)

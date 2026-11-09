@@ -339,9 +339,9 @@ def test_main_exits_non_zero_when_a_job_fails(
     monkeypatch.setattr(daily, "configure_logging", lambda level: None)
     ok, broken = recording(f"{names}-ok"), recording(f"{names}-broken", fail_on={DAY})
 
-    monkeypatch.setattr(daily, "JOBS", (ok,))
+    monkeypatch.setattr(daily, "jobs", lambda notices: (ok,))
     assert daily.main(["--today", DAY.isoformat()]) == 0
-    monkeypatch.setattr(daily, "JOBS", (broken,))
+    monkeypatch.setattr(daily, "jobs", lambda notices: (broken,))
     assert daily.main(["--today", DAY.isoformat()]) == 1
 
     assert effects(db, names) == [(ok.name, DAY)]
