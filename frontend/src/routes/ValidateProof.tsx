@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import {
   amountMatch,
@@ -247,6 +247,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (message: str
 function Proof({ review }: { review: ProofReview }) {
   const [zoomed, setZoomed] = useState(false)
   const [broken, setBroken] = useState(false)
+  const close = useCallback(() => setZoomed(false), [])
   const label = copy.proofLabel(review.person_name)
   const caption =
     review.claimed_by_name && review.claimed_by_name !== review.person_name
@@ -276,7 +277,7 @@ function Proof({ review }: { review: ProofReview }) {
       {body}
       <figcaption className="review__caption">{caption}</figcaption>
       {zoomed && review.proof_url && (
-        <Zoom src={review.proof_url} alt={label} onClose={() => setZoomed(false)} />
+        <Zoom src={review.proof_url} alt={label} onClose={close} />
       )}
     </figure>
   )
@@ -284,8 +285,11 @@ function Proof({ review }: { review: ProofReview }) {
 
 function Zoom({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null)
+  // Focus moves to the close button once, on open, not on every render of the page.
   useEffect(() => {
     closeRef.current?.focus()
+  }, [])
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
     }

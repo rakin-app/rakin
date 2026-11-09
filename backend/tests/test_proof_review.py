@@ -310,6 +310,36 @@ def test_rejecting_keeps_the_period_open_and_tells_the_student(
 
 
 @pg
+def test_rejecting_keeps_the_claim_note(
+    client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    bill(db, sur, ana, [(0, 45000, 0, 0)])
+    entry = claimed(client, sur, ana, 40000)
+    # A note on the claim: the API takes none yet, but the trigger lets a pending entry's
+    # note change, and a rejection must not erase it.
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE ledger_entry SET note = 'el resto va mañana' WHERE id = $1",
+            uuid.UUID(entry["id"]),
+        ),
+    )
+    mailer.sent.clear()
+
+    response = reject(client, sur, entry["id"], "falta $5.000")
+
+    assert response.status_code == 200, response.text
+    expected = "el resto va mañana — rechazado: falta $5.000"
+    assert response.json()["note"] == expected
+    assert stored_entry(db, entry["id"])["note"] == expected
+    # The student is told the admin's reason only.
+    [email] = mailer.sent
+    assert "Nota: falta $5.000\n" in email.text
+    assert "el resto va mañana" not in email.text
+
+
+@pg
 def test_a_rejection_reaches_the_guardian(
     client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
 ) -> None:

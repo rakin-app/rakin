@@ -24,6 +24,16 @@ def test_pending_can_be_rejected_with_a_note() -> None:
     assert rejected.note == "the transfer amount does not match"
 
 
+def test_rejection_keeps_the_claim_note() -> None:
+    claimed = LedgerEntry(
+        kind=EntryKind.PAYMENT, amount_clp=1, note="pagué desde la cuenta de mi mamá"
+    )
+
+    rejected = ledger.reject(claimed, "monto no coincide")
+
+    assert rejected.note == "pagué desde la cuenta de mi mamá — rechazado: monto no coincide"
+
+
 def test_rejection_needs_a_note() -> None:
     with pytest.raises(ValueError, match="note"):
         ledger.reject(pending_payment(), "  ")

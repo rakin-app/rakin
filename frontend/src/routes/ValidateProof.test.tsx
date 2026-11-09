@@ -227,6 +227,22 @@ describe('Validar comprobante', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('leaves focus where it is while the zoomed proof stays open', async () => {
+    const user = userEvent.setup()
+    stubApi([DIEGO])
+    renderAt(PATH)
+    await user.click(await screen.findByRole('button', { name: copy.zoomLabel }))
+    const dialog = screen.getByRole('dialog', { name: copy.proofLabel('Diego Morales') })
+
+    // Typing a note re-renders the page beneath the zoom; focus must not jump back.
+    const note = screen.getByLabelText(copy.noteLabel)
+    note.focus()
+    await user.keyboard('ilegible')
+
+    expect(note).toHaveFocus()
+    expect(dialog).toBeInTheDocument()
+  })
+
   it('says when the proof file is missing', async () => {
     stubApi([{ ...DIEGO, proof_url: null, proof_content_type: null }])
     renderAt(PATH)

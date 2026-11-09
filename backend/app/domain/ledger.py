@@ -53,9 +53,16 @@ def validate(entry: LedgerEntry) -> LedgerEntry:
     return replace(entry, status=EntryStatus.VALIDATED)
 
 
+def rejection_note(claim_note: str | None, note: str) -> str:
+    """The rejected entry's note: the admin's reason, after whatever the claim said,
+    which a rejection must not erase."""
+    return f"{claim_note} — rechazado: {note}" if claim_note else note
+
+
 def reject(entry: LedgerEntry, note: str) -> LedgerEntry:
-    """An admin rejects a proof; the note is what the student is told."""
+    """An admin rejects a proof; the note is what the student is told. A note the claim
+    already carried is kept ahead of it (`rejection_note`)."""
     if not note.strip():
         raise ValueError("a rejection needs a note for the student")
     _move(entry, EntryStatus.REJECTED)
-    return replace(entry, status=EntryStatus.REJECTED, note=note)
+    return replace(entry, status=EntryStatus.REJECTED, note=rejection_note(entry.note, note))
