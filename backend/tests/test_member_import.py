@@ -2,12 +2,14 @@
 imported, and imported again without a duplicate.
 
 `tests/fixtures/pilot_sheet.csv` has the pilot's columns and the ways its rows go
-wrong; `tests/member_import` covers reading and checking rows on their own.
+wrong; `tests/member_import` covers reading and checking rows on their own. The demo
+sheet, `app/seed/demo_import.csv` and its XLSX twin, is dry-run against `make seed`'s gym.
 """
 
 import io
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Any
 
@@ -17,11 +19,13 @@ from openpyxl import Workbook
 
 from app.api import member_import
 from app.main import create_app
+from app.seed.build import GYM_ID, seed_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 from tests.test_people import new_phone
 from tests.test_plans import add_staff
+from tests.test_seed import DESIGN_DAY, load_as_owner
 
 pg = pytest.mark.postgres
 
@@ -496,3 +500,74 @@ def test_a_coach_may_not_import(client: TestClient, db: Database, gym: uuid.UUID
     assert upload(client, gym, PILOT, **headers).status_code == 403
     sheet = {"rows": [{"number": 2, "cells": ["Ana"]}], "mapping": {"name": 0}}
     assert send(client, gym, sheet, dry_run=True, headers=headers).status_code == 403
+
+
+# --- the demo sheet ---------------------------------------------------------------
+
+DEMO = Path(__file__).parents[1] / "app" / "seed"
+
+# The demo sheet's refused rows, by row number, one of each kind of refusal.
+DEMO_REFUSED = {
+    34: [{"field": "name", "code": "required"}],
+    35: [{"field": "phone", "code": "invalid_phone"}],
+    36: [{"field": "plan", "code": "unknown_plan"}],
+    37: [{"field": "due_on", "code": "due_before_start"}],
+    38: [{"field": "phone", "code": "repeated"}],
+}
+
+
+@pytest.fixture(scope="module")
+def demo_gym(db: Database) -> dict[str, str]:
+    """`make seed`'s Academia Sur, acted in as its owner."""
+    load_as_owner(db, DESIGN_DAY)
+    return as_gym(GYM_ID, seed_id("person", "martin"))  # Martín Fuentes
+
+
+class _DemoClock(datetime):
+    """The import's clock, held at the day the demo sheet was written."""
+
+    @classmethod
+    def now(cls, tz: tzinfo | None = None) -> "_DemoClock":
+        return cls(2026, 11, 9, 15, tzinfo=UTC).astimezone(tz)
+
+
+@pg
+@pytest.mark.parametrize("name", ["demo_import.csv", "demo_import.xlsx"])
+def test_the_demo_sheet_dry_runs_against_the_seeded_gym(
+    client: TestClient, demo_gym: dict[str, str], name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The sheet's dates are fixed, and the import refuses a start or due date more than
+    # 5 years from today: as written they all hold until 4 November 2029.
+    monkeypatch.setattr(member_import, "datetime", _DemoClock)
+    response = upload(client, GYM_ID, (DEMO / name).read_bytes(), **demo_gym)
+    assert response.status_code == 200, response.text
+    sheet = response.json()
+    assert "Observaciones" in sheet["headers"]
+    assert len(sheet["mapping"]) == len(sheet["headers"]) - 2  # not N° nor Observaciones
+    report = send(client, GYM_ID, sheet, dry_run=True, headers=demo_gym).json()
+
+    assert report["summary"] == {
+        "rows": 38,
+        "imported": 33,
+        "refused": 5,
+        # 32 rows' people and 2 guardians named only on their children's rows.
+        "people_created": 34,
+        "links_created": 8,
+        "memberships_created": 28,
+    }
+    assert {r["row"]: r["errors"] for r in report["rows"] if r["errors"]} == DEMO_REFUSED
+    rows = report["rows"]
+    # Felipe Díaz is in the seed: found by phone, and "Ya existen" lists the email.
+    kept = {r["row"]: (r["name"], r["person"], r["ignored"]) for r in rows if r["ignored"]}
+    assert kept == {39: ("Felipe Díaz", "existing", ["email"])}
+    by_name = {r["name"]: r for r in rows}
+    # A guardian already in the seed, and a teenager with their own phone and a guardian.
+    assert (by_name["Julián Ortiz"]["guardian"], by_name["Julián Ortiz"]["link"]) == (
+        "existing",
+        "created",
+    )
+    assert [by_name["Valentín Godoy"][k] for k in ("person", "guardian", "link")] == [
+        "created",
+        "created",
+        "created",
+    ]
