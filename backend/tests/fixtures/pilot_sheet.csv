@@ -1,0 +1,15 @@
+﻿N°;Nombre;Apellido;RUT;Fecha Nac.;Celular;Correo;Plan;Fecha de pago;Apoderado;Fono apoderado;Observaciones
+1;Camila;Ortiz Rojas;12.345.678-5;14/03/1988;9 8765 4321;camila.ortiz@example.cl;Mensual;05/12/2026;;;cinturón azul
+2;Mateo;Ortiz;;02/07/2015;;;Mensual Kids;01/12/2026;Camila Ortiz Rojas;+56 9 8765 4321;hijo de Camila
+3;Sofía;Ortiz;;10/01/2018;;;mensual kids;01/12/2026;Camila Ortiz Rojas;987654321;
+4;Diego;Soto Muñoz;;;+56912340001;;Semestral;15/03/2027;;;pagó el semestre
+5;Valentina;Pérez;;;56 9 1234 0002;vale@example;Pack 12 clases;20/12/2026;;;
+;;;;;;;;;;;
+6;Benjamín;Fuentes;;;912340003;;Beca 50%;10/12/2026;;;beca
+7;Tomás;Fuentes;;23/05/2016;;;Mensual Kids;01/12/2026;Rodrigo Fuentes;9 1234 0004;papá no entrena
+8;Isidora;Lagos;;;2 2345 6789;;Mensual;05/12/2026;;;fijo de la casa
+9;Joaquín;Vera;;;9 1234 0005;;Mensual;;;;falta fecha
+10;Martina;Reyes;;;9 1234 0006;;Clase suelta;;;;
+11;Agustín;Castro;;;9 1234 0007;;;;;;sin plan todavía
+12;Camila;Ortiz Rojas;;;98765 4321;;Mensual;05/12/2026;;;repetida
+13;Florencia;Muñoz;11.111.111-2;;9 1234 0008;;Mensual;05/12/2026;;;

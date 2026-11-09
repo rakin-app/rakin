@@ -13,9 +13,11 @@ import { AdminLayout } from './layouts/AdminLayout'
 import { MeLayout } from './layouts/MeLayout'
 import { MeHome } from './routes/MeHome'
 import { MemberDetail } from './routes/MemberDetail'
+import { MemberImport } from './routes/MemberImport'
 import { NotFound } from './routes/NotFound'
-import { Payments } from './routes/Payments'
+import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { Students, validateStudentsSearch } from './routes/Students'
+import { Today } from './routes/Today'
 import { ValidateProof } from './routes/ValidateProof'
 
 export type RouterContext = {
@@ -42,10 +44,11 @@ const adminRoute = createRoute({
   component: AdminLayout,
 })
 
+// "Hoy": what is overdue and what waits for review.
 const adminTodayRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/',
-  component: () => <PlaceholderPage title={t.admin.today.title} />,
+  component: Today,
 })
 
 const adminStudentsRoute = createRoute({
@@ -53,6 +56,14 @@ const adminStudentsRoute = createRoute({
   path: 'alumnos',
   validateSearch: validateStudentsSearch,
   component: Students,
+})
+
+// "Importar alumnos": the gym's spreadsheet, brought over. A static path, so it wins
+// over `alumnos/$personId`.
+const adminImportRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'alumnos/importar',
+  component: MemberImport,
 })
 
 // "Ficha de alumno": one member, their plan and, for who reads the ledger, their money.
@@ -68,9 +79,11 @@ const adminClassesRoute = createRoute({
   component: () => <PlaceholderPage title={t.admin.classes.title} />,
 })
 
+// "Libro de pagos": the gym's ledger, for who reads it.
 const adminPaymentsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'pagos',
+  validateSearch: validatePaymentsSearch,
   component: Payments,
 })
 
@@ -99,6 +112,7 @@ const routeTree = rootRoute.addChildren([
   adminRoute.addChildren([
     adminTodayRoute,
     adminStudentsRoute,
+    adminImportRoute,
     adminMemberRoute,
     adminClassesRoute,
     adminPaymentsRoute,

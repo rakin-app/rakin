@@ -170,6 +170,30 @@ The member detail ("Ficha de alumno", #60) reads one membership's money. Owner a
 
 A pending claim counts towards nothing until it is validated, as everywhere else (`app.domain.billing`).
 
+### The ledger book
+
+"Libro de pagos" (#39) reads the whole gym's ledger. Owner and admin only (`LedgerSession`); a coach gets a 403 and the screen does not ask.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/ledger/book` | `{month, months, timezone, kpis, items, total}`: a page of entries newest first, with the gym's KPIs. Each item carries its `kind`, `status`, `amount_clp`, `method`, `note`, `created_at`, the membership's `plan_name`, its `person` (`id`, `name`) and `guardian` (`id`, `name`, or `null` unless the person is a dependent), its `period` (dates, `outstanding_clp`, settled as the member detail settles it, and `days_overdue`, 0 once paid; `null` for a carried credit) and `validated_by_name` |
+
+| Parameter | Does |
+| --- | --- |
+| `month` | any day of the month to show, in the gym's timezone; the current month by default. `month` answers its first day, and `months` every month with entries plus the current and the shown one, newest first |
+| `filter` | `all` (default): the month's entries. `pending`: payments waiting for review, of any month. `overdue`: the charges of active memberships' periods in `v_overdue`, of any month. `kids`: the month's entries on a dependent's membership (`guardian_link`) |
+| `limit`, `offset` | the page: `limit` 1–200, 50 by default. `total` counts what the filter matches across every page |
+
+`kpis`: `collected_clp` and `collected_payments`, the month's row of `v_monthly_income`; `expected_clp`, what is owed for the month: the periods falling due in it of `active` and `lapsed` memberships, since a lapsed member still owes what was billed (`cancelled`, `trial` and `frozen` ones are left out); and as the gym stands today, whichever month is shown: `pending_clp` and `pending_payments`, the claims waiting for review; `overdue_clp` and `overdue_members`, outstanding on active memberships' `v_overdue` periods and the people owing it, and `overdue_avg_days`, per such person the days since their oldest unpaid period fell due, averaged; `active_memberships` and `frozen_memberships`.
+
+### Overdue
+
+The owner's dashboard ("Hoy", #58) lists what is overdue. Owner and admin only (`LedgerSession`).
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/ledger/overdue` | `{total_clp, periods}`: the `v_overdue` rows of Active memberships, longest overdue first, each with `billing_period_id`, `membership_id`, `person_id`, `person_name`, `plan_name`, `period_start`, `due_date`, `outstanding_clp` and `days_overdue`; `total_clp` is what they still owe together. Lapsed and cancelled memberships keep their unpaid periods in the view and are left out here. "Pagó" on each row is `POST /api/ledger/payments` for the period's `outstanding_clp` |
+
 ## Plans API
 
 | Method | Path | Does |
@@ -204,6 +228,23 @@ The body is told apart by `kind`, and each kind takes exactly its own parameters
 Dates are calendar dates in the gym's timezone (`app.domain.dates`), and `started_at` is stored as the first instant of `started_on` there. What a membership starts with follows its plan (`app.domain.membership.start`): a monthly or prepaid one is paid through the day before it starts, so its first period falls due on the start date, and a monthly one bills on `anchor_day`, its start day for a `signup` anchor or the 1st for a `first` one. A credits pack starts with its credits and lasts `credit_expiry_days`; a trial starts in `trial` with its free classes and free days. A drop-in is not a membership, and a deactivated plan, or a person or plan this gym does not have, is a 422.
 
 A plan change waits for the next period; proration is v2. Only a monthly or prepaid membership changes plan, to another monthly or prepaid plan (a pack or trial ends, and a trial converts on payment). The change is stored as `next_plan` with the day it `starts_on`: the day after the paid-through date, or after the last billed period if billing has run ahead, so a period already billed keeps its plan and amount. Billing (#31) prices a period starting on or after that day at the new plan and moves it into `plan_id`, recomputing `anchor_day` with `domain.anchor_day(new_terms, next_plan_from)`, so a move to a `first` anchor bills on the 1st and a move to prepaid clears it. Starting a membership emails the member, or their guardian, a welcome after it commits: the plan, the gym's bank details (or, with none set, that the student page has them), how to upload a proof, and their first sign-in link. A member with no email gets none. Cancelling follows the state machine: an active or lapsed membership can be cancelled, a trial or frozen one cannot (409), and a cancelled one changes no more (409). It drops a pending plan change. Any staff role may read memberships; only an owner or admin may start, change or cancel one.
+
+## Member import
+
+Onboarding a gym is mostly bringing its spreadsheet over. The admin uploads the file, says what each column is, checks it, then imports; the SPA's screen is `/admin/alumnos/importar`. Only an owner or admin may, since it starts memberships.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `POST` | `/api/import/sheet` | the file itself as the body, CSV or XLSX, up to 5 MB. Answers `{headers, rows: [{number, cells}], mapping}`, the mapping a suggestion from the headers. Nothing is stored. 413 `{"detail": {"code": "too_large"}}`; 422 with `unreadable`, `empty`, `too_many_rows` (over 2,000) or `too_many_empty_rows` (more than 20,000 rows scanned, empty ones included, as an XLSX formatted to its last row would be) |
+| `POST` | `/api/import/members` | `{rows, mapping, plans?, dry_run}`: the rows sent back, `mapping` field to column (`name` required, one column per field), and `plans` a plan cell's value to the plan it means, for values that are not a plan's name, or to `null` for no plan. `dry_run` defaults to true. Answers each row's `errors`, what it did (`created` or `existing`) to the `person`, `guardian`, `link` and `membership`, and the fields it leaves unapplied (`ignored`), with a `summary` |
+
+The fields are `name`, `last_name` (joined to the name), `phone`, `email`, `rut`, `dob`, `plan`, `due_on`, `started_on`, `guardian_name` and `guardian_phone`. `app.member_import.sheet` reads an XLSX's first worksheet, or a CSV in UTF-8 or Windows-1252 (Excel in Spanish) with a comma, semicolon or tab; every cell comes back as text, dates as `YYYY-MM-DD`. Dates in cells may be ISO or day first (`05/12/2026`, `5-12-26`). `app.member_import.rows` makes every check that needs only the row, and reports each with its `field` and a `code`: `required`, `repeated`, `invalid_phone`, `invalid_email`, `invalid_rut`, `invalid_date`, `own_guardian`, `unknown_plan`, `inactive_plan`, `dropin_plan` or `due_before_start`.
+
+A row with a phone is an adult, found again by it. A row without one is a dependent: they need `guardian_phone`, and are found by it and their own name among that guardian's dependents. A guardian not yet in the gym is added with `guardian_name`. A row with both is someone with a phone and a guardian, such as a teenager. The links follow the family rules, so `has_guardian` and `one_level` come back as row errors too. A row with a plan gets a membership (`domain.membership.imported`): a monthly or prepaid one is paid through the day before `due_on`, and a monthly one bills on `due_on`'s day, or the 1st on a `first` anchor. It starts on `started_on`, or else today, or `due_on` if that is earlier. A pack or trial starts as it would today, lasting through `due_on` when that is given. A monthly or prepaid plan needs `due_on`. A plan value mapped to `null` imports the person with no membership, whatever plan it names, and its row's dates are not read.
+
+Each row is written in a savepoint of its own: a refused row writes nothing, and the others still import. A dry run writes every row the same way and then rolls the lot back, so it reports what the database itself refuses, and its report is the import's. Guardians' own rows go first, then the other rows with a phone, then dependents, so a row naming a guardian by phone finds the guardian the sheet describes further down, with the name their own row gives. Running it again creates nothing twice. An import never overwrites what the gym has: whoever is found keeps the record this gym has of them, and a membership that is not cancelled keeps its plan and dates. Each row's `ignored` names the sheet's fields that differ from what is kept, so the dry run shows it first. A row refused the first time imports once it is fixed. Phones already known to another gym join this one as `POST /api/people` does, with what the sheet says.
+
+`tests/fixtures/pilot_sheet.csv` stands in for the pilot gym's sheet, with invented people: Excel's semicolon CSV, phones written every which way, kids under their parent, and one row for each way a row goes wrong. `tests/test_member_import.py` runs it end to end. The pilot's real sheet is never committed here, not even anonymised; it is tried outside the repo.
 
 ## Gym settings API
 

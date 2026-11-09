@@ -127,6 +127,25 @@ def start(terms: PlanTerms, started_on: date) -> Membership:
     return replace(membership, anchor_day=anchor_day(terms, started_on))
 
 
+def imported(terms: PlanTerms, started_on: date, due_on: date | None) -> Membership:
+    """A membership brought over from the gym's own records, already under way.
+
+    A monthly or prepaid one is paid through the day before `due_on`, the day its next
+    payment falls due, which it bills on from then: a monthly one's anchor day is
+    `due_on`'s (the 1st on a `first` anchor). A credits pack or a trial starts as
+    `start` would on `started_on`, lasting through `due_on` when given.
+    """
+    if terms.kind in RECURRING:
+        if due_on is None:
+            raise ValueError("an imported monthly or prepaid membership needs its due date")
+        membership = create(terms.kind, current_period_end=due_on - timedelta(days=1))
+        return replace(membership, anchor_day=anchor_day(terms, due_on))
+    membership = start(terms, started_on)
+    if due_on is not None:
+        membership = replace(membership, current_period_end=due_on)
+    return membership
+
+
 def plan_change_starts(
     membership: Membership, to: PlanKind, *, billed_through: date | None = None
 ) -> date:

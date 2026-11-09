@@ -1,0 +1,299 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { useId, useState, type FormEvent } from 'react'
+import { ApiError } from '../api/client'
+import { recordPayment, type Method } from '../api/member'
+import { myRoleQuery, readsLedger } from '../api/me'
+import { proofQueueQuery, type ProofReview } from '../api/review'
+import { overdueQuery, type OverduePeriod } from '../api/today'
+import { PageHeader } from '../components/PageHeader'
+import { monthName, shortDay, toDate, weekdayDay } from '../format'
+import { t } from '../i18n/es'
+import './Today.css'
+
+const copy = t.admin.today
+const clp = t.common.clp
+
+// The overdue list shows this many until "Ver los N vencidos".
+const OVERDUE_SHOWN = 3
+
+/**
+ * "Hoy": the owner's day at a glance. How many periods are overdue and how many proofs
+ * wait for review, then both lists, each a tap from acting on it: "Revisar" opens the
+ * proof queue, "Pagó" records the payment in place.
+ *
+ * Money, so for whoever reads the ledger only; a coach sees neither list. "A quién
+ * llamar" (members who stopped coming) joins with attendance (#41), and the WhatsApp
+ * reminder on each overdue row with the wa.me links (#55).
+ */
+export function Today() {
+  const role = useQuery(myRoleQuery())
+  const money = readsLedger(role.data)
+  const proofs = useQuery({ ...proofQueueQuery(), enabled: money })
+  const overdue = useQuery({ ...overdueQuery(), enabled: money })
+
+  return (
+    <div className="today">
+      <PageHeader title={copy.heading(weekdayDay(new Date()))} />
+      {money && (
+        <>
+          <div className="today__counters" aria-label={copy.countersLabel} role="group">
+            <Counter href="#vencidos" value={overdue.data?.periods.length} label={copy.overdue.title} tone="warning" />
+            <Counter href="#validar" value={proofs.data?.length} label={copy.proofs.title} tone="accent" />
+          </div>
+          <div className="today__body">
+            <section id="validar" className="today__section" aria-labelledby="validar-title">
+              <SectionHead
+                id="validar-title"
+                title={copy.proofs.title}
+                aside={proofs.data && proofs.data.length > 0 ? copy.proofs.count(proofs.data.length) : null}
+              />
+              {proofs.isPending ? (
+                <p className="today__note">{copy.loading}</p>
+              ) : proofs.isError ? (
+                <Failed message={copy.proofs.error} retry={() => void proofs.refetch()} />
+              ) : proofs.data.length === 0 ? (
+                <p className="today__note">{copy.proofs.empty}</p>
+              ) : (
+                <ul className="today__list">
+                  {proofs.data.map((proof) => (
+                    <ProofRow key={proof.id} proof={proof} />
+                  ))}
+                </ul>
+              )}
+            </section>
+            <section id="vencidos" className="today__section" aria-labelledby="vencidos-title">
+              <SectionHead
+                id="vencidos-title"
+                title={copy.overdue.title}
+                aside={
+                  overdue.data && overdue.data.total_clp > 0 ? copy.overdue.total(clp(overdue.data.total_clp)) : null
+                }
+              />
+              {overdue.isPending ? (
+                <p className="today__note">{copy.loading}</p>
+              ) : overdue.isError ? (
+                <Failed message={copy.overdue.error} retry={() => void overdue.refetch()} />
+              ) : overdue.data.periods.length === 0 ? (
+                <p className="today__note">{copy.overdue.empty}</p>
+              ) : (
+                <OverdueList periods={overdue.data.periods} />
+              )}
+            </section>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function Counter({
+  href,
+  value,
+  label,
+  tone,
+}: {
+  href: string
+  value: number | undefined
+  label: string
+  tone: 'warning' | 'accent'
+}) {
+  return (
+    // The figure and its label are two spans, which a name would otherwise run together.
+    <a href={href} className="today__counter" aria-label={value === undefined ? label : `${value} ${label}`}>
+      <span className={`today__counter-value today__counter-value--${tone}`}>{value ?? '–'}</span>
+      <span className="today__counter-label">{label}</span>
+    </a>
+  )
+}
+
+function SectionHead({ id, title, aside }: { id: string; title: string; aside: string | null }) {
+  return (
+    <div className="today__section-head">
+      <h2 id={id} className="today__section-title">
+        {title}
+      </h2>
+      {aside && <span className="today__aside">{aside}</span>}
+    </div>
+  )
+}
+
+function Failed({ message, retry }: { message: string; retry: () => void }) {
+  return (
+    <div className="today__error" role="alert">
+      <p>{message}</p>
+      <button type="button" className="today__button" onClick={retry}>
+        {copy.retry}
+      </button>
+    </div>
+  )
+}
+
+function ProofRow({ proof }: { proof: ProofReview }) {
+  const sender = proof.claimed_by_name
+  const name =
+    sender && sender !== proof.person_name ? copy.proofs.sentFor(sender, proof.person_name) : proof.person_name
+  const detail = [
+    copy.proofs.detail(clp(proof.amount_clp), monthName(proof.period.period_start)),
+    proof.claimed_at && ago(proof.claimed_at, new Date()),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <li>
+      <Link
+        to="/admin/pagos/comprobantes"
+        className="today__row today__row--link"
+        aria-label={copy.proofs.reviewLabel(name)}
+      >
+        <span className="today__row-text">
+          <span className="today__name">{name}</span>
+          <span className="today__detail">{detail}</span>
+        </span>
+        <span className="today__pill" aria-hidden="true">
+          {copy.proofs.review}
+        </span>
+      </Link>
+    </li>
+  )
+}
+
+/** `hace 2 h`, `ayer`, else the day: when a proof was sent, as of `now`. */
+export function ago(iso: string, now: Date): string {
+  const then = toDate(iso)
+  const minutes = Math.floor((now.getTime() - then.getTime()) / 60_000)
+  if (minutes < 1) return copy.ago.now
+  if (minutes < 60) return copy.ago.minutes(minutes)
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+  if (then.toDateString() === now.toDateString()) return copy.ago.hours(Math.floor(minutes / 60))
+  if (then.toDateString() === yesterday.toDateString()) return copy.ago.yesterday
+  return shortDay(iso)
+}
+
+function OverdueList({ periods }: { periods: OverduePeriod[] }) {
+  const [all, setAll] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+  const shown = all ? periods : periods.slice(0, OVERDUE_SHOWN)
+  return (
+    <>
+      {done && (
+        <p className="today__done" role="status">
+          {done}
+        </p>
+      )}
+      <ul className="today__list">
+        {shown.map((period) => (
+          <OverdueRow key={period.billing_period_id} period={period} onDone={setDone} />
+        ))}
+      </ul>
+      {!all && periods.length > OVERDUE_SHOWN && (
+        <button type="button" className="today__more" onClick={() => setAll(true)}>
+          {copy.overdue.showAll(periods.length)}
+        </button>
+      )}
+    </>
+  )
+}
+
+const METHODS: readonly Method[] = ['cash', 'transfer', 'other']
+
+function OverdueRow({ period, onDone }: { period: OverduePeriod; onDone: (message: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const amount = clp(period.outstanding_clp)
+  return (
+    <li className="today__row today__row--overdue">
+      <div className="today__row-line">
+        <Link
+          to="/admin/alumnos/$personId"
+          params={{ personId: period.person_id }}
+          className="today__row-text today__row-text--link"
+        >
+          <span className="today__name">{period.person_name}</span>
+          <span className="today__detail today__detail--warning">
+            {copy.overdue.detail(period.days_overdue, amount, period.plan_name)}
+          </span>
+        </Link>
+        {!open && (
+          <button
+            type="button"
+            className="today__button today__button--primary"
+            aria-label={copy.overdue.paidLabel(period.person_name)}
+            onClick={() => setOpen(true)}
+          >
+            {copy.overdue.paid}
+          </button>
+        )}
+      </div>
+      {open && (
+        <PaidForm
+          period={period}
+          onCancel={() => setOpen(false)}
+          onDone={() => {
+            setOpen(false)
+            onDone(copy.overdue.recorded(period.person_name, amount))
+          }}
+        />
+      )}
+    </li>
+  )
+}
+
+/** "Pagó": the period's outstanding amount, received by the method chosen. */
+function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCancel: () => void; onDone: () => void }) {
+  const queryClient = useQueryClient()
+  const methodId = useId()
+  const [method, setMethod] = useState<Method>('cash')
+  const record = useMutation({
+    mutationFn: () =>
+      recordPayment({
+        membership_id: period.membership_id,
+        billing_period_id: period.billing_period_id,
+        amount_clp: period.outstanding_clp,
+        method,
+      }),
+    onSuccess: async () => {
+      onDone()
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    record.mutate()
+  }
+
+  return (
+    <form className="today__form" aria-label={copy.overdue.paidLabel(period.person_name)} onSubmit={submit}>
+      <label htmlFor={methodId} className="today__label">
+        {copy.overdue.method}
+      </label>
+      <select
+        id={methodId}
+        className="today__input"
+        value={method}
+        onChange={(e) => setMethod(e.target.value as Method)}
+      >
+        {METHODS.map((m) => (
+          <option key={m} value={m}>
+            {t.admin.member.form.methods[m]}
+          </option>
+        ))}
+      </select>
+      {record.error && (
+        <p className="today__error" role="alert">
+          {record.error instanceof ApiError && record.error.status === 409
+            ? copy.overdue.refused.paid
+            : copy.overdue.refused.failed}
+        </p>
+      )}
+      <div className="today__form-actions">
+        <button type="button" className="today__button" disabled={record.isPending} onClick={onCancel}>
+          {copy.overdue.cancel}
+        </button>
+        <button type="submit" className="today__button today__button--primary" disabled={record.isPending}>
+          {record.isPending ? copy.overdue.working : copy.overdue.submit(clp(period.outstanding_clp))}
+        </button>
+      </div>
+    </form>
+  )
+}

@@ -20,3 +20,22 @@ export function monthName(iso: string): string {
 export function monthYear(iso: string): string {
   return toDate(iso).toLocaleDateString('es-CL', { month: 'short', year: 'numeric' })
 }
+
+/** `8 nov 14:12`, in `timeZone`. */
+export function dayTime(iso: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('es-CL', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone,
+  }).formatToParts(new Date(iso))
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${part('day')} ${part('month').replace('.', '')} ${part('hour')}:${part('minute')}`
+}
+
+/** `dom 8 nov`. */
+export function weekdayDay(date: Date): string {
+  return date.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')
+}
