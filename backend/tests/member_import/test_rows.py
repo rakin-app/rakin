@@ -248,3 +248,21 @@ def test_the_admins_choice_of_plan_comes_before_the_name() -> None:
 def test_an_active_plan_comes_before_an_inactive_one_of_the_same_name() -> None:
     old = plan("Mensual", PlanKind.MONTHLY, anchor="signup", active=False)
     assert PlanFinder([old, MENSUAL], {}).find("MENSUAL") == MENSUAL
+
+
+# --- a plan value cleared on purpose ----------------------------------------------
+
+
+@pytest.mark.parametrize("value", ["Mensual", "Beca 50%"], ids=["name-matched", "unmatched"])
+def test_a_cleared_plan_value_imports_the_person_with_no_plan(value: str) -> None:
+    plans = PlanFinder([MENSUAL], {value: None})
+    # No due date, and a bad start: neither matters with no membership to read them.
+    mapping = {F.NAME: 0, F.PHONE: 1, F.PLAN: 2, F.STARTED_ON: 3}
+    [member] = read_members([(2, ["Ana", "912345678", value, "pronto"])], mapping, plans, TODAY)
+    assert (member.plan, member.due_on, member.started_on, member.errors) == (None, None, None, [])
+
+
+def test_clearing_one_value_leaves_the_others_matched_by_name() -> None:
+    plans = PlanFinder([MENSUAL, KIDS], {"beca": None})
+    assert plans.cleared("Beca") and not plans.cleared("Mensual")
+    assert plans.find("Mensual") == MENSUAL

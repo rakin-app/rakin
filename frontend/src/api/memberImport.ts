@@ -47,6 +47,8 @@ export type RowResult = {
   guardian: Outcome | null
   link: Outcome | null
   membership: Outcome | null
+  // Fields the import leaves unapplied: whoever it found keeps this gym's record.
+  ignored: ImportField[]
 }
 
 export type ImportReport = {
@@ -62,7 +64,8 @@ export type ImportReport = {
   rows: RowResult[]
 }
 
-export type SheetRefusal = 'unreadable' | 'empty' | 'too_many_rows' | 'too_large'
+const SHEET_REFUSALS = ['unreadable', 'empty', 'too_many_rows', 'too_many_empty_rows', 'too_large'] as const
+export type SheetRefusal = (typeof SHEET_REFUSALS)[number]
 
 // The API's own limit is 5 MB; refusing here spares the upload.
 export const MAX_SHEET_BYTES = 5 * 1024 * 1024
@@ -80,8 +83,8 @@ export function uploadSheet(file: File): Promise<Sheet> {
 export type ImportRequest = {
   rows: SheetRow[]
   mapping: Mapping
-  // A plan cell's value to the plan it means.
-  plans: Record<string, string>
+  // A plan cell's value to the plan it means; `null` for no plan, the person alone.
+  plans: Record<string, string | null>
   dry_run: boolean
 }
 
@@ -94,9 +97,7 @@ export function sheetRefusal(error: unknown): SheetRefusal | null {
   if (!(error instanceof ApiError)) return null
   const detail = (error.body as { detail?: { code?: unknown } } | undefined)?.detail
   const code = typeof detail === 'object' && detail !== null ? detail.code : undefined
-  return code === 'unreadable' || code === 'empty' || code === 'too_many_rows' || code === 'too_large'
-    ? code
-    : null
+  return SHEET_REFUSALS.find((refusal) => refusal === code) ?? null
 }
 
 /** For matching a plan cell to a plan's name, as the API does: accents, case and spacing ignored. */

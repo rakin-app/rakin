@@ -22,6 +22,9 @@ import './MemberImport.css'
 
 const copy = t.admin.import
 
+// The plan step's "Sin plan": import the person with no membership. Never a plan id.
+const NO_PLAN = 'none'
+
 /**
  * "Importar alumnos": upload the gym's spreadsheet, say what each column is, check
  * every row without saving (the dry run), then import. The file is read once; the
@@ -106,7 +109,8 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
   const queryClient = useQueryClient()
   const plans = useQuery(plansQuery)
   const [mapping, setMapping] = useState<Mapping>(sheet.mapping)
-  // The admin's choice of plan for a plan cell's value; absent means "as matched by name".
+  // The admin's choice for a plan cell's value: a plan's id, `NO_PLAN`, or `''` for none
+  // made yet. Absent means "as matched by name".
   const [chosen, setChosen] = useState<Record<string, string>>({})
   const [report, setReport] = useState<ImportReport | null>(null)
 
@@ -129,10 +133,11 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
   const planFor = (value: string) => chosen[value] ?? matched(value)
 
   const request = (dryRun: boolean) => {
-    const choices: Record<string, string> = {}
+    // Unchosen values are left out, and the API reports them as no plan it knows.
+    const choices: Record<string, string | null> = {}
     for (const value of planValues) {
       const plan = planFor(value)
-      if (plan) choices[value] = plan
+      if (plan) choices[value] = plan === NO_PLAN ? null : plan
     }
     return runImport({ rows: sheet.rows, mapping, plans: choices, dry_run: dryRun })
   }
@@ -295,7 +300,8 @@ function PlanChoices({
                 value={planFor(value)}
                 onChange={(event) => onChange(value, event.target.value)}
               >
-                <option value="">{copy.noPlan}</option>
+                <option value="">{copy.pickPlan}</option>
+                <option value={NO_PLAN}>{copy.noPlan}</option>
                 {plans
                   .filter((plan) => plan.active)
                   .map((plan) => (
@@ -365,6 +371,7 @@ function Review({
         </div>
       </section>
       <RefusedRows rows={report.rows} />
+      <KeptRows rows={report.rows} />
     </>
   )
 }
@@ -390,7 +397,30 @@ function Done({ name, report, onOther }: { name: string; report: ImportReport; o
         </div>
       </section>
       <RefusedRows rows={report.rows} />
+      <KeptRows rows={report.rows} />
     </>
+  )
+}
+
+/** Rows that found someone already here whose record the sheet would change. */
+function KeptRows({ rows }: { rows: RowResult[] }) {
+  const kept = rows.filter((row) => row.errors.length === 0 && row.ignored.length > 0)
+  if (kept.length === 0) return null
+  return (
+    <section className="import__card" aria-labelledby="import-kept-title">
+      <h2 id="import-kept-title" className="import__title">
+        {copy.keptTitle}
+      </h2>
+      <p className="import__note">{copy.keptHint}</p>
+      <ul className="import__errors" aria-label={copy.keptTitle}>
+        {kept.map((row) => (
+          <li key={row.row} className="import__error-row">
+            <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
+            <span className="import__kept-what">{copy.kept(row.ignored.map((field) => copy.fields[field]))}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

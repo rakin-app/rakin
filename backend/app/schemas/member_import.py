@@ -53,8 +53,9 @@ class MemberImport(BaseModel):
     rows: Annotated[list[SheetRow], Field(min_length=1, max_length=MAX_ROWS)]
     # Field to column. `name` is required; one column is one field.
     mapping: dict[ImportField, Column]
-    # A plan cell's value to the plan it means, for values that are not a plan's name.
-    plans: dict[Cell, uuid.UUID] = {}
+    # A plan cell's value to the plan it means, for values that are not a plan's name;
+    # `null` for no plan, so those rows import the person with no membership.
+    plans: dict[Cell, uuid.UUID | None] = {}
     # Check everything and write nothing; the default, so a slip never imports.
     dry_run: bool = True
 
@@ -87,6 +88,9 @@ class RowResult(BaseModel):
     # The guardian link between the two.
     link: Outcome | None
     membership: Outcome | None
+    # The fields this row has that the import leaves unapplied: someone found here
+    # keeps this gym's record of them, and a live membership keeps its plan and dates.
+    ignored: list[ImportField]
 
 
 class ImportSummary(BaseModel):

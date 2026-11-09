@@ -33,12 +33,14 @@ const ok = (row: number, name: string): RowResult => ({
   guardian: null,
   link: null,
   membership: 'created',
+  ignored: [],
 })
 
 function reportFor(body: ImportRequest): ImportReport {
   const rows: RowResult[] = [
-    ok(2, 'Camila Ortiz'),
-    body.plans['Beca 50%']
+    // Already in the gym, with another email than the sheet's.
+    { ...ok(2, 'Camila Ortiz'), person: 'existing', membership: 'existing', ignored: ['email'] },
+    body.plans['Beca 50%'] !== undefined
       ? ok(3, 'Benjamín Fuentes')
       : { ...ok(3, 'Benjamín Fuentes'), person: null, membership: null, errors: [{ field: 'plan', code: 'unknown_plan' }] },
     { ...ok(4, 'Isidora Lagos'), person: null, membership: null, errors: [{ field: 'phone', code: 'invalid_phone' }] },
@@ -140,6 +142,8 @@ describe('Importar alumnos', () => {
     expect(sent).toEqual([
       { rows: SHEET.rows, mapping: SHEET.mapping, plans: { mensual: 'mensual' }, dry_run: true },
     ])
+    const kept = screen.getByRole('list', { name: copy.keptTitle })
+    expect(within(kept).getByText(copy.kept([copy.fields.email]))).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: copy.apply(1) }))
     expect(await screen.findByText(copy.doneSummary('alumnos.csv', 1, 2))).toBeInTheDocument()
@@ -158,6 +162,27 @@ describe('Importar alumnos', () => {
     expect(await screen.findByText(copy.summary(2, 1))).toBeInTheDocument()
     expect(sent[0]?.plans).toEqual({ mensual: 'mensual', 'Beca 50%': 'mensual' })
     expect(sent[0]?.mapping).toEqual({ name: 0, phone: 1, email: 4, plan: 2, due_on: 3 })
+  })
+
+  it('sends "Sin plan" as no plan, for a matched value and an unmatched one', async () => {
+    const sent = stubApi()
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+    await userEvent.selectOptions(await screen.findByLabelText('mensual'), copy.noPlan)
+    await userEvent.selectOptions(screen.getByLabelText('Beca 50%'), copy.noPlan)
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+
+    await waitFor(() => expect(sent[0]?.plans).toEqual({ mensual: null, 'Beca 50%': null }))
+  })
+
+  it('leaves an unchosen value out, for the API to report', async () => {
+    const sent = stubApi()
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+    expect(await screen.findByLabelText('Beca 50%')).toHaveDisplayValue(copy.pickPlan)
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+
+    await waitFor(() => expect(sent[0]?.plans).toEqual({ mensual: 'mensual' }))
   })
 
   it('moves a field to the column it is picked for', async () => {

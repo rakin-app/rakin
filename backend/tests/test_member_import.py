@@ -99,7 +99,7 @@ def send(
     sheet: dict[str, Any],
     *,
     dry_run: bool,
-    plans: dict[str, str] | None = None,
+    plans: dict[str, str | None] | None = None,
     headers: dict[str, str] | None = None,
 ) -> Any:
     body = {
@@ -311,6 +311,8 @@ def test_running_it_again_creates_nothing_twice(
         if not row["errors"]:
             outcomes = [row[k] for k in ("person", "guardian", "link", "membership")]
             assert set(outcomes) <= {"existing", None}, row
+            # The same sheet again differs from nothing it wrote.
+            assert row["ignored"] == [], row
     assert len(membership_of(client, gym, "Camila Ortiz Rojas")["id"]) == 36
 
 
@@ -333,6 +335,61 @@ def test_fixing_the_refused_rows_imports_only_them(client: TestClient, gym: uuid
 
 
 @pg
+@pytest.mark.parametrize(
+    ("value", "row_number", "name"),
+    [("Mensual", 2, "Camila Ortiz Rojas"), ("Beca 50%", 8, "Benjamín Fuentes")],
+    ids=["name-matched", "unmatched"],
+)
+def test_a_plan_value_cleared_on_purpose_imports_the_person_with_no_membership(
+    client: TestClient, gym: uuid.UUID, value: str, row_number: int, name: str
+) -> None:
+    report = imported(client, gym, sheet_of(client, gym), dry_run=False, plans={value: None})
+    row = next(r for r in report["rows"] if r["row"] == row_number)
+    assert (row["errors"], row["person"], row["membership"]) == ([], "created", None)
+    assert find(client, gym, name)["membership"] is None
+
+
+@pg
+def test_a_live_membership_keeps_its_plan_and_dates_and_says_so(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    imported(client, gym, sheet_of(client, gym), dry_run=False)
+    mapping = {"name": 0, "phone": 1, "plan": 2, "due_on": 3}
+
+    def again(plan: str, due_on: str) -> Any:
+        sheet = {
+            "rows": [{"number": 2, "cells": ["Camila Ortiz Rojas", "987654321", plan, due_on]}],
+            "mapping": mapping,
+        }
+        [row] = imported(client, gym, sheet, dry_run=True)["rows"]
+        return (row["membership"], row["ignored"])
+
+    assert again("Mensual", "05/12/2026") == ("existing", [])
+    assert again("Semestral", "05/12/2026") == ("existing", ["plan"])
+    assert again("Mensual", "20/12/2026") == ("existing", ["due_on"])
+    assert membership_of(client, gym, "Camila Ortiz Rojas")["current_period_end"] == "2026-12-04"
+
+
+@pg
+def test_a_guardians_own_row_goes_first_wherever_it_is(client: TestClient, gym: uuid.UUID) -> None:
+    mother = new_phone()
+    teen = new_phone()
+    # Lucas's row names his mother by phone alone, above her own row.
+    rows = [["Lucas Díaz", teen, mother], ["Paula Díaz", mother, ""]]
+    sheet = {
+        "rows": [{"number": n, "cells": cells} for n, cells in enumerate(rows, start=2)],
+        "mapping": {"name": 0, "phone": 1, "guardian_phone": 2},
+    }
+    report = imported(client, gym, sheet, dry_run=False)
+    assert [(r["errors"], r["person"]) for r in report["rows"]] == [
+        ([], "created"),
+        ([], "created"),
+    ]
+    assert (report["rows"][0]["guardian"], report["rows"][0]["link"]) == ("existing", "created")
+    assert find(client, gym, "Lucas Díaz")["guardian"]["name"] == "Paula Díaz"
+
+
+@pg
 def test_someone_already_in_the_gym_is_found_by_phone_and_left_as_they_are(
     client: TestClient, gym: uuid.UUID
 ) -> None:
@@ -341,6 +398,8 @@ def test_someone_already_in_the_gym_is_found_by_phone_and_left_as_they_are(
     report = imported(client, gym, sheet_of(client, gym), dry_run=False)
 
     assert report["rows"][0]["person"] == "existing"
+    # Kept as the gym has her, and the report names each sheet field that leaves unapplied.
+    assert report["rows"][0]["ignored"] == ["name", "email", "rut", "dob"]
     cami = find(client, gym, "Cami Ortiz")
     assert cami["dependents"] == 2
     assert cami["membership"]["plan_name"] == "Mensual"

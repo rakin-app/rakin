@@ -26,7 +26,13 @@ MAX_CELL_LENGTH = 500
 
 ZIP_SIGNATURE = b"PK\x03\x04"
 
-SheetErrorCode = Literal["unreadable", "empty", "too_many_rows"]
+# How many rows are read at most, empty ones included, as a multiple of `MAX_ROWS`: an
+# XLSX formatted down to row 1,048,576 compresses to almost nothing.
+SCAN_FACTOR = 10
+
+# `too_many_empty_rows`: data, or formatting, that goes on past `SCAN_FACTOR * MAX_ROWS`
+# rows when most are empty.
+SheetErrorCode = Literal["unreadable", "empty", "too_many_rows", "too_many_empty_rows"]
 
 
 class SheetError(ValueError):
@@ -60,6 +66,8 @@ def _table(numbered: Iterable[tuple[int, list[str]]]) -> Sheet:
     headers: list[str] | None = None
     rows: list[Row] = []
     for number, raw in numbered:
+        if number > SCAN_FACTOR * MAX_ROWS:
+            raise SheetError("too_many_empty_rows")
         cells = [cell.strip()[:MAX_CELL_LENGTH] for cell in raw[:MAX_COLUMNS]]
         if not any(cells):
             continue

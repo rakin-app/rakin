@@ -1,6 +1,7 @@
 """Reading a gym's spreadsheet: CSV as Excel and Google Sheets write it, and XLSX."""
 
 import io
+from collections.abc import Sequence
 from datetime import date, datetime
 from pathlib import Path
 
@@ -13,12 +14,12 @@ from app.member_import.sheet import Row, Sheet, SheetError, read_sheet
 PILOT = Path(__file__).parent.parent / "fixtures" / "pilot_sheet.csv"
 
 
-def xlsx(*rows: list[object], extra_sheet: bool = False) -> bytes:
+def xlsx(*rows: Sequence[object], extra_sheet: bool = False) -> bytes:
     workbook = Workbook()
     worksheet = workbook.active
     assert worksheet is not None
     for row in rows:
-        worksheet.append(row)
+        worksheet.append(list(row))
     if extra_sheet:
         workbook.create_sheet("Pagos").append(["no", "es", "esta"])
     out = io.BytesIO()
@@ -114,3 +115,22 @@ def test_too_many_rows_are_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(SheetError) as refused:
         read_sheet(b"n\na\nb\nc\n")
     assert refused.value.code == "too_many_rows"
+
+
+def test_a_sheet_that_goes_on_empty_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(s, "MAX_ROWS", 2)
+    # 20 rows are scanned at most (`SCAN_FACTOR` times the cap), empty ones included.
+    assert len(read_sheet(b"n\na" + b"\n" * 18 + b"b\n").rows) == 2
+    with pytest.raises(SheetError) as refused:
+        read_sheet(b"n\na" + b"\n" * 19 + b"b\n")
+    assert refused.value.code == "too_many_empty_rows"
+
+
+def test_an_xlsx_formatted_far_down_stops_at_the_scan_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(s, "MAX_ROWS", 2)
+    data = xlsx(["Nombre"], ["Camila"], *[[None]] * 30, ["Diego"])
+    with pytest.raises(SheetError) as refused:
+        read_sheet(data)
+    assert refused.value.code == "too_many_empty_rows"

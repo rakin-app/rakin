@@ -15,12 +15,15 @@ earlier row adds finds them.
 Running it again creates nothing twice. An adult is found by their phone, as
 `join_gym_by_phone` finds anyone (0004); a dependent, with no phone, by their
 guardian's phone and their own name. Whoever is found is left as this gym has them,
-and so is a membership they already hold that is not cancelled.
+and so is a membership they already hold that is not cancelled: an import never
+overwrites what the gym already has. Each row says which of its fields that leaves
+unapplied (`ignored`), so the dry run shows it before anything is written.
 
 Only an owner or admin may import, since a membership sets what a member is charged.
 """
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
@@ -76,8 +79,12 @@ BY_PHONE = """
 """
 GUARDIAN_OF = "SELECT guardian_person_id FROM guardian_link WHERE dependent_person_id = :id"
 LIVE_MEMBERSHIP = """
-    SELECT EXISTS (SELECT FROM membership WHERE person_id = :id AND status <> 'cancelled')
+    SELECT plan_id, current_period_end FROM membership
+    WHERE person_id = :id AND status <> 'cancelled'
+    ORDER BY started_at DESC, created_at DESC
+    LIMIT 1
 """
+RECORD = "SELECT name, email, rut, dob FROM gym_person WHERE person_id = :id"
 JOIN = "SELECT person_id FROM join_gym_by_phone(:phone, :name, :email, :rut, :dob)"
 
 
@@ -137,6 +144,8 @@ class _Writer:
         self.session = session
         self.timezone = timezone
         self.today = today
+        # The current row's fields that something already here keeps it from applying.
+        self.ignored: list[Field] = []
 
     async def _scalar(self, sql: str, **params: Any) -> Any:
         return await self.session.scalar(text(sql), params)
@@ -154,6 +163,7 @@ class _Writer:
         return person_id
 
     async def row(self, member: Member) -> RowResult:
+        self.ignored = []
         guardian: Outcome | None = None
         link_outcome: Outcome | None = None
         guardian_id: uuid.UUID | None = None
@@ -178,11 +188,24 @@ class _Writer:
             guardian=guardian,
             link=link_outcome,
             membership=membership,
+            ignored=sorted(set(self.ignored), key=list(Field).index),
         )
+
+    async def _kept(self, person_id: uuid.UUID, member: Member) -> None:
+        """Note the sheet's values that differ from this gym's record of `person_id`."""
+        record = (await self.session.execute(text(RECORD), {"id": person_id})).one()
+        sheet = {
+            Field.NAME: (member.name, record.name),
+            Field.EMAIL: (member.email, record.email),
+            Field.RUT: (member.rut, record.rut),
+            Field.DOB: (member.dob, record.dob),
+        }
+        self.ignored += [f for f, (new, kept) in sheet.items() if new is not None and new != kept]
 
     async def _adult(self, member: Member) -> tuple[uuid.UUID, Outcome]:
         assert member.phone is not None
         if (found := await self._scalar(BY_PHONE, phone=member.phone)) is not None:
+            await self._kept(found, member)
             return found, "existing"
         person_id = await self._join(
             member.phone, member.name, member.email, member.rut, member.dob
@@ -192,6 +215,12 @@ class _Writer:
     async def _guardian(self, member: Member) -> tuple[uuid.UUID, Outcome]:
         assert member.guardian_phone is not None
         if (found := await self._scalar(BY_PHONE, phone=member.guardian_phone)) is not None:
+            if member.guardian_name is not None:
+                kept = await self._scalar(
+                    "SELECT name FROM gym_person WHERE person_id = :id", id=found
+                )
+                if fold(kept) != fold(member.guardian_name):
+                    self.ignored.append(Field.GUARDIAN_NAME)
             return found, "existing"
         if member.guardian_name is None:
             raise RowRefused(Field.GUARDIAN_NAME, "required")
@@ -204,6 +233,7 @@ class _Writer:
             raise RowRefused(Field.GUARDIAN_PHONE, "one_level")
         name = fold(member.name)
         if found := next((d.id for d in theirs.dependents if fold(d.name) == name), None):
+            await self._kept(found, member)
             return found, "existing"
         person_id = uuid.uuid4()
         values = {
@@ -230,13 +260,20 @@ class _Writer:
 
     async def _membership(self, member: Member, person_id: uuid.UUID) -> Outcome:
         assert member.plan is not None
-        if await self._scalar(LIVE_MEMBERSHIP, id=person_id):
-            return "existing"
         started_on = member.started_on or self.today
         if member.due_on is not None and member.started_on is None:
             # An overdue member started no later than the payment they owe.
             started_on = min(started_on, member.due_on)
         started = domain.imported(member.plan.terms, started_on, member.due_on)
+        live = (await self.session.execute(text(LIVE_MEMBERSHIP), {"id": person_id})).first()
+        if live is not None:
+            if live.plan_id != member.plan.id:
+                self.ignored.append(Field.PLAN)
+            elif (
+                member.due_on is not None and live.current_period_end != started.current_period_end
+            ):
+                self.ignored.append(Field.DUE_ON)
+            return "existing"
         await insert_membership(
             self.session,
             person_id,
@@ -256,6 +293,7 @@ def _refusal(member: Member) -> RowResult:
         guardian=None,
         link=None,
         membership=None,
+        ignored=[],
     )
 
 
@@ -291,10 +329,7 @@ async def import_members(
     writer = _Writer(session, timezone, today)
     results: dict[int, RowResult] = {}
     everything = await session.begin_nested()
-    # Guardians' own rows first, so a dependent's finds the guardian the sheet describes.
-    for index, member in sorted(
-        enumerate(members), key=lambda pair: (pair[1].phone is None, pair[0])
-    ):
+    for index, member in sorted(enumerate(members), key=_guardians_first(members)):
         if not member.errors:
             try:
                 async with session.begin_nested():
@@ -310,6 +345,21 @@ async def import_members(
 
     rows = [results[index] for index in range(len(members))]
     return ImportReport(dry_run=body.dry_run, summary=_summary(rows), rows=rows)
+
+
+def _guardians_first(members: list[Member]) -> Callable[[tuple[int, Member]], tuple[int, int]]:
+    """The order rows are written in: guardians' own rows first, then everyone else with
+    a phone, then dependents, each in the sheet's order. So a row naming a guardian finds
+    the guardian the sheet describes, with the name their own row gives them."""
+    guardians = {m.guardian_phone for m in members if m.guardian_phone is not None}
+
+    def key(pair: tuple[int, Member]) -> tuple[int, int]:
+        index, member = pair
+        if member.phone is None:
+            return 2, index
+        return (0 if member.phone in guardians else 1), index
+
+    return key
 
 
 def _summary(rows: list[RowResult]) -> ImportSummary:

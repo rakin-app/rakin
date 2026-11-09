@@ -271,10 +271,14 @@ def read_member(
         except ValueError:
             member.refuse(Field.RUT, "invalid_rut")
     member.dob = _date(member, Field.DOB, cell(Field.DOB), today)
+    plan_value = cell(Field.PLAN)
+    if plan_value and plans.cleared(plan_value):
+        # The admin said this value means no plan: the person alone, and the dates
+        # that only a membership reads are not read either.
+        return member
     member.due_on = _date(member, Field.DUE_ON, cell(Field.DUE_ON), today)
     member.started_on = _date(member, Field.STARTED_ON, cell(Field.STARTED_ON), today)
-
-    if plan_value := cell(Field.PLAN):
+    if plan_value:
         _plan(member, plans, plan_value)
     return member
 
@@ -303,14 +307,26 @@ def _plan(member: Member, plans: "PlanFinder", value: str) -> None:
 
 class PlanFinder:
     """A sheet's plan cell to one of the gym's plans: by the admin's choice for that
-    value, else by name, accents and case ignored, an active plan first."""
+    value, else by name, accents and case ignored, an active plan first.
 
-    def __init__(self, plans: Sequence[Plan], chosen: Mapping[str, uuid.UUID]) -> None:
+    A choice of `None` means no plan: the row's person is imported with no membership,
+    whatever plan that value names (`cleared`).
+    """
+
+    def __init__(self, plans: Sequence[Plan], chosen: Mapping[str, uuid.UUID | None]) -> None:
         by_id = {plan.id: plan for plan in plans}
-        self._chosen = {fold(value): by_id.get(plan_id) for value, plan_id in chosen.items()}
+        self._cleared = {fold(value) for value, plan_id in chosen.items() if plan_id is None}
+        self._chosen = {
+            fold(value): by_id.get(plan_id)
+            for value, plan_id in chosen.items()
+            if plan_id is not None
+        }
         self._by_name: dict[str, Plan] = {}
         for plan in sorted(plans, key=lambda p: not p.active):
             self._by_name.setdefault(fold(plan.name), plan)
+
+    def cleared(self, value: str) -> bool:
+        return fold(value) in self._cleared
 
     def find(self, value: str) -> Plan | None:
         key = fold(value)
