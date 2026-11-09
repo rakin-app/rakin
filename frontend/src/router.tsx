@@ -11,6 +11,7 @@ import { PlaceholderPage } from './components/PlaceholderPage'
 import { t } from './i18n/es'
 import { AdminLayout } from './layouts/AdminLayout'
 import { MeLayout } from './layouts/MeLayout'
+import { MeHome } from './routes/MeHome'
 import { NotFound } from './routes/NotFound'
 import { Students, validateStudentsSearch } from './routes/Students'
 
@@ -73,7 +74,7 @@ const meRoute = createRoute({
 const meHomeRoute = createRoute({
   getParentRoute: () => meRoute,
   path: '/',
-  component: () => <PlaceholderPage title={t.me.home.title} />,
+  component: MeHome,
 })
 
 const routeTree = rootRoute.addChildren([

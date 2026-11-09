@@ -52,6 +52,8 @@ class Entry(BaseModel):
     claimed_at: datetime | None
     validated_by: uuid.UUID | None
     validated_at: datetime | None
+    # Where the transfer proof is stored, for a payment a student claimed (#35).
+    proof_object_key: str | None
     note: str | None
     created_at: datetime
 

@@ -44,7 +44,9 @@ Every external service sits behind an interface in `app/integrations`, and a set
 
 `create_app` builds them once into `app.state.integrations`; an endpoint takes them with `Depends(get_integrations)`. A `BlobStore` only presigns: the browser PUTs and GETs the bytes itself, so files never pass through the API. The `local` store signs its URLs with `SECRET_KEY` and serves them at `/api/blobs/…`, where the signature, not a session, is the authorisation, as it is for S3.
 
-Uploads take only the types a transfer proof can be (`ALLOWED_CONTENT_TYPES`: JPEG, PNG, WebP, HEIC, PDF). The content type is signed into every upload URL, so S3 enforces the list too. Anything a browser renders as a page, such as HTML or SVG, is refused, because the local store serves downloads from the app's own origin. Those downloads also go out as `Content-Disposition: attachment` with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`. Keys are paths, so one key cannot nest under another (`a` and `a/b`): the second upload gets a 409.
+Uploads take only the types a transfer proof can be (`ALLOWED_CONTENT_TYPES`: JPEG, PNG, WebP, HEIC, PDF), up to `MAX_UPLOAD_BYTES` (10 MB). The content type and the exact size are signed into every upload URL, so S3 enforces both too: a body of any other size, or a `Content-Type` other than the signed one, is refused. A browser sends the file's size as `Content-Length` on its own. `stat(key)` reads a stored file's size and type back without its bytes (an S3 `HEAD`), which is how the API checks an upload landed. Anything a browser renders as a page, such as HTML or SVG, is refused, because the local store serves downloads from the app's own origin. Those downloads also go out as `Content-Disposition: attachment` with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`. Keys are paths, so one key cannot nest under another (`a` and `a/b`): the second upload gets a 409.
+
+With `BLOB_STORE=s3` the browser PUTs to `S3_PUBLIC_ENDPOINT_URL`, another origin than the app's, so the bucket needs a CORS rule allowing `PUT` (with a `Content-Type` header) and `GET` from `PUBLIC_BASE_URL`. `garage-init` does not set one yet: Garage's CLI has no CORS command, only the S3 `PutBucketCors` call. The `local` store is same-origin and needs none.
 
 `tests/integrations` is the contract: each interface's tests run against every implementation, and a new one (SES, the WhatsApp Business API, Fintoc) joins the parametrised list and must pass them. The `BlobStore` contract runs against real Garage, since most of it is about what the server refuses.
 
@@ -123,9 +125,24 @@ One payer, N dependents: a parent who pays for their kids, who have no phone ([s
 
 The family routes take any staff role, like the rest of the people API. A dependent has one guardian in a gym, and links are one level deep: a guardian is nobody's dependent and a dependent nobody's guardian. Either refusal is a 409, `{"detail": {"code": "has_guardian"}}` or `{"detail": {"code": "one_level"}}`; linking someone to themselves is a 422. A new dependent has no phone, so there is no identity to find elsewhere: each is a new person, in this gym only.
 
-`/api/me` answers only about the person acting, so any session in a gym may use it, member or staff; it is the one group `tests/test_roles.py` lets a member reach. A guardian reads their dependents' ledger entries through `ledger_entry_own` (migration `0010`), which lets anyone read the entries of their own memberships and their dependents', and nothing more; every other entry and every write stays with an owner or admin (`0006`). `owed_clp` settles each period the way `app.domain.billing` does; `v_balance` (#34) may replace it. Grade and attendance join each dependent once their tables exist (#48, #44).
+`/api/me` answers only about the person acting, so any session in a gym may use it, member or staff; it is the one group `tests/test_roles.py` lets a member reach. A guardian reads their dependents' ledger entries through `ledger_entry_own` (migration `0010`), which lets anyone read the entries of their own memberships and their dependents', and nothing more; every other entry and every write stays with an owner or admin (`0006`), but for the pending payment a person claims with a transfer proof (`0011`, see Transfer proofs). `owed_clp` settles each period the way `app.domain.billing` does; `v_balance` (#34) may replace it. Grade and attendance join each dependent once their tables exist (#48, #44).
 
 Every notice about someone goes through `app.contacts.contact_for`, which answers with the guardian's own record in this gym when there is one: kids never receive messages, and may have no phone or email to send to.
+
+## Transfer proofs
+
+A student who paid by transfer uploads the proof, and the payment waits, pending, for an admin to validate or reject it (#36). Proofs never pass through the API process ([spec](../docs/technical.md#architecture)): the API presigns a PUT, the browser sends the file straight to the `BlobStore`, and only then is the payment claimed.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/me/periods` | billing periods the signed-in person can pay, theirs and their dependents', earliest due first: each with `person_name`, `plan_name`, dates, `amount_due_clp`, `paid_clp`, `outstanding_clp` and `pending_clp` (claimed by a proof, not yet reviewed). Only periods not yet paid in full |
+| `POST` | `/api/me/proofs` | `{"content_type", "size_bytes"}`: 201 with `{key, url, headers, expires_in_seconds}`. PUT the file to `url` with `headers` and a body of exactly `size_bytes`. A type outside `ALLOWED_CONTENT_TYPES` or a size over 10 MB is a 422. Records nothing |
+| `POST` | `/api/me/payments` | `{"billing_period_id", "amount_clp", "proof_key"}`: 201 with a `pending` `transfer` payment, `claimed_by` the person acting and `proof_object_key` the key. 422 if the key is not one of the person's own uploads or the file is not there, 404 for a period that is not theirs or a dependent's, 409 for a period paid in full or a proof already claimed |
+| `GET` | `/api/ledger/pending` | `{"count"}`: payments waiting for review in the gym, the admin's badge. Owner and admin only |
+
+Keys are `proofs/<gym_id>/<person_id>/<uuid>`, so a claim takes only a key from the person's own prefix, and the API checks with `stat` that the file arrived before it records anything: a failed or abandoned upload leaves no pending entry. A claim does not settle the period; validating it does (#36). After the entry commits, `app.contacts.contact_for` decides who gets the "Recibimos tu comprobante" email: the student, or their guardian for a dependent. A failed send is logged and never undoes the claim.
+
+Migration `0011` holds the database to the same rules. `ledger_entry_claim` lets anyone insert exactly one kind of entry, and only for a membership `ledger_entry_own` lets them read: a `pending` `transfer` `payment`, claimed by `app.person_id`, validated by nobody, with a proof under their own prefix. A unique index on `proof_object_key` means one proof backs one entry. An upload that is never claimed stays in storage; sweeping those is left to the retention job.
 
 ## Plans API
 

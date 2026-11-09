@@ -39,20 +39,26 @@ async def upload(
     sig: Annotated[str, Query()],
     # Absent from a download URL, whose signature then fails for "put" as well.
     ct: Annotated[str, Query()] = "",
+    length: Annotated[int | None, Query(alias="len")] = None,
     content_type: Annotated[str | None, Header()] = None,
+    content_length: Annotated[int | None, Header()] = None,
 ) -> Response:
     store = local_store(request)
-    # S3 rejects a PUT whose Content-Type differs from the signed one; so does this.
+    # S3 rejects a PUT whose Content-Type or Content-Length differs from the signed
+    # one; so does this.
     if (
-        content_type != ct
+        length is None
+        or content_type != ct
+        or content_length != length
         or ct not in ALLOWED_CONTENT_TYPES
-        or not store.verify("put", key, ct, exp, sig)
+        or not store.verify("put", key, ct, length, exp, sig)
     ):
         raise FORBIDDEN
     try:
-        await store.write(key, ct, request.stream())
+        await store.write(key, ct, length, request.stream())
     except ValueError as exc:
-        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
+        # The body did not match the signed Content-Length: a client that lied about it.
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     except OSError as exc:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "key nests under, or holds, another key"
@@ -68,7 +74,7 @@ async def download(
     sig: Annotated[str, Query()],
 ) -> FileResponse:
     store = local_store(request)
-    if not store.verify("get", key, "", exp, sig):
+    if not store.verify("get", key, "", None, exp, sig):
         raise FORBIDDEN
     found = store.stored(key)
     if found is None:
