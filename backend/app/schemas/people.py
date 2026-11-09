@@ -1,4 +1,4 @@
-"""A person as one gym knows them: create, edit, read.
+"""A person as one gym knows them: create, edit, read, and the member list.
 
 Inputs are normalised here, so the database only ever sees E.164 phones and
 `76123456-0` RUTs. The phone is the person's global identity and is set once, on
@@ -20,6 +20,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.domain.membership import MembershipStatus
 from app.domain.phone import normalize_phone
 from app.domain.rut import normalize_rut
 
@@ -90,3 +91,27 @@ class PhoneInGym(BaseModel):
     """409 body: the phone already belongs to someone in this gym, `person_id`."""
 
     detail: PhoneConflict
+
+
+class MembershipSummary(BaseModel):
+    """The membership a list row shows: the person's latest one that is not cancelled,
+    else their latest."""
+
+    id: uuid.UUID
+    status: MembershipStatus
+    plan_id: uuid.UUID
+    plan_name: str
+
+
+class MemberRow(BaseModel):
+    id: uuid.UUID
+    name: str
+    phone: str | None
+    rut: str | None
+    membership: MembershipSummary | None
+
+
+class MemberPage(BaseModel):
+    items: list[MemberRow]
+    # Every match, not just this page's.
+    total: int
