@@ -53,14 +53,20 @@ class Directory(Protocol):
 class Store(Protocol):
     async def add_link(self, token_hash: bytes, subject: str, expires_at: datetime) -> None: ...
 
-    async def redeem_link(self, token_hash: bytes, now: datetime) -> str | None:
-        """Mark an unused, unexpired link used and return its subject; else None.
-
-        Must be atomic: two concurrent redemptions of one link let exactly one through.
-        """
+    async def pending_link(self, token_hash: bytes, now: datetime) -> str | None:
+        """The subject of an unused, unexpired link, leaving it unused; else None."""
         ...
 
-    async def add_session(self, token_hash: bytes, session: Session) -> None: ...
+    async def redeem_link(
+        self, token_hash: bytes, now: datetime, session_hash: bytes, session: Session
+    ) -> bool:
+        """Mark the link used and store `session` in one transaction; False if it can't.
+
+        It can't when the link is used, expired, or not `session.subject`'s. Must be
+        atomic: of two concurrent redemptions of one link, exactly one gets through,
+        and a failure leaves the link unused.
+        """
+        ...
 
     async def session(self, token_hash: bytes, now: datetime) -> Session | None:
         """The live session with this hash: not expired, not ended."""
@@ -111,17 +117,27 @@ class MagicLinks:
         self._signer = LinkSigner(secret_key)
         self._clock = clock
 
-    async def request_links(self, address: str, ip: str) -> list[Link]:
-        """Links for every account at `address`, to be sent; raises `RateLimited`.
+    def admit(self, address: str, ip: str) -> None:
+        """Count a request for a link against the IP and the address; raises `RateLimited`.
 
-        Counts against both the address and the IP, whether or not anyone is at the
-        address, so the answer says nothing about who has an account.
+        Counted whether or not anyone is at the address, so the answer says nothing
+        about who has an account.
         """
         for limiter, key in ((self.per_ip, ip), (self.per_address, normalize_address(address))):
             retry_after = limiter.hit(key)
             if retry_after is not None:
                 raise RateLimited(retry_after)
-        return [await self.issue(r) for r in await self.directory.recipients(address)]
+
+    async def send_links(self, address: str) -> list[Link]:
+        """Issue and send a link to every account at `address`; none if there are none.
+
+        Run it after answering the request: it is all the work a known address costs
+        and an unknown one does not.
+        """
+        links = [await self.issue(r) for r in await self.directory.recipients(address)]
+        for link in links:
+            await self.sender.send(link)
+        return links
 
     async def issue(self, recipient: Recipient) -> Link:
         """A new single-use link for `recipient`, stored and ready to send."""
@@ -139,12 +155,16 @@ class MagicLinks:
         now = self._clock()
         if not self._signer.valid(token, now):
             return None
-        subject = await self.store.redeem_link(hash_token(token), now)
+        link_hash = hash_token(token)
+        subject = await self.store.pending_link(link_hash, now)
         if subject is None:
             return None
+        # Everything that can fail happens before the link is spent, so a failure
+        # leaves it usable.
         session_token = new_session_token()
         session = Session(subject, await self.directory.scope(subject), now + self.session_ttl)
-        await self.store.add_session(hash_token(session_token), session)
+        if not await self.store.redeem_link(link_hash, now, hash_token(session_token), session):
+            return None
         return session_token
 
     async def session(self, session_token: str) -> Session | None:

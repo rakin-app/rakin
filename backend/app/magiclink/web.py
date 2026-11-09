@@ -127,17 +127,16 @@ def build_router(
         """
         ip = request.client.host if request.client else "unknown"
         try:
-            issued = await links.request_links(body.email, ip)
+            links.admit(body.email, ip)
         except RateLimited as exc:
             raise HTTPException(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 "too many requests; try again later",
                 headers={"Retry-After": str(math.ceil(exc.retry_after))},
             ) from exc
-        # After the response, so a known address takes no longer to answer than an
-        # unknown one.
-        for link in issued:
-            background.add_task(links.sender.send, link)
+        # Looking the address up, storing and sending all wait until after the
+        # response, so a known address takes no longer to answer than an unknown one.
+        background.add_task(links.send_links, body.email)
         return Response(status_code=status.HTTP_202_ACCEPTED)
 
     @router.get(CALLBACK, response_class=HTMLResponse)

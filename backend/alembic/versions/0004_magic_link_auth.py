@@ -13,7 +13,8 @@ Everything sign-in does before a gym is known has to look across gyms, and RLS i
 FORCEd for the owner too. So it goes through `SECURITY DEFINER` functions owned by
 `rakin_auth` (`app.db_bootstrap`), which bypasses RLS and may touch only what they
 need: who an email address belongs to, which gyms a person is in, a live session by
-hash, and ending one. The API may call them and gets back only what sign-in needs.
+hash (only while its person still belongs to its gym), and ending one. The API may
+call them and gets back only what sign-in needs.
 
 Run `python -m app.db_bootstrap` before this migration: it creates `rakin_auth`.
 
@@ -93,6 +94,12 @@ LANGUAGE sql STABLE {DEFINER} AS $$
     SELECT s.person_id, s.gym_id, s.expires_at
     FROM public.auth_session s
     WHERE s.token_hash = hash AND s.ended_at IS NULL AND s.expires_at > at
+      -- Someone removed from the gym loses the session at once, not in 30 days.
+      AND (s.gym_id IS NULL
+           OR EXISTS (SELECT FROM public.membership m
+                      WHERE m.person_id = s.person_id AND m.gym_id = s.gym_id)
+           OR EXISTS (SELECT FROM public.staff st
+                      WHERE st.person_id = s.person_id AND st.gym_id = s.gym_id))
 $$
 """,
     "auth_end_session(bytea, timestamptz)": f"""

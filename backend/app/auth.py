@@ -100,27 +100,44 @@ class PostgresStore:
             {"h": token_hash, "p": uuid.UUID(subject), "e": expires_at},
         )
 
-    async def redeem_link(self, token_hash: bytes, now: datetime) -> str | None:
-        # One statement: of two concurrent redemptions, the second finds it used.
+    async def pending_link(self, token_hash: bytes, now: datetime) -> str | None:
         row = await self._fetch(
-            "UPDATE auth_link SET used_at = :now"
-            " WHERE token_hash = :h AND used_at IS NULL AND expires_at > :now"
-            " RETURNING person_id",
+            "SELECT person_id FROM auth_link"
+            " WHERE token_hash = :h AND used_at IS NULL AND expires_at > :now",
             {"h": token_hash, "now": now},
         )
         return None if row is None else str(row.person_id)
 
-    async def add_session(self, token_hash: bytes, session: Session) -> None:
-        await self._execute(
-            "INSERT INTO auth_session (token_hash, person_id, gym_id, expires_at)"
-            " VALUES (:h, :p, :g, :e)",
-            {
-                "h": token_hash,
-                "p": uuid.UUID(session.subject),
-                "g": None if session.scope is None else uuid.UUID(session.scope),
-                "e": session.expires_at,
-            },
-        )
+    async def redeem_link(
+        self, token_hash: bytes, now: datetime, session_hash: bytes, session: Session
+    ) -> bool:
+        async with self._sessionmaker()() as db, db.begin():
+            # Of two concurrent redemptions, the second waits on the row lock and then
+            # finds it used.
+            spent = await db.execute(
+                text(
+                    "UPDATE auth_link SET used_at = :now WHERE token_hash = :h"
+                    " AND person_id = :p AND used_at IS NULL AND expires_at > :now"
+                    " RETURNING 1"
+                ),
+                {"h": token_hash, "p": uuid.UUID(session.subject), "now": now},
+            )
+            if spent.one_or_none() is None:
+                return False
+            # Fails with the link: the transaction rolls both back.
+            await db.execute(
+                text(
+                    "INSERT INTO auth_session (token_hash, person_id, gym_id, expires_at)"
+                    " VALUES (:h, :p, :g, :e)"
+                ),
+                {
+                    "h": session_hash,
+                    "p": uuid.UUID(session.subject),
+                    "g": None if session.scope is None else uuid.UUID(session.scope),
+                    "e": session.expires_at,
+                },
+            )
+        return True
 
     async def session(self, token_hash: bytes, now: datetime) -> Session | None:
         row = await self._fetch(

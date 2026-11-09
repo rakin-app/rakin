@@ -46,11 +46,22 @@ class Clock:
         return self.now
 
 
+class DirectoryDown(Exception):
+    pass
+
+
+@dataclass
 class Directory:
+    down: bool = False  # every lookup raises, as with the database unreachable
+
     async def recipients(self, address: str) -> Sequence[Recipient]:
+        if self.down:
+            raise DirectoryDown
         return [r for r in (ANA, CAMILA, MATEO) if r.address == address.strip().lower()]
 
     async def scope(self, subject: str) -> str | None:
+        if self.down:
+            raise DirectoryDown
         return None if subject == "camila" else f"gym-of-{subject}"
 
 
@@ -62,15 +73,19 @@ class Store:
     async def add_link(self, token_hash: bytes, subject: str, expires_at: datetime) -> None:
         self.links[token_hash] = (subject, expires_at, False)
 
-    async def redeem_link(self, token_hash: bytes, now: datetime) -> str | None:
+    async def pending_link(self, token_hash: bytes, now: datetime) -> str | None:
         subject, expires_at, used = self.links.get(token_hash, ("", now, True))
-        if used or now >= expires_at:
-            return None
-        self.links[token_hash] = (subject, expires_at, True)
-        return subject
+        return None if used or now >= expires_at else subject
 
-    async def add_session(self, token_hash: bytes, session: Session) -> None:
-        self.sessions[token_hash] = (session, False)
+    async def redeem_link(
+        self, token_hash: bytes, now: datetime, session_hash: bytes, session: Session
+    ) -> bool:
+        if await self.pending_link(token_hash, now) != session.subject:
+            return False
+        subject, expires_at, _ = self.links[token_hash]
+        self.links[token_hash] = (subject, expires_at, True)
+        self.sessions[session_hash] = (session, False)
+        return True
 
     async def session(self, token_hash: bytes, now: datetime) -> Session | None:
         session, ended = self.sessions.get(token_hash, (None, True))
@@ -96,6 +111,7 @@ class Outbox:
 @dataclass
 class Harness:
     client: TestClient
+    directory: Directory
     clock: Clock
     store: Store
     outbox: Outbox
@@ -145,19 +161,23 @@ class ClientAddress:
 
 @pytest.fixture
 def harness() -> Iterator[Harness]:
-    clock, store, outbox = Clock(), Store(), Outbox()
+    clock, directory, store, outbox = Clock(), Directory(), Store(), Outbox()
     links = MagicLinks(
         secret_key="s" * 32,
         callback_url=callback_url(BASE_URL, PREFIX),
-        directory=Directory(),
+        directory=directory,
         store=store,
         sender=outbox,
         per_address=MemoryRateLimiter(limit=3, window_seconds=900),
         per_ip=MemoryRateLimiter(limit=5, window_seconds=900),
         clock=clock,
     )
-    with TestClient(make_app(links), base_url=BASE_URL, follow_redirects=False) as client:
-        yield Harness(client, clock, store, outbox)
+    app = make_app(links)
+    # Errors come back as 500s, as a browser would see them.
+    with TestClient(
+        app, base_url=BASE_URL, follow_redirects=False, raise_server_exceptions=False
+    ) as client:
+        yield Harness(client, directory, clock, store, outbox)
 
 
 # --- requesting a link ------------------------------------------------------------
@@ -186,6 +206,14 @@ def test_an_unknown_address_gets_the_same_answer_and_nothing_is_sent(harness: Ha
 @pytest.mark.parametrize("email", ["", "ana", "ana@", "@example.cl", "a na@example.cl"])
 def test_something_that_is_not_an_address_is_a_422(harness: Harness, email: str) -> None:
     assert harness.request_link(email) == 422
+
+
+def test_the_lookup_happens_after_the_answer(harness: Harness) -> None:
+    # The directory fails, and the request has already been answered: nothing that
+    # depends on the address ran before the 202.
+    harness.directory.down = True
+    assert harness.request_link(ANA.address) == 202
+    assert harness.outbox.sent == []
 
 
 def test_only_the_hash_of_a_link_is_stored(harness: Harness) -> None:
@@ -282,6 +310,17 @@ def test_a_link_works_once(harness: Harness) -> None:
     assert again.status_code == 400
     assert "set-cookie" not in again.headers
     assert len(harness.store.sessions) == 1
+
+
+def test_a_failed_sign_in_leaves_the_link_usable(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    form = {"token": token_of(harness.outbox.url_for(ANA))}
+
+    harness.directory.down = True
+    assert harness.client.post(f"{PREFIX}/callback", data=form).status_code == 500
+    harness.directory.down = False
+
+    assert harness.client.post(f"{PREFIX}/callback", data=form).status_code == 303
 
 
 def test_a_link_expires_after_15_minutes(harness: Harness) -> None:

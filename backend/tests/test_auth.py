@@ -16,6 +16,7 @@ import asyncpg
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 from app.auth import MailSender, PostgresStore
 from app.db import create_engine, create_sessionmaker
@@ -210,15 +211,43 @@ def test_logging_out_ends_the_session(harness: Harness, db: Database) -> None:
 
 
 def test_of_concurrent_redemptions_exactly_one_wins(db: Database, people: People) -> None:
-    token_hash, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
+    link, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
+    session = Session(str(people.ana), str(people.sur), now + timedelta(days=30))
 
-    async def race(store: PostgresStore) -> list[str | None]:
-        await store.add_link(token_hash, str(people.ana), now + timedelta(minutes=15))
-        return list(await asyncio.gather(*(store.redeem_link(token_hash, now) for _ in range(5))))
+    async def race(store: PostgresStore) -> list[bool]:
+        await store.add_link(link, str(people.ana), now + timedelta(minutes=15))
+        attempts = (store.redeem_link(link, now, hash_token(f"s{n}"), session) for n in range(5))
+        return list(await asyncio.gather(*attempts))
 
-    results = with_store(db, race)
-    assert [r for r in results if r is not None] == [str(people.ana)]
-    assert results.count(None) == 4
+    assert sorted(with_store(db, race)) == [False] * 4 + [True]
+
+
+def test_a_session_that_cannot_be_stored_leaves_the_link_unspent(
+    db: Database, people: People
+) -> None:
+    link, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
+    # A gym that does not exist: the session insert fails on its foreign key.
+    broken = Session(str(people.ana), str(uuid.uuid4()), now + timedelta(days=30))
+
+    async def check(store: PostgresStore) -> None:
+        await store.add_link(link, str(people.ana), now + timedelta(minutes=15))
+        with pytest.raises(IntegrityError):
+            await store.redeem_link(link, now, hash_token("broken"), broken)
+        assert await store.pending_link(link, now) == str(people.ana)
+
+    with_store(db, check)
+
+
+def test_a_link_redeems_only_for_its_own_person(db: Database, people: People) -> None:
+    link, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
+    someone_else = Session(str(people.shared), None, now + timedelta(days=30))
+
+    async def check(store: PostgresStore) -> None:
+        await store.add_link(link, str(people.ana), now + timedelta(minutes=15))
+        assert not await store.redeem_link(link, now, hash_token("x"), someone_else)
+        assert await store.pending_link(link, now) == str(people.ana)
+
+    with_store(db, check)
 
 
 def test_an_expired_link_or_session_is_not_found(db: Database, people: People) -> None:
@@ -227,13 +256,52 @@ def test_an_expired_link_or_session_is_not_found(db: Database, people: People) -
 
     async def check(store: PostgresStore) -> None:
         await store.add_link(link, str(people.ana), now + timedelta(minutes=15))
-        await store.add_session(session, Session(str(people.ana), str(people.sur), now + day))
+        later = now + timedelta(minutes=15)
+        assert await store.pending_link(link, later) is None
+        assert not await store.redeem_link(
+            link, later, session, Session(str(people.ana), None, later + day)
+        )
+        assert await store.redeem_link(
+            link, now, session, Session(str(people.ana), str(people.sur), now + day)
+        )
 
         assert await store.session(session, now) is not None
         assert await store.session(session, now + day) is None
-        assert await store.redeem_link(link, now + timedelta(minutes=15)) is None
 
     with_store(db, check)
+
+
+@pytest.mark.parametrize("row", ["staff", "membership"])
+def test_leaving_the_gym_ends_the_session(
+    harness: Harness, db: Database, people: People, row: str
+) -> None:
+    person, address = uuid.uuid4(), f"{uuid.uuid4().hex[:8]}@example.cl"
+
+    async def join(conn: asyncpg.Connection) -> None:
+        await conn.execute(
+            "INSERT INTO person (id, name, email) VALUES ($1, 'Leaving', $2)", person, address
+        )
+        if row == "staff":
+            await conn.execute(
+                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')",
+                people.sur,
+                person,
+            )
+        else:
+            await conn.execute(
+                "INSERT INTO membership (gym_id, person_id, plan_id, status)"
+                " SELECT gym_id, $1, id, 'active' FROM plan WHERE gym_id = $2",
+                person,
+                people.sur,
+            )
+
+    run(db.admin_url, join)
+    harness.sign_in(address)
+    assert harness.client.get("/test/setting").json()["gym"] == str(people.sur)
+
+    run(db.admin_url, lambda c: c.execute(f"DELETE FROM {row} WHERE person_id = $1", person))
+
+    assert harness.client.get("/test/setting").status_code == 401
 
 
 # --- privileges -------------------------------------------------------------------
