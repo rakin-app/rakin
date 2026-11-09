@@ -19,6 +19,7 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import { ChevronLeftIcon } from '../components/icons'
 import { monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
+import { FamilyPanel } from './FamilyPanel'
 import './MemberDetail.css'
 
 const copy = t.admin.member
@@ -27,8 +28,9 @@ const clp = t.common.clp
 const route = getRouteApi('/admin/alumnos/$personId')
 
 /**
- * "Ficha de alumno": who the member is, the plan they are on and how it stands, and,
- * for whoever reads the ledger, what they owe, their ledger and "Registrar pago".
+ * "Ficha de alumno": who the member is, the plan they are on and how it stands, their
+ * family, and, for whoever reads the ledger, what they owe, their ledger and
+ * "Registrar pago".
  * A coach sees the member and their plan, never money.
  *
  * Rank, Congelar, Ajuste, attendance, grading and custom fields join this screen
@@ -81,6 +83,10 @@ export function MemberDetail() {
       ) : (
         <p className="member__note">{copy.noPlan}</p>
       )}
+      <section className="member__section" aria-label={t.admin.family.toggle}>
+        <h2 className="member__section-title">{t.admin.family.toggle}</h2>
+        <FamilyPanel person={person.data} />
+      </section>
     </Shell>
   )
 }

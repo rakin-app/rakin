@@ -122,6 +122,7 @@ function stubApi({ role = 'owner', person, memberships = [MONTHLY], ledger = LED
     if (path === '/api/people/felipe') return person ?? { body: FELIPE }
     if (path === '/api/memberships' && url.searchParams.get('person_id') === 'felipe') return { body: memberships }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
+    if (path === '/api/people/felipe/family') return { body: { guardian: null, dependents: [{ id: 'kid', name: 'Tomás Díaz' }] } }
     if (path === '/api/ledger/payments' && method === 'POST') {
       if (payment && (payment.status ?? 201) >= 400) return payment
       current = { open_periods: [], owed_clp: 0, entries: current.entries }
@@ -243,6 +244,14 @@ describe('Ficha de alumno', () => {
     expect(screen.queryByRole('button', { name: copy.record })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: copy.ledger.title })).not.toBeInTheDocument()
     expect(calls.some((c) => c.path.startsWith('/api/ledger/memberships'))).toBe(false)
+  })
+
+  it('shows who they pay for', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    const family = await screen.findByRole('region', { name: es.admin.family.toggle })
+    expect(await within(family).findByText('Tomás Díaz')).toBeInTheDocument()
   })
 
   it('says when the member has no plan', async () => {
