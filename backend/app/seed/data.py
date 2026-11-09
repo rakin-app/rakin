@@ -6,10 +6,10 @@ with the standing the design shows them in, relative to the seed date, so the de
 "today" (Saturday 8 November 2026) is any day the seed is loaded on. The rest of the
 roster is filler drawn from a fixed random sequence, so every load is the same gym.
 
-Belts and guardian links have no table yet (#48, #19): ranks live here, checked
-against the grading scheme, and a guardian shows up as the payer of their dependents'
-ledger entries. Every guardian trains too, since a person with no membership or staff
-row is invisible in the gym (migration 0003) until `guardian_link` exists.
+Belts have no table yet (#48): ranks live here, checked against the grading scheme.
+Each kid names the member who pays for them (`MemberSpec.guardian`), which becomes
+their `guardian_link` row and the payer of their ledger entries. In this gym every
+guardian trains too.
 """
 
 import random

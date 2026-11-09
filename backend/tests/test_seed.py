@@ -120,6 +120,12 @@ def test_guardians_pay_for_dependents(seed: Seed) -> None:
         ]
         assert transfers
         assert {e["claimed_by"] for e in transfers} == {seed_id("person", kid.guardian)}
+    # Each kid is linked to the member who pays for them, and nobody else is.
+    assert {(g["guardian_person_id"], g["dependent_person_id"]) for g in seed.guardian_links} == {
+        (seed_id("person", kid.guardian), seed_id("person", kid.key))
+        for kid in kids
+        if kid.guardian is not None
+    }
 
 
 def test_grading_scheme() -> None:

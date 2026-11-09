@@ -10,6 +10,7 @@ import {
 } from '../api/people'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
+import { FamilyPanel } from './FamilyPanel'
 import './Students.css'
 
 const copy = t.admin.students
@@ -168,24 +169,48 @@ export function Students() {
 }
 
 function MemberItem({ row }: { row: MemberRow }) {
+  const [open, setOpen] = useState(false)
+  const panelId = useId()
   const details = [row.phone && formatPhone(row.phone), row.rut && formatRut(row.rut)].filter(Boolean)
+  const family = row.guardian
+    ? copy.guardianOf(row.guardian.name)
+    : row.dependents > 0
+      ? copy.dependentsCount(row.dependents)
+      : null
   return (
-    <li className="students__row">
-      <div className="students__who">
-        <span className="students__name">{row.name}</span>
-        {details.length > 0 && <span className="students__details">{details.join(' · ')}</span>}
+    <li className="students__item">
+      <div className="students__row">
+        <div className="students__who">
+          <span className="students__name">{row.name}</span>
+          {details.length > 0 && <span className="students__details">{details.join(' · ')}</span>}
+          {family && <span className="students__details">{family}</span>}
+        </div>
+        <div className="students__plan-cell">
+          {row.membership ? (
+            <>
+              <span className={`students__status students__status--${row.membership.status}`}>
+                {copy.status[row.membership.status]}
+              </span>
+              <span className="students__plan-name">{row.membership.plan_name}</span>
+            </>
+          ) : (
+            <span className="students__status">{copy.noPlan}</span>
+          )}
+          <button
+            type="button"
+            className="students__clear"
+            aria-expanded={open}
+            aria-controls={panelId}
+            aria-label={t.admin.family.toggleLabel(row.name)}
+            onClick={() => setOpen(!open)}
+          >
+            {t.admin.family.toggle}
+          </button>
+        </div>
       </div>
-      <div className="students__plan-cell">
-        {row.membership ? (
-          <>
-            <span className={`students__status students__status--${row.membership.status}`}>
-              {copy.status[row.membership.status]}
-            </span>
-            <span className="students__plan-name">{row.membership.plan_name}</span>
-          </>
-        ) : (
-          <span className="students__status">{copy.noPlan}</span>
-        )}
+      {/* Always there, so `aria-controls` names an element; filled only when open. */}
+      <div id={panelId} hidden={!open}>
+        {open && <FamilyPanel person={row} />}
       </div>
     </li>
   )

@@ -396,6 +396,7 @@ def test_rakin_auth_cannot_log_in_and_holds_only_what_the_lookups_read(db: Datab
         ("gym_person", "SELECT"),
         ("membership", "SELECT"),
         ("staff", "SELECT"),
+        ("guardian_link", "SELECT"),
         ("auth_session", "SELECT"),
         ("auth_session", "UPDATE"),
     }
