@@ -7,7 +7,7 @@ effect on the next one.
 
 A gym-scoped endpoint takes the session for the roles it serves instead of a bare
 `TenantSession`: `StaffSession` for any staff role, `AdminSession` for owner and
-admin changing how the gym is set up (its plans), `LedgerSession` for owner and admin
+admin changing how the gym is set up (its plans and settings), `LedgerSession` for owner and admin
 on the ledger. Without the role, the request is a 403; without a tenant, still a 401, before
 any database work.
 
@@ -36,7 +36,7 @@ class Role(StrEnum):
 STAFF_ROLES = frozenset(Role)
 # Coaches never see money: the owner "will not share finances with part-time coaches".
 LEDGER_ROLES = frozenset({Role.OWNER, Role.ADMIN})
-# The gym's setup (plans, prices) is the people who run it.
+# The gym's setup (plans, prices, settings and bank details) is the people who run it.
 ADMIN_ROLES = frozenset({Role.OWNER, Role.ADMIN})
 
 FORBIDDEN = HTTPException(status.HTTP_403_FORBIDDEN, "not allowed for your role in this gym")

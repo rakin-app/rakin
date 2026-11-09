@@ -126,7 +126,7 @@ def sur_ledger(db: Database, sur: Sur) -> set[str]:
 # --- the API: role x endpoint group -----------------------------------------------
 
 # What each role gets from each group: the staff group is every staff role, the
-# ledger group owner and admin.
+# ledger and settings groups owner and admin.
 ALLOWED = {
     ("people", "owner"): True,
     ("people", "admin"): True,
@@ -136,12 +136,18 @@ ALLOWED = {
     ("ledger", "admin"): True,
     ("ledger", "coach"): False,
     ("ledger", "member"): False,
+    ("settings", "owner"): True,
+    ("settings", "admin"): True,
+    ("settings", "coach"): False,
+    ("settings", "member"): False,
 }
+
+URLS = {"ledger": "/test/ledger", "settings": "/api/gym/settings"}
 
 
 def call(client: TestClient, group: str, gym: uuid.UUID, person: uuid.UUID) -> Any:
     # The people group reads the caller's own record, which every gym has of them.
-    url = f"/api/people/{person}" if group == "people" else "/test/ledger"
+    url = f"/api/people/{person}" if group == "people" else URLS[group]
     return client.get(url, headers=as_gym(gym, person))
 
 
@@ -158,7 +164,7 @@ def test_each_role_in_each_endpoint_group(
         assert {r["id"] for r in response.json()} == sur_ledger(db, sur)
 
 
-@pytest.mark.parametrize("group", ["people", "ledger"])
+@pytest.mark.parametrize("group", ["people", "ledger", "settings"])
 def test_the_role_is_the_one_in_the_current_gym(client: TestClient, sur: Sur, group: str) -> None:
     # Owner at Norte, so allowed there; a member at Sur, so refused there.
     person = sur.norte_owner_member_of_sur
