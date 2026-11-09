@@ -49,9 +49,9 @@ DEPENDENTS = f"""
     ORDER BY lower(gp.name), gp.person_id
 """
 
-# The payments on the person's memberships and their dependents', newest first, and by
-# the period paid among those recorded at once. Only a
-# rejection's note is shown: it is written for the student, and other notes are not.
+# The payments on the person's memberships and their dependents'. Newest recorded first;
+# entries recorded at the same moment go by the period they pay, latest first.
+# Only a rejection's note is shown: it is written for the student, other notes are not.
 PAYMENTS = """
     SELECT e.id, m.person_id, gp.name AS person_name, e.amount_clp, e.status,
            bp.period_start, e.claimed_at, e.validated_at,

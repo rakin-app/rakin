@@ -173,7 +173,6 @@ export const es = {
       holder: 'Titular',
       rut: 'RUT',
       number: 'N.º cuenta',
-      email: 'Correo',
       // `Cuenta Vista` → `Cta. Vista`, as the card writes it.
       bankName: (bank: string, accountType: string) => `${bank} · ${accountType.replace(/^Cuenta\b/, 'Cta.')}`,
       noBank: 'La academia todavía no publica sus datos para transferir.',
