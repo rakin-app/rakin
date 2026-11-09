@@ -2,7 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { MemberPage, MemberRow, Plan } from '../api/people'
+import type { MemberPage, MemberRow, Plan, Program } from '../api/people'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -33,11 +33,19 @@ const PLANS: Plan[] = [
   { id: 'plan-adults', name: 'Mensual adultos', active: true },
   { id: 'plan-old', name: 'Plan 2024', active: false },
 ]
+const PROGRAMS: Program[] = [
+  { id: 'program-kids', name: 'Kids', active: true },
+  { id: 'program-old', name: 'Competición', active: false },
+]
 
 type Answer = { status?: number; body: unknown }
 
 // Answers by path, and records every /api/people query it was asked.
-function stubApi(people: (params: URLSearchParams) => Answer, plans: Answer = { body: PLANS }) {
+function stubApi(
+  people: (params: URLSearchParams) => Answer,
+  plans: Answer = { body: PLANS },
+  programs: Answer = { body: PROGRAMS },
+) {
   const asked: URLSearchParams[] = []
   vi.stubGlobal(
     'fetch',
@@ -49,6 +57,8 @@ function stubApi(people: (params: URLSearchParams) => Answer, plans: Answer = { 
         answer = people(url.searchParams)
       } else if (url.pathname === '/api/plans') {
         answer = plans
+      } else if (url.pathname === '/api/programs') {
+        answer = programs
       } else {
         answer = { status: 404, body: { detail: 'Not Found' } }
       }
@@ -152,23 +162,50 @@ describe('Alumnos', () => {
   })
 
   it('works without the plan filter when plans cannot be read', async () => {
-    stubApi(() => page([CAMILA]), { status: 404, body: { detail: 'Not Found' } })
+    stubApi(() => page([CAMILA]), { status: 404, body: { detail: 'Not Found' } }, { body: [] })
     renderAt('/admin/alumnos')
 
     await list()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 
+  it('filters by program, inactive programs marked', async () => {
+    const asked = stubApi(() => page([CAMILA]))
+    renderAt('/admin/alumnos')
+    const select = await screen.findByRole('combobox', { name: copy.programLabel })
+
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      copy.allPrograms,
+      'Kids',
+      copy.inactiveProgram('Competición'),
+    ])
+    await userEvent.selectOptions(select, 'program-kids')
+
+    await waitFor(() => expect(asked.at(-1)?.getAll('program_id')).toEqual(['program-kids']))
+    expect(asked.at(-1)?.getAll('plan_id')).toEqual([])
+  })
+
+  it('has no program filter while the gym has no programs', async () => {
+    stubApi(() => page([CAMILA]), undefined, { body: [] })
+    renderAt('/admin/alumnos')
+
+    await screen.findByRole('combobox', { name: copy.planLabel })
+    expect(screen.queryByRole('combobox', { name: copy.programLabel })).not.toBeInTheDocument()
+  })
+
   it('opens with the filters in the URL and clears them all', async () => {
     const asked = stubApi((params) => page(params.toString().includes('q=') ? [] : [CAMILA]))
-    const router = renderAt('/admin/alumnos?q=%22nadie%22&status=%5B%22frozen%22%5D&plan=%22plan-adults%22')
+    const router = renderAt(
+      '/admin/alumnos?q=%22nadie%22&status=%5B%22frozen%22%5D&plan=%22plan-adults%22&program=%22program-kids%22',
+    )
 
     expect(await screen.findByText(copy.noMatches)).toBeInTheDocument()
     const first = asked[0]!
-    expect([first.get('q'), first.getAll('status'), first.getAll('plan_id')]).toEqual([
+    expect([first.get('q'), first.getAll('status'), first.getAll('plan_id'), first.getAll('program_id')]).toEqual([
       'nadie',
       ['frozen'],
       ['plan-adults'],
+      ['program-kids'],
     ])
     expect(screen.getByRole('searchbox')).toHaveValue('nadie')
 
@@ -213,17 +250,24 @@ describe('Alumnos', () => {
 
 describe('validateStudentsSearch', () => {
   it('keeps known values and drops the rest', () => {
-    expect(validateStudentsSearch({ q: 'ana', status: ['frozen', 'gone', 3], plan: 'x' })).toEqual({
+    expect(validateStudentsSearch({ q: 'ana', status: ['frozen', 'gone', 3], plan: 'x', program: 'y' })).toEqual({
       q: 'ana',
       status: ['frozen'],
       plan: 'x',
+      program: 'y',
     })
-    expect(validateStudentsSearch({ q: '  ', status: 'trial', plan: 7 })).toEqual({
+    expect(validateStudentsSearch({ q: '  ', status: 'trial', plan: 7, program: '' })).toEqual({
       q: undefined,
       status: ['trial'],
       plan: undefined,
+      program: undefined,
     })
-    expect(validateStudentsSearch({})).toEqual({ q: undefined, status: undefined, plan: undefined })
+    expect(validateStudentsSearch({})).toEqual({
+      q: undefined,
+      status: undefined,
+      plan: undefined,
+      program: undefined,
+    })
   })
 })
 
