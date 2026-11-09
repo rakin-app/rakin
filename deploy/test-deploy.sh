@@ -31,6 +31,7 @@ tag_in_env() { [ "$(grep -c '^RAKIN_TAG=' "$dir/.env")" = 1 ] && grep -qx "RAKIN
 env_mode_is() { [ "$(stat -c %a "$dir/.env" 2>/dev/null || stat -f %Lp "$dir/.env")" = "$1" ]; }
 last_release_is() { [ "$(tail -n 1 "$dir/releases.log" | cut -f2-)" = "$1" ]; }
 said() { grep -q -- "$1" "$dir/out"; }
+not_said() { ! said "$1"; }
 
 check "refuses to run without .env" refused v1
 
@@ -64,5 +65,16 @@ check "a failed migration says the old release still runs" said "v1 still runs"
 FAIL_ON=" up -d" run v3 || true
 check "a failed restart leaves .env on the live tag" tag_in_env v1
 check "a failed restart names the rollback" said "--rollback v1"
+
+printf 'SECRET_KEY=s\nRAKIN_TAG=<v0.1.0>\n' >"$dir/.env"
+FAIL_ON=" up -d" run v1 || true
+check "a first deploy's failure names no rollback" not_said "--rollback"
+check "a first deploy's failure names no placeholder" not_said "<v0.1.0>"
+run v1
+check "a first deploy replaces the placeholder" tag_in_env v1
+check "a first deploy is logged with no previous tag" last_release_is "$(printf 'deploy\tv1\t-')"
+
+FAIL_ON="image prune" check "a failed image prune does not fail the deploy" run v2
+check "a failed image prune still records the release" tag_in_env v2
 
 exit "$fails"

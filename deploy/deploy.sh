@@ -20,13 +20,16 @@ if [ "${1:-}" = "--rollback" ]; then rollback=1; shift; fi
 [ $# -eq 1 ] || usage
 tag=$1
 # An image tag, nothing a shell or sed would read as more than a word.
-[[ $tag =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] || { echo "deploy: bad tag '$tag'" >&2; exit 2; }
+is_tag() { [[ $1 =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; }
+is_tag "$tag" || { echo "deploy: bad tag '$tag'" >&2; exit 2; }
 
 cd "$(dirname "$0")"
 [ -f .env ] || { echo "deploy: no .env in $PWD (see deploy/.env.example)" >&2; exit 1; }
 docker=${DOCKER:-docker}
 
 previous=$(sed -n 's/^RAKIN_TAG=//p' .env | tail -n 1)
+# Before the first deploy it is still .env.example's `<placeholder>`: no release.
+is_tag "$previous" || previous=
 # The shell's value wins over .env for Compose's interpolation.
 export RAKIN_TAG=$tag
 compose() { "$docker" compose --profile migrate "$@"; }
@@ -62,5 +65,6 @@ rm -f "$tmp"
 printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
 	"$([ $rollback = 1 ] && echo rollback || echo deploy)" "$tag" "${previous:--}" >>releases.log
 # Untagged layers only: earlier releases stay pulled, so a rollback is fast.
-"$docker" image prune -f >/dev/null
+# Best-effort: the release is live and recorded by now.
+"$docker" image prune -f >/dev/null || echo "deploy: image prune failed; ignored" >&2
 echo "deploy: $tag is live"
