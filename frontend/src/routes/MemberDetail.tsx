@@ -3,6 +3,16 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import {
+  awardGrade,
+  gradesQuery,
+  gradingSchemeQuery,
+  rankLabel,
+  type GradeEvent,
+  type Grading,
+  type GradingScheme,
+  type Rank,
+} from '../api/grading'
+import {
   freezeMembership,
   membershipLedgerQuery,
   membershipsQuery,
@@ -30,18 +40,20 @@ const clp = t.common.clp
 const route = getRouteApi('/admin/alumnos/$personId')
 
 /**
- * "Ficha de alumno": who the member is, the plan they are on and how it stands, their
- * family, and, for whoever reads the ledger, what they owe, their ledger with its
- * freezes, "Registrar pago" and "Congelar" (#26).
- * A coach sees the member and their plan, and whether it is frozen, never money.
+ * "Ficha de alumno": who the member is and their rank, the plan they are on and how it
+ * stands, their graduación and family, and, for whoever reads the ledger, what they
+ * owe, their ledger with its freezes, "Registrar pago" and "Congelar" (#26).
+ * A coach sees the member, their plan and rank, whether it is frozen, and promotes
+ * them; never money.
  *
- * Rank, Ajuste, attendance, grading and custom fields join this screen with their
- * own tickets (#48, #38, #44, #20).
+ * Ajuste, attendance and custom fields join this screen with their own tickets
+ * (#38, #44, #20).
  */
 export function MemberDetail() {
   const { personId } = route.useParams()
   const person = useQuery(personQuery(personId))
   const memberships = useQuery(membershipsQuery(personId))
+  const grades = useQuery(gradesQuery(personId))
   const role = useQuery(myRoleQuery())
 
   if (person.isPending || memberships.isPending) {
@@ -76,15 +88,17 @@ export function MemberDetail() {
 
   const membership = shownMembership(memberships.data)
   // Latest first, so the last is the earliest: a member since their first plan here.
-  const since = memberships.data.at(-1)?.started_on ?? person.data.created_at
+  const since = monthYear(memberships.data.at(-1)?.started_on ?? person.data.created_at)
+  const rank = grades.data?.current
 
   return (
-    <Shell title={person.data.name} subtitle={copy.since(monthYear(since))}>
+    <Shell title={person.data.name} subtitle={rank ? copy.rankSince(rankLabel(rank), since) : copy.since(since)}>
       {membership ? (
         <Standing membership={membership} money={readsLedger(role.data)} />
       ) : (
         <p className="member__note">{copy.noPlan}</p>
       )}
+      <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
       <section className="member__section" aria-label={t.admin.family.toggle}>
         <h2 className="member__section-title">{t.admin.family.toggle}</h2>
         <FamilyPanel person={person.data} />
@@ -460,6 +474,271 @@ function PaymentForm({
       </div>
     </form>
   )
+}
+
+/**
+ * The member's rank, "Registrar graduación" and the promotion log. Hidden in a gym with
+ * no ranks, unless the member has promotions from when it had them.
+ */
+function Graduation({ personId, canAward }: { personId: string; canAward: boolean }) {
+  const words = copy.grading
+  const grades = useQuery(gradesQuery(personId))
+  const scheme = useQuery(gradingSchemeQuery())
+  const [open, setOpen] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+
+  if (grades.isPending || scheme.isPending) return null
+  const ranked = scheme.data ? scheme.data.ranks.length + scheme.data.kids_ladder.length > 0 : false
+  if (grades.isError) {
+    return (
+      <p className="member__error" role="alert">
+        {words.error}
+      </p>
+    )
+  }
+  const { current, events } = grades.data
+  if (!ranked && events.length === 0) return null
+
+  return (
+    <section className="member__section" aria-label={words.title}>
+      <h2 className="member__section-title">{words.title}</h2>
+      <div className="member__card">
+        {current ? (
+          <div className="member__rank">
+            <span className="member__rank-label">{rankLabel(current)}</span>
+            <span className="member__detail">{words.since(t.common.dayYear(current.awarded_on))}</span>
+          </div>
+        ) : (
+          <p className="member__note">{words.none}</p>
+        )}
+        {ranked && canAward && scheme.data && (
+          <>
+            <div className="member__actions">
+              <button
+                type="button"
+                className="member__button"
+                aria-expanded={open}
+                onClick={() => {
+                  setDone(null)
+                  setOpen(!open)
+                }}
+              >
+                {words.award}
+              </button>
+            </div>
+            {done && (
+              <p className="member__done" role="status">
+                {done}
+              </p>
+            )}
+            {open && (
+              <GradeForm
+                personId={personId}
+                scheme={scheme.data}
+                current={current}
+                onCancel={() => setOpen(false)}
+                onDone={(grading) => {
+                  setOpen(false)
+                  if (grading.current) setDone(words.form.done(rankLabel(grading.current)))
+                }}
+              />
+            )}
+          </>
+        )}
+      </div>
+      {events.length > 0 && (
+        <ul className="member__ledger" aria-label={words.log}>
+          {events.map((event) => (
+            <GradeRow key={event.id} event={event} />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function GradeRow({ event }: { event: GradeEvent }) {
+  const detail = [t.common.dayYear(event.awarded_on), event.awarded_by_name && copy.grading.by(event.awarded_by_name), event.note]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <li className="member__entry member__entry--grade">
+      <span className="member__dot" aria-hidden="true" />
+      <div className="member__entry-text">
+        <span className="member__entry-title">{rankLabel(event)}</span>
+        <span className="member__detail">{detail}</span>
+      </div>
+    </li>
+  )
+}
+
+/** Today as an ISO day, on this device: the API refuses a later one in the gym's. */
+function isoToday(): string {
+  const now = new Date()
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
+}
+
+/** The rank and sub-rank the form starts on: the current rank's next sub-rank, else the
+ * next rank, else the first. */
+function nextRank(scheme: GradingScheme, current: Rank | null | undefined): { rank: string; sub: string | null } {
+  const all = [...scheme.ranks, ...scheme.kids_ladder]
+  const at = current ? all.findIndex((r) => r.key === current.rank_key) : -1
+  const here = all[at]
+  if (here && current) {
+    const sub = here.sub_ranks.findIndex((s) => s.key === current.sub_rank)
+    const following = here.sub_ranks[sub + 1]
+    if (sub >= 0 && following) return { rank: here.key, sub: following.key }
+  }
+  const ladder = here && scheme.kids_ladder.includes(here) ? scheme.kids_ladder : scheme.ranks
+  const rank = (here && ladder[ladder.indexOf(here) + 1]) ?? here ?? all[0]!
+  return { rank: rank.key, sub: rank.sub_ranks[0]?.key ?? null }
+}
+
+function GradeForm({
+  personId,
+  scheme,
+  current,
+  onCancel,
+  onDone,
+}: {
+  personId: string
+  scheme: GradingScheme
+  current: Rank | null
+  onCancel: () => void
+  onDone: (grading: Grading) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.grading.form
+  const ids = { rank: useId(), sub: useId(), date: useId(), note: useId() }
+  const start = nextRank(scheme, current)
+  const [rankKey, setRankKey] = useState(start.rank)
+  const [subRank, setSubRank] = useState<string | null>(start.sub)
+  const [awardedOn, setAwardedOn] = useState(isoToday())
+  const [note, setNote] = useState('')
+  const rank = [...scheme.ranks, ...scheme.kids_ladder].find((r) => r.key === rankKey)
+
+  const award = useMutation({
+    mutationFn: () =>
+      awardGrade(personId, {
+        rank_key: rankKey,
+        sub_rank: subRank,
+        awarded_on: awardedOn,
+        ...(note.trim() ? { note: note.trim() } : {}),
+      }),
+    onSuccess: async (grading) => {
+      onDone(grading)
+      await queryClient.invalidateQueries({ queryKey: ['grades', personId] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    award.mutate()
+  }
+
+  return (
+    <form className="member__form member__form--inset" aria-label={form.title} onSubmit={submit}>
+      <label htmlFor={ids.rank} className="member__label">
+        {form.rank}
+      </label>
+      <select
+        id={ids.rank}
+        className="member__input"
+        value={rankKey}
+        onChange={(e) => {
+          setRankKey(e.target.value)
+          const chosen = [...scheme.ranks, ...scheme.kids_ladder].find((r) => r.key === e.target.value)
+          setSubRank(chosen?.sub_ranks[0]?.key ?? null)
+        }}
+      >
+        {scheme.kids_ladder.length > 0 ? (
+          <>
+            <optgroup label={form.ranks}>
+              <RankOptions ranks={scheme.ranks} />
+            </optgroup>
+            <optgroup label={form.kids}>
+              <RankOptions ranks={scheme.kids_ladder} />
+            </optgroup>
+          </>
+        ) : (
+          <RankOptions ranks={scheme.ranks} />
+        )}
+      </select>
+
+      {rank && rank.sub_ranks.length > 0 && (
+        <>
+          <label htmlFor={ids.sub} className="member__label">
+            {form.subRank}
+          </label>
+          <select id={ids.sub} className="member__input" value={subRank ?? ''} onChange={(e) => setSubRank(e.target.value)}>
+            {rank.sub_ranks.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+
+      <label htmlFor={ids.date} className="member__label">
+        {form.date}
+      </label>
+      <input
+        id={ids.date}
+        className="member__input"
+        type="date"
+        required
+        max={isoToday()}
+        value={awardedOn}
+        onChange={(e) => setAwardedOn(e.target.value)}
+      />
+
+      <label htmlFor={ids.note} className="member__label">
+        {form.note}
+      </label>
+      <input
+        id={ids.note}
+        className="member__input"
+        type="text"
+        maxLength={500}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+
+      {award.error && (
+        <p className="member__error" role="alert">
+          {refusal(award.error)}
+        </p>
+      )}
+
+      <div className="member__form-actions">
+        <button type="button" className="member__button" disabled={award.isPending} onClick={onCancel}>
+          {form.cancel}
+        </button>
+        <button type="submit" className="member__button member__button--primary" disabled={award.isPending}>
+          {award.isPending ? form.working : form.submit}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function RankOptions({ ranks }: { ranks: GradingScheme['ranks'] }) {
+  return ranks.map((r) => (
+    <option key={r.key} value={r.key}>
+      {r.label}
+    </option>
+  ))
+}
+
+/** What the API's refusal `code` means to the admin; anything else is a plain failure. */
+function refusal(error: Error): string {
+  const refused = copy.grading.form.refused
+  const code =
+    error instanceof ApiError && typeof error.body === 'object' && error.body !== null
+      ? (error.body as { detail?: { code?: unknown } }).detail?.code
+      : undefined
+  return typeof code === 'string' && code in refused ? refused[code as keyof typeof refused] : refused.failed
 }
 
 type Line = { kind: 'entry'; entry: TimelineEntry } | { kind: 'freeze'; line: FreezeLine }

@@ -17,7 +17,7 @@ from app.domain.membership import Membership, MembershipStatus, PlanKind, is_due
 from app.domain.phone import normalize_phone
 from app.domain.rut import is_valid_rut
 from app.seed import Loaded, load
-from app.seed.build import GYM_ID, Row, Seed, build, local, seed_id
+from app.seed.build import GYM_ID, ZONE, Row, Seed, build, local, seed_id
 from app.seed.data import (
     GRACE_DAYS,
     GRADING,
@@ -141,6 +141,28 @@ def test_grading_scheme() -> None:
         belt, stripes = member.rank
         assert 0 <= stripes <= STRIPES
         assert belt in (["white", *ladder] if member.is_kid else ranks), member.key
+
+
+def test_each_member_holds_their_rank_by_a_promotion(seed: Seed) -> None:
+    memberships = by_id(seed.memberships)
+    grades = {g["membership_id"]: g for g in seed.grade_events}
+    assert len(grades) == len(seed.grade_events) == len(MEMBERS)
+    for member in MEMBERS:
+        membership = memberships[seed_id("membership", member.key)]
+        grade = grades[membership["id"]]
+        assert (grade["rank_key"], grade["sub_rank"]) == (member.rank[0], str(member.rank[1]))
+        assert grade["awarded_by"] == seed_id("person", "sebastian")
+        started = membership["started_at"].astimezone(ZONE).date()
+        if member.ranked_in is None:
+            assert started <= grade["awarded_on"] <= seed.as_of, member.key
+
+
+def test_design_rank_dates() -> None:
+    grades = {g["membership_id"]: g for g in build(DESIGN_DAY).grade_events}
+    diego = grades[seed_id("membership", "diego-morales")]
+    # "Morada · 1 grado, desde 14 jun 2025" on his student page.
+    assert (diego["rank_key"], diego["sub_rank"]) == ("purple", "1")
+    assert diego["awarded_on"] == date(2025, 6, 14)
 
 
 def test_design_overdue(seed: Seed) -> None:
