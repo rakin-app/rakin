@@ -255,6 +255,16 @@ Each row is written in a savepoint of its own: a refused row writes nothing, and
 
 Owner and admin only (`AdminSession`); a coach or member gets a 403, since the bank details decide where students send their money. `name` and `timezone` are columns on `gym`; the rest are keys of `gym.settings`, and the grading scheme and custom fields stored beside them are left untouched. `timezone` must be an IANA name, `grace_days` 0 to 60, `reminder_every_days` 1 to 30. `bank_account` takes `bank`, `account_type` (`Cuenta Corriente`, `Cuenta Vista`, `Cuenta RUT` or `Cuenta de Ahorro`), `holder`, `rut` (normalised to `76123456-0`), `number` and an optional `email` for the transfer notice. Email is always on, so `channels` holds only `whatsapp`.
 
+## Grading scheme API
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/gym/grading-scheme` | the current gym's `ranks`, `kids_ladder` and `goal_metric`; a gym that never set one has none (`{"ranks": [], "kids_ladder": [], "goal_metric": null}`) |
+| `PUT` | `/api/gym/grading-scheme` | replace it whole; answers the scheme as stored |
+| `GET` | `/api/gym/grading-scheme/presets` | the starting points, `[{key, label, scheme}]`: `bjj`, `judo-karate`, `muay-thai` and `none` ([spec](../docs/technical.md#sport-agnostic-design)) |
+
+A scheme is ranks in order, lowest first, each `{key, label, sub_ranks: [{key, label}]}`, plus an optional separate `kids_ladder` of the same shape and a `goal_metric` (`classes_since_promotion`, `time_in_rank` or `null`) for the v2 "ready for promotion" flag. It is stored as `gym.settings["grading"]`, beside the other settings, which a change leaves alone. A preset is applied by sending its scheme, edited or not, to `PUT`; nothing records which preset a scheme came from, and no code branches on it (`app.domain.grading` holds the presets as data). Promotions name a rank and a sub-rank by key, so a rank's key is unique across the ranks and the kids ladder together, and a sub-rank's within its rank. Keys are lower-case letters, digits and single dashes, up to 40 characters; labels 1 to 60. At most 60 ranks per ladder and 20 sub-ranks per rank, and a goal metric needs ranks. Any staff role may read the scheme and the presets, since coaches award promotions against it; only an owner or admin may change it. A stored scheme that no longer fits the model, as one written before a change to it would, is logged and read as a 409 `{"detail": {"code": "grading_scheme_invalid"}}`: re-apply a preset with `PUT`, which replaces it.
+
 ## Sign-in
 
 Students and staff sign in with a magic link ([spec](../docs/technical.md#communications)). `app/magiclink` is the mechanism, self-contained so it can become a package: it imports nothing else from `app`. `app/auth.py` plugs Rakin into it: people by email, Postgres, and the mailer.

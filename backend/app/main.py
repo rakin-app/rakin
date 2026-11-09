@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.api import (
     blobs,
+    grading,
     guardians,
     gym,
     health,
@@ -63,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(memberships.router)
     app.include_router(member_import.router)
     app.include_router(gym.router)
+    app.include_router(grading.router)
     app.include_router(ledger.router)
     app.include_router(proof_review.router)
     app.include_router(unsubscribe.router)
