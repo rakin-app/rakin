@@ -32,8 +32,9 @@ export function AdminLayout() {
   const role = useQuery(myRoleQuery())
   const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
   const badge = pending.data ?? 0
-  // A coach never sees money, so has no Pagos tab.
-  const navItems = role.data === 'coach' ? NAV_ITEMS.filter((item) => item.to !== '/admin/pagos') : NAV_ITEMS
+  // Pagos is money: shown only once the role is known to read the ledger, so a coach
+  // never sees the tab, not even while the role loads.
+  const navItems = readsLedger(role.data) ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.to !== '/admin/pagos')
 
   return (
     <div className="admin-shell">

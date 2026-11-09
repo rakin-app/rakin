@@ -342,9 +342,17 @@ BOOK_FILTERS = {
     BookFilter.KIDS: f"{IN_MONTH} AND gl.dependent_person_id IS NOT NULL",
 }
 
+# The membership statuses whose periods "Esperado" counts (`BOOK_KPIS`).
+EXPECTED_STATUSES = ("active", "lapsed")
+
 # The book's KPIs. Collected and expected are the month's; pending and overdue, and the
 # membership counts, are how the gym stands today. Overdue counts active memberships
 # only, as the owner's "Vencido" does (`v_overdue`).
+#
+# Expected ("Esperado") is what is owed for the month: the periods falling due in it of
+# active and lapsed memberships, since a lapsed member still owes what was billed. A
+# cancelled membership's periods are not expected, and neither are a trial's or a
+# frozen one's.
 BOOK_KPIS = text(
     """
     SELECT
@@ -355,8 +363,10 @@ BOOK_KPIS = text(
         pending.amount AS pending_clp, pending.n AS pending_payments,
         overdue.amount AS overdue_clp, overdue.members AS overdue_members,
         overdue.avg_days AS overdue_avg_days,
-        (SELECT coalesce(sum(amount_due_clp), 0)::bigint FROM billing_period
-         WHERE due_date >= :month AND due_date < (:month + interval '1 month')::date)
+        (SELECT coalesce(sum(bp.amount_due_clp), 0)::bigint FROM billing_period bp
+         JOIN membership m ON m.id = bp.membership_id
+         WHERE m.status = ANY(CAST(:expected_statuses AS text[]))
+           AND bp.due_date >= :month AND bp.due_date < (:month + interval '1 month')::date)
             AS expected_clp,
         (SELECT count(*) FROM membership WHERE status = 'active') AS active_memberships,
         (SELECT count(*) FROM membership WHERE status = 'frozen') AS frozen_memberships
@@ -405,7 +415,11 @@ async def ledger_book(
         text(f"{matching} ORDER BY e.created_at DESC, e.id DESC LIMIT :limit OFFSET :offset"),
         {**params, "limit": limit, "offset": offset},
     )
-    kpis = (await session.execute(BOOK_KPIS, {"month": shown})).one()
+    kpis = (
+        await session.execute(
+            BOOK_KPIS, {"month": shown, "expected_statuses": list(EXPECTED_STATUSES)}
+        )
+    ).one()
     return LedgerBook(
         month=shown,
         months=months,

@@ -182,7 +182,7 @@ A pending claim counts towards nothing until it is validated, as everywhere else
 | `filter` | `all` (default): the month's entries. `pending`: payments waiting for review, of any month. `overdue`: the charges of active memberships' periods in `v_overdue`, of any month. `kids`: the month's entries on a dependent's membership (`guardian_link`) |
 | `limit`, `offset` | the page: `limit` 1–200, 50 by default. `total` counts what the filter matches across every page |
 
-`kpis`: `collected_clp` and `collected_payments`, the month's row of `v_monthly_income`; `expected_clp`, what the periods falling due in the month bill; and as the gym stands today, whichever month is shown: `pending_clp` and `pending_payments`, the claims waiting for review; `overdue_clp` and `overdue_members`, outstanding on active memberships' `v_overdue` periods and the people owing it, and `overdue_avg_days`, per such person the days since their oldest unpaid period fell due, averaged; `active_memberships` and `frozen_memberships`.
+`kpis`: `collected_clp` and `collected_payments`, the month's row of `v_monthly_income`; `expected_clp`, what is owed for the month: the periods falling due in it of `active` and `lapsed` memberships, since a lapsed member still owes what was billed (`cancelled`, `trial` and `frozen` ones are left out); and as the gym stands today, whichever month is shown: `pending_clp` and `pending_payments`, the claims waiting for review; `overdue_clp` and `overdue_members`, outstanding on active memberships' `v_overdue` periods and the people owing it, and `overdue_avg_days`, per such person the days since their oldest unpaid period fell due, averaged; `active_memberships` and `frozen_memberships`.
 
 ### Overdue
 

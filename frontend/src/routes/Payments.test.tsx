@@ -204,9 +204,14 @@ describe('Libro de pagos', () => {
     expect(await screen.findByText(copy.showing(5, 5, 'octubre'))).toBeInTheDocument()
   })
 
-  it('loads the next page with "Cargar más"', async () => {
+  it('loads the next page with "Cargar más", counting by the latest page', async () => {
+    const next = entry({ id: 'older', kind: 'payment', created_at: '2026-11-01T12:00:00Z' })
     const asked = stubApi({
-      book: (params) => (params.get('offset') === '0' ? { ...BOOK, total: 55 } : { ...BOOK, items: [ENTRIES[0]!], total: 55 }),
+      book: (params) =>
+        params.get('offset') === '0'
+          ? { ...BOOK, total: 55 }
+          : // An entry landed meanwhile: the count and the KPIs have moved on.
+            { ...BOOK, items: [next], total: 56, kpis: { ...BOOK.kpis, pending_payments: 4 } },
     })
     renderAt('/admin/pagos')
     await table()
@@ -214,8 +219,26 @@ describe('Libro de pagos', () => {
     expect(screen.getByText(copy.showing(5, 55, 'noviembre'))).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: copy.more }))
 
-    expect(await screen.findByText(copy.showing(6, 55, 'noviembre'))).toBeInTheDocument()
+    expect(await screen.findByText(copy.showing(6, 56, 'noviembre'))).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: copy.kpisLabel })).toHaveTextContent(copy.kpis.pendingDetail(4))
     expect(asked.map((params) => params.get('offset'))).toEqual(['0', '5'])
+  })
+
+  it('shows an entry once when the next page repeats it', async () => {
+    // A new entry at the head shifted the list, so page 2 starts with page 1's last row.
+    stubApi({
+      book: (params) =>
+        params.get('offset') === '0' ? { ...BOOK, total: 7 } : { ...BOOK, items: [ENTRIES.at(-1)!], total: 7 },
+    })
+    renderAt('/admin/pagos')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.more }))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: copy.more })).toBeInTheDocument())
+    const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(ENTRIES.length)
+    expect(screen.getAllByRole('link', { name: 'Paula Contreras' })).toHaveLength(1)
   })
 
   it('links to the proofs waiting for review', async () => {
@@ -231,6 +254,22 @@ describe('Libro de pagos', () => {
 
     expect(await screen.findByText(copy.empty)).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('keeps the Pagos tab hidden while the role is still loading', async () => {
+    stubApi()
+    // The role never answers.
+    const fetch = globalThis.fetch
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>((input, init) =>
+        new URL(String(input), 'http://localhost').pathname === '/api/me/role' ? new Promise(() => {}) : fetch(input, init),
+      ),
+    )
+    renderAt('/admin')
+
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases'])
   })
 
   it('is hidden from coaches, who never ask for it', async () => {

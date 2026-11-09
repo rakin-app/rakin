@@ -60,8 +60,10 @@ function Book() {
   const pending = useQuery(pendingCountQuery()).data ?? 0
   const monthId = useId()
 
-  const first = book.data?.pages[0]
-  const rows = book.data?.pages.flatMap((page) => page.items) ?? []
+  // The last page loaded is the freshest: its total and KPIs are what the footer and
+  // tiles show once "Cargar más" has run.
+  const latest = book.data?.pages.at(-1)
+  const rows = uniqueEntries(book.data?.pages.flatMap((page) => page.items) ?? [])
   const setSearch = (next: PaymentsSearch) => {
     void navigate({ search: (prev) => ({ ...prev, ...next }), replace: true })
   }
@@ -74,16 +76,16 @@ function Book() {
           <span className="payments__subtitle">{copy.subtitle}</span>
         </div>
         <div className="payments__actions">
-          {first && (
+          {latest && (
             <label htmlFor={monthId} className="payments__month">
               {copy.month}
               <select
                 id={monthId}
                 className="payments__month-select"
-                value={first.month}
+                value={latest.month}
                 onChange={(event) => setSearch({ month: event.target.value })}
               >
-                {first.months.map((month) => (
+                {latest.months.map((month) => (
                   <option key={month} value={month}>
                     {t.common.month(month, '')}
                   </option>
@@ -101,7 +103,7 @@ function Book() {
 
       {book.isPending ? (
         <p className="payments__note">{copy.loading}</p>
-      ) : book.isError && !first ? (
+      ) : book.isError && !latest ? (
         <div className="payments__note" role="alert">
           <p>{copy.error}</p>
           <button type="button" className="payments__button" onClick={() => void book.refetch()}>
@@ -109,9 +111,9 @@ function Book() {
           </button>
         </div>
       ) : (
-        first && (
+        latest && (
           <>
-            <Kpis kpis={first.kpis} />
+            <Kpis kpis={latest.kpis} />
             <section className="payments__table-card" aria-label={copy.title}>
               <div role="group" aria-label={copy.filtersLabel} className="payments__filters">
                 {BOOK_FILTERS.map((value) => (
@@ -146,7 +148,7 @@ function Book() {
                     </thead>
                     <tbody>
                       {rows.map((entry) => (
-                        <Row key={entry.id} entry={entry} timeZone={first.timezone} />
+                        <Row key={entry.id} entry={entry} timeZone={latest.timezone} />
                       ))}
                     </tbody>
                   </table>
@@ -156,8 +158,8 @@ function Book() {
                 <span>
                   {copy.showing(
                     rows.length,
-                    first.total,
-                    filter === 'all' || filter === 'kids' ? monthName(first.month) : null,
+                    latest.total,
+                    filter === 'all' || filter === 'kids' ? monthName(latest.month) : null,
                   )}
                 </span>
                 {book.hasNextPage && (
@@ -177,6 +179,13 @@ function Book() {
       )}
     </div>
   )
+}
+
+/** The pages' entries, each once: offset pages of a list that grows at its head can
+ *  repeat an entry when one lands between two fetches. */
+function uniqueEntries(entries: BookEntry[]): BookEntry[] {
+  const seen = new Set<string>()
+  return entries.filter((entry) => !seen.has(entry.id) && seen.add(entry.id))
 }
 
 function Kpis({ kpis }: { kpis: BookKpis }) {

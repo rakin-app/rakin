@@ -109,8 +109,15 @@ def dated_period(db: Database, gym: uuid.UUID, membership: str, due: date, amoun
 
 
 def set_status(db: Database, gym: uuid.UUID, membership: str, status: str) -> None:
+    # A cancellation carries its reason and time (migration 0009).
     as_owner(
-        db, gym, "UPDATE membership SET status = $2 WHERE id = $1", uuid.UUID(membership), status
+        db,
+        gym,
+        "UPDATE membership SET status = $2::text,"
+        " cancel_reason = CASE WHEN $2::text = 'cancelled' THEN 'test' END,"
+        " cancelled_at = CASE WHEN $2::text = 'cancelled' THEN now() END WHERE id = $1",
+        uuid.UUID(membership),
+        status,
     )
 
 
@@ -300,7 +307,8 @@ def test_kpis_are_the_months_collected_and_expected_and_todays_pending_and_overd
     kpis = read(client, sur, month=PAST.isoformat())["kpis"]
 
     assert (kpis["collected_clp"], kpis["collected_payments"]) == (60000, 2)
-    assert kpis["expected_clp"] == 75000
+    # Ana's March period; Cata's is not expected while she is frozen.
+    assert kpis["expected_clp"] == 45000
     # Pending and overdue are today's, whichever month is shown.
     assert (kpis["pending_clp"], kpis["pending_payments"]) == (12000 + 5000 + 8000, 3)
     assert kpis["overdue_clp"] == 70000 + 30000
@@ -309,6 +317,23 @@ def test_kpis_are_the_months_collected_and_expected_and_todays_pending_and_overd
     assert kpis["overdue_avg_days"] == pytest.approx(22, abs=1)
     # The seeded member, Ana and Bea are active; Cata is frozen.
     assert (kpis["active_memberships"], kpis["frozen_memberships"]) == (3, 1)
+
+
+@pg
+def test_expected_is_what_active_and_lapsed_memberships_owe_for_the_month(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    # One membership of each status, each with a period falling due in March 2020.
+    amounts = {"active": 1000, "lapsed": 2000, "cancelled": 4000, "trial": 8000, "frozen": 16000}
+    for status, amount in amounts.items():
+        membership = bill(db, sur, add_person(client, sur, status.title()), [])
+        dated_period(db, sur, membership, date(2020, 3, 10), amount)
+        set_status(db, sur, membership, status)
+
+    kpis = read(client, sur, month=PAST.isoformat())["kpis"]
+
+    # A lapsed member still owes what was billed; a cancelled one is not expected.
+    assert kpis["expected_clp"] == amounts["active"] + amounts["lapsed"]
 
 
 @pg

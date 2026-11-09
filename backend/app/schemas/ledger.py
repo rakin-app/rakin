@@ -183,7 +183,8 @@ class BookKpis(BaseModel):
     overdue_members: int
     # Per overdue member, the days since their oldest unpaid period fell due, averaged.
     overdue_avg_days: float
-    # What the periods falling due in the month bill.
+    # What is owed for the month: the periods falling due in it, of active and lapsed
+    # memberships. Cancelled, trial and frozen ones are not counted.
     expected_clp: int
     # Memberships as they stand today.
     active_memberships: int

@@ -238,7 +238,7 @@ describe('pending badge', () => {
     renderAt('/admin')
 
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
-    const payments = within(nav).getByRole('link', { name: new RegExp(es.nav.payments) })
+    const payments = await within(nav).findByRole('link', { name: new RegExp(es.nav.payments) })
     expect(await within(payments).findByText(es.nav.pendingBadge(3))).toBeInTheDocument()
     expect(within(payments).getByText('3')).toBeInTheDocument()
   })
@@ -249,7 +249,7 @@ describe('pending badge', () => {
 
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
     await vi.waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/ledger/pending'))).toBe(true))
-    expect(within(nav).getByRole('link', { name: es.nav.payments })).toHaveTextContent(/^Pagos$/)
+    expect(await within(nav).findByRole('link', { name: es.nav.payments })).toHaveTextContent(/^Pagos$/)
   })
 
   it.each([['coach'], [null]])('never asks for the count as %s, who cannot read the ledger', async (role) => {
@@ -261,9 +261,7 @@ describe('pending badge', () => {
     // Give a mistaken request the chance to land before checking none did.
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(calls.some((c) => c.url.endsWith('/api/ledger/pending'))).toBe(false)
-    // A coach has no Pagos tab at all (#39); anyone else sees it with no badge.
-    const payments = within(nav).queryByRole('link', { name: es.nav.payments })
-    if (role === 'coach') expect(payments).not.toBeInTheDocument()
-    else expect(payments).toHaveTextContent(/^Pagos$/)
+    // Nor is there a Pagos tab for whoever does not read the ledger (#39).
+    expect(within(nav).queryByRole('link', { name: es.nav.payments })).not.toBeInTheDocument()
   })
 })
