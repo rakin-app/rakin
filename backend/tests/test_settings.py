@@ -68,3 +68,10 @@ def test_the_defaults_need_no_network() -> None:
         "local",
     )
     assert (settings.payment_rail, settings.bank_feed) == ("none", "none")
+
+
+def test_jobs_timezone_must_be_a_known_zone() -> None:
+    with pytest.raises(ValueError, match="unknown timezone 'Mars/Base'"):
+        make_settings(jobs_timezone="Mars/Base")
+
+    assert make_settings(jobs_timezone="UTC").jobs_timezone == "UTC"
