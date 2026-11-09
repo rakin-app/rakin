@@ -274,6 +274,16 @@ A value must fit its type: text up to 1,000 characters (trimmed), a JSON number,
 
 A sensitive field's value is stored in `secret`, encrypted with AES-GCM under a key derived from `SECRET_KEY` and bound to its gym, person and field, never in `value`; changing a field's `sensitive` flag re-encrypts or decrypts what it holds. **Rotating `SECRET_KEY` makes stored sensitive values unreadable**, so keep it with the backups.
 
+## Grading scheme API
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/gym/grading-scheme` | the current gym's `ranks`, `kids_ladder` and `goal_metric`; a gym that never set one has none (`{"ranks": [], "kids_ladder": [], "goal_metric": null}`) |
+| `PUT` | `/api/gym/grading-scheme` | replace it whole; answers the scheme as stored |
+| `GET` | `/api/gym/grading-scheme/presets` | the starting points, `[{key, label, scheme}]`: `bjj`, `judo-karate`, `muay-thai` and `none` ([spec](../docs/technical.md#sport-agnostic-design)) |
+
+A scheme is ranks in order, lowest first, each `{key, label, sub_ranks: [{key, label}]}`, plus an optional separate `kids_ladder` of the same shape and a `goal_metric` (`classes_since_promotion`, `time_in_rank` or `null`) for the v2 "ready for promotion" flag. It is stored as `gym.settings["grading"]`, beside the other settings, which a change leaves alone. A preset is applied by sending its scheme, edited or not, to `PUT`; nothing records which preset a scheme came from, and no code branches on it (`app.domain.grading` holds the presets as data). Promotions name a rank and a sub-rank by key, so a rank's key is unique across the ranks and the kids ladder together, and a sub-rank's within its rank. Keys are lower-case letters, digits and single dashes, up to 40 characters; labels 1 to 60. At most 60 ranks per ladder and 20 sub-ranks per rank, and a goal metric needs ranks. Any staff role may read the scheme and the presets, since coaches award promotions against it; only an owner or admin may change it. A stored scheme that no longer fits the model, as one written before a change to it would, is logged and read as a 409 `{"detail": {"code": "grading_scheme_invalid"}}`: re-apply a preset with `PUT`, which replaces it.
+
 ## Sign-in
 
 Students and staff sign in with a magic link ([spec](../docs/technical.md#communications)). `app/magiclink` is the mechanism, self-contained so it can become a package: it imports nothing else from `app`. `app/auth.py` plugs Rakin into it: people by email, Postgres, and the mailer.

@@ -12,6 +12,7 @@ their `guardian_link` row and the payer of their ledger entries. In this gym eve
 guardian trains too.
 """
 
+import copy
 import random
 import unicodedata
 from collections.abc import Sequence
@@ -19,6 +20,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from app.domain import grading
 from app.domain.billing import GENERATE_AHEAD_DAYS
 from app.domain.membership import MembershipStatus, PlanKind
 from app.roles import Role
@@ -60,32 +62,15 @@ PLANS = (
     PlanSpec("trial", "Clase de prueba", PlanKind.TRIAL, 0, credits=2, credit_expiry_days=14),
 )
 
-STRIPES = 4
-
-RANKS = (
-    ("white", "Blanca"),
-    ("blue", "Azul"),
-    ("purple", "Morada"),
-    ("brown", "Café"),
-    ("black", "Negra"),
+# A copy of the BJJ preset as it comes, so a change here never reaches the preset that
+# `/api/gym/grading-scheme/presets` serves. Kids start at white, from `RANKS`, and move
+# up the ladder.
+GRADING: dict[str, Any] = copy.deepcopy(
+    next(p["scheme"] for p in grading.PRESETS if p["key"] == "bjj")
 )
-# Kids start at white, from `RANKS`, and move up this ladder until 16.
-KIDS_LADDER = tuple(
-    (f"{colour}{variant}", f"{label}{suffix}")
-    for colour, label in (
-        ("grey", "Gris"),
-        ("yellow", "Amarilla"),
-        ("orange", "Naranja"),
-        ("green", "Verde"),
-    )
-    for variant, suffix in (("-white", " y blanca"), ("", ""), ("-black", " y negra"))
-)
-
-GRADING: dict[str, Any] = {
-    "goal_metric": "classes_since_promotion",
-    "ranks": [{"key": k, "label": label, "sub_ranks": STRIPES} for k, label in RANKS],
-    "kids_ladder": [{"key": k, "label": label, "sub_ranks": STRIPES} for k, label in KIDS_LADDER],
-}
+RANKS = grading.BJJ_RANKS
+KIDS_LADDER = grading.BJJ_KIDS_LADDER
+STRIPES = len(grading.STRIPES) - 1
 
 CUSTOM_FIELDS = [
     {"key": "emergency_contact", "label": "Contacto de emergencia", "type": "text"},
