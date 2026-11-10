@@ -141,7 +141,15 @@ def create(client: TestClient, gym: uuid.UUID, **fields: Any) -> Any:
 
 def entered(body: dict[str, Any]) -> dict[str, Any]:
     """A response without the fields the gym did not type."""
-    shown = ("id", "left_on", "created_at", "updated_at", "no_whatsapp", "missing_phone")
+    shown = (
+        "id",
+        "left_on",
+        "created_at",
+        "updated_at",
+        "no_whatsapp",
+        "missing_phone",
+        "missing_rut",
+    )
     return {k: v for k, v in body.items() if k not in shown}
 
 

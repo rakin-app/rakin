@@ -17,6 +17,7 @@ const CAMILA: MemberRow = {
   phone: '+56987654321',
   no_whatsapp: false,
   missing_phone: false,
+  missing_rut: false,
   rut: '7654321-6',
   membership: { id: 'm1', status: 'active', plan_id: 'plan-adults', plan_name: 'Mensual adultos' },
   guardian: null,
@@ -29,6 +30,7 @@ const DIEGO: MemberRow = {
   phone: null,
   no_whatsapp: false,
   missing_phone: false,
+  missing_rut: false,
   rut: null,
   membership: null,
   guardian: null,
@@ -143,6 +145,19 @@ describe('Alumnos', () => {
     expect(router.state.location.search).toEqual({ missingPhone: true })
     expect(screen.getByRole('button', { name: copy.missingPhone })).toHaveAttribute('aria-pressed', 'true')
     expect(await within(await list()).findByText(copy.missingPhone)).toBeInTheDocument()
+  })
+
+  it('"Falta RUT" lists who has neither a RUT nor an email, and flags them', async () => {
+    const keyless: MemberRow = { ...DIEGO, missing_rut: true }
+    const asked = stubApi((params) => page(params.get('missing_rut') === 'true' ? [keyless] : [CAMILA, keyless]))
+    const router = renderAt('/admin/alumnos')
+    await list()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.missingRut }))
+
+    await waitFor(() => expect(asked.map((params) => params.get('missing_rut'))).toEqual([null, 'true']))
+    expect(router.state.location.search).toEqual({ missingRut: true })
+    expect(await within(await list()).findByText(copy.missingRut)).toBeInTheDocument()
   })
 
   it('lists members with their phone, RUT, status and plan', async () => {

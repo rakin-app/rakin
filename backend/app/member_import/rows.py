@@ -57,6 +57,8 @@ class Field(StrEnum):
 # one, or a drop-in, which is not a membership. `due_before_start`: the due date is
 # before the start. `has_guardian`, `one_level`: the link is refused (migration 0010).
 # `has_left`: the member was dado de baja, and starts no plan until reactivated (0032).
+# `ambiguous_name`: a row with no RUT and no email names someone the gym has two of, and
+# neither the birth date nor the phone says which (#165).
 ErrorCode = Literal[
     "required",
     "repeated",
@@ -72,6 +74,7 @@ ErrorCode = Literal[
     "has_guardian",
     "one_level",
     "has_left",
+    "ambiguous_name",
 ]
 
 
@@ -435,6 +438,15 @@ class PlanFinder:
         return self._by_name.get(key)
 
 
+def _alike(one: Member, other: Member) -> bool:
+    """Whether two rows of one name may be one person: neither the birth date nor the
+    phone, where both give one, tells them apart."""
+    return all(
+        a is None or b is None or a == b
+        for a, b in ((one.dob, other.dob), (one.phone, other.phone))
+    )
+
+
 def read_members(
     rows: Sequence[tuple[int, Sequence[str]]],
     mapping: Mapping[Field, int],
@@ -445,9 +457,9 @@ def read_members(
     flagged `repeated`, so the sheet's first mention is the one imported."""
     members = [read_member(n, cells, mapping, plans, today) for n, cells in rows]
     seen: set[object] = set()
-    # Adults' names: a row with nothing but a name is whoever an earlier row of that
-    # name is, as the import would find them.
-    names: set[str] = set()
+    # Adults by name: a row with no RUT and no email is whoever an earlier row of the
+    # name is, unless the birth date or the phone tells them apart, as the import would.
+    names: dict[str, list[Member]] = {}
     for member in members:
         if member.key is not None:
             key: object = member.key
@@ -456,13 +468,18 @@ def read_members(
             key = (member.guardian_ident, fold(member.name))
             on = Field.NAME
         elif member.name:
-            key = ("name", fold(member.name))
+            key = None
             on = Field.NAME
         else:
             continue
-        if key in seen or (member.missing_identity and fold(member.name) in names):
+        if member.missing_identity:
+            # Only the name: repeated when nothing else tells them apart.
+            repeated = any(_alike(member, other) for other in names.get(fold(member.name), []))
+        else:
+            repeated = key in seen
+            seen.add(key)
+        if repeated:
             member.refuse(on, "repeated")
-        seen.add(key)
         if not member.is_dependent:
-            names.add(fold(member.name))
+            names.setdefault(fold(member.name), []).append(member)
     return members

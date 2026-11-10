@@ -53,6 +53,11 @@ export function PersonActions({ person, role }: { person: Person; role: StaffRol
           {copy.missingPhone}
         </p>
       )}
+      {person.missing_rut && (
+        <p className="member__error" role="status">
+          {copy.missingRut}
+        </p>
+      )}
       {person.no_whatsapp && <p className="member__detail">{copy.noWhatsapp}</p>}
       <div className="member__actions">
         <button type="button" className="member__button" aria-expanded={open === 'edit'} onClick={() => toggle('edit')}>

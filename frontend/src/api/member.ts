@@ -11,6 +11,8 @@ export type Person = {
   no_whatsapp: boolean
   // A member with no phone and the box unticked: "Falta teléfono".
   missing_phone: boolean
+  // No RUT and no email, found again only by name: "Falta RUT".
+  missing_rut: boolean
   name: string
   email: string | null
   rut: string | null

@@ -14,6 +14,8 @@ export type MemberRow = {
   no_whatsapp: boolean
   // A member with no phone and the box unticked: "Falta teléfono".
   missing_phone: boolean
+  // No RUT and no email, found again only by name: "Falta RUT".
+  missing_rut: boolean
   rut: string | null
   membership: {
     id: string
@@ -38,8 +40,9 @@ export type MemberFilters = {
   program: readonly string[]
   // Who has left the gym: left out (the default), only them ("Dados de baja"), or anyone.
   left?: LeftFilter
-  // Only the members with "Falta teléfono".
+  // Only the members with "Falta teléfono", or "Falta RUT".
   missingPhone?: boolean
+  missingRut?: boolean
 }
 
 export type LeftFilter = 'no' | 'only' | 'any'
@@ -58,6 +61,7 @@ export function membersPath(filters: MemberFilters, offset: number): string {
   for (const program of filters.program) params.append('program_id', program)
   if (filters.left && filters.left !== 'no') params.set('left', filters.left)
   if (filters.missingPhone) params.set('missing_phone', 'true')
+  if (filters.missingRut) params.set('missing_rut', 'true')
   params.set('limit', String(MEMBERS_PAGE_SIZE))
   params.set('offset', String(offset))
   return `/api/people?${params}`
@@ -76,6 +80,7 @@ export function membersQuery(filters: MemberFilters) {
         program: filters.program,
         left: filters.left ?? 'no',
         missingPhone: filters.missingPhone ?? false,
+        missingRut: filters.missingRut ?? false,
       },
     ],
     queryFn: ({ pageParam }) => apiFetch<MemberPage>(membersPath(filters, pageParam)),

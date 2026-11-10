@@ -196,6 +196,8 @@ export const es = {
       leftOn: (day: string) => `De baja desde el ${day}`,
       // No phone and "No tiene WhatsApp" unticked: the filter, and how a row says so.
       missingPhone: 'Falta teléfono',
+      // No RUT and no email: found again only by name.
+      missingRut: 'Falta RUT',
       noWhatsapp: 'Sin WhatsApp',
     },
     newMember: {
@@ -347,15 +349,15 @@ export const es = {
         has_guardian: 'el alumno ya tiene otro apoderado',
         one_level: 'el apoderado está a cargo de otra persona',
         has_left: 'fue dado de baja: reactívalo desde su ficha',
+        ambiguous_name: 'Nombre repetido: agrega RUT o correo',
       },
       fieldError: (field: string, problem: string) => `${field}: ${problem}`,
       missingPhoneTitle: (n: number) => (n === 1 ? 'Falta teléfono: 1 fila' : `Falta teléfono: ${n} filas`),
       missingPhoneHint:
         'Se importan igual, marcadas «Falta teléfono» en Alumnos. Agrega el celular en su ficha (el del apoderado, si es menor) o marca «No tiene WhatsApp».',
-      missingIdentityTitle: (n: number) =>
-        n === 1 ? 'Sin RUT ni correo: 1 fila' : `Sin RUT ni correo: ${n} filas`,
+      missingIdentityTitle: (n: number) => (n === 1 ? 'Falta RUT: 1 fila' : `Falta RUT: ${n} filas`),
       missingIdentityHint:
-        'Se importan igual. Sin RUT ni correo, al volver a importar los encontramos por su nombre: agrega el RUT en su ficha para que no se confundan con otra persona del mismo nombre.',
+        'Se importan igual, marcadas «Falta RUT» en Alumnos. Sin RUT ni correo, al volver a importar los encontramos por su nombre (y su fecha de nacimiento o teléfono si hay dos con el mismo nombre): agrega el RUT en su ficha.',
       keptTitle: 'Ya existen: no se actualizan',
       keptHint: 'Lo que el gimnasio ya tiene no se sobrescribe. Si algo cambió, edítalo en la ficha del alumno.',
       kept: (fields: string[]) => `Ya existe: no se actualiza ${fields.join(', ')}.`,
@@ -440,6 +442,7 @@ export const es = {
       },
       missingPhone: 'Falta teléfono: agrégalo en Editar datos, o marca "No tiene WhatsApp".',
       noWhatsapp: 'Sin WhatsApp: no le llegan recordatorios por WhatsApp.',
+      missingRut: 'Falta RUT: agrega su RUT (o su correo) en Editar datos para que no se confunda con otra persona del mismo nombre.',
       leave: 'Dar de baja',
       leftBanner: (day: string) => `Dado de baja desde el ${day}. Su historial sigue aquí.`,
       leaveForm: {

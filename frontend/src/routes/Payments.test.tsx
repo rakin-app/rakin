@@ -129,6 +129,7 @@ const DIEGO = {
   phone: '+56912345678',
   no_whatsapp: false,
   missing_phone: false,
+  missing_rut: false,
   rut: null,
   membership: { id: 'm-diego', status: 'active', plan_id: 'p-adultos', plan_name: 'Mensual adultos' },
   guardian: null,

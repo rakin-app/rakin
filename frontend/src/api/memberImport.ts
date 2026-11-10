@@ -40,6 +40,8 @@ export type RowErrorCode =
   | 'one_level'
   // Dado de baja: reactivated from their ficha, never by a sheet (#157).
   | 'has_left'
+  // Two of the name in the gym, and nothing else tells them apart (#165).
+  | 'ambiguous_name'
 
 export type Outcome = 'created' | 'existing'
 

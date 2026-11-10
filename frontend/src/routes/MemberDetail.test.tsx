@@ -34,6 +34,7 @@ const FELIPE: Person = {
   phone: '+56912344417',
   no_whatsapp: false,
   missing_phone: false,
+  missing_rut: false,
   name: 'Felipe Díaz',
   email: null,
   rut: null,

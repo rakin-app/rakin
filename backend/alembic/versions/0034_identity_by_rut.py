@@ -28,6 +28,11 @@ this gym already has under the email, if any; otherwise someone new. `rakin_app`
 no longer insert into `person` at all, so nothing outside the function can learn a
 RUT is taken from a unique violation, and it reads only `person.id`.
 
+`claim_rut(person, rut)` makes a RUT given later (their ficha, a join request, a sheet)
+who someone with none is, when nobody has it; when someone does, it changes nothing and
+answers the same, since linking two people is a merge, left for later. The owner updates
+`person` only inside it, through the `person_claim` policy it turns on.
+
 The backfill keeps everyone working:
 
 - Each gym's record takes the phone `person` held, so every phone a gym had stays
@@ -73,6 +78,7 @@ E164 = "'^\\+[1-9][0-9]{1,14}$'"
 STORED_RUT = "'^[1-9][0-9]{0,8}-[0-9K]$'"
 
 JOIN_GYM = "join_gym(text, text, text, text, date)"
+CLAIM_RUT = "claim_rut(uuid, text)"
 JOIN_GYM_BY_PHONE = "join_gym_by_phone(text, text, text, text, date)"
 
 # The tables the backfill reads across gyms.
@@ -182,6 +188,48 @@ def upgrade() -> None:
     """)
     _grant_join(JOIN_GYM)
 
+    # The owner updates a person only inside `claim_rut`, which turns this on around it.
+    op.execute(
+        "CREATE POLICY person_claim ON person FOR UPDATE TO CURRENT_USER"
+        " USING (current_setting('app.person_claim', true) = 'on')"
+    )
+    # A person with no RUT, given one later (their ficha, a join request, a sheet): it
+    # becomes who they are when nobody has it. When someone does, nothing changes here,
+    # and the answer is the same: linking two people is a merge, not this (#165).
+    op.execute(f"""
+        CREATE FUNCTION claim_rut(p_person uuid, p_rut text) RETURNS void
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = pg_catalog, public
+        AS $$
+        DECLARE
+            gym uuid := {CURRENT_GYM};
+        BEGIN
+            IF gym IS NULL THEN
+                RAISE EXCEPTION 'app.gym_id is not set' USING ERRCODE = 'insufficient_privilege';
+            END IF;
+            -- Only someone this gym has: FORCEd RLS holds the owner to the gym.
+            IF p_rut IS NULL OR NOT EXISTS (
+                SELECT FROM gym_person WHERE person_id = p_person
+            ) THEN
+                RETURN;
+            END IF;
+            PERFORM set_config('app.person_lookup', 'on', true);
+            PERFORM set_config('app.person_claim', 'on', true);
+            BEGIN
+                UPDATE person SET rut = p_rut
+                WHERE id = p_person AND rut IS NULL
+                  AND NOT EXISTS (SELECT FROM person WHERE rut = p_rut);
+            EXCEPTION WHEN unique_violation THEN
+                -- Taken at the same moment by someone else: as if it had been already.
+                NULL;
+            END;
+            PERFORM set_config('app.person_claim', 'off', true);
+            PERFORM set_config('app.person_lookup', 'off', true);
+        END
+        $$
+    """)
+    _grant_join(CLAIM_RUT)
+
     # A request is found by its RUT, or its email when it has none; a guardian by
     # their email.
     op.execute("ALTER TABLE join_request ALTER COLUMN rut DROP NOT NULL")
@@ -284,6 +332,8 @@ def downgrade() -> None:
     """)
     op.execute("ALTER TABLE join_request ALTER COLUMN rut SET NOT NULL")
 
+    op.execute(f"DROP FUNCTION {CLAIM_RUT}")
+    op.execute("DROP POLICY person_claim ON person")
     op.execute(f"DROP FUNCTION {JOIN_GYM}")
     op.execute(f"ALTER TABLE person ADD COLUMN phone text UNIQUE CHECK (phone ~ {E164})")
     op.execute("""

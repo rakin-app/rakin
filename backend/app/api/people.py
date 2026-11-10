@@ -64,9 +64,27 @@ def missing_phone(record: str) -> str:
     )"""
 
 
+def missing_rut(record: str) -> str:
+    """Whether the `gym_person` row `record` says nothing of who they are: no RUT and no
+    email, neither staff nor a dependent, whose guardian answers for them. "Falta RUT": an import
+    row from an old sheet, found again only by name (#165)."""
+    return f"""(
+        {record}.rut IS NULL AND {record}.email IS NULL
+        AND NOT EXISTS (
+            SELECT FROM staff s
+            WHERE s.gym_id = {record}.gym_id AND s.person_id = {record}.person_id
+        )
+        AND NOT EXISTS (
+            SELECT FROM guardian_link d
+            WHERE d.gym_id = {record}.gym_id AND d.dependent_person_id = {record}.person_id
+        )
+    )"""
+
+
 # This gym's record. RLS on `gym_person` keeps it to the current gym.
 SELECT_PERSON = f"""
     SELECT gp.person_id AS id, gp.phone, gp.no_whatsapp, {missing_phone("gp")} AS missing_phone,
+           {missing_rut("gp")} AS missing_rut,
            gp.name, gp.email, gp.rut, gp.dob, gp.left_on, gp.created_at, gp.updated_at
     FROM gym_person gp
     WHERE gp.person_id = :id
@@ -95,7 +113,8 @@ SHOWN_MEMBERSHIP = """
 # the current gym.
 MEMBERS = f"""
     SELECT gp.person_id AS id, gp.name, gp.phone, gp.no_whatsapp,
-           {missing_phone("gp")} AS missing_phone, gp.rut, gp.left_on,
+           {missing_phone("gp")} AS missing_phone, {missing_rut("gp")} AS missing_rut,
+           gp.rut, gp.left_on,
            m.id AS membership_id, m.status, m.plan_id, pl.name AS plan_name,
            g.person_id AS guardian_id, g.name AS guardian_name,
            (SELECT count(*) FROM guardian_link d
@@ -153,8 +172,9 @@ async def list_people(
     plan_ids: Annotated[list[uuid.UUID], Query(alias="plan_id")] = [],  # noqa: B006
     program_ids: Annotated[list[uuid.UUID], Query(alias="program_id")] = [],  # noqa: B006
     left: Literal["no", "only", "any"] = "no",
-    # Only the members with "Falta teléfono".
+    # Only the members with "Falta teléfono", or "Falta RUT".
     missing_phone: bool = False,
+    missing_rut: bool = False,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MemberPage:
@@ -169,6 +189,8 @@ async def list_people(
         where.append("left_on IS NOT NULL")
     if missing_phone:
         where.append("missing_phone")
+    if missing_rut:
+        where.append("missing_rut")
     if q.strip():
         clause, params = _search(q.strip())
         where.append(clause)
@@ -199,6 +221,7 @@ async def list_people(
             phone=row.phone,
             no_whatsapp=row.no_whatsapp,
             missing_phone=row.missing_phone,
+            missing_rut=row.missing_rut,
             rut=row.rut,
             membership=shown_membership(row),
             guardian=None
@@ -289,6 +312,13 @@ async def join_gym(
     return found, joined
 
 
+async def claim_rut(session: AsyncSession, person_id: uuid.UUID, rut: str) -> None:
+    """Make `rut` who someone with none is, when nobody has it yet (`claim_rut`, 0034).
+    It answers nothing: whether the RUT was free, or someone else's in another gym, is
+    no business of this gym's. Linking two people who turn out to be one is a merge."""
+    await session.execute(text("SELECT claim_rut(:id, :rut)"), {"id": person_id, "rut": rut})
+
+
 async def add_to_gym(
     session: AsyncSession,
     *,
@@ -337,6 +367,8 @@ async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: Staff
         )
         if result.rowcount == 0:  # type: ignore[attr-defined]
             raise NOT_FOUND
+    if changes.get("rut") is not None:
+        await claim_rut(session, person_id, changes["rut"])
     person = await read_person(session, person_id)
     # A member's phone is cleared, or "No tiene WhatsApp" unticked, only with a phone in
     # its place. Raised, so the update rolls back. Editing anything else leaves a

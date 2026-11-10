@@ -491,7 +491,9 @@ function RefusedRows({ rows }: { rows: RowResult[] }) {
             <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
             {row.errors.map((error) => (
               <span key={`${error.field}-${error.code}`} className="import__error-what">
-                {copy.fieldError(copy.fields[error.field], copy.error[error.code])}
+                {error.code === 'ambiguous_name'
+                  ? copy.error.ambiguous_name
+                  : copy.fieldError(copy.fields[error.field], copy.error[error.code])}
               </span>
             ))}
           </li>

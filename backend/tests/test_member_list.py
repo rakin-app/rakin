@@ -141,6 +141,7 @@ def test_everyone_by_name_with_the_membership_shown(
         "phone": row["phone"],
         "no_whatsapp": False,
         "missing_phone": False,
+        "missing_rut": False,
         "rut": "7654321-6",
         "membership": {
             "id": membership,

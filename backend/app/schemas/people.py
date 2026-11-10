@@ -108,6 +108,8 @@ class Person(BaseModel):
     no_whatsapp: bool
     # A member with no phone and the box unticked: "Falta teléfono".
     missing_phone: bool
+    # No RUT and no email, and nobody's dependent: "Falta RUT".
+    missing_rut: bool
     name: str
     email: str | None
     rut: str | None
@@ -256,6 +258,7 @@ class MemberRow(BaseModel):
     phone: str | None
     no_whatsapp: bool
     missing_phone: bool
+    missing_rut: bool
     rut: str | None
     membership: MembershipSummary | None
     # Who pays for them in this gym, and how many they pay for (migration 0010).
