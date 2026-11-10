@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.domain.dates import gym_today
 from app.main import create_app
 from app.schemas.gym import GymSettingsUpdate
 from tests.auth import FakeAuth, as_gym
@@ -28,6 +29,13 @@ BANK = {
 }
 # As stored and read back.
 BANK_STORED = {**BANK, "rut": "76432109-K"}
+
+PRIVACY = {
+    "legal_name": "Academia Sur SpA",
+    "rut": "76.432.109-K",
+    "email": "privacidad@academiasur.example.com",
+    "address": "Av. Pedro de Valdivia 1234, Providencia",
+}
 
 # --- input rules, no database -----------------------------------------------------
 
@@ -62,6 +70,12 @@ def test_update_normalises_the_bank_rut_and_takes_only_the_fields_sent() -> None
         {"bank_account": {**BANK, "account_type": "Chequera"}},
         {"bank_account": {**BANK, "email": "pagos"}},
         {"bank_account": {k: v for k, v in BANK.items() if k != "holder"}},
+        {"privacy": None},
+        {"privacy": {**PRIVACY, "rut": "76.432.109-1"}},
+        {"privacy": {**PRIVACY, "email": "privacidad"}},
+        {"privacy": {**PRIVACY, "legal_name": " "}},
+        {"privacy": {k: v for k, v in PRIVACY.items() if k != "email"}},
+        {"privacy": {**PRIVACY, "updated_on": "2026-11-10"}},
         {"settings": {}},
     ],
     ids=str,
@@ -69,6 +83,13 @@ def test_update_normalises_the_bank_rut_and_takes_only_the_fields_sent() -> None
 def test_update_refuses(field: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         GymSettingsUpdate.model_validate(field)
+
+
+def test_the_privacy_address_is_optional_and_the_rut_normalised() -> None:
+    sent = {k: v for k, v in PRIVACY.items() if k != "address"}
+    body = GymSettingsUpdate.model_validate({"privacy": sent})
+    assert body.model_dump(exclude_unset=True) == {"privacy": {**sent, "rut": "76432109-K"}}
+    assert body.privacy is not None and body.privacy.address is None
 
 
 def test_the_bank_details_may_be_cleared() -> None:
@@ -123,6 +144,7 @@ def test_a_new_gym_reads_the_defaults(client: TestClient, db: Database) -> None:
         "reminder_every_days": 3,
         "channels": {"whatsapp": True},
         "bank_account": None,
+        "privacy": None,
     }
 
 
@@ -139,7 +161,7 @@ def test_a_change_is_read_back_and_stored(client: TestClient, db: Database) -> N
     }
     response = client.patch(URL, json=body, headers=as_gym(gym))
     assert response.status_code == 200
-    expected = {**body, "slug": "academia-sur", "bank_account": BANK_STORED}
+    expected = {**body, "slug": "academia-sur", "bank_account": BANK_STORED, "privacy": None}
     assert response.json() == expected
     assert client.get(URL, headers=as_gym(gym)).json() == expected
 
@@ -204,3 +226,21 @@ def test_an_invalid_change_is_a_422(client: TestClient, db: Database) -> None:
     response = client.patch(URL, json={"timezone": "Mars/Olympus"}, headers=as_gym(gym))
     assert response.status_code == 422
     assert stored(db, gym) == before
+
+
+@pg
+def test_the_privacy_details_are_dated_with_the_gyms_today(
+    client: TestClient, db: Database
+) -> None:
+    gym = seed_gym(db, "dojo-privado")
+    response = client.patch(
+        URL, json={"privacy": PRIVACY, "timezone": "Pacific/Kiritimati"}, headers=as_gym(gym)
+    )
+    assert response.status_code == 200, response.text
+    today = gym_today("Pacific/Kiritimati").isoformat()
+    expected = {**PRIVACY, "rut": "76432109-K", "updated_on": today}
+    assert response.json()["privacy"] == expected
+    assert stored(db, gym)["settings"]["privacy"] == expected
+    # Another change leaves them, and their date, as they were.
+    client.patch(URL, json={"grace_days": 3}, headers=as_gym(gym))
+    assert client.get(URL, headers=as_gym(gym)).json()["privacy"] == expected

@@ -3,6 +3,7 @@ import { getRouteApi } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { ADULT_AGE, ageOn, joinFormQuery, submitJoinRequest, type JoinSubmission } from '../api/join'
+import { privacyPath } from '../api/privacy'
 import { validationErrors } from '../api/validation'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
@@ -45,7 +46,8 @@ const orNull = (value: string) => value.trim() || null
  * date makes them a minor on the gym's today; what they send waits for the gym's staff
  * to approve. The answer is the same whoever they are, so the form never tells who the
  * gym, or any other, already knows. A link revoked, regenerated or past its last day
- * says it no longer works.
+ * says it no longer works. Consent, which the form requires, is to the gym's privacy
+ * notice (#168), which the checkbox links.
  */
 export function Join() {
   const { token } = route.useParams()
@@ -201,10 +203,18 @@ function JoinFormBody({
         <input
           type="checkbox"
           checked={consent}
+          required
           aria-invalid={'consent' in errors}
           onChange={(e) => setConsent(e.target.checked)}
         />
-        <span>{copy.consent}</span>
+        <span>
+          {copy.consentBefore}
+          {/* A tab of its own, so what they have typed stays here. */}
+          <a className="join__link" href={privacyPath(token)} target="_blank" rel="noreferrer">
+            {copy.consentLink}
+          </a>
+          {copy.consentAfter}
+        </span>
       </label>
       {'consent' in errors && <p className="join__field-error">{copy.refused.consent}</p>}
       {siteKey && <HumanCheck key={humanRound} siteKey={siteKey} onToken={setHumanToken} />}

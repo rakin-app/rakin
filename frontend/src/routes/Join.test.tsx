@@ -48,7 +48,7 @@ async function fillAdult() {
   fireEvent.change(screen.getByLabelText(copy.dob), { target: { value: '1990-05-20' } })
   await userEvent.type(screen.getByLabelText(copy.phone), '9 8765 4321')
   await userEvent.type(screen.getByLabelText(copy.email), 'ana@example.cl')
-  await userEvent.click(screen.getByLabelText(copy.consent))
+  await userEvent.click(screen.getByRole('checkbox'))
 }
 
 afterEach(() => {
@@ -224,5 +224,15 @@ describe('ageOn', () => {
     expect(ageOn('2008-02-29', '2026-02-28')).toBe(17)
     expect(ageOn('2008-02-29', '2026-03-01')).toBe(18)
     expect(ageOn('', '2026-03-01')).toBeNull()
+  })
+
+  it('links the gym’s privacy notice from the consent it requires, in a tab of its own', async () => {
+    stubApi()
+    renderAt('/unirse/tok-123456789012345678901')
+
+    const notice = await screen.findByRole('link', { name: copy.consentLink })
+    expect(notice).toHaveAttribute('href', '/privacidad?enlace=tok-123456789012345678901')
+    expect(notice).toHaveAttribute('target', '_blank')
+    expect(screen.getByRole('checkbox')).toBeRequired()
   })
 })

@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 import type { BankAccount } from './me'
+import type { Privacy } from './privacy'
 
 /** The bank's account types the API takes (backend `AccountType`). */
 export const ACCOUNT_TYPES = ['Cuenta Corriente', 'Cuenta Vista', 'Cuenta RUT', 'Cuenta de Ahorro'] as const
@@ -15,10 +16,12 @@ export type GymSettings = {
   reminder_every_days: number
   channels: { whatsapp: boolean }
   bank_account: BankAccount | null
+  // What the privacy notice names the gym by (#168); the join link works only once set.
+  privacy: (Privacy & { updated_on: string }) | null
 }
 
-/** Only the fields sent change; `bank_account: null` clears it. Values the API would
- * refuse are sent as typed, for its 422 to name them. */
+/** Only the fields sent change; `bank_account: null` clears it, and `privacy` cannot
+ * be cleared. Values the API would refuse are sent as typed, for its 422 to name them. */
 export type GymSettingsUpdate = Partial<{
   name: string
   timezone: string
@@ -26,6 +29,7 @@ export type GymSettingsUpdate = Partial<{
   reminder_every_days: number | string
   channels: { whatsapp: boolean }
   bank_account: Omit<BankAccount, 'account_type'> & { account_type: string } | null
+  privacy: Privacy
 }>
 
 export function gymSettingsQuery() {

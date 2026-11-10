@@ -3,7 +3,10 @@ staff approve them into members.
 
 - `/api/join-link` is the gym's link, for owner and admin: generate it (a new token,
   so the old one stops working), change the program it pre-selects or the last day
-  it works, and revoke it.
+  it works, and revoke it. The form asks for consent to the gym's privacy notice
+  (#168), so a gym that has not filled in its privacy details in Ajustes cannot
+  generate one (409 `privacy_incomplete`), and a link it has works only once they
+  are.
 - `/api/join/{token}` is the public form behind it, for anyone with the link and no
   session. A `GET` says what the form shows; a `POST` leaves a request in the queue,
   not a person, and answers 202 whatever it holds: nothing in the answer says
@@ -107,6 +110,10 @@ TOKEN_LENGTHS = range(20, 65)
 NO_LINK = HTTPException(status.HTTP_404_NOT_FOUND, "no join link")
 NO_REQUEST = HTTPException(status.HTTP_404_NOT_FOUND, "join request not found")
 PLAN_IS_MONEY = HTTPException(status.HTTP_403_FORBIDDEN, "only an owner or admin gives a plan")
+NO_PRIVACY = HTTPException(status.HTTP_409_CONFLICT, "privacy_incomplete")
+
+# Whether the gym has filled in what its privacy notice says (`app.api.privacy`).
+HAS_PRIVACY = "g.settings -> 'privacy' IS NOT NULL"
 
 
 @dataclass(frozen=True)
@@ -177,7 +184,11 @@ async def get_join_link(request: Request, session: AdminSession) -> JoinLink:
     return await _link(request, session)
 
 
-@router.post("/join-link", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/join-link",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_409_CONFLICT: {"description": "The privacy details are not set"}},
+)
 async def generate_join_link(
     body: JoinLinkOptions,
     request: Request,
@@ -185,6 +196,11 @@ async def generate_join_link(
     session: AdminSession,
 ) -> JoinLink:
     """A new link with these options. Any link the gym had stops working."""
+    has_privacy = await session.scalar(
+        text(f"SELECT {HAS_PRIVACY} FROM gym g WHERE g.id = :id"), {"id": tenant.gym_id}
+    )
+    if not has_privacy:
+        raise NO_PRIVACY
     await _check_program(session, body.program_id)
     await session.execute(
         text(
@@ -229,9 +245,9 @@ async def revoke_join_link(session: AdminSession) -> Response:
 Token = Annotated[str, Path()]
 
 # The link, read with `app.gym_id` set to its gym.
-FORM = """
+FORM = f"""
     SELECT g.name AS gym, g.timezone, pr.id AS program_id, pr.name AS program,
-           l.expires_on
+           l.expires_on, {HAS_PRIVACY} AS has_privacy
     FROM join_link l
     JOIN gym g ON g.id = l.gym_id
     LEFT JOIN program pr ON pr.gym_id = l.gym_id AND pr.id = l.program_id
@@ -259,8 +275,13 @@ async def _open(request: Request, token: str) -> AsyncIterator[_OpenLink]:
         raise INVALID_LINK
     async with in_gym(request, gym_id) as session:
         row = (await session.execute(text(FORM), {"token": token})).one_or_none()
-        # Revoked or regenerated between the two, or past its last day.
-        if row is None or (row.expires_on is not None and row.expires_on < gym_today(row.timezone)):
+        # Revoked or regenerated between the two, past its last day, or with no
+        # privacy notice to consent to.
+        if (
+            row is None
+            or (row.expires_on is not None and row.expires_on < gym_today(row.timezone))
+            or not row.has_privacy
+        ):
             raise INVALID_LINK
         yield _OpenLink(row.gym, row.timezone, row.program_id, row.program, session)
 

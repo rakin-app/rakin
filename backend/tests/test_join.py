@@ -38,6 +38,7 @@ from tests.pg import (
     throwaway_database,
 )
 from tests.test_guardians import add_person
+from tests.test_gym_settings import PRIVACY
 from tests.test_memberships import PLANS, add_staff
 from tests.test_people import new_phone
 from tests.test_proofs import RecordingMailer, sent_notices
@@ -86,9 +87,16 @@ def client(app: FastAPI) -> Iterator[TestClient]:
         yield c
 
 
+def with_privacy(client: TestClient, gym: uuid.UUID) -> uuid.UUID:
+    """`gym`, with the privacy details its join link needs (#168)."""
+    response = client.patch("/api/gym/settings", json={"privacy": PRIVACY}, headers=as_gym(gym))
+    assert response.status_code == 200, response.text
+    return gym
+
+
 @pytest.fixture
-def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+def gym(db: Database, client: TestClient) -> uuid.UUID:
+    return with_privacy(client, seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}"))
 
 
 _ruts = itertools.count(random.randrange(10_000_000, 20_000_000, 10_000))
@@ -235,6 +243,33 @@ def test_generating_a_link_gives_a_url_to_the_form_on_the_gyms_host(
     again = client.get("/api/join-link", headers=as_gym(gym))
     assert again.status_code == 200
     assert again.json()["token"] == link["token"]
+
+
+def test_no_link_until_the_privacy_details_are_set(client: TestClient, db: Database) -> None:
+    gym = seed_gym(db, f"sin-datos-{uuid.uuid4().hex[:6]}")
+
+    refused = client.post("/api/join-link", json={}, headers=as_gym(gym))
+
+    assert (refused.status_code, refused.json()) == (409, {"detail": "privacy_incomplete"})
+    assert client.get("/api/join-link", headers=as_gym(gym)).status_code == 404
+    generate(client, with_privacy(client, gym))
+
+
+def test_a_link_without_privacy_details_does_not_work(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    token = token_of(client, gym)
+
+    # A link made before the details were asked for.
+    async def forget(conn: asyncpg.Connection) -> None:
+        await conn.execute("UPDATE gym SET settings = settings - 'privacy' WHERE id = $1", gym)
+
+    run(db.admin_url, forget)
+
+    gone = client.get(f"/api/join/{token}")
+    assert (gone.status_code, gone.json()) == (404, {"detail": "invalid_link"})
+    assert submit(client, token, adult()).status_code == 404
+    assert client.get("/api/join-link", headers=as_gym(gym)).status_code == 200
 
 
 def test_a_gym_without_a_link_has_none(client: TestClient, gym: uuid.UUID) -> None:
@@ -492,7 +527,7 @@ def test_sending_is_rate_limited_per_ip(client: TestClient, gym: uuid.UUID, db: 
     assert int(refused.headers["Retry-After"]) > 0
     assert len(queue(client, gym)) == 3
     # Per IP, whichever link it is for: another gym's too.
-    elsewhere = seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}")
+    elsewhere = with_privacy(client, seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}"))
     assert submit(client, token_of(client, elsewhere), adult()).status_code == 429
 
 
@@ -688,7 +723,7 @@ def test_coaches_see_the_queue_and_members_do_not(
 def test_another_gyms_requests_are_not_here(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other = seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}")
+    other = with_privacy(client, seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}"))
     theirs = one_request(client, other, token_of(client, other), adult())
 
     assert queue(client, gym) == []

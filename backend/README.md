@@ -347,10 +347,20 @@ Each row is written in a savepoint of its own: a refused row writes nothing, and
 
 | Method | Path | Does |
 | --- | --- | --- |
-| `GET` | `/api/gym/settings` | the current gym's `name`, `slug`, `timezone`, `grace_days`, `reminder_every_days`, `channels` and `bank_account`; a setting never stored reads as its default (5 grace days, a reminder every 3 days, WhatsApp on, no bank details) |
-| `PATCH` | `/api/gym/settings` | change any of those but `slug`; `channels` and `bank_account` are replaced whole, and `bank_account: null` clears the bank details |
+| `GET` | `/api/gym/settings` | the current gym's `name`, `slug`, `timezone`, `grace_days`, `reminder_every_days`, `channels`, `bank_account` and `privacy`; a setting never stored reads as its default (5 grace days, a reminder every 3 days, WhatsApp on, no bank details, no privacy details) |
+| `PATCH` | `/api/gym/settings` | change any of those but `slug`; `channels`, `bank_account` and `privacy` are replaced whole, `bank_account: null` clears the bank details, and `privacy` cannot be cleared |
 
-Owner and admin only (`AdminSession`); a coach or member gets a 403, since the bank details decide where students send their money. `name` and `timezone` are columns on `gym`; the rest are keys of `gym.settings`, and the grading scheme and custom fields stored beside them are left untouched. `timezone` must be an IANA name, `grace_days` 0 to 60, `reminder_every_days` 1 to 30. `bank_account` takes `bank`, `account_type` (`Cuenta Corriente`, `Cuenta Vista`, `Cuenta RUT` or `Cuenta de Ahorro`), `holder`, `rut` (normalised to `76123456-0`), `number` and an optional `email` for the transfer notice. Email is always on, so `channels` holds only `whatsapp`.
+Owner and admin only (`AdminSession`); a coach or member gets a 403, since the bank details decide where students send their money. `name` and `timezone` are columns on `gym`; the rest are keys of `gym.settings`, and the grading scheme and custom fields stored beside them are left untouched. `timezone` must be an IANA name, `grace_days` 0 to 60, `reminder_every_days` 1 to 30. `bank_account` takes `bank`, `account_type` (`Cuenta Corriente`, `Cuenta Vista`, `Cuenta RUT` or `Cuenta de Ahorro`), `holder`, `rut` (normalised to `76123456-0`), `number` and an optional `email` for the transfer notice. Email is always on, so `channels` holds only `whatsapp`. `privacy` is what the gym's privacy notice names it by, as the controller of its members' data (#168): `legal_name`, `rut` (normalised), `email` for requests about personal data and an optional `address`; each save stamps it with the gym's `updated_on`, in the timezone the same change leaves it in.
+
+## Privacy notice
+
+Each gym has a public privacy notice at `/privacidad` on its host (#168), linked from the join form's consent checkbox and the student page's footer. The text is a Spanish template in the SPA (`t.privacy` in `frontend/src/i18n/es.ts`, its subprocessors listed once there), filled in with the gym's `privacy` settings; its "last updated" is the later of the template's date (`TEMPLATE_UPDATED_ON` in `frontend/src/api/privacy.ts`, moved with any change to the text) and the gym's `updated_on`.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/privacy` | no session: `{gym, legal_name, rut, email, address, updated_on}` for the gym the host names, else the session's gym, else the one whose join link `?link=` is (the join form on the shared host). 404 `no_privacy_notice` for a gym that has not filled in its details, or no gym at all |
+
+Until the details are set, the join link cannot be generated (`POST /api/join-link`, 409 `privacy_incomplete`), and a link made before them answers 404 `invalid_link`, since its form would ask for consent to a notice that does not exist.
 
 ## Staff API
 
@@ -372,10 +382,10 @@ A gym shares one link (WhatsApp, a poster, anywhere), and people fill in their o
 | Method | Path | Does |
 | --- | --- | --- |
 | `GET` | `/api/join-link` | the gym's link: `url`, `token`, the `program_id` and `program_name` it pre-selects, `expires_on` (its last day, in the gym's timezone) and `expired`; 404 when it has none |
-| `POST` | `/api/join-link` | `{program_id?, expires_on?}`: a new link, with a new token, so the old one stops working; 201. 422 `unknown_program` for a program this gym does not have |
+| `POST` | `/api/join-link` | `{program_id?, expires_on?}`: a new link, with a new token, so the old one stops working; 201. 422 `unknown_program` for a program this gym does not have; 409 `privacy_incomplete` until the gym's privacy details are set ([Privacy notice](#privacy-notice)) |
 | `PATCH` | `/api/join-link` | change `program_id` or `expires_on`, keeping the token; `null` clears either |
 | `DELETE` | `/api/join-link` | revoke it; 204. Requests already sent stay in the queue |
-| `GET` | `/api/join/{token}` | no session: what the form shows, `{gym, program, today, human_check_site_key}`. 404 `invalid_link` for a token that is unknown, malformed (a truncated link), revoked, regenerated or past its last day |
+| `GET` | `/api/join/{token}` | no session: what the form shows, `{gym, program, today, human_check_site_key}`. 404 `invalid_link` for a token that is unknown, malformed (a truncated link), revoked, regenerated or past its last day, or a gym with no privacy details |
 | `POST` | `/api/join/{token}` | no session: `{first_name, last_name, rut, phone, email, dob, guardian_name, guardian_phone, guardian_email, consent: true, website, human_check_token}`; 202 with no body |
 | `GET` | `/api/join-requests` | `?limit=` (1 to 200, 50 by default) and `?offset=`: `{items, total}`, the queue oldest first, each with `phone_in_gym` and `rut_in_gym` (whoever in this gym already has its phone or RUT) and `ignored_email` and `ignored_guardian_email` (the request's emails approving leaves unused, since whoever here has that phone keeps the email this gym has for them) |
 | `POST` | `/api/join-requests/{id}/approve` | `{plan_id?}`: adds the person, or links whoever here has the phone, and deletes the request; `{person_id, membership_id}`. A `plan_id` is owner and admin only (403 for a coach); 409 `{"code": "has_membership", "field": "plan_id"}` with a plan for someone who already holds a live membership here, and `has_guardian` or `one_level` for a family link the gym cannot make |

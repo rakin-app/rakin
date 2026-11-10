@@ -33,6 +33,7 @@ from app.seed.data import (
     MEMBERS,
     OPEN_MAT_PLAN,
     PLANS,
+    PRIVACY,
     PROGRAMS,
     RANKS,
     STAFF,
@@ -498,6 +499,7 @@ def build(as_of: date) -> Seed:
             "settings": {
                 "grace_days": GRACE_DAYS,
                 "bank_account": BANK_ACCOUNT,
+                "privacy": {**PRIVACY, "updated_on": as_of.isoformat()},
                 "grading": GRADING,
                 "custom_fields": CUSTOM_FIELDS,
                 # The date the rows depict; a re-run builds for this date again.
