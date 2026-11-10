@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+from app.backup import BackupSettings
 from app.settings import Settings
 from tests.test_compose import SUPERUSER, compose_text, services
 from tests.test_settings import read_env_example
@@ -59,6 +60,7 @@ def test_secrets_have_no_default() -> None:
         "POSTGRES_PASSWORD",
         "POSTGRES_API_PASSWORD",
         "POSTGRES_OWNER_PASSWORD",
+        "BACKUP_S3_SECRET_ACCESS_KEY",
     }
     ops = {(name, op) for name, op, _ in interpolations() if name in secrets}
     assert ops == {(name, ":?") for name in secrets}
@@ -70,7 +72,7 @@ def test_hosted_runs_released_images_only() -> None:
     assert "env_file" not in text
     assert "--reload" not in text
     blocks = services(COMPOSE_FILE)
-    assert blocks.keys() == {"caddy", "migrate", "api", "jobs", "postgres"}
+    assert blocks.keys() == {"caddy", "migrate", "api", "jobs", "backup", "postgres"}
     assert "ports:" not in blocks["postgres"]
 
 
@@ -87,4 +89,29 @@ def test_only_postgres_and_migrate_see_the_superuser() -> None:
         for name, block in services(COMPOSE_FILE).items()
         if any(f"${{{v}" in block for v in SUPERUSER)
     }
-    assert seen == {"postgres", "migrate"}
+    # The backup dumps as the superuser: several tables force RLS on their owner.
+    assert seen == {"postgres", "migrate", "backup"}
+
+
+def test_the_backup_gets_its_settings_and_nothing_of_the_apps() -> None:
+    block = services(COMPOSE_FILE)["backup"]
+    env = block[block.index("    environment:") : block.index("    command:")]
+    names = set(re.findall(r"^      (\w+):", env, re.MULTILINE))
+    wanted = {name.upper() for name in BackupSettings.model_fields} - {"BACKUP_STATE_DIR"}
+    assert names == wanted | {"PGHOST", "PGUSER", "PGPASSWORD", "PGDATABASE"}
+    assert "<<: *backend" not in block
+    assert "/var/lib/rakin-backup" in block  # BACKUP_STATE_DIR's default, a volume
+
+
+def test_restore_uses_the_live_databases_image() -> None:
+    live = re.search(r"^    image: (\S+)$", services(COMPOSE_FILE)["postgres"], re.MULTILINE)
+    restore = re.search(r"^image=(\S+)$", (DEPLOY / "restore.sh").read_text(), re.MULTILINE)
+    assert live and restore
+    assert restore[1] == live[1]
+
+
+def test_the_api_image_dumps_with_the_live_databases_major_version() -> None:
+    live = re.search(r"image: postgres:(\d+)", services(COMPOSE_FILE)["postgres"])
+    dockerfile = (DEPLOY.parent / "backend" / "Dockerfile").read_text()
+    assert live
+    assert f"postgresql-client-{live[1]} " in dockerfile

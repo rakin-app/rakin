@@ -8,12 +8,13 @@ What lives where:
 | --- | --- |
 | Images | `ghcr.io/rakin-app/rakin-api` (api, jobs, migrate) and `ghcr.io/rakin-app/rakin-web` (Caddy plus the built SPA), built by [`images.yml`](../.github/workflows/images.yml) for every commit on `main`, tagged `sha-<commit>` and `main` |
 | Releases | a `v*` git tag; [`deploy.yml`](../.github/workflows/deploy.yml) tags that commit's images with it and runs it on the host |
-| The stack | [`deploy/docker-compose.yml`](../deploy/docker-compose.yml): `caddy`, `api`, `jobs`, `postgres`, and the one-shot `migrate`. No Garage, no Vite, no source mounts |
+| The stack | [`deploy/docker-compose.yml`](../deploy/docker-compose.yml): `caddy`, `api`, `jobs`, `backup`, `postgres`, and the one-shot `migrate`. No Garage, no Vite, no source mounts |
 | Settings | `/srv/rakin/.env` on the host only, from [`deploy/.env.example`](../deploy/.env.example). Never in the repo, the image or a CI secret |
 | Deploy and rollback | [`deploy/deploy.sh`](../deploy/deploy.sh), on the host beside the Compose file |
 | Post-deploy check | [`deploy/smoke.sh`](../deploy/smoke.sh) `<url>` |
+| Backups | the `backup` service ([`app/backup.py`](../backend/app/backup.py)), nightly to a bucket of their own; [`deploy/restore.sh`](../deploy/restore.sh) restores one into a scratch database ([below](#backups)) |
 
-CI boots this exact stack from each PR's images (`deploy/test-hosted.sh`) and smoke-tests it, so a release is never the first time the images, the Caddyfile and the Compose file meet.
+CI boots this exact stack from each PR's images (`deploy/test-hosted.sh`), smoke-tests it, and backs it up and restores the backup, so a release is never the first time the images, the Caddyfile and the Compose file meet.
 
 ## 1. Provision the VPS
 
@@ -91,7 +92,7 @@ git tag -s v0.1.0 -m v0.1.0 && git push origin v0.1.0
 `deploy.yml` then:
 
 1. tags `rakin-api:sha-<commit>` and `rakin-web:sha-<commit>` as `v0.1.0` (no rebuild: what ran in CI is what ships), waiting for `images.yml` if the tag beat it;
-2. copies that tag's `docker-compose.yml`, `deploy.sh` and `smoke.sh` to `/srv/rakin`;
+2. copies that tag's `docker-compose.yml`, `deploy.sh`, `smoke.sh` and `restore.sh` to `/srv/rakin`;
 3. runs `./deploy.sh v0.1.0` there: `docker compose pull`, then `docker compose run --rm migrate` (`python -m app.db_bootstrap && alembic upgrade head`), and only once that succeeds `docker compose up -d --wait`. A failed migration leaves the running release untouched;
 4. runs `deploy/smoke.sh https://staging.rakin.app`.
 
@@ -164,4 +165,80 @@ docker compose exec postgres psql -U rakin rakin
 docker compose run --rm api python -m app.jobs.daily --today 2026-11-09   # re-run a day's jobs
 ```
 
-Logs rotate at 5 × 20 MB per container. Backups (`pg_dump` to object storage, WAL archiving) are not set up by any of this yet; see the [design](technical.md#infrastructure-and-operations).
+Logs rotate at 5 × 20 MB per container.
+
+## Backups
+
+The `backup` service takes one every night at 03:00 in `JOBS_TIMEZONE` ([`app/backup.py`](../backend/app/backup.py)): `pg_dump --format=custom` as the Postgres superuser, piped straight into [age](https://age-encryption.org) to a public key, uploaded to a bucket of its own as `rakin/<BACKUP_ENV>/<UTC timestamp>.dump.age`. The plain dump never touches the disk, and the host holds only the public key: it can write backups but not read them. It also takes one at once when it starts and the last success is over a day old, so a new host has one within minutes.
+
+**Retention:** after each upload it deletes what is not the newest dump of one of the 14 most recent days that have one, or of one of the 8 most recent Sundays (UTC dates). It counts dumps rather than days since today, so a job that stops working never ages the last good backups away. Anything in the bucket not named like a backup is left alone.
+
+**Failure:** a failed backup is logged at `ERROR`, which reaches Sentry like the api's errors, and the next one is the next night. Each success writes its time and key to `last_success` in the `backup_state` volume:
+
+```sh
+docker compose exec backup python -m app.backup status   # the last success; exits 1 if over 26 hours ago
+docker compose exec backup python -m app.backup list     # what is in the bucket, newest first
+docker compose exec backup python -m app.backup run      # one more backup now
+docker compose logs backup                               # "backup uploaded" lines, and any failure
+```
+
+### Setting them up
+
+1. **The bucket.** In R2, a second bucket (`rakin-backups`), separate from the proofs' one. Then an API token with **Object Read & Write** on that bucket alone: its key id and secret go in `BACKUP_S3_ACCESS_KEY_ID` and `BACKUP_S3_SECRET_ACCESS_KEY`, the account's endpoint in `BACKUP_S3_ENDPOINT_URL`. The app's token never reaches it, and this one reaches nothing else.
+2. **The key, on a laptop, never on the host:**
+
+   ```sh
+   age-keygen -o rakin-backup.key        # prints "Public key: age1..."
+   ```
+
+   Store the whole file in the team's password manager, then delete it from the laptop. The `age1...` public key goes in `BACKUP_AGE_RECIPIENT`. Losing the private key loses every backup; anyone who has it can read them all.
+3. **`.env`:** the `BACKUP_*` lines from [`deploy/.env.example`](../deploy/.env.example), `BACKUP_ENV` being `staging` or `production`. Compose refuses to start anything until they are set, so set them before the deploy that brings the `backup` service.
+4. After the deploy, `docker compose logs backup` shows the first `backup uploaded`; then rehearse a restore, below.
+
+### Restoring, to check a backup
+
+[`deploy/restore.sh`](../deploy/restore.sh) restores a backup into a **scratch** Postgres container and checks it; it never touches the live database. Run it in `/srv/rakin` with the private key on stdin, ideally straight from the password manager over SSH, so the key never lands on the host's disk:
+
+```sh
+ssh deploy@<host> 'cd /srv/rakin && ./restore.sh latest' <rakin-backup.key
+ssh deploy@<host> 'cd /srv/rakin && ./restore.sh rakin/production/20261110T060000Z.dump.age' <rakin-backup.key
+```
+
+It downloads and decrypts the backup in the `backup` service's image, into a Docker volume; restores it with `pg_restore --exit-on-error` into a throwaway `postgres` container with no network (the roles the schema names are created first, without logins); then compares every table's row count with the rows the dump holds, one `ok` or `FAIL` line per table, and exits non-zero on any difference. The container and the volume are removed when it ends, the decrypted dump with them.
+
+Rehearse it before the second gym onboards and quarterly after, as the [design](technical.md#infrastructure-and-operations) says.
+
+### Restoring to live
+
+A deliberate step, by hand, never by `restore.sh`. It replaces the database with the backup: everything since the backup is lost. Check the backup with `restore.sh` first.
+
+On the host, stop everything that writes:
+
+```sh
+cd /srv/rakin && docker compose stop caddy api jobs backup
+install -d -m 700 ~/restore   # the decrypted dump: only you can read it, and it goes at the end
+```
+
+From your laptop, decrypt the backup into it, the key over SSH as for `restore.sh`:
+
+```sh
+ssh deploy@<host> 'cd /srv/rakin && docker compose run --rm -T -v ~/restore:/restore backup sh -c \
+  "python -m app.backup fetch rakin/production/20261110T060000Z.dump.age /restore/b.age && age -d -i - -o /restore/b.dump /restore/b.age"' \
+  <rakin-backup.key
+```
+
+Then on the host, replace the database with it:
+
+```sh
+cd /srv/rakin
+docker compose exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+docker compose --profile migrate run --rm migrate python -m app.db_bootstrap   # the roles and the owner, as on a new host
+docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --exit-on-error' <~/restore/b.dump
+rm -rf ~/restore
+docker compose up -d --wait
+./smoke.sh https://<host>
+```
+
+The dump carries the schema at its release's migration. If the running release is newer, run `docker compose --profile migrate run --rm migrate` before `up`. The restored database needs the same `FIELD_ENCRYPTION_KEY` it was written under, or the sensitive custom fields stay unreadable. The key only passes through the host's memory; the decrypted dump in `~/restore` does land on its disk, which is why it goes as soon as the restore is done.
+
+Point-in-time recovery (WAL archiving) is not set up; a nightly dump loses up to a day. See the [design](technical.md#infrastructure-and-operations).

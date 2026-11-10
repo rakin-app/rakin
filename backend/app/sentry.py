@@ -5,14 +5,22 @@ reports a failure by logging it (`logger.exception`), and the same line reaches 
 whether Sentry is configured or not.
 """
 
-from typing import Any
+from typing import Any, Protocol
 
 import sentry_sdk
 
-from app.settings import Settings
+
+class SentryConfig(Protocol):
+    """What Sentry needs from a service's settings (`Settings`, `BackupSettings`)."""
+
+    @property
+    def sentry_dsn(self) -> str: ...
+
+    @property
+    def environment(self) -> str: ...
 
 
-def init_sentry(settings: Settings, **options: Any) -> bool:
+def init_sentry(settings: SentryConfig, **options: Any) -> bool:
     """Start the Sentry client if a DSN is configured; whether it did."""
     if not settings.sentry_dsn:
         return False
