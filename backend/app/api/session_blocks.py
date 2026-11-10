@@ -164,6 +164,12 @@ async def _plan(session: AsyncSession, held: _Held) -> SessionPlan:
     return SessionPlan(session_id=held.id, class_kind=held.kind, blocks=blocks)
 
 
+def sparred_at_most(completed: int, planned: int, round_seconds: int) -> int:
+    """The most seconds a sparring block may record: its completed rounds, and the round
+    after them stopped part-way, if one was planned. Rest is never included."""
+    return min(completed + 1, planned) * round_seconds
+
+
 def _columns(
     index: int, block: PlannedBlock, kind: _Kind, kept: SessionBlock | None
 ) -> dict[str, Any]:
@@ -193,15 +199,26 @@ def _columns(
         for field in rounds:
             if getattr(block, field) is not None:
                 raise refuse(field, "not_sparring", "only a sparring block has rounds")
+    # What ran was of the kind it ran as: a block given another kind starts unrecorded.
+    if kept is not None and (
+        kept.block_kind_id != block.block_kind_id or kept.is_sparring != kind.is_sparring
+    ):
+        kept = None
+    actual = None if kept is None else kept.actual_seconds
     completed = None
     if kept is not None and kind.is_sparring and kept.rounds_completed is not None:
-        completed = min(kept.rounds_completed, block.rounds_planned or 0)
+        assert block.rounds_planned is not None and block.round_seconds is not None
+        completed = min(kept.rounds_completed, block.rounds_planned)
+        if actual is not None:
+            actual = min(
+                actual, sparred_at_most(completed, block.rounds_planned, block.round_seconds)
+            )
     return {
         "id": block.id or uuid.uuid4(),
         "position": index,
         "block_kind_id": block.block_kind_id,
         "planned_seconds": planned,
-        "actual_seconds": None if kept is None else kept.actual_seconds,
+        "actual_seconds": actual,
         "rounds_planned": block.rounds_planned,
         "rounds_completed": completed,
         "round_seconds": block.round_seconds,
@@ -272,7 +289,11 @@ async def record_actual(
     session: StaffSession,
 ) -> SessionBlock:
     """What the block ran. A sparring block also says the rounds completed, at most
-    those planned; any other block has none."""
+    those planned, and its seconds are the rounds' alone, rest not included: at most
+    the completed rounds and part of the next one, if one was planned
+    (`sparred_at_most`), else a 422 `less_than_equal` on `actual_seconds`. So 3 of 5
+    rounds of 300 s record at most 1200: 900 for the three, and up to 300 for a fourth
+    stopped part-way. Any other block has no rounds."""
     held = await _held(session, session_id, lock=True)
     await _runs(session, tenant, held)
     row = (
@@ -287,9 +308,15 @@ async def record_actual(
     if block.is_sparring:
         if body.rounds_completed is None:
             raise _unprocessable(("rounds_completed",), "missing", "a sparring block is rounds")
-        if body.rounds_completed > (block.rounds_planned or 0):
+        assert block.rounds_planned is not None and block.round_seconds is not None
+        if body.rounds_completed > block.rounds_planned:
             raise _unprocessable(
                 ("rounds_completed",), "less_than_equal", "more rounds than were planned"
+            )
+        bound = sparred_at_most(body.rounds_completed, block.rounds_planned, block.round_seconds)
+        if body.actual_seconds > bound:
+            raise _unprocessable(
+                ("actual_seconds",), "less_than_equal", "more than the rounds ran, rest excluded"
             )
     elif body.rounds_completed is not None:
         raise _unprocessable(

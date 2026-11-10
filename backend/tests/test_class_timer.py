@@ -500,6 +500,83 @@ def test_an_actual_is_held_to_its_block(client: TestClient, gym: uuid.UUID) -> N
 
 
 @pg
+@pytest.mark.parametrize(
+    ("completed", "seconds", "accepted"),
+    [
+        (3, 900, True),  # three whole rounds
+        (3, 1200, True),  # and a fourth stopped at its bell
+        (3, 1201, False),  # more than that is rest counted as sparring
+        (5, 1500, True),
+        (5, 1501, False),  # no sixth round was planned
+        (0, 300, True),  # the first round stopped part-way
+        (0, 301, False),
+    ],
+)
+def test_a_sparring_actual_is_its_rounds_rest_excluded(
+    client: TestClient, gym: uuid.UUID, completed: int, seconds: int, accepted: bool
+) -> None:
+    _, fundamentals = classes(client, gym)
+    session = start(client, gym, fundamentals)
+    sparring = ok(put_plan(client, gym, session, technique_and_sparring(kinds(client, gym))))[
+        "blocks"
+    ][1]
+    response = record(
+        client,
+        gym,
+        session,
+        sparring["id"],
+        {"actual_seconds": seconds, "rounds_completed": completed},
+    )
+    if accepted:
+        assert ok(response)["actual_seconds"] == seconds
+    else:
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"] == ["body", "actual_seconds"]
+
+
+@pg
+def test_a_block_given_another_kind_starts_unrecorded(client: TestClient, gym: uuid.UUID) -> None:
+    _, fundamentals = classes(client, gym)
+    session = start(client, gym, fundamentals)
+    k = kinds(client, gym)
+    drilling_id, sparring_id = str(uuid.uuid4()), str(uuid.uuid4())
+    plan_ = [
+        {"id": drilling_id, "block_kind_id": k["Drilling"]["id"], "planned_seconds": 600},
+        {"id": sparring_id, **technique_and_sparring(k)[1]},
+    ]
+    ok(put_plan(client, gym, session, plan_))
+    ok(record(client, gym, session, drilling_id, {"actual_seconds": 600}))
+    ok(record(client, gym, session, sparring_id, {"actual_seconds": 1200, "rounds_completed": 3}))
+
+    # Drilling becomes Juegos (same sparring-ness), sparring becomes Técnica: both reset.
+    swapped = [
+        {"id": drilling_id, "block_kind_id": k["Juegos"]["id"], "planned_seconds": 600},
+        {"id": sparring_id, "block_kind_id": k["Técnica"]["id"], "planned_seconds": 1500},
+    ]
+    blocks = ok(put_plan(client, gym, session, swapped))["blocks"]
+    assert [(b["actual_seconds"], b["rounds_completed"]) for b in blocks] == [
+        (None, None),
+        (None, None),
+    ]
+
+
+@pg
+def test_fewer_rounds_cut_what_was_recorded(client: TestClient, gym: uuid.UUID) -> None:
+    _, fundamentals = classes(client, gym)
+    session = start(client, gym, fundamentals)
+    k = kinds(client, gym)
+    sparring = {"id": str(uuid.uuid4()), **technique_and_sparring(k)[1]}
+    ok(put_plan(client, gym, session, [sparring]))
+    ok(
+        record(
+            client, gym, session, sparring["id"], {"actual_seconds": 1200, "rounds_completed": 3}
+        )
+    )
+    fewer = ok(put_plan(client, gym, session, [{**sparring, "rounds_planned": 2}]))["blocks"][0]
+    assert (fewer["rounds_completed"], fewer["actual_seconds"]) == (2, 600)
+
+
+@pg
 def test_an_open_mat_is_one_sparring_block(client: TestClient, gym: uuid.UUID) -> None:
     adults, _ = classes(client, gym)
     session = start(client, gym, open_mat(client, gym, adults))
