@@ -20,9 +20,17 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
+from tests.pg import (
+    Database,
+    migrate,
+    run,
+    seed_gym,
+    seeded_owner,
+    seeded_today,
+    throwaway_database,
+)
 from tests.test_guardians import add_person, as_owner, bill, new_kid
-from tests.test_membership_ledger import gym_today, slug
+from tests.test_membership_ledger import slug
 from tests.test_plans import add_staff
 
 pg = pytest.mark.postgres
@@ -131,7 +139,7 @@ def test_the_month_is_every_entry_newest_first_with_its_member_and_period(
 
     found = read(client, sur)
 
-    today = gym_today()
+    today = seeded_today()
     assert found["month"] == today.replace(day=1).isoformat()
     assert found["timezone"] == "America/Santiago"
     mine = [e for e in found["items"] if e["person"]["name"] == "Ana"]
@@ -253,7 +261,7 @@ def test_another_month_shows_its_own_entries_and_every_month_with_entries_is_off
     # A carried credit or any entry with no period has none to show.
     assert march["items"][0]["period"] is None
     assert ("Ana", "payment", 9000) not in names(current)
-    assert current["months"] == [gym_today().replace(day=1).isoformat(), "2020-03-01"]
+    assert current["months"] == [seeded_today().replace(day=1).isoformat(), "2020-03-01"]
     # A month with no entries is still a month to show, and offered.
     empty = read(client, sur, month="2019-01-01")
     assert (empty["items"], empty["total"]) == ([], 0)

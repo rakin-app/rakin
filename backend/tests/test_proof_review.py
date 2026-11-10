@@ -10,7 +10,7 @@ import dataclasses
 import uuid
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Any
 
 import asyncpg
@@ -23,7 +23,15 @@ from app.main import create_app
 from app.schemas.proofs import ProofRejection
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
+from tests.pg import (
+    Database,
+    migrate,
+    run,
+    seed_gym,
+    seeded_owner,
+    seeded_today,
+    throwaway_database,
+)
 from tests.test_guardians import add_person, bill, new_kid
 from tests.test_plans import add_staff
 from tests.test_proofs import (
@@ -236,7 +244,8 @@ def test_validating_emails_a_receipt(
     ana = add_person(client, sur, "Ana")
     # Last month still owes 10.000; this one is paid in full by the proof.
     bill(db, sur, ana, [(-30, 45000, 35000, 0), (0, 45000, 0, 0)])
-    period = next(p for p in periods(client, sur, ana) if p["due_date"] == date.today().isoformat())
+    today = seeded_today().isoformat()
+    period = next(p for p in periods(client, sur, ana) if p["due_date"] == today)
     entry = claim(client, sur, ana, period["id"], upload(client, sur, ana), 45000).json()
     mailer.sent.clear()
 
@@ -245,7 +254,8 @@ def test_validating_emails_a_receipt(
     [email] = mailer.sent
     assert email.to == "ana@example.cl"
     assert email.subject == "Pago validado"
-    start, end = date.today(), date.today() + timedelta(days=29)
+    start = seeded_today()
+    end = start + timedelta(days=29)
     assert f"del {start:%d-%m-%Y} al {end:%d-%m-%Y}" in email.text
     assert "Este período quedó pagado." in email.text
     assert "Saldo pendiente: $10.000." in email.text
@@ -543,7 +553,7 @@ def test_prior_balance_counts_only_periods_already_due(
 
     [item] = queue(client, sur)
 
-    assert item["period"]["due_date"] == str(date.today() - timedelta(days=30))
+    assert item["period"]["due_date"] == str(seeded_today() - timedelta(days=30))
     assert item["prior_balance_clp"] == 20000
     assert [p["amount_clp"] for p in item["last_payments"]] == [10000]
 

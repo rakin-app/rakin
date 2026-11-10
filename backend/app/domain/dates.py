@@ -28,6 +28,15 @@ def local_date(instant: datetime, tz: ZoneInfo | str) -> date:
     return instant.astimezone(_zone(tz)).date()
 
 
+def gym_today(tz: ZoneInfo | str) -> date:
+    """Today's calendar date in the gym's timezone: the day "today" means everywhere.
+
+    Not the host's date, which on a UTC host is a day ahead of Chile's every evening
+    (`tests/test_clock.py` refuses it).
+    """
+    return local_date(datetime.now(UTC), tz)
+
+
 def start_of_local_day(day: date, tz: ZoneInfo | str) -> datetime:
     """The first instant of `day` in the gym's timezone, as an aware UTC datetime.
 

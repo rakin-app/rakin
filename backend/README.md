@@ -30,6 +30,8 @@ TEST_S3_ENDPOINT_URL=http://localhost:3900 uv run pytest -m s3
 
 Tests marked `postgres` skip unless `TEST_DATABASE_URL` points at a reachable database. With `REQUIRE_POSTGRES=1` (as in CI) a missing `TEST_DATABASE_URL` fails them instead. Tests marked `s3` do the same with `TEST_S3_ENDPOINT_URL` and `REQUIRE_S3`; they use the `S3_*` access key and bucket defaults, which `garage-init` creates.
 
+"Today" is the gym's date, `gym_today(tz)` in `app/domain/dates.py` (`seeded_today()` in `tests/pg.py` for a seeded gym), never the host's: on a UTC host the two differ every night from 00:00 UTC. `tests/test_clock.py` fails on `date.today()`, a zoneless `datetime.now()` and `datetime.now(UTC).date()` in `app`, `tests` and `alembic`; a line that does mean the host's date carries a `# system date: <why>` comment. CI's `backend-midnight` job runs the suite with Postgres and pytest under libfaketime at 00:30 UTC, `TZ=UTC`, without the `s3` tests.
+
 ## Integrations
 
 Every external service sits behind an interface in `app/integrations`, and a setting picks the implementation. The defaults need no network and no account, so a self-hosted instance works offline with none configured ([spec](../docs/technical.md#architecture)).

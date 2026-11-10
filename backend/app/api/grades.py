@@ -15,7 +15,7 @@ members may not. A member reads their own rank on the student page (`/api/me/pag
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.grading import stored_scheme
 from app.api.people import NOT_FOUND, in_gym
-from app.domain.dates import local_date
+from app.domain.dates import gym_today
 from app.roles import StaffSession
 from app.schemas.grades import GradeAward, GradeEvent, Grading, Rank
 from app.schemas.grading import GradingScheme
@@ -166,7 +166,7 @@ async def award_grade(
             raise _refused("sub_rank_required")
     elif all(s.key != body.sub_rank for s in rank.sub_ranks):
         raise _refused("unknown_sub_rank")
-    today: date = local_date(datetime.now(UTC), str(gym.timezone))
+    today: date = gym_today(str(gym.timezone))
     awarded_on = body.awarded_on or today
     if awarded_on > today:
         raise _refused("awarded_in_future")
