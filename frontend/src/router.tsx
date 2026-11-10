@@ -30,7 +30,20 @@ export type RouterContext = {
   queryClient: QueryClient
 }
 
-const rootRoute = createRootRouteWithContext<RouterContext>()({
+/**
+ * One trip to sign in per signed-out moment. A screen's queries can answer 401 all at
+ * once, and a session check's own 401 also reaches the `onUnauthorized` handler; only
+ * the first of them clears the cache and navigates. Reset on reaching `/ingresar`.
+ */
+type SignInGuard = {
+  redirecting: boolean
+  // Session checks asking for the role right now: they redirect on their own 401.
+  checking: number
+}
+
+type AppContext = RouterContext & { signIn: SignInGuard }
+
+const rootRoute = createRootRouteWithContext<AppContext>()({
   component: Outlet,
   notFoundComponent: NotFound,
 })
@@ -49,16 +62,21 @@ function Pending() {
  * sign in, keeping the page they asked for. Any other failure lets the shell render,
  * and its screens say what did not load.
  */
-async function requireSession(queryClient: QueryClient, href: string) {
+async function requireSession({ queryClient, signIn }: AppContext, href: string) {
+  signIn.checking += 1
   try {
     // No retries here: a shell that cannot reach the API still renders, and retries
     // the role itself.
     return await queryClient.ensureQueryData({ ...myRoleQuery(), retry: false })
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
+      signIn.redirecting = true
+      queryClient.clear()
       throw redirect({ to: SIGN_IN_PATH, search: { redirect: appPath(href) }, replace: true })
     }
     return undefined
+  } finally {
+    signIn.checking -= 1
   }
 }
 
@@ -68,7 +86,7 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: async ({ context }) => {
-    const me = await requireSession(context.queryClient, '/')
+    const me = await requireSession(context, '/')
     throw redirect({ href: me ? landingFor(me.role) : '/admin', replace: true })
   },
 })
@@ -88,7 +106,7 @@ const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'admin',
   beforeLoad: async ({ context, location }) => {
-    await requireSession(context.queryClient, location.href)
+    await requireSession(context, location.href)
   },
   component: AdminLayout,
 })
@@ -176,7 +194,7 @@ const meRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'me',
   beforeLoad: async ({ context, location }) => {
-    await requireSession(context.queryClient, location.href)
+    await requireSession(context, location.href)
   },
   component: MeLayout,
 })
@@ -205,9 +223,10 @@ const routeTree = rootRoute.addChildren([
 ])
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
+  const signIn: SignInGuard = { redirecting: false, checking: 0 }
   const router = createRouter({
     routeTree,
-    context,
+    context: { ...context, signIn },
     history,
     defaultPreload: 'intent',
     defaultPendingComponent: Pending,
@@ -218,9 +237,13 @@ export function createAppRouter(context: RouterContext, history?: RouterHistory)
   // a signed-out visitor does, and what it had loaded is forgotten.
   onUnauthorized(() => {
     const { pathname, href } = router.state.location
-    if (pathname === SIGN_IN_PATH) return
+    if (signIn.redirecting || signIn.checking > 0 || pathname === SIGN_IN_PATH) return
+    signIn.redirecting = true
     context.queryClient.clear()
     void router.navigate({ to: SIGN_IN_PATH, search: { redirect: appPath(href) }, replace: true })
+  })
+  router.subscribe('onResolved', ({ toLocation }) => {
+    if (toLocation.pathname === SIGN_IN_PATH) signIn.redirecting = false
   })
   return router
 }

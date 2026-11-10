@@ -194,6 +194,81 @@ describe('signing in', () => {
   })
 })
 
+describe('one trip to sign in', () => {
+  // The handler's navigations to /ingresar, counted on `router.navigate`; `hold` keeps
+  // the router where it is, as if the first navigation had not landed yet.
+  function navigationsToSignIn(router: ReturnType<typeof renderAt>, { hold = false } = {}) {
+    const navigate = router.navigate.bind(router)
+    const spy = vi.spyOn(router, 'navigate').mockImplementation((options) =>
+      hold && options.to === '/ingresar' ? Promise.resolve() : navigate(options),
+    )
+    return () => spy.mock.calls.filter(([options]) => options.to === '/ingresar').length
+  }
+
+  it('navigates once and clears once for a burst of 401s, before the first navigation lands', async () => {
+    let live = true
+    const calls = stubApi((path) => {
+      if (!live) return { status: 401 }
+      return path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }
+    })
+    const router = renderAt('/admin')
+    const { queryClient } = router.options.context
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    await within(nav).findByRole('link', { name: es.nav.payments })
+    const navigations = navigationsToSignIn(router, { hold: true })
+    const clear = vi.spyOn(queryClient, 'clear')
+
+    live = false
+    const before = calls.length
+    // Every query on the screen asks again at once, and each one is refused.
+    queryClient.getQueryCache().getAll().forEach((query) => void query.fetch().catch(() => {}))
+
+    await waitFor(() => expect(calls.length - before).toBeGreaterThan(2))
+    await waitFor(() => expect(navigations()).toBe(1))
+    expect(clear).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves a 401 on the session check to the check: one redirect, no second navigation', async () => {
+    signedOut()
+    const queryClient = createQueryClient()
+    const clear = vi.spyOn(queryClient, 'clear')
+    const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries: ['/admin/pagos'] }))
+    const navigations = navigationsToSignIn(router)
+    render(<App queryClient={queryClient} router={router} />)
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.href).toBe('/ingresar?redirect=%2Fadmin%2Fpagos')
+    // The handler never navigates: the check's `redirect` is the only trip.
+    expect(navigations()).toBe(0)
+    expect(clear).toHaveBeenCalledTimes(1)
+  })
+
+  it('goes again the next time the session ends', async () => {
+    let live = true
+    stubApi((path) => {
+      if (!live) return { status: 401 }
+      return path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }
+    })
+    const router = renderAt('/admin')
+    const { queryClient } = router.options.context
+    await screen.findByRole('navigation', { name: es.nav.label })
+    live = false
+    void queryClient.invalidateQueries()
+    await screen.findByRole('heading', { level: 1, name: es.signIn.title })
+
+    // Signed in again, in this tab, and the session ends once more.
+    live = true
+    await router.navigate({ to: '/admin' })
+    await screen.findByRole('navigation', { name: es.nav.label })
+    const navigations = navigationsToSignIn(router)
+    live = false
+    void queryClient.invalidateQueries()
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(navigations()).toBe(1)
+  })
+})
+
 describe('Cerrar sesión', () => {
   it.each([
     ['owner', '/admin'],
