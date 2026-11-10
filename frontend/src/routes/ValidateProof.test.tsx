@@ -38,7 +38,7 @@ const DIEGO: ProofReview = {
     { amount_clp: 45000, paid_at: '2026-10-08T15:00:00Z' },
     { amount_clp: 45000, paid_at: '2026-09-09T15:00:00Z' },
   ],
-  attendance_30d: null,
+  attendance_30d: 9,
 }
 
 const JUAN: ProofReview = {
@@ -123,7 +123,7 @@ describe('Validar comprobante', () => {
     expect(screen.getByText('Mensual adultos · día 10')).toBeInTheDocument()
     expect(screen.getByText('$0')).toBeInTheDocument()
     expect(screen.getByText('8 oct · 9 sept')).toBeInTheDocument()
-    expect(screen.getByText(copy.noAttendance)).toBeInTheDocument()
+    expect(screen.getByText(copy.attendanceCount(9))).toBeInTheDocument()
     expect(screen.getByRole('button', { name: copy.confirm('$45.000') })).toBeInTheDocument()
   })
 

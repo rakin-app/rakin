@@ -33,7 +33,7 @@
   text-align: center;
 }
 
-/* "Mi entrenamiento": a grid of cards, the belt first; attendance joins it (#44). */
+/* "Mi entrenamiento": a grid of cards, the belt first, then this month's classes. */
 .training {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
