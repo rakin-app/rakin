@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
 from app.api.proofs import OPEN_PERIODS, payable_params, to_open_period
 from app.domain.billing import SETTLING_KINDS, settled_amount
@@ -117,11 +118,13 @@ async def my_dependents(
 async def my_page(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
 ) -> MyPage:
-    """The student page: what is due next and where to pay it, and what was paid."""
+    """The student page: what is due next and where to pay it, what was paid, and the
+    person's rank."""
     gym = (
         await session.execute(
             text(
-                "SELECT name, timezone, settings -> 'bank_account' AS bank_account"
+                "SELECT name, timezone, settings -> 'bank_account' AS bank_account,"
+                " settings"
                 " FROM gym WHERE id = :id"
             ),
             {"id": tenant.gym_id},
@@ -161,5 +164,6 @@ async def my_page(
         name=name or "",
         next_payment=next_payment,
         bank_account=gym.bank_account,
+        rank=await current_rank(session, tenant.person_id, readable_scheme(gym.settings)),
         payments=[MyPayment.model_validate(dict(row._mapping)) for row in payments],
     )

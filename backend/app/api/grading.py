@@ -11,7 +11,9 @@ a preset, and the `PUT` that does so replaces it.
 
 import json
 import logging
-from typing import Annotated
+import uuid
+from collections.abc import Mapping
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
@@ -26,6 +28,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/gym/grading-scheme", tags=["grading"])
 
 
+def stored_scheme(gym_id: uuid.UUID, settings: Mapping[str, Any]) -> GradingScheme:
+    """The scheme in a gym's `settings`; a 409 `grading_scheme_invalid` if it no longer
+    fits the model."""
+    try:
+        return GradingScheme.from_settings(settings)
+    except ValidationError as error:
+        logger.warning(
+            "grading scheme stored for gym %s is invalid: %s",
+            gym_id,
+            error.errors(include_input=False, include_url=False),
+        )
+        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "grading_scheme_invalid"}) from None
+
+
 @router.get("")
 async def get_scheme(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: StaffSession
@@ -33,15 +49,7 @@ async def get_scheme(
     settings = await session.scalar(
         text("SELECT settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
-    try:
-        return GradingScheme.from_settings(settings)
-    except ValidationError as error:
-        logger.warning(
-            "grading scheme stored for gym %s is invalid: %s",
-            tenant.gym_id,
-            error.errors(include_input=False, include_url=False),
-        )
-        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "grading_scheme_invalid"}) from None
+    return stored_scheme(tenant.gym_id, settings)
 
 
 @router.put("")

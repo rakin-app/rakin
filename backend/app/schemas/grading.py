@@ -70,6 +70,10 @@ class GradingScheme(BaseModel):
     def from_settings(cls, settings: Mapping[str, Any]) -> "GradingScheme":
         return cls.model_validate(settings.get("grading", {"ranks": []}))
 
+    def rank(self, key: str) -> Rank | None:
+        """The rank `key` names, in the ranks or the kids ladder."""
+        return next((r for r in (*self.ranks, *self.kids_ladder) if r.key == key), None)
+
 
 class Preset(BaseModel):
     key: str

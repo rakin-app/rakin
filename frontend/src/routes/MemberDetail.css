@@ -197,6 +197,25 @@
   font-size: var(--text-sm);
 }
 
+.member__rank {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.member__rank-label {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.1;
+}
+
+/* A form inside a card: the card is its frame. */
+.member__form--inset {
+  padding: 0;
+  border: 0;
+}
+
 .member__section {
   display: flex;
   flex-direction: column;
