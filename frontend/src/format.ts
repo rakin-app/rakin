@@ -51,3 +51,29 @@ export function clockTime(iso: string, timeZone: string): string {
     new Date(iso),
   )
 }
+
+/** A wall time in `timeZone`, the ISO instant it is: day `2026-11-09` at `19:00` in
+ * Santiago is `2026-11-09T22:00:00.000Z`. The zone's offset at that time, not the device's. */
+export function zonedInstant(day: string, time: string, timeZone: string): string {
+  const [y, mo, d] = day.split('-').map(Number) as [number, number, number]
+  const [h, mi] = time.split(':').map(Number) as [number, number]
+  const wall = Date.UTC(y, mo - 1, d, h, mi)
+  // Offset of `timeZone` at an instant: its wall clock there, less the instant.
+  const offset = (instant: number) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(new Date(instant))
+    const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value)
+    return Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute')) - instant
+  }
+  // Twice, so a time near a change of offset lands on the offset in force then.
+  let instant = wall - offset(wall)
+  instant = wall - offset(instant)
+  return new Date(instant).toISOString()
+}

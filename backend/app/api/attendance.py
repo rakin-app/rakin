@@ -19,6 +19,11 @@ A trial guest is someone trying a class: the screen adds them by phone (`POST
 only an owner or admin may start any other membership. No welcome is sent: the person
 added at the mat has given a phone, not an email, and has nothing to pay yet.
 
+A cancelled class (migration 0033) takes no attendance: marking at it, or adding a
+trial guest to it, is a 409. Cancelling is refused once anyone is marked, so it has
+none to count. Deleting a class removes its attendance (`remove_attendance`), giving
+back what each mark took, as unmarking would.
+
 Any staff role may use it, coaches included; members may not. A member reads their own
 counts on the student page (`/api/me/page`).
 """
@@ -56,9 +61,11 @@ from app.tenancy import Tenant, current_tenant
 router = APIRouter(tags=["classes"])
 
 SESSION_NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
+CANCELLED = HTTPException(status.HTTP_409_CONFLICT, "the class is cancelled")
 
 SELECT_SESSION = """
-    SELECT s.id, s.starts_at, c.program_id, c.credit_cost, g.timezone, g.settings
+    SELECT s.id, s.starts_at, s.cancelled_at, c.program_id, c.credit_cost, g.timezone,
+           g.settings
     FROM session s
     JOIN class_type c ON c.id = s.class_type_id
     JOIN gym g ON g.id = s.gym_id
@@ -161,6 +168,7 @@ COUNTS = """
 class _Class:
     id: uuid.UUID
     starts_at: datetime
+    cancelled_at: datetime | None
     program_id: uuid.UUID
     credit_cost: int
     timezone: str
@@ -185,6 +193,12 @@ async def _class(session: AsyncSession, session_id: uuid.UUID, *, lock: bool = F
     if row is None:
         raise SESSION_NOT_FOUND
     return _Class(**row._mapping)
+
+
+def _open(held: _Class) -> None:
+    """A 409 if the class is cancelled: it takes no attendance."""
+    if held.cancelled_at is not None:
+        raise CANCELLED
 
 
 async def _roster(session: AsyncSession, held: _Class) -> Roster:
@@ -252,12 +266,33 @@ async def _unmark(session: AsyncSession, held: _Class, membership_id: uuid.UUID)
         await session.execute(text(REFUND), {"id": membership_id, "credits": credits})
 
 
+async def remove_attendance(session: AsyncSession, session_id: uuid.UUID) -> None:
+    """Everyone's attendance at the session, gone, each giving back what it took. The
+    caller holds the session locked; memberships go in id order, as every change here
+    takes them."""
+    rows = await session.execute(
+        text(
+            "DELETE FROM attendance WHERE session_id = :session"
+            " RETURNING membership_id, credits_consumed"
+        ),
+        {"session": session_id},
+    )
+    for row in sorted(rows, key=lambda r: r.membership_id):
+        if row.credits_consumed:
+            await session.execute(
+                text(REFUND), {"id": row.membership_id, "credits": row.credits_consumed}
+            )
+
+
 @router.get("/api/sessions/{session_id}/roster")
 async def get_roster(session_id: uuid.UUID, session: StaffSession) -> Roster:
     return await _roster(session, await _class(session, session_id))
 
 
-@router.patch("/api/sessions/{session_id}/attendance")
+@router.patch(
+    "/api/sessions/{session_id}/attendance",
+    responses={status.HTTP_409_CONFLICT: {"description": "the class is cancelled"}},
+)
 async def change_attendance(
     session_id: uuid.UUID,
     body: AttendanceChange,
@@ -266,6 +301,7 @@ async def change_attendance(
 ) -> Roster:
     """Mark and unmark at once; the roster as it then stands."""
     held = await _class(session, session_id, lock=True)
+    _open(held)
     marking = set(body.mark)
     # One membership at a time in id order, as every request here takes them, so two
     # changes to different sessions never wait on each other's locks in a cycle.
@@ -280,7 +316,12 @@ async def change_attendance(
 @router.post(
     "/api/sessions/{session_id}/trials",
     status_code=status.HTTP_201_CREATED,
-    responses={status.HTTP_409_CONFLICT: {"model": AlreadyMember}},
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": AlreadyMember,
+            "description": "already a member, or the class is cancelled",
+        }
+    },
 )
 async def add_trial_guest(
     session_id: uuid.UUID,
@@ -291,6 +332,7 @@ async def add_trial_guest(
     """Start the person on a trial plan from today, marked present at the session. A
     409 names the membership of someone who already has a live one, to mark instead."""
     held = await _class(session, session_id, lock=True)
+    _open(held)
     if not await in_gym(session, body.person_id):
         raise _unprocessable("person_id", "unknown_person", "no such person")
     plan = (

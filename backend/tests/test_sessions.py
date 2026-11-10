@@ -59,7 +59,15 @@ def test_create_refuses(body: dict[str, Any]) -> None:
 
 
 @pytest.mark.parametrize(
-    "body", [{"coach_id": None}, {"class_type_id": CLASS_TYPE}, {"starts_at": None}], ids=str
+    "body",
+    [
+        {"coach_id": None},
+        {"class_type_id": None},
+        {"starts_at": None},
+        {"starts_at": "2026-11-09T19:00:00"},  # no offset
+        {"cancelled_at": "2026-11-09T19:00:00Z"},  # cancelling is its own endpoint
+    ],
+    ids=str,
 )
 def test_update_refuses(body: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
@@ -205,10 +213,12 @@ def test_topic_and_notes_are_written_after_class_and_cleared(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     fundamentals = class_type(client, gym)
-    session = started(
-        client, gym, {"class_type_id": fundamentals["id"], "topic": "Guardia cerrada"}
-    )
     coach = add_staff(db, gym, "coach")
+    session = started(
+        client,
+        gym,
+        {"class_type_id": fundamentals["id"], "topic": "Guardia cerrada", "coach_id": str(coach)},
+    )
     path = f"/api/sessions/{session['id']}"
 
     written = client.patch(
@@ -343,15 +353,6 @@ def test_members_may_not_use_them(client: TestClient, db: Database, gym: uuid.UU
     assert client.get("/api/sessions", headers=as_gym(gym, member)).status_code == 403
     body = {"class_type_id": class_type(client, gym)["id"]}
     assert start(client, gym, body, member).status_code == 403
-
-
-@pg
-def test_there_is_no_delete(client: TestClient, db: Database, gym: uuid.UUID) -> None:
-    session = started(client, gym, {"class_type_id": class_type(client, gym)["id"]})
-    path = f"/api/sessions/{session['id']}"
-    assert client.delete(path, headers=as_gym(gym)).status_code == 405
-    with pytest.raises(asyncpg.InsufficientPrivilegeError):
-        run(db.api_url, in_gym(gym, "DELETE FROM session WHERE id = $1", uuid.UUID(session["id"])))
 
 
 # --- no attendance taken (#45) ----------------------------------------------------
