@@ -69,6 +69,24 @@ export const es = {
         },
         showAll: (n: number) => `Ver los ${n} vencidos`,
       },
+      inactive: {
+        counter: 'Sin venir 14 d',
+        title: 'A quién llamar',
+        error: 'No pudimos cargar a quién llamar.',
+        empty: 'Todos vinieron en las últimas dos semanas.',
+        buckets: { 14: 'Entre 14 y 29 días', 30: '30 días o más' },
+        absent: (days: number) => `${days} días sin venir`,
+        never: (days: number) => `No ha venido desde que entró, hace ${days} días`,
+        payment: {
+          up_to_date: 'al día en pagos',
+          trial: 'en prueba',
+          overdue: (amount: string) => `debe ${amount}`,
+        },
+        nudged: (when: string) => `avisado ${when}`,
+        write: (name: string) => `Escribir por WhatsApp a ${name}`,
+        // A dependent's nudge goes to their guardian.
+        writeFor: (contact: string, name: string) => `Escribir por WhatsApp a ${contact}, por ${name}`,
+      },
       ago: {
         now: 'recién',
         minutes: (n: number) => `hace ${n}\u00a0min`,

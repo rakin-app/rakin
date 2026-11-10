@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
+import type { InactiveMember } from '../api/inactive'
 import type { ProofReview } from '../api/review'
 import type { Overdue, OverduePeriod } from '../api/today'
 import { App } from '../App'
@@ -66,13 +67,40 @@ const OVERDUE: Overdue = {
   periods: [late('Felipe Díaz', 9), late('Javiera Silva', 4), late('Tomás Pérez', 2, 30000)],
 }
 
+const away = (name: string, days: number, extra: Partial<InactiveMember> = {}): InactiveMember => ({
+  person_id: name,
+  name,
+  last_attended_on: '2026-10-25',
+  days_absent: days,
+  bucket: days >= 30 ? 30 : 14,
+  payment_status: 'up_to_date',
+  overdue_clp: 0,
+  contact_name: name,
+  whatsapp_url: `https://wa.me/56912345678?text=Hola%20${days}`,
+  nudged_at: null,
+  ...extra,
+})
+
+const INACTIVE: InactiveMember[] = [
+  away('Ignacio Vera', 16),
+  away('Tomás Rojas', 20, { contact_name: 'Ana Rojas', payment_status: 'overdue', overdue_clp: 30000 }),
+  away('Paula Contreras', 41, { last_attended_on: null, payment_status: 'trial', whatsapp_url: null }),
+]
+
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
-type Stub = { role?: 'owner' | 'admin' | 'coach'; proofs?: Answer; overdue?: Overdue; payment?: Answer }
+type Stub = {
+  role?: 'owner' | 'admin' | 'coach'
+  proofs?: Answer
+  overdue?: Overdue
+  payment?: Answer
+  inactive?: InactiveMember[]
+}
 
-function stubApi({ role = 'owner', proofs, overdue = OVERDUE, payment }: Stub = {}) {
+function stubApi({ role = 'owner', proofs, overdue = OVERDUE, payment, inactive = INACTIVE }: Stub = {}) {
   const calls: Call[] = []
   let current = overdue
+  let away = inactive
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input, init) => {
@@ -93,6 +121,13 @@ function stubApi({ role = 'owner', proofs, overdue = OVERDUE, payment }: Stub = 
     if (path === '/api/ledger/pending') return { body: { count: 2 } }
     if (path === '/api/ledger/proofs') return proofs ?? { body: [DIEGO, MATEO] }
     if (path === '/api/ledger/overdue') return { body: current }
+    if (path === '/api/inactive') return { body: away }
+    const nudged = /^\/api\/inactive\/(.+)\/nudge$/.exec(path)
+    if (nudged && method === 'POST') {
+      const sentAt = new Date().toISOString()
+      away = away.map((m) => (m.person_id === decodeURIComponent(nudged[1]!) ? { ...m, nudged_at: sentAt } : m))
+      return { status: 201, body: { message_id: 'msg-1', sent_at: sentAt } }
+    }
     if (path === '/api/ledger/payments' && method === 'POST') {
       if (payment && (payment.status ?? 201) >= 400) return payment
       const [, ...rest] = current.periods
@@ -230,7 +265,66 @@ describe('Hoy', () => {
     await screen.findByRole('navigation', { name: es.nav.label })
     await vi.waitFor(() => expect(calls.some((c) => c.path === '/api/me/role')).toBe(true))
     expect(screen.queryByRole('region')).not.toBeInTheDocument()
-    expect(calls.filter((c) => c.path.startsWith('/api/ledger/'))).toEqual([])
+    expect(calls.filter((c) => c.path.startsWith('/api/ledger/') || c.path.startsWith('/api/inactive'))).toEqual(
+      [],
+    )
+  })
+
+  it('counts who has not come in 14 days', async () => {
+    stubApi()
+    renderToday()
+
+    const counters = await screen.findByRole('group', { name: copy.countersLabel })
+    expect(await within(counters).findByRole('link', { name: `3 ${copy.inactive.counter}` })).toHaveAttribute(
+      'href',
+      '#inactivos',
+    )
+  })
+
+  it('lists who to call in the 14 and 30 day buckets, with how they stand on payments', async () => {
+    stubApi()
+    renderToday()
+
+    const inactive = await section(copy.inactive.title)
+    const fourteen = await within(inactive).findByRole('list', { name: new RegExp(copy.inactive.buckets[14]) })
+    const thirty = within(inactive).getByRole('list', { name: new RegExp(copy.inactive.buckets[30]) })
+    expect(within(fourteen).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(fourteen).getByText('16 días sin venir · al día en pagos')).toBeInTheDocument()
+    expect(within(fourteen).getByText('20 días sin venir · debe $30.000')).toBeInTheDocument()
+    expect(within(thirty).getByText(`${copy.inactive.never(41)} · en prueba`)).toBeInTheDocument()
+    expect(within(inactive).getByRole('link', { name: /^Ignacio Vera/ })).toHaveAttribute(
+      'href',
+      '/admin/alumnos/Ignacio%20Vera',
+    )
+  })
+
+  it('opens WhatsApp in one tap, to the guardian for a dependent, and logs it', async () => {
+    const calls = stubApi()
+    renderToday()
+    const inactive = await section(copy.inactive.title)
+
+    const ignacio = await within(inactive).findByRole('link', { name: copy.inactive.write('Ignacio Vera') })
+    expect(ignacio).toHaveAttribute('href', 'https://wa.me/56912345678?text=Hola%2016')
+    expect(ignacio).toHaveAttribute('target', '_blank')
+    expect(
+      within(inactive).getByRole('link', { name: copy.inactive.writeFor('Ana Rojas', 'Tomás Rojas') }),
+    ).toBeInTheDocument()
+    // No phone to write to, or WhatsApp off: no link.
+    expect(within(inactive).queryByRole('link', { name: /WhatsApp a Paula/ })).not.toBeInTheDocument()
+
+    await userEvent.click(ignacio)
+
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual([
+      '/api/inactive/Ignacio%20Vera/nudge',
+    ])
+    expect(await within(inactive).findByText(/16 días sin venir · al día en pagos · avisado/)).toBeInTheDocument()
+  })
+
+  it('says when everyone came in the last two weeks', async () => {
+    stubApi({ inactive: [] })
+    renderToday()
+
+    expect(await within(await section(copy.inactive.title)).findByText(copy.inactive.empty)).toBeInTheDocument()
   })
 })
 
