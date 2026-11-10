@@ -5,7 +5,7 @@
 #
 #   ./deploy.sh v1.4.0                    # what the deploy workflow runs
 #   docker compose run --rm migrate       # bootstrap + migrations, one-shot
-#   docker compose up -d                  # caddy, api, jobs, postgres
+#   docker compose up -d                  # caddy, api, jobs, backup, postgres
 #
 # Unlike the dev stack there is no Garage (objects live in R2 or S3) and no
 # Vite: caddy is the `rakin-web` image, the built SPA plus deploy/Caddyfile.
@@ -135,7 +135,41 @@ services:
       postgres:
         condition: service_healthy
 
+  # Every night at 03:00 in JOBS_TIMEZONE: pg_dump, encrypted with age to a
+  # public key, uploaded to a bucket of its own with a token of its own (never
+  # the app's), keeping 14 daily and 8 weekly. The private key is not on this
+  # host. See `app/backup.py`, and docs/deploy.md#backups for restore.sh.
+  backup:
+    image: ghcr.io/rakin-app/rakin-api:${RAKIN_TAG:?set RAKIN_TAG, the release to run}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      JOBS_TIMEZONE: ${JOBS_TIMEZONE:-America/Santiago}
+      # The superuser: several tables force RLS even on their owner.
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-rakin}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      PGDATABASE: ${POSTGRES_DB:-rakin}
+      BACKUP_ENV: ${BACKUP_ENV:?staging or production, the folder in the bucket}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?the age public key, age1...}
+      BACKUP_S3_ENDPOINT_URL: ${BACKUP_S3_ENDPOINT_URL:?https://<account>.r2.cloudflarestorage.com}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-auto}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:?}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
+    command: ["python", "-m", "app.backup", "serve", "--at", "03:00"]
+    volumes:
+      # Just `last_success`: `docker compose exec backup python -m app.backup status`.
+      - backup_state:/var/lib/rakin-backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
+    # deploy/restore.sh restores into a scratch copy of this same image.
     image: postgres:17
     restart: unless-stopped
     logging: *logging
@@ -156,3 +190,4 @@ volumes:
   caddy_data:
   caddy_config:
   pg_data:
+  backup_state:

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
 import type { ClassSession, ClassType, SessionDay } from '../api/sessions'
 import { App } from '../App'
+import { isoDay, shiftDay, toDate, weekdayDay } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 
@@ -43,6 +44,9 @@ const EVENING: ClassSession = {
   created_at: '2026-11-09T22:00:00Z',
   updated_at: '2026-11-09T22:00:00Z',
   present: 12,
+  duration_minutes: null,
+  slot_id: null,
+  slot_date: null,
 }
 
 const MORNING: ClassSession = {
@@ -161,6 +165,23 @@ describe('Clases', () => {
     expect(rows[0]).toHaveTextContent(copy.today.noTopic)
     expect(rows[1]).toHaveTextContent(copy.today.row('19:00', 'Fundamentos'))
     expect(rows[1]).toHaveTextContent('Guardia cerrada')
+  })
+
+  it('shows how long a class lasts, and walks to the next day and back', async () => {
+    const calls = stubApi({ sessions: [{ ...EVENING, duration_minutes: 90 }] })
+    renderAt('/admin/clases')
+
+    const today = await screen.findByRole('region', { name: copy.today.title })
+    expect(await within(today).findByRole('link')).toHaveTextContent(copy.today.row('19:00–20:30', 'Fundamentos'))
+
+    const tomorrow = shiftDay(isoDay(new Date().toISOString(), 'America/Santiago'), 1)
+    const days = within(today).getByRole('navigation', { name: copy.days.label })
+    await userEvent.click(within(days).getByRole('button', { name: copy.days.next }))
+    const next = await screen.findByRole('region', { name: weekdayDay(toDate(tomorrow)) })
+    expect(calls.map((c) => c.path)).toContain(`/api/sessions?date=${tomorrow}`)
+
+    await userEvent.click(within(next).getByRole('button', { name: copy.days.today }))
+    expect(await screen.findByRole('region', { name: copy.today.title })).toBeInTheDocument()
   })
 
   it('flags a class no one is marked at', async () => {

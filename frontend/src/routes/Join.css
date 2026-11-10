@@ -90,6 +90,10 @@
   font-size: var(--text-sm);
 }
 
+.join__link {
+  color: inherit;
+}
+
 .join__consent input {
   width: 20px;
   height: 20px;

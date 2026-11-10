@@ -1,5 +1,5 @@
 """Made-up identities for tests: a RUT, an email, a phone no other test is likely to
-hold. A person is their RUT, or an email in one gym (migration 0034), so most tests that
+hold. A person is their RUT, or an email in one gym (migration 0036), so most tests that
 add someone need one of the two."""
 
 import random

@@ -27,7 +27,8 @@ from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_databas
 # The local BlobStore's URLs carry their own signature instead of a session, and
 # sign-in comes before there is one (`tests/test_auth.py` covers each of its routes).
 # An unsubscribe link's token names its gym (`tests/test_notices.py`), and so does a
-# join link's (`tests/test_join.py`).
+# join link's (`tests/test_join.py`). A gym's privacy notice is anyone's to read
+# (`tests/test_privacy.py`).
 PUBLIC_PATHS = {
     "/healthz",
     "/api/blobs/{key}",
@@ -37,6 +38,7 @@ PUBLIC_PATHS = {
     "/api/mail/unsubscribe/{token}",
     "/api/join/{token}",
     "/api/host",
+    "/api/privacy",
     "/internal/tls-allowed",
 }
 
@@ -57,7 +59,7 @@ router = APIRouter(prefix="/test")
 async def rows(table: str, session: TenantSession) -> list[dict[str, Any]]:
     if table not in (*TENANT_TABLES, "person"):
         raise HTTPException(404)
-    # The API may read only a person's id (migrations 0004, 0034).
+    # The API may read only a person's id (migrations 0004, 0036).
     columns = "id" if table == "person" else "*"
     result = await session.execute(
         text(f"SELECT to_jsonb(t) AS row FROM (SELECT {columns} FROM {table}) t")
@@ -294,7 +296,7 @@ def test_a_gym_reads_only_a_persons_id(db: Database, gyms: Gyms, column: str) ->
 )
 def test_only_join_gym_adds_a_person(db: Database, gyms: Gyms, insert: str) -> None:
     # A unique violation on `person.rut` would say the RUT is someone's elsewhere, so
-    # the API inserts no person itself; `join_gym` does (migration 0034).
+    # the API inserts no person itself; `join_gym` does (migration 0036).
     with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
         run(db.api_url, in_gym(gyms.sur, insert))
 

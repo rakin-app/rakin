@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { apiFetch } from './client'
+import { ApiError, apiFetch } from './client'
 
 /** The gym's join link (backend `JoinLink`), owner and admin only (#154). */
 export type JoinLink = {
@@ -23,7 +23,17 @@ export const joinLinkQuery = queryOptions({
   retry: false,
 })
 
-/** A new link with these options; any link the gym had stops working. */
+/** A 409 on generating a link: the gym's privacy details are not set yet (#168). */
+export function isPrivacyIncomplete(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    (error.body as { detail?: unknown } | undefined)?.detail === 'privacy_incomplete'
+  )
+}
+
+/** A new link with these options; any link the gym had stops working. A gym without its
+ * privacy details gets a 409 `privacy_incomplete` (`isPrivacyIncomplete`). */
 export function generateJoinLink(options: JoinLinkOptions): Promise<JoinLink> {
   return apiFetch<JoinLink>('/api/join-link', { method: 'POST', body: JSON.stringify(options) })
 }

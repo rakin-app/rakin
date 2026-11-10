@@ -24,9 +24,11 @@ from app.api import (
     memberships,
     people,
     plans,
+    privacy,
     programs,
     proof_review,
     proofs,
+    schedule,
     session_blocks,
     sessions,
     staff,
@@ -94,6 +96,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(programs.router)
     app.include_router(class_types.router)
     app.include_router(sessions.router)
+    app.include_router(schedule.router)
+    app.include_router(schedule.closed)
     app.include_router(attendance.router)
     app.include_router(block_kinds.router)
     app.include_router(session_blocks.router)
@@ -109,6 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(unsubscribe.router)
     app.include_router(join.public)
     app.include_router(join.router)
+    app.include_router(privacy.router)
     app.include_router(
         build_router(
             links,

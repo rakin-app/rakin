@@ -102,7 +102,7 @@ def join(
 
 
 def add_person(client: TestClient, gym: uuid.UUID, name: str, **fields: Any) -> str:
-    # Someone is their RUT, or an email (0034): a made-up RUT unless either is given.
+    # Someone is their RUT, or an email (0036): a made-up RUT unless either is given.
     key = {} if fields.keys() & {"rut", "email"} else {"rut": random_rut()}
     body = {"phone": new_phone(), "name": name, **key, **fields}
     response = client.post("/api/people", json=body, headers=as_gym(gym))

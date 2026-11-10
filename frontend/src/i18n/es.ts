@@ -697,6 +697,13 @@ export const es = {
         unmarked: 'Sin asistencia',
         cancelled: 'Cancelada',
       },
+      days: {
+        label: 'Cambiar de día',
+        previous: '← Anterior',
+        next: 'Siguiente →',
+        today: 'Hoy',
+        empty: 'No hay clases este día.',
+      },
     },
     settings: {
       title: 'Ajustes',
@@ -712,6 +719,7 @@ export const es = {
         fields: 'Campos',
         staff: 'Equipo',
         joinLink: 'Inscripción',
+        schedule: 'Horario',
       },
       loading: 'Cargando…',
       retry: 'Reintentar',
@@ -747,6 +755,14 @@ export const es = {
         rut: 'RUT del titular',
         number: 'Número de cuenta',
         bankEmail: 'Correo para avisos de transferencia (opcional)',
+        privacy: 'Datos de privacidad',
+        privacyHint:
+          'La academia es responsable de los datos de sus alumnos (Ley 21.719). Estos datos completan su política de privacidad, que se enlaza en el formulario de inscripción y en la página del alumno. El link de inscripción funciona solo con ellos.',
+        privacyLegalName: 'Razón social',
+        privacyRut: 'RUT de la academia',
+        privacyEmail: 'Correo para solicitudes sobre datos personales',
+        privacyAddress: 'Dirección (opcional)',
+        privacyView: 'Ver política de privacidad',
         choose: 'Elige…',
         submit: 'Guardar',
         working: 'Guardando…',
@@ -762,6 +778,8 @@ export const es = {
           'bank_account.rut': 'RUT no válido.',
           'bank_account.email': 'Correo no válido.',
           'bank_account.number': 'Solo dígitos y guiones.',
+          'privacy.rut': 'RUT no válido.',
+          'privacy.email': 'Correo no válido.',
         } as Record<string, string>,
       },
       plans: {
@@ -892,6 +910,75 @@ export const es = {
         classTypeDeactivated: (name: string) => `Clase ${name} desactivada. Las clases ya dadas la mantienen.`,
         classTypeReactivated: (name: string) => `Clase ${name} reactivada.`,
       },
+      schedule: {
+        title: 'Horario',
+        intro:
+          'Las clases fijas de cada semana. Rakin las crea con dos semanas de anticipación, así aparecen en Clases antes de empezar.',
+        error: 'No pudimos cargar el horario.',
+        empty: 'Todavía no hay clases fijas.',
+        add: 'Nueva clase fija',
+        edit: 'Editar',
+        delete: 'Eliminar',
+        deleteYes: 'Sí, eliminar',
+        deleteConfirm:
+          'Se borran las próximas clases de este horario que no tengan asistencia. Las que ya se hicieron quedan como clases sueltas.',
+        deleteFailed: 'No pudimos eliminarla. Inténtalo de nuevo.',
+        inactive: 'Tipo desactivado: no crea clases',
+        // ISO weekdays, Monday first.
+        weekdays: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+        row: (days: string, time: string, classType: string) => `${days} ${time} · ${classType}`,
+        detail: (program: string, coach: string, topic: string | null) =>
+          [program, coach, topic].filter(Boolean).join(' · '),
+        validity: (from: string | null, to: string | null) =>
+          from && to ? `Del ${from} al ${to}` : from ? `Desde el ${from}` : to ? `Hasta el ${to}` : 'Todas las semanas',
+        created: (name: string) => `Clase fija de ${name} creada. Sus clases ya están en Clases.`,
+        saved: (name: string) => `Horario de ${name} actualizado.`,
+        deleted: (name: string) => `Clase fija de ${name} eliminada.`,
+        form: {
+          create: 'Nueva clase fija',
+          edit: (name: string) => `Editar ${name}`,
+          classType: 'Tipo de clase',
+          inactiveType: (name: string) => `${name} (desactivado)`,
+          weekdays: 'Días',
+          noDays: 'Elige al menos un día.',
+          time: 'Hora',
+          duration: 'Duración (min)',
+          badDuration: 'La duración va de 1 a 1440 minutos.',
+          coach: 'Coach',
+          topic: 'Tema (opcional)',
+          topicHint: 'El tema con que parte cada clase; el coach lo puede cambiar.',
+          validFrom: 'Desde',
+          fromDate: 'A partir de',
+          fromHint: 'Las clases antes de esta fecha, y las ya hechas o con asistencia, no cambian.',
+          validTo: 'Hasta (opcional)',
+          validToHint: 'Vacío: todas las semanas.',
+          endsTooSoon: 'Termina antes de empezar.',
+          noClassTypes: 'Primero crea un tipo de clase en Programas y clases.',
+          afterEnd: 'Esta clase fija ya terminó en esa fecha.',
+          openMatPlan:
+            'Un open mat es un solo bloque de sparring, y alguna de las próximas clases tiene otro registro en el timer. Corrígelo antes.',
+          cancel: 'Cancelar',
+          submit: 'Guardar',
+          working: 'Guardando…',
+          invalid: 'Revisa los campos.',
+          failed: 'No pudimos guardar. Inténtalo de nuevo.',
+        },
+        closed: {
+          title: 'Días cerrados',
+          intro: 'Feriados y otros días sin clases: ese día no se crea ninguna clase del horario.',
+          add: 'Cerrar día',
+          day: 'Fecha',
+          label: 'Motivo (opcional)',
+          labelPlaceholder: 'Ej.: Feriado',
+          past: 'Elige hoy o un día que venga.',
+          empty: 'No hay días cerrados próximos.',
+          error: 'No pudimos cargar los días cerrados.',
+          reopen: 'Abrir',
+          closedDone: (day: string) => `${day}: cerrado. Sus clases del horario se quitaron.`,
+          reopened: (day: string) => `${day}: abierto otra vez.`,
+          failed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
+        },
+      },
       blocks: {
         title: 'Bloques de clase',
         intro:
@@ -982,6 +1069,8 @@ export const es = {
         intro:
           'Un link para compartir por WhatsApp o donde quieras: cada persona llena sus datos y la solicitud te espera en Hoy y en Alumnos para aprobarla.',
         none: 'Todavía no tienes un link.',
+        needsPrivacy: 'Completa los datos de privacidad en Ajustes antes de activar el link.',
+        needsPrivacyLink: 'Ir a Datos de privacidad',
         program: 'Programa',
         programHint: 'Opcional: el programa al que se inscriben con este link.',
         anyProgram: 'Ninguno en particular',
@@ -1199,6 +1288,15 @@ export const es = {
         label: 'Editar clase',
         day: 'Fecha',
         time: 'Hora',
+        duration: 'Duración (min)',
+        badDuration: 'La duración va de 1 a 1440 minutos.',
+        scope: {
+          label: '¿Qué cambias?',
+          one: 'Solo esta clase',
+          series: 'Esta y las siguientes',
+          seriesHint:
+            'Cambia el horario desde esta fecha. Las clases ya hechas o con asistencia no cambian, y las canceladas siguen canceladas.',
+        },
         classType: 'Tipo de clase',
         coach: 'Coach',
         inactive: (name: string) => `${name} (desactivado)`,
@@ -1614,7 +1712,10 @@ export const es = {
     guardianPhoneHint: 'La academia le avisa por WhatsApp de clases y pagos.',
     guardianNoWhatsapp: 'El apoderado no tiene WhatsApp',
     guardianEmail: 'Correo del apoderado',
-    consent: 'Acepto que la academia guarde estos datos para gestionar mi inscripción.',
+    // The checkbox's text, around the link to the gym's privacy notice.
+    consentBefore: 'Acepto que la academia trate estos datos para gestionar mi inscripción, según su ',
+    consentLink: 'política de privacidad',
+    consentAfter: '.',
     honeypot: 'No llenes este campo',
     submit: 'Enviar',
     working: 'Enviando…',
@@ -1637,6 +1738,71 @@ export const es = {
       failed: 'Revisa este campo.',
     } as Record<string, string>,
   },
+  // A gym's privacy notice (#168): this template, filled in with what the gym set in
+  // Ajustes. A change to the text moves `TEMPLATE_UPDATED_ON` in `api/privacy.ts`.
+  privacy: {
+    link: 'Privacidad',
+    eyebrow: 'Privacidad',
+    title: (gym: string) => `Política de privacidad de ${gym}`,
+    loading: 'Cargando…',
+    missing: 'Esta academia todavía no publica su política de privacidad.',
+    error: 'No pudimos cargar la política de privacidad. Inténtalo de nuevo.',
+    retry: 'Reintentar',
+    updated: (day: string) => `Última actualización: ${day}.`,
+    controllerTitle: '¿Quién es responsable de tus datos?',
+    controller: (legalName: string, rut: string, gym: string) =>
+      `${legalName}, RUT ${rut}, que opera ${gym}, es responsable de tus datos personales.`,
+    address: (address: string) => `Su domicilio es ${address}.`,
+    // Around the gym's email, a link.
+    contactBefore: 'Para cualquier consulta o solicitud sobre tus datos, escribe a ',
+    contactAfter: '.',
+    dataTitle: '¿Qué datos guardamos?',
+    data: [
+      'Identificación: nombre, RUT y fecha de nacimiento.',
+      'Contacto: teléfono y correo.',
+      'Si eres menor de edad, los datos que entrega tu apoderado, y los suyos.',
+      'Tu actividad en la academia: asistencia a clases, grado o cinturón y tiempo de entrenamiento.',
+      'Pagos: tu plan, tus cobros y pagos, y los comprobantes de transferencia que subas.',
+      'Los campos adicionales que pida la academia, como un contacto de emergencia.',
+    ],
+    purposeTitle: '¿Para qué los usamos?',
+    purpose: [
+      'Administrar tu membresía y tus clases.',
+      'Cobrar y registrar tus pagos.',
+      'Contactarte por WhatsApp y correo: avisos, recordatorios de pago y enlaces de acceso.',
+      'Tu seguridad mientras entrenas.',
+    ],
+    purposeAfter: 'No vendemos tus datos ni los usamos para publicidad.',
+    basisTitle: '¿Con qué base legal?',
+    basis:
+      'Los tratamos porque los necesitamos para cumplir el contrato de membresía que tienes con la academia. Los datos de un menor de edad los tratamos con el consentimiento de su apoderado.',
+    processorsTitle: '¿Quién más los trata?',
+    processors:
+      'La academia usa Rakin, un sistema de gestión para academias, que trata tus datos por encargo de la academia y solo para prestarle ese servicio. Rakin, a su vez, se apoya en estos proveedores:',
+    // Every subprocessor, named by what it does: changing a provider is an edit here.
+    subprocessors: [
+      'Alojamiento: los servidores y la base de datos.',
+      'Envío de correos.',
+      'Almacenamiento de archivos, como los comprobantes de pago.',
+      'Registro de errores, para corregir fallas del sistema.',
+    ],
+    // Listed only where the instance checks the join form for humans (`HUMAN_CHECK`).
+    humanCheckProcessor: 'Verificación de que no eres un robot, solo en el formulario de inscripción.',
+    processorsAfter:
+      'Algunos de estos proveedores pueden guardar los datos fuera de Chile, con medidas de seguridad adecuadas.',
+    retentionTitle: '¿Cuánto tiempo los guardamos?',
+    retention:
+      'Los registros contables, como tus pagos, se guardan por el plazo que exige la ley. El resto de tus datos se elimina cuando dejas la academia o cuando lo pides.',
+    rightsTitle: 'Tus derechos',
+    rights:
+      'Puedes pedir acceso a tus datos, rectificarlos, eliminarlos, oponerte a su tratamiento o recibirlos en un formato que puedas llevar a otro servicio (portabilidad).',
+    // Around the gym's email, a link.
+    rightsHowBefore: 'Para hacerlo, escribe a ',
+    rightsHowAfter: '.',
+    complaint:
+      'Si no quedas conforme con la respuesta, puedes reclamar ante la Agencia de Protección de Datos Personales.',
+    disclaimer: 'Este aviso se basa en una plantilla de Rakin y no constituye asesoría legal.',
+  },
   common: {
     loading: 'Cargando…',
     comingSoon: 'Esta sección todavía no está lista.',
@@ -1652,6 +1818,9 @@ export const es = {
     longDay: (iso: string) => `${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]}`,
     // An ISO day as a list row says it: `8 oct`.
     shortDay: (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)}`,
+    // An ISO day as a sentence says it, with its year: `10 de noviembre de 2026`.
+    longDayYear: (iso: string) =>
+      `${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]} de ${iso.slice(0, 4)}`,
     // An ISO day with its year: `14 jun 2025`.
     dayYear: (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)} ${iso.slice(0, 4)}`,
     // The month an ISO day falls in, as a heading: `Noviembre`, or `Noviembre 2025` outside `year`.

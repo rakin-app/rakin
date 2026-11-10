@@ -307,7 +307,7 @@ def test_another_gyms_member_is_not_found_like_nobody(
     assert client.get(f"/api/people/{theirs}", headers=as_gym(norte)).json()["name"] == "Luis"
 
 
-# --- the lookup `join_gym` opens (migrations 0004, 0034) ---------------------------
+# --- the lookup `join_gym` opens (migrations 0004, 0036) ---------------------------
 
 
 @pg

@@ -11,6 +11,7 @@ import { GymSettings } from './GymSettings'
 import { JoinLinkSettings } from './JoinLinkSettings'
 import { PlanSettings } from './PlanSettings'
 import { ProgramSettings } from './ProgramSettings'
+import { ScheduleSettings } from './ScheduleSettings'
 import { StaffSettings } from './StaffSettings'
 import { AdminsOnly } from './settingsForm'
 import './Settings.css'
@@ -25,6 +26,7 @@ export const SETTINGS_SECTIONS = [
   { path: 'gimnasio', label: copy.sections.gym, component: GymSettings },
   { path: 'planes', label: copy.sections.plans, component: PlanSettings },
   { path: 'programas', label: copy.sections.programs, component: ProgramSettings },
+  { path: 'horario', label: copy.sections.schedule, component: ScheduleSettings },
   { path: 'bloques', label: copy.sections.blocks, component: BlockKindSettings },
   { path: 'graduacion', label: copy.sections.grading, component: GradingSettings },
   { path: 'campos', label: copy.sections.fields, component: FieldSettings },

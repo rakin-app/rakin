@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import {
   ACCOUNT_TYPES,
@@ -16,6 +17,9 @@ const copy = t.admin.settings.gym
 const BANK_FIELDS = ['bank', 'account_type', 'holder', 'rut', 'number', 'email'] as const
 type BankField = (typeof BANK_FIELDS)[number]
 
+const PRIVACY_FIELDS = ['legal_name', 'rut', 'email', 'address'] as const
+type PrivacyField = (typeof PRIVACY_FIELDS)[number]
+
 type Drafts = {
   name: string
   timezone: string
@@ -23,6 +27,7 @@ type Drafts = {
   reminder_every_days: string
   whatsapp: boolean
   bank: Record<BankField, string>
+  privacy: Record<PrivacyField, string>
 }
 
 function draftsOf(settings: Settings): Drafts {
@@ -40,6 +45,12 @@ function draftsOf(settings: Settings): Drafts {
       rut: account ? t.common.rut(account.rut) : '',
       number: account?.number ?? '',
       email: account?.email ?? '',
+    },
+    privacy: {
+      legal_name: settings.privacy?.legal_name ?? '',
+      rut: settings.privacy ? t.common.rut(settings.privacy.rut) : '',
+      email: settings.privacy?.email ?? '',
+      address: settings.privacy?.address ?? '',
     },
   }
 }
@@ -60,6 +71,11 @@ function changesOf(before: Drafts, after: Drafts): GymSettingsUpdate {
     changes.bank_account = BANK_FIELDS.every((f) => bank[f].trim() === '')
       ? null
       : { ...bank, email: bank.email.trim() || null }
+  }
+  if (PRIVACY_FIELDS.some((f) => after.privacy[f] !== before.privacy[f])) {
+    // Replaced whole; a field left empty is the API's to refuse, the address aside.
+    const privacy = after.privacy
+    changes.privacy = { ...privacy, address: privacy.address.trim() || null }
   }
   return changes
 }
@@ -103,6 +119,9 @@ function GymForm({ settings }: { settings: Settings }) {
     field in errors ? refusal(errors[field]!, field, copy, blank(draft)) : undefined
   const bankError = (field: BankField) => errorOf(`bank_account.${field}`, drafts.bank[field])
   const setBank = (field: BankField, value: string) => setDrafts({ ...drafts, bank: { ...drafts.bank, [field]: value } })
+  const privacyError = (field: PrivacyField) => errorOf(`privacy.${field}`, drafts.privacy[field])
+  const setPrivacy = (field: PrivacyField, value: string) =>
+    setDrafts({ ...drafts, privacy: { ...drafts.privacy, [field]: value } })
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -278,6 +297,65 @@ function GymForm({ settings }: { settings: Settings }) {
             />
           )}
         </Field>
+      </fieldset>
+
+      <fieldset className="settings__card" id="privacidad">
+        <legend className="settings__legend">{copy.privacy}</legend>
+        <p className="settings__hint">{copy.privacyHint}</p>
+        <Field label={copy.privacyLegalName} error={privacyError('legal_name')}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              maxLength={200}
+              autoComplete="organization"
+              value={drafts.privacy.legal_name}
+              onChange={(e) => setPrivacy('legal_name', e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label={copy.privacyRut} error={privacyError('rut')}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              autoComplete="off"
+              value={drafts.privacy.rut}
+              onChange={(e) => setPrivacy('rut', e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label={copy.privacyEmail} error={privacyError('email')}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="email"
+              value={drafts.privacy.email}
+              onChange={(e) => setPrivacy('email', e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label={copy.privacyAddress} error={privacyError('address')}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              maxLength={200}
+              autoComplete="street-address"
+              value={drafts.privacy.address}
+              onChange={(e) => setPrivacy('address', e.target.value)}
+            />
+          )}
+        </Field>
+        {settings.privacy && (
+          <Link to="/privacidad" target="_blank" className="settings__detail">
+            {copy.privacyView}
+          </Link>
+        )}
       </fieldset>
 
       {save.error && (

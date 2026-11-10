@@ -24,6 +24,7 @@ from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.test_join import with_privacy
 from tests.test_people import new_phone
 from tests.test_plans import add_staff
 from tests.test_seed import DESIGN_DAY, load_as_owner
@@ -754,6 +755,7 @@ def test_a_join_request_with_a_rut_keys_someone_the_gym_had_by_name(
 ) -> None:
     imported(client, gym, sheet_with(["Ana Pérez"], mapping={"name": 0}), dry_run=False)
     ana = find(client, gym, "Ana Pérez")["id"]
+    with_privacy(client, gym)
     link = client.post("/api/join-link", json={}, headers=as_gym(gym)).json()["token"]
     rut = random_rut()
     body = {

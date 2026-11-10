@@ -31,6 +31,7 @@ const SETTINGS: GymSettings = {
     number: '00-123-45678-09',
     email: null,
   },
+  privacy: null,
 }
 
 const ADULTS: Program = { id: 'adultos', name: 'Adultos', active: true }
@@ -147,6 +148,7 @@ describe('Ajustes', () => {
       [copy.sections.gym, '/admin/ajustes/gimnasio'],
       [copy.sections.plans, '/admin/ajustes/planes'],
       [copy.sections.programs, '/admin/ajustes/programas'],
+      [copy.sections.schedule, '/admin/ajustes/horario'],
       [copy.sections.blocks, '/admin/ajustes/bloques'],
       [copy.sections.grading, '/admin/ajustes/graduacion'],
       [copy.sections.fields, '/admin/ajustes/campos'],
@@ -266,6 +268,53 @@ describe('Ajustes: Gimnasio', () => {
     await userEvent.click(within(settings).getByRole('button', { name: gym.submit }))
 
     expect(await within(settings).findByRole('alert')).toHaveTextContent(gym.failed)
+  })
+})
+
+describe('Ajustes: Gimnasio, datos de privacidad', () => {
+  it('sends the privacy details whole, the address optional', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/gimnasio')
+
+    const settings = await screen.findByRole('form', { name: gym.formLabel })
+    expect(within(settings).queryByRole('link', { name: gym.privacyView })).not.toBeInTheDocument()
+    await userEvent.type(within(settings).getByLabelText(gym.privacyLegalName), 'Academia Sur SpA')
+    await userEvent.type(within(settings).getByLabelText(gym.privacyRut), '76.432.109-K')
+    await userEvent.type(within(settings).getByLabelText(gym.privacyEmail), 'privacidad@academiasur.cl')
+    await userEvent.click(within(settings).getByRole('button', { name: gym.submit }))
+
+    expect(await within(settings).findByRole('status')).toHaveTextContent(gym.saved)
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([
+      {
+        privacy: {
+          legal_name: 'Academia Sur SpA',
+          rut: '76.432.109-K',
+          email: 'privacidad@academiasur.cl',
+          address: null,
+        },
+      },
+    ])
+    expect(within(settings).getByRole('link', { name: gym.privacyView })).toHaveAttribute('href', '/privacidad')
+  })
+
+  it('shows the details set, and puts their refusals under their fields', async () => {
+    const privacy = { legal_name: 'Academia Sur SpA', rut: '76432109-K', email: 'a@b.cl', address: 'Av. Siempre Viva 742', updated_on: '2026-11-10' }
+    stubApi({
+      settings: { body: { ...SETTINGS, privacy } },
+      saveSettings: refused([['body', 'privacy', 'email'], 'value_error']),
+    })
+    renderAt('/admin/ajustes/gimnasio')
+
+    const settings = await screen.findByRole('form', { name: gym.formLabel })
+    expect(within(settings).getByLabelText(gym.privacyRut)).toHaveValue('76.432.109-K')
+    expect(within(settings).getByLabelText(gym.privacyAddress)).toHaveValue('Av. Siempre Viva 742')
+    const email = within(settings).getByLabelText(gym.privacyEmail)
+    await userEvent.clear(email)
+    await userEvent.type(email, 'nada')
+    await userEvent.click(within(settings).getByRole('button', { name: gym.submit }))
+
+    expect(await within(settings).findByRole('alert')).toHaveTextContent(gym.invalid)
+    expect(email).toHaveAccessibleDescription(gym.value['privacy.email'])
   })
 })
 

@@ -17,7 +17,7 @@ from app.auth import build_notices
 from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.integrations.mailer import Email, MailDeliveryError
-from app.jobs import billing, daily, freezes, join_requests, lapse, statements
+from app.jobs import billing, daily, freezes, join_requests, lapse, schedule, statements
 from app.notices import Notices
 from tests.conftest import require_test_database_url
 from tests.jobgym import Gym
@@ -274,5 +274,6 @@ def test_statements_run_nightly_after_billing() -> None:
         billing.NAME,
         lapse.NAME,
         join_requests.NAME,
+        schedule.NAME,
         statements.NAME,
     ]

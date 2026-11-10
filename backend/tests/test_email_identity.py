@@ -1,6 +1,6 @@
 """Sign-in by email reaches a gym only where that gym's own record holds the email (#146).
 
-Identity is global by RUT (migration 0034), so two gyms can know one person, each with
+Identity is global by RUT (migration 0036), so two gyms can know one person, each with
 its own record of their email. Whatever gym B writes on its record must sign nobody in to gym A: not
 the session sign-in starts (one gym), not the gyms a person in several picks from
 (#16), and not a session that names gym A some other way. Each test writes the email

@@ -2,7 +2,7 @@
 
 A dependent may have no RUT and no email (kids seldom have either to hand), so adding
 a new one takes a name and nothing else. With neither there is no identity to find,
-so such a dependent is a new person (migrations 0010, 0034); one with their own RUT is
+so such a dependent is a new person (migrations 0010, 0036); one with their own RUT is
 the person that RUT is, as anyone is.
 """
 

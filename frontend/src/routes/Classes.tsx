@@ -3,52 +3,74 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import {
   activeClassTypesQuery,
+  daySessionsQuery,
   startSession,
   todaySessionsQuery,
+  useGymToday,
   type ClassSession,
   type ClassType,
 } from '../api/sessions'
 import { ChevronRightIcon } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
-import { clockTime, weekdayDay } from '../format'
+import { shiftDay, timeRange, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
 import './Classes.css'
 
 const copy = t.admin.classes
 
 /**
- * "Clases": today's classes, and starting one. There is no timetable: the coach
- * starts a class as it begins, of one of the gym's class types, and lands on it to
- * take its attendance and write its topic and notes. Every staff role sees and starts
- * them.
+ * "Clases": a day's classes, today's first, and starting one. The weekly schedule
+ * (Ajustes, Horario) makes most of them ahead, and the arrows walk to the days before
+ * and after; a coach may also start a class as it begins, of one of the gym's class
+ * types, and lands on it to take its attendance and write its topic and notes. Every
+ * staff role sees and starts them.
  */
 export function Classes() {
-  const today = useQuery(todaySessionsQuery())
+  const gymToday = useGymToday()
+  // The day shown, in the gym's timezone; null follows today.
+  const [chosen, setChosen] = useState<string | null>(null)
+  const shown = chosen ?? gymToday
+  const isToday = shown === gymToday
+  const day = useQuery(isToday ? todaySessionsQuery() : daySessionsQuery(shown))
+  const go = (to: string) => setChosen(to === gymToday ? null : to)
 
   return (
     <div className="classes">
-      <PageHeader title={copy.title} eyebrow={weekdayDay(new Date())} />
+      <PageHeader title={copy.title} eyebrow={weekdayDay(toDate(gymToday))} />
       <div className="classes__body">
         <StartSession />
-        <section className="classes__section" aria-labelledby="classes-today">
+        <section className="classes__section" aria-labelledby="classes-day">
           <div className="classes__section-head">
-            <h2 id="classes-today" className="classes__section-title">
-              {copy.today.title}
+            <h2 id="classes-day" className="classes__section-title">
+              {isToday ? copy.today.title : weekdayDay(toDate(shown))}
             </h2>
-            {today.data && today.data.sessions.length > 0 && (
-              <span className="classes__aside">{copy.today.count(today.data.sessions.length)}</span>
+            {day.data && day.data.sessions.length > 0 && (
+              <span className="classes__aside">{copy.today.count(day.data.sessions.length)}</span>
             )}
           </div>
-          {today.isPending ? (
+          <nav className="classes__days" aria-label={copy.days.label}>
+            <button type="button" className="classes__button" onClick={() => go(shiftDay(shown, -1))}>
+              {copy.days.previous}
+            </button>
+            {!isToday && (
+              <button type="button" className="classes__button" onClick={() => go(gymToday)}>
+                {copy.days.today}
+              </button>
+            )}
+            <button type="button" className="classes__button" onClick={() => go(shiftDay(shown, 1))}>
+              {copy.days.next}
+            </button>
+          </nav>
+          {day.isPending ? (
             <p className="classes__note">{copy.loading}</p>
-          ) : today.isError ? (
-            <Failed message={copy.today.error} retry={() => void today.refetch()} />
-          ) : today.data.sessions.length === 0 ? (
-            <p className="classes__note">{copy.today.empty}</p>
+          ) : day.isError ? (
+            <Failed message={copy.today.error} retry={() => void day.refetch()} />
+          ) : day.data.sessions.length === 0 ? (
+            <p className="classes__note">{isToday ? copy.today.empty : copy.days.empty}</p>
           ) : (
             <ul className="classes__list">
-              {today.data.sessions.map((session) => (
-                <SessionRow key={session.id} session={session} timeZone={today.data.timezone} />
+              {day.data.sessions.map((session) => (
+                <SessionRow key={session.id} session={session} timeZone={day.data.timezone} />
               ))}
             </ul>
           )}
@@ -83,7 +105,7 @@ function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: st
       >
         <span className="classes__row-text">
           <span className="classes__name">
-            {copy.today.row(clockTime(session.starts_at, timeZone), session.class_type_name)}
+            {copy.today.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)}
           </span>
           <span className="classes__detail">{copy.today.detail(session.program_name, session.coach_name)}</span>
           <span className={session.topic ? 'classes__topic' : 'classes__topic classes__topic--none'}>

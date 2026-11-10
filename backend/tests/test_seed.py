@@ -110,7 +110,7 @@ def test_every_plan_kind(seed: Seed) -> None:
 
 
 def test_guardians_pay_for_dependents(seed: Seed) -> None:
-    # The gym's records: the phone is a contact on them (0034).
+    # The gym's records: the phone is a contact on them (0036).
     people = {r["person_id"]: r for r in seed.gym_people}
     members = {m.key: m for m in MEMBERS}
     kids = [m for m in MEMBERS if m.is_kid]

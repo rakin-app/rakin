@@ -4,7 +4,7 @@ edit this gym's record.
 Identity is global by RUT (docs/technical.md#domain-model), so adding someone whose
 RUT another gym already has attaches that person rather than duplicating them. The
 answer gives no sign of it: the same 201, carrying what this gym entered and this
-gym's timestamps, whether the RUT was new or known (migrations 0004, 0034). Someone
+gym's timestamps, whether the RUT was new or known (migrations 0004, 0036). Someone
 with no RUT is keyed by their email in this gym alone: an email never links two
 gyms' people. Only a RUT already in *this* gym, or the email of someone added here
 with none, is refused, with a 409 naming that person, so the admin can open them
@@ -296,7 +296,7 @@ async def join_gym(
     dob: date | None = None,
 ) -> tuple[uuid.UUID, bool]:
     """The person `rut` is, or with none the one this gym has under `email`, else
-    someone new, and whether this call added them to the gym (`join_gym`, 0034). With
+    someone new, and whether this call added them to the gym (`join_gym`, 0036). With
     neither, always someone new: a dependent. A record new here takes `no_whatsapp`; a
     known one is left as the gym has it."""
     result = await session.execute(
@@ -313,7 +313,7 @@ async def join_gym(
 
 
 async def claim_rut(session: AsyncSession, person_id: uuid.UUID, rut: str) -> None:
-    """Make `rut` who someone with none is, when nobody has it yet (`claim_rut`, 0034).
+    """Make `rut` who someone with none is, when nobody has it yet (`claim_rut`, 0036).
     It answers nothing: whether the RUT was free, or someone else's in another gym, is
     no business of this gym's. Linking two people who turn out to be one is a merge."""
     await session.execute(text("SELECT claim_rut(:id, :rut)"), {"id": person_id, "rut": rut})

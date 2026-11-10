@@ -13,7 +13,7 @@ reports what the database itself would refuse, and a row that names a guardian a
 earlier row adds finds them.
 
 Running it again creates nothing twice. Someone is found by their RUT, or by their
-email when they have none, as `join_gym` finds anyone (0034); a dependent with neither
+email when they have none, as `join_gym` finds anyone (0036); a dependent with neither
 by their guardian and their own name. A row with neither and no guardian, as old sheets
 have, is found by its name among this gym's people with no RUT, and a guardian the sheet
 names alone by theirs. The phone is a contact and finds nobody. Whoever is found is left

@@ -2,7 +2,7 @@
 
 Inputs are normalised here, so the database only ever sees E.164 phones and
 `76123456-0` RUTs. Someone is their RUT, or with none an email in this gym (migration
-0034), so a person needs one of the two; a dependent may have neither. The phone is a
+0036), so a person needs one of the two; a dependent may have neither. The phone is a
 contact, this gym's to edit like the email, and finds nobody. A RUT edited here
 changes this gym's record only, not who the person is.
 

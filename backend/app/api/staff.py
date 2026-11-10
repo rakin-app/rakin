@@ -8,7 +8,7 @@ here ends at once (migration 0005).
 
 An invite adds the person the way a member is added, through `join_gym`: by their RUT
 when given, so a RUT another gym knows attaches that person without the gym learning
-so, else by the email in this gym (migration 0034). Someone this gym already has, a
+so, else by the email in this gym (migration 0036). Someone this gym already has, a
 member say, keeps their record and gains the role; the invite's email becomes the
 record's, since it is the address they sign in with. The phone is optional, a contact
 only. It then emails them a sign-in link to the admin screens.

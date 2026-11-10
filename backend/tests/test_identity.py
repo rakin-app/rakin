@@ -1,4 +1,4 @@
-"""Identity by RUT, or by an email in one gym, never by phone (migration 0034, #165).
+"""Identity by RUT, or by an email in one gym, never by phone (migration 0036, #165).
 
 The cross-gym tests ask what a curious admin would: having typed a RUT that another
 gym already has, can they tell? The answer, the record they then read, and the
@@ -305,12 +305,12 @@ def test_staff_need_no_phone(client: TestClient, sur: uuid.UUID) -> None:
     assert (person["phone"], person["missing_phone"]) == (None, False)
 
 
-# --- the migration, on data as 0033 left it --------------------------------------
+# --- the migration, on data as 0035 left it --------------------------------------
 
 
 def test_the_upgrade_keeps_every_phone_and_keys_people_by_rut() -> None:
     with throwaway_database(require_test_database_url()) as db:
-        migrate(db, "0033")
+        migrate(db, "0035")
         sur, norte = uuid.uuid4(), uuid.uuid4()
         both, typo, agreed, kid, bad = (uuid.uuid4() for _ in range(5))
 
@@ -382,7 +382,7 @@ def test_the_upgrade_keeps_every_phone_and_keys_people_by_rut() -> None:
         assert run(db.admin_url, lambda c: c.fetchval("SELECT count(*) FROM join_request")) == 1
 
         # Lossless: down again, every phone is back on its person.
-        command.downgrade(db.alembic(), "0033")
+        command.downgrade(db.alembic(), "0035")
         restored = run(db.admin_url, lambda c: c.fetch("SELECT id, phone FROM person"))
         assert {r["id"]: r["phone"] for r in restored} == {
             both: "+56911110001",
@@ -404,7 +404,7 @@ def test_the_upgrade_keeps_every_phone_and_keys_people_by_rut() -> None:
 )
 def test_the_downgrade_refuses_what_it_would_lose(change: str) -> None:
     with throwaway_database(require_test_database_url()) as db:
-        migrate(db, "0033")
+        migrate(db, "0035")
         sur, norte, ana = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
 
         async def seed(conn: asyncpg.Connection) -> None:
@@ -429,8 +429,8 @@ def test_the_downgrade_refuses_what_it_would_lose(change: str) -> None:
         migrate(db)
         run(db.admin_url, lambda c: c.execute(change, sur))
 
-        with pytest.raises(Exception, match="downgrade from 0034 refused"):
-            command.downgrade(db.alembic(), "0033")
-        # Nothing changed: still at 0034.
+        with pytest.raises(Exception, match="downgrade from 0036 refused"):
+            command.downgrade(db.alembic(), "0035")
+        # Nothing changed: still at 0036.
         version = run(db.admin_url, lambda c: c.fetchval("SELECT version_num FROM alembic_version"))
-        assert version == "0034"
+        assert version == "0036"

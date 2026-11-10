@@ -1,4 +1,5 @@
-"""The gym's own settings: profile, timezone, grace days, reminders, channels, bank details.
+"""The gym's own settings: profile, timezone, grace days, reminders, channels, bank details
+and the data its privacy notice names.
 
 `name` and `timezone` are columns on `gym`; the rest live as keys of `gym.settings`
 beside the grading scheme and custom fields, which this API leaves alone. A key not
@@ -6,9 +7,17 @@ yet stored reads as its default, so a new gym answers with a complete document.
 
 The bank details are what a student is shown on their page to pay by transfer, so the
 RUT is normalised like any other (`76123456-0`).
+
+The privacy details (#168) are who answers for the members' data under Ley 21.719, the
+gym as controller: its legal name and RUT, an email for data requests and, if it
+wants, an address. The public notice (`app.api.privacy`) is a template filled in with
+them, and the join link works only once they are set. They are replaced whole and
+cannot be cleared; each save records the gym's today as `updated_on`, the notice's
+"last updated".
 """
 
 from collections.abc import Mapping
+from datetime import date
 from typing import Annotated, Any, Literal
 from zoneinfo import available_timezones
 
@@ -74,6 +83,24 @@ class Channels(BaseModel):
     whatsapp: StrictBool = True
 
 
+class Privacy(BaseModel):
+    """What the gym's privacy notice says of it, as the controller of its members' data."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    legal_name: Text
+    rut: Rut
+    # Where people send requests about their data.
+    email: Email
+    address: Text | None = None
+
+
+class StoredPrivacy(Privacy):
+    """`Privacy` as stored, with the gym's today when it was last saved."""
+
+    updated_on: date
+
+
 class GymSettings(BaseModel):
     name: str
     # The gym's address in URLs; set when the gym is created, not editable here.
@@ -83,6 +110,7 @@ class GymSettings(BaseModel):
     reminder_every_days: int
     channels: Channels
     bank_account: BankAccount | None
+    privacy: StoredPrivacy | None
 
     @classmethod
     def from_row(
@@ -96,16 +124,17 @@ class GymSettings(BaseModel):
             reminder_every_days=settings.get("reminder_every_days", DEFAULT_REMINDER_EVERY_DAYS),
             channels=settings.get("channels", {}),
             bank_account=settings.get("bank_account"),
+            privacy=settings.get("privacy"),
         )
 
 
 # The `gym.settings` keys this API owns; any other key there is left as it is.
-SETTINGS_KEYS = ("grace_days", "reminder_every_days", "channels", "bank_account")
+SETTINGS_KEYS = ("grace_days", "reminder_every_days", "channels", "bank_account", "privacy")
 
 
 class GymSettingsUpdate(BaseModel):
-    """Only the fields sent change. `channels` and `bank_account` are replaced whole;
-    `null` clears the bank details. The rest cannot be null."""
+    """Only the fields sent change. `channels`, `bank_account` and `privacy` are
+    replaced whole; `null` clears the bank details. The rest cannot be null."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -115,6 +144,7 @@ class GymSettingsUpdate(BaseModel):
     reminder_every_days: ReminderEveryDays | None = None
     channels: Channels | None = None
     bank_account: BankAccount | None = None
+    privacy: Privacy | None = None
 
     @model_validator(mode="after")
     def _only_bank_account_is_cleared(self) -> "GymSettingsUpdate":

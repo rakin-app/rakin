@@ -12,18 +12,20 @@ import signal
 import uuid
 from collections.abc import Iterator
 from datetime import date, timedelta
-from typing import Any
 
 import asyncpg
 import pytest
 import sentry_sdk
-from sentry_sdk.envelope import Envelope
-from sentry_sdk.transport import Transport
 
 from app.db_bootstrap import to_dsn
 from app.jobs import Job, Outcome, Report, daily, run_due
 from app.sentry import init_sentry
-from tests.conftest import UNREACHABLE_DB, make_settings, require_test_database_url
+from tests.conftest import (
+    UNREACHABLE_DB,
+    Captured,
+    make_settings,
+    require_test_database_url,
+)
 from tests.pg import Database, migrate, run, throwaway_database
 
 DAY = date(2026, 11, 8)
@@ -279,27 +281,6 @@ def test_job_names_must_be_unique(db: Database, names: str) -> None:
 
     with pytest.raises(ValueError, match="unique"):
         run_jobs(db, [job, job], DAY)
-
-
-class Captured(Transport):
-    def __init__(self, options: dict[str, Any] | None = None) -> None:
-        super().__init__(options)
-        self.envelopes: list[Envelope] = []
-
-    def capture_envelope(self, envelope: Envelope) -> None:
-        self.envelopes.append(envelope)
-
-
-@pytest.fixture
-def sentry() -> Iterator[Captured]:
-    transport = Captured()
-    settings = make_settings(sentry_dsn="https://public@sentry.invalid/1")
-    assert init_sentry(settings, transport=transport)
-    try:
-        yield transport
-    finally:
-        sentry_sdk.get_client().close()
-        sentry_sdk.init()  # no DSN: a client that sends nothing
 
 
 @pytest.mark.postgres

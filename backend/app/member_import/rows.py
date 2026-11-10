@@ -160,7 +160,7 @@ class Member:
 
 
 def identity(rut: str | None, email: str | None) -> tuple[str, str] | None:
-    """A RUT, else an email, case and outer spaces ignored: who someone is (0034)."""
+    """A RUT, else an email, case and outer spaces ignored: who someone is (0036)."""
     if rut is not None:
         return "rut", rut
     if email is not None:

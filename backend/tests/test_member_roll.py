@@ -68,7 +68,7 @@ def enrol(client: TestClient, gym: uuid.UUID, by: uuid.UUID | None = None, **bod
 
 
 def enrolled(client: TestClient, gym: uuid.UUID, **body: Any) -> dict[str, Any]:
-    # Someone is their RUT or an email (0034): a made-up RUT unless the body says who.
+    # Someone is their RUT or an email (0036): a made-up RUT unless the body says who.
     key = {} if body.keys() & {"rut", "email", "guardian"} else {"rut": new_rut()}
     response = enrol(client, gym, **{"phone": new_phone(), "name": "Ana Soto", **key, **body})
     assert response.status_code == 201, response.text

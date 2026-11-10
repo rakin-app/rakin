@@ -7,7 +7,7 @@
 The gym gets what the demo seed's has before anyone trains there (`app.seed.data`):
 its grading scheme, its programs, and the block kinds every gym is given (0028); and
 its owner, a staff row on the person with that RUT, found or created as the API adds
-anyone (`join_gym`, 0034), or with no RUT someone new keyed by the email. The phone is
+anyone (`join_gym`, 0036), or with no RUT someone new keyed by the email. The phone is
 optional, a contact only. Its slug is its host, `<slug>.<BASE_DOMAIN>` (`app.hosts`).
 The owner signs in there with the email given.
 

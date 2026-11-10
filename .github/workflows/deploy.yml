@@ -131,7 +131,7 @@ jobs:
           printf 'Host deploy\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/deploy\n  StrictHostKeyChecking yes\n' \
             "$DEPLOY_HOST" "$DEPLOY_USER" >~/.ssh/config
       - name: Copy the release's Compose file and scripts
-        run: scp deploy/docker-compose.yml deploy/deploy.sh deploy/smoke.sh "deploy:$DEPLOY_DIR/"
+        run: scp deploy/docker-compose.yml deploy/deploy.sh deploy/smoke.sh deploy/restore.sh "deploy:$DEPLOY_DIR/"
       - name: Run it on the host
         env:
           ROLLBACK: ${{ inputs.rollback && '--rollback' || '' }}

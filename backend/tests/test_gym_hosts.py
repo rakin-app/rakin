@@ -433,7 +433,7 @@ def site(db: Database) -> Iterator[Site]:
 
 def person_in(site: Site, gyms: list[uuid.UUID], email: str) -> uuid.UUID:
     """A member of each of `gyms`, every one of which has `email` on its record. One
-    person, by their RUT: an email links no one across gyms (0034)."""
+    person, by their RUT: an email links no one across gyms (0036)."""
     rut = random_rut()
     person = None
     with site.client(None) as client:
