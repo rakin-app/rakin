@@ -129,6 +129,10 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
     online() {
       delete stub.change
     },
+    // How the next changes are answered.
+    answer(change: Answer | 'offline') {
+      stub.change = change
+    },
   }
 }
 
@@ -244,6 +248,45 @@ describe('Asistencia', () => {
       window.dispatchEvent(new Event('online'))
     })
     expect(writes(api.calls)).toHaveLength(1)
+  })
+
+  it('keeps a queued change the server fails to save, and sends it on the next flush', async () => {
+    localStorage.setItem('rakin:attendance:s1', JSON.stringify({ mark: ['m-paula'], unmark: [] }))
+    const api = stubApi({ change: { status: 503, body: 'Service Unavailable' } })
+    renderClass()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.failed)
+    expect(JSON.parse(localStorage.getItem('rakin:attendance:s1')!)).toEqual({ mark: ['m-paula'], unmark: [] })
+    const list = await rosterList()
+    expect(list.getByRole('button', { name: /Paula Contreras/ })).toHaveAttribute('aria-pressed', 'true')
+
+    api.online()
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(await screen.findByText(copy.saved)).toBeInTheDocument()
+    expect(localStorage.getItem('rakin:attendance:s1')).toBeNull()
+    expect(writes(api.calls)).toHaveLength(2)
+  })
+
+  it('keeps the queue when a save by hand meets a server error', async () => {
+    const api = stubApi({ change: 'offline' })
+    renderClass()
+
+    const list = await rosterList()
+    await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
+    await userEvent.click(screen.getByRole('button', { name: copy.save(2) }))
+    expect(await screen.findByText(copy.queued)).toBeInTheDocument()
+    api.answer({ status: 500, body: {} })
+    await userEvent.click(list.getByRole('button', { name: /Paula Contreras/ }))
+    await userEvent.click(screen.getByRole('button', { name: copy.save(3) }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.failed)
+    expect(JSON.parse(localStorage.getItem('rakin:attendance:s1')!)).toEqual({
+      mark: ['m-felipe', 'm-paula'],
+      unmark: [],
+    })
+    expect(screen.getByText(copy.queued)).toBeInTheDocument()
   })
 
   it('keeps on the phone the taps made after a save without signal', async () => {

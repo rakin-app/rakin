@@ -128,6 +128,15 @@ export function isOffline(error: unknown): boolean {
   return error instanceof TypeError || (typeof navigator !== 'undefined' && navigator.onLine === false)
 }
 
+// The API's answers to a change that sending it again would get again: an invalid mark,
+// a conflict, a session gone. A 5xx, 401 or 429 may pass on a later try.
+const REFUSALS = new Set([404, 409, 422])
+
+/** The API refused the change itself, so resending it is pointless. */
+export function isRefusal(error: unknown): boolean {
+  return error instanceof ApiError && REFUSALS.has(error.status)
+}
+
 // Marks a coach saved without signal, per session, until they reach the API. Kept in the
 // phone's storage so a closed tab does not lose them; an unusable storage keeps none.
 const QUEUE_PREFIX = 'rakin:attendance:'

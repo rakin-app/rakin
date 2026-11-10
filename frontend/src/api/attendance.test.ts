@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isOffline } from './attendance'
+import { isOffline, isRefusal } from './attendance'
 import { ApiError } from './client'
 
 afterEach(() => {
@@ -21,5 +21,16 @@ describe('isOffline', () => {
     vi.stubGlobal('navigator', { onLine: false })
     expect(isOffline(new Error('aborted'))).toBe(true)
     expect(isOffline(new ApiError(500, {}))).toBe(false)
+  })
+})
+
+describe('isRefusal', () => {
+  it('is an answer that resending would get again', () => {
+    for (const status of [404, 409, 422]) expect(isRefusal(new ApiError(status, {}))).toBe(true)
+  })
+
+  it('is not a server error, an expired session, a rate limit or no signal', () => {
+    for (const status of [500, 502, 503, 401, 429]) expect(isRefusal(new ApiError(status, {}))).toBe(false)
+    expect(isRefusal(new TypeError('Failed to fetch'))).toBe(false)
   })
 })

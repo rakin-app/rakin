@@ -213,9 +213,13 @@ async def _mark(
     row = (await session.execute(text(LOCK_MEMBERSHIP), {"id": membership_id})).one_or_none()
     if row is None:
         raise _unprocessable("mark", "unknown_membership", f"no membership {membership_id}")
-    if row.status not in ON_ROSTER:
+    if row.status == MembershipStatus.CANCELLED:
         raise _unprocessable(
             "mark", "cancelled_membership", f"membership {membership_id} is cancelled"
+        )
+    if row.status not in ON_ROSTER:
+        raise _unprocessable(
+            "mark", "not_on_roster", f"membership {membership_id} is {row.status}, not on a roster"
         )
     if not _admits(row.program_id, held):
         raise _unprocessable(

@@ -6,6 +6,7 @@ import {
   changeAttendance,
   clearQueuedChange,
   isOffline,
+  isRefusal,
   queueChange,
   queuedChange,
   rosterQuery,
@@ -209,8 +210,9 @@ type Save = { change: AttendanceChange; replay: boolean }
  * with each tap; "Guardar asistencia" sends what changed. Without signal the change
  * stays on the phone (`queueChange`), kept up to date with every later tap, and goes as
  * soon as the signal is back, or on the next visit; the API takes a change twice as
- * once, so resending is safe. A queued change the API refuses is dropped, not resent
- * forever: the coach sees the roster as saved and marks again.
+ * once, so resending is safe. A queued change the API refuses (`isRefusal`) is dropped,
+ * not resent forever: the coach sees the roster as saved and marks again. Any other
+ * failure keeps it queued, for the next flush.
  */
 function Attendance({ sessionId }: { sessionId: string }) {
   const words = copy.attendance
@@ -256,8 +258,10 @@ function Attendance({ sessionId }: { sessionId: string }) {
       setTaps(left)
     },
     onError: (error, { change: sent, replay }) => {
-      if (isOffline(error)) {
-        persist(latestTaps.current)
+      if (!isRefusal(error)) {
+        // No signal, a server error or an expired session: resending may well work,
+        // so what waits on the phone stays, up to date, for the next flush.
+        if (isOffline(error) || queuedChange(sessionId)) persist(latestTaps.current)
         return
       }
       // Refused: resending it would be refused again.
@@ -343,7 +347,7 @@ function Attendance({ sessionId }: { sessionId: string }) {
         ))}
       </ul>
       <TrialGuest sessionId={sessionId} onMember={markMember} />
-      {save.isError && !queued && !dropped && (
+      {save.isError && !isOffline(save.error) && !dropped && (
         <p className="classes__error" role="alert">
           {words.failed}
         </p>
