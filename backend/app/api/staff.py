@@ -14,7 +14,7 @@ address they sign in with. It then emails them a sign-in link to the admin scree
 
 Sign-in finds a person by any gym's record of their email, so an email written on
 someone another gym also has would let whoever typed it in sign in as them. The invite
-writes its email only where `staff_invite_email_ok` (migration 0024) allows: for someone
+writes its email only where `staff_invite_email_ok` (migration 0025) allows: for someone
 no other gym has, or an email another gym already has for them. Otherwise the person
 still gets the role, the gym's record keeps the email it had (none, for someone new
 here), and the invite goes to that email if there is one; `emailed: false` says none
