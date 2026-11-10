@@ -33,6 +33,8 @@ x-backend: &backend
     SECRET_KEY: ${SECRET_KEY:?openssl rand -hex 32}
     FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?openssl rand -hex 32, and never change it}
     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?the URL browsers reach the app at}
+    # Each gym at <slug>.BASE_DOMAIN; caddy gets each one's certificate on demand.
+    BASE_DOMAIN: ${BASE_DOMAIN:?staging.rakin.app}
     SENTRY_DSN: ${SENTRY_DSN:-}
     JOBS_TIMEZONE: ${JOBS_TIMEZONE:-America/Santiago}
     # Resend over SMTP: smtp.resend.com, user `resend`, an API key as the password.
@@ -70,6 +72,9 @@ services:
       # Caddy gets a Let's Encrypt certificate for this name, so its DNS
       # record must point here unproxied (Cloudflare's grey cloud).
       SITE_ADDRESS: ${SITE_ADDRESS:?staging.rakin.app}
+      # Every gym's host, *.BASE_DOMAIN: a wildcard DNS record, unproxied too.
+      # Certificates one host at a time, on demand, for gyms the api knows.
+      BASE_DOMAIN: ${BASE_DOMAIN:?staging.rakin.app}
       ACME_EMAIL: ${ACME_EMAIL:?where Let's Encrypt sends expiry notices}
     ports:
       - "80:80"

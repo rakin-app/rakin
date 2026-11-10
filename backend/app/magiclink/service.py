@@ -8,6 +8,11 @@ its recipient). Accounts are opaque strings here, `subject`s, and so is a sessio
 A link remembers the address it was sent to, and so does the session it turns into:
 one account may be reached at several addresses, and what a session may do can depend
 on which one it signed in with. `Directory.scope` is asked with both.
+
+One application may serve several sites, each at its own base URL and each its own
+scope (a tenant on its own host). A link can then point at the site it was asked for
+from (`base_url=`), and be redeemed `within` that site's scope: the session starts
+there, or not at all (`Unreachable`).
 """
 
 import logging
@@ -15,7 +20,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from app.magiclink.ratelimit import RateLimiter
 from app.magiclink.tokens import LinkSigner, hash_token, new_session_token
@@ -61,9 +66,10 @@ class Directory(Protocol):
         """The accounts a link for `address` goes to; empty if none."""
         ...
 
-    async def scope(self, subject: str, address: str) -> str | None:
+    async def scope(self, subject: str, address: str, within: str | None = None) -> str | None:
         """What a new session for `subject`, signed in at `address`, starts in, if
-        anything."""
+        anything. With `within`, that scope if such a session may start there, else
+        None."""
         ...
 
 
@@ -107,6 +113,10 @@ class RateLimited(Exception):
         self.retry_after = retry_after
 
 
+class Unreachable(Exception):
+    """The link's account may not sign in within the scope it was redeemed in."""
+
+
 def normalize_address(address: str) -> str:
     return address.strip().lower()
 
@@ -148,18 +158,19 @@ class MagicLinks:
             if retry_after is not None:
                 raise RateLimited(retry_after)
 
-    async def send_links(self, address: str) -> list[Link]:
+    async def send_links(self, address: str, *, base_url: str | None = None) -> list[Link]:
         """Issue and send a link to every account at `address`; returns those sent.
 
-        Run it after answering the request: it is all the work a known address costs
-        and an unknown one does not.
+        The links point at `base_url`'s origin when given, as `issue` does. Run it
+        after answering the request: it is all the work a known address costs and an
+        unknown one does not.
         """
         sent = []
         for recipient in await self.directory.recipients(address):
             # One failure must not cost the others theirs (a parent and child share an
             # address). The log names the account, never the link.
             try:
-                link = await self.issue(recipient)
+                link = await self.issue(recipient, base_url=base_url)
                 await self.sender.send(link)
             except Exception:
                 logger.exception("magic link not sent", extra={"subject": recipient.subject})
@@ -168,14 +179,21 @@ class MagicLinks:
         return sent
 
     async def issue(
-        self, recipient: Recipient, *, ttl: timedelta | None = None, landing: str | None = None
+        self,
+        recipient: Recipient,
+        *,
+        ttl: timedelta | None = None,
+        landing: str | None = None,
+        base_url: str | None = None,
     ) -> Link:
         """A new single-use link for `recipient`, stored and ready to send.
 
         It expires after `ttl`, `link_ttl` unless given: a link sent unasked, inside a
         message read days later, needs longer than one the person just asked for.
         `landing` is where signing in with it lands, if the router lists it among its
-        `landings`; anywhere else lands on its `after_login`.
+        `landings`; anywhere else lands on its `after_login`. It points at
+        `callback_url`, on `base_url`'s origin when given: another of the sites one
+        application serves.
         """
         expires_at = self._clock() + (self.link_ttl if ttl is None else ttl)
         token = self._signer.issue(expires_at)
@@ -183,14 +201,25 @@ class MagicLinks:
             hash_token(token), recipient.subject, recipient.address, expires_at
         )
         query = {"token": token} if landing is None else {"token": token, "next": landing}
-        return Link(recipient, f"{self.callback_url}?{urlencode(query)}", expires_at)
+        return Link(recipient, f"{self.callback_on(base_url)}?{urlencode(query)}", expires_at)
+
+    def callback_on(self, base_url: str | None) -> str:
+        """`callback_url`, on `base_url`'s origin; as it is for None."""
+        if base_url is None:
+            return self.callback_url
+        site = urlsplit(base_url)
+        return urlsplit(self.callback_url)._replace(scheme=site.scheme, netloc=site.netloc).geturl()
 
     def looks_valid(self, token: str) -> bool:
         """Signed here and not expired; says nothing about whether it was used."""
         return self._signer.valid(token, self._clock())
 
-    async def redeem(self, token: str) -> str | None:
-        """Spend a link on a new session; returns the session token, or None."""
+    async def redeem(self, token: str, *, within: str | None = None) -> str | None:
+        """Spend a link on a new session; returns the session token, or None.
+
+        With `within`, the session starts in that scope, and if the directory says it
+        may not, raises `Unreachable` and leaves the link unspent.
+        """
         now = self._clock()
         if not self._signer.valid(token, now):
             return None
@@ -201,7 +230,9 @@ class MagicLinks:
         # Everything that can fail happens before the link is spent, so a failure
         # leaves it usable.
         session_token = new_session_token()
-        scope = await self.directory.scope(pending.subject, pending.address)
+        scope = await self.directory.scope(pending.subject, pending.address, within)
+        if within is not None and scope != within:
+            raise Unreachable
         session = Session(pending.subject, pending.address, scope, now + self.session_ttl)
         if not await self.store.redeem_link(link_hash, now, hash_token(session_token), session):
             return None

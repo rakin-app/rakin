@@ -33,6 +33,8 @@ export const es = {
   },
   signIn: {
     title: 'Entrar a Rakin',
+    // On a gym's own address (meta.rakin.app): its name, Rakin above it.
+    titleAt: (gym: string) => `Entrar a ${gym}`,
     intro: 'Escribe tu correo y te enviamos un link para entrar. No necesitas clave.',
     emailLabel: 'Correo',
     submit: 'Enviarme el link',

@@ -12,6 +12,9 @@ Every notice about someone's membership carries a sign-in link to the student pa
 `PAGE_LINK_TTL` rather than 15 minutes, since a statement is read days before it is
 due. It goes in under the message as `page_url`, which is never part of the payload.
 
+A gym's notices link to its own host (`app.hosts`), its sign-in and unsubscribe links
+both: `meta.rakin.app` for Meta's. A notice of no gym links to the base host.
+
 A non-essential notice (plan events, announcements) carries a one-click unsubscribe
 link, in its footer and as `List-Unsubscribe` with `List-Unsubscribe-Post` (RFC 8058),
 and is not sent, but recorded as `suppressed`, to someone who used it
@@ -47,6 +50,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.money import format_clp
+from app.hosts import Hosts
 from app.integrations.mailer import Email, MailDeliveryError, Mailer, check_recipient
 from app.magiclink import MagicLinks, Recipient
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
@@ -184,36 +188,57 @@ class Notices:
         secret_key: str,
         links: MagicLinks | None = None,
         env: Environment = ENVIRONMENT,
+        hosts: Hosts | None = None,
     ) -> None:
         """`links` issues the `page_link` ones; only the sign-in link itself, which
-        brings its own, goes without."""
+        brings its own, goes without. `hosts` says where each gym is reached; without
+        it every link is on `base_url`."""
         self._mailer = mailer
         self._sessionmaker = sessionmaker
         self._base_url = base_url.rstrip("/")
+        self._hosts = hosts
         self._signer = UnsubscribeSigner(secret_key)
         self._links = links
         self._env = env
 
-    def unsubscribe_url(self, gym_id: uuid.UUID, person_id: uuid.UUID) -> str:
-        return f"{self._base_url}{UNSUBSCRIBE_PATH}/{self._signer.sign(gym_id, person_id)}"
+    def unsubscribe_url(
+        self, gym_id: uuid.UUID, person_id: uuid.UUID, base_url: str | None = None
+    ) -> str:
+        base = (base_url or self._base_url).rstrip("/")
+        return f"{base}{UNSUBSCRIBE_PATH}/{self._signer.sign(gym_id, person_id)}"
+
+    async def base_url_of(self, gym_id: uuid.UUID | None) -> str:
+        """Where the gym's notices link to: its own host, or the base host."""
+        if self._hosts is None or gym_id is None:
+            return self._base_url
+        async with self._in_gym(gym_id) as session:
+            slug = await session.scalar(text("SELECT slug FROM gym WHERE id = :g"), {"g": gym_id})
+        return self._hosts.base_url(slug)
 
     async def send(self, notice: Notice) -> Outcome:
         """Send `notice` unless its addressee unsubscribed from it, and record what
         happened in `message_log`."""
         unsubscribe_url = None
+        extra = {"template": notice.template.name, "person_id": str(notice.person_id)}
+        try:
+            base_url = await self.base_url_of(notice.gym_id)
+        # The database down, say: a link to the wrong host is no better than none.
+        except Exception as exc:
+            logger.exception("notice host not found", extra=extra)
+            await self._record(notice, Outcome.FAILED, error=_error(exc))
+            return Outcome.FAILED
         if not notice.template.essential:
             assert notice.gym_id is not None
             if await self._unsubscribed(notice.gym_id, notice.person_id):
                 await self._record(notice, Outcome.SUPPRESSED)
                 return Outcome.SUPPRESSED
-            unsubscribe_url = self.unsubscribe_url(notice.gym_id, notice.person_id)
-        extra = {"template": notice.template.name, "person_id": str(notice.person_id)}
+            unsubscribe_url = self.unsubscribe_url(notice.gym_id, notice.person_id, base_url)
         page_url = None
         if notice.template.page_link:
             try:
                 # No link for an address no mail reaches: it would never be delivered.
                 check_recipient(notice.to)
-                page_url = await self._page_url(notice)
+                page_url = await self._page_url(notice, base_url)
             except ValueError as exc:
                 logger.warning("notice not sent", extra=extra, exc_info=True)
                 await self._record(notice, Outcome.FAILED, error=_error(exc))
@@ -241,7 +266,7 @@ class Notices:
         await self._record(notice, Outcome.SENT)
         return Outcome.SENT
 
-    async def _page_url(self, notice: Notice) -> str:
+    async def _page_url(self, notice: Notice, base_url: str) -> str:
         if self._links is None:
             raise RuntimeError(f"no sign-in links to send {notice.template.name} with")
         # The name is for a sender to greet with; this link goes inside the notice.
@@ -249,7 +274,7 @@ class Notices:
             str(notice.person_id), notice.to, str(notice.context.get("name") or "")
         )
         link = await self._links.issue(
-            recipient, ttl=PAGE_LINK_TTL, landing=notice.template.landing
+            recipient, ttl=PAGE_LINK_TTL, landing=notice.template.landing, base_url=base_url
         )
         return link.url
 
@@ -312,4 +337,5 @@ def get_notices(request: Request) -> Notices:
         base_url=settings.public_base_url,
         secret_key=settings.secret_key,
         links=request.app.state.magic_links,
+        hosts=request.app.state.hosts,
     )

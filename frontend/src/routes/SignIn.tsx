@@ -1,8 +1,9 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { rememberReturnPath, requestLink, retryAfterSeconds, SIGN_IN_PATH } from '../api/auth'
 import { ApiError } from '../api/client'
+import { hostQuery } from '../api/host'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './SignIn.css'
@@ -12,10 +13,13 @@ const route = getRouteApi(SIGN_IN_PATH)
 
 /**
  * "Entrar": ask for a sign-in link by email. The answer is the same whether or not
- * the address has an account, so the screen never tells who is registered.
+ * the address has an account, so the screen never tells who is registered. On a
+ * gym's own address it names the gym; until that loads, or if it never does, it is
+ * Rakin's.
  */
 export function SignIn() {
   const { redirect } = route.useSearch()
+  const gym = useQuery(hostQuery()).data?.gym ?? null
   const [email, setEmail] = useState('')
   const emailId = useId()
   const send = useMutation({
@@ -32,7 +36,7 @@ export function SignIn() {
 
   return (
     <div className="signin">
-      <PageHeader eyebrow={t.app.name} title={copy.title} />
+      <PageHeader eyebrow={t.app.name} title={gym ? copy.titleAt(gym.name) : copy.title} />
       <div className="signin__card">
         {send.isSuccess ? (
           <>

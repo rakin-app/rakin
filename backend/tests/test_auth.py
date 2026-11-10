@@ -423,6 +423,7 @@ def test_the_lookups_belong_to_rakin_auth_and_only_the_api_may_call_them(db: Dat
         "auth_gyms_of",
         "auth_live_session",
         "auth_end_session",
+        "auth_gym_by_slug",
     }
     for r in rows:
         assert (r["owner"], r["prosecdef"], r["public_may"], r["app_may"]) == (
