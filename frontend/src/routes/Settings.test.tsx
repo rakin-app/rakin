@@ -362,6 +362,37 @@ describe('Ajustes: Planes', () => {
     expect(await within(section).findByText(plans.row(plans.kinds.trial, 'Gratis · 2 clases'))).toBeInTheDocument()
   })
 
+  it('closes an edit that changed nothing without asking the API', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    const monthly = (await within(section).findAllByRole('listitem'))[0]!
+    await userEvent.click(within(monthly).getByRole('button', { name: plans.edit }))
+    const edit = within(section).getByRole('form', { name: form.edit('Mensual adultos') })
+    await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
+
+    expect(within(section).queryByRole('form')).not.toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([])
+  })
+
+  it("clears a create's refusals when the kind changes", async () => {
+    stubApi({ savePlan: refused([['body', 'monthly', 'price_clp'], 'missing']) })
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    await userEvent.click(within(section).getByRole('button', { name: plans.add }))
+    const create = within(section).getByRole('form', { name: form.create })
+    await userEvent.click(within(create).getByRole('button', { name: form.submit }))
+    expect(await within(create).findByRole('alert')).toHaveTextContent(form.invalid)
+    expect(within(create).getByLabelText(form.price)).toHaveAttribute('aria-invalid', 'true')
+
+    await userEvent.selectOptions(within(create).getByLabelText(form.kind), plans.kinds.dropin)
+
+    expect(within(create).queryByRole('alert')).not.toBeInTheDocument()
+    expect(within(create).getByLabelText(form.price)).toHaveAttribute('aria-invalid', 'false')
+  })
+
   it('says a trial needs a limit when the API refuses one with none', async () => {
     stubApi({ savePlan: refused([['body'], 'value_error']) })
     renderAt('/admin/ajustes/planes')

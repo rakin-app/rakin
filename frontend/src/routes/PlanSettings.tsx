@@ -13,7 +13,7 @@ import {
 } from '../api/plans'
 import { validationErrors } from '../api/validation'
 import { t } from '../i18n/es'
-import { Field, integerOf, LoadFailed, refusal } from './Settings'
+import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
 
 const copy = t.admin.settings.plans
 const form = copy.form
@@ -212,19 +212,19 @@ function PlanForm({
   const [drafts, setDrafts] = useState(initial)
   const params = KIND_PARAMS[kind]
 
+  const fields = (keys: readonly (keyof Drafts)[]): PlanFields =>
+    Object.fromEntries(
+      keys.map((key) => [
+        key,
+        key === 'name' ? drafts.name : key === 'program_id' ? drafts.program_id || null : valueOf(key, drafts[key]),
+      ]),
+    )
+  // An edit sends only what changed, so a field someone else edited meanwhile is left as they left it.
+  const changed = (['name', 'program_id', ...params] as const).filter((k) => drafts[k] !== initial[k])
+
   const save = useMutation({
-    mutationFn: () => {
-      const fields = (keys: readonly (keyof Drafts)[]): PlanFields =>
-        Object.fromEntries(
-          keys.map((key) => [
-            key,
-            key === 'name' ? drafts.name : key === 'program_id' ? drafts.program_id || null : valueOf(key, drafts[key]),
-          ]),
-        )
-      if (!plan) return createPlan({ kind, ...fields(['name', 'program_id', ...params]) })
-      // Only what changed, so a field someone else edited meanwhile is left as they left it.
-      return updatePlan(plan.id, fields((['name', 'program_id', ...params] as const).filter((k) => drafts[k] !== initial[k])))
-    },
+    mutationFn: () =>
+      plan ? updatePlan(plan.id, fields(changed)) : createPlan({ kind, ...fields(['name', 'program_id', ...params]) }),
     onSuccess: async (answer) => {
       onDone(plan ? copy.saved(answer.name) : copy.created(answer.name))
       await queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
@@ -241,6 +241,11 @@ function PlanForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
+    // An edit that changed nothing has nothing to send: the form just closes.
+    if (plan && changed.length === 0) {
+      onCancel()
+      return
+    }
     save.mutate()
   }
 
@@ -255,7 +260,11 @@ function PlanForm({
             value={kind}
             // The kind is set on create: an edit changes the kind's parameters, not the kind.
             disabled={plan !== undefined}
-            onChange={(e) => setKind(e.target.value as PlanKind)}
+            onChange={(e) => {
+              setKind(e.target.value as PlanKind)
+              // The refusals were of the other kind's fields.
+              save.reset()
+            }}
           >
             {PLAN_KINDS.map((k) => (
               <option key={k} value={k}>

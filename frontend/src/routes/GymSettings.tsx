@@ -9,7 +9,7 @@ import {
 } from '../api/gym'
 import { validationErrors } from '../api/validation'
 import { t } from '../i18n/es'
-import { Field, integerOf, LoadFailed, refusal } from './Settings'
+import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
 
 const copy = t.admin.settings.gym
 
