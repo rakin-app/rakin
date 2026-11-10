@@ -1,8 +1,11 @@
 """Rakin's side of magic-link sign-in (`app.magiclink`): people, Postgres and email.
 
 An address's links go to every person with that email who belongs to some gym, one
-link each. A session starts in the person's gym when they have exactly one; with
-several it starts in none until they pick (#16), and gym-scoped routes answer 401.
+link each. A sign-in reaches only the gyms whose own record of the person holds the
+address the link went to (migration 0029), never every gym the person is in: the email
+one gym writes signs nobody in to another. A session starts in that gym when there is
+exactly one; with several it starts in none until they pick (#16), and gym-scoped
+routes answer 401.
 
 The session middleware sets `request.state.person_id` and, when the session has a
 gym, `request.state.tenant`. It never answers 401 itself: `app.tenancy` stays the one
@@ -22,6 +25,7 @@ from app.magiclink import (
     Link,
     MagicLinks,
     MemoryRateLimiter,
+    Pending,
     Recipient,
     Session,
     Texts,
@@ -67,11 +71,12 @@ class PeopleDirectory:
             )
             return [Recipient(str(r.person_id), r.email, r.name) for r in rows]
 
-    async def scope(self, subject: str) -> str | None:
+    async def scope(self, subject: str, address: str) -> str | None:
         async with self._sessionmaker()() as session:
             gyms = (
                 await session.scalars(
-                    text("SELECT auth_gyms_of(:person)"), {"person": uuid.UUID(subject)}
+                    text("SELECT auth_gyms_of(:person, :address)"),
+                    {"person": uuid.UUID(subject), "address": address},
                 )
             ).all()
         return str(gyms[0]) if len(gyms) == 1 else None
@@ -95,19 +100,23 @@ class PostgresStore:
         async with self._sessionmaker()() as session, session.begin():
             return (await session.execute(text(sql), params)).one_or_none()
 
-    async def add_link(self, token_hash: bytes, subject: str, expires_at: datetime) -> None:
+    async def add_link(
+        self, token_hash: bytes, subject: str, address: str, expires_at: datetime
+    ) -> None:
         await self._execute(
-            "INSERT INTO auth_link (token_hash, person_id, expires_at) VALUES (:h, :p, :e)",
-            {"h": token_hash, "p": uuid.UUID(subject), "e": expires_at},
+            "INSERT INTO auth_link (token_hash, person_id, email, expires_at)"
+            " VALUES (:h, :p, :a, :e)",
+            {"h": token_hash, "p": uuid.UUID(subject), "a": address, "e": expires_at},
         )
 
-    async def pending_link(self, token_hash: bytes, now: datetime) -> str | None:
+    async def pending_link(self, token_hash: bytes, now: datetime) -> Pending | None:
         row = await self._fetch(
-            "SELECT person_id FROM auth_link"
-            " WHERE token_hash = :h AND used_at IS NULL AND expires_at > :now",
+            "SELECT person_id, email FROM auth_link"
+            " WHERE token_hash = :h AND used_at IS NULL AND expires_at > :now"
+            " AND email IS NOT NULL",
             {"h": token_hash, "now": now},
         )
-        return None if row is None else str(row.person_id)
+        return None if row is None else Pending(str(row.person_id), row.email)
 
     async def redeem_link(
         self, token_hash: bytes, now: datetime, session_hash: bytes, session: Session
@@ -118,22 +127,28 @@ class PostgresStore:
             spent = await db.execute(
                 text(
                     "UPDATE auth_link SET used_at = :now WHERE token_hash = :h"
-                    " AND person_id = :p AND used_at IS NULL AND expires_at > :now"
-                    " RETURNING 1"
+                    " AND person_id = :p AND email = :a AND used_at IS NULL"
+                    " AND expires_at > :now RETURNING 1"
                 ),
-                {"h": token_hash, "p": uuid.UUID(session.subject), "now": now},
+                {
+                    "h": token_hash,
+                    "p": uuid.UUID(session.subject),
+                    "a": session.address,
+                    "now": now,
+                },
             )
             if spent.one_or_none() is None:
                 return False
             # Fails with the link: the transaction rolls both back.
             await db.execute(
                 text(
-                    "INSERT INTO auth_session (token_hash, person_id, gym_id, expires_at)"
-                    " VALUES (:h, :p, :g, :e)"
+                    "INSERT INTO auth_session (token_hash, person_id, email, gym_id, expires_at)"
+                    " VALUES (:h, :p, :a, :g, :e)"
                 ),
                 {
                     "h": session_hash,
                     "p": uuid.UUID(session.subject),
+                    "a": session.address,
                     "g": None if session.scope is None else uuid.UUID(session.scope),
                     "e": session.expires_at,
                 },
@@ -142,13 +157,13 @@ class PostgresStore:
 
     async def session(self, token_hash: bytes, now: datetime) -> Session | None:
         row = await self._fetch(
-            "SELECT person_id, gym_id, expires_at FROM auth_live_session(:h, :now)",
+            "SELECT person_id, email, gym_id, expires_at FROM auth_live_session(:h, :now)",
             {"h": token_hash, "now": now},
         )
         if row is None:
             return None
         gym = None if row.gym_id is None else str(row.gym_id)
-        return Session(str(row.person_id), gym, row.expires_at)
+        return Session(str(row.person_id), row.email, gym, row.expires_at)
 
     async def end_session(self, token_hash: bytes, now: datetime) -> None:
         await self._execute("SELECT auth_end_session(:h, :now)", {"h": token_hash, "now": now})

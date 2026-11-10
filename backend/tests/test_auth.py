@@ -21,7 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from app.auth import MailSender, PostgresStore
 from app.db import create_engine, create_sessionmaker
 from app.integrations.mailer import Email
-from app.magiclink import COOKIE_NAME, Session
+from app.magiclink import COOKIE_NAME, Pending, Session
 from app.magiclink.tokens import hash_token
 from app.main import create_app
 from app.notices import Notices
@@ -32,6 +32,9 @@ from tests.test_tenancy import router as tenant_routes
 pytestmark = pytest.mark.postgres
 
 BASE_URL = "https://testserver"
+
+# The address Sur's record of Ana holds, as a link to her records it.
+ANA = "Ana@Example.cl"
 
 
 @dataclass
@@ -53,6 +56,7 @@ class People:
     norte: uuid.UUID
     ana: uuid.UUID  # Sur's record: Ana, Ana@Example.cl, a member
     shared: uuid.UUID  # a member of both; Sur has shared@example.cl, Norte another address
+    both: uuid.UUID  # a member of both, and both have both@example.cl for them
     orphan: uuid.UUID  # Sur has a record, orphan@example.cl, but no membership or staff row
     legacy: uuid.UUID  # legacy@example.cl only on `person`, which sign-in does not read
 
@@ -93,7 +97,7 @@ async def add_person(
 @pytest.fixture(scope="module")
 def people(db: Database) -> People:
     sur, norte = seed_gym(db, "academia-sur"), seed_gym(db, "dojo-norte")
-    ana, shared, orphan, legacy = (uuid.uuid4() for _ in range(4))
+    ana, shared, both, orphan, legacy = (uuid.uuid4() for _ in range(5))
 
     # As the superuser, which skips RLS, to write across both gyms at once.
     async def query(conn: asyncpg.Connection) -> None:
@@ -103,12 +107,15 @@ def people(db: Database) -> People:
             shared,
             {sur: ("Shared", "shared@example.cl"), norte: ("Shared", "s.norte@example.cl")},
         )
+        await add_person(
+            conn, both, {sur: ("Both", "both@example.cl"), norte: ("Both", "Both@Example.cl")}
+        )
         await add_person(conn, orphan, {sur: ("Orphan", "orphan@example.cl")}, member=False)
         await add_person(conn, legacy, {sur: ("Legacy", None)})
         await conn.execute("UPDATE person SET email = 'legacy@example.cl' WHERE id = $1", legacy)
 
     run(db.admin_url, query)
-    return People(sur, norte, ana, shared, orphan, legacy)
+    return People(sur, norte, ana, shared, both, orphan, legacy)
 
 
 @dataclass
@@ -210,14 +217,26 @@ def test_each_link_is_logged_in_no_gym_without_its_url(
     assert run(db.api_url, in_gym(people.sur, "SELECT 1 FROM message_log")) == []
 
 
-def test_a_person_in_several_gyms_signs_in_to_no_gym_yet(
+def test_an_email_several_gyms_hold_signs_in_to_no_gym_yet(
     harness: Harness, people: People, db: Database
 ) -> None:
-    token = harness.sign_in("shared@example.cl")
+    token = harness.sign_in("both@example.cl")
 
     assert session_row(db, token)["gym_id"] is None
     # Signed in, but gym routes still answer 401 until a gym is picked (#16).
     assert harness.client.get("/test/setting").status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("address", "gym"), [("shared@example.cl", "sur"), ("s.norte@example.cl", "norte")]
+)
+def test_an_email_one_gym_holds_signs_in_to_that_gym_alone(
+    harness: Harness, people: People, address: str, gym: str
+) -> None:
+    """The person is in both gyms, but each gym's own record has its own address (#146)."""
+    harness.sign_in(address)
+
+    assert harness.client.get("/test/setting").json()["gym"] == str(getattr(people, gym))
 
 
 @pytest.mark.parametrize("address", ["orphan@example.cl", "legacy@example.cl"])
@@ -267,10 +286,10 @@ def test_logging_out_ends_the_session(harness: Harness, db: Database) -> None:
 
 def test_of_concurrent_redemptions_exactly_one_wins(db: Database, people: People) -> None:
     link, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
-    session = Session(str(people.ana), str(people.sur), now + timedelta(days=30))
+    session = Session(str(people.ana), ANA, str(people.sur), now + timedelta(days=30))
 
     async def race(store: PostgresStore) -> list[bool]:
-        await store.add_link(link, str(people.ana), now + timedelta(minutes=15))
+        await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15))
         attempts = (store.redeem_link(link, now, hash_token(f"s{n}"), session) for n in range(5))
         return list(await asyncio.gather(*attempts))
 
@@ -282,25 +301,28 @@ def test_a_session_that_cannot_be_stored_leaves_the_link_unspent(
 ) -> None:
     link, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
     # A gym that does not exist: the session insert fails on its foreign key.
-    broken = Session(str(people.ana), str(uuid.uuid4()), now + timedelta(days=30))
+    broken = Session(str(people.ana), ANA, str(uuid.uuid4()), now + timedelta(days=30))
 
     async def check(store: PostgresStore) -> None:
-        await store.add_link(link, str(people.ana), now + timedelta(minutes=15))
+        await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15))
         with pytest.raises(IntegrityError):
             await store.redeem_link(link, now, hash_token("broken"), broken)
-        assert await store.pending_link(link, now) == str(people.ana)
+        assert await store.pending_link(link, now) == Pending(str(people.ana), ANA)
 
     with_store(db, check)
 
 
-def test_a_link_redeems_only_for_its_own_person(db: Database, people: People) -> None:
+def test_a_link_redeems_only_for_its_own_person_and_address(db: Database, people: People) -> None:
     link, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
-    someone_else = Session(str(people.shared), None, now + timedelta(days=30))
+    later = now + timedelta(days=30)
+    someone_else = Session(str(people.shared), ANA, None, later)
+    another_address = Session(str(people.ana), "shared@example.cl", None, later)
 
     async def check(store: PostgresStore) -> None:
-        await store.add_link(link, str(people.ana), now + timedelta(minutes=15))
+        await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15))
         assert not await store.redeem_link(link, now, hash_token("x"), someone_else)
-        assert await store.pending_link(link, now) == str(people.ana)
+        assert not await store.redeem_link(link, now, hash_token("y"), another_address)
+        assert await store.pending_link(link, now) == Pending(str(people.ana), ANA)
 
     with_store(db, check)
 
@@ -310,14 +332,14 @@ def test_an_expired_link_or_session_is_not_found(db: Database, people: People) -
     link, session = hash_token(uuid.uuid4().hex), hash_token(uuid.uuid4().hex)
 
     async def check(store: PostgresStore) -> None:
-        await store.add_link(link, str(people.ana), now + timedelta(minutes=15))
+        await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15))
         later = now + timedelta(minutes=15)
         assert await store.pending_link(link, later) is None
         assert not await store.redeem_link(
-            link, later, session, Session(str(people.ana), None, later + day)
+            link, later, session, Session(str(people.ana), ANA, None, later + day)
         )
         assert await store.redeem_link(
-            link, now, session, Session(str(people.ana), str(people.sur), now + day)
+            link, now, session, Session(str(people.ana), ANA, str(people.sur), now + day)
         )
 
         assert await store.session(session, now) is not None
@@ -377,8 +399,13 @@ def test_the_email_lookup_reads_across_gyms_but_not_beyond_people_in_one(
     [ana] = run(db.api_url, in_gym(None, lookup, " ANA@example.CL"))
     assert dict(ana) == {"person_id": people.ana, "name": "Ana", "email": "Ana@Example.cl"}
     assert run(db.api_url, in_gym(None, lookup, "orphan@example.cl")) == []
-    gyms = run(db.api_url, in_gym(None, "SELECT auth_gyms_of($1)", people.shared))
+    gyms_of = "SELECT auth_gyms_of($1, $2)"
+    gyms = run(db.api_url, in_gym(None, gyms_of, people.shared, " SHARED@example.cl"))
+    assert {r[0] for r in gyms} == {people.sur}
+    gyms = run(db.api_url, in_gym(None, gyms_of, people.both, "both@example.cl"))
     assert {r[0] for r in gyms} == {people.sur, people.norte}
+    # An address no gym has for them reaches nothing, though they are in both gyms.
+    assert run(db.api_url, in_gym(None, gyms_of, people.shared, "ana@example.cl")) == []
 
 
 def test_the_lookups_belong_to_rakin_auth_and_only_the_api_may_call_them(db: Database) -> None:
