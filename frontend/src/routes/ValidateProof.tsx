@@ -193,7 +193,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (message: str
           </div>
           <div>
             <dt>{copy.attendance}</dt>
-            <dd>{review.attendance_30d === null ? copy.noAttendance : copy.attendanceCount(review.attendance_30d)}</dd>
+            <dd>{copy.attendanceCount(review.attendance_30d)}</dd>
           </div>
         </dl>
 

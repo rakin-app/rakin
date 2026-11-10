@@ -11,8 +11,8 @@ const copy = t.me
 
 /**
  * "Mi página", the student page: what is due next and where to transfer it,
- * the proof upload, their belt, and the payments already sent with how each was
- * reviewed.
+ * the proof upload, their belt and classes, and the payments already sent with how
+ * each was reviewed.
  */
 export function MeHome() {
   const page = useQuery(myPageQuery())
@@ -163,15 +163,22 @@ function CopyBank({ account }: { account: BankAccount }) {
   )
 }
 
-/** "Mi entrenamiento": the belt, once the gym has recorded one. */
+/** "Mi entrenamiento": the belt, once the gym has recorded one, and the classes attended. */
 function Training({ page }: { page: MyPage }) {
-  if (!page.rank) return null
+  const words = copy.training
   return (
-    <section className="training" aria-label={copy.training.title}>
+    <section className="training" aria-label={words.title}>
+      {page.rank && (
+        <div className="training__card">
+          <span className="training__eyebrow">{words.belt}</span>
+          <span className="training__figure">{rankLabel(page.rank)}</span>
+          <span className="training__detail">{words.since(t.common.dayYear(page.rank.awarded_on))}</span>
+        </div>
+      )}
       <div className="training__card">
-        <span className="training__eyebrow">{copy.training.belt}</span>
-        <span className="training__figure">{rankLabel(page.rank)}</span>
-        <span className="training__detail">{copy.training.since(t.common.dayYear(page.rank.awarded_on))}</span>
+        <span className="training__eyebrow">{words.month}</span>
+        <span className="training__figure">{words.classes(page.attendance.this_month)}</span>
+        <span className="training__detail">{words.total(page.attendance.total)}</span>
       </div>
     </section>
   )

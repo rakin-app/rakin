@@ -59,6 +59,7 @@ function diego(over: Partial<MyPage> = {}): MyPage {
     next_payment: { period: NOVEMBER, status: 'in_review' },
     bank_account: BANK,
     rank: null,
+    attendance: { this_month: 0, total: 0 },
     payments: [
       payment({ id: 'e-nov', status: 'pending', period_start: NOVEMBER.period_start, claimed_at: new Date().toISOString(), validated_at: null }),
       payment({ id: 'e-oct' }),
@@ -204,8 +205,18 @@ describe('Mi página', () => {
     stubPage(diego())
     renderMe()
 
-    await screen.findByRole('heading', { level: 1, name: 'Hola, Diego' })
-    expect(screen.queryByRole('region', { name: copy.training.title })).not.toBeInTheDocument()
+    const card = within(await screen.findByRole('region', { name: copy.training.title }))
+    expect(card.queryByText(copy.training.belt)).not.toBeInTheDocument()
+  })
+
+  it("counts this month's classes and all of them", async () => {
+    stubPage(diego({ attendance: { this_month: 11, total: 312 } }))
+    renderMe()
+
+    const card = within(await screen.findByRole('region', { name: copy.training.title }))
+    expect(card.getByText(copy.training.month)).toBeInTheDocument()
+    expect(card.getByText('11 clases')).toBeInTheDocument()
+    expect(card.getByText('312 en total')).toBeInTheDocument()
   })
 
   it('is paid up', async () => {

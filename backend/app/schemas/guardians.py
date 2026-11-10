@@ -69,8 +69,8 @@ class Balance(BaseModel):
 class Dependent(BaseModel):
     """One of the signed-in guardian's dependents, as their page shows them.
 
-    Attendance joins this with its table (#44), and the dependent's rank (0018) when
-    the student page shows it.
+    The dependent's attendance (0023) and rank (0018) join this when the student page
+    shows them.
     """
 
     id: uuid.UUID

@@ -89,6 +89,12 @@
   font-size: var(--text-base);
 }
 
+.settings__textarea {
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  resize: vertical;
+}
+
 .settings__input[readonly],
 .settings__input:disabled {
   background: var(--color-bg);

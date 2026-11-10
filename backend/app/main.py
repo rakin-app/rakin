@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api import (
+    attendance,
     blobs,
     class_types,
     custom_fields,
@@ -70,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(programs.router)
     app.include_router(class_types.router)
     app.include_router(sessions.router)
+    app.include_router(attendance.router)
     app.include_router(memberships.router)
     app.include_router(member_import.router)
     app.include_router(gym.router)

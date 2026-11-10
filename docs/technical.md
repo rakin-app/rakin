@@ -50,7 +50,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `program` | id, gym\_id, name, active | the gym's own groups: adults, kids, competition, …; name unique in the gym; deactivated, never deleted |
 | `class_type` | id, gym\_id, name, program\_id, credit\_cost, active | one program each; credit\_cost is what an attendance takes from a credits membership, 0 for a free class; name unique within its program; deactivated, never deleted |
 | `session` | id, gym\_id, class\_type\_id, starts\_at, coach\_id, topic, notes | one row per class actually held, started by the coach when it begins (no timetable); the day's sessions are those starting that day in the gym's timezone; coach\_id is the gym's record of a person, staff when the session was started; never deleted |
-| `attendance` | session\_id, membership\_id, marked\_by, marked\_at, credits\_consumed | unique (session, membership) |
+| `attendance` | gym\_id, session\_id, membership\_id, marked\_by, marked\_at, credits\_consumed | unique (session, membership); credits\_consumed is what it took from a credits pack (the class type's credit\_cost) or a trial (one free class), given back when it is unmarked; never refused, so a spent pack or a lapsed member attends for nothing; added and deleted, never changed |
 | `grade_event` | gym\_id, membership\_id, rank\_key, sub\_rank, awarded\_on, awarded\_by, note, created\_at | promotion log; keys of the gym's grading scheme; current rank is the latest by awarded\_on over the person's memberships; append-only; one that becomes current writes a `promoted` plan\_event |
 | `person_field_value` | person\_id, gym\_id, field\_key, value jsonb | custom fields; sensitive keys encrypted |
 | `message_log` | gym\_id, person\_id, channel, template, to\_address, status, error, sent\_at, payload jsonb | audit of every email sent: one row per attempt, status ∈ sent, failed, suppressed; payload is what the template was rendered from, never a magic link's URL; sign-in links belong to no gym and have no gym\_id; append-only |
@@ -95,7 +95,7 @@ Membership moves right as time passes and only moves back to Active when a payme
 
 Rules the diagram does not show:
 
-- Grace period is per gym (default 5 days). Lapsed students can still be marked present; the roster shows a red dot so the coach can nudge.
+- Grace period is per gym (default 5 days). Overdue and lapsed students can still be marked present; the roster shows an orange dot on anyone with a period overdue, so the coach can nudge, and never the amount.
 - A `credits` membership also lapses when `credits_remaining` reaches 0 or the pack expires.
 - Validating a payment against a billing period closes that period; an overpayment creates a credit adjustment against the next one.
 - An adjustment on a period is positive in the member's favour, counting towards it, or negative, owed on top; a note says why. A refund gives back part or all of a validated payment and no longer counts towards its period.

@@ -37,7 +37,7 @@ const DIEGO: ProofReview = {
   },
   prior_balance_clp: 0,
   last_payments: [],
-  attendance_30d: null,
+  attendance_30d: 0,
 }
 
 const MATEO: ProofReview = {

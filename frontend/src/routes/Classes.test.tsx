@@ -106,6 +106,10 @@ function stubApi({
       day = { ...day, sessions: [...day.sessions, created] }
       return { status: 201, body: created }
     }
+    // The roster has its own tests (SessionDetail.test.tsx).
+    const rostered = day.sessions.find((s) => path === `/api/sessions/${s.id}/roster`)
+    if (rostered) return { body: { session_id: rostered.id, present: 0, members: [] } }
+    if (path === '/api/plans') return { body: [] }
     const found = day.sessions.find((s) => path === `/api/sessions/${s.id}`)
     if (found && method === 'GET') return { body: found }
     if (found && method === 'PATCH') {

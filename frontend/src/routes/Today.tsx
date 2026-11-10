@@ -22,9 +22,10 @@ const OVERDUE_SHOWN = 3
  * wait for review, then both lists, each a tap from acting on it: "Revisar" opens the
  * proof queue, "Pagó" records the payment in place.
  *
- * Money, so for whoever reads the ledger only; a coach sees neither list. "A quién
- * llamar" (members who stopped coming) joins with attendance (#41), and the WhatsApp
- * reminder on each overdue row with the wa.me links (#55).
+ * Money, so for whoever reads the ledger only; a coach sees neither list. "Sin venir
+ * 14 d" and "A quién llamar" (members who stopped coming, from `v_inactive`) join with
+ * the inactive list (#50), and the WhatsApp reminder on each overdue row with the wa.me
+ * links (#55).
  */
 export function Today() {
   const role = useQuery(myRoleQuery())

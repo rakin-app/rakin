@@ -72,6 +72,14 @@ export function ChevronLeftIcon() {
   )
 }
 
+export function CheckIcon() {
+  return (
+    <Icon width={16} height={16}>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </Icon>
+  )
+}
+
 export function ChevronRightIcon() {
   return (
     <Icon width={20} height={20}>

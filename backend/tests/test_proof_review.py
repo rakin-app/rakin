@@ -163,11 +163,61 @@ def test_the_queue_shows_the_claim_beside_the_period(
     assert item["prior_balance_clp"] == 45000
     # Seeded in one transaction, so at one time: compared unordered.
     assert sorted(p["amount_clp"] for p in item["last_payments"]) == [20000, 30000]
-    assert item["attendance_30d"] is None
+    assert item["attendance_30d"] == 0
     assert item["proof_content_type"] == "application/pdf"
     proof = client.get(item["proof_url"])
     assert proof.status_code == 200
     assert proof.content.startswith(b"%PDF")
+
+
+def attended(db: Database, gym: uuid.UUID, membership: str, days_ago: int) -> None:
+    """`membership` at a class `days_ago` days ago, at noon in the gym's timezone."""
+
+    async def query(conn: asyncpg.Connection) -> None:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym))
+            program = await conn.fetchval(
+                "INSERT INTO program (gym_id, name) VALUES ($1, $2) RETURNING id",
+                gym,
+                f"p-{uuid.uuid4().hex[:8]}",
+            )
+            class_type = await conn.fetchval(
+                "INSERT INTO class_type (gym_id, program_id, name) VALUES ($1, $2, 'Clase')"
+                " RETURNING id",
+                gym,
+                program,
+            )
+            session = await conn.fetchval(
+                "INSERT INTO session (gym_id, class_type_id, starts_at, coach_id)"
+                " SELECT $1, $2, (($3::date + time '12:00') AT TIME ZONE g.timezone), $4"
+                " FROM gym g WHERE g.id = $1 RETURNING id",
+                gym,
+                class_type,
+                seeded_today() - timedelta(days=days_ago),
+                seeded_owner(gym),
+            )
+            await conn.execute(
+                "INSERT INTO attendance (gym_id, session_id, membership_id) VALUES ($1, $2, $3)",
+                gym,
+                session,
+                uuid.UUID(membership),
+            )
+
+    run(db.owner_url, query)
+
+
+@pg
+def test_the_queue_shows_the_classes_of_the_last_30_days(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    membership = bill(db, sur, ana, [(0, 45000, 0, 0)])
+    for days_ago in (30, 29, 3, 0):
+        attended(db, sur, membership, days_ago)
+    claimed(client, sur, ana, 45000)
+
+    [item] = queue(client, sur)
+    assert item["attendance_30d"] == 3
 
 
 @pytest.mark.parametrize("role", ["coach", "member"])

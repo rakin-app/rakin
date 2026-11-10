@@ -7,7 +7,7 @@ writes its topic and notes during or after class. The day's sessions are those w
 
 A session starts now and is taught by the person starting it unless the body says
 otherwise. Its coach is one of the gym's staff when it is started or reassigned; one
-who has left since stays its coach. There is no delete: attendance (#44) points at it.
+who has left since stays its coach. There is no delete: attendance points at it.
 
 Any staff role may use it, coaches included, since they are who start a class and
 write what it covered; members may not use it at all.

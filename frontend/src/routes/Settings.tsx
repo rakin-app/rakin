@@ -4,6 +4,7 @@ import type { ComponentType } from 'react'
 import { managesGym, myRoleQuery } from '../api/me'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
+import { FieldSettings } from './FieldSettings'
 import { GradingSettings } from './GradingSettings'
 import { GymSettings } from './GymSettings'
 import { PlanSettings } from './PlanSettings'
@@ -22,6 +23,7 @@ export const SETTINGS_SECTIONS = [
   { path: 'planes', label: copy.sections.plans, component: PlanSettings },
   { path: 'programas', label: copy.sections.programs, component: ProgramSettings },
   { path: 'graduacion', label: copy.sections.grading, component: GradingSettings },
+  { path: 'campos', label: copy.sections.fields, component: FieldSettings },
 ] as const satisfies readonly { path: string; label: string; component: ComponentType }[]
 
 /**
