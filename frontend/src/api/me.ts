@@ -59,6 +59,8 @@ export type MyPage = {
   bank_account: BankAccount | null
   // Their latest promotion; null until the gym records one.
   rank: Rank | null
+  // Their classes here, this calendar month in the gym's timezone and in all.
+  attendance: { this_month: number; total: number }
   // Newest first.
   payments: MyPayment[]
 }

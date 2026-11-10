@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import { personAttendanceQuery } from '../api/attendance'
 import { ApiError } from '../api/client'
 import {
   awardGrade,
@@ -47,9 +48,12 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * A coach sees the member, their plan and rank, whether it is frozen, and promotes
  * them; never money.
  *
+ * Their attendance, in the last 30 days and in all, and in Graduación the classes since
+ * their last promotion.
+ *
  * Below them, the gym's custom fields the signed-in role may see (#20).
  *
- * Ajuste and attendance join this screen with their own tickets (#38, #44).
+ * Ajuste joins this screen with its own ticket (#38).
  */
 export function MemberDetail() {
   const { personId } = route.useParams()
@@ -100,6 +104,7 @@ export function MemberDetail() {
       ) : (
         <p className="member__note">{copy.noPlan}</p>
       )}
+      <Attendance personId={personId} />
       <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
       <section className="member__section" aria-label={t.admin.family.toggle}>
         <h2 className="member__section-title">{t.admin.family.toggle}</h2>
@@ -479,6 +484,30 @@ function PaymentForm({
   )
 }
 
+/** "Asistencia": classes in the last 30 days, and in all. */
+function Attendance({ personId }: { personId: string }) {
+  const words = copy.attendance
+  const attendance = useQuery(personAttendanceQuery(personId))
+  if (attendance.isPending) return null
+  if (attendance.isError) {
+    return (
+      <p className="member__error" role="alert">
+        {words.error}
+      </p>
+    )
+  }
+  const { last_30_days: recent, total } = attendance.data
+  return (
+    <section className="member__card" aria-label={words.title}>
+      <span className="member__eyebrow">{words.title}</span>
+      <div className="member__rank">
+        <span className="member__rank-label">{recent}</span>
+        <span className="member__detail">{words.detail(recent, total)}</span>
+      </div>
+    </section>
+  )
+}
+
 /**
  * The member's rank, "Registrar graduación" and the promotion log. Hidden in a gym with
  * no ranks, unless the member has promotions from when it had them.
@@ -487,6 +516,8 @@ function Graduation({ personId, canAward }: { personId: string; canAward: boolea
   const words = copy.grading
   const grades = useQuery(gradesQuery(personId))
   const scheme = useQuery(gradingSchemeQuery())
+  const attendance = useQuery(personAttendanceQuery(personId))
+  const sincePromotion = attendance.data?.since_promotion ?? null
   const [open, setOpen] = useState(false)
   const [done, setDone] = useState<string | null>(null)
 
@@ -510,6 +541,7 @@ function Graduation({ personId, canAward }: { personId: string; canAward: boolea
           <div className="member__rank">
             <span className="member__rank-label">{rankLabel(current)}</span>
             <span className="member__detail">{words.since(t.common.dayYear(current.awarded_on))}</span>
+            {sincePromotion !== null && <span className="member__detail">{words.sincePromotion(sincePromotion)}</span>}
           </div>
         ) : (
           <p className="member__note">{words.none}</p>
@@ -630,7 +662,11 @@ function GradeForm({
       }),
     onSuccess: async (grading) => {
       onDone(grading)
-      await queryClient.invalidateQueries({ queryKey: ['grades', personId] })
+      // A new rank restarts the count of classes since it.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['grades', personId] }),
+        queryClient.invalidateQueries({ queryKey: personAttendanceQuery(personId).queryKey }),
+      ])
     },
   })
 

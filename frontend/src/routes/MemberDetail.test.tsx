@@ -137,6 +137,7 @@ type Stub = {
   freeze?: Answer
   fields?: PersonField[]
   fieldsUpdate?: Answer
+  attendance?: Answer
 }
 
 function stubApi({
@@ -151,6 +152,7 @@ function stubApi({
   freeze,
   fields = [],
   fieldsUpdate,
+  attendance = { body: { last_30_days: 9, total: 184, since_promotion: 62 } },
 }: Stub = {}) {
   const calls: Call[] = []
   let current = ledger
@@ -191,6 +193,7 @@ function stubApi({
     }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
     if (path === '/api/gym/grading-scheme') return { body: scheme }
+    if (path === '/api/people/felipe/attendance') return attendance
     if (path === '/api/people/felipe/grades' && method === 'GET') return { body: grades }
     if (path === '/api/people/felipe/grades' && method === 'POST') {
       if (award) return award
@@ -439,6 +442,31 @@ describe('Ficha de alumno', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.notFound)
   })
+  it('shows the classes in 30 days and in all', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    const card = await screen.findByRole('region', { name: copy.attendance.title })
+    expect(within(card).getByText('9')).toBeInTheDocument()
+    expect(within(card).getByText(copy.attendance.detail(9, 184))).toBeInTheDocument()
+  })
+
+  it('says no classes since the last promotion only once there is a rank', async () => {
+    stubApi({ grading: { current: null, events: [] }, attendance: { body: { last_30_days: 0, total: 0, since_promotion: null } } })
+    renderAt(PATH)
+
+    const graduation = await screen.findByRole('region', { name: copy.grading.title })
+    expect(within(graduation).getByText(copy.grading.none)).toBeInTheDocument()
+    expect(within(graduation).queryByText(/desde la última graduación/)).not.toBeInTheDocument()
+  })
+
+  it('says so when the attendance cannot be read', async () => {
+    stubApi({ attendance: { status: 403, body: {} } })
+    renderAt(PATH)
+
+    expect(await screen.findByText(copy.attendance.error)).toBeInTheDocument()
+  })
+
   it('shows the rank since when, and the promotion log newest first', async () => {
     stubApi()
     renderAt(PATH)
@@ -446,6 +474,7 @@ describe('Ficha de alumno', () => {
     const graduation = await screen.findByRole('region', { name: copy.grading.title })
     expect(within(graduation).getByText('Azul · 2 grados', { selector: '.member__rank-label' })).toBeInTheDocument()
     expect(within(graduation).getByText(copy.grading.since('11 abr 2026'))).toBeInTheDocument()
+    expect(within(graduation).getByText(copy.grading.sincePromotion(62))).toBeInTheDocument()
     const log = within(graduation).getByRole('list', { name: copy.grading.log })
     expect(within(log).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
       'Azul · 2 grados11 abr 2026 · registró Sebastián Araya',

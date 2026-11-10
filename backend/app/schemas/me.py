@@ -1,8 +1,8 @@
 """The student page ("Mi página", #65): what the signed-in person reads about themselves.
 
 One document for the page: the next payment and where to transfer it, and the payments
-already sent with how each was reviewed, and the person's belt. The attendance card
-joins it with its table (#44).
+already sent with how each was reviewed, the person's belt, and how many classes they
+have attended.
 """
 
 import uuid
@@ -46,6 +46,13 @@ class MyPayment(BaseModel):
     created_at: datetime
 
 
+class MyAttendance(BaseModel):
+    """Their classes here, over every membership, by the gym's calendar."""
+
+    this_month: int
+    total: int
+
+
 class MyPage(BaseModel):
     gym_name: str
     # Dates on the page are the gym's, not the phone's.
@@ -59,5 +66,6 @@ class MyPage(BaseModel):
     bank_account: BankAccount | None
     # Their latest promotion here (`grade_event`, 0018); `None` until they have one.
     rank: Rank | None
+    attendance: MyAttendance
     # Newest first, at most `PAYMENTS_SHOWN`.
     payments: list[MyPayment]

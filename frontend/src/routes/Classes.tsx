@@ -19,9 +19,8 @@ const copy = t.admin.classes
 /**
  * "Clases": today's classes, and starting one. There is no timetable: the coach
  * starts a class as it begins, of one of the gym's class types, and lands on it to
- * write its topic and notes. Every staff role sees and starts them.
- *
- * Taking attendance on a class joins it with the roster (#44).
+ * take its attendance and write its topic and notes. Every staff role sees and starts
+ * them.
  */
 export function Classes() {
   const today = useQuery(todaySessionsQuery())

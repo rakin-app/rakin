@@ -1,6 +1,6 @@
 """The promotion log (#48): awarding a rank against the gym's scheme, the current rank on
 the ficha and the student page, and the `promoted` plan event a promotion writes.
-Classes since the last promotion come with attendance (#44).
+Classes since the last promotion are attendance's (`tests/test_attendance.py`).
 
 Every staff role's access is covered with the other endpoint groups in
 `tests/test_roles.py`; a coach awarding is checked here, since coaches are who promote.

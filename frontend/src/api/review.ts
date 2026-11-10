@@ -31,8 +31,8 @@ export type ProofReview = {
   prior_balance_clp: number
   // Newest first, at most three.
   last_payments: { amount_clp: number; paid_at: string }[]
-  // Null until attendance is recorded (#44).
-  attendance_30d: number | null
+  // Classes the person attended in the last 30 days: today and the 29 before it.
+  attendance_30d: number
 }
 
 export type Validated = {

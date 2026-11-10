@@ -13,15 +13,16 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.attendance import attended
 from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
 from app.api.proofs import OPEN_PERIODS, payable_params, to_open_period
 from app.domain.billing import SETTLING_KINDS
-from app.domain.dates import gym_today
+from app.domain.dates import gym_today, start_of_local_day
 from app.domain.ledger import EntryKind, EntryStatus
 from app.roles import role_in_gym
 from app.schemas.guardians import Balance, Dependent
-from app.schemas.me import MyPage, MyPayment, NextPayment, NextPaymentStatus
+from app.schemas.me import MyAttendance, MyPage, MyPayment, NextPayment, NextPaymentStatus
 from app.schemas.people import MyRole
 from app.tenancy import Tenant, TenantSession, current_tenant
 
@@ -118,8 +119,8 @@ async def my_dependents(
 async def my_page(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
 ) -> MyPage:
-    """The student page: what is due next and where to pay it, what was paid, and the
-    person's rank."""
+    """The student page: what is due next and where to pay it, what was paid, the
+    person's rank and their classes."""
     gym = (
         await session.execute(
             text(
@@ -157,6 +158,12 @@ async def my_page(
             "limit": PAYMENTS_SHOWN,
         },
     )
+    total, this_month, _ = await attended(
+        session,
+        tenant.person_id,
+        recent=start_of_local_day(today.replace(day=1), str(gym.timezone)),
+        since=None,
+    )
     return MyPage(
         gym_name=gym.name,
         timezone=gym.timezone,
@@ -165,5 +172,6 @@ async def my_page(
         next_payment=next_payment,
         bank_account=gym.bank_account,
         rank=await current_rank(session, tenant.person_id, readable_scheme(gym.settings)),
+        attendance=MyAttendance(this_month=this_month, total=total),
         payments=[MyPayment.model_validate(dict(row._mapping)) for row in payments],
     )

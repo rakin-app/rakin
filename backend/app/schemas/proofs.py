@@ -112,8 +112,8 @@ class ProofReview(BaseModel):
     prior_balance_clp: int
     # The membership's latest validated payments, newest first, at most three.
     last_payments: list[RecentPayment]
-    # Classes attended in the last 30 days; None until attendance is recorded (#44).
-    attendance_30d: int | None
+    # Classes the person attended here in the last 30 days: today and the 29 before it.
+    attendance_30d: int
 
 
 class ProofRejection(BaseModel):

@@ -59,6 +59,7 @@ REVIEWED = HTTPException(status.HTTP_409_CONFLICT, "this proof was already revie
 # Every pending payment with a proof, oldest claim first. "Prior balance" counts the
 # membership's other periods already due in the gym's timezone, each less what
 # validated payments and credits settle on it, as the guardian page does (`app.api.me`).
+# Attendance is the person's, over every membership: today and the 29 days before it.
 QUEUE = """
     SELECT e.id, e.membership_id, m.person_id, gp.name AS person_name,
            e.amount_clp, e.method, e.claimed_at, cg.name AS claimed_by_name,
@@ -67,7 +68,7 @@ QUEUE = """
            bp.amount_due_clp, coalesce(paid.amount, 0) AS paid_clp,
            coalesce(prior.amount, 0) AS prior_balance_clp,
            coalesce(recent.amounts, '{}') AS recent_amounts,
-           coalesce(recent.paid_at, '{}') AS recent_paid_at
+           coalesce(recent.paid_at, '{}') AS recent_paid_at, att.classes AS attendance_30d
     FROM ledger_entry e
     JOIN membership m ON m.id = e.membership_id
     JOIN plan pl ON pl.id = m.plan_id
@@ -97,6 +98,14 @@ QUEUE = """
               WHERE p.membership_id = m.id AND p.kind = :payment AND p.status = :validated
               ORDER BY at DESC LIMIT 3) r
     ) recent ON true
+    CROSS JOIN LATERAL (
+        SELECT count(*) AS classes FROM attendance a
+        JOIN session s ON s.id = a.session_id
+        JOIN membership am ON am.id = a.membership_id
+        WHERE am.person_id = m.person_id
+          AND (s.starts_at AT TIME ZONE g.timezone)::date
+              > (now() AT TIME ZONE g.timezone)::date - 30
+    ) att
     WHERE e.kind = :payment AND e.status = :pending AND e.proof_object_key IS NOT NULL
 """
 
@@ -159,7 +168,7 @@ async def _review(row: Any, store: BlobStore) -> ProofReview:
             RecentPayment(amount_clp=amount, paid_at=at)
             for amount, at in zip(row.recent_amounts, row.recent_paid_at, strict=True)
         ],
-        attendance_30d=None,
+        attendance_30d=row.attendance_30d,
     )
 
 
