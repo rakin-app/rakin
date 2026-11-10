@@ -405,3 +405,33 @@ def test_backfill_gives_every_member_and_staff_a_record() -> None:
         )
         assert [tuple(r) for r in rows] == [(member, "Member", "1-9"), (owner, "Owner", None)]
         command.downgrade(db.alembic(), "0003")
+
+
+@pg
+def test_creating_with_a_rut_names_whoever_has_the_email_and_no_rut(
+    client: TestClient, sur: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    known = create(client, sur, name="Ana", email=address).json()["id"]
+    again = create(client, sur, name="Ana", rut=new_rut(), email=address.upper())
+    assert again.status_code == 409
+    assert again.json() == {"detail": {"code": "email_in_gym", "person_id": known}}
+
+
+@pg
+def test_an_edit_is_checked_before_anything_is_written(client: TestClient, sur: uuid.UUID) -> None:
+    body = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": new_rut()}).json()
+    other = create(client, sur, name="Otra", email=f"{uuid.uuid4().hex[:8]}@example.cl").json()
+    url = f"/api/people/{body['id']}"
+
+    # Neither a RUT nor an email: nothing says who they are.
+    nobody = client.patch(url, json={"rut": None, "email": None, "name": "X"}, headers=as_gym(sur))
+    assert nobody.status_code == 422
+    # Someone else's email in this gym.
+    taken = client.patch(url, json={"email": other["email"], "name": "X"}, headers=as_gym(sur))
+    assert taken.status_code == 409
+    assert taken.json() == {"detail": {"code": "email_in_gym", "person_id": other["id"]}}
+    # A member left with no phone, alongside another change.
+    unreachable = client.patch(url, json={"phone": None, "name": "X"}, headers=as_gym(sur))
+    assert unreachable.status_code == 422
+    assert client.get(url, headers=as_gym(sur)).json() == body

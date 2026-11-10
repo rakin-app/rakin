@@ -42,6 +42,9 @@ export type RowErrorCode =
   | 'has_left'
   // Two of the name in the gym, and nothing else tells them apart (#165).
   | 'ambiguous_name'
+  // The RUT or email the row would give someone is another person's in this gym.
+  | 'rut_in_gym'
+  | 'email_in_gym'
 
 export type Outcome = 'created' | 'existing'
 

@@ -511,6 +511,10 @@ async def approve_join_request(
         guardian_email=row.guardian_email,
         no_whatsapp=row.no_whatsapp,
     )
+    if row.guardian_name is not None:
+        # As at submission: a child given their parent's email or phone has none of their
+        # own. A request sent before 0036 may still hold one (#165).
+        own_guardian(member)
     try:
         person_id, _ = await Writer(session, timezone, gym_today(timezone)).write(member)
     except RowRefused as refused:

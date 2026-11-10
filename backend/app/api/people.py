@@ -19,6 +19,7 @@ Every staff role may use it, coaches included; members may not.
 
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import date
 from typing import Annotated, Any, Literal
 
@@ -265,21 +266,91 @@ def in_gym_conflict(conflict: PersonConflict) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
 
 
+async def rut_holder(
+    session: AsyncSession, rut: str | None, *, person_id: uuid.UUID | None = None
+) -> uuid.UUID | None:
+    """Whoever else in this gym already has `rut` on their record."""
+    if rut is None:
+        return None
+    holder: uuid.UUID | None = await session.scalar(
+        text(
+            "SELECT person_id FROM gym_person"
+            " WHERE rut = :rut AND person_id IS DISTINCT FROM CAST(:id AS uuid)"
+            " ORDER BY created_at LIMIT 1"
+        ),
+        {"rut": rut, "id": person_id},
+    )
+    return holder
+
+
+async def email_holder(
+    session: AsyncSession, email: str | None, *, person_id: uuid.UUID | None = None
+) -> uuid.UUID | None:
+    """Whoever else in this gym already has `email` on their record."""
+    if email is None:
+        return None
+    holder: uuid.UUID | None = await session.scalar(
+        text(
+            "SELECT person_id FROM gym_person WHERE lower(email) = lower(btrim(:email))"
+            " AND person_id IS DISTINCT FROM CAST(:id AS uuid) ORDER BY created_at LIMIT 1"
+        ),
+        {"email": email, "id": person_id},
+    )
+    return holder
+
+
 async def refuse_rut_in_gym(
     session: AsyncSession, rut: str | None, *, person_id: uuid.UUID | None = None
 ) -> None:
     """Refuse a RUT someone else in this gym already has."""
-    if rut is None:
-        return
-    holder = await session.scalar(
-        text(
-            "SELECT person_id FROM gym_person"
-            " WHERE rut = :rut AND person_id IS DISTINCT FROM CAST(:id AS uuid)"
-        ),
-        {"rut": rut, "id": person_id},
-    )
-    if holder is not None:
+    if (holder := await rut_holder(session, rut, person_id=person_id)) is not None:
         raise in_gym_conflict(PersonConflict(code="rut_in_gym", person_id=holder))
+
+
+@dataclass(frozen=True)
+class InGym:
+    """Someone this gym already has, and what found them."""
+
+    person_id: uuid.UUID
+    by: DuplicateCode
+
+
+# With a RUT, an email finds only a record with no RUT of its own: someone with another
+# RUT is someone else. RLS keeps it to the gym.
+EMAIL_KEY_IN_GYM = text("""
+    SELECT person_id FROM gym_person
+    WHERE lower(email) = lower(btrim(:email)) AND (CAST(:rut AS text) IS NULL OR rut IS NULL)
+    ORDER BY created_at LIMIT 1
+""")
+
+
+async def find_in_gym(session: AsyncSession, rut: str | None, email: str | None) -> InGym | None:
+    """Whoever in this gym `rut`, else `email`, says they are: the one lookup every way
+    in shares (people, Nuevo alumno, invites, the import and the join link), so none
+    adds a second person for someone the gym has (#165). Only this gym's records."""
+    if (holder := await rut_holder(session, rut)) is not None:
+        return InGym(holder, "rut_in_gym")
+    if email is None:
+        return None
+    found = await session.scalar(EMAIL_KEY_IN_GYM, {"email": email, "rut": rut})
+    return None if found is None else InGym(found, "email_in_gym")
+
+
+async def give_identity(
+    session: AsyncSession, person_id: uuid.UUID, rut: str | None, email: str | None
+) -> None:
+    """Fill in the RUT and email this gym's record of `person_id` lacks, and make the RUT
+    who they are when nobody has it (`claim_rut`). Never overwrites either. The caller
+    has made sure nobody else here has the RUT."""
+    await session.execute(
+        text(
+            "UPDATE gym_person SET rut = coalesce(rut, :rut), email = coalesce(email, :email)"
+            " WHERE person_id = :id"
+        ),
+        {"id": person_id, "rut": rut, "email": email},
+    )
+    if rut is not None:
+        await claim_rut(session, person_id, rut)
 
 
 JOIN_GYM = "SELECT person_id, joined FROM join_gym(:rut, :email, :name, :phone, :dob)"
@@ -331,7 +402,8 @@ async def add_to_gym(
 ) -> uuid.UUID:
     """Add someone new to this gym, refusing a RUT, or the email of someone with no
     RUT, already someone's here."""
-    await refuse_rut_in_gym(session, rut)
+    if (found := await find_in_gym(session, rut, email)) is not None:
+        raise in_gym_conflict(PersonConflict(code=found.by, person_id=found.person_id))
     person_id, joined = await join_gym(
         session, name=name, rut=rut, email=email, phone=phone, no_whatsapp=no_whatsapp, dob=dob
     )
@@ -355,24 +427,48 @@ async def get_person(person_id: uuid.UUID, session: StaffSession) -> Person:
     return await read_person(session, person_id)
 
 
-@router.patch("/{person_id}", responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}})
+# This gym's record as an edit would leave it, to check before anything is written.
+EDITED = text("""
+    SELECT gp.rut, gp.email, gp.phone, gp.no_whatsapp,
+           EXISTS (SELECT FROM staff s WHERE s.person_id = gp.person_id) AS staff,
+           EXISTS (
+               SELECT FROM guardian_link d WHERE d.dependent_person_id = gp.person_id
+           ) AS dependent
+    FROM gym_person gp WHERE gp.person_id = :id
+""")
+
+
+@router.patch(
+    "/{person_id}",
+    responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}},
+)
 async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: StaffSession) -> Person:
+    """Checked first, written second: a refusal writes nothing."""
     changes = body.model_dump(exclude_unset=True)
-    await refuse_rut_in_gym(session, changes.get("rut"), person_id=person_id)
+    record = (await session.execute(EDITED, {"id": person_id})).one_or_none()
+    if record is None:
+        raise NOT_FOUND
+    after = {**record._asdict(), **changes}
+    if changes.keys() & {"rut", "email"}:
+        # Someone, as a kid with a guardian is not, is their RUT or their email.
+        if after["rut"] is None and after["email"] is None and not record.dependent:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "a RUT or an email")
+        await refuse_rut_in_gym(session, changes.get("rut"), person_id=person_id)
+        if holder := await email_holder(session, changes.get("email"), person_id=person_id):
+            raise in_gym_conflict(PersonConflict(code="email_in_gym", person_id=holder))
+    # A member's phone is cleared, or "No tiene WhatsApp" unticked, only with a phone in
+    # its place. Editing anything else leaves a member already missing one as they were
+    # ("Falta teléfono").
+    reachable = after["phone"] is not None or after["no_whatsapp"]
+    member = not record.staff and not record.dependent
+    if changes.keys() & {"phone", "no_whatsapp"} and member and not reachable:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, PHONE_REQUIRED)
     if changes:
         assignments = ", ".join(f"{column} = :{column}" for column in changes)
-        result = await session.execute(
+        await session.execute(
             text(f"UPDATE gym_person SET {assignments}, updated_at = now() WHERE person_id = :id"),
             {**changes, "id": person_id},
         )
-        if result.rowcount == 0:  # type: ignore[attr-defined]
-            raise NOT_FOUND
     if changes.get("rut") is not None:
         await claim_rut(session, person_id, changes["rut"])
-    person = await read_person(session, person_id)
-    # A member's phone is cleared, or "No tiene WhatsApp" unticked, only with a phone in
-    # its place. Raised, so the update rolls back. Editing anything else leaves a
-    # member already missing one as they were ("Falta teléfono").
-    if person.missing_phone and changes.keys() & {"phone", "no_whatsapp"}:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, PHONE_REQUIRED)
-    return person
+    return await read_person(session, person_id)

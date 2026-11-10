@@ -377,3 +377,22 @@ def test_coaches_and_members_cannot_see_or_manage_the_staff(
         assert client.get("/api/staff", headers=headers).status_code == 403
         assert invite(client, gym, by=person).status_code == 403
         assert client.delete(f"/api/staff/{coach}", headers=headers).status_code == 403
+
+
+def test_an_invite_with_a_rut_is_whoever_the_gym_has_under_its_email(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    member = client.post(
+        "/api/people", json={"name": "Ana", "email": address}, headers=as_gym(gym)
+    ).json()["id"]
+    rut = random_rut()
+
+    response = invite(client, gym, rut=rut, email=address, name="Ana Coach")
+
+    assert response.status_code == 201, response.text
+    assert response.json()["person_id"] == member
+    rows = run(
+        db.admin_url, lambda c: c.fetch("SELECT rut FROM person WHERE id = $1", uuid.UUID(member))
+    )
+    assert rows[0]["rut"] == rut

@@ -303,7 +303,7 @@ def test_a_minor_needs_their_guardians_phone_not_their_own(
 
 
 @pg
-def test_a_guardian_picked_with_no_phone_is_refused_or_given_one(
+def test_a_guardian_the_gym_has_with_no_phone_is_refused_and_left_as_they_are(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     rut = new_rut()
@@ -318,15 +318,36 @@ def test_a_guardian_picked_with_no_phone_is_refused_or_given_one(
 
     picked = enrol(client, gym, phone=None, name="Tomás", guardian={"person_id": marta["id"]})
     assert picked.status_code == 422
-    assert count(db, gym, "SELECT count(*) FROM gym_person WHERE name = 'Tomás'") == 0
-
-    # Typed again with a phone, by their RUT: the phone fills in what this gym lacked.
-    phone = new_phone()
-    typed = enrolled(
-        client, gym, phone=None, name="Tomás", guardian={"rut": rut, "name": "M.", "phone": phone}
+    # Typed again by their RUT with a phone: that phone is not this form's to give them,
+    # so the record stays as the gym has it, and the enrolment is refused.
+    typed = enrol(
+        client,
+        gym,
+        phone=None,
+        name="Tomás",
+        guardian={"rut": rut, "name": "M.", "phone": new_phone()},
     )
-    assert typed["missing_phone"] is False
-    assert client.get(f"/api/people/{marta['id']}", headers=as_gym(gym)).json()["phone"] == phone
+    assert typed.status_code == 422
+    assert count(db, gym, "SELECT count(*) FROM gym_person WHERE name = 'Tomás'") == 0
+    assert client.get(f"/api/people/{marta['id']}", headers=as_gym(gym)).json()["phone"] is None
+
+
+@pg
+def test_a_new_guardian_takes_the_phone_typed(client: TestClient, gym: uuid.UUID) -> None:
+    phone = new_phone()
+    kid = enrolled(
+        client,
+        gym,
+        phone=None,
+        name="Tomás",
+        guardian={"rut": new_rut(), "name": "Marta", "phone": phone},
+    )
+    family = client.get(f"/api/people/{kid['id']}/family", headers=as_gym(gym)).json()
+    guardian = family["guardian"]["id"]
+    assert (
+        client.get(f"/api/people/{guardian}", headers=as_gym(gym)).json()["phone"]
+        == "+56" + phone[3:]
+    )
 
 
 @pg

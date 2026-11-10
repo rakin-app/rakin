@@ -374,10 +374,9 @@ def test_the_upgrade_keeps_every_phone_and_keys_people_by_rut() -> None:
         assert phones[(sur, both)] == phones[(norte, both)] == "+56911110001"
         assert phones[(sur, typo)] == "+56911110002"
         assert phones[(sur, kid)] is None
-        # Every gym's own record keeps the RUT it entered.
-        assert {(r["gym_id"], r["person_id"]): r["rut"] for r in records}[
-            (sur, typo)
-        ] == "7654321-6"
+        # Both in sur under one RUT: the later one's record there loses it, so one gym
+        # never holds a RUT twice.
+        assert {(r["gym_id"], r["person_id"]): r["rut"] for r in records}[(sur, typo)] is None
         assert not any(r["no_whatsapp"] for r in records)
         assert run(db.admin_url, lambda c: c.fetchval("SELECT count(*) FROM join_request")) == 1
 
@@ -391,6 +390,60 @@ def test_the_upgrade_keeps_every_phone_and_keys_people_by_rut() -> None:
             bad: "+56911110004",
             kid: None,
         }
+
+
+def test_a_record_under_a_shared_rut_moves_to_the_person_who_keeps_it() -> None:
+    with throwaway_database(require_test_database_url()) as db:
+        migrate(db, "0035")
+        sur, norte, kept, other = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+        async def seed(conn: asyncpg.Connection) -> None:
+            await conn.execute(
+                "INSERT INTO gym (id, name, slug) VALUES ($1, 's', 's'), ($2, 'n', 'n')", sur, norte
+            )
+            # One human, added under two phones: `kept` in sur, `other` in norte, later.
+            await conn.executemany(
+                "INSERT INTO person (id, name, phone, rut, created_at) VALUES ($1, $2, $3, $4, $5)",
+                [
+                    (kept, "Ana", "+56911110001", "7654321-6", datetime(2025, 1, 1, tzinfo=UTC)),
+                    (other, "Ana", "+56911110002", "7654321-6", datetime(2025, 6, 1, tzinfo=UTC)),
+                ],
+            )
+            await conn.executemany(
+                "INSERT INTO gym_person (gym_id, person_id, name, rut) VALUES ($1, $2, 'Ana', $3)",
+                [(sur, kept, "7654321-6"), (norte, other, "7654321-6")],
+            )
+            plan = await conn.fetchval(
+                "INSERT INTO plan (gym_id, name, kind, price_clp, anchor)"
+                " VALUES ($1, 'M', 'monthly', 1, 'signup') RETURNING id",
+                norte,
+            )
+            await conn.execute(
+                "INSERT INTO membership (gym_id, person_id, plan_id, status)"
+                " VALUES ($1, $2, $3, 'active')",
+                norte,
+                other,
+                plan,
+            )
+            await conn.execute(
+                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')", norte, other
+            )
+
+        run(db.admin_url, seed)
+        migrate(db)
+
+        def owners(sql: str) -> set[uuid.UUID]:
+            return {r[0] for r in run(db.admin_url, lambda c: c.fetch(sql, norte))}
+
+        # Norte's record, its membership and its staff row are now `kept`'s.
+        assert owners("SELECT person_id FROM gym_person WHERE gym_id = $1") == {kept}
+        assert owners("SELECT person_id FROM membership WHERE gym_id = $1") == {kept}
+        assert owners("SELECT person_id FROM staff WHERE gym_id = $1") == {kept}
+        ruts = run(db.admin_url, lambda c: c.fetch("SELECT id, rut FROM person"))
+        assert {r["id"]: r["rut"] for r in ruts} == {kept: "7654321-6", other: None}
+        # And `join_gym` in norte finds them, as the one person they are.
+        join = "SELECT person_id, joined FROM join_gym('7654321-6', NULL, 'x', NULL, NULL)"
+        assert [tuple(r) for r in run(db.api_url, in_gym(norte, join))] == [(kept, False)]
 
 
 @pytest.mark.parametrize(

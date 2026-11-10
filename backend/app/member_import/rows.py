@@ -58,7 +58,8 @@ class Field(StrEnum):
 # before the start. `has_guardian`, `one_level`: the link is refused (migration 0010).
 # `has_left`: the member was dado de baja, and starts no plan until reactivated (0032).
 # `ambiguous_name`: a row with no RUT and no email names someone the gym has two of, and
-# neither the birth date nor the phone says which (#165).
+# neither the birth date nor the phone says which (#165). `rut_in_gym`, `email_in_gym`:
+# the RUT or email the row would give someone is another person's in this gym.
 ErrorCode = Literal[
     "required",
     "repeated",
@@ -75,6 +76,8 @@ ErrorCode = Literal[
     "one_level",
     "has_left",
     "ambiguous_name",
+    "rut_in_gym",
+    "email_in_gym",
 ]
 
 

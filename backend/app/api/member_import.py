@@ -38,7 +38,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.guardians import family, link
 from app.api.memberships import PersonHasLeft, insert_membership
-from app.api.people import claim_rut, join_gym, missing_phone
+from app.api.people import (
+    email_holder,
+    find_in_gym,
+    give_identity,
+    join_gym,
+    missing_phone,
+    rut_holder,
+)
 from app.domain import membership as domain
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.membership import PlanKind, PlanTerms
@@ -78,12 +85,6 @@ SPREADSHEET_BODY = {"schema": {"type": "string", "format": "binary"}}
 
 PLANS = "SELECT id, name, active, kind, anchor, credits, credit_expiry_days FROM plan"
 
-# RLS keeps every table to the current gym. Whoever here has the RUT, or the email,
-# the first added when several have it.
-BY_RUT = "SELECT person_id FROM gym_person WHERE rut = :key ORDER BY created_at LIMIT 1"
-BY_EMAIL = """
-    SELECT person_id FROM gym_person WHERE lower(email) = :key ORDER BY created_at LIMIT 1
-"""
 GUARDIAN_OF = "SELECT guardian_person_id FROM guardian_link WHERE dependent_person_id = :id"
 LIVE_MEMBERSHIP = """
     SELECT plan_id, current_period_end FROM membership
@@ -91,22 +92,31 @@ LIVE_MEMBERSHIP = """
     ORDER BY started_at DESC, created_at DESC
     LIMIT 1
 """
-# Whom this gym has under a name, for a row, or a row's guardian, that gives no RUT and
-# no email (#165): the people who are nobody's dependent, with what tells two of one
-# name apart. `keyless` keeps only those with no RUT and no email, whom a row that does
-# give one may be. The name folded as `app.member_import.rows.fold` folds it: case,
-# accents and spacing.
-FOLDED_NAME = (
-    "lower(translate(regexp_replace(btrim({}), '\\s+', ' ', 'g'),"
-    " 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNaeiouun'))"
-)
-BY_NAME = f"""
-    SELECT gp.person_id, gp.dob, gp.phone FROM gym_person gp
-    WHERE {FOLDED_NAME.format("gp.name")} = :name
-      AND NOT EXISTS (SELECT FROM guardian_link d WHERE d.dependent_person_id = gp.person_id)
-      AND (NOT :keyless OR (gp.rut IS NULL AND gp.email IS NULL))
-    ORDER BY gp.created_at
+# This gym's people, for finding a row that gives no RUT and no email by name (#165):
+# what tells two of one name apart, whether they have a RUT or an email, and whether
+# they are someone's dependent. The name is folded in Python (`rows.fold`), the one
+# fold the sheet's own names get, so a name matches whatever its accents. RLS keeps it
+# to the gym.
+PEOPLE = """
+    SELECT gp.person_id, gp.name, gp.dob, gp.phone,
+           gp.rut IS NULL AND gp.email IS NULL AS keyless,
+           EXISTS (
+               SELECT FROM guardian_link d WHERE d.dependent_person_id = gp.person_id
+           ) AS dependent
+    FROM gym_person gp
 """
+
+
+@dataclass(frozen=True)
+class Record:
+    """One of this gym's people, as a by-name lookup sees them."""
+
+    person_id: uuid.UUID
+    name: str
+    dob: date | None
+    phone: str | None
+    keyless: bool
+    dependent: bool
 
 
 @dataclass(frozen=True)
@@ -209,17 +219,29 @@ class Writer:
         # Whom this run's rows have written, by the name the sheet gives them: a
         # guardian the sheet names alone is the person their own row is.
         self.written: dict[str, list[Named]] = {}
+        # This gym's people by folded name, read once and kept as rows are written.
+        self._people: dict[uuid.UUID, Record] | None = None
 
     async def _scalar(self, sql: str, **params: Any) -> Any:
         return await self.session.scalar(text(sql), params)
 
-    async def _found(self, key: tuple[str, str]) -> uuid.UUID | None:
-        """Whoever this gym already has under `key` (`Member.key`)."""
-        kind, value = key
-        found: uuid.UUID | None = await self._scalar(
-            BY_RUT if kind == "rut" else BY_EMAIL, key=value
+    async def _people_by_name(self) -> dict[uuid.UUID, Record]:
+        if self._people is None:
+            rows = await self.session.execute(text(PEOPLE))
+            self._people = {r.person_id: Record(**r._asdict()) for r in rows}
+        return self._people
+
+    async def _refresh(self, *person_ids: uuid.UUID | None) -> None:
+        """Read again those a row wrote, once it is in: a refused row leaves them as they
+        were, since its savepoint is rolled back."""
+        if self._people is None:
+            return
+        ids = [i for i in person_ids if i is not None]
+        rows = await self.session.execute(
+            text(f"{PEOPLE} WHERE gp.person_id = ANY(:ids)"), {"ids": ids}
         )
-        return found
+        for r in rows:
+            self._people[r.person_id] = Record(**r._asdict())
 
     async def _named(
         self,
@@ -232,11 +254,27 @@ class Writer:
     ) -> uuid.UUID | None:
         """Whoever this gym has under `name`, told apart by `dob` and `phone` when
         several are; with `sheet`, first whoever this sheet's own row of the name is.
-        `AmbiguousName` when nothing tells them apart."""
+        With `keyless`, only those with no RUT and no email. `AmbiguousName` when
+        nothing tells them apart."""
         if sheet and (written := self.written.get(fold(name))):
             return told_apart(written, dob, phone)
-        rows = await self.session.execute(text(BY_NAME), {"name": fold(name), "keyless": keyless})
-        return told_apart([Named(r.person_id, r.dob, r.phone) for r in rows], dob, phone)
+        folded = fold(name)
+        found = [
+            Named(r.person_id, r.dob, r.phone)
+            for r in (await self._people_by_name()).values()
+            if fold(r.name) == folded and not r.dependent and (r.keyless or not keyless)
+        ]
+        return told_apart(found, dob, phone)
+
+    async def _in_gym(self, rut: str | None, email: str | None) -> uuid.UUID | None:
+        """Whoever this gym has under the RUT, or the email (`find_in_gym`): one with no
+        RUT, given one now, takes it."""
+        found = await find_in_gym(self.session, rut, email)
+        if found is None:
+            return None
+        if found.by == "email_in_gym" and rut is not None:
+            await give_identity(self.session, found.person_id, rut, None)
+        return found.person_id
 
     async def _join(self, **fields: Any) -> tuple[uuid.UUID, Outcome]:
         """`join_gym`: someone new here, or, by a RUT this gym gave someone else's
@@ -270,11 +308,12 @@ class Writer:
         # Whom the gym messages about them, and whether it can: "Falta teléfono".
         contact = guardian_id if guardian_id is not None else person_id
         missing = bool(await self._scalar(MISSING_PHONE, id=contact))
+        # Last, so a row refused part way leaves nobody here it rolled back.
         if not member.is_dependent:
-            # Last, so a row refused part way leaves nobody here it rolled back.
             self.written.setdefault(fold(member.name), []).append(
                 Named(person_id, member.dob, member.phone)
             )
+        await self._refresh(person_id, guardian_id)
         return person_id, RowResult(
             row=member.number,
             name=member.name,
@@ -306,7 +345,7 @@ class Writer:
                 found = await self._named(member.name, member.dob, member.phone)
             except AmbiguousName:
                 raise RowRefused(Field.NAME, "ambiguous_name") from None
-        elif (found := await self._found(member.key)) is None:
+        elif (found := await self._in_gym(member.rut, member.email)) is None:
             # Someone an earlier sheet gave no RUT or email, given one now: it becomes
             # who they are. Unsure who, they are someone new: the RUT says so.
             try:
@@ -333,7 +372,7 @@ class Writer:
 
     async def _guardian(self, member: Member) -> tuple[uuid.UUID, Outcome]:
         if member.guardian_key is not None:
-            found = await self._found(member.guardian_key)
+            found = await self._in_gym(member.guardian_rut, member.guardian_email)
         else:
             # Named only: whoever this gym has under that name, as their own row may be.
             assert member.guardian_name is not None
@@ -363,13 +402,13 @@ class Writer:
 
     async def _key(self, person_id: uuid.UUID, member: Member) -> None:
         """Give someone this gym had with no RUT and no email the row's: their record
-        takes it, and a RUT nobody has yet becomes who they are (`claim_rut`)."""
-        await self.session.execute(
-            text("UPDATE gym_person SET rut = :rut, email = :email WHERE person_id = :id"),
-            {"id": person_id, "rut": member.rut, "email": member.email},
-        )
-        if member.rut is not None:
-            await claim_rut(self.session, person_id, member.rut)
+        takes it, and a RUT nobody has yet becomes who they are (`claim_rut`). Never a
+        RUT or an email someone else here has: one gym holds each once."""
+        if await rut_holder(self.session, member.rut, person_id=person_id) is not None:
+            raise RowRefused(Field.RUT, "rut_in_gym")
+        if await email_holder(self.session, member.email, person_id=person_id) is not None:
+            raise RowRefused(Field.EMAIL, "email_in_gym")
+        await give_identity(self.session, person_id, member.rut, member.email)
 
     async def _dependent(self, member: Member, guardian_id: uuid.UUID) -> tuple[uuid.UUID, Outcome]:
         theirs = await family(self.session, guardian_id)

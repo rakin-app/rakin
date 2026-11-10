@@ -29,7 +29,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.people import join_gym
+from app.api.people import find_in_gym, give_identity, join_gym
 from app.notices import STAFF_INVITE, Notice, Notices, get_notices
 from app.roles import AdminSession, Role, role_in_gym
 from app.schemas.staff import (
@@ -111,12 +111,12 @@ async def invite_staff(
     role = Role(body.role)
     _may_manage(await role_in_gym(session, tenant), role)
 
-    found = await session.scalar(
-        text("SELECT person_id FROM gym_person WHERE rut = :rut LIMIT 1"), {"rut": body.rut}
-    )
+    found = await find_in_gym(session, body.rut, body.email)
     if found is not None:
-        # Their RUT is who they are here: whoever this gym gave it to.
-        person_id, joined = found, False
+        # Whoever this gym has under the RUT, or, with no RUT of their own, the email.
+        person_id, joined = found.person_id, False
+        if found.by == "email_in_gym":
+            await give_identity(session, person_id, body.rut, None)
     else:
         person_id, joined = await join_gym(
             session, name=body.name, rut=body.rut, email=body.email, phone=body.phone

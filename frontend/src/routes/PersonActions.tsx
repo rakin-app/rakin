@@ -239,6 +239,8 @@ function EditForm({
                 {form.refused.open}
               </Link>
             </>
+          ) : refusedFor(save.error, 'a RUT or an email') ? (
+            form.refused.identity
           ) : phoneRequired(save.error) ? (
             form.refused.phone
           ) : save.error instanceof ApiError && save.error.status === 422 ? (
@@ -261,11 +263,16 @@ function EditForm({
   )
 }
 
-/** The 422 a member's edit gets for leaving them with no phone and no "No tiene WhatsApp". */
-function phoneRequired(error: unknown): boolean {
+/** Whether the API refused an edit with the 422 whose detail starts with `reason`. */
+function refusedFor(error: unknown, reason: string): boolean {
   if (!(error instanceof ApiError) || error.status !== 422) return false
   const detail = (error.body as { detail?: unknown } | undefined)?.detail
-  return typeof detail === 'string' && detail.startsWith('a phone is required')
+  return typeof detail === 'string' && detail.startsWith(reason)
+}
+
+/** The 422 a member's edit gets for leaving them with no phone and no "No tiene WhatsApp". */
+function phoneRequired(error: unknown): boolean {
+  return refusedFor(error, 'a phone is required')
 }
 
 function LeaveForm({

@@ -1028,3 +1028,31 @@ def test_the_tables_are_this_gyms(client: TestClient, db: Database, gym: uuid.UU
     links = run(db.api_url, in_gym(other, "SELECT * FROM join_link"))
 
     assert (seen, links) == ([], [])
+
+
+def test_a_request_queued_before_0036_with_the_guardians_email_is_approved(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # As 0031's form left one: a minor's own email and phone, the guardian's.
+    phone = new_phone()
+    request = run(
+        db.admin_url,
+        lambda c: c.fetchval(
+            "INSERT INTO join_request (gym_id, first_name, last_name, rut, phone, email, dob,"
+            " guardian_name, guardian_phone, guardian_email, consented_at)"
+            " VALUES ($1, 'Juan', 'Pérez', $2, $3, 'marta.vieja@example.cl', $4, 'Marta Pérez',"
+            " $3, 'marta.vieja@example.cl', now()) RETURNING id",
+            gym,
+            new_rut(),
+            phone,
+            date.fromisoformat(minor_dob()),
+        ),
+    )
+
+    answer = approved(client, gym, str(request))
+
+    juan = record(db, gym, answer["person_id"])
+    assert (juan["email"], juan["phone"]) == (None, None)
+    guardian = guardian_of(db, gym, answer["person_id"])
+    assert guardian is not None
+    assert record(db, gym, str(guardian))["email"] == "marta.vieja@example.cl"

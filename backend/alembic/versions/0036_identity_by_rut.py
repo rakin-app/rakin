@@ -40,8 +40,9 @@ The backfill keeps everyone working:
 - `person.rut` keeps what the first gym entered, and a person with none takes the RUT
   their gyms' records agree on, if they agree. A RUT not in the stored form is cleared
   from `person` only. Where two people hold one RUT (one human added under two phones,
-  or a typo), the oldest keeps it and the others are left with none, keyed as people
-  with no RUT are. Every gym's own record keeps the RUT it entered either way.
+  or a typo), the oldest keeps it. Another's record in a gym the oldest is not in moves
+  to the oldest, with everything that names it; in a gym that has both, the other's
+  record there loses the RUT, so no gym holds a RUT twice.
 - `join_request.rut` becomes optional, and a request's guardian is found by their
   email, so the phone is optional for them too. An adult's request still needs an
   email, which is how they are told they are in and how they sign in.
@@ -61,6 +62,8 @@ Create Date: 2026-11-10
 """
 
 from collections.abc import Sequence
+
+import sqlalchemy as sa
 
 from alembic import op
 
@@ -99,6 +102,90 @@ def _grant_join(signature: str) -> None:
     op.execute(f"GRANT EXECUTE ON FUNCTION {signature} TO {APP_ROLE}")
 
 
+def _children() -> list[tuple[str, str]]:
+    """Every (table, column) that names a `gym_person` record, and `message_log`'s
+    person: what moves with a gym's record from one person to another."""
+    rows = op.get_bind().exec_driver_sql("""
+        SELECT c.conrelid::regclass::text, a.attname
+        FROM pg_constraint c
+        JOIN LATERAL unnest(c.conkey) k(attnum) ON true
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+        WHERE c.contype = 'f' AND c.confrelid = 'gym_person'::regclass
+          AND a.attname <> 'gym_id'
+        ORDER BY 1, 2
+    """)
+    return [*((str(t), str(col)) for t, col in rows), ("message_log", "person_id")]
+
+
+def _merge_shared_ruts() -> None:
+    """Two people one RUT: the first seen keeps it. Where the other is in a gym the
+    first is not, that gym's record, and everything that names it, moves to the first,
+    so the gym's one RUT is one person. Where both are in a gym, the other's record
+    there loses the RUT, and with no email shows "Falta RUT". Actors in history (who
+    validated a payment, marked attendance) name a `person`, which stays."""
+    columns = [
+        str(c)
+        for (c,) in op.get_bind().exec_driver_sql(
+            "SELECT attname FROM pg_attribute WHERE attrelid = 'gym_person'::regclass"
+            " AND attnum > 0 AND NOT attisdropped ORDER BY attnum"
+        )
+    ]
+    children = _children()
+    # Those whose RLS binds the owner, lifted for the move and put back after it.
+    tables = [
+        str(t)
+        for (t,) in op.get_bind().execute(
+            sa.text(
+                "SELECT relname FROM pg_class WHERE relforcerowsecurity"
+                " AND relname = ANY(:names) ORDER BY relname"
+            ),
+            {"names": sorted({t for t, _ in children})},
+        )
+    ]
+    for table in tables:
+        op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
+    op.execute("""
+        CREATE TEMP TABLE shared_rut ON COMMIT DROP AS
+        SELECT ranked.id AS other, first_value(ranked.id) OVER w AS kept, ranked.rut
+        FROM (
+            SELECT id, rut, row_number() OVER (PARTITION BY rut ORDER BY created_at, id) AS nth
+            FROM person WHERE rut IS NOT NULL
+        ) ranked
+        WINDOW w AS (PARTITION BY ranked.rut ORDER BY ranked.nth)
+    """)
+    op.execute("DELETE FROM shared_rut WHERE other = kept")
+    op.execute("""
+        CREATE TEMP TABLE moved ON COMMIT DROP AS
+        SELECT gp.gym_id, s.other, s.kept
+        FROM gym_person gp JOIN shared_rut s ON gp.person_id = s.other
+        WHERE NOT EXISTS (
+            SELECT FROM gym_person k WHERE k.gym_id = gp.gym_id AND k.person_id = s.kept
+        )
+    """)
+    copied = ", ".join("m.kept" if c == "person_id" else f"gp.{c}" for c in columns)
+    op.execute(f"""
+        INSERT INTO gym_person ({", ".join(columns)})
+        SELECT {copied} FROM gym_person gp
+        JOIN moved m ON m.gym_id = gp.gym_id AND m.other = gp.person_id
+    """)
+    for table, column in children:
+        op.execute(f"""
+            UPDATE {table} t SET {column} = m.kept FROM moved m
+            WHERE t.gym_id = m.gym_id AND t.{column} = m.other
+        """)
+    op.execute("""
+        DELETE FROM gym_person gp USING moved m
+        WHERE gp.gym_id = m.gym_id AND gp.person_id = m.other
+    """)
+    op.execute("""
+        UPDATE gym_person gp SET rut = NULL FROM shared_rut s
+        WHERE gp.person_id = s.other AND gp.rut = s.rut
+    """)
+    op.execute("UPDATE person p SET rut = NULL FROM shared_rut s WHERE p.id = s.other")
+    for table in tables:
+        op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
+
+
 def upgrade() -> None:
     op.execute(f"ALTER TABLE gym_person ADD COLUMN phone text CHECK (phone ~ {E164})")
     op.execute("ALTER TABLE gym_person ADD COLUMN no_whatsapp boolean NOT NULL DEFAULT false")
@@ -119,14 +206,7 @@ def upgrade() -> None:
         ) agreed
         WHERE p.id = agreed.person_id AND p.rut IS NULL
     """)
-    op.execute("""
-        UPDATE person p SET rut = NULL
-        FROM (
-            SELECT id, row_number() OVER (PARTITION BY rut ORDER BY created_at, id) AS nth
-            FROM person WHERE rut IS NOT NULL
-        ) ranked
-        WHERE p.id = ranked.id AND ranked.nth > 1
-    """)
+    _merge_shared_ruts()
     _force(True)
 
     op.execute("ALTER TABLE person ADD CONSTRAINT person_rut_key UNIQUE (rut)")

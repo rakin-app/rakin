@@ -775,3 +775,74 @@ def test_a_join_request_with_a_rut_keys_someone_the_gym_had_by_name(
 
     assert approved.json()["person_id"] == ana
     assert person_rut(db, ana) == rut
+
+
+# --- one lookup for RUT and email, and one fold for names (#175 review) ------------
+
+
+@pg
+def test_a_row_with_a_rut_and_email_is_whoever_the_gym_has_under_the_email(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    known = client.post(
+        "/api/people", json={"name": "Ana Soto", "email": address}, headers=as_gym(gym)
+    ).json()["id"]
+    rut = random_rut()
+    sheet = sheet_with(["Ana Soto", rut, address], mapping={"name": 0, "rut": 1, "email": 2})
+    count = people(db, gym)
+
+    [row] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert (row["errors"], row["person"]) == ([], "existing")
+    assert people(db, gym) == count
+    assert (person_rut(db, known), find(client, gym, "Ana Soto")["rut"]) == (rut, rut)
+    # And again: found by the RUT now, still nobody new.
+    [again] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert again["person"] == "existing"
+    assert people(db, gym) == count
+
+
+@pg
+def test_a_name_matches_whatever_its_accents(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    mapping = {"name": 0, "dob": 1}
+    imported(
+        client,
+        gym,
+        sheet_with(["François Müller-Öberg", "1990-01-01"], mapping=mapping),
+        dry_run=False,
+    )
+    count = people(db, gym)
+    [again] = imported(
+        client, gym, sheet_with(["francois  MULLER-oberg", ""], mapping=mapping), dry_run=False
+    )["rows"]
+    assert again["person"] == "existing"
+    assert people(db, gym) == count
+
+    # A second of the name, born another day; then a row that says only the name.
+    second = sheet_with(["Francois Muller-Oberg", "2001-02-02"], mapping=mapping)
+    assert imported(client, gym, second, dry_run=False)["rows"][0]["person"] == "created"
+    [refused] = imported(
+        client, gym, sheet_with(["FRANÇOIS MÜLLER-ÖBERG", ""], mapping=mapping), dry_run=True
+    )["rows"]
+    assert refused["errors"] == [{"field": "name", "code": "ambiguous_name"}]
+
+
+@pg
+def test_a_row_never_gives_someone_an_email_another_person_here_has(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    client.post(
+        "/api/people",
+        json={"name": "Otra", "rut": random_rut(), "email": address},
+        headers=as_gym(gym),
+    )
+    imported(client, gym, sheet_with(["Ana Paz"], mapping={"name": 0}), dry_run=False)
+    keyed = {"name": 0, "rut": 1, "email": 2}
+    [row] = imported(
+        client, gym, sheet_with(["Ana Paz", random_rut(), address], mapping=keyed), dry_run=False
+    )["rows"]
+    assert row["errors"] == [{"field": "email", "code": "email_in_gym"}]
+    assert find(client, gym, "Ana Paz")["missing_rut"] is True

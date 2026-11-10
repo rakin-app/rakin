@@ -34,7 +34,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.custom_fields import field_cipher, write_person_fields
 from app.api.guardians import link
 from app.api.memberships import CALL_OFF_BOOKED, start_membership, welcome_for
-from app.api.people import NOT_FOUND, add_to_gym, in_gym, join_gym, read_person
+from app.api.people import (
+    NOT_FOUND,
+    add_to_gym,
+    find_in_gym,
+    give_identity,
+    in_gym,
+    join_gym,
+    read_person,
+)
 from app.domain import membership as domain
 from app.domain.dates import add_months, gym_today, is_minor
 from app.domain.membership import MembershipStatus, PlanKind
@@ -49,7 +57,6 @@ from app.schemas.people import (
     ForgetConflict,
     ForgetRefused,
     Leaving,
-    NewGuardian,
     Person,
     PersonInGym,
     Return,
@@ -60,15 +67,6 @@ router = APIRouter(prefix="/api/people", tags=["people"])
 
 CurrentTenant = Annotated[Tenant, Depends(current_tenant)]
 
-# Whoever this gym's record gives the RUT. RLS keeps it to the gym.
-RUT_IN_GYM = text("SELECT person_id FROM gym_person WHERE rut = :rut LIMIT 1")
-
-# A phone, or "No tiene WhatsApp", for a record that has neither.
-FILL_CONTACT = text("""
-    UPDATE gym_person
-    SET phone = coalesce(phone, :phone), no_whatsapp = no_whatsapp OR :no_whatsapp
-    WHERE person_id = :id AND phone IS NULL AND NOT no_whatsapp
-""")
 REACHABLE = text("SELECT phone IS NOT NULL OR no_whatsapp FROM gym_person WHERE person_id = :id")
 
 # Their record, locked so a leave and a return take turns. RLS keeps it to the gym.
@@ -111,8 +109,9 @@ async def _today(session: AsyncSession, tenant: Tenant) -> date:
 
 async def _guardian(session: AsyncSession, body: Enrolment) -> uuid.UUID | None:
     """The guardian `body` names, added to the gym if new to it. They are who the gym
-    messages about the minor, so they need a phone, or "No tiene WhatsApp" ticked: a new
-    guardian's fills in one this gym's record lacks."""
+    messages about the minor, so they need a phone, or "No tiene WhatsApp" ticked. One
+    the gym has already is left as it has them: a phone typed here is not theirs to
+    change, and one they lack is added on their own ficha."""
     guardian = body.guardian
     if guardian is None:
         return None
@@ -120,17 +119,14 @@ async def _guardian(session: AsyncSession, body: Enrolment) -> uuid.UUID | None:
         if not await in_gym(session, guardian.person_id):
             raise _unprocessable("guardian not found")
         guardian_id = guardian.person_id
-    elif (found := await session.scalar(RUT_IN_GYM, {"rut": guardian.rut})) is not None:
-        # Their RUT is who they are, so the guardian is whoever here has it.
-        guardian_id = found
+    elif (found := await find_in_gym(session, guardian.rut, guardian.email)) is not None:
+        # Whoever this gym has under the RUT, or, with no RUT of their own, the email.
+        guardian_id = found.person_id
+        if found.by == "email_in_gym":
+            await give_identity(session, guardian_id, guardian.rut, None)
     else:
-        # Whoever they are, here already (by RUT, or by email with none) or new.
+        # New here: their record takes the phone and "No tiene WhatsApp" typed.
         guardian_id, _ = await join_gym(session, **guardian.model_dump())
-    if isinstance(guardian, NewGuardian):
-        await session.execute(
-            FILL_CONTACT,
-            {"id": guardian_id, "phone": guardian.phone, "no_whatsapp": guardian.no_whatsapp},
-        )
     if not await session.scalar(REACHABLE, {"id": guardian_id}):
         raise _unprocessable("the guardian needs a phone, or no_whatsapp")
     return guardian_id
