@@ -3,14 +3,16 @@ read it.
 
 Dates are calendar dates in the gym's timezone (`app.domain.dates`): `started_on`,
 `current_period_end` (paid through, or the last day of a pack or trial), the day a
-pending plan change takes effect, and a freeze's first and last days.
+pending plan change takes effect, and a freeze's first and last days. A freeze can
+start on a later day, and end early or change its end or reason while it runs or
+before it starts (#115).
 """
 
 import uuid
 from datetime import UTC, date, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator, model_validator
 
 from app.domain.dates import add_months
 from app.domain.membership import MembershipStatus, PlanKind
@@ -59,12 +61,30 @@ class Cancellation(BaseModel):
 
 
 class FreezeCreate(BaseModel):
-    """A freeze from today until `to_date`, the day the membership is Active again."""
+    """A freeze from `from_date` until `to_date`, the day the membership is Active
+    again."""
 
     model_config = ConfigDict(extra="forbid")
 
+    # Today in the gym's timezone when omitted; a later day books it ahead.
+    from_date: date | None = None
     to_date: date
     reason: Reason
+
+
+class FreezeEdit(BaseModel):
+    """A new end or reason for the freeze running or booked; what is omitted stays."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    to_date: date | None = None
+    reason: Reason | None = None
+
+    @model_validator(mode="after")
+    def _something(self) -> "FreezeEdit":
+        if self.to_date is None and self.reason is None:
+            raise ValueError("an edit needs a to_date or a reason")
+        return self
 
 
 class Freeze(BaseModel):
@@ -73,6 +93,8 @@ class Freeze(BaseModel):
     from_date: date
     to_date: date
     reason: str
+    # False on a freeze booked ahead, until the `freezes` job starts it on `from_date`.
+    started: bool
 
 
 class PendingPlanChange(BaseModel):
@@ -96,7 +118,7 @@ class Membership(BaseModel):
     credits_remaining: int | None
     discount_pct: int
     next_plan: PendingPlanChange | None
-    # The freeze it is in, while Frozen.
+    # The freeze it is in, while Frozen; the one booked ahead, while Active.
     freeze: Freeze | None
     cancel_reason: str | None
     cancelled_at: datetime | None

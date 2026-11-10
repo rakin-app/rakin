@@ -1,4 +1,5 @@
-import { queryOptions } from '@tanstack/react-query'
+import { queryOptions, useQuery } from '@tanstack/react-query'
+import { isoDay } from '../format'
 import { apiFetch } from './client'
 
 /** A kind of class in one of the gym's programs (backend `ClassType`). */
@@ -48,6 +49,19 @@ export function activeClassTypesQuery() {
 /** Today's sessions, today being the gym's. */
 export function todaySessionsQuery() {
   return queryOptions({ queryKey: ['sessions', 'today'], queryFn: () => apiFetch<SessionDay>('/api/sessions') })
+}
+
+/** The gym's timezone, from today's sessions, which every staff role reads; this
+ * device's until they arrive. */
+export function useGymTimeZone(): string {
+  const today = useQuery(todaySessionsQuery())
+  return today.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
+/** Today in the gym's timezone, `2026-11-10`: past 21:00 in Santiago it is still today
+ * there, though tomorrow in UTC, and on a device set to another zone. */
+export function useGymToday(): string {
+  return isoDay(new Date().toISOString(), useGymTimeZone())
 }
 
 /** The last week's classes, already started, that no one is marked at (backend `Unmarked`). */

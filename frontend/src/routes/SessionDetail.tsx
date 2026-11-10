@@ -17,7 +17,7 @@ import {
 } from '../api/attendance'
 import { ApiError } from '../api/client'
 import { rankLabel } from '../api/grading'
-import { sessionQuery, todaySessionsQuery, updateSession, type ClassSession } from '../api/sessions'
+import { sessionQuery, updateSession, useGymTimeZone, type ClassSession } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
 import { clockTime } from '../format'
@@ -39,9 +39,7 @@ const MAX_NOTES = 4000
 export function SessionDetail() {
   const { sessionId } = route.useParams()
   const session = useQuery(sessionQuery(sessionId))
-  // The gym's timezone, from the day's list; the browser's until it arrives.
-  const today = useQuery(todaySessionsQuery())
-  const timeZone = today.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const timeZone = useGymTimeZone()
 
   if (session.isPending) {
     return (
