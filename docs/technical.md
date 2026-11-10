@@ -38,7 +38,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | Table | Key columns | Notes |
 | --- | --- | --- |
 | `person` | id, phone (E.164, unique), email, name, rut, dob | global; phone is the identity because it is what WhatsApp uses; email, name, rut and dob are the person's own record, never shown to a gym |
-| `gym_person` | gym\_id, person\_id, name, email, rut, dob, created\_at, updated\_at | a gym's own record of a person; one per gym and person, edited only by that gym |
+| `gym_person` | gym\_id, person\_id, name, email, rut, dob, left\_on, created\_at, updated\_at | a gym's own record of a person; one per gym and person, edited only by that gym; the API refuses a RUT someone else in the gym has; left\_on is the day they left (dado de baja), off the member list until reactivated |
 | `guardian_link` | gym\_id, guardian\_person\_id, dependent\_person\_id, created\_at | one payer, N dependents, per gym; one guardian per dependent, one level deep; the guardian is in the gym through it, and gets every notice about the dependent |
 | `gym` | id, name, slug, timezone, settings jsonb | settings = channels, grace days, reminder cadence, bank details, grading scheme, custom-field definitions |
 | `staff` | person\_id, gym\_id, role (owner, admin, coach) | roles are per gym; coach role cannot read ledger, refused by the API and by RLS on `ledger_entry` |
@@ -82,6 +82,8 @@ stateDiagram-v2
     Lapsed --> Active: payment validated
     Active --> Cancelled
     Lapsed --> Cancelled
+    Trial --> Cancelled: member leaves the gym
+    Frozen --> Cancelled: member leaves the gym
     Cancelled --> [*]
 ```
 
@@ -104,7 +106,8 @@ Rules the diagram does not show:
 - Validating a payment against a billing period closes that period; an overpayment creates a credit adjustment against the next one.
 - An adjustment on a period is positive in the member's favour, counting towards it, or negative, owed on top; a note says why. A refund gives back part or all of a validated payment and no longer counts towards its period.
 - Rejecting a proof notifies the student with the admin's note and keeps the period open.
-- Nothing is ever deleted: cancellation and rejection are terminal states, corrections are new entries. The one exception is a join request, someone's details before the gym has agreed to keep them, which is deleted once approved or rejected, or after 30 days.
+- Nothing is ever deleted: cancellation and rejection are terminal states, corrections are new entries. Two exceptions: a join request, someone's details before the gym has agreed to keep them, which is deleted once approved or rejected, or after 30 days; and a person added by mistake or asking to be erased, with no ledger entries in the gym, whose records the owner can delete (#157).
+- A member who leaves (dado de baja) has every membership cancelled with the reason `dado de baja`, a trial or a frozen one too; what they owe stays owed, nothing starts them on a plan again until they are reactivated, and reactivating them starts a new membership if they need one.
 - The nightly job starts the freezes booked for the day and ends the freezes due (Frozen → Active on to\_date), generates billing periods 7 days ahead, flips Active → Lapsed after grace, and expires credits. It is idempotent per date via `job_run`.
 - A freeze starts the day it is recorded, or is booked for a later day and starts then, and moves the due date past the frozen days as it starts, so a frozen member always reads the day they next pay. Ended early or given a new end, the due date moves again by the days it no longer lasts or gains. What was owed before the freeze is still owed.
 - A period due on day D is in grace through D + grace days and lapses the membership on the day after, if validated payments still leave it short. Each lapse writes a `lapsed` plan event.

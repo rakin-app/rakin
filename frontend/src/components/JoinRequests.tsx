@@ -224,9 +224,11 @@ function RequestRow({
   )
 }
 
-/** What a refused approval means: a member already (approve with no plan), a family link the gym cannot make. */
+/** What a refused approval means: a member already (approve with no plan), someone dado de
+ * baja (reactivate them first, #157), a family link the gym cannot make. */
 function refusalOf(error: Error): string {
   if (!(error instanceof ApiError) || error.status !== 409) return copy.failed
   const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
-  return code === 'has_membership' ? copy.hasMembership : copy.family
+  if (code === 'has_membership') return copy.hasMembership
+  return code === 'has_left' ? copy.hasLeft : copy.family
 }

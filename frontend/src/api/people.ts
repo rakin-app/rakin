@@ -1,5 +1,7 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
-import { apiFetch } from './client'
+import { ApiError, apiFetch } from './client'
+import type { FieldValue } from './customFields'
+import type { Person } from './member'
 
 export const MEMBERSHIP_STATUSES = ['active', 'trial', 'frozen', 'lapsed', 'cancelled'] as const
 export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number]
@@ -18,6 +20,8 @@ export type MemberRow = {
   // Who pays for them, and how many they pay for.
   guardian: { id: string; name: string } | null
   dependents: number
+  // The day they left the gym (dado de baja); null while they are here.
+  left_on: string | null
 }
 
 export type MemberPage = { items: MemberRow[]; total: number }
@@ -28,7 +32,11 @@ export type MemberFilters = {
   plan: readonly string[]
   // A member is in a program through their plan.
   program: readonly string[]
+  // Who has left the gym: left out (the default), only them ("Dados de baja"), or anyone.
+  left?: LeftFilter
 }
+
+export type LeftFilter = 'no' | 'only' | 'any'
 
 export type Plan = { id: string; name: string; active: boolean }
 export type Program = { id: string; name: string; active: boolean }
@@ -42,6 +50,7 @@ export function membersPath(filters: MemberFilters, offset: number): string {
   for (const status of filters.status) params.append('status', status)
   for (const plan of filters.plan) params.append('plan_id', plan)
   for (const program of filters.program) params.append('program_id', program)
+  if (filters.left && filters.left !== 'no') params.set('left', filters.left)
   params.set('limit', String(MEMBERS_PAGE_SIZE))
   params.set('offset', String(offset))
   return `/api/people?${params}`
@@ -53,7 +62,13 @@ export function membersQuery(filters: MemberFilters) {
     queryKey: [
       'people',
       'list',
-      { q: filters.q.trim(), status: filters.status, plan: filters.plan, program: filters.program },
+      {
+        q: filters.q.trim(),
+        status: filters.status,
+        plan: filters.plan,
+        program: filters.program,
+        left: filters.left ?? 'no',
+      },
     ],
     queryFn: ({ pageParam }) => apiFetch<MemberPage>(membersPath(filters, pageParam)),
     initialPageParam: 0,
@@ -71,3 +86,84 @@ export const programsQuery = queryOptions({
   queryKey: ['programs'],
   queryFn: () => apiFetch<Program[]>('/api/programs'),
 })
+
+/** A plan to start someone on, from a day (today in the gym's timezone when omitted). */
+export type MembershipStart = { plan_id: string; started_on?: string }
+
+/** Who answers for a minor: someone already in the gym, or someone new by their phone. */
+export type GuardianChoice = { person_id: string } | { phone: string; name: string; email?: string }
+
+/** A member added by hand (backend `Enrolment`): all of it is written, or none. */
+export type Enrolment = {
+  // Without one, a guardian is needed: kids have none.
+  phone?: string
+  name: string
+  email?: string
+  rut?: string
+  dob?: string
+  guardian?: GuardianChoice
+  fields?: Record<string, FieldValue>
+  membership?: MembershipStart
+  // The welcome a plan sends; off by default, like the import.
+  send_welcome?: boolean
+}
+
+export function enrol(body: Enrolment): Promise<Person> {
+  return apiFetch<Person>('/api/people/enrol', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** Only the fields sent change; `null` clears an optional one. The phone never changes. */
+export type PersonEdit = Partial<{ name: string; email: string | null; rut: string | null; dob: string | null }>
+
+export function updatePerson(id: string, body: PersonEdit): Promise<Person> {
+  return apiFetch<Person>(`/api/people/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+/** Dar de baja from `left_on`, today when omitted: every membership ends and nothing more is billed. */
+export function leaveGym(id: string, leftOn?: string): Promise<Person> {
+  return apiFetch<Person>(`/api/people/${encodeURIComponent(id)}/leave`, {
+    method: 'POST',
+    body: JSON.stringify(leftOn ? { left_on: leftOn } : {}),
+  })
+}
+
+/** Reactivar, on `membership`'s plan if given. */
+export function returnToGym(id: string, membership?: MembershipStart): Promise<Person> {
+  return apiFetch<Person>(`/api/people/${encodeURIComponent(id)}/return`, {
+    method: 'POST',
+    body: JSON.stringify(membership ? { membership } : {}),
+  })
+}
+
+/** Why the owner cannot delete someone: their ledger, their staff role, or a dependent. */
+export type DeletionRefusal = 'ledger' | 'staff' | 'guardian'
+
+export function deletionQuery(id: string) {
+  return queryOptions({
+    queryKey: ['people', 'deletion', id],
+    queryFn: () => apiFetch<{ refused: DeletionRefusal | null }>(`/api/people/${encodeURIComponent(id)}/deletion`),
+  })
+}
+
+export function deletePerson(id: string): Promise<void> {
+  return apiFetch<void>(`/api/people/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+/** The 409's refusal, when the API kept someone `deletePerson` was asked to delete. */
+export function deletionRefused(error: unknown): DeletionRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
+  return code === 'ledger' || code === 'staff' || code === 'guardian' ? code : null
+}
+
+/** Someone in the gym already has the phone or RUT: who, to open them instead. */
+export type Duplicate = { code: 'phone_in_gym' | 'rut_in_gym'; person_id: string }
+
+export function duplicateOf(error: unknown): Duplicate | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const detail = (error.body as { detail?: { code?: unknown; person_id?: unknown } } | undefined)?.detail
+  if ((detail?.code !== 'phone_in_gym' && detail?.code !== 'rut_in_gym') || typeof detail.person_id !== 'string') {
+    return null
+  }
+  return { code: detail.code, person_id: detail.person_id }
+}

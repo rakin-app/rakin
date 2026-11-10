@@ -19,6 +19,7 @@ const CAMILA: MemberRow = {
   membership: null,
   guardian: null,
   dependents: 1,
+  left_on: null,
 }
 const MATEO: MemberRow = {
   id: 'mateo',
@@ -28,6 +29,7 @@ const MATEO: MemberRow = {
   membership: null,
   guardian: { id: 'camila', name: 'Camila Ortiz' },
   dependents: 0,
+  left_on: null,
 }
 const DIEGO: MemberRow = { ...MATEO, id: 'diego', name: 'Diego Soto', guardian: null }
 

@@ -309,6 +309,18 @@
   cursor: default;
 }
 
+.students__links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.students__new {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .students__import {
   align-self: flex-start;
   font-size: var(--text-md);

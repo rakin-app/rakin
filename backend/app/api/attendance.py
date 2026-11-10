@@ -39,7 +39,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.grades import readable_scheme
-from app.api.memberships import insert_membership
+from app.api.memberships import HAS_LEFT, PersonHasLeft, insert_membership
 from app.api.people import NOT_FOUND as PERSON_NOT_FOUND
 from app.api.people import in_gym
 from app.domain import membership as memberships
@@ -56,6 +56,7 @@ from app.schemas.attendance import (
     TrialGuest,
 )
 from app.schemas.grades import Rank
+from app.schemas.memberships import HasLeft
 from app.tenancy import Tenant, current_tenant
 
 router = APIRouter(tags=["classes"])
@@ -318,8 +319,8 @@ async def change_attendance(
     status_code=status.HTTP_201_CREATED,
     responses={
         status.HTTP_409_CONFLICT: {
-            "model": AlreadyMember,
-            "description": "already a member, or the class is cancelled",
+            "model": AlreadyMember | HasLeft,
+            "description": "already a member, has left, or the class is cancelled",
         }
     },
 )
@@ -330,7 +331,9 @@ async def add_trial_guest(
     session: StaffSession,
 ) -> Roster:
     """Start the person on a trial plan from today, marked present at the session. A
-    409 names the membership of someone who already has a live one, to mark instead."""
+    409 names the membership of someone who already has a live one, to mark instead, or
+    says `has_left` for someone dado de baja, whom an admin reactivates; a cancelled
+    class is a 409 too."""
     held = await _class(session, session_id, lock=True)
     _open(held)
     if not await in_gym(session, body.person_id):
@@ -360,9 +363,13 @@ async def add_trial_guest(
         PlanKind.TRIAL, credits=plan.credits, credit_expiry_days=plan.credit_expiry_days
     )
     started = memberships.start(terms, today)
-    membership_id = await insert_membership(
-        session, body.person_id, body.plan_id, started, start_of_local_day(today, held.timezone)
-    )
+    try:
+        membership_id = await insert_membership(
+            session, body.person_id, body.plan_id, started, start_of_local_day(today, held.timezone)
+        )
+    except PersonHasLeft:
+        # Someone dado de baja comes back through Reactivar, not a trial.
+        raise HAS_LEFT from None
     await _mark(session, held, membership_id, tenant.person_id)
     return await _roster(session, held)
 

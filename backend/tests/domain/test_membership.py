@@ -115,6 +115,19 @@ def test_a_cancellation_needs_a_reason(reason: str) -> None:
         m.cancel(monthly(), reason)
 
 
+@pytest.mark.parametrize("source", [S.TRIAL, S.ACTIVE, S.FROZEN, S.LAPSED])
+def test_leaving_the_gym_ends_any_live_membership(source: MembershipStatus) -> None:
+    left = m.leave(monthly(source, frozen_since=NOV_10, frozen_until=NOV_24))
+    assert left.status is S.CANCELLED
+    assert left.cancel_reason == m.LEFT_REASON
+    assert (left.frozen_since, left.frozen_until) == (None, None)
+
+
+def test_a_cancelled_membership_cannot_leave_again() -> None:
+    with pytest.raises(InvalidTransition):
+        m.leave(m.cancel(monthly(), "se mudó"))
+
+
 # --- starting -------------------------------------------------------------------------
 
 NOV_15 = date(2026, 11, 15)

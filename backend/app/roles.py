@@ -8,8 +8,8 @@ effect on the next one.
 A gym-scoped endpoint takes the session for the roles it serves instead of a bare
 `TenantSession`: `StaffSession` for any staff role, `AdminSession` for owner and
 admin changing how the gym is set up (its plans and settings), `LedgerSession` for owner and admin
-on the ledger. Without the role, the request is a 403; without a tenant, still a 401, before
-any database work.
+on the ledger, `OwnerSession` for the owner alone (deleting a member, #157). Without the
+role, the request is a 403; without a tenant, still a 401, before any database work.
 
 The ledger is closed to coaches at the database too (migration 0006): RLS lets the
 API read or write `ledger_entry` only for an owner or admin in `app.person_id`, so an
@@ -41,6 +41,7 @@ STAFF_ROLES = frozenset(Role)
 LEDGER_ROLES = frozenset({Role.OWNER, Role.ADMIN})
 # The gym's setup (plans, prices, settings and bank details) is the people who run it.
 ADMIN_ROLES = frozenset({Role.OWNER, Role.ADMIN})
+OWNER_ROLES = frozenset({Role.OWNER})
 
 FORBIDDEN = HTTPException(status.HTTP_403_FORBIDDEN, "not allowed for your role in this gym")
 
@@ -70,3 +71,4 @@ def requires(roles: frozenset[Role]) -> Callable[..., Awaitable[AsyncSession]]:
 StaffSession = Annotated[AsyncSession, Depends(requires(STAFF_ROLES))]
 AdminSession = Annotated[AsyncSession, Depends(requires(ADMIN_ROLES))]
 LedgerSession = Annotated[AsyncSession, Depends(requires(LEDGER_ROLES))]
+OwnerSession = Annotated[AsyncSession, Depends(requires(OWNER_ROLES))]

@@ -20,6 +20,7 @@ from app.api import (
     ledger,
     me,
     member_import,
+    member_roll,
     memberships,
     people,
     plans,
@@ -84,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(hosts.router)
     app.include_router(people.router)
+    app.include_router(member_roll.router)
     app.include_router(custom_fields.router)
     app.include_router(guardians.router)
     app.include_router(me.router)

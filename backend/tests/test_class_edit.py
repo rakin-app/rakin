@@ -470,7 +470,7 @@ def test_upgrade_and_downgrade() -> None:
             " WHERE table_name = 'session' AND column_name = 'cancelled_at'"
         )
         assert run(scratch.admin_url, lambda c: c.fetchval(column)) == 1
-        command.downgrade(scratch.alembic(), "0031")
+        command.downgrade(scratch.alembic(), "0032")
         assert run(scratch.admin_url, lambda c: c.fetchval(column)) == 0
         migrate(scratch)
         assert run(scratch.admin_url, lambda c: c.fetchval(column)) == 1

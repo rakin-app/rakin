@@ -103,6 +103,13 @@ async function addPerson(name: string, phone: string): Promise<string> {
   }
 }
 
+/** Whether the API refused a trial because the person was dado de baja (#157). */
+export function hasLeft(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 409) return false
+  const detail = (error.body as { detail?: Record<string, unknown> } | undefined)?.detail
+  return detail?.code === 'has_left'
+}
+
 /** The id a 409 of `code` names under `field`, else null. */
 function conflict(error: unknown, code: string, field: string): string | null {
   if (!(error instanceof ApiError) || error.status !== 409) return null

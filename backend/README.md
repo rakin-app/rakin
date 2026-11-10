@@ -98,11 +98,16 @@ A person joins a gym through `join_gym_by_phone(phone, name, email, rut, dob)`, 
 | Method | Path | Does |
 | --- | --- | --- |
 | `GET` | `/api/people` | the member list (Alumnos), by name, 50 a page: `{"items": […], "total": n}`; see below |
-| `POST` | `/api/people` | add a person by phone; 201 with this gym's record, 409 `{"detail": {"code": "phone_in_gym", "person_id": …}}` if the phone is already in this gym |
-| `GET` | `/api/people/{id}` | this gym's record; 404 for anyone not in the gym, known elsewhere or not |
-| `PATCH` | `/api/people/{id}` | change `name`, `email`, `rut`, `dob` in this gym's record only; `null` clears an optional field |
+| `POST` | `/api/people` | add a person by phone; 201 with this gym's record, 409 `{"detail": {"code": "phone_in_gym", "person_id": …}}` if the phone is already in this gym, `rut_in_gym` if the RUT is |
+| `GET` | `/api/people/{id}` | this gym's record, with `left_on` once they have left; 404 for anyone not in the gym, known elsewhere or not |
+| `PATCH` | `/api/people/{id}` | change `name`, `email`, `rut`, `dob` in this gym's record only; `null` clears an optional field; 409 `rut_in_gym` for someone else's RUT |
+| `POST` | `/api/people/enrol` | "Nuevo alumno": the record (by phone, or by name for a dependent), the guardian a minor needs, custom `fields`, a `membership` (`plan_id`, `started_on`) and `send_welcome`, all or nothing; 201 with the record, 409 as `POST /api/people`, or `one_level` for a guardian who is a dependent |
+| `POST` | `/api/people/{id}/leave` | "Dar de baja" from `left_on` (today by default, never later): every membership they hold ends, reason `dado de baja`; 409 if they already left |
+| `POST` | `/api/people/{id}/return` | "Reactivar": back on the list, on `membership`'s plan if given; 409 if they have not left |
+| `GET` | `/api/people/{id}/deletion` | `{"refused": null}`, or why `DELETE` would keep them: `ledger`, `staff`, `guardian` |
+| `DELETE` | `/api/people/{id}` | "Eliminar": this gym's records of them, gone; 204, or 409 with the refusal |
 
-Any staff role may use it (`StaffSession`); a member gets a 403. Phones are normalised to E.164 Chilean mobiles and RUTs to `76123456-0`; anything else is a 422. The phone is set on create and not editable here, since changing it moves the gym's record to another identity.
+Any staff role may use the first four (`StaffSession`); a member gets a 403. Enrolling, leaving and returning are the owner's and admins' (`AdminSession`), since they start or end what a member is charged, and deleting is the owner's alone (`OwnerSession`). Phones are normalised to E.164 Chilean mobiles and RUTs to `76123456-0`; anything else is a 422. The phone is set on create and not editable here, since changing it moves the gym's record to another identity.
 
 The list holds everyone the gym has a record of except staff with no membership there. Each row carries `id`, `name`, `phone`, `rut`, the `membership` it shows (`id`, `status`, `plan_id`, `plan_name`), or `null`: the person's latest membership that is not cancelled, else their latest; and their family: `guardian` (`id`, `name`) or `null`, and `dependents`, how many they pay for. Its parameters:
 
@@ -111,9 +116,14 @@ The list holds everyone the gym has a record of except staff with no membership 
 | `q` | the name, ignoring case and accents (`martin` finds `Martín`); and when it holds a digit, the phone or the RUT in any format (`9 8765 4321`, `7.654.321`) |
 | `status` | the row's membership status; repeatable, any of them (`?status=frozen&status=lapsed`) |
 | `plan_id` | the row's membership plan; repeatable, any of them |
+| `left` | who has left the gym: `no` (the default) leaves them out, `only` is the "Dados de baja" list, `any` everyone, as the Pagos picker asks, since they still owe what they owe |
 | `limit`, `offset` | the page: `limit` 1–200, 50 by default |
 
 Filters combine with AND. Filtering by program waits on class types (#42), which is where programs are defined.
+
+Leaving ends each membership whatever its state, a trial or a frozen one too, which `POST /api/memberships/{id}/cancel` would refuse (`app.domain.membership.leave`): a booked freeze is called off and a running one ends today. Billing, the roster, the inactive list and "Hoy" read memberships, so they stop counting them; the periods already billed stay owed. A day later than today is refused: a member leaves on the day they are dado de baja, or a day already past.
+
+Deleting goes through `forget_gym_person` (migration `0032`), a `SECURITY DEFINER` function the owner role runs under forced RLS, so `rakin_app` gets no `DELETE` on any of the tables it empties. It keeps anyone with ledger entries in the gym (accounting has to), on its staff or the coach of a session there, or a guardian of someone there, and otherwise deletes their memberships and all that hangs off them, their family link, field values, unsubscribe and sign-in sessions here, and last the `gym_person` row. The global `person` row and `message_log` stay; erasing them is #69's.
 
 ## Guardians and dependents
 

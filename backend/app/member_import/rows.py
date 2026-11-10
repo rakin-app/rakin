@@ -50,6 +50,7 @@ class Field(StrEnum):
 # row's own. `unknown_plan`, `inactive_plan`, `dropin_plan`: no such plan, a deactivated
 # one, or a drop-in, which is not a membership. `due_before_start`: the due date is
 # before the start. `has_guardian`, `one_level`: the link is refused (migration 0010).
+# `has_left`: the member was dado de baja, and starts no plan until reactivated (0032).
 ErrorCode = Literal[
     "required",
     "repeated",
@@ -64,6 +65,7 @@ ErrorCode = Literal[
     "due_before_start",
     "has_guardian",
     "one_level",
+    "has_left",
 ]
 
 

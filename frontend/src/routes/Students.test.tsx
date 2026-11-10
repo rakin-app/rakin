@@ -19,6 +19,7 @@ const CAMILA: MemberRow = {
   membership: { id: 'm1', status: 'active', plan_id: 'plan-adults', plan_name: 'Mensual adultos' },
   guardian: null,
   dependents: 0,
+  left_on: null,
 }
 const DIEGO: MemberRow = {
   id: 'p2',
@@ -28,6 +29,7 @@ const DIEGO: MemberRow = {
   membership: null,
   guardian: null,
   dependents: 0,
+  left_on: null,
 }
 const PLANS: Plan[] = [
   { id: 'plan-adults', name: 'Mensual adultos', active: true },
@@ -45,6 +47,8 @@ function stubApi(
   people: (params: URLSearchParams) => Answer,
   plans: Answer = { body: PLANS },
   programs: Answer = { body: PROGRAMS },
+  // Who is signed in; unanswered, as if the role never loaded.
+  role?: 'owner' | 'admin' | 'coach',
 ) {
   const asked: URLSearchParams[] = []
   vi.stubGlobal(
@@ -59,6 +63,8 @@ function stubApi(
         answer = plans
       } else if (url.pathname === '/api/programs') {
         answer = programs
+      } else if (url.pathname === '/api/me/role' && role) {
+        answer = { body: { role, person_id: 'me' } }
       } else {
         answer = { status: 404, body: { detail: 'Not Found' } }
       }
@@ -89,6 +95,34 @@ afterEach(() => {
 })
 
 describe('Alumnos', () => {
+  it('offers "Nuevo alumno" beside the import to an owner or admin, never a coach', async () => {
+    stubApi(() => page([CAMILA]), undefined, undefined, 'admin')
+    renderAt('/admin/alumnos')
+    expect(await screen.findByRole('link', { name: copy.newLink })).toHaveAttribute('href', '/admin/alumnos/nuevo')
+    expect(screen.getByRole('link', { name: copy.importLink })).toBeInTheDocument()
+  })
+
+  it('hides "Nuevo alumno" from a coach', async () => {
+    stubApi(() => page([CAMILA]), undefined, undefined, 'coach')
+    renderAt('/admin/alumnos')
+    await list()
+    expect(screen.queryByRole('link', { name: copy.newLink })).not.toBeInTheDocument()
+  })
+
+  it('"Dados de baja" lists who left the gym, and since when', async () => {
+    const gone: MemberRow = { ...DIEGO, left_on: '2026-10-31' }
+    const asked = stubApi((params) => page(params.get('left') === 'only' ? [gone] : [CAMILA]))
+    const router = renderAt('/admin/alumnos')
+    await list()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.left }))
+
+    expect(await screen.findByText(copy.leftOn('31-10-2026'))).toBeInTheDocument()
+    expect(asked.map((params) => params.get('left'))).toEqual([null, 'only'])
+    expect(router.state.location.search).toEqual({ left: true })
+    expect(screen.getByRole('button', { name: copy.left })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('lists members with their phone, RUT, status and plan', async () => {
     stubApi(() => page([CAMILA, DIEGO]))
     renderAt('/admin/alumnos')

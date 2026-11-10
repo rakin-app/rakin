@@ -92,7 +92,8 @@ function draftOf(field: PersonField): string {
   return field.value === null ? '' : String(field.value)
 }
 
-function valueOf(field: PersonField, draft: string): FieldValue {
+/** What a field's input sends: `null` for nothing typed, a number for a number field. */
+export function valueOf(field: Pick<PersonField, 'type'>, draft: string): FieldValue {
   const text = draft.trim()
   if (!text) return null
   if (field.type !== 'number') return text
@@ -140,34 +141,18 @@ function FieldsForm({
     <form className="member__form" aria-label={copy.formTitle} onSubmit={submit}>
       {fields.map((field) => {
         const id = `${formId}-${field.key}`
-        const props = {
-          id,
-          className: 'member__input',
-          value: drafts[field.key] ?? '',
-          'aria-invalid': refused.has(field.key),
-          onChange: (e: { target: { value: string } }) => setDrafts({ ...drafts, [field.key]: e.target.value }),
-        }
         return (
           <Fragment key={field.key}>
             <label htmlFor={id} className="member__label">
               {field.label}
             </label>
-            {field.type === 'enum' ? (
-              <select {...props}>
-                <option value="">{copy.choose}</option>
-                {(field.options ?? []).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            ) : field.type === 'number' ? (
-              <input {...props} type="text" inputMode="decimal" />
-            ) : field.type === 'date' ? (
-              <input {...props} type="date" />
-            ) : (
-              <input {...props} type="text" maxLength={1000} />
-            )}
+            <FieldInput
+              id={id}
+              field={field}
+              value={drafts[field.key] ?? ''}
+              invalid={refused.has(field.key)}
+              onChange={(value) => setDrafts({ ...drafts, [field.key]: value })}
+            />
           </Fragment>
         )
       })}
@@ -188,4 +173,42 @@ function FieldsForm({
       </div>
     </form>
   )
+}
+
+/** One custom field's input, by its type: a choice of its options, a number, a date or text. */
+export function FieldInput({
+  id,
+  field,
+  value,
+  invalid,
+  onChange,
+}: {
+  id: string
+  field: Pick<PersonField, 'type' | 'options'>
+  value: string
+  invalid: boolean
+  onChange: (value: string) => void
+}) {
+  const props = {
+    id,
+    className: 'member__input',
+    value,
+    'aria-invalid': invalid,
+    onChange: (e: { target: { value: string } }) => onChange(e.target.value),
+  }
+  if (field.type === 'enum') {
+    return (
+      <select {...props}>
+        <option value="">{copy.choose}</option>
+        {(field.options ?? []).map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    )
+  }
+  if (field.type === 'number') return <input {...props} type="text" inputMode="decimal" />
+  if (field.type === 'date') return <input {...props} type="date" />
+  return <input {...props} type="text" maxLength={1000} />
 }

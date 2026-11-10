@@ -1,0 +1,37 @@
+.new-member {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-5) var(--space-6);
+}
+
+/* A label above its input, as `.member__form` spaces them. */
+.new-member__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.new-member__picked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+}
+
+.new-member__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-sm);
+  font-size: var(--text-md);
+}
+
+/* A link that reads as the form's other button. */
+.new-member__cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
