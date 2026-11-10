@@ -22,6 +22,7 @@ from app.magiclink import (
     Link,
     MagicLinks,
     MemoryRateLimiter,
+    Pending,
     Recipient,
     Session,
     SessionMiddleware,
@@ -62,7 +63,7 @@ class Directory:
             raise DirectoryDown
         return [r for r in (ANA, CAMILA, MATEO) if r.address == address.strip().lower()]
 
-    async def scope(self, subject: str) -> str | None:
+    async def scope(self, subject: str, address: str) -> str | None:
         if self.down:
             raise DirectoryDown
         return None if subject == "camila" else f"gym-of-{subject}"
@@ -70,23 +71,25 @@ class Directory:
 
 @dataclass
 class Store:
-    links: dict[bytes, tuple[str, datetime, bool]] = field(default_factory=dict)
+    links: dict[bytes, tuple[Pending, datetime, bool]] = field(default_factory=dict)
     sessions: dict[bytes, tuple[Session, bool]] = field(default_factory=dict)
 
-    async def add_link(self, token_hash: bytes, subject: str, expires_at: datetime) -> None:
-        self.links[token_hash] = (subject, expires_at, False)
+    async def add_link(
+        self, token_hash: bytes, subject: str, address: str, expires_at: datetime
+    ) -> None:
+        self.links[token_hash] = (Pending(subject, address), expires_at, False)
 
-    async def pending_link(self, token_hash: bytes, now: datetime) -> str | None:
-        subject, expires_at, used = self.links.get(token_hash, ("", now, True))
-        return None if used or now >= expires_at else subject
+    async def pending_link(self, token_hash: bytes, now: datetime) -> Pending | None:
+        pending, expires_at, used = self.links.get(token_hash, (Pending("", ""), now, True))
+        return None if used or now >= expires_at else pending
 
     async def redeem_link(
         self, token_hash: bytes, now: datetime, session_hash: bytes, session: Session
     ) -> bool:
-        if await self.pending_link(token_hash, now) != session.subject:
+        if await self.pending_link(token_hash, now) != Pending(session.subject, session.address):
             return False
-        subject, expires_at, _ = self.links[token_hash]
-        self.links[token_hash] = (subject, expires_at, True)
+        pending, expires_at, _ = self.links[token_hash]
+        self.links[token_hash] = (pending, expires_at, True)
         self.sessions[session_hash] = (session, False)
         return True
 
@@ -324,7 +327,9 @@ def test_the_button_signs_in_with_a_30_day_session_cookie(harness: Harness) -> N
     assert "Path=/" in cookie
     assert "domain" not in attributes
     [(session, _)] = harness.store.sessions.values()
-    assert session == Session("ana", "gym-of-ana", harness.clock.now + timedelta(days=30))
+    assert session == Session(
+        "ana", "ana@example.cl", "gym-of-ana", harness.clock.now + timedelta(days=30)
+    )
 
 
 def test_an_http_base_url_signs_in_with_a_plain_cookie_that_is_not_secure() -> None:

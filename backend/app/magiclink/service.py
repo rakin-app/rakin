@@ -4,6 +4,10 @@ The application supplies three things: a `Directory` (who an address belongs to)
 `Store` (where hashed links and sessions live) and a `Sender` (how a link reaches
 its recipient). Accounts are opaque strings here, `subject`s, and so is a session's
 `scope`: whatever the application wants a session to start in, such as a tenant.
+
+A link remembers the address it was sent to, and so does the session it turns into:
+one account may be reached at several addresses, and what a session may do can depend
+on which one it signed in with. `Directory.scope` is asked with both.
 """
 
 import logging
@@ -37,8 +41,17 @@ class Link:
 
 
 @dataclass(frozen=True)
+class Pending:
+    """An unused link's account, and the address it was sent to."""
+
+    subject: str
+    address: str
+
+
+@dataclass(frozen=True)
 class Session:
     subject: str
+    address: str  # the address its link was sent to
     scope: str | None
     expires_at: datetime
 
@@ -48,16 +61,20 @@ class Directory(Protocol):
         """The accounts a link for `address` goes to; empty if none."""
         ...
 
-    async def scope(self, subject: str) -> str | None:
-        """What a new session for `subject` starts in, if anything."""
+    async def scope(self, subject: str, address: str) -> str | None:
+        """What a new session for `subject`, signed in at `address`, starts in, if
+        anything."""
         ...
 
 
 class Store(Protocol):
-    async def add_link(self, token_hash: bytes, subject: str, expires_at: datetime) -> None: ...
+    async def add_link(
+        self, token_hash: bytes, subject: str, address: str, expires_at: datetime
+    ) -> None: ...
 
-    async def pending_link(self, token_hash: bytes, now: datetime) -> str | None:
-        """The subject of an unused, unexpired link, leaving it unused; else None."""
+    async def pending_link(self, token_hash: bytes, now: datetime) -> Pending | None:
+        """The account and address of an unused, unexpired link, leaving it unused;
+        else None."""
         ...
 
     async def redeem_link(
@@ -65,9 +82,9 @@ class Store(Protocol):
     ) -> bool:
         """Mark the link used and store `session` in one transaction; False if it can't.
 
-        It can't when the link is used, expired, or not `session.subject`'s. Must be
-        atomic: of two concurrent redemptions of one link, exactly one gets through,
-        and a failure leaves the link unused.
+        It can't when the link is used, expired, or not `session.subject`'s at
+        `session.address`. Must be atomic: of two concurrent redemptions of one link,
+        exactly one gets through, and a failure leaves the link unused.
         """
         ...
 
@@ -162,7 +179,9 @@ class MagicLinks:
         """
         expires_at = self._clock() + (self.link_ttl if ttl is None else ttl)
         token = self._signer.issue(expires_at)
-        await self.store.add_link(hash_token(token), recipient.subject, expires_at)
+        await self.store.add_link(
+            hash_token(token), recipient.subject, recipient.address, expires_at
+        )
         query = {"token": token} if landing is None else {"token": token, "next": landing}
         return Link(recipient, f"{self.callback_url}?{urlencode(query)}", expires_at)
 
@@ -176,13 +195,14 @@ class MagicLinks:
         if not self._signer.valid(token, now):
             return None
         link_hash = hash_token(token)
-        subject = await self.store.pending_link(link_hash, now)
-        if subject is None:
+        pending = await self.store.pending_link(link_hash, now)
+        if pending is None:
             return None
         # Everything that can fail happens before the link is spent, so a failure
         # leaves it usable.
         session_token = new_session_token()
-        session = Session(subject, await self.directory.scope(subject), now + self.session_ttl)
+        scope = await self.directory.scope(pending.subject, pending.address)
+        session = Session(pending.subject, pending.address, scope, now + self.session_ttl)
         if not await self.store.redeem_link(link_hash, now, hash_token(session_token), session):
             return None
         return session_token

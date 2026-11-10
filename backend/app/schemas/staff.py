@@ -44,14 +44,6 @@ class StaffMember(BaseModel):
     since: datetime
 
 
-class StaffInvited(StaffMember):
-    """An invite's answer. `emailed` is whether an invite email went: not when the
-    person is someone another gym has and the invite's email is not one it has for
-    them (migration 0025), and this gym has no email of its own for them."""
-
-    emailed: bool
-
-
 class StaffConflict(BaseModel):
     code: Literal["already_staff"] = "already_staff"
     person_id: uuid.UUID

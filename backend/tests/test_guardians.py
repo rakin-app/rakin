@@ -509,22 +509,23 @@ def test_a_guardian_who_does_not_train_can_sign_in(
     parent = add_person(client, sur, "Apoderada")
     email = "apoderada@example.cl"
     lookup = "SELECT person_id FROM auth_people_by_email($1)"
-    gyms = "SELECT auth_gyms_of($1)"
+    gyms = "SELECT auth_gyms_of($1, $2)"
     assert run(db.api_url, in_gym(None, lookup, email)) == []
 
     kid = new_kid(client, sur, parent, "Kid Apoderada")
     assert [r[0] for r in run(db.api_url, in_gym(None, lookup, email))] == [uuid.UUID(parent)]
-    assert [r[0] for r in run(db.api_url, in_gym(None, gyms, uuid.UUID(parent)))] == [sur]
+    assert [r[0] for r in run(db.api_url, in_gym(None, gyms, uuid.UUID(parent), email))] == [sur]
 
     # A session in the gym lasts while the link does.
     token = uuid.uuid4().bytes * 2
     as_owner(
         db,
         sur,
-        "INSERT INTO auth_session (token_hash, person_id, gym_id, expires_at)"
-        " VALUES ($1, $2, $3, now() + interval '1 day')",
+        "INSERT INTO auth_session (token_hash, person_id, email, gym_id, expires_at)"
+        " VALUES ($1, $2, $3, $4, now() + interval '1 day')",
         token,
         uuid.UUID(parent),
+        email,
         sur,
     )
     live = "SELECT person_id FROM auth_live_session($1, now())"

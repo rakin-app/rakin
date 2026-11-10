@@ -144,6 +144,15 @@ def test_inviting_a_member_keeps_their_record_and_gives_them_the_role(
     assert ("Ana", "coach") in staff_of(client, gym)
 
 
+def gyms_reached(db: Database, person: uuid.UUID, address: str) -> set[uuid.UUID]:
+    """The gyms a sign-in with `address` reaches for `person` (migration 0029)."""
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch("SELECT gym FROM auth_gyms_of($1, $2) AS gym", person, address),
+    )
+    return {r["gym"] for r in rows}
+
+
 def signs_in_with(db: Database, address: str) -> list[uuid.UUID]:
     """Whom a sign-in link asked for at `address` goes to (migration 0005)."""
     rows = run(
@@ -153,7 +162,7 @@ def signs_in_with(db: Database, address: str) -> list[uuid.UUID]:
     return [r["person_id"] for r in rows]
 
 
-def test_someone_known_to_another_gym_gets_the_role_and_not_the_invites_email(
+def test_someone_known_to_another_gym_gets_the_role_and_the_invites_email(
     client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:
     other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
@@ -166,36 +175,21 @@ def test_someone_known_to_another_gym_gets_the_role_and_not_the_invites_email(
 
     assert response.status_code == 201, response.text
     body = response.json()
-    assert (body["person_id"], body["name"]) == (elsewhere, "Ana Pérez")
-    # The address the inviter typed would sign them in as Ana: it is not written.
-    assert (body["email"], body["emailed"]) == (None, False)
-    assert mailer.sent == []
-    assert signs_in_with(db, address) == []
-    assert ("Ana Pérez", "coach") in staff_of(client, gym)
-    # The other gym still has no staff row for her.
-    assert ("Ana", "coach") not in staff_of(client, other)
-
-
-def test_an_email_another_gym_already_has_for_them_is_written(
-    client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
-) -> None:
-    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
-    phone = new_phone()
-    name = f"Ana {uuid.uuid4().hex[:6]}"
-    elsewhere = add_person(client, other, name, phone=phone)
-    theirs = f"{name.lower().replace(' ', '.')}@example.cl"
-    mailer.sent.clear()
-
-    response = invite(client, gym, phone=phone, name=name, email=f" {theirs.upper()} ")
-
-    assert response.status_code == 201, response.text
-    assert response.json()["emailed"] is True
+    assert (body["person_id"], body["name"], body["email"]) == (elsewhere, "Ana Pérez", address)
+    # Nothing in the answer says another gym has them (#146).
+    assert "emailed" not in body
     [email] = mailer.sent
-    assert email.to.lower() == theirs
-    assert uuid.UUID(elsewhere) in signs_in_with(db, theirs)
+    assert email.to == address
+    # The address signs in to this gym alone: the other's record does not hold it.
+    assert signs_in_with(db, address) == [uuid.UUID(elsewhere)]
+    assert gyms_reached(db, uuid.UUID(elsewhere), address) == {gym}
+    assert ("Ana Pérez", "coach") in staff_of(client, gym)
+    # The other gym still has no staff row for her, nor this gym's email.
+    assert ("Ana", "coach") not in staff_of(client, other)
+    assert client.get(f"/api/people/{elsewhere}", headers=as_gym(other)).json()["email"] != address
 
 
-def test_a_member_known_elsewhere_keeps_this_gyms_email_and_is_invited_there(
+def test_a_member_known_elsewhere_takes_the_invites_email_and_is_invited_there(
     client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:
     other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
@@ -207,10 +201,9 @@ def test_a_member_known_elsewhere_keeps_this_gyms_email_and_is_invited_there(
     response = invite(client, gym, phone=phone, email="otra@example.cl")
 
     assert response.status_code == 201, response.text
-    assert response.json()["person_id"] == ana
-    assert (response.json()["email"], response.json()["emailed"]) == ("ana@example.cl", True)
+    assert (response.json()["person_id"], response.json()["email"]) == (ana, "otra@example.cl")
     [email] = mailer.sent
-    assert email.to == "ana@example.cl"
+    assert email.to == "otra@example.cl"
 
 
 def test_the_invite_stands_when_the_mail_fails(

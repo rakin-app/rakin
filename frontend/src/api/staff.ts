@@ -17,12 +17,6 @@ export type StaffMember = {
   since: string
 }
 
-/**
- * An invite's answer. `emailed` is false when the person already has a Rakin account
- * elsewhere and the email typed is not theirs: it is not written, and nothing is sent.
- */
-export type StaffInvited = StaffMember & { emailed: boolean }
-
 export type StaffInvite = { phone: string; name: string; email: string; role: InvitableRole }
 
 /** The owner, then admins, then coaches. Owner and admin only. */
@@ -32,8 +26,8 @@ export const staffQuery = queryOptions({
 })
 
 /** Adds them by phone with the role and emails them a sign-in link; a 409 is someone already on the staff. */
-export function inviteStaff(body: StaffInvite): Promise<StaffInvited> {
-  return apiFetch<StaffInvited>('/api/staff', { method: 'POST', body: JSON.stringify(body) })
+export function inviteStaff(body: StaffInvite): Promise<StaffMember> {
+  return apiFetch<StaffMember>('/api/staff', { method: 'POST', body: JSON.stringify(body) })
 }
 
 export function changeStaffRole(personId: string, role: InvitableRole): Promise<StaffMember> {
