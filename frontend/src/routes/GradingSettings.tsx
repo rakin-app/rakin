@@ -446,7 +446,10 @@ function RankEditor({
           {rank.sub_ranks.map((sub, index) => {
             const subPath = `${path}.sub_ranks.${index}`
             return (
-              <li key={sub.id} className="settings__sub-rank">
+              <li
+                key={sub.id}
+                className={metric ? 'settings__sub-rank settings__sub-rank--target' : 'settings__sub-rank'}
+              >
                 <Field label={copy.subRank(index + 1)} error={errorOf(`${subPath}.label`, 'label', sub.label)}>
                   {(props) => (
                     <input
@@ -467,7 +470,7 @@ function RankEditor({
                   )}
                 </Field>
                 {metric && (
-                  <Field label={copy.target[metric]} error={errorOf(`${subPath}.target`, 'target', sub.target)}>
+                  <Field label={copy.subTarget[metric]} error={errorOf(`${subPath}.target`, 'target', sub.target)}>
                     {(props) => (
                       <input
                         {...props}

@@ -27,7 +27,7 @@ describe('goalProgress', () => {
       metric: 'classes_since_promotion',
       done: 12,
       target: 30,
-      next: '2 grados',
+      next: 'Blanca · 2 grados',
     })
     // The last sub-rank leads to the next rank.
     expect(goalProgress(SCHEME, at('white', '2'), 70, '2026-11-09')).toMatchObject({ target: 100, next: 'Azul' })
@@ -58,5 +58,15 @@ describe('monthsBetween', () => {
     expect(monthsBetween('2026-04-11', '2026-11-11')).toBe(7)
     expect(monthsBetween('2025-12-31', '2026-01-30')).toBe(0)
     expect(monthsBetween('2026-11-09', '2026-11-09')).toBe(0)
+  })
+})
+
+describe('the goal copy', () => {
+  it('names what comes next, or the next promotion at the top', async () => {
+    const { es } = await import('../i18n/es')
+    const goal = es.admin.member.grading.goal
+    expect(goal(62, 80, 'classes_since_promotion', 'Morada')).toBe('62 / 80 clases para Morada')
+    expect(goal(5, 12, 'time_in_rank', 'Azul · 3 grados')).toBe('5 / 12 meses para Azul · 3 grados')
+    expect(goal(1, 1, 'time_in_rank', null)).toBe('1 / 1 mes para la próxima graduación')
   })
 })

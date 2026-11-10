@@ -106,7 +106,7 @@ export type GoalProgress = {
   metric: GoalMetric
   done: number
   target: number
-  // The sub-rank or rank that comes next in their ladder; null at the top.
+  // What comes next in their ladder, with the scheme's labels; null at the top.
   next: string | null
 }
 
@@ -133,6 +133,7 @@ export function goalProgress(
   const done = metric === 'classes_since_promotion' ? sincePromotion : monthsBetween(current.awarded_on, today)
   if (done === null) return null
   const nextSub = subIndex >= 0 ? rank.sub_ranks[subIndex + 1] : undefined
-  const next = nextSub?.label ?? ladder[index + 1]?.label ?? null
+  // A sub-rank is named with its rank, as the member's rank is: `Azul · 3 grados`.
+  const next = nextSub ? `${rank.label} · ${nextSub.label}` : (ladder[index + 1]?.label ?? null)
   return { metric, done, target, next }
 }

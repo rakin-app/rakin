@@ -109,7 +109,7 @@ describe('Ajustes: Graduación', () => {
     // A sub-rank's own target.
     await userEvent.click(within(white).getByText(copy.subRanks(2)))
     const second = within(white).getAllByRole('listitem')[1]!
-    await userEvent.type(within(second).getByLabelText(copy.target.classes_since_promotion), '40')
+    await userEvent.type(within(second).getByLabelText(copy.subTarget.classes_since_promotion), '40')
     await userEvent.click(within(white).getByRole('button', { name: copy.addSubRank }))
     await userEvent.type(within(white).getByLabelText(copy.subRank(3)), '2 grados')
 
@@ -222,7 +222,7 @@ describe('Ajustes: Graduación', () => {
     )
     const sub = within(rank(copy.ladders.ranks, 1)).getAllByRole('listitem')[1]!
     expect(sub.closest('details')).toHaveAttribute('open')
-    expect(within(sub).getByLabelText(copy.target.classes_since_promotion)).toHaveAccessibleDescription(
+    expect(within(sub).getByLabelText(copy.subTarget.classes_since_promotion)).toHaveAccessibleDescription(
       copy.range.target,
     )
   })

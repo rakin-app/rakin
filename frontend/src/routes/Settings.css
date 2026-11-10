@@ -274,21 +274,25 @@ h2.settings__plan-name {
   margin-bottom: var(--space-2);
 }
 
-/* A sub-rank: its name, its target, and the button that removes it, on one row when they fit. */
+/* A sub-rank on one row: its name, a narrow target, and the button that removes it. */
 .settings__sub-rank {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: var(--space-2);
 }
 
-.settings__sub-rank > .settings__field {
-  flex: 1 1 140px;
-  min-width: 0;
+.settings__sub-rank--target {
+  grid-template-columns: minmax(0, 1fr) 5.5rem auto;
 }
 
+/* The button sits level with the inputs, under the labels. */
 .settings__sub-rank > .settings__button {
-  flex: none;
+  align-self: end;
+  width: var(--control-height);
+  padding: 0;
+  display: grid;
+  place-items: center;
 }
 
 @media (min-width: 960px) {

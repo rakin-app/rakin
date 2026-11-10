@@ -357,12 +357,12 @@ export const es = {
         since: (day: string) => `desde ${day}`,
         sincePromotion: (n: number) =>
           n === 1 ? '1 clase desde la última graduación' : `${n} clases desde la última graduación`,
-        // "62 / 80 clases para 3 grados": towards the next promotion, by the gym's goal metric.
+        // "62 / 80 clases para Morada": towards the next promotion, named by the scheme's own label.
         goal: (done: number, target: number, metric: 'classes_since_promotion' | 'time_in_rank', next: string | null) =>
           `${done} / ${target} ${
             metric === 'classes_since_promotion' ? (target === 1 ? 'clase' : 'clases') : target === 1 ? 'mes' : 'meses'
-          } para ${next ?? 'la siguiente graduación'}`,
-        goalLabel: 'Avance a la siguiente graduación',
+          } para ${next ?? 'la próxima graduación'}`,
+        goalLabel: 'Avance a la próxima graduación',
         award: 'Registrar graduación',
         log: 'Historial',
         by: (name: string) => `registró ${name}`,
@@ -645,6 +645,8 @@ export const es = {
           time_in_rank: 'Meses para la siguiente',
         },
         targetHint: 'Opcional. Un subgrado sin objetivo propio usa el de su grado.',
+        // The same, on a sub-rank's narrow row.
+        subTarget: { classes_since_promotion: 'Clases', time_in_rank: 'Meses' },
         subRanks: (n: number) => (n === 0 ? 'Sin subgrados' : n === 1 ? '1 subgrado' : `${n} subgrados`),
         subRank: (n: number) => `Subgrado ${n}`,
         subRankLabel: 'Nombre del subgrado',

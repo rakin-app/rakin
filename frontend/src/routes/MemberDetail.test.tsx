@@ -721,8 +721,8 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
 
     const graduation = await screen.findByRole('region', { name: copy.grading.title })
-    const text = copy.grading.goal(62, 80, 'classes_since_promotion', '3 grados')
-    expect(text).toBe('62 / 80 clases para 3 grados')
+    const text = copy.grading.goal(62, 80, 'classes_since_promotion', 'Azul · 3 grados')
+    expect(text).toBe('62 / 80 clases para Azul · 3 grados')
     expect(await within(graduation).findByText(text)).toBeInTheDocument()
     const bar = within(graduation).getByRole('progressbar', { name: copy.grading.goalLabel })
     expect(bar).toHaveAttribute('aria-valuenow', '62')
@@ -737,7 +737,7 @@ describe('Ficha de alumno', () => {
 
     const graduation = await screen.findByRole('region', { name: copy.grading.title })
     // Awarded 11 abr 2026: six whole months by 9 nov.
-    expect(await within(graduation).findByText(copy.grading.goal(6, 12, 'time_in_rank', '3 grados'))).toBeInTheDocument()
+    expect(await within(graduation).findByText(copy.grading.goal(6, 12, 'time_in_rank', 'Azul · 3 grados'))).toBeInTheDocument()
   })
 
   it('shows no progress when the rank has no target', async () => {
