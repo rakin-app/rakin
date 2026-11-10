@@ -83,6 +83,9 @@ PROOF_RECEIVED = Template("proof_received")
 RECEIPT = Template("receipt")
 PROOF_REJECTED = Template("proof_rejected")
 STAFF_INVITE = Template("staff_invite", landing=None)
+# A join request approved with no plan (#154): no sign-in link, since signing in needs
+# a membership, which the welcome brings once a plan is set.
+JOIN_APPROVED = Template("join_approved", page_link=False)
 
 
 @dataclass(frozen=True)

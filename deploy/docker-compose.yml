@@ -47,6 +47,9 @@ x-backend: &backend
     MESSENGER: ${MESSENGER:-wame}
     PAYMENT_RAIL: ${PAYMENT_RAIL:-none}
     BANK_FEED: ${BANK_FEED:-none}
+    HUMAN_CHECK: ${HUMAN_CHECK:-none}
+    TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+    TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
     # R2 or S3; the browser PUTs proofs straight to S3_PUBLIC_ENDPOINT_URL,
     # which needs the CORS rule from `python -m app.blob_cors --apply`.
     BLOB_STORE: ${BLOB_STORE:-s3}

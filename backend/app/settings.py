@@ -69,6 +69,11 @@ class Settings(BaseSettings):
 
     payment_rail: Literal["none"] = "none"
     bank_feed: Literal["none"] = "none"
+    # The join link's public form (`app.integrations.humancheck`): `turnstile` checks
+    # each submission with Cloudflare Turnstile, with these keys.
+    human_check: Literal["none", "turnstile"] = "none"
+    turnstile_site_key: str = ""
+    turnstile_secret_key: str = ""
 
     # The nightly jobs (`app/jobs`): a day's run starts once the day has begun here.
     jobs_timezone: str = "America/Santiago"

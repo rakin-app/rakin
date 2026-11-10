@@ -23,6 +23,7 @@ from app.db import create_engine, create_sessionmaker
 from app.integrations.mailer import Email, MailDeliveryError
 from app.main import create_app
 from app.notices import (
+    JOIN_APPROVED,
     MAGIC_LINK,
     PROOF_RECEIVED,
     PROOF_REJECTED,
@@ -77,6 +78,7 @@ TEMPLATES = [
     RECEIPT,
     PROOF_REJECTED,
     STAFF_INVITE,
+    JOIN_APPROVED,
 ]
 
 

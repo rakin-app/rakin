@@ -1,0 +1,133 @@
+.join {
+  max-width: var(--content-max-width);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom));
+}
+
+.join__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-3) var(--space-5) 0;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.join__form,
+.join__guardian {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.join__guardian {
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+.join__legend {
+  padding: 0;
+  font-weight: var(--font-weight-semibold);
+}
+
+.join__program,
+.join__intro {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.join__program {
+  font-weight: var(--font-weight-medium);
+}
+
+.join__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.join__label {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.join__input {
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  /* 16px or more, or iOS Safari zooms in on focus. */
+  font-size: 16px;
+}
+
+.join__input[aria-invalid='true'] {
+  border-color: var(--color-warning);
+}
+
+.join__hint {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: var(--text-xs);
+}
+
+.join__field-error,
+.join__error {
+  margin: 0;
+  color: var(--color-warning-strong);
+  font-size: var(--text-sm);
+}
+
+.join__consent {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.join__consent input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+}
+
+/* Out of sight but not `display: none`, which some scripts skip. */
+.join__honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.join__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.join__button--primary {
+  background: var(--color-inverse);
+  border-color: var(--color-inverse);
+  color: var(--color-inverse-text);
+}
+
+.join__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

@@ -15,6 +15,7 @@ from app.api import (
     gym,
     health,
     inactive,
+    join,
     ledger,
     me,
     member_import,
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings, app.state.integrations.mailer, lambda: app.state.sessionmaker
     )
     app.state.magic_links = links
+    app.state.join_limits = join.build_join_limits()
     # Added first, so it runs inside RequestIdMiddleware and its queries log the id.
     app.add_middleware(
         SessionMiddleware,
@@ -93,6 +95,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(inactive.router)
     app.include_router(proof_review.router)
     app.include_router(unsubscribe.router)
+    app.include_router(join.public)
+    app.include_router(join.router)
     app.include_router(
         build_router(
             links,

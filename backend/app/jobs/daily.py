@@ -21,7 +21,7 @@ from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.domain.dates import gym_today
 from app.integrations import build_mailer
-from app.jobs import billing, freezes, lapse, statements
+from app.jobs import billing, freezes, join_requests, lapse, statements
 from app.jobs.runner import Job, Outcome, Report, run_due
 from app.logging import configure_logging
 from app.notices import Notices
@@ -31,7 +31,7 @@ from app.settings import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 # In the order they run on each day: a later job may rely on an earlier one's work.
-JOBS: tuple[Job, ...] = (freezes.JOB, billing.JOB, lapse.JOB)
+JOBS: tuple[Job, ...] = (freezes.JOB, billing.JOB, lapse.JOB, join_requests.JOB)
 
 
 def jobs(notices: Notices) -> tuple[Job, ...]:

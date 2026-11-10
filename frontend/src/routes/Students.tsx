@@ -10,6 +10,7 @@ import {
   type MemberRow,
   type MembershipStatus,
 } from '../api/people'
+import { JoinRequests } from '../components/JoinRequests'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import { FamilyPanel } from './FamilyPanel'
@@ -94,6 +95,7 @@ export function Students() {
   return (
     <>
       <PageHeader title={copy.title} />
+      <JoinRequests />
       <div className="students">
         {readsLedger(role.data) && (
           <Link to="/admin/alumnos/importar" className="students__import">
