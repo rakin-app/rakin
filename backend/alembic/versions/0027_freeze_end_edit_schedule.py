@@ -22,7 +22,7 @@ starts, and again by the difference when its end moves; the API and the `freezes
 both call it. It runs with the caller's privileges and row-level security.
 
 Revision ID: 0027
-Revises: 0024
+Revises: 0026
 Create Date: 2026-11-10
 
 """
@@ -32,7 +32,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0027"
-down_revision: str | Sequence[str] | None = "0024"
+down_revision: str | Sequence[str] | None = "0026"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
