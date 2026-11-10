@@ -2,7 +2,7 @@
 
 Any session in a gym may use it, staff or member, since it answers only about the
 person acting: their staff role, if any, a guardian's dependents (migration 0010), and
-the student page itself (#65).
+the student page itself (#65), and their time on the mat (#141).
 """
 
 import uuid
@@ -17,10 +17,12 @@ from app.api.attendance import attended
 from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
 from app.api.proofs import OPEN_PERIODS, payable_params, to_open_period
+from app.api.session_blocks import person_time_of
 from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.ledger import EntryKind, EntryStatus
 from app.roles import role_in_gym
+from app.schemas.blocks import PersonTime
 from app.schemas.guardians import Balance, Dependent
 from app.schemas.me import MyAttendance, MyPage, MyPayment, NextPayment, NextPaymentStatus
 from app.schemas.people import MyRole
@@ -113,6 +115,15 @@ async def my_dependents(
         )
         for row in rows
     ]
+
+
+@router.get("/time")
+async def my_time(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
+) -> PersonTime:
+    """The signed-in person's time on the mat, as `GET /api/people/{id}/time` gives it:
+    what the student page's "Tu tiempo en el tatami" shows."""
+    return await person_time_of(session, tenant.gym_id, tenant.person_id)
 
 
 @router.get("/page")

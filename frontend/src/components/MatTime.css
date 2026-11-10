@@ -1,0 +1,156 @@
+/* "Tiempo en el tatami": the student page's and the ficha's card. */
+.mat-time {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.mat-time--loading {
+  justify-content: center;
+  min-height: 12rem;
+}
+
+.mat-time__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.mat-time__title {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.mat-time__periods {
+  display: inline-flex;
+  padding: var(--space-0-5);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-pill);
+}
+
+.mat-time__period {
+  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.mat-time__period[aria-pressed='true'] {
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+.mat-time__figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2-5);
+  margin: 0;
+}
+
+.mat-time__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.mat-time__figure dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.mat-time__figure dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.1;
+}
+
+.mat-time__kinds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mat-time__kind {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.mat-time__kind-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.mat-time__kind-time {
+  flex: none;
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.mat-time__bar {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-pill);
+}
+
+.mat-time__fill {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  background: var(--color-text-subtle);
+  border-radius: inherit;
+}
+
+.mat-time__fill--sparring {
+  background: var(--color-accent);
+}
+
+.mat-time__open-mat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin: 0;
+  padding-top: var(--space-2-5);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  border-top: 1px solid var(--color-divider);
+}
+
+.mat-time__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: normal;
+}
+
+.mat-time__error {
+  margin: 0;
+  color: var(--color-warning-strong);
+  font-size: var(--text-sm);
+}

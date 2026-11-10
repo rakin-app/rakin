@@ -823,3 +823,36 @@ def test_a_session_counts_once_and_coaches_read_time(
     assert client.get(f"/api/people/{ana}/time", headers=as_gym(other)).status_code == 404
     nobody = client.get(f"/api/people/{uuid.uuid4()}/time", headers=as_gym(gym))
     assert nobody.status_code == 404
+
+
+@pg
+def test_a_member_reads_their_own_time(client: TestClient, gym: uuid.UUID) -> None:
+    adults, fundamentals = classes(client, gym)
+    monthly = plan(client, gym, {**MONTHLY, "program_id": adults})
+    ana = add_person(client, gym, "Ana Rojas")
+    bruno = add_person(client, gym, "Bruno Díaz")
+    join(client, gym, bruno, monthly)
+    k = kinds(client, gym)
+    run_class(
+        client,
+        gym,
+        fundamentals,
+        local(gym_today(SANTIAGO), 0, 5),
+        [{"block_kind_id": k["Juegos"]["id"], "planned_seconds": 600}],
+        [{"actual_seconds": 600}],
+        [join(client, gym, ana, monthly)],
+    )
+
+    mine = ok(client.get("/api/me/time", headers=as_gym(gym, uuid.UUID(ana))))
+    assert mine == ok(client.get(f"/api/people/{ana}/time", headers=as_gym(gym)))
+    assert mine["all_time"]["classes"] == 1
+
+    # Bruno attended nothing: his own page reads nothing, never Ana's time.
+    his = ok(client.get("/api/me/time", headers=as_gym(gym, uuid.UUID(bruno))))
+    assert his["all_time"] == {
+        "by_kind": [],
+        "sparring_seconds": 0,
+        "open_mat_seconds": 0,
+        "classes": 0,
+        "open_mats": 0,
+    }
