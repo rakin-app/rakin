@@ -20,6 +20,7 @@ from app.domain.rut import check_digit
 from app.seed.data import (
     BANK_ACCOUNT,
     CLASS_TYPES,
+    COACH,
     CUSTOM_FIELDS,
     GRACE_DAYS,
     GRADING,
@@ -29,6 +30,7 @@ from app.seed.data import (
     MEMBERS,
     PLANS,
     PROGRAMS,
+    RANKS,
     STAFF,
     TIMEZONE,
     VALIDATOR,
@@ -76,6 +78,8 @@ class Seed:
     ledger_entries: list[Row]
     # The frozen members' freezes (migration 0017).
     freezes: list[Row]
+    # Each member's current rank (migration 0018).
+    grade_events: list[Row]
 
     def tables(self) -> Iterator[tuple[str, list[Row]]]:
         """Each table's rows, in an order the foreign keys accept."""
@@ -88,6 +92,7 @@ class Seed:
         yield "class_type", self.class_types
         yield "plan", self.plans
         yield "membership", self.memberships
+        yield "grade_event", self.grade_events
         yield "billing_period", self.billing_periods
         yield "ledger_entry", self.ledger_entries
         yield "membership_freeze", self.freezes
@@ -145,6 +150,7 @@ class _Builder:
         self.periods: list[Row] = []
         self.entries: list[Row] = []
         self.freezes: list[Row] = []
+        self.grades: list[Row] = []
         # When each member joined, by key.
         self.joined: dict[str, datetime] = {}
         self.validator = seed_id("person", VALIDATOR)
@@ -185,6 +191,7 @@ class _Builder:
         )
         if spec.status is MembershipStatus.FROZEN:
             self._freeze(spec, membership_id)
+        self.grades.append(self._grade(spec, membership_id, since))
         amount = discounted(plan.price_clp, spec.discount_pct)
         for index, period in enumerate(periods):
             self._period(spec, membership_id, payer, index, period, amount)
@@ -203,6 +210,28 @@ class _Builder:
                 "created_at": local(start, 18, 30),
             }
         )
+
+    def _grade(self, spec: MemberSpec, membership_id: uuid.UUID, since: date) -> Row:
+        """The promotion that gave the member their rank, recorded by a coach that night."""
+        rank, stripes = spec.rank
+        rng = _rng("grade", spec.key)
+        if spec.ranked_in is not None:
+            awarded = self.day(spec.ranked_in)
+        elif rank == RANKS[0][0] and not stripes:
+            awarded = since
+        else:
+            awarded = since + timedelta(days=rng.randrange(max((self.as_of - since).days, 1)))
+        return {
+            "id": seed_id("grade_event", spec.key),
+            "gym_id": GYM_ID,
+            "membership_id": membership_id,
+            "rank_key": rank,
+            "sub_rank": str(stripes),
+            "awarded_on": awarded,
+            "awarded_by": seed_id("person", COACH),
+            "note": None,
+            "created_at": local(awarded, 21, rng.randrange(60)),
+        }
 
     def _periods(self, spec: MemberSpec, plan: PlanSpec) -> tuple[list[_Period], date, date]:
         """The member's billing periods, paid-through date and start date."""
@@ -444,4 +473,5 @@ def build(as_of: date) -> Seed:
         billing_periods=builder.periods,
         ledger_entries=builder.entries,
         freezes=builder.freezes,
+        grade_events=builder.grades,
     )

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FieldValue, PersonField } from '../api/customFields'
+import type { GradeEvent, Grading, GradingScheme } from '../api/grading'
 import type { Membership, MembershipLedger, OpenPeriod, Person, TimelineEntry } from '../api/member'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
@@ -90,6 +91,36 @@ const LEDGER: MembershipLedger = {
   freezes: [],
 }
 
+const stripes = [0, 1, 2, 3, 4].map((n) => ({ key: String(n), label: n === 0 ? 'Sin grados' : n === 1 ? '1 grado' : `${n} grados` }))
+
+const SCHEME: GradingScheme = {
+  ranks: [
+    { key: 'white', label: 'Blanca', sub_ranks: stripes },
+    { key: 'blue', label: 'Azul', sub_ranks: stripes },
+    { key: 'purple', label: 'Morada', sub_ranks: stripes },
+  ],
+  kids_ladder: [{ key: 'grey', label: 'Gris', sub_ranks: stripes }],
+  goal_metric: 'classes_since_promotion',
+}
+
+const grade = (fields: Partial<GradeEvent> & Pick<GradeEvent, 'id'>): GradeEvent => ({
+  rank_key: 'blue',
+  rank_label: 'Azul',
+  sub_rank: '2',
+  sub_rank_label: '2 grados',
+  awarded_on: '2026-04-11',
+  awarded_by_name: 'Sebastián Araya',
+  note: null,
+  created_at: '2026-04-12T01:00:00Z',
+  ...fields,
+})
+
+const BLUE_2 = grade({ id: 'g-blue-2' })
+const GRADING: Grading = {
+  current: { rank_key: 'blue', rank_label: 'Azul', sub_rank: '2', sub_rank_label: '2 grados', awarded_on: '2026-04-11' },
+  events: [BLUE_2, grade({ id: 'g-blue-1', sub_rank: '1', sub_rank_label: '1 grado', awarded_on: '2025-08-02', note: 'Open de Santiago' })],
+}
+
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 
@@ -99,6 +130,9 @@ type Stub = {
   memberships?: Membership[]
   ledger?: MembershipLedger
   payment?: Answer
+  grading?: Grading
+  scheme?: GradingScheme
+  award?: Answer
   // The freeze's answer; by default the membership comes back frozen until the day asked.
   freeze?: Answer
   fields?: PersonField[]
@@ -111,6 +145,9 @@ function stubApi({
   memberships = [MONTHLY],
   ledger = LEDGER,
   payment,
+  grading = GRADING,
+  scheme = SCHEME,
+  award,
   freeze,
   fields = [],
   fieldsUpdate,
@@ -118,6 +155,7 @@ function stubApi({
   const calls: Call[] = []
   let current = ledger
   let members = memberships
+  let grades = grading
   let currentFields = fields
   vi.stubGlobal(
     'fetch',
@@ -152,6 +190,14 @@ function stubApi({
       return { body: frozen }
     }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
+    if (path === '/api/gym/grading-scheme') return { body: scheme }
+    if (path === '/api/people/felipe/grades' && method === 'GET') return { body: grades }
+    if (path === '/api/people/felipe/grades' && method === 'POST') {
+      if (award) return award
+      const purple = grade({ id: 'g-new', rank_key: 'purple', rank_label: 'Morada', sub_rank: '0', sub_rank_label: 'Sin grados', awarded_on: '2026-11-08' })
+      grades = { current: purple, events: [purple, ...grades.events] }
+      return { status: 201, body: grades }
+    }
     if (path === '/api/people/felipe/family') return { body: { guardian: null, dependents: [{ id: 'kid', name: 'Tomás Díaz' }] } }
     if (path === '/api/people/felipe/fields' && method === 'GET') return { body: currentFields }
     if (path === '/api/people/felipe/fields' && method === 'PATCH') {
@@ -190,7 +236,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
 
     expect(await screen.findByRole('heading', { name: 'Felipe Díaz' })).toBeInTheDocument()
-    expect(screen.getByText(copy.since('mar 2024'))).toBeInTheDocument()
+    expect(await screen.findByText(copy.rankSince('Azul · 2 grados', 'mar 2024'))).toBeInTheDocument()
     const card = await money()
     expect(within(card).getByText('Mensual adultos · vence el 30')).toBeInTheDocument()
     expect(await within(card).findByText(copy.overdue(9))).toBeInTheDocument()
@@ -376,12 +422,15 @@ describe('Ficha de alumno', () => {
     expect(await within(family).findByText('Tomás Díaz')).toBeInTheDocument()
   })
 
-  it('says when the member has no plan', async () => {
-    stubApi({ memberships: [] })
+  it('says when the member has no plan, and offers no promotion', async () => {
+    stubApi({ memberships: [], grading: { current: null, events: [] } })
     renderAt(PATH)
 
     expect(await screen.findByText(copy.noPlan)).toBeInTheDocument()
     expect(screen.getByText(copy.since('ene 2025'))).toBeInTheDocument()
+    const graduation = await screen.findByRole('region', { name: copy.grading.title })
+    expect(within(graduation).getByText(copy.grading.none)).toBeInTheDocument()
+    expect(within(graduation).queryByRole('button', { name: copy.grading.award })).not.toBeInTheDocument()
   })
 
   it('says when there is no such member', async () => {
@@ -389,6 +438,89 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.notFound)
+  })
+  it('shows the rank since when, and the promotion log newest first', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    const graduation = await screen.findByRole('region', { name: copy.grading.title })
+    expect(within(graduation).getByText('Azul · 2 grados', { selector: '.member__rank-label' })).toBeInTheDocument()
+    expect(within(graduation).getByText(copy.grading.since('11 abr 2026'))).toBeInTheDocument()
+    const log = within(graduation).getByRole('list', { name: copy.grading.log })
+    expect(within(log).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'Azul · 2 grados11 abr 2026 · registró Sebastián Araya',
+      'Azul · 1 grado2 ago 2025 · registró Sebastián Araya · Open de Santiago',
+    ])
+  })
+
+  it('awards the next sub-rank by default, and shows the new rank', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+    const graduation = await screen.findByRole('region', { name: copy.grading.title })
+
+    await userEvent.click(within(graduation).getByRole('button', { name: copy.grading.award }))
+    const form = screen.getByRole('form', { name: copy.grading.form.title })
+    expect(within(form).getByLabelText(copy.grading.form.rank)).toHaveValue('blue')
+    expect(within(form).getByLabelText(copy.grading.form.subRank)).toHaveValue('3')
+    // Another rank starts at its first sub-rank.
+    await userEvent.selectOptions(within(form).getByLabelText(copy.grading.form.rank), 'purple')
+    expect(within(form).getByLabelText(copy.grading.form.subRank)).toHaveValue('0')
+    await userEvent.clear(within(form).getByLabelText(copy.grading.form.date))
+    await userEvent.type(within(form).getByLabelText(copy.grading.form.date), '2026-11-08')
+    await userEvent.type(within(form).getByLabelText(copy.grading.form.note), ' Examen ')
+    await userEvent.click(within(form).getByRole('button', { name: copy.grading.form.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.grading.form.done('Morada · Sin grados'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/people/felipe/grades',
+        body: { rank_key: 'purple', sub_rank: '0', awarded_on: '2026-11-08', note: 'Examen' },
+      },
+    ])
+    await waitFor(() => expect(screen.getByText(copy.rankSince('Morada · Sin grados', 'mar 2024'))).toBeInTheDocument())
+  })
+
+  it('moves to the next rank after the last sub-rank', async () => {
+    const top = grade({ id: 'g-blue-4', sub_rank: '4', sub_rank_label: '4 grados' })
+    stubApi({ grading: { current: top, events: [top] } })
+    renderAt(PATH)
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.grading.award }))
+    const form = screen.getByRole('form', { name: copy.grading.form.title })
+    expect(within(form).getByLabelText(copy.grading.form.rank)).toHaveValue('purple')
+    expect(within(form).getByLabelText(copy.grading.form.subRank)).toHaveValue('0')
+  })
+
+  it('lets a coach promote', async () => {
+    stubApi({ role: 'coach' })
+    renderAt(PATH)
+
+    const graduation = await screen.findByRole('region', { name: copy.grading.title })
+    expect(within(graduation).getByRole('button', { name: copy.grading.award })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['awarded_in_future', copy.grading.form.refused.awarded_in_future],
+    ['no_membership', copy.grading.form.refused.no_membership],
+    ['unknown_rank', copy.grading.form.refused.failed],
+  ] as const)('explains a %s refusal', async (code, message) => {
+    stubApi({ award: { status: code === 'no_membership' ? 409 : 422, body: { detail: { code } } } })
+    renderAt(PATH)
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.grading.award }))
+    await userEvent.click(screen.getByRole('button', { name: copy.grading.form.submit }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  })
+
+  it('has no graduación in a gym with no ranks', async () => {
+    stubApi({ scheme: { ranks: [], kids_ladder: [], goal_metric: null }, grading: { current: null, events: [] } })
+    renderAt(PATH)
+
+    await money()
+    expect(screen.getByText(copy.since('mar 2024'))).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: copy.grading.title })).not.toBeInTheDocument()
   })
 })
 
