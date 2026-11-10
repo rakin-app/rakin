@@ -1,6 +1,10 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 
+/** A class, or an open mat: rounds of sparring only (backend `ClassKind`). */
+export const CLASS_KINDS = ['class', 'open_mat'] as const
+export type ClassKind = (typeof CLASS_KINDS)[number]
+
 /** A kind of class in one of the gym's programs (backend `ClassType`). */
 export type ClassType = {
   id: string
@@ -8,6 +12,9 @@ export type ClassType = {
   program_id: string
   program_name: string
   credit_cost: number
+  /** An open mat is rounds of sparring only, and by default is not counted as a class. */
+  kind: ClassKind
+  counts_as_class: boolean
   active: boolean
   created_at: string
 }
