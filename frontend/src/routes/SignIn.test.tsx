@@ -1,7 +1,8 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Host } from '../api/host'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -11,13 +12,17 @@ const copy = es.signIn
 
 type Sent = { path: string; body: unknown }
 
-// `/api/auth/link` answers `status` with `headers`; nothing else is asked for.
-function stubLink(status: number, headers: Record<string, string> = {}) {
+// `/api/auth/link` answers `status` with `headers`, and `/api/host` names `gym`; the
+// links asked for are kept.
+function stubLink(status: number, headers: Record<string, string> = {}, gym: Host['gym'] = null) {
   const sent: Sent[] = []
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input, init) => {
       const path = new URL(String(input), 'http://localhost').pathname
+      if (path === '/api/host') {
+        return new Response(JSON.stringify({ gym }), { headers: { 'Content-Type': 'application/json' } })
+      }
       sent.push({ path, body: init?.body ? JSON.parse(String(init.body)) : undefined })
       return new Response(status === 202 ? null : JSON.stringify({ detail: 'x' }), {
         status,
@@ -56,6 +61,22 @@ describe('Entrar', () => {
     expect(sent).toEqual([{ path: '/api/auth/link', body: { email: 'ana@example.cl' } }])
     // The answer never depends on the address: the API gives none, and the copy has one shape.
     expect(copy.sent('nadie@example.cl')).toBe(copy.sent('ana@example.cl').replace('ana@', 'nadie@'))
+  })
+
+  it("names Rakin on the shared address, and the gym on the gym's own", async () => {
+    stubLink(202)
+    renderAt('/ingresar')
+    expect(await screen.findByRole('heading', { name: copy.title })).toBeInTheDocument()
+    vi.unstubAllGlobals()
+    cleanup()
+
+    const sent = stubLink(202, {}, { slug: 'meta', name: 'Meta' })
+    renderAt('/ingresar')
+    expect(await screen.findByRole('heading', { name: copy.titleAt('Meta') })).toBeInTheDocument()
+
+    await ask('ana@example.cl')
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.sent('ana@example.cl'))
+    expect(sent).toEqual([{ path: '/api/auth/link', body: { email: 'ana@example.cl' } }])
   })
 
   it('lets them ask again with another address', async () => {

@@ -56,7 +56,7 @@ Generate the deploy key on your machine, not the host: `ssh-keygen -t ed25519 -f
 
 ## 2. DNS, mail and storage
 
-- **DNS** (Cloudflare): an `A` (and `AAAA`) record `staging` → the VPS, **DNS only** (grey cloud), so Caddy terminates TLS and gets its certificate from Let's Encrypt over port 80.
+- **DNS** (Cloudflare): an `A` (and `AAAA`) record `staging` → the VPS, **DNS only** (grey cloud), so Caddy terminates TLS and gets its certificate from Let's Encrypt over port 80. And for the gyms' own hosts ([below](#creating-a-gym)), a wildcard `A` (and `AAAA`) record `*.staging` → the VPS, DNS only too. Production's will be `rakin.app` and `*.rakin.app`.
 - **Resend**: add and verify `rakin.app` (its DKIM, SPF and return-path records in Cloudflare, DNS only), then create an API key with sending access for that domain. It goes in `SMTP_PASSWORD`; `SMTP_HOST=smtp.resend.com`, `SMTP_USERNAME=resend`, and port 587 with `SMTP_SECURITY=starttls`, as `deploy/.env.example` has them. There is no sandbox to leave: a verified domain sends to anyone.
 - **Object storage**: a bucket in R2 (or S3), with object versioning on where the provider offers it. Create a key scoped to that bucket with object read and write for the api (`S3_*` in `.env`), and separately an admin token for the one-off CORS step below.
 - **Sentry**: a project for the api; its DSN goes in `SENTRY_DSN`. The api and the jobs both report there.
@@ -111,7 +111,7 @@ unset S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY
 docker compose run --rm api python -m app.blob_cors --check   # the browser's preflight, PUT and GET
 ```
 
-The rule allows `PUT` and `GET` with a `Content-Type` header from `PUBLIC_BASE_URL`'s origin ([`app/blob_cors.py`](../backend/app/blob_cors.py)). Re-run `--apply` if `PUBLIC_BASE_URL` changes. Then the browser check: sign in on staging as a student with an owed period, upload a transfer proof from a phone, and see it in the admin's Validar comprobante queue. A CORS failure shows in the browser console as a blocked `PUT` to the bucket's host.
+The rule allows `PUT` and `GET` with a `Content-Type` header from `PUBLIC_BASE_URL`'s origin, and from every gym's host as `https://*.<BASE_DOMAIN>` ([`app/blob_cors.py`](../backend/app/blob_cors.py)). Re-run `--apply` if `PUBLIC_BASE_URL` or `BASE_DOMAIN` changes; a bucket set before `BASE_DOMAIN` existed needs it once, or proofs cannot be uploaded from a gym's host. Then the browser check: sign in on staging as a student with an owed period, upload a transfer proof from a phone, and see it in the admin's Validar comprobante queue. A CORS failure shows in the browser console as a blocked `PUT` to the bucket's host.
 
 ### Uptime
 
@@ -130,6 +130,29 @@ or, from GitHub, run the **deploy** workflow by hand with that tag and **rollbac
 A rollback runs the Compose file currently in `/srv/rakin`. The workflow copies the earlier tag's one first; by hand, if `deploy/docker-compose.yml` changed between the two releases, fetch the older one with `git show v0.0.9:deploy/docker-compose.yml`.
 
 If a release's migration is the problem, roll forward instead: fix it in a new migration and tag again. Never run `alembic downgrade` on this host.
+
+## Creating a gym
+
+Each gym is served on its own host, `<slug>.<BASE_DOMAIN>`: Meta at `meta.staging.rakin.app` on staging, `meta.rakin.app` once production's `BASE_DOMAIN` is `rakin.app`. There is no self-service sign-up yet; a gym is made on the host:
+
+```sh
+cd /srv/rakin
+docker compose run --rm api python -m app.gyms create --slug meta --name "Meta" \
+  --timezone America/Santiago \
+  --owner-email <owner@example.com> --owner-name "<Owner's name>" --owner-phone "<+56 9 …>"
+```
+
+It creates the gym with what the demo gym has before anyone trains there (the BJJ grading scheme, its programs and the default block kinds) and no members, plans or classes, and makes the person with that phone its owner (found if another gym already has them, created otherwise), with that email on Meta's record of them. Run again with the same slug, it changes nothing and says so. The slug is the host: lower-case letters, digits and hyphens, and not a name the app keeps (`www`, `app`, `api`, `staging`, `admin`, `mail` and others, in [`app/hosts.py`](../backend/app/hosts.py)).
+
+Then the owner opens `https://meta.staging.rakin.app`, which shows Meta's name, and signs in with that email. On a gym's host:
+
+- a sign-in link points back to that host, and signs in to that gym, even for someone in several; someone whose address Meta does not have is told so, and not signed in;
+- the gym's emails (welcome, statements, receipts, invites) link to it too;
+- the session cookie is that host's alone (`__Host-session`), so each gym's host has its own sign-in.
+
+`https://staging.rakin.app` itself works as before.
+
+**Certificates.** Caddy gets each gym host's certificate from Let's Encrypt at its first visit (on-demand TLS, [`deploy/Caddyfile`](../deploy/Caddyfile)), after asking the api's `/internal/tls-allowed?domain=` whether a gym has that host. It says yes only for an existing gym's slug, so no name anyone invents reaches Let's Encrypt, and there is no wildcard certificate or DNS plugin. That `ask` is the rate limit: Caddy 2.8 dropped on-demand TLS's own `interval` and `burst`. The first visit to a new gym's host waits a few seconds for its certificate.
 
 ## Day to day
 
