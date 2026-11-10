@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
 import type { InactiveMember } from '../api/inactive'
 import type { ProofReview } from '../api/review'
+import type { ClassSession, UnmarkedSessions } from '../api/sessions'
 import type { Overdue, OverduePeriod } from '../api/today'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -87,6 +88,25 @@ const INACTIVE: InactiveMember[] = [
   away('Paula Contreras', 41, { last_attended_on: null, payment_status: 'trial', whatsapp_url: null }),
 ]
 
+// Monday the 9th at 19:00 in Santiago (UTC-3 in November), no one marked.
+const UNMARKED_CLASS: ClassSession = {
+  id: 's-monday',
+  class_type_id: 'fundamentos',
+  class_type_name: 'Fundamentos',
+  program_id: 'adultos',
+  program_name: 'Adultos',
+  starts_at: '2026-11-09T22:00:00Z',
+  coach_id: 'coach',
+  coach_name: 'Rodrigo Fuentes',
+  topic: null,
+  notes: null,
+  created_at: '2026-11-09T22:00:00Z',
+  updated_at: '2026-11-09T22:00:00Z',
+  present: 0,
+}
+
+const UNMARKED: UnmarkedSessions = { since: '2026-11-04', timezone: 'America/Santiago', sessions: [UNMARKED_CLASS] }
+
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 type Stub = {
@@ -95,9 +115,10 @@ type Stub = {
   overdue?: Overdue
   payment?: Answer
   inactive?: InactiveMember[]
+  unmarked?: Answer
 }
 
-function stubApi({ role = 'owner', proofs, overdue = OVERDUE, payment, inactive = INACTIVE }: Stub = {}) {
+function stubApi({ role = 'owner', proofs, overdue = OVERDUE, payment, inactive = INACTIVE, unmarked }: Stub = {}) {
   const calls: Call[] = []
   let current = overdue
   let away = inactive
@@ -122,6 +143,7 @@ function stubApi({ role = 'owner', proofs, overdue = OVERDUE, payment, inactive 
     if (path === '/api/ledger/proofs') return proofs ?? { body: [DIEGO, MATEO] }
     if (path === '/api/ledger/overdue') return { body: current }
     if (path === '/api/inactive') return { body: away }
+    if (path === '/api/sessions/unmarked') return unmarked ?? { body: UNMARKED }
     const nudged = /^\/api\/inactive\/(.+)\/nudge$/.exec(path)
     if (nudged && method === 'POST') {
       const sentAt = new Date().toISOString()
@@ -238,12 +260,37 @@ describe('Hoy', () => {
     expect(await within(overdue).findByRole('alert')).toHaveTextContent(copy.overdue.refused.paid)
   })
 
+  it('lists the classes no one took attendance at, each leading to its roster', async () => {
+    stubApi()
+    renderToday()
+
+    const unmarked = await section(copy.unmarked.title)
+    expect(await within(unmarked).findByText(copy.unmarked.count(1))).toBeInTheDocument()
+    const name = copy.unmarked.row('9 nov 19:00', 'Fundamentos')
+    const row = within(unmarked).getByRole('link', { name: copy.unmarked.takeLabel(name) })
+    expect(row).toHaveAttribute('href', '/admin/clases/s-monday')
+    expect(row).toHaveTextContent(copy.unmarked.detail('Adultos', 'Rodrigo Fuentes'))
+  })
+
+  it('offers a retry when the classes without attendance fail to load', async () => {
+    stubApi({ unmarked: { status: 403, body: { detail: 'forbidden' } } })
+    renderToday()
+
+    const unmarked = await section(copy.unmarked.title)
+    expect(await within(unmarked).findByRole('alert')).toHaveTextContent(copy.unmarked.error)
+  })
+
   it('says when nothing is overdue or waiting', async () => {
-    stubApi({ proofs: { body: [] }, overdue: { total_clp: 0, periods: [] } })
+    stubApi({
+      proofs: { body: [] },
+      overdue: { total_clp: 0, periods: [] },
+      unmarked: { body: { ...UNMARKED, sessions: [] } },
+    })
     renderToday()
 
     expect(await within(await section(copy.proofs.title)).findByText(copy.proofs.empty)).toBeInTheDocument()
     expect(await within(await section(copy.overdue.title)).findByText(copy.overdue.empty)).toBeInTheDocument()
+    expect(await within(await section(copy.unmarked.title)).findByText(copy.unmarked.empty)).toBeInTheDocument()
   })
 
   it('offers a retry when a list fails to load', async () => {
@@ -265,9 +312,10 @@ describe('Hoy', () => {
     await screen.findByRole('navigation', { name: es.nav.label })
     await vi.waitFor(() => expect(calls.some((c) => c.path === '/api/me/role')).toBe(true))
     expect(screen.queryByRole('region')).not.toBeInTheDocument()
-    expect(calls.filter((c) => c.path.startsWith('/api/ledger/') || c.path.startsWith('/api/inactive'))).toEqual(
-      [],
+    const asked = calls.filter(
+      (c) => c.path.startsWith('/api/ledger/') || c.path.startsWith('/api/inactive') || c.path === '/api/sessions/unmarked',
     )
+    expect(asked).toEqual([])
   })
 
   it('counts who has not come in 14 days', async () => {

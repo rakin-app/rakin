@@ -172,6 +172,17 @@
   font-style: italic;
 }
 
+/* "Sin asistencia": a class no one has been marked at yet. */
+.classes__flag {
+  flex: none;
+  padding: var(--space-1) var(--space-2-5);
+  background: var(--color-warning-soft);
+  border-radius: var(--radius-pill);
+  color: var(--color-warning-strong);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
 .classes__button {
   min-height: var(--control-height);
   padding: 0 var(--space-3-5);

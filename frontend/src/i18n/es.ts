@@ -109,6 +109,16 @@ export const es = {
         // A dependent's nudge goes to their guardian.
         writeFor: (contact: string, name: string) => `Escribir por WhatsApp a ${contact}, por ${name}`,
       },
+      unmarked: {
+        title: 'Sin asistencia',
+        count: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
+        error: 'No pudimos cargar las clases sin asistencia.',
+        empty: 'Todas las clases de la semana tienen asistencia.',
+        row: (when: string, classType: string) => `${when} · ${classType}`,
+        detail: (program: string, coach: string) => `${program} · ${coach}`,
+        take: 'Pasar lista',
+        takeLabel: (name: string) => `Pasar lista de ${name}`,
+      },
       ago: {
         now: 'recién',
         minutes: (n: number) => `hace ${n}\u00a0min`,
@@ -466,6 +476,7 @@ export const es = {
         row: (time: string, classType: string) => `${time} · ${classType}`,
         detail: (program: string, coach: string) => `${program} · ${coach}`,
         noTopic: 'Sin tema',
+        unmarked: 'Sin asistencia',
       },
     },
     settings: {
