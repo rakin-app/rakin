@@ -92,3 +92,47 @@ export function awardGrade(personId: string, body: GradeAward): Promise<Grading>
 export function rankLabel(rank: Rank): string {
   return rank.sub_rank_label ? `${rank.rank_label} · ${rank.sub_rank_label}` : rank.rank_label
 }
+
+/** Whole months from the ISO day `from` to `to`: a month counts once its day comes round. */
+export function monthsBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split('-').map(Number) as [number, number, number]
+  const [ty, tm, td] = to.split('-').map(Number) as [number, number, number]
+  const months = (ty - fy) * 12 + (tm - fm) - (td < fd ? 1 : 0)
+  return Math.max(0, months)
+}
+
+/** How far a member is towards their next promotion, by the scheme's goal metric. */
+export type GoalProgress = {
+  metric: GoalMetric
+  done: number
+  target: number
+  // The sub-rank or rank that comes next in their ladder; null at the top.
+  next: string | null
+}
+
+/**
+ * Their progress, or null when there is nothing to show: no goal metric, no target on
+ * their rank or sub-rank (a sub-rank's own wins over its rank's), or nothing counted.
+ * Classes come from `sincePromotion`; months in rank from the day they were awarded it.
+ */
+export function goalProgress(
+  scheme: GradingScheme,
+  current: Rank,
+  sincePromotion: number | null,
+  today: string,
+): GoalProgress | null {
+  const metric = scheme.goal_metric
+  if (metric === null) return null
+  const ladder = [scheme.ranks, scheme.kids_ladder].find((l) => l.some((r) => r.key === current.rank_key))
+  const index = ladder?.findIndex((r) => r.key === current.rank_key) ?? -1
+  const rank = ladder?.[index]
+  if (!ladder || !rank) return null
+  const subIndex = rank.sub_ranks.findIndex((s) => s.key === current.sub_rank)
+  const target = rank.sub_ranks[subIndex]?.target ?? rank.target ?? null
+  if (target == null) return null
+  const done = metric === 'classes_since_promotion' ? sincePromotion : monthsBetween(current.awarded_on, today)
+  if (done === null) return null
+  const nextSub = subIndex >= 0 ? rank.sub_ranks[subIndex + 1] : undefined
+  const next = nextSub?.label ?? ladder[index + 1]?.label ?? null
+  return { metric, done, target, next }
+}

@@ -5,6 +5,7 @@ import { personAttendanceQuery } from '../api/attendance'
 import { ApiError } from '../api/client'
 import {
   awardGrade,
+  goalProgress,
   gradesQuery,
   gradingSchemeQuery,
   rankLabel,
@@ -583,6 +584,7 @@ function Graduation({ personId, canAward }: { personId: string; canAward: boolea
             <span className="member__rank-label">{rankLabel(current)}</span>
             <span className="member__detail">{words.since(t.common.dayYear(current.awarded_on))}</span>
             {sincePromotion !== null && <span className="member__detail">{words.sincePromotion(sincePromotion)}</span>}
+            {scheme.data && <GoalTile scheme={scheme.data} current={current} sincePromotion={sincePromotion} />}
           </div>
         ) : (
           <p className="member__note">{words.none}</p>
@@ -630,6 +632,38 @@ function Graduation({ personId, canAward }: { personId: string; canAward: boolea
         </ul>
       )}
     </section>
+  )
+}
+
+/** "62 / 80 clases para 3 grados", with a bar; nothing when the rank has no target. */
+function GoalTile({
+  scheme,
+  current,
+  sincePromotion,
+}: {
+  scheme: GradingScheme
+  current: Rank
+  sincePromotion: number | null
+}) {
+  const progress = goalProgress(scheme, current, sincePromotion, isoDay(new Date().toISOString()))
+  if (!progress) return null
+  const { metric, done, target, next } = progress
+  const text = copy.grading.goal(done, target, metric, next)
+  return (
+    <div className="member__goal">
+      <span className="member__goal-text">{text}</span>
+      <div
+        className="member__goal-bar"
+        role="progressbar"
+        aria-label={copy.grading.goalLabel}
+        aria-valuemin={0}
+        aria-valuemax={target}
+        aria-valuenow={Math.min(done, target)}
+        aria-valuetext={text}
+      >
+        <div className="member__goal-fill" style={{ width: `${Math.min(100, (done / target) * 100)}%` }} />
+      </div>
+    </div>
   )
 }
 

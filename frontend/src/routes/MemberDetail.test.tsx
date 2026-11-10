@@ -256,6 +256,7 @@ const PATH = '/admin/alumnos/felipe'
 const money = () => screen.findByRole('region', { name: copy.paymentLabel })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -711,6 +712,41 @@ describe('Ficha de alumno', () => {
       'Azul · 2 grados11 abr 2026 · registró Sebastián Araya',
       'Azul · 1 grado2 ago 2025 · registró Sebastián Araya · Open de Santiago',
     ])
+  })
+
+  it("shows the progress towards the next promotion against the rank's target", async () => {
+    const targeted = { ...stripes[2]!, target: 80 }
+    const blue = { ...SCHEME.ranks[1]!, sub_ranks: stripes.map((s) => (s.key === '2' ? targeted : s)) }
+    stubApi({ scheme: { ...SCHEME, ranks: [SCHEME.ranks[0]!, blue, SCHEME.ranks[2]!] } })
+    renderAt(PATH)
+
+    const graduation = await screen.findByRole('region', { name: copy.grading.title })
+    const text = copy.grading.goal(62, 80, 'classes_since_promotion', '3 grados')
+    expect(text).toBe('62 / 80 clases para 3 grados')
+    expect(await within(graduation).findByText(text)).toBeInTheDocument()
+    const bar = within(graduation).getByRole('progressbar', { name: copy.grading.goalLabel })
+    expect(bar).toHaveAttribute('aria-valuenow', '62')
+    expect(bar).toHaveAttribute('aria-valuemax', '80')
+  })
+
+  it('counts months in rank when that is the goal metric', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 10, 9, 12) })
+    const blue = { ...SCHEME.ranks[1]!, target: 12 }
+    stubApi({ scheme: { ...SCHEME, ranks: [SCHEME.ranks[0]!, blue, SCHEME.ranks[2]!], goal_metric: 'time_in_rank' } })
+    renderAt(PATH)
+
+    const graduation = await screen.findByRole('region', { name: copy.grading.title })
+    // Awarded 11 abr 2026: six whole months by 9 nov.
+    expect(await within(graduation).findByText(copy.grading.goal(6, 12, 'time_in_rank', '3 grados'))).toBeInTheDocument()
+  })
+
+  it('shows no progress when the rank has no target', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    const graduation = await screen.findByRole('region', { name: copy.grading.title })
+    await within(graduation).findByText(copy.grading.sincePromotion(62))
+    expect(within(graduation).queryByRole('progressbar')).not.toBeInTheDocument()
   })
 
   it('awards the next sub-rank by default, and shows the new rank', async () => {

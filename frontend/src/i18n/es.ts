@@ -357,6 +357,12 @@ export const es = {
         since: (day: string) => `desde ${day}`,
         sincePromotion: (n: number) =>
           n === 1 ? '1 clase desde la última graduación' : `${n} clases desde la última graduación`,
+        // "62 / 80 clases para 3 grados": towards the next promotion, by the gym's goal metric.
+        goal: (done: number, target: number, metric: 'classes_since_promotion' | 'time_in_rank', next: string | null) =>
+          `${done} / ${target} ${
+            metric === 'classes_since_promotion' ? (target === 1 ? 'clase' : 'clases') : target === 1 ? 'mes' : 'meses'
+          } para ${next ?? 'la siguiente graduación'}`,
+        goalLabel: 'Avance a la siguiente graduación',
         award: 'Registrar graduación',
         log: 'Historial',
         by: (name: string) => `registró ${name}`,
