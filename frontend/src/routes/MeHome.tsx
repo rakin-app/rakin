@@ -13,8 +13,8 @@ const copy = t.me
 
 /**
  * "Mi página", the student page: what is due next and where to transfer it,
- * the proof upload, their belt and classes, their time on the mat, and the payments already sent with how
- * each was reviewed.
+ * the proof upload, their belt and classes, their time on the mat, and the payments
+ * already sent with how each was reviewed.
  */
 export function MeHome() {
   const page = useQuery(myPageQuery())

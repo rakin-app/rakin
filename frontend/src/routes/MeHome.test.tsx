@@ -260,7 +260,7 @@ describe('Mi página', () => {
     stubPage(diego(), { ...NO_TIME, this_month: month, all_time: { ...month, classes: 40, sparring_seconds: 360000 } })
     renderMe()
 
-    const card = within(await screen.findByRole('region', { name: es.matTime.mine }))
+    const card = within(await screen.findByRole('region', { name: es.matTime.mine, busy: false }))
     expect(card.getByRole('list', { name: es.matTime.byKind })).toHaveTextContent('Sparring6 h 30 min')
   })
 
@@ -268,7 +268,7 @@ describe('Mi página', () => {
     stubPage(diego())
     renderMe()
 
-    const card = within(await screen.findByRole('region', { name: es.matTime.mine }))
+    const card = within(await screen.findByRole('region', { name: es.matTime.mine, busy: false }))
     expect(card.getByText(es.matTime.emptyMine)).toBeInTheDocument()
   })
 

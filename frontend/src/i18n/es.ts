@@ -1092,6 +1092,7 @@ export const es = {
     emptyMine: 'Todavía no hay clases con tiempo registrado. Aparecerá aquí cuando tu profe use el cronómetro.',
     emptyTheirs: 'Todavía no hay clases con tiempo registrado.',
     emptyMonth: 'Este mes todavía no hay tiempo registrado.',
+    loading: 'Cargando el tiempo en el tatami…',
     error: 'No pudimos cargar el tiempo en el tatami.',
   },
   me: {

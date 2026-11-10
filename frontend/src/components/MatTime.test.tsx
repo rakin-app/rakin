@@ -1,9 +1,11 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { QueryClientProvider } from '@tanstack/react-query'
 import type { PersonTime, TimeTotals } from '../api/matTime'
+import { createQueryClient } from '../api/queryClient'
 import { es } from '../i18n/es'
-import { MatTime } from './MatTime'
+import { MatTime, MyMatTime } from './MatTime'
 
 const copy = es.matTime
 
@@ -118,5 +120,22 @@ describe('MatTime', () => {
     const bars = container.querySelectorAll('.mat-time__bar')
     expect(bars).toHaveLength(2)
     bars.forEach((bar) => expect(bar).toHaveAttribute('aria-hidden', 'true'))
+  })
+})
+
+describe('MyMatTime', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('holds its place while the time loads', () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(() => new Promise<Response>(() => {})))
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MyMatTime />
+      </QueryClientProvider>,
+    )
+
+    const region = screen.getByRole('region', { name: copy.mine })
+    expect(region).toHaveAttribute('aria-busy', 'true')
+    expect(within(region).getByText(copy.loading)).toBeInTheDocument()
   })
 })

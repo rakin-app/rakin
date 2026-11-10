@@ -8,14 +8,6 @@ const copy = t.matTime
 
 type Period = 'month' | 'allTime'
 
-/**
- * "Tiempo en el tatami" (#141): the classes a person attended and the time each block
- * kind ran in them, this month or all time, as the API totals them. Each kind is a bar
- * whose text carries the figure, so the bars themselves are only decoration. Open mats
- * are a line of their own: their time is sparring too, as the API counts it.
- *
- * `mine` is the student page's wording; the ficha's speaks of the member.
- */
 /** The student page's card, from `/api/me/time`. */
 export function MyMatTime() {
   return <Loaded query={useQuery(myTimeQuery())} mine />
@@ -34,9 +26,23 @@ function Loaded({ query, mine }: { query: { data?: PersonTime; isError: boolean 
       </p>
     )
   }
-  return query.data ? <MatTime time={query.data} mine={mine} /> : null
+  if (query.data) return <MatTime time={query.data} mine={mine} />
+  // While it loads, the card holds its place, so what is below it does not jump.
+  return (
+    <section className="mat-time mat-time--loading" aria-busy="true" aria-label={mine ? copy.mine : copy.theirs}>
+      <p className="mat-time__note">{copy.loading}</p>
+    </section>
+  )
 }
 
+/**
+ * "Tiempo en el tatami" (#141): the classes a person attended and the time each block
+ * kind ran in them, this month or all time, as the API totals them. Each kind is a bar
+ * whose text carries the figure, so the bars themselves are only decoration. Open mats
+ * are a line of their own: their time is sparring too, as the API counts it.
+ *
+ * `mine` is the student page's wording; the ficha's speaks of the member.
+ */
 export function MatTime({ time, mine }: { time: PersonTime; mine: boolean }) {
   const [period, setPeriod] = useState<Period>('month')
   const titleId = useId()

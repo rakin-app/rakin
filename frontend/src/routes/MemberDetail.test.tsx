@@ -848,7 +848,7 @@ describe('Ficha de alumno', () => {
     stubApi()
     renderAt(PATH)
 
-    const card = await screen.findByRole('region', { name: es.matTime.theirs })
+    const card = await screen.findByRole('region', { name: es.matTime.theirs, busy: false })
     expect(within(card).getByRole('list', { name: es.matTime.byKind })).toHaveTextContent('Sparring1 h 30 min')
     expect(within(card).getByText(es.matTime.openMat(1, '30 min'))).toBeInTheDocument()
   })
