@@ -70,6 +70,8 @@ function Failed({ message, retry }: { message: string; retry: () => void }) {
 }
 
 function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: string }) {
+  // A class yet to start has no attendance to take: no flag until it has.
+  const unmarked = session.present === 0 && new Date(session.starts_at) <= new Date()
   return (
     <li>
       <Link to="/admin/clases/$sessionId" params={{ sessionId: session.id }} className="classes__row">
@@ -82,7 +84,7 @@ function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: st
             {session.topic ?? copy.today.noTopic}
           </span>
         </span>
-        {session.present === 0 && <span className="classes__flag">{copy.today.unmarked}</span>}
+        {unmarked && <span className="classes__flag">{copy.today.unmarked}</span>}
         <ChevronRightIcon />
       </Link>
     </li>

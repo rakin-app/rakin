@@ -169,6 +169,20 @@ describe('Clases', () => {
     expect(evening).not.toHaveTextContent(copy.today.unmarked)
   })
 
+  it('does not flag a class that has not started yet', async () => {
+    const later: ClassSession = {
+      ...MORNING,
+      id: 's-later',
+      starts_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+    }
+    stubApi({ sessions: [later] })
+    renderAt('/admin/clases')
+
+    const today = await screen.findByRole('region', { name: copy.today.title })
+    const [row] = await within(today).findAllByRole('link')
+    expect(row).not.toHaveTextContent(copy.today.unmarked)
+  })
+
   it('says when there are no classes yet today', async () => {
     stubApi({ sessions: [] })
     renderAt('/admin/clases')

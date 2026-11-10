@@ -247,7 +247,7 @@ function Attendance({ sessionId }: { sessionId: string }) {
     mutationFn: ({ change }: Save) => changeAttendance(sessionId, change),
     onSuccess: (updated, { change: sent }) => {
       queryClient.setQueryData(rosterQuery(sessionId).queryKey, updated)
-      refreshFlags(queryClient)
+      refreshFlags(queryClient, sessionId)
       setSaved(true)
       setDropped(false)
       clearQueuedChange(sessionId)
@@ -422,8 +422,10 @@ function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boo
   )
 }
 
-/** The Clases list and the dashboard flag a class no one is marked at: refetch both. */
-function refreshFlags(queryClient: QueryClient) {
+/** The Clases list and the dashboard flag a class no one is marked at: refetch both, and
+ * the session itself, whose `present` the change made stale. */
+function refreshFlags(queryClient: QueryClient, sessionId: string) {
+  void queryClient.invalidateQueries({ queryKey: ['sessions', 'detail', sessionId] })
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
 }
@@ -444,7 +446,7 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
     onSuccess: (added, guest) => {
       if ('roster' in added) {
         queryClient.setQueryData(rosterQuery(sessionId).queryKey, added.roster)
-        refreshFlags(queryClient)
+        refreshFlags(queryClient, sessionId)
         setDone(words.done(guest.name))
       } else {
         onMember(added.member)
