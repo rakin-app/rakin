@@ -131,6 +131,7 @@ const DIEGO = {
   membership: { id: 'm-diego', status: 'active', plan_id: 'p-adultos', plan_name: 'Mensual adultos' },
   guardian: null,
   dependents: 0,
+  left_on: null,
 } satisfies MemberPage['items'][number]
 
 const DIEGO_MEMBERSHIP: Membership = {

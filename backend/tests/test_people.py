@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from alembic import command
+from app.domain.rut import check_digit, format_rut
 from app.main import create_app
 from app.schemas.people import PersonCreate, PersonUpdate
 from tests.auth import FakeAuth, as_gym
@@ -121,13 +122,22 @@ def new_phone() -> str:
     return f"+569{next(_phones):08d}"
 
 
+_ruts = iter(range(10_000_000, 30_000_000, 7_919))
+
+
+def new_rut() -> str:
+    """A RUT no one in these tests has yet, normalised: a gym holds each RUT once."""
+    body = next(_ruts)
+    return f"{body}-{check_digit(body)}"
+
+
 def create(client: TestClient, gym: uuid.UUID, **fields: Any) -> Any:
     return client.post("/api/people", json=fields, headers=as_gym(gym))
 
 
 def entered(body: dict[str, Any]) -> dict[str, Any]:
     """A response without the fields the gym did not type."""
-    return {k: v for k, v in body.items() if k not in ("id", "created_at", "updated_at")}
+    return {k: v for k, v in body.items() if k not in ("id", "left_on", "created_at", "updated_at")}
 
 
 def people_with_phone(db: Database, phone: str) -> list[asyncpg.Record]:
@@ -168,7 +178,7 @@ def test_a_phone_already_in_this_gym_names_that_person(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     phone = new_phone()
-    first = create(client, sur, **{**CAMILA, "phone": phone}).json()
+    first = create(client, sur, **{**CAMILA, "phone": phone, "rut": new_rut()}).json()
 
     again = create(client, sur, phone=phone, name="Someone else")
     assert again.status_code == 409
@@ -188,15 +198,16 @@ def test_a_phone_known_elsewhere_answers_like_a_new_one(
     ).json()
 
     before = datetime.now(UTC)
-    fresh = create(client, sur, **{**CAMILA, "phone": new_phone()})
-    attached = create(client, sur, **{**CAMILA, "phone": known})
+    fresh = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": new_rut()})
+    camila = {**CAMILA, "phone": known, "rut": new_rut()}
+    attached = create(client, sur, **camila)
 
     # Same status, same shape, and only what sur typed: nothing of norte's record.
     assert attached.status_code == fresh.status_code == 201
     assert set(attached.json()) == set(fresh.json())
-    assert entered(attached.json()) == {**CAMILA, "phone": known}
-    assert {k: v for k, v in entered(fresh.json()).items() if k != "phone"} == {
-        k: v for k, v in entered(attached.json()).items() if k != "phone"
+    assert entered(attached.json()) == camila
+    assert {k: v for k, v in entered(fresh.json()).items() if k not in ("phone", "rut")} == {
+        k: v for k, v in entered(attached.json()).items() if k not in ("phone", "rut")
     }
     # This gym's timestamps, not the identity's.
     for field in ("created_at", "updated_at"):
@@ -244,10 +255,11 @@ def test_an_edit_stays_in_its_gym(client: TestClient, sur: uuid.UUID, norte: uui
     create(client, sur, phone=phone, name="Pedro", email="p@sur.cl")
     person = norte_body["id"]
 
-    edit = {"name": "Pedro Soto", "email": None, "rut": "7.654.321-6", "dob": "2001-07-30"}
+    rut = new_rut()
+    edit = {"name": "Pedro Soto", "email": None, "rut": format_rut(rut), "dob": "2001-07-30"}
     response = client.patch(f"/api/people/{person}", json=edit, headers=as_gym(sur))
     assert response.status_code == 200
-    assert entered(response.json()) == {**edit, "phone": phone, "rut": "7654321-6"}
+    assert entered(response.json()) == {**edit, "phone": phone, "rut": rut}
     assert response.json()["updated_at"] > response.json()["created_at"]
 
     assert client.get(f"/api/people/{person}", headers=as_gym(norte)).json() == norte_body
@@ -255,7 +267,7 @@ def test_an_edit_stays_in_its_gym(client: TestClient, sur: uuid.UUID, norte: uui
 
 @pg
 def test_an_edit_changes_only_the_fields_sent(client: TestClient, sur: uuid.UUID) -> None:
-    body = create(client, sur, **{**CAMILA, "phone": new_phone()}).json()
+    body = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": new_rut()}).json()
     response = client.patch(f"/api/people/{body['id']}", json={"dob": None}, headers=as_gym(sur))
     assert entered(response.json()) == {**entered(body), "dob": None}
 
@@ -265,7 +277,7 @@ def test_an_edit_changes_only_the_fields_sent(client: TestClient, sur: uuid.UUID
 def test_an_invalid_edit_is_refused(
     client: TestClient, sur: uuid.UUID, edit: dict[str, Any]
 ) -> None:
-    body = create(client, sur, **{**CAMILA, "phone": new_phone()}).json()
+    body = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": new_rut()}).json()
     response = client.patch(f"/api/people/{body['id']}", json=edit, headers=as_gym(sur))
     assert response.status_code == 422
     assert client.get(f"/api/people/{body['id']}", headers=as_gym(sur)).json() == body

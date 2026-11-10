@@ -362,3 +362,21 @@ def cancel(membership: Membership, reason: str) -> Membership:
     if not reason.strip():
         raise ValueError("a cancellation needs a reason")
     return replace(membership, status=S.CANCELLED, cancel_reason=reason.strip())
+
+
+# The reason a membership ended by its member leaving the gym carries (#157).
+LEFT_REASON = "dado de baja"
+
+
+def leave(membership: Membership) -> Membership:
+    """The member left the gym: whatever their membership's state, it ends, a trial or a
+    frozen one too, which `cancel` would refuse. A running freeze ends with it."""
+    if membership.status is S.CANCELLED:
+        raise InvalidTransition("membership: cancelled → cancelled")
+    return replace(
+        membership,
+        status=S.CANCELLED,
+        cancel_reason=LEFT_REASON,
+        frozen_since=None,
+        frozen_until=None,
+    )

@@ -9,7 +9,7 @@ import {
   type AddDependent,
   type PersonRef,
 } from '../api/family'
-import { membersPath, type MemberPage } from '../api/people'
+import { membersPath, type MemberPage, type MemberRow } from '../api/people'
 import { t } from '../i18n/es'
 
 const copy = t.admin.family
@@ -165,6 +165,41 @@ function LinkExisting({
   busy: boolean
   onLink: (personId: string) => void
 }) {
+  return (
+    <section className="family__section">
+      <h3 className="family__title">{copy.linkTitle}</h3>
+      <PeopleSearch
+        label={copy.linkSearch}
+        action={copy.link}
+        actionLabel={copy.linkLabel}
+        noMatches={copy.noMatches}
+        // Someone with a guardian is taken; a guardian cannot be a dependent.
+        offered={(row) => !exclude.includes(row.id) && !row.guardian && row.dependents === 0}
+        busy={busy}
+        onPick={(row) => onLink(row.id)}
+      />
+    </section>
+  )
+}
+
+/** A search of the gym's members, each match with a button that picks them. */
+export function PeopleSearch({
+  label,
+  action,
+  actionLabel,
+  noMatches,
+  offered,
+  busy,
+  onPick,
+}: {
+  label: string
+  action: string
+  actionLabel: (name: string) => string
+  noMatches: string
+  offered: (row: MemberRow) => boolean
+  busy: boolean
+  onPick: (row: MemberRow) => void
+}) {
   const [draft, setDraft] = useState('')
   const [q, setQ] = useState('')
   useEffect(() => {
@@ -176,51 +211,46 @@ function LinkExisting({
     queryKey: ['people', 'link-search', q],
     queryFn: () => apiFetch<MemberPage>(membersPath({ q, status: [], plan: [], program: [] }, 0)),
     enabled: q !== '',
-    select: (data) =>
-      data.items
-        // Someone with a guardian is taken; a guardian cannot be a dependent.
-        .filter((row) => !exclude.includes(row.id) && !row.guardian && row.dependents === 0)
-        .slice(0, MATCHES),
+    select: (data) => data.items.filter(offered).slice(0, MATCHES),
   })
   const searchId = useId()
 
   return (
-    <section className="family__section">
-      <h3 className="family__title">{copy.linkTitle}</h3>
+    <>
       <label htmlFor={searchId} className="visually-hidden">
-        {copy.linkSearch}
+        {label}
       </label>
       <input
         id={searchId}
         type="search"
         className="family__input"
-        placeholder={copy.linkSearch}
+        placeholder={label}
         autoComplete="off"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
       />
       {q !== '' && matches.data && (
         matches.data.length === 0 ? (
-          <p className="family__hint">{copy.noMatches}</p>
+          <p className="family__hint">{noMatches}</p>
         ) : (
-          <ul className="family__list" aria-label={copy.linkSearch}>
+          <ul className="family__list" aria-label={label}>
             {matches.data.map((row) => (
               <li key={row.id} className="family__person">
                 <span>{row.name}</span>
                 <button
                   type="button"
                   className="family__action"
-                  aria-label={copy.linkLabel(row.name)}
+                  aria-label={actionLabel(row.name)}
                   disabled={busy}
-                  onClick={() => onLink(row.id)}
+                  onClick={() => onPick(row)}
                 >
-                  {copy.link}
+                  {action}
                 </button>
               </li>
             ))}
           </ul>
         )
       )}
-    </section>
+    </>
   )
 }

@@ -18,6 +18,7 @@ import { ClassTimer } from './routes/ClassTimer'
 import { MeHome } from './routes/MeHome'
 import { MemberDetail } from './routes/MemberDetail'
 import { MemberImport } from './routes/MemberImport'
+import { NewMember } from './routes/NewMember'
 import { NotFound } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { SessionDetail } from './routes/SessionDetail'
@@ -134,6 +135,13 @@ const adminImportRoute = createRoute({
   component: MemberImport,
 })
 
+// "Nuevo alumno": a member added by hand (#157). Static too, so it wins over `$personId`.
+const adminNewMemberRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'alumnos/nuevo',
+  component: NewMember,
+})
+
 // "Ficha de alumno": one member, their plan and, for who reads the ledger, their money.
 const adminMemberRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -220,6 +228,7 @@ const routeTree = rootRoute.addChildren([
     adminTodayRoute,
     adminStudentsRoute,
     adminImportRoute,
+    adminNewMemberRoute,
     adminMemberRoute,
     adminClassesRoute,
     adminSessionRoute,

@@ -145,6 +145,7 @@ def test_everyone_by_name_with_the_membership_shown(
         },
         "guardian": None,
         "dependents": 0,
+        "left_on": None,
     }
 
 

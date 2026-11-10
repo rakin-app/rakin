@@ -49,7 +49,7 @@ FIELD_NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "field not found")
 CurrentTenant = Annotated[Tenant, Depends(current_tenant)]
 
 
-def _cipher(request: Request) -> cf.FieldCipher:
+def field_cipher(request: Request) -> cf.FieldCipher:
     return cf.FieldCipher(request.app.state.settings.field_encryption_key)
 
 
@@ -153,7 +153,9 @@ async def update_field(
                 status.HTTP_422_UNPROCESSABLE_CONTENT, "options are for enum fields"
             )
         removed = set(found["options"]) - set(changes["options"])
-        in_use = await _uses(session, tenant, _cipher(request), key, removed) if removed else {}
+        in_use = (
+            await _uses(session, tenant, field_cipher(request), key, removed) if removed else {}
+        )
         if in_use:
             conflict = OptionInUse(options=in_use)
             raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
@@ -161,7 +163,7 @@ async def update_field(
         changes["visible_to"] = cf.VisibleTo.OWNER
     updated = cf.normalize({**found, **changes})
     if updated["sensitive"] != found["sensitive"]:
-        await _reseal(session, tenant, _cipher(request), key, sealed=updated["sensitive"])
+        await _reseal(session, tenant, field_cipher(request), key, sealed=updated["sensitive"])
     await _store(session, tenant, [updated if d is found else d for d in defs])
     return FieldDefinition.model_validate(updated)
 
@@ -240,19 +242,18 @@ async def get_person_fields(
     """The person's values for the fields the caller sees, in the gym's order."""
     if not await in_gym(session, person_id):
         raise NOT_FOUND
-    return await _person_fields(session, tenant, _cipher(request), person_id)
+    return await _person_fields(session, tenant, field_cipher(request), person_id)
 
 
-@router.patch("/api/people/{person_id}/fields")
-async def update_person_fields(
+async def write_person_fields(
+    session: AsyncSession,
+    tenant: Tenant,
+    cipher: cf.FieldCipher,
     person_id: uuid.UUID,
-    body: PersonFieldsUpdate,
-    request: Request,
-    tenant: CurrentTenant,
-    session: StaffSession,
-) -> list[PersonField]:
-    if not await in_gym(session, person_id):
-        raise NOT_FOUND
+    sent: dict[str, Any],
+) -> None:
+    """Write `sent`, values by field key, for the fields the caller may see; a 422
+    naming each field it refuses, before anything is written."""
     role = await _role(session, tenant)
     # Held to the commit: whether a value is sealed is decided on settled definitions.
     writable = {
@@ -262,7 +263,7 @@ async def update_person_fields(
     }
     errors: dict[str, str] = {}
     values: dict[str, Any] = {}
-    for key, raw in body.values.items():
+    for key, raw in sent.items():
         definition = writable.get(key)
         if definition is None:
             errors[key] = "unknown field"
@@ -274,7 +275,6 @@ async def update_person_fields(
     if errors:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"fields": errors})
 
-    cipher = _cipher(request)
     for key, value in values.items():
         if value is None:
             await session.execute(
@@ -300,4 +300,18 @@ async def update_person_fields(
                 "secret": cipher.seal(tenant.gym_id, person_id, key, value) if sealed else None,
             },
         )
+
+
+@router.patch("/api/people/{person_id}/fields")
+async def update_person_fields(
+    person_id: uuid.UUID,
+    body: PersonFieldsUpdate,
+    request: Request,
+    tenant: CurrentTenant,
+    session: StaffSession,
+) -> list[PersonField]:
+    if not await in_gym(session, person_id):
+        raise NOT_FOUND
+    cipher = field_cipher(request)
+    await write_person_fields(session, tenant, cipher, person_id, body.values)
     return await _person_fields(session, tenant, cipher, person_id)

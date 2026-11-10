@@ -36,6 +36,7 @@ const FELIPE: Person = {
   email: null,
   rut: null,
   dob: null,
+  left_on: null,
   created_at: '2025-01-10T12:00:00Z',
 }
 
@@ -181,6 +182,8 @@ type Stub = {
   time?: Answer
   // The gym's timezone, as today's sessions give it.
   timeZone?: string
+  // Answers anything else first: the record's own actions (#157).
+  extra?: (path: string, method: string, body: unknown) => Answer | undefined
 }
 
 function stubApi({
@@ -200,6 +203,7 @@ function stubApi({
   attendance = { body: { last_30_days: 9, total: 184, since_promotion: 62 } },
   time = { body: FELIPE_TIME },
   timeZone = 'America/Santiago',
+  extra,
 }: Stub = {}) {
   const calls: Call[] = []
   let current = ledger
@@ -223,6 +227,8 @@ function stubApi({
 
   function route(url: URL, method: string): Answer {
     const path = url.pathname
+    const answered = extra?.(path, method, calls.at(-1)?.body)
+    if (answered) return answered
     if (path === '/api/me/role') return { body: { role } }
     if (path === '/api/sessions') return { body: { date: '2026-11-10', timezone: timeZone, sessions: [] } }
     if (path === '/api/ledger/pending') return { body: { count: 0 } }
@@ -1104,5 +1110,153 @@ describe('Ficha de alumno: datos', () => {
     expect(within(form).getByLabelText('Peso (kg)')).toHaveAttribute('aria-invalid', 'true')
     expect(within(form).getByLabelText('Contacto de emergencia')).toHaveAttribute('aria-invalid', 'false')
     expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ values: { peso: 'setenta' } }])
+  })
+})
+
+describe('the record and the ways out (#157)', () => {
+  const actions = () => screen.findByRole('region', { name: copy.editForm.title })
+
+  it('shows a coach "Editar datos" and neither "Dar de baja" nor "Eliminar"', async () => {
+    stubApi({ role: 'coach' })
+    renderAt(PATH)
+
+    const section = await actions()
+    expect(within(section).getByRole('button', { name: copy.editPerson })).toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: copy.leave })).not.toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: copy.remove })).not.toBeInTheDocument()
+  })
+
+  it('gives an admin "Dar de baja" but not "Eliminar"', async () => {
+    stubApi({ role: 'admin' })
+    renderAt(PATH)
+
+    const section = await actions()
+    expect(within(section).getByRole('button', { name: copy.leave })).toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: copy.remove })).not.toBeInTheDocument()
+  })
+
+  it('edits the record through PATCH, sending only what changed', async () => {
+    const calls = stubApi({
+      extra: (path, method, body) =>
+        path === '/api/people/felipe' && method === 'PATCH' ? { body: { ...FELIPE, ...(body as object) } } : undefined,
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.editPerson }))
+    const form = screen.getByRole('form', { name: copy.editForm.title })
+    expect(within(form).getByLabelText(copy.editForm.phone)).toBeDisabled()
+    await userEvent.type(within(form).getByLabelText(copy.editForm.rut), '7.654.321-6')
+    await userEvent.click(within(form).getByRole('button', { name: copy.editForm.save }))
+
+    expect(await screen.findByText(copy.editForm.saved)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
+      { method: 'PATCH', path: '/api/people/felipe', body: { rut: '7.654.321-6' } },
+    ])
+  })
+
+  it('says whose RUT it already is, with a link to them', async () => {
+    stubApi({
+      extra: (path, method) =>
+        path === '/api/people/felipe' && method === 'PATCH'
+          ? { status: 409, body: { detail: { code: 'rut_in_gym', person_id: 'camila' } } }
+          : undefined,
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.editPerson }))
+    const form = screen.getByRole('form', { name: copy.editForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.editForm.rut), '7.654.321-6')
+    await userEvent.click(within(form).getByRole('button', { name: copy.editForm.save }))
+
+    const alert = await within(form).findByRole('alert')
+    expect(alert).toHaveTextContent(copy.editForm.refused.rut_in_gym)
+    expect(within(alert).getByRole('link', { name: copy.editForm.refused.open })).toHaveAttribute(
+      'href',
+      '/admin/alumnos/camila',
+    )
+  })
+
+  it('dar de baja from today leaves the day to the API, then says since when', async () => {
+    let left: string | null = null
+    const calls = stubApi({
+      extra: (path, method) => {
+        if (path === '/api/people/felipe/leave' && method === 'POST') {
+          left = '2026-11-10'
+          return { body: { ...FELIPE, left_on: left } }
+        }
+        if (path === '/api/people/felipe' && method === 'GET') return { body: { ...FELIPE, left_on: left } }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.leave }))
+    const form = screen.getByRole('form', { name: copy.leaveForm.title })
+    await userEvent.click(within(form).getByRole('button', { name: copy.leaveForm.submit }))
+
+    expect(await screen.findByText(copy.leftBanner('10-11-2026'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/people/felipe/leave')).toEqual([
+      { method: 'POST', path: '/api/people/felipe/leave', body: {} },
+    ])
+    expect(within(await actions()).getByRole('button', { name: copy.reactivate })).toBeInTheDocument()
+  })
+
+  it('reactivar can start them on a plan again', async () => {
+    const calls = stubApi({
+      extra: (path, method) => {
+        if (path === '/api/plans') return { body: [{ id: 'plan-adults', name: 'Mensual adultos', kind: 'monthly', active: true }] }
+        if (path === '/api/people/felipe/return' && method === 'POST') return { body: FELIPE }
+        if (path === '/api/people/felipe' && method === 'GET') return { body: { ...FELIPE, left_on: '2026-10-01' } }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.reactivate }))
+    const form = screen.getByRole('form', { name: copy.returnForm.title })
+    await userEvent.selectOptions(await within(form).findByLabelText(copy.returnForm.plan), 'plan-adults')
+    await userEvent.click(within(form).getByRole('button', { name: copy.returnForm.submit }))
+
+    await waitFor(() =>
+      expect(calls.filter((c) => c.path === '/api/people/felipe/return')).toEqual([
+        { method: 'POST', path: '/api/people/felipe/return', body: { membership: { plan_id: 'plan-adults' } } },
+      ]),
+    )
+  })
+
+  it('eliminar explains a ledger keeps them, and offers dar de baja', async () => {
+    stubApi({
+      extra: (path) => (path === '/api/people/felipe/deletion' ? { body: { refused: 'ledger' } } : undefined),
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
+    expect(await screen.findByText(copy.removeForm.refused.ledger)).toBeInTheDocument()
+    const section = await actions()
+    const offered = within(section).getAllByRole('button', { name: copy.leave })
+    await userEvent.click(offered.at(-1)!)
+    expect(screen.getByRole('form', { name: copy.leaveForm.title })).toBeInTheDocument()
+  })
+
+  it('eliminar needs their name typed, then deletes and goes back to the list', async () => {
+    const calls = stubApi({
+      extra: (path, method) => {
+        if (path === '/api/people/felipe/deletion') return { body: { refused: null } }
+        if (path === '/api/people/felipe' && method === 'DELETE') return { status: 204 }
+        if (path === '/api/people') return { body: { items: [], total: 0 } }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
+    const form = await screen.findByRole('form', { name: copy.removeForm.title })
+    const submit = within(form).getByRole('button', { name: copy.removeForm.submit })
+    expect(submit).toBeDisabled()
+    await userEvent.type(within(form).getByLabelText(copy.removeForm.confirm(FELIPE.name)), 'felipe  díaz')
+    await userEvent.click(submit)
+
+    expect(await screen.findByRole('heading', { name: es.admin.students.title })).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual(['/api/people/felipe'])
   })
 })

@@ -23,6 +23,8 @@ export type StudentsSearch = {
   status?: MembershipStatus[]
   plan?: string
   program?: string
+  // "Dados de baja": who has left the gym, instead of who is in it.
+  left?: true
 }
 
 export function validateStudentsSearch(search: Record<string, unknown>): StudentsSearch {
@@ -31,7 +33,8 @@ export function validateStudentsSearch(search: Record<string, unknown>): Student
   const status = MEMBERSHIP_STATUSES.filter((s) => raw.includes(s))
   const plan = typeof search.plan === 'string' && search.plan ? search.plan : undefined
   const program = typeof search.program === 'string' && search.program ? search.program : undefined
-  return { q, status: status.length ? status : undefined, plan, program }
+  const left = search.left === true || search.left === 'true' ? true : undefined
+  return { q, status: status.length ? status : undefined, plan, program, left }
 }
 
 const route = getRouteApi('/admin/alumnos')
@@ -48,9 +51,14 @@ export function Students() {
     status,
     plan: search.plan ? [search.plan] : [],
     program: search.program ? [search.program] : [],
+    left: search.left ? ('only' as const) : ('no' as const),
   }
   const filtered =
-    filters.q.trim() !== '' || status.length > 0 || search.plan !== undefined || search.program !== undefined
+    filters.q.trim() !== '' ||
+    status.length > 0 ||
+    search.plan !== undefined ||
+    search.program !== undefined ||
+    search.left !== undefined
 
   const [draft, setDraft] = useState(filters.q)
   useEffect(() => {
@@ -74,6 +82,9 @@ export function Students() {
     const next = MEMBERSHIP_STATUSES.filter((s) => (s === value ? !status.includes(s) : status.includes(s)))
     void navigate({ search: (prev) => ({ ...prev, status: next.length ? next : undefined }), replace: true })
   }
+  const toggleLeft = () => {
+    void navigate({ search: (prev) => ({ ...prev, left: prev.left ? undefined : true }), replace: true })
+  }
   const setPlan = (plan: string) => {
     void navigate({ search: (prev) => ({ ...prev, plan: plan || undefined }), replace: true })
   }
@@ -96,9 +107,14 @@ export function Students() {
       <PageHeader title={copy.title} />
       <div className="students">
         {readsLedger(role.data) && (
-          <Link to="/admin/alumnos/importar" className="students__import">
-            {copy.importLink}
-          </Link>
+          <div className="students__links">
+            <Link to="/admin/alumnos/nuevo" className="students__button students__new">
+              {copy.newLink}
+            </Link>
+            <Link to="/admin/alumnos/importar" className="students__import">
+              {copy.importLink}
+            </Link>
+          </div>
         )}
         <div role="search" className="students__filters">
           <label htmlFor={searchId} className="visually-hidden">
@@ -125,6 +141,9 @@ export function Students() {
                 {copy.status[value]}
               </button>
             ))}
+            <button type="button" className="students__chip" aria-pressed={search.left === true} onClick={toggleLeft}>
+              {copy.left}
+            </button>
           </div>
           {plans.data && plans.data.length > 0 && (
             <>
@@ -229,6 +248,7 @@ function MemberItem({ row }: { row: MemberRow }) {
           </Link>
           {details.length > 0 && <span className="students__details">{details.join(' · ')}</span>}
           {family && <span className="students__details">{family}</span>}
+          {row.left_on && <span className="students__details">{copy.leftOn(t.common.day(row.left_on))}</span>}
         </div>
         <div className="students__plan-cell">
           {row.membership ? (

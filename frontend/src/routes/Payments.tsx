@@ -288,7 +288,8 @@ function MemberPicker({ onPick, onCancel }: { onPick: (member: MemberRow) => voi
     return () => clearTimeout(timer)
   }, [draft])
   const members = useInfiniteQuery({
-    ...membersQuery({ q, status: [], plan: [], program: [] }),
+    // Whoever left still owes what they owe, and pays it here.
+    ...membersQuery({ q, status: [], plan: [], program: [], left: 'any' }),
     enabled: q !== '',
     placeholderData: keepPreviousData,
   })
