@@ -38,12 +38,17 @@ def test_the_presets_are_the_spec_table() -> None:
     assert all([s.key for s in r.sub_ranks] == ["0", "1", "2", "3", "4"] for r in bjj.ranks)
     assert [r.key for r in bjj.kids_ladder][:3] == ["grey-white", "grey", "grey-black"]
     assert len(bjj.kids_ladder) == 12
+    # Every BJJ belt is coloured; two-tone kids' belts carry their stripe second.
+    assert all(len(r.colors) == 1 for r in bjj.ranks)
+    by_rank = {r.key: r.colors for r in bjj.kids_ladder}
+    assert by_rank["grey-white"] == [by_rank["grey"][0], bjj.ranks[0].colors[0]]
+    assert by_rank["green-black"] == [by_rank["green"][0], bjj.ranks[-1].colors[0]]
     assert bjj.goal_metric == "classes_since_promotion"
 
     judo = by_key["judo-karate"]
     keys = [r.key for r in judo.ranks]
     assert keys[0] == "kyu-10" and keys[9:11] == ["kyu-1", "dan-1"] and keys[-1] == "dan-10"
-    assert all(not r.sub_ranks for r in judo.ranks)
+    assert all(not r.sub_ranks and not r.colors for r in judo.ranks)
     assert judo.kids_ladder == []  # kids climb the same ladder
     assert judo.goal_metric == "time_in_rank"
 
@@ -107,6 +112,9 @@ def _with(change: Any) -> dict[str, Any]:
         _with(lambda s: s["ranks"][0].update(key="")),
         _with(lambda s: s["ranks"][0].update(label="  ")),
         _with(lambda s: s["ranks"][0].update(color="#fff")),
+        _with(lambda s: s["ranks"][0].update(colors=["#fff"])),
+        _with(lambda s: s["ranks"][0].update(colors=["blue"])),
+        _with(lambda s: s["ranks"][0].update(colors=["#111111", "#222222", "#333333"])),
         _with(lambda s: s["ranks"][0]["sub_ranks"][0].update(key=0)),
         {**NONE, "ranks": [{"key": f"r{n}", "label": "x"} for n in range(61)]},
         _with(lambda s: s["ranks"][0].update(target=0)),
@@ -210,7 +218,13 @@ def test_a_preset_is_applied_edited_and_read_back(client: TestClient, db: Databa
 
     edited = _with(
         lambda s: s["ranks"].append(
-            {"key": "red", "label": "Roja", "target": None, "sub_ranks": []}
+            {
+                "key": "red",
+                "label": "Roja",
+                "target": None,
+                "colors": ["#c8102e"],
+                "sub_ranks": [],
+            }
         )
     )
     response = client.put(URL, json=edited, headers=as_gym(gym))

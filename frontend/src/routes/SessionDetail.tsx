@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
@@ -17,7 +17,8 @@ import {
 } from '../api/attendance'
 import { ApiError } from '../api/client'
 import { rankLabel } from '../api/grading'
-import { sessionQuery, todaySessionsQuery, updateSession, type ClassSession } from '../api/sessions'
+import { sessionQuery, updateSession, useGymTimeZone, type ClassSession } from '../api/sessions'
+import { RankBelt } from '../components/Belt'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
 import { clockTime } from '../format'
 import { t } from '../i18n/es'
@@ -38,9 +39,7 @@ const MAX_NOTES = 4000
 export function SessionDetail() {
   const { sessionId } = route.useParams()
   const session = useQuery(sessionQuery(sessionId))
-  // The gym's timezone, from the day's list; the browser's until it arrives.
-  const today = useQuery(todaySessionsQuery())
-  const timeZone = today.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const timeZone = useGymTimeZone()
 
   if (session.isPending) {
     return (
@@ -247,6 +246,7 @@ function Attendance({ sessionId }: { sessionId: string }) {
     mutationFn: ({ change }: Save) => changeAttendance(sessionId, change),
     onSuccess: (updated, { change: sent }) => {
       queryClient.setQueryData(rosterQuery(sessionId).queryKey, updated)
+      refreshFlags(queryClient, sessionId)
       setSaved(true)
       setDropped(false)
       clearQueuedChange(sessionId)
@@ -393,8 +393,10 @@ function Attendance({ sessionId }: { sessionId: string }) {
 
 function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boolean; onToggle: () => void }) {
   const words = copy.attendance
+  // A drawn belt says the rank itself; a rank with no colours says it in words.
+  const belt = member.rank?.belt ? member.rank : null
   const detail = [
-    member.rank && rankLabel(member.rank),
+    member.rank && !belt && rankLabel(member.rank),
     member.plan_name,
     member.credits_remaining !== null && words.left(member.credits_remaining),
     (member.status === 'lapsed' || member.status === 'frozen') && t.admin.students.status[member.status],
@@ -414,11 +416,22 @@ function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boo
       </span>
       <span className="classes__row-text">
         <span className="classes__name">{member.name}</span>
-        <span className="classes__detail">{detail}</span>
+        <span className="classes__detail">
+          {belt && <RankBelt rank={belt} compact />}
+          {detail}
+        </span>
       </span>
       {member.overdue && <span className="attendance__overdue" role="img" aria-label={words.overdue} />}
     </button>
   )
+}
+
+/** The Clases list and the dashboard flag a class no one is marked at: refetch both, and
+ * the session itself, whose `present` the change made stale. */
+function refreshFlags(queryClient: QueryClient, sessionId: string) {
+  void queryClient.invalidateQueries({ queryKey: ['sessions', 'detail', sessionId] })
+  void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
+  void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
 }
 
 /** "+ Agregar alumno de prueba": someone trying a class, added by phone, present at it. */
@@ -437,6 +450,7 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
     onSuccess: (added, guest) => {
       if ('roster' in added) {
         queryClient.setQueryData(rosterQuery(sessionId).queryKey, added.roster)
+        refreshFlags(queryClient, sessionId)
         setDone(words.done(guest.name))
       } else {
         onMember(added.member)

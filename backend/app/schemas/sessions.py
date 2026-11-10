@@ -80,11 +80,21 @@ class Session(BaseModel):
     notes: str | None
     created_at: datetime
     updated_at: datetime
+    # How many are marked at it; 0 is a class whose attendance was never taken.
+    present: int
 
 
 class Day(BaseModel):
     """A day's sessions in the gym's timezone, earliest first."""
 
     date: date
+    timezone: str
+    sessions: list[Session]
+
+
+class Unmarked(BaseModel):
+    """The sessions since `since`, a day in the gym's timezone, with no one marked."""
+
+    since: date
     timezone: str
     sessions: list[Session]

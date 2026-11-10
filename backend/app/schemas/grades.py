@@ -30,6 +30,15 @@ class GradeAward(BaseModel):
     note: Note | None = None
 
 
+class Belt(BaseModel):
+    """How to draw a rank: its colours from the scheme, and the stripes on the bar. The
+    first sub-rank is the one a rank starts at, with none; each one after it adds one."""
+
+    colors: list[str]
+    stripes: int
+    max_stripes: int
+
+
 class Rank(BaseModel):
     """A rank and sub-rank as the scheme labels them: `Azul`, `2 grados`."""
 
@@ -38,6 +47,8 @@ class Rank(BaseModel):
     sub_rank: str | None
     sub_rank_label: str | None
     awarded_on: date
+    # `None` when the scheme gives the rank no colours: it shows as its label.
+    belt: Belt | None = None
 
     @classmethod
     def labelled(
@@ -47,12 +58,21 @@ class Rank(BaseModel):
         sub = None
         if rank is not None and sub_rank is not None:
             sub = next((s for s in rank.sub_ranks if s.key == sub_rank), None)
+        belt = None
+        if rank is not None and rank.colors:
+            keys = [s.key for s in rank.sub_ranks]
+            belt = Belt(
+                colors=rank.colors,
+                stripes=keys.index(sub_rank) if sub_rank in keys else 0,
+                max_stripes=max(len(keys) - 1, 0),
+            )
         return cls(
             rank_key=rank_key,
             rank_label=rank.label if rank else rank_key,
             sub_rank=sub_rank,
             sub_rank_label=None if sub_rank is None else sub.label if sub else sub_rank,
             awarded_on=awarded_on,
+            belt=belt,
         )
 
 

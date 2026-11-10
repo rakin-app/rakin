@@ -517,14 +517,17 @@ GYM_CLOCK = """
     FROM gym g WHERE g.id = current_setting('app.gym_id')::uuid
 """
 
-# Each freeze's start and end as lines, the end once it has come, in the gym's timezone.
+# Each freeze's start and end as lines, the end once it has come, in the gym's timezone:
+# the days it actually ran, after an end moved or ended early (#115). A freeze of no
+# days, ended or called off on its first day, has none; one booked ahead has none until
+# it starts.
 FREEZE_EDGES = f"""
     SELECT f.id AS freeze_id, f.membership_id, edge.kind AS edge, edge.day,
            f.from_date, f.to_date, f.reason
     FROM membership_freeze f
     CROSS JOIN ({GYM_CLOCK}) t
     CROSS JOIN LATERAL (VALUES ('start', f.from_date), ('end', f.to_date)) AS edge (kind, day)
-    WHERE edge.day <= t.today
+    WHERE edge.day <= t.today AND f.to_date > f.from_date AND f.started
 """
 
 # Newest first; a freeze starting the day another ended is the newer of the two lines.

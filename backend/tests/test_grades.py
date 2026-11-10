@@ -110,6 +110,7 @@ def test_a_promotion_is_the_current_rank_with_the_schemes_labels(
         "sub_rank": "2",
         "sub_rank_label": "2 grados",
         "awarded_on": str(on),
+        "belt": {"colors": ["#1f4fa3"], "stripes": 2, "max_stripes": 4},
     }
     [event] = body["events"]
     assert event["note"] == "Buen año"
@@ -193,7 +194,10 @@ def test_a_kids_ladder_rank_and_a_rank_without_sub_ranks(client: TestClient, db:
     kid = member(client, db, gym, "Mateo Ortiz")
     response = award(client, gym, kid, rank_key="grey-white", sub_rank="1")
     assert response.status_code == 201, response.text
-    assert response.json()["current"]["rank_label"] == "Gris y blanca"
+    current = response.json()["current"]
+    assert current["rank_label"] == "Gris y blanca"
+    # Two-tone: grey with a white stripe through it.
+    assert current["belt"] == {"colors": ["#8b8f94", "#f4f4f1"], "stripes": 1, "max_stripes": 4}
 
     dojo = gym_with(client, db, JUDO)
     judoka = member(client, db, dojo)
@@ -205,6 +209,28 @@ def test_a_kids_ladder_rank_and_a_rank_without_sub_ranks(client: TestClient, db:
         None,
         None,
     )
+    # The preset gives kyu and dan no colours: shown as the label, as before.
+    assert current["belt"] is None
+
+
+@pg
+def test_a_belt_follows_the_schemes_colours_and_sub_ranks(client: TestClient, db: Database) -> None:
+    scheme = copy.deepcopy(JUDO)
+    scheme["ranks"][0]["colors"] = ["#FFFFFF"]
+    scheme["ranks"][1].update(colors=["#f2c12e"], sub_ranks=[{"key": "a", "label": "A"}])
+    dojo = gym_with(client, db, scheme)
+    judoka = member(client, db, dojo)
+
+    award(client, dojo, judoka, rank_key="kyu-10")
+    # Stored lower-case; a rank without sub-ranks has no stripes to earn.
+    assert grades(client, dojo, judoka)["current"]["belt"] == {
+        "colors": ["#ffffff"],
+        "stripes": 0,
+        "max_stripes": 0,
+    }
+    award(client, dojo, judoka, rank_key="kyu-9", sub_rank="a")
+    belt = grades(client, dojo, judoka)["current"]["belt"]
+    assert (belt["stripes"], belt["max_stripes"]) == (0, 0)
 
 
 @pg
@@ -346,6 +372,7 @@ def test_the_student_page_shows_the_rank(client: TestClient, db: Database) -> No
         "sub_rank": "1",
         "sub_rank_label": "1 grado",
         "awarded_on": "2025-06-14",
+        "belt": {"colors": ["#6b2d8f"], "stripes": 1, "max_stripes": 4},
     }
 
 

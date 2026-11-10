@@ -354,6 +354,87 @@ def test_there_is_no_delete(client: TestClient, db: Database, gym: uuid.UUID) ->
         run(db.api_url, in_gym(gym, "DELETE FROM session WHERE id = $1", uuid.UUID(session["id"])))
 
 
+# --- no attendance taken (#45) ----------------------------------------------------
+
+
+def mark_owner(client: TestClient, gym: uuid.UUID, session: dict[str, Any]) -> None:
+    """Mark the seeded owner, whose membership is on every roster, present at `session`."""
+    path = f"/api/sessions/{session['id']}"
+    roster = client.get(f"{path}/roster", headers=as_gym(gym)).json()
+    member = roster["members"][0]["membership_id"]
+    marked = client.patch(f"{path}/attendance", json={"mark": [member]}, headers=as_gym(gym))
+    assert marked.status_code == 200, marked.text
+
+
+def unmarked(client: TestClient, gym: uuid.UUID, person: uuid.UUID | None = None) -> Any:
+    response = client.get("/api/sessions/unmarked", headers=as_gym(gym, person))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@pg
+def test_a_session_says_how_many_are_marked_at_it(client: TestClient, gym: uuid.UUID) -> None:
+    session = started(client, gym, {"class_type_id": class_type(client, gym)["id"]})
+    assert session["present"] == 0
+    mark_owner(client, gym, session)
+    assert client.get(f"/api/sessions/{session['id']}", headers=as_gym(gym)).json()["present"] == 1
+    assert [s["present"] for s in day(client, gym)["sessions"]] == [1]
+
+
+@pg
+def test_the_dashboard_lists_the_last_weeks_classes_nobody_marked(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    fundamentals = class_type(client, gym)["id"]
+    today = datetime.now(SANTIAGO).replace(minute=0, second=0, microsecond=0)
+
+    def held(days_ago: int, hours_ago: int = 1) -> dict[str, Any]:
+        starts = today - timedelta(days=days_ago, hours=hours_ago)
+        body = {"class_type_id": fundamentals, "starts_at": starts.isoformat()}
+        return started(client, gym, body)
+
+    recent, week_old = held(0), held(6, 0)
+    marked = held(1)
+    mark_owner(client, gym, marked)
+    held(8)  # before the week
+    later = (today + timedelta(hours=2)).isoformat()
+    started(client, gym, {"class_type_id": fundamentals, "starts_at": later})  # not started yet
+
+    listed = unmarked(client, gym)
+    assert listed["timezone"] == "America/Santiago"
+    assert listed["since"] == (datetime.now(SANTIAGO).date() - timedelta(days=6)).isoformat()
+    assert [s["id"] for s in listed["sessions"]] == [recent["id"], week_old["id"]]
+    assert {s["present"] for s in listed["sessions"]} == {0}
+
+
+@pg
+@pytest.mark.parametrize("role", ["owner", "admin"])
+def test_owner_and_admin_see_the_unmarked_classes(
+    client: TestClient, db: Database, gym: uuid.UUID, role: str
+) -> None:
+    person = seeded_owner(gym) if role == "owner" else add_staff(db, gym, role)
+    assert unmarked(client, gym, person)["sessions"] == []
+
+
+@pg
+def test_a_coach_may_not_list_the_unmarked_classes(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    coach = add_staff(db, gym, "coach")
+    response = client.get("/api/sessions/unmarked", headers=as_gym(gym, coach))
+    assert response.status_code == 403
+
+
+@pg
+def test_another_gyms_unmarked_classes_are_not_listed(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    started(client, gym, {"class_type_id": class_type(client, gym)["id"]})
+    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    assert len(unmarked(client, gym)["sessions"]) == 1
+    assert unmarked(client, other)["sessions"] == []
+
+
 # --- the table on its own (migration 0020) ----------------------------------------
 
 

@@ -5,11 +5,12 @@ import { ApiError } from '../api/client'
 import { recordPayment, type Method } from '../api/member'
 import { myRoleQuery, readsLedger } from '../api/me'
 import { proofQueueQuery, type ProofReview } from '../api/review'
+import { unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
 import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
 import { overdueQuery, type OverduePeriod } from '../api/today'
 import { WhatsAppIcon } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
-import { monthName, shortDay, toDate, weekdayDay } from '../format'
+import { dayTime, monthName, shortDay, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
 import './Today.css'
 
@@ -27,6 +28,9 @@ const OVERDUE_SHOWN = 3
  * "Sin venir 14 d" and "A quién llamar" are the members who stopped coming (#50), in
  * two buckets, 14 and 30 days, each a tap from a WhatsApp nudge.
  *
+ * Under them, "Sin asistencia": the week's classes no one was marked at, each a tap
+ * from taking its attendance, so a class taught without a list does not go unseen.
+ *
  * Money, so for whoever reads the ledger only; a coach sees none of it, since the
  * inactive list says who owes. The WhatsApp reminder on each overdue row joins with the
  * wa.me links (#55).
@@ -37,6 +41,7 @@ export function Today() {
   const proofs = useQuery({ ...proofQueueQuery(), enabled: money })
   const overdue = useQuery({ ...overdueQuery(), enabled: money })
   const inactive = useQuery({ ...inactiveQuery(), enabled: money })
+  const unmarked = useQuery({ ...unmarkedSessionsQuery(), enabled: money })
 
   return (
     <div className="today">
@@ -97,6 +102,30 @@ export function Today() {
                 <p className="today__note">{copy.inactive.empty}</p>
               ) : (
                 <InactiveList members={inactive.data} />
+              )}
+            </section>
+            <section id="sin-asistencia" className="today__section" aria-labelledby="sin-asistencia-title">
+              <SectionHead
+                id="sin-asistencia-title"
+                title={copy.unmarked.title}
+                aside={
+                  unmarked.data && unmarked.data.sessions.length > 0
+                    ? copy.unmarked.count(unmarked.data.sessions.length)
+                    : null
+                }
+              />
+              {unmarked.isPending ? (
+                <p className="today__note">{copy.loading}</p>
+              ) : unmarked.isError ? (
+                <Failed message={copy.unmarked.error} retry={() => void unmarked.refetch()} />
+              ) : unmarked.data.sessions.length === 0 ? (
+                <p className="today__note">{copy.unmarked.empty}</p>
+              ) : (
+                <ul className="today__list">
+                  {unmarked.data.sessions.map((session) => (
+                    <UnmarkedRow key={session.id} session={session} timeZone={unmarked.data.timezone} />
+                  ))}
+                </ul>
               )}
             </section>
           </div>
@@ -171,6 +200,28 @@ function ProofRow({ proof }: { proof: ProofReview }) {
         </span>
         <span className="today__pill" aria-hidden="true">
           {copy.proofs.review}
+        </span>
+      </Link>
+    </li>
+  )
+}
+
+function UnmarkedRow({ session, timeZone }: { session: ClassSession; timeZone: string }) {
+  const name = copy.unmarked.row(dayTime(session.starts_at, timeZone), session.class_type_name)
+  return (
+    <li>
+      <Link
+        to="/admin/clases/$sessionId"
+        params={{ sessionId: session.id }}
+        className="today__row today__row--link"
+        aria-label={copy.unmarked.takeLabel(name)}
+      >
+        <span className="today__row-text">
+          <span className="today__name">{name}</span>
+          <span className="today__detail">{copy.unmarked.detail(session.program_name, session.coach_name)}</span>
+        </span>
+        <span className="today__pill today__pill--warning" aria-hidden="true">
+          {copy.unmarked.take}
         </span>
       </Link>
     </li>

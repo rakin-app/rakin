@@ -177,6 +177,17 @@ def plan_change_starts(
     return last + timedelta(days=1)
 
 
+def freeze_days(from_date: date, to_date: date) -> int:
+    """The days a freeze from `from_date` until `to_date` lasts: one at least, and at
+    most `MAX_FREEZE_DAYS`."""
+    days = (to_date - from_date).days
+    if days <= 0:
+        raise ValueError("a freeze ends after the day it starts")
+    if days > MAX_FREEZE_DAYS:
+        raise ValueError(f"a freeze lasts at most {MAX_FREEZE_DAYS} days, not {days}")
+    return days
+
+
 def freeze(
     membership: Membership,
     from_date: date,
@@ -198,11 +209,7 @@ def freeze(
     A credits pack's expiry moves the same way. Only an Active membership freezes.
     """
     _move(membership, S.FROZEN)
-    days = (to_date - from_date).days
-    if days <= 0:
-        raise ValueError("a freeze ends after the day it starts")
-    if days > MAX_FREEZE_DAYS:
-        raise ValueError(f"a freeze lasts at most {MAX_FREEZE_DAYS} days, not {days}")
+    days = freeze_days(from_date, to_date)
     end = membership.current_period_end
     if membership.plan_kind in RECURRING and billed_through is not None:
         end = billed_through if end is None else max(end, billed_through)
@@ -219,6 +226,43 @@ def freeze(
         frozen_since=from_date,
         frozen_until=to_date,
     )
+
+
+def move_freeze_end(membership: Membership, to_date: date) -> Membership:
+    """A running freeze that ends on `to_date` instead: earlier, as early as its first
+    day, or later, up to `MAX_FREEZE_DAYS` after it.
+
+    `freeze` moved the due date by the days it was to last, so it moves again by the
+    difference: the paid-through date, a credits pack's expiry and a monthly plan's
+    anchor day, which stays the day after it. The billing periods it moved, and a
+    pending plan change, move by as many (`app.api.memberships`).
+    """
+    since, until = membership.frozen_since, membership.frozen_until
+    if membership.status is not S.FROZEN or since is None or until is None:
+        raise InvalidTransition(f"a {membership.status} membership has no freeze to move")
+    days = (to_date - since).days
+    if days < 0:
+        raise ValueError("a freeze ends on the day it starts at the earliest")
+    if days > MAX_FREEZE_DAYS:
+        raise ValueError(f"a freeze lasts at most {MAX_FREEZE_DAYS} days, not {days}")
+    shift = to_date - until
+    end = membership.current_period_end
+    anchor = membership.anchor_day
+    if end is not None:
+        end += shift
+        if anchor is not None:
+            anchor = (end + timedelta(days=1)).day
+    return replace(membership, current_period_end=end, anchor_day=anchor, frozen_until=to_date)
+
+
+def end_freeze(membership: Membership, today: date) -> Membership:
+    """Active again `today`, before the freeze was to end: the due date moves back by
+    the days it no longer lasts (`move_freeze_end`). A freeze whose end has come
+    already ends as `unfreeze` would end it, the due date where it is."""
+    if membership.frozen_until is None:
+        raise InvalidTransition(f"a {membership.status} membership has no freeze to end")
+    ended = move_freeze_end(membership, min(membership.frozen_until, today))
+    return unfreeze(ended, today)
 
 
 def is_due_to_unfreeze(membership: Membership, today: date) -> bool:

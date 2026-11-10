@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState } from 'react'
 import { rankLabel } from '../api/grading'
 import { myPageQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
+import { RankBelt } from '../components/Belt'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './MeHome.css'
@@ -171,6 +172,7 @@ function Training({ page }: { page: MyPage }) {
       {page.rank && (
         <div className="training__card">
           <span className="training__eyebrow">{words.belt}</span>
+          <RankBelt rank={page.rank} />
           <span className="training__figure">{rankLabel(page.rank)}</span>
           <span className="training__detail">{words.since(t.common.dayYear(page.rank.awarded_on))}</span>
         </div>

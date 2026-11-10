@@ -1,4 +1,5 @@
-import { queryOptions } from '@tanstack/react-query'
+import { queryOptions, useQuery } from '@tanstack/react-query'
+import { isoDay } from '../format'
 import { apiFetch } from './client'
 
 /** A class, or an open mat: rounds of sparring only (backend `ClassKind`). */
@@ -33,6 +34,8 @@ export type ClassSession = {
   notes: string | null
   created_at: string
   updated_at: string
+  /** How many are marked at it; 0 is a class whose attendance was never taken. */
+  present: number
 }
 
 /** A day's sessions in the gym's timezone, earliest first (backend `Day`). */
@@ -53,6 +56,34 @@ export function activeClassTypesQuery() {
 /** Today's sessions, today being the gym's. */
 export function todaySessionsQuery() {
   return queryOptions({ queryKey: ['sessions', 'today'], queryFn: () => apiFetch<SessionDay>('/api/sessions') })
+}
+
+/** The gym's timezone, from today's sessions, which every staff role reads; this
+ * device's until they arrive. */
+export function useGymTimeZone(): string {
+  const today = useQuery(todaySessionsQuery())
+  return today.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
+/** Today in the gym's timezone, `2026-11-10`: past 21:00 in Santiago it is still today
+ * there, though tomorrow in UTC, and on a device set to another zone. */
+export function useGymToday(): string {
+  return isoDay(new Date().toISOString(), useGymTimeZone())
+}
+
+/** The last week's classes, already started, that no one is marked at (backend `Unmarked`). */
+export type UnmarkedSessions = {
+  since: string
+  timezone: string
+  sessions: ClassSession[]
+}
+
+/** The classes nobody took attendance at, latest first. Owner and admin only. */
+export function unmarkedSessionsQuery() {
+  return queryOptions({
+    queryKey: ['sessions', 'unmarked'],
+    queryFn: () => apiFetch<UnmarkedSessions>('/api/sessions/unmarked'),
+  })
 }
 
 export function sessionQuery(id: string) {
