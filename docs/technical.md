@@ -25,7 +25,7 @@ Three configuration surfaces absorb all sport variance; the rest of the system i
 | dropin | price | one charge, one attendance, no membership persistence |
 | trial | free\_classes or free\_days | zero charge; converts or lapses |
 
-**Custom fields** — per-gym definitions `{key, label, type, options?, sensitive?}`; values stored per person per gym. Weight, competition record, insurance number, federation ID, emergency contact. Fields marked `sensitive` are encrypted at rest and excluded from exports unless explicitly included (see Compliance).
+**Custom fields** — per-gym definitions `{key, label, type, options?, sensitive?, visible_to}`; values stored per person per gym. Weight, competition record, insurance number, federation ID, emergency contact. `visible_to` (`owner`, `admin` or `staff`) is who among the staff sees the field, set by the owner only. Fields marked `sensitive` start as `owner`, are encrypted at rest and excluded from exports unless explicitly included (see Compliance).
 
 Anything a gym asks for that doesn't fit these three surfaces is either a non-goal or a core feature for all sports, never a sport-specific branch.
 
@@ -213,7 +213,7 @@ Chile's Ley 21.719 (personal data protection) enters into force on 1 December 20
 | Data controller | whoever runs the instance is responsible: the company for hosted gyms, each self-hoster for theirs | stated in README and hosted terms; a DPA template for hosted gyms |
 | Consent | explicit, informed, revocable | consent captured at membership creation (adult) or by guardian (minor), stored with timestamp and text version |
 | Minors | guardian consent; no direct marketing | kids never receive messages; all comms go to the guardian |
-| Sensitive data | health data (weight, injuries, conditions) is sensitive and needs explicit consent | custom fields flagged `sensitive` are encrypted at rest (pgcrypto or app-level), excluded from default exports, visible only to owner/admin roles, with a per-gym toggle to disable entirely |
+| Sensitive data | health data (weight, injuries, conditions) is sensitive and needs explicit consent | custom fields flagged `sensitive` are encrypted at rest (app-level, AES-GCM), excluded from default exports, and visible to the roles the owner chooses per field (`visible_to`: owner only, owner and admins, or all staff), owner only by default; the API never answers a field's definition or value to a role it is not visible to, with a per-gym toggle to disable entirely |
 | Access and deletion | right to access, rectify, delete | student page shows all stored data; one-click JSON export; deletion anonymises the person row and keeps ledger amounts (legitimate interest: accounting) |
 | Retention | no longer than necessary | lapsed memberships anonymised after 24 months unless the gym opts out; proof images deleted 12 months after validation |
 | Waivers | climbing requires signed liability waivers; BJJ academies use them for minors | v2: on-phone signature, PDF stored per person with version of the text signed |

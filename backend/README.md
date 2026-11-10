@@ -260,6 +260,25 @@ Each row is written in a savepoint of its own: a refused row writes nothing, and
 
 Owner and admin only (`AdminSession`); a coach or member gets a 403, since the bank details decide where students send their money. `name` and `timezone` are columns on `gym`; the rest are keys of `gym.settings`, and the grading scheme and custom fields stored beside them are left untouched. `timezone` must be an IANA name, `grace_days` 0 to 60, `reminder_every_days` 1 to 30. `bank_account` takes `bank`, `account_type` (`Cuenta Corriente`, `Cuenta Vista`, `Cuenta RUT` or `Cuenta de Ahorro`), `holder`, `rut` (normalised to `76123456-0`), `number` and an optional `email` for the transfer notice. Email is always on, so `channels` holds only `whatsapp`.
 
+## Custom fields API
+
+Each gym defines its own fields on people (weight class, emergency contact, medical notes): `text`, `number`, `date` or `enum` ([spec](../docs/technical.md#sport-agnostic-design)). The definitions are a list in `gym.settings.custom_fields`, in the order the member detail shows them; values are rows of `person_field_value` (migration 0019), one per person and field.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/custom-fields` | the fields the caller may see, in order, archived ones included: `key`, `label`, `type`, `options` (an enum's), `sensitive`, `visible_to`, `archived` |
+| `POST` | `/api/custom-fields` | a new field from `label`, `type`, `options` (an enum's, and only there), and the owner's `sensitive` and `visible_to`; its `key` is made from the label and a random suffix (`Notas médicas` → `notas_medicas_3f9a`) |
+| `PATCH` | `/api/custom-fields/{key}` | change `label`, an enum's `options`, `archived`, and the owner's `sensitive` and `visible_to`; the key and type are fixed. Removing an option people still hold is a 409, `{"code": "option_in_use", "options": {"Pluma": 2}}`, so no stored value is left naming no option |
+| `PUT` | `/api/custom-fields/order` | `keys`: every field the caller sees, in their new order; fields the caller does not see keep their places |
+| `GET` | `/api/people/{id}/fields` | the person's values for the fields the caller sees and that are not archived, in order; `value` is `null` when unset |
+| `PATCH` | `/api/people/{id}/fields` | `values` by key; `null` (or blank text) clears one, keys not sent are kept |
+
+Every staff role reads definitions and reads and writes values; defining, reordering and archiving is owner and admin (`AdminSession`). `visible_to` is who sees a field: `owner` (Solo dueño), `admin` (Dueño y administradores) or `staff` (Todo el staff, incluye coaches); the owner sees every field. It defaults to `owner` for a sensitive field and `staff` otherwise, and when the owner marks an existing field sensitive without naming a `visible_to`, it narrows to `owner`. Only the owner may set `sensitive` or `visible_to`: an admin who sends either gets a 403, so an admin can add fields but never widen who sees one. A field the caller may not see is answered as one that does not exist: it is left out of every list, a `PATCH` on its definition is a 404, and a value for it is an `unknown field`, the same as a key no field has. Every new key carries a random suffix, so a key made while a hidden field holds the plain one looks like any other.
+
+A value must fit its type: text up to 1,000 characters (trimmed), a JSON number, a `YYYY-MM-DD` date, or one of the enum's options. A refused `PATCH` writes nothing and is a 422 whose `detail.fields` gives each refused key's reason. Archived fields keep their values but are neither shown nor written until unarchived.
+
+A sensitive field's value is stored in `secret`, encrypted with AES-GCM under a key derived from `FIELD_ENCRYPTION_KEY` and bound to its gym, person and field, never in `value`; changing a field's `sensitive` flag re-encrypts or decrypts what it holds. A definition change reads `gym.settings` `FOR UPDATE` and a value write `FOR SHARE`, so a value written while the owner marks its field sensitive waits for that and is sealed. `FIELD_ENCRYPTION_KEY` is its own setting, not `SECRET_KEY`, so rotating `SECRET_KEY` after a leak touches no stored value; the API refuses to start in production with its local default. **Changing `FIELD_ENCRYPTION_KEY` makes stored sensitive values unreadable**: never change it without re-encrypting them, and keep it with the backups.
+
 ## Grading scheme API
 
 | Method | Path | Does |

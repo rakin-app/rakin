@@ -53,6 +53,7 @@ def test_compose_defaults_match_env_example() -> None:
 def test_secrets_have_no_default() -> None:
     secrets = {
         "SECRET_KEY",
+        "FIELD_ENCRYPTION_KEY",
         "SMTP_PASSWORD",
         "S3_SECRET_ACCESS_KEY",
         "POSTGRES_PASSWORD",
