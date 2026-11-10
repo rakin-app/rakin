@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { classTypesQuery, createClassType, createProgram, updateClassType, updateProgram } from '../api/classes'
 import { ApiError } from '../api/client'
 import { programsQuery, type Program } from '../api/people'
-import type { ClassType } from '../api/sessions'
+import { CLASS_KINDS, type ClassKind, type ClassType } from '../api/sessions'
 import { validationErrors } from '../api/validation'
 import { t } from '../i18n/es'
 import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
@@ -313,7 +313,15 @@ function ClassTypeRow({
           {classType.name}
           {!classType.active && <span className="settings__tag">{copy.inactive}</span>}
         </span>
-        <span className="settings__detail">{copy.credits(classType.credit_cost)}</span>
+        <span className="settings__detail">
+          {[
+            classType.kind === 'open_mat' && copy.openMat,
+            copy.credits(classType.credit_cost),
+            !classType.counts_as_class && copy.notCounted,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
       </div>
       {toggle.isError && (
         <p className="settings__error" role="alert">
@@ -336,7 +344,11 @@ type ClassTypeDrafts = {
   name: string
   program_id: string
   credit_cost: string
+  kind: ClassKind
+  counts_as_class: boolean
 }
+
+const CLASS_TYPE_FIELDS = ['name', 'program_id', 'credit_cost', 'kind', 'counts_as_class'] as const
 
 function ClassTypeForm({
   classType,
@@ -357,20 +369,22 @@ function ClassTypeForm({
     name: classType?.name ?? '',
     program_id: classType?.program_id ?? programId,
     credit_cost: String(classType?.credit_cost ?? 1),
+    kind: classType?.kind ?? 'class',
+    counts_as_class: classType?.counts_as_class ?? true,
   }))
   const [drafts, setDrafts] = useState(initial)
-  const set = (field: keyof ClassTypeDrafts, value: string) => setDrafts({ ...drafts, [field]: value })
+  const set = (field: keyof ClassTypeDrafts, value: string | boolean) => setDrafts({ ...drafts, [field]: value })
 
   // An edit sends only what changed, so a field someone else edited meanwhile is left as they left it.
   const fields = (keys: readonly (keyof ClassTypeDrafts)[]) =>
     Object.fromEntries(keys.map((key) => [key, key === 'credit_cost' ? integerOf(drafts[key]) : drafts[key]]))
-  const changed = (['name', 'program_id', 'credit_cost'] as const).filter((k) => drafts[k] !== initial[k])
+  const changed = CLASS_TYPE_FIELDS.filter((k) => drafts[k] !== initial[k])
 
   const save = useMutation({
     mutationFn: () =>
       classType
         ? updateClassType(classType.id, fields(changed))
-        : createClassType(fields(['name', 'program_id', 'credit_cost'])),
+        : createClassType(fields(CLASS_TYPE_FIELDS)),
     onSuccess: async (answer) => {
       onDone(classType ? copy.classTypeSaved(answer.name) : copy.classTypeCreated(answer.name))
       await queryClient.invalidateQueries({
@@ -378,7 +392,8 @@ function ClassTypeForm({
       })
     },
   })
-  const error = (field: keyof ClassTypeDrafts) => errorOf(save.error, field, drafts[field], copy.classTypeTaken)
+  const error = (field: 'name' | 'program_id' | 'credit_cost') =>
+    errorOf(save.error, field, drafts[field], copy.classTypeTaken)
 
   // The gym's active programs, and the class type's own even if it was deactivated since.
   const choices = programs.filter((p) => p.active || p.id === initial.program_id)
@@ -437,6 +452,37 @@ function ClassTypeForm({
           />
         )}
       </Field>
+      <Field label={form.kind} hint={form.kindHint}>
+        {(props) => (
+          <select
+            {...props}
+            className="settings__input"
+            value={drafts.kind}
+            // As the API does: a class counts as a class by default, an open mat does not.
+            onChange={(e) => {
+              const kind = e.target.value as ClassKind
+              setDrafts({ ...drafts, kind, counts_as_class: kind === 'class' })
+            }}
+          >
+            {CLASS_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {form.kinds[kind]}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
+      <div className="settings__field">
+        <label className="settings__check">
+          <input
+            type="checkbox"
+            checked={drafts.counts_as_class}
+            onChange={(e) => set('counts_as_class', e.target.checked)}
+          />
+          {form.countsAsClass}
+        </label>
+        <p className="settings__hint">{form.countsAsClassHint}</p>
+      </div>
       <FormAlert error={save.error} />
       <FormActions pending={save.isPending} onCancel={onCancel} />
     </form>

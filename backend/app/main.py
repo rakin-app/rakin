@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.api import (
     attendance,
     blobs,
+    block_kinds,
     class_types,
     custom_fields,
     grades,
@@ -23,6 +24,7 @@ from app.api import (
     programs,
     proof_review,
     proofs,
+    session_blocks,
     sessions,
     staff,
     unsubscribe,
@@ -79,6 +81,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(class_types.router)
     app.include_router(sessions.router)
     app.include_router(attendance.router)
+    app.include_router(block_kinds.router)
+    app.include_router(session_blocks.router)
     app.include_router(memberships.router)
     app.include_router(member_import.router)
     app.include_router(gym.router)

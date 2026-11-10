@@ -143,15 +143,17 @@ LIVE_MEMBERSHIP = """
 """
 
 # The person's classes over every membership they hold here, in all and from each of
-# two instants; RLS keeps it to the current gym.
+# two instants: sessions of a class type that counts as a class, so not an open mat by
+# default (migration 0028). RLS keeps it to the current gym.
 COUNTS = """
     SELECT count(*) AS total,
            count(*) FILTER (WHERE s.starts_at >= :recent) AS recent,
            count(*) FILTER (WHERE s.starts_at >= :since) AS since
     FROM attendance a
     JOIN session s ON s.id = a.session_id
+    JOIN class_type c ON c.id = s.class_type_id
     JOIN membership m ON m.id = a.membership_id
-    WHERE m.person_id = :person
+    WHERE m.person_id = :person AND c.counts_as_class
 """
 
 

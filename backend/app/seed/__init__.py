@@ -26,6 +26,7 @@ CONFLICT_KEYS = {
     "staff": "(gym_id, person_id)",
     "gym_person": "(gym_id, person_id)",
     "guardian_link": "(gym_id, dependent_person_id)",
+    "attendance": "(session_id, membership_id)",
 }
 # `ON CONFLICT` holds the new row to the table's read policy, and a person joins the
 # gym only once their `gym_person` row exists (0004), so these rows are tried one by one.

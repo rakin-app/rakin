@@ -147,6 +147,7 @@ describe('Ajustes', () => {
       [copy.sections.gym, '/admin/ajustes/gimnasio'],
       [copy.sections.plans, '/admin/ajustes/planes'],
       [copy.sections.programs, '/admin/ajustes/programas'],
+      [copy.sections.blocks, '/admin/ajustes/bloques'],
       [copy.sections.grading, '/admin/ajustes/graduacion'],
       [copy.sections.fields, '/admin/ajustes/campos'],
       [copy.sections.staff, '/admin/ajustes/equipo'],

@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 import type { Program } from './people'
-import type { ClassType } from './sessions'
+import type { ClassKind, ClassType } from './sessions'
 
 /** Every class type, active ones first, then by program and name. Any staff role may read them. */
 export const classTypesQuery = queryOptions({
@@ -29,6 +29,8 @@ export type ClassTypeFields = Partial<{
   name: string
   program_id: string
   credit_cost: number | string
+  kind: ClassKind
+  counts_as_class: boolean
 }>
 
 export function createClassType(body: ClassTypeFields): Promise<ClassType> {

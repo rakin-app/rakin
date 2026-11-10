@@ -17,7 +17,7 @@ const ADULTS: Program = { id: 'adultos', name: 'Adultos', active: true }
 const KIDS: Program = { id: 'kids', name: 'Kids', active: true }
 const OLD: Program = { id: 'old', name: 'Competición', active: false }
 
-const at = { active: true, created_at: '2026-10-01T12:00:00Z' }
+const at = { active: true, created_at: '2026-10-01T12:00:00Z', kind: 'class', counts_as_class: true } as const
 const FUNDAMENTOS: ClassType = {
   ...at,
   id: 'fund',
@@ -33,6 +33,8 @@ const OPEN_MAT: ClassType = {
   program_id: 'adultos',
   program_name: 'Adultos',
   credit_cost: 0,
+  kind: 'open_mat',
+  counts_as_class: false,
 }
 const SPARRING: ClassType = {
   ...at,
@@ -131,7 +133,7 @@ afterEach(() => {
 })
 
 describe('Ajustes: Programas y clases', () => {
-  it('lists each program with its class types and their credit cost', async () => {
+  it('lists each program with its class types, their credit cost and whether they count as a class', async () => {
     stubApi()
     renderAt('/admin/ajustes/programas')
 
@@ -142,7 +144,7 @@ describe('Ajustes: Programas y clases', () => {
     const rows = within(types).getAllByRole('listitem')
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringContaining(`Fundamentos${copy.credits(1)}`),
-      expect.stringContaining(`Open mat${copy.credits(0)}`),
+      expect.stringContaining(`Open mat${copy.openMat} · ${copy.credits(0)} · ${copy.notCounted}`),
     ])
     expect(within(await programCard('Kids')).getByText(copy.noClassTypes)).toBeInTheDocument()
 
@@ -271,9 +273,53 @@ describe('Ajustes: Programas y clases', () => {
       {
         method: 'POST',
         path: '/api/class-types',
-        body: { name: 'Kids 4-6', program_id: 'kids', credit_cost: 2 },
+        body: { name: 'Kids 4-6', program_id: 'kids', credit_cost: 2, kind: 'class', counts_as_class: true },
       },
     ])
+  })
+
+  it('creates an open mat, which does not count as a class unless told', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/programas')
+
+    const adults = await programCard('Adultos')
+    await userEvent.click(within(adults).getByRole('button', { name: copy.addClassType }))
+    const create = within(adults).getByRole('form', { name: form.create('Adultos') })
+    const counts = within(create).getByRole('checkbox', { name: form.countsAsClass })
+    expect(counts).toBeChecked()
+    await userEvent.type(within(create).getByLabelText(form.name), 'Open mat sábado')
+    await userEvent.selectOptions(within(create).getByLabelText(form.kind), form.kinds.open_mat)
+    expect(counts).not.toBeChecked()
+    await userEvent.click(within(create).getByRole('button', { name: copy.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.classTypeCreated('Open mat sábado'))
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
+      name: 'Open mat sábado',
+      program_id: 'adultos',
+      credit_cost: 1,
+      kind: 'open_mat',
+      counts_as_class: false,
+    })
+  })
+
+  it('makes an open mat count as a class, sending only that', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/programas')
+
+    const adults = await programCard('Adultos')
+    const row = within(adults).getByText('Open mat').closest('li')!
+    await userEvent.click(within(row).getByRole('button', { name: copy.edit }))
+    const edit = within(adults).getByRole('form', { name: form.edit('Open mat') })
+    expect(within(edit).getByLabelText(form.kind)).toHaveValue('open_mat')
+    await userEvent.click(within(edit).getByRole('checkbox', { name: form.countsAsClass }))
+    await userEvent.click(within(edit).getByRole('button', { name: copy.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.classTypeSaved('Open mat'))
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => [c.path, c.body])).toEqual([
+      ['/api/class-types/open', { counts_as_class: true }],
+    ])
+    const saved = within(await programCard('Adultos')).getByText('Open mat').closest('li')!
+    expect(saved).not.toHaveTextContent(copy.notCounted)
   })
 
   it("puts a class type's refusals inline: an inactive program, a cost out of range, a name taken", async () => {

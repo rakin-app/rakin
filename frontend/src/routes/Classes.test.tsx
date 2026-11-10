@@ -17,6 +17,8 @@ const classType = (id: string, name: string, program: string): ClassType => ({
   program_id: `p-${program}`,
   program_name: program,
   credit_cost: 1,
+  kind: 'class',
+  counts_as_class: true,
   active: true,
   created_at: '2026-11-01T12:00:00Z',
 })
