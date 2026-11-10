@@ -65,7 +65,10 @@ describe('Belt', () => {
 
   it('is an image named in words', () => {
     render(<Belt colors={[BLUE]} stripes={3} maxStripes={4} label="Azul, 3 grados" compact />)
-    expect(screen.getByRole('img', { name: 'Azul, 3 grados' })).toHaveClass('belt--compact')
+    const belt = screen.getByRole('img', { name: 'Azul, 3 grados' })
+    expect(belt).toHaveClass('belt--compact')
+    // Named once: no `title` for a screen reader to announce again.
+    expect(belt).not.toHaveAttribute('title')
   })
 })
 
@@ -84,8 +87,10 @@ describe('RankBelt', () => {
 })
 
 describe('beltLabel', () => {
-  it('names the rank, and its sub-rank when it has one', () => {
+  it('names the rank, and its sub-rank when it puts stripes on the bar', () => {
     expect(beltLabel(rank())).toBe('Azul, 3 grados')
+    const none = rank({ sub_rank: '0', sub_rank_label: 'Sin grados', belt: { colors: [BLUE], stripes: 0, max_stripes: 4 } })
+    expect(beltLabel(none)).toBe('Azul')
     expect(beltLabel(rank({ rank_label: '9.º kyu', sub_rank: null, sub_rank_label: null }))).toBe('9.º kyu')
   })
 })

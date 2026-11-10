@@ -36,7 +36,7 @@ export function Belt({ colors, stripes, maxStripes, label, compact = false }: Pr
   const barWidth = maxStripes > 0 ? Math.max(BAR_MIN, PAD * 2 + pitch * (maxStripes - 1) + STRIPE) : 0
   const earned = Math.max(0, Math.min(stripes, maxStripes))
   return (
-    <span className={`belt${compact ? ' belt--compact' : ''}`} role="img" aria-label={label} title={label}>
+    <span className={`belt${compact ? ' belt--compact' : ''}`} role="img" aria-label={label}>
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} aria-hidden="true" focusable="false">
         <rect className="belt__body" x="0.5" y="0.5" width={WIDTH - 1} height={HEIGHT - 1} rx="3" fill={main} />
         {tone && <rect x="0.5" y={HEIGHT / 3} width={WIDTH - 1} height={HEIGHT / 3} fill={tone} />}
@@ -73,9 +73,9 @@ export function RankBelt({ rank, compact, fallback = null }: { rank: Rank; compa
   return <Belt colors={colors} stripes={stripes} maxStripes={max_stripes} label={beltLabel(rank)} compact={compact} />
 }
 
-/** `Azul, 3 grados`, or `9.º kyu` for a rank with no sub-ranks. */
+/** `Azul, 3 grados`; the rank alone with no stripes on it, `Azul`, or no sub-ranks, `9.º kyu`. */
 export function beltLabel(rank: Rank): string {
-  return rank.sub_rank_label ? `${rank.rank_label}, ${rank.sub_rank_label}` : rank.rank_label
+  return rank.sub_rank_label && rank.belt?.stripes ? `${rank.rank_label}, ${rank.sub_rank_label}` : rank.rank_label
 }
 
 /** Near-black, by relative luminance: a bar that colour would not show. */

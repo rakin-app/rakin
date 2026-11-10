@@ -179,9 +179,10 @@ describe('Asistencia', () => {
     renderClass()
 
     const [antonia] = (await rosterList()).getAllByRole('button')
-    expect(within(antonia!).getByRole('img', { name: 'Azul, Sin grados' })).toHaveClass('belt--compact')
+    // No stripes yet: the rank alone.
+    expect(within(antonia!).getByRole('img', { name: 'Azul' })).toHaveClass('belt--compact')
     expect(antonia).toHaveTextContent('Antonia RojasMensual adultos')
-    expect(antonia).toHaveAccessibleName(expect.stringContaining('Azul, Sin grados'))
+    expect(antonia).toHaveAccessibleName(expect.stringContaining('Azul'))
   })
 
   it('counts each tap and saves what changed', async () => {
