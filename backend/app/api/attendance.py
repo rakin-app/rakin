@@ -1,10 +1,12 @@
 """Attendance: a session's roster, marking it, a trial guest at the mat, a person's counts.
 
-A session's roster is everyone who may train at it: a Trial, Active or Lapsed
-membership open to its class type's program, one row per person, plus anyone already
-marked (`app.schemas.attendance.Roster`). A coach taps names on and off and sends what
-changed (`PATCH .../attendance`); marking takes what the membership pays the class with
-(`app.domain.attendance`) and unmarking gives it back. Each change is idempotent, so a
+A session's roster is everyone who may train at it: a membership that is not cancelled
+(a frozen member who turns up trains, for nothing, and stays frozen), open to its class
+type's program, one row per person, plus anyone already marked
+(`app.schemas.attendance.Roster`). A mark or a trial guest is held to the same rule.
+A coach taps names on and off and sends what changed (`PATCH .../attendance`);
+marking takes what the membership pays the class with (`app.domain.attendance`) and
+unmarking gives it back. Each change is idempotent, so a
 phone that lost signal resends its queue without double-counting anyone.
 
 The roster flags an overdue member with a dot and never says what they owe: a coach
@@ -63,24 +65,29 @@ SELECT_SESSION = """
     WHERE s.id = :id
 """
 
-# One row per person: the membership marked present, else their live one the program
-# admits, Active before Trial before Lapsed, latest first. `days_absent` counts from
-# their last class before this one, on the gym's calendar. RLS keeps every table to the
-# current gym.
-ROSTER = """
-SELECT * FROM (
+# The statuses that may train: everyone but a cancelled membership. A frozen member
+# who turns up is marked, spends nothing (`app.domain.attendance`) and stays frozen.
+ON_ROSTER = ("active", "trial", "lapsed", "frozen")
+
+# One row per person: the membership marked present, else their one the program admits,
+# by `ON_ROSTER`'s order, latest first. `days_absent` counts from their last class
+# before this one, on the gym's calendar, once per person kept. RLS keeps every table
+# to the current gym.
+ROSTER = f"""
+SELECT roster.*,
+       (:starts_at AT TIME ZONE :zone)::date - (
+           SELECT max((ps.starts_at AT TIME ZONE :zone)::date)
+           FROM attendance pa
+           JOIN session ps ON ps.id = pa.session_id
+           JOIN membership pm ON pm.id = pa.membership_id
+           WHERE pm.person_id = roster.person_id AND ps.starts_at < :starts_at
+       ) AS days_absent
+FROM (
     SELECT DISTINCT ON (m.person_id)
            m.id AS membership_id, m.person_id, gp.name, pl.name AS plan_name,
            pl.kind AS plan_kind, m.status, m.credits_remaining,
            a.membership_id IS NOT NULL AS present,
            m.id IN (SELECT overdue_memberships()) AS overdue,
-           (:starts_at AT TIME ZONE :zone)::date - (
-               SELECT max((ps.starts_at AT TIME ZONE :zone)::date)
-               FROM attendance pa
-               JOIN session ps ON ps.id = pa.session_id
-               JOIN membership pm ON pm.id = pa.membership_id
-               WHERE pm.person_id = m.person_id AND ps.starts_at < :starts_at
-           ) AS days_absent,
            r.rank_key, r.sub_rank, r.awarded_on
     FROM membership m
     JOIN plan pl ON pl.id = m.plan_id
@@ -94,16 +101,16 @@ SELECT * FROM (
         LIMIT 1
     ) r ON true
     WHERE a.membership_id IS NOT NULL
-       OR (m.status IN ('trial', 'active', 'lapsed')
+       OR (m.status IN {ON_ROSTER}
            AND (pl.program_id IS NULL OR pl.program_id = :program))
     ORDER BY m.person_id, a.membership_id IS NOT NULL DESC,
-             array_position(ARRAY['active', 'trial', 'lapsed'], m.status), m.started_at DESC
+             array_position(ARRAY{list(ON_ROSTER)}, m.status), m.started_at DESC
 ) roster
 ORDER BY lower(name), person_id
 """
 
 LOCK_MEMBERSHIP = """
-    SELECT pl.kind, m.status, m.credits_remaining
+    SELECT pl.kind, pl.program_id, m.status, m.credits_remaining
     FROM membership m JOIN plan pl ON pl.id = m.plan_id
     WHERE m.id = :id FOR UPDATE OF m
 """
@@ -162,6 +169,12 @@ def _unprocessable(field: str, kind: str, msg: str) -> RequestValidationError:
     return RequestValidationError([{"type": kind, "msg": msg, "loc": ("body", field)}])
 
 
+def _admits(program_id: uuid.UUID | None, held: _Class) -> bool:
+    """Whether a plan in `program_id` covers the class: one in its program, or a plan
+    open to any class. The roster's rule, which marks and trials are held to too."""
+    return program_id is None or program_id == held.program_id
+
+
 async def _class(session: AsyncSession, session_id: uuid.UUID, *, lock: bool = False) -> _Class:
     """The session with what the roster needs; locked, every change to its attendance
     waits for this one's."""
@@ -200,9 +213,13 @@ async def _mark(
     row = (await session.execute(text(LOCK_MEMBERSHIP), {"id": membership_id})).one_or_none()
     if row is None:
         raise _unprocessable("mark", "unknown_membership", f"no membership {membership_id}")
-    if row.status == MembershipStatus.CANCELLED:
+    if row.status not in ON_ROSTER:
         raise _unprocessable(
             "mark", "cancelled_membership", f"membership {membership_id} is cancelled"
+        )
+    if not _admits(row.program_id, held):
+        raise _unprocessable(
+            "mark", "not_in_program", f"membership {membership_id} is not for this class"
         )
     state = Membership(
         PlanKind(row.kind), MembershipStatus(row.status), credits_remaining=row.credits_remaining
@@ -272,7 +289,10 @@ async def add_trial_guest(
         raise _unprocessable("person_id", "unknown_person", "no such person")
     plan = (
         await session.execute(
-            text("SELECT kind, credits, credit_expiry_days, active FROM plan WHERE id = :id"),
+            text(
+                "SELECT kind, program_id, credits, credit_expiry_days, active"
+                " FROM plan WHERE id = :id"
+            ),
             {"id": body.plan_id},
         )
     ).one_or_none()
@@ -280,6 +300,8 @@ async def add_trial_guest(
         raise _unprocessable("plan_id", "not_a_trial_plan", "not one of the gym's trial plans")
     if not plan.active:
         raise _unprocessable("plan_id", "inactive_plan", "the plan is deactivated")
+    if not _admits(plan.program_id, held):
+        raise _unprocessable("plan_id", "not_in_program", "the plan is not for this class")
     live = await session.scalar(text(LIVE_MEMBERSHIP), {"person": body.person_id})
     if live is not None:
         conflict = AlreadyMember(membership_id=live)
@@ -295,6 +317,15 @@ async def add_trial_guest(
     )
     await _mark(session, held, membership_id, tenant.person_id)
     return await _roster(session, held)
+
+
+# "The last 30 days": today and the 29 before it, by the gym's calendar.
+RECENT_DAYS = 30
+
+
+def recent_from(today: date, zone: str) -> datetime:
+    """The first instant of "the last 30 days" ending `today`, in the gym's timezone."""
+    return start_of_local_day(today - timedelta(days=RECENT_DAYS - 1), zone)
 
 
 async def attended(
@@ -335,7 +366,7 @@ async def person_attendance(
     total, recent, since = await attended(
         session,
         person_id,
-        recent=start_of_local_day(today - timedelta(days=29), zone),
+        recent=recent_from(today, zone),
         since=None if promoted is None else start_of_local_day(promoted + timedelta(days=1), zone),
     )
     return PersonAttendance(last_30_days=recent, total=total, since_promotion=since)

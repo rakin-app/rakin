@@ -65,8 +65,9 @@ class RosterMember(BaseModel):
 class Roster(BaseModel):
     """`GET /api/sessions/{id}/roster`: who may be marked, by name, and who is.
 
-    Everyone with a Trial, Active or Lapsed membership open to the class's program (a
-    plan in that program, or a plan open to any class), and anyone already marked.
+    Everyone with a Trial, Active, Lapsed or Frozen membership open to the class's
+    program (a plan in that program, or a plan open to any class), and anyone already
+    marked.
     """
 
     session_id: uuid.UUID

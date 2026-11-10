@@ -366,6 +366,43 @@ def test_lapsed_members_are_listed_and_cancelled_ones_refused(
 
 
 @pg
+def test_a_frozen_member_is_listed_marked_for_nothing_and_stays_frozen(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    paula = join(
+        client, gym, add_person(client, gym, "Paula Contreras"), plan(client, gym, CREDITS)
+    )
+    body = {"to_date": (seeded_today() + timedelta(days=14)).isoformat(), "reason": "lesión"}
+    response = client.post(f"/api/memberships/{paula}/freeze", json=body, headers=as_gym(gym))
+    assert response.status_code == 200, response.text
+    session = session_of(client, gym, class_type(client, gym, program(client, gym, "Adultos")))
+
+    assert row(roster(client, gym, session), "Paula Contreras")["status"] == "frozen"
+    marked = changed(client, gym, session, mark=[paula])
+    assert row(marked, "Paula Contreras")["present"] is True
+    assert row(marked, "Paula Contreras")["status"] == "frozen"
+    assert credits_left(db, gym, paula) == 12
+
+
+@pg
+def test_a_plan_for_another_program_is_not_marked_or_started_here(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    adults, kids = program(client, gym, "Adultos"), program(client, gym, "Kids")
+    kids_pack = plan(client, gym, {**CREDITS, "name": "Pack kids", "program_id": kids})
+    mateo = join(client, gym, add_person(client, gym, "Mateo Ortiz"), kids_pack)
+    kids_trial = plan(client, gym, {**TRIAL, "name": "Prueba kids", "program_id": kids})
+    session = session_of(client, gym, class_type(client, gym, adults))
+
+    refused = change(client, gym, session, mark=[mateo])
+    assert (refused.status_code, refused.json()["detail"][0]["type"]) == (422, "not_in_program")
+    assert credits_left(db, gym, mateo) == 12
+    response = guest(client, gym, session, add_person(client, gym, "Camila Ortiz"), kids_trial)
+    assert (response.status_code, response.json()["detail"][0]["type"]) == (422, "not_in_program")
+    assert roster(client, gym, session)["present"] == 0
+
+
+@pg
 def test_unknown_marks_and_sessions(client: TestClient, db: Database, gym: uuid.UUID) -> None:
     session = session_of(client, gym, class_type(client, gym, program(client, gym, "Adultos")))
     refused = change(client, gym, session, mark=[SOMEONE])

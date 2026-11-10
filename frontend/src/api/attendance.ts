@@ -67,23 +67,25 @@ export function trialPlansQuery() {
 }
 
 /**
- * Add someone by phone and start them on `planId`, present at the session. A phone
- * already in the gym is that person; one who is already a member is marked instead.
+ * Add someone by phone and start them on `planId`, present at the session: the roster
+ * then. A phone already in the gym is that person, and one who is already a member is
+ * their membership instead, for the screen to mark as any other tap.
  */
 export async function addTrialGuest(
   sessionId: string,
   guest: { name: string; phone: string; planId: string },
-): Promise<Roster> {
+): Promise<{ roster: Roster } | { member: string }> {
   const personId = await addPerson(guest.name, guest.phone)
   try {
-    return await apiFetch<Roster>(`/api/sessions/${encodeURIComponent(sessionId)}/trials`, {
+    const roster = await apiFetch<Roster>(`/api/sessions/${encodeURIComponent(sessionId)}/trials`, {
       method: 'POST',
       body: JSON.stringify({ person_id: personId, plan_id: guest.planId }),
     })
+    return { roster }
   } catch (error) {
     const membership = conflict(error, 'already_member', 'membership_id')
     if (membership === null) throw error
-    return changeAttendance(sessionId, { mark: [membership], unmark: [] })
+    return { member: membership }
   }
 }
 
@@ -116,9 +118,14 @@ export function personAttendanceQuery(personId: string) {
   })
 }
 
-/** A request that never reached the API: no signal, rather than an answer to act on. */
+/**
+ * A request that never reached the API for lack of signal: `fetch` rejects with a
+ * `TypeError` on a network failure, or the browser knows it is offline. Any other
+ * failure, an answer from the API or a bug, is not something resending will fix.
+ */
 export function isOffline(error: unknown): boolean {
-  return !(error instanceof ApiError)
+  if (error instanceof ApiError) return false
+  return error instanceof TypeError || (typeof navigator !== 'undefined' && navigator.onLine === false)
 }
 
 // Marks a coach saved without signal, per session, until they reach the API. Kept in the

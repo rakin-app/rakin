@@ -61,6 +61,8 @@ type Stub = {
   change?: Answer | 'offline'
   person?: Answer
   trial?: Answer
+  // A save waits for this before it is answered.
+  hold?: Promise<void>
 }
 
 function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_PLAN, MONTHLY_PLAN], ...answers }: Stub = {}) {
@@ -85,8 +87,9 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
       const raw = init?.body
       const body: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
       calls.push({ method, path: `${url.pathname}${url.search}`, body })
-      if (method === 'PATCH' && url.pathname === '/api/sessions/s1/attendance' && stub.change === 'offline') {
-        throw new TypeError('Failed to fetch')
+      if (method === 'PATCH' && url.pathname === '/api/sessions/s1/attendance') {
+        if (stub.change === 'offline') throw new TypeError('Failed to fetch')
+        if (stub.hold) await stub.hold
       }
       const reply = route(url.pathname, method, body)
       return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
@@ -228,6 +231,55 @@ describe('Asistencia', () => {
     expect(list.getByRole('button', { name: /Antonia Rojas/ })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('drops a queued change the API refuses, instead of resending it forever', async () => {
+    localStorage.setItem('rakin:attendance:s1', JSON.stringify({ mark: ['m-paula'], unmark: [] }))
+    const api = stubApi({ change: { status: 422, body: { detail: [{ type: 'cancelled_membership' }] } } })
+    renderClass()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.dropped)
+    expect(localStorage.getItem('rakin:attendance:s1')).toBeNull()
+    const list = await rosterList()
+    expect(list.getByRole('button', { name: /Paula Contreras/ })).toHaveAttribute('aria-pressed', 'false')
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(writes(api.calls)).toHaveLength(1)
+  })
+
+  it('keeps on the phone the taps made after a save without signal', async () => {
+    stubApi({ change: 'offline' })
+    renderClass()
+
+    const list = await rosterList()
+    await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
+    await userEvent.click(screen.getByRole('button', { name: copy.save(2) }))
+    expect(await screen.findByText(copy.queued)).toBeInTheDocument()
+    await userEvent.click(list.getByRole('button', { name: /Paula Contreras/ }))
+    await userEvent.click(list.getByRole('button', { name: /Antonia Rojas/ }))
+
+    expect(JSON.parse(localStorage.getItem('rakin:attendance:s1')!)).toEqual({
+      mark: ['m-felipe', 'm-paula'],
+      unmark: ['m-antonia'],
+    })
+  })
+
+  it('does not resend while a save is still on its way', async () => {
+    localStorage.setItem('rakin:attendance:s1', JSON.stringify({ mark: ['m-paula'], unmark: [] }))
+    let release = () => {}
+    const api = stubApi({ hold: new Promise<void>((resolve) => (release = resolve)) })
+    renderClass()
+
+    await rosterList()
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(writes(api.calls)).toHaveLength(1)
+    await act(async () => release())
+
+    expect(await screen.findByText(copy.saved)).toBeInTheDocument()
+    expect(writes(api.calls)).toHaveLength(1)
+  })
+
   it('says so when the API refuses the change, and keeps nothing queued', async () => {
     stubApi({ change: { status: 422, body: { detail: [] } } })
     renderClass()
@@ -282,7 +334,7 @@ describe('Alumno de prueba', () => {
 
     await addGuest('Felipe', '9 8765 4321')
 
-    expect(await screen.findByText(copy.guest.done('Felipe'))).toBeInTheDocument()
+    expect(await screen.findByText(copy.guest.member('Felipe'))).toBeInTheDocument()
     expect(writes(api.calls).map((c) => [c.path, c.body])).toEqual([
       ['/api/people', { name: 'Felipe', phone: '9 8765 4321' }],
       ['/api/sessions/s1/trials', { person_id: 'felipe', plan_id: 'trial' }],

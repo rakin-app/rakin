@@ -455,6 +455,7 @@ export const es = {
         saved: 'Asistencia guardada.',
         queued: 'Sin conexión: la asistencia quedó guardada en este teléfono y se enviará al volver la señal.',
         failed: 'No pudimos guardar la asistencia. Inténtalo de nuevo.',
+        dropped: 'La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.',
         guest: {
           open: '+ Agregar alumno de prueba',
           label: 'Alumno de prueba',
@@ -467,6 +468,7 @@ export const es = {
           cancel: 'Cancelar',
           noPlans: 'Para agregar alumnos de prueba, el dueño o un admin crea un plan de prueba.',
           done: (name: string) => `${name} quedó presente.`,
+          member: (name: string) => `${name} ya es alumno: lo marcamos presente.`,
           badPhone: 'Revisa el celular: 9 dígitos, empezando por 9.',
           offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
           failed: 'No pudimos agregarlo. Inténtalo de nuevo.',

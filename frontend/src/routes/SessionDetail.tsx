@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   addTrialGuest,
   changeAttendance,
@@ -201,11 +201,16 @@ function changeOf(roster: Roster, taps: Taps): AttendanceChange {
   return change
 }
 
+/** A save: what it sends, and whether it replays what an earlier one left on the phone. */
+type Save = { change: AttendanceChange; replay: boolean }
+
 /**
  * "Asistencia": tap a name to mark it present, again to unmark it, and the count goes
  * with each tap; "Guardar asistencia" sends what changed. Without signal the change
- * stays on the phone (`queueChange`) and goes as soon as the signal is back, or on the
- * next visit; the API takes a change twice as once, so resending is safe.
+ * stays on the phone (`queueChange`), kept up to date with every later tap, and goes as
+ * soon as the signal is back, or on the next visit; the API takes a change twice as
+ * once, so resending is safe. A queued change the API refuses is dropped, not resent
+ * forever: the coach sees the roster as saved and marks again.
  */
 function Attendance({ sessionId }: { sessionId: string }) {
   const words = copy.attendance
@@ -214,39 +219,71 @@ function Attendance({ sessionId }: { sessionId: string }) {
   const [taps, setTaps] = useState<Taps>(() => tapsOf(queuedChange(sessionId)))
   const [queued, setQueued] = useState(() => queuedChange(sessionId) !== null)
   const [saved, setSaved] = useState(false)
-  const save = useMutation({
-    mutationFn: (change: AttendanceChange) => changeAttendance(sessionId, change),
-    onSuccess: (updated, sent) => {
-      queryClient.setQueryData(rosterQuery(sessionId).queryKey, updated)
+  const [dropped, setDropped] = useState(false)
+  // The taps as of the last render, for a save that fails after more taps were made.
+  const latestTaps = useRef(taps)
+  useEffect(() => {
+    latestTaps.current = taps
+  }, [taps])
+  const mutationKey = ['attendance', 'save', sessionId]
+
+  /** Keep `current` on the phone while a change waits for signal; none left, none kept. */
+  const persist = (current: Taps) => {
+    const data = queryClient.getQueryData(rosterQuery(sessionId).queryKey)
+    const change = data ? changeOf(data, current) : null
+    if (change && change.mark.length + change.unmark.length > 0) {
+      queueChange(sessionId, change)
+      setQueued(true)
+    } else {
       clearQueuedChange(sessionId)
       setQueued(false)
+    }
+  }
+
+  const save = useMutation({
+    mutationKey,
+    mutationFn: ({ change }: Save) => changeAttendance(sessionId, change),
+    onSuccess: (updated, { change: sent }) => {
+      queryClient.setQueryData(rosterQuery(sessionId).queryKey, updated)
       setSaved(true)
-      // A tap made while it was on its way stays to be saved.
-      setTaps((current) => {
-        const left = new Map(current)
-        for (const id of sent.mark) if (left.get(id) === true) left.delete(id)
-        for (const id of sent.unmark) if (left.get(id) === false) left.delete(id)
-        return left
-      })
+      setDropped(false)
+      clearQueuedChange(sessionId)
+      setQueued(false)
+      // A tap made while it was on its way stays, to be saved with the button.
+      const left = new Map(latestTaps.current)
+      for (const id of sent.mark) if (left.get(id) === true) left.delete(id)
+      for (const id of sent.unmark) if (left.get(id) === false) left.delete(id)
+      setTaps(left)
     },
-    onError: (error, sent) => {
-      if (!isOffline(error)) return
-      queueChange(sessionId, sent)
-      setQueued(true)
+    onError: (error, { change: sent, replay }) => {
+      if (isOffline(error)) {
+        persist(latestTaps.current)
+        return
+      }
+      // Refused: resending it would be refused again.
+      clearQueuedChange(sessionId)
+      setQueued(false)
+      if (!replay) return
+      setDropped(true)
+      const left = new Map(latestTaps.current)
+      for (const id of [...sent.mark, ...sent.unmark]) left.delete(id)
+      setTaps(left)
     },
   })
   const { mutate } = save
 
-  // What an earlier visit or a lost signal left on the phone, sent once there is signal.
+  // What an earlier visit or a lost signal left on the phone, sent once there is signal,
+  // and never beside a save still on its way, whose answer it could overwrite.
   useEffect(() => {
     const flush = () => {
       const change = queuedChange(sessionId)
-      if (change) mutate(change)
+      if (!change || queryClient.isMutating({ mutationKey: ['attendance', 'save', sessionId] }) > 0) return
+      mutate({ change, replay: true })
     }
     flush()
     window.addEventListener('online', flush)
     return () => window.removeEventListener('online', flush)
-  }, [sessionId, mutate])
+  }, [sessionId, mutate, queryClient])
 
   if (roster.isPending) {
     return <p className="classes__note">{words.loading}</p>
@@ -268,15 +305,23 @@ function Attendance({ sessionId }: { sessionId: string }) {
   const change = changeOf(roster.data, taps)
   const changed = change.mark.length + change.unmark.length > 0
 
-  const toggle = (member: RosterMember) => {
+  const tap = (member: RosterMember, value: boolean): Taps => {
     setSaved(false)
-    setTaps((current) => {
-      const next = new Map(current)
-      const value = !(current.get(member.membership_id) ?? member.present)
-      if (value === member.present) next.delete(member.membership_id)
-      else next.set(member.membership_id, value)
-      return next
-    })
+    setDropped(false)
+    const next = new Map(taps)
+    if (value === member.present) next.delete(member.membership_id)
+    else next.set(member.membership_id, value)
+    setTaps(next)
+    if (queued) persist(next)
+    return next
+  }
+  const toggle = (member: RosterMember) => tap(member, !here(member))
+
+  /** A trial guest who was already a member: marked present and saved, as a tap would be. */
+  const markMember = (membershipId: string) => {
+    const member = members.find((m) => m.membership_id === membershipId)
+    if (member) tap(member, true)
+    save.mutate({ change: { mark: [membershipId], unmark: [] }, replay: false })
   }
 
   return (
@@ -297,8 +342,8 @@ function Attendance({ sessionId }: { sessionId: string }) {
           </li>
         ))}
       </ul>
-      <TrialGuest sessionId={sessionId} />
-      {save.isError && !queued && (
+      <TrialGuest sessionId={sessionId} onMember={markMember} />
+      {save.isError && !queued && !dropped && (
         <p className="classes__error" role="alert">
           {words.failed}
         </p>
@@ -306,6 +351,11 @@ function Attendance({ sessionId }: { sessionId: string }) {
       {queued && (
         <p className="classes__error" role="status">
           {words.queued}
+        </p>
+      )}
+      {dropped && (
+        <p className="classes__error" role="alert">
+          {words.dropped}
         </p>
       )}
       {saved && !changed && !queued && (
@@ -320,7 +370,7 @@ function Attendance({ sessionId }: { sessionId: string }) {
           disabled={!changed || save.isPending}
           onClick={() => {
             setSaved(false)
-            save.mutate(change)
+            save.mutate({ change, replay: false })
           }}
         >
           {save.isPending ? words.working : words.save(present)}
@@ -361,7 +411,7 @@ function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boo
 }
 
 /** "+ Agregar alumno de prueba": someone trying a class, added by phone, present at it. */
-function TrialGuest({ sessionId }: { sessionId: string }) {
+function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (membershipId: string) => void }) {
   const words = copy.attendance.guest
   const queryClient = useQueryClient()
   const plans = useQuery(trialPlansQuery())
@@ -373,9 +423,14 @@ function TrialGuest({ sessionId }: { sessionId: string }) {
   const [done, setDone] = useState<string | null>(null)
   const add = useMutation({
     mutationFn: (guest: { name: string; phone: string; planId: string }) => addTrialGuest(sessionId, guest),
-    onSuccess: (updated, guest) => {
-      queryClient.setQueryData(rosterQuery(sessionId).queryKey, updated)
-      setDone(words.done(guest.name))
+    onSuccess: (added, guest) => {
+      if ('roster' in added) {
+        queryClient.setQueryData(rosterQuery(sessionId).queryKey, added.roster)
+        setDone(words.done(guest.name))
+      } else {
+        onMember(added.member)
+        setDone(words.member(guest.name))
+      }
       setOpen(false)
       setName('')
       setPhone('')
