@@ -1,19 +1,32 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 
-/** A rank of the gym's scheme (backend `app.schemas.grading.Rank`). */
+export const GOAL_METRICS = ['classes_since_promotion', 'time_in_rank'] as const
+export type GoalMetric = (typeof GOAL_METRICS)[number]
+
+/**
+ * A sub-rank of a rank. `target` is how much of the goal metric a member needs in it
+ * before the next promotion: classes, or months in rank.
+ */
+export type SchemeSubRank = { key: string; label: string; target?: number | null }
+
+/** A rank of the gym's scheme (backend `app.schemas.grading.Rank`); a sub-rank's own target wins over its rank's. */
 export type SchemeRank = {
   key: string
   label: string
-  sub_ranks: { key: string; label: string }[]
+  target?: number | null
+  sub_ranks: SchemeSubRank[]
 }
 
 /** The gym's grading scheme (`GET /api/gym/grading-scheme`): ranks lowest first. */
 export type GradingScheme = {
   ranks: SchemeRank[]
   kids_ladder: SchemeRank[]
-  goal_metric: 'classes_since_promotion' | 'time_in_rank' | null
+  goal_metric: GoalMetric | null
 }
+
+/** A starting point for a scheme (`GET /api/gym/grading-scheme/presets`). */
+export type GradingPreset = { key: string; label: string; scheme: GradingScheme }
 
 /** A rank as awarded, with the scheme's labels (backend `app.schemas.grades.Rank`). */
 export type Rank = {
@@ -49,6 +62,16 @@ export function gradingSchemeQuery() {
     queryKey: ['gym', 'grading-scheme'],
     queryFn: () => apiFetch<GradingScheme>('/api/gym/grading-scheme'),
   })
+}
+
+export const gradingPresetsQuery = queryOptions({
+  queryKey: ['gym', 'grading-scheme', 'presets'],
+  queryFn: () => apiFetch<GradingPreset[]>('/api/gym/grading-scheme/presets'),
+})
+
+/** Replaces the scheme whole; owner or admin only. A preset is applied by sending it. */
+export function saveGradingScheme(scheme: GradingScheme): Promise<GradingScheme> {
+  return apiFetch<GradingScheme>('/api/gym/grading-scheme', { method: 'PUT', body: JSON.stringify(scheme) })
 }
 
 export function gradesQuery(personId: string) {

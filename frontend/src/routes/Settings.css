@@ -225,6 +225,66 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* A card inside a card: a program's class type, a rank of the scheme. */
+.settings__subcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+h2.settings__plan-name {
+  margin: 0;
+}
+
+/* A rank's name and target: stacked on a phone, side by side once there is room. */
+.settings__rank-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.settings__sub-ranks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings__sub-ranks > summary {
+  min-height: var(--control-height);
+  display: flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.settings__sub-ranks[open] > .settings__list {
+  margin-bottom: var(--space-2);
+}
+
+/* A sub-rank: its name, its target, and the button that removes it, on one row when they fit. */
+.settings__sub-rank {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.settings__sub-rank > .settings__field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.settings__sub-rank > .settings__button {
+  flex: none;
+}
+
 @media (min-width: 960px) {
   .settings__sections {
     margin: 0 var(--space-8);

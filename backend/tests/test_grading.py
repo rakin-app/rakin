@@ -69,6 +69,21 @@ def test_a_preset_is_a_starting_point_and_is_edited_like_any_scheme() -> None:
     assert edited.ranks[1].sub_ranks == []
 
 
+def test_a_rank_or_sub_rank_carries_an_optional_target() -> None:
+    def targets(s: dict[str, Any]) -> None:
+        s["ranks"][0]["target"] = 200
+        s["ranks"][0]["sub_ranks"][2]["target"] = 80
+
+    scheme = GradingScheme.model_validate(_with(targets))
+    assert scheme.ranks[0].target == 200
+    assert [s.target for s in scheme.ranks[0].sub_ranks] == [None, None, 80, None, None]
+    assert scheme.ranks[1].target is None
+    # Months in rank count the same way.
+    judo = next(p.scheme.model_dump() for p in PRESETS if p.key == "judo-karate")
+    judo["ranks"][0]["target"] = 6
+    assert GradingScheme.model_validate(judo).ranks[0].target == 6
+
+
 def _with(change: Any) -> dict[str, Any]:
     scheme = copy.deepcopy(BJJ)
     change(scheme)
@@ -94,6 +109,18 @@ def _with(change: Any) -> dict[str, Any]:
         _with(lambda s: s["ranks"][0].update(color="#fff")),
         _with(lambda s: s["ranks"][0]["sub_ranks"][0].update(key=0)),
         {**NONE, "ranks": [{"key": f"r{n}", "label": "x"} for n in range(61)]},
+        _with(lambda s: s["ranks"][0].update(target=0)),
+        _with(lambda s: s["ranks"][0].update(target=10_001)),
+        _with(lambda s: s["ranks"][0]["sub_ranks"][1].update(target=-3)),
+        _with(lambda s: s["ranks"][0].update(target="ochenta")),
+        # A target counts the goal metric, so it needs one.
+        _with(lambda s: (s["ranks"][0].update(target=80), s.update(goal_metric=None))),
+        _with(
+            lambda s: (
+                s["kids_ladder"][0]["sub_ranks"][0].update(target=8),
+                s.update(goal_metric=None),
+            )
+        ),
     ],
     ids=str,
 )
@@ -181,7 +208,11 @@ def test_a_preset_is_applied_edited_and_read_back(client: TestClient, db: Databa
     gym = seed_gym(db, "academia-grados")
     assert client.put(URL, json=BJJ, headers=as_gym(gym)).json() == BJJ
 
-    edited = _with(lambda s: s["ranks"].append({"key": "red", "label": "Roja", "sub_ranks": []}))
+    edited = _with(
+        lambda s: s["ranks"].append(
+            {"key": "red", "label": "Roja", "target": None, "sub_ranks": []}
+        )
+    )
     response = client.put(URL, json=edited, headers=as_gym(gym))
     assert response.status_code == 200
     assert response.json() == edited
