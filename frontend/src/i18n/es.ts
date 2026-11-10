@@ -1157,6 +1157,34 @@ export const es = {
       },
     },
   },
+  // "Tiempo en el tatami" (#141): the student page and the ficha read the same totals.
+  matTime: {
+    mine: 'Tu tiempo en el tatami',
+    theirs: 'Tiempo en el tatami',
+    periods: 'Periodo',
+    month: 'Este mes',
+    allTime: 'Siempre',
+    classes: 'Clases',
+    sparring: 'Sparring',
+    byKind: 'Tiempo por bloque',
+    openMat: (n: number, time: string) => `Open mat: ${n} · ${time}`,
+    openMatNote: 'Su tiempo cuenta también como sparring.',
+    // Seconds as `4 h 30 min`, `2 h` or `45 min`; under half a minute, but some, `< 1 min`.
+    duration: (seconds: number) => {
+      const minutes = Math.round(seconds / 60)
+      if (minutes === 0) return seconds > 0 ? '< 1 min' : '0 min'
+      const hours = Math.floor(minutes / 60)
+      const rest = minutes % 60
+      if (hours === 0) return `${rest} min`
+      const h = `${hours.toLocaleString('es-CL')} h`
+      return rest === 0 ? h : `${h} ${rest} min`
+    },
+    emptyMine: 'Todavía no hay clases con tiempo registrado. Aparecerá aquí cuando tu profe use el cronómetro.',
+    emptyTheirs: 'Todavía no hay clases con tiempo registrado.',
+    emptyMonth: 'Este mes todavía no hay tiempo registrado.',
+    loading: 'Cargando el tiempo en el tatami…',
+    error: 'No pudimos cargar el tiempo en el tatami.',
+  },
   me: {
     home: {
       title: 'Mi página',

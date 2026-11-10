@@ -18,10 +18,10 @@ The plan to start from (`GET .../blocks/suggested`) is the latest other session 
 same class type that has one, for the coach to adjust: the usual class is a couple of
 taps.
 
-A person's time (`GET /api/people/{id}/time`) is the blocks of every session they were
-marked present at, late or not: everyone present gets the whole session. Sessions count
-once even if two of the person's memberships were marked. This month is from the 1st
-on the gym's calendar.
+A person's time (`GET /api/people/{id}/time`, and their own on `GET /api/me/time`) is
+the blocks of every session they were marked present at, late or not: everyone present
+gets the whole session. Sessions count once even if two of the person's memberships
+were marked. This month is from the 1st on the gym's calendar.
 
 Any staff role may read them, coaches included, since time involves no money. Only the
 session's coach, or an owner or admin, may change its plan or record its blocks.
@@ -373,14 +373,12 @@ async def _totals(
     )
 
 
-@router.get("/api/people/{person_id}/time")
-async def person_time(
-    person_id: uuid.UUID, tenant: CurrentTenant, session: StaffSession
+async def person_time_of(
+    session: AsyncSession, gym_id: uuid.UUID, person_id: uuid.UUID
 ) -> PersonTime:
-    if not await in_gym(session, person_id):
-        raise PERSON_NOT_FOUND
+    """The person's time this month and in all, on the gym's calendar."""
     zone: str = await session.scalar(
-        text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
+        text("SELECT timezone FROM gym WHERE id = :id"), {"id": gym_id}
     )
     month_start = gym_today(zone).replace(day=1)
     return PersonTime(
@@ -389,3 +387,12 @@ async def person_time(
         this_month=await _totals(session, person_id, start_of_local_day(month_start, zone)),
         all_time=await _totals(session, person_id, None),
     )
+
+
+@router.get("/api/people/{person_id}/time")
+async def person_time(
+    person_id: uuid.UUID, tenant: CurrentTenant, session: StaffSession
+) -> PersonTime:
+    if not await in_gym(session, person_id):
+        raise PERSON_NOT_FOUND
+    return await person_time_of(session, tenant.gym_id, person_id)

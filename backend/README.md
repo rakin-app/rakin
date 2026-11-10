@@ -298,6 +298,7 @@ A coach runs a class from a timer as a sequence of blocks (#136): warm-up, techn
 | `PUT` | `/api/sessions/{id}/blocks/{block_id}/actual` | `{"actual_seconds", "rounds_completed"}`: what the block ran; 200 with the block |
 | `GET` | `/api/sessions/{id}/blocks/suggested` | `{"session_id", "from_session_id", "blocks": […]}`: the plan of the latest other session of the same class type that has one, without ids, actuals or archived kinds; none when there is no such session |
 | `GET` | `/api/people/{id}/time` | `{"timezone", "month_start", "this_month", "all_time"}`, each `{"by_kind", "sparring_seconds", "open_mat_seconds", "classes", "open_mats"}` |
+| `GET` | `/api/me/time` | the signed-in person's own time, as above: the student page's "Tu tiempo en el tatami" |
 
 Every gym starts with six kinds, Calentamiento, Técnica, Drilling, Juegos, Sparring (`is_sparring`) and Otro: a trigger on `gym` gives a new gym them, and the migration gave the gyms already there theirs. Their ids are derived from the gym's (`block_kind_default_id`, and `app.seed.build.default_block_kind_id` in Python), so the seed points at them. A kind in use is archived rather than deleted, and planned no more; a block already of it may stay in a replanned session.
 
@@ -311,7 +312,7 @@ A block carries `id`, `position`, `block_kind_id`, `block_kind_name`, `is_sparri
 
 A person's time is every block of each session they were marked present at, counted once even with two memberships marked, and whole: someone who arrived late gets it all. `by_kind` is the seconds each kind ran, kinds with any, in the gym's order; `sparring_seconds` sums the sparring kinds, open mats included; `open_mat_seconds` is the open mats' time alone; `classes` counts sessions of a class type that counts as a class and `open_mats` those of an open mat. `this_month` is from the 1st in the gym's timezone (`month_start`).
 
-Any staff role may read all of it, coaches included, since none of it is money. Only an owner or admin changes block kinds; the plan and its actuals are the session's coach's, or an owner's or admin's (403 for another coach).
+Any staff role may read all of it, coaches included, since none of it is money. A member reads only their own time, on `/api/me/time`. Only an owner or admin changes block kinds; the plan and its actuals are the session's coach's, or an owner's or admin's (403 for another coach).
 
 ## Member import
 

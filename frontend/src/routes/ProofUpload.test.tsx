@@ -40,6 +40,9 @@ const UPLOAD_URL = 'http://storage.test/rakin/proofs/key?X-Amz-Signature=abc'
 type Call = { method: string; url: string; body: unknown; headers: Headers }
 type Answer = { status?: number; body?: unknown }
 
+const NONE = { by_kind: [], sparring_seconds: 0, open_mat_seconds: 0, classes: 0, open_mats: 0 }
+const NO_TIME = { timezone: 'America/Santiago', month_start: '2026-11-01', this_month: NONE, all_time: NONE }
+
 function stubApi(
   periods: OpenPeriod[],
   answers: { put?: number; claim?: Answer; pending?: Answer; role?: string | null; page?: MyPage } = {},
@@ -65,6 +68,7 @@ function stubApi(
     if (url.href === UPLOAD_URL && method === 'PUT') return { status: answers.put ?? 200 }
     if (url.pathname === '/api/me/periods') return { body: periods }
     if (url.pathname === '/api/me/page') return { body: answers.page ?? pageFor(periods) }
+    if (url.pathname === '/api/me/time') return { body: NO_TIME }
     if (url.pathname === '/api/me/proofs') {
       return { status: 201, body: { key: 'proofs/g/ana/k', url: UPLOAD_URL, headers: { 'Content-Type': 'image/jpeg' }, expires_in_seconds: 900 } }
     }

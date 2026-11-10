@@ -42,6 +42,7 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { ChevronLeftIcon } from '../components/icons'
+import { MemberMatTime } from '../components/MatTime'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { CustomFieldsPanel } from './CustomFieldsPanel'
@@ -62,7 +63,7 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * them; never money.
  *
  * Their attendance, in the last 30 days and in all, and in Graduación the classes since
- * their last promotion.
+ * their last promotion; their time on the mat by block kind (#141).
  *
  * Below them, the gym's custom fields the signed-in role may see (#20).
  *
@@ -117,6 +118,7 @@ export function MemberDetail() {
         <p className="member__note">{copy.noPlan}</p>
       )}
       <Attendance personId={personId} />
+      <MemberMatTime personId={personId} />
       <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
       <section className="member__section" aria-label={t.admin.family.toggle}>
         <h2 className="member__section-title">{t.admin.family.toggle}</h2>
