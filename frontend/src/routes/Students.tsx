@@ -114,10 +114,10 @@ export function Students() {
       <div className="students">
         {readsLedger(role.data) && (
           <div className="students__links">
-            <Link to="/admin/alumnos/nuevo" className={buttonClass({ className: 'students__new' })}>
+            <Link to="/admin/alumnos/nuevo" className={buttonClass({ variant: 'primary' })}>
               {copy.newLink}
             </Link>
-            <Link to="/admin/alumnos/importar" className={buttonClass({ variant: 'ghost' })}>
+            <Link to="/admin/alumnos/importar" className={buttonClass()}>
               {copy.importLink}
             </Link>
           </div>
@@ -152,7 +152,7 @@ export function Students() {
               </label>
               <Select
                 id={planId}
-                className="students__plan"
+                className="students__picker"
                 value={search.plan ?? ''}
                 onChange={(event) => setPlan(event.target.value)}
               >
@@ -172,7 +172,7 @@ export function Students() {
               </label>
               <Select
                 id={programId}
-                className="students__plan"
+                className="students__picker"
                 value={search.program ?? ''}
                 onChange={(event) => setProgram(event.target.value)}
               >

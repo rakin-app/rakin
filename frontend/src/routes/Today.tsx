@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useId, useState, type FormEvent } from 'react'
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
+import { classTypesQuery } from '../api/classes'
 import { ApiError } from '../api/client'
+import { gymSettingsQuery } from '../api/gym'
 import { recordPayment, type Method } from '../api/member'
-import { myRoleQuery, readsLedger } from '../api/me'
+import { myRoleQuery, myselfQuery, readsLedger } from '../api/me'
+import { memberCountQuery, plansQuery } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
 import { unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
+import { staffQuery } from '../api/staff'
 import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
 import { overdueQuery, type OverduePeriod } from '../api/today'
 import { Button, buttonClass } from '../components/Button'
@@ -38,6 +42,10 @@ const OVERDUE_SHOWN = 3
  * inactive list says who owes. The WhatsApp reminder on each overdue row joins with the
  * wa.me links (#55). Above it all, for every staff role, the join link's requests
  * waiting for approval (#154).
+ *
+ * A gym on its first day has none of that: "Configura tu academia" leads the owner
+ * through setting it up, until it has members and classes (#166). A coach, who sees
+ * no money, is pointed at Clases instead of a blank page.
  */
 export function Today() {
   const role = useQuery(myRoleQuery())
@@ -51,8 +59,22 @@ export function Today() {
     <div className="today">
       <PageHeader title={copy.heading(weekdayDay(new Date()))} />
       <JoinRequests />
+      {role.isError && (
+        <div className="today__lead">
+          <Failed message={copy.roleError} retry={() => void role.refetch()} />
+        </div>
+      )}
+      {role.data === 'coach' && (
+        <p className="today__note today__lead">
+          {copy.coach.note}{' '}
+          <Link to="/admin/clases" className="today__link">
+            {copy.coach.link}
+          </Link>
+        </p>
+      )}
       {money && (
         <>
+          <Setup />
           <div className="today__counters" aria-label={copy.countersLabel} role="group">
             <Counter href="#vencidos" value={overdue.data?.periods.length} label={copy.overdue.title} tone="warning" />
             <Counter href="#validar" value={proofs.data?.length} label={copy.proofs.title} tone="accent" />
@@ -137,6 +159,150 @@ export function Today() {
         </>
       )}
     </div>
+  )
+}
+
+// The checklist's answers change only when someone sets something up, and each of those
+// screens refreshes its own; Hoy need not ask again on every visit.
+const SETUP_STALE_MS = 5 * 60_000
+
+/** Where this browser remembers that a gym is set up: per host, which is per gym, and per
+ * person, for a gym served on the instance's own address. */
+export function setupDoneKey(personId: string): string {
+  return `rakin:setup-done:${window.location.host}:${personId}`
+}
+
+// Storage can be refused (a private window); then the checklist just asks again.
+function remembered(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === '1'
+  } catch {
+    return false
+  }
+}
+
+function remember(key: string) {
+  try {
+    window.localStorage.setItem(key, '1')
+  } catch {
+    // Not remembered: the next visit asks the two questions again.
+  }
+}
+
+/**
+ * "Configura tu academia": a new gym's steps, each ticked once done and a link to where
+ * it is done. Shown until the gym has members and classes, and never again after that in
+ * this browser: a gym set up once is remembered, and its Hoy asks nothing for it.
+ */
+function Setup() {
+  const me = useQuery(myselfQuery())
+  if (!me.data) return null
+  const key = setupDoneKey(me.data.person_id)
+  return remembered(key) ? null : <SetupChecklist doneKey={key} />
+}
+
+function SetupChecklist({ doneKey }: { doneKey: string }) {
+  // First the two answers that decide whether it shows at all; the other three only once
+  // it will, so a gym that is set up costs two small requests, once.
+  const members = useQuery({ ...memberCountQuery, staleTime: SETUP_STALE_MS })
+  const classTypes = useQuery({ ...classTypesQuery, staleTime: SETUP_STALE_MS })
+  const hasMembers = (members.data ?? 0) > 0
+  const hasClasses = classTypes.data?.some((c) => c.active) ?? false
+  const setUp = hasMembers && hasClasses
+  const shows = members.data !== undefined && classTypes.data !== undefined && !setUp
+  const gym = useQuery({ ...gymSettingsQuery(), staleTime: SETUP_STALE_MS, enabled: shows })
+  const plans = useQuery({ ...plansQuery, staleTime: SETUP_STALE_MS, enabled: shows })
+  const staff = useQuery({ ...staffQuery, staleTime: SETUP_STALE_MS, enabled: shows })
+
+  useEffect(() => {
+    if (setUp) remember(doneKey)
+  }, [setUp, doneKey])
+
+  // Nothing until every answer is in, and nothing if one fails: the checklist is a nudge,
+  // not something to report an error for, and drawing it on a partial answer would show
+  // a set-up gym unticked steps for a moment. A failed request is retried on the next visit.
+  if (!shows || !gym.data || !plans.data || !staff.data) return null
+
+  const steps = copy.setup.steps
+  const done = {
+    gym: gym.data.bank_account !== null,
+    plans: plans.data.some((p) => p.active),
+    classes: hasClasses,
+    members: hasMembers,
+    // The owner is on the staff from the start.
+    staff: staff.data.length > 1,
+  }
+  const count = Object.values(done).filter(Boolean).length
+  return (
+    <section className="today__setup" aria-labelledby="setup-title">
+      <div className="today__section-head">
+        <h2 id="setup-title" className="today__setup-title">
+          {copy.setup.title}
+        </h2>
+        <span className="today__aside">{copy.setup.progress(count, Object.keys(done).length)}</span>
+      </div>
+      <ol className="today__steps">
+        <SetupStep done={done.gym} title={steps.gym.title} hint={steps.gym.hint}>
+          <Link to="/admin/ajustes/gimnasio" className="today__link">
+            {steps.gym.link}
+          </Link>
+        </SetupStep>
+        <SetupStep done={done.plans} title={steps.plans.title} hint={steps.plans.hint}>
+          <Link to="/admin/ajustes/planes" className="today__link">
+            {steps.plans.link}
+          </Link>
+        </SetupStep>
+        <SetupStep done={done.classes} title={steps.classes.title} hint={steps.classes.hint}>
+          <Link to="/admin/ajustes/programas" className="today__link">
+            {steps.classes.link}
+          </Link>
+        </SetupStep>
+        <SetupStep done={done.members} title={steps.members.title} hint={steps.members.hint}>
+          <Link to="/admin/alumnos/nuevo" className="today__link">
+            {steps.members.manual}
+          </Link>
+          <Link to="/admin/alumnos/importar" className="today__link">
+            {steps.members.import}
+          </Link>
+          <Link to="/admin/ajustes/inscripcion" className="today__link">
+            {steps.members.joinLink}
+          </Link>
+        </SetupStep>
+        <SetupStep done={done.staff} title={steps.staff.title} hint={steps.staff.hint}>
+          <Link to="/admin/ajustes/equipo" className="today__link">
+            {steps.staff.link}
+          </Link>
+        </SetupStep>
+      </ol>
+    </section>
+  )
+}
+
+function SetupStep({
+  done,
+  title,
+  hint,
+  children,
+}: {
+  done: boolean
+  title: string
+  hint: string
+  children: ReactNode
+}) {
+  return (
+    <li className={`today__step${done ? ' today__step--done' : ''}`}>
+      <span className="today__check" aria-hidden="true">
+        {done ? '✓' : ''}
+      </span>
+      <span className="today__row-text">
+        <span className="today__name">
+          {title}
+          <span className="visually-hidden">{copy.setup.state(done)}</span>
+        </span>
+        <span className="today__detail">{hint}</span>
+        <span className="today__step-links">{children}</span>
+      </span>
+    </li>
   )
 }
 

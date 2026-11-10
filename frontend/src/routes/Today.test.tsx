@@ -10,7 +10,7 @@ import type { Overdue, OverduePeriod } from '../api/today'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
-import { ago } from './Today'
+import { ago, setupDoneKey } from './Today'
 
 const copy = es.admin.today
 
@@ -120,9 +120,45 @@ type Stub = {
   payment?: Answer
   inactive?: InactiveMember[]
   unmarked?: Answer
+  // The role request fails: the server is down, say.
+  roleFails?: boolean
+  // A gym's setup as "Configura tu academia" reads it; none answers 404, as before #166.
+  setup?: Setup
 }
 
-function stubApi({ role = 'owner', proofs, overdue = OVERDUE, payment, inactive = INACTIVE, unmarked }: Stub = {}) {
+type Setup = {
+  bankAccount?: boolean
+  plans?: number
+  classTypes?: number
+  members?: number
+  staff?: number
+}
+
+const plan = (i: number) => ({ id: `plan-${i}`, name: `Plan ${i}`, active: true })
+const classType = (i: number) => ({ id: `ct-${i}`, name: `Clase ${i}`, active: true })
+const staffer = (i: number) => ({ person_id: `staff-${i}`, name: `Staff ${i}`, role: i === 0 ? 'owner' : 'coach' })
+
+function setupAnswer(path: string, setup: Setup): Answer | null {
+  const { bankAccount = false, plans = 0, classTypes = 0, members = 0, staff = 1 } = setup
+  if (path === '/api/gym/settings')
+    return { body: { name: 'Meta', bank_account: bankAccount ? { bank: 'Banco', number: '1' } : null } }
+  if (path === '/api/plans') return { body: Array.from({ length: plans }, (_, i) => plan(i)) }
+  if (path === '/api/class-types') return { body: Array.from({ length: classTypes }, (_, i) => classType(i)) }
+  if (path === '/api/people') return { body: { items: [], total: members } }
+  if (path === '/api/staff') return { body: Array.from({ length: staff }, (_, i) => staffer(i)) }
+  return null
+}
+
+function stubApi({
+  role = 'owner',
+  proofs,
+  overdue = OVERDUE,
+  payment,
+  inactive = INACTIVE,
+  unmarked,
+  setup,
+  roleFails = false,
+}: Stub = {}) {
   const calls: Call[] = []
   let current = overdue
   let away = inactive
@@ -142,7 +178,9 @@ function stubApi({ role = 'owner', proofs, overdue = OVERDUE, payment, inactive 
   )
 
   function route(path: string, method: string): Answer {
-    if (path === '/api/me/role') return { body: { role } }
+    if (path === '/api/me/role') return roleFails ? { status: 500, body: { detail: 'boom' } } : { body: { role, person_id: 'owner-1' } }
+    const configured = setup && setupAnswer(path, setup)
+    if (configured) return configured
     if (path === '/api/ledger/pending') return { body: { count: 2 } }
     if (path === '/api/ledger/proofs') return proofs ?? { body: [DIEGO, MATEO] }
     if (path === '/api/ledger/overdue') return { body: current }
@@ -176,6 +214,7 @@ function renderToday() {
 const section = (name: string) => screen.findByRole('region', { name })
 
 afterEach(() => {
+  localStorage.clear()
   vi.unstubAllGlobals()
 })
 
@@ -322,6 +361,22 @@ describe('Hoy', () => {
     expect(asked).toEqual([])
   })
 
+  it('points a coach at Clases instead of an empty page', async () => {
+    stubApi({ role: 'coach' })
+    renderToday()
+
+    expect(await screen.findByText(copy.coach.note)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: copy.coach.link })).toHaveAttribute('href', '/admin/clases')
+  })
+
+  it('says so when it cannot tell who is signed in, instead of an empty page', async () => {
+    stubApi({ roleFails: true })
+    renderToday()
+
+    expect(await screen.findByText(copy.roleError, {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.retry })).toBeInTheDocument()
+  })
+
   it('counts who has not come in 14 days', async () => {
     stubApi()
     renderToday()
@@ -406,5 +461,87 @@ describe('ago', () => {
     [new Date(2026, 10, 5, 12, 0), '5 nov'],
   ])('%s is %s', (then, expected) => {
     expect(ago(then.toISOString(), now)).toBe(expected)
+  })
+})
+
+describe('Configura tu academia', () => {
+  const steps = copy.setup.steps
+  const checklist = () => screen.findByRole('region', { name: copy.setup.title })
+
+  it('leads a new gym through its setup, each step a link to where it is done', async () => {
+    stubApi({ setup: {}, overdue: { total_clp: 0, periods: [] }, inactive: [] })
+    renderToday()
+
+    const setup = await checklist()
+    expect(within(setup).getByText(copy.setup.progress(0, 5))).toBeInTheDocument()
+    const items = within(setup).getAllByRole('listitem')
+    expect(items.map((item) => item.querySelector('.today__name')?.firstChild?.textContent)).toEqual([
+      steps.gym.title,
+      steps.plans.title,
+      steps.classes.title,
+      steps.members.title,
+      steps.staff.title,
+    ])
+    const href = (name: string) => within(setup).getByRole('link', { name }).getAttribute('href')
+    expect(href(steps.gym.link)).toBe('/admin/ajustes/gimnasio')
+    expect(href(steps.plans.link)).toBe('/admin/ajustes/planes')
+    expect(href(steps.classes.link)).toBe('/admin/ajustes/programas')
+    expect(href(steps.members.manual)).toBe('/admin/alumnos/nuevo')
+    expect(href(steps.members.import)).toBe('/admin/alumnos/importar')
+    expect(href(steps.members.joinLink)).toBe('/admin/ajustes/inscripcion')
+    expect(href(steps.staff.link)).toBe('/admin/ajustes/equipo')
+    expect(within(setup).getByText(steps.gym.title)).toHaveTextContent(copy.setup.state(false).trim())
+  })
+
+  it('ticks each step once it is done', async () => {
+    stubApi({ setup: { bankAccount: true, plans: 1, staff: 2 } })
+    renderToday()
+
+    const setup = await checklist()
+    expect(within(setup).getByText(copy.setup.progress(3, 5))).toBeInTheDocument()
+    const state = (title: string) => within(setup).getByText(title).textContent
+    expect(state(steps.gym.title)).toContain(copy.setup.state(true))
+    expect(state(steps.plans.title)).toContain(copy.setup.state(true))
+    expect(state(steps.classes.title)).toContain(copy.setup.state(false))
+    expect(state(steps.members.title)).toContain(copy.setup.state(false))
+    expect(state(steps.staff.title)).toContain(copy.setup.state(true))
+  })
+
+  it('stays while the gym has members but no classes', async () => {
+    stubApi({ setup: { members: 12 } })
+    renderToday()
+
+    expect(await checklist()).toBeInTheDocument()
+  })
+
+  it('is gone once the gym has members and classes, and is remembered as done', async () => {
+    const calls = stubApi({ setup: { members: 12, classTypes: 2 } })
+    renderToday()
+
+    await vi.waitFor(() => expect(localStorage.getItem(setupDoneKey('owner-1'))).toBe('1'))
+    expect(screen.queryByRole('region', { name: copy.setup.title })).not.toBeInTheDocument()
+    // The two answers that decide it were enough: nothing else was asked for it (Hoy's
+    // payment form asks for the plans on its own).
+    expect(calls.some((c) => ['/api/gym/settings', '/api/staff'].includes(c.path))).toBe(false)
+  })
+
+  it('asks nothing for a gym this browser already knows is set up', async () => {
+    localStorage.setItem(setupDoneKey('owner-1'), '1')
+    const calls = stubApi({ setup: {} })
+    renderToday()
+
+    await screen.findByRole('region', { name: copy.proofs.title })
+    expect(screen.queryByRole('region', { name: copy.setup.title })).not.toBeInTheDocument()
+    const setupPaths = ['/api/people', '/api/class-types', '/api/gym/settings', '/api/staff']
+    expect(calls.some((c) => setupPaths.includes(c.path))).toBe(false)
+  })
+
+  it('is never shown to a coach', async () => {
+    const calls = stubApi({ role: 'coach', setup: {} })
+    renderToday()
+
+    await screen.findByText(copy.coach.note)
+    expect(screen.queryByRole('region', { name: copy.setup.title })).not.toBeInTheDocument()
+    expect(calls.some((c) => c.path === '/api/staff' || c.path === '/api/gym/settings')).toBe(false)
   })
 })

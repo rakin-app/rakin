@@ -12,7 +12,8 @@
 }
 
 .students__search,
-.students__plan {
+.students__picker {
+  box-sizing: border-box;
   width: 100%;
 }
 
@@ -34,10 +35,11 @@
   border-radius: var(--radius-lg);
 }
 
+/* Name and status on one top line; the details below each. */
 .students__row {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
   min-height: var(--control-height-lg);
@@ -59,6 +61,7 @@
 .students__plan-cell {
   flex: none;
   align-items: flex-end;
+  gap: var(--space-1);
   max-width: 45%;
 }
 
@@ -113,6 +116,13 @@
     padding: 0 var(--space-8) var(--space-8);
   }
 
+  /* One line on a desktop: the status, the plan, then "Familia". */
+  .students__plan-cell {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
   .students__filters {
     flex-direction: row;
     flex-wrap: wrap;
@@ -124,7 +134,7 @@
     width: auto;
   }
 
-  .students__plan {
+  .students__picker {
     width: auto;
   }
 }
@@ -212,15 +222,9 @@
 
 .students__links {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
-}
-
-.students__new {
-  display: inline-flex;
-  align-items: center;
-  text-decoration: none;
-}
+  gap: var(--space-2);
 
 /* The name is the row's link, and the whole row is its target; the family toggle sits above it. */
 .students__name::after {

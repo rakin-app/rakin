@@ -451,7 +451,7 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
       <td>{mediumLabel(entry)}</td>
       <td>
         {status.review ? (
-          <Link to="/admin/pagos/comprobantes" className="payments__status-link">
+          <Link to="/admin/pagos/comprobantes" className="payments__to-review">
             <StatusPill status={status.status}>{status.label}</StatusPill>
           </Link>
         ) : (
