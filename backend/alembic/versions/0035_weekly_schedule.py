@@ -16,7 +16,12 @@ sessions, and a one-off one sets its own or none, as every session before this d
 
 `generated_until` is the last date a slot's sessions were made through. The nightly
 run starts after it, so a generated class someone deleted does not come back; the
-API passes `refill` to make a range again, ON CONFLICT keeping what is there.
+API passes `refill` to make a range again, ON CONFLICT keeping what is there. A
+refill moves `generated_until` only when its range starts no later than the day after
+it, so reopening a day past a gap the nightly run has not reached does not skip it.
+
+No class is made whose start has passed: a slot saved at 21:00 makes today's 19:00
+class no more than a run late at night does.
 
 A `closed_day` is a date, in the gym's timezone, with no classes: no session is made
 on it. Both tables are per gym under RLS, as every tenant table is; that only an
@@ -80,12 +85,16 @@ BEGIN
     WHERE (only_slot IS NULL OR s.id = only_slot)
       AND extract(isodow FROM d.day)::smallint = ANY (s.weekdays)
       AND NOT EXISTS (SELECT FROM closed_day x WHERE x.gym_id = s.gym_id AND x.day = d.day)
+      AND (d.day + s.start_time) AT TIME ZONE g.timezone > now()
     ON CONFLICT (slot_id, slot_date) DO NOTHING;
     GET DIAGNOSTICS made = ROW_COUNT;
 
+    -- A refill of a range that starts past the day after `generated_until` (a reopened
+    -- day, say) leaves a gap the nightly run has yet to make, so it moves nothing.
     UPDATE schedule_slot SET generated_until = greatest(generated_until, last_day)
     WHERE (only_slot IS NULL OR id = only_slot)
-      AND (generated_until IS NULL OR generated_until < last_day);
+      AND (generated_until IS NULL OR generated_until < last_day)
+      AND (NOT refill OR generated_until IS NULL OR first_day <= generated_until + 1);
     RETURN made;
 END
 $$

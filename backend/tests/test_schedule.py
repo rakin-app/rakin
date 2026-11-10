@@ -180,6 +180,13 @@ def run_job(db: Database, day: date) -> None:
     asyncio.run(go())
 
 
+def first_made(at: time = time(19)) -> date:
+    """The first date a slot starting at `at` makes a class for: today if that is still
+    ahead in the gym's timezone, else tomorrow, since no class is made already begun."""
+    ahead = datetime.combine(today(), at, tzinfo=SANTIAGO) > datetime.now(UTC)
+    return today() if ahead else today() + timedelta(days=1)
+
+
 def dates(rows: list[asyncpg.Record]) -> list[date]:
     return [r["slot_date"] for r in rows]
 
@@ -197,7 +204,7 @@ def test_a_slot_makes_its_classes_for_the_next_two_weeks_and_never_twice(
 ) -> None:
     slot = add_slot(client, gym, fundamentals, weekdays=[1, 3, 5], topic="Guardia")
     first, last = horizon(today())
-    expected = [d for d in every_day(first, last) if d.isoweekday() in (1, 3, 5)]
+    expected = [d for d in every_day(first_made(), last) if d.isoweekday() in (1, 3, 5)]
 
     made = sessions_of(db, gym)
     assert dates(made) == expected
@@ -220,7 +227,7 @@ def test_the_nightly_job_adds_the_next_day_and_a_deleted_class_stays_deleted(
 ) -> None:
     add_slot(client, gym, fundamentals, weekdays=EVERY_DAY)
     made = sessions_of(db, gym)
-    assert len(made) == HORIZON_DAYS
+    assert dates(made) == every_day(first_made(), horizon(today())[1])
     last = made[-1]
     assert client.delete(f"/api/sessions/{last['id']}", headers=as_gym(gym)).status_code == 204
 
@@ -229,7 +236,7 @@ def test_the_nightly_job_adds_the_next_day_and_a_deleted_class_stays_deleted(
     after = dates(sessions_of(db, gym))
     assert last["slot_date"] not in after
     assert after[-1] == horizon(today() + timedelta(days=1))[1]
-    assert len(after) == HORIZON_DAYS  # one deleted, one added
+    assert len(after) == len(made)  # one deleted, one added
 
 
 @pg
@@ -315,12 +322,29 @@ def test_a_class_at_a_skipped_local_time_keeps_its_date(
 def backfilled_slot(
     client: TestClient, db: Database, gym: uuid.UUID, class_type_id: str, **overrides: Any
 ) -> dict[str, Any]:
-    """An every-day slot since a week ago, with its past week's classes made too."""
+    """An every-day slot since a week ago, with its past week's classes held too.
+
+    The schedule never makes a class already begun, so those are written as the classes
+    it would have made then."""
     since = today() - timedelta(days=7)
     slot = add_slot(
         client, gym, class_type_id, weekdays=EVERY_DAY, valid_from=since.isoformat(), **overrides
     )
-    generate(db, gym, since, today(), refill=True)
+    run(
+        db.owner_url,
+        in_gym(
+            gym,
+            "INSERT INTO session (gym_id, class_type_id, starts_at, duration_minutes, coach_id,"
+            " topic, slot_id, slot_date)"
+            " SELECT gym_id, class_type_id, (d::date + start_time) AT TIME ZONE"
+            " 'America/Santiago', duration_minutes, coach_id, topic, id, d::date"
+            " FROM schedule_slot, generate_series($2::date, $3::date, interval '1 day') d"
+            " WHERE id = $1",
+            uuid.UUID(slot["id"]),
+            since,
+            today() - timedelta(days=1),
+        ),
+    )
     return slot
 
 
@@ -383,16 +407,13 @@ def test_a_change_from_the_past_never_rewrites_a_class_that_happened(
 def test_a_change_from_the_first_date_changes_the_slot_itself(
     client: TestClient, db: Database, gym: uuid.UUID, fundamentals: str
 ) -> None:
-    # At 00:01 today's class has always started, whatever the hour the test runs.
-    slot = add_slot(client, gym, fundamentals, weekdays=EVERY_DAY, start_time="00:01")
+    slot = add_slot(client, gym, fundamentals, weekdays=EVERY_DAY)
     response = change_slot(client, gym, slot["id"], {"coach_id": str(add_staff(db, gym, "coach"))})
     assert response.status_code == 200, response.text
     assert response.json()["id"] == slot["id"]
     assert len(slot_rows(db, gym)) == 1
-    # Today's class has started, and keeps its coach; the later ones change.
-    coaches = {r["slot_date"]: r["coach_id"] for r in sessions_of(db, gym)}
-    assert coaches.pop(today()) == seeded_owner(gym)
-    assert set(coaches.values()) == {uuid.UUID(response.json()["coach_id"])}
+    coaches = {r["coach_id"] for r in sessions_of(db, gym)}
+    assert coaches == {uuid.UUID(response.json()["coach_id"])}
 
 
 @pg
@@ -466,15 +487,11 @@ def test_solo_esta_clase_changes_one_class_and_the_schedule_does_not_remake_it(
 def test_a_change_moves_the_slot_s_own_topic_and_keeps_a_coach_s(
     client: TestClient, db: Database, gym: uuid.UUID, fundamentals: str
 ) -> None:
-    slot = add_slot(
-        client, gym, fundamentals, weekdays=EVERY_DAY, topic="Guardia", start_time="00:01"
-    )
+    slot = add_slot(client, gym, fundamentals, weekdays=EVERY_DAY, topic="Guardia")
     written = sessions_of(db, gym)[4]
     client.patch(f"/api/sessions/{written['id']}", json={"topic": "Pasajes"}, headers=as_gym(gym))
     change_slot(client, gym, slot["id"], {"topic": "Montada"})
     topics = {r["slot_date"]: r["topic"] for r in sessions_of(db, gym)}
-    # Today's class has started, and keeps the old topic; a coach's own stays too.
-    assert topics.pop(today()) == "Guardia"
     assert topics.pop(written["slot_date"]) == "Pasajes"
     assert set(topics.values()) == {"Montada"}
 
@@ -559,6 +576,75 @@ def test_a_closed_day_has_no_classes_and_reopening_makes_them(
     response = client.delete(f"/api/closed-days/{holiday.isoformat()}", headers=as_gym(gym))
     assert response.status_code == 204
     assert holiday in dates(sessions_of(db, gym))
+
+
+def set_generated_until(db: Database, gym: uuid.UUID, day: date) -> None:
+    run(db.owner_url, in_gym(gym, "UPDATE schedule_slot SET generated_until = $1", day))
+
+
+def delete_after(db: Database, gym: uuid.UUID, day: date) -> None:
+    run(db.owner_url, in_gym(gym, "DELETE FROM session WHERE slot_date > $1", day))
+
+
+@pg
+def test_closing_a_day_goes_by_where_a_class_is_now(
+    client: TestClient, db: Database, gym: uuid.UUID, fundamentals: str
+) -> None:
+    add_slot(client, gym, fundamentals, weekdays=EVERY_DAY)
+    by_date = {r["slot_date"]: r for r in sessions_of(db, gym)}
+    moved_off, landing = today() + timedelta(days=3), today() + timedelta(days=4)
+    moved_on, closed = today() + timedelta(days=6), today() + timedelta(days=7)
+
+    def move(day: date, to: date) -> None:
+        when = datetime.combine(to, time(10), tzinfo=SANTIAGO).isoformat()
+        response = client.patch(
+            f"/api/sessions/{by_date[day]['id']}", json={"starts_at": when}, headers=as_gym(gym)
+        )
+        assert response.status_code == 200, response.text
+
+    move(moved_off, landing)
+    move(moved_on, closed)
+    for day in (moved_off, closed):
+        response = client.put(f"/api/closed-days/{day}", json={}, headers=as_gym(gym))
+        assert response.status_code == 200, response.text
+
+    left = {r["id"] for r in sessions_of(db, gym)}
+    # Moved off the day it closed: stays. Moved onto one: goes, with the day's own.
+    assert by_date[moved_off]["id"] in left
+    assert by_date[moved_on]["id"] not in left
+    assert by_date[closed]["id"] not in left
+    assert by_date[landing]["id"] in left
+
+
+@pg
+def test_no_class_is_made_whose_start_has_passed(
+    client: TestClient, db: Database, gym: uuid.UUID, fundamentals: str
+) -> None:
+    # 00:01 today has begun at any hour but the first minute of the day.
+    add_slot(client, gym, fundamentals, weekdays=EVERY_DAY, start_time="00:01")
+    made = sessions_of(db, gym)
+    assert today() not in dates(made)
+    assert dates(made) == every_day(today() + timedelta(days=1), horizon(today())[1])
+    assert generate(db, gym, today(), today(), refill=True) == 0
+    assert ok(client.get("/api/sessions/unmarked", headers=as_gym(gym)))["sessions"] == []
+
+
+@pg
+def test_reopening_a_day_past_a_gap_does_not_skip_it(
+    client: TestClient, db: Database, gym: uuid.UUID, fundamentals: str
+) -> None:
+    add_slot(client, gym, fundamentals, weekdays=EVERY_DAY)
+    # The nightly run had made classes only through two days from now.
+    behind = today() + timedelta(days=2)
+    delete_after(db, gym, behind)
+    set_generated_until(db, gym, behind)
+    reopened = today() + timedelta(days=5)
+    client.put(f"/api/closed-days/{reopened}", json={}, headers=as_gym(gym))
+    assert client.delete(f"/api/closed-days/{reopened}", headers=as_gym(gym)).status_code == 204
+    assert reopened in dates(sessions_of(db, gym))
+
+    run_job(db, today())
+    assert dates(sessions_of(db, gym)) == every_day(first_made(), horizon(today())[1])
 
 
 # --- who may ---------------------------------------------------------------------------

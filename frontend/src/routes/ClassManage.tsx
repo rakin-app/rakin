@@ -143,10 +143,18 @@ function EditForm({
     event.preventDefault()
     if (badDuration || (series && minutes === null)) return
     if (series) {
-      // All of it: the slot keeps what is already its own, and this class may differ.
-      save.mutate({
-        series: { start_time: time, duration_minutes: minutes!, class_type_id: classTypeId, coach_id: coachId },
-      })
+      // Only what was changed here: what this class alone differs in (a substitute coach,
+      // a moved time) stays its own, and never spreads to the classes after it.
+      const slotChanges: SlotChanges = {}
+      if (time !== initial.time) slotChanges.start_time = time
+      if (minutes !== session.duration_minutes) slotChanges.duration_minutes = minutes!
+      if (classTypeId !== session.class_type_id) slotChanges.class_type_id = classTypeId
+      if (coachId !== session.coach_id) slotChanges.coach_id = coachId
+      if (Object.keys(slotChanges).length === 0) {
+        onClose(false)
+        return
+      }
+      save.mutate({ series: slotChanges })
       return
     }
     const changes: SessionChanges = {}

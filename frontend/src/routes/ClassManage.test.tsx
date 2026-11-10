@@ -306,15 +306,36 @@ describe('Editar clase', () => {
       {
         method: 'PATCH',
         path: '/api/schedule/slot1',
-        body: {
-          start_time: '20:00',
-          duration_minutes: 90,
-          class_type_id: FUNDAMENTALS.id,
-          coach_id: 'coach',
-          from_date: '2026-11-09',
-        },
+        body: { start_time: '20:00', from_date: '2026-11-09' },
       },
       { method: 'PATCH', path: '/api/sessions/s1', body: { duration_minutes: 60 } },
+    ])
+  })
+
+  it("keeps this class's own coach out of a series change of its duration", async () => {
+    // A substitute coach for this class alone; the schedule's is someone else.
+    const scheduled = {
+      ...SESSION,
+      coach_id: 'other',
+      coach_name: 'Tomás Vidal',
+      duration_minutes: 90,
+      slot_id: 'slot1',
+      slot_date: '2026-11-09',
+    }
+    const calls = stubApi({ session: scheduled })
+    renderAt('/admin/clases/s1')
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.edit.open }))
+    const form = await screen.findByRole('form', { name: copy.edit.label })
+    await userEvent.click(within(form).getByRole('radio', { name: copy.edit.scope.series }))
+    const duration = within(form).getByLabelText(copy.edit.duration)
+    await userEvent.clear(duration)
+    await userEvent.type(duration, '75')
+    await userEvent.click(within(form).getByRole('button', { name: copy.edit.submit }))
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.edit.saved)
+
+    expect(writes(calls)).toEqual([
+      { method: 'PATCH', path: '/api/schedule/slot1', body: { duration_minutes: 75, from_date: '2026-11-09' } },
     ])
   })
 

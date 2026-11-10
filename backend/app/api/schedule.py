@@ -23,8 +23,14 @@ Deleting a slot deletes its classes that have not started and have no attendance
 the others stay, as one-off classes.
 
 A closed day ("Cerrado") is a date with no classes: the schedule makes none on it, and
-closing one deletes that date's scheduled classes that have not started and have no
-attendance. Reopening it makes them again.
+closing one deletes the scheduled classes that fall on it that have not started and
+have no attendance. "Falls on it" is where the class is now, its `starts_at` on that
+date in the gym's timezone: a class moved off the day on its own stays, and one moved
+onto it goes. Reopening it makes the date's classes again, except one moved elsewhere,
+which still holds its slot and date.
+
+No class is made whose start has passed, so saving a slot in the evening makes today's
+class only if it has yet to begin.
 
 Saving a slot makes its classes through the horizon again, a deleted one included;
 the nightly run only adds the dates after the last it made, so a class deleted on its
@@ -47,7 +53,7 @@ from app.api.sessions import (
     require_coach,
     unprocessable,
 )
-from app.domain.dates import gym_today
+from app.domain.dates import gym_today, start_of_local_day
 from app.domain.schedule import horizon
 from app.roles import AdminSession
 from app.schemas.classes import ClassKind
@@ -314,8 +320,14 @@ async def list_closed_days(
 
 
 @closed.put("/{day}")
-async def close_day(day: date, body: ClosedDayChange, session: AdminSession) -> ClosedDay:
-    """Close `day`, or relabel it; its scheduled classes yet to happen are deleted."""
+async def close_day(
+    day: date,
+    body: ClosedDayChange,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: AdminSession,
+) -> ClosedDay:
+    """Close `day`, or relabel it; the scheduled classes on it yet to happen are deleted."""
+    zone = await gym_timezone(session, tenant)
     await session.execute(
         text(
             "INSERT INTO closed_day (gym_id, day, label)"
@@ -324,11 +336,16 @@ async def close_day(day: date, body: ClosedDayChange, session: AdminSession) -> 
         ),
         {"day": day, "label": body.label},
     )
+    # By where the class is now, not the date the schedule made it for.
     await _delete_sessions(
         session,
-        "slot_date = :day AND starts_at > now()"
+        "slot_id IS NOT NULL AND starts_at >= :start AND starts_at < :end"
+        " AND starts_at > now()"
         " AND NOT EXISTS (SELECT FROM attendance a WHERE a.session_id = session.id)",
-        {"day": day},
+        {
+            "start": start_of_local_day(day, zone),
+            "end": start_of_local_day(day + timedelta(days=1), zone),
+        },
     )
     return ClosedDay(day=day, label=body.label)
 
