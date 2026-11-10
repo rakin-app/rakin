@@ -387,6 +387,10 @@ function InactiveRow({ member }: { member: InactiveMember }) {
             className="today__icon-button"
             aria-label={label}
             onClick={() => nudge.mutate()}
+            // A middle-click opens it in a new tab too.
+            onAuxClick={(event) => {
+              if (event.button === 1) nudge.mutate()
+            }}
           >
             <WhatsAppIcon />
           </a>

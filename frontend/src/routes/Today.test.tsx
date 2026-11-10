@@ -320,6 +320,21 @@ describe('Hoy', () => {
     expect(await within(inactive).findByText(/16 días sin venir · al día en pagos · avisado/)).toBeInTheDocument()
   })
 
+  it('logs a nudge opened with a middle-click too', async () => {
+    const calls = stubApi()
+    renderToday()
+    const inactive = await section(copy.inactive.title)
+
+    const ignacio = await within(inactive).findByRole('link', { name: copy.inactive.write('Ignacio Vera') })
+    await userEvent.pointer({ keys: '[MouseMiddle]', target: ignacio })
+
+    await vi.waitFor(() =>
+      expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual([
+        '/api/inactive/Ignacio%20Vera/nudge',
+      ]),
+    )
+  })
+
   it('says when everyone came in the last two weeks', async () => {
     stubApi({ inactive: [] })
     renderToday()
