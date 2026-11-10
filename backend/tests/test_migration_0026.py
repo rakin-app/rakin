@@ -96,7 +96,7 @@ def test_a_scheme_of_other_ranks_is_left_alone(scheme: dict[str, Any]) -> None:
 @pytest.fixture
 def db() -> Iterator[Database]:
     with throwaway_database(require_test_database_url()) as database:
-        migrate(database, "0024")
+        migrate(database, "0025")
         yield database
 
 
@@ -140,7 +140,7 @@ def test_every_gym_is_backfilled_and_the_downgrade_takes_it_back(db: Database) -
     )
     assert forced is True
 
-    command.downgrade(db.alembic(), "0024")
+    command.downgrade(db.alembic(), "0025")
     assert settings(db, bjj)["grading"] == uncoloured(PRESET)
     assert run(
         db.admin_url,

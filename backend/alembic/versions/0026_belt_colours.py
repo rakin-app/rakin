@@ -19,7 +19,7 @@ Downgrade drops every rank's `colors`, the gym's own included: the scheme before
 refuses the key, and would read as invalid.
 
 Revision ID: 0026
-Revises: 0024
+Revises: 0025
 Create Date: 2026-11-10
 
 """
@@ -34,7 +34,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0026"
-down_revision: str | Sequence[str] | None = "0024"
+down_revision: str | Sequence[str] | None = "0025"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
