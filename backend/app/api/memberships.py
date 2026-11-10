@@ -20,7 +20,7 @@ freeze or cancel one, since that sets what a member is charged. Members may not 
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contacts import Contact, contact_for
 from app.domain import membership as domain
-from app.domain.dates import local_date, start_of_local_day
+from app.domain.dates import gym_today, start_of_local_day
 from app.domain.errors import InvalidTransition
 from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
 from app.notices import WELCOME, Notice, Notices, get_notices
@@ -200,7 +200,7 @@ async def create_membership(
     timezone = await session.scalar(
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
-    started_on = body.started_on or local_date(datetime.now(UTC), timezone)
+    started_on = body.started_on or gym_today(timezone)
     try:
         started = domain.start(terms, started_on)
     except (ValueError, OverflowError) as error:
@@ -358,7 +358,7 @@ async def freeze_membership(
     timezone = await session.scalar(
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
-    today = local_date(datetime.now(UTC), timezone)
+    today = gym_today(timezone)
     billed_before = await session.scalar(
         text(
             "SELECT max(period_end) FROM billing_period"

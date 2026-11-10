@@ -8,7 +8,7 @@ student never sees another's payments.
 import dataclasses
 import uuid
 from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -18,7 +18,7 @@ from app.api.me import PAYMENTS_SHOWN
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, migrate, seed_gym, throwaway_database
+from tests.pg import Database, migrate, seed_gym, seeded_today, throwaway_database
 from tests.test_guardians import add_person, bill, new_kid
 from tests.test_gym_settings import BANK, BANK_STORED
 from tests.test_plans import add_staff
@@ -215,5 +215,5 @@ def test_the_history_is_newest_first_and_bounded(
     starts = [p["period_start"] for p in payments]
     assert len(starts) == PAYMENTS_SHOWN
     assert starts == sorted(starts, reverse=True)
-    assert starts[0] == str(date.today() - timedelta(days=30))
-    assert str(date.today() - timedelta(days=30 * PAYMENTS_SHOWN)) in starts
+    assert starts[0] == str(seeded_today() - timedelta(days=30))
+    assert str(seeded_today() - timedelta(days=30 * PAYMENTS_SHOWN)) in starts
