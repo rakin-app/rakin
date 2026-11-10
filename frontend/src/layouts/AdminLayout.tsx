@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useSignOut } from '../api/auth'
 import { managesGym, myRoleQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
+import { useTimerSync } from '../api/sessionBlocks'
 import { ClassesIcon, PaymentsIcon, SettingsIcon, SignOutIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import './AdminLayout.css'
@@ -33,6 +34,8 @@ export function AdminLayout() {
   // the ledger, so a coach never polls a request that would be refused.
   const role = useQuery(myRoleQuery())
   const signOut = useSignOut()
+  // A class timed without signal reaches the API from whichever screen is open.
+  useTimerSync()
   const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
   const badge = pending.data ?? 0
   // Pagos is money and Ajustes the gym's configuration: each shown only once the role

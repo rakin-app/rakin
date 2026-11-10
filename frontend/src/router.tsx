@@ -14,6 +14,7 @@ import { AdminLayout } from './layouts/AdminLayout'
 import { t } from './i18n/es'
 import { MeLayout } from './layouts/MeLayout'
 import { Classes } from './routes/Classes'
+import { ClassTimer } from './routes/ClassTimer'
 import { MeHome } from './routes/MeHome'
 import { MemberDetail } from './routes/MemberDetail'
 import { MemberImport } from './routes/MemberImport'
@@ -154,6 +155,13 @@ const adminSessionRoute = createRoute({
   component: SessionDetail,
 })
 
+// "Iniciar clase": the class timer, its blocks and countdown, for the coach (#139).
+const adminSessionTimerRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'clases/$sessionId/timer',
+  component: ClassTimer,
+})
+
 // "Libro de pagos": the gym's ledger, for who reads it.
 const adminPaymentsRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -215,6 +223,7 @@ const routeTree = rootRoute.addChildren([
     adminMemberRoute,
     adminClassesRoute,
     adminSessionRoute,
+    adminSessionTimerRoute,
     adminPaymentsRoute,
     adminProofReviewRoute,
     adminSettingsRoute.addChildren([adminSettingsIndexRoute, ...adminSettingsSectionRoutes]),

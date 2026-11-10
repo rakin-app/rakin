@@ -127,6 +127,8 @@ class MemberPage(BaseModel):
 
 
 class MyRole(BaseModel):
-    """The person acting's role in the current gym; `None` for a member."""
+    """The person acting's role in the current gym; `None` for a member. `person_id` is
+    who they are, for a screen that answers differently to the coach of a class."""
 
     role: Role | None
+    person_id: uuid.UUID

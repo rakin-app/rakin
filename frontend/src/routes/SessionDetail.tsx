@@ -17,11 +17,13 @@ import {
 } from '../api/attendance'
 import { ApiError } from '../api/client'
 import { rankLabel } from '../api/grading'
+import { myselfQuery, runsSession } from '../api/me'
 import { sessionQuery, updateSession, useGymTimeZone, type ClassSession } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
 import { clockTime } from '../format'
 import { t } from '../i18n/es'
+import { savedRun } from './timerEngine'
 import './Classes.css'
 
 const copy = t.admin.session
@@ -71,6 +73,7 @@ export function SessionDetail() {
       title={data.class_type_name}
       subtitle={copy.coach(data.coach_name)}
     >
+      <TimerLink session={data} />
       <Attendance key={`attendance-${data.id}`} sessionId={data.id} />
       <TopicForm key={data.id} session={data} />
     </Shell>
@@ -104,6 +107,22 @@ function Shell({
       </header>
       <div className="classes__body">{children}</div>
     </div>
+  )
+}
+
+/** "Iniciar clase": the class timer, for who may run it; "Volver al timer" while it runs. */
+function TimerLink({ session }: { session: ClassSession }) {
+  const me = useQuery(myselfQuery())
+  if (!runsSession(me.data, session.coach_id)) return null
+  const running = savedRun(session.id)
+  return (
+    <Link
+      to="/admin/clases/$sessionId/timer"
+      params={{ sessionId: session.id }}
+      className="classes__button classes__button--primary timer-link"
+    >
+      {running && running.endedAt === null ? copy.timer.resume : copy.timer.open}
+    </Link>
   )
 }
 
