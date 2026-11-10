@@ -6,7 +6,9 @@ import { recordPayment, type Method } from '../api/member'
 import { myRoleQuery, readsLedger } from '../api/me'
 import { proofQueueQuery, type ProofReview } from '../api/review'
 import { unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
+import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
 import { overdueQuery, type OverduePeriod } from '../api/today'
+import { WhatsAppIcon } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
 import { dayTime, monthName, shortDay, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
@@ -23,19 +25,22 @@ const OVERDUE_SHOWN = 3
  * wait for review, then both lists, each a tap from acting on it: "Revisar" opens the
  * proof queue, "Pagó" records the payment in place.
  *
+ * "Sin venir 14 d" and "A quién llamar" are the members who stopped coming (#50), in
+ * two buckets, 14 and 30 days, each a tap from a WhatsApp nudge.
+ *
  * Under them, "Sin asistencia": the week's classes no one was marked at, each a tap
  * from taking its attendance, so a class taught without a list does not go unseen.
  *
- * Money, so for whoever reads the ledger only; a coach sees none of it. "Sin venir
- * 14 d" and "A quién llamar" (members who stopped coming, from `v_inactive`) join with
- * the inactive list (#50), and the WhatsApp reminder on each overdue row with the wa.me
- * links (#55).
+ * Money, so for whoever reads the ledger only; a coach sees none of it, since the
+ * inactive list says who owes. The WhatsApp reminder on each overdue row joins with the
+ * wa.me links (#55).
  */
 export function Today() {
   const role = useQuery(myRoleQuery())
   const money = readsLedger(role.data)
   const proofs = useQuery({ ...proofQueueQuery(), enabled: money })
   const overdue = useQuery({ ...overdueQuery(), enabled: money })
+  const inactive = useQuery({ ...inactiveQuery(), enabled: money })
   const unmarked = useQuery({ ...unmarkedSessionsQuery(), enabled: money })
 
   return (
@@ -46,6 +51,7 @@ export function Today() {
           <div className="today__counters" aria-label={copy.countersLabel} role="group">
             <Counter href="#vencidos" value={overdue.data?.periods.length} label={copy.overdue.title} tone="warning" />
             <Counter href="#validar" value={proofs.data?.length} label={copy.proofs.title} tone="accent" />
+            <Counter href="#inactivos" value={inactive.data?.length} label={copy.inactive.counter} tone="muted" />
           </div>
           <div className="today__body">
             <section id="validar" className="today__section" aria-labelledby="validar-title">
@@ -84,6 +90,18 @@ export function Today() {
                 <p className="today__note">{copy.overdue.empty}</p>
               ) : (
                 <OverdueList periods={overdue.data.periods} />
+              )}
+            </section>
+            <section id="inactivos" className="today__section" aria-labelledby="inactivos-title">
+              <SectionHead id="inactivos-title" title={copy.inactive.title} aside={null} />
+              {inactive.isPending ? (
+                <p className="today__note">{copy.loading}</p>
+              ) : inactive.isError ? (
+                <Failed message={copy.inactive.error} retry={() => void inactive.refetch()} />
+              ) : inactive.data.length === 0 ? (
+                <p className="today__note">{copy.inactive.empty}</p>
+              ) : (
+                <InactiveList members={inactive.data} />
               )}
             </section>
             <section id="sin-asistencia" className="today__section" aria-labelledby="sin-asistencia-title">
@@ -126,7 +144,7 @@ function Counter({
   href: string
   value: number | undefined
   label: string
-  tone: 'warning' | 'accent'
+  tone: 'warning' | 'accent' | 'muted'
 }) {
   return (
     // The figure and its label are two spans, which a name would otherwise run together.
@@ -347,5 +365,88 @@ function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCance
         </button>
       </div>
     </form>
+  )
+}
+
+const BUCKETS = [14, 30] as const
+
+/** "A quién llamar": each bucket under its heading, nearest the line first. */
+function InactiveList({ members }: { members: InactiveMember[] }) {
+  return BUCKETS.map((bucket) => {
+    const inBucket = members.filter((m) => m.bucket === bucket)
+    if (inBucket.length === 0) return null
+    const headingId = `inactivos-${bucket}`
+    return (
+      <div key={bucket} className="today__group">
+        <h3 id={headingId} className="today__group-title">
+          {copy.inactive.buckets[bucket]} <span className="today__aside">{inBucket.length}</span>
+        </h3>
+        <ul className="today__list" aria-labelledby={headingId}>
+          {inBucket.map((member) => (
+            <InactiveRow key={member.person_id} member={member} />
+          ))}
+        </ul>
+      </div>
+    )
+  })
+}
+
+function InactiveRow({ member }: { member: InactiveMember }) {
+  const queryClient = useQueryClient()
+  // The link opens WhatsApp itself; this only records that it was opened.
+  const nudge = useMutation({
+    mutationFn: () => logNudge(member.person_id),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: inactiveQuery().queryKey }),
+  })
+  const payment =
+    member.payment_status === 'overdue'
+      ? copy.inactive.payment.overdue(clp(member.overdue_clp))
+      : copy.inactive.payment[member.payment_status]
+  const detail = [
+    member.last_attended_on === null
+      ? copy.inactive.never(member.days_absent)
+      : copy.inactive.absent(member.days_absent),
+    payment,
+    member.nudged_at && copy.inactive.nudged(ago(member.nudged_at, new Date())),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const label =
+    member.contact_name === member.name
+      ? copy.inactive.write(member.name)
+      : copy.inactive.writeFor(member.contact_name, member.name)
+  return (
+    <li className="today__row">
+      <div className="today__row-line">
+        <Link
+          to="/admin/alumnos/$personId"
+          params={{ personId: member.person_id }}
+          className="today__row-text today__row-text--link"
+        >
+          <span className="today__name">{member.name}</span>
+          <span
+            className={`today__detail${member.payment_status === 'overdue' ? ' today__detail--warning' : ''}`}
+          >
+            {detail}
+          </span>
+        </Link>
+        {member.whatsapp_url && (
+          <a
+            href={member.whatsapp_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="today__icon-button"
+            aria-label={label}
+            onClick={() => nudge.mutate()}
+            // A middle-click opens it in a new tab too.
+            onAuxClick={(event) => {
+              if (event.button === 1) nudge.mutate()
+            }}
+          >
+            <WhatsAppIcon />
+          </a>
+        )}
+      </div>
+    </li>
   )
 }

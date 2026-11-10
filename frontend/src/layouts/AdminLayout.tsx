@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { useSignOut } from '../api/auth'
 import { managesGym, myRoleQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
-import { ClassesIcon, PaymentsIcon, SettingsIcon, StudentsIcon, TodayIcon } from '../components/icons'
+import { ClassesIcon, PaymentsIcon, SettingsIcon, SignOutIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import './AdminLayout.css'
 
@@ -31,6 +32,7 @@ export function AdminLayout() {
   // Proofs waiting for review, on the Pagos tab: asked for only by those who read
   // the ledger, so a coach never polls a request that would be refused.
   const role = useQuery(myRoleQuery())
+  const signOut = useSignOut()
   const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
   const badge = pending.data ?? 0
   // Pagos is money and Ajustes the gym's configuration: each shown only once the role
@@ -65,7 +67,25 @@ export function AdminLayout() {
               </Link>
             </li>
           ))}
+          <li className="admin-nav__end">
+            <button
+              type="button"
+              className="admin-nav__link"
+              disabled={signOut.isPending}
+              onClick={() => signOut.mutate()}
+            >
+              <span className="admin-nav__icon">
+                <SignOutIcon />
+              </span>
+              <span>{t.signOut.label}</span>
+            </button>
+          </li>
         </ul>
+        {signOut.isError && (
+          <p className="admin-nav__error" role="alert">
+            {t.signOut.failed}
+          </p>
+        )}
       </nav>
       <main className="admin-main">
         <Outlet />

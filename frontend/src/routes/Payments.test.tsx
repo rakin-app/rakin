@@ -350,13 +350,16 @@ describe('Libro de pagos', () => {
 
   it('keeps the Pagos tab hidden while the role is still loading', async () => {
     stubApi()
-    // The role never answers.
+    // The role fails once, which lets the shell render, and then never answers.
     const fetch = globalThis.fetch
+    let asked = 0
     vi.stubGlobal(
       'fetch',
-      vi.fn<typeof fetch>((input, init) =>
-        new URL(String(input), 'http://localhost').pathname === '/api/me/role' ? new Promise(() => {}) : fetch(input, init),
-      ),
+      vi.fn<typeof fetch>((input, init) => {
+        if (new URL(String(input), 'http://localhost').pathname !== '/api/me/role') return fetch(input, init)
+        asked += 1
+        return asked === 1 ? Promise.resolve(new Response(null, { status: 503 })) : new Promise(() => {})
+      }),
     )
     renderAt('/admin')
 

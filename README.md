@@ -50,6 +50,14 @@ Services: `caddy` (the single entry point), `api` (FastAPI), `jobs` (the nightly
 
 To try it with data, `make seed` (`docker compose run --rm api python -m app.seed`) loads the demo gym, Academia Sur: 71 members across the adults and kids programs, all five plan kinds, and the paid, overdue, pending-proof and frozen memberships the [UI design](docs/design/ui-design.html) shows. It is safe to re-run; see [Seed data](backend/README.md#seed-data).
 
+To sign in, open http://localhost:8080, which sends you to `/ingresar`, and ask for a link for the demo owner, `martin.fuentes@example.com`. No email is sent locally: the link is written to the API's log. This prints the latest one:
+
+```sh
+docker compose logs api --no-log-prefix | grep -o 'http://localhost:8080/api/auth/callback?token=[^"\\]*' | tail -1
+```
+
+On `http://localhost` the session cookie is a plain `session`, without `Secure`, since Safari drops a `Secure` cookie on plain HTTP. Every `https://` base URL gets `__Host-session` with `Secure`.
+
 Uploads (payment proofs) go to local disk by default, in the `blobs` volume, and email is written to the API's log instead of sent: every integration has a default that needs no account. To store files in S3-compatible storage instead, set `BLOB_STORE=s3`. Self-hosters without a provider add [Garage](https://garagehq.deuxfleurs.fr/): `docker compose --profile selfhost up` also starts it on http://localhost:3900, and a one-shot `garage-init` creates the `rakin` bucket and the API's access key from the `S3_*` values in `.env.example`.
 
 If port 8080 or 5432 is already in use, set `HTTP_PORT` or `POSTGRES_PORT` in `.env`. Containers get only the variables `docker-compose.yml` passes them: the Postgres superuser reaches `migrate` alone, and the API and migration users come from `POSTGRES_API_*` and `POSTGRES_OWNER_*`. `docker compose down` stops the stack; `docker compose down -v` also deletes the database.

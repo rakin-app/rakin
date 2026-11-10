@@ -1,0 +1,76 @@
+.signin {
+  max-width: var(--content-max-width);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom));
+}
+
+.signin__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-3) var(--space-5) 0;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.signin__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.signin__intro {
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.signin__label {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.signin__input {
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  /* 16px or more, or iOS Safari zooms in on focus. */
+  font-size: 16px;
+}
+
+.signin__error {
+  color: var(--color-warning-strong);
+  font-size: var(--text-sm);
+}
+
+.signin__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.signin__button--primary {
+  margin-top: var(--space-2);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-inverse-text);
+}
+
+.signin__button--primary:disabled {
+  background: var(--color-border-strong);
+  border-color: var(--color-border-strong);
+  cursor: default;
+}
