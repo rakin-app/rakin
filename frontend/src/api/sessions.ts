@@ -20,7 +20,7 @@ export type ClassType = {
   created_at: string
 }
 
-/** One class actually held (backend `Session`). */
+/** One class (backend `Session`): held, or made ahead by the weekly schedule. */
 export type ClassSession = {
   id: string
   class_type_id: string
@@ -28,6 +28,8 @@ export type ClassSession = {
   program_id: string
   program_name: string
   starts_at: string
+  /** How long it lasts; null when nobody set it. */
+  duration_minutes: number | null
   coach_id: string
   coach_name: string
   topic: string | null
@@ -39,6 +41,10 @@ export type ClassSession = {
   updated_at: string
   /** How many are marked at it; 0 is a class whose attendance was never taken. */
   present: number
+  /** The schedule's slot it was made from, and the gym-local date it was made for;
+   * null for a one-off class. */
+  slot_id: string | null
+  slot_date: string | null
 }
 
 /** A day's sessions in the gym's timezone, earliest first (backend `Day`). */
@@ -59,6 +65,14 @@ export function activeClassTypesQuery() {
 /** Today's sessions, today being the gym's. */
 export function todaySessionsQuery() {
   return queryOptions({ queryKey: ['sessions', 'today'], queryFn: () => apiFetch<SessionDay>('/api/sessions') })
+}
+
+/** A day's sessions, `2026-11-10` in the gym's timezone. */
+export function daySessionsQuery(day: string) {
+  return queryOptions({
+    queryKey: ['sessions', 'day', day],
+    queryFn: () => apiFetch<SessionDay>(`/api/sessions?date=${encodeURIComponent(day)}`),
+  })
 }
 
 /** The gym's timezone, from today's sessions, which every staff role reads; this
@@ -102,13 +116,16 @@ export function startSession(body: { class_type_id: string }): Promise<ClassSess
 }
 
 /** What may change of a class (backend `SessionUpdate`): its own coach the topic and
- * notes, an owner or admin all of it. An empty topic or notes clears it. */
+ * notes, an owner or admin all of it. An empty topic or notes clears it. For a class
+ * of the schedule this is "solo esta clase". */
 export type SessionChanges = Partial<{
   topic: string
   notes: string
   starts_at: string
   class_type_id: string
   coach_id: string
+  /** Null clears it. */
+  duration_minutes: number | null
 }>
 
 const sessionPath = (id: string) => `/api/sessions/${encodeURIComponent(id)}`

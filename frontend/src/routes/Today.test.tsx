@@ -104,6 +104,9 @@ const UNMARKED_CLASS: ClassSession = {
   created_at: '2026-11-09T22:00:00Z',
   updated_at: '2026-11-09T22:00:00Z',
   present: 0,
+  duration_minutes: null,
+  slot_id: null,
+  slot_date: null,
 }
 
 const UNMARKED: UnmarkedSessions = { since: '2026-11-04', timezone: 'America/Santiago', sessions: [UNMARKED_CLASS] }

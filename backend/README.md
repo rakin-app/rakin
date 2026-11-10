@@ -263,17 +263,37 @@ A freeze can change after it is written (#115, migration `0027`); `rakin_app` ma
 
 ## Sessions API
 
-One `session` row per class actually held (migration `0020`, [spec](../docs/technical.md#domain-model)). There is no timetable: a coach starts a session when the class begins, and writes its topic and notes during or after it.
+One `session` row per class (migration `0020`, [spec](../docs/technical.md#domain-model)). The weekly schedule (below) makes most of them ahead of time; a coach may also start one when the class begins, and writes its topic and notes during or after it. A session may carry `duration_minutes` (1 to 1440, `0035`), and one made by the schedule its `slot_id` and `slot_date`, the gym-local date it was made for, which it keeps when it is moved on its own.
 
 | Method | Path | Does |
 | --- | --- | --- |
 | `GET` | `/api/sessions` | `{"date", "timezone", "sessions": […]}`: the sessions starting on `?date=` (an ISO day; default today), a calendar day in the gym's timezone, earliest first |
-| `POST` | `/api/sessions` | start one: `class_type_id`, and optionally `starts_at` (with its offset; default now), `coach_id` (default the person acting), `topic`, `notes`; 201 with the session |
+| `POST` | `/api/sessions` | start one: `class_type_id`, and optionally `starts_at` (with its offset; default now), `duration_minutes`, `coach_id` (default the person acting), `topic`, `notes`; 201 with the session |
 | `GET` | `/api/sessions/unmarked` | `{"since", "timezone", "sessions": […]}`: the sessions already started since `since`, six days before today in the gym's timezone, that no one is marked at, latest first; owner and admin only, for the dashboard's "Sin asistencia" |
 | `GET` | `/api/sessions/{id}` | one session; 404 for another gym's |
 | `PATCH` | `/api/sessions/{id}` | change `topic`, `notes` or `coach_id`; only what is sent changes |
 
 A session carries its `class_type_id` and `class_type_name`, `program_id` and `program_name`, `starts_at`, `coach_id` and `coach_name` (the gym's record of them), `topic`, `notes`, `created_at` and `updated_at`, and `present`, how many are marked at it: 0 is a class whose attendance was never taken, which the Clases list flags. A topic is up to 200 characters and notes up to 4,000; a blank one, or `null`, is none. The class type must be one of the gym's active ones (422 `unknown_class_type` or `inactive_class_type` on `class_type_id`), and the coach on its staff in any role (422 `unknown_coach`) when a session is started or reassigned: a coach who leaves stays the coach of the sessions they taught, since the row references `gym_person`, not `staff`. Any staff role may read, start and edit sessions, coaches included, but only an owner or admin lists the unmarked ones; there is no delete, since attendance points at a session.
+
+## Weekly schedule API
+
+The gym's timetable (#167, migration `0035`): owner and admin only, reads included.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/schedule` | every slot, ended ones included, by first weekday and start time |
+| `POST` | `/api/schedule` | a slot: `class_type_id`, `weekdays` (ISO, 1 is Monday), `start_time` (local, `19:00`), `duration_minutes`, `coach_id`, and optionally `topic`, `valid_from` (default today) and `valid_to`; 201, its classes made at once |
+| `PATCH` | `/api/schedule/{id}` | change it from `from_date` on (default today); only what is sent changes, `valid_to: null` makes it open-ended; returns the slot in effect from then |
+| `DELETE` | `/api/schedule/{id}` | the slot and its classes that have not started and have no attendance; 204 |
+| `GET` | `/api/closed-days` | the closed days from today on: `{"day", "label"}` |
+| `PUT` | `/api/closed-days/{day}` | close a day, or relabel it: `{"label"}`, optional |
+| `DELETE` | `/api/closed-days/{day}` | reopen it; 204 |
+
+A slot makes one session per date it runs on, from today through 13 days ahead in the gym's timezone (`app.domain.schedule.HORIZON_DAYS`), at its start time on that date's wall clock, with its class type, coach, duration and topic: when it is saved, and every night (`schedule` job). None is made on a closed day, nor by a slot whose class type is deactivated. `UNIQUE (slot_id, slot_date)` makes a second run make nothing, and the nightly run only adds the dates after the last one a slot made, so a class deleted on its own stays deleted.
+
+A change from `from_date` never touches a class before it, or one that has started or has attendance. From after the slot's `valid_from`, it ends the slot the day before and starts a new one with the change, so the timetable before it reads as it was. The classes from `from_date` on that it may change are moved to the new time with the new type, coach and duration, and the new topic where they still had the old one; cancelled ones stay cancelled. Those on a weekday the slot no longer runs, or after its `valid_to`, are deleted, and the dates it now runs on get one. Refused: a `from_date` after the slot ends (422 `after_valid_to`), a `valid_to` before the slot starts (422 `before_valid_from`), the class type and coach as for sessions, and a change to an open mat while one of those classes has a timer plan that does not fit one (422 `open_mat_plan`). "Solo esta clase" is `PATCH /api/sessions/{id}`.
+
+Closing a day deletes that date's classes of the schedule that have not started and have no attendance; reopening one within the horizon makes them again.
 
 ## Attendance API
 
@@ -463,7 +483,7 @@ RLS is **forced**, so it applies to `rakin_owner` as well, not only to the API. 
 
 `ledger_entry` is append-only for every role, the owner and superusers included: triggers reject `DELETE` and `TRUNCATE`, and an `UPDATE` may change only `status`, `validated_by`, `validated_at` and `note`, and only while the entry is `pending`. Violations raise `restrict_violation` (SQLSTATE 23001). A correction is a new entry. The API reads and writes it only for an owner or admin of the gym in `app.person_id` (`0006`); the owner role, which the seed and jobs use, is scoped by the gym alone.
 
-`session` rows are never deleted: `rakin_app` may read, add and change them (`0020`). Each references its class type and its coach with `gym_id` in the key, so a row cannot name another gym's even past RLS.
+`session` rows are read, added and changed by `rakin_app` (`0020`), and deleted only for an owner or admin (`0033`). Each references its class type and its coach with `gym_id` in the key, so a row cannot name another gym's even past RLS.
 
 `attendance` rows are added and deleted, never changed: `rakin_app` has no `UPDATE` on them (`0023`). Each references its session and membership with `gym_id` in the key.
 
@@ -533,6 +553,7 @@ The jobs, in order:
 - `billing_periods` (`app/jobs/billing.py`): for every Active membership, writes each billing period that falls due within 7 days, with a validated `charge` ledger entry for its amount (the plan's price less `discount_pct`, rounded down to a whole peso; a period discounted to nothing has no charge). A monthly plan owes a period per cycle from its anchor day, a prepaid one a block of `period_months`, a credits pack or a drop-in a single charge, a trial nothing. A period falls due on its first day. A pending plan change prices the first period starting on or after `next_plan_from` and becomes the plan then, with `anchor_day` recomputed. It picks up after the latest period (or the paid-through date, if later), so re-running a date writes nothing.
 - `lapse` (`app/jobs/lapse.py`): flips Active (or Trial) memberships to Lapsed and writes a `lapsed` row to `plan_event` (`0013`) with the change, for the plan-event emails (#54) to send. A monthly or prepaid membership lapses once its oldest billing period that validated payments and credit adjustments leave short is past its due date plus the gym's `grace_days` (5 by default): due Nov 1, Nov 2 to 6 are the grace and Nov 7 lapses (`app.domain.dates.is_past_grace`). A credits pack or a trial lapses the day after its last day or at zero credits, with no grace. A drop-in never lapses, and a Frozen membership waits for its freeze to end (`freezes`). Re-running a date lapses nothing more. It locks every membership it may lapse before it reads what is unpaid, and recording a payment locks its membership first (`app/api/ledger.py`), so a payment and a lapse of one membership run one after the other: a payment that commits first is counted, and one that comes later waits for the run. Any handler that validates a payment must take the same lock before it reads the period.
 - `join_requests` (`app/jobs/join_requests.py`): deletes the join link requests nobody approved or rejected that were sent before the start of the day 30 days back, in each gym's timezone (#154). Re-running a date deletes nothing more.
+- `schedule` (`app/jobs/schedule.py`): makes each gym's classes of the weekly schedule from the run date through 13 days ahead (`schedule_sessions()`, `0035`; see [Weekly schedule API](#weekly-schedule-api)). Re-running a date makes nothing more.
 - `statements` (`app/jobs/statements.py`): emails each billing period's statement to the member, or their guardian, when it falls due within 7 days: what is still owed on it, the due date, the gym's bank details and a link to the student page to upload the proof. Billing writes each period 7 days ahead on the same run, so a period is usually stated the day it appears. A period with a `statement` sent in `message_log` is skipped, so it is stated once; a failed send is tried again on each later run until the due date. A period paid in full, discounted to nothing or of a cancelled membership is not stated, and neither is a frozen membership's while the freeze lasts: it moved the periods it reaches past its end. Every gym's statements are read first, each in its savepoint, and sent after, so no savepoint is open while the relay answers; the day's transaction still is, holding only those reads. Each send, its link and its `message_log` row go through `DATABASE_URL`'s user on a connection of their own, like the API's (`app.jobs.daily.mailing`), so they commit whatever the day's outcome and a day run again sends only what it had not. An address that cannot take mail is not issued a link.
 
 Set `SENTRY_DSN` to report failures to Sentry (`app/sentry.py`): every `ERROR` log line becomes an event, so a failed job, or a run that could not reach the database, arrives there with its traceback. The API starts the same client in `create_app`, so an unhandled error in a request is reported too. Empty, the default, sends nothing.
