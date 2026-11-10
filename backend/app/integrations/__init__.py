@@ -1,9 +1,10 @@
 """Every external service behind an interface, chosen by settings.
 
 Each interface has a default that needs no network and no account: the console
-mailer, `wa.me` links, files on local disk, and no payment rail or bank feed. So a
-self-hosted instance works offline with none configured, and a plugin is one more
-implementation selected by name (`MAILER=smtp`, `BLOB_STORE=s3`, ...).
+mailer, `wa.me` links, files on local disk, no payment rail or bank feed, and no human
+check on public forms. So a self-hosted instance works offline with none configured,
+and a plugin is one more implementation selected by name (`MAILER=smtp`,
+`BLOB_STORE=s3`, ...).
 `tests/integrations` holds the contract every implementation passes.
 """
 
@@ -13,6 +14,7 @@ from fastapi import Request
 
 from app.integrations.bankfeed import BankFeed, NoBankFeed
 from app.integrations.blobstore import BlobStore, LocalBlobStore, S3BlobStore
+from app.integrations.humancheck import HumanCheck, NoHumanCheck, TurnstileCheck
 from app.integrations.mailer import ConsoleMailer, Mailer, SmtpMailer
 from app.integrations.messenger import Messenger, WaMeMessenger
 from app.integrations.payments import NoPaymentRail, PaymentRail
@@ -26,6 +28,7 @@ class Integrations:
     blob_store: BlobStore
     payment_rail: PaymentRail
     bank_feed: BankFeed
+    human_check: HumanCheck
 
 
 def build_mailer(settings: Settings) -> Mailer:
@@ -84,6 +87,16 @@ def build_bank_feed(settings: Settings) -> BankFeed:
             return NoBankFeed()
 
 
+def build_human_check(settings: Settings) -> HumanCheck:
+    match settings.human_check:
+        case "none":
+            return NoHumanCheck()
+        case "turnstile":
+            return TurnstileCheck(
+                site_key=settings.turnstile_site_key, secret_key=settings.turnstile_secret_key
+            )
+
+
 def build_integrations(settings: Settings) -> Integrations:
     return Integrations(
         mailer=build_mailer(settings),
@@ -91,6 +104,7 @@ def build_integrations(settings: Settings) -> Integrations:
         blob_store=build_blob_store(settings),
         payment_rail=build_payment_rail(settings),
         bank_feed=build_bank_feed(settings),
+        human_check=build_human_check(settings),
     )
 
 

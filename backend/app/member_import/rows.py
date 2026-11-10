@@ -98,6 +98,8 @@ class Member:
     started_on: date | None = None
     guardian_name: str | None = None
     guardian_phone: str | None = None
+    # No sheet column gives one; the join link's form does (`app.api.join`).
+    guardian_email: str | None = None
     errors: list[RowError] = field(default_factory=list)
 
     def refuse(self, on: Field, code: ErrorCode) -> None:

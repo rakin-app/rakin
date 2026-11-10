@@ -137,8 +137,9 @@ class RowRefused(Exception):
         self.code: ErrorCode = code
 
 
-class _Writer:
-    """Writes rows into the current gym."""
+class Writer:
+    """Writes rows into the current gym: the importer's, and the join link's approvals
+    (`app.api.join`), so a person is added one way however they come."""
 
     def __init__(self, session: AsyncSession, timezone: str, today: date) -> None:
         self.session = session
@@ -163,6 +164,11 @@ class _Writer:
         return person_id
 
     async def row(self, member: Member) -> RowResult:
+        _, result = await self.write(member)
+        return result
+
+    async def write(self, member: Member) -> tuple[uuid.UUID, RowResult]:
+        """`row`, and the id of the person the row is."""
         self.ignored = []
         guardian: Outcome | None = None
         link_outcome: Outcome | None = None
@@ -180,7 +186,7 @@ class _Writer:
             link_outcome = person
 
         membership = None if member.plan is None else await self._membership(member, person_id)
-        return RowResult(
+        return person_id, RowResult(
             row=member.number,
             name=member.name,
             errors=[],
@@ -224,7 +230,10 @@ class _Writer:
             return found, "existing"
         if member.guardian_name is None:
             raise RowRefused(Field.GUARDIAN_NAME, "required")
-        return await self._join(member.guardian_phone, member.guardian_name), "created"
+        guardian_id = await self._join(
+            member.guardian_phone, member.guardian_name, member.guardian_email
+        )
+        return guardian_id, "created"
 
     async def _dependent(self, member: Member, guardian_id: uuid.UUID) -> tuple[uuid.UUID, Outcome]:
         theirs = await family(self.session, guardian_id)
@@ -330,7 +339,7 @@ async def import_members(
         [(row.number, row.cells) for row in body.rows], body.mapping, finder, today
     )
 
-    writer = _Writer(session, timezone, today)
+    writer = Writer(session, timezone, today)
     results: dict[int, RowResult] = {}
     everything = await session.begin_nested()
     for index, member in sorted(enumerate(members), key=_guardians_first(members)):
