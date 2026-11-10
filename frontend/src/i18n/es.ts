@@ -62,6 +62,8 @@ export const es = {
       countersLabel: 'Resumen',
       loading: 'Cargando…',
       retry: 'Reintentar',
+      // Without the role Hoy cannot tell what to show: say so instead of a blank page.
+      roleError: 'No pudimos cargar tu acceso.',
       proofs: {
         title: 'Por validar',
         count: (n: number) => (n === 1 ? '1 comprobante' : `${n} comprobantes`),
@@ -120,6 +122,47 @@ export const es = {
         detail: (program: string, coach: string) => `${program} · ${coach}`,
         take: 'Pasar lista',
         takeLabel: (name: string) => `Pasar lista de ${name}`,
+      },
+      // A coach sees no money, so Hoy would be empty without this.
+      coach: {
+        note: 'Las clases de hoy y su asistencia están en Clases.',
+        link: 'Ir a Clases',
+      },
+      // A new gym's first day: what to set up, each step a link to where it is done.
+      setup: {
+        title: 'Configura tu academia',
+        progress: (done: number, total: number) => `${done} de ${total} listos`,
+        // After a step's title, for a screen reader: the tick says it to the eye.
+        state: (done: boolean) => (done ? ' (listo)' : ' (pendiente)'),
+        steps: {
+          gym: {
+            title: 'Datos de la academia y cuenta bancaria',
+            hint: 'Dónde te transfieren tus alumnos.',
+            link: 'Ir a Ajustes',
+          },
+          plans: {
+            title: 'Planes',
+            hint: 'Qué pagan tus alumnos y cada cuánto.',
+            link: 'Crear planes',
+          },
+          classes: {
+            title: 'Programas y clases',
+            hint: 'Las clases que das, en cada programa.',
+            link: 'Crear clases',
+          },
+          members: {
+            title: 'Agrega alumnos',
+            hint: 'A mano, desde una planilla o con el link de inscripción.',
+            manual: 'Agregar a mano',
+            import: 'Importar planilla',
+            joinLink: 'Link de inscripción',
+          },
+          staff: {
+            title: 'Invita a tu equipo',
+            hint: 'Admins y profes, cada uno con su acceso.',
+            link: 'Invitar',
+          },
+        },
       },
       ago: {
         now: 'recién',

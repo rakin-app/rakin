@@ -92,6 +92,13 @@ export function membersQuery(filters: MemberFilters) {
   })
 }
 
+/** How many members the gym has, dados de baja left out: one row asked for, its total
+ * read. Under `['people']`, so adding or importing someone refreshes it. */
+export const memberCountQuery = queryOptions({
+  queryKey: ['people', 'count'],
+  queryFn: async () => (await apiFetch<MemberPage>('/api/people?limit=1&offset=0')).total,
+})
+
 // The plans, as the filters and the import read them: their id, name and whether active.
 export { plansQuery } from './plans'
 
