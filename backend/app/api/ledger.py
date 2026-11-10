@@ -52,6 +52,7 @@ from app.schemas.ledger import (
     Entry,
     FreezeLine,
     LedgerBook,
+    LedgerPeriod,
     MembershipLedger,
     OpenPeriod,
     Overdue,
@@ -62,6 +63,7 @@ from app.schemas.ledger import (
     RecordedAdjustment,
     RecordedPayment,
     RecordedRefund,
+    RefundablePayment,
     RefundRecord,
     TimelineEntry,
 )
@@ -412,17 +414,49 @@ TIMELINE = text(
     """
     SELECT e.id, e.kind, e.status, e.amount_clp, e.method, e.billing_period_id,
            bp.period_start, e.note, e.created_at, vp.name AS validated_by_name,
-           e.validated_at, e.refund_of,
-           CASE WHEN e.kind = 'payment' AND e.status = 'validated'
-                THEN e.amount_clp - (SELECT coalesce(sum(r.amount_clp), 0) FROM ledger_entry r
-                                     WHERE r.refund_of = e.id)
-           END AS refundable_clp
+           e.validated_at, e.refund_of
     FROM ledger_entry e
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
     WHERE e.membership_id = :id
     ORDER BY e.created_at DESC, e.id DESC
     LIMIT :limit
+    """
+)
+
+
+# Every period of the membership, newest first, with what it still owes settled as
+# `OPEN_PERIODS` settles it: what an adjustment may go to (#38). Not capped as the
+# timeline is, so a period older than its latest entries is still there.
+PERIODS = text(
+    f"""
+    SELECT bp.id, bp.period_start, bp.period_end,
+           greatest(bp.amount_due_clp - coalesce(paid.amount, 0), 0) AS outstanding_clp
+    FROM billing_period bp
+    LEFT JOIN LATERAL (
+        SELECT sum({settled_amount("e")})::bigint AS amount FROM ledger_entry e
+        WHERE e.billing_period_id = bp.id AND e.status = :validated
+          AND e.kind = ANY(CAST(:settling AS text[]))
+    ) paid ON true
+    WHERE bp.membership_id = :id
+    ORDER BY bp.period_start DESC, bp.id
+    """
+)
+
+# The membership's validated payments with something left to give back after their
+# refunds, newest first: what a refund may go to (#38), however old.
+REFUNDABLE = text(
+    """
+    SELECT p.id, p.billing_period_id, bp.period_start, p.amount_clp, p.method,
+           p.validated_at, p.amount_clp - coalesce(r.amount, 0) AS refundable_clp
+    FROM ledger_entry p
+    JOIN billing_period bp ON bp.id = p.billing_period_id
+    LEFT JOIN LATERAL (
+        SELECT sum(x.amount_clp)::bigint AS amount FROM ledger_entry x WHERE x.refund_of = p.id
+    ) r ON true
+    WHERE p.membership_id = :id AND p.kind = 'payment' AND p.status = 'validated'
+      AND p.amount_clp > coalesce(r.amount, 0)
+    ORDER BY p.validated_at DESC, p.id
     """
 )
 
@@ -465,6 +499,14 @@ async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) ->
         freezes=[
             FreezeLine.model_validate(row, from_attributes=True)
             for row in await session.execute(MEMBERSHIP_FREEZES, {"id": membership_id})
+        ],
+        periods=[
+            LedgerPeriod.model_validate(row, from_attributes=True)
+            for row in await session.execute(PERIODS, params)
+        ],
+        refundable_payments=[
+            RefundablePayment.model_validate(row, from_attributes=True)
+            for row in await session.execute(REFUNDABLE, {"id": membership_id})
         ],
     )
 

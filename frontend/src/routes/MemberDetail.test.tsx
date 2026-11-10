@@ -58,7 +58,6 @@ const entry = (fields: Partial<TimelineEntry> & Pick<TimelineEntry, 'id' | 'kind
   validated_by_name: null,
   validated_at: null,
   refund_of: null,
-  refundable_clp: null,
   ...fields,
 })
 
@@ -76,7 +75,6 @@ const LEDGER: MembershipLedger = {
       created_at: '2026-10-01T12:00:00Z',
       validated_by_name: 'Martín',
       validated_at: '2026-10-02T12:00:00Z',
-      refundable_clp: 45000,
     }),
     entry({
       id: 'claim',
@@ -91,6 +89,21 @@ const LEDGER: MembershipLedger = {
     entry({ id: 'credit', kind: 'adjustment', amount_clp: 5000, note: 'Pagó $50.000; quedan $5.000 a favor' }),
   ],
   freezes: [],
+  periods: [
+    { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 45000 },
+    { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0 },
+  ],
+  refundable_payments: [
+    {
+      id: 'pay-sep',
+      billing_period_id: 'p-sep',
+      period_start: '2026-09-30',
+      amount_clp: 45000,
+      method: 'transfer',
+      validated_at: '2026-10-02T12:00:00Z',
+      refundable_clp: 45000,
+    },
+  ],
 }
 
 const stripes = [0, 1, 2, 3, 4].map((n) => ({ key: String(n), label: n === 0 ? 'Sin grados' : n === 1 ? '1 grado' : `${n} grados` }))
@@ -384,9 +397,10 @@ describe('Ficha de alumno', () => {
   })
 
   it('adjusts a paid period against the member, owed on top', async () => {
-    const paid = entry({ id: 'c-sep', kind: 'charge', billing_period_id: 'p-sep', period_start: '2026-09-30' })
+    // An old period, long out of the timeline: the ledger still offers it.
+    const paid = { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0 }
     const calls = stubApi({
-      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [paid] },
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [], periods: [paid] },
       adjustment: { status: 201, body: { period: { outstanding_clp: 5000, closed: false } } },
     })
     renderAt(PATH)
@@ -478,8 +492,19 @@ describe('Ficha de alumno', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.refundForm.refused.exceeds)
   })
 
+  it('offers a payment for refund long after it left the timeline', async () => {
+    stubApi({ ledger: { ...LEDGER, entries: [] } })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.refund }))
+    expect(screen.getByLabelText(copy.refundForm.payment)).toHaveTextContent(
+      copy.refundForm.paymentOption('septiembre', '2 oct', '$45.000'),
+    )
+  })
+
   it('offers no refund while no payment has anything left to give back', async () => {
-    stubApi({ ledger: { ...LEDGER, entries: LEDGER.entries.map((e) => ({ ...e, refundable_clp: null })) } })
+    stubApi({ ledger: { ...LEDGER, refundable_payments: [] } })
     renderAt(PATH)
     const card = await money()
 

@@ -11,7 +11,10 @@ ledger changes (0002).
 - A refund names the payment it gives back (`refund_of`), on the same membership, and
   carries that payment's period: what it gives back no longer counts towards the
   period (`app.domain.billing.settled_amount`). `ledger_entry_refund_of` keeps the
-  column to refunds and every refund to a payment it references.
+  column to refunds and every refund to an entry it references, the foreign key to
+  one on the same membership, and `ledger_entry_refund_target` to a validated
+  payment on the refund's own period. How much of the payment is left to give back
+  is the API's to check, under the membership's lock (`app.api.ledger`).
 - `v_overdue` (0014) counts a refund against the period it was paid towards, as every
   other settlement in the app now does. `v_balance` already counted refunds as owed
   and settling adjustments by their amount, so a negative one is owed: it is unchanged.
@@ -71,6 +74,27 @@ AFTER = v_overdue(
 REPLACE_VIEW = "CREATE OR REPLACE VIEW v_overdue WITH (security_invoker = true) AS"
 
 
+# A refund's `refund_of` is a validated payment on its period; the row is the one the
+# foreign key found, so it is on the same membership and in the same gym.
+REFUND_TARGET = """
+    CREATE FUNCTION ledger_entry_refund_target() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT FROM ledger_entry p
+            WHERE p.id = NEW.refund_of AND p.kind = 'payment' AND p.status = 'validated'
+              AND p.billing_period_id IS NOT DISTINCT FROM NEW.billing_period_id
+        ) THEN
+            RAISE EXCEPTION 'refund %: refund_of % is not a validated payment on its period',
+                NEW.id, NEW.refund_of
+                USING ERRCODE = 'check_violation';
+        END IF;
+        RETURN NEW;
+    END
+    $$
+"""
+
+
 def upgrade() -> None:
     op.execute("ALTER TABLE ledger_entry ADD COLUMN refund_of uuid")
     op.execute(
@@ -93,11 +117,19 @@ def upgrade() -> None:
         "CREATE INDEX ledger_entry_refund_of_idx ON ledger_entry (refund_of)"
         " WHERE refund_of IS NOT NULL"
     )
+    op.execute(REFUND_TARGET)
+    op.execute(
+        "CREATE TRIGGER ledger_entry_refund_target BEFORE INSERT ON ledger_entry"
+        " FOR EACH ROW WHEN (NEW.refund_of IS NOT NULL)"
+        " EXECUTE FUNCTION ledger_entry_refund_target()"
+    )
     op.execute(f"{REPLACE_VIEW} {AFTER}")
 
 
 def downgrade() -> None:
     op.execute(f"{REPLACE_VIEW} {BEFORE}")
+    op.execute("DROP TRIGGER ledger_entry_refund_target ON ledger_entry")
+    op.execute("DROP FUNCTION ledger_entry_refund_target()")
     op.execute("DROP INDEX ledger_entry_refund_of_idx")
     op.execute("ALTER TABLE ledger_entry DROP CONSTRAINT ledger_entry_amount_sign")
     op.execute("ALTER TABLE ledger_entry DROP CONSTRAINT ledger_entry_refund_of")

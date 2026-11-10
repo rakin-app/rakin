@@ -329,10 +329,12 @@ def test_a_refund_references_its_payment_and_opens_the_period_again(
     assert balance(db, period) == 15_000
 
     # The member detail lists it with its payment, and what is left to give back.
-    lines = {e["id"]: e for e in ledger(client, sur, period)["entries"]}
+    read = ledger(client, sur, period)
+    lines = {e["id"]: e for e in read["entries"]}
     assert lines[entry["id"]]["refund_of"] == payment
-    assert lines[entry["id"]]["refundable_clp"] is None
-    assert lines[payment]["refundable_clp"] == 30_000
+    assert [(p["id"], p["refundable_clp"]) for p in read["refundable_payments"]] == [
+        (payment, 30_000)
+    ]
 
 
 @pg
@@ -365,9 +367,52 @@ def test_a_refund_gives_back_no_more_than_is_left_of_its_payment(
     assert refund(client, sur, {**body, "amount_clp": 1}).status_code == 409
     assert open_period(client, sur, period)["outstanding_clp"] == 45_000
     assert balance(db, period) == 45_000
-    assert [
-        e["refundable_clp"] for e in ledger(client, sur, period)["entries"] if e["id"] == payment
-    ] == [0]
+    # Given back in full, it is no longer offered.
+    assert ledger(client, sur, period)["refundable_payments"] == []
+
+
+@pg
+def test_the_ledger_offers_every_period_and_refundable_payment_however_old(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    # The timeline lists the latest 100 entries; what Ajuste and Devolver offer is not
+    # cut to them.
+    old = charged(db, sur)
+    payment = pay(client, sur, old, 45_000)
+    for _ in range(55):
+        later = charged(db, sur)
+        pay(client, sur, later, 45_000)
+    owing = charged(db, sur)
+
+    read = ledger(client, sur, old)
+    assert len(read["entries"]) == 100
+    assert payment not in {e["id"] for e in read["entries"]}
+
+    # Newest first, with the seeded gym's own period among them.
+    periods = read["periods"]
+    assert len(periods) == 58
+    assert [p["period_start"] for p in periods] == sorted(
+        (p["period_start"] for p in periods), reverse=True
+    )
+    assert periods[0] == {
+        "id": owing["billing_period_id"],
+        "period_start": periods[0]["period_start"],
+        "period_end": periods[0]["period_end"],
+        "outstanding_clp": 45_000,
+    }
+    [first] = [p for p in periods if p["id"] == old["billing_period_id"]]
+    assert first["outstanding_clp"] == 0
+    assert len(read["refundable_payments"]) == 56
+    oldest = read["refundable_payments"][-1]
+    assert oldest | {"validated_at": None} == {
+        "id": payment,
+        "billing_period_id": old["billing_period_id"],
+        "period_start": first["period_start"],
+        "amount_clp": 45_000,
+        "method": "transfer",
+        "validated_at": None,
+        "refundable_clp": 45_000,
+    }
 
 
 @pg
@@ -479,9 +524,40 @@ def test_the_table_keeps_refund_of_to_refunds_of_the_same_membership(
 
     norte = seed_gym(db, f"dojo-norte-{uuid.uuid4().hex[:6]}")
     theirs = new_period(db, norte)
-    with pytest.raises(asyncpg.ForeignKeyViolationError):
+    # `ledger_entry_refund_target` runs before the foreign key, and finds no payment on
+    # the refund's period.
+    with pytest.raises(asyncpg.CheckViolationError, match="validated payment on its period"):
         insert(db, norte, theirs, kind="refund", amount_clp=1, refund_of=payment)
 
+    assert insert(db, sur, period, kind="refund", amount_clp=1, refund_of=payment)
+
+
+@pg
+def test_the_table_refunds_only_a_validated_payment_on_the_refunds_period(
+    db: Database, sur: uuid.UUID
+) -> None:
+    period = new_period(db, sur)
+    other = new_period(db, sur)
+    payment = insert(db, sur, period, kind="payment", amount_clp=45_000)
+    charge = insert(db, sur, period, kind="charge", amount_clp=45_000)
+    credit = insert(db, sur, period, kind="adjustment", amount_clp=5_000, note="beca")
+
+    async def pending(conn: asyncpg.Connection) -> Any:
+        return await conn.fetchval(
+            "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
+            " kind, status, method) VALUES ($1, $2, $3, 45000, 'payment', 'pending', 'transfer')"
+            " RETURNING id",
+            sur,
+            uuid.UUID(period["membership_id"]),
+            uuid.UUID(period["billing_period_id"]),
+        )
+
+    claim = run(db.admin_url, pending)
+    for target in (charge, credit, claim):
+        with pytest.raises(asyncpg.CheckViolationError, match="validated payment"):
+            insert(db, sur, period, kind="refund", amount_clp=1, refund_of=target)
+    with pytest.raises(asyncpg.CheckViolationError, match="validated payment on its period"):
+        insert(db, sur, other, kind="refund", amount_clp=1, refund_of=payment)
     assert insert(db, sur, period, kind="refund", amount_clp=1, refund_of=payment)
 
 

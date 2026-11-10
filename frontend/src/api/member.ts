@@ -71,8 +71,26 @@ export type TimelineEntry = {
   validated_at: string | null
   // The payment a refund gives back; null on every other kind.
   refund_of: string | null
-  // What is left to give back of a validated payment; null on every other entry.
-  refundable_clp: number | null
+}
+
+/** A billing period, open or paid: one an adjustment may go to (backend `LedgerPeriod`). */
+export type LedgerPeriod = {
+  id: string
+  period_start: string
+  period_end: string
+  // 0 once paid.
+  outstanding_clp: number
+}
+
+/** A validated payment with something left to give back (backend `RefundablePayment`). */
+export type RefundablePayment = {
+  id: string
+  billing_period_id: string
+  period_start: string
+  amount_clp: number
+  method: Method | null
+  validated_at: string | null
+  refundable_clp: number
 }
 
 /** A freeze starting or ending, a ledger line with no amount (backend `FreezeLine`). */
@@ -96,6 +114,10 @@ export type MembershipLedger = {
   entries: TimelineEntry[]
   // Each freeze's start and end so far, newest first.
   freezes: FreezeLine[]
+  // Every period, and every payment with something left to give back, newest first;
+  // not cut to the latest entries as `entries` is.
+  periods: LedgerPeriod[]
+  refundable_payments: RefundablePayment[]
 }
 
 export type PaymentRecord = {

@@ -168,8 +168,6 @@ class TimelineEntry(BaseModel):
     validated_at: datetime | None
     # The payment a refund gives back; null on every other kind.
     refund_of: uuid.UUID | None
-    # What is left to give back of a validated payment; null on every other entry.
-    refundable_clp: int | None
 
 
 class FreezeEdge(StrEnum):
@@ -190,6 +188,29 @@ class FreezeLine(BaseModel):
     reason: str
 
 
+class LedgerPeriod(BaseModel):
+    """A billing period of the membership, open or paid: one an adjustment may go to."""
+
+    id: uuid.UUID
+    period_start: date
+    period_end: date
+    # What validated payments and adjustments, less refunds, leave owed; 0 once paid.
+    outstanding_clp: int
+
+
+class RefundablePayment(BaseModel):
+    """A validated payment with something left to give back."""
+
+    id: uuid.UUID
+    billing_period_id: uuid.UUID
+    period_start: date
+    amount_clp: int
+    method: Method | None
+    validated_at: datetime | None
+    # What its earlier refunds leave to give back: more than 0.
+    refundable_clp: int
+
+
 class MembershipLedger(BaseModel):
     """One membership's money: what it owes and its entries ("Ficha de alumno", #60)."""
 
@@ -201,6 +222,11 @@ class MembershipLedger(BaseModel):
     entries: list[TimelineEntry]
     # Every freeze's start and end so far, newest first.
     freezes: list[FreezeLine]
+    # Every billing period, newest first, and every validated payment with something
+    # left to give back, newest first: what "Ajuste" and "Devolver" offer (#38). Not
+    # capped as `entries` is.
+    periods: list[LedgerPeriod]
+    refundable_payments: list[RefundablePayment]
 
 
 class BookFilter(StrEnum):

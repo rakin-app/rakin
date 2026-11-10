@@ -22,6 +22,7 @@ import {
   recordRefund,
   shownMembership,
   type FreezeLine,
+  type LedgerPeriod,
   type Membership,
   type MembershipLedger,
   type Method,
@@ -29,6 +30,7 @@ import {
   type RecordedAdjustment,
   type RecordedPayment,
   type RecordedRefund,
+  type RefundablePayment,
   type TimelineEntry,
 } from '../api/member'
 import { myRoleQuery, readsLedger } from '../api/me'
@@ -200,32 +202,17 @@ function Owed({ ledger }: { ledger: MembershipLedger }) {
 
 type Open = 'payment' | 'adjustment' | 'refund' | 'freeze' | null
 
-/** A period an adjustment can go to: its id, month and what it still owes. */
-type KnownPeriod = { id: string; period_start: string; outstanding_clp: number }
-
-/** The open periods, oldest first, then the paid ones the ledger's charges name, newest
- * first: an adjustment in the member's favour goes to the first, one owed to either. */
-function knownPeriods(ledger: MembershipLedger): KnownPeriod[] {
-  const periods: KnownPeriod[] = [...ledger.open_periods]
-  const seen = new Set(periods.map((p) => p.id))
-  for (const entry of ledger.entries) {
-    if (entry.kind !== 'charge' || !entry.billing_period_id || !entry.period_start) continue
-    if (seen.has(entry.billing_period_id)) continue
-    seen.add(entry.billing_period_id)
-    periods.push({ id: entry.billing_period_id, period_start: entry.period_start, outstanding_clp: 0 })
-  }
-  return periods
-}
-
-/** The validated payments with something left to give back. */
-function refundable(ledger: MembershipLedger): TimelineEntry[] {
-  return ledger.entries.filter((e) => e.kind === 'payment' && (e.refundable_clp ?? 0) > 0)
+/** The periods that still owe, oldest first, then the paid ones, newest first: an
+ * adjustment in the member's favour goes to the first, one owed to either. */
+function adjustable(ledger: MembershipLedger): LedgerPeriod[] {
+  const owing = ledger.periods.filter((p) => p.outstanding_clp > 0).reverse()
+  return [...owing, ...ledger.periods.filter((p) => p.outstanding_clp === 0)]
 }
 
 function Actions({ membership, ledger }: { membership: Membership; ledger: MembershipLedger }) {
   const periods = ledger.open_periods
-  const known = knownPeriods(ledger)
-  const payments = refundable(ledger)
+  const known = adjustable(ledger)
+  const payments = ledger.refundable_payments
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
   const toggle = (form: Open) => {
@@ -805,7 +792,7 @@ function AdjustmentForm({
   onDone,
 }: {
   membership: Membership
-  periods: KnownPeriod[]
+  periods: LedgerPeriod[]
   onCancel: () => void
   onDone: (message: string) => void
 }) {
@@ -933,7 +920,7 @@ function RefundForm({
   onCancel,
   onDone,
 }: {
-  payments: TimelineEntry[]
+  payments: RefundablePayment[]
   onCancel: () => void
   onDone: (message: string) => void
 }) {
@@ -990,9 +977,9 @@ function RefundForm({
         {payments.map((p) => (
           <option key={p.id} value={p.id}>
             {form.paymentOption(
-              p.period_start ? monthName(p.period_start) : '',
-              shortDay(p.validated_at ?? p.created_at),
-              clp(p.refundable_clp ?? 0),
+              monthName(p.period_start),
+              p.validated_at ? shortDay(p.validated_at) : '',
+              clp(p.refundable_clp),
             )}
           </option>
         ))}
