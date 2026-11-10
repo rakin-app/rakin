@@ -199,6 +199,27 @@ describe('Mi página', () => {
     expect(card.getByText(copy.training.belt)).toBeInTheDocument()
     expect(card.getByText('Morada · 1 grado')).toBeInTheDocument()
     expect(card.getByText('desde 14 jun 2025')).toBeInTheDocument()
+    expect(card.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('draws the belt when the gym colours it', async () => {
+    stubPage(
+      diego({
+        rank: {
+          rank_key: 'black',
+          rank_label: 'Negra',
+          sub_rank: '1',
+          sub_rank_label: '1 grado',
+          awarded_on: '2025-06-14',
+          belt: { colors: ['#1b1b1b'], stripes: 1, max_stripes: 4 },
+        },
+      }),
+    )
+    renderMe()
+
+    const card = within(await screen.findByRole('region', { name: copy.training.title }))
+    expect(card.getByRole('img', { name: 'Negra, 1 grado' })).toBeInTheDocument()
+    expect(card.getByText('Negra · 1 grado')).toBeInTheDocument()
   })
 
   it('has no belt card until the gym records a rank', async () => {

@@ -14,11 +14,18 @@ from typing import Any
 
 
 def _ladder(
-    ranks: list[tuple[str, str]], sub_ranks: list[dict[str, str]] | None = None
+    ranks: list[tuple[str, str]],
+    sub_ranks: list[dict[str, str]] | None = None,
+    colors: dict[str, list[str]] | None = None,
 ) -> list[dict[str, Any]]:
     # Each rank its own copies, so editing one rank's sub-ranks never edits another's.
     return [
-        {"key": k, "label": label, "sub_ranks": [dict(s) for s in sub_ranks or []]}
+        {
+            "key": k,
+            "label": label,
+            **({"colors": list(colors[k])} if colors and k in colors else {}),
+            "sub_ranks": [dict(s) for s in sub_ranks or []],
+        }
         for k, label in ranks
     ]
 
@@ -48,6 +55,24 @@ BJJ_KIDS_LADDER = [
     for variant, suffix in (("-white", " y blanca"), ("", ""), ("-black", " y negra"))
 ]
 
+# A belt's colours by rank key, the second the stripe through a kids' two-tone belt.
+_BELT = {
+    "white": "#f4f4f1",
+    "blue": "#1f4fa3",
+    "purple": "#6b2d8f",
+    "brown": "#6e4223",
+    "black": "#1b1b1b",
+    "grey": "#8b8f94",
+    "yellow": "#f2c12e",
+    "orange": "#e8782a",
+    "green": "#2f8a40",
+}
+BJJ_COLORS = {key: [_BELT[key]] for key, _ in BJJ_RANKS} | {
+    key: [_BELT[base], *([_BELT[tone]] if tone else [])]
+    for key, _ in BJJ_KIDS_LADDER
+    for base, _, tone in [key.partition("-")]
+}
+
 # Kyu count down to 1, then dan count up. Kids climb the same ladder, slower, so there
 # is no separate kids ladder.
 KYU_DAN = [(f"kyu-{n}", f"{n}.º kyu") for n in range(10, 0, -1)] + [
@@ -73,8 +98,8 @@ PRESETS: list[dict[str, Any]] = [
         "key": "bjj",
         "label": "Jiu-jitsu brasileño",
         "scheme": {
-            "ranks": _ladder(BJJ_RANKS, STRIPES),
-            "kids_ladder": _ladder(BJJ_KIDS_LADDER, STRIPES),
+            "ranks": _ladder(BJJ_RANKS, STRIPES, BJJ_COLORS),
+            "kids_ladder": _ladder(BJJ_KIDS_LADDER, STRIPES, BJJ_COLORS),
             "goal_metric": "classes_since_promotion",
         },
     },

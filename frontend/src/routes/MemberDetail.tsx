@@ -36,6 +36,7 @@ import {
   type TimelineEntry,
 } from '../api/member'
 import { myRoleQuery, readsLedger } from '../api/me'
+import { RankBelt } from '../components/Belt'
 import { ChevronLeftIcon } from '../components/icons'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
@@ -581,6 +582,7 @@ function Graduation({ personId, canAward }: { personId: string; canAward: boolea
       <div className="member__card">
         {current ? (
           <div className="member__rank">
+            <RankBelt rank={current} />
             <span className="member__rank-label">{rankLabel(current)}</span>
             <span className="member__detail">{words.since(t.common.dayYear(current.awarded_on))}</span>
             {sincePromotion !== null && <span className="member__detail">{words.sincePromotion(sincePromotion)}</span>}
@@ -673,7 +675,7 @@ function GradeRow({ event }: { event: GradeEvent }) {
     .join(' · ')
   return (
     <li className="member__entry member__entry--grade">
-      <span className="member__dot" aria-hidden="true" />
+      <RankBelt rank={event} compact fallback={<span className="member__dot" aria-hidden="true" />} />
       <div className="member__entry-text">
         <span className="member__entry-title">{rankLabel(event)}</span>
         <span className="member__detail">{detail}</span>

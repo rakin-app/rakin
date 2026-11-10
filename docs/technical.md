@@ -6,7 +6,7 @@
 
 Three configuration surfaces absorb all sport variance; the rest of the system is identical for BJJ, judo, Muay Thai or boxing. All three live as JSON in `gym.settings` (definitions) and as rows (values).
 
-**Grading scheme** — an ordered list of ranks, each with optional sub-ranks, plus an optional separate kids ladder. Promotion events reference rank and sub-rank by key.
+**Grading scheme** — an ordered list of ranks, each with optional sub-ranks, plus an optional separate kids ladder. Promotion events reference rank and sub-rank by key. A rank may carry its belt's colours (one, or two for a two-tone belt); such a rank is drawn as a belt, its stripes counted by the sub-rank's place after the first, and one without colours shows as its label.
 
 | Sport | Ranks | Sub-ranks | Kids ladder | Goal metric |
 | --- | --- | --- | --- | --- |

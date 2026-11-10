@@ -12,6 +12,7 @@ import {
   type SchemeRank,
 } from '../api/grading'
 import { validationErrors } from '../api/validation'
+import { Belt } from '../components/Belt'
 import { ChevronDownIcon, ChevronUpIcon, CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
@@ -30,7 +31,7 @@ type DraftSubRank = {
   label: string
   target: string
 }
-type DraftRank = DraftSubRank & { sub_ranks: DraftSubRank[] }
+type DraftRank = DraftSubRank & { colors: string[]; sub_ranks: DraftSubRank[] }
 type Draft = Record<Ladder, DraftRank[]> & { goal_metric: GoalMetric | null }
 
 let nextId = 0
@@ -48,7 +49,8 @@ function draftOf(scheme: GradingScheme): Draft {
     label,
     target: target == null ? '' : String(target),
   })
-  const ladder = (ranks: SchemeRank[]) => ranks.map((r) => ({ ...item(r), sub_ranks: r.sub_ranks.map(item) }))
+  const ladder = (ranks: SchemeRank[]) =>
+    ranks.map((r) => ({ ...item(r), colors: r.colors ?? [], sub_ranks: r.sub_ranks.map(item) }))
   return {
     ranks: ladder(scheme.ranks),
     kids_ladder: ladder(scheme.kids_ladder),
@@ -93,6 +95,7 @@ function schemeOf(draft: Draft): GradingScheme {
         key: rank.key ?? freshKey(rank.label, 'grado', rankKeys),
         label: rank.label,
         target: target(rank.target) as number | null,
+        colors: rank.colors,
         sub_ranks: rank.sub_ranks.map((sub) => ({
           key: sub.key ?? freshKey(sub.label, 'sub', subKeys),
           label: sub.label,
@@ -341,7 +344,7 @@ function LadderEditor({
       <button
         type="button"
         className="settings__button"
-        onClick={() => onChange([...ranks, { ...blank(), sub_ranks: [] }])}
+        onClick={() => onChange([...ranks, { ...blank(), colors: [], sub_ranks: [] }])}
       >
         {copy.addRank}
       </button>
@@ -413,6 +416,7 @@ function RankEditor({
           </Field>
         )}
       </div>
+      <BeltColors rank={rank} name={name} onChange={(colors) => onChange({ ...rank, colors })} />
       <div className="settings__actions">
         <button
           type="button"
@@ -510,3 +514,56 @@ function RankEditor({
     </li>
   )
 }
+
+/**
+ * A rank's belt colours: none, and the rank shows as its name; one; or a second for the
+ * stripe through a two-tone belt. Drawn as it will look, every stripe on its bar.
+ */
+function BeltColors({ rank, name, onChange }: { rank: DraftRank; name: string; onChange: (colors: string[]) => void }) {
+  const words = copy.belt
+  const [main, tone] = rank.colors
+  const stripes = Math.max(rank.sub_ranks.length - 1, 0)
+  return (
+    <fieldset className="settings__belt">
+      <legend className="settings__label">{words.title}</legend>
+      {main === undefined ? (
+        <>
+          <p className="settings__hint">{words.none}</p>
+          <button type="button" className="settings__button" onClick={() => onChange([DEFAULT_COLOR])}>
+            {words.add}
+          </button>
+        </>
+      ) : (
+        <>
+          <Belt colors={rank.colors} stripes={stripes} maxStripes={stripes} label={words.preview(name)} />
+          <div className="settings__belt-colors">
+            <label className="settings__belt-color">
+              <input type="color" value={main} onChange={(e) => onChange([e.target.value, ...rank.colors.slice(1)])} />
+              {words.main}
+            </label>
+            {tone === undefined ? (
+              <button type="button" className="settings__button" onClick={() => onChange([main, DEFAULT_COLOR])}>
+                {words.addTone}
+              </button>
+            ) : (
+              <>
+                <label className="settings__belt-color">
+                  <input type="color" value={tone} onChange={(e) => onChange([main, e.target.value])} />
+                  {words.tone}
+                </label>
+                <button type="button" className="settings__button" onClick={() => onChange([main])}>
+                  {words.removeTone}
+                </button>
+              </>
+            )}
+            <button type="button" className="settings__button" onClick={() => onChange([])}>
+              {words.remove}
+            </button>
+          </div>
+        </>
+      )}
+    </fieldset>
+  )
+}
+
+const DEFAULT_COLOR = '#ffffff'
