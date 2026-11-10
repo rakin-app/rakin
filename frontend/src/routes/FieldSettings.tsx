@@ -254,7 +254,8 @@ function FieldForm({
   // An edit sends only what changed; an admin never sends what is the owner's to set.
   const changes = (): FieldChanges => {
     const out: FieldChanges = {}
-    if (drafts.label !== initial.label) out.label = drafts.label
+    // The API trims the label, so whitespace alone changes nothing.
+    if (drafts.label.trim() !== initial.label.trim()) out.label = drafts.label.trim()
     if (enumField && optionsOf(drafts.options).join('\n') !== optionsOf(initial.options).join('\n')) {
       out.options = optionsOf(drafts.options)
     }

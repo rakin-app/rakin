@@ -205,7 +205,7 @@ describe('Ajustes: Campos', () => {
     ])
   })
 
-  it('closes an edit that changed nothing without asking the API', async () => {
+  it('closes an edit that changed nothing but whitespace without asking the API', async () => {
     const calls = stubApi()
     renderAt('/admin/ajustes/campos')
 
@@ -213,6 +213,8 @@ describe('Ajustes: Campos', () => {
     const [, health] = within(section).getAllByRole('listitem')
     await userEvent.click(within(health!).getByRole('button', { name: copy.edit }))
     const edit = within(section).getByRole('form', { name: form.edit('Condición médica') })
+    // Whitespace around the label is trimmed by the API, so it is no change.
+    await userEvent.type(within(edit).getByLabelText(form.label), '  ')
     await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
 
     expect(within(section).queryByRole('form')).not.toBeInTheDocument()
