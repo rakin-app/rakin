@@ -6,17 +6,24 @@ and its entries newest first, with who reviewed each.
 
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.dates import local_date
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
+from tests.pg import (
+    Database,
+    migrate,
+    run,
+    seed_gym,
+    seeded_owner,
+    seeded_today,
+    throwaway_database,
+)
 from tests.test_guardians import add_person, bill
 from tests.test_plans import add_staff
 
@@ -41,11 +48,6 @@ def client(db: Database) -> Iterator[TestClient]:
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
     return seed_gym(db, f"academia-sur-{uuid.uuid4().hex[:6]}")
-
-
-def gym_today() -> date:
-    # `seed_gym` leaves the gym on its default timezone.
-    return local_date(datetime.now(UTC), "America/Santiago")
 
 
 def slug(db: Database, gym: uuid.UUID) -> str:
@@ -94,7 +96,7 @@ def test_open_periods_are_oldest_first_and_owed_counts_only_what_is_due(
         (45000, 0, 45000),
         (45000, 0, 45000),
     ]
-    today = gym_today()
+    today = seeded_today()
     dues = [date.fromisoformat(p["due_date"]) for p in periods]
     assert [p["days_overdue"] for p in periods] == [max((today - d).days, 0) for d in dues]
     assert [p["due"] for p in periods] == [d <= today for d in dues]

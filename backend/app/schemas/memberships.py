@@ -33,7 +33,7 @@ class MembershipCreate(BaseModel):
     @field_validator("started_on")
     @classmethod
     def _near_today(cls, value: date | None) -> date | None:
-        # UTC's today, a day either side of any gym's; the window is years wide.
+        # system date: UTC's today, a day either side of any gym's; the window is years wide.
         today = datetime.now(UTC).date()
         months = 12 * STARTED_ON_WINDOW_YEARS
         if value is not None and not add_months(today, -months) <= value <= add_months(

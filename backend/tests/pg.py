@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from sqlalchemy.engine import make_url
 
 from alembic import command
 from app.db_bootstrap import bootstrap, to_dsn
+from app.domain.dates import gym_today
 from app.settings import Settings
 from tests.conftest import make_settings
 
@@ -113,6 +115,15 @@ def in_gym(
             return await conn.fetch(sql, *args)
 
     return query
+
+
+# `gym.timezone`'s default (0001), which `seed_gym` leaves its gyms on.
+DEFAULT_TIMEZONE = "America/Santiago"
+
+
+def seeded_today(tz: str = DEFAULT_TIMEZONE) -> date:
+    """Today as a seeded gym's API sees it: in the gym's timezone, not the host's."""
+    return gym_today(tz)
 
 
 def seeded_owner(gym_id: uuid.UUID) -> uuid.UUID:
