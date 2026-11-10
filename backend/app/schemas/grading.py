@@ -8,6 +8,9 @@ A gym with no scheme stored reads as having none: no ranks, no kids ladder.
 A rank or sub-rank may carry a `target`: how much of the goal metric a member needs in
 it before the next promotion, in classes or in months. A sub-rank's own target wins over
 its rank's. Targets need a goal metric to be counted in.
+
+A rank may carry `colors`, its belt's: one, or two for a two-tone belt, as `#rrggbb`.
+Without them the rank shows as its label.
 """
 
 from collections import Counter
@@ -29,6 +32,7 @@ MAX_SUB_RANKS = 20
 # Classes or months in a rank before the next promotion; the cap keeps a typo out.
 MAX_TARGET = 10_000
 Target = Annotated[int, Field(ge=1, le=MAX_TARGET)]
+Color = Annotated[str, StringConstraints(pattern=r"^#[0-9a-fA-F]{6}$", to_lower=True)]
 
 
 def _repeated(keys: list[str]) -> list[str]:
@@ -49,6 +53,8 @@ class Rank(BaseModel):
     key: Key
     label: Label
     target: Target | None = None
+    # The belt's colour, then the stripe through a two-tone one; empty for no belt.
+    colors: Annotated[list[Color], Field(max_length=2)] = []
     sub_ranks: Annotated[list[SubRank], Field(max_length=MAX_SUB_RANKS)] = []
 
     @model_validator(mode="after")

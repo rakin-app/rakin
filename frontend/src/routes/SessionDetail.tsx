@@ -18,6 +18,7 @@ import {
 import { ApiError } from '../api/client'
 import { rankLabel } from '../api/grading'
 import { sessionQuery, todaySessionsQuery, updateSession, type ClassSession } from '../api/sessions'
+import { RankBelt } from '../components/Belt'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
 import { clockTime } from '../format'
 import { t } from '../i18n/es'
@@ -386,8 +387,10 @@ function Attendance({ sessionId }: { sessionId: string }) {
 
 function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boolean; onToggle: () => void }) {
   const words = copy.attendance
+  // A drawn belt says the rank itself; a rank with no colours says it in words.
+  const belt = member.rank?.belt ? member.rank : null
   const detail = [
-    member.rank && rankLabel(member.rank),
+    member.rank && !belt && rankLabel(member.rank),
     member.plan_name,
     member.credits_remaining !== null && words.left(member.credits_remaining),
     (member.status === 'lapsed' || member.status === 'frozen') && t.admin.students.status[member.status],
@@ -407,7 +410,10 @@ function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boo
       </span>
       <span className="classes__row-text">
         <span className="classes__name">{member.name}</span>
-        <span className="classes__detail">{detail}</span>
+        <span className="classes__detail">
+          {belt && <RankBelt rank={belt} compact />}
+          {detail}
+        </span>
       </span>
       {member.overdue && <span className="attendance__overdue" role="img" aria-label={words.overdue} />}
     </button>

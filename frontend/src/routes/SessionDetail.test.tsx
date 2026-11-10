@@ -173,6 +173,17 @@ describe('Asistencia', () => {
     expect(screen.getByRole('button', { name: copy.save(1) })).toBeDisabled()
   })
 
+  it("draws a rank's belt, compact, in place of its name when the scheme colours it", async () => {
+    const rank = { ...ANTONIA.rank!, belt: { colors: ['#1f4fa3'], stripes: 0, max_stripes: 4 } }
+    stubApi({ members: [{ ...ANTONIA, rank }, FELIPE] })
+    renderClass()
+
+    const [antonia] = (await rosterList()).getAllByRole('button')
+    expect(within(antonia!).getByRole('img', { name: 'Azul, Sin grados' })).toHaveClass('belt--compact')
+    expect(antonia).toHaveTextContent('Antonia RojasMensual adultos')
+    expect(antonia).toHaveAccessibleName(expect.stringContaining('Azul, Sin grados'))
+  })
+
   it('counts each tap and saves what changed', async () => {
     const api = stubApi()
     renderClass()

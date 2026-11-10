@@ -308,3 +308,38 @@ h2.settings__plan-name {
     padding: 0 var(--space-8);
   }
 }
+
+/* A rank's belt colours (#135): the belt as drawn, then its colours and their buttons. */
+.settings__belt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings__belt-colors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings__belt-color {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-height: var(--control-height);
+  font-size: var(--text-md);
+}
+
+.settings__belt-color input {
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: none;
+}

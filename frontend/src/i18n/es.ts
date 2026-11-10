@@ -651,6 +651,18 @@ export const es = {
         subRank: (n: number) => `Subgrado ${n}`,
         subRankLabel: 'Nombre del subgrado',
         addSubRank: 'Agregar subgrado',
+        // A rank's belt colours (#135); without them it shows as its name.
+        belt: {
+          title: 'Cinturón',
+          none: 'Sin color: el grado se muestra con su nombre.',
+          add: 'Agregar color',
+          main: 'Color',
+          tone: 'Franja',
+          addTone: 'Agregar franja',
+          removeTone: 'Quitar franja',
+          remove: 'Quitar color',
+          preview: (label: string) => `Vista previa del cinturón ${label}`,
+        },
         moveUp: (label: string) => `Subir ${label}`,
         moveDown: (label: string) => `Bajar ${label}`,
         remove: (label: string) => `Quitar ${label}`,

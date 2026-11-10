@@ -1,0 +1,28 @@
+/* A rank's belt, drawn (#135). The SVG scales to the box; compact for a roster row. */
+.belt {
+  display: inline-flex;
+  flex: none;
+  width: 120px;
+  height: 24px;
+}
+
+.belt--compact {
+  width: 48px;
+  height: 10px;
+}
+
+.belt svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* An outline, so a white belt shows on a white card. */
+.belt__body {
+  stroke: var(--color-border-strong);
+  stroke-width: 1;
+}
+
+.belt--compact .belt__body {
+  stroke-width: 2;
+}
