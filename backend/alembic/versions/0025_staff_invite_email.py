@@ -13,7 +13,7 @@ like 0005's lookups. It answers yes or no and nothing else, and only for a perso
 current gym has a record of. The full fix, for every path that writes an email, is #146.
 
 Revision ID: 0025
-Revises: 0023
+Revises: 0024
 Create Date: 2026-11-10
 
 """
@@ -23,7 +23,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0025"
-down_revision: str | Sequence[str] | None = "0023"
+down_revision: str | Sequence[str] | None = "0024"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

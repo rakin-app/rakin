@@ -13,6 +13,7 @@ from app.api import (
     guardians,
     gym,
     health,
+    inactive,
     ledger,
     me,
     member_import,
@@ -80,6 +81,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(grading.router)
     app.include_router(grades.router)
     app.include_router(ledger.router)
+    app.include_router(inactive.router)
     app.include_router(proof_review.router)
     app.include_router(unsubscribe.router)
     app.include_router(
