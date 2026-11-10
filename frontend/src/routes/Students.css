@@ -11,16 +11,24 @@
   gap: var(--space-2-5);
 }
 
+/* The toolbar's controls, buttons, search, chips and selects, share one height and
+   one type size: 44px on a phone, a touch target, and 40px on a desktop. */
+.students {
+  --students-control: var(--control-height);
+}
+
 .students__search,
-.students__plan {
+.students__select {
+  box-sizing: border-box;
   width: 100%;
-  min-height: var(--control-height);
+  height: var(--students-control);
   padding: 0 var(--space-3-5);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   color: var(--color-text);
-  font-size: var(--text-base);
+  font-family: inherit;
+  font-size: var(--text-md);
 }
 
 .students__search::placeholder {
@@ -37,13 +45,13 @@
 
 .students__chip {
   flex: none;
-  min-height: var(--control-height-sm);
+  height: var(--students-control);
   padding: 0 var(--space-3-5);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
   color: var(--color-text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
 }
@@ -83,9 +91,10 @@
   border-radius: var(--radius-lg);
 }
 
+/* Name and status on one top line; the details below each. */
 .students__row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
   min-height: var(--control-height-xl);
@@ -107,7 +116,16 @@
 .students__plan-cell {
   flex: none;
   align-items: flex-end;
+  gap: var(--space-1);
   max-width: 45%;
+}
+
+/* "Familia", a text link here: its tap target is the line, not a 40px box. */
+.students__plan-cell .students__clear {
+  min-height: 0;
+  padding: var(--space-0-5) 0;
+  font-size: var(--text-xs);
+  line-height: 1.4;
 }
 
 .students__name {
@@ -172,6 +190,10 @@
 }
 
 .students__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   min-height: var(--control-height);
   padding: 0 var(--space-4);
   background: var(--color-surface);
@@ -180,7 +202,14 @@
   color: var(--color-text);
   font-size: var(--text-md);
   font-weight: var(--font-weight-semibold);
+  text-decoration: none;
   cursor: pointer;
+}
+
+.students__button--primary {
+  background: var(--color-inverse);
+  border-color: var(--color-inverse);
+  color: var(--color-inverse-text);
 }
 
 .students__more {
@@ -194,7 +223,20 @@
 
 @media (min-width: 960px) {
   .students {
+    --students-control: var(--control-height-sm);
+
     padding: 0 var(--space-8) var(--space-8);
+  }
+
+  .students__links .students__button {
+    min-height: var(--students-control);
+  }
+
+  /* One line on a desktop: the status, the plan, then "Familia". */
+  .students__plan-cell {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
   }
 
   .students__filters {
@@ -208,7 +250,7 @@
     width: auto;
   }
 
-  .students__plan {
+  .students__select {
     width: auto;
   }
 }
@@ -311,18 +353,7 @@
 
 .students__links {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
-}
-
-.students__new {
-  display: inline-flex;
-  align-items: center;
-  text-decoration: none;
-}
-
-.students__import {
-  align-self: flex-start;
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
+  gap: var(--space-2);
 }
