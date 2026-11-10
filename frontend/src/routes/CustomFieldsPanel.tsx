@@ -1,0 +1,191 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Fragment, useId, useState, type FormEvent } from 'react'
+import {
+  personFieldsQuery,
+  refusedFields,
+  updatePersonFields,
+  type FieldValue,
+  type PersonField,
+} from '../api/customFields'
+import { t } from '../i18n/es'
+
+const copy = t.admin.member.fields
+
+/**
+ * The gym's custom fields on a member, and the form that edits them. The API answers
+ * only the fields the signed-in role may see, so a coach never gets a field the owner
+ * kept to themselves; with none to show, the section is not drawn.
+ */
+export function CustomFieldsPanel({ personId }: { personId: string }) {
+  const fields = useQuery(personFieldsQuery(personId))
+  const [editing, setEditing] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  if (fields.isPending) return <p className="member__note">{copy.loading}</p>
+  if (fields.isError) {
+    return (
+      <p className="member__note" role="alert">
+        {copy.error}
+      </p>
+    )
+  }
+  if (fields.data.length === 0) return null
+
+  return (
+    <section className="member__section" aria-label={copy.title}>
+      <h2 className="member__section-title">{copy.title}</h2>
+      {editing ? (
+        <FieldsForm
+          personId={personId}
+          fields={fields.data}
+          onCancel={() => setEditing(false)}
+          onDone={() => {
+            setEditing(false)
+            setSaved(true)
+          }}
+        />
+      ) : (
+        <div className="member__card">
+          <dl className="member__fields">
+            {fields.data.map((field) => (
+              <div key={field.key} className="member__field">
+                <dt className="member__detail">
+                  {field.label}
+                  {field.sensitive && <span className="member__tag">{copy.sensitive}</span>}
+                </dt>
+                <dd className={field.value === null ? 'member__detail' : undefined}>{shown(field)}</dd>
+              </div>
+            ))}
+          </dl>
+          {saved && (
+            <p className="member__done" role="status">
+              {copy.saved}
+            </p>
+          )}
+          <div className="member__actions">
+            <button
+              type="button"
+              className="member__button"
+              onClick={() => {
+                setSaved(false)
+                setEditing(true)
+              }}
+            >
+              {copy.edit}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function shown(field: PersonField): string {
+  if (field.value === null) return copy.empty
+  if (field.type === 'date') return t.common.day(String(field.value))
+  if (field.type === 'number') return Number(field.value).toLocaleString('es-CL')
+  return String(field.value)
+}
+
+/** What an input holds, as text: a number as typed, a date as `YYYY-MM-DD`. */
+function draftOf(field: PersonField): string {
+  return field.value === null ? '' : String(field.value)
+}
+
+function valueOf(field: PersonField, draft: string): FieldValue {
+  const text = draft.trim()
+  if (!text) return null
+  if (field.type !== 'number') return text
+  // Not a number: sent as typed, for the API to refuse rather than to clear.
+  const number = Number(text.replace(',', '.'))
+  return Number.isNaN(number) ? text : number
+}
+
+function FieldsForm({
+  personId,
+  fields,
+  onCancel,
+  onDone,
+}: {
+  personId: string
+  fields: PersonField[]
+  onCancel: () => void
+  onDone: () => void
+}) {
+  const queryClient = useQueryClient()
+  const formId = useId()
+  const [drafts, setDrafts] = useState(() => Object.fromEntries(fields.map((f) => [f.key, draftOf(f)])))
+
+  const save = useMutation({
+    mutationFn: (values: Record<string, FieldValue>) => updatePersonFields(personId, values),
+    onSuccess: (answer) => {
+      queryClient.setQueryData(personFieldsQuery(personId).queryKey, answer)
+      onDone()
+    },
+  })
+  const refused = new Set(refusedFields(save.error))
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    // Only what changed, so a field someone else edited meanwhile is left as they left it.
+    const changed = fields.filter((f) => drafts[f.key] !== draftOf(f))
+    if (changed.length === 0) {
+      onDone()
+      return
+    }
+    save.mutate(Object.fromEntries(changed.map((f) => [f.key, valueOf(f, drafts[f.key] ?? '')])))
+  }
+
+  return (
+    <form className="member__form" aria-label={copy.formTitle} onSubmit={submit}>
+      {fields.map((field) => {
+        const id = `${formId}-${field.key}`
+        const props = {
+          id,
+          className: 'member__input',
+          value: drafts[field.key] ?? '',
+          'aria-invalid': refused.has(field.key),
+          onChange: (e: { target: { value: string } }) => setDrafts({ ...drafts, [field.key]: e.target.value }),
+        }
+        return (
+          <Fragment key={field.key}>
+            <label htmlFor={id} className="member__label">
+              {field.label}
+            </label>
+            {field.type === 'enum' ? (
+              <select {...props}>
+                <option value="">{copy.choose}</option>
+                {(field.options ?? []).map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : field.type === 'number' ? (
+              <input {...props} type="text" inputMode="decimal" />
+            ) : field.type === 'date' ? (
+              <input {...props} type="date" />
+            ) : (
+              <input {...props} type="text" maxLength={1000} />
+            )}
+          </Fragment>
+        )
+      })}
+
+      {save.error && (
+        <p className="member__error" role="alert">
+          {refused.size > 0 ? copy.refused.invalid : copy.refused.failed}
+        </p>
+      )}
+
+      <div className="member__form-actions">
+        <button type="button" className="member__button" disabled={save.isPending} onClick={onCancel}>
+          {copy.cancel}
+        </button>
+        <button type="submit" className="member__button member__button--primary" disabled={save.isPending}>
+          {save.isPending ? copy.working : copy.save}
+        </button>
+      </div>
+    </form>
+  )
+}

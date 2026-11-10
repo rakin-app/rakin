@@ -2,7 +2,7 @@
 
 A class type is a kind of class in one of the gym's programs, with the credits an
 attendance costs a credits membership (0 for a free class). There is no delete:
-sessions point at it (migration 0019), so it is deactivated with `PATCH {"active": false}`.
+sessions point at it (migration 0020), so it is deactivated with `PATCH {"active": false}`.
 A name is unique within its program, case ignored: a second "Fundamentos" in Kids is a
 409, one in Adultos is not.
 

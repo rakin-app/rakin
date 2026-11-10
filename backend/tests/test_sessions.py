@@ -1,4 +1,4 @@
-"""Sessions (migration 0019): the day's classes, started ad hoc, topic and notes after.
+"""Sessions (migration 0020): the day's classes, started ad hoc, topic and notes after.
 
 A session is one class actually held, of one of the gym's class types, taught by one of
 its staff. The day's sessions are those starting on that day in the gym's timezone.
@@ -354,7 +354,7 @@ def test_there_is_no_delete(client: TestClient, db: Database, gym: uuid.UUID) ->
         run(db.api_url, in_gym(gym, "DELETE FROM session WHERE id = $1", uuid.UUID(session["id"])))
 
 
-# --- the table on its own (migration 0019) ----------------------------------------
+# --- the table on its own (migration 0020) ----------------------------------------
 
 
 @pg
@@ -394,7 +394,7 @@ def test_the_table_refuses_a_blank_topic_or_notes(
 def test_upgrade_and_downgrade() -> None:
     with throwaway_database(require_test_database_url()) as scratch:
         migrate(scratch)
-        command.downgrade(scratch.alembic(), "0018")
+        command.downgrade(scratch.alembic(), "0019")
         gone = "SELECT to_regclass('session') IS NULL"
         assert run(scratch.admin_url, lambda c: c.fetchval(gone)) is True
         migrate(scratch)

@@ -1,6 +1,6 @@
 """The current gym's sessions: the day's classes, start one, write its topic and notes.
 
-A session is one class actually held (migration 0019). There is no timetable: a coach
+A session is one class actually held (migration 0020). There is no timetable: a coach
 starts one ad hoc when the class begins, of one of the gym's active class types, and
 writes its topic and notes during or after class. The day's sessions are those whose
 `starts_at` falls on that calendar day in the gym's timezone, today by default.
@@ -14,7 +14,7 @@ write what it covered; members may not use it at all.
 """
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -22,7 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.dates import local_date, start_of_local_day
+from app.domain.dates import gym_today, start_of_local_day
 from app.roles import StaffSession
 from app.schemas.sessions import Day, Session, SessionCreate, SessionUpdate
 from app.tenancy import Tenant, current_tenant
@@ -92,7 +92,7 @@ async def list_sessions(
 ) -> Day:
     """`?date=` (an ISO day, default today in the gym's timezone): that day's sessions."""
     zone = await _timezone(session, tenant)
-    day = day or local_date(datetime.now(UTC), zone)
+    day = day or gym_today(zone)
     result = await session.execute(
         text(
             f"{SELECT_SESSION} WHERE s.starts_at >= :start AND s.starts_at < :end"

@@ -15,7 +15,7 @@ import unicodedata
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date
 from enum import StrEnum
 from typing import Literal
 
@@ -339,11 +339,10 @@ def read_members(
     rows: Sequence[tuple[int, Sequence[str]]],
     mapping: Mapping[Field, int],
     plans: PlanFinder,
-    today: date | None = None,
+    today: date,
 ) -> list[Member]:
     """Every row read, and each phone or dependent that an earlier row already has
     flagged `repeated`, so the sheet's first mention is the one imported."""
-    today = today or datetime.now(UTC).date()
     members = [read_member(n, cells, mapping, plans, today) for n, cells in rows]
     seen: set[object] = set()
     for member in members:

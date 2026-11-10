@@ -12,14 +12,14 @@ import contextlib
 import logging
 import signal
 from collections.abc import AsyncIterator, Sequence
-from datetime import UTC, date, datetime
+from datetime import date
 
 import asyncpg
 
 from app.auth import build_notices
 from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
-from app.domain.dates import local_date
+from app.domain.dates import gym_today
 from app.integrations import build_mailer
 from app.jobs import billing, freezes, lapse, statements
 from app.jobs.runner import Job, Outcome, Report, run_due
@@ -52,7 +52,7 @@ async def mailing(settings: Settings) -> AsyncIterator[Notices]:
 
 
 def today(settings: Settings) -> date:
-    return local_date(datetime.now(UTC), settings.jobs_timezone)
+    return gym_today(settings.jobs_timezone)
 
 
 async def run_once(settings: Settings, day: date, jobs: Sequence[Job]) -> Report:

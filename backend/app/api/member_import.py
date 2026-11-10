@@ -24,7 +24,7 @@ Only an owner or admin may import, since a membership sets what a member is char
 
 import uuid
 from collections.abc import Callable
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.guardians import NEW_GYM_PERSON, NEW_PERSON, family, link
 from app.api.memberships import insert_membership
 from app.domain import membership as domain
-from app.domain.dates import local_date, start_of_local_day
+from app.domain.dates import gym_today, start_of_local_day
 from app.domain.membership import PlanKind, PlanTerms
 from app.member_import.rows import (
     ErrorCode,
@@ -320,7 +320,7 @@ async def import_members(
     timezone: str = await session.scalar(
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
-    today = local_date(datetime.now(UTC), timezone)
+    today = gym_today(timezone)
     finder = PlanFinder(await _plans(session), body.plans)
     members = read_members(
         [(row.number, row.cells) for row in body.rows], body.mapping, finder, today

@@ -18,6 +18,9 @@ ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 # Signs local-disk upload URLs (and, later, magic links). Fine on a laptop, refused in
 # production.
 LOCAL_SECRET_KEY = "local-only-secret-change-me"
+# Encrypts sensitive custom-field values at rest. Its own key, not `SECRET_KEY`, so
+# rotating that after a leak never destroys them; refused in production too.
+LOCAL_FIELD_ENCRYPTION_KEY = "local-only-field-key-change-me"
 
 
 class Settings(BaseSettings):
@@ -35,6 +38,7 @@ class Settings(BaseSettings):
     db_pool_size: int = Field(default=5, ge=1)
     healthz_db_timeout_seconds: float = Field(default=2.0, gt=0)
     secret_key: str = Field(default=LOCAL_SECRET_KEY, min_length=16)
+    field_encryption_key: str = Field(default=LOCAL_FIELD_ENCRYPTION_KEY, min_length=16)
     # Where the browser reaches the app (Caddy), for absolute links the API hands out.
     public_base_url: str = "http://localhost:8080"
 
@@ -84,6 +88,13 @@ class Settings(BaseSettings):
     def _no_local_secret_in_production(self) -> "Settings":
         if self.environment == "production" and self.secret_key == LOCAL_SECRET_KEY:
             raise ValueError("secret_key: set SECRET_KEY; the local default is public")
+        if (
+            self.environment == "production"
+            and self.field_encryption_key == LOCAL_FIELD_ENCRYPTION_KEY
+        ):
+            raise ValueError(
+                "field_encryption_key: set FIELD_ENCRYPTION_KEY; the local default is public"
+            )
         return self
 
 

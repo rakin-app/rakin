@@ -12,11 +12,11 @@ for that date again, so the rows stay consistent with each other.
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date
 
 import asyncpg
 
-from app.domain.dates import local_date
+from app.domain.dates import gym_today
 from app.seed.build import GYM_ID, Seed, build
 from app.seed.data import TIMEZONE
 
@@ -49,11 +49,7 @@ async def load(conn: asyncpg.Connection, today: date | None = None) -> Loaded:
         stored = await conn.fetchval(
             "SELECT settings -> 'seed' ->> 'as_of' FROM gym WHERE id = $1", GYM_ID
         )
-        as_of = (
-            date.fromisoformat(stored)
-            if stored
-            else today or local_date(datetime.now(UTC), TIMEZONE)
-        )
+        as_of = date.fromisoformat(stored) if stored else today or gym_today(TIMEZONE)
         seed = build(as_of)
         inserted: dict[str, int] = {}
         for table, rows in seed.tables():

@@ -1,4 +1,4 @@
-"""Sessions: the classes a gym actually held (migration 0019).
+"""Sessions: the classes a gym actually held (migration 0020).
 
 A session is one class of a class type, started at a time and taught by a coach, with
 the topic and notes the coach writes after it. A blank topic or notes is no topic or
