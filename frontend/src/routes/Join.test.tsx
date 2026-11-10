@@ -181,6 +181,42 @@ describe('Inscríbete', () => {
   })
 })
 
+describe('Inscríbete with a human check', () => {
+  afterEach(() => {
+    delete window.turnstile
+  })
+
+  it('sends the widget’s token, and starts the widget over after a refusal', async () => {
+    const tokens: ((token: string) => void)[] = []
+    window.turnstile = {
+      render: vi.fn((_element: HTMLElement, options: { callback: (token: string) => void }) => {
+        tokens.push(options.callback)
+        return `w${tokens.length}`
+      }),
+      remove: vi.fn(),
+    } as unknown as NonNullable<typeof window.turnstile>
+    const sent = stubApi({
+      form: { body: { ...FORM, human_check_site_key: 'site' } },
+      submit: { status: 400, body: { detail: 'human_check_failed' } },
+    })
+    renderAt('/unirse/tok-123456789012345678901')
+
+    await fillAdult()
+    await vi.waitFor(() => expect(tokens).toHaveLength(1))
+    tokens[0]!('primero')
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.humanCheck)
+    expect(sent[1]!.body).toMatchObject({ human_check_token: 'primero' })
+    // A fresh widget, and the spent token is not sent again.
+    await vi.waitFor(() => expect(tokens).toHaveLength(2))
+    expect(window.turnstile!.remove).toHaveBeenCalledWith('w1')
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+    await vi.waitFor(() => expect(sent).toHaveLength(3))
+    expect(sent[2]!.body).toMatchObject({ human_check_token: null })
+  })
+})
+
 describe('ageOn', () => {
   it('counts whole years to the day', () => {
     expect(ageOn('2008-11-10', '2026-11-10')).toBe(18)

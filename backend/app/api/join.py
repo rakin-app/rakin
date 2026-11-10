@@ -8,10 +8,12 @@ staff approve them into members.
   session. A `GET` says what the form shows; a `POST` leaves a request in the queue,
   not a person, and answers 202 whatever it holds: nothing in the answer says
   whether the phone, RUT or email is someone's already, here or in another gym. A
-  token that is unknown, revoked or past its last day answers 404 `invalid_link`.
-  Sending is rate-limited per IP and per link, a filled-in honeypot is answered
-  like any submission and stores nothing, and with a human check configured
-  (`app.integrations.humancheck`) its token must pass.
+  token that is unknown, malformed, revoked or past its last day answers 404
+  `invalid_link`. A submission is checked in order of cost: the link first, then the
+  fields, then the honeypot (filled in, it is answered like any submission and
+  stores nothing), then the rate limits per IP and per link, and last the human
+  check, when one is configured (`app.integrations.humancheck`), so neither a
+  made-up token nor a form that would be refused spends a limit or a call to it.
 - `/api/join-requests` is the queue, for every staff role: each request with whoever
   in this gym already has its phone or RUT, approving one and rejecting one.
 
@@ -19,16 +21,20 @@ Approving adds the person through the importer's writer (`app.api.member_import`
 they are added exactly as a row of the gym's spreadsheet would be: found again by
 phone in this gym, else joined by phone (`join_gym_by_phone`, so a phone another gym
 knows attaches that identity without this gym learning so), a minor with their
-guardian, linked. Whoever is already here keeps this gym's record of them. With a
-plan, a membership starts on it today and the welcome goes out with its sign-in
-link; that is owner and admin only, since a plan is money, so a coach approves with
-no plan and the member shows as "sin plan". Without one, `join_approved` tells them
-they are in. Either way the request is deleted: it was only ever a request.
-Rejecting deletes it too, and the nightly `join_requests` job deletes any left for
-30 days (`app.jobs.join_requests`).
+guardian, linked. With a plan, a membership starts on it today and the welcome goes
+out with its sign-in link; that is owner and admin only, since a plan is money, so a
+coach approves with no plan and the member shows as "sin plan". Without one,
+`join_approved` tells them they are in. Either way the request is deleted: it was
+only ever a request. Rejecting deletes it too, and the nightly `join_requests` job
+deletes any left for 30 days (`app.jobs.join_requests`).
 
-The email the request carries is written into this gym's record of the person, which
-signs in to this gym and no other (migration 0029).
+Someone already here is linked, not added again: they keep this gym's record of them,
+email included, as the importer leaves them, and the queue says which of the
+request's emails that leaves unused (`ignored_email`, `ignored_guardian_email`). One
+who holds a live membership is approved without a plan, which links them and tells
+them nothing, since they are a member already; with a plan it is a 409
+`has_membership`, so nobody is billed twice. A new person's record takes the
+request's email, which signs in to this gym and no other (migration 0029).
 """
 
 import math
@@ -45,6 +51,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Path,
+    Query,
     Request,
     Response,
     status,
@@ -53,7 +60,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.member_import import RowRefused, Writer
+from app.api.member_import import LIVE_MEMBERSHIP, RowRefused, Writer
 from app.api.memberships import start_membership
 from app.api.unsubscribe import in_gym
 from app.contacts import contact_for
@@ -75,6 +82,7 @@ from app.schemas.join import (
     JoinRefusal,
     JoinRefused,
     JoinRequest,
+    JoinRequestPage,
     JoinSubmission,
     age_on,
 )
@@ -93,6 +101,8 @@ PER_IP = (20, 3600.0)
 PER_LINK = (100, 3600.0)
 
 INVALID_LINK = HTTPException(status.HTTP_404_NOT_FOUND, "invalid_link")
+# What `new_token` makes, give or take; anything else is no link of ours.
+TOKEN_LENGTHS = range(20, 65)
 NO_LINK = HTTPException(status.HTTP_404_NOT_FOUND, "no join link")
 NO_REQUEST = HTTPException(status.HTTP_404_NOT_FOUND, "join request not found")
 PLAN_IS_MONEY = HTTPException(status.HTTP_403_FORBIDDEN, "only an owner or admin gives a plan")
@@ -213,7 +223,9 @@ async def revoke_join_link(session: AdminSession) -> Response:
 
 # --- the public form ------------------------------------------------------------------
 
-Token = Annotated[str, Path(min_length=20, max_length=64)]
+# Any text: one that is no token of ours is a 404 `invalid_link`, as an unknown one is
+# (`_open`), not a 422 the form would read as a failure to retry.
+Token = Annotated[str, Path()]
 
 # The link, read with `app.gym_id` set to its gym.
 FORM = """
@@ -238,6 +250,8 @@ class _OpenLink:
 @asynccontextmanager
 async def _open(request: Request, token: str) -> AsyncIterator[_OpenLink]:
     """The link's gym, in a transaction acting there; a 404 when it does not work."""
+    if len(token) not in TOKEN_LENGTHS:
+        raise INVALID_LINK
     async with request.app.state.sessionmaker() as lookup:
         gym_id = await lookup.scalar(text("SELECT join_link_gym(:token)"), {"token": token})
     if gym_id is None:
@@ -305,14 +319,7 @@ async def submit_join_request(
     integrations: Annotated[Integrations, Depends(get_integrations)],
 ) -> Response:
     """Leave a request for the gym's staff. The answer is the same whatever it holds."""
-    ip = request.client.host if request.client else "unknown"
-    _admit(request, token, ip)
-    if not await integrations.human_check.verify(body.human_check_token, ip):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "human_check_failed")
     async with _open(request, token) as link:
-        if body.website:
-            # A script filled in the field people never see: answer as if it worked.
-            return Response(status_code=status.HTTP_202_ACCEPTED)
         values = body.model_dump(
             include={"first_name", "last_name", "rut", "phone", "email", "dob"}
         )
@@ -336,6 +343,13 @@ async def submit_join_request(
             if missing := [f for f in ("phone", "email") if getattr(body, f) is None]:
                 raise _missing(*missing)
             guardian = dict.fromkeys(("guardian_name", "guardian_phone", "guardian_email"))
+        ip = request.client.host if request.client else "unknown"
+        _admit(request, token, ip)
+        if body.website:
+            # A script filled in the field people never see: answer as if it worked.
+            return Response(status_code=status.HTTP_202_ACCEPTED)
+        if not await integrations.human_check.verify(body.human_check_token, ip):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "human_check_failed")
         await link.session.execute(
             text(INSERT_REQUEST), {**values, **guardian, "program_id": link.program_id}
         )
@@ -345,22 +359,39 @@ async def submit_join_request(
 # --- the queue (every staff role) -----------------------------------------------------
 
 # RLS keeps every table to the current gym. Whoever here has the request's phone, or
-# its RUT: one each, the first by name.
+# its RUT: one each, the first by name; and the email this gym has for whoever has
+# the request's phone and its guardian's, which approving keeps. A phone is one
+# person's (`person.phone` is unique), and `gym_person_rut_idx` (0031) finds a RUT.
 SELECT_REQUESTS = """
     SELECT r.*, pr.name AS program_name,
            bp.person_id AS phone_person_id, bp.name AS phone_person_name,
-           br.person_id AS rut_person_id, br.name AS rut_person_name
+           bp.email AS phone_person_email,
+           br.person_id AS rut_person_id, br.name AS rut_person_name,
+           bg.person_id AS guardian_person_id, bg.email AS guardian_person_email
     FROM join_request r
     LEFT JOIN program pr ON pr.gym_id = r.gym_id AND pr.id = r.program_id
     LEFT JOIN LATERAL (
-        SELECT gp.person_id, gp.name FROM gym_person gp JOIN person p ON p.id = gp.person_id
-        WHERE p.phone = r.phone ORDER BY gp.name, gp.person_id LIMIT 1
+        SELECT gp.person_id, gp.name, gp.email
+        FROM gym_person gp JOIN person p ON p.id = gp.person_id
+        WHERE p.phone = r.phone
     ) bp ON true
+    LEFT JOIN LATERAL (
+        SELECT gp.person_id, gp.email FROM gym_person gp JOIN person p ON p.id = gp.person_id
+        WHERE p.phone = r.guardian_phone
+    ) bg ON true
     LEFT JOIN LATERAL (
         SELECT gp.person_id, gp.name FROM gym_person gp
         WHERE gp.rut = r.rut ORDER BY gp.name, gp.person_id LIMIT 1
     ) br ON true
 """
+
+
+def _ignored(sent: str | None, found: uuid.UUID | None, kept: str | None) -> str | None:
+    """`sent`, when approving leaves it unused: someone here has the phone, and this
+    gym's record of them holds another email, or none."""
+    if sent is None or found is None or (kept or "").strip().lower() == sent.strip().lower():
+        return None
+    return sent
 
 
 def _ref(person_id: uuid.UUID | None, name: str | None) -> PersonRef | None:
@@ -387,14 +418,26 @@ def _request(row: Any) -> JoinRequest:
         created_at=row.created_at,
         phone_in_gym=_ref(row.phone_person_id, row.phone_person_name),
         rut_in_gym=_ref(row.rut_person_id, row.rut_person_name),
+        ignored_email=_ignored(row.email, row.phone_person_id, row.phone_person_email),
+        ignored_guardian_email=_ignored(
+            row.guardian_email, row.guardian_person_id, row.guardian_person_email
+        ),
     )
 
 
 @router.get("/join-requests")
-async def list_join_requests(session: StaffSession) -> list[JoinRequest]:
-    """The queue, oldest first."""
-    rows = await session.execute(text(f"{SELECT_REQUESTS} ORDER BY r.created_at, r.id"))
-    return [_request(row) for row in rows]
+async def list_join_requests(
+    session: StaffSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> JoinRequestPage:
+    """The queue, oldest first, a page at a time, and how many wait in all."""
+    total = await session.scalar(text("SELECT count(*) FROM join_request"))
+    rows = await session.execute(
+        text(f"{SELECT_REQUESTS} ORDER BY r.created_at, r.id LIMIT :limit OFFSET :offset"),
+        {"limit": limit, "offset": offset},
+    )
+    return JoinRequestPage(items=[_request(row) for row in rows], total=total or 0)
 
 
 @router.post(
@@ -442,9 +485,19 @@ async def approve_join_request(
         raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump()) from None
 
     membership_id = None
+    member_already = (
+        await session.execute(text(LIVE_MEMBERSHIP), {"id": person_id})
+    ).first() is not None
     if body.plan_id is not None:
+        if member_already:
+            # A second membership would bill them twice; approving with no plan links them.
+            conflict = JoinRefusal(code="has_membership", field="plan_id")
+            raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump())
         membership, notice = await start_membership(session, tenant.gym_id, person_id, body.plan_id)
         membership_id = membership.id
+    elif member_already:
+        # Linked to the member they already are, who needs no word of it.
+        notice = None
     else:
         notice = await _approved(session, tenant.gym_id, person_id)
     if notice is not None:

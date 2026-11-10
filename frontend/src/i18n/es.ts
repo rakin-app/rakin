@@ -152,6 +152,10 @@ export const es = {
       rejected: (name: string) => `Solicitud de ${name} rechazada.`,
       failed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
       family: 'Esta persona ya tiene otro apoderado en el gimnasio, o su apoderado está a cargo de alguien más. Revísalo en su ficha.',
+      hasMembership: 'Ya es alumno con un plan. Apruébala sin plan para unir la solicitud a su ficha.',
+      ignoredEmail: (email: string) => `Su ficha mantiene su correo; ${email} no se usará.`,
+      ignoredGuardianEmail: (email: string) => `La ficha del apoderado mantiene su correo; ${email} no se usará.`,
+      oldestShown: (n: number) => `Mostrando las ${n} más antiguas.`,
     },
     students: {
       title: 'Alumnos',

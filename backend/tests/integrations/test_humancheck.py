@@ -2,6 +2,9 @@
 
 import asyncio
 
+import pytest
+from pydantic import ValidationError
+
 from app.integrations import build_human_check
 from app.integrations.humancheck import SITEVERIFY_URL, NoHumanCheck, TurnstileCheck
 from tests.conftest import make_settings
@@ -52,3 +55,17 @@ def test_turnstile_refuses_a_failed_missing_or_unverifiable_token() -> None:
     assert asyncio.run(turnstile(OSError("down"), calls).verify("tok", None)) is False
     # The missing token never reached Cloudflare.
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "keys",
+    [
+        {},
+        {"turnstile_site_key": "site"},
+        {"turnstile_secret_key": "s"},
+        {"turnstile_site_key": " ", "turnstile_secret_key": "s"},
+    ],
+)
+def test_turnstile_without_its_keys_is_refused_at_startup(keys: dict[str, str]) -> None:
+    with pytest.raises(ValidationError, match="TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY"):
+        make_settings(human_check="turnstile", **keys)

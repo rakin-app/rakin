@@ -13,6 +13,8 @@
   nightly `join_requests` job deletes any left for 30 days.
 
 Both are gym-scoped like every table with a `gym_id`: FORCEd RLS on the current gym.
+`gym_person_rut_idx` serves the queue, which says who in the gym already has each
+request's RUT.
 
 The public form knows only a token, not a gym, so `join_link_gym(token)` answers which
 gym it belongs to and nothing else. It is a `SECURITY DEFINER` function owned by
@@ -103,6 +105,8 @@ def upgrade() -> None:
     """)
     op.execute("CREATE INDEX join_request_gym_created_idx ON join_request (gym_id, created_at)")
     _isolate("join_request", "SELECT, INSERT, DELETE")
+    # The queue looks up each request's RUT in the gym.
+    op.execute("CREATE INDEX gym_person_rut_idx ON gym_person (gym_id, rut)")
 
     op.execute(f"GRANT SELECT (token, gym_id) ON join_link TO {AUTH_ROLE}")
     # A new owner needs CREATE on the schema at the moment it takes a function over,
@@ -118,5 +122,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(f"DROP FUNCTION {SIGNATURE}")
     op.execute(f"REVOKE SELECT (token, gym_id) ON join_link FROM {AUTH_ROLE}")
+    op.execute("DROP INDEX gym_person_rut_idx")
     op.execute("DROP TABLE join_request")
     op.execute("DROP TABLE join_link")

@@ -105,6 +105,16 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
+    def _turnstile_has_its_keys(self) -> "Settings":
+        if self.human_check == "turnstile" and not (
+            self.turnstile_site_key.strip() and self.turnstile_secret_key.strip()
+        ):
+            raise ValueError(
+                "human_check=turnstile needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _no_local_secret_in_production(self) -> "Settings":
         if self.environment == "production" and self.secret_key == LOCAL_SECRET_KEY:
             raise ValueError("secret_key: set SECRET_KEY; the local default is public")

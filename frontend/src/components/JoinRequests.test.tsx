@@ -24,6 +24,8 @@ const ANA: JoinRequest = {
   created_at: '2026-11-09T15:00:00Z',
   phone_in_gym: { id: 'p9', name: 'Ana Antigua' },
   rut_in_gym: null,
+  ignored_email: 'ana@example.cl',
+  ignored_guardian_email: null,
 }
 
 const JUAN: JoinRequest = {
@@ -38,6 +40,7 @@ const JUAN: JoinRequest = {
   program_id: null,
   program_name: null,
   phone_in_gym: null,
+  ignored_email: null,
 }
 
 const PLANS = [
@@ -49,7 +52,15 @@ const PLANS = [
 
 type Call = { method: string; path: string; body: unknown }
 
-function stubApi({ role = 'owner', requests = [ANA, JUAN] }: { role?: string; requests?: JoinRequest[] } = {}) {
+function stubApi({
+  role = 'owner',
+  requests = [ANA, JUAN],
+  approve,
+}: {
+  role?: string
+  requests?: JoinRequest[]
+  approve?: { status: number; body: unknown }
+} = {}) {
   const calls: Call[] = []
   let queue = requests
   vi.stubGlobal(
@@ -62,9 +73,10 @@ function stubApi({ role = 'owner', requests = [ANA, JUAN] }: { role?: string; re
       let answer: { status?: number; body?: unknown } = { status: 404, body: { detail: 'Not Found' } }
       if (url.pathname === '/api/me/role') answer = { body: { role, person_id: 'me' } }
       if (url.pathname === '/api/plans') answer = { body: PLANS }
-      if (url.pathname === '/api/join-requests') answer = { body: queue }
+      if (url.pathname === '/api/join-requests') answer = { body: { items: queue, total: queue.length } }
       const approved = /^\/api\/join-requests\/(\w+)\/approve$/.exec(url.pathname)
-      if (approved) {
+      if (approved && approve) answer = approve
+      else if (approved) {
         queue = queue.filter((r) => r.id !== approved[1])
         answer = { body: { person_id: 'nuevo', membership_id: body.plan_id ? 'm1' : null } }
       }
@@ -109,8 +121,23 @@ describe('Solicitudes', () => {
       'href',
       '/admin/alumnos/p9',
     )
+    expect(within(ana).getByText(copy.ignoredEmail('ana@example.cl'))).toBeInTheDocument()
     const juan = await row('Juan Pérez')
     expect(within(juan).getByText(/Apoderado: Marta Pérez/)).toBeInTheDocument()
+    expect(within(juan).queryByText(/no se usará/)).not.toBeInTheDocument()
+  })
+
+  it('says to approve with no plan someone who is a member already', async () => {
+    stubApi({ approve: { status: 409, body: { detail: { code: 'has_membership', field: 'plan_id' } } } })
+    renderAt('/admin/alumnos')
+
+    const ana = await row('Ana Pérez')
+    const select = await within(ana).findByLabelText(copy.plan)
+    await within(select).findByRole('option', { name: 'Mensual kids' })
+    await userEvent.selectOptions(select, 'kids-plan')
+    await userEvent.click(within(ana).getByRole('button', { name: copy.approveLabel('Ana Pérez') }))
+
+    expect(await within(ana).findByRole('alert')).toHaveTextContent(copy.hasMembership)
   })
 
   it('shows on Hoy for a coach, who approves with no plan', async () => {

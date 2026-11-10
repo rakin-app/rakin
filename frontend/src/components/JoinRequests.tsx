@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import { ApiError } from '../api/client'
-import { ageOn, approveJoinRequest, joinRequestsQuery, rejectJoinRequest, type JoinRequest } from '../api/join'
+import {
+  ageOn,
+  approveJoinRequest,
+  joinRequestsQuery,
+  rejectJoinRequest,
+  type JoinRequest,
+} from '../api/join'
 import { managesGym, myRoleQuery } from '../api/me'
 import { plansQuery, type Plan } from '../api/plans'
 import { useGymTimeZone, useGymToday } from '../api/sessions'
@@ -28,7 +34,8 @@ export function JoinRequests() {
   const [notice, setNotice] = useState<string | null>(null)
   const titleId = useId()
 
-  if (!requests.data || (requests.data.length === 0 && notice === null)) return null
+  if (!requests.data || (requests.data.total === 0 && notice === null)) return null
+  const { items, total } = requests.data
 
   // A plan someone can be started on: active, and not a drop-in, which is no membership.
   const choices = (plans.data ?? []).filter((plan) => plan.active && plan.kind !== 'dropin')
@@ -36,15 +43,16 @@ export function JoinRequests() {
   return (
     <section className="join-requests" aria-labelledby={titleId}>
       <h2 id={titleId} className="join-requests__title">
-        {copy.title(requests.data.length)}
+        {copy.title(total)}
       </h2>
+      {items.length < total && <p className="join-requests__hint">{copy.oldestShown(items.length)}</p>}
       {notice && (
         <p className="join-requests__done" role="status">
           {notice}
         </p>
       )}
       <ul className="join-requests__list">
-        {requests.data.map((request) => (
+        {items.map((request) => (
           <RequestRow
             key={request.id}
             request={request}
@@ -128,6 +136,12 @@ function RequestRow({
             {copy.phoneInGym(request.phone_in_gym.name)}
           </Link>
         )}
+        {request.ignored_email && (
+          <span className="join-requests__warning">{copy.ignoredEmail(request.ignored_email)}</span>
+        )}
+        {request.ignored_guardian_email && (
+          <span className="join-requests__warning">{copy.ignoredGuardianEmail(request.ignored_guardian_email)}</span>
+        )}
         {request.rut_in_gym && (
           <Link
             to="/admin/alumnos/$personId"
@@ -164,7 +178,7 @@ function RequestRow({
       )}
       {failed && (
         <p className="join-requests__error" role="alert">
-          {failed instanceof ApiError && failed.status === 409 ? copy.family : copy.failed}
+          {refusalOf(failed)}
         </p>
       )}
       {confirming ? (
@@ -208,4 +222,11 @@ function RequestRow({
       )}
     </li>
   )
+}
+
+/** What a refused approval means: a member already (approve with no plan), a family link the gym cannot make. */
+function refusalOf(error: Error): string {
+  if (!(error instanceof ApiError) || error.status !== 409) return copy.failed
+  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
+  return code === 'has_membership' ? copy.hasMembership : copy.family
 }

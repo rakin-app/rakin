@@ -110,6 +110,8 @@ function JoinFormBody({
   const [drafts, setDrafts] = useState<Drafts>(EMPTY)
   const [consent, setConsent] = useState(false)
   const [humanToken, setHumanToken] = useState<string | null>(null)
+  // Bumped after a failed submission: a widget token is good once, so the widget starts over.
+  const [humanRound, setHumanRound] = useState(0)
   const set = (field: keyof Drafts, value: string) => setDrafts({ ...drafts, [field]: value })
   const age = ageOn(drafts.dob, today)
   const minor = age !== null && age < ADULT_AGE
@@ -131,6 +133,10 @@ function JoinFormBody({
         human_check_token: humanToken,
       }
       return submitJoinRequest(token, body)
+    },
+    onError: () => {
+      setHumanToken(null)
+      setHumanRound((round) => round + 1)
     },
   })
   const errors = validationErrors(send.error)
@@ -201,7 +207,7 @@ function JoinFormBody({
         <span>{copy.consent}</span>
       </label>
       {'consent' in errors && <p className="join__field-error">{copy.refused.consent}</p>}
-      {siteKey && <HumanCheck siteKey={siteKey} onToken={setHumanToken} />}
+      {siteKey && <HumanCheck key={humanRound} siteKey={siteKey} onToken={setHumanToken} />}
       {send.isError && (
         <p className="join__error" role="alert">
           {problem(send.error, Object.keys(errors).length > 0)}
@@ -277,8 +283,15 @@ function Input({
   )
 }
 
+type TurnstileOptions = {
+  sitekey: string
+  callback: (token: string) => void
+  'expired-callback': () => void
+  'error-callback': () => void
+}
+
 type Turnstile = {
-  render: (element: HTMLElement, options: { sitekey: string; callback: (token: string) => void }) => string
+  render: (element: HTMLElement, options: TurnstileOptions) => string
   remove: (widgetId: string) => void
 }
 
@@ -290,15 +303,25 @@ declare global {
 
 const TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
 
-/** Cloudflare Turnstile's widget, when the instance checks for humans; its token goes with the form. */
-function HumanCheck({ siteKey, onToken }: { siteKey: string; onToken: (token: string) => void }) {
+/**
+ * Cloudflare Turnstile's widget, when the instance checks for humans; its token goes
+ * with the form. A token is good once and for a few minutes, so one that expires or
+ * errors is dropped, and the form remounts the widget (its `key`) after a failed
+ * submission, for a fresh one.
+ */
+function HumanCheck({ siteKey, onToken }: { siteKey: string; onToken: (token: string | null) => void }) {
   const box = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let widget: string | undefined
     const render = () => {
       if (box.current && window.turnstile && widget === undefined) {
-        widget = window.turnstile.render(box.current, { sitekey: siteKey, callback: onToken })
+        widget = window.turnstile.render(box.current, {
+          sitekey: siteKey,
+          callback: onToken,
+          'expired-callback': () => onToken(null),
+          'error-callback': () => onToken(null),
+        })
       }
     }
     let script = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SCRIPT}"]`)

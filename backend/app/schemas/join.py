@@ -109,6 +109,16 @@ class JoinRequest(BaseModel):
     # Someone in this gym with the request's phone, or its RUT.
     phone_in_gym: PersonRef | None
     rut_in_gym: PersonRef | None
+    # The request's emails approving leaves unused: someone here has the phone, and
+    # keeps the email this gym has for them.
+    ignored_email: str | None
+    ignored_guardian_email: str | None
+
+
+class JoinRequestPage(BaseModel):
+    items: list[JoinRequest]
+    # Every request waiting, not just this page's.
+    total: int
 
 
 class JoinApproval(BaseModel):
@@ -125,12 +135,14 @@ class JoinApproved(BaseModel):
     membership_id: uuid.UUID | None
 
 
-JoinRefusalCode = ErrorCode
+# The importer's refusals of the family link, or `has_membership`: approving with a
+# plan someone who already holds a live membership here.
+JoinRefusalCode = ErrorCode | Literal["has_membership"]
 
 
 class JoinRefusal(BaseModel):
     """409 body: the family link the request asks for is one the gym cannot make
-    (migration 0010), on `field`."""
+    (migration 0010), or the person is a member already, on `field`."""
 
     code: JoinRefusalCode
     field: str

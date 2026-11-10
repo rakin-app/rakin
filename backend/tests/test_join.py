@@ -17,6 +17,7 @@ import asyncpg
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.api.join import JoinLimits
 from app.domain.dates import start_of_local_day
@@ -155,7 +156,7 @@ def submitted(client: TestClient, token: str, body: dict[str, Any]) -> None:
 def queue(client: TestClient, gym: uuid.UUID, by: uuid.UUID | None = None) -> list[dict[str, Any]]:
     response = client.get("/api/join-requests", headers=as_gym(gym, by))
     assert response.status_code == 200, response.text
-    requests: list[dict[str, Any]] = response.json()
+    requests: list[dict[str, Any]] = response.json()["items"]
     return requests
 
 
@@ -261,9 +262,19 @@ def test_revoking_retires_the_link(client: TestClient, gym: uuid.UUID) -> None:
     assert submit(client, token, adult()).status_code == 404
 
 
-def test_an_unknown_token_is_an_invalid_link(client: TestClient) -> None:
-    gone = client.get(f"/api/join/{'x' * 32}")
+@pytest.mark.parametrize("token", ["x" * 32, "corto", "x" * 300])
+def test_an_unknown_or_malformed_token_is_an_invalid_link(client: TestClient, token: str) -> None:
+    gone = client.get(f"/api/join/{token}")
     assert (gone.status_code, gone.json()) == (404, {"detail": "invalid_link"})
+    sent = submit(client, token, adult())
+    assert (sent.status_code, sent.json()) == (404, {"detail": "invalid_link"})
+
+
+def test_a_truncated_link_is_an_invalid_link(client: TestClient, gym: uuid.UUID) -> None:
+    token = token_of(client, gym)
+
+    assert client.get(f"/api/join/{token[:12]}").status_code == 404
+    assert client.get(f"/api/join/{token[:-1]}").status_code == 404
 
 
 def test_a_link_works_through_its_last_day(client: TestClient, gym: uuid.UUID) -> None:
@@ -485,6 +496,47 @@ def test_sending_is_rate_limited_per_ip(client: TestClient, gym: uuid.UUID, db: 
     assert submit(client, token_of(client, elsewhere), adult()).status_code == 429
 
 
+@pytest.mark.usefixtures("tight")
+def test_only_a_submission_that_would_be_stored_spends_the_limit(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    token = token_of(client, gym)
+    body = minor()
+    del body["guardian_email"]
+    for _ in range(5):
+        assert submit(client, "inventado-" + "x" * 20, adult()).status_code == 404
+        assert submit(client, token, body).status_code == 422
+
+    for _ in range(3):
+        submitted(client, token, adult())
+    assert submit(client, token, adult()).status_code == 429
+
+
+@pytest.mark.usefixtures("tight")
+def test_the_limit_is_per_forwarded_client_address(
+    app: FastAPI, gym: uuid.UUID, db: Database
+) -> None:
+    """Behind Caddy, uvicorn takes the client's address from X-Forwarded-For
+    (`FORWARDED_ALLOW_IPS`); the limit is that address's, not the proxy's."""
+    proxied = ProxyHeadersMiddleware(app, trusted_hosts="*")  # type: ignore[arg-type]
+    with TestClient(proxied) as through_caddy:  # type: ignore[arg-type]
+        token = token_of(through_caddy, gym)
+        ana = {"X-Forwarded-For": "203.0.113.7"}
+        for _ in range(3):
+            assert (
+                through_caddy.post(f"/api/join/{token}", json=adult(), headers=ana).status_code
+                == 202
+            )
+        assert (
+            through_caddy.post(f"/api/join/{token}", json=adult(), headers=ana).status_code == 429
+        )
+
+        beto = {"X-Forwarded-For": "198.51.100.4"}
+        assert (
+            through_caddy.post(f"/api/join/{token}", json=adult(), headers=beto).status_code == 202
+        )
+
+
 def test_sending_is_rate_limited_per_link(app: FastAPI, client: TestClient, gym: uuid.UUID) -> None:
     app.state.join_limits = JoinLimits(
         per_ip=MemoryRateLimiter(limit=ROOMY, window_seconds=3600),
@@ -496,7 +548,7 @@ def test_sending_is_rate_limited_per_link(app: FastAPI, client: TestClient, gym:
         submitted(client, token, adult())
 
         assert submit(client, token, adult()).status_code == 429
-        # The honeypot counts too, so a script cannot spend it to learn the limit.
+        # The honeypot counts too, so a script cannot tell it apart by the limit.
         assert submit(client, token, adult(website="x")).status_code == 429
         assert submit(client, token_of(client, gym), adult()).status_code == 202
     finally:
@@ -530,6 +582,15 @@ def test_a_human_check_must_pass(app: FastAPI, client: TestClient, gym: uuid.UUI
         submitted(client, token, adult(human_check_token="ok"))
         assert check.seen[-1] == ("ok", "testclient")
         assert len(queue(client, gym)) == 1
+
+        # Neither a made-up link nor a form the API refuses spends a check.
+        seen = len(check.seen)
+        assert (
+            submit(client, "inventado-" + "x" * 20, adult(human_check_token="ok")).status_code
+            == 404
+        )
+        assert submit(client, token, adult(phone=None, human_check_token="ok")).status_code == 422
+        assert len(check.seen) == seen
     finally:
         app.state.integrations = integrations
 
@@ -577,6 +638,40 @@ def test_the_queue_warns_of_a_phone_or_rut_already_in_this_gym(
     assert by_phone["rut_in_gym"] is None
     assert by_rut["rut_in_gym"] == {"id": beto, "name": "Beto"}
     assert (unknown["phone_in_gym"], unknown["rut_in_gym"]) == (None, None)
+
+
+def test_the_queue_says_which_emails_approving_leaves_unused(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    token = token_of(client, gym)
+    phone = new_phone()
+    add_person(client, gym, "Ana Antigua", phone=phone)  # ana.antigua@example.cl
+    marta_phone = new_phone()
+    add_person(client, gym, "Marta", phone=marta_phone)  # marta@example.cl
+    submitted(client, token, adult(phone=phone, email="ana.nueva@example.cl"))
+    submitted(client, token, adult(phone=phone, email="ANA.ANTIGUA@example.cl"))
+    submitted(client, token, minor(guardian_phone=marta_phone, guardian_email="otra@example.cl"))
+    submitted(client, token, adult())
+
+    new_email, same_email, minor_row, unknown = queue(client, gym)
+    assert new_email["ignored_email"] == "ana.nueva@example.cl"
+    assert same_email["ignored_email"] is None
+    assert (minor_row["ignored_email"], minor_row["ignored_guardian_email"]) == (
+        None,
+        "otra@example.cl",
+    )
+    assert (unknown["ignored_email"], unknown["ignored_guardian_email"]) == (None, None)
+
+
+def test_the_queue_comes_a_page_at_a_time(client: TestClient, gym: uuid.UUID) -> None:
+    token = token_of(client, gym)
+    for name in ("Primera", "Segunda", "Tercera"):
+        submitted(client, token, adult(first_name=name))
+
+    page = client.get("/api/join-requests?limit=2&offset=1", headers=as_gym(gym)).json()
+
+    assert page["total"] == 3
+    assert [r["first_name"] for r in page["items"]] == ["Segunda", "Tercera"]
 
 
 def test_coaches_see_the_queue_and_members_do_not(
@@ -666,6 +761,32 @@ def test_approving_someone_already_here_keeps_their_record(
     assert answer["person_id"] == ana
     assert record(db, gym, ana)["name"] == "Ana Antigua"
     assert record(db, gym, ana)["email"] == "ana.antigua@example.cl"
+    assert queue(client, gym) == []
+
+
+def test_a_member_already_here_is_linked_and_never_given_a_second_plan(
+    client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    mensual = plan(client, gym)
+    phone = new_phone()
+    ana = add_person(client, gym, "Ana Antigua", phone=phone)
+    started = client.post(
+        "/api/memberships", json={"person_id": ana, "plan_id": mensual}, headers=as_gym(gym)
+    )
+    assert started.status_code == 201, started.text
+    request = one_request(client, gym, token_of(client, gym), adult(phone=phone))
+    mailer.sent.clear()
+
+    refused = approve(client, gym, request, plan_id=mensual)
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == {"code": "has_membership", "field": "plan_id"}
+    assert len(queue(client, gym)) == 1
+
+    answer = approved(client, gym, request)
+    assert (answer["person_id"], answer["membership_id"]) == (ana, None)
+    memberships = client.get(f"/api/memberships?person_id={ana}", headers=as_gym(gym)).json()
+    assert len(memberships) == 1
+    assert mailer.sent == []
     assert queue(client, gym) == []
 
 

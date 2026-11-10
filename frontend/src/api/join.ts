@@ -111,17 +111,30 @@ export type JoinRequest = {
   created_at: string
   phone_in_gym: PersonRef | null
   rut_in_gym: PersonRef | null
+  // The request's emails approving leaves unused: whoever here has the phone keeps theirs.
+  ignored_email: string | null
+  ignored_guardian_email: string | null
 }
+
+/** A page of the queue, and how many wait in all (backend `JoinRequestPage`). */
+export type JoinRequestPage = { items: JoinRequest[]; total: number }
+
+// The queue shows the oldest this many; the count is of them all.
+export const JOIN_REQUESTS_SHOWN = 50
 
 /** The queue, oldest first. Every staff role. */
 export const joinRequestsQuery = queryOptions({
   queryKey: ['join-requests'],
-  queryFn: () => apiFetch<JoinRequest[]>('/api/join-requests'),
+  queryFn: () => apiFetch<JoinRequestPage>(`/api/join-requests?limit=${JOIN_REQUESTS_SHOWN}`),
 })
 
 export type JoinApproved = { person_id: string; membership_id: string | null }
 
-/** Adds the person, with a membership on `planId` when given (owner and admin only). */
+/**
+ * Adds the person, with a membership on `planId` when given (owner and admin only). A
+ * 409 `has_membership` is someone already a member here: approved with no plan, they
+ * are linked as they are.
+ */
 export function approveJoinRequest(requestId: string, planId: string | null): Promise<JoinApproved> {
   return apiFetch<JoinApproved>(`/api/join-requests/${encodeURIComponent(requestId)}/approve`, {
     method: 'POST',
