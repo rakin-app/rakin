@@ -17,14 +17,20 @@ import {
   membershipLedgerQuery,
   membershipsQuery,
   personQuery,
+  recordAdjustment,
   recordPayment,
+  recordRefund,
   shownMembership,
   type FreezeLine,
+  type LedgerPeriod,
   type Membership,
   type MembershipLedger,
   type Method,
   type OpenPeriod,
+  type RecordedAdjustment,
   type RecordedPayment,
+  type RecordedRefund,
+  type RefundablePayment,
   type TimelineEntry,
 } from '../api/member'
 import { myRoleQuery, readsLedger } from '../api/me'
@@ -43,13 +49,14 @@ const route = getRouteApi('/admin/alumnos/$personId')
 /**
  * "Ficha de alumno": who the member is and their rank, the plan they are on and how it
  * stands, their graduación and family, and, for whoever reads the ledger, what they
- * owe, their ledger with its freezes, "Registrar pago" and "Congelar" (#26).
+ * owe, their ledger with its freezes, "Registrar pago", "Congelar" (#26), "Ajuste"
+ * and "Devolver" (#38).
  * A coach sees the member, their plan and rank, whether it is frozen, and promotes
  * them; never money.
  *
  * Below them, the gym's custom fields the signed-in role may see (#20).
  *
- * Ajuste and attendance join this screen with their own tickets (#38, #44).
+ * Attendance joins this screen with its own ticket (#44).
  */
 export function MemberDetail() {
   const { personId } = route.useParams()
@@ -147,7 +154,7 @@ function Standing({ membership, money }: { membership: Membership; money: boolea
             {copy.ledgerError}
           </p>
         )}
-        {data && <Actions membership={membership} periods={data.open_periods} />}
+        {data && <Actions membership={membership} ledger={data} />}
       </section>
       {data && <Ledger ledger={data} />}
     </>
@@ -197,9 +204,19 @@ function Owed({ ledger }: { ledger: MembershipLedger }) {
   )
 }
 
-type Open = 'payment' | 'freeze' | null
+type Open = 'payment' | 'adjustment' | 'refund' | 'freeze' | null
 
-function Actions({ membership, periods }: { membership: Membership; periods: OpenPeriod[] }) {
+/** The periods that still owe, oldest first, then the paid ones, newest first: an
+ * adjustment in the member's favour goes to the first, one owed to either. */
+function adjustable(ledger: MembershipLedger): LedgerPeriod[] {
+  const owing = ledger.periods.filter((p) => p.outstanding_clp > 0).reverse()
+  return [...owing, ...ledger.periods.filter((p) => p.outstanding_clp === 0)]
+}
+
+function Actions({ membership, ledger }: { membership: Membership; ledger: MembershipLedger }) {
+  const periods = ledger.open_periods
+  const known = adjustable(ledger)
+  const payments = ledger.refundable_payments
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
   const toggle = (form: Open) => {
@@ -225,6 +242,24 @@ function Actions({ membership, periods }: { membership: Membership; periods: Ope
         <button
           type="button"
           className="member__button"
+          aria-expanded={open === 'adjustment'}
+          disabled={known.length === 0}
+          onClick={() => toggle('adjustment')}
+        >
+          {copy.adjust}
+        </button>
+        <button
+          type="button"
+          className="member__button"
+          aria-expanded={open === 'refund'}
+          disabled={payments.length === 0}
+          onClick={() => toggle('refund')}
+        >
+          {copy.refund}
+        </button>
+        <button
+          type="button"
+          className="member__button"
           aria-expanded={open === 'freeze'}
           disabled={membership.status !== 'active'}
           onClick={() => toggle('freeze')}
@@ -239,6 +274,12 @@ function Actions({ membership, periods }: { membership: Membership; periods: Ope
       )}
       {open === 'payment' && periods.length > 0 && (
         <PaymentForm membership={membership} periods={periods} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'adjustment' && known.length > 0 && (
+        <AdjustmentForm membership={membership} periods={known} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'refund' && payments.length > 0 && (
+        <RefundForm payments={payments} onCancel={() => setOpen(null)} onDone={finish} />
       )}
       {open === 'freeze' && membership.status === 'active' && (
         <FreezeForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
@@ -385,7 +426,8 @@ function PaymentForm({
       }),
     onSuccess: async (result: RecordedPayment) => {
       const credit = result.credit ? form.credit(clp(result.credit.amount_clp)) : ''
-      onDone(form.recorded(clp(value)) + credit)
+      const rest = result.period.closed ? '' : form.remainder(clp(result.period.outstanding_clp))
+      onDone(form.recorded(clp(value)) + credit + rest)
       await queryClient.invalidateQueries({ queryKey: ['ledger'] })
     },
   })
@@ -744,6 +786,267 @@ function refusal(error: Error): string {
   return typeof code === 'string' && code in refused ? refused[code as keyof typeof refused] : refused.failed
 }
 
+type Direction = 'favor' | 'owed'
+const DIRECTIONS: readonly Direction[] = ['favor', 'owed']
+
+function AdjustmentForm({
+  membership,
+  periods,
+  onCancel,
+  onDone,
+}: {
+  membership: Membership
+  periods: LedgerPeriod[]
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.adjustForm
+  const ids = { direction: useId(), period: useId(), amount: useId(), note: useId() }
+  const owing = periods.filter((p) => p.outstanding_clp > 0)
+  const [direction, setDirection] = useState<Direction>(owing.length > 0 ? 'favor' : 'owed')
+  // In the member's favour, only a period that still owes: no more than that settles.
+  const choices = direction === 'favor' ? owing : periods
+  const [periodId, setPeriodId] = useState(choices[0]?.id ?? '')
+  const period = choices.find((p) => p.id === periodId) ?? choices[0]
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const [checked, setChecked] = useState(false)
+  const value = Number(amount.replace(/\D/g, ''))
+  const signed = direction === 'favor' ? value : -value
+  const noteOk = note.trim() !== ''
+
+  const adjust = useMutation({
+    mutationFn: () =>
+      recordAdjustment({
+        membership_id: membership.id,
+        billing_period_id: period!.id,
+        amount_clp: signed,
+        note: note.trim(),
+      }),
+    onSuccess: async (result: RecordedAdjustment) => {
+      const rest = result.period.closed ? '' : copy.form.remainder(clp(result.period.outstanding_clp))
+      onDone(form.done(t.common.signedClp(signed)) + rest)
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (value && noteOk && period) adjust.mutate()
+  }
+
+  return (
+    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <label htmlFor={ids.direction} className="member__label">
+        {form.direction}
+      </label>
+      <select
+        id={ids.direction}
+        className="member__input"
+        value={direction}
+        onChange={(e) => setDirection(e.target.value as Direction)}
+      >
+        {DIRECTIONS.map((d) => (
+          <option key={d} value={d} disabled={d === 'favor' && owing.length === 0}>
+            {form.directions[d]}
+          </option>
+        ))}
+      </select>
+
+      <label htmlFor={ids.period} className="member__label">
+        {form.period}
+      </label>
+      <select id={ids.period} className="member__input" value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
+        {choices.map((p) => (
+          <option key={p.id} value={p.id}>
+            {form.periodOption(monthName(p.period_start), clp(p.outstanding_clp))}
+          </option>
+        ))}
+      </select>
+
+      <label htmlFor={ids.amount} className="member__label">
+        {form.amount}
+      </label>
+      <input
+        id={ids.amount}
+        className="member__input"
+        inputMode="numeric"
+        value={amount}
+        aria-invalid={checked && !value}
+        onChange={(e) => setAmount(e.target.value)}
+      />
+      {checked && !value && (
+        <p className="member__error" role="alert">
+          {form.amountNeeded}
+        </p>
+      )}
+
+      <label htmlFor={ids.note} className="member__label">
+        {form.note}
+      </label>
+      <input
+        id={ids.note}
+        className="member__input"
+        type="text"
+        maxLength={500}
+        value={note}
+        aria-invalid={checked && !noteOk}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      {checked && !noteOk && (
+        <p className="member__error" role="alert">
+          {form.noteNeeded}
+        </p>
+      )}
+
+      {adjust.error && (
+        <p className="member__error" role="alert">
+          {adjust.error instanceof ApiError && adjust.error.status === 409 ? form.refused.exceeds : form.refused.failed}
+        </p>
+      )}
+
+      <div className="member__form-actions">
+        <button type="button" className="member__button" disabled={adjust.isPending} onClick={onCancel}>
+          {form.cancel}
+        </button>
+        <button type="submit" className="member__button member__button--primary" disabled={adjust.isPending}>
+          {adjust.isPending ? form.working : form.submit(t.common.signedClp(signed))}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function RefundForm({
+  payments,
+  onCancel,
+  onDone,
+}: {
+  payments: RefundablePayment[]
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.refundForm
+  const ids = { payment: useId(), amount: useId(), method: useId(), note: useId() }
+  const [paymentId, setPaymentId] = useState(payments[0]!.id)
+  const payment = payments.find((p) => p.id === paymentId) ?? payments[0]!
+  const [amount, setAmount] = useState(String(payment.refundable_clp))
+  const [method, setMethod] = useState<Method>(payment.method ?? 'transfer')
+  const [note, setNote] = useState('')
+  const [amountNeeded, setAmountNeeded] = useState(false)
+  const value = Number(amount.replace(/\D/g, ''))
+
+  const refund = useMutation({
+    mutationFn: () =>
+      recordRefund({
+        payment_id: payment.id,
+        amount_clp: value,
+        method,
+        ...(note.trim() ? { note: note.trim() } : {}),
+      }),
+    onSuccess: async (result: RecordedRefund) => {
+      const rest = result.period.closed ? '' : copy.form.remainder(clp(result.period.outstanding_clp))
+      onDone(form.done(clp(value)) + rest)
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    if (!value) {
+      setAmountNeeded(true)
+      return
+    }
+    refund.mutate()
+  }
+
+  return (
+    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <label htmlFor={ids.payment} className="member__label">
+        {form.payment}
+      </label>
+      <select
+        id={ids.payment}
+        className="member__input"
+        value={payment.id}
+        onChange={(e) => {
+          setPaymentId(e.target.value)
+          const chosen = payments.find((p) => p.id === e.target.value)
+          if (chosen) setAmount(String(chosen.refundable_clp))
+        }}
+      >
+        {payments.map((p) => (
+          <option key={p.id} value={p.id}>
+            {form.paymentOption(
+              monthName(p.period_start),
+              p.validated_at ? shortDay(p.validated_at) : '',
+              clp(p.refundable_clp),
+            )}
+          </option>
+        ))}
+      </select>
+
+      <label htmlFor={ids.amount} className="member__label">
+        {form.amount}
+      </label>
+      <input
+        id={ids.amount}
+        className="member__input"
+        inputMode="numeric"
+        value={amount}
+        aria-invalid={amountNeeded && !value}
+        onChange={(e) => setAmount(e.target.value)}
+      />
+      {amountNeeded && !value && (
+        <p className="member__error" role="alert">
+          {form.amountNeeded}
+        </p>
+      )}
+
+      <label htmlFor={ids.method} className="member__label">
+        {form.method}
+      </label>
+      <select id={ids.method} className="member__input" value={method} onChange={(e) => setMethod(e.target.value as Method)}>
+        {METHODS.map((m) => (
+          <option key={m} value={m}>
+            {copy.form.methods[m]}
+          </option>
+        ))}
+      </select>
+
+      <label htmlFor={ids.note} className="member__label">
+        {form.note}
+      </label>
+      <input
+        id={ids.note}
+        className="member__input"
+        type="text"
+        maxLength={500}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+
+      {refund.error && (
+        <p className="member__error" role="alert">
+          {refund.error instanceof ApiError && refund.error.status === 409 ? form.refused.exceeds : form.refused.failed}
+        </p>
+      )}
+
+      <div className="member__form-actions">
+        <button type="button" className="member__button" disabled={refund.isPending} onClick={onCancel}>
+          {form.cancel}
+        </button>
+        <button type="submit" className="member__button member__button--primary" disabled={refund.isPending}>
+          {refund.isPending ? form.working : form.submit(clp(value))}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 type Line = { kind: 'entry'; entry: TimelineEntry } | { kind: 'freeze'; line: FreezeLine }
 
 /** Entries and freeze lines, newest first; a freeze line after the entries of its day. */
@@ -813,9 +1116,16 @@ function Entry({ entry, unpaid }: { entry: TimelineEntry; unpaid: boolean }) {
         <span className="member__entry-title">{title}</span>
         <span className="member__detail">{detail}</span>
       </div>
-      <span className="member__entry-amount">{clp(entry.amount_clp)}</span>
+      <span className="member__entry-amount">{entryAmount(entry)}</span>
     </li>
   )
+}
+
+/** An adjustment with its sign, `+$5.000` or `−$5.000`; a refund, money out, `−$10.000`. */
+function entryAmount(entry: TimelineEntry): string {
+  if (entry.kind === 'adjustment') return t.common.signedClp(entry.amount_clp)
+  if (entry.kind === 'refund') return t.common.signedClp(-entry.amount_clp)
+  return clp(entry.amount_clp)
 }
 
 type Tone = 'paid' | 'owed' | 'muted' | 'rejected'
@@ -849,9 +1159,9 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean): { title: string; 
       return {
         title: entry.period_start ? words.adjustment(month) : words.credit,
         detail: join(entry.note, day),
-        tone: entry.status === 'rejected' ? 'rejected' : 'muted',
+        tone: entry.status === 'rejected' ? 'rejected' : entry.amount_clp < 0 ? 'owed' : 'muted',
       }
     case 'refund':
-      return { title: words.refund, detail: join(entry.note, day), tone: 'muted' }
+      return { title: words.refund(month), detail: join(method, entry.note, day), tone: 'muted' }
   }
 }

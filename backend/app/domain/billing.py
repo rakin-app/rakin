@@ -12,6 +12,11 @@ A period closes once validated payments (and credit carried in from an earlier
 overpayment) cover its amount due. Whatever is paid beyond that becomes a credit
 adjustment to apply against the next period. A rejected proof never reaches a
 period, so the period stays open.
+
+An admin corrects a period with an adjustment on it (`adjust`): one in the member's
+favour counts towards it as a payment does, one against them is owed on top of its
+amount due. A refund gives back part or all of a payment (`refund`) and no longer
+counts towards the payment's period, which may open again (#38).
 """
 
 from dataclasses import dataclass, replace
@@ -25,7 +30,19 @@ from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
 from app.domain.money import format_clp
 
-SETTLING_KINDS = frozenset({EntryKind.PAYMENT, EntryKind.ADJUSTMENT})
+# The kinds whose validated entries count towards their period: a refund counts against.
+SETTLING_KINDS = frozenset({EntryKind.PAYMENT, EntryKind.ADJUSTMENT, EntryKind.REFUND})
+
+# The kinds `apply` settles a period with.
+PAYING_KINDS = frozenset({EntryKind.PAYMENT, EntryKind.ADJUSTMENT})
+
+
+def settled_amount(alias: str) -> str:
+    """What the `ledger_entry` row `alias` counts towards its period, in SQL, for a row of
+    `SETTLING_KINDS`: its amount, which an adjustment signs, or a refund's taken back.
+    Migration 0021's `v_overdue` repeats it."""
+    return f"CASE WHEN {alias}.kind = 'refund' THEN -{alias}.amount_clp ELSE {alias}.amount_clp END"
+
 
 # A period is generated this many days before it falls due (docs/technical.md).
 GENERATE_AHEAD_DAYS = 7
@@ -40,6 +57,8 @@ class BillingPeriod:
     period_end: date
     amount_due_clp: int
     due_date: date
+    # What its settling entries add up to: below zero once an adjustment against the
+    # member outweighs what was paid, above `amount_due_clp` once overpaid.
     paid_clp: int = 0
     closed: bool = False
 
@@ -65,7 +84,7 @@ def apply(period: BillingPeriod, entry: LedgerEntry) -> Settlement:
     """Count a validated payment or credit adjustment towards `period`."""
     if entry.status is not EntryStatus.VALIDATED:
         raise InvalidTransition(f"only a validated entry settles a period, not {entry.status}")
-    if entry.kind not in SETTLING_KINDS:
+    if entry.kind not in PAYING_KINDS:
         raise InvalidTransition(f"a {entry.kind} entry does not settle a period")
     if period.closed:
         raise InvalidTransition("billing period is already closed")
@@ -82,6 +101,54 @@ def apply(period: BillingPeriod, entry: LedgerEntry) -> Settlement:
             note=overpayment_note(entry.amount_clp, overpaid),
         )
     return Settlement(period=settled, entry=entry, credit=credit)
+
+
+def _resettled(period: BillingPeriod, entry: LedgerEntry, counts: int) -> Settlement:
+    """`period` once `entry`, counting `counts` towards it, is in the ledger."""
+    paid = period.paid_clp + counts
+    return Settlement(
+        period=replace(
+            period, paid_clp=min(paid, period.amount_due_clp), closed=paid >= period.amount_due_clp
+        ),
+        entry=entry,
+    )
+
+
+def adjust(period: BillingPeriod, amount_clp: int, note: str) -> Settlement:
+    """An admin's adjustment to `period`, validated as they make it: `amount_clp` in the
+    member's favour if positive, owed if negative, and `note` saying why.
+
+    One in the member's favour settles no more than the period still owes; credit is a
+    payment's to carry, not an adjustment's.
+    """
+    if not note.strip():
+        raise ValueError("an adjustment needs a note saying why")
+    if amount_clp > period.outstanding_clp:
+        raise InvalidTransition("an adjustment in the member's favour exceeds what is owed")
+    entry = LedgerEntry(
+        kind=EntryKind.ADJUSTMENT, amount_clp=amount_clp, status=EntryStatus.VALIDATED, note=note
+    )
+    return _resettled(period, entry, amount_clp)
+
+
+def refund(
+    period: BillingPeriod,
+    payment: LedgerEntry,
+    refunded_clp: int,
+    amount_clp: int,
+    note: str | None,
+) -> Settlement:
+    """Give back `amount_clp` of `payment`, which paid `period` and of which `refunded_clp`
+    was given back already: at most what is left of it. It no longer counts towards
+    `period`."""
+    if payment.kind is not EntryKind.PAYMENT or payment.status is not EntryStatus.VALIDATED:
+        raise InvalidTransition("only a validated payment is refunded")
+    if amount_clp > payment.amount_clp - refunded_clp:
+        raise InvalidTransition("a refund exceeds what is left of its payment")
+    entry = LedgerEntry(
+        kind=EntryKind.REFUND, amount_clp=amount_clp, status=EntryStatus.VALIDATED, note=note
+    )
+    return _resettled(period, entry, -amount_clp)
 
 
 def validate_payment(period: BillingPeriod, entry: LedgerEntry) -> Settlement:

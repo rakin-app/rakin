@@ -2,6 +2,9 @@
 
 Entries are append-only. Validated and rejected are terminal; a correction is a
 new entry, never an edit of an old one.
+
+Amounts are positive and the kind says which way they go, except an adjustment's: its
+sign says which way it goes, positive in the member's favour and negative owed (#38).
 """
 
 from dataclasses import dataclass, replace
@@ -38,7 +41,10 @@ class LedgerEntry:
     note: str | None = None
 
     def __post_init__(self) -> None:
-        if self.amount_clp <= 0:
+        if self.kind is EntryKind.ADJUSTMENT:
+            if self.amount_clp == 0:
+                raise ValueError("an adjustment's amount_clp is not zero; its sign says which way")
+        elif self.amount_clp <= 0:
             raise ValueError("amount_clp must be positive; the kind says which way it goes")
 
 

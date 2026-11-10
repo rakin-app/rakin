@@ -282,3 +282,81 @@ def test_a_plan_change_waits_for_its_day() -> None:
     assert spans(owed) == [(date(2026, 11, 15), date(2026, 12, 14), 45_000)]
     assert not owed.plan_changed
     assert (owed.plan, owed.anchor_day) == (MONTHLY, 15)
+
+
+# --- adjustments and refunds (#38) ------------------------------------------------
+
+
+def test_an_adjustment_in_the_members_favour_settles_up_to_what_is_owed() -> None:
+    settlement = billing.adjust(replace(period(), paid_clp=20_000), 10_000, "beca")
+
+    assert settlement.entry == LedgerEntry(
+        kind=EntryKind.ADJUSTMENT, amount_clp=10_000, status=EntryStatus.VALIDATED, note="beca"
+    )
+    assert settlement.period.closed
+    assert settlement.credit is None
+    with pytest.raises(InvalidTransition, match="exceeds"):
+        billing.adjust(replace(period(), paid_clp=20_000), 10_001, "beca")
+
+
+def test_an_adjustment_against_the_member_is_owed_on_top() -> None:
+    paid = replace(period(), paid_clp=30_000, closed=True)
+    settlement = billing.adjust(paid, -5_000, "matrícula")
+
+    assert not settlement.period.closed
+    assert settlement.period.outstanding_clp == 5_000
+    unpaid = billing.adjust(period(), -5_000, "matrícula")
+    assert unpaid.period.outstanding_clp == 35_000
+
+
+def test_an_adjustment_needs_a_note() -> None:
+    with pytest.raises(ValueError, match="note"):
+        billing.adjust(period(), -5_000, "  ")
+
+
+def validated(amount: int) -> LedgerEntry:
+    return ledger.validate(payment(amount))
+
+
+def test_a_refund_no_longer_counts_towards_the_period() -> None:
+    paid = replace(period(), paid_clp=30_000, closed=True)
+    settlement = billing.refund(paid, validated(30_000), 0, 10_000, "lesión")
+
+    assert settlement.entry == LedgerEntry(
+        kind=EntryKind.REFUND, amount_clp=10_000, status=EntryStatus.VALIDATED, note="lesión"
+    )
+    assert not settlement.period.closed
+    assert settlement.period.outstanding_clp == 10_000
+
+
+def test_a_refund_of_an_overpayment_leaves_the_period_closed() -> None:
+    overpaid = replace(period(), paid_clp=35_000, closed=True)
+    assert billing.refund(overpaid, validated(35_000), 0, 5_000, None).period.closed
+
+
+def test_a_refund_gives_back_at_most_what_is_left_of_its_payment() -> None:
+    paid = replace(period(), paid_clp=30_000, closed=True)
+    assert billing.refund(paid, validated(30_000), 20_000, 10_000, None)
+    with pytest.raises(InvalidTransition, match="exceeds"):
+        billing.refund(paid, validated(30_000), 20_000, 10_001, None)
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        payment(30_000),
+        ledger.reject(payment(30_000), "borroso"),
+        LedgerEntry(kind=EntryKind.ADJUSTMENT, amount_clp=30_000, status=EntryStatus.VALIDATED),
+    ],
+    ids=["pending", "rejected", "adjustment"],
+)
+def test_only_a_validated_payment_is_refunded(entry: LedgerEntry) -> None:
+    with pytest.raises(InvalidTransition, match="validated payment"):
+        billing.refund(period(), entry, 0, 1_000, None)
+
+
+def test_settled_amount_takes_a_refund_back() -> None:
+    assert billing.settled_amount("e") == (
+        "CASE WHEN e.kind = 'refund' THEN -e.amount_clp ELSE e.amount_clp END"
+    )
+    assert EntryKind.REFUND in billing.SETTLING_KINDS
