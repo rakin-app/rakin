@@ -12,6 +12,14 @@ learning so (migration 0004). Someone this gym already has, a member say, keeps 
 record and gains the role; the invite's email becomes the record's, since it is the
 address they sign in with. It then emails them a sign-in link to the admin screens.
 
+Sign-in finds a person by any gym's record of their email, so an email written on
+someone another gym also has would let whoever typed it in sign in as them. The invite
+writes its email only where `staff_invite_email_ok` (migration 0024) allows: for someone
+no other gym has, or an email another gym already has for them. Otherwise the person
+still gets the role, the gym's record keeps the email it had (none, for someone new
+here), and the invite goes to that email if there is one; `emailed: false` says none
+went, so the admin tells them some other way.
+
 Owner and admin manage the staff, and an admin only its coaches: making, unmaking or
 revoking an admin is the owner's. The owner's own row is not changed here at all, so a
 gym always keeps its owner.
@@ -30,6 +38,7 @@ from app.schemas.staff import (
     AlreadyStaff,
     StaffConflict,
     StaffInvite,
+    StaffInvited,
     StaffMember,
     StaffRoleChange,
 )
@@ -102,7 +111,7 @@ async def invite_staff(
     session: AdminSession,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
-) -> StaffMember:
+) -> StaffInvited:
     role = Role(body.role)
     _may_manage(await role_in_gym(session, tenant), role)
 
@@ -123,15 +132,21 @@ async def invite_staff(
         # Raised, so the transaction rolls back; nothing was written.
         conflict = StaffConflict(person_id=person_id)
         raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
-    if not joined:
+    email_ok = await session.scalar(
+        text("SELECT staff_invite_email_ok(:id, :email)"), {"id": person_id, "email": body.email}
+    )
+    # A record new here took the invite's email from `join_gym_by_phone`; a known one did not.
+    update = "UPDATE gym_person SET email = :email, updated_at = now() WHERE person_id = :id"
+    if email_ok and not joined:
         await session.execute(
-            text(
-                "UPDATE gym_person SET email = :email, updated_at = now()"
-                " WHERE person_id = :id AND email IS DISTINCT FROM :email"
-            ),
+            text(f"{update} AND email IS DISTINCT FROM :email"),
             {"id": person_id, "email": body.email},
         )
+    elif not email_ok and joined:
+        await session.execute(text(update), {"id": person_id, "email": None})
     invited = await _get(session, person_id)
+    if invited.email is None:
+        return StaffInvited(**invited.model_dump(), emailed=False)
 
     names = (
         await session.execute(
@@ -145,7 +160,7 @@ async def invite_staff(
     ).one()
     notice = Notice(
         STAFF_INVITE,
-        to=body.email,
+        to=invited.email,
         person_id=person_id,
         gym_id=tenant.gym_id,
         context={
@@ -158,7 +173,7 @@ async def invite_staff(
     )
     # After the response, which is after the staff row has committed.
     background.add_task(notices.send, notice)
-    return invited
+    return StaffInvited(**invited.model_dump(), emailed=True)
 
 
 @router.patch("/{person_id}")

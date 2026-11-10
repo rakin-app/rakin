@@ -3,7 +3,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
-import type { StaffMember } from '../api/staff'
+import type { StaffInvited, StaffMember } from '../api/staff'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
@@ -43,7 +43,7 @@ function stubApi({ role = 'owner', invite }: { role?: string; invite?: Answer } 
     if (path === '/api/staff' && method === 'GET') return { body: staff }
     if (path === '/api/staff' && method === 'POST') {
       if (invite) return invite
-      const created = { ...body, person_id: 'nuevo', since } as StaffMember
+      const created = { ...body, person_id: 'nuevo', since, emailed: true } as StaffInvited
       staff = [...staff, created]
       return { status: 201, body: created }
     }
@@ -117,6 +117,24 @@ describe('Ajustes: Equipo', () => {
         body: { name: 'Pedro', phone: '9 4444 4444', email: 'pedro@example.cl', role: 'coach' },
       },
     ])
+  })
+
+  it('says when the person already has an account and no email went', async () => {
+    stubApi({
+      invite: {
+        status: 201,
+        body: { person_id: 'nuevo', name: 'Ana', phone: '+56955555555', email: null, role: 'coach', since, emailed: false },
+      },
+    })
+    renderAt('/admin/ajustes/equipo')
+
+    const region = await section()
+    await userEvent.click(within(region).getByRole('button', { name: copy.add }))
+    const invite = within(region).getByRole('form', { name: form.title })
+    await userEvent.type(within(invite).getByLabelText(form.email), 'otra@example.cl')
+    await userEvent.click(within(invite).getByRole('button', { name: copy.submit }))
+
+    expect(await within(region).findByRole('status')).toHaveTextContent(copy.invitedNoEmail('Ana'))
   })
 
   it('says so when the phone is already on the staff, and marks a bad email', async () => {

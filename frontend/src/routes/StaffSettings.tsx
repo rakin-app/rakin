@@ -173,7 +173,9 @@ function InviteForm({
   const save = useMutation({
     mutationFn: () => inviteStaff(drafts),
     onSuccess: async (answer) => {
-      onDone(copy.invited(answer.name, drafts.email.trim()))
+      onDone(
+        answer.emailed && answer.email ? copy.invited(answer.name, answer.email) : copy.invitedNoEmail(answer.name),
+      )
       await queryClient.invalidateQueries({ queryKey: staffQuery.queryKey })
     },
   })

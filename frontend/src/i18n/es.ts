@@ -641,6 +641,8 @@ export const es = {
           email: 'Correo no válido.',
         } as Record<string, string>,
         invited: (name: string, email: string) => `Invitamos a ${name}. Le llegará un enlace a ${email}.`,
+        invitedNoEmail: (name: string) =>
+          `${name} ya está en el equipo, pero ya tiene cuenta en Rakin con otro correo, así que no le enviamos nada. Avísale por WhatsApp que entre con el correo de su cuenta.`,
         makeAdmin: 'Hacer admin',
         makeCoach: 'Hacer coach',
         roleChanged: (name: string, role: string) => `${name} ahora es ${role.toLowerCase()}.`,

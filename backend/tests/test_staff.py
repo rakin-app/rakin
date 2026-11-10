@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from app.integrations.mailer import Email, MailDeliveryError
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
@@ -124,11 +125,7 @@ def test_the_invited_person_can_ask_for_a_sign_in_link(
     address = f"{uuid.uuid4().hex[:8]}@example.cl"
     pedro = invited(client, gym, email=address)
 
-    rows = run(
-        db.admin_url,
-        lambda c: c.fetch("SELECT person_id FROM auth_people_by_email($1)", address.upper()),
-    )
-    assert [r["person_id"] for r in rows] == [pedro]
+    assert signs_in_with(db, address.upper()) == [pedro]
 
 
 def test_inviting_a_member_keeps_their_record_and_gives_them_the_role(
@@ -147,20 +144,91 @@ def test_inviting_a_member_keeps_their_record_and_gives_them_the_role(
     assert ("Ana", "coach") in staff_of(client, gym)
 
 
-def test_someone_known_to_another_gym_is_invited_like_anyone_else(
-    client: TestClient, db: Database, gym: uuid.UUID
+def signs_in_with(db: Database, address: str) -> list[uuid.UUID]:
+    """Whom a sign-in link asked for at `address` goes to (migration 0005)."""
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch("SELECT person_id FROM auth_people_by_email($1)", address),
+    )
+    return [r["person_id"] for r in rows]
+
+
+def test_someone_known_to_another_gym_gets_the_role_and_not_the_invites_email(
+    client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:
     other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
     phone = new_phone()
     elsewhere = add_person(client, other, "Ana", phone=phone)
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    mailer.sent.clear()
 
-    response = invite(client, gym, phone=phone, name="Ana Pérez")
+    response = invite(client, gym, phone=phone, name="Ana Pérez", email=address)
 
     assert response.status_code == 201, response.text
-    assert response.json()["person_id"] == elsewhere
-    assert response.json()["name"] == "Ana Pérez"
+    body = response.json()
+    assert (body["person_id"], body["name"]) == (elsewhere, "Ana Pérez")
+    # The address the inviter typed would sign them in as Ana: it is not written.
+    assert (body["email"], body["emailed"]) == (None, False)
+    assert mailer.sent == []
+    assert signs_in_with(db, address) == []
+    assert ("Ana Pérez", "coach") in staff_of(client, gym)
     # The other gym still has no staff row for her.
     assert ("Ana", "coach") not in staff_of(client, other)
+
+
+def test_an_email_another_gym_already_has_for_them_is_written(
+    client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
+    phone = new_phone()
+    name = f"Ana {uuid.uuid4().hex[:6]}"
+    elsewhere = add_person(client, other, name, phone=phone)
+    theirs = f"{name.lower().replace(' ', '.')}@example.cl"
+    mailer.sent.clear()
+
+    response = invite(client, gym, phone=phone, name=name, email=f" {theirs.upper()} ")
+
+    assert response.status_code == 201, response.text
+    assert response.json()["emailed"] is True
+    [email] = mailer.sent
+    assert email.to.lower() == theirs
+    assert uuid.UUID(elsewhere) in signs_in_with(db, theirs)
+
+
+def test_a_member_known_elsewhere_keeps_this_gyms_email_and_is_invited_there(
+    client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
+    phone = new_phone()
+    add_person(client, other, "Ana", phone=phone)
+    ana = add_person(client, gym, "Ana", phone=phone)
+    mailer.sent.clear()
+
+    response = invite(client, gym, phone=phone, email="otra@example.cl")
+
+    assert response.status_code == 201, response.text
+    assert response.json()["person_id"] == ana
+    assert (response.json()["email"], response.json()["emailed"]) == ("ana@example.cl", True)
+    [email] = mailer.sent
+    assert email.to == "ana@example.cl"
+
+
+def test_the_invite_stands_when_the_mail_fails(
+    client: TestClient,
+    db: Database,
+    gym: uuid.UUID,
+    mailer: RecordingMailer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def refuse(email: Email) -> None:
+        raise MailDeliveryError("smtp relay: 421 try later")
+
+    monkeypatch.setattr(mailer, "send", refuse)
+
+    pedro = invited(client, gym)
+
+    assert ("Pedro", "coach") in staff_of(client, gym)
+    assert sent_notices(db, gym)[-1] == ("staff_invite", str(pedro), "failed")
 
 
 def test_an_invite_refuses_someone_already_on_the_staff(client: TestClient, gym: uuid.UUID) -> None:
