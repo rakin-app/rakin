@@ -46,7 +46,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `membership` | id, person\_id, gym\_id, plan\_id, status, anchor\_day, started\_at, current\_period\_end, credits\_remaining, discount\_pct, next\_plan\_id, next\_plan\_from, cancel\_reason, cancelled\_at | status ∈ trial, active, frozen, lapsed, cancelled; a plan change waits in next\_plan\_id until next\_plan\_from, the first period not yet billed; cancelled carries its reason and is final |
 | `membership_freeze` | gym\_id, membership\_id, from\_date, to\_date, reason, created\_by | a freeze from its first day until to\_date, when the membership is Active again; shifts current\_period\_end, and the billing periods not yet started, by the frozen days as it starts; `freeze` is a reserved word in Postgres; append-only |
 | `billing_period` | id, membership\_id, period\_start, period\_end, amount\_due\_clp, due\_date | generated nightly; the thing reminders point at |
-| `ledger_entry` | id, gym\_id, membership\_id, billing\_period\_id, amount\_clp, kind, status, method, claimed\_by, claimed\_at, validated\_by, validated\_at, proof\_object\_key, bank\_tx\_ref, note | kind ∈ charge, payment, adjustment, refund; status ∈ pending, validated, rejected; method ∈ cash, transfer, other, or none; append-only |
+| `ledger_entry` | id, gym\_id, membership\_id, billing\_period\_id, amount\_clp, kind, status, method, claimed\_by, claimed\_at, validated\_by, validated\_at, proof\_object\_key, bank\_tx\_ref, note, refund\_of | kind ∈ charge, payment, adjustment, refund; status ∈ pending, validated, rejected; method ∈ cash, transfer, other, or none; amounts positive but an adjustment's, signed; a refund references its payment; append-only |
 | `program` | id, gym\_id, name, active | the gym's own groups: adults, kids, competition, …; name unique in the gym; deactivated, never deleted |
 | `class_type` | id, gym\_id, name, program\_id, credit\_cost, active | one program each; credit\_cost is what an attendance takes from a credits membership, 0 for a free class; name unique within its program; deactivated, never deleted |
 | `session` | id, gym\_id, class\_type\_id, starts\_at, coach\_id, topic, notes | one row per class actually held, started by the coach when it begins (no timetable); the day's sessions are those starting that day in the gym's timezone; coach\_id is the gym's record of a person, staff when the session was started; never deleted |
@@ -61,7 +61,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `plan_event` | gym\_id, membership\_id, kind, occurred\_on | outbox for plan-event emails; kind ∈ frozen, unfrozen, lapsed, promoted; written with the state change it reports |
 | `job_run` | job\_name, run\_date, status, started\_at, finished\_at | idempotency for nightly jobs |
 
-Derived views, not tables: `v_overdue` (billing periods past due with no validated payment), `v_balance` (per membership, sum of ledger), `v_inactive` (last attendance > N days), `v_monthly_income` (validated payments by month).
+Derived views, not tables: `v_overdue` (billing periods past due with no validated payment), `v_balance` (per membership, sum of ledger), `v_inactive` (last attendance > N days), `v_monthly_income` (validated payments less refunds, by month).
 
 ## Core state machines
 
@@ -98,6 +98,7 @@ Rules the diagram does not show:
 - Grace period is per gym (default 5 days). Overdue and lapsed students can still be marked present; the roster shows an orange dot on anyone with a period overdue, so the coach can nudge, and never the amount.
 - A `credits` membership also lapses when `credits_remaining` reaches 0 or the pack expires.
 - Validating a payment against a billing period closes that period; an overpayment creates a credit adjustment against the next one.
+- An adjustment on a period is positive in the member's favour, counting towards it, or negative, owed on top; a note says why. A refund gives back part or all of a validated payment and no longer counts towards its period.
 - Rejecting a proof notifies the student with the admin's note and keeps the period open.
 - Nothing is ever deleted: cancellation and rejection are terminal states, corrections are new entries.
 - The nightly job ends the freezes due (Frozen → Active on to\_date), generates billing periods 7 days ahead, flips Active → Lapsed after grace, and expires credits. It is idempotent per date via `job_run`.

@@ -38,7 +38,7 @@ from datetime import date, timedelta
 import asyncpg
 
 from app.domain import membership as memberships
-from app.domain.billing import SETTLING_KINDS
+from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.ledger import EntryStatus
 from app.domain.membership import RECURRING, Membership, MembershipStatus, PlanKind
 from app.jobs.gyms import MembershipFailed, each_gym
@@ -69,12 +69,12 @@ FOR UPDATE OF m
 # not its subqueries, so the unpaid date cannot be read in that same statement.
 # `unpaid_due` is the due date of the oldest period due by the run date that its
 # settling entries leave short.
-SELECT_LAPSABLE = """
+SELECT_LAPSABLE = f"""
 SELECT m.id, m.status, pl.kind, m.current_period_end, m.credits_remaining,
        (SELECT min(b.due_date) FROM billing_period b
         WHERE b.membership_id = m.id AND b.due_date <= $2
           AND b.amount_due_clp > (
-              SELECT coalesce(sum(e.amount_clp), 0) FROM ledger_entry e
+              SELECT coalesce(sum({settled_amount("e")}), 0) FROM ledger_entry e
               WHERE e.billing_period_id = b.id AND e.status = $3
                 AND e.kind = ANY($4::text[]))) AS unpaid_due
 FROM membership m

@@ -27,7 +27,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.ledger import ENTRY_COLUMNS
 from app.contacts import Contact, contact_for
-from app.domain.billing import SETTLING_KINDS
+from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.ledger import EntryKind, EntryStatus
 from app.integrations import Integrations, get_integrations
 from app.integrations.blobstore import ALLOWED_CONTENT_TYPES, MAX_UPLOAD_BYTES
@@ -58,7 +58,7 @@ def is_own_proof(tenant: Tenant, key: str) -> bool:
 # validated entries have paid on it and what proofs claim and await review. Everything
 # is held to the current gym by RLS, and the ledger to the person's own entries
 # (`ledger_entry_own`, 0010).
-PAYABLE = """
+PAYABLE = f"""
     SELECT bp.id, bp.membership_id, m.person_id, gp.name AS person_name,
            pl.name AS plan_name, bp.period_start, bp.period_end, bp.due_date,
            bp.amount_due_clp, coalesce(s.paid, 0) AS paid_clp,
@@ -68,7 +68,7 @@ PAYABLE = """
     JOIN plan pl ON pl.id = m.plan_id
     JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.person_id
     LEFT JOIN LATERAL (
-        SELECT (sum(e.amount_clp) FILTER (
+        SELECT (sum({settled_amount("e")}) FILTER (
                     WHERE e.status = :validated AND e.kind = ANY(CAST(:settling AS text[]))
                ))::bigint AS paid,
                (sum(e.amount_clp) FILTER (

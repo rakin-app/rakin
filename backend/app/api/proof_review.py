@@ -39,7 +39,7 @@ from app.api.ledger import (
 )
 from app.contacts import Contact
 from app.domain import billing, ledger
-from app.domain.billing import SETTLING_KINDS
+from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.integrations import Integrations, get_integrations
@@ -60,15 +60,15 @@ REVIEWED = HTTPException(status.HTTP_409_CONFLICT, "this proof was already revie
 # membership's other periods already due in the gym's timezone, each less what
 # validated payments and credits settle on it, as the guardian page does (`app.api.me`).
 # Attendance is the person's, over every membership: today and the 29 days before it.
-QUEUE = """
+QUEUE = f"""
     SELECT e.id, e.membership_id, m.person_id, gp.name AS person_name,
            e.amount_clp, e.method, e.claimed_at, cg.name AS claimed_by_name,
            e.proof_object_key, pl.name AS plan_name, pl.kind AS plan_kind, m.anchor_day,
            bp.id AS period_id, bp.period_start, bp.period_end, bp.due_date,
            bp.amount_due_clp, coalesce(paid.amount, 0) AS paid_clp,
            coalesce(prior.amount, 0) AS prior_balance_clp,
-           coalesce(recent.amounts, '{}') AS recent_amounts,
-           coalesce(recent.paid_at, '{}') AS recent_paid_at, att.classes AS attendance_30d
+           coalesce(recent.amounts, '{{}}') AS recent_amounts,
+           coalesce(recent.paid_at, '{{}}') AS recent_paid_at, att.classes AS attendance_30d
     FROM ledger_entry e
     JOIN membership m ON m.id = e.membership_id
     JOIN plan pl ON pl.id = m.plan_id
@@ -77,13 +77,13 @@ QUEUE = """
     JOIN billing_period bp ON bp.id = e.billing_period_id
     LEFT JOIN gym_person cg ON cg.gym_id = e.gym_id AND cg.person_id = e.claimed_by
     LEFT JOIN LATERAL (
-        SELECT sum(s.amount_clp)::bigint AS amount FROM ledger_entry s
+        SELECT sum({settled_amount("s")})::bigint AS amount FROM ledger_entry s
         WHERE s.billing_period_id = bp.id AND s.status = :validated
           AND s.kind = ANY(CAST(:settling AS text[]))
     ) paid ON true
     LEFT JOIN LATERAL (
         SELECT sum(greatest(o.amount_due_clp - coalesce((
-                   SELECT sum(s.amount_clp) FROM ledger_entry s
+                   SELECT sum({settled_amount("s")}) FROM ledger_entry s
                    WHERE s.billing_period_id = o.id AND s.status = :validated
                      AND s.kind = ANY(CAST(:settling AS text[]))), 0), 0))::bigint AS amount
         FROM billing_period o

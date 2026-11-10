@@ -28,6 +28,7 @@ const entry = (fields: Partial<BookEntry> & Pick<BookEntry, 'id' | 'kind'>): Boo
     days_overdue: 0,
   },
   validated_by_name: null,
+  refund_of: null,
   ...fields,
 })
 
@@ -90,6 +91,8 @@ const BOOK: LedgerBook = {
   kpis: {
     collected_clp: 2115000,
     collected_payments: 47,
+    refunded_clp: 0,
+    refunds: 0,
     pending_clp: 162000,
     pending_payments: 3,
     overdue_clp: 270000,
@@ -169,6 +172,14 @@ describe('Libro de pagos', () => {
     )
   })
 
+  it('shows the month\'s refunds beside the collected figure, which is net of them', async () => {
+    stubApi({ book: () => ({ ...BOOK, kpis: { ...BOOK.kpis, collected_clp: 2070000, refunded_clp: 45000, refunds: 1 } }) })
+    renderAt('/admin/pagos')
+
+    const kpis = await screen.findByRole('region', { name: copy.kpisLabel })
+    expect(kpis.textContent).toContain('Cobrado$2.070.00047 pagos validados · Devuelto $45.000')
+  })
+
   it('lists each entry with its date, student, kind, period, medium, status and amount', async () => {
     stubApi()
     renderAt('/admin/pagos')
@@ -187,6 +198,30 @@ describe('Libro de pagos', () => {
       '/admin/pagos/comprobantes',
     )
     expect(screen.getByText(copy.showing(5, 5, 'noviembre'))).toBeInTheDocument()
+  })
+
+  it('lists adjustments with their sign and refunds as money out', async () => {
+    const corrections = [
+      entry({
+        id: 'refund',
+        kind: 'refund',
+        amount_clp: 10000,
+        method: 'cash',
+        note: 'se lesionó',
+        refund_of: 'pay',
+        validated_by_name: 'Martín',
+        period: { ...BOOK.items[0]!.period!, outstanding_clp: 10000 },
+      }),
+      entry({ id: 'owed', kind: 'adjustment', amount_clp: -5000, note: 'matrícula', validated_by_name: 'Martín' }),
+    ]
+    stubApi({ book: () => ({ ...BOOK, items: corrections, total: 2 }) })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map(cells)).toEqual([
+      ['8 nov 14:12', 'Diego Morales', 'Devolución', 'Nov 2026', 'Efectivo', 'Validado · Martín', '−$10.000'],
+      ['8 nov 14:12', 'Diego Morales', 'Ajuste', 'Nov 2026', 'matrícula', 'Validado · Martín', '−$5.000'],
+    ])
   })
 
   it('lists the month\'s freezes among the entries, after their day\'s, with no amount', async () => {

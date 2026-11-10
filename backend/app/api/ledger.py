@@ -5,6 +5,12 @@ detail ("Ficha de alumno", #60), lists what is overdue for the owner's dashboard
 #39). The member detail and the book list freezes (#26) among the entries, as lines
 with no amount where each started and ended.
 
+An admin also corrects what a period owes with an adjustment on it, with a note saying
+why, and gives back part or all of a validated payment with a refund of it (#38). Each
+is a new entry, validated by the admin making it, and settles the period as
+`app.domain.billing` says: an adjustment in the member's favour counts towards it, one
+against them is owed on top, and a refund no longer counts what it gives back.
+
 `POST /api/ledger/payments` records money the gym received in cash, by a transfer the
 admin saw arrive, or otherwise, against one billing period of a membership. There is
 no proof to check, so the entry is created validated: the admin recording it is both
@@ -31,12 +37,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contacts import Contact, contact_for
 from app.domain import billing
-from app.domain.billing import SETTLING_KINDS, BillingPeriod, Settlement
+from app.domain.billing import SETTLING_KINDS, BillingPeriod, Settlement, settled_amount
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.notices import RECEIPT, Notice, Notices, get_notices
 from app.roles import LedgerSession
 from app.schemas.ledger import (
+    AdjustmentRecord,
     BookEntry,
     BookFilter,
     BookFreeze,
@@ -45,6 +52,7 @@ from app.schemas.ledger import (
     Entry,
     FreezeLine,
     LedgerBook,
+    LedgerPeriod,
     MembershipLedger,
     OpenPeriod,
     Overdue,
@@ -52,7 +60,11 @@ from app.schemas.ledger import (
     PaymentRecord,
     Period,
     PersonRef,
+    RecordedAdjustment,
     RecordedPayment,
+    RecordedRefund,
+    RefundablePayment,
+    RefundRecord,
     TimelineEntry,
 )
 from app.schemas.proofs import PendingCount
@@ -70,7 +82,8 @@ TIMELINE_LIMIT = 100
 
 ENTRY_COLUMNS = (
     "id, membership_id, billing_period_id, amount_clp, kind, status, method,"
-    " claimed_by, claimed_at, validated_by, validated_at, proof_object_key, note, created_at"
+    " claimed_by, claimed_at, validated_by, validated_at, proof_object_key, note, created_at,"
+    " refund_of"
 )
 
 # Who is acting, as `app.tenancy` set it; the recording admin.
@@ -80,10 +93,10 @@ CURRENT_PERSON = "current_setting('app.person_id')::uuid"
 # transaction's, so the payment and its credit carry one time.
 INSERT_ENTRY = text(
     "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp, kind,"
-    " status, method, claimed_by, claimed_at, validated_by, validated_at, note)"
+    " status, method, claimed_by, claimed_at, validated_by, validated_at, note, refund_of)"
     " VALUES (current_setting('app.gym_id')::uuid, :membership_id, :billing_period_id,"
     f" :amount_clp, :kind, :status, :method, {CURRENT_PERSON}, now(), {CURRENT_PERSON}, now(),"
-    f" :note) RETURNING {ENTRY_COLUMNS}"
+    f" :note, :refund_of) RETURNING {ENTRY_COLUMNS}"
 )
 
 
@@ -118,7 +131,7 @@ async def locked_period(
     paid = await session.scalar(
         text(
             # `sum` of a `bigint` is `numeric`, which arrives as a `Decimal`.
-            "SELECT coalesce(sum(amount_clp), 0)::bigint FROM ledger_entry"
+            f"SELECT coalesce(sum({settled_amount('ledger_entry')}), 0)::bigint FROM ledger_entry"
             " WHERE billing_period_id = :id AND status = :status AND kind = ANY(:kinds)"
         ),
         {
@@ -132,7 +145,7 @@ async def locked_period(
         period_end=row.period_end,
         amount_due_clp=row.amount_due_clp,
         due_date=row.due_date,
-        paid_clp=min(paid, row.amount_due_clp),
+        paid_clp=paid,
         closed=paid >= row.amount_due_clp,
     )
     return row, period
@@ -147,6 +160,7 @@ async def insert_entry(session: AsyncSession, entry: LedgerEntry, **columns: Any
             "status": entry.status.value,
             "note": entry.note,
             "method": None,
+            "refund_of": None,
             **columns,
         },
     )
@@ -199,18 +213,82 @@ async def settled(
         credit = await insert_entry(
             session, settlement.credit, membership_id=membership_id, billing_period_id=None
         )
-    period = settlement.period
     return RecordedPayment(
-        payment=payment,
-        credit=credit,
-        period=Period(
-            id=period_id,
-            amount_due_clp=period.amount_due_clp,
-            paid_clp=period.paid_clp,
-            outstanding_clp=period.outstanding_clp,
-            closed=period.closed,
-        ),
+        payment=payment, credit=credit, period=period_after(period_id, settlement.period)
     )
+
+
+def period_after(period_id: uuid.UUID, period: BillingPeriod) -> Period:
+    """The period as an entry just settled leaves it."""
+    return Period(
+        id=period_id,
+        amount_due_clp=period.amount_due_clp,
+        paid_clp=period.paid_clp,
+        outstanding_clp=period.outstanding_clp,
+        closed=period.closed,
+    )
+
+
+@router.post("/adjustments", status_code=status.HTTP_201_CREATED)
+async def record_adjustment(body: AdjustmentRecord, session: LedgerSession) -> RecordedAdjustment:
+    """Correct what a period owes: in the member's favour, up to what it still owes, or
+    against them, owed on top of its amount due."""
+    row, period = await locked_period(session, body.billing_period_id, body.membership_id)
+    try:
+        settlement = billing.adjust(period, body.amount_clp, body.note)
+    except InvalidTransition:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "the adjustment exceeds what the period owes"
+        ) from None
+    adjustment = await insert_entry(
+        session, settlement.entry, membership_id=body.membership_id, billing_period_id=row.id
+    )
+    return RecordedAdjustment(adjustment=adjustment, period=period_after(row.id, settlement.period))
+
+
+NO_PAYMENT = HTTPException(status.HTTP_404_NOT_FOUND, "payment not found")
+
+PAYMENT = text(
+    "SELECT membership_id, billing_period_id, amount_clp, status FROM ledger_entry"
+    " WHERE id = :id AND kind = :payment"
+)
+
+# What the payment's refunds have given back; every refund is validated as it is made.
+REFUNDED = text(
+    "SELECT coalesce(sum(amount_clp), 0)::bigint FROM ledger_entry WHERE refund_of = :id"
+)
+
+
+@router.post("/refunds", status_code=status.HTTP_201_CREATED)
+async def record_refund(body: RefundRecord, session: LedgerSession) -> RecordedRefund:
+    """Give back part or all of a validated payment: what is left of it after its
+    earlier refunds, at most. The refund carries the payment's period, which no longer
+    counts it and may be open again."""
+    found = (
+        await session.execute(PAYMENT, {"id": body.payment_id, "payment": EntryKind.PAYMENT.value})
+    ).one_or_none()
+    if found is None:
+        raise NO_PAYMENT
+    # Locked as a payment locks them, so two refunds of one payment, or a refund and a
+    # lapse, run one after the other.
+    row, period = await locked_period(session, found.billing_period_id, found.membership_id)
+    refunded = await session.scalar(REFUNDED, {"id": body.payment_id})
+    payment = LedgerEntry(
+        kind=EntryKind.PAYMENT, amount_clp=found.amount_clp, status=EntryStatus(found.status)
+    )
+    try:
+        settlement = billing.refund(period, payment, refunded or 0, body.amount_clp, body.note)
+    except InvalidTransition as refused:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(refused)) from None
+    refund = await insert_entry(
+        session,
+        settlement.entry,
+        membership_id=found.membership_id,
+        billing_period_id=row.id,
+        method=body.method.value,
+        refund_of=body.payment_id,
+    )
+    return RecordedRefund(refund=refund, period=period_after(row.id, settlement.period))
 
 
 # Who a notice about a period goes to, and what it says about it. RLS keeps it to the
@@ -314,7 +392,7 @@ async def pending(session: LedgerSession) -> PendingCount:
 # `locked_period` settles them, with whether each is due by today in the gym's
 # timezone and how many days past due it is.
 OPEN_PERIODS = text(
-    """
+    f"""
     SELECT bp.id, bp.period_start, bp.period_end, bp.due_date, bp.amount_due_clp,
            least(coalesce(paid.amount, 0), bp.amount_due_clp) AS paid_clp,
            bp.due_date <= t.today AS due,
@@ -323,7 +401,7 @@ OPEN_PERIODS = text(
     JOIN gym g ON g.id = bp.gym_id
     CROSS JOIN LATERAL (SELECT (now() AT TIME ZONE g.timezone)::date AS today) t
     LEFT JOIN LATERAL (
-        SELECT sum(e.amount_clp)::bigint AS amount FROM ledger_entry e
+        SELECT sum({settled_amount("e")})::bigint AS amount FROM ledger_entry e
         WHERE e.billing_period_id = bp.id AND e.status = :validated
           AND e.kind = ANY(CAST(:settling AS text[]))
     ) paid ON true
@@ -336,13 +414,49 @@ TIMELINE = text(
     """
     SELECT e.id, e.kind, e.status, e.amount_clp, e.method, e.billing_period_id,
            bp.period_start, e.note, e.created_at, vp.name AS validated_by_name,
-           e.validated_at
+           e.validated_at, e.refund_of
     FROM ledger_entry e
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
     WHERE e.membership_id = :id
     ORDER BY e.created_at DESC, e.id DESC
     LIMIT :limit
+    """
+)
+
+
+# Every period of the membership, newest first, with what it still owes settled as
+# `OPEN_PERIODS` settles it: what an adjustment may go to (#38). Not capped as the
+# timeline is, so a period older than its latest entries is still there.
+PERIODS = text(
+    f"""
+    SELECT bp.id, bp.period_start, bp.period_end,
+           greatest(bp.amount_due_clp - coalesce(paid.amount, 0), 0) AS outstanding_clp
+    FROM billing_period bp
+    LEFT JOIN LATERAL (
+        SELECT sum({settled_amount("e")})::bigint AS amount FROM ledger_entry e
+        WHERE e.billing_period_id = bp.id AND e.status = :validated
+          AND e.kind = ANY(CAST(:settling AS text[]))
+    ) paid ON true
+    WHERE bp.membership_id = :id
+    ORDER BY bp.period_start DESC, bp.id
+    """
+)
+
+# The membership's validated payments with something left to give back after their
+# refunds, newest first: what a refund may go to (#38), however old.
+REFUNDABLE = text(
+    """
+    SELECT p.id, p.billing_period_id, bp.period_start, p.amount_clp, p.method,
+           p.validated_at, p.amount_clp - coalesce(r.amount, 0) AS refundable_clp
+    FROM ledger_entry p
+    JOIN billing_period bp ON bp.id = p.billing_period_id
+    LEFT JOIN LATERAL (
+        SELECT sum(x.amount_clp)::bigint AS amount FROM ledger_entry x WHERE x.refund_of = p.id
+    ) r ON true
+    WHERE p.membership_id = :id AND p.kind = 'payment' AND p.status = 'validated'
+      AND p.amount_clp > coalesce(r.amount, 0)
+    ORDER BY p.validated_at DESC, p.id
     """
 )
 
@@ -386,6 +500,14 @@ async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) ->
             FreezeLine.model_validate(row, from_attributes=True)
             for row in await session.execute(MEMBERSHIP_FREEZES, {"id": membership_id})
         ],
+        periods=[
+            LedgerPeriod.model_validate(row, from_attributes=True)
+            for row in await session.execute(PERIODS, params)
+        ],
+        refundable_payments=[
+            RefundablePayment.model_validate(row, from_attributes=True)
+            for row in await session.execute(REFUNDABLE, {"id": membership_id})
+        ],
     )
 
 
@@ -428,7 +550,7 @@ BOOK_MONTHS = text(
 # guardian who pays for them, and its period settled as `OPEN_PERIODS` settles it.
 BOOK_ROWS = f"""
     SELECT e.id, e.created_at, e.kind, e.status, e.amount_clp, e.method, e.note,
-           e.membership_id, pl.name AS plan_name,
+           e.refund_of, e.membership_id, pl.name AS plan_name,
            m.person_id, mp.name AS person_name,
            gl.guardian_person_id AS guardian_id, gp.name AS guardian_name,
            bp.period_start, bp.period_end, bp.due_date,
@@ -447,7 +569,7 @@ BOOK_ROWS = f"""
     LEFT JOIN gym_person gp ON gp.gym_id = gl.gym_id AND gp.person_id = gl.guardian_person_id
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     LEFT JOIN LATERAL (
-        SELECT sum(s.amount_clp)::bigint AS amount FROM ledger_entry s
+        SELECT sum({settled_amount("s")})::bigint AS amount FROM ledger_entry s
         WHERE s.billing_period_id = bp.id AND s.status = 'validated'
           AND s.kind = ANY(CAST(:settling AS text[]))
     ) paid ON bp.id IS NOT NULL
@@ -492,8 +614,9 @@ BOOK_FREEZE_FILTERS = {
 EXPECTED_STATUSES = ("active", "lapsed")
 
 # The book's KPIs. Collected and expected are the month's; pending and overdue, and the
-# membership counts, are how the gym stands today. Overdue counts active memberships
-# only, as the owner's "Vencido" does (`v_overdue`).
+# membership counts, are how the gym stands today. Collected is net of the month's
+# refunds, which it reports beside it (#126). Overdue counts active memberships only,
+# as the owner's "Vencido" does (`v_overdue`).
 #
 # Expected ("Esperado") is what is owed for the month: the periods falling due in it of
 # active and lapsed memberships, since a lapsed member still owes what was billed. A
@@ -506,6 +629,10 @@ BOOK_KPIS = text(
          WHERE month = :month) AS collected_clp,
         (SELECT coalesce(sum(payments), 0)::bigint FROM v_monthly_income
          WHERE month = :month) AS collected_payments,
+        (SELECT coalesce(sum(refunds_clp), 0)::bigint FROM v_monthly_income
+         WHERE month = :month) AS refunded_clp,
+        (SELECT coalesce(sum(refunds), 0)::bigint FROM v_monthly_income
+         WHERE month = :month) AS refunds,
         pending.amount AS pending_clp, pending.n AS pending_payments,
         overdue.amount AS overdue_clp, overdue.members AS overdue_members,
         overdue.avg_days AS overdue_avg_days,
@@ -610,6 +737,7 @@ def book_entry(row: Any) -> BookEntry:
         amount_clp=row.amount_clp,
         method=row.method,
         note=row.note,
+        refund_of=row.refund_of,
         membership_id=row.membership_id,
         plan_name=row.plan_name,
         person=PersonRef(id=row.person_id, name=row.person_name),

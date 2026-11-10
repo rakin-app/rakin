@@ -251,6 +251,44 @@ export const es = {
       ledgerError: 'No pudimos cargar los pagos.',
       record: 'Registrar pago',
       freeze: 'Congelar',
+      adjust: 'Ajuste',
+      refund: 'Devolver',
+      adjustForm: {
+        title: 'Ajuste',
+        direction: 'Tipo de ajuste',
+        directions: { favor: 'A favor del alumno: descuenta', owed: 'A cobrar: suma al período' },
+        period: 'Período',
+        periodOption: (month: string, amount: string) => `${month} · ${amount} por pagar`,
+        amount: 'Monto (CLP)',
+        note: 'Motivo',
+        submit: (amount: string) => `Registrar ajuste de ${amount}`,
+        cancel: 'Cancelar',
+        working: 'Guardando…',
+        amountNeeded: 'Escribe el monto del ajuste.',
+        noteNeeded: 'Escribe el motivo del ajuste.',
+        done: (amount: string) => `Ajuste registrado: ${amount}.`,
+        refused: {
+          exceeds: 'Un ajuste a favor no puede superar lo que queda por pagar del período.',
+          failed: 'No pudimos registrar el ajuste. Inténtalo de nuevo.',
+        },
+      },
+      refundForm: {
+        title: 'Devolución',
+        payment: 'Pago a devolver',
+        paymentOption: (month: string, day: string, amount: string) => `Pago ${month} · ${day} · ${amount} por devolver`,
+        amount: 'Monto devuelto (CLP)',
+        method: 'Medio de devolución',
+        note: 'Nota (opcional)',
+        submit: (amount: string) => `Devolver ${amount}`,
+        cancel: 'Cancelar',
+        working: 'Guardando…',
+        amountNeeded: 'Escribe el monto devuelto.',
+        done: (amount: string) => `Devolución registrada: ${amount}.`,
+        refused: {
+          exceeds: 'Ese pago ya no tiene tanto por devolver.',
+          failed: 'No pudimos registrar la devolución. Inténtalo de nuevo.',
+        },
+      },
       freezeForm: {
         title: 'Congelar membresía',
         until: 'Vuelve el',
@@ -281,6 +319,7 @@ export const es = {
         amountNeeded: 'Escribe el monto recibido.',
         recorded: (amount: string) => `Pago registrado: ${amount}.`,
         credit: (amount: string) => ` Quedan ${amount} a favor.`,
+        remainder: (amount: string) => ` Quedan ${amount} por pagar del período.`,
         refused: {
           paid: 'Ese período ya está pagado.',
           failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
@@ -347,7 +386,7 @@ export const es = {
         payment: (month: string) => `Pago ${month}`,
         adjustment: (month: string) => `Ajuste ${month}`,
         credit: 'Saldo a favor',
-        refund: 'Devolución',
+        refund: (month: string) => `Devolución ${month}`,
         generated: (day: string) => `generado ${day}`,
         unpaid: 'sin pago',
         validatedBy: (name: string) => `validó ${name}`,
@@ -445,7 +484,8 @@ export const es = {
       kpisLabel: 'Resumen del mes',
       kpis: {
         collected: 'Cobrado',
-        collectedDetail: (n: number) => (n === 1 ? '1 pago validado' : `${n} pagos validados`),
+        collectedDetail: (n: number, refunded: string | null) =>
+          (n === 1 ? '1 pago validado' : `${n} pagos validados`) + (refunded ? ` · Devuelto ${refunded}` : ''),
         pending: 'Por validar',
         pendingDetail: (n: number) => (n === 1 ? '1 comprobante' : `${n} comprobantes`),
         overdue: 'Vencido',
@@ -633,6 +673,8 @@ export const es = {
   common: {
     comingSoon: 'Esta sección todavía no está lista.',
     clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
+    // An amount that says which way it goes: `+$5.000` in the member's favour, `−$5.000` owed.
+    signedClp: (amount: number) => `${amount < 0 ? '−' : '+'}$${Math.abs(amount).toLocaleString('es-CL')}`,
     // Where an amount would go on a line that moves no money.
     noAmount: '—',
     span: (from: string, to: string) => `${from} – ${to}`,
