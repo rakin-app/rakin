@@ -21,6 +21,8 @@ export type Freeze = {
   from_date: string
   to_date: string
   reason: string
+  // False on a freeze booked ahead, until it starts on `from_date`.
+  started: boolean
 }
 
 /** A membership of a plan (backend `Membership`). */
@@ -36,7 +38,7 @@ export type Membership = {
   // Paid through, or the last day of a pack or trial.
   current_period_end: string | null
   credits_remaining: number | null
-  // The freeze it is in, while frozen.
+  // The freeze it is in, while frozen; the one booked ahead, while active.
   freeze: Freeze | null
 }
 
@@ -189,14 +191,28 @@ export function recordRefund(body: RefundRecord): Promise<RecordedRefund> {
   return apiFetch<RecordedRefund>('/api/ledger/refunds', { method: 'POST', body: JSON.stringify(body) })
 }
 
-export type FreezeRequest = { to_date: string; reason: string }
+// `from_date` is today when omitted; a later day books the freeze ahead.
+export type FreezeRequest = { from_date?: string; to_date: string; reason: string }
 
-/** Freeze from today until `to_date`: the due date moves past the frozen days. */
+function freezePath(membershipId: string): string {
+  return `/api/memberships/${encodeURIComponent(membershipId)}/freeze`
+}
+
+/** Freeze from `from_date` until `to_date`: the due date moves past the frozen days as it starts. */
 export function freezeMembership(membershipId: string, body: FreezeRequest): Promise<Membership> {
-  return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/freeze`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
+  return apiFetch<Membership>(freezePath(membershipId), { method: 'POST', body: JSON.stringify(body) })
+}
+
+export type FreezeEdit = { to_date?: string; reason?: string }
+
+/** A new end or reason for the freeze running or booked; the due date moves by the days it gains or loses. */
+export function editFreeze(membershipId: string, body: FreezeEdit): Promise<Membership> {
+  return apiFetch<Membership>(freezePath(membershipId), { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+/** End the freeze running today, the due date moved back by the days left; a booked one is called off. */
+export function endFreeze(membershipId: string): Promise<Membership> {
+  return apiFetch<Membership>(`${freezePath(membershipId)}/end`, { method: 'POST' })
 }
 
 /** The membership the detail shows, as the member list does: the latest one not

@@ -544,3 +544,61 @@ def test_a_trial_converts_on_a_validated_payment() -> None:
     trial = m.create(PlanKind.TRIAL, credits_remaining=3)
 
     assert m.record_payment(trial, VALIDATED_PAYMENT, paid_through=NOV_30).status is S.ACTIVE
+
+
+# --- a freeze's end moved, and ended early (#115) --------------------------------------
+
+
+def test_moving_a_freeze_end_moves_the_due_date_by_the_difference() -> None:
+    frozen = m.freeze(monthly(anchor_day=1), NOV_10, NOV_24)
+
+    longer = m.move_freeze_end(frozen, NOV_30)
+    shorter = m.move_freeze_end(frozen, date(2026, 11, 15))
+
+    assert longer.current_period_end == NOV_30 + timedelta(days=20)
+    assert longer.anchor_day == 21
+    assert longer.frozen_until == NOV_30
+    assert shorter.current_period_end == NOV_30 + timedelta(days=5)
+    assert shorter.anchor_day == 6
+    assert shorter.status is S.FROZEN
+
+
+def test_a_freeze_ended_on_its_first_day_moves_nothing() -> None:
+    before = monthly(anchor_day=1)
+
+    ended = m.end_freeze(m.freeze(before, NOV_10, NOV_24), NOV_10)
+
+    assert ended.status is S.ACTIVE
+    assert ended.current_period_end == before.current_period_end
+    assert (ended.frozen_since, ended.frozen_until) == (None, None)
+
+
+def test_ending_a_freeze_early_keeps_the_days_frozen() -> None:
+    ended = m.end_freeze(m.freeze(credits_pack(), NOV_10, NOV_24), date(2026, 11, 14))
+
+    assert ended.status is S.ACTIVE
+    assert ended.current_period_end == NOV_30 + timedelta(days=4)
+
+
+def test_ending_a_freeze_past_its_end_keeps_the_due_date() -> None:
+    frozen = m.freeze(monthly(), NOV_10, NOV_24)
+
+    ended = m.end_freeze(frozen, NOV_30)
+
+    assert ended.current_period_end == frozen.current_period_end
+
+
+def test_a_freeze_end_stays_within_its_first_day_and_a_year() -> None:
+    frozen = m.freeze(monthly(), NOV_10, NOV_24)
+
+    with pytest.raises(ValueError, match="at the earliest"):
+        m.move_freeze_end(frozen, NOV_10 - timedelta(days=1))
+    with pytest.raises(ValueError, match="at most"):
+        m.move_freeze_end(frozen, NOV_10 + timedelta(days=m.MAX_FREEZE_DAYS + 1))
+
+
+def test_only_a_running_freeze_moves_or_ends() -> None:
+    with pytest.raises(InvalidTransition):
+        m.move_freeze_end(monthly(), NOV_24)
+    with pytest.raises(InvalidTransition):
+        m.end_freeze(monthly(), NOV_24)

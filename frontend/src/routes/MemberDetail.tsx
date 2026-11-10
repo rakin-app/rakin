@@ -15,6 +15,8 @@ import {
   type Rank,
 } from '../api/grading'
 import {
+  editFreeze,
+  endFreeze,
   freezeMembership,
   membershipLedgerQuery,
   membershipsQuery,
@@ -23,6 +25,7 @@ import {
   recordPayment,
   recordRefund,
   shownMembership,
+  type Freeze,
   type FreezeLine,
   type LedgerPeriod,
   type Membership,
@@ -153,6 +156,11 @@ function Standing({ membership, money }: { membership: Membership; money: boolea
           <span className="member__eyebrow">{planLine(membership)}</span>
           <Badge membership={membership} ledger={data} />
         </div>
+        {membership.freeze && !membership.freeze.started && (
+          <p className="member__detail">
+            {copy.freezeBooked(shortDay(membership.freeze.from_date), shortDay(membership.freeze.to_date))}
+          </p>
+        )}
         {data && <Owed ledger={data} />}
         {money && ledger.isError && (
           <p className="member__error" role="alert">
@@ -173,9 +181,9 @@ function planLine(membership: Membership): string {
 }
 
 /** `Congelado · vuelve el 24 nov` while frozen; `Vencido 9 d` while the oldest open period
- * is past due; else the membership's status. */
+ * is past due; else the membership's status. A freeze booked ahead is a line of its own. */
 function Badge({ membership, ledger }: { membership: Membership; ledger: MembershipLedger | undefined }) {
-  if (membership.freeze) {
+  if (membership.freeze?.started) {
     return (
       <span className="member__badge member__badge--frozen">{copy.frozenUntil(shortDay(membership.freeze.to_date))}</span>
     )
@@ -209,7 +217,7 @@ function Owed({ ledger }: { ledger: MembershipLedger }) {
   )
 }
 
-type Open = 'payment' | 'adjustment' | 'refund' | 'freeze' | null
+type Open = 'payment' | 'adjustment' | 'refund' | 'freeze' | 'editFreeze' | 'endFreeze' | null
 
 /** The periods that still owe, oldest first, then the paid ones, newest first: an
  * adjustment in the member's favour goes to the first, one owed to either. */
@@ -222,6 +230,7 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
   const periods = ledger.open_periods
   const known = adjustable(ledger)
   const payments = ledger.refundable_payments
+  const freeze = membership.freeze
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
   const toggle = (form: Open) => {
@@ -262,16 +271,39 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
         >
           {copy.refund}
         </button>
-        <button
-          type="button"
-          className="member__button"
-          aria-expanded={open === 'freeze'}
-          disabled={membership.status !== 'active'}
-          onClick={() => toggle('freeze')}
-        >
-          {copy.freeze}
-        </button>
+        {!freeze && (
+          <button
+            type="button"
+            className="member__button"
+            aria-expanded={open === 'freeze'}
+            disabled={membership.status !== 'active'}
+            onClick={() => toggle('freeze')}
+          >
+            {copy.freeze}
+          </button>
+        )}
       </div>
+      {/* A row of their own: two long labels do not fit beside the others at 390px. */}
+      {freeze && (
+        <div className="member__actions">
+          <button
+            type="button"
+            className="member__button"
+            aria-expanded={open === 'editFreeze'}
+            onClick={() => toggle('editFreeze')}
+          >
+            {copy.editFreeze}
+          </button>
+          <button
+            type="button"
+            className="member__button"
+            aria-expanded={open === 'endFreeze'}
+            onClick={() => toggle('endFreeze')}
+          >
+            {freeze.started ? copy.endFreeze : copy.callOffFreeze}
+          </button>
+        </div>
+      )}
       {done && (
         <p className="member__done" role="status">
           {done}
@@ -286,18 +318,44 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
       {open === 'refund' && payments.length > 0 && (
         <RefundForm payments={payments} onCancel={() => setOpen(null)} onDone={finish} />
       )}
-      {open === 'freeze' && membership.status === 'active' && (
+      {open === 'freeze' && membership.status === 'active' && !freeze && (
         <FreezeForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'editFreeze' && freeze && (
+        <EditFreezeForm membershipId={membership.id} freeze={freeze} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'endFreeze' && freeze && (
+        <EndFreezeForm membershipId={membership.id} freeze={freeze} onCancel={() => setOpen(null)} onDone={finish} />
       )}
     </>
   )
 }
 
-// Tomorrow, the first day a freeze from today can end on: `2026-11-10`.
-function tomorrow(): string {
-  const day = new Date()
-  day.setDate(day.getDate() + 1)
-  return isoDay(day.toISOString())
+// The day `days` after `day`, both as `2026-11-10`.
+function addDays(day: string, days: number): string {
+  const next = new Date(`${day}T00:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + days)
+  return next.toISOString().slice(0, 10)
+}
+
+// Today, the first day a freeze can start on: `2026-11-10`.
+function today(): string {
+  return isoDay(new Date().toISOString())
+}
+
+/** A change to a freeze: the membership and its ledger are read again after it. */
+function useFreezeChange(mutationFn: () => Promise<Membership>, onSuccess: (membership: Membership) => void) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: async (membership: Membership) => {
+      onSuccess(membership)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['memberships'] }),
+        queryClient.invalidateQueries({ queryKey: ['ledger'] }),
+      ])
+    },
+  })
 }
 
 function FreezeForm({
@@ -309,35 +367,57 @@ function FreezeForm({
   onCancel: () => void
   onDone: (message: string) => void
 }) {
-  const queryClient = useQueryClient()
   const form = copy.freezeForm
-  const ids = { until: useId(), hint: useId(), reason: useId() }
-  const first = tomorrow()
+  const ids = { from: useId(), until: useId(), hint: useId(), reason: useId() }
+  const first = today()
+  const [from, setFrom] = useState(first)
   const [until, setUntil] = useState('')
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
-  const untilOk = until >= first
+  const fromOk = from >= first
+  const untilOk = until > from
   const reasonOk = reason.trim() !== ''
 
-  const freeze = useMutation({
-    mutationFn: () => freezeMembership(membership.id, { to_date: until, reason: reason.trim() }),
-    onSuccess: async (frozen: Membership) => {
-      onDone(form.done(shortDay(frozen.freeze?.to_date ?? until)))
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['memberships'] }),
-        queryClient.invalidateQueries({ queryKey: ['ledger'] }),
-      ])
+  const freeze = useFreezeChange(
+    () =>
+      freezeMembership(membership.id, {
+        // From today, it is left to the server, which knows the gym's today.
+        ...(from > first ? { from_date: from } : {}),
+        to_date: until,
+        reason: reason.trim(),
+      }),
+    (frozen) => {
+      const to = shortDay(frozen.freeze?.to_date ?? until)
+      onDone(frozen.freeze?.started === false ? form.booked(shortDay(frozen.freeze.from_date), to) : form.done(to))
     },
-  })
+  )
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (untilOk && reasonOk) freeze.mutate()
+    if (fromOk && untilOk && reasonOk) freeze.mutate()
   }
 
   return (
     <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <label htmlFor={ids.from} className="member__label">
+        {form.from}
+      </label>
+      <input
+        id={ids.from}
+        className="member__input"
+        type="date"
+        min={first}
+        value={from}
+        aria-invalid={checked && !fromOk}
+        onChange={(e) => setFrom(e.target.value)}
+      />
+      {checked && !fromOk && (
+        <p className="member__error" role="alert">
+          {form.fromNeeded}
+        </p>
+      )}
+
       <label htmlFor={ids.until} className="member__label">
         {form.until}
       </label>
@@ -345,7 +425,7 @@ function FreezeForm({
         id={ids.until}
         className="member__input"
         type="date"
-        min={first}
+        min={addDays(fromOk ? from : first, 1)}
         value={until}
         aria-describedby={ids.hint}
         aria-invalid={checked && !untilOk}
@@ -390,6 +470,146 @@ function FreezeForm({
         </button>
         <button type="submit" className="member__button member__button--primary" disabled={freeze.isPending}>
           {freeze.isPending ? form.working : form.submit}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function EditFreezeForm({
+  membershipId,
+  freeze,
+  onCancel,
+  onDone,
+}: {
+  membershipId: string
+  freeze: Freeze
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const form = copy.editFreezeForm
+  const ids = { until: useId(), hint: useId(), reason: useId() }
+  // A running freeze ends after today (ending it today is "Terminar"), a booked one after its first day.
+  const first = addDays(freeze.started ? today() : freeze.from_date, 1)
+  const [until, setUntil] = useState(freeze.to_date)
+  const [reason, setReason] = useState(freeze.reason)
+  const [checked, setChecked] = useState(false)
+  const moved = until !== freeze.to_date
+  const untilOk = !moved || until >= first
+  const reasonOk = reason.trim() !== ''
+
+  const edit = useFreezeChange(
+    () => editFreeze(membershipId, { ...(moved ? { to_date: until } : {}), reason: reason.trim() }),
+    (edited) => onDone(form.done(shortDay(edited.freeze?.to_date ?? until))),
+  )
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (untilOk && reasonOk) edit.mutate()
+  }
+
+  return (
+    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <label htmlFor={ids.until} className="member__label">
+        {form.until}
+      </label>
+      <input
+        id={ids.until}
+        className="member__input"
+        type="date"
+        min={first}
+        value={until}
+        aria-describedby={ids.hint}
+        aria-invalid={checked && !untilOk}
+        onChange={(e) => setUntil(e.target.value)}
+      />
+      <p id={ids.hint} className="member__detail">
+        {form.untilHint}
+      </p>
+      {checked && !untilOk && (
+        <p className="member__error" role="alert">
+          {form.untilNeeded}
+        </p>
+      )}
+
+      <label htmlFor={ids.reason} className="member__label">
+        {form.reason}
+      </label>
+      <input
+        id={ids.reason}
+        className="member__input"
+        type="text"
+        maxLength={500}
+        value={reason}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {checked && !reasonOk && (
+        <p className="member__error" role="alert">
+          {form.reasonNeeded}
+        </p>
+      )}
+
+      {edit.error && (
+        <p className="member__error" role="alert">
+          {form.failed}
+        </p>
+      )}
+
+      <div className="member__form-actions">
+        <button type="button" className="member__button" disabled={edit.isPending} onClick={onCancel}>
+          {form.cancel}
+        </button>
+        <button type="submit" className="member__button member__button--primary" disabled={edit.isPending}>
+          {edit.isPending ? form.working : form.submit}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/** Ends a running freeze today, or calls off a booked one, once confirmed. */
+function EndFreezeForm({
+  membershipId,
+  freeze,
+  onCancel,
+  onDone,
+}: {
+  membershipId: string
+  freeze: Freeze
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const form = copy.endFreezeForm
+  const end = useFreezeChange(
+    () => endFreeze(membershipId),
+    () => onDone(freeze.started ? form.ended : form.calledOff),
+  )
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    end.mutate()
+  }
+
+  return (
+    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">
+        {freeze.started ? form.endHint : form.callOffHint(shortDay(freeze.from_date), shortDay(freeze.to_date))}
+      </p>
+
+      {end.error && (
+        <p className="member__error" role="alert">
+          {form.failed}
+        </p>
+      )}
+
+      <div className="member__form-actions">
+        <button type="button" className="member__button" disabled={end.isPending} onClick={onCancel}>
+          {form.cancel}
+        </button>
+        <button type="submit" className="member__button member__button--primary" disabled={end.isPending}>
+          {end.isPending ? form.working : freeze.started ? form.end : form.callOff}
         </button>
       </div>
     </form>

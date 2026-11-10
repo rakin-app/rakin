@@ -36,6 +36,12 @@ const MONTHLY: Membership = {
   freeze: null,
 }
 
+const FROZEN: Membership = {
+  ...MONTHLY,
+  status: 'frozen',
+  freeze: { id: 'f1', from_date: '2026-11-03', to_date: '2026-11-24', reason: 'Viaje', started: true },
+}
+
 const OCTOBER: OpenPeriod = {
   id: 'p-oct',
   period_start: '2026-10-30',
@@ -202,14 +208,25 @@ function stubApi({
     if (path === '/api/memberships' && url.searchParams.get('person_id') === 'felipe') return { body: members }
     if (path === '/api/memberships/m-felipe/freeze' && method === 'POST') {
       if (freeze) return freeze
-      const asked = calls.at(-1)!.body as { to_date: string; reason: string }
+      const { from_date, ...asked } = calls.at(-1)!.body as { from_date?: string; to_date: string; reason: string }
       const frozen: Membership = {
         ...MONTHLY,
-        status: 'frozen',
-        freeze: { id: 'f1', from_date: isoDay(new Date().toISOString()), ...asked },
+        status: from_date ? 'active' : 'frozen',
+        freeze: { id: 'f1', from_date: from_date ?? isoDay(new Date().toISOString()), started: !from_date, ...asked },
       }
       members = [frozen]
       return { body: frozen }
+    }
+    if (path === '/api/memberships/m-felipe/freeze' && method === 'PATCH') {
+      const asked = calls.at(-1)!.body as { to_date?: string; reason?: string }
+      const edited: Membership = { ...members[0]!, freeze: { ...members[0]!.freeze!, ...asked } }
+      members = [edited]
+      return { body: edited }
+    }
+    if (path === '/api/memberships/m-felipe/freeze/end' && method === 'POST') {
+      const ended: Membership = { ...members[0]!, status: 'active', freeze: null }
+      members = [ended]
+      return { body: ended }
     }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
     if (path === '/api/gym/grading-scheme') return { body: scheme }
@@ -580,9 +597,110 @@ describe('Ficha de alumno', () => {
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       { method: 'POST', path: '/api/memberships/m-felipe/freeze', body: { to_date: until, reason: 'Lesión de rodilla' } },
     ])
-    // Read again, the header says it is frozen, and it cannot be frozen twice.
+    // Read again, the header says it is frozen, and it can be edited or ended instead.
     expect(await within(card).findByText(copy.frozenUntil(shortDay(until)))).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: copy.freeze })).toBeDisabled()
+    expect(within(card).queryByRole('button', { name: copy.freeze })).not.toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: copy.editFreeze })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: copy.endFreeze })).toBeInTheDocument()
+  })
+
+  it('books a freeze to start on a later day', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+    const card = await money()
+    const from = isoDay(new Date(Date.now() + 5 * 86_400_000).toISOString())
+    const until = isoDay(new Date(Date.now() + 15 * 86_400_000).toISOString())
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    const form = screen.getByRole('form', { name: copy.freezeForm.title })
+    fireEvent.change(within(form).getByLabelText(copy.freezeForm.from), { target: { value: from } })
+    fireEvent.change(within(form).getByLabelText(copy.freezeForm.until), { target: { value: until } })
+    await userEvent.type(within(form).getByLabelText(copy.freezeForm.reason), 'Viaje')
+    await userEvent.click(within(form).getByRole('button', { name: copy.freezeForm.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.freezeForm.booked(shortDay(from), shortDay(until)))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/memberships/m-felipe/freeze',
+        body: { from_date: from, to_date: until, reason: 'Viaje' },
+      },
+    ])
+    // Not frozen until then: the freeze booked is a line under the plan, and it can be called off.
+    expect(await within(card).findByText(copy.freezeBooked(shortDay(from), shortDay(until)))).toBeInTheDocument()
+    expect(within(card).queryByText(copy.frozenUntil(shortDay(until)))).not.toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: copy.callOffFreeze })).toBeInTheDocument()
+  })
+
+  it('offers an end from the day after the freeze starts', async () => {
+    stubApi()
+    renderAt(PATH)
+    const card = await money()
+    const from = isoDay(new Date(Date.now() + 5 * 86_400_000).toISOString())
+    const next = isoDay(new Date(Date.now() + 6 * 86_400_000).toISOString())
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    expect(screen.getByLabelText(copy.freezeForm.from)).toHaveValue(isoDay(new Date().toISOString()))
+    fireEvent.change(screen.getByLabelText(copy.freezeForm.from), { target: { value: from } })
+
+    expect(screen.getByLabelText(copy.freezeForm.until)).toHaveAttribute('min', next)
+  })
+
+  it('edits a running freeze: a new end and reason', async () => {
+    const calls = stubApi({ memberships: [FROZEN] })
+    renderAt(PATH)
+    const card = await money()
+    const until = isoDay(new Date(Date.now() + 30 * 86_400_000).toISOString())
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.editFreeze }))
+    const form = screen.getByRole('form', { name: copy.editFreezeForm.title })
+    expect(within(form).getByLabelText(copy.editFreezeForm.reason)).toHaveValue('Viaje')
+    fireEvent.change(within(form).getByLabelText(copy.editFreezeForm.until), { target: { value: until } })
+    await userEvent.clear(within(form).getByLabelText(copy.editFreezeForm.reason))
+    await userEvent.type(within(form).getByLabelText(copy.editFreezeForm.reason), 'Lesión ')
+    await userEvent.click(within(form).getByRole('button', { name: copy.editFreezeForm.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.editFreezeForm.done(shortDay(until)))
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
+      { method: 'PATCH', path: '/api/memberships/m-felipe/freeze', body: { to_date: until, reason: 'Lesión' } },
+    ])
+    expect(await within(card).findByText(copy.frozenUntil(shortDay(until)))).toBeInTheDocument()
+  })
+
+  it('ends a running freeze today, once confirmed', async () => {
+    const calls = stubApi({ memberships: [FROZEN] })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.endFreeze }))
+    const form = screen.getByRole('form', { name: copy.endFreezeForm.title })
+    expect(form).toHaveTextContent(copy.endFreezeForm.endHint)
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.endFreezeForm.end }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.endFreezeForm.ended)
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/memberships/m-felipe/freeze/end', body: undefined },
+    ])
+    expect(await within(card).findByRole('button', { name: copy.freeze })).toBeEnabled()
+  })
+
+  it('calls off a booked freeze', async () => {
+    const booked: Membership = {
+      ...MONTHLY,
+      freeze: { ...FROZEN.freeze!, from_date: '2026-12-01', to_date: '2026-12-15', started: false },
+    }
+    const calls = stubApi({ memberships: [booked] })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.callOffFreeze }))
+    const form = screen.getByRole('form', { name: copy.endFreezeForm.title })
+    expect(form).toHaveTextContent(copy.endFreezeForm.callOffHint('1 dic', '15 dic'))
+    await userEvent.click(within(form).getByRole('button', { name: copy.endFreezeForm.callOff }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.endFreezeForm.calledOff)
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual(['/api/memberships/m-felipe/freeze/end'])
   })
 
   it('asks for the day it ends and a reason before freezing', async () => {
@@ -613,12 +731,7 @@ describe('Ficha de alumno', () => {
   })
 
   it('shows a frozen membership in the header, to a coach as well', async () => {
-    const frozen: Membership = {
-      ...MONTHLY,
-      status: 'frozen',
-      freeze: { id: 'f1', from_date: '2026-11-03', to_date: '2026-11-24', reason: 'Viaje' },
-    }
-    stubApi({ role: 'coach', memberships: [frozen] })
+    stubApi({ role: 'coach', memberships: [FROZEN] })
     renderAt(PATH)
 
     const card = await money()
