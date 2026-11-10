@@ -9,6 +9,11 @@ A session starts now and is taught by the person starting it unless the body say
 otherwise. Its coach is one of the gym's staff when it is started or reassigned; one
 who has left since stays its coach. There is no delete: attendance points at it.
 
+Each session carries `present`, how many are marked at it: none is a class whose
+attendance was never taken. The owner's dashboard lists those of the last week
+(`GET /api/sessions/unmarked`, owner and admin), so a class nobody marked does not
+leave the second ledger quietly empty.
+
 Any staff role may use it, coaches included, since they are who start a class and
 write what it covered; members may not use it at all.
 """
@@ -23,11 +28,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.dates import gym_today, start_of_local_day
-from app.roles import StaffSession
-from app.schemas.sessions import Day, Session, SessionCreate, SessionUpdate
+from app.roles import AdminSession, StaffSession
+from app.schemas.sessions import Day, Session, SessionCreate, SessionUpdate, Unmarked
 from app.tenancy import Tenant, current_tenant
 
 router = APIRouter(prefix="/api/sessions", tags=["classes"])
+
+# The dashboard looks this many gym days back, today included, for classes nobody marked.
+UNMARKED_DAYS = 7
 
 NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
 
@@ -35,7 +43,8 @@ NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
 SELECT_SESSION = """
     SELECT s.id, s.class_type_id, c.name AS class_type_name, c.program_id,
            p.name AS program_name, s.starts_at, s.coach_id, gp.name AS coach_name,
-           s.topic, s.notes, s.created_at, s.updated_at
+           s.topic, s.notes, s.created_at, s.updated_at,
+           (SELECT count(*) FROM attendance a WHERE a.session_id = s.id) AS present
     FROM session s
     JOIN class_type c ON c.id = s.class_type_id
     JOIN program p ON p.id = c.program_id
@@ -105,6 +114,28 @@ async def list_sessions(
     )
     sessions = [Session.model_validate(row, from_attributes=True) for row in result]
     return Day(date=day, timezone=zone, sessions=sessions)
+
+
+@router.get("/unmarked")
+async def unmarked_sessions(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: AdminSession
+) -> Unmarked:
+    """The last `UNMARKED_DAYS` gym days' sessions with no one marked, latest first.
+
+    Only those already started: one set to start later has no attendance to take yet.
+    """
+    zone = await _timezone(session, tenant)
+    since = gym_today(zone) - timedelta(days=UNMARKED_DAYS - 1)
+    result = await session.execute(
+        text(
+            f"{SELECT_SESSION} WHERE s.starts_at >= :start AND s.starts_at <= now()"
+            " AND NOT EXISTS (SELECT FROM attendance a WHERE a.session_id = s.id)"
+            " ORDER BY s.starts_at DESC, lower(c.name), s.created_at"
+        ),
+        {"start": start_of_local_day(since, zone)},
+    )
+    sessions = [Session.model_validate(row, from_attributes=True) for row in result]
+    return Unmarked(since=since, timezone=zone, sessions=sessions)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

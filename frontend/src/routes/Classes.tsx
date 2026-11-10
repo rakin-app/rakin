@@ -82,6 +82,7 @@ function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: st
             {session.topic ?? copy.today.noTopic}
           </span>
         </span>
+        {session.present === 0 && <span className="classes__flag">{copy.today.unmarked}</span>}
         <ChevronRightIcon />
       </Link>
     </li>

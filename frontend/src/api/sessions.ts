@@ -26,6 +26,8 @@ export type ClassSession = {
   notes: string | null
   created_at: string
   updated_at: string
+  /** How many are marked at it; 0 is a class whose attendance was never taken. */
+  present: number
 }
 
 /** A day's sessions in the gym's timezone, earliest first (backend `Day`). */
@@ -46,6 +48,21 @@ export function activeClassTypesQuery() {
 /** Today's sessions, today being the gym's. */
 export function todaySessionsQuery() {
   return queryOptions({ queryKey: ['sessions', 'today'], queryFn: () => apiFetch<SessionDay>('/api/sessions') })
+}
+
+/** The last week's classes, already started, that no one is marked at (backend `Unmarked`). */
+export type UnmarkedSessions = {
+  since: string
+  timezone: string
+  sessions: ClassSession[]
+}
+
+/** The classes nobody took attendance at, latest first. Owner and admin only. */
+export function unmarkedSessionsQuery() {
+  return queryOptions({
+    queryKey: ['sessions', 'unmarked'],
+    queryFn: () => apiFetch<UnmarkedSessions>('/api/sessions/unmarked'),
+  })
 }
 
 export function sessionQuery(id: string) {
