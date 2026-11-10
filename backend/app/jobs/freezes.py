@@ -1,7 +1,7 @@
 """The `freezes` job: a freeze booked ahead starts on its first day, and a frozen
 membership is Active again on the day its freeze ends.
 
-First it starts every freeze booked to start by the run date (#115, migration 0024),
+First it starts every freeze booked to start by the run date (#115, migration 0027),
 as `POST /api/memberships/{id}/freeze` starts one from today: the domain freezes the
 membership (`app.domain.membership.freeze`), its due date, the billing periods from the
 freeze's first day on and a pending plan change move past the frozen days, and a

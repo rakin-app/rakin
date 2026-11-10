@@ -323,7 +323,7 @@ async def change_plan(
     return await _get(session, membership_id)
 
 
-# A freeze moves the billing periods from its first day on (migration 0024), and with
+# A freeze moves the billing periods from its first day on (migration 0027), and with
 # them a pending plan change, which waits for the first day not yet billed.
 SHIFT_PERIODS = text("SELECT shift_billing_periods(:id, :from, CAST(:days AS integer))")
 
