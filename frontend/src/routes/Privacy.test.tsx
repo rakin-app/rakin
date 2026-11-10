@@ -16,6 +16,7 @@ const NOTICE: PrivacyNotice = {
   email: 'privacidad@academiasur.example.com',
   address: 'Av. Pedro de Valdivia 1234, Providencia',
   updated_on: '2027-01-15',
+  human_check: false,
 }
 
 type Answer = { status?: number; body?: unknown }
@@ -63,6 +64,7 @@ describe('Política de privacidad', () => {
     for (const item of [...copy.data, ...copy.purpose, ...copy.subprocessors]) {
       expect(screen.getByText(item)).toBeInTheDocument()
     }
+    expect(screen.queryByText(copy.humanCheckProcessor)).not.toBeInTheDocument()
     expect(screen.getByText(copy.complaint)).toBeInTheDocument()
     expect(screen.getByText(copy.updated('15 de enero de 2027'))).toBeInTheDocument()
     expect(screen.getByText(copy.disclaimer)).toBeInTheDocument()
@@ -75,6 +77,13 @@ describe('Política de privacidad', () => {
 
     await screen.findByRole('heading', { name: copy.title('Academia Sur') })
     expect(asked).toEqual(['/api/privacy?link=tok-123456789012345678901'])
+  })
+
+  it('names the human check among the providers only where the join form uses one', async () => {
+    stubApi({ body: { ...NOTICE, human_check: true } })
+    renderAt('/privacidad')
+
+    expect(await screen.findByText(copy.humanCheckProcessor)).toBeInTheDocument()
   })
 
   it('says when the gym has not published one', async () => {

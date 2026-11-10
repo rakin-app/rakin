@@ -1664,8 +1664,9 @@ export const es = {
       'Envío de correos.',
       'Almacenamiento de archivos, como los comprobantes de pago.',
       'Registro de errores, para corregir fallas del sistema.',
-      'Verificación de que no eres un robot, solo en el formulario de inscripción.',
     ],
+    // Listed only where the instance checks the join form for humans (`HUMAN_CHECK`).
+    humanCheckProcessor: 'Verificación de que no eres un robot, solo en el formulario de inscripción.',
     processorsAfter:
       'Algunos de estos proveedores pueden guardar los datos fuera de Chile, con medidas de seguridad adecuadas.',
     retentionTitle: '¿Cuánto tiempo los guardamos?',

@@ -12,10 +12,12 @@ export type PrivacyNotice = {
   address: string | null
   // The gym's today when it last saved these details.
   updated_on: string
+  // Whether the join form checks for humans, a provider the notice names only then.
+  human_check: boolean
 }
 
 /** The privacy details as Ajustes edits them (backend `Privacy`). */
-export type Privacy = Omit<PrivacyNotice, 'gym' | 'updated_on'>
+export type Privacy = Omit<PrivacyNotice, 'gym' | 'updated_on' | 'human_check'>
 
 // The day the notice's text (`t.privacy`) last changed; the notice is as new as this
 // or the gym's details, whichever is later. Change it with the text.

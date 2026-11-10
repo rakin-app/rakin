@@ -99,7 +99,7 @@ function NoticeText({ notice }: { notice: PrivacyNotice }) {
 
       <h2 className="privacy__heading">{copy.processorsTitle}</h2>
       <p>{copy.processors}</p>
-      <List items={copy.subprocessors} />
+      <List items={notice.human_check ? [...copy.subprocessors, copy.humanCheckProcessor] : copy.subprocessors} />
       <p>{copy.processorsAfter}</p>
 
       <h2 className="privacy__heading">{copy.retentionTitle}</h2>

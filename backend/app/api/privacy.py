@@ -8,16 +8,20 @@ session, and it says nothing a published notice does not.
 Which gym's: the one the host names (`meta.rakin.app`), else the one the session is
 in, else the one whose join link `link` is, for the join form on the base host. A gym
 that has not filled in its details, or none at all, is a 404 `no_privacy_notice`.
+
+`human_check` says whether this instance checks the join form for humans
+(`app.integrations.humancheck`), since that provider is one the notice names only then.
 """
 
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import text
 
 from app.api.unsubscribe import in_gym
 from app.hosts import host_gym
+from app.integrations import Integrations, get_integrations
 from app.schemas.gym import StoredPrivacy
 from app.schemas.privacy import PrivacyNotice
 from app.tenancy import Tenant
@@ -51,7 +55,9 @@ def stored_privacy(settings: Any) -> StoredPrivacy | None:
 
 @router.get("")
 async def privacy_notice(
-    request: Request, link: Annotated[str | None, Query(max_length=64)] = None
+    request: Request,
+    integrations: Annotated[Integrations, Depends(get_integrations)],
+    link: Annotated[str | None, Query(max_length=64)] = None,
 ) -> PrivacyNotice:
     gym_id = await _gym_of(request, link)
     if gym_id is None:
@@ -65,4 +71,8 @@ async def privacy_notice(
     privacy = None if row is None else stored_privacy(row.settings)
     if row is None or privacy is None:
         raise NO_NOTICE
-    return PrivacyNotice(gym=row.name, **privacy.model_dump())
+    return PrivacyNotice(
+        gym=row.name,
+        human_check=integrations.human_check.site_key is not None,
+        **privacy.model_dump(),
+    )

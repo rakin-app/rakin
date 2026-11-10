@@ -1,13 +1,16 @@
 """A gym's public privacy notice (#168): which gym's it is, and what it says of it."""
 
+import dataclasses
 import uuid
 from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.domain.dates import gym_today
+from app.integrations.humancheck import TurnstileCheck
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
@@ -27,13 +30,18 @@ def db() -> Iterator[Database]:
 
 
 @pytest.fixture(scope="module")
-def client(db: Database) -> Iterator[TestClient]:
+def app(db: Database) -> FastAPI:
     app = create_app(
         make_settings(
             database_url=db.api_url, public_base_url="https://rakin.cl", base_domain="rakin.cl"
         )
     )
     app.add_middleware(FakeAuth)
+    return app
+
+
+@pytest.fixture(scope="module")
+def client(app: FastAPI) -> Iterator[TestClient]:
     with TestClient(app) as c:
         yield c
 
@@ -62,6 +70,7 @@ def notice(slug: str) -> dict[str, Any]:
         "email": "privacidad@academiasur.example.com",
         "address": "Av. Pedro de Valdivia 1234, Providencia",
         "updated_on": gym_today(DEFAULT_TIMEZONE).isoformat(),
+        "human_check": False,
     }
 
 
@@ -124,3 +133,17 @@ def test_the_join_form_on_the_base_host_names_its_link(client: TestClient, db: D
     assert response.json() == notice(slug)
     assert client.get(URL, params={"link": "x" * 32}).status_code == 404
     assert client.get(URL, params={"link": "x" * 65}).status_code == 422
+
+
+def test_it_says_whether_the_join_form_checks_for_humans(
+    app: FastAPI, client: TestClient, db: Database
+) -> None:
+    gym, slug = new_gym(db)
+    fill_in(client, gym)
+    integrations = app.state.integrations
+    turnstile = TurnstileCheck(site_key="site", secret_key="secret")
+    app.state.integrations = dataclasses.replace(integrations, human_check=turnstile)
+    try:
+        assert client.get(URL, headers=on_host(slug)).json()["human_check"] is True
+    finally:
+        app.state.integrations = integrations
