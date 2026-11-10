@@ -18,8 +18,9 @@ import {
   type SessionBlock,
   type SuggestedBlock,
 } from '../api/sessionBlocks'
-import { sessionQuery, type ClassSession } from '../api/sessions'
+import { sessionQuery, useGymTimeZone, type ClassSession } from '../api/sessions'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, CloseIcon } from '../components/icons'
+import { clockTime } from '../format'
 import { t } from '../i18n/es'
 import {
   addMinute,
@@ -27,6 +28,7 @@ import {
   clearRun,
   currentBlock,
   endClass,
+  leftUnseen,
   pause,
   phaseMs,
   plannedBlock,
@@ -38,6 +40,7 @@ import {
   saveRun,
   skip,
   startRun,
+  touch,
   upcomingBlocks,
   type BlockResult,
   type RunState,
@@ -275,17 +278,19 @@ function blockOf(draft: Draft, kind: BlockKind | undefined): TimerBlock | Set<Fi
   return { ...base, seconds: rounds * roundSeconds, rounds, roundSeconds, restSeconds }
 }
 
-/** The blocks to start from: the session's own plan, if it has one, kept by id; else the
- * last class of the type's; an open mat, its rounds. */
+/** The blocks to start from: the session's own plan, if it has one; else the last class
+ * of the type's; an open mat, its rounds. */
 function initialDrafts(plan: SessionBlock[], suggested: SuggestedBlock[], openMat: boolean, kinds: BlockKind[]) {
   const sparringKind = kinds.find((k) => k.is_sparring && !k.archived)
   if (openMat) {
     const own = plan.length === 1 && plan[0]!.is_sparring ? plan[0]! : null
-    if (own) return [draftOf(own, own.id)]
+    if (own) return [draftOf(own, newId())]
     const last = suggested.find((b) => b.is_sparring)
     return [last ? draftOf(last, newId()) : openMatDraft(sparringKind)]
   }
-  if (plan.length > 0) return plan.map((b) => draftOf(b, b.id))
+  // New ids: a session run again starts unrecorded, and the API drops what the old
+  // blocks had, rather than keep it on blocks this run leaves out.
+  if (plan.length > 0) return plan.map((b) => draftOf(b, newId()))
   return suggested.map((b) => draftOf(b, newId()))
 }
 
@@ -609,8 +614,8 @@ function nextLabel(run: RunState, block: TimerBlock): string {
   return next ? words.next(summary(next)) : words.last
 }
 
-// A phase, to warn of its end once.
-const phaseKey = (run: RunState) => `${run.index}:${run.round}:${run.resting}`
+// A phase, to warn of its end once; "+1 min" makes it another end, warned of again.
+const phaseKey = (run: RunState) => `${run.index}:${run.round}:${run.resting}:${run.extraMs}`
 
 function Running({
   session,
@@ -626,6 +631,11 @@ function Running({
   const [now, setNow] = useState(() => Date.now())
   const [editing, setEditing] = useState(false)
   const [ending, setEnding] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  // When the class was last seen, if it went unseen too long and waits for the coach.
+  const [unseenAt, setUnseenAt] = useState<number | null>(null)
+  const navigate = useNavigate()
+  const timeZone = useGymTimeZone()
   const wakeLock = useWakeLock(true)
   // The run as last committed, for the tick and the buttons between renders.
   const latest = useRef(run)
@@ -647,9 +657,18 @@ function Running({
   useEffect(() => {
     const tick = () => {
       const at = Date.now()
+      if (leftUnseen(latest.current, at)) {
+        // Left running and found again: stop where it was last seen, and ask.
+        const seen = latest.current.lastSeen
+        apply(pause(latest.current, seen))
+        setUnseenAt(seen)
+        setNow(at)
+        return
+      }
       const step = advance(latest.current, at)
-      if (step.state !== latest.current) {
-        apply(step)
+      const seen = touch(step.state, at)
+      if (seen !== latest.current) {
+        apply({ ...step, state: seen })
         if (step.phaseEndedAt !== null && at - step.phaseEndedAt < SIGNAL_LATE_MS) signal('end')
       }
       const state = latest.current
@@ -682,14 +701,9 @@ function Running({
   return (
     <div className={`timer${warning ? ' timer--warning' : ''}${paused ? ' timer--paused' : ''}`}>
       <header className="timer__top">
-        <Link
-          to="/admin/clases/$sessionId"
-          params={{ sessionId: session.id }}
-          className="timer__back"
-          aria-label={copy.back}
-        >
+        <button type="button" className="timer__back" aria-label={copy.back} onClick={() => setLeaving(true)}>
           <ChevronLeftIcon />
-        </Link>
+        </button>
         <span className="timer__class">{session.class_type_name}</span>
         <span className="timer__position">{words.position(run.index + 1, run.blocks.length)}</span>
       </header>
@@ -724,6 +738,48 @@ function Running({
         </button>
       </div>
       <TimerNotes sessionId={session.id} noWakeLock={wakeLock === 'unsupported'} />
+      {unseenAt !== null && (
+        <div className="timer__sheet" role="alertdialog" aria-label={words.unseen.title}>
+          <p>{words.unseen.title}</p>
+          <p className="timer__sheet-detail">{words.unseen.detail(clockTime(new Date(unseenAt).toISOString(), timeZone))}</p>
+          <button
+            type="button"
+            className="timer__button timer__button--main"
+            onClick={() => {
+              setUnseenAt(null)
+              act((state, at) => ({ state: resume(state, at), finished: [], phaseEndedAt: null }))
+            }}
+          >
+            {words.unseen.resume}
+          </button>
+          <button
+            type="button"
+            className="timer__button timer__button--end"
+            onClick={() => {
+              setUnseenAt(null)
+              // Paused when last seen, so it ends then.
+              act(endClass)
+            }}
+          >
+            {words.unseen.end(clockTime(new Date(unseenAt).toISOString(), timeZone))}
+          </button>
+        </div>
+      )}
+      {leaving && (
+        <div className="timer__sheet" role="alertdialog" aria-label={words.leave.title}>
+          <p>{words.leave.title}</p>
+          <button
+            type="button"
+            className="timer__button"
+            onClick={() => void navigate({ to: '/admin/clases/$sessionId', params: { sessionId: session.id } })}
+          >
+            {words.leave.yes}
+          </button>
+          <button type="button" className="timer__button timer__button--main" onClick={() => setLeaving(false)}>
+            {words.leave.no}
+          </button>
+        </div>
+      )}
       {ending && (
         <div className="timer__sheet" role="alertdialog" aria-label={words.end}>
           <p>{words.endConfirm}</p>

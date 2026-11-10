@@ -1018,6 +1018,17 @@ export const es = {
         endConfirm: '¿Terminar la clase? Se guarda lo que se hizo hasta ahora.',
         endYes: 'Sí, terminar',
         endNo: 'Seguir',
+        unseen: {
+          title: '¿Sigue la clase?',
+          detail: (time: string) => `El timer quedó sin mirar desde las ${time}. Lo pausamos ahí.`,
+          resume: 'Seguir',
+          end: (time: string) => `Terminar a las ${time}`,
+        },
+        leave: {
+          title: 'La clase sigue corriendo. Puedes volver al timer desde la clase.',
+          yes: 'Salir',
+          no: 'Quedarme',
+        },
         noWakeLock: 'Este teléfono no permite mantener la pantalla encendida: desactiva el bloqueo automático mientras corre el timer.',
       },
       done: {

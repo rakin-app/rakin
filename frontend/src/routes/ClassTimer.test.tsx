@@ -8,6 +8,7 @@ import type { SessionBlock, SuggestedBlock } from '../api/sessionBlocks'
 import type { ClassSession } from '../api/sessions'
 import { App } from '../App'
 import { es } from '../i18n/es'
+import { clockTime } from '../format'
 import { createAppRouter } from '../router'
 import { savedRun, saveRun, startRun } from './timerEngine'
 
@@ -135,6 +136,18 @@ const writes = (calls: Call[]) => calls.filter((c) => c.method !== 'GET')
 let clockNow = 1_700_000_000_000
 const later = (ms: number) => {
   clockNow += ms
+}
+
+// A step the timer takes as watched: under `UNSEEN_MS`.
+const STEP_MS = 4 * 60_000
+
+/** The class runs `ms` with the timer on screen: the clock moves a few minutes at a time,
+ * and the timer ticks between moves, as it does when someone is looking. */
+async function watch(ms: number) {
+  for (let left = ms; left > 0; left -= STEP_MS) {
+    later(Math.min(STEP_MS, left))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)))
+  }
 }
 
 function renderAt(path: string) {
@@ -267,7 +280,7 @@ describe('the running class', () => {
       ['sparring', null],
     ])
 
-    act(() => later(10 * 60_000 + 2_000))
+    await watch(10 * 60_000 + 2_000)
     expect(await screen.findByText(running.round('Sparring', 1, 6))).toBeInTheDocument()
     await waitFor(() => expect(writes(api.calls)).toHaveLength(2))
     expect(writes(api.calls)[1]).toEqual({
@@ -301,9 +314,11 @@ describe('the running class', () => {
     stubApi()
     const view = await startClass()
     expect(savedRun('s1')).not.toBeNull()
+    // Seen to 14:50, then the phone locks for 40 s: warm-up done, round 1 done, half its
+    // rest gone.
+    await watch(14 * 60_000 + 50_000)
     view.unmount()
-    // Away 15 min 30 s: warm-up done, round 1 done, half its rest gone.
-    later(15 * 60_000 + 30_000)
+    later(40_000)
     renderAt('/admin/clases/s1/timer')
     expect(await screen.findByRole('timer')).toHaveTextContent('0:30')
     expect(screen.getByText(running.rest(2, 6))).toBeInTheDocument()
@@ -312,7 +327,7 @@ describe('the running class', () => {
   it('keeps what ran on the phone without signal, and sends it when the signal comes back', async () => {
     const api = stubApi({ offline: true })
     await startClass()
-    act(() => later(10 * 60_000 + 1_000))
+    await watch(10 * 60_000 + 1_000)
     expect(await screen.findByText(running.round('Sparring', 1, 6))).toBeInTheDocument()
     expect(writes(api.calls)).toEqual([])
     expect(await screen.findByText(copy.sync.pending, {}, { timeout: 4000 })).toBeInTheDocument()
@@ -332,7 +347,7 @@ describe('the running class', () => {
     await startClass()
     // Round 3 started at 22:00 (two rounds of 5 min, each with its minute of rest), and is
     // half way through: 2 rounds done, 150 s of the third.
-    act(() => later(22 * 60_000 + 150_000))
+    await watch(22 * 60_000 + 150_000)
     expect(await screen.findByText(running.round('Sparring', 3, 6))).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: running.end }))
     await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: running.endYes }))
@@ -386,5 +401,123 @@ describe('the running class', () => {
     )
     renderAt('/admin/clases/s1')
     expect(await screen.findByRole('link', { name: es.admin.session.timer.resume })).toBeInTheDocument()
+  })
+
+  it('asks before leaving a running class by the back arrow', async () => {
+    stubApi()
+    await startClass()
+    await userEvent.click(screen.getByRole('button', { name: copy.back }))
+    const sheet = screen.getByRole('alertdialog', { name: running.leave.title })
+    await userEvent.click(within(sheet).getByRole('button', { name: running.leave.no }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('timer')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.back }))
+    await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: running.leave.yes }))
+    expect(await screen.findByRole('link', { name: es.admin.session.timer.resume })).toBeInTheDocument()
+  })
+
+  it('warns again at 10 s after "+1 min" given inside the warning', async () => {
+    const vibrate = vi.fn()
+    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, { vibrate }))
+    stubApi()
+    await startClass()
+    await watch(9 * 60_000 + 52_000)
+    expect(vibrate).toHaveBeenCalledTimes(1)
+    expect(vibrate).toHaveBeenLastCalledWith(200)
+
+    await userEvent.click(screen.getByRole('button', { name: running.addMinute }))
+    expect(screen.getByRole('timer')).toHaveTextContent('1:08')
+    await watch(60_000)
+    expect(screen.getByRole('timer')).toHaveTextContent('0:08')
+    expect(vibrate).toHaveBeenCalledTimes(2)
+    expect(vibrate).toHaveBeenLastCalledWith(200)
+  })
+
+  it('gives a session run again new block ids, so its old results go', async () => {
+    const old: SessionBlock = {
+      id: 'old-1',
+      position: 0,
+      block_kind_id: 'technique',
+      block_kind_name: 'Técnica',
+      is_sparring: false,
+      planned_seconds: 1200,
+      actual_seconds: 1200,
+      rounds_planned: null,
+      rounds_completed: null,
+      round_seconds: null,
+      rest_seconds: null,
+    }
+    const api = stubApi({ plan: [old] })
+    renderAt('/admin/clases/s1/timer')
+    const editor = await screen.findByRole('form', { name: copy.editor.title })
+    // The session's own plan, not the last class's.
+    expect(within(editor).getAllByRole('group')).toHaveLength(1)
+    expect(within(editor).getByLabelText(copy.editor.kind)).toHaveValue('technique')
+    await userEvent.click(within(editor).getByRole('button', { name: copy.editor.start }))
+
+    await waitFor(() => expect(writes(api.calls)).toHaveLength(1))
+    const sent = (writes(api.calls)[0]!.body as { blocks: { id: string }[] }).blocks
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.id).not.toBe('old-1')
+  })
+})
+
+describe('a class left running', () => {
+  // Opened again `away` after the timer was last on screen, two minutes into the warm-up.
+  async function leaveAndReturn(away: number) {
+    const api = stubApi()
+    const view = await startClass()
+    await watch(2 * 60_000)
+    const seen = clockNow
+    view.unmount()
+    later(away)
+    renderAt('/admin/clases/s1/timer')
+    const sheet = await screen.findByRole('alertdialog', { name: running.unseen.title })
+    return { api, sheet, seen }
+  }
+
+  it.each([
+    ['three hours', 3 * 60 * 60_000],
+    ['the next day', 26 * 60 * 60_000],
+  ])('asks after %s, stopped where it was last seen, and ends it then', async (_when, away) => {
+    const { api, sheet, seen } = await leaveAndReturn(away)
+    // Nothing ran out while nobody looked: the warm-up is still at 8:00, paused.
+    expect(screen.getByRole('timer')).toHaveTextContent('8:00')
+    expect(screen.getByText(running.paused)).toBeInTheDocument()
+    expect(writes(api.calls).filter((c) => c.path.endsWith('/actual'))).toEqual([])
+
+    const time = clockTime(new Date(seen).toISOString(), 'America/Santiago')
+    await userEvent.click(within(sheet).getByRole('button', { name: running.unseen.end(time) }))
+
+    expect(await screen.findByText(copy.done.title)).toBeInTheDocument()
+    expect(screen.getByText(copy.minutes(120))).toBeInTheDocument()
+    expect(screen.getByText(copy.done.notRun)).toBeInTheDocument()
+    await waitFor(() => expect(writes(api.calls).filter((c) => c.path.endsWith('/actual'))).toHaveLength(1))
+    expect(writes(api.calls).find((c) => c.path.endsWith('/actual'))!.body).toEqual({
+      actual_seconds: 120,
+      rounds_completed: null,
+    })
+  })
+
+  it('goes on from where it stopped with "Seguir"', async () => {
+    const { api, sheet } = await leaveAndReturn(3 * 60 * 60_000)
+    await userEvent.click(within(sheet).getByRole('button', { name: running.unseen.resume }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: running.pause })).toBeInTheDocument()
+    await watch(60_000)
+    expect(screen.getByRole('timer')).toHaveTextContent('7:00')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(writes(api.calls).filter((c) => c.path.endsWith('/actual'))).toEqual([])
+  })
+
+  it('runs on as usual after a lock under five minutes', async () => {
+    stubApi()
+    const view = await startClass()
+    view.unmount()
+    later(4 * 60_000)
+    renderAt('/admin/clases/s1/timer')
+    expect(await screen.findByRole('timer')).toHaveTextContent('6:00')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 })

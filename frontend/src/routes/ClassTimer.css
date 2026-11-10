@@ -237,6 +237,16 @@
   margin: 0;
 }
 
+.timer__sheet-detail {
+  color: var(--color-inverse-text-muted);
+  font-size: var(--text-sm);
+}
+
+.timer__back {
+  background: transparent;
+  cursor: pointer;
+}
+
 .timer__overlay {
   position: fixed;
   inset: 0;

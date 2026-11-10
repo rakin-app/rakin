@@ -3,6 +3,7 @@ import {
   addMinute,
   advance,
   endClass,
+  leftUnseen,
   pause,
   plannedBlock,
   remainingMs,
@@ -12,6 +13,7 @@ import {
   saveRun,
   skip,
   startRun,
+  touch,
   type TimerBlock,
 } from './timerEngine'
 
@@ -171,6 +173,25 @@ describe('the timer engine', () => {
   })
 })
 
+describe('a run left unseen', () => {
+  it('is one running past five minutes since it was last seen', () => {
+    const run = startRun([block('warmup', 600)], T0)
+    expect(leftUnseen(run, T0 + 5 * MIN)).toBe(false)
+    expect(leftUnseen(run, T0 + 5 * MIN + 1)).toBe(true)
+    expect(leftUnseen(touch(run, T0 + 4 * MIN), T0 + 9 * MIN)).toBe(false)
+    // Paused, nothing runs: nothing to ask.
+    expect(leftUnseen(pause(run, T0).state, T0 + 60 * MIN)).toBe(false)
+    // Resumed, it is seen again.
+    expect(leftUnseen(resume(pause(run, T0).state, T0 + 60 * MIN), T0 + 61 * MIN)).toBe(false)
+  })
+
+  it('is touched only every few seconds', () => {
+    const run = startRun([block('warmup', 600)], T0)
+    expect(touch(run, T0 + 1_000)).toBe(run)
+    expect(touch(run, T0 + 5_000).lastSeen).toBe(T0 + 5_000)
+  })
+})
+
 describe('the run kept on the phone', () => {
   beforeEach(() => localStorage.clear())
 
@@ -179,6 +200,22 @@ describe('the run kept on the phone', () => {
     saveRun('s1', run)
     expect(savedRun('s1')).toEqual(run)
     expect(savedRun('s2')).toBeNull()
+  })
+
+  it.each([
+    ['without its results', (run: Record<string, unknown>) => delete run.results],
+    ['with its results a list', (run: Record<string, unknown>) => (run.results = [])],
+    ['with a block past the end', (run: Record<string, unknown>) => (run.index = 5)],
+    ['with a text index', (run: Record<string, unknown>) => (run.index = '0')],
+    ['without lastSeen', (run: Record<string, unknown>) => delete run.lastSeen],
+    ['with a block missing its seconds', (run: Record<string, unknown>) => delete (run.blocks as Record<string, unknown>[])[0]!.seconds],
+    ['with a sparring block without rounds', (run: Record<string, unknown>) => ((run.blocks as Record<string, unknown>[])[0]!.sparring = true)],
+    ['with a result missing its seconds', (run: Record<string, unknown>) => (run.results = { warmup: { blockId: 'warmup' } })],
+  ])('discards a run %s', (_what, spoil) => {
+    const run = JSON.parse(JSON.stringify(startRun([block('warmup', 600)], T0))) as Record<string, unknown>
+    spoil(run)
+    localStorage.setItem('rakin:timer:s1', JSON.stringify(run))
+    expect(savedRun('s1')).toBeNull()
   })
 
   it('ignores what it cannot read', () => {

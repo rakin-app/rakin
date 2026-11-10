@@ -46,6 +46,9 @@ export type RunState = {
   /** What each finished block ran, by id. */
   results: Record<string, BlockResult>
   startedAt: number
+  /** The last time the timer was on screen (`touch`): a run not seen for long was
+   * left, and its time since then is not the class's until the coach says so. */
+  lastSeen: number
   /** An open mat: one sparring block, nothing to add after it. */
   openMat: boolean
   /** Set once the last block ran out or the class was ended. */
@@ -97,6 +100,7 @@ export function startRun(blocks: TimerBlock[], now: number, openMat = false): Ru
     roundsDone: 0,
     results: {},
     startedAt: now,
+    lastSeen: now,
     openMat,
     endedAt: blocks.length === 0 ? now : null,
   }
@@ -208,7 +212,7 @@ export function pause(state: RunState, now: number): Step {
 
 export function resume(state: RunState, now: number): RunState {
   if (state.pausedAt === null) return state
-  return { ...state, phaseStart: state.phaseStart + (now - state.pausedAt), pausedAt: null }
+  return { ...state, phaseStart: state.phaseStart + (now - state.pausedAt), pausedAt: null, lastSeen: now }
 }
 
 /** "+1 min" to the phase running. */
@@ -242,6 +246,22 @@ export function upcomingBlocks(state: RunState): TimerBlock[] {
   return state.endedAt === null ? state.blocks.slice(state.index + 1) : []
 }
 
+// How long a run may go unseen and still be the class's: beyond it the coach is asked.
+export const UNSEEN_MS = 5 * MINUTE_MS
+// How stale `lastSeen` may get before it is written again: a write per tick is waste.
+const SEEN_EVERY_MS = 5_000
+
+/** The run, seen on screen at `now`; the same object when `lastSeen` is recent enough. */
+export function touch(state: RunState, now: number): RunState {
+  return now - state.lastSeen < SEEN_EVERY_MS ? state : { ...state, lastSeen: now }
+}
+
+/** Whether a running class went unseen so long that what ran meanwhile needs the coach's
+ * word: a phone that died, a coach who never pressed "Terminar clase". */
+export function leftUnseen(state: RunState, now: number): boolean {
+  return state.endedAt === null && state.pausedAt === null && now - state.lastSeen > UNSEEN_MS
+}
+
 // The run, kept on the phone per session, so a reload or a locked phone resumes it.
 const RUN_PREFIX = 'rakin:timer:'
 
@@ -249,12 +269,67 @@ export function savedRun(sessionId: string): RunState | null {
   try {
     const raw = localStorage.getItem(RUN_PREFIX + sessionId)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<RunState>
-    if (parsed.version !== 1 || !Array.isArray(parsed.blocks) || typeof parsed.phaseStart !== 'number') return null
-    return parsed as RunState
+    const parsed: unknown = JSON.parse(raw)
+    return isRun(parsed) ? parsed : null
   } catch {
     return null
   }
+}
+
+const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+const isCount = (value: unknown) => Number.isInteger(value) && (value as number) >= 0
+const orNull = (value: unknown, check: (v: unknown) => boolean) => value === null || check(value)
+
+function isBlock(value: unknown): value is TimerBlock {
+  if (typeof value !== 'object' || value === null) return false
+  const b = value as Record<string, unknown>
+  return (
+    typeof b.id === 'string' &&
+    typeof b.kindId === 'string' &&
+    typeof b.kindName === 'string' &&
+    typeof b.sparring === 'boolean' &&
+    isNumber(b.seconds) &&
+    orNull(b.rounds, isCount) &&
+    orNull(b.roundSeconds, isNumber) &&
+    orNull(b.restSeconds, isNumber) &&
+    (!b.sparring || (isCount(b.rounds) && isNumber(b.roundSeconds)))
+  )
+}
+
+function isResult(value: unknown): value is BlockResult {
+  if (typeof value !== 'object' || value === null) return false
+  const r = value as Record<string, unknown>
+  return typeof r.blockId === 'string' && isCount(r.actual_seconds) && orNull(r.rounds_completed, isCount)
+}
+
+/** A run as `saveRun` wrote it, every field of its type: one that is not is discarded
+ * rather than run, since a missing field would throw mid-class. */
+function isRun(value: unknown): value is RunState {
+  if (typeof value !== 'object' || value === null) return false
+  const r = value as Record<string, unknown>
+  return (
+    r.version === 1 &&
+    Array.isArray(r.blocks) &&
+    r.blocks.every(isBlock) &&
+    isCount(r.index) &&
+    (r.index as number) <= r.blocks.length &&
+    isCount(r.round) &&
+    typeof r.resting === 'boolean' &&
+    isNumber(r.phaseStart) &&
+    orNull(r.pausedAt, isNumber) &&
+    isNumber(r.extraMs) &&
+    isNumber(r.workMs) &&
+    isCount(r.roundsDone) &&
+    typeof r.results === 'object' &&
+    r.results !== null &&
+    !Array.isArray(r.results) &&
+    Object.values(r.results).every(isResult) &&
+    isNumber(r.startedAt) &&
+    isNumber(r.lastSeen) &&
+    typeof r.openMat === 'boolean' &&
+    orNull(r.endedAt, isNumber) &&
+    (r.endedAt !== null || (r.index as number) < r.blocks.length)
+  )
 }
 
 export function saveRun(sessionId: string, state: RunState): void {
