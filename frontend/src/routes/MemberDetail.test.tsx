@@ -8,10 +8,26 @@ import type { Membership, MembershipLedger, OpenPeriod, Person, TimelineEntry } 
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { isoDay, shortDay } from '../format'
+import type { PersonTime } from '../api/matTime'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 
 const copy = es.admin.member
+
+// A class with sparring, and an open mat whose time is sparring too.
+const FELIPE_TIME: PersonTime = (() => {
+  const totals = {
+    by_kind: [
+      { block_kind_id: 'k-tec', name: 'Técnica', is_sparring: false, seconds: 1200 },
+      { block_kind_id: 'k-spar', name: 'Sparring', is_sparring: true, seconds: 5400 },
+    ],
+    sparring_seconds: 5400,
+    open_mat_seconds: 1800,
+    classes: 1,
+    open_mats: 1,
+  }
+  return { timezone: 'America/Santiago', month_start: '2026-11-01', this_month: totals, all_time: totals }
+})()
 
 const FELIPE: Person = {
   id: 'felipe',
@@ -162,6 +178,7 @@ type Stub = {
   fields?: PersonField[]
   fieldsUpdate?: Answer
   attendance?: Answer
+  time?: Answer
   // The gym's timezone, as today's sessions give it.
   timeZone?: string
 }
@@ -181,6 +198,7 @@ function stubApi({
   fields = [],
   fieldsUpdate,
   attendance = { body: { last_30_days: 9, total: 184, since_promotion: 62 } },
+  time = { body: FELIPE_TIME },
   timeZone = 'America/Santiago',
 }: Stub = {}) {
   const calls: Call[] = []
@@ -235,6 +253,7 @@ function stubApi({
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
     if (path === '/api/gym/grading-scheme') return { body: scheme }
     if (path === '/api/people/felipe/attendance') return attendance
+    if (path === '/api/people/felipe/time') return time
     if (path === '/api/people/felipe/grades' && method === 'GET') return { body: grades }
     if (path === '/api/people/felipe/grades' && method === 'POST') {
       if (award) return award
@@ -823,6 +842,22 @@ describe('Ficha de alumno', () => {
     const card = await screen.findByRole('region', { name: copy.attendance.title })
     expect(within(card).getByText('9')).toBeInTheDocument()
     expect(within(card).getByText(copy.attendance.detail(9, 184))).toBeInTheDocument()
+  })
+
+  it("shows the member's time on the mat", async () => {
+    stubApi()
+    renderAt(PATH)
+
+    const card = await screen.findByRole('region', { name: es.matTime.theirs })
+    expect(within(card).getByRole('list', { name: es.matTime.byKind })).toHaveTextContent('Sparring1 h 30 min')
+    expect(within(card).getByText(es.matTime.openMat(1, '30 min'))).toBeInTheDocument()
+  })
+
+  it('says so when the time on the mat cannot be read', async () => {
+    stubApi({ time: { status: 403, body: {} } })
+    renderAt(PATH)
+
+    expect(await screen.findByText(es.matTime.error)).toBeInTheDocument()
   })
 
   it('says no classes since the last promotion only once there is a rank', async () => {

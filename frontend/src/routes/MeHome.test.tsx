@@ -2,6 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { PersonTime } from '../api/matTime'
 import type { BankAccount, MyPage, MyPayment } from '../api/me'
 import type { OpenPeriod } from '../api/proofs'
 import { createQueryClient } from '../api/queryClient'
@@ -50,6 +51,13 @@ const payment = (over: Partial<MyPayment>): MyPayment => ({
   ...over,
 })
 
+const NO_TIME: PersonTime = {
+  timezone: 'America/Santiago',
+  month_start: `${YEAR}-11-01`,
+  this_month: { by_kind: [], sparring_seconds: 0, open_mat_seconds: 0, classes: 0, open_mats: 0 },
+  all_time: { by_kind: [], sparring_seconds: 0, open_mat_seconds: 0, classes: 0, open_mats: 0 },
+}
+
 function diego(over: Partial<MyPage> = {}): MyPage {
   return {
     gym_name: 'Academia Sur',
@@ -69,7 +77,7 @@ function diego(over: Partial<MyPage> = {}): MyPage {
   }
 }
 
-function stubPage(answer: MyPage | { status: number }) {
+function stubPage(answer: MyPage | { status: number }, time: PersonTime = NO_TIME) {
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input) => {
@@ -79,6 +87,7 @@ function stubPage(answer: MyPage | { status: number }) {
         return Response.json(answer)
       }
       if (url.pathname === '/api/me/periods') return Response.json([NOVEMBER])
+      if (url.pathname === '/api/me/time') return Response.json(time)
       return Response.json({ detail: 'Not Found' }, { status: 404 })
     }),
   )
@@ -238,6 +247,29 @@ describe('Mi página', () => {
     expect(card.getByText(copy.training.month)).toBeInTheDocument()
     expect(card.getByText('11 clases')).toBeInTheDocument()
     expect(card.getByText('312 en total')).toBeInTheDocument()
+  })
+
+  it('shows the time on the mat, from the API', async () => {
+    const month = {
+      by_kind: [{ block_kind_id: 'k-spar', name: 'Sparring', is_sparring: true, seconds: 23400 }],
+      sparring_seconds: 23400,
+      open_mat_seconds: 0,
+      classes: 5,
+      open_mats: 0,
+    }
+    stubPage(diego(), { ...NO_TIME, this_month: month, all_time: { ...month, classes: 40, sparring_seconds: 360000 } })
+    renderMe()
+
+    const card = within(await screen.findByRole('region', { name: es.matTime.mine }))
+    expect(card.getByRole('list', { name: es.matTime.byKind })).toHaveTextContent('Sparring6 h 30 min')
+  })
+
+  it('says there is no timed class yet', async () => {
+    stubPage(diego())
+    renderMe()
+
+    const card = within(await screen.findByRole('region', { name: es.matTime.mine }))
+    expect(card.getByText(es.matTime.emptyMine)).toBeInTheDocument()
   })
 
   it('is paid up', async () => {

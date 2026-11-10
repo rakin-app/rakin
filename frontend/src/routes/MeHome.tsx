@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { rankLabel } from '../api/grading'
 import { myPageQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
 import { RankBelt } from '../components/Belt'
+import { MyMatTime } from '../components/MatTime'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './MeHome.css'
@@ -12,7 +13,7 @@ const copy = t.me
 
 /**
  * "Mi página", the student page: what is due next and where to transfer it,
- * the proof upload, their belt and classes, and the payments already sent with how
+ * the proof upload, their belt and classes, their time on the mat, and the payments already sent with how
  * each was reviewed.
  */
 export function MeHome() {
@@ -43,6 +44,7 @@ export function MeHome() {
       <div className="me-home">
         <NextPayment page={page.data} />
         <Training page={page.data} />
+        <MyMatTime />
         <History page={page.data} />
         <p className="me-home__footnote">{copy.home.signedIn}</p>
       </div>
