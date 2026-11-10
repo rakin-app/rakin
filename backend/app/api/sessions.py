@@ -1,4 +1,4 @@
-"""The current gym's sessions: the day's classes, start one, write its topic and notes.
+"""The current gym's sessions: the day's classes, start one, edit, cancel or delete it.
 
 A session is one class actually held (migration 0020). There is no timetable: a coach
 starts one ad hoc when the class begins, of one of the gym's active class types, and
@@ -7,15 +7,26 @@ writes its topic and notes during or after class. The day's sessions are those w
 
 A session starts now and is taught by the person starting it unless the body says
 otherwise. Its coach is one of the gym's staff when it is started or reassigned; one
-who has left since stays its coach. There is no delete: attendance points at it.
+who has left since stays its coach.
 
 Each session carries `present`, how many are marked at it: none is a class whose
 attendance was never taken. The owner's dashboard lists those of the last week
 (`GET /api/sessions/unmarked`, owner and admin), so a class nobody marked does not
 leave the second ledger quietly empty.
 
-Any staff role may use it, coaches included, since they are who start a class and
-write what it covered; members may not use it at all.
+Any staff role may read them and start one, coaches included, since they are who
+start a class and write what it covered; members may not use them at all. Changing
+one is narrower (#163): an owner or admin may move it, change its type or its coach,
+and its own coach may write its topic and notes. A type changed after the class
+re-applies the new type's `counts_as_class` and `kind`, since every count reads them
+off the type; its attendance stays.
+
+An owner or admin cancels a class that won't happen (`POST .../cancel`, undone by
+`POST .../reactivate`): it stays on the day, `cancelled_at` set, and is refused
+attendance and the timer, so it counts for nothing. Once attendance has been taken it
+is refused with a 409, to delete instead. Deleting (`DELETE`, owner and admin, held to
+them by RLS too, migration 0033) removes a class made by mistake with its attendance,
+giving back the credits each took, and its timer blocks.
 """
 
 import uuid
@@ -27,8 +38,10 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.attendance import remove_attendance
 from app.domain.dates import gym_today, start_of_local_day
-from app.roles import AdminSession, StaffSession
+from app.roles import ADMIN_ROLES, FORBIDDEN, AdminSession, StaffSession, role_in_gym
+from app.schemas.classes import ClassKind
 from app.schemas.sessions import Day, Session, SessionCreate, SessionUpdate, Unmarked
 from app.tenancy import Tenant, current_tenant
 
@@ -38,12 +51,19 @@ router = APIRouter(prefix="/api/sessions", tags=["classes"])
 UNMARKED_DAYS = 7
 
 NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
+# Cancelling a class someone was marked at: delete it instead, or unmark them first.
+HAS_ATTENDANCE = HTTPException(
+    status.HTTP_409_CONFLICT, "attendance was taken at the class; delete it instead"
+)
+
+# What a session's own coach may change; everything else is an owner's or admin's.
+COACH_FIELDS = frozenset({"topic", "notes"})
 
 # Each with its class type, program and coach. RLS keeps every table to the current gym.
 SELECT_SESSION = """
     SELECT s.id, s.class_type_id, c.name AS class_type_name, c.program_id,
            p.name AS program_name, s.starts_at, s.coach_id, gp.name AS coach_name,
-           s.topic, s.notes, s.created_at, s.updated_at,
+           s.topic, s.notes, s.cancelled_at, s.created_at, s.updated_at,
            (SELECT count(*) FROM attendance a WHERE a.session_id = s.id) AS present
     FROM session s
     JOIN class_type c ON c.id = s.class_type_id
@@ -123,12 +143,14 @@ async def unmarked_sessions(
     """The last `UNMARKED_DAYS` gym days' sessions with no one marked, latest first.
 
     Only those already started: one set to start later has no attendance to take yet.
+    A cancelled one has none to take at all.
     """
     zone = await _timezone(session, tenant)
     since = gym_today(zone) - timedelta(days=UNMARKED_DAYS - 1)
     result = await session.execute(
         text(
             f"{SELECT_SESSION} WHERE s.starts_at >= :start AND s.starts_at <= now()"
+            " AND s.cancelled_at IS NULL"
             " AND NOT EXISTS (SELECT FROM attendance a WHERE a.session_id = s.id)"
             " ORDER BY s.starts_at DESC, lower(c.name), s.created_at"
         ),
@@ -164,20 +186,102 @@ async def get_session(session_id: uuid.UUID, session: StaffSession) -> Session:
     return await _get(session, session_id)
 
 
+async def _require_plan_fits(session: AsyncSession, session_id: uuid.UUID) -> None:
+    """A 422 unless the session's timer plan fits an open mat: none yet, or one sparring
+    block, the rule `PUT .../blocks` holds an open mat to."""
+    blocks = (
+        await session.execute(
+            text(
+                "SELECT k.is_sparring FROM session_block b"
+                " JOIN block_kind k ON k.id = b.block_kind_id WHERE b.session_id = :id"
+            ),
+            {"id": session_id},
+        )
+    ).all()
+    if blocks and (len(blocks) != 1 or not blocks[0].is_sparring):
+        raise _unprocessable(
+            "class_type_id", "open_mat_plan", "an open mat is one sparring block; fix its blocks"
+        )
+
+
 @router.patch("/{session_id}")
 async def update_session(
-    session_id: uuid.UUID, body: SessionUpdate, session: StaffSession
+    session_id: uuid.UUID,
+    body: SessionUpdate,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: StaffSession,
 ) -> Session:
+    """The fields sent, as they then stand. A field sent as it already is changes
+    nothing, so a form may send them all; changing any but the topic and notes is an
+    owner's or admin's, and those two the session's own coach's too, else a 403."""
     current = await _get(session, session_id, lock=True)
-    changes = body.model_dump(exclude_unset=True)
-    if "coach_id" in changes and changes["coach_id"] != current.coach_id:
+    sent = body.model_dump(exclude_unset=True)
+    changes = {k: v for k, v in sent.items() if v != getattr(current, k)}
+    coaching = current.coach_id == tenant.person_id and changes.keys() <= COACH_FIELDS
+    if changes and not coaching and await role_in_gym(session, tenant) not in ADMIN_ROLES:
+        raise FORBIDDEN
+    if "coach_id" in changes:
         await _require_coach(session, changes["coach_id"])
-    columns = {**current.model_dump(include={"topic", "notes", "coach_id"}), **changes}
+    if "class_type_id" in changes:
+        await _require_class_type(session, changes["class_type_id"])
+        kind = await session.scalar(
+            text("SELECT kind FROM class_type WHERE id = :id"), {"id": changes["class_type_id"]}
+        )
+        if kind == ClassKind.OPEN_MAT:
+            await _require_plan_fits(session, session_id)
+    fields = {"topic", "notes", "coach_id", "class_type_id", "starts_at"}
+    columns = {**current.model_dump(include=fields), **changes}
     await session.execute(
         text(
             "UPDATE session SET topic = :topic, notes = :notes, coach_id = :coach_id,"
-            " updated_at = now() WHERE id = :id"
+            " class_type_id = :class_type_id, starts_at = :starts_at, updated_at = now()"
+            " WHERE id = :id"
         ),
         {**columns, "id": session_id},
     )
     return await _get(session, session_id)
+
+
+@router.post(
+    "/{session_id}/cancel",
+    responses={status.HTTP_409_CONFLICT: {"description": "attendance was taken at it"}},
+)
+async def cancel_session(session_id: uuid.UUID, session: AdminSession) -> Session:
+    """Cancel a class that won't happen. Cancelling it again keeps when it was."""
+    current = await _get(session, session_id, lock=True)
+    if current.present:
+        raise HAS_ATTENDANCE
+    await session.execute(
+        text(
+            "UPDATE session SET cancelled_at = coalesce(cancelled_at, now()),"
+            " updated_at = now() WHERE id = :id"
+        ),
+        {"id": session_id},
+    )
+    return await _get(session, session_id)
+
+
+@router.post("/{session_id}/reactivate")
+async def reactivate_session(session_id: uuid.UUID, session: AdminSession) -> Session:
+    """Undo a cancel; a class that stands already is left as it is."""
+    await _get(session, session_id, lock=True)
+    await session.execute(
+        text(
+            "UPDATE session SET cancelled_at = NULL, updated_at = now()"
+            " WHERE id = :id AND cancelled_at IS NOT NULL"
+        ),
+        {"id": session_id},
+    )
+    return await _get(session, session_id)
+
+
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(session_id: uuid.UUID, session: AdminSession) -> None:
+    """Delete a class made by mistake: its attendance, each giving back the credits it
+    took, its timer blocks, then the class."""
+    await _get(session, session_id, lock=True)
+    await remove_attendance(session, session_id)
+    await session.execute(
+        text("DELETE FROM session_block WHERE session_id = :id"), {"id": session_id}
+    )
+    await session.execute(text("DELETE FROM session WHERE id = :id"), {"id": session_id})

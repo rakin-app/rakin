@@ -15,8 +15,12 @@ not included, since that is the time spent sparring. An open mat's plan is one s
 block. An archived kind is planned no more, but a block already of it may stay.
 
 The plan to start from (`GET .../blocks/suggested`) is the latest other session of the
-same class type that has one, for the coach to adjust: the usual class is a couple of
-taps.
+same class type that has one and was not cancelled, for the coach to adjust: the usual
+class is a couple of taps.
+
+The same two writes correct a class's record after it (#163, "Editar registro"): its
+blocks' kinds, what each ran, blocks added and removed, held to the same rules. A
+cancelled class (migration 0033) runs no timer: either write to it is a 409.
 
 A person's time (`GET /api/people/{id}/time`, and their own on `GET /api/me/time`) is
 the blocks of every session they were marked present at, late or not: everyone present
@@ -64,6 +68,7 @@ SESSION_NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "session not found"
 BLOCK_NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "block not found")
 # A block id the caller chose that is another session's block.
 ID_TAKEN = HTTPException(status.HTTP_409_CONFLICT, "the block id is another session's")
+CANCELLED = HTTPException(status.HTTP_409_CONFLICT, "the class is cancelled")
 
 CurrentTenant = Annotated[Tenant, Depends(current_tenant)]
 
@@ -121,6 +126,7 @@ class _Held:
     coach_id: uuid.UUID
     class_type_id: uuid.UUID
     kind: ClassKind
+    cancelled: bool
 
 
 @dataclass(frozen=True)
@@ -137,7 +143,8 @@ async def _held(session: AsyncSession, session_id: uuid.UUID, *, lock: bool = Fa
     row = (
         await session.execute(
             text(
-                "SELECT s.id, s.coach_id, s.class_type_id, c.kind FROM session s"
+                "SELECT s.id, s.coach_id, s.class_type_id, c.kind,"
+                " s.cancelled_at IS NOT NULL AS cancelled FROM session s"
                 " JOIN class_type c ON c.id = s.class_type_id WHERE s.id = :id"
                 + (" FOR UPDATE OF s" if lock else "")
             ),
@@ -146,13 +153,16 @@ async def _held(session: AsyncSession, session_id: uuid.UUID, *, lock: bool = Fa
     ).one_or_none()
     if row is None:
         raise SESSION_NOT_FOUND
-    return _Held(row.id, row.coach_id, row.class_type_id, ClassKind(row.kind))
+    return _Held(row.id, row.coach_id, row.class_type_id, ClassKind(row.kind), row.cancelled)
 
 
 async def _runs(session: AsyncSession, tenant: Tenant, held: _Held) -> None:
-    """A 403 unless the person acting is the session's coach, an owner or an admin."""
+    """A 403 unless the person acting is the session's coach, an owner or an admin; a
+    409 if the class is cancelled."""
     if held.coach_id != tenant.person_id and await role_in_gym(session, tenant) not in ADMIN_ROLES:
         raise FORBIDDEN
+    if held.cancelled:
+        raise CANCELLED
 
 
 async def _plan(session: AsyncSession, held: _Held) -> SessionPlan:
@@ -233,7 +243,11 @@ async def get_plan(session_id: uuid.UUID, session: StaffSession) -> SessionPlan:
 
 @router.put(
     "/api/sessions/{session_id}/blocks",
-    responses={status.HTTP_409_CONFLICT: {"description": "a block id is another session's"}},
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "description": "a block id is another session's, or the class is cancelled"
+        }
+    },
 )
 async def replace_plan(
     session_id: uuid.UUID, body: PlanReplace, tenant: CurrentTenant, session: StaffSession
@@ -280,7 +294,10 @@ async def replace_plan(
     return await _plan(session, held)
 
 
-@router.put("/api/sessions/{session_id}/blocks/{block_id}/actual")
+@router.put(
+    "/api/sessions/{session_id}/blocks/{block_id}/actual",
+    responses={status.HTTP_409_CONFLICT: {"description": "the class is cancelled"}},
+)
 async def record_actual(
     session_id: uuid.UUID,
     block_id: uuid.UUID,
@@ -339,6 +356,7 @@ async def suggested_plan(session_id: uuid.UUID, session: StaffSession) -> Sugges
         text(
             "SELECT s.id FROM session s"
             " WHERE s.class_type_id = :class_type AND s.id <> :session"
+            " AND s.cancelled_at IS NULL"
             " AND EXISTS (SELECT FROM session_block b WHERE b.session_id = s.id)"
             " ORDER BY s.starts_at DESC, s.created_at DESC LIMIT 1"
         ),

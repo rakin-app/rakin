@@ -32,6 +32,9 @@ export type ClassSession = {
   coach_name: string
   topic: string | null
   notes: string | null
+  /** When it was cancelled; null for a class that stands. A cancelled class takes no
+   * attendance and counts for nothing. */
+  cancelled_at: string | null
   created_at: string
   updated_at: string
   /** How many are marked at it; 0 is a class whose attendance was never taken. */
@@ -98,10 +101,35 @@ export function startSession(body: { class_type_id: string }): Promise<ClassSess
   return apiFetch<ClassSession>('/api/sessions', { method: 'POST', body: JSON.stringify(body) })
 }
 
-/** What a class covered; an empty string clears it. */
-export function updateSession(id: string, body: { topic: string; notes: string }): Promise<ClassSession> {
-  return apiFetch<ClassSession>(`/api/sessions/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(body),
-  })
+/** What may change of a class (backend `SessionUpdate`): its own coach the topic and
+ * notes, an owner or admin all of it. An empty topic or notes clears it. */
+export type SessionChanges = Partial<{
+  topic: string
+  notes: string
+  starts_at: string
+  class_type_id: string
+  coach_id: string
+}>
+
+const sessionPath = (id: string) => `/api/sessions/${encodeURIComponent(id)}`
+
+/** Only the fields sent change. */
+export function updateSession(id: string, body: SessionChanges): Promise<ClassSession> {
+  return apiFetch<ClassSession>(sessionPath(id), { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+/** A class that won't happen; a 409 once attendance was taken. Owner and admin only. */
+export function cancelSession(id: string): Promise<ClassSession> {
+  return apiFetch<ClassSession>(`${sessionPath(id)}/cancel`, { method: 'POST' })
+}
+
+/** Undo a cancel. Owner and admin only. */
+export function reactivateSession(id: string): Promise<ClassSession> {
+  return apiFetch<ClassSession>(`${sessionPath(id)}/reactivate`, { method: 'POST' })
+}
+
+/** A class made by mistake, gone with its attendance (credits given back) and its timer
+ * record. Owner and admin only. */
+export function deleteSession(id: string): Promise<void> {
+  return apiFetch<void>(sessionPath(id), { method: 'DELETE' })
 }

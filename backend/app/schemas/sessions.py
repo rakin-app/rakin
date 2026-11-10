@@ -2,7 +2,8 @@
 
 A session is one class of a class type, started at a time and taught by a coach, with
 the topic and notes the coach writes after it. A blank topic or notes is no topic or
-notes: both are stored as null.
+notes: both are stored as null. A class that won't happen is cancelled (0033): it
+stays, with `cancelled_at`, and counts for nothing.
 """
 
 import uuid
@@ -53,17 +54,22 @@ class SessionCreate(BaseModel):
 
 
 class SessionUpdate(BaseModel):
-    """Only the fields sent change; `null` or a blank string clears a topic or notes."""
+    """Only the fields sent change; `null` or a blank string clears a topic or notes.
+
+    Moving a class, changing its type or its coach is an owner's or admin's; its own
+    coach may change only its topic and notes (`app.api.sessions`)."""
 
     model_config = ConfigDict(extra="forbid")
 
     topic: Topic = None
     notes: Notes = None
     coach_id: uuid.UUID | None = None
+    class_type_id: uuid.UUID | None = None
+    starts_at: AwareDatetime | None = None
 
     @model_validator(mode="after")
     def _set(self) -> "SessionUpdate":
-        never_null(self, "coach_id")
+        never_null(self, "coach_id", "class_type_id", "starts_at")
         return self
 
 
@@ -78,6 +84,8 @@ class Session(BaseModel):
     coach_name: str
     topic: str | None
     notes: str | None
+    # When it was cancelled; null for a class that stands.
+    cancelled_at: datetime | None
     created_at: datetime
     updated_at: datetime
     # How many are marked at it; 0 is a class whose attendance was never taken.
@@ -93,7 +101,8 @@ class Day(BaseModel):
 
 
 class Unmarked(BaseModel):
-    """The sessions since `since`, a day in the gym's timezone, with no one marked."""
+    """The sessions since `since`, a day in the gym's timezone, with no one marked and
+    not cancelled."""
 
     since: date
     timezone: str

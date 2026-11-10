@@ -668,6 +668,7 @@ export const es = {
         detail: (program: string, coach: string) => `${program} · ${coach}`,
         noTopic: 'Sin tema',
         unmarked: 'Sin asistencia',
+        cancelled: 'Cancelada',
       },
     },
     settings: {
@@ -1156,6 +1157,76 @@ export const es = {
       timer: {
         open: 'Iniciar clase',
         resume: 'Volver al timer',
+      },
+      cancelled: {
+        badge: 'Cancelada',
+        note: 'Esta clase está cancelada: no se toma asistencia ni cuenta para nadie.',
+      },
+      edit: {
+        open: 'Editar clase',
+        label: 'Editar clase',
+        day: 'Fecha',
+        time: 'Hora',
+        classType: 'Tipo de clase',
+        coach: 'Coach',
+        inactive: (name: string) => `${name} (desactivado)`,
+        hint: 'La asistencia que ya se tomó se mantiene.',
+        submit: 'Guardar cambios',
+        working: 'Guardando…',
+        close: 'Volver',
+        saved: 'Clase actualizada.',
+        failed: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
+        openMatPlan:
+          'Un open mat es un solo bloque de sparring. Corrige el registro del timer antes de cambiarle el tipo.',
+      },
+      manage: {
+        title: 'Opciones de la clase',
+        cancel: 'Cancelar clase',
+        cancelConfirm: '¿Cancelar esta clase? Queda en la lista como cancelada y puedes reactivarla.',
+        cancelYes: 'Sí, cancelar',
+        hasAttendance:
+          'Ya se tomó asistencia en esta clase, así que no se puede cancelar. Si se creó por error, elimínala.',
+        reactivate: 'Reactivar clase',
+        delete: 'Eliminar clase',
+        deleteConfirm: (present: number, timer: boolean) => {
+          const gone = [
+            present > 0 && (present === 1 ? '1 asistencia' : `${present} asistencias`),
+            timer && 'el registro del timer',
+          ].filter(Boolean)
+          return gone.length === 0
+            ? '¿Eliminar esta clase? No tiene asistencia ni registro del timer.'
+            : `¿Eliminar esta clase? Se borran ${gone.join(' y ')}. No se puede deshacer.`
+        },
+        credits: 'Si alguien pagó la clase con créditos, se le devuelven.',
+        deleteYes: 'Sí, eliminar',
+        back: 'Volver',
+        working: 'Un momento…',
+        failed: 'No pudimos hacerlo. Inténtalo de nuevo.',
+      },
+      record: {
+        title: 'Registro del timer',
+        empty: 'Sin registro del timer.',
+        edit: 'Editar registro',
+        label: 'Editar registro del timer',
+        hint: 'Corrige lo que quedó registrado: el tipo de cada bloque, los minutos que duró y, en sparring, las rondas hechas.',
+        block: (n: number) => `Bloque ${n}`,
+        kind: 'Tipo',
+        minutes: 'Minutos hechos',
+        rounds: 'Rondas',
+        roundMinutes: 'Min por ronda',
+        completed: 'Rondas hechas',
+        remove: (n: number) => `Quitar bloque ${n}`,
+        add: '+ Agregar bloque',
+        tooMany: (max: number) => `Una clase tiene hasta ${max} bloques.`,
+        noKinds: 'No hay tipos de bloque. El dueño o un admin los crea en Ajustes › Bloques.',
+        running: 'La clase está corriendo en el timer de este teléfono. Termínala para corregir el registro.',
+        pending: 'El timer de este teléfono tiene bloques sin enviar. Se podrá corregir cuando se guarden.',
+        invalid: 'Revisa los campos marcados. En sparring, los minutos no pueden pasar de las rondas hechas.',
+        submit: 'Guardar registro',
+        working: 'Guardando…',
+        close: 'Cancelar',
+        saved: 'Registro guardado.',
+        failed: 'No pudimos guardar el registro. Inténtalo de nuevo.',
       },
     },
     timer: {

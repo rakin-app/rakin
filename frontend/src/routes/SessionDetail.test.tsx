@@ -22,6 +22,7 @@ const SESSION: ClassSession = {
   coach_name: 'Rodrigo Fuentes',
   topic: null,
   notes: null,
+  cancelled_at: null,
   created_at: '2026-11-09T22:00:00Z',
   updated_at: '2026-11-09T22:00:00Z',
   present: 1,
@@ -101,7 +102,7 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
   )
 
   function route(path: string, method: string, body: unknown): Answer {
-    if (path === '/api/me/role') return { body: { role: 'coach' } }
+    if (path === '/api/me/role') return { body: { role: 'coach', person_id: 'coach' } }
     if (path === '/api/sessions' && method === 'GET') {
       return { body: { date: '2026-11-09', timezone: 'America/Santiago', sessions: [SESSION] } }
     }
