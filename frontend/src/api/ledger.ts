@@ -50,8 +50,11 @@ export type BookFreeze = FreezeLine & {
 
 export type BookKpis = {
   // The month's.
+  // Net of the month's refunds, which `refunded_clp` sums.
   collected_clp: number
   collected_payments: number
+  refunded_clp: number
+  refunds: number
   expected_clp: number
   // Today's, whichever month is shown.
   pending_clp: number

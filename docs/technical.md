@@ -61,7 +61,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `plan_event` | gym\_id, membership\_id, kind, occurred\_on | outbox for plan-event emails; kind ∈ frozen, unfrozen, lapsed, promoted; written with the state change it reports |
 | `job_run` | job\_name, run\_date, status, started\_at, finished\_at | idempotency for nightly jobs |
 
-Derived views, not tables: `v_overdue` (billing periods past due with no validated payment), `v_balance` (per membership, sum of ledger), `v_inactive` (last attendance > N days), `v_monthly_income` (validated payments by month).
+Derived views, not tables: `v_overdue` (billing periods past due with no validated payment), `v_balance` (per membership, sum of ledger), `v_inactive` (last attendance > N days), `v_monthly_income` (validated payments less refunds, by month).
 
 ## Core state machines
 

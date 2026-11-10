@@ -82,15 +82,17 @@ def dated_entry(
     when: datetime,
     *,
     status: str = "validated",
-) -> None:
+    refund_of: uuid.UUID | None = None,
+) -> uuid.UUID:
     """An entry made, and if validated validated, at `when`."""
 
-    async def query(conn: asyncpg.Connection) -> None:
+    async def query(conn: asyncpg.Connection) -> uuid.UUID:
         async with conn.transaction():
             await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym))
-            await conn.execute(
+            entry_id: uuid.UUID = await conn.fetchval(
                 "INSERT INTO ledger_entry (gym_id, membership_id, amount_clp, kind, status,"
-                " validated_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                " validated_at, created_at, refund_of) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+                " RETURNING id",
                 gym,
                 uuid.UUID(membership),
                 amount,
@@ -98,9 +100,12 @@ def dated_entry(
                 status,
                 when if status == "validated" else None,
                 when,
+                refund_of,
             )
+            return entry_id
 
-    run(db.owner_url, query)
+    entry_id: uuid.UUID = run(db.owner_url, query)
+    return entry_id
 
 
 def dated_period(db: Database, gym: uuid.UUID, membership: str, due: date, amount: int) -> None:
@@ -328,6 +333,34 @@ def test_kpis_are_the_months_collected_and_expected_and_todays_pending_and_overd
 
 
 @pg
+def test_collected_is_net_of_the_months_refunds(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    ana_m = bill(db, sur, add_person(client, sur, "Ana"), [])
+    february = dated_entry(db, sur, ana_m, "payment", 30000, datetime(2020, 2, 10, 15, tzinfo=UTC))
+    march = dated_entry(db, sur, ana_m, "payment", 45000, datetime(2020, 3, 10, 15, tzinfo=UTC))
+    # March gives back part of February's payment, and all of its own.
+    for payment, amount in [(february, 10000), (march, 45000)]:
+        dated_entry(
+            db,
+            sur,
+            ana_m,
+            "refund",
+            amount,
+            datetime(2020, 3, 20, 15, tzinfo=UTC),
+            refund_of=payment,
+        )
+
+    march_kpis = read(client, sur, month=PAST.isoformat())["kpis"]
+    february_kpis = read(client, sur, month="2020-02-01")["kpis"]
+
+    assert (march_kpis["collected_clp"], march_kpis["collected_payments"]) == (-10000, 1)
+    assert (march_kpis["refunded_clp"], march_kpis["refunds"]) == (55000, 2)
+    # A refund counts in the month it was made, not the month of the payment.
+    assert (february_kpis["collected_clp"], february_kpis["refunded_clp"]) == (30000, 0)
+
+
+@pg
 def test_expected_is_what_active_and_lapsed_memberships_owe_for_the_month(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
@@ -349,6 +382,7 @@ def test_an_empty_month_has_zero_kpis(client: TestClient, sur: uuid.UUID) -> Non
     kpis = read(client, sur, month="2019-01-01")["kpis"]
 
     assert kpis["collected_clp"] == kpis["expected_clp"] == kpis["overdue_clp"] == 0
+    assert kpis["refunded_clp"] == kpis["refunds"] == 0
     assert kpis["overdue_avg_days"] == 0
 
 
