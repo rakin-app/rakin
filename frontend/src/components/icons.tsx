@@ -111,3 +111,12 @@ export function CloseIcon() {
     </Icon>
   )
 }
+
+export function WhatsAppIcon() {
+  return (
+    <Icon>
+      <path d="M21 12a9 9 0 0 1-13.3 7.9L3 21l1.1-4.6A9 9 0 1 1 21 12z" />
+      <path d="M9 10a.5.5 0 0 0 .5.5h0A5.5 5.5 0 0 0 14 15h0a.5.5 0 0 0 .5-.5V13l-2-1-1 1a4 4 0 0 1-2-2l1-1-1-2H9.5a.5.5 0 0 0-.5.5z" />
+    </Icon>
+  )
+}
