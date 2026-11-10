@@ -100,7 +100,11 @@ jobs:
             -e TZ -e FAKETIME_DONT_FAKE_MONOTONIC \
             -e POSTGRES_USER=rakin -e POSTGRES_PASSWORD=rakin -e POSTGRES_DB=rakin \
             --entrypoint faketime postgres-faketime -f "$FAKE_OFFSET" docker-entrypoint.sh postgres
-          timeout 60 sh -c 'until docker exec postgres pg_isready -U rakin -d rakin; do sleep 1; done'
+          # Not `pg_isready` over the socket: the entrypoint's init-phase server answers
+          # it before `POSTGRES_DB` exists, then restarts (#125). That server listens on
+          # no TCP port, so a query over TCP only succeeds on the final one.
+          timeout 60 sh -c 'until docker exec -e PGPASSWORD=rakin postgres \
+            psql -h 127.0.0.1 -U rakin -d rakin -Atqc "SELECT 1" >/dev/null 2>&1; do sleep 1; done'
       # Both clocks read 00:3x UTC, and the gym's date is the day before the host's.
       - run: |
           docker exec postgres psql -U rakin -d rakin -Atc \
