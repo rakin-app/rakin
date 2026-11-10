@@ -1,0 +1,11 @@
+{% extends "_layout.html" %}
+{% block title %}{{ inviter }} te invitó al equipo de {{ gym }}{% endblock %}
+{% block body %}
+<p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+<p style="margin:0 0 16px;">{{ inviter }} te invitó a {{ gym }} en Rakin como <strong>{{ role }}</strong>. {% if role_is_coach %}Desde ahí tomas asistencia y registras el tema de cada clase.{% else %}Desde ahí llevas los pagos, los alumnos y los ajustes del gimnasio.{% endif %}</p>
+<p style="margin:0;">Entras siempre con un enlace a este correo, sin contraseña.</p>
+{% endblock %}
+{% block page_link %}
+<p style="margin:24px 0 8px;"><a href="{{ page_url }}" style="display:inline-block;padding:12px 24px;background:#18181b;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">Entrar a Rakin</a></p>
+<p style="margin:0;color:#52525b;font-size:14px;">El botón te deja entrar sin contraseña. Sirve una sola vez y vence en {{ page_link_days }} días. Después, pide uno nuevo con este correo.</p>
+{% endblock %}
