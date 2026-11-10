@@ -192,7 +192,7 @@ describe('Asistencia', () => {
       { method: 'PATCH', path: '/api/sessions/s1/attendance', body: { mark: ['m-felipe', 'm-paula'], unmark: ['m-antonia'] } },
     ])
     expect(list.getByRole('button', { name: /Felipe Díaz/ })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: copy.save(2) })).toBeDisabled()
+    expect(screen.getByRole('button', { name: copy.done })).toBeDisabled()
   })
 
   it('keeps a change made without signal on the phone and sends it when the signal is back', async () => {
@@ -333,6 +333,70 @@ describe('Asistencia', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.failed)
     expect(localStorage.getItem('rakin:attendance:s1')).toBeNull()
+  })
+
+  describe('what Guardar did, beside the button', () => {
+    // The sticky bar the button sits in, which stays in view at the foot of the screen.
+    const bar = (button: HTMLElement) => within(button.parentElement!)
+
+    it('goes busy while sending, then says saved with the way back, until the next tap', async () => {
+      let release = () => {}
+      stubApi({ hold: new Promise<void>((resolve) => (release = resolve)) })
+      renderClass()
+
+      const list = await rosterList()
+      await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
+      await userEvent.click(screen.getByRole('button', { name: copy.save(2) }))
+
+      const busy = await screen.findByRole('button', { name: copy.working })
+      expect(busy).toBeDisabled()
+      expect(busy).toHaveAttribute('aria-busy', 'true')
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      await act(async () => release())
+
+      const done = await screen.findByRole('button', { name: copy.done })
+      expect(done).toBeDisabled()
+      expect(done).toHaveAttribute('aria-busy', 'false')
+      expect(bar(done).getByRole('status')).toHaveTextContent(copy.saved)
+      expect(bar(done).getByRole('link', { name: copy.back })).toHaveAttribute('href', '/admin/clases')
+
+      await userEvent.click(list.getByRole('button', { name: /Paula Contreras/ }))
+      expect(screen.getByRole('button', { name: copy.save(3) })).toBeEnabled()
+      expect(screen.queryByRole('button', { name: copy.done })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: copy.back })).not.toBeInTheDocument()
+      expect(screen.queryByText(copy.saved)).not.toBeInTheDocument()
+    })
+
+    it('says a change without signal waits on the phone, not that it was saved', async () => {
+      stubApi({ change: 'offline' })
+      renderClass()
+
+      const list = await rosterList()
+      await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
+      await userEvent.click(screen.getByRole('button', { name: copy.save(2) }))
+
+      const queued = await screen.findByText(copy.queued)
+      const button = screen.getByRole('button', { name: copy.save(2) })
+      expect(bar(button).getByText(copy.queued)).toBe(queued)
+      expect(screen.queryByRole('button', { name: copy.done })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: copy.back })).not.toBeInTheDocument()
+    })
+
+    it('shows a failed save next to the button, which stays ready to retry', async () => {
+      stubApi({ change: { status: 500, body: {} } })
+      renderClass()
+
+      const list = await rosterList()
+      await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
+      await userEvent.click(screen.getByRole('button', { name: copy.save(2) }))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(copy.failed)
+      const button = screen.getByRole('button', { name: copy.save(2) })
+      expect(bar(button).getByRole('alert')).toBe(alert)
+      expect(button).toBeEnabled()
+      expect(screen.queryByRole('link', { name: copy.back })).not.toBeInTheDocument()
+    })
   })
 
   it('says when nobody has a plan for the class', async () => {
