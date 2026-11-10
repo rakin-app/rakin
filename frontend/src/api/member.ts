@@ -60,6 +60,7 @@ export type TimelineEntry = {
   id: string
   kind: 'charge' | 'payment' | 'adjustment' | 'refund'
   status: 'pending' | 'validated' | 'rejected'
+  // Signed on an adjustment: positive in the member's favour, negative owed.
   amount_clp: number
   method: Method | null
   billing_period_id: string | null
@@ -68,6 +69,10 @@ export type TimelineEntry = {
   created_at: string
   validated_by_name: string | null
   validated_at: string | null
+  // The payment a refund gives back; null on every other kind.
+  refund_of: string | null
+  // What is left to give back of a validated payment; null on every other entry.
+  refundable_clp: number | null
 }
 
 /** A freeze starting or ending, a ledger line with no amount (backend `FreezeLine`). */
@@ -101,10 +106,33 @@ export type PaymentRecord = {
   note?: string
 }
 
+/** A period as an entry just recorded leaves it (backend `Period`). */
+export type SettledPeriod = { outstanding_clp: number; closed: boolean }
+
 export type RecordedPayment = {
   credit: { amount_clp: number } | null
-  period: { outstanding_clp: number; closed: boolean }
+  period: SettledPeriod
 }
+
+/** An adjustment to what a period owes: positive in the member's favour, negative owed. */
+export type AdjustmentRecord = {
+  membership_id: string
+  billing_period_id: string
+  amount_clp: number
+  note: string
+}
+
+export type RecordedAdjustment = { period: SettledPeriod }
+
+/** Part or all of a validated payment, given back. */
+export type RefundRecord = {
+  payment_id: string
+  amount_clp: number
+  method: Method
+  note?: string
+}
+
+export type RecordedRefund = { period: SettledPeriod }
 
 export function personQuery(id: string) {
   return queryOptions({
@@ -129,6 +157,14 @@ export function membershipLedgerQuery(membershipId: string) {
 
 export function recordPayment(body: PaymentRecord): Promise<RecordedPayment> {
   return apiFetch<RecordedPayment>('/api/ledger/payments', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function recordAdjustment(body: AdjustmentRecord): Promise<RecordedAdjustment> {
+  return apiFetch<RecordedAdjustment>('/api/ledger/adjustments', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function recordRefund(body: RefundRecord): Promise<RecordedRefund> {
+  return apiFetch<RecordedRefund>('/api/ledger/refunds', { method: 'POST', body: JSON.stringify(body) })
 }
 
 export type FreezeRequest = { to_date: string; reason: string }

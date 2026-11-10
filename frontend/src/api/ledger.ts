@@ -24,9 +24,12 @@ export type BookEntry = {
   created_at: string
   kind: TimelineEntry['kind']
   status: TimelineEntry['status']
+  // Signed on an adjustment: positive in the member's favour, negative owed.
   amount_clp: number
   method: Method | null
   note: string | null
+  // The payment a refund gives back; null on every other kind.
+  refund_of: string | null
   membership_id: string
   plan_name: string
   person: PersonRef

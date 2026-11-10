@@ -10,6 +10,9 @@ membership's freezes (#26) beside the entries, as lines with no amount: one wher
 each freeze started, and one where it ended, once it has.
 
 The owner's dashboard ("Hoy", #58) reads the gym's overdue periods.
+
+An admin adjusts what a period owes, with a note saying why, and refunds part or all of
+a validated payment (#38).
 """
 
 import uuid
@@ -17,7 +20,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.domain.ledger import EntryKind, EntryStatus
 from app.schemas.plans import MAX_PRICE_CLP
@@ -49,6 +52,40 @@ class PaymentRecord(BaseModel):
     note: Note | None = None
 
 
+# An adjustment's sign says which way it goes: positive in the member's favour, negative
+# owed (app.domain.ledger). Capped either way as `Amount` is.
+SignedAmount = Annotated[int, Field(ge=-MAX_PRICE_CLP, le=MAX_PRICE_CLP)]
+
+
+class AdjustmentRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    membership_id: uuid.UUID
+    billing_period_id: uuid.UUID
+    # Not zero; the domain refuses it as the API's other bounds do.
+    amount_clp: SignedAmount
+    # Mandatory: why the period owes more or less than it did.
+    note: Note
+
+    @field_validator("amount_clp")
+    @classmethod
+    def not_zero(cls, value: int) -> int:
+        if value == 0:
+            raise ValueError("an adjustment is not zero")
+        return value
+
+
+class RefundRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # The validated payment it gives back part or all of.
+    payment_id: uuid.UUID
+    amount_clp: Amount
+    # How the money went back.
+    method: Method
+    note: Note | None = None
+
+
 class Entry(BaseModel):
     id: uuid.UUID
     membership_id: uuid.UUID
@@ -65,6 +102,8 @@ class Entry(BaseModel):
     proof_object_key: str | None
     note: str | None
     created_at: datetime
+    # The payment a refund gives back; null on every other kind.
+    refund_of: uuid.UUID | None
 
 
 class Period(BaseModel):
@@ -83,6 +122,18 @@ class RecordedPayment(BaseModel):
     period: Period
 
 
+class RecordedAdjustment(BaseModel):
+    adjustment: Entry
+    # The period as the adjustment leaves it.
+    period: Period
+
+
+class RecordedRefund(BaseModel):
+    refund: Entry
+    # The period as the refund leaves it: open again if it no longer covers it.
+    period: Period
+
+
 class OpenPeriod(BaseModel):
     """A billing period that validated payments and credit do not yet cover."""
 
@@ -91,6 +142,7 @@ class OpenPeriod(BaseModel):
     period_end: date
     due_date: date
     amount_due_clp: int
+    # Below zero while an adjustment against the member outweighs what was paid.
     paid_clp: int
     outstanding_clp: int
     # Due today or before, in the gym's timezone: what `owed_clp` counts.
@@ -103,6 +155,7 @@ class TimelineEntry(BaseModel):
     id: uuid.UUID
     kind: EntryKind
     status: EntryStatus
+    # Signed on an adjustment: positive in the member's favour, negative owed.
     amount_clp: int
     method: Method | None
     # The period it belongs to; null for a credit carried to a later one.
@@ -113,6 +166,10 @@ class TimelineEntry(BaseModel):
     # Who reviewed it (validated or rejected) and when; null while pending.
     validated_by_name: str | None
     validated_at: datetime | None
+    # The payment a refund gives back; null on every other kind.
+    refund_of: uuid.UUID | None
+    # What is left to give back of a validated payment; null on every other entry.
+    refundable_clp: int | None
 
 
 class FreezeEdge(StrEnum):
@@ -183,6 +240,8 @@ class BookEntry(BaseModel):
     amount_clp: int
     method: Method | None
     note: str | None
+    # The payment a refund gives back; null on every other kind.
+    refund_of: uuid.UUID | None
     membership_id: uuid.UUID
     plan_name: str
     # Whose membership it is, and who pays for them when they are a dependent.

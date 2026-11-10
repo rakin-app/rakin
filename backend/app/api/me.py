@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
 from app.api.proofs import OPEN_PERIODS, payable_params, to_open_period
-from app.domain.billing import SETTLING_KINDS
+from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.dates import local_date
 from app.domain.ledger import EntryKind, EntryStatus
 from app.roles import role_in_gym
@@ -33,7 +33,7 @@ DEPENDENTS = f"""
     SELECT gp.person_id AS id, gp.name,
            m.id AS membership_id, m.status, m.plan_id, pl.name AS plan_name,
            (SELECT coalesce(sum(greatest(bp.amount_due_clp - coalesce((
-                       SELECT sum(e.amount_clp) FROM ledger_entry e
+                       SELECT sum({settled_amount("e")}) FROM ledger_entry e
                        WHERE e.billing_period_id = bp.id AND e.status = :validated
                          AND e.kind = ANY(CAST(:settling AS text[]))), 0), 0)), 0)
             FROM billing_period bp JOIN membership bm ON bm.id = bp.membership_id

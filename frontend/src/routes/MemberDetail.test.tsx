@@ -56,6 +56,8 @@ const entry = (fields: Partial<TimelineEntry> & Pick<TimelineEntry, 'id' | 'kind
   created_at: '2026-10-23T12:00:00Z',
   validated_by_name: null,
   validated_at: null,
+  refund_of: null,
+  refundable_clp: null,
   ...fields,
 })
 
@@ -73,6 +75,7 @@ const LEDGER: MembershipLedger = {
       created_at: '2026-10-01T12:00:00Z',
       validated_by_name: 'Martín',
       validated_at: '2026-10-02T12:00:00Z',
+      refundable_clp: 45000,
     }),
     entry({
       id: 'claim',
@@ -98,11 +101,22 @@ type Stub = {
   memberships?: Membership[]
   ledger?: MembershipLedger
   payment?: Answer
+  adjustment?: Answer
+  refund?: Answer
   // The freeze's answer; by default the membership comes back frozen until the day asked.
   freeze?: Answer
 }
 
-function stubApi({ role = 'owner', person, memberships = [MONTHLY], ledger = LEDGER, payment, freeze }: Stub = {}) {
+function stubApi({
+  role = 'owner',
+  person,
+  memberships = [MONTHLY],
+  ledger = LEDGER,
+  payment,
+  adjustment,
+  refund,
+  freeze,
+}: Stub = {}) {
   const calls: Call[] = []
   let current = ledger
   let members = memberships
@@ -144,6 +158,12 @@ function stubApi({ role = 'owner', person, memberships = [MONTHLY], ledger = LED
       if (payment && (payment.status ?? 201) >= 400) return payment
       current = { ...current, open_periods: [], owed_clp: 0 }
       return payment ?? { status: 201, body: { credit: null, period: { outstanding_clp: 0, closed: true } } }
+    }
+    if (path === '/api/ledger/adjustments' && method === 'POST') {
+      return adjustment ?? { status: 201, body: { period: { outstanding_clp: 0, closed: true } } }
+    }
+    if (path === '/api/ledger/refunds' && method === 'POST') {
+      return refund ?? { status: 201, body: { period: { outstanding_clp: 45000, closed: false } } }
     }
     return { status: 404, body: { detail: 'Not Found' } }
   }
@@ -189,7 +209,55 @@ describe('Ficha de alumno', () => {
       'Cargo octubregenerado 23 oct · sin pago$45.000',
       'Pago septiembretransferencia · validó Martín · 2 oct$45.000',
       'Pago octubretransferencia · por validar · 5 nov$20.000',
-      `${copy.ledger.credit}Pagó $50.000; quedan $5.000 a favor · 23 oct$5.000`,
+      `${copy.ledger.credit}Pagó $50.000; quedan $5.000 a favor · 23 oct+$5.000`,
+    ])
+  })
+
+  it('lists adjustments with their sign and refunds as money out', async () => {
+    stubApi({
+      ledger: {
+        ...LEDGER,
+        entries: [
+          entry({
+            id: 'refund',
+            kind: 'refund',
+            amount_clp: 10000,
+            method: 'cash',
+            billing_period_id: 'p-sep',
+            period_start: '2026-09-30',
+            note: 'se lesionó',
+            refund_of: 'pay-sep',
+            created_at: '2026-11-06T12:00:00Z',
+            validated_at: '2026-11-06T12:00:00Z',
+          }),
+          entry({
+            id: 'owed',
+            kind: 'adjustment',
+            amount_clp: -5000,
+            billing_period_id: 'p-oct',
+            period_start: '2026-10-30',
+            note: 'matrícula',
+            created_at: '2026-11-04T12:00:00Z',
+          }),
+          entry({
+            id: 'favor',
+            kind: 'adjustment',
+            amount_clp: 3000,
+            billing_period_id: 'p-oct',
+            period_start: '2026-10-30',
+            note: 'beca',
+            created_at: '2026-11-03T12:00:00Z',
+          }),
+        ],
+      },
+    })
+    renderAt(PATH)
+
+    const ledger = await screen.findByRole('region', { name: copy.ledger.title })
+    expect(within(ledger).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'Devolución septiembreefectivo · se lesionó · 6 nov−$10.000',
+      'Ajuste octubrematrícula · 4 nov−$5.000',
+      'Ajuste octubrebeca · 3 nov+$3.000',
     ])
   })
 
@@ -225,6 +293,151 @@ describe('Ficha de alumno', () => {
     // The ledger is read again: nothing is owed now.
     await waitFor(() => expect(within(card).getByText(copy.upToDate)).toBeInTheDocument())
     expect(within(card).getByRole('button', { name: copy.record })).toBeDisabled()
+  })
+
+  it('says what a partial payment leaves to pay', async () => {
+    stubApi({ payment: { status: 201, body: { credit: null, period: { outstanding_clp: 25000, closed: false } } } })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.record }))
+    const amount = screen.getByLabelText(copy.form.amount)
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '20000')
+    await userEvent.click(screen.getByRole('button', { name: copy.form.submit('$20.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      copy.form.recorded('$20.000') + copy.form.remainder('$25.000'),
+    )
+  })
+
+  it('adjusts a period in the member\'s favour, with its reason', async () => {
+    const calls = stubApi({
+      adjustment: { status: 201, body: { period: { outstanding_clp: 40000, closed: false } } },
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
+    const form = screen.getByRole('form', { name: copy.adjustForm.title })
+    expect(within(form).getByLabelText(copy.adjustForm.direction)).toHaveValue('favor')
+    await userEvent.type(within(form).getByLabelText(copy.adjustForm.amount), '5000')
+    await userEvent.type(within(form).getByLabelText(copy.adjustForm.note), ' descuento hermano ')
+    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit('+$5.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      copy.adjustForm.done('+$5.000') + copy.form.remainder('$40.000'),
+    )
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/ledger/adjustments',
+        body: { membership_id: 'm-felipe', billing_period_id: 'p-oct', amount_clp: 5000, note: 'descuento hermano' },
+      },
+    ])
+  })
+
+  it('adjusts a paid period against the member, owed on top', async () => {
+    const paid = entry({ id: 'c-sep', kind: 'charge', billing_period_id: 'p-sep', period_start: '2026-09-30' })
+    const calls = stubApi({
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [paid] },
+      adjustment: { status: 201, body: { period: { outstanding_clp: 5000, closed: false } } },
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
+    const form = screen.getByRole('form', { name: copy.adjustForm.title })
+    // Nothing is owed, so nothing can be taken off.
+    expect(within(form).getByLabelText(copy.adjustForm.direction)).toHaveValue('owed')
+    expect(within(form).getByRole('option', { name: copy.adjustForm.directions.favor })).toBeDisabled()
+    expect(within(form).getByLabelText(copy.adjustForm.period)).toHaveTextContent(
+      copy.adjustForm.periodOption('septiembre', '$0'),
+    )
+    await userEvent.type(within(form).getByLabelText(copy.adjustForm.amount), '5000')
+    await userEvent.type(within(form).getByLabelText(copy.adjustForm.note), 'matrícula')
+    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit('−$5.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.adjustForm.done('−$5.000'))
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([
+      { membership_id: 'm-felipe', billing_period_id: 'p-sep', amount_clp: -5000, note: 'matrícula' },
+    ])
+  })
+
+  it('asks for an amount and a reason before adjusting', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
+    await userEvent.click(screen.getByRole('button', { name: copy.adjustForm.submit('+$0') }))
+
+    const alerts = await screen.findAllByRole('alert')
+    expect(alerts.map((a) => a.textContent)).toEqual([copy.adjustForm.amountNeeded, copy.adjustForm.noteNeeded])
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+  })
+
+  it('says so when an adjustment in the member\'s favour exceeds what is owed', async () => {
+    stubApi({ adjustment: { status: 409, body: { detail: 'the adjustment exceeds what the period owes' } } })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
+    await userEvent.type(screen.getByLabelText(copy.adjustForm.amount), '50000')
+    await userEvent.type(screen.getByLabelText(copy.adjustForm.note), 'beca')
+    await userEvent.click(screen.getByRole('button', { name: copy.adjustForm.submit('+$50.000') }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.adjustForm.refused.exceeds)
+  })
+
+  it('refunds part of a validated payment', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.refund }))
+    const form = screen.getByRole('form', { name: copy.refundForm.title })
+    // Only the validated payment, not the claim waiting for review.
+    expect(within(form).getAllByRole('option', { name: /^Pago/ }).map((o) => o.textContent)).toEqual([
+      copy.refundForm.paymentOption('septiembre', '2 oct', '$45.000'),
+    ])
+    const amount = within(form).getByLabelText(copy.refundForm.amount)
+    expect(amount).toHaveValue('45000')
+    expect(within(form).getByLabelText(copy.refundForm.method)).toHaveValue('transfer')
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '15000')
+    await userEvent.type(within(form).getByLabelText(copy.refundForm.note), 'se lesionó')
+    await userEvent.click(within(form).getByRole('button', { name: copy.refundForm.submit('$15.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      copy.refundForm.done('$15.000') + copy.form.remainder('$45.000'),
+    )
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/ledger/refunds',
+        body: { payment_id: 'pay-sep', amount_clp: 15000, method: 'transfer', note: 'se lesionó' },
+      },
+    ])
+  })
+
+  it('says so when the payment has less left to give back', async () => {
+    stubApi({ refund: { status: 409, body: { detail: 'a refund exceeds what is left of its payment' } } })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.refund }))
+    await userEvent.click(screen.getByRole('button', { name: copy.refundForm.submit('$45.000') }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.refundForm.refused.exceeds)
+  })
+
+  it('offers no refund while no payment has anything left to give back', async () => {
+    stubApi({ ledger: { ...LEDGER, entries: LEDGER.entries.map((e) => ({ ...e, refundable_clp: null })) } })
+    renderAt(PATH)
+    const card = await money()
+
+    expect(await within(card).findByRole('button', { name: copy.refund })).toBeDisabled()
   })
 
   it('says so when the period was paid meanwhile', async () => {

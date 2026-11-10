@@ -29,7 +29,7 @@ from datetime import date, timedelta
 import asyncpg
 
 from app.contacts import contact_query
-from app.domain.billing import SETTLING_KINDS
+from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.jobs.gyms import each_gym
 from app.jobs.runner import Job
 from app.notices import STATEMENT, Notice, Notices
@@ -41,7 +41,7 @@ NAME = "statements"
 STATEMENT_DAYS = 7
 
 # RLS holds every table to the gym in `app.gym_id`, `message_log` included.
-SELECT_DUE = """
+SELECT_DUE = f"""
 SELECT bp.id, bp.period_start, bp.period_end, bp.due_date,
        bp.amount_due_clp - coalesce(paid.amount, 0) AS outstanding_clp,
        m.person_id, gp.name AS person_name, pl.name AS plan_name,
@@ -52,7 +52,7 @@ JOIN plan pl ON pl.id = m.plan_id
 JOIN gym g ON g.id = m.gym_id
 JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.person_id
 LEFT JOIN LATERAL (
-    SELECT sum(e.amount_clp)::bigint AS amount FROM ledger_entry e
+    SELECT sum({settled_amount("e")})::bigint AS amount FROM ledger_entry e
     WHERE e.billing_period_id = bp.id AND e.status = 'validated'
       AND e.kind = ANY($3::text[])
 ) paid ON true

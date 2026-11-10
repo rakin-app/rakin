@@ -28,6 +28,7 @@ const entry = (fields: Partial<BookEntry> & Pick<BookEntry, 'id' | 'kind'>): Boo
     days_overdue: 0,
   },
   validated_by_name: null,
+  refund_of: null,
   ...fields,
 })
 
@@ -187,6 +188,30 @@ describe('Libro de pagos', () => {
       '/admin/pagos/comprobantes',
     )
     expect(screen.getByText(copy.showing(5, 5, 'noviembre'))).toBeInTheDocument()
+  })
+
+  it('lists adjustments with their sign and refunds as money out', async () => {
+    const corrections = [
+      entry({
+        id: 'refund',
+        kind: 'refund',
+        amount_clp: 10000,
+        method: 'cash',
+        note: 'se lesionó',
+        refund_of: 'pay',
+        validated_by_name: 'Martín',
+        period: { ...BOOK.items[0]!.period!, outstanding_clp: 10000 },
+      }),
+      entry({ id: 'owed', kind: 'adjustment', amount_clp: -5000, note: 'matrícula', validated_by_name: 'Martín' }),
+    ]
+    stubApi({ book: () => ({ ...BOOK, items: corrections, total: 2 }) })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map(cells)).toEqual([
+      ['8 nov 14:12', 'Diego Morales', 'Devolución', 'Nov 2026', 'Efectivo', 'Validado · Martín', '−$10.000'],
+      ['8 nov 14:12', 'Diego Morales', 'Ajuste', 'Nov 2026', 'matrícula', 'Validado · Martín', '−$5.000'],
+    ])
   })
 
   it('lists the month\'s freezes among the entries, after their day\'s, with no amount', async () => {

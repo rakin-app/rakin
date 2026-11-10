@@ -40,8 +40,8 @@ const route = getRouteApi('/admin/pagos')
  * admin only; a coach is told so and nothing is asked of the API.
  *
  * Freezes are not ledger entries, but the book lists where each started and ended
- * among them (#26), as rows with no amount. Reminders are not listed, and refunds and
- * manual adjustments have no way in yet (#38).
+ * among them (#26), as rows with no amount. Reminders are not listed. Adjustments and
+ * refunds are made on the member's detail (#38) and listed here with their sign.
  */
 export function Payments() {
   const role = useQuery(myRoleQuery())
@@ -265,10 +265,18 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
         )}
       </td>
       <td className={`payments__amount payments__amount--${entry.status}`}>
-        {entry.kind === 'adjustment' ? `+${clp(entry.amount_clp)}` : clp(entry.amount_clp)}
+        {bookAmount(entry)}
       </td>
     </tr>
   )
+}
+
+/** An adjustment with its sign, `+$5.000` in the member's favour or `−$5.000` owed; a
+ * refund, money out, `−$10.000`. */
+function bookAmount(entry: BookEntry): string {
+  if (entry.kind === 'adjustment') return t.common.signedClp(entry.amount_clp)
+  if (entry.kind === 'refund') return t.common.signedClp(-entry.amount_clp)
+  return clp(entry.amount_clp)
 }
 
 function Student({ person, guardian }: { person: PersonRef; guardian: PersonRef | null }) {

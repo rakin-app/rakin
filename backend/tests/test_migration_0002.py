@@ -42,6 +42,7 @@ IMMUTABLE: dict[str, object] = {
     "proof_object_key": "proofs/other.jpg",
     "bank_tx_ref": "TX-OTHER",
     "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+    "refund_of": uuid.uuid4(),
 }
 
 APPEND_ONLY = "append-only"

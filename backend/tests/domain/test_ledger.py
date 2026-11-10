@@ -63,3 +63,15 @@ def test_transitions_match_the_diagram() -> None:
 def test_amounts_are_positive(amount: int) -> None:
     with pytest.raises(ValueError, match="positive"):
         pending_payment(amount)
+
+
+def test_an_adjustments_sign_says_which_way_it_goes() -> None:
+    assert LedgerEntry(kind=EntryKind.ADJUSTMENT, amount_clp=-5_000).amount_clp == -5_000
+    with pytest.raises(ValueError, match="not zero"):
+        LedgerEntry(kind=EntryKind.ADJUSTMENT, amount_clp=0)
+
+
+@pytest.mark.parametrize("kind", [EntryKind.CHARGE, EntryKind.PAYMENT, EntryKind.REFUND])
+def test_only_an_adjustment_is_negative(kind: EntryKind) -> None:
+    with pytest.raises(ValueError, match="positive"):
+        LedgerEntry(kind=kind, amount_clp=-5_000)

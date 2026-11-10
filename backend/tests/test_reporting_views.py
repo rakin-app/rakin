@@ -79,16 +79,17 @@ def entry(
     status: str = "validated",
     period: bool = True,
     validated_at: datetime = datetime(2026, 11, 2, 15, tzinfo=UTC),
-) -> None:
+    refund_of: uuid.UUID | None = None,
+) -> uuid.UUID:
     """An entry on seed_gym's membership, on its period unless `period` is false."""
     membership, period_id = membership_of(db, gym)
     method = "transfer" if kind == "payment" else None
-    run(
+    entry_id: uuid.UUID = run(
         db.admin_url,
-        lambda c: c.execute(
+        lambda c: c.fetchval(
             "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
-            " kind, status, method, validated_at)"
-            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            " kind, status, method, validated_at, refund_of)"
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
             gym,
             membership,
             period_id if period else None,
@@ -97,8 +98,10 @@ def entry(
             status,
             method,
             None if status == "pending" else validated_at,
+            refund_of,
         ),
     )
+    return entry_id
 
 
 def read(db: Database, gym: uuid.UUID, view: str, person: uuid.UUID | None = None) -> list[Any]:
@@ -200,10 +203,14 @@ def test_an_overpayment_is_credit_once(db: Database) -> None:
 
 
 def test_a_refund_is_owed_back(db: Database) -> None:
+    # As app.api.ledger records it (#38): on its payment's period, which no longer
+    # counts what it gave back.
     gym = new_gym(db)
-    entry(db, gym, "payment", 45_000)
-    entry(db, gym, "refund", 10_000, period=False)
+    payment = entry(db, gym, "payment", 45_000)
+    entry(db, gym, "refund", 10_000, refund_of=payment)
     assert balance(db, gym) == 10_000
+    [row] = read(db, gym, "v_overdue")
+    assert (row["paid_clp"], row["outstanding_clp"]) == (35_000, 10_000)
 
 
 def test_a_period_due_today_is_not_overdue_yet(db: Database) -> None:
