@@ -30,7 +30,7 @@ from app.auth import LANDINGS, PREFIX, TEXTS, bind_session, build_magic_links
 from app.db import create_engine, create_sessionmaker
 from app.integrations import build_integrations
 from app.logging import configure_logging
-from app.magiclink import SessionMiddleware, build_router
+from app.magiclink import SessionMiddleware, build_router, session_cookie_name
 from app.middleware import RequestIdMiddleware
 from app.sentry import init_sentry
 from app.settings import Settings, get_settings
@@ -60,7 +60,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.magic_links = links
     # Added first, so it runs inside RequestIdMiddleware and its queries log the id.
-    app.add_middleware(SessionMiddleware, links=links, bind=bind_session)
+    app.add_middleware(
+        SessionMiddleware,
+        links=links,
+        bind=bind_session,
+        cookie_name=session_cookie_name(settings.public_base_url),
+    )
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
     app.include_router(people.router)

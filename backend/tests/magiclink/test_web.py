@@ -18,6 +18,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.magiclink import (
     COOKIE_NAME,
+    DEV_COOKIE_NAME,
     Link,
     MagicLinks,
     MemoryRateLimiter,
@@ -26,6 +27,7 @@ from app.magiclink import (
     SessionMiddleware,
     build_router,
     callback_url,
+    session_cookie_name,
 )
 from app.magiclink.tokens import hash_token
 
@@ -135,10 +137,18 @@ def token_of(url: str) -> str:
     return parse_qs(urlsplit(url).query)["token"][0]
 
 
-def make_app(links: MagicLinks) -> FastAPI:
+def make_app(
+    links: MagicLinks, base_url: str = BASE_URL, cookie_name: str | None = None
+) -> FastAPI:
     app = FastAPI()
     app.include_router(
-        build_router(links, prefix=PREFIX, base_url=BASE_URL, landings=frozenset({"/me"}))
+        build_router(
+            links,
+            prefix=PREFIX,
+            base_url=base_url,
+            landings=frozenset({"/me"}),
+            cookie_name=cookie_name,
+        )
     )
 
     @app.get("/whoami")
@@ -148,7 +158,12 @@ def make_app(links: MagicLinks) -> FastAPI:
     def bind(session: Session, state: dict[str, Any]) -> None:
         state["subject"] = session.subject
 
-    app.add_middleware(SessionMiddleware, links=links, bind=bind)
+    app.add_middleware(
+        SessionMiddleware,
+        links=links,
+        bind=bind,
+        cookie_name=cookie_name or session_cookie_name(base_url),
+    )
     app.add_middleware(ClientAddress)
     return app
 
@@ -166,12 +181,11 @@ class ClientAddress:
         await self.app(scope, receive, send)
 
 
-@pytest.fixture
-def harness() -> Iterator[Harness]:
+def make_harness(base_url: str = BASE_URL, cookie_name: str | None = None) -> Iterator[Harness]:
     clock, directory, store, outbox = Clock(), Directory(), Store(), Outbox()
     links = MagicLinks(
         secret_key="s" * 32,
-        callback_url=callback_url(BASE_URL, PREFIX),
+        callback_url=callback_url(base_url, PREFIX),
         directory=directory,
         store=store,
         sender=outbox,
@@ -179,12 +193,17 @@ def harness() -> Iterator[Harness]:
         per_ip=MemoryRateLimiter(limit=5, window_seconds=900),
         clock=clock,
     )
-    app = make_app(links)
+    app = make_app(links, base_url, cookie_name)
     # Errors come back as 500s, as a browser would see them.
     with TestClient(
-        app, base_url=BASE_URL, follow_redirects=False, raise_server_exceptions=False
+        app, base_url=base_url, follow_redirects=False, raise_server_exceptions=False
     ) as client:
         yield Harness(client, directory, clock, store, outbox, links)
+
+
+@pytest.fixture
+def harness() -> Iterator[Harness]:
+    yield from make_harness()
 
 
 # --- requesting a link ------------------------------------------------------------
@@ -306,6 +325,50 @@ def test_the_button_signs_in_with_a_30_day_session_cookie(harness: Harness) -> N
     assert "domain" not in attributes
     [(session, _)] = harness.store.sessions.values()
     assert session == Session("ana", "gym-of-ana", harness.clock.now + timedelta(days=30))
+
+
+def test_an_http_base_url_signs_in_with_a_plain_cookie_that_is_not_secure() -> None:
+    # Local dev, on `http://localhost`: Safari drops a Secure cookie there.
+    for harness in make_harness("http://localhost:8080"):
+        response = harness.sign_in(ANA)
+
+        cookie = response.headers["set-cookie"]
+        attributes = {a.strip().split("=")[0].lower() for a in cookie.split(";")}
+        assert cookie.startswith(f"{DEV_COOKIE_NAME}=")
+        assert "secure" not in attributes
+        assert {"httponly", "path", "max-age"} <= attributes
+        assert "SameSite=lax" in cookie
+        assert harness.client.get("/whoami").json() == {"subject": "ana"}
+
+        logout = harness.client.post(f"{PREFIX}/logout")
+        assert f'{DEV_COOKIE_NAME}=""' in logout.headers["set-cookie"]
+        assert "secure" not in logout.headers["set-cookie"].lower()
+        assert harness.client.get("/whoami").json() == {"subject": None}
+
+
+def test_an_https_base_url_keeps_the_cookie_secure_whatever_it_is_named() -> None:
+    for harness in make_harness(BASE_URL, cookie_name=DEV_COOKIE_NAME):
+        cookie = harness.sign_in(ANA).headers["set-cookie"]
+        attributes = {a.strip().split("=")[0].lower() for a in cookie.split(";")}
+        assert cookie.startswith(f"{DEV_COOKIE_NAME}=")
+        assert "secure" in attributes
+        assert "secure" in harness.client.post(f"{PREFIX}/logout").headers["set-cookie"].lower()
+
+
+def test_the_router_refuses_a_host_cookie_it_cannot_make_secure() -> None:
+    links = MagicLinks(
+        secret_key="s" * 32,
+        callback_url=callback_url("http://localhost:8080", PREFIX),
+        directory=Directory(),
+        store=Store(),
+        sender=Outbox(),
+        per_address=MemoryRateLimiter(limit=1, window_seconds=1),
+        per_ip=MemoryRateLimiter(limit=1, window_seconds=1),
+    )
+    with pytest.raises(ValueError, match="not Secure"):
+        build_router(
+            links, prefix=PREFIX, base_url="http://localhost:8080", cookie_name=COOKIE_NAME
+        )
 
 
 def test_the_session_cookie_identifies_later_requests(harness: Harness) -> None:
@@ -435,6 +498,7 @@ def test_logging_out_ends_the_session_and_clears_the_cookie(harness: Harness) ->
 
     assert response.status_code == 204
     assert f'{COOKIE_NAME}=""' in response.headers["set-cookie"]
+    assert "secure" in response.headers["set-cookie"].lower()
     assert harness.client.get("/whoami").json() == {"subject": None}
     # The old cookie, replayed, opens nothing either.
     harness.client.cookies.set(COOKIE_NAME, token)
