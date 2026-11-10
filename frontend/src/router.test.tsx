@@ -33,19 +33,20 @@ function renderAt(path: string) {
 }
 
 describe('/admin route tree', () => {
-  it('renders the bottom nav with Hoy, Alumnos, Clases, Pagos in order', async () => {
+  it('renders the bottom nav with Hoy, Alumnos, Clases, Pagos, Ajustes in order', async () => {
     renderAt('/admin')
 
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
-    // Pagos joins once the role is known to read the ledger.
-    await within(nav).findByRole('link', { name: es.nav.payments })
+    // Pagos and Ajustes join once the role is known to reach them.
+    await within(nav).findByRole('link', { name: es.nav.settings })
     const links = within(nav).getAllByRole('link')
-    expect(links.map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases', 'Pagos'])
+    expect(links.map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases', 'Pagos', 'Ajustes'])
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/admin',
       '/admin/alumnos',
       '/admin/clases',
       '/admin/pagos',
+      '/admin/ajustes',
     ])
   })
 
@@ -55,6 +56,7 @@ describe('/admin route tree', () => {
     ['/admin/alumnos', es.nav.students, es.admin.students.title],
     ['/admin/clases', es.nav.classes, es.admin.classes.title],
     ['/admin/pagos', es.nav.payments, es.admin.payments.title],
+    ['/admin/ajustes/planes', es.nav.settings, es.admin.settings.title],
   ])('%s marks %s as the current page', async (path, navLabel, title) => {
     renderAt(path)
 

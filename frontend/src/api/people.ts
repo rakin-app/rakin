@@ -64,10 +64,8 @@ export function membersQuery(filters: MemberFilters) {
   })
 }
 
-export const plansQuery = queryOptions({
-  queryKey: ['plans'],
-  queryFn: () => apiFetch<Plan[]>('/api/plans'),
-})
+// The plans, as the filters and the import read them: their id, name and whether active.
+export { plansQuery } from './plans'
 
 export const programsQuery = queryOptions({
   queryKey: ['programs'],

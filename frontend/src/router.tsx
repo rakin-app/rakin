@@ -16,6 +16,7 @@ import { MemberImport } from './routes/MemberImport'
 import { NotFound } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { SessionDetail } from './routes/SessionDetail'
+import { Settings, SETTINGS_SECTIONS } from './routes/Settings'
 import { Students, validateStudentsSearch } from './routes/Students'
 import { Today } from './routes/Today'
 import { ValidateProof } from './routes/ValidateProof'
@@ -102,6 +103,26 @@ const adminProofReviewRoute = createRoute({
   component: ValidateProof,
 })
 
+// "Ajustes": the gym's configuration, owner and admin only, one route per section.
+const adminSettingsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'ajustes',
+  component: Settings,
+})
+
+// It opens on its first section.
+const adminSettingsIndexRoute = createRoute({
+  getParentRoute: () => adminSettingsRoute,
+  path: '/',
+  beforeLoad: () => {
+    throw redirect({ to: `/admin/ajustes/${SETTINGS_SECTIONS[0].path}`, replace: true })
+  },
+})
+
+const adminSettingsSectionRoutes = SETTINGS_SECTIONS.map((section) =>
+  createRoute({ getParentRoute: () => adminSettingsRoute, path: section.path, component: section.component }),
+)
+
 // /me/*: the student page, reached by magic link.
 const meRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -126,6 +147,7 @@ const routeTree = rootRoute.addChildren([
     adminSessionRoute,
     adminPaymentsRoute,
     adminProofReviewRoute,
+    adminSettingsRoute.addChildren([adminSettingsIndexRoute, ...adminSettingsSectionRoutes]),
   ]),
   meRoute.addChildren([meHomeRoute]),
 ])
