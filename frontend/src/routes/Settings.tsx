@@ -9,6 +9,7 @@ import { GradingSettings } from './GradingSettings'
 import { GymSettings } from './GymSettings'
 import { PlanSettings } from './PlanSettings'
 import { ProgramSettings } from './ProgramSettings'
+import { StaffSettings } from './StaffSettings'
 import { AdminsOnly } from './settingsForm'
 import './Settings.css'
 
@@ -24,6 +25,7 @@ export const SETTINGS_SECTIONS = [
   { path: 'programas', label: copy.sections.programs, component: ProgramSettings },
   { path: 'graduacion', label: copy.sections.grading, component: GradingSettings },
   { path: 'campos', label: copy.sections.fields, component: FieldSettings },
+  { path: 'equipo', label: copy.sections.staff, component: StaffSettings },
 ] as const satisfies readonly { path: string; label: string; component: ComponentType }[]
 
 /**

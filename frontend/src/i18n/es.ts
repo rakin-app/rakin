@@ -31,6 +31,28 @@ export const es = {
     settings: 'Ajustes',
     pendingBadge: (n: number) => (n === 1 ? '1 comprobante por revisar' : `${n} comprobantes por revisar`),
   },
+  signIn: {
+    title: 'Entrar a Rakin',
+    intro: 'Escribe tu correo y te enviamos un link para entrar. No necesitas clave.',
+    emailLabel: 'Correo',
+    submit: 'Enviarme el link',
+    sending: 'Enviando…',
+    // The same whatever the address: it never says whether an account exists.
+    sent: (email: string) =>
+      `Si el correo ${email} está registrado, te llegará un link para entrar. Vence en 15 minutos y sirve una sola vez.`,
+    another: 'Usar otro correo',
+    tooMany: (minutes: number | null) =>
+      minutes === null
+        ? 'Pediste varios links seguidos. Inténtalo de nuevo en unos minutos.'
+        : `Pediste varios links seguidos. Inténtalo de nuevo en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`}.`,
+    invalid: 'Revisa el correo: no parece una dirección válida.',
+    failed: 'No pudimos enviar el link. Revisa tu conexión e inténtalo de nuevo.',
+  },
+  signOut: {
+    label: 'Cerrar sesión',
+    working: 'Cerrando sesión…',
+    failed: 'No pudimos cerrar la sesión. Inténtalo de nuevo.',
+  },
   admin: {
     today: {
       title: 'Hoy',
@@ -457,6 +479,7 @@ export const es = {
         programs: 'Programas y clases',
         grading: 'Graduación',
         fields: 'Campos',
+        staff: 'Equipo',
       },
       loading: 'Cargando…',
       retry: 'Reintentar',
@@ -629,6 +652,45 @@ export const es = {
         classTypeSaved: (name: string) => `Clase ${name} guardada.`,
         classTypeDeactivated: (name: string) => `Clase ${name} desactivada. Las clases ya dadas la mantienen.`,
         classTypeReactivated: (name: string) => `Clase ${name} reactivada.`,
+      },
+      staff: {
+        title: 'Equipo',
+        error: 'No pudimos cargar el equipo.',
+        intro:
+          'Quienes llevan el gimnasio contigo. Un admin ve los pagos y los ajustes; un coach toma asistencia y no ve los pagos.',
+        roles: { owner: 'Dueño', admin: 'Admin', coach: 'Coach' } as Record<string, string>,
+        add: 'Invitar',
+        form: {
+          title: 'Invitar al equipo',
+          name: 'Nombre',
+          phone: 'Teléfono',
+          email: 'Correo',
+          emailHint: 'Le enviamos un enlace para entrar. Siempre entra con este correo, sin contraseña.',
+          role: 'Rol',
+          adminOnlyHint: 'Solo el dueño invita admins.',
+        },
+        cancel: 'Cancelar',
+        submit: 'Enviar invitación',
+        working: 'Enviando…',
+        invalid: 'Revisa los campos marcados.',
+        failed: 'No pudimos enviar la invitación. Inténtalo de nuevo.',
+        alreadyStaff: 'Esa persona ya está en el equipo.',
+        range: {} as Record<string, string>,
+        value: {
+          phone: 'Escribe un teléfono válido, como +56 9 1234 5678.',
+          email: 'Correo no válido.',
+        } as Record<string, string>,
+        invited: (name: string, email: string) => `Invitamos a ${name}. Le llegará un enlace a ${email}.`,
+        invitedNoEmail: (name: string) =>
+          `${name} ya está en el equipo, pero ya tiene cuenta en Rakin con otro correo, así que no le enviamos nada. Avísale por WhatsApp que entre con el correo de su cuenta.`,
+        makeAdmin: 'Hacer admin',
+        makeCoach: 'Hacer coach',
+        roleChanged: (name: string, role: string) => `${name} ahora es ${role.toLowerCase()}.`,
+        revoke: 'Quitar acceso',
+        confirmRevoke: (name: string) => `¿Quitar el acceso de ${name}? Su ficha y sus clases se mantienen.`,
+        confirm: 'Sí, quitar',
+        revoked: (name: string) => `${name} ya no está en el equipo.`,
+        actionFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
       },
       grading: {
         title: 'Graduación',
@@ -1001,6 +1063,7 @@ export const es = {
     },
   },
   common: {
+    loading: 'Cargando…',
     comingSoon: 'Esta sección todavía no está lista.',
     clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
     // An amount that says which way it goes: `+$5.000` in the member's favour, `−$5.000` owed.

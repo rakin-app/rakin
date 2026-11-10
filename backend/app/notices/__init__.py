@@ -70,8 +70,10 @@ class Template:
     essential: bool = True
     # Values rendered into the message but never written to `message_log`.
     redact: frozenset[str] = frozenset()
-    # Carries a sign-in link to the student page, issued when it is sent.
+    # Carries a sign-in link, issued when it is sent: to the student page, or wherever
+    # `landing` says (`None` is the app's own start, the admin screens for staff).
     page_link: bool = True
+    landing: str | None = STUDENT_PAGE
 
 
 MAGIC_LINK = Template("magic_link", redact=frozenset({"url"}), page_link=False)
@@ -80,6 +82,7 @@ STATEMENT = Template("statement")
 PROOF_RECEIVED = Template("proof_received")
 RECEIPT = Template("receipt")
 PROOF_REJECTED = Template("proof_rejected")
+STAFF_INVITE = Template("staff_invite", landing=None)
 
 
 @dataclass(frozen=True)
@@ -245,7 +248,9 @@ class Notices:
         recipient = Recipient(
             str(notice.person_id), notice.to, str(notice.context.get("name") or "")
         )
-        link = await self._links.issue(recipient, ttl=PAGE_LINK_TTL, landing=STUDENT_PAGE)
+        link = await self._links.issue(
+            recipient, ttl=PAGE_LINK_TTL, landing=notice.template.landing
+        )
         return link.url
 
     @asynccontextmanager

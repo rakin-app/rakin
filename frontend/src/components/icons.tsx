@@ -112,6 +112,14 @@ export function CloseIcon() {
   )
 }
 
+export function SignOutIcon() {
+  return (
+    <Icon>
+      <path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4M15 17l5-5-5-5M20 12H9" />
+    </Icon>
+  )
+}
+
 export function WhatsAppIcon() {
   return (
     <Icon>

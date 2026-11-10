@@ -1,8 +1,10 @@
 {% block body %}{% endblock %}
 {% if page_url %}
+{% block page_link %}
 
 Tu página: {{ page_url }}
 Este enlace te deja entrar sin contraseña. Sirve una sola vez y vence en {{ page_link_days }} días.
+{% endblock %}
 {% endif %}
 
 --

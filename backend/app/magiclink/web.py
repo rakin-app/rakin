@@ -29,6 +29,9 @@ from app.magiclink.service import MagicLinks, RateLimited, Session
 
 # `__Host-`: browsers accept it only Secure, on Path=/ and with no Domain.
 COOKIE_NAME = "__Host-session"
+# For an `http://` base URL, local development only. Chrome and Firefox keep a Secure
+# cookie on `http://localhost`, Safari drops it; and a `__Host-` name must be Secure.
+DEV_COOKIE_NAME = "session"
 CALLBACK = "/callback"
 
 # The page carries the token; keep it out of caches, other sites' referrers and frames.
@@ -72,6 +75,16 @@ def origin_of(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}"
 
 
+def is_secure(base_url: str) -> bool:
+    """Whether the session cookie is `Secure`: for every base URL but an `http://` one."""
+    return urlsplit(base_url).scheme != "http"
+
+
+def session_cookie_name(base_url: str) -> str:
+    """`__Host-session`, or the plain `session` the `http://` base URL of local dev needs."""
+    return COOKIE_NAME if is_secure(base_url) else DEV_COOKIE_NAME
+
+
 def callback_url(base_url: str, prefix: str) -> str:
     """Where links point, for `MagicLinks(callback_url=...)` and a router on `prefix`."""
     return f"{base_url.rstrip('/')}{prefix}{CALLBACK}"
@@ -84,16 +97,23 @@ def build_router(
     base_url: str,
     after_login: str = "/",
     landings: frozenset[str] = frozenset(),
-    cookie_name: str = COOKIE_NAME,
+    cookie_name: str | None = None,
     texts: Texts | None = None,
 ) -> APIRouter:
     """The endpoints, under `prefix`. `base_url` is where browsers reach the app.
 
     Signing in lands on `after_login`, or on the link's `next` when it is one of
     `landings`: a fixed list, so a link can never send anyone off the app.
+
+    The cookie is `Secure` unless `base_url` is `http://`, whatever `cookie_name` says;
+    by default it is named by `session_cookie_name`, as `SessionMiddleware` must read it.
     """
     if links.callback_url != callback_url(base_url, prefix):
         raise ValueError(f"links point at {links.callback_url}, not this router's callback")
+    secure = is_secure(base_url)
+    cookie_name = cookie_name or session_cookie_name(base_url)
+    if not secure and cookie_name.startswith(("__Host-", "__Secure-")):
+        raise ValueError(f"browsers drop a {cookie_name} cookie that is not Secure")
     texts = texts or Texts()
     router = APIRouter(prefix=prefix)
     callback_path = prefix + CALLBACK
@@ -181,7 +201,7 @@ def build_router(
             session_token,
             max_age=int(links.session_ttl.total_seconds()),
             path="/",
-            secure=True,
+            secure=secure,
             httponly=True,
             samesite="lax",
         )
@@ -194,7 +214,7 @@ def build_router(
         if session_token:
             await links.end_session(session_token)
         response = Response(status_code=status.HTTP_204_NO_CONTENT)
-        response.delete_cookie(cookie_name, path="/", secure=True, httponly=True, samesite="lax")
+        response.delete_cookie(cookie_name, path="/", secure=secure, httponly=True, samesite="lax")
         return response
 
     return router

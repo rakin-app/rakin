@@ -27,6 +27,7 @@ from app.notices import (
     PROOF_RECEIVED,
     PROOF_REJECTED,
     RECEIPT,
+    STAFF_INVITE,
     STATEMENT,
     TEMPLATES_DIR,
     WELCOME,
@@ -68,7 +69,15 @@ def proof_notice(template: Template = PROOF_RECEIVED, **context: Any) -> Notice:
 # --- rendering ------------------------------------------------------------------
 
 
-TEMPLATES = [MAGIC_LINK, WELCOME, STATEMENT, PROOF_RECEIVED, RECEIPT, PROOF_REJECTED]
+TEMPLATES = [
+    MAGIC_LINK,
+    WELCOME,
+    STATEMENT,
+    PROOF_RECEIVED,
+    RECEIPT,
+    PROOF_REJECTED,
+    STAFF_INVITE,
+]
 
 
 @pytest.mark.parametrize("template", TEMPLATES)
@@ -191,6 +200,7 @@ def test_every_notice_but_the_sign_in_link_carries_a_page_link() -> None:
         "proof_received",
         "receipt",
         "proof_rejected",
+        "staff_invite",
     ]
 
 
@@ -203,6 +213,24 @@ def test_the_page_link_goes_under_the_message() -> None:
     assert email.html is not None
     assert f'href="{PAGE_URL.replace("&", "&amp;")}"' in email.html
     assert "Ir a mi página" in email.html
+
+
+def test_the_staff_invite_has_its_own_sign_in_link() -> None:
+    url = f"{BASE_URL}/api/auth/callback?token=tok"
+    context = {"name": "Pedro", "gym": "Academia Sur", "inviter": "Carla", "role": "coach"}
+    email = render(
+        Notice(STAFF_INVITE, "pedro@example.cl", PERSON, GYM, {**context, "role_is_coach": True}),
+        page_url=url,
+    )
+
+    assert email.subject == "Carla te invitó al equipo de Academia Sur"
+    assert "Carla te invitó a Academia Sur en Rakin como coach." in email.text
+    assert "tomas asistencia" in email.text
+    assert f"Entrar: {url}\n" in email.text
+    assert "Tu página" not in email.text
+    assert email.html is not None
+    assert "Entrar a Rakin" in email.html and "Ir a mi página" not in email.html
+    assert STAFF_INVITE.landing is None
 
 
 def test_without_a_page_link_there_is_no_button() -> None:
