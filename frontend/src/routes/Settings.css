@@ -231,6 +231,70 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* A card inside a card: a program's class type, a rank of the scheme. */
+.settings__subcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+h2.settings__plan-name {
+  margin: 0;
+}
+
+/* A rank's name and target: stacked on a phone, side by side once there is room. */
+.settings__rank-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.settings__sub-ranks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings__sub-ranks > summary {
+  min-height: var(--control-height);
+  display: flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.settings__sub-ranks[open] > .settings__list {
+  margin-bottom: var(--space-2);
+}
+
+/* A sub-rank on one row: its name, a narrow target, and the button that removes it. */
+.settings__sub-rank {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.settings__sub-rank--target {
+  grid-template-columns: minmax(0, 1fr) 5.5rem auto;
+}
+
+/* The button sits level with the inputs, under the labels. */
+.settings__sub-rank > .settings__button {
+  align-self: end;
+  width: var(--control-height);
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
 @media (min-width: 960px) {
   .settings__sections {
     margin: 0 var(--space-8);

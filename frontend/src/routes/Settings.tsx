@@ -5,8 +5,10 @@ import { managesGym, myRoleQuery } from '../api/me'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import { FieldSettings } from './FieldSettings'
+import { GradingSettings } from './GradingSettings'
 import { GymSettings } from './GymSettings'
 import { PlanSettings } from './PlanSettings'
+import { ProgramSettings } from './ProgramSettings'
 import { AdminsOnly } from './settingsForm'
 import './Settings.css'
 
@@ -19,6 +21,8 @@ const copy = t.admin.settings
 export const SETTINGS_SECTIONS = [
   { path: 'gimnasio', label: copy.sections.gym, component: GymSettings },
   { path: 'planes', label: copy.sections.plans, component: PlanSettings },
+  { path: 'programas', label: copy.sections.programs, component: ProgramSettings },
+  { path: 'graduacion', label: copy.sections.grading, component: GradingSettings },
   { path: 'campos', label: copy.sections.fields, component: FieldSettings },
 ] as const satisfies readonly { path: string; label: string; component: ComponentType }[]
 

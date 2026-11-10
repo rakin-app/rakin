@@ -146,6 +146,8 @@ describe('Ajustes', () => {
     expect(within(sections).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
       [copy.sections.gym, '/admin/ajustes/gimnasio'],
       [copy.sections.plans, '/admin/ajustes/planes'],
+      [copy.sections.programs, '/admin/ajustes/programas'],
+      [copy.sections.grading, '/admin/ajustes/graduacion'],
       [copy.sections.fields, '/admin/ajustes/campos'],
     ])
     expect(await screen.findByRole('form', { name: gym.formLabel })).toBeInTheDocument()

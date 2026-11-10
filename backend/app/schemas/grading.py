@@ -4,6 +4,10 @@ Ranks are ordered lowest first. A rank's key is unique across the ranks and the 
 ladder together, since a promotion names only the rank; a sub-rank's key is unique
 within its rank. Keys are lower-case ASCII, digits and dashes (`blue`, `kyu-10`, `3`).
 A gym with no scheme stored reads as having none: no ranks, no kids ladder.
+
+A rank or sub-rank may carry a `target`: how much of the goal metric a member needs in
+it before the next promotion, in classes or in months. A sub-rank's own target wins over
+its rank's. Targets need a goal metric to be counted in.
 """
 
 from collections import Counter
@@ -22,6 +26,9 @@ GoalMetric = Literal["classes_since_promotion", "time_in_rank"]
 
 MAX_RANKS = 60
 MAX_SUB_RANKS = 20
+# Classes or months in a rank before the next promotion; the cap keeps a typo out.
+MAX_TARGET = 10_000
+Target = Annotated[int, Field(ge=1, le=MAX_TARGET)]
 
 
 def _repeated(keys: list[str]) -> list[str]:
@@ -33,6 +40,7 @@ class SubRank(BaseModel):
 
     key: Key
     label: Label
+    target: Target | None = None
 
 
 class Rank(BaseModel):
@@ -40,6 +48,7 @@ class Rank(BaseModel):
 
     key: Key
     label: Label
+    target: Target | None = None
     sub_ranks: Annotated[list[SubRank], Field(max_length=MAX_SUB_RANKS)] = []
 
     @model_validator(mode="after")
@@ -64,6 +73,11 @@ class GradingScheme(BaseModel):
             raise ValueError(f"rank keys repeated: {', '.join(repeated)}")
         if self.goal_metric is not None and not (self.ranks or self.kids_ladder):
             raise ValueError("a goal metric needs ranks")
+        if self.goal_metric is None and any(
+            r.target is not None or any(s.target is not None for s in r.sub_ranks)
+            for r in (*self.ranks, *self.kids_ladder)
+        ):
+            raise ValueError("a target needs a goal metric")
         return self
 
     @classmethod

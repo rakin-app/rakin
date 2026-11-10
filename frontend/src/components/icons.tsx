@@ -87,3 +87,27 @@ export function ChevronRightIcon() {
     </Icon>
   )
 }
+
+export function ChevronUpIcon() {
+  return (
+    <Icon width={20} height={20}>
+      <path d="M6 15l6-6 6 6" />
+    </Icon>
+  )
+}
+
+export function ChevronDownIcon() {
+  return (
+    <Icon width={20} height={20}>
+      <path d="M6 9l6 6 6-6" />
+    </Icon>
+  )
+}
+
+export function CloseIcon() {
+  return (
+    <Icon width={20} height={20}>
+      <path d="M18 6L6 18M6 6l12 12" />
+    </Icon>
+  )
+}

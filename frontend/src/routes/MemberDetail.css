@@ -210,6 +210,32 @@
   line-height: 1.1;
 }
 
+/* Progress towards the next promotion: the count, and a bar under it. */
+.member__goal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.member__goal-text {
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.member__goal-bar {
+  height: 8px;
+  overflow: hidden;
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-pill);
+}
+
+.member__goal-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: inherit;
+}
+
 /* A form inside a card: the card is its frame. */
 .member__form--inset {
   padding: 0;
