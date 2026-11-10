@@ -146,6 +146,7 @@ describe('Ajustes', () => {
     expect(within(sections).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
       [copy.sections.gym, '/admin/ajustes/gimnasio'],
       [copy.sections.plans, '/admin/ajustes/planes'],
+      [copy.sections.fields, '/admin/ajustes/campos'],
     ])
     expect(await screen.findByRole('form', { name: gym.formLabel })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/admin/ajustes/gimnasio')
