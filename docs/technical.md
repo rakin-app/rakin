@@ -55,7 +55,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `session_block` | id, gym\_id, session\_id, position, block\_kind\_id, planned\_seconds, actual\_seconds, rounds\_planned, rounds\_completed, round\_seconds, rest\_seconds | a session's plan in order and what each block ran (actual\_seconds null until then, less when stopped early); a sparring kind's block is rounds, and its seconds are the rounds' alone, rest not included; an open mat's plan is one sparring block; a student's time is the blocks of every session they attended, late or not |
 | `grade_event` | gym\_id, membership\_id, rank\_key, sub\_rank, awarded\_on, awarded\_by, note, created\_at | promotion log; keys of the gym's grading scheme; current rank is the latest by awarded\_on over the person's memberships; append-only; one that becomes current writes a `promoted` plan\_event |
 | `person_field_value` | person\_id, gym\_id, field\_key, value jsonb | custom fields; sensitive keys encrypted |
-| `message_log` | gym\_id, person\_id, channel, template, to\_address, status, error, sent\_at, payload jsonb | audit of every email sent: one row per attempt, status ∈ sent, failed, suppressed; payload is what the template was rendered from, never a magic link's URL; sign-in links belong to no gym and have no gym\_id; append-only |
+| `message_log` | gym\_id, person\_id, channel, template, to\_address, status, error, sent\_at, payload jsonb | audit of every message sent: one row per attempt, channel ∈ email, whatsapp, status ∈ sent, failed, suppressed; a WhatsApp row is written when the admin opens its `wa.me` link, which is all `sent` can mean there; payload is what the template was rendered from, never a magic link's URL; sign-in links belong to no gym and have no gym\_id; append-only |
 | `mail_unsubscribe` | gym\_id, person\_id, created\_at | one-click unsubscribe from that gym's non-essential notices |
 | `badge_token` | membership\_id, token, issued\_at, expires\_at | signed QR for cross-gym verification |
 | `agreement` | gym\_a\_id, gym\_b\_id, rule jsonb, active | v2: reciprocal terms |
@@ -121,7 +121,7 @@ Email is the system of record; WhatsApp is where the reminder gets read. Neither
 | Proof rejected | email + wa.me suggestion | rejection | carries admin's note |
 | Plan events (frozen, unfrozen, lapsed, promoted) | email | state change | optional per gym |
 | Announcements | email + copy-to-WhatsApp text | admin sends | one message to a program or everyone |
-| Inactive nudge | wa.me from retention list | 14 / 30 days without attendance | automation is v2 |
+| Inactive nudge | wa.me from "A quién llamar" on Hoy | 14 / 30 days without attendance (or since joining, for someone who never came) | to the guardian for a dependent; logged in `message_log` as opened; automation is v2 |
 
 **Email:** hosted Rakin sends from `@rakin.app` through [Resend](https://resend.com)'s SMTP relay (`smtp.resend.com`, user `resend`, the API key as password), with the same `SmtpMailer` self-hosters point at any SMTP server; no provider SDK. Resend rather than Amazon SES because it needs no AWS account just for mail and no sandbox approval before the first real send. Verified domain, DKIM, SPF, DMARC `p=quarantine` from day one; transactional only, no marketing content. Expected cost: cents per gym per month.
 
@@ -156,7 +156,7 @@ Caddy terminates TLS and serves the built SPA; FastAPI is the only thing that ta
 | --- | --- | --- |
 | Tenancy | shared schema, `gym_id` on every tenant table, Postgres RLS with `SET LOCAL app.gym_id` per request | a missed `WHERE` returns nothing instead of another gym's ledger; schema-per-tenant breaks global identity |
 | API | FastAPI, SQLAlchemy 2, Alembic, Pydantic v2 schemas separate from ORM models | boring and known; async where I/O-bound |
-| Auth | magic links to a session cookie (`HttpOnly`, `Secure`, `SameSite=Lax`); API and SPA on one origin | no passwords for students, no CORS |
+| Auth | magic links to a session cookie (`HttpOnly`, `Secure`, `SameSite=Lax`; on an `http://` base URL, local dev only, a plain `session` cookie without `Secure`), asked for at `/ingresar`; API and SPA on one origin | no passwords for students, no CORS |
 | Frontend | one Vite SPA, `/admin` and `/me` route trees, TanStack Query, `vite-plugin-pwa`, Spanish strings in one i18n file | one build, PWA for free, English later |
 | Jobs | APScheduler or system cron running `python -m app.jobs.daily`; `job_run` table for idempotency | three jobs do not justify Celery or Redis |
 | Files | presigned PUT to S3-compatible storage; key stored on `ledger_entry` | proofs never pass through the API process |

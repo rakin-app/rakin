@@ -3,7 +3,8 @@
 A link is a signed token that expires in 15 minutes, or later if issued so, and works
 once; only its hash is stored. It may name a page to land on, from the router's list.
 Opening it starts a 30-day session, sent as an `HttpOnly`, `Secure`, `SameSite=Lax`
-cookie. Requests are rate-limited per address and per IP.
+cookie (not `Secure`, under another name, for an `http://` base URL: local dev).
+Requests are rate-limited per address and per IP.
 
 Self-contained, to be extracted as a package later: nothing here imports from the
 rest of `app`. The application plugs in its accounts, storage and delivery through
@@ -21,10 +22,19 @@ from app.magiclink.service import (
     Session,
     Store,
 )
-from app.magiclink.web import COOKIE_NAME, SessionMiddleware, Texts, build_router, callback_url
+from app.magiclink.web import (
+    COOKIE_NAME,
+    DEV_COOKIE_NAME,
+    SessionMiddleware,
+    Texts,
+    build_router,
+    callback_url,
+    session_cookie_name,
+)
 
 __all__ = [
     "COOKIE_NAME",
+    "DEV_COOKIE_NAME",
     "Directory",
     "Link",
     "MagicLinks",
@@ -39,4 +49,5 @@ __all__ = [
     "Texts",
     "build_router",
     "callback_url",
+    "session_cookie_name",
 ]
