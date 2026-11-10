@@ -140,6 +140,19 @@ describe('Solicitudes', () => {
     expect(await within(ana).findByRole('alert')).toHaveTextContent(copy.hasMembership)
   })
 
+  it('says to reactivate someone dado de baja before approving them on a plan', async () => {
+    stubApi({ approve: { status: 409, body: { detail: { code: 'has_left' } } } })
+    renderAt('/admin/alumnos')
+
+    const ana = await row('Ana Pérez')
+    const select = await within(ana).findByLabelText(copy.plan)
+    await within(select).findByRole('option', { name: 'Mensual kids' })
+    await userEvent.selectOptions(select, 'kids-plan')
+    await userEvent.click(within(ana).getByRole('button', { name: copy.approveLabel('Ana Pérez') }))
+
+    expect(await within(ana).findByRole('alert')).toHaveTextContent(copy.hasLeft)
+  })
+
   it('shows on Hoy for a coach, who approves with no plan', async () => {
     const calls = stubApi({ role: 'coach' })
     renderAt('/admin')

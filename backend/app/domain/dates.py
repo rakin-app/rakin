@@ -80,3 +80,13 @@ def is_past_grace(due: date, grace_days: int, today: date) -> bool:
     if grace_days < 0:
         raise ValueError(f"grace_days must be >= 0, got {grace_days}")
     return (today - due).days > grace_days
+
+
+# Who needs a guardian: under 18, Chile's age of majority.
+AGE_OF_MAJORITY = 18
+
+
+def is_minor(dob: date, today: date) -> bool:
+    """Whether someone born on `dob` is under `AGE_OF_MAJORITY` on `today`; born on
+    29 February, they come of age on 28 February in a common year."""
+    return add_months(dob, 12 * AGE_OF_MAJORITY) > today

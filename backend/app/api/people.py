@@ -5,15 +5,20 @@ Identity is global by phone (docs/technical.md#domain-model), so adding someone 
 phone another gym already has attaches that person rather than duplicating them. The
 answer gives no sign of it: the same 201, carrying what this gym entered and this
 gym's timestamps, whether the phone was new or known (migration 0004). Only a phone
-already in *this* gym is refused, with a 409 naming that person, so the admin can open
-them instead.
+or RUT already in *this* gym is refused, with a 409 naming that person, so the admin
+can open them instead.
+
+The list leaves out whoever has left the gym (dado de baja, migration 0032) unless
+asked for them: `left=only` is the "Dados de baja" list, `left=any` everyone, for a
+picker that must still find them (a payment they owe).
 
 Every staff role may use it, coaches included; members may not.
 """
 
 import re
 import uuid
-from typing import Annotated, Any
+from datetime import date
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import text
@@ -26,11 +31,11 @@ from app.schemas.people import (
     MemberRow,
     MembershipSummary,
     Person,
+    PersonConflict,
     PersonCreate,
+    PersonInGym,
     PersonRef,
     PersonUpdate,
-    PhoneConflict,
-    PhoneInGym,
 )
 
 router = APIRouter(prefix="/api/people", tags=["people"])
@@ -40,7 +45,7 @@ NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "person not found")
 # This gym's record, and the phone it was added by. RLS on `gym_person` keeps it to
 # the current gym.
 SELECT_PERSON = """
-    SELECT gp.person_id AS id, p.phone, gp.name, gp.email, gp.rut, gp.dob,
+    SELECT gp.person_id AS id, p.phone, gp.name, gp.email, gp.rut, gp.dob, gp.left_on,
            gp.created_at, gp.updated_at
     FROM gym_person gp JOIN person p ON p.id = gp.person_id
     WHERE gp.person_id = :id
@@ -68,7 +73,7 @@ SHOWN_MEMBERSHIP = """
 # with the membership the list shows and their family (0010). RLS keeps every table to
 # the current gym.
 MEMBERS = f"""
-    SELECT gp.person_id AS id, gp.name, p.phone, gp.rut,
+    SELECT gp.person_id AS id, gp.name, p.phone, gp.rut, gp.left_on,
            m.id AS membership_id, m.status, m.plan_id, pl.name AS plan_name,
            g.person_id AS guardian_id, g.name AS guardian_name,
            (SELECT count(*) FROM guardian_link d
@@ -126,6 +131,7 @@ async def list_people(
     statuses: Annotated[list[MembershipStatus], Query(alias="status")] = [],  # noqa: B006
     plan_ids: Annotated[list[uuid.UUID], Query(alias="plan_id")] = [],  # noqa: B006
     program_ids: Annotated[list[uuid.UUID], Query(alias="program_id")] = [],  # noqa: B006
+    left: Literal["no", "only", "any"] = "no",
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MemberPage:
@@ -134,6 +140,10 @@ async def list_people(
     a member is in a program through their plan (migration 0016)."""
     where: list[str] = []
     params: dict[str, Any] = {}
+    if left == "no":
+        where.append("left_on IS NULL")
+    elif left == "only":
+        where.append("left_on IS NOT NULL")
     if q.strip():
         clause, params = _search(q.strip())
         where.append(clause)
@@ -168,6 +178,7 @@ async def list_people(
             if row.guardian_id is None
             else PersonRef(id=row.guardian_id, name=row.guardian_name),
             dependents=row.dependents,
+            left_on=row.left_on,
         )
         for row in rows
     ]
@@ -191,39 +202,76 @@ async def in_gym(session: AsyncSession, person_id: uuid.UUID) -> bool:
     return bool(found)
 
 
-async def _get(session: AsyncSession, person_id: uuid.UUID) -> Person:
+async def read_person(session: AsyncSession, person_id: uuid.UUID) -> Person:
     row = (await session.execute(text(SELECT_PERSON), {"id": person_id})).one_or_none()
     if row is None:
         raise NOT_FOUND
     return Person.model_validate(row, from_attributes=True)
 
 
-@router.post(
-    "",
-    status_code=status.HTTP_201_CREATED,
-    responses={status.HTTP_409_CONFLICT: {"model": PhoneInGym}},
-)
-async def create_person(body: PersonCreate, session: StaffSession) -> Person:
+def in_gym_conflict(conflict: PersonConflict) -> HTTPException:
+    """The 409 naming who in this gym already has the phone or RUT. Raised, not
+    returned, so the transaction rolls back and nothing is written."""
+    return HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
+
+
+async def refuse_rut_in_gym(
+    session: AsyncSession, rut: str | None, *, person_id: uuid.UUID | None = None
+) -> None:
+    """Refuse a RUT someone else in this gym already has."""
+    if rut is None:
+        return
+    holder = await session.scalar(
+        text(
+            "SELECT person_id FROM gym_person"
+            " WHERE rut = :rut AND person_id IS DISTINCT FROM CAST(:id AS uuid)"
+        ),
+        {"rut": rut, "id": person_id},
+    )
+    if holder is not None:
+        raise in_gym_conflict(PersonConflict(code="rut_in_gym", person_id=holder))
+
+
+async def join_by_phone(
+    session: AsyncSession,
+    phone: str,
+    name: str,
+    email: str | None = None,
+    rut: str | None = None,
+    dob: date | None = None,
+) -> uuid.UUID:
+    """Add the person with `phone` to this gym (`join_gym_by_phone`, 0004), refusing a
+    phone or RUT already someone's here."""
+    await refuse_rut_in_gym(session, rut)
     result = await session.execute(
         text("SELECT person_id, joined FROM join_gym_by_phone(:phone, :name, :email, :rut, :dob)"),
-        body.model_dump(),
+        {"phone": phone, "name": name, "email": email, "rut": rut, "dob": dob},
     )
     person_id, joined = result.one()
     if not joined:
-        # Raised, not returned, so the transaction rolls back (nothing was written).
-        conflict = PhoneConflict(person_id=person_id)
-        raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
-    return await _get(session, person_id)
+        raise in_gym_conflict(PersonConflict(person_id=person_id))
+    joined_id: uuid.UUID = person_id
+    return joined_id
+
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}},
+)
+async def create_person(body: PersonCreate, session: StaffSession) -> Person:
+    return await read_person(session, await join_by_phone(session, **body.model_dump()))
 
 
 @router.get("/{person_id}")
 async def get_person(person_id: uuid.UUID, session: StaffSession) -> Person:
-    return await _get(session, person_id)
+    return await read_person(session, person_id)
 
 
-@router.patch("/{person_id}")
+@router.patch("/{person_id}", responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}})
 async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: StaffSession) -> Person:
     changes = body.model_dump(exclude_unset=True)
+    await refuse_rut_in_gym(session, changes.get("rut"), person_id=person_id)
     if changes:
         assignments = ", ".join(f"{column} = :{column}" for column in changes)
         result = await session.execute(
@@ -232,4 +280,4 @@ async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: Staff
         )
         if result.rowcount == 0:  # type: ignore[attr-defined]
             raise NOT_FOUND
-    return await _get(session, person_id)
+    return await read_person(session, person_id)

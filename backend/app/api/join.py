@@ -61,7 +61,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.member_import import LIVE_MEMBERSHIP, RowRefused, Writer
-from app.api.memberships import start_membership
+from app.api.memberships import start_membership, welcome_for
 from app.api.unsubscribe import in_gym
 from app.contacts import contact_for
 from app.domain.dates import gym_today
@@ -86,6 +86,7 @@ from app.schemas.join import (
     JoinSubmission,
     age_on,
 )
+from app.schemas.memberships import MembershipStart
 from app.schemas.people import PersonRef
 from app.tenancy import Tenant, current_tenant
 
@@ -493,7 +494,10 @@ async def approve_join_request(
             # A second membership would bill them twice; approving with no plan links them.
             conflict = JoinRefusal(code="has_membership", field="plan_id")
             raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump())
-        membership, notice = await start_membership(session, tenant.gym_id, person_id, body.plan_id)
+        membership = await start_membership(
+            session, tenant, person_id, MembershipStart(plan_id=body.plan_id)
+        )
+        notice = await welcome_for(session, tenant, membership)
         membership_id = membership.id
     elif member_already:
         # Linked to the member they already are, who needs no word of it.

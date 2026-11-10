@@ -10,7 +10,7 @@ before it starts (#115).
 
 import uuid
 from datetime import UTC, date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator, model_validator
 
@@ -24,10 +24,12 @@ STARTED_ON_WINDOW_YEARS = 5
 Reason = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 
 
-class MembershipCreate(BaseModel):
+class MembershipStart(BaseModel):
+    """A plan to start someone on, from a day: as a membership starts, and as a new
+    member or one reactivated can start one (#157)."""
+
     model_config = ConfigDict(extra="forbid")
 
-    person_id: uuid.UUID
     plan_id: uuid.UUID
     # Today in the gym's timezone when omitted; a past day records an existing member.
     started_on: date | None = None
@@ -43,6 +45,20 @@ class MembershipCreate(BaseModel):
         ):
             raise ValueError(f"started_on must be within {STARTED_ON_WINDOW_YEARS} years of today")
         return value
+
+
+class MembershipCreate(MembershipStart):
+    person_id: uuid.UUID
+
+
+class HasLeftConflict(BaseModel):
+    code: Literal["has_left"] = "has_left"
+
+
+class HasLeft(BaseModel):
+    """409 body: the person has left the gym (dado de baja); reactivate them first."""
+
+    detail: HasLeftConflict
 
 
 class PlanChange(BaseModel):

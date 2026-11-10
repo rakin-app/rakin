@@ -47,6 +47,7 @@ import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { CustomFieldsPanel } from './CustomFieldsPanel'
 import { FamilyPanel } from './FamilyPanel'
+import { PersonActions } from './PersonActions'
 import './MemberDetail.css'
 
 const copy = t.admin.member
@@ -65,7 +66,8 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * Their attendance, in the last 30 days and in all, and in Graduación the classes since
  * their last promotion; their time on the mat by block kind (#141).
  *
- * Below them, the gym's custom fields the signed-in role may see (#20).
+ * Below them, the gym's custom fields the signed-in role may see (#20), and their
+ * record to edit, "Dar de baja" or "Reactivar", and "Eliminar" (#157).
  *
  */
 export function MemberDetail() {
@@ -125,6 +127,7 @@ export function MemberDetail() {
         <FamilyPanel person={person.data} />
       </section>
       <CustomFieldsPanel personId={person.data.id} />
+      <PersonActions person={person.data} role={role.data} />
     </Shell>
   )
 }

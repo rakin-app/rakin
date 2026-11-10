@@ -464,6 +464,18 @@ describe('Alumno de prueba', () => {
     expect(list.getByRole('button', { name: /Felipe Díaz/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('sends someone dado de baja to Reactivar instead of a trial', async () => {
+    stubApi({
+      person: { status: 409, body: { detail: { code: 'phone_in_gym', person_id: 'felipe' } } },
+      trial: { status: 409, body: { detail: { code: 'has_left' } } },
+    })
+    renderClass()
+
+    await addGuest('Felipe', '9 8765 4321')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.guest.hasLeft)
+  })
+
   it('asks to check a phone the API refuses', async () => {
     stubApi({ person: { status: 422, body: { detail: [] } } })
     renderClass()

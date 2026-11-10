@@ -15,7 +15,9 @@ booked can change its end, or be called off. Cancelling is terminal and
 needs a reason; the database refuses any later change to a cancelled row.
 
 Starting one emails the member, or their guardian, a welcome: how to pay and how to
-upload a proof, with their first sign-in link to the student page.
+upload a proof, with their first sign-in link to the student page. Nobody who has left
+the gym (dado de baja, #157) starts one, by any path: `insert_membership` refuses them
+until they are reactivated.
 
 Any staff role may read memberships; only an owner or admin may start, change or
 freeze or cancel one, since that sets what a member is charged. Members may not use it at all.
@@ -43,8 +45,11 @@ from app.schemas.memberships import (
     Freeze,
     FreezeCreate,
     FreezeEdit,
+    HasLeft,
+    HasLeftConflict,
     Membership,
     MembershipCreate,
+    MembershipStart,
     PendingPlanChange,
     PlanChange,
 )
@@ -163,6 +168,13 @@ def _unprocessable(error: ValueError | OverflowError) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error))
 
 
+class PersonHasLeft(Exception):
+    """`insert_membership` was asked to start someone who has left the gym."""
+
+
+HAS_LEFT = HTTPException(status.HTTP_409_CONFLICT, HasLeftConflict().model_dump())
+
+
 async def insert_membership(
     session: AsyncSession,
     person_id: uuid.UUID,
@@ -170,7 +182,14 @@ async def insert_membership(
     started: domain.Membership,
     started_at: datetime,
 ) -> uuid.UUID:
-    """Write `started`, a new membership of `person_id` on `plan_id`, in the current gym."""
+    """Write `started`, a new membership of `person_id` on `plan_id`, in the current gym.
+    Raises `PersonHasLeft` for someone who has left it: their record is read `FOR SHARE`,
+    so a baja and a new membership take turns."""
+    left_on = await session.scalar(
+        text("SELECT left_on FROM gym_person WHERE person_id = :id FOR SHARE"), {"id": person_id}
+    )
+    if left_on is not None:
+        raise PersonHasLeft(person_id)
     result = await session.execute(
         text(
             "INSERT INTO membership (gym_id, person_id, plan_id, status, anchor_day,"
@@ -193,7 +212,63 @@ async def insert_membership(
     return membership_id
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+async def start_membership(
+    session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, body: MembershipStart
+) -> Membership:
+    """Start `person_id`, someone in this gym, on `body`'s plan from its day, today in
+    the gym's timezone when it has none; a 422 for a plan this gym cannot start."""
+    terms = await _plan_terms(session, body.plan_id)
+    timezone = await session.scalar(
+        text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
+    )
+    started_on = body.started_on or gym_today(timezone)
+    try:
+        started = domain.start(terms, started_on)
+    except (ValueError, OverflowError) as error:
+        raise _unprocessable(error) from None
+
+    try:
+        membership_id = await insert_membership(
+            session, person_id, body.plan_id, started, start_of_local_day(started_on, timezone)
+        )
+    except PersonHasLeft:
+        raise HAS_LEFT from None
+    return await _get(session, membership_id)
+
+
+async def welcome_for(session: AsyncSession, tenant: Tenant, created: Membership) -> Notice | None:
+    """The welcome to `created`, to the member or their guardian; `None` when there is no
+    email to send it to."""
+    contact = await contact_for(session, created.person_id)
+    if contact is None or not contact.email:
+        logger.info("welcome: no email to send it to", extra={"membership_id": str(created.id)})
+        return None
+    gym = (
+        await session.execute(
+            text("SELECT name, settings -> 'bank_account' AS bank_account FROM gym WHERE id = :id"),
+            {"id": tenant.gym_id},
+        )
+    ).one()
+    dependent = None
+    if contact.on_behalf_of:
+        dependent = await session.scalar(
+            text("SELECT name FROM gym_person WHERE person_id = :id"), {"id": created.person_id}
+        )
+    return welcome(
+        contact,
+        gym_id=tenant.gym_id,
+        gym=gym.name,
+        plan_name=created.plan_name,
+        bank_account=gym.bank_account,
+        dependent_name=dependent,
+    )
+
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_409_CONFLICT: {"model": HasLeft}},
+)
 async def create_membership(
     body: MembershipCreate,
     tenant: Annotated[Tenant, Depends(current_tenant)],
@@ -206,63 +281,12 @@ async def create_membership(
     )
     if not known:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "person not found")
-    created, notice = await start_membership(
-        session, tenant.gym_id, body.person_id, body.plan_id, body.started_on
-    )
+    created = await start_membership(session, tenant, body.person_id, body)
+    notice = await welcome_for(session, tenant, created)
     if notice is not None:
         # After the response, which is after the membership has committed.
         background.add_task(notices.send, notice)
     return created
-
-
-async def start_membership(
-    session: AsyncSession,
-    gym_id: uuid.UUID,
-    person_id: uuid.UUID,
-    plan_id: uuid.UUID,
-    started_on: date | None = None,
-) -> tuple[Membership, Notice | None]:
-    """Start `person_id`, someone in the current gym, on `plan_id` from `started_on`
-    (today in the gym's timezone by default), and the welcome to send them once it has
-    committed: `None` when there is no email to send it to. A 422 for a plan the gym
-    does not have or has deactivated."""
-    terms = await _plan_terms(session, plan_id)
-    timezone = await session.scalar(text("SELECT timezone FROM gym WHERE id = :id"), {"id": gym_id})
-    started_on = started_on or gym_today(timezone)
-    try:
-        started = domain.start(terms, started_on)
-    except (ValueError, OverflowError) as error:
-        raise _unprocessable(error) from None
-
-    membership_id = await insert_membership(
-        session, person_id, plan_id, started, start_of_local_day(started_on, timezone)
-    )
-    created = await _get(session, membership_id)
-
-    contact = await contact_for(session, created.person_id)
-    if contact is None or not contact.email:
-        logger.info("welcome: no email to send it to", extra={"membership_id": str(created.id)})
-        return created, None
-    gym = (
-        await session.execute(
-            text("SELECT name, settings -> 'bank_account' AS bank_account FROM gym WHERE id = :id"),
-            {"id": gym_id},
-        )
-    ).one()
-    dependent = None
-    if contact.on_behalf_of:
-        dependent = await session.scalar(
-            text("SELECT name FROM gym_person WHERE person_id = :id"), {"id": created.person_id}
-        )
-    notice = welcome(
-        contact,
-        gym_id=gym_id,
-        gym=gym.name,
-        plan_name=created.plan_name,
-        bank_account=gym.bank_account,
-        dependent_name=dependent,
-    )
-    return created, notice
 
 
 def welcome(

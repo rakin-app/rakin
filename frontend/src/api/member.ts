@@ -10,6 +10,8 @@ export type Person = {
   email: string | null
   rut: string | null
   dob: string | null
+  // The day they left the gym (dado de baja); null while they are here.
+  left_on: string | null
   created_at: string
 }
 
