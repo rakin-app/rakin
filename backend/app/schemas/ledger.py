@@ -288,9 +288,13 @@ class BookFreeze(FreezeLine):
 
 
 class BookKpis(BaseModel):
-    # Validated payments, by the month each was validated in (`v_monthly_income`).
+    # Validated payments less validated refunds, each by the month it was validated in
+    # (`v_monthly_income`); the count is of the payments.
     collected_clp: int
     collected_payments: int
+    # The month's validated refunds, which `collected_clp` is net of.
+    refunded_clp: int
+    refunds: int
     # Payments waiting for review, today.
     pending_clp: int
     pending_payments: int

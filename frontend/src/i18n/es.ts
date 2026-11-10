@@ -444,7 +444,8 @@ export const es = {
       kpisLabel: 'Resumen del mes',
       kpis: {
         collected: 'Cobrado',
-        collectedDetail: (n: number) => (n === 1 ? '1 pago validado' : `${n} pagos validados`),
+        collectedDetail: (n: number, refunded: string | null) =>
+          (n === 1 ? '1 pago validado' : `${n} pagos validados`) + (refunded ? ` · Devuelto ${refunded}` : ''),
         pending: 'Por validar',
         pendingDetail: (n: number) => (n === 1 ? '1 comprobante' : `${n} comprobantes`),
         overdue: 'Vencido',

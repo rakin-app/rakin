@@ -91,6 +91,8 @@ const BOOK: LedgerBook = {
   kpis: {
     collected_clp: 2115000,
     collected_payments: 47,
+    refunded_clp: 0,
+    refunds: 0,
     pending_clp: 162000,
     pending_payments: 3,
     overdue_clp: 270000,
@@ -168,6 +170,14 @@ describe('Libro de pagos', () => {
         'Esperado$2.655.00064 membresías activas · 2 congeladas',
       ].join(''),
     )
+  })
+
+  it('shows the month\'s refunds beside the collected figure, which is net of them', async () => {
+    stubApi({ book: () => ({ ...BOOK, kpis: { ...BOOK.kpis, collected_clp: 2070000, refunded_clp: 45000, refunds: 1 } }) })
+    renderAt('/admin/pagos')
+
+    const kpis = await screen.findByRole('region', { name: copy.kpisLabel })
+    expect(kpis.textContent).toContain('Cobrado$2.070.00047 pagos validados · Devuelto $45.000')
   })
 
   it('lists each entry with its date, student, kind, period, medium, status and amount', async () => {

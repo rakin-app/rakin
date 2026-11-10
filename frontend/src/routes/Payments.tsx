@@ -223,7 +223,12 @@ function Kpis({ kpis }: { kpis: BookKpis }) {
   const words = copy.kpis
   const days = kpis.overdue_avg_days.toLocaleString('es-CL', { maximumFractionDigits: 1 })
   const tiles = [
-    { key: 'collected', label: words.collected, amount: kpis.collected_clp, detail: words.collectedDetail(kpis.collected_payments) },
+    {
+      key: 'collected',
+      label: words.collected,
+      amount: kpis.collected_clp,
+      detail: words.collectedDetail(kpis.collected_payments, kpis.refunds ? clp(kpis.refunded_clp) : null),
+    },
     { key: 'pending', label: words.pending, amount: kpis.pending_clp, detail: words.pendingDetail(kpis.pending_payments) },
     { key: 'overdue', label: words.overdue, amount: kpis.overdue_clp, detail: words.overdueDetail(kpis.overdue_members, days) },
     {

@@ -614,8 +614,9 @@ BOOK_FREEZE_FILTERS = {
 EXPECTED_STATUSES = ("active", "lapsed")
 
 # The book's KPIs. Collected and expected are the month's; pending and overdue, and the
-# membership counts, are how the gym stands today. Overdue counts active memberships
-# only, as the owner's "Vencido" does (`v_overdue`).
+# membership counts, are how the gym stands today. Collected is net of the month's
+# refunds, which it reports beside it (#126). Overdue counts active memberships only,
+# as the owner's "Vencido" does (`v_overdue`).
 #
 # Expected ("Esperado") is what is owed for the month: the periods falling due in it of
 # active and lapsed memberships, since a lapsed member still owes what was billed. A
@@ -628,6 +629,10 @@ BOOK_KPIS = text(
          WHERE month = :month) AS collected_clp,
         (SELECT coalesce(sum(payments), 0)::bigint FROM v_monthly_income
          WHERE month = :month) AS collected_payments,
+        (SELECT coalesce(sum(refunds_clp), 0)::bigint FROM v_monthly_income
+         WHERE month = :month) AS refunded_clp,
+        (SELECT coalesce(sum(refunds), 0)::bigint FROM v_monthly_income
+         WHERE month = :month) AS refunds,
         pending.amount AS pending_clp, pending.n AS pending_payments,
         overdue.amount AS overdue_clp, overdue.members AS overdue_members,
         overdue.avg_days AS overdue_avg_days,
