@@ -109,6 +109,7 @@ function JoinFormBody({
 }) {
   const [drafts, setDrafts] = useState<Drafts>(EMPTY)
   const [consent, setConsent] = useState(false)
+  const [noWhatsapp, setNoWhatsapp] = useState(false)
   const [humanToken, setHumanToken] = useState<string | null>(null)
   // Bumped after a failed submission: a widget token is good once, so the widget starts over.
   const [humanRound, setHumanRound] = useState(0)
@@ -121,13 +122,14 @@ function JoinFormBody({
       const body: JoinSubmission = {
         first_name: drafts.first_name,
         last_name: drafts.last_name,
-        rut: drafts.rut,
+        rut: orNull(drafts.rut),
         phone: orNull(drafts.phone),
         email: orNull(drafts.email),
         dob: drafts.dob,
         guardian_name: minor ? orNull(drafts.guardian_name) : null,
         guardian_phone: minor ? orNull(drafts.guardian_phone) : null,
         guardian_email: minor ? orNull(drafts.guardian_email) : null,
+        no_whatsapp: noWhatsapp,
         consent,
         website: drafts.website,
         human_check_token: humanToken,
@@ -172,6 +174,7 @@ function JoinFormBody({
         autoComplete="tel"
         onChange={(v) => set('phone', v)}
       />
+      {!minor && <NoWhatsapp label={copy.noWhatsapp} checked={noWhatsapp} onChange={setNoWhatsapp} />}
       <Input
         label={copy.email}
         hint={minor ? copy.minorEmailHint : undefined}
@@ -186,7 +189,8 @@ function JoinFormBody({
           <legend className="join__legend">{copy.guardianTitle}</legend>
           <p className="join__intro">{copy.guardianIntro}</p>
           <Input label={copy.guardianName} error={error('guardian_name')} value={drafts.guardian_name} autoComplete="off" onChange={(v) => set('guardian_name', v)} />
-          <Input label={copy.guardianPhone} error={error('guardian_phone')} value={drafts.guardian_phone} type="tel" autoComplete="off" onChange={(v) => set('guardian_phone', v)} />
+          <Input label={copy.guardianPhone} hint={copy.guardianPhoneHint} error={error('guardian_phone')} value={drafts.guardian_phone} type="tel" autoComplete="off" onChange={(v) => set('guardian_phone', v)} />
+          <NoWhatsapp label={copy.guardianNoWhatsapp} checked={noWhatsapp} onChange={setNoWhatsapp} />
           <Input label={copy.guardianEmail} error={error('guardian_email')} value={drafts.guardian_email} type="email" autoComplete="off" onChange={(v) => set('guardian_email', v)} />
         </fieldset>
       )}
@@ -217,6 +221,16 @@ function JoinFormBody({
         {send.isPending ? copy.working : copy.submit}
       </button>
     </form>
+  )
+}
+
+/** "No tiene WhatsApp": the rare person the gym cannot message, who may leave the phone out. */
+function NoWhatsapp({ label, checked, onChange }: { label: string; checked: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="join__consent">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
   )
 }
 

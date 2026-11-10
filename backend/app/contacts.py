@@ -19,12 +19,13 @@ def contact_query(person: str) -> str:
     for the person in the bind parameter `person` (`:id` or `$1`). RLS keeps every
     table to the current gym."""
     return f"""
-    SELECT r.person_id, r.name, r.email, p.phone, gl.dependent_person_id AS on_behalf_of
+    SELECT r.person_id, r.name, r.email,
+           CASE WHEN r.no_whatsapp THEN NULL ELSE r.phone END AS phone,
+           gl.dependent_person_id AS on_behalf_of
     FROM gym_person gp
     LEFT JOIN guardian_link gl ON gl.gym_id = gp.gym_id AND gl.dependent_person_id = gp.person_id
     JOIN gym_person r
       ON r.gym_id = gp.gym_id AND r.person_id = coalesce(gl.guardian_person_id, gp.person_id)
-    JOIN person p ON p.id = r.person_id
     WHERE gp.person_id = {person}
 """
 

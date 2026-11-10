@@ -17,7 +17,9 @@ export type StaffMember = {
   since: string
 }
 
-export type StaffInvite = { phone: string; name: string; email: string; role: InvitableRole }
+/** Who to invite: by their RUT when they give one, else by the email they sign in with
+ * (#165). The phone is optional for staff, a contact only. */
+export type StaffInvite = { name: string; email: string; rut?: string; phone?: string; role: InvitableRole }
 
 /** The owner, then admins, then coaches. Owner and admin only. */
 export const staffQuery = queryOptions({
@@ -25,7 +27,7 @@ export const staffQuery = queryOptions({
   queryFn: () => apiFetch<StaffMember[]>('/api/staff'),
 })
 
-/** Adds them by phone with the role and emails them a sign-in link; a 409 is someone already on the staff. */
+/** Adds them with the role and emails them a sign-in link; a 409 is someone already on the staff. */
 export function inviteStaff(body: StaffInvite): Promise<StaffMember> {
   return apiFetch<StaffMember>('/api/staff', { method: 'POST', body: JSON.stringify(body) })
 }

@@ -22,6 +22,7 @@ from app.main import create_app
 from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_rut
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 from tests.test_guardians import add_person, new_kid
 from tests.test_proofs import RecordingMailer, sent_notices
@@ -86,7 +87,9 @@ def plan(client: TestClient, gym: uuid.UUID, key: str) -> str:
 def person(client: TestClient, gym: uuid.UUID) -> str:
     phone = f"+569{random.randrange(10**7, 10**8)}"
     response = client.post(
-        "/api/people", json={"phone": phone, "name": "Alumna"}, headers=as_gym(gym)
+        "/api/people",
+        json={"rut": random_rut(), "phone": phone, "name": "Alumna"},
+        headers=as_gym(gym),
     )
     assert response.status_code == 201, response.text
     return str(response.json()["id"])

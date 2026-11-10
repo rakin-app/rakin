@@ -1,12 +1,14 @@
-"""People in the current gym: list and search them, add one by phone, read and edit
-this gym's record.
+"""People in the current gym: list and search them, add one by RUT or email, read and
+edit this gym's record.
 
-Identity is global by phone (docs/technical.md#domain-model), so adding someone whose
-phone another gym already has attaches that person rather than duplicating them. The
+Identity is global by RUT (docs/technical.md#domain-model), so adding someone whose
+RUT another gym already has attaches that person rather than duplicating them. The
 answer gives no sign of it: the same 201, carrying what this gym entered and this
-gym's timestamps, whether the phone was new or known (migration 0004). Only a phone
-or RUT already in *this* gym is refused, with a 409 naming that person, so the admin
-can open them instead.
+gym's timestamps, whether the RUT was new or known (migrations 0004, 0034). Someone
+with no RUT is keyed by their email in this gym alone: an email never links two
+gyms' people. Only a RUT already in *this* gym, or the email of someone added here
+with none, is refused, with a 409 naming that person, so the admin can open them
+instead. The phone is a contact, edited like the email, and finds nobody.
 
 The list leaves out whoever has left the gym (dado de baja, migration 0032) unless
 asked for them: `left=only` is the "Dados de baja" list, `left=any` everyone, for a
@@ -27,6 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.membership import MembershipStatus
 from app.roles import StaffSession
 from app.schemas.people import (
+    PHONE_REQUIRED,
+    DuplicateCode,
     MemberPage,
     MemberRow,
     MembershipSummary,
@@ -42,12 +46,29 @@ router = APIRouter(prefix="/api/people", tags=["people"])
 
 NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "person not found")
 
-# This gym's record, and the phone it was added by. RLS on `gym_person` keeps it to
-# the current gym.
-SELECT_PERSON = """
-    SELECT gp.person_id AS id, p.phone, gp.name, gp.email, gp.rut, gp.dob, gp.left_on,
-           gp.created_at, gp.updated_at
-    FROM gym_person gp JOIN person p ON p.id = gp.person_id
+
+def missing_phone(record: str) -> str:
+    """Whether the `gym_person` row `record` is a member the gym cannot reach (#165): no
+    phone, "No tiene WhatsApp" unticked, and neither staff, who need none, nor a
+    dependent, whose guardian's phone is the one used. "Falta teléfono"."""
+    return f"""(
+        {record}.phone IS NULL AND NOT {record}.no_whatsapp
+        AND NOT EXISTS (
+            SELECT FROM staff s
+            WHERE s.gym_id = {record}.gym_id AND s.person_id = {record}.person_id
+        )
+        AND NOT EXISTS (
+            SELECT FROM guardian_link d
+            WHERE d.gym_id = {record}.gym_id AND d.dependent_person_id = {record}.person_id
+        )
+    )"""
+
+
+# This gym's record. RLS on `gym_person` keeps it to the current gym.
+SELECT_PERSON = f"""
+    SELECT gp.person_id AS id, gp.phone, gp.no_whatsapp, {missing_phone("gp")} AS missing_phone,
+           gp.name, gp.email, gp.rut, gp.dob, gp.left_on, gp.created_at, gp.updated_at
+    FROM gym_person gp
     WHERE gp.person_id = :id
 """
 
@@ -73,13 +94,13 @@ SHOWN_MEMBERSHIP = """
 # with the membership the list shows and their family (0010). RLS keeps every table to
 # the current gym.
 MEMBERS = f"""
-    SELECT gp.person_id AS id, gp.name, p.phone, gp.rut, gp.left_on,
+    SELECT gp.person_id AS id, gp.name, gp.phone, gp.no_whatsapp,
+           {missing_phone("gp")} AS missing_phone, gp.rut, gp.left_on,
            m.id AS membership_id, m.status, m.plan_id, pl.name AS plan_name,
            g.person_id AS guardian_id, g.name AS guardian_name,
            (SELECT count(*) FROM guardian_link d
             WHERE d.guardian_person_id = gp.person_id) AS dependents
     FROM gym_person gp
-    JOIN person p ON p.id = gp.person_id
     {SHOWN_MEMBERSHIP}
     LEFT JOIN guardian_link gl ON gl.dependent_person_id = gp.person_id
     LEFT JOIN gym_person g ON g.gym_id = gl.gym_id AND g.person_id = gl.guardian_person_id
@@ -111,8 +132,8 @@ def _search(q: str) -> tuple[str, dict[str, Any]]:
 
 # Everyone this gym has a record of, as `_search` reads them.
 SEARCHABLE = """
-    SELECT gp.person_id AS id, gp.name, p.phone, gp.rut
-    FROM gym_person gp JOIN person p ON p.id = gp.person_id
+    SELECT gp.person_id AS id, gp.name, gp.phone, gp.rut
+    FROM gym_person gp
 """
 
 
@@ -132,6 +153,8 @@ async def list_people(
     plan_ids: Annotated[list[uuid.UUID], Query(alias="plan_id")] = [],  # noqa: B006
     program_ids: Annotated[list[uuid.UUID], Query(alias="program_id")] = [],  # noqa: B006
     left: Literal["no", "only", "any"] = "no",
+    # Only the members with "Falta teléfono".
+    missing_phone: bool = False,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MemberPage:
@@ -144,6 +167,8 @@ async def list_people(
         where.append("left_on IS NULL")
     elif left == "only":
         where.append("left_on IS NOT NULL")
+    if missing_phone:
+        where.append("missing_phone")
     if q.strip():
         clause, params = _search(q.strip())
         where.append(clause)
@@ -172,6 +197,8 @@ async def list_people(
             id=row.id,
             name=row.name,
             phone=row.phone,
+            no_whatsapp=row.no_whatsapp,
+            missing_phone=row.missing_phone,
             rut=row.rut,
             membership=shown_membership(row),
             guardian=None
@@ -210,7 +237,7 @@ async def read_person(session: AsyncSession, person_id: uuid.UUID) -> Person:
 
 
 def in_gym_conflict(conflict: PersonConflict) -> HTTPException:
-    """The 409 naming who in this gym already has the phone or RUT. Raised, not
+    """The 409 naming who in this gym already has the RUT or email. Raised, not
     returned, so the transaction rolls back and nothing is written."""
     return HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
 
@@ -232,26 +259,56 @@ async def refuse_rut_in_gym(
         raise in_gym_conflict(PersonConflict(code="rut_in_gym", person_id=holder))
 
 
-async def join_by_phone(
+JOIN_GYM = "SELECT person_id, joined FROM join_gym(:rut, :email, :name, :phone, :dob)"
+
+
+async def join_gym(
     session: AsyncSession,
-    phone: str,
+    *,
     name: str,
-    email: str | None = None,
     rut: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    no_whatsapp: bool = False,
     dob: date | None = None,
-) -> uuid.UUID:
-    """Add the person with `phone` to this gym (`join_gym_by_phone`, 0004), refusing a
-    phone or RUT already someone's here."""
-    await refuse_rut_in_gym(session, rut)
+) -> tuple[uuid.UUID, bool]:
+    """The person `rut` is, or with none the one this gym has under `email`, else
+    someone new, and whether this call added them to the gym (`join_gym`, 0034). With
+    neither, always someone new: a dependent. A record new here takes `no_whatsapp`; a
+    known one is left as the gym has it."""
     result = await session.execute(
-        text("SELECT person_id, joined FROM join_gym_by_phone(:phone, :name, :email, :rut, :dob)"),
-        {"phone": phone, "name": name, "email": email, "rut": rut, "dob": dob},
+        text(JOIN_GYM), {"rut": rut, "email": email, "name": name, "phone": phone, "dob": dob}
     )
     person_id, joined = result.one()
+    if joined and no_whatsapp:
+        await session.execute(
+            text("UPDATE gym_person SET no_whatsapp = true WHERE person_id = :id"),
+            {"id": person_id},
+        )
+    found: uuid.UUID = person_id
+    return found, joined
+
+
+async def add_to_gym(
+    session: AsyncSession,
+    *,
+    name: str,
+    rut: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    no_whatsapp: bool = False,
+    dob: date | None = None,
+) -> uuid.UUID:
+    """Add someone new to this gym, refusing a RUT, or the email of someone with no
+    RUT, already someone's here."""
+    await refuse_rut_in_gym(session, rut)
+    person_id, joined = await join_gym(
+        session, name=name, rut=rut, email=email, phone=phone, no_whatsapp=no_whatsapp, dob=dob
+    )
     if not joined:
-        raise in_gym_conflict(PersonConflict(person_id=person_id))
-    joined_id: uuid.UUID = person_id
-    return joined_id
+        code: DuplicateCode = "rut_in_gym" if rut is not None else "email_in_gym"
+        raise in_gym_conflict(PersonConflict(code=code, person_id=person_id))
+    return person_id
 
 
 @router.post(
@@ -260,7 +317,7 @@ async def join_by_phone(
     responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}},
 )
 async def create_person(body: PersonCreate, session: StaffSession) -> Person:
-    return await read_person(session, await join_by_phone(session, **body.model_dump()))
+    return await read_person(session, await add_to_gym(session, **body.model_dump()))
 
 
 @router.get("/{person_id}")
@@ -280,4 +337,10 @@ async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: Staff
         )
         if result.rowcount == 0:  # type: ignore[attr-defined]
             raise NOT_FOUND
-    return await read_person(session, person_id)
+    person = await read_person(session, person_id)
+    # A member's phone is cleared, or "No tiene WhatsApp" unticked, only with a phone in
+    # its place. Raised, so the update rolls back. Editing anything else leaves a
+    # member already missing one as they were ("Falta teléfono").
+    if person.missing_phone and changes.keys() & {"phone", "no_whatsapp"}:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, PHONE_REQUIRED)
+    return person

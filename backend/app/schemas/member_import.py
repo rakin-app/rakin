@@ -91,6 +91,11 @@ class RowResult(BaseModel):
     # The fields this row has that the import leaves unapplied: someone found here
     # keeps this gym's record of them, and a live membership keeps its plan and dates.
     ignored: list[ImportField]
+    # Whom the gym messages about them (their guardian, for a dependent) has no phone:
+    # imported anyway, and flagged "Falta teléfono" until one is filled in (#165).
+    missing_phone: bool = False
+    # Neither a RUT nor an email: imported, and found again by their name in this gym.
+    missing_identity: bool = False
 
 
 class ImportSummary(BaseModel):
@@ -100,6 +105,10 @@ class ImportSummary(BaseModel):
     people_created: int
     links_created: int
     memberships_created: int
+    # Rows imported with "Falta teléfono".
+    missing_phone: int = 0
+    # Rows imported with neither a RUT nor an email.
+    missing_identity: int = 0
 
 
 class ImportReport(BaseModel):

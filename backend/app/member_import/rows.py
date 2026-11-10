@@ -5,9 +5,13 @@ reports them all at once. What needs the gym's data (is that guardian already he
 they already have someone of that name in their care) is checked as the row is written
 (`app.api.member_import`).
 
-A row is an adult, found again by their phone, or a dependent with no phone, found by
-their guardian's phone and their own name. Someone with a phone may have a guardian
-too (a teenager). A row with a plan gets a membership, starting as of its due date.
+A row is someone found again by their RUT, or by their email when it has none (#165),
+or a dependent with neither, found by their guardian and their own name. A guardian is
+found by their RUT or email the same way. Someone with a RUT or email may have a
+guardian too (a teenager). Old sheets often have neither: an adult row with no RUT and
+no email still imports, found again in this gym by their name, and so does a guardian
+the sheet names with no RUT or email. The phone is a contact and finds nobody. A row
+with a plan gets a membership, starting as of its due date.
 """
 
 import re
@@ -42,12 +46,14 @@ class Field(StrEnum):
     DUE_ON = "due_on"
     STARTED_ON = "started_on"
     GUARDIAN_NAME = "guardian_name"
+    GUARDIAN_RUT = "guardian_rut"
+    GUARDIAN_EMAIL = "guardian_email"
     GUARDIAN_PHONE = "guardian_phone"
 
 
 # `required`: the cell is empty and the row needs it. `repeated`: an earlier row has the
-# same phone, or the same guardian and name. `own_guardian`: the guardian's phone is the
-# row's own. `unknown_plan`, `inactive_plan`, `dropin_plan`: no such plan, a deactivated
+# same RUT or email, or the same guardian and name. `own_guardian`: the guardian's RUT
+# is the row's own. `unknown_plan`, `inactive_plan`, `dropin_plan`: no such plan, a deactivated
 # one, or a drop-in, which is not a membership. `due_before_start`: the due date is
 # before the start. `has_guardian`, `one_level`: the link is refused (migration 0010).
 # `has_left`: the member was dado de baja, and starts no plan until reactivated (0032).
@@ -97,13 +103,66 @@ class Member:
     due_on: date | None = None
     started_on: date | None = None
     guardian_name: str | None = None
-    guardian_phone: str | None = None
-    # No sheet column gives one; the join link's form does (`app.api.join`).
+    guardian_rut: str | None = None
     guardian_email: str | None = None
+    guardian_phone: str | None = None
+    # "No tiene WhatsApp" for the row's contact: its guardian when it has one, else
+    # itself. No sheet column gives it; the join link's form does (`app.api.join`).
+    no_whatsapp: bool = False
     errors: list[RowError] = field(default_factory=list)
 
     def refuse(self, on: Field, code: ErrorCode) -> None:
         self.errors.append(RowError(on, code))
+
+    @property
+    def has_guardian(self) -> bool:
+        """Whether the row names someone who answers for them."""
+        return self.guardian_key is not None or self.guardian_name is not None
+
+    @property
+    def is_dependent(self) -> bool:
+        """A row with neither a RUT nor an email of its own, under a guardian: found by
+        the guardian and their name, as kids are."""
+        return self.key is None and self.has_guardian
+
+    @property
+    def missing_phone(self) -> bool:
+        """The row's contact has no phone, and nothing says they have no WhatsApp: it
+        imports, flagged "Falta teléfono" (#165)."""
+        phone = self.guardian_phone if self.has_guardian else self.phone
+        return phone is None and not self.no_whatsapp
+
+    @property
+    def missing_identity(self) -> bool:
+        """An adult with neither a RUT nor an email: imported, found again by name in
+        this gym, but nothing says who they are elsewhere."""
+        return self.key is None and not self.has_guardian
+
+    @property
+    def guardian_ident(self) -> tuple[str, str] | None:
+        """The guardian, by RUT or email, else by name: as the sheet tells them apart."""
+        if self.guardian_key is not None:
+            return self.guardian_key
+        return None if self.guardian_name is None else ("name", fold(self.guardian_name))
+
+    @property
+    def key(self) -> tuple[str, str] | None:
+        """Who the row is, by its own RUT, else its email; `None` for a dependent."""
+        return identity(self.rut, self.email)
+
+    @property
+    def guardian_key(self) -> tuple[str, str] | None:
+        """Who the row's guardian is, the same way."""
+        return identity(self.guardian_rut, self.guardian_email)
+
+
+def identity(rut: str | None, email: str | None) -> tuple[str, str] | None:
+    """A RUT, else an email, case and outer spaces ignored: who someone is (0034)."""
+    if rut is not None:
+        return "rut", rut
+    if email is not None:
+        return "email", email.strip().lower()
+    return None
 
 
 def fold(value: str) -> str:
@@ -127,14 +186,16 @@ _GUARDIAN_WORDS = (
     "papa",
 )
 _PHONE_WORDS = ("telefono", "celular", "fono", "whatsapp", "movil", "phone", "cel")
+_RUT_WORDS = ("rut", "run")
+_EMAIL_WORDS = ("correo", "email", "e mail", "mail")
 # In order: the first field whose words a header holds is the one suggested.
 _HEADER_WORDS: tuple[tuple[Field, tuple[str, ...]], ...] = (
     (Field.DOB, ("nacimiento", "cumpleanos", "f nac", "fecha nac", "birth", "dob")),
     (Field.DUE_ON, ("vencimiento", "vence", "proximo pago", "fecha de pago", "fecha pago")),
     (Field.STARTED_ON, ("fecha de ingreso", "ingreso", "inicio", "alta")),
     (Field.PHONE, _PHONE_WORDS),
-    (Field.EMAIL, ("correo", "email", "e mail", "mail")),
-    (Field.RUT, ("rut", "run")),
+    (Field.EMAIL, _EMAIL_WORDS),
+    (Field.RUT, _RUT_WORDS),
     (Field.LAST_NAME, ("apellido",)),
     (Field.NAME, ("nombre", "alumno", "alumna", "name")),
     (Field.PLAN, ("plan", "mensualidad")),
@@ -153,7 +214,14 @@ def _holds(header: str, words: Sequence[str]) -> bool:
 def _field_for(header: str) -> Field | None:
     words = _words(header)
     if _holds(words, _GUARDIAN_WORDS):
-        return Field.GUARDIAN_PHONE if _holds(words, _PHONE_WORDS) else Field.GUARDIAN_NAME
+        for guardian_field, keys in (
+            (Field.GUARDIAN_PHONE, _PHONE_WORDS),
+            (Field.GUARDIAN_RUT, _RUT_WORDS),
+            (Field.GUARDIAN_EMAIL, _EMAIL_WORDS),
+        ):
+            if _holds(words, keys):
+                return guardian_field
+        return Field.GUARDIAN_NAME
     return next((f for f, keys in _HEADER_WORDS if _holds(words, keys)), None)
 
 
@@ -222,6 +290,26 @@ def _phone(member: Member, on: Field, raw: str) -> str | None:
         return None
 
 
+def _rut(member: Member, on: Field, raw: str) -> str | None:
+    if not raw:
+        return None
+    try:
+        return normalize_rut(raw)
+    except ValueError:
+        member.refuse(on, "invalid_rut")
+        return None
+
+
+def _email(member: Member, on: Field, raw: str) -> str | None:
+    if not raw:
+        return None
+    try:
+        return _EMAIL.validate_python(raw)
+    except ValidationError:
+        member.refuse(on, "invalid_email")
+        return None
+
+
 def _date(member: Member, on: Field, raw: str, today: date) -> date | None:
     if not raw:
         return None
@@ -256,24 +344,19 @@ def read_member(
         member.refuse(Field.NAME, "required")
 
     member.phone = _phone(member, Field.PHONE, cell(Field.PHONE))
-    member.guardian_phone = _phone(member, Field.GUARDIAN_PHONE, cell(Field.GUARDIAN_PHONE))
+    member.email = _email(member, Field.EMAIL, cell(Field.EMAIL))
+    member.rut = _rut(member, Field.RUT, cell(Field.RUT))
     member.guardian_name = " ".join(cell(Field.GUARDIAN_NAME).split()) or None
-    if not cell(Field.PHONE) and not cell(Field.GUARDIAN_PHONE):
-        # Guardians are found by phone, so a dependent needs theirs.
-        member.refuse(Field.GUARDIAN_PHONE if member.guardian_name else Field.PHONE, "required")
-    if member.phone is not None and member.phone == member.guardian_phone:
-        member.refuse(Field.GUARDIAN_PHONE, "own_guardian")
+    member.guardian_rut = _rut(member, Field.GUARDIAN_RUT, cell(Field.GUARDIAN_RUT))
+    member.guardian_email = _email(member, Field.GUARDIAN_EMAIL, cell(Field.GUARDIAN_EMAIL))
+    member.guardian_phone = _phone(member, Field.GUARDIAN_PHONE, cell(Field.GUARDIAN_PHONE))
+    own_guardian(member)
+    if cell(Field.GUARDIAN_PHONE) and not member.has_guardian:
+        # A guardian's phone finds nobody: the sheet must say who the guardian is.
+        member.refuse(Field.GUARDIAN_NAME, "required")
+    if member.rut is not None and member.rut == member.guardian_rut:
+        member.refuse(Field.GUARDIAN_RUT, "own_guardian")
 
-    if email := cell(Field.EMAIL):
-        try:
-            member.email = _EMAIL.validate_python(email)
-        except ValidationError:
-            member.refuse(Field.EMAIL, "invalid_email")
-    if rut := cell(Field.RUT):
-        try:
-            member.rut = normalize_rut(rut)
-        except ValueError:
-            member.refuse(Field.RUT, "invalid_rut")
     member.dob = _date(member, Field.DOB, cell(Field.DOB), today)
     plan_value = cell(Field.PLAN)
     if plan_value and plans.cleared(plan_value):
@@ -285,6 +368,19 @@ def read_member(
     if plan_value:
         _plan(member, plans, plan_value)
     return member
+
+
+def own_guardian(member: Member) -> None:
+    """A contact the row shares with its guardian is the guardian's: a child given their
+    parent's email or phone has none of their own, and is not found by it."""
+    if not member.has_guardian:
+        return
+    if member.email is not None and identity(None, member.email) == identity(
+        None, member.guardian_email
+    ):
+        member.email = None
+    if member.phone is not None and member.phone == member.guardian_phone:
+        member.phone = None
 
 
 def _plan(member: Member, plans: "PlanFinder", value: str) -> None:
@@ -345,20 +441,28 @@ def read_members(
     plans: PlanFinder,
     today: date,
 ) -> list[Member]:
-    """Every row read, and each phone or dependent that an earlier row already has
+    """Every row read, and each person or dependent that an earlier row already has
     flagged `repeated`, so the sheet's first mention is the one imported."""
     members = [read_member(n, cells, mapping, plans, today) for n, cells in rows]
     seen: set[object] = set()
+    # Adults' names: a row with nothing but a name is whoever an earlier row of that
+    # name is, as the import would find them.
+    names: set[str] = set()
     for member in members:
-        if member.phone is not None:
-            key: object = member.phone
-            on = Field.PHONE
-        elif member.guardian_phone is not None:
-            key = (member.guardian_phone, fold(member.name))
+        if member.key is not None:
+            key: object = member.key
+            on = Field.RUT if member.rut is not None else Field.EMAIL
+        elif member.guardian_ident is not None:
+            key = (member.guardian_ident, fold(member.name))
+            on = Field.NAME
+        elif member.name:
+            key = ("name", fold(member.name))
             on = Field.NAME
         else:
             continue
-        if key in seen:
+        if key in seen or (member.missing_identity and fold(member.name) in names):
             member.refuse(on, "repeated")
         seen.add(key)
+        if not member.is_dependent:
+            names.add(fold(member.name))
     return members

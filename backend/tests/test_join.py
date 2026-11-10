@@ -21,7 +21,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.api.join import JoinLimits
 from app.domain.dates import start_of_local_day
-from app.domain.rut import check_digit
+from app.domain.rut import check_digit, format_rut
 from app.jobs import join_requests
 from app.magiclink.ratelimit import MemoryRateLimiter
 from app.main import create_app
@@ -185,8 +185,8 @@ def record(db: Database, gym: uuid.UUID, person_id: str) -> dict[str, Any]:
     rows = run(
         db.admin_url,
         lambda c: c.fetch(
-            "SELECT gp.name, gp.email, gp.rut, gp.dob, p.phone FROM gym_person gp"
-            " JOIN person p ON p.id = gp.person_id WHERE gp.gym_id = $1 AND gp.person_id = $2",
+            "SELECT gp.name, gp.email, gp.rut, gp.dob, gp.phone, gp.no_whatsapp FROM gym_person gp"
+            " WHERE gp.gym_id = $1 AND gp.person_id = $2",
             gym,
             uuid.UUID(person_id),
         ),
@@ -412,6 +412,39 @@ def test_an_adult_gives_their_phone_and_email(
     ]
 
 
+def test_an_adult_with_no_whatsapp_may_leave_out_the_phone(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    body = adult(no_whatsapp=True, rut=None, email=f"{uuid.uuid4().hex[:8]}@example.cl")
+    del body["phone"]
+
+    request = one_request(client, gym, token_of(client, gym), body)
+    [queued] = queue(client, gym)
+    assert (queued["phone"], queued["rut"], queued["no_whatsapp"]) == (None, None, True)
+
+    answer = approved(client, gym, request)
+    kept = record(db, gym, answer["person_id"])
+    assert (kept["phone"], kept["rut"], kept["no_whatsapp"]) == (None, None, True)
+
+
+def test_a_minors_guardian_with_no_whatsapp_may_leave_out_their_phone(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    body = minor(no_whatsapp=True, guardian_email=f"{uuid.uuid4().hex[:8]}@example.cl")
+    del body["guardian_phone"]
+
+    answer = approved(client, gym, one_request(client, gym, token_of(client, gym), body))
+
+    guardian = guardian_of(db, gym, answer["person_id"])
+    assert guardian is not None
+    assert (
+        record(db, gym, str(guardian))["phone"],
+        record(db, gym, str(guardian))["no_whatsapp"],
+    ) == (None, True)
+    # The box is the guardian's: the kid's own record is left as it is.
+    assert record(db, gym, answer["person_id"])["no_whatsapp"] is False
+
+
 def test_a_minor_needs_a_guardian(client: TestClient, gym: uuid.UUID) -> None:
     body = minor()
     for field in ("guardian_name", "guardian_phone", "guardian_email"):
@@ -616,51 +649,57 @@ def test_nothing_in_the_answers_says_who_is_known(
 # --- the queue ------------------------------------------------------------------------
 
 
-def test_the_queue_warns_of_a_phone_or_rut_already_in_this_gym(
+def test_the_queue_warns_of_a_rut_or_email_already_in_this_gym(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     token = token_of(client, gym)
     phone = new_phone()
-    ana = add_person(client, gym, "Ana Antigua", phone=phone)
+    add_person(client, gym, "Ana Antigua", phone=phone)  # ana.antigua@example.cl
     rut = new_rut()
     beto = add_person(client, gym, "Beto")
     client.patch(f"/api/people/{beto}", json={"rut": rut}, headers=as_gym(gym))
+    sin_rut = client.post(
+        "/api/people",
+        json={"name": "Carla", "email": "carla@example.cl"},
+        headers=as_gym(gym),
+    ).json()["id"]
     # Known to another gym only: this gym's queue says nothing of it.
-    other_phone = new_phone()
-    add_person(client, seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}"), "Ana", other_phone)
+    other_rut = new_rut()
+    add_person(client, seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}"), "Ana", rut=other_rut)
 
     submitted(client, token, adult(phone=phone))
-    submitted(client, token, adult(rut=rut))
-    submitted(client, token, adult(phone=other_phone))
+    submitted(client, token, adult(rut=format_rut(rut)))
+    submitted(client, token, adult(rut=None, email="CARLA@example.cl"))
+    submitted(client, token, adult(rut=other_rut))
+    # A RUT given, the email finds nobody: the RUT says who they are.
+    submitted(client, token, adult(email="carla@example.cl"))
 
-    by_phone, by_rut, unknown = queue(client, gym)
-    assert by_phone["phone_in_gym"] == {"id": ana, "name": "Ana Antigua"}
-    assert by_phone["rut_in_gym"] is None
+    by_phone, by_rut, by_email, unknown, email_with_rut = queue(client, gym)
+    # A phone finds nobody.
+    assert (by_phone["rut_in_gym"], by_phone["email_in_gym"]) == (None, None)
     assert by_rut["rut_in_gym"] == {"id": beto, "name": "Beto"}
-    assert (unknown["phone_in_gym"], unknown["rut_in_gym"]) == (None, None)
+    assert (by_email["rut_in_gym"], by_email["email_in_gym"]) == (
+        None,
+        {"id": sin_rut, "name": "Carla"},
+    )
+    assert (unknown["rut_in_gym"], unknown["email_in_gym"]) == (None, None)
+    assert email_with_rut["email_in_gym"] is None
 
 
 def test_the_queue_says_which_emails_approving_leaves_unused(
     client: TestClient, gym: uuid.UUID
 ) -> None:
     token = token_of(client, gym)
-    phone = new_phone()
-    add_person(client, gym, "Ana Antigua", phone=phone)  # ana.antigua@example.cl
-    marta_phone = new_phone()
-    add_person(client, gym, "Marta", phone=marta_phone)  # marta@example.cl
-    submitted(client, token, adult(phone=phone, email="ana.nueva@example.cl"))
-    submitted(client, token, adult(phone=phone, email="ANA.ANTIGUA@example.cl"))
-    submitted(client, token, minor(guardian_phone=marta_phone, guardian_email="otra@example.cl"))
+    rut = new_rut()
+    add_person(client, gym, "Ana Antigua", rut=rut)  # ana.antigua@example.cl
+    submitted(client, token, adult(rut=rut, email="ana.nueva@example.cl"))
+    submitted(client, token, adult(rut=rut, email="ANA.ANTIGUA@example.cl"))
     submitted(client, token, adult())
 
-    new_email, same_email, minor_row, unknown = queue(client, gym)
+    new_email, same_email, unknown = queue(client, gym)
     assert new_email["ignored_email"] == "ana.nueva@example.cl"
     assert same_email["ignored_email"] is None
-    assert (minor_row["ignored_email"], minor_row["ignored_guardian_email"]) == (
-        None,
-        "otra@example.cl",
-    )
-    assert (unknown["ignored_email"], unknown["ignored_guardian_email"]) == (None, None)
+    assert unknown["ignored_email"] is None
 
 
 def test_the_queue_comes_a_page_at_a_time(client: TestClient, gym: uuid.UUID) -> None:
@@ -713,6 +752,7 @@ def test_approving_adds_a_new_person_and_tells_them(
         "rut": body["rut"],
         "dob": date.fromisoformat(ADULT_DOB),
         "phone": body["phone"],
+        "no_whatsapp": False,
     }
     assert queue(client, gym) == []
     # "Sin plan": in the list with no membership.
@@ -733,10 +773,10 @@ def test_approving_adds_a_new_person_and_tells_them(
 def test_approving_someone_another_gym_knows_attaches_that_person(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    phone = new_phone()
+    rut = new_rut()
     other = seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}")
-    known = add_person(client, other, "Ana Otra", phone=phone)
-    body = adult(phone=phone, email="ana.aqui@example.cl")
+    known = add_person(client, other, "Ana Otra", rut=rut)
+    body = adult(rut=rut, email="ana.aqui@example.cl")
     request = one_request(client, gym, token_of(client, gym), body)
 
     answer = approved(client, gym, request)
@@ -752,9 +792,9 @@ def test_approving_someone_another_gym_knows_attaches_that_person(
 def test_approving_someone_already_here_keeps_their_record(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    phone = new_phone()
-    ana = add_person(client, gym, "Ana Antigua", phone=phone)
-    request = one_request(client, gym, token_of(client, gym), adult(phone=phone))
+    rut = new_rut()
+    ana = add_person(client, gym, "Ana Antigua", rut=rut)
+    request = one_request(client, gym, token_of(client, gym), adult(rut=rut))
 
     answer = approved(client, gym, request)
 
@@ -768,13 +808,13 @@ def test_a_member_already_here_is_linked_and_never_given_a_second_plan(
     client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:
     mensual = plan(client, gym)
-    phone = new_phone()
-    ana = add_person(client, gym, "Ana Antigua", phone=phone)
+    rut = new_rut()
+    ana = add_person(client, gym, "Ana Antigua", rut=rut)
     started = client.post(
         "/api/memberships", json={"person_id": ana, "plan_id": mensual}, headers=as_gym(gym)
     )
     assert started.status_code == 201, started.text
-    request = one_request(client, gym, token_of(client, gym), adult(phone=phone))
+    request = one_request(client, gym, token_of(client, gym), adult(rut=rut))
     mailer.sent.clear()
 
     refused = approve(client, gym, request, plan_id=mensual)
@@ -818,14 +858,16 @@ def test_approving_a_minor_adds_them_with_their_guardian(
 def test_a_minors_guardian_already_here_is_linked(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    phone = new_phone()
-    marta = add_person(client, gym, "Marta", phone=phone)
+    marta = add_person(client, gym, "Marta")  # marta@example.cl
     token = token_of(client, gym)
-    first = approved(client, gym, one_request(client, gym, token, minor(guardian_phone=phone)))
+    # Found by their email, whatever phone the form gives.
+    first = approved(client, gym, one_request(client, gym, token, minor()))
     second = approved(
         client,
         gym,
-        one_request(client, gym, token, minor(first_name="Sofía", guardian_phone=phone)),
+        one_request(
+            client, gym, token, minor(first_name="Sofía", guardian_email="MARTA@example.cl")
+        ),
     )
 
     assert guardian_of(db, gym, first["person_id"]) == uuid.UUID(marta)

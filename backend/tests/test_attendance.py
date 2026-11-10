@@ -21,6 +21,7 @@ from app.main import create_app
 from app.schemas.attendance import AttendanceChange
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_rut
 from tests.pg import (
     Database,
     in_gym,
@@ -556,7 +557,7 @@ def test_a_coach_adds_a_trial_guest_present_at_the_class(
     coach = add_staff(db, gym, "coach")
     trial = plan(client, gym, TRIAL)
     session = session_of(client, gym, class_type(client, gym, program(client, gym, "Adultos")))
-    body = {"phone": new_phone(), "name": "Camila Ortiz"}
+    body = {"phone": new_phone(), "rut": random_rut(), "name": "Camila Ortiz"}
     person = created(client.post("/api/people", json=body, headers=as_gym(gym, coach)))["id"]
 
     listed = created(guest(client, gym, session, person, trial, coach))

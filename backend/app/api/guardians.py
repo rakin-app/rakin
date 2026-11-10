@@ -1,8 +1,9 @@
 """Family links in the current gym: who pays for whom (migration 0010).
 
 A guardian is anyone in the gym; a dependent is either someone already in it or a new
-person added by name alone, with no phone, since kids have none. Every staff role may
-use it, as for the rest of the people API; members may not.
+person, added as anyone is (`add_to_gym`): by their own RUT when given, else by name
+alone, since kids have neither a RUT on hand nor an email. Every staff role may use
+it, as for the rest of the people API; members may not.
 """
 
 import uuid
@@ -12,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.people import NOT_FOUND, in_gym
+from app.api.people import NOT_FOUND, add_to_gym, in_gym
 from app.roles import StaffSession
 from app.schemas.guardians import (
     ConflictCode,
@@ -22,7 +23,7 @@ from app.schemas.guardians import (
     LinkDependent,
     NewDependent,
 )
-from app.schemas.people import PersonRef
+from app.schemas.people import PersonInGym, PersonRef
 
 router = APIRouter(prefix="/api/people", tags=["people"])
 
@@ -47,17 +48,6 @@ FAMILY = """
 LINK = """
     INSERT INTO guardian_link (gym_id, guardian_person_id, dependent_person_id)
     VALUES (NULLIF(current_setting('app.gym_id', true), '')::uuid, :guardian, :dependent)
-"""
-
-# A new dependent's own record starts with what this gym entered, as in
-# `join_gym_by_phone` (0004). The id is made here: RLS hides the person from
-# `RETURNING` until their `gym_person` row exists.
-NEW_PERSON = (
-    "INSERT INTO person (id, name, email, rut, dob) VALUES (:id, :name, :email, :rut, :dob)"
-)
-NEW_GYM_PERSON = """
-    INSERT INTO gym_person (gym_id, person_id, name, email, rut, dob)
-    VALUES (NULLIF(current_setting('app.gym_id', true), '')::uuid, :id, :name, :email, :rut, :dob)
 """
 
 
@@ -104,7 +94,7 @@ async def get_family(person_id: uuid.UUID, session: StaffSession) -> Family:
 @router.post(
     "/{person_id}/dependents",
     status_code=status.HTTP_201_CREATED,
-    responses={status.HTTP_409_CONFLICT: {"model": FamilyRefused}},
+    responses={status.HTTP_409_CONFLICT: {"model": FamilyRefused | PersonInGym}},
 )
 async def add_dependent(
     person_id: uuid.UUID, body: LinkDependent | NewDependent, session: StaffSession
@@ -117,10 +107,7 @@ async def add_dependent(
             raise NOT_FOUND
         dependent = body.person_id
     else:
-        dependent = uuid.uuid4()
-        values = {"id": dependent, **body.model_dump()}
-        await session.execute(text(NEW_PERSON), values)
-        await session.execute(text(NEW_GYM_PERSON), values)
+        dependent = await add_to_gym(session, **body.model_dump())
     await _link(session, person_id, dependent)
     return await family(session, person_id)
 

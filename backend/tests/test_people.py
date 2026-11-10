@@ -55,14 +55,16 @@ def test_create_normalises_phone_and_rut() -> None:
 )
 def test_create_refuses(field: dict[str, str]) -> None:
     with pytest.raises(ValidationError):
-        PersonCreate.model_validate({"phone": "+56912345678", "name": "Camila", **field})
+        PersonCreate.model_validate({"rut": "7654321-6", "name": "Camila", **field})
 
 
-def test_create_needs_a_phone_and_a_name() -> None:
+def test_create_needs_a_rut_or_an_email_and_a_name() -> None:
     with pytest.raises(ValidationError):
-        PersonCreate.model_validate({"name": "Camila"})
+        PersonCreate.model_validate({"name": "Camila", "phone": "+56912345678"})
     with pytest.raises(ValidationError):
-        PersonCreate.model_validate({"phone": "+56912345678"})
+        PersonCreate.model_validate({"rut": "7654321-6"})
+    for key in ({"rut": "7654321-6"}, {"email": "c@example.com"}):
+        assert PersonCreate.model_validate({"name": "Camila", **key}).phone is None
 
 
 def test_update_takes_only_the_fields_sent() -> None:
@@ -70,7 +72,9 @@ def test_update_takes_only_the_fields_sent() -> None:
     assert body.model_dump(exclude_unset=True) == {"email": None, "rut": "76123456-0"}
 
 
-@pytest.mark.parametrize("field", [{"phone": "+56912345678"}, {"name": None}], ids=str)
+@pytest.mark.parametrize(
+    "field", [{"phone": "123"}, {"name": None}, {"no_whatsapp": None}, {"id": "x"}], ids=str
+)
 def test_update_refuses(field: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         PersonUpdate.model_validate(field)
@@ -137,13 +141,12 @@ def create(client: TestClient, gym: uuid.UUID, **fields: Any) -> Any:
 
 def entered(body: dict[str, Any]) -> dict[str, Any]:
     """A response without the fields the gym did not type."""
-    return {k: v for k, v in body.items() if k not in ("id", "left_on", "created_at", "updated_at")}
+    shown = ("id", "left_on", "created_at", "updated_at", "no_whatsapp", "missing_phone")
+    return {k: v for k, v in body.items() if k not in shown}
 
 
-def people_with_phone(db: Database, phone: str) -> list[asyncpg.Record]:
-    return list(
-        run(db.admin_url, lambda c: c.fetch("SELECT * FROM person WHERE phone = $1", phone))
-    )
+def people_with_rut(db: Database, rut: str) -> list[asyncpg.Record]:
+    return list(run(db.admin_url, lambda c: c.fetch("SELECT * FROM person WHERE rut = $1", rut)))
 
 
 @pg
@@ -161,60 +164,53 @@ def test_create_then_read(client: TestClient, sur: uuid.UUID) -> None:
 
 @pg
 def test_optional_fields_may_be_left_out(client: TestClient, sur: uuid.UUID) -> None:
-    phone = new_phone()
-    response = create(client, sur, phone=phone, name="Diego")
+    rut = new_rut()
+    response = create(client, sur, rut=rut, name="Diego")
     assert response.status_code == 201
     assert entered(response.json()) == {
-        "phone": phone,
+        "phone": None,
         "name": "Diego",
         "email": None,
-        "rut": None,
+        "rut": rut,
         "dob": None,
     }
 
 
 @pg
-def test_a_phone_already_in_this_gym_names_that_person(
+def test_a_rut_already_in_this_gym_names_that_person(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    phone = new_phone()
-    first = create(client, sur, **{**CAMILA, "phone": phone, "rut": new_rut()}).json()
+    rut = new_rut()
+    first = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": rut}).json()
 
-    again = create(client, sur, phone=phone, name="Someone else")
+    again = create(client, sur, rut=format_rut(rut), name="Someone else")
     assert again.status_code == 409
-    assert again.json() == {"detail": {"code": "phone_in_gym", "person_id": first["id"]}}
+    assert again.json() == {"detail": {"code": "rut_in_gym", "person_id": first["id"]}}
     # Offered, not applied: the record is as it was.
     assert client.get(f"/api/people/{first['id']}", headers=as_gym(sur)).json() == first
-    assert len(people_with_phone(db, phone)) == 1
+    assert len(people_with_rut(db, rut)) == 1
 
 
 @pg
-def test_a_phone_known_elsewhere_answers_like_a_new_one(
+def test_a_rut_known_elsewhere_is_one_person_with_a_record_in_each_gym(
     client: TestClient, db: Database, sur: uuid.UUID, norte: uuid.UUID
 ) -> None:
-    known = new_phone()
+    known = new_rut()
     norte_body = create(
-        client, norte, phone=known, name="Camila R.", email="cr@norte.cl", rut="76.123.456-0"
+        client, norte, rut=known, name="Camila R.", email="cr@norte.cl", phone=new_phone()
     ).json()
 
     before = datetime.now(UTC)
-    fresh = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": new_rut()})
-    camila = {**CAMILA, "phone": known, "rut": new_rut()}
+    camila = {**CAMILA, "phone": new_phone(), "rut": known}
     attached = create(client, sur, **camila)
-
-    # Same status, same shape, and only what sur typed: nothing of norte's record.
-    assert attached.status_code == fresh.status_code == 201
-    assert set(attached.json()) == set(fresh.json())
+    assert attached.status_code == 201
     assert entered(attached.json()) == camila
-    assert {k: v for k, v in entered(fresh.json()).items() if k not in ("phone", "rut")} == {
-        k: v for k, v in entered(attached.json()).items() if k not in ("phone", "rut")
-    }
     # This gym's timestamps, not the identity's.
     for field in ("created_at", "updated_at"):
         assert datetime.fromisoformat(attached.json()[field]) >= before
 
     # One person, now in both gyms, each with its own record.
-    [person] = people_with_phone(db, known)
+    [person] = people_with_rut(db, known)
     assert str(person["id"]) == attached.json()["id"] == norte_body["id"]
     sur_view = client.get(f"/api/people/{person['id']}", headers=as_gym(sur)).json()
     norte_view = client.get(f"/api/people/{person['id']}", headers=as_gym(norte)).json()
@@ -226,8 +222,8 @@ def test_a_phone_known_elsewhere_answers_like_a_new_one(
 def test_attaching_does_not_reveal_the_other_gyms_memberships(
     client: TestClient, db: Database, sur: uuid.UUID, norte: uuid.UUID
 ) -> None:
-    phone = new_phone()
-    person_id = uuid.UUID(create(client, norte, phone=phone, name="Ana").json()["id"])
+    rut = new_rut()
+    person_id = uuid.UUID(create(client, norte, rut=rut, name="Ana").json()["id"])
 
     async def join_norte_plan(conn: asyncpg.Connection) -> None:
         async with conn.transaction():
@@ -239,7 +235,7 @@ def test_attaching_does_not_reveal_the_other_gyms_memberships(
             )
 
     run(db.owner_url, join_norte_plan)
-    assert create(client, sur, phone=phone, name="Ana").status_code == 201
+    assert create(client, sur, rut=rut, name="Ana").status_code == 201
 
     memberships = "SELECT gym_id FROM membership WHERE person_id = $1"
     records = "SELECT gym_id FROM gym_person WHERE person_id = $1"
@@ -249,12 +245,15 @@ def test_attaching_does_not_reveal_the_other_gyms_memberships(
 
 
 @pg
-def test_an_edit_stays_in_its_gym(client: TestClient, sur: uuid.UUID, norte: uuid.UUID) -> None:
-    phone = new_phone()
-    norte_body = create(client, norte, phone=phone, name="Pedro", email="p@norte.cl").json()
-    create(client, sur, phone=phone, name="Pedro", email="p@sur.cl")
+def test_an_edit_stays_in_its_gym(
+    client: TestClient, db: Database, sur: uuid.UUID, norte: uuid.UUID
+) -> None:
+    phone, known = new_phone(), new_rut()
+    norte_body = create(client, norte, rut=known, name="Pedro", email="p@norte.cl").json()
+    create(client, sur, rut=known, phone=phone, name="Pedro", email="p@sur.cl")
     person = norte_body["id"]
 
+    # A RUT corrected here is this gym's record only: who they are does not change.
     rut = new_rut()
     edit = {"name": "Pedro Soto", "email": None, "rut": format_rut(rut), "dob": "2001-07-30"}
     response = client.patch(f"/api/people/{person}", json=edit, headers=as_gym(sur))
@@ -263,6 +262,7 @@ def test_an_edit_stays_in_its_gym(client: TestClient, sur: uuid.UUID, norte: uui
     assert response.json()["updated_at"] > response.json()["created_at"]
 
     assert client.get(f"/api/people/{person}", headers=as_gym(norte)).json() == norte_body
+    assert [str(p["id"]) for p in people_with_rut(db, known)] == [person]
 
 
 @pg
@@ -273,7 +273,7 @@ def test_an_edit_changes_only_the_fields_sent(client: TestClient, sur: uuid.UUID
 
 
 @pg
-@pytest.mark.parametrize("edit", [{"phone": "+56911112222"}, {"name": None}, {"rut": "1-1"}])
+@pytest.mark.parametrize("edit", [{"phone": "123"}, {"name": None}, {"rut": "1-1"}])
 def test_an_invalid_edit_is_refused(
     client: TestClient, sur: uuid.UUID, edit: dict[str, Any]
 ) -> None:
@@ -287,7 +287,7 @@ def test_an_invalid_edit_is_refused(
 def test_another_gyms_member_is_not_found_like_nobody(
     client: TestClient, sur: uuid.UUID, norte: uuid.UUID
 ) -> None:
-    theirs = create(client, norte, phone=new_phone(), name="Luis").json()["id"]
+    theirs = create(client, norte, rut=new_rut(), name="Luis").json()["id"]
     nobody = str(uuid.uuid4())
     for person in (theirs, nobody):
         assert client.get(f"/api/people/{person}", headers=as_gym(sur)).status_code == 404
@@ -299,27 +299,7 @@ def test_another_gyms_member_is_not_found_like_nobody(
     assert client.get(f"/api/people/{theirs}", headers=as_gym(norte)).json()["name"] == "Luis"
 
 
-# --- join_gym_by_phone, query by query (migration 0004) ----------------------------
-
-JOIN = "SELECT * FROM join_gym_by_phone($1, 'x', NULL, NULL, NULL)"
-
-
-@pg
-def test_joining_needs_a_gym(db: Database) -> None:
-    with pytest.raises(asyncpg.InsufficientPrivilegeError, match=r"app\.gym_id"):
-        run(db.api_url, in_gym(None, JOIN, new_phone()))
-
-
-@pg
-def test_the_lookup_ends_with_the_function(db: Database, sur: uuid.UUID) -> None:
-    async def query(conn: asyncpg.Connection) -> Any:
-        async with conn.transaction():
-            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(sur))
-            await conn.fetch(JOIN, new_phone())
-            return await conn.fetchval("SELECT current_setting('app.person_lookup', true)")
-
-    for url in (db.api_url, db.owner_url):
-        assert run(url, query) == "off"
+# --- the lookup `join_gym` opens (migrations 0004, 0034) ---------------------------
 
 
 @pg

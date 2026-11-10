@@ -28,6 +28,7 @@ from app.main import create_app
 from app.notices import Notices
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_rut
 from tests.pg import Database, migrate, run, seed_gym, throwaway_database
 from tests.test_email_identity import member_of
 from tests.test_people import new_phone
@@ -189,11 +190,24 @@ def test_the_command_reads_its_arguments() -> None:
     gym = parse(ARGS)
     assert (gym.slug, gym.name, gym.timezone) == ("meta", "Meta", "America/Santiago")
     assert gym.owner_phone == "+56912345678"
+    assert gym.owner_rut is None
+
+
+def test_the_owner_phone_is_optional_and_the_rut_normalised() -> None:
+    args = [a for a in ARGS if a not in ("--owner-phone", "+56 9 1234 5678")]
+    gym = parse([*args, "--owner-rut", "7.654.321-6"])
+    assert (gym.owner_phone, gym.owner_rut) == (None, "7654321-6")
 
 
 @pytest.mark.parametrize(
     ("flag", "value"),
-    [("--slug", "www"), ("--slug", "Meta"), ("--owner-phone", "123"), ("--timezone", "Mars/Base")],
+    [
+        ("--slug", "www"),
+        ("--slug", "Meta"),
+        ("--owner-phone", "123"),
+        ("--owner-rut", "7.654.321-0"),
+        ("--timezone", "Mars/Base"),
+    ],
 )
 def test_the_command_refuses_bad_arguments(
     flag: str, value: str, capsys: pytest.CaptureFixture[str]
@@ -293,7 +307,7 @@ def test_create_again_with_the_slug_changes_nothing(db: Database) -> None:
 @pytest.mark.postgres
 def test_a_person_known_elsewhere_becomes_the_owner(db: Database) -> None:
     other = seed_gym(db, f"otro-{uuid.uuid4().hex[:6]}")
-    phone = new_phone()
+    rut = random_rut()
 
     async def known(conn: asyncpg.Connection) -> uuid.UUID:
         async with conn.transaction():
@@ -301,21 +315,36 @@ def test_a_person_known_elsewhere_becomes_the_owner(db: Database) -> None:
             return uuid.UUID(
                 str(
                     await conn.fetchval(
-                        "SELECT person_id FROM join_gym_by_phone($1, 'Ya', NULL, NULL, NULL)",
-                        phone,
+                        "SELECT person_id FROM join_gym($1, NULL, 'Ya', NULL, NULL)",
+                        rut,
                     )
                 )
             )
 
     person = run(db.owner_url, known)
     created = create(
-        db, new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"owner_phone": phone})
+        db, new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"owner_rut": rut})
     )
 
     async def owner(conn: asyncpg.Connection) -> Any:
         return await conn.fetchval("SELECT person_id FROM staff WHERE gym_id = $1", created.gym_id)
 
     assert run(db.admin_url, owner) == person
+
+
+@pytest.mark.postgres
+def test_an_owner_needs_no_phone_and_no_rut(db: Database) -> None:
+    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"owner_phone": None})
+    created = create(db, gym)
+
+    async def owner(conn: asyncpg.Connection) -> Any:
+        return await conn.fetchrow(
+            "SELECT gp.email, gp.phone, gp.rut FROM staff s JOIN gym_person gp"
+            " USING (gym_id, person_id) WHERE s.gym_id = $1",
+            created.gym_id,
+        )
+
+    assert tuple(run(db.admin_url, owner)) == (gym.owner_email, None, None)
 
 
 @pytest.mark.postgres
@@ -403,12 +432,13 @@ def site(db: Database) -> Iterator[Site]:
 
 
 def person_in(site: Site, gyms: list[uuid.UUID], email: str) -> uuid.UUID:
-    """A member of each of `gyms`, every one of which has `email` on its record."""
-    phone = new_phone()
+    """A member of each of `gyms`, every one of which has `email` on its record. One
+    person, by their RUT: an email links no one across gyms (0034)."""
+    rut = random_rut()
     person = None
     with site.client(None) as client:
         for gym in gyms:
-            body = {"phone": phone, "name": "Ana", "email": email}
+            body = {"rut": rut, "phone": new_phone(), "name": "Ana", "email": email}
             response = client.post("/api/people", json=body, headers=as_gym(gym))
             assert response.status_code == 201, response.text
             person = uuid.UUID(response.json()["id"])

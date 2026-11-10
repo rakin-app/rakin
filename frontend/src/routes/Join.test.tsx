@@ -80,10 +80,27 @@ describe('Inscríbete', () => {
       guardian_name: null,
       guardian_phone: null,
       guardian_email: null,
+      no_whatsapp: false,
       consent: true,
       website: '',
       human_check_token: null,
     })
+  })
+
+  it('sends no RUT and no phone for someone without either who has no WhatsApp', async () => {
+    const sent = stubApi()
+    renderAt('/unirse/tok-123456789012345678901')
+
+    await userEvent.type(await screen.findByLabelText(copy.firstName), 'Ana')
+    await userEvent.type(screen.getByLabelText(copy.lastName), 'Pérez')
+    fireEvent.change(screen.getByLabelText(copy.dob), { target: { value: '1990-05-20' } })
+    await userEvent.type(screen.getByLabelText(copy.email), 'ana@example.cl')
+    await userEvent.click(screen.getByRole('checkbox', { name: copy.noWhatsapp }))
+    await userEvent.click(screen.getByRole('checkbox', { name: copy.consent }))
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+
+    await screen.findByRole('status')
+    expect(sent[1]!.body).toMatchObject({ rut: null, phone: null, email: 'ana@example.cl', no_whatsapp: true })
   })
 
   it('asks a minor for their guardian, on the gym’s today', async () => {

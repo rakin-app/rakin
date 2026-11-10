@@ -63,13 +63,17 @@ export function joinFormQuery(token: string) {
 export type JoinSubmission = {
   first_name: string
   last_name: string
-  rut: string
+  // Who they are when they give one; with none, their email is.
+  rut: string | null
+  // An adult's is required, unless `no_whatsapp`; a minor's guardian's instead.
   phone: string | null
   email: string | null
   dob: string
   guardian_name: string | null
   guardian_phone: string | null
   guardian_email: string | null
+  // "No tiene WhatsApp", for the adult, or for a minor's guardian.
+  no_whatsapp: boolean
   consent: boolean
   // The honeypot: never shown, so only a script fills it in.
   website: string
@@ -101,19 +105,20 @@ export type JoinRequest = {
   id: string
   first_name: string
   last_name: string
-  rut: string
+  rut: string | null
   phone: string | null
   email: string | null
   dob: string
-  guardian: { name: string; phone: string; email: string } | null
+  no_whatsapp: boolean
+  guardian: { name: string; phone: string | null; email: string } | null
   program_id: string | null
   program_name: string | null
   created_at: string
-  phone_in_gym: PersonRef | null
+  // Someone in this gym with the request's RUT, or, for a request with none, its email.
   rut_in_gym: PersonRef | null
-  // The request's emails approving leaves unused: whoever here has the phone keeps theirs.
+  email_in_gym: PersonRef | null
+  // The request's email, when approving leaves it unused: whoever here has the RUT keeps theirs.
   ignored_email: string | null
-  ignored_guardian_email: string | null
 }
 
 /** A page of the queue, and how many wait in all (backend `JoinRequestPage`). */

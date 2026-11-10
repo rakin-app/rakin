@@ -196,28 +196,35 @@ def test_api_user_cannot_rewrite_the_migration_head(db: Database) -> None:
         run(db.api_url, lambda c: c.execute("UPDATE alembic_version SET version_num = 'x'"))
 
 
+def add_record(db: Database, gym: uuid.UUID, phone: str | None = None) -> None:
+    """Someone new in `gym`, with `phone` on its record: the phone is the gym's (0034)."""
+    insert = "SELECT join_gym(NULL, NULL, 'x', $1, NULL)"
+    run(db.api_url, in_gym(gym, insert, phone))
+
+
 @pytest.mark.parametrize(
     "phone", ["56912345678", "+056912345678", "+56 9 1234 5678", "+1234567890123456", ""]
 )
-def test_phone_must_be_e164(db: Database, phone: str) -> None:
+def test_phone_must_be_e164(
+    db: Database, two_gyms: tuple[uuid.UUID, uuid.UUID], phone: str
+) -> None:
     with pytest.raises(asyncpg.CheckViolationError):
-        run(
-            db.api_url,
-            lambda c: c.execute("INSERT INTO person (name, phone) VALUES ('x', $1)", phone),
-        )
+        add_record(db, two_gyms[0], phone)
 
 
-def test_phone_is_unique(db: Database) -> None:
-    insert = "INSERT INTO person (name, phone) VALUES ('x', '+56911112222')"
-    run(db.api_url, lambda c: c.execute(insert))
-    with pytest.raises(asyncpg.UniqueViolationError):
-        run(db.api_url, lambda c: c.execute(insert))
+def test_a_phone_may_be_shared_and_left_out(
+    db: Database, two_gyms: tuple[uuid.UUID, uuid.UUID]
+) -> None:
+    # A family's one phone, or none: a phone is a contact, not who anyone is.
+    for phone in ("+56911112222", "+56911112222", None, None):
+        add_record(db, two_gyms[0], phone)
 
 
-def test_people_without_phone_are_allowed(db: Database) -> None:
-    insert = "INSERT INTO person (name) VALUES ('kid')"
-    run(db.api_url, lambda c: c.execute(insert))
-    run(db.api_url, lambda c: c.execute(insert))
+@pytest.mark.parametrize("rut", ["76.123.456-0", "76123456-k", "076123456-0", "1-1-1"])
+def test_a_person_rut_is_stored_normalised(db: Database, rut: str) -> None:
+    insert = "INSERT INTO person (name, rut) VALUES ('x', $1)"
+    with pytest.raises(asyncpg.CheckViolationError):
+        run(db.admin_url, lambda c: c.execute(insert, rut))
 
 
 @pytest.mark.parametrize("user", ["api", "owner"])

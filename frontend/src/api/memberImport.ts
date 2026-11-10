@@ -12,6 +12,8 @@ export const IMPORT_FIELDS = [
   'due_on',
   'started_on',
   'guardian_name',
+  'guardian_rut',
+  'guardian_email',
   'guardian_phone',
 ] as const
 export type ImportField = (typeof IMPORT_FIELDS)[number]
@@ -51,6 +53,11 @@ export type RowResult = {
   membership: Outcome | null
   // Fields the import leaves unapplied: whoever it found keeps this gym's record.
   ignored: ImportField[]
+  // Whom the gym messages about them (their guardian, for a kid) has no phone:
+  // imported, and flagged "Falta teléfono" until one is filled in.
+  missing_phone: boolean
+  // Neither a RUT nor an email: imported, and found again by their name in this gym.
+  missing_identity: boolean
 }
 
 export type ImportReport = {
@@ -62,6 +69,9 @@ export type ImportReport = {
     people_created: number
     links_created: number
     memberships_created: number
+    // Rows imported with "Falta teléfono".
+    missing_phone: number
+    missing_identity: number
   }
   rows: RowResult[]
 }

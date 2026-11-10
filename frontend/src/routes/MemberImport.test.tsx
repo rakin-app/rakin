@@ -34,12 +34,14 @@ const ok = (row: number, name: string): RowResult => ({
   link: null,
   membership: 'created',
   ignored: [],
+  missing_phone: false,
+  missing_identity: false,
 })
 
 function reportFor(body: ImportRequest): ImportReport {
   const rows: RowResult[] = [
     // Already in the gym, with another email than the sheet's.
-    { ...ok(2, 'Camila Ortiz'), person: 'existing', membership: 'existing', ignored: ['email'] },
+    { ...ok(2, 'Camila Ortiz'), person: 'existing', membership: 'existing', ignored: ['email'], missing_phone: true },
     body.plans['Beca 50%'] !== undefined
       ? ok(3, 'Benjamín Fuentes')
       : { ...ok(3, 'Benjamín Fuentes'), person: null, membership: null, errors: [{ field: 'plan', code: 'unknown_plan' }] },
@@ -55,6 +57,8 @@ function reportFor(body: ImportRequest): ImportReport {
       people_created: imported,
       links_created: 0,
       memberships_created: imported,
+      missing_phone: 1,
+      missing_identity: 0,
     },
     rows,
   }
@@ -142,6 +146,9 @@ describe('Importar alumnos', () => {
     expect(sent).toEqual([
       { rows: SHEET.rows, mapping: SHEET.mapping, plans: { mensual: 'mensual' }, dry_run: true },
     ])
+    // Imported anyway: a warning, not an error.
+    const missing = screen.getByRole('list', { name: copy.missingPhoneTitle(1) })
+    expect(within(missing).getByText(copy.rowLabel(2, 'Camila Ortiz'))).toBeInTheDocument()
     const kept = screen.getByRole('list', { name: copy.keptTitle })
     expect(within(kept).getByText(copy.kept([copy.fields.email]))).toBeInTheDocument()
 

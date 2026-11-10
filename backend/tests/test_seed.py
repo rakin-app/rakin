@@ -110,7 +110,8 @@ def test_every_plan_kind(seed: Seed) -> None:
 
 
 def test_guardians_pay_for_dependents(seed: Seed) -> None:
-    people = by_id(seed.people)
+    # The gym's records: the phone is a contact on them (0034).
+    people = {r["person_id"]: r for r in seed.gym_people}
     members = {m.key: m for m in MEMBERS}
     kids = [m for m in MEMBERS if m.is_kid]
     assert len(kids) >= 10
@@ -264,7 +265,8 @@ def test_monthly_paid_through_and_generation(seed: Seed) -> None:
 
 
 def test_people_are_valid(seed: Seed) -> None:
-    phones = [p["phone"] for p in seed.people if p["phone"] is not None]
+    assert all("phone" not in p for p in seed.people)
+    phones = [r["phone"] for r in seed.gym_people if r["phone"] is not None]
     assert len(phones) == len(set(phones))
     for phone in phones:
         assert isinstance(phone, str)
@@ -272,7 +274,7 @@ def test_people_are_valid(seed: Seed) -> None:
     for person in seed.people:
         assert isinstance(person["rut"], str)
         assert is_valid_rut(person["rut"])
-    assert next(p for p in seed.people if p["name"] == "Felipe Díaz")["phone"] == "+56998214417"
+    assert next(r for r in seed.gym_people if r["name"] == "Felipe Díaz")["phone"] == "+56998214417"
 
 
 def test_nothing_happens_after_the_seed_date(seed: Seed) -> None:

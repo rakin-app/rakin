@@ -1,7 +1,7 @@
 """Sign-in by email reaches a gym only where that gym's own record holds the email (#146).
 
-Identity is global by phone, so two gyms can know one person, each with its own record
-of their email. Whatever gym B writes on its record must sign nobody in to gym A: not
+Identity is global by RUT (migration 0034), so two gyms can know one person, each with
+its own record of their email. Whatever gym B writes on its record must sign nobody in to gym A: not
 the session sign-in starts (one gym), not the gyms a person in several picks from
 (#16), and not a session that names gym A some other way. Each test writes the email
 the way the API lets a gym write one: adding or editing a person, inviting staff,
@@ -32,8 +32,8 @@ from app.main import create_app
 from app.notices import Notices
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import require_test_database_url
+from tests.ids import random_rut
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
-from tests.test_people import new_phone
 from tests.test_tenancy import router as tenant_routes
 
 pytestmark = pytest.mark.postgres
@@ -147,12 +147,12 @@ def member_of(db: Database, gym: uuid.UUID, person: uuid.UUID) -> None:
 
 
 def victim(h: Harness, gyms: Gyms, *, email: str | None = None) -> tuple[uuid.UUID, str]:
-    """A member of gym A, with gym A's record of their email; their id and phone."""
-    phone = new_phone()
-    body = {"phone": phone, "name": "Víctima", "email": email or address()}
+    """A member of gym A, with gym A's record of their email; their id and RUT."""
+    rut = random_rut()
+    body = {"rut": rut, "name": "Víctima", "email": email or address()}
     person = uuid.UUID(h.write("POST", "/api/people", gyms.a, **body)["id"])
     member_of(h.db, gyms.a, person)
-    return person, phone
+    return person, rut
 
 
 def gyms_of(db: Database, person: uuid.UUID, email: str) -> set[uuid.UUID]:
@@ -173,10 +173,10 @@ def assert_reaches_only_b(h: Harness, gyms: Gyms, person: uuid.UUID, attacker: s
 
 
 def test_adding_a_person_with_an_email(harness: Harness, gyms: Gyms) -> None:
-    person, phone = victim(harness, gyms)
+    person, rut = victim(harness, gyms)
     attacker = address()
 
-    added = harness.write("POST", "/api/people", gyms.b, phone=phone, name="X", email=attacker)
+    added = harness.write("POST", "/api/people", gyms.b, rut=rut, name="X", email=attacker)
     assert uuid.UUID(added["id"]) == person
     member_of(harness.db, gyms.b, person)
 
@@ -184,9 +184,9 @@ def test_adding_a_person_with_an_email(harness: Harness, gyms: Gyms) -> None:
 
 
 def test_editing_a_persons_email(harness: Harness, gyms: Gyms) -> None:
-    person, phone = victim(harness, gyms)
+    person, rut = victim(harness, gyms)
     attacker = address()
-    harness.write("POST", "/api/people", gyms.b, phone=phone, name="X")
+    harness.write("POST", "/api/people", gyms.b, rut=rut, name="X")
     member_of(harness.db, gyms.b, person)
 
     harness.write("PATCH", f"/api/people/{person}", gyms.b, email=attacker)
@@ -195,11 +195,11 @@ def test_editing_a_persons_email(harness: Harness, gyms: Gyms) -> None:
 
 
 def test_inviting_them_as_staff(harness: Harness, gyms: Gyms) -> None:
-    person, phone = victim(harness, gyms)
+    person, rut = victim(harness, gyms)
     attacker = address()
 
     invited = harness.write(
-        "POST", "/api/staff", gyms.b, phone=phone, name="X", email=attacker, role="admin"
+        "POST", "/api/staff", gyms.b, rut=rut, name="X", email=attacker, role="admin"
     )
     assert uuid.UUID(invited["person_id"]) == person
     # The invite's email is gym B's to write: it signs in to gym B alone.
@@ -210,15 +210,15 @@ def test_inviting_them_as_staff(harness: Harness, gyms: Gyms) -> None:
 
 
 def test_importing_them_from_the_sheet(harness: Harness, gyms: Gyms) -> None:
-    person, phone = victim(harness, gyms)
+    person, rut = victim(harness, gyms)
     attacker = address()
 
     report = harness.write(
         "POST",
         "/api/import/members",
         gyms.b,
-        rows=[{"number": 2, "cells": ["X", phone, attacker]}],
-        mapping={"name": 0, "phone": 1, "email": 2},
+        rows=[{"number": 2, "cells": ["X", rut, attacker]}],
+        mapping={"name": 0, "rut": 1, "email": 2},
         plans={},
         dry_run=False,
     )
@@ -229,15 +229,13 @@ def test_importing_them_from_the_sheet(harness: Harness, gyms: Gyms) -> None:
 
 
 def test_a_person_gym_a_has_only_as_a_guardian(harness: Harness, gyms: Gyms) -> None:
-    phone = new_phone()
-    guardian = harness.write(
-        "POST", "/api/people", gyms.a, phone=phone, name="Mamá", email=address()
-    )
+    rut = random_rut()
+    guardian = harness.write("POST", "/api/people", gyms.a, rut=rut, name="Mamá", email=address())
     person = uuid.UUID(guardian["id"])
     harness.write("POST", f"/api/people/{person}/dependents", gyms.a, name="Hijo")
     attacker = address()
 
-    harness.write("POST", "/api/people", gyms.b, phone=phone, name="X", email=attacker)
+    harness.write("POST", "/api/people", gyms.b, rut=rut, name="X", email=attacker)
     member_of(harness.db, gyms.b, person)
 
     assert_reaches_only_b(harness, gyms, person, attacker)
@@ -245,10 +243,10 @@ def test_a_person_gym_a_has_only_as_a_guardian(harness: Harness, gyms: Gyms) -> 
 
 def test_a_gym_b_email_nobody_else_belongs_to_reaches_no_gym(harness: Harness, gyms: Gyms) -> None:
     """Gym B writes the email but gives them nothing there: no link goes at all."""
-    person, phone = victim(harness, gyms)
+    person, rut = victim(harness, gyms)
     attacker = address()
 
-    harness.write("POST", "/api/people", gyms.b, phone=phone, name="X", email=attacker)
+    harness.write("POST", "/api/people", gyms.b, rut=rut, name="X", email=attacker)
 
     assert harness.sign_in(attacker) is None
     assert gyms_of(harness.db, person, attacker) == set()
@@ -259,8 +257,8 @@ def test_a_gym_b_email_nobody_else_belongs_to_reaches_no_gym(harness: Harness, g
 
 def test_the_victims_own_email_still_signs_them_in_to_gym_a(harness: Harness, gyms: Gyms) -> None:
     theirs = address()
-    person, phone = victim(harness, gyms, email=theirs)
-    harness.write("POST", "/api/people", gyms.b, phone=phone, name="X", email=address())
+    person, rut = victim(harness, gyms, email=theirs)
+    harness.write("POST", "/api/people", gyms.b, rut=rut, name="X", email=address())
     member_of(harness.db, gyms.b, person)
 
     assert harness.sign_in(theirs) is not None
@@ -272,8 +270,8 @@ def test_an_email_both_gyms_hold_reaches_both_and_picks_neither_yet(
     harness: Harness, gyms: Gyms
 ) -> None:
     theirs = address()
-    person, phone = victim(harness, gyms, email=theirs)
-    harness.write("POST", "/api/people", gyms.b, phone=phone, name="X", email=theirs.upper())
+    person, rut = victim(harness, gyms, email=theirs)
+    harness.write("POST", "/api/people", gyms.b, rut=rut, name="X", email=theirs.upper())
     member_of(harness.db, gyms.b, person)
 
     assert harness.sign_in(theirs) is not None
@@ -293,9 +291,9 @@ def session_in(db: Database, token: str, gym: uuid.UUID) -> None:
 
 def test_a_session_pointed_at_gym_a_is_not_live_there(harness: Harness, gyms: Gyms) -> None:
     """However a session comes to name gym A, its email must be gym A's for it to work."""
-    person, phone = victim(harness, gyms)
+    person, rut = victim(harness, gyms)
     attacker = address()
-    harness.write("POST", "/api/people", gyms.b, phone=phone, name="X", email=attacker)
+    harness.write("POST", "/api/people", gyms.b, rut=rut, name="X", email=attacker)
     member_of(harness.db, gyms.b, person)
     token = harness.sign_in(attacker)
     assert token is not None

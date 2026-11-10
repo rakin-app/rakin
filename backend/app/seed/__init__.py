@@ -20,7 +20,7 @@ from app.domain.dates import gym_today
 from app.seed.build import GYM_ID, Seed, build
 from app.seed.data import TIMEZONE
 
-# The primary key a re-run collides on. Any other unique violation (a phone already
+# The primary key a re-run collides on. Any other unique violation (a RUT already
 # taken by someone outside the seed, a slug already used) is a real conflict and fails.
 CONFLICT_KEYS = {
     "staff": "(gym_id, person_id)",

@@ -57,8 +57,8 @@ router = APIRouter(prefix="/test")
 async def rows(table: str, session: TenantSession) -> list[dict[str, Any]]:
     if table not in (*TENANT_TABLES, "person"):
         raise HTTPException(404)
-    # The API may read only a person's id and phone (migration 0004).
-    columns = "id, phone" if table == "person" else "*"
+    # The API may read only a person's id (migrations 0004, 0034).
+    columns = "id" if table == "person" else "*"
     result = await session.execute(
         text(f"SELECT to_jsonb(t) AS row FROM (SELECT {columns} FROM {table}) t")
     )
@@ -277,37 +277,35 @@ def test_no_gym_can_update_a_person(db: Database, gyms: Gyms) -> None:
 
 @pg
 @pytest.mark.parametrize("column", ["name", "email", "rut", "dob", "created_at"])
-def test_a_gym_reads_only_a_persons_id_and_phone(db: Database, gyms: Gyms, column: str) -> None:
-    # What another gym entered, or when the phone was first seen, would leak.
+def test_a_gym_reads_only_a_persons_id(db: Database, gyms: Gyms, column: str) -> None:
+    # What another gym entered, or when the person was first seen, would leak.
     query = f"SELECT {column} FROM person WHERE id = $1"
     with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
         run(db.api_url, in_gym(gyms.sur, query, gyms.shared))
 
 
 @pg
-def test_a_person_can_be_created_and_joined_in_one_transaction(db: Database, gyms: Gyms) -> None:
-    person_id = uuid.uuid4()
-
-    async def join(conn: asyncpg.Connection) -> Any:
-        async with conn.transaction():
-            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gyms.sur))
-            await conn.execute("INSERT INTO person (id, name) VALUES ($1, 'new')", person_id)
-            assert await conn.fetch("SELECT FROM person WHERE id = $1", person_id) == []
-            # The gym's record of them is what joins them (migration 0004).
-            await conn.execute(
-                "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'new')",
-                gyms.sur,
-                person_id,
-            )
-            return await conn.fetch("SELECT id FROM person WHERE id = $1", person_id)
-
-    assert [r["id"] for r in run(db.api_url, join)] == [person_id]
-    assert run(db.api_url, in_gym(gyms.norte, "SELECT FROM person WHERE id = $1", person_id)) == []
+@pytest.mark.parametrize(
+    "insert",
+    [
+        "INSERT INTO person (id, name) VALUES (gen_random_uuid(), 'new')",
+        "INSERT INTO person (name) VALUES ('new') RETURNING id",
+    ],
+)
+def test_only_join_gym_adds_a_person(db: Database, gyms: Gyms, insert: str) -> None:
+    # A unique violation on `person.rut` would say the RUT is someone's elsewhere, so
+    # the API inserts no person itself; `join_gym` does (migration 0034).
+    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
+        run(db.api_url, in_gym(gyms.sur, insert))
 
 
 @pg
-def test_returning_a_new_person_before_they_join_is_refused(db: Database, gyms: Gyms) -> None:
-    # RETURNING is held to the read policy: generate ids client-side instead.
-    insert = "INSERT INTO person (name) VALUES ('new') RETURNING id"
-    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="row-level security"):
-        run(db.api_url, in_gym(gyms.sur, insert))
+def test_join_gym_adds_someone_new_to_this_gym_only(db: Database, gyms: Gyms) -> None:
+    found = run(
+        db.api_url,
+        in_gym(gyms.sur, "SELECT person_id, joined FROM join_gym(NULL, NULL, 'new', NULL, NULL)"),
+    )
+    [(person_id, joined)] = [tuple(r) for r in found]
+    assert joined
+    assert run(db.api_url, in_gym(gyms.sur, "SELECT id FROM person WHERE id = $1", person_id))
+    assert run(db.api_url, in_gym(gyms.norte, "SELECT FROM person WHERE id = $1", person_id)) == []

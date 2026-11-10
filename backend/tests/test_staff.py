@@ -15,6 +15,7 @@ from app.integrations.mailer import Email, MailDeliveryError
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_rut
 from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_guardians import add_person
 from tests.test_people import new_phone
@@ -57,7 +58,7 @@ def invite(
     by: uuid.UUID | None = None,
     **body: Any,
 ) -> Any:
-    sent = {"phone": new_phone(), "name": "Pedro", "email": "pedro@example.cl", "role": role}
+    sent = {"rut": random_rut(), "name": "Pedro", "email": "pedro@example.cl", "role": role}
     return client.post("/api/staff", json={**sent, **body}, headers=as_gym(gym, by))
 
 
@@ -131,10 +132,10 @@ def test_the_invited_person_can_ask_for_a_sign_in_link(
 def test_inviting_a_member_keeps_their_record_and_gives_them_the_role(
     client: TestClient, gym: uuid.UUID
 ) -> None:
-    phone = new_phone()
-    ana = add_person(client, gym, "Ana", phone=phone)
+    rut = random_rut()
+    ana = add_person(client, gym, "Ana", rut=rut)
 
-    response = invite(client, gym, phone=phone, name="Otra", email="ana.coach@example.cl")
+    response = invite(client, gym, rut=rut, name="Otra", email="ana.coach@example.cl")
 
     assert response.status_code == 201, response.text
     assert response.json()["person_id"] == ana
@@ -166,12 +167,12 @@ def test_someone_known_to_another_gym_gets_the_role_and_the_invites_email(
     client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:
     other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
-    phone = new_phone()
-    elsewhere = add_person(client, other, "Ana", phone=phone)
+    rut = random_rut()
+    elsewhere = add_person(client, other, "Ana", rut=rut)
     address = f"{uuid.uuid4().hex[:8]}@example.cl"
     mailer.sent.clear()
 
-    response = invite(client, gym, phone=phone, name="Ana Pérez", email=address)
+    response = invite(client, gym, rut=rut, name="Ana Pérez", email=address)
 
     assert response.status_code == 201, response.text
     body = response.json()
@@ -193,12 +194,12 @@ def test_a_member_known_elsewhere_takes_the_invites_email_and_is_invited_there(
     client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:
     other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
-    phone = new_phone()
-    add_person(client, other, "Ana", phone=phone)
-    ana = add_person(client, gym, "Ana", phone=phone)
+    rut = random_rut()
+    add_person(client, other, "Ana", rut=rut)
+    ana = add_person(client, gym, "Ana", rut=rut)
     mailer.sent.clear()
 
-    response = invite(client, gym, phone=phone, email="otra@example.cl")
+    response = invite(client, gym, rut=rut, email="otra@example.cl")
 
     assert response.status_code == 201, response.text
     assert (response.json()["person_id"], response.json()["email"]) == (ana, "otra@example.cl")
@@ -225,10 +226,10 @@ def test_the_invite_stands_when_the_mail_fails(
 
 
 def test_an_invite_refuses_someone_already_on_the_staff(client: TestClient, gym: uuid.UUID) -> None:
-    phone = new_phone()
-    pedro = invited(client, gym, phone=phone)
+    rut = random_rut()
+    pedro = invited(client, gym, rut=rut)
 
-    response = invite(client, gym, "admin", phone=phone)
+    response = invite(client, gym, "admin", rut=rut)
 
     assert response.status_code == 409
     assert response.json()["detail"] == {"code": "already_staff", "person_id": str(pedro)}
@@ -237,7 +238,14 @@ def test_an_invite_refuses_someone_already_on_the_staff(client: TestClient, gym:
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("role", "owner"), ("role", "member"), ("email", None), ("email", "nope"), ("phone", "12")],
+    [
+        ("role", "owner"),
+        ("role", "member"),
+        ("email", None),
+        ("email", "nope"),
+        ("phone", "12"),
+        ("rut", "1-1"),
+    ],
 )
 def test_an_invite_refuses_what_it_cannot_send(
     client: TestClient, gym: uuid.UUID, field: str, value: Any
@@ -249,7 +257,7 @@ def test_an_invite_refuses_what_it_cannot_send(
 
 
 def test_an_invite_without_an_email_is_refused(client: TestClient, gym: uuid.UUID) -> None:
-    body = {"phone": new_phone(), "name": "Pedro", "role": "coach"}
+    body = {"rut": random_rut(), "name": "Pedro", "role": "coach"}
     response = client.post("/api/staff", json=body, headers=as_gym(gym))
     assert response.status_code == 422
 
@@ -286,12 +294,23 @@ def test_a_revoked_person_loses_the_role_and_keeps_their_record(
     assert client.get("/api/people", headers=as_gym(gym, pedro)).status_code == 403
     assert client.get(f"/api/people/{pedro}", headers=as_gym(gym)).status_code == 200
     # And can be invited again.
-    assert invite(client, gym, phone=person_phone(client, gym, pedro)).status_code == 201
+    assert invite(client, gym, rut=person_rut(client, gym, pedro)).status_code == 201
 
 
-def person_phone(client: TestClient, gym: uuid.UUID, person: uuid.UUID) -> str:
-    phone: str = client.get(f"/api/people/{person}", headers=as_gym(gym)).json()["phone"]
-    return phone
+def person_rut(client: TestClient, gym: uuid.UUID, person: uuid.UUID) -> str:
+    rut: str = client.get(f"/api/people/{person}", headers=as_gym(gym)).json()["rut"]
+    return rut
+
+
+def test_an_invite_needs_no_rut_and_no_phone(client: TestClient, gym: uuid.UUID) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    response = invite(client, gym, rut=None, email=address, name="Sin RUT")
+    assert response.status_code == 201, response.text
+    assert response.json()["phone"] is None
+    # Keyed by the email in this gym: the same email again is the same person.
+    again = invite(client, gym, "admin", rut=None, email=address.upper(), name="Otra")
+    assert again.status_code == 409
+    assert again.json()["detail"]["person_id"] == response.json()["person_id"]
 
 
 def test_someone_not_on_the_staff_is_not_found(client: TestClient, gym: uuid.UUID) -> None:

@@ -25,6 +25,7 @@ from app.main import create_app
 from app.schemas.guardians import LinkDependent, NewDependent
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_rut
 from tests.pg import (
     Database,
     in_gym,
@@ -53,7 +54,7 @@ def test_a_body_is_a_link_or_a_new_dependent() -> None:
 @pytest.mark.parametrize(
     "body",
     [
-        {"name": "Mateo", "phone": "+56912345678"},  # a dependent is added with no phone
+        {"name": "Mateo", "phone": "123"},
         {"name": "  "},
         {"person_id": str(uuid.uuid4()), "name": "Mateo"},
         {},
@@ -95,11 +96,18 @@ def client(db: Database) -> Iterator[TestClient]:
         yield c
 
 
-def add_person(client: TestClient, gym: uuid.UUID, name: str, phone: str | None = None) -> str:
+def add_person(
+    client: TestClient,
+    gym: uuid.UUID,
+    name: str,
+    phone: str | None = None,
+    rut: str | None = None,
+) -> str:
     body = {
         "phone": phone or new_phone(),
         "name": name,
         "email": f"{name.lower().replace(' ', '.')}@example.cl",
+        "rut": rut or random_rut(),
     }
     response = client.post("/api/people", json=body, headers=as_gym(gym))
     assert response.status_code == 201, response.text
@@ -297,9 +305,9 @@ def test_a_family_stays_in_its_gym(
     client: TestClient, db: Database, sur: uuid.UUID, norte: uuid.UUID
 ) -> None:
     # A parent in both gyms, whose kid trains only in Sur.
-    phone = new_phone()
-    parent = add_person(client, sur, "Compartida", phone=phone)
-    assert add_person(client, norte, "Compartida", phone=phone) == parent
+    rut = random_rut()
+    parent = add_person(client, sur, "Compartida", rut=rut)
+    assert add_person(client, norte, "Compartida", rut=rut) == parent
     new_kid(client, sur, parent, "Solo en Sur")
 
     assert family(client, norte, parent) == {"guardian": None, "dependents": []}

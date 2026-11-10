@@ -2,13 +2,14 @@
 
     uv run python -m app.gyms create --slug meta --name "Meta" \\
         --timezone America/Santiago \\
-        --owner-email … --owner-name … --owner-phone …
+        --owner-email … --owner-name … [--owner-rut …] [--owner-phone …]
 
 The gym gets what the demo seed's has before anyone trains there (`app.seed.data`):
 its grading scheme, its programs, and the block kinds every gym is given (0028); and
-its owner, a staff row on the person with that phone, found or created as the API adds
-anyone (`join_gym_by_phone`, 0004). Its slug is its host, `<slug>.<BASE_DOMAIN>`
-(`app.hosts`). The owner signs in there with the email given.
+its owner, a staff row on the person with that RUT, found or created as the API adds
+anyone (`join_gym`, 0034), or with no RUT someone new keyed by the email. The phone is
+optional, a contact only. Its slug is its host, `<slug>.<BASE_DOMAIN>` (`app.hosts`).
+The owner signs in there with the email given.
 
 Running it again with a slug a gym already has changes nothing, whatever else it is
 given, and says so. It connects as the table owner, as the seed does: RLS holds it to
@@ -31,7 +32,7 @@ from app.db_bootstrap import to_dsn
 from app.hosts import Hosts, slug_problem
 from app.roles import Role
 from app.schemas.gym import Timezone
-from app.schemas.people import Email, Name, Phone
+from app.schemas.people import Email, Name, Phone, Rut
 from app.seed.data import GRADING, PROGRAMS
 from app.settings import get_settings
 
@@ -44,7 +45,8 @@ class NewGym(BaseModel):
     timezone: Timezone
     owner_email: Email
     owner_name: Name
-    owner_phone: Phone
+    owner_rut: Rut | None = None
+    owner_phone: Phone | None = None
 
     @field_validator("slug")
     @classmethod
@@ -87,10 +89,11 @@ async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
             [(gym_id, name) for name in PROGRAMS.values()],
         )
         person_id = await conn.fetchval(
-            "SELECT person_id FROM join_gym_by_phone($1, $2, $3, NULL, NULL)",
-            gym.owner_phone,
-            gym.owner_name,
+            "SELECT person_id FROM join_gym($1, $2, $3, $4, NULL)",
+            gym.owner_rut,
             gym.owner_email,
+            gym.owner_name,
+            gym.owner_phone,
         )
         await conn.execute(
             "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, $3)",
@@ -118,7 +121,8 @@ def parse(argv: Sequence[str] | None = None) -> NewGym:
     create.add_argument("--timezone", default="America/Santiago")
     create.add_argument("--owner-email", required=True)
     create.add_argument("--owner-name", required=True)
-    create.add_argument("--owner-phone", required=True)
+    create.add_argument("--owner-rut")
+    create.add_argument("--owner-phone")
     args = parser.parse_args(argv)
     try:
         return NewGym(
@@ -127,6 +131,7 @@ def parse(argv: Sequence[str] | None = None) -> NewGym:
             timezone=args.timezone,
             owner_email=args.owner_email,
             owner_name=args.owner_name,
+            owner_rut=args.owner_rut,
             owner_phone=args.owner_phone,
         )
     except ValidationError as error:

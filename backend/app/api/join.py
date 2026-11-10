@@ -7,7 +7,7 @@ staff approve them into members.
 - `/api/join/{token}` is the public form behind it, for anyone with the link and no
   session. A `GET` says what the form shows; a `POST` leaves a request in the queue,
   not a person, and answers 202 whatever it holds: nothing in the answer says
-  whether the phone, RUT or email is someone's already, here or in another gym. A
+  whether the RUT or email is someone's already, here or in another gym. A
   token that is unknown, malformed, revoked or past its last day answers 404
   `invalid_link`. A submission is checked in order of cost: the link first, then the
   fields, then the honeypot (filled in, it is answered like any submission and
@@ -15,22 +15,25 @@ staff approve them into members.
   check, when one is configured (`app.integrations.humancheck`), so neither a
   made-up token nor a form that would be refused spends a limit or a call to it.
 - `/api/join-requests` is the queue, for every staff role: each request with whoever
-  in this gym already has its phone or RUT, approving one and rejecting one.
+  in this gym already has its RUT, or its email when it has none, approving one and
+  rejecting one.
 
 Approving adds the person through the importer's writer (`app.api.member_import`), so
-they are added exactly as a row of the gym's spreadsheet would be: found again by
-phone in this gym, else joined by phone (`join_gym_by_phone`, so a phone another gym
-knows attaches that identity without this gym learning so), a minor with their
-guardian, linked. With a plan, a membership starts on it today and the welcome goes
-out with its sign-in link; that is owner and admin only, since a plan is money, so a
-coach approves with no plan and the member shows as "sin plan". Without one,
-`join_approved` tells them they are in. Either way the request is deleted: it was
+they are added exactly as a row of the gym's spreadsheet would be: found again by RUT
+in this gym, or by email when they gave no RUT, else joined (`join_gym`, so a RUT
+another gym knows attaches that identity without this gym learning so), a minor with
+their guardian, found by the guardian's email, linked. The phone is a contact: an
+adult's is required, as a minor's guardian's is, unless the form ticks "No tiene
+WhatsApp", which the new record keeps. With a plan, a membership starts on it today
+and the welcome goes out with its sign-in link; that is owner and admin only, since a
+plan is money, so a coach approves with no plan and the member shows as "sin plan".
+Without one, `join_approved` tells them they are in. Either way the request is deleted: it was
 only ever a request. Rejecting deletes it too, and the nightly `join_requests` job
 deletes any left for 30 days (`app.jobs.join_requests`).
 
 Someone already here is linked, not added again: they keep this gym's record of them,
-email included, as the importer leaves them, and the queue says which of the
-request's emails that leaves unused (`ignored_email`, `ignored_guardian_email`). One
+email included, as the importer leaves them, and the queue says when that leaves the
+request's email unused (`ignored_email`). One
 who holds a live membership is approved without a plan, which links them and tells
 them nothing, since they are a member already; with a plan it is a 409
 `has_membership`, so nobody is billed twice. A new person's record takes the
@@ -68,7 +71,7 @@ from app.domain.dates import gym_today
 from app.hosts import Hosts
 from app.integrations import Integrations, get_integrations
 from app.magiclink.ratelimit import MemoryRateLimiter, RateLimiter
-from app.member_import.rows import Member
+from app.member_import.rows import Member, own_guardian
 from app.notices import JOIN_APPROVED, Notice, Notices, get_notices
 from app.roles import ADMIN_ROLES, AdminSession, StaffSession, role_in_gym
 from app.schemas.join import (
@@ -300,11 +303,11 @@ def _admit(request: Request, token: str, ip: str) -> None:
 
 INSERT_REQUEST = """
     INSERT INTO join_request (gym_id, first_name, last_name, rut, phone, email, dob,
-                              guardian_name, guardian_phone, guardian_email, program_id,
-                              consented_at)
+                              guardian_name, guardian_phone, guardian_email, no_whatsapp,
+                              program_id, consented_at)
     VALUES (current_setting('app.gym_id')::uuid, :first_name, :last_name, :rut, :phone,
-            :email, :dob, :guardian_name, :guardian_phone, :guardian_email, :program_id,
-            now())
+            :email, :dob, :guardian_name, :guardian_phone, :guardian_email, :no_whatsapp,
+            :program_id, now())
 """
 
 
@@ -322,13 +325,15 @@ async def submit_join_request(
     """Leave a request for the gym's staff. The answer is the same whatever it holds."""
     async with _open(request, token) as link:
         values = body.model_dump(
-            include={"first_name", "last_name", "rut", "phone", "email", "dob"}
+            include={"first_name", "last_name", "rut", "phone", "email", "dob", "no_whatsapp"}
         )
         if age_on(body.dob, gym_today(link.timezone)) < ADULT_AGE:
+            # The guardian's phone is the one the gym uses, unless they have no WhatsApp.
+            needed = ("guardian_name", "guardian_phone", "guardian_email")
             missing = [
                 f
-                for f in ("guardian_name", "guardian_phone", "guardian_email")
-                if getattr(body, f) is None
+                for f in needed
+                if getattr(body, f) is None and not (f == "guardian_phone" and body.no_whatsapp)
             ]
             if missing:
                 raise _missing(*missing)
@@ -337,11 +342,22 @@ async def submit_join_request(
                 "guardian_phone": body.guardian_phone,
                 "guardian_email": body.guardian_email,
             }
-            # A child given their parent's phone has none of their own.
-            if body.phone == body.guardian_phone:
-                values["phone"] = None
+            # A child given their parent's email or phone has none of their own.
+            shared = Member(
+                0,
+                "",
+                phone=body.phone,
+                email=body.email,
+                guardian_phone=body.guardian_phone,
+                guardian_email=body.guardian_email,
+            )
+            own_guardian(shared)
+            values.update(phone=shared.phone, email=shared.email)
         else:
-            if missing := [f for f in ("phone", "email") if getattr(body, f) is None]:
+            missing = ["email"] if body.email is None else []
+            if body.phone is None and not body.no_whatsapp:
+                missing.append("phone")
+            if missing:
                 raise _missing(*missing)
             guardian = dict.fromkeys(("guardian_name", "guardian_phone", "guardian_email"))
         ip = request.client.host if request.client else "unknown"
@@ -359,36 +375,32 @@ async def submit_join_request(
 
 # --- the queue (every staff role) -----------------------------------------------------
 
-# RLS keeps every table to the current gym. Whoever here has the request's phone, or
-# its RUT: one each, the first by name; and the email this gym has for whoever has
-# the request's phone and its guardian's, which approving keeps. A phone is one
-# person's (`person.phone` is unique), and `gym_person_rut_idx` (0031) finds a RUT.
+# RLS keeps every table to the current gym. Whoever here has the request's RUT, the
+# first added, with the email this gym has for them, which approving keeps; and for a
+# request with no RUT, whoever has its email, whom approving links, as the importer
+# finds them (`app.api.member_import`). `gym_person_rut_idx` (0031) finds a RUT and
+# `gym_person_email_idx` (0034) an email.
 SELECT_REQUESTS = """
     SELECT r.*, pr.name AS program_name,
-           bp.person_id AS phone_person_id, bp.name AS phone_person_name,
-           bp.email AS phone_person_email,
            br.person_id AS rut_person_id, br.name AS rut_person_name,
-           bg.person_id AS guardian_person_id, bg.email AS guardian_person_email
+           br.email AS rut_person_email,
+           be.person_id AS email_person_id, be.name AS email_person_name
     FROM join_request r
     LEFT JOIN program pr ON pr.gym_id = r.gym_id AND pr.id = r.program_id
     LEFT JOIN LATERAL (
-        SELECT gp.person_id, gp.name, gp.email
-        FROM gym_person gp JOIN person p ON p.id = gp.person_id
-        WHERE p.phone = r.phone
-    ) bp ON true
-    LEFT JOIN LATERAL (
-        SELECT gp.person_id, gp.email FROM gym_person gp JOIN person p ON p.id = gp.person_id
-        WHERE p.phone = r.guardian_phone
-    ) bg ON true
+        SELECT gp.person_id, gp.name, gp.email FROM gym_person gp
+        WHERE gp.rut = r.rut ORDER BY gp.created_at LIMIT 1
+    ) br ON true
     LEFT JOIN LATERAL (
         SELECT gp.person_id, gp.name FROM gym_person gp
-        WHERE gp.rut = r.rut ORDER BY gp.name, gp.person_id LIMIT 1
-    ) br ON true
+        WHERE r.rut IS NULL AND lower(gp.email) = lower(r.email)
+        ORDER BY gp.created_at LIMIT 1
+    ) be ON true
 """
 
 
 def _ignored(sent: str | None, found: uuid.UUID | None, kept: str | None) -> str | None:
-    """`sent`, when approving leaves it unused: someone here has the phone, and this
+    """`sent`, when approving leaves it unused: someone here has the RUT, and this
     gym's record of them holds another email, or none."""
     if sent is None or found is None or (kept or "").strip().lower() == sent.strip().lower():
         return None
@@ -413,16 +425,14 @@ def _request(row: Any) -> JoinRequest:
         phone=row.phone,
         email=row.email,
         dob=row.dob,
+        no_whatsapp=row.no_whatsapp,
         guardian=guardian,
         program_id=row.program_id,
         program_name=row.program_name,
         created_at=row.created_at,
-        phone_in_gym=_ref(row.phone_person_id, row.phone_person_name),
         rut_in_gym=_ref(row.rut_person_id, row.rut_person_name),
-        ignored_email=_ignored(row.email, row.phone_person_id, row.phone_person_email),
-        ignored_guardian_email=_ignored(
-            row.guardian_email, row.guardian_person_id, row.guardian_person_email
-        ),
+        email_in_gym=_ref(row.email_person_id, row.email_person_name),
+        ignored_email=_ignored(row.email, row.rut_person_id, row.rut_person_email),
     )
 
 
@@ -478,6 +488,7 @@ async def approve_join_request(
         guardian_name=row.guardian_name,
         guardian_phone=row.guardian_phone,
         guardian_email=row.guardian_email,
+        no_whatsapp=row.no_whatsapp,
     )
     try:
         person_id, _ = await Writer(session, timezone, gym_today(timezone)).write(member)

@@ -32,6 +32,8 @@ const FELIPE_TIME: PersonTime = (() => {
 const FELIPE: Person = {
   id: 'felipe',
   phone: '+56912344417',
+  no_whatsapp: false,
+  missing_phone: false,
   name: 'Felipe Díaz',
   email: null,
   rut: null,
@@ -1144,13 +1146,42 @@ describe('the record and the ways out (#157)', () => {
 
     await userEvent.click(within(await actions()).getByRole('button', { name: copy.editPerson }))
     const form = screen.getByRole('form', { name: copy.editForm.title })
-    expect(within(form).getByLabelText(copy.editForm.phone)).toBeDisabled()
+    // The phone is a contact, edited like the rest (#165).
+    const phone = within(form).getByLabelText(copy.editForm.phone)
+    await userEvent.clear(phone)
+    await userEvent.type(phone, '9 1111 2222')
     await userEvent.type(within(form).getByLabelText(copy.editForm.rut), '7.654.321-6')
     await userEvent.click(within(form).getByRole('button', { name: copy.editForm.save }))
 
     expect(await screen.findByText(copy.editForm.saved)).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
-      { method: 'PATCH', path: '/api/people/felipe', body: { rut: '7.654.321-6' } },
+      { method: 'PATCH', path: '/api/people/felipe', body: { phone: '9 1111 2222', rut: '7.654.321-6' } },
+    ])
+  })
+
+  it('clears the phone only with "No tiene WhatsApp", and says so when the API refuses', async () => {
+    const calls = stubApi({
+      extra: (path, method, body) =>
+        path === '/api/people/felipe' && method === 'PATCH'
+          ? (body as { no_whatsapp?: boolean }).no_whatsapp
+            ? { body: { ...FELIPE, ...(body as object) } }
+            : { status: 422, body: { detail: 'a phone is required unless no_whatsapp is set' } }
+          : undefined,
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.editPerson }))
+    const form = screen.getByRole('form', { name: copy.editForm.title })
+    await userEvent.clear(within(form).getByLabelText(copy.editForm.phone))
+    await userEvent.click(within(form).getByRole('button', { name: copy.editForm.save }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent(copy.editForm.refused.phone)
+
+    await userEvent.click(within(form).getByRole('checkbox', { name: copy.editForm.noWhatsapp }))
+    await userEvent.click(within(form).getByRole('button', { name: copy.editForm.save }))
+    expect(await screen.findByText(copy.editForm.saved)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([
+      { phone: null },
+      { phone: null, no_whatsapp: true },
     ])
   })
 

@@ -1,9 +1,15 @@
 """A person as one gym knows them: create, edit, read, and the member list.
 
 Inputs are normalised here, so the database only ever sees E.164 phones and
-`76123456-0` RUTs. The phone is the person's global identity and is set once, on
-create: changing it means moving the gym's record to another identity, which this
-API does not do yet.
+`76123456-0` RUTs. Someone is their RUT, or with none an email in this gym (migration
+0034), so a person needs one of the two; a dependent may have neither. The phone is a
+contact, this gym's to edit like the email, and finds nobody. A RUT edited here
+changes this gym's record only, not who the person is.
+
+A member needs a phone, since the gym reaches them on WhatsApp, unless the gym ticks
+"No tiene WhatsApp" (`no_whatsapp`); a minor's is their guardian's. Staff need none.
+The schemas check what the body alone can say; the API checks the rest (who is staff,
+who has a guardian).
 """
 
 import re
@@ -44,37 +50,64 @@ Phone = Annotated[str, AfterValidator(normalize_phone)]
 Rut = Annotated[str, AfterValidator(normalize_rut)]
 
 
+def require_identity(rut: str | None, email: str | None) -> None:
+    """Refuse someone with neither a RUT nor an email: nothing would say who they are."""
+    if rut is None and email is None:
+        raise ValueError("a person needs a RUT or an email")
+
+
+PHONE_REQUIRED = "a phone is required unless no_whatsapp is set"
+
+
+def require_phone(phone: str | None, no_whatsapp: bool) -> None:
+    """Refuse a member's contact with no phone, unless "No tiene WhatsApp" is ticked."""
+    if phone is None and not no_whatsapp:
+        raise ValueError(PHONE_REQUIRED)
+
+
 class PersonCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    phone: Phone
     name: Name
-    email: Email | None = None
     rut: Rut | None = None
+    email: Email | None = None
+    phone: Phone | None = None
+    no_whatsapp: bool = False
     dob: PastDate | None = None
+
+    @model_validator(mode="after")
+    def _identified(self) -> "PersonCreate":
+        require_identity(self.rut, self.email)
+        return self
 
 
 class PersonUpdate(BaseModel):
     """Only the fields sent change; `null` clears an optional one."""
 
-    # `extra="forbid"` makes a `phone` here a 422 rather than silently ignored.
     model_config = ConfigDict(extra="forbid")
 
     name: Name | None = None
     email: Email | None = None
+    phone: Phone | None = None
+    no_whatsapp: bool | None = None
     rut: Rut | None = None
     dob: PastDate | None = None
 
     @model_validator(mode="after")
     def _name_is_never_cleared(self) -> "PersonUpdate":
-        if "name" in self.model_fields_set and self.name is None:
-            raise ValueError("name cannot be null")
+        for column in ("name", "no_whatsapp"):
+            if column in self.model_fields_set and getattr(self, column) is None:
+                raise ValueError(f"{column} cannot be null")
         return self
 
 
 class Person(BaseModel):
     id: uuid.UUID
     phone: str | None
+    # "No tiene WhatsApp": no WhatsApp link goes to them (#165).
+    no_whatsapp: bool
+    # A member with no phone and the box unticked: "Falta teléfono".
+    missing_phone: bool
     name: str
     email: str | None
     rut: str | None
@@ -86,17 +119,19 @@ class Person(BaseModel):
     updated_at: datetime
 
 
-# `phone_in_gym`: the phone is already someone's in this gym; `rut_in_gym`: the RUT.
-DuplicateCode = Literal["phone_in_gym", "rut_in_gym"]
+# `rut_in_gym`: the RUT is already someone's in this gym; `email_in_gym`: someone
+# added with no RUT has an email someone here already has.
+DuplicateCode = Literal["rut_in_gym", "email_in_gym"]
 
 
 class PersonConflict(BaseModel):
-    code: DuplicateCode = "phone_in_gym"
+    code: DuplicateCode
     person_id: uuid.UUID
 
 
 class PersonInGym(BaseModel):
-    """409 body: the phone or RUT already belongs to someone in this gym, `person_id`."""
+    """409 body: the RUT, or the email of someone with none, already belongs to someone
+    in this gym, `person_id`."""
 
     detail: PersonConflict
 
@@ -110,30 +145,42 @@ class ExistingGuardian(BaseModel):
 
 
 class NewGuardian(BaseModel):
-    """Someone new answers for them, added by their phone as anyone is."""
+    """Someone new answers for them, added by their RUT or email as anyone is."""
 
     model_config = ConfigDict(extra="forbid")
 
-    phone: Phone
     name: Name
+    rut: Rut | None = None
     email: Email | None = None
+    # The guardian is who the gym messages about the minor, so theirs is required.
+    phone: Phone | None = None
+    no_whatsapp: bool = False
+
+    @model_validator(mode="after")
+    def _identified(self) -> "NewGuardian":
+        require_identity(self.rut, self.email)
+        require_phone(self.phone, self.no_whatsapp)
+        return self
 
 
 class Enrolment(BaseModel):
     """A member added by hand (#157): their record, the guardian a minor needs, the
     gym's custom fields, and the plan they start on, all or nothing.
 
-    A dependent may come without a phone, as kids do; anyone else needs one, since it
-    is who they are (#18). `fields` are written as `PATCH .../fields` writes them.
+    A dependent may come with neither a RUT nor an email, as kids do; anyone else needs
+    one, since it is who they are (#165). An adult needs a phone, unless `no_whatsapp`;
+    a minor's own is optional, since their guardian's is the one the gym uses.
+    `fields` are written as `PATCH .../fields` writes them.
     `send_welcome` emails the welcome a membership sends, and needs a plan.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    phone: Phone | None = None
     name: Name
-    email: Email | None = None
     rut: Rut | None = None
+    email: Email | None = None
+    phone: Phone | None = None
+    no_whatsapp: bool = False
     dob: PastDate | None = None
     guardian: ExistingGuardian | NewGuardian | None = None
     fields: dict[str, Any] = {}
@@ -142,8 +189,9 @@ class Enrolment(BaseModel):
 
     @model_validator(mode="after")
     def _reachable(self) -> "Enrolment":
-        if self.phone is None and self.guardian is None:
-            raise ValueError("a member needs a phone, or a guardian who has one")
+        if self.guardian is None:
+            require_identity(self.rut, self.email)
+            require_phone(self.phone, self.no_whatsapp)
         if self.send_welcome and self.membership is None:
             raise ValueError("the welcome is about a plan: send_welcome needs a membership")
         return self
@@ -206,6 +254,8 @@ class MemberRow(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None
+    no_whatsapp: bool
+    missing_phone: bool
     rut: str | None
     membership: MembershipSummary | None
     # Who pays for them in this gym, and how many they pay for (migration 0010).
