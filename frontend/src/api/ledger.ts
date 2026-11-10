@@ -81,20 +81,22 @@ export type LedgerBook = {
 
 export const BOOK_PAGE_SIZE = 50
 
-export function bookPath(month: string | undefined, filter: BookFilter, offset: number): string {
+export function bookPath(month: string | undefined, filter: BookFilter, q: string, offset: number): string {
   const params = new URLSearchParams()
   if (month) params.set('month', month)
   params.set('filter', filter)
+  // A member's name, phone or RUT, as the member list searches them (#107).
+  if (q.trim()) params.set('q', q.trim())
   params.set('limit', String(BOOK_PAGE_SIZE))
   params.set('offset', String(offset))
   return `/api/ledger/book?${params}`
 }
 
-// One query per month and filter; "Cargar más" fetches the next page into it.
-export function ledgerBookQuery(month: string | undefined, filter: BookFilter) {
+// One query per month, filter and search; "Cargar más" fetches the next page into it.
+export function ledgerBookQuery(month: string | undefined, filter: BookFilter, q = '') {
   return infiniteQueryOptions({
-    queryKey: ['ledger', 'book', { month: month ?? null, filter }],
-    queryFn: ({ pageParam }) => apiFetch<LedgerBook>(bookPath(month, filter, pageParam)),
+    queryKey: ['ledger', 'book', { month: month ?? null, filter, q: q.trim() }],
+    queryFn: ({ pageParam }) => apiFetch<LedgerBook>(bookPath(month, filter, q, pageParam)),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => {
       const loaded = pages.reduce((n, page) => n + page.items.length, 0)

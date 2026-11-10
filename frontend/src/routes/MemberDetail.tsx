@@ -621,7 +621,9 @@ function EndFreezeForm({
 
 const METHODS: readonly Method[] = ['cash', 'transfer', 'other']
 
-function PaymentForm({
+/** "Registrar pago" for one of the membership's open periods; the book's header opens
+ *  it too, once a member is picked (#107). */
+export function PaymentForm({
   membership,
   periods,
   onCancel,

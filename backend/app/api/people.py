@@ -91,7 +91,8 @@ def _contains(value: str) -> str:
 
 def _search(q: str) -> tuple[str, dict[str, Any]]:
     """`q` matched against the name, and, when it holds a digit, the phone and RUT as
-    typed in any format (`9 8765 4321`, `7.654.321-6`)."""
+    typed in any format (`9 8765 4321`, `7.654.321-6`), of rows with a `name`, `phone`
+    and `rut`."""
     where = [f"{_fold('name')} LIKE {_fold(':name')} ESCAPE '\\'"]
     params: dict[str, Any] = {"name": _contains(q)}
     digits = re.sub(r"[^0-9]", "", q)
@@ -101,6 +102,20 @@ def _search(q: str) -> tuple[str, dict[str, Any]]:
         where.append("replace(rut, '-', '') LIKE :rut")
         params["rut"] = _contains(re.sub(r"[^0-9K]", "", q.upper()))
     return "(" + " OR ".join(where) + ")", params
+
+
+# Everyone this gym has a record of, as `_search` reads them.
+SEARCHABLE = """
+    SELECT gp.person_id AS id, gp.name, p.phone, gp.rut
+    FROM gym_person gp JOIN person p ON p.id = gp.person_id
+"""
+
+
+def people_matching(q: str) -> tuple[str, dict[str, Any]]:
+    """The ids of the people the member list's search finds for `q`, as a subquery,
+    for whatever else lists people (the ledger book, #107)."""
+    clause, params = _search(q)
+    return f"SELECT id FROM ({SEARCHABLE}) people WHERE {clause}", params
 
 
 @router.get("")

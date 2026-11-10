@@ -3,6 +3,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BookEntry, BookFreeze, LedgerBook } from '../api/ledger'
+import type { Membership, MembershipLedger, OpenPeriod } from '../api/member'
+import type { MemberPage } from '../api/people'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -120,13 +122,70 @@ const SOFIA_FROZEN: BookFreeze = {
   guardian: { id: 'camila', name: 'Camila Ortiz' },
 }
 
-type Stub = { role?: 'owner' | 'admin' | 'coach'; book?: (params: URLSearchParams) => LedgerBook }
+// "Registrar pago" from the book: Diego, found by the picker, owes November.
+const DIEGO = {
+  id: 'diego',
+  name: 'Diego Morales',
+  phone: '+56912345678',
+  rut: null,
+  membership: { id: 'm-diego', status: 'active', plan_id: 'p-adultos', plan_name: 'Mensual adultos' },
+  guardian: null,
+  dependents: 0,
+} satisfies MemberPage['items'][number]
 
-function stubApi({ role = 'owner', book = () => BOOK }: Stub = {}) {
+const DIEGO_MEMBERSHIP: Membership = {
+  id: 'm-diego',
+  plan_id: 'p-adultos',
+  plan_name: 'Mensual adultos',
+  plan_kind: 'monthly',
+  status: 'active',
+  anchor_day: 5,
+  started_on: '2026-03-05',
+  current_period_end: '2026-10-31',
+  credits_remaining: null,
+  freeze: null,
+}
+
+const NOVEMBER: OpenPeriod = {
+  id: 'bp-nov',
+  period_start: '2026-11-01',
+  period_end: '2026-11-30',
+  due_date: '2026-11-05',
+  amount_due_clp: 45000,
+  paid_clp: 0,
+  outstanding_clp: 45000,
+  due: true,
+  days_overdue: 4,
+}
+
+const DIEGO_LEDGER: MembershipLedger = {
+  open_periods: [NOVEMBER],
+  owed_clp: 45000,
+  entries: [],
+  freezes: [],
+  periods: [],
+  refundable_payments: [],
+}
+
+type Stub = {
+  role?: 'owner' | 'admin' | 'coach'
+  book?: (params: URLSearchParams) => LedgerBook
+  people?: (params: URLSearchParams) => MemberPage
+  memberships?: Membership[]
+  ledger?: MembershipLedger
+}
+
+function stubApi({
+  role = 'owner',
+  book = () => BOOK,
+  people = () => ({ items: [DIEGO], total: 1 }),
+  memberships = [DIEGO_MEMBERSHIP],
+  ledger = DIEGO_LEDGER,
+}: Stub = {}) {
   const asked: URLSearchParams[] = []
   vi.stubGlobal(
     'fetch',
-    vi.fn<typeof fetch>(async (input) => {
+    vi.fn<typeof fetch>(async (input, init) => {
       const url = new URL(String(input), 'http://localhost')
       let body: unknown = { detail: 'Not Found' }
       let status = 200
@@ -135,6 +194,13 @@ function stubApi({ role = 'owner', book = () => BOOK }: Stub = {}) {
       else if (url.pathname === '/api/ledger/book') {
         asked.push(url.searchParams)
         body = book(url.searchParams)
+      } else if (url.pathname === '/api/people') body = people(url.searchParams)
+      else if (url.pathname === '/api/memberships') body = memberships
+      else if (url.pathname === `/api/ledger/memberships/${DIEGO_MEMBERSHIP.id}`) body = ledger
+      else if (url.pathname === '/api/ledger/payments' && init?.method === 'POST') {
+        payments.push(JSON.parse(String(init.body)))
+        status = 201
+        body = { credit: null, period: { outstanding_clp: 0, closed: true } }
       } else status = 404
       return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
     }),
@@ -149,11 +215,15 @@ function renderAt(path: string) {
   return router
 }
 
+// What "Registrar pago" posted.
+let payments: unknown[] = []
+
 const table = () => screen.findByRole('table')
 const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map((cell) => cell.textContent)
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  payments = []
 })
 
 describe('Libro de pagos', () => {
@@ -376,5 +446,97 @@ describe('Libro de pagos', () => {
     expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases'])
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(asked).toEqual([])
+  })
+
+  it('searches the book by member, keeping the search in the URL', async () => {
+    const asked = stubApi({
+      book: (params) => {
+        const q = params.get('q')
+        return q === 'zzz'
+          ? { ...BOOK, items: [], total: 0 }
+          : q
+            ? { ...BOOK, items: ENTRIES.slice(0, 1), total: 1 }
+            : BOOK
+      },
+    })
+    const router = renderAt('/admin/pagos?filter=pending')
+    await table()
+
+    await userEvent.type(screen.getByRole('searchbox', { name: copy.searchLabel }), 'diego')
+
+    await waitFor(() => expect(asked.at(-1)?.get('q')).toBe('diego'))
+    // Within the filter chosen.
+    expect(asked.at(-1)?.get('filter')).toBe('pending')
+    expect(router.state.location.search).toEqual({ filter: 'pending', q: 'diego' })
+    expect(await screen.findByText(copy.showing(1, 1, null))).toBeInTheDocument()
+
+    await userEvent.clear(screen.getByRole('searchbox', { name: copy.searchLabel }))
+    await userEvent.type(screen.getByRole('searchbox', { name: copy.searchLabel }), 'zzz')
+    expect(await screen.findByText(copy.noMatch('zzz'))).toBeInTheDocument()
+  })
+
+  it('opens on the search a link carries', async () => {
+    const asked = stubApi()
+    renderAt('/admin/pagos?q=diego')
+
+    await table()
+    expect(screen.getByRole('searchbox', { name: copy.searchLabel })).toHaveValue('diego')
+    expect(asked[0]?.get('q')).toBe('diego')
+  })
+
+  it('records a payment from the header: pick a member, then the member detail\'s form', async () => {
+    const searched: string[] = []
+    stubApi({
+      people: (params) => {
+        searched.push(params.get('q') ?? '')
+        return { items: [DIEGO], total: 1 }
+      },
+    })
+    renderAt('/admin/pagos')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.record }))
+    const panel = screen.getByRole('region', { name: copy.record })
+    await userEvent.type(within(panel).getByLabelText(copy.picker.label), 'dieg')
+    const results = await within(panel).findByRole('list', { name: copy.picker.results })
+    expect(searched.at(-1)).toBe('dieg')
+    await userEvent.click(within(results).getByRole('button', { name: /Diego Morales/ }))
+
+    const form = await within(panel).findByRole('form', { name: es.admin.member.form.title })
+    expect(within(form).getByLabelText(es.admin.member.form.amount)).toHaveValue('45000')
+    await userEvent.selectOptions(within(form).getByLabelText(es.admin.member.form.method), 'transfer')
+    await userEvent.click(within(form).getByRole('button', { name: es.admin.member.form.submit('$45.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(es.admin.member.form.recorded('$45.000'))
+    expect(payments).toEqual([
+      { membership_id: 'm-diego', billing_period_id: 'bp-nov', amount_clp: 45000, method: 'transfer' },
+    ])
+    expect(screen.queryByRole('region', { name: copy.record })).not.toBeInTheDocument()
+  })
+
+  it('says when the member picked has nothing to pay', async () => {
+    stubApi({ ledger: { ...DIEGO_LEDGER, open_periods: [], owed_clp: 0 } })
+    renderAt('/admin/pagos')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.record }))
+    await userEvent.type(screen.getByLabelText(copy.picker.label), 'diego')
+    await userEvent.click(await screen.findByRole('button', { name: /Diego Morales/ }))
+
+    expect(await screen.findByText(copy.picker.upToDate)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: copy.picker.change }))
+    expect(screen.getByLabelText(copy.picker.label)).toBeInTheDocument()
+  })
+
+  it('says when the member picked has no plan', async () => {
+    stubApi({ memberships: [] })
+    renderAt('/admin/pagos')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.record }))
+    await userEvent.type(screen.getByLabelText(copy.picker.label), 'diego')
+    await userEvent.click(await screen.findByRole('button', { name: /Diego Morales/ }))
+
+    expect(await screen.findByText(copy.picker.noPlan)).toBeInTheDocument()
   })
 })

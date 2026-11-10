@@ -35,6 +35,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.people import people_matching
 from app.contacts import Contact, contact_for
 from app.domain import billing
 from app.domain.billing import SETTLING_KINDS, BillingPeriod, Settlement, settled_amount
@@ -672,20 +673,27 @@ async def ledger_book(
     book_filter: Annotated[BookFilter, Query(alias="filter")] = BookFilter.ALL,
     limit: Annotated[int, Query(ge=1, le=BOOK_PAGE_MAX)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    # A member's name, phone or RUT, as the member list searches them (#107).
+    q: Annotated[str, Query(max_length=100)] = "",
 ) -> LedgerBook:
     """The gym's ledger, every entry newest first, with the month's KPIs ("Libro de
-    pagos", #39). Owner and admin only: a coach never sees money."""
+    pagos", #39). Owner and admin only: a coach never sees money.
+
+    `q` keeps the entries and freeze lines of the members it finds, and of the
+    dependents of the guardians it finds, within the filter. The KPIs stay the gym's."""
     clock = (await session.execute(text(GYM_CLOCK))).one()
     current = clock.today.replace(day=1)
     shown = month.replace(day=1) if month else current
     with_entries = [row.month for row in await session.execute(BOOK_MONTHS)]
     months = sorted({*with_entries, current, shown}, reverse=True)
 
+    searched, search_params = book_search(q)
     params: dict[str, Any] = {
         "month": shown,
         "settling": sorted(k.value for k in SETTLING_KINDS),
+        **search_params,
     }
-    matching = f"{BOOK_ROWS} WHERE {BOOK_FILTERS[book_filter]}"
+    matching = f"{BOOK_ROWS} WHERE {BOOK_FILTERS[book_filter]} AND {searched}"
     total = await session.scalar(text(f"SELECT count(*) FROM ({matching}) f"), params)
     rows = await session.execute(
         text(f"{matching} ORDER BY e.created_at DESC, e.id DESC LIMIT :limit OFFSET :offset"),
@@ -699,8 +707,11 @@ async def ledger_book(
     freezes = []
     if book_filter in BOOK_FREEZE_FILTERS:
         freeze_rows = await session.execute(
-            text(f"{BOOK_FREEZES} AND {BOOK_FREEZE_FILTERS[book_filter]} ORDER BY {FREEZE_ORDER}"),
-            {"month": shown},
+            text(
+                f"{BOOK_FREEZES} AND {BOOK_FREEZE_FILTERS[book_filter]} AND {searched}"
+                f" ORDER BY {FREEZE_ORDER}"
+            ),
+            {"month": shown, **search_params},
         )
         freezes = [book_freeze(row) for row in freeze_rows]
     return LedgerBook(
@@ -712,6 +723,15 @@ async def ledger_book(
         total=total or 0,
         freezes=freezes,
     )
+
+
+def book_search(q: str) -> tuple[str, dict[str, Any]]:
+    """What `q` keeps of `BOOK_ROWS` and `BOOK_FREEZES`: the membership's member, or
+    the guardian who pays for them, is one the member list's search finds."""
+    if not q.strip():
+        return "true", {}
+    people, params = people_matching(q.strip())
+    return f"(m.person_id IN ({people}) OR gl.guardian_person_id IN ({people}))", params
 
 
 def book_freeze(row: Any) -> BookFreeze:

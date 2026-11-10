@@ -578,6 +578,26 @@ def test_the_book_lists_the_months_freeze_lines_beside_its_entries(
     assert book("all", now.replace(day=1) - DAY) == []
 
 
+def test_the_books_search_keeps_the_freeze_lines_of_the_members_it_finds(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    now = today(db, sur)
+    started = member(client, sur, "signup", now)
+    assert freeze(client, sur, started["id"], now + 7 * DAY).status_code == 200
+    name = client.get(f"/api/people/{started['person_id']}", headers=as_gym(sur)).json()["name"]
+
+    def freeze_lines(q: str) -> list[dict[str, Any]]:
+        response = client.get(
+            "/api/ledger/book", params={"month": now.isoformat(), "q": q}, headers=as_gym(sur)
+        )
+        assert response.status_code == 200, response.text
+        return list(response.json()["freezes"])
+
+    [line] = freeze_lines(name)
+    assert line["membership_id"] == started["id"]
+    assert freeze_lines("nadie se llama así") == []
+
+
 # --- the `freezes` job -------------------------------------------------------------------
 
 NOV_10 = date(2026, 11, 10)
