@@ -4,6 +4,7 @@ Every id is a UUIDv5 of the row's natural key, so building twice gives the same 
 and loading them again inserts nothing new.
 """
 
+import hashlib
 import random
 import uuid
 from collections.abc import Iterator
@@ -19,6 +20,8 @@ from app.domain.membership import MembershipStatus, PlanKind
 from app.domain.rut import check_digit
 from app.seed.data import (
     BANK_ACCOUNT,
+    CLASS_DAYS,
+    CLASS_PLANS,
     CLASS_TYPES,
     COACH,
     CUSTOM_FIELDS,
@@ -28,12 +31,16 @@ from app.seed.data import (
     GYM_SLUG,
     HISTORY_PERIODS,
     MEMBERS,
+    OPEN_MAT_PLAN,
     PLANS,
     PROGRAMS,
     RANKS,
     STAFF,
     TIMEZONE,
+    TURNOUT,
     VALIDATOR,
+    WEEK,
+    Block,
     MemberSpec,
     Method,
     PlanSpec,
@@ -59,6 +66,12 @@ def seed_id(*parts: str) -> uuid.UUID:
 GYM_ID = seed_id("gym")
 
 
+def default_block_kind_id(gym_id: uuid.UUID, key: str) -> uuid.UUID:
+    """The id of a gym's default block kind, as migration 0024's
+    `block_kind_default_id` derives it: every gym is given them when it is created."""
+    return uuid.UUID(hashlib.md5(f"{gym_id}/block_kind/{key}".encode()).hexdigest())
+
+
 @dataclass(frozen=True)
 class Seed:
     as_of: date
@@ -80,6 +93,11 @@ class Seed:
     freezes: list[Row]
     # Each member's current rank (migration 0018).
     grade_events: list[Row]
+    # The adults' classes of the last weeks, who was at each (migrations 0020, 0023) and
+    # the blocks each ran (0024), of the kinds every gym is given.
+    sessions: list[Row]
+    attendance: list[Row]
+    session_blocks: list[Row]
 
     def tables(self) -> Iterator[tuple[str, list[Row]]]:
         """Each table's rows, in an order the foreign keys accept."""
@@ -96,6 +114,9 @@ class Seed:
         yield "billing_period", self.billing_periods
         yield "ledger_entry", self.ledger_entries
         yield "membership_freeze", self.freezes
+        yield "session", self.sessions
+        yield "attendance", self.attendance
+        yield "session_block", self.session_blocks
 
 
 def local(day: date, hour: int = 0, minute: int = 0) -> datetime:
@@ -374,6 +395,90 @@ class _Builder:
             )
 
 
+def _block(session_id: uuid.UUID, position: int, block: Block, rng: random.Random) -> Row:
+    """One block of a class as it ran: on time give or take, or a round or two short."""
+    key, planned = block
+    row: Row = {
+        "id": seed_id("session_block", str(session_id), str(position)),
+        "gym_id": GYM_ID,
+        "session_id": session_id,
+        "position": position,
+        "block_kind_id": default_block_kind_id(GYM_ID, key),
+    }
+    if isinstance(planned, int):
+        actual = planned + rng.choice((-120, 0, 0, 0, 60))
+        rounds = dict.fromkeys(
+            ("rounds_planned", "rounds_completed", "round_seconds", "rest_seconds")
+        )
+        return {**row, "planned_seconds": planned, "actual_seconds": actual, **rounds}
+    rounds, round_seconds, rest_seconds = planned
+    completed = rounds - rng.choice((0, 0, 0, 1, 2))
+    return {
+        **row,
+        "planned_seconds": rounds * round_seconds,
+        "actual_seconds": completed * round_seconds,
+        "rounds_planned": rounds,
+        "rounds_completed": completed,
+        "round_seconds": round_seconds,
+        "rest_seconds": rest_seconds,
+    }
+
+
+def _classes(as_of: date, memberships: list[Row]) -> dict[str, list[Row]]:
+    """The `WEEK` held over the `CLASS_DAYS` before `as_of`, run as `CLASS_PLANS`, with
+    a `TURNOUT` share of the adults on a monthly or prepaid plan marked at each, which
+    spends no credits."""
+    adults = {
+        seed_id("plan", p.key)
+        for p in PLANS
+        if p.program == "adults" and p.kind in (PlanKind.MONTHLY, PlanKind.PREPAID)
+    }
+    regulars = [
+        m
+        for m in memberships
+        if m["plan_id"] in adults and m["status"] == MembershipStatus.ACTIVE.value
+    ]
+    coach = seed_id("person", COACH)
+    open_mats = {c.key for c in CLASS_TYPES if c.open_mat}
+    sessions: list[Row] = []
+    attendance: list[Row] = []
+    blocks: list[Row] = []
+    for offset in range(-CLASS_DAYS, 0):
+        day = as_of + timedelta(days=offset)
+        if day.isoweekday() not in WEEK:
+            continue
+        class_type, hour = WEEK[day.isoweekday()]
+        starts_at = local(day, hour)
+        session_id = seed_id("session", day.isoformat(), class_type)
+        sessions.append(
+            {
+                "id": session_id,
+                "gym_id": GYM_ID,
+                "class_type_id": seed_id("class_type", class_type),
+                "starts_at": starts_at,
+                "coach_id": coach,
+                "created_at": starts_at,
+                "updated_at": starts_at,
+            }
+        )
+        rng = _rng("session", session_id)
+        plan = OPEN_MAT_PLAN if class_type in open_mats else CLASS_PLANS[len(sessions) % 2]
+        blocks += [_block(session_id, i, block, rng) for i, block in enumerate(plan)]
+        attendance += [
+            {
+                "gym_id": GYM_ID,
+                "session_id": session_id,
+                "membership_id": m["id"],
+                "marked_by": coach,
+                "marked_at": starts_at + timedelta(minutes=10),
+                "credits_consumed": 0,
+            }
+            for m in regulars
+            if m["started_at"] < starts_at and rng.random() < TURNOUT
+        ]
+    return {"sessions": sessions, "attendance": attendance, "session_blocks": blocks}
+
+
 def build(as_of: date) -> Seed:
     """The demo gym as it stands on `as_of`, a gym-local date."""
     builder = _Builder(as_of)
@@ -447,6 +552,8 @@ def build(as_of: date) -> Seed:
                 "program_id": seed_id("program", c.program),
                 "name": c.name,
                 "credit_cost": c.credit_cost,
+                "kind": "open_mat" if c.open_mat else "class",
+                "counts_as_class": not c.open_mat,
                 "active": True,
                 "created_at": local(opened),
             }
@@ -474,4 +581,5 @@ def build(as_of: date) -> Seed:
         ledger_entries=builder.entries,
         freezes=builder.freezes,
         grade_events=builder.grades,
+        **_classes(as_of, builder.memberships),
     )

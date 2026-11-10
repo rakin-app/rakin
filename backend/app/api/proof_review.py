@@ -61,7 +61,7 @@ REVIEWED = HTTPException(status.HTTP_409_CONFLICT, "this proof was already revie
 # Every pending payment with a proof, oldest claim first. "Prior balance" counts the
 # membership's other periods already due in the gym's timezone, each less what
 # validated payments and credits settle on it, as the guardian page does (`app.api.me`).
-# Attendance is the person's, over every membership, from `:recent`
+# Attendance is the person's classes, over every membership, from `:recent`
 # (`app.api.attendance.recent_from`).
 QUEUE = f"""
     SELECT e.id, e.membership_id, m.person_id, gp.name AS person_name,
@@ -104,8 +104,9 @@ QUEUE = f"""
     CROSS JOIN LATERAL (
         SELECT count(*) AS classes FROM attendance a
         JOIN session s ON s.id = a.session_id
+        JOIN class_type c ON c.id = s.class_type_id
         JOIN membership am ON am.id = a.membership_id
-        WHERE am.person_id = m.person_id
+        WHERE am.person_id = m.person_id AND c.counts_as_class
           AND s.starts_at >= :recent
     ) att
     WHERE e.kind = :payment AND e.status = :pending AND e.proof_object_key IS NOT NULL

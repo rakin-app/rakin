@@ -277,6 +277,37 @@ Marking spends what the membership pays the class with (`app.domain.attendance`)
 
 Any staff role may use it, coaches included; a coach may start a trial where only an owner or admin may start any other membership, since a trial charges nothing. A trial added at the mat sends no welcome. Members may not use it; the student page carries their own counts (`attendance` on `/api/me/page`).
 
+## Class timer API
+
+A coach runs a class from a timer as a sequence of blocks (#136): warm-up, technique, games, sparring rounds. Migration `0024` stores the gym's block kinds, whether a class type is an open mat, and each session's blocks: the plan and what ran. A student's time is the blocks of every session they attended.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/block-kinds` | the gym's block kinds in its order, archived ones last; `?archived=false` for the ones to plan |
+| `POST` | `/api/block-kinds` | `{"name", "is_sparring"}` (default `false`): a new kind, last in the order; 201. 409 when the name is taken, case ignored |
+| `PATCH` | `/api/block-kinds/{id}` | change `name`, `is_sparring` or `archived`; only what is sent changes |
+| `PUT` | `/api/block-kinds/order` | `{"ids": […]}`: every kind of the gym, once each, in its new order; anything else is a 422 |
+| `DELETE` | `/api/block-kinds/{id}` | 204; 409 `{"code": "block_kind_in_use", "blocks"}` when sessions' blocks are of it, as for an `is_sparring` change |
+| `GET` | `/api/sessions/{id}/blocks` | `{"session_id", "class_kind", "blocks": […]}`: the plan in order |
+| `PUT` | `/api/sessions/{id}/blocks` | `{"blocks": […]}`, at most 30: the whole plan, replaced. A block kept by `id` keeps what it recorded; one left out is dropped with it |
+| `PUT` | `/api/sessions/{id}/blocks/{block_id}/actual` | `{"actual_seconds", "rounds_completed"}`: what the block ran; 200 with the block |
+| `GET` | `/api/sessions/{id}/blocks/suggested` | `{"session_id", "from_session_id", "blocks": […]}`: the plan of the latest other session of the same class type that has one, without ids, actuals or archived kinds; none when there is no such session |
+| `GET` | `/api/people/{id}/time` | `{"timezone", "month_start", "this_month", "all_time"}`, each `{"by_kind", "sparring_seconds", "open_mat_seconds", "classes", "open_mats"}` |
+
+Every gym starts with six kinds, Calentamiento, Técnica, Drilling, Juegos, Sparring (`is_sparring`) and Otro: a trigger on `gym` gives a new gym them, and the migration gave the gyms already there theirs. Their ids are derived from the gym's (`block_kind_default_id`, and `app.seed.build.default_block_kind_id` in Python), so the seed points at them. A kind in use is archived rather than deleted, and planned no more; a block already of it may stay in a replanned session.
+
+A class type is a class or an open mat (`kind`, `class` or `open_mat`), and `counts_as_class` says whether attending one counts as a class: by default true for a class and false for an open mat, also when a `PATCH` changes `kind` without it. Every class count leaves out the sessions of a class type that does not count: `GET /api/people/{id}/attendance`, `attendance` on `/api/me/page` (and so the goal progress tile), and the proof queue's `attendance_30d`.
+
+A plan block names its `block_kind_id` and, optionally, its own `id`, so a phone resending its plan offline keeps what each block recorded. A block of a sparring kind sends `rounds_planned` (1 to 100), `round_seconds` (1 to 3,600) and `rest_seconds` (0 to 3,600); its `planned_seconds` is `rounds_planned × round_seconds`, rest not included, at most four hours (422 `planned_seconds_mismatch` if sent otherwise). Any other block sends `planned_seconds` (1 to 14,400) and no rounds (422 `missing`, `not_sparring`). An unknown kind is a 422 `unknown_block_kind`, a newly planned archived one `archived_block_kind`, and an open mat's plan that is not one sparring block `open_mat_plan`. An `id` that is another session's block is a 409. Kept blocks keep `actual_seconds`, and their `rounds_completed` up to the rounds now planned.
+
+An actual replaces what the block had, so the timer's queue may retry: `actual_seconds` (0 to 14,400; a block stopped early records less), and for a sparring block `rounds_completed`, at most the rounds planned (422 `missing`, `less_than_equal`, or `not_sparring` on another block). A sparring block's seconds are the rounds', rest not included.
+
+A block carries `id`, `position`, `block_kind_id`, `block_kind_name`, `is_sparring`, `planned_seconds`, `actual_seconds` (`null` until run), `rounds_planned`, `rounds_completed`, `round_seconds` and `rest_seconds`.
+
+A person's time is every block of each session they were marked present at, counted once even with two memberships marked, and whole: someone who arrived late gets it all. `by_kind` is the seconds each kind ran, kinds with any, in the gym's order; `sparring_seconds` sums the sparring kinds, open mats included; `open_mat_seconds` is the open mats' time alone; `classes` counts sessions of a class type that counts as a class and `open_mats` those of an open mat. `this_month` is from the 1st in the gym's timezone (`month_start`).
+
+Any staff role may read all of it, coaches included, since none of it is money. Only an owner or admin changes block kinds; the plan and its actuals are the session's coach's, or an owner's or admin's (403 for another coach).
+
 ## Member import
 
 Onboarding a gym is mostly bringing its spreadsheet over. The admin uploads the file, says what each column is, checks it, then imports; the SPA's screen is `/admin/alumnos/importar`. Only an owner or admin may, since it starts memberships.
@@ -405,7 +436,7 @@ uv run python -m app.seed --today 2026-11-08   # the day the UI design depicts
 make seed                                      # from the repo root, inside Compose
 ```
 
-`app.seed` loads Academia Sur, the demo gym that dev, the 90-day simulation and the self-host demo start from. `app/seed/data.py` is the roster: the members the [UI design](../docs/design/ui-design.html) names, in the standing it shows them in (Felipe Díaz 9 days overdue, Diego Morales's proof waiting, Camila Ortiz paying for Mateo and Sofía), plus filler drawn from a fixed random sequence. `app/seed/build.py` turns it into rows for a seed date with no I/O, so tests check it without a database. The design's numbers hold on any seed date: 64 active memberships and 2 frozen (each with a `membership_freeze` that started a week before the seed date and ends three weeks after it), 6 overdue for $270.000, 3 proofs for $162.000. `gym.settings` carries the BJJ grading scheme (white to black with 4 stripes, and the grey-to-green kids ladder), the custom-field definitions, the bank account and `grace_days` (10).
+`app.seed` loads Academia Sur, the demo gym that dev, the 90-day simulation and the self-host demo start from. `app/seed/data.py` is the roster: the members the [UI design](../docs/design/ui-design.html) names, in the standing it shows them in (Felipe Díaz 9 days overdue, Diego Morales's proof waiting, Camila Ortiz paying for Mateo and Sofía), plus filler drawn from a fixed random sequence. `app/seed/build.py` turns it into rows for a seed date with no I/O, so tests check it without a database. It also holds the three weeks of adult classes before the seed date (Fundamentos, Avanzado, and Saturday's open mat), each run in blocks of the default kinds with some sparring cut a round or two short, and about half the adults on a monthly or prepaid plan marked at each, so the class timer's totals have data. The design's numbers hold on any seed date: 64 active memberships and 2 frozen (each with a `membership_freeze` that started a week before the seed date and ends three weeks after it), 6 overdue for $270.000, 3 proofs for $162.000. `gym.settings` carries the BJJ grading scheme (white to black with 4 stripes, and the grey-to-green kids ladder), the custom-field definitions, the bank account and `grace_days` (10).
 
 Loading again inserts nothing: every row's id is a UUIDv5 of its natural key, and rows already there are skipped, never updated, which the append-only ledger requires anyway. The first load stores its date in `gym.settings["seed"]["as_of"]`, and later loads build for that date again, ignoring `--today`. To reseed for another date, start from an empty database (`docker compose down -v`).
 

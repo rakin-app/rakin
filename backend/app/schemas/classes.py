@@ -7,6 +7,7 @@ attendance costs a credits membership. Both are deactivated, never deleted.
 
 import uuid
 from datetime import datetime
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
@@ -16,6 +17,18 @@ Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 # that empties every pack at once.
 MAX_CREDIT_COST = 100
 CreditCost = Annotated[int, Field(ge=0, le=MAX_CREDIT_COST)]
+
+
+class ClassKind(StrEnum):
+    """A class, or an open mat: rounds of sparring only, which by default is not a class."""
+
+    CLASS = "class"
+    OPEN_MAT = "open_mat"
+
+
+def counts_by_default(kind: ClassKind) -> bool:
+    """Whether attending a class type of `kind` counts as a class, unless the gym says."""
+    return kind is ClassKind.CLASS
 
 
 def never_null(model: BaseModel, *fields: str) -> None:
@@ -57,21 +70,27 @@ class ClassTypeCreate(BaseModel):
     name: Name
     program_id: uuid.UUID
     credit_cost: CreditCost = 1
+    kind: ClassKind = ClassKind.CLASS
+    # `counts_by_default(kind)` unless sent.
+    counts_as_class: bool | None = None
 
 
 class ClassTypeUpdate(BaseModel):
-    """Only the fields sent change. A class type may move to another program."""
+    """Only the fields sent change. A class type may move to another program. A new
+    `kind` without `counts_as_class` takes that kind's default."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: Name | None = None
     program_id: uuid.UUID | None = None
     credit_cost: CreditCost | None = None
+    kind: ClassKind | None = None
+    counts_as_class: bool | None = None
     active: bool | None = None
 
     @model_validator(mode="after")
     def _set(self) -> "ClassTypeUpdate":
-        never_null(self, "name", "program_id", "credit_cost", "active")
+        never_null(self, "name", "program_id", "credit_cost", "kind", "counts_as_class", "active")
         return self
 
 
@@ -81,5 +100,7 @@ class ClassType(BaseModel):
     program_id: uuid.UUID
     program_name: str
     credit_cost: int
+    kind: ClassKind
+    counts_as_class: bool
     active: bool
     created_at: datetime

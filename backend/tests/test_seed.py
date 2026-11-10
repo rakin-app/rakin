@@ -17,7 +17,16 @@ from app.domain.membership import Membership, MembershipStatus, PlanKind, is_due
 from app.domain.phone import normalize_phone
 from app.domain.rut import is_valid_rut
 from app.seed import Loaded, load
-from app.seed.build import GYM_ID, ZONE, Row, Seed, build, local, seed_id
+from app.seed.build import (
+    GYM_ID,
+    ZONE,
+    Row,
+    Seed,
+    build,
+    default_block_kind_id,
+    local,
+    seed_id,
+)
 from app.seed.data import (
     GRACE_DAYS,
     GRADING,
@@ -274,6 +283,33 @@ def test_nothing_happens_after_the_seed_date(seed: Seed) -> None:
                 value = row.get(column)
                 if isinstance(value, datetime):
                     assert value < end, (row, column)
+
+
+def test_weeks_of_classes_ran_in_blocks(seed: Seed) -> None:
+    """Every session ran blocks of the default kinds; an open mat ran one of rounds; the
+    adults at each are active members of a plan for them that spends no credits."""
+    assert len(seed.sessions) >= 15
+    open_mat = seed_id("class_type", "open-mat")
+    sparring = default_block_kind_id(GYM_ID, "sparring")
+    by_session: defaultdict[object, list[Row]] = defaultdict(list)
+    for block in seed.session_blocks:
+        by_session[block["session_id"]].append(block)
+        assert 0 < block["actual_seconds"] <= block["planned_seconds"] + 60
+        if block["block_kind_id"] == sparring:
+            assert block["actual_seconds"] == block["rounds_completed"] * block["round_seconds"]
+    for session in seed.sessions:
+        assert session["starts_at"] < local(seed.as_of)
+        blocks = by_session[session["id"]]
+        if session["class_type_id"] == open_mat:
+            assert [b["block_kind_id"] for b in blocks] == [sparring]
+        else:
+            assert len(blocks) == 4
+    memberships = {m["id"]: m for m in seed.memberships}
+    for mark in seed.attendance:
+        membership = memberships[mark["membership_id"]]
+        assert membership["status"] == MembershipStatus.ACTIVE.value
+        assert mark["credits_consumed"] == 0
+    assert len(seed.attendance) >= 5 * len(seed.sessions)
 
 
 # --- Postgres ---

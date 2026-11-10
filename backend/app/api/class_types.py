@@ -6,6 +6,10 @@ sessions point at it (migration 0020), so it is deactivated with `PATCH {"active
 A name is unique within its program, case ignored: a second "Fundamentos" in Kids is a
 409, one in Adultos is not.
 
+A class type is a class or an open mat (`kind`, migration 0024), and `counts_as_class`
+says whether attending one counts towards a student's classes: by default a class does
+and an open mat does not.
+
 Any staff role may read them, coaches included, since the coach starts a session of
 one; only an owner or admin may create or change one. Members may not use it at all.
 """
@@ -18,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.programs import execute_refusing, require_program
 from app.roles import AdminSession, StaffSession
-from app.schemas.classes import ClassType, ClassTypeCreate, ClassTypeUpdate
+from app.schemas.classes import ClassType, ClassTypeCreate, ClassTypeUpdate, counts_by_default
 
 router = APIRouter(prefix="/api/class-types", tags=["classes"])
 
@@ -30,8 +34,8 @@ REFUSALS = {"class_type_name_key": NAME_TAKEN}
 
 # Each with its program's name. RLS keeps both tables to the current gym.
 SELECT_CLASS_TYPE = """
-    SELECT c.id, c.name, c.program_id, p.name AS program_name, c.credit_cost, c.active,
-           c.created_at
+    SELECT c.id, c.name, c.program_id, p.name AS program_name, c.credit_cost, c.kind,
+           c.counts_as_class, c.active, c.created_at
     FROM class_type c JOIN program p ON p.id = c.program_id
 """
 
@@ -54,11 +58,18 @@ async def create_class_type(body: ClassTypeCreate, session: AdminSession) -> Cla
     result = await execute_refusing(
         session,
         text(
-            "INSERT INTO class_type (gym_id, program_id, name, credit_cost)"
-            " VALUES (current_setting('app.gym_id')::uuid, :program_id, :name, :credit_cost)"
-            " RETURNING id"
+            "INSERT INTO class_type (gym_id, program_id, name, credit_cost, kind, counts_as_class)"
+            " VALUES (current_setting('app.gym_id')::uuid, :program_id, :name, :credit_cost,"
+            " :kind, :counts_as_class) RETURNING id"
         ),
-        body.model_dump(),
+        {
+            **body.model_dump(),
+            "counts_as_class": (
+                counts_by_default(body.kind)
+                if body.counts_as_class is None
+                else body.counts_as_class
+            ),
+        },
         REFUSALS,
     )
     return await _get(session, result.scalar_one())
@@ -97,15 +108,16 @@ async def update_class_type(
     changes = body.model_dump(exclude_unset=True)
     if "program_id" in changes and changes["program_id"] != current.program_id:
         await require_program(session, changes["program_id"], "program_id")
-    columns = {
-        **current.model_dump(include={"name", "program_id", "credit_cost", "active"}),
-        **changes,
-    }
+    if changes.get("kind", current.kind) != current.kind and "counts_as_class" not in changes:
+        changes["counts_as_class"] = counts_by_default(changes["kind"])
+    fields = {"name", "program_id", "credit_cost", "kind", "counts_as_class", "active"}
+    columns = {**current.model_dump(include=fields), **changes}
     await execute_refusing(
         session,
         text(
             "UPDATE class_type SET name = :name, program_id = :program_id,"
-            " credit_cost = :credit_cost, active = :active WHERE id = :id"
+            " credit_cost = :credit_cost, kind = :kind, counts_as_class = :counts_as_class,"
+            " active = :active WHERE id = :id"
         ),
         {**columns, "id": class_type_id},
         REFUSALS,

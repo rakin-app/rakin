@@ -46,16 +46,43 @@ class ClassTypeSpec:
     program: str
     name: str
     credit_cost: int = 1
+    # An open mat is rounds of sparring only, and is not counted as a class (0024).
+    open_mat: bool = False
 
 
 CLASS_TYPES = (
     ClassTypeSpec("fundamentals", "adults", "Fundamentos"),
     ClassTypeSpec("advanced", "adults", "Avanzado"),
-    ClassTypeSpec("open-mat", "adults", "Open mat", credit_cost=0),
+    ClassTypeSpec("open-mat", "adults", "Open mat", credit_cost=0, open_mat=True),
     ClassTypeSpec("kids-little", "kids", "Kids 4 a 7 años"),
     ClassTypeSpec("kids-big", "kids", "Kids 8 a 12 años"),
     ClassTypeSpec("competition", "competition", "Competición"),
 )
+
+
+# The adults' week (migration 0020 has no timetable; this is what was held), by ISO
+# weekday: class type key, gym-local hour. Kids and competition hold none in the seed.
+WEEK = {
+    1: ("fundamentals", 19),
+    2: ("advanced", 20),
+    3: ("fundamentals", 19),
+    4: ("advanced", 20),
+    5: ("fundamentals", 19),
+    6: ("open-mat", 11),
+}
+# How many days of that week before the seed date were held, and the share of the
+# adults with an active membership at each.
+CLASS_DAYS = 21
+TURNOUT = 0.45
+
+# A class's blocks (migration 0024), by default block kind key: seconds, or for
+# sparring (rounds, round seconds, rest seconds). Classes alternate the two plans.
+Block = tuple[str, int | tuple[int, int, int]]
+CLASS_PLANS: tuple[tuple[Block, ...], ...] = (
+    (("warmup", 600), ("technique", 1200), ("drilling", 600), ("sparring", (5, 300, 60))),
+    (("warmup", 600), ("technique", 1200), ("games", 600), ("sparring", (5, 300, 60))),
+)
+OPEN_MAT_PLAN: tuple[Block, ...] = (("sparring", (10, 360, 60)),)
 
 
 @dataclass(frozen=True)
