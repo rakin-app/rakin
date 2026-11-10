@@ -18,6 +18,7 @@ x-backend: &backend
     SECRET_KEY: ${SECRET_KEY:-local-only-secret-change-me}
     FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-local-only-field-key-change-me}
     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+    BASE_DOMAIN: ${BASE_DOMAIN:-}
     SENTRY_DSN: ${SENTRY_DSN:-}
     JOBS_TIMEZONE: ${JOBS_TIMEZONE:-America/Santiago}
     MAILER: ${MAILER:-console}

@@ -4,7 +4,7 @@ Rakin's Postgres store and directory have their own tests in `tests/test_auth.py
 """
 
 import asyncio
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -26,6 +26,7 @@ from app.magiclink import (
     Recipient,
     Session,
     SessionMiddleware,
+    Site,
     build_router,
     callback_url,
     session_cookie_name,
@@ -63,10 +64,11 @@ class Directory:
             raise DirectoryDown
         return [r for r in (ANA, CAMILA, MATEO) if r.address == address.strip().lower()]
 
-    async def scope(self, subject: str, address: str) -> str | None:
+    async def scope(self, subject: str, address: str, within: str | None = None) -> str | None:
         if self.down:
             raise DirectoryDown
-        return None if subject == "camila" else f"gym-of-{subject}"
+        scope = None if subject == "camila" else f"gym-of-{subject}"
+        return scope if within is None or within == scope else None
 
 
 @dataclass
@@ -141,7 +143,10 @@ def token_of(url: str) -> str:
 
 
 def make_app(
-    links: MagicLinks, base_url: str = BASE_URL, cookie_name: str | None = None
+    links: MagicLinks,
+    base_url: str = BASE_URL,
+    cookie_name: str | None = None,
+    site: Callable[[Request], Site] | None = None,
 ) -> FastAPI:
     app = FastAPI()
     app.include_router(
@@ -151,6 +156,7 @@ def make_app(
             base_url=base_url,
             landings=frozenset({"/me"}),
             cookie_name=cookie_name,
+            site=site,
         )
     )
 
@@ -184,7 +190,12 @@ class ClientAddress:
         await self.app(scope, receive, send)
 
 
-def make_harness(base_url: str = BASE_URL, cookie_name: str | None = None) -> Iterator[Harness]:
+def make_harness(
+    base_url: str = BASE_URL,
+    cookie_name: str | None = None,
+    site: Callable[[Request], Site] | None = None,
+    client_url: str | None = None,
+) -> Iterator[Harness]:
     clock, directory, store, outbox = Clock(), Directory(), Store(), Outbox()
     links = MagicLinks(
         secret_key="s" * 32,
@@ -196,10 +207,13 @@ def make_harness(base_url: str = BASE_URL, cookie_name: str | None = None) -> It
         per_ip=MemoryRateLimiter(limit=5, window_seconds=900),
         clock=clock,
     )
-    app = make_app(links, base_url, cookie_name)
+    app = make_app(links, base_url, cookie_name, site)
     # Errors come back as 500s, as a browser would see them.
     with TestClient(
-        app, base_url=base_url, follow_redirects=False, raise_server_exceptions=False
+        app,
+        base_url=client_url or base_url,
+        follow_redirects=False,
+        raise_server_exceptions=False,
     ) as client:
         yield Harness(client, directory, clock, store, outbox, links)
 
@@ -531,3 +545,68 @@ def test_the_router_refuses_links_that_point_elsewhere() -> None:
     )
     with pytest.raises(ValueError, match="not this router's callback"):
         build_router(links, prefix=PREFIX, base_url=BASE_URL)
+
+
+# --- several sites ----------------------------------------------------------------
+
+
+TENANT_URL = "https://sur.app.example"
+
+
+def tenant_site(request: Request) -> Site:
+    """`sur.app.example` is `gym-of-ana`'s site; any other host is the base one."""
+    if request.url.hostname == "sur.app.example":
+        return Site(TENANT_URL, "gym-of-ana", "Sur")
+    return Site(BASE_URL)
+
+
+@pytest.fixture
+def tenant() -> Iterator[Harness]:
+    yield from make_harness(site=tenant_site, client_url=TENANT_URL)
+
+
+def test_a_link_asked_for_on_a_site_points_back_to_it(tenant: Harness) -> None:
+    tenant.request_link(ANA.address)
+    assert tenant.outbox.url_for(ANA).startswith(f"{TENANT_URL}{PREFIX}/callback?token=")
+
+
+def test_a_link_opened_on_its_accounts_site_starts_the_session_there(tenant: Harness) -> None:
+    response = tenant.sign_in(ANA)
+    assert response.status_code == 303
+    [(session, _)] = tenant.store.sessions.values()
+    assert session.scope == "gym-of-ana"
+
+
+def test_a_site_whose_scope_the_account_cannot_reach_says_so_and_spends_nothing(
+    tenant: Harness,
+) -> None:
+    assert tenant.request_link(CAMILA.address) == 202
+    token = token_of(tenant.outbox.url_for(CAMILA))
+
+    for _ in range(2):  # still unspent the second time
+        response = tenant.client.post(f"{PREFIX}/callback", data={"token": token})
+        assert response.status_code == 403
+        assert "This address has no access to Sur." in response.text
+    assert tenant.store.sessions == {}
+    assert COOKIE_NAME not in tenant.client.cookies
+
+
+def test_a_sites_form_is_the_only_one_that_signs_in_there(tenant: Harness) -> None:
+    tenant.request_link(ANA.address)
+    token = token_of(tenant.outbox.url_for(ANA))
+
+    response = tenant.client.post(
+        f"{PREFIX}/callback", data={"token": token}, headers={"Origin": BASE_URL}
+    )
+    assert response.status_code == 403
+    response = tenant.client.post(
+        f"{PREFIX}/callback", data={"token": token}, headers={"Origin": TENANT_URL}
+    )
+    assert response.status_code == 303
+
+
+def test_a_link_may_point_at_another_sites_origin(harness: Harness) -> None:
+    assert harness.links.callback_on(None) == f"{BASE_URL}{PREFIX}/callback"
+    assert harness.links.callback_on("http://sur.localhost:8080/") == (
+        f"http://sur.localhost:8080{PREFIX}/callback"
+    )

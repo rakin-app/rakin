@@ -9,6 +9,11 @@ any browser tab, JavaScript or not.
 The middleware never refuses a request. It reads the session cookie, and if the
 session is live hands it to `bind`, which puts what the application needs on
 `request.state`; deciding what an anonymous request may do is left to the routes.
+
+An application serving several sites (a tenant per host) passes `site`, which says
+for each request where its links point and what a session started from it must start
+in (`Site`). A link opened on a site whose scope its account may not reach says so,
+and signs nobody in.
 """
 
 import html
@@ -25,7 +30,7 @@ from starlette.datastructures import Headers
 from starlette.requests import cookie_parser
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.magiclink.service import MagicLinks, RateLimited, Session
+from app.magiclink.service import MagicLinks, RateLimited, Session, Unreachable
 
 # `__Host-`: browsers accept it only Secure, on Path=/ and with no Domain.
 COOKIE_NAME = "__Host-session"
@@ -55,6 +60,19 @@ class Texts:
     button: str = "Sign in"
     invalid: str = "This link has expired or was already used. Ask for a new one."
     back: str = "Back to the start"
+    # `{name}` is the site's.
+    unreachable: str = "This address has no access to {name}."
+
+
+@dataclass(frozen=True)
+class Site:
+    """Where a request was made: the base URL its links point back to, and the scope a
+    session signed in there must start in (None: whatever the directory says), with
+    its name for the pages to say."""
+
+    base_url: str
+    scope: str | None = None
+    name: str = ""
 
 
 class LinkRequest(BaseModel):
@@ -99,11 +117,15 @@ def build_router(
     landings: frozenset[str] = frozenset(),
     cookie_name: str | None = None,
     texts: Texts | None = None,
+    site: Callable[[Request], Site] | None = None,
 ) -> APIRouter:
     """The endpoints, under `prefix`. `base_url` is where browsers reach the app.
 
     Signing in lands on `after_login`, or on the link's `next` when it is one of
     `landings`: a fixed list, so a link can never send anyone off the app.
+
+    `site` names each request's site, on `base_url` with no scope unless given. Every
+    site's base URL must share `base_url`'s scheme, which decides the cookie.
 
     The cookie is `Secure` unless `base_url` is `http://`, whatever `cookie_name` says;
     by default it is named by `session_cookie_name`, as `SessionMiddleware` must read it.
@@ -117,7 +139,10 @@ def build_router(
     texts = texts or Texts()
     router = APIRouter(prefix=prefix)
     callback_path = prefix + CALLBACK
-    origin = origin_of(base_url)
+    default_site = Site(base_url)
+
+    def site_of(request: Request) -> Site:
+        return default_site if site is None else site(request)
 
     def landing(next_: str) -> str:
         return next_ if next_ in landings else after_login
@@ -133,6 +158,13 @@ def build_router(
             f"</head><body><h1>{html.escape(texts.title)}</h1>{body}</body></html>"
         )
         return HTMLResponse(document, status_code=status_code, headers=PAGE_HEADERS)
+
+    def unreachable(name: str) -> HTMLResponse:
+        return page(
+            f"<p>{html.escape(texts.unreachable.format(name=name))}</p>"
+            f'<p><a href="{html.escape(after_login)}">{html.escape(texts.back)}</a></p>',
+            status.HTTP_403_FORBIDDEN,
+        )
 
     def invalid() -> HTMLResponse:
         return page(
@@ -164,7 +196,7 @@ def build_router(
             ) from exc
         # Looking the address up, storing and sending all wait until after the
         # response, so a known address takes no longer to answer than an unknown one.
-        background.add_task(links.send_links, body.email)
+        background.add_task(links.send_links, body.email, base_url=site_of(request).base_url)
         return Response(status_code=status.HTTP_202_ACCEPTED)
 
     @router.get(CALLBACK, response_class=HTMLResponse)
@@ -187,11 +219,15 @@ def build_router(
     async def redeem_link(request: Request) -> Response:
         """Spend the link and start a session, set as an `HttpOnly` cookie."""
         # A browser names the page that posted; only this app's own form may sign in.
+        here = site_of(request)
         sent_from = request.headers.get("origin")
-        if sent_from is not None and sent_from != origin:
+        if sent_from is not None and sent_from != origin_of(here.base_url):
             return Response(status_code=status.HTTP_403_FORBIDDEN)
         form = parse_qs((await request.body())[:2048].decode("latin-1"))
-        session_token = await links.redeem(form.get("token", [""])[0])
+        try:
+            session_token = await links.redeem(form.get("token", [""])[0], within=here.scope)
+        except Unreachable:
+            return unreachable(here.name)
         if session_token is None:
             return invalid()
         destination = landing(form.get("next", [""])[0])
