@@ -554,3 +554,71 @@ def test_coaches_may_do_none_of_it_and_admins_may_not_delete(
     assert enrol(client, gym, admin, phone=new_phone(), name="Y").status_code == 201
     left = client.post(f"/api/people/{body['id']}/leave", json={}, headers=as_gym(gym, admin))
     assert left.status_code == 200
+
+
+# --- no new membership while they are away -------------------------------------
+
+
+@pg
+def test_no_path_starts_a_membership_for_someone_who_left(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    phone = new_phone()
+    body = enrolled(client, gym, phone=phone, name="Se Fue")
+    leave(client, gym, body["id"])
+
+    # Starting one by hand.
+    started = client.post(
+        "/api/memberships",
+        json={"person_id": body["id"], "plan_id": plan(client, gym)},
+        headers=as_gym(gym),
+    )
+    assert started.status_code == 409
+    assert started.json()["detail"] == {"code": "has_left"}
+
+    # A trial at a class: the coach is pointed at Reactivar.
+    program = client.post("/api/programs", json={"name": "Adultos"}, headers=as_gym(gym)).json()
+    class_type = client.post(
+        "/api/class-types",
+        json={"name": "Fundamentos", "program_id": program["id"], "credit_cost": 1},
+        headers=as_gym(gym),
+    ).json()
+    session = client.post(
+        "/api/sessions", json={"class_type_id": class_type["id"]}, headers=as_gym(gym)
+    ).json()
+    trial = client.post(
+        f"/api/sessions/{session['id']}/trials",
+        json={"person_id": body["id"], "plan_id": plan(client, gym, "trial")},
+        headers=as_gym(gym),
+    )
+    assert trial.status_code == 409
+    assert trial.json()["detail"] == {"code": "has_left"}
+
+    # A sheet that still lists them: that row is refused, the others import.
+    due = (seeded_today() + timedelta(days=10)).isoformat()
+    rows = [
+        {"number": 2, "cells": ["Se Fue", phone, "Mensual", due]},
+        {"number": 3, "cells": ["Llega", new_phone(), "Mensual", due]},
+    ]
+    report = client.post(
+        "/api/import/members",
+        json={
+            "rows": rows,
+            "mapping": {"name": 0, "phone": 1, "plan": 2, "due_on": 3},
+            "dry_run": False,
+        },
+        headers=as_gym(gym),
+    )
+    assert report.status_code == 200, report.text
+    first, second = report.json()["rows"]
+    assert first["errors"] == [{"field": "plan", "code": "has_left"}]
+    assert second["errors"] == [] and second["membership"] == "created"
+
+    assert [m["status"] for m in memberships(client, gym, body["id"])] == []
+    # Reactivated, they start one again.
+    back = client.post(
+        f"/api/people/{body['id']}/return",
+        json={"membership": {"plan_id": plan(client, gym)}},
+        headers=as_gym(gym),
+    )
+    assert back.status_code == 200, back.text

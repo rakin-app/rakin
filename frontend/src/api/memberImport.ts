@@ -36,6 +36,8 @@ export type RowErrorCode =
   | 'due_before_start'
   | 'has_guardian'
   | 'one_level'
+  // Dado de baja: reactivated from their ficha, never by a sheet (#157).
+  | 'has_left'
 
 export type Outcome = 'created' | 'existing'
 

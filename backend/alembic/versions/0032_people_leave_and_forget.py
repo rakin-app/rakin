@@ -21,9 +21,11 @@ unsubscribe, sign-in sessions here and last the gym's record itself, and answers
 The global `person` row stays: other gyms may know them, and erasing it is #69's.
 `message_log` stays too, append-only as it is.
 
-It runs as the owner, which FORCEd RLS holds to the current gym as it holds everyone
-(0004), so it reaches no other gym's rows, and `rakin_app` gets no `DELETE` on any of
-those tables.
+It locks their record and memberships before it checks, so a payment or a new
+membership arriving meanwhile waits for it instead of slipping in between the check
+and the deletes. It runs as the owner, which FORCEd RLS holds to the current gym as
+it holds everyone (0004), so it reaches no other gym's rows, and `rakin_app` gets no
+`DELETE` on any of those tables.
 
 Revision ID: 0032
 Revises: 0030
@@ -95,8 +97,13 @@ def upgrade() -> None:
         AS $$
         DECLARE
             gym uuid := {CURRENT_GYM};
-            refusal text := forget_refusal($1);
+            refusal text;
         BEGIN
+            -- Locked before the check: a payment or a membership started meanwhile
+            -- waits, rather than slipping in between the check and the deletes.
+            PERFORM FROM gym_person WHERE gym_id = gym AND person_id = $1 FOR UPDATE;
+            PERFORM FROM membership WHERE gym_id = gym AND person_id = $1 FOR UPDATE;
+            refusal := forget_refusal($1);
             IF refusal IS NOT NULL THEN
                 RETURN refusal;
             END IF;

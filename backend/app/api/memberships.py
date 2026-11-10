@@ -15,7 +15,9 @@ booked can change its end, or be called off. Cancelling is terminal and
 needs a reason; the database refuses any later change to a cancelled row.
 
 Starting one emails the member, or their guardian, a welcome: how to pay and how to
-upload a proof, with their first sign-in link to the student page.
+upload a proof, with their first sign-in link to the student page. Nobody who has left
+the gym (dado de baja, #157) starts one, by any path: `insert_membership` refuses them
+until they are reactivated.
 
 Any staff role may read memberships; only an owner or admin may start, change or
 freeze or cancel one, since that sets what a member is charged. Members may not use it at all.
@@ -43,6 +45,8 @@ from app.schemas.memberships import (
     Freeze,
     FreezeCreate,
     FreezeEdit,
+    HasLeft,
+    HasLeftConflict,
     Membership,
     MembershipCreate,
     MembershipStart,
@@ -164,6 +168,13 @@ def _unprocessable(error: ValueError | OverflowError) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error))
 
 
+class PersonHasLeft(Exception):
+    """`insert_membership` was asked to start someone who has left the gym."""
+
+
+HAS_LEFT = HTTPException(status.HTTP_409_CONFLICT, HasLeftConflict().model_dump())
+
+
 async def insert_membership(
     session: AsyncSession,
     person_id: uuid.UUID,
@@ -171,7 +182,14 @@ async def insert_membership(
     started: domain.Membership,
     started_at: datetime,
 ) -> uuid.UUID:
-    """Write `started`, a new membership of `person_id` on `plan_id`, in the current gym."""
+    """Write `started`, a new membership of `person_id` on `plan_id`, in the current gym.
+    Raises `PersonHasLeft` for someone who has left it: their record is read `FOR SHARE`,
+    so a baja and a new membership take turns."""
+    left_on = await session.scalar(
+        text("SELECT left_on FROM gym_person WHERE person_id = :id FOR SHARE"), {"id": person_id}
+    )
+    if left_on is not None:
+        raise PersonHasLeft(person_id)
     result = await session.execute(
         text(
             "INSERT INTO membership (gym_id, person_id, plan_id, status, anchor_day,"
@@ -209,9 +227,12 @@ async def start_membership(
     except (ValueError, OverflowError) as error:
         raise _unprocessable(error) from None
 
-    membership_id = await insert_membership(
-        session, person_id, body.plan_id, started, start_of_local_day(started_on, timezone)
-    )
+    try:
+        membership_id = await insert_membership(
+            session, person_id, body.plan_id, started, start_of_local_day(started_on, timezone)
+        )
+    except PersonHasLeft:
+        raise HAS_LEFT from None
     return await _get(session, membership_id)
 
 
@@ -243,7 +264,11 @@ async def welcome_for(session: AsyncSession, tenant: Tenant, created: Membership
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_409_CONFLICT: {"model": HasLeft}},
+)
 async def create_membership(
     body: MembershipCreate,
     tenant: Annotated[Tenant, Depends(current_tenant)],

@@ -3,6 +3,7 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   addTrialGuest,
+  hasLeft,
   changeAttendance,
   clearQueuedChange,
   isOffline,
@@ -515,7 +516,9 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
       ? words.offline
       : add.error instanceof ApiError && add.error.status === 422
         ? words.badPhone
-        : words.failed
+        : hasLeft(add.error)
+          ? words.hasLeft
+          : words.failed
     : null
 
   return (

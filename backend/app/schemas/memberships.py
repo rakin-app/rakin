@@ -10,7 +10,7 @@ before it starts (#115).
 
 import uuid
 from datetime import UTC, date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator, model_validator
 
@@ -49,6 +49,16 @@ class MembershipStart(BaseModel):
 
 class MembershipCreate(MembershipStart):
     person_id: uuid.UUID
+
+
+class HasLeftConflict(BaseModel):
+    code: Literal["has_left"] = "has_left"
+
+
+class HasLeft(BaseModel):
+    """409 body: the person has left the gym (dado de baja); reactivate them first."""
+
+    detail: HasLeftConflict
 
 
 class PlanChange(BaseModel):

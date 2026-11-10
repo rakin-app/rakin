@@ -302,6 +302,7 @@ export const es = {
         due_before_start: 'es anterior a la fecha de ingreso',
         has_guardian: 'el alumno ya tiene otro apoderado',
         one_level: 'el apoderado está a cargo de otra persona',
+        has_left: 'fue dado de baja: reactívalo desde su ficha',
       },
       fieldError: (field: string, problem: string) => `${field}: ${problem}`,
       keptTitle: 'Ya existen: no se actualizan',
@@ -379,6 +380,7 @@ export const es = {
         nameNeeded: 'Escribe el nombre.',
         refused: {
           rut_in_gym: 'Ese RUT ya es de otro alumno del gimnasio.',
+          phone_in_gym: 'Ese teléfono ya es de otro alumno del gimnasio.',
           open: 'Abrir su ficha',
           invalid: 'Revisa los datos: el RUT, el correo o la fecha no son válidos.',
           failed: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
@@ -1081,6 +1083,7 @@ export const es = {
           member: (name: string) => `${name} ya es alumno: lo marcamos presente.`,
           badPhone: 'Revisa el celular: 9 dígitos, empezando por 9.',
           offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
+          hasLeft: 'Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.',
           failed: 'No pudimos agregarlo. Inténtalo de nuevo.',
         },
       },

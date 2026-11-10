@@ -208,7 +208,7 @@ function EditForm({
         <div className="member__error" role="alert">
           {duplicate ? (
             <>
-              {form.refused.rut_in_gym}{' '}
+              {form.refused[duplicate.code]}{' '}
               <Link to="/admin/alumnos/$personId" params={{ personId: duplicate.person_id }}>
                 {form.refused.open}
               </Link>

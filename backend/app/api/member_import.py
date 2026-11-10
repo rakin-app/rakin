@@ -32,7 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.guardians import NEW_GYM_PERSON, NEW_PERSON, family, link
-from app.api.memberships import insert_membership
+from app.api.memberships import PersonHasLeft, insert_membership
 from app.domain import membership as domain
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.membership import PlanKind, PlanTerms
@@ -274,13 +274,17 @@ class _Writer:
             ):
                 self.ignored.append(Field.DUE_ON)
             return "existing"
-        await insert_membership(
-            self.session,
-            person_id,
-            member.plan.id,
-            started,
-            start_of_local_day(started_on, self.timezone),
-        )
+        try:
+            await insert_membership(
+                self.session,
+                person_id,
+                member.plan.id,
+                started,
+                start_of_local_day(started_on, self.timezone),
+            )
+        except PersonHasLeft:
+            # Reactivated from their ficha, not by a sheet that still lists them.
+            raise RowRefused(Field.PLAN, "has_left") from None
         return "created"
 
 
