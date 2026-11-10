@@ -383,12 +383,16 @@ def test_a_change_from_the_past_never_rewrites_a_class_that_happened(
 def test_a_change_from_the_first_date_changes_the_slot_itself(
     client: TestClient, db: Database, gym: uuid.UUID, fundamentals: str
 ) -> None:
-    slot = add_slot(client, gym, fundamentals, weekdays=EVERY_DAY)
+    # At 00:01 today's class has always started, whatever the hour the test runs.
+    slot = add_slot(client, gym, fundamentals, weekdays=EVERY_DAY, start_time="00:01")
     response = change_slot(client, gym, slot["id"], {"coach_id": str(add_staff(db, gym, "coach"))})
     assert response.status_code == 200, response.text
     assert response.json()["id"] == slot["id"]
     assert len(slot_rows(db, gym)) == 1
-    assert {r["coach_id"] for r in sessions_of(db, gym)} == {uuid.UUID(response.json()["coach_id"])}
+    # Today's class has started, and keeps its coach; the later ones change.
+    coaches = {r["slot_date"]: r["coach_id"] for r in sessions_of(db, gym)}
+    assert coaches.pop(today()) == seeded_owner(gym)
+    assert set(coaches.values()) == {uuid.UUID(response.json()["coach_id"])}
 
 
 @pg
@@ -462,12 +466,16 @@ def test_solo_esta_clase_changes_one_class_and_the_schedule_does_not_remake_it(
 def test_a_change_moves_the_slot_s_own_topic_and_keeps_a_coach_s(
     client: TestClient, db: Database, gym: uuid.UUID, fundamentals: str
 ) -> None:
-    slot = add_slot(client, gym, fundamentals, weekdays=EVERY_DAY, topic="Guardia")
+    slot = add_slot(
+        client, gym, fundamentals, weekdays=EVERY_DAY, topic="Guardia", start_time="00:01"
+    )
     written = sessions_of(db, gym)[4]
     client.patch(f"/api/sessions/{written['id']}", json={"topic": "Pasajes"}, headers=as_gym(gym))
     change_slot(client, gym, slot["id"], {"topic": "Montada"})
-    topics = {r["id"]: r["topic"] for r in sessions_of(db, gym)}
-    assert topics.pop(written["id"]) == "Pasajes"
+    topics = {r["slot_date"]: r["topic"] for r in sessions_of(db, gym)}
+    # Today's class has started, and keeps the old topic; a coach's own stays too.
+    assert topics.pop(today()) == "Guardia"
+    assert topics.pop(written["slot_date"]) == "Pasajes"
     assert set(topics.values()) == {"Montada"}
 
 
