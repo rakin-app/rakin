@@ -152,6 +152,14 @@ BANK_ACCOUNT = {
     "email": "pagos@academiasur.example.com",
 }
 
+# What the gym's privacy notice names it by (#168); set, so its join link works.
+PRIVACY = {
+    "legal_name": "Academia Sur SpA",
+    "rut": "76432109-K",
+    "email": "privacidad@academiasur.example.com",
+    "address": "Av. Pedro de Valdivia 1234, Providencia",
+}
+
 
 @dataclass(frozen=True)
 class StaffSpec:

@@ -220,7 +220,7 @@ Chile's Ley 21.719 (personal data protection) enters into force on 1 December 20
 
 | Topic | Obligation | Product response |
 | --- | --- | --- |
-| Data controller | whoever runs the instance is responsible: the company for hosted gyms, each self-hoster for theirs | stated in README and hosted terms; a DPA template for hosted gyms |
+| Data controller | each gym is the controller of its members' data, and whoever runs the instance its processor: the company for hosted gyms, each self-hoster for theirs | each gym's public privacy notice at `/privacidad` (#168), a template filled in with the legal name, RUT and contact email the gym sets in Ajustes, linked from the join form's consent and the student page; the join link works only once it is set. A DPA template for hosted gyms |
 | Consent | explicit, informed, revocable | consent captured at membership creation (adult) or by guardian (minor), stored with timestamp and text version |
 | Minors | guardian consent; no direct marketing | kids never receive messages; all comms go to the guardian |
 | Sensitive data | health data (weight, injuries, conditions) is sensitive and needs explicit consent | custom fields flagged `sensitive` are encrypted at rest (app-level, AES-GCM), excluded from default exports, and visible to the roles the owner chooses per field (`visible_to`: owner only, owner and admins, or all staff), owner only by default; the API never answers a field's definition or value to a role it is not visible to, with a per-gym toggle to disable entirely |

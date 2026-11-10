@@ -24,6 +24,7 @@ from app.api import (
     memberships,
     people,
     plans,
+    privacy,
     programs,
     proof_review,
     proofs,
@@ -109,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(unsubscribe.router)
     app.include_router(join.public)
     app.include_router(join.router)
+    app.include_router(privacy.router)
     app.include_router(
         build_router(
             links,

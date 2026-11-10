@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { gymSettingsQuery } from '../api/gym'
 import {
   changeJoinLink,
   generateJoinLink,
+  isPrivacyIncomplete,
   joinLinkQuery,
   revokeJoinLink,
   whatsappShareUrl,
@@ -33,6 +35,10 @@ function optionsOf(drafts: Drafts): JoinLinkOptions {
  * details. Generate it, copy it or share it by WhatsApp, change the program it
  * pre-selects and the last day it works, generate another (the old one stops working)
  * or turn it off. What people send waits in "Solicitudes" on Hoy and in Alumnos.
+ *
+ * The form asks for consent to the gym's privacy notice (#168), so until the privacy
+ * details are filled in under Gimnasio the link cannot be generated, and one made
+ * before does not work: the section says so and links there.
  */
 export function JoinLinkSettings() {
   const link = useQuery(joinLinkQuery)
@@ -79,6 +85,10 @@ function JoinLinkSection({
   const pending = generate.isPending || change.isPending || revoke.isPending
   const failed = generate.error ?? change.error ?? revoke.error
   const errors = validationErrors(failed)
+  // Known unset, or refused for it: a link made meanwhile elsewhere is the API's to refuse.
+  const needsPrivacy =
+    (gym.isSuccess && gym.data.privacy === null) ||
+    isPrivacyIncomplete(failed)
   const error = (field: keyof Drafts) => (field in errors ? refusal(errors[field]!, field, copy, false) : undefined)
 
   const submit = (event: FormEvent) => {
@@ -97,6 +107,14 @@ function JoinLinkSection({
   return (
     <section className="settings__section" aria-label={copy.title}>
       <p className="settings__note">{copy.intro}</p>
+      {needsPrivacy && (
+        <div className="settings__card settings__plan-text" role="alert">
+          <p className="settings__detail">{copy.needsPrivacy}</p>
+          <Link to="/admin/ajustes/gimnasio" hash="privacidad" className="settings__button">
+            {copy.needsPrivacyLink}
+          </Link>
+        </div>
+      )}
       {notice && (
         <p className="settings__done" role="status">
           {notice}
@@ -158,13 +176,17 @@ function JoinLinkSection({
             />
           )}
         </Field>
-        {failed && (
+        {failed && !needsPrivacy && (
           <p className="settings__error" role="alert">
             {Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
           </p>
         )}
         <div className="settings__actions">
-          <button type="submit" className="settings__button settings__button--primary" disabled={pending}>
+          <button
+            type="submit"
+            className="settings__button settings__button--primary"
+            disabled={pending || (needsPrivacy && !link)}
+          >
             {pending ? copy.working : link ? copy.save : copy.generate}
           </button>
         </div>

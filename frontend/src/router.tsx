@@ -22,6 +22,7 @@ import { MemberImport } from './routes/MemberImport'
 import { NewMember } from './routes/NewMember'
 import { NotFound } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
+import { Privacy, validatePrivacySearch } from './routes/Privacy'
 import { SessionDetail } from './routes/SessionDetail'
 import { SignIn } from './routes/SignIn'
 import { Settings, SETTINGS_SECTIONS } from './routes/Settings'
@@ -109,6 +110,15 @@ const joinRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'unirse/$token',
   component: Join,
+})
+
+// "Política de privacidad": a gym's privacy notice (#168), open to anyone, linked from
+// the join form and the student page.
+const privacyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'privacidad',
+  validateSearch: validatePrivacySearch,
+  component: Privacy,
 })
 
 // /admin/*: gym owners and coaches.
@@ -233,6 +243,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
   joinRoute,
+  privacyRoute,
   adminRoute.addChildren([
     adminTodayRoute,
     adminStudentsRoute,

@@ -27,7 +27,8 @@ from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_databas
 # The local BlobStore's URLs carry their own signature instead of a session, and
 # sign-in comes before there is one (`tests/test_auth.py` covers each of its routes).
 # An unsubscribe link's token names its gym (`tests/test_notices.py`), and so does a
-# join link's (`tests/test_join.py`).
+# join link's (`tests/test_join.py`). A gym's privacy notice is anyone's to read
+# (`tests/test_privacy.py`).
 PUBLIC_PATHS = {
     "/healthz",
     "/api/blobs/{key}",
@@ -37,6 +38,7 @@ PUBLIC_PATHS = {
     "/api/mail/unsubscribe/{token}",
     "/api/join/{token}",
     "/api/host",
+    "/api/privacy",
     "/internal/tls-allowed",
 }
 

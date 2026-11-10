@@ -22,7 +22,15 @@ const LINK: JoinLink = {
 
 type Call = { method: string; path: string; body: unknown }
 
-function stubApi(initial: JoinLink | null = null) {
+const PRIVACY = {
+  legal_name: 'Academia Sur SpA',
+  rut: '76432109-K',
+  email: 'privacidad@academiasur.example.com',
+  address: null,
+  updated_on: '2026-11-10',
+}
+
+function stubApi(initial: JoinLink | null = null, { privacy = true }: { privacy?: boolean } = {}) {
   const calls: Call[] = []
   let link = initial
   let tokens = 0
@@ -36,10 +44,13 @@ function stubApi(initial: JoinLink | null = null) {
       let answer: { status?: number; body?: unknown } = { status: 404, body: { detail: 'Not Found' } }
       if (url.pathname === '/api/me/role') answer = { body: { role: 'owner', person_id: 'me' } }
       if (url.pathname === '/api/programs') answer = { body: [{ id: 'kids', name: 'Kids', active: true }] }
-      if (url.pathname === '/api/gym/settings') answer = { body: { name: 'Academia Sur' } }
+      if (url.pathname === '/api/gym/settings') {
+        answer = { body: { name: 'Academia Sur', privacy: privacy ? PRIVACY : null } }
+      }
       if (url.pathname === '/api/join-link') {
         if (method === 'GET') answer = link ? { body: link } : { status: 404, body: { detail: 'no join link' } }
-        if (method === 'POST') {
+        if (method === 'POST' && !privacy) answer = { status: 409, body: { detail: 'privacy_incomplete' } }
+        else if (method === 'POST') {
           tokens += 1
           const token = `nuevo${tokens}-0123456789abcdef`
           link = { ...LINK, ...body, token, url: `https://rakin.cl/unirse/${token}` }
@@ -143,5 +154,33 @@ describe('Inscripción', () => {
 
     expect(await screen.findByText(copy.revoked)).toBeInTheDocument()
     expect(await screen.findByText(copy.none)).toBeInTheDocument()
+  })
+
+  it('cannot generate a link until the privacy details are set, and says where to set them', async () => {
+    const calls = stubApi(null, { privacy: false })
+    renderAt('/admin/ajustes/inscripcion')
+
+    const here = await section()
+    expect(await within(here).findByRole('alert')).toHaveTextContent(copy.needsPrivacy)
+    expect(within(here).getByRole('link', { name: copy.needsPrivacyLink })).toHaveAttribute(
+      'href',
+      '/admin/ajustes/gimnasio#privacidad',
+    )
+    expect(within(here).getByRole('button', { name: copy.generate })).toBeDisabled()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+  })
+
+  it('says a link made before the privacy details does not work, and a new one is refused', async () => {
+    stubApi(LINK, { privacy: false })
+    renderAt('/admin/ajustes/inscripcion')
+
+    const here = await section()
+    expect(await within(here).findByRole('alert')).toHaveTextContent(copy.needsPrivacy)
+    await userEvent.click(within(here).getByRole('button', { name: copy.regenerate }))
+    await userEvent.click(within(here).getByRole('button', { name: copy.confirm }))
+
+    await vi.waitFor(() => expect(within(here).getByRole('button', { name: copy.confirm })).toBeEnabled())
+    expect(within(here).getAllByRole('alert')).toHaveLength(1)
+    expect(within(here).getByLabelText(copy.linkLabel)).toHaveValue(LINK.url)
   })
 })
