@@ -1,4 +1,4 @@
-"""The class timer's data (migration 0025): block kinds, open mats, a session's blocks
+"""The class timer's data (migration 0028): block kinds, open mats, a session's blocks
 and a person's time from the sessions they attended.
 
 A gym starts with six block kinds; one in use is archived, not deleted. A session's plan
@@ -194,7 +194,7 @@ def test_a_gym_starts_with_the_six_kinds_in_order(client: TestClient, gym: uuid.
 @pg
 def test_the_migration_gives_the_gyms_already_there_their_kinds() -> None:
     with throwaway_database(require_test_database_url()) as fresh:
-        migrate(fresh, "0024")
+        migrate(fresh, "0025")
         before = seed_gym(fresh, "before")
         migrate(fresh)
         rows = run(

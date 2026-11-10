@@ -144,7 +144,7 @@ LIVE_MEMBERSHIP = """
 
 # The person's classes over every membership they hold here, in all and from each of
 # two instants: sessions of a class type that counts as a class, so not an open mat by
-# default (migration 0025). RLS keeps it to the current gym.
+# default (migration 0028). RLS keeps it to the current gym.
 COUNTS = """
     SELECT count(*) AS total,
            count(*) FILTER (WHERE s.starts_at >= :recent) AS recent,

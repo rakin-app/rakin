@@ -27,8 +27,8 @@ spent sparring. A student's time is the blocks of every session they attended
 The plan is replaced whole, so `rakin_app` may delete blocks as well as add and change
 them. Both tables reference the gym's rows with `gym_id` in the key, as attendance does.
 
-Revision ID: 0025
-Revises: 0024
+Revision ID: 0028
+Revises: 0025
 Create Date: 2026-11-10
 
 """
@@ -37,8 +37,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0025"
-down_revision: str | Sequence[str] | None = "0024"
+revision: str = "0028"
+down_revision: str | Sequence[str] | None = "0025"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

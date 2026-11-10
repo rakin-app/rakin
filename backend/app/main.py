@@ -26,6 +26,7 @@ from app.api import (
     proofs,
     session_blocks,
     sessions,
+    staff,
     unsubscribe,
 )
 from app.auth import LANDINGS, PREFIX, TEXTS, bind_session, build_magic_links
@@ -85,6 +86,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(memberships.router)
     app.include_router(member_import.router)
     app.include_router(gym.router)
+    app.include_router(staff.router)
     app.include_router(grading.router)
     app.include_router(grades.router)
     app.include_router(ledger.router)

@@ -6,7 +6,7 @@ sessions point at it (migration 0020), so it is deactivated with `PATCH {"active
 A name is unique within its program, case ignored: a second "Fundamentos" in Kids is a
 409, one in Adultos is not.
 
-A class type is a class or an open mat (`kind`, migration 0025), and `counts_as_class`
+A class type is a class or an open mat (`kind`, migration 0028), and `counts_as_class`
 says whether attending one counts towards a student's classes: by default a class does
 and an open mat does not.
 

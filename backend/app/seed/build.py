@@ -67,7 +67,7 @@ GYM_ID = seed_id("gym")
 
 
 def default_block_kind_id(gym_id: uuid.UUID, key: str) -> uuid.UUID:
-    """The id of a gym's default block kind, as migration 0025's
+    """The id of a gym's default block kind, as migration 0028's
     `block_kind_default_id` derives it: every gym is given them when it is created."""
     return uuid.UUID(hashlib.md5(f"{gym_id}/block_kind/{key}".encode()).hexdigest())
 
@@ -94,7 +94,7 @@ class Seed:
     # Each member's current rank (migration 0018).
     grade_events: list[Row]
     # The adults' classes of the last weeks, who was at each (migrations 0020, 0023) and
-    # the blocks each ran (0025), of the kinds every gym is given.
+    # the blocks each ran (0028), of the kinds every gym is given.
     sessions: list[Row]
     attendance: list[Row]
     session_blocks: list[Row]

@@ -150,6 +150,7 @@ describe('Ajustes', () => {
       [copy.sections.blocks, '/admin/ajustes/bloques'],
       [copy.sections.grading, '/admin/ajustes/graduacion'],
       [copy.sections.fields, '/admin/ajustes/campos'],
+      [copy.sections.staff, '/admin/ajustes/equipo'],
     ])
     expect(await screen.findByRole('form', { name: gym.formLabel })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/admin/ajustes/gimnasio')
