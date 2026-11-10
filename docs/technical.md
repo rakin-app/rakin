@@ -58,7 +58,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `badge_token` | membership\_id, token, issued\_at, expires\_at | signed QR for cross-gym verification |
 | `agreement` | gym\_a\_id, gym\_b\_id, rule jsonb, active | v2: reciprocal terms |
 | `visit` | person\_id, host\_gym\_id, home\_membership\_id, agreement\_id, at | v2: cross-gym visit log |
-| `plan_event` | gym\_id, membership\_id, kind, occurred\_on | outbox for plan-event emails; kind ∈ frozen, unfrozen, lapsed, promoted; written with the state change it reports |
+| `plan_event` | gym\_id, membership\_id, kind, occurred\_on | outbox for plan-event emails; kind ∈ frozen, unfrozen, lapsed, promoted; written with the state change it reports; one per membership, kind and day, so a second change of a kind that day (a freeze ended twice) writes no second event, and created\_by names the first |
 | `job_run` | job\_name, run\_date, status, started\_at, finished\_at | idempotency for nightly jobs |
 
 Derived views, not tables: `v_overdue` (billing periods past due with no validated payment), `v_balance` (per membership, sum of ledger), `v_inactive` (last attendance > N days), `v_monthly_income` (validated payments less refunds, by month).

@@ -162,6 +162,8 @@ type Stub = {
   fields?: PersonField[]
   fieldsUpdate?: Answer
   attendance?: Answer
+  // The gym's timezone, as today's sessions give it.
+  timeZone?: string
 }
 
 function stubApi({
@@ -179,6 +181,7 @@ function stubApi({
   fields = [],
   fieldsUpdate,
   attendance = { body: { last_30_days: 9, total: 184, since_promotion: 62 } },
+  timeZone = 'America/Santiago',
 }: Stub = {}) {
   const calls: Call[] = []
   let current = ledger
@@ -203,6 +206,7 @@ function stubApi({
   function route(url: URL, method: string): Answer {
     const path = url.pathname
     if (path === '/api/me/role') return { body: { role } }
+    if (path === '/api/sessions') return { body: { date: '2026-11-10', timezone: timeZone, sessions: [] } }
     if (path === '/api/ledger/pending') return { body: { count: 0 } }
     if (path === '/api/people/felipe') return person ?? { body: FELIPE }
     if (path === '/api/memberships' && url.searchParams.get('person_id') === 'felipe') return { body: members }
@@ -630,6 +634,31 @@ describe('Ficha de alumno', () => {
     expect(await within(card).findByText(copy.freezeBooked(shortDay(from), shortDay(until)))).toBeInTheDocument()
     expect(within(card).queryByText(copy.frozenUntil(shortDay(until)))).not.toBeInTheDocument()
     expect(within(card).getByRole('button', { name: copy.callOffFreeze })).toBeInTheDocument()
+  })
+
+  it.each([
+    // 22:30 in Santiago is 01:30 the next day in UTC: still the 10th at the gym.
+    ['America/Santiago', '2026-11-10', '2026-11-11'],
+    // The same instant is the 11th in Tokyo, whatever zone this device is in.
+    ['Asia/Tokyo', '2026-11-11', '2026-11-12'],
+  ])('starts a freeze on the gym\'s today in %s', async (timeZone, today, tomorrow) => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-11T01:30:00Z') })
+    const calls = stubApi({ timeZone })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    const from = screen.getByLabelText(copy.freezeForm.from)
+    await waitFor(() => expect(from).toHaveValue(today))
+    expect(from).toHaveAttribute('min', today)
+    expect(screen.getByLabelText(copy.freezeForm.until)).toHaveAttribute('min', tomorrow)
+    fireEvent.change(screen.getByLabelText(copy.freezeForm.until), { target: { value: '2026-11-20' } })
+    await userEvent.type(screen.getByLabelText(copy.freezeForm.reason), 'Viaje')
+    await userEvent.click(screen.getByRole('button', { name: copy.freezeForm.submit }))
+
+    // From the gym's today, which the server takes when no day is sent.
+    await screen.findByRole('status')
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ to_date: '2026-11-20', reason: 'Viaje' })
   })
 
   it('offers an end from the day after the freeze starts', async () => {

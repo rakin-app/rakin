@@ -338,7 +338,10 @@ INSERT_FREEZE = text(
     " VALUES (current_setting('app.gym_id')::uuid, :id, :from, :to, :reason, :by, :started)"
 )
 
-# A plan event a request writes, with whose request it was.
+# A plan event a request writes, with whose request it was. One per membership, kind
+# and day, deliberately: a freeze ended, frozen again and ended again the same day keeps
+# its first `unfrozen` event, so the member is told once and `created_by` is the first
+# to end it.
 INSERT_EVENT = text(
     "INSERT INTO plan_event (gym_id, membership_id, kind, occurred_on, created_by)"
     " VALUES (current_setting('app.gym_id')::uuid, :id, :kind, :on, :by)"

@@ -39,6 +39,7 @@ import {
   type TimelineEntry,
 } from '../api/member'
 import { myRoleQuery, readsLedger } from '../api/me'
+import { useGymToday } from '../api/sessions'
 import { ChevronLeftIcon } from '../components/icons'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
@@ -338,11 +339,6 @@ function addDays(day: string, days: number): string {
   return next.toISOString().slice(0, 10)
 }
 
-// Today, the first day a freeze can start on: `2026-11-10`.
-function today(): string {
-  return isoDay(new Date().toISOString())
-}
-
 /** A change to a freeze: the membership and its ledger are read again after it. */
 function useFreezeChange(mutationFn: () => Promise<Membership>, onSuccess: (membership: Membership) => void) {
   const queryClient = useQueryClient()
@@ -369,8 +365,11 @@ function FreezeForm({
 }) {
   const form = copy.freezeForm
   const ids = { from: useId(), until: useId(), hint: useId(), reason: useId() }
-  const first = today()
-  const [from, setFrom] = useState(first)
+  // Today, the first day a freeze can start on, in the gym's timezone.
+  const first = useGymToday()
+  // Today until a day is picked: the gym's timezone may arrive after the form opens.
+  const [picked, setFrom] = useState<string | null>(null)
+  const from = picked ?? first
   const [until, setUntil] = useState('')
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
@@ -490,7 +489,8 @@ function EditFreezeForm({
   const form = copy.editFreezeForm
   const ids = { until: useId(), hint: useId(), reason: useId() }
   // A running freeze ends after today (ending it today is "Terminar"), a booked one after its first day.
-  const first = addDays(freeze.started ? today() : freeze.from_date, 1)
+  const today = useGymToday()
+  const first = addDays(freeze.started ? today : freeze.from_date, 1)
   const [until, setUntil] = useState(freeze.to_date)
   const [reason, setReason] = useState(freeze.reason)
   const [checked, setChecked] = useState(false)
@@ -865,7 +865,7 @@ function GoalTile({
   current: Rank
   sincePromotion: number | null
 }) {
-  const progress = goalProgress(scheme, current, sincePromotion, isoDay(new Date().toISOString()))
+  const progress = goalProgress(scheme, current, sincePromotion, useGymToday())
   if (!progress) return null
   const { metric, done, target, next } = progress
   const text = copy.grading.goal(done, target, metric, next)
@@ -900,12 +900,6 @@ function GradeRow({ event }: { event: GradeEvent }) {
       </div>
     </li>
   )
-}
-
-/** Today as an ISO day, on this device: the API refuses a later one in the gym's. */
-function isoToday(): string {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
 }
 
 /** The rank and sub-rank the form starts on: the current rank's next sub-rank, else the
@@ -943,7 +937,10 @@ function GradeForm({
   const start = nextRank(scheme, current)
   const [rankKey, setRankKey] = useState(start.rank)
   const [subRank, setSubRank] = useState<string | null>(start.sub)
-  const [awardedOn, setAwardedOn] = useState(isoToday())
+  // Today in the gym's timezone, which the API refuses a later day than, until a day is picked.
+  const today = useGymToday()
+  const [picked, setAwardedOn] = useState<string | null>(null)
+  const awardedOn = picked ?? today
   const [note, setNote] = useState('')
   const rank = [...scheme.ranks, ...scheme.kids_ladder].find((r) => r.key === rankKey)
 
@@ -1022,7 +1019,7 @@ function GradeForm({
         className="member__input"
         type="date"
         required
-        max={isoToday()}
+        max={today}
         value={awardedOn}
         onChange={(e) => setAwardedOn(e.target.value)}
       />
