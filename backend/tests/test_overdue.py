@@ -16,9 +16,16 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
+from tests.pg import (
+    Database,
+    migrate,
+    run,
+    seed_gym,
+    seeded_owner,
+    seeded_today,
+    throwaway_database,
+)
 from tests.test_guardians import add_person, bill
-from tests.test_membership_ledger import gym_today
 from tests.test_plans import add_staff
 
 pg = pytest.mark.postgres
@@ -82,7 +89,7 @@ def test_lists_active_overdue_periods_longest_first_with_the_total(
 
     found = read(client, sur)
 
-    today = gym_today()
+    today = seeded_today()
     rows = [
         (p["membership_id"], p["person_name"], p["plan_name"], p["outstanding_clp"])
         for p in found["periods"]

@@ -37,6 +37,7 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import { ChevronLeftIcon } from '../components/icons'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
+import { CustomFieldsPanel } from './CustomFieldsPanel'
 import { FamilyPanel } from './FamilyPanel'
 import './MemberDetail.css'
 
@@ -53,7 +54,9 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * A coach sees the member, their plan and rank, whether it is frozen, and promotes
  * them; never money.
  *
- * Attendance and custom fields join this screen with their own tickets (#44, #20).
+ * Below them, the gym's custom fields the signed-in role may see (#20).
+ *
+ * Attendance joins this screen with its own ticket (#44).
  */
 export function MemberDetail() {
   const { personId } = route.useParams()
@@ -109,6 +112,7 @@ export function MemberDetail() {
         <h2 className="member__section-title">{t.admin.family.toggle}</h2>
         <FamilyPanel person={person.data} />
       </section>
+      <CustomFieldsPanel personId={person.data.id} />
     </Shell>
   )
 }

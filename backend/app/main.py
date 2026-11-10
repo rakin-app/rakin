@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.api import (
     blobs,
     class_types,
+    custom_fields,
     grades,
     grading,
     guardians,
@@ -20,6 +21,7 @@ from app.api import (
     programs,
     proof_review,
     proofs,
+    sessions,
     unsubscribe,
 )
 from app.auth import LANDINGS, PREFIX, TEXTS, bind_session, build_magic_links
@@ -60,12 +62,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
     app.include_router(people.router)
+    app.include_router(custom_fields.router)
     app.include_router(guardians.router)
     app.include_router(me.router)
     app.include_router(proofs.router)
     app.include_router(plans.router)
     app.include_router(programs.router)
     app.include_router(class_types.router)
+    app.include_router(sessions.router)
     app.include_router(memberships.router)
     app.include_router(member_import.router)
     app.include_router(gym.router)

@@ -10,18 +10,17 @@ import copy
 import json
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.dates import local_date
 from app.main import create_app
 from app.schemas.grading import PRESETS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_guardians import add_person, bill
 from tests.test_plans import add_staff
 
@@ -29,11 +28,6 @@ pg = pytest.mark.postgres
 
 BJJ = next(p.scheme.model_dump() for p in PRESETS if p.key == "bjj")
 JUDO = next(p.scheme.model_dump() for p in PRESETS if p.key == "judo-karate")
-
-
-def today() -> date:
-    # `seed_gym` leaves the gym on the default timezone.
-    return local_date(datetime.now(UTC), "America/Santiago")
 
 
 @pytest.fixture(scope="module")
@@ -102,7 +96,7 @@ def test_a_promotion_is_the_current_rank_with_the_schemes_labels(
 ) -> None:
     gym = gym_with(client, db)
     person = member(client, db, gym)
-    on = today() - timedelta(days=30)
+    on = seeded_today() - timedelta(days=30)
 
     response = award(
         client, gym, person, rank_key="blue", sub_rank="2", awarded_on=str(on), note=" Buen año "
@@ -133,14 +127,14 @@ def test_the_latest_award_is_current_and_the_log_is_newest_first(
 ) -> None:
     gym = gym_with(client, db)
     person = member(client, db, gym)
-    award(client, gym, person, rank_key="blue", sub_rank="0", awarded_on=str(today()))
+    award(client, gym, person, rank_key="blue", sub_rank="0", awarded_on=str(seeded_today()))
     # Entered afterwards, but given earlier: history, not the current rank.
     award(client, gym, person, rank_key="white", sub_rank="4", awarded_on="2024-03-01")
 
     body = grades(client, gym, person)
     assert (body["current"]["rank_key"], body["current"]["sub_rank"]) == ("blue", "0")
     assert [(e["rank_key"], e["awarded_on"]) for e in body["events"]] == [
-        ("blue", str(today())),
+        ("blue", str(seeded_today())),
         ("white", "2024-03-01"),
     ]
 
@@ -155,7 +149,7 @@ def test_a_promotion_to_the_current_rank_writes_a_promoted_plan_event(
 ) -> None:
     gym = gym_with(client, db)
     person = member(client, db, gym)
-    yesterday = today() - timedelta(days=1)
+    yesterday = seeded_today() - timedelta(days=1)
 
     award(client, gym, person, rank_key="blue", sub_rank="0", awarded_on=str(yesterday))
     assert plan_events(db, gym) == [("promoted", yesterday)]
@@ -169,7 +163,7 @@ def test_a_promotion_to_the_current_rank_writes_a_promoted_plan_event(
     assert plan_events(db, gym) == [("promoted", yesterday)]
 
     award(client, gym, person, rank_key="blue", sub_rank="2")
-    assert plan_events(db, gym) == [("promoted", yesterday), ("promoted", today())]
+    assert plan_events(db, gym) == [("promoted", yesterday), ("promoted", seeded_today())]
 
 
 @pg

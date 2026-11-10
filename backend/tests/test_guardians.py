@@ -8,7 +8,7 @@ gym that shares a parent never learns about the family.
 import asyncio
 import uuid
 from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Any
 
 import asyncpg
@@ -32,6 +32,7 @@ from tests.pg import (
     run,
     seed_gym,
     seeded_owner,
+    seeded_today,
     throwaway_database,
 )
 from tests.test_people import new_phone
@@ -380,7 +381,7 @@ def bill(
                 uuid.UUID(person),
             )
             for due_in, due, paid, pending in periods:
-                start = date.today() + timedelta(days=due_in)
+                start = seeded_today() + timedelta(days=due_in)
                 period = await conn.fetchval(
                     "INSERT INTO billing_period (gym_id, membership_id, period_start,"
                     " period_end, amount_due_clp, due_date) VALUES ($1, $2, $3, $4, $5, $3)"

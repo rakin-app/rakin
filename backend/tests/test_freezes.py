@@ -8,14 +8,14 @@ that day. The job tests run a gym of their own (`tests.jobgym`) on fixed dates.
 import dataclasses
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.dates import local_date
+from app.domain.dates import gym_today
 from app.domain.membership import MAX_FREEZE_DAYS
 from app.jobs import daily, freezes, run_due
 from app.main import create_app
@@ -54,7 +54,7 @@ def sur(db: Database) -> uuid.UUID:
 
 def today(db: Database, gym: uuid.UUID) -> date:
     (row,) = run(db.owner_url, in_gym(gym, "SELECT timezone FROM gym"))
-    return local_date(datetime.now(UTC), row["timezone"])
+    return gym_today(row["timezone"])
 
 
 def member(client: TestClient, gym: uuid.UUID, key: str, started_on: date) -> dict[str, Any]:

@@ -25,7 +25,7 @@ Three configuration surfaces absorb all sport variance; the rest of the system i
 | dropin | price | one charge, one attendance, no membership persistence |
 | trial | free\_classes or free\_days | zero charge; converts or lapses |
 
-**Custom fields** — per-gym definitions `{key, label, type, options?, sensitive?}`; values stored per person per gym. Weight, competition record, insurance number, federation ID, emergency contact. Fields marked `sensitive` are encrypted at rest and excluded from exports unless explicitly included (see Compliance).
+**Custom fields** — per-gym definitions `{key, label, type, options?, sensitive?, visible_to}`; values stored per person per gym. Weight, competition record, insurance number, federation ID, emergency contact. `visible_to` (`owner`, `admin` or `staff`) is who among the staff sees the field, set by the owner only. Fields marked `sensitive` start as `owner`, are encrypted at rest and excluded from exports unless explicitly included (see Compliance).
 
 Anything a gym asks for that doesn't fit these three surfaces is either a non-goal or a core feature for all sports, never a sport-specific branch.
 
@@ -49,7 +49,7 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `ledger_entry` | id, gym\_id, membership\_id, billing\_period\_id, amount\_clp, kind, status, method, claimed\_by, claimed\_at, validated\_by, validated\_at, proof\_object\_key, bank\_tx\_ref, note, refund\_of | kind ∈ charge, payment, adjustment, refund; status ∈ pending, validated, rejected; method ∈ cash, transfer, other, or none; amounts positive but an adjustment's, signed; a refund references its payment; append-only |
 | `program` | id, gym\_id, name, active | the gym's own groups: adults, kids, competition, …; name unique in the gym; deactivated, never deleted |
 | `class_type` | id, gym\_id, name, program\_id, credit\_cost, active | one program each; credit\_cost is what an attendance takes from a credits membership, 0 for a free class; name unique within its program; deactivated, never deleted |
-| `session` | id, gym\_id, class\_type\_id, starts\_at, coach\_id, topic, notes | one row per class actually held |
+| `session` | id, gym\_id, class\_type\_id, starts\_at, coach\_id, topic, notes | one row per class actually held, started by the coach when it begins (no timetable); the day's sessions are those starting that day in the gym's timezone; coach\_id is the gym's record of a person, staff when the session was started; never deleted |
 | `attendance` | session\_id, membership\_id, marked\_by, marked\_at, credits\_consumed | unique (session, membership) |
 | `grade_event` | gym\_id, membership\_id, rank\_key, sub\_rank, awarded\_on, awarded\_by, note, created\_at | promotion log; keys of the gym's grading scheme; current rank is the latest by awarded\_on over the person's memberships; append-only; one that becomes current writes a `promoted` plan\_event |
 | `person_field_value` | person\_id, gym\_id, field\_key, value jsonb | custom fields; sensitive keys encrypted |
@@ -214,7 +214,7 @@ Chile's Ley 21.719 (personal data protection) enters into force on 1 December 20
 | Data controller | whoever runs the instance is responsible: the company for hosted gyms, each self-hoster for theirs | stated in README and hosted terms; a DPA template for hosted gyms |
 | Consent | explicit, informed, revocable | consent captured at membership creation (adult) or by guardian (minor), stored with timestamp and text version |
 | Minors | guardian consent; no direct marketing | kids never receive messages; all comms go to the guardian |
-| Sensitive data | health data (weight, injuries, conditions) is sensitive and needs explicit consent | custom fields flagged `sensitive` are encrypted at rest (pgcrypto or app-level), excluded from default exports, visible only to owner/admin roles, with a per-gym toggle to disable entirely |
+| Sensitive data | health data (weight, injuries, conditions) is sensitive and needs explicit consent | custom fields flagged `sensitive` are encrypted at rest (app-level, AES-GCM), excluded from default exports, and visible to the roles the owner chooses per field (`visible_to`: owner only, owner and admins, or all staff), owner only by default; the API never answers a field's definition or value to a role it is not visible to, with a per-gym toggle to disable entirely |
 | Access and deletion | right to access, rectify, delete | student page shows all stored data; one-click JSON export; deletion anonymises the person row and keeps ledger amounts (legitimate interest: accounting) |
 | Retention | no longer than necessary | lapsed memberships anonymised after 24 months unless the gym opts out; proof images deleted 12 months after validation |
 | Waivers | climbing requires signed liability waivers; BJJ academies use them for minors | v2: on-phone signature, PDF stored per person with version of the text signed |

@@ -306,3 +306,30 @@
     padding-inline: var(--space-8);
   }
 }
+
+.member__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.member__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.member__field dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.member__tag {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+}

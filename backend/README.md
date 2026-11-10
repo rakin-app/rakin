@@ -30,6 +30,8 @@ TEST_S3_ENDPOINT_URL=http://localhost:3900 uv run pytest -m s3
 
 Tests marked `postgres` skip unless `TEST_DATABASE_URL` points at a reachable database. With `REQUIRE_POSTGRES=1` (as in CI) a missing `TEST_DATABASE_URL` fails them instead. Tests marked `s3` do the same with `TEST_S3_ENDPOINT_URL` and `REQUIRE_S3`; they use the `S3_*` access key and bucket defaults, which `garage-init` creates.
 
+"Today" is the gym's date, `gym_today(tz)` in `app/domain/dates.py` (`seeded_today()` in `tests/pg.py` for a seeded gym), never the host's: on a UTC host the two differ every night from 00:00 UTC. `tests/test_clock.py` fails on `date.today()`, a zoneless `datetime.now()` and `datetime.now(UTC).date()` in `app`, `tests` and `alembic`; a line that does mean the host's date carries a `# system date: <why>` comment. CI's `backend-midnight` job runs the suite with Postgres and pytest under libfaketime at 00:30 UTC, `TZ=UTC`, without the `s3` tests.
+
 ## Integrations
 
 Every external service sits behind an interface in `app/integrations`, and a setting picks the implementation. The defaults need no network and no account, so a self-hosted instance works offline with none configured ([spec](../docs/technical.md#architecture)).
@@ -179,7 +181,7 @@ An admin corrects the ledger with new entries, never by editing one (#38). Both 
 | `POST` | `/api/ledger/adjustments` | `{"membership_id", "billing_period_id", "amount_clp", "note"}`: 201 with `{adjustment, period}`. The sign says which way it goes: positive is in the member's favour and counts towards the period as a payment does, negative is owed on top of its amount due and opens a period that was paid. `note`, why, is required (422 without one), and `amount_clp` is not zero. 409 for one in the member's favour beyond what the period still owes: credit is a payment's to carry. 404 for a period not of that membership in this gym |
 | `POST` | `/api/ledger/refunds` | `{"payment_id", "amount_clp", "method", "note"?}`: 201 with `{refund, period}`. The refund names its payment in `refund_of` and carries its period, which no longer counts what was given back and opens again if that leaves it short. 409 for a payment not validated, or more than is left of it after its earlier refunds. 404 for an entry that is not a payment in this gym |
 
-Every settlement in the app counts a period's validated payments and adjustments less its refunds (`app.domain.billing.settled_amount`), so a period's `paid_clp` is below zero while an adjustment against the member outweighs what was paid. Migration `0019` adds `refund_of` (a refund's payment: `(kind = 'refund') = (refund_of IS NOT NULL)`, a foreign key to an entry on the same membership, and the `ledger_entry_refund_target` trigger, which refuses one that is not a validated payment on the refund's own period; how much is left of the payment stays the API's to check, under the lock), holds every amount positive but an adjustment's, which is signed and not zero, and counts refunds in `v_overdue`. Neither sends an email.
+Every settlement in the app counts a period's validated payments and adjustments less its refunds (`app.domain.billing.settled_amount`), so a period's `paid_clp` is below zero while an adjustment against the member outweighs what was paid. Migration `0021` adds `refund_of` (a refund's payment: `(kind = 'refund') = (refund_of IS NOT NULL)`, a foreign key to an entry on the same membership, and the `ledger_entry_refund_target` trigger, which refuses one that is not a validated payment on the refund's own period; how much is left of the payment stays the API's to check, under the lock), holds every amount positive but an adjustment's, which is signed and not zero, and counts refunds in `v_overdue`. Neither sends an email.
 
 ### The ledger book
 
@@ -243,6 +245,19 @@ A plan change waits for the next period; proration is v2. Only a monthly or prep
 
 A freeze (#26) is a side trip from Active: only an active membership freezes (a trial, a frozen, a lapsed or a cancelled one is a 409), from today until `to_date`. The days in between are not charged, and the due date moves past them as the freeze starts, so the member reads the day they next pay on all through it: billing resumes after the later of `current_period_end` and the last period that started before today, so that moves by the frozen days; every billing period starting today or later moves by them too, `period_start`, `period_end` and `due_date` alike (a charge already written stays on its period); a monthly plan's `anchor_day` becomes the day after the new `current_period_end`; and a pending plan change's `next_plan_from` moves with them. A credits pack's expiry moves the same way. The freeze is a `membership_freeze` row (`0017`, append-only for `rakin_app`), written with a `frozen` `plan_event`, and a membership read carries it as `freeze` (`id`, `from_date`, `to_date`, `reason`) while frozen. The nightly `freezes` job returns it to Active on `to_date`. Payments may still be recorded against a frozen membership's periods: what it owed before the freeze, it still owes.
 
+## Sessions API
+
+One `session` row per class actually held (migration `0020`, [spec](../docs/technical.md#domain-model)). There is no timetable: a coach starts a session when the class begins, and writes its topic and notes during or after it.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/sessions` | `{"date", "timezone", "sessions": […]}`: the sessions starting on `?date=` (an ISO day; default today), a calendar day in the gym's timezone, earliest first |
+| `POST` | `/api/sessions` | start one: `class_type_id`, and optionally `starts_at` (with its offset; default now), `coach_id` (default the person acting), `topic`, `notes`; 201 with the session |
+| `GET` | `/api/sessions/{id}` | one session; 404 for another gym's |
+| `PATCH` | `/api/sessions/{id}` | change `topic`, `notes` or `coach_id`; only what is sent changes |
+
+A session carries its `class_type_id` and `class_type_name`, `program_id` and `program_name`, `starts_at`, `coach_id` and `coach_name` (the gym's record of them), `topic`, `notes`, `created_at` and `updated_at`. A topic is up to 200 characters and notes up to 4,000; a blank one, or `null`, is none. The class type must be one of the gym's active ones (422 `unknown_class_type` or `inactive_class_type` on `class_type_id`), and the coach on its staff in any role (422 `unknown_coach`) when a session is started or reassigned: a coach who leaves stays the coach of the sessions they taught, since the row references `gym_person`, not `staff`. Any staff role may read, start and edit sessions, coaches included; there is no delete, since attendance (#44) points at a session.
+
 ## Member import
 
 Onboarding a gym is mostly bringing its spreadsheet over. The admin uploads the file, says what each column is, checks it, then imports; the SPA's screen is `/admin/alumnos/importar`. Only an owner or admin may, since it starts memberships.
@@ -268,6 +283,25 @@ Each row is written in a savepoint of its own: a refused row writes nothing, and
 | `PATCH` | `/api/gym/settings` | change any of those but `slug`; `channels` and `bank_account` are replaced whole, and `bank_account: null` clears the bank details |
 
 Owner and admin only (`AdminSession`); a coach or member gets a 403, since the bank details decide where students send their money. `name` and `timezone` are columns on `gym`; the rest are keys of `gym.settings`, and the grading scheme and custom fields stored beside them are left untouched. `timezone` must be an IANA name, `grace_days` 0 to 60, `reminder_every_days` 1 to 30. `bank_account` takes `bank`, `account_type` (`Cuenta Corriente`, `Cuenta Vista`, `Cuenta RUT` or `Cuenta de Ahorro`), `holder`, `rut` (normalised to `76123456-0`), `number` and an optional `email` for the transfer notice. Email is always on, so `channels` holds only `whatsapp`.
+
+## Custom fields API
+
+Each gym defines its own fields on people (weight class, emergency contact, medical notes): `text`, `number`, `date` or `enum` ([spec](../docs/technical.md#sport-agnostic-design)). The definitions are a list in `gym.settings.custom_fields`, in the order the member detail shows them; values are rows of `person_field_value` (migration 0019), one per person and field.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/custom-fields` | the fields the caller may see, in order, archived ones included: `key`, `label`, `type`, `options` (an enum's), `sensitive`, `visible_to`, `archived` |
+| `POST` | `/api/custom-fields` | a new field from `label`, `type`, `options` (an enum's, and only there), and the owner's `sensitive` and `visible_to`; its `key` is made from the label and a random suffix (`Notas médicas` → `notas_medicas_3f9a`) |
+| `PATCH` | `/api/custom-fields/{key}` | change `label`, an enum's `options`, `archived`, and the owner's `sensitive` and `visible_to`; the key and type are fixed. Removing an option people still hold is a 409, `{"code": "option_in_use", "options": {"Pluma": 2}}`, so no stored value is left naming no option |
+| `PUT` | `/api/custom-fields/order` | `keys`: every field the caller sees, in their new order; fields the caller does not see keep their places |
+| `GET` | `/api/people/{id}/fields` | the person's values for the fields the caller sees and that are not archived, in order; `value` is `null` when unset |
+| `PATCH` | `/api/people/{id}/fields` | `values` by key; `null` (or blank text) clears one, keys not sent are kept |
+
+Every staff role reads definitions and reads and writes values; defining, reordering and archiving is owner and admin (`AdminSession`). `visible_to` is who sees a field: `owner` (Solo dueño), `admin` (Dueño y administradores) or `staff` (Todo el staff, incluye coaches); the owner sees every field. It defaults to `owner` for a sensitive field and `staff` otherwise, and when the owner marks an existing field sensitive without naming a `visible_to`, it narrows to `owner`. Only the owner may set `sensitive` or `visible_to`: an admin who sends either gets a 403, so an admin can add fields but never widen who sees one. A field the caller may not see is answered as one that does not exist: it is left out of every list, a `PATCH` on its definition is a 404, and a value for it is an `unknown field`, the same as a key no field has. Every new key carries a random suffix, so a key made while a hidden field holds the plain one looks like any other.
+
+A value must fit its type: text up to 1,000 characters (trimmed), a JSON number, a `YYYY-MM-DD` date, or one of the enum's options. A refused `PATCH` writes nothing and is a 422 whose `detail.fields` gives each refused key's reason. Archived fields keep their values but are neither shown nor written until unarchived.
+
+A sensitive field's value is stored in `secret`, encrypted with AES-GCM under a key derived from `FIELD_ENCRYPTION_KEY` and bound to its gym, person and field, never in `value`; changing a field's `sensitive` flag re-encrypts or decrypts what it holds. A definition change reads `gym.settings` `FOR UPDATE` and a value write `FOR SHARE`, so a value written while the owner marks its field sensitive waits for that and is sealed. `FIELD_ENCRYPTION_KEY` is its own setting, not `SECRET_KEY`, so rotating `SECRET_KEY` after a leak touches no stored value; the API refuses to start in production with its local default. **Changing `FIELD_ENCRYPTION_KEY` makes stored sensitive values unreadable**: never change it without re-encrypting them, and keep it with the backups.
 
 ## Grading scheme API
 
@@ -322,6 +356,8 @@ RLS is **forced**, so it applies to `rakin_owner` as well, not only to the API. 
 
 `ledger_entry` is append-only for every role, the owner and superusers included: triggers reject `DELETE` and `TRUNCATE`, and an `UPDATE` may change only `status`, `validated_by`, `validated_at` and `note`, and only while the entry is `pending`. Violations raise `restrict_violation` (SQLSTATE 23001). A correction is a new entry. The API reads and writes it only for an owner or admin of the gym in `app.person_id` (`0006`); the owner role, which the seed and jobs use, is scoped by the gym alone.
 
+`session` rows are never deleted: `rakin_app` may read, add and change them (`0020`). Each references its class type and its coach with `gym_id` in the key, so a row cannot name another gym's even past RLS.
+
 `plan` rows are never deleted either: triggers reject `DELETE` and `TRUNCATE` for every role (`0007`), since memberships and the ledger point at them; deactivate one with `active = false`. A check holds each row to its kind's parameters, the rest null. A trial keeps its free classes and free days in `credits` and `credit_expiry_days`, with `price_clp` 0.
 
 A cancelled `membership` is final: a trigger rejects any `UPDATE` of it for every role (`0009`), raising `restrict_violation`. Checks hold `cancel_reason` and `cancelled_at` to exactly the cancelled rows, and `next_plan_id` and `next_plan_from` (a plan change waiting for its period) to being set together, never on a cancelled row.
@@ -334,8 +370,8 @@ The Postgres tests create, bootstrap and drop a throwaway database on the `TEST_
 
 Derived views over the ledger (`0014`, [spec](../docs/technical.md#domain-model)), each `WITH (security_invoker = true)`, so they read as whoever queries them and every table underneath keeps its RLS. Each is built from `ledger_entry` rows, so a coach, who reads no entries (`0006`), gets no row from any of them, and a member reads only their own and their dependents' (`0010`). Only validated entries count.
 
-- `v_overdue`: a billing period with a validated charge, a due date before today in the gym's timezone, and validated payments and adjustments, less refunds (`0019`), short of its amount due. Columns: `gym_id`, `billing_period_id`, `membership_id`, `person_id`, `membership_status`, `period_start`, `period_end`, `due_date`, `amount_due_clp`, `paid_clp`, `outstanding_clp`, `days_overdue`. Lapsed and cancelled memberships keep their unpaid periods there; the owner's "Vencido" counts the `active` rows.
-- `v_balance`: per membership with ledger entries, `balance_clp`: charges and refunds less payments and the adjustments on a period, which are signed (`0019`). Positive is owed, negative is credit. An adjustment with no period is an overpayment's carried credit, which its payment already counts, so it is left out.
+- `v_overdue`: a billing period with a validated charge, a due date before today in the gym's timezone, and validated payments and adjustments, less refunds (`0021`), short of its amount due. Columns: `gym_id`, `billing_period_id`, `membership_id`, `person_id`, `membership_status`, `period_start`, `period_end`, `due_date`, `amount_due_clp`, `paid_clp`, `outstanding_clp`, `days_overdue`. Lapsed and cancelled memberships keep their unpaid periods there; the owner's "Vencido" counts the `active` rows.
+- `v_balance`: per membership with ledger entries, `balance_clp`: charges and refunds less payments and the adjustments on a period, which are signed (`0021`). Positive is owed, negative is credit. An adjustment with no period is an overpayment's carried credit, which its payment already counts, so it is left out.
 - `v_monthly_income`: per gym and calendar month (`month`, its first day) in the gym's timezone, `income_clp` and `payments`: the validated payments, by the month each was validated. It is the gym's income only for an owner or admin; a member reads the sum of their own and their dependents' payments under the same name, so the dashboard reads it as staff.
 
 `v_inactive` (last attendance more than N days ago) comes with the attendance table (#41).

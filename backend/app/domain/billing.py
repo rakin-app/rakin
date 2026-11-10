@@ -40,7 +40,7 @@ PAYING_KINDS = frozenset({EntryKind.PAYMENT, EntryKind.ADJUSTMENT})
 def settled_amount(alias: str) -> str:
     """What the `ledger_entry` row `alias` counts towards its period, in SQL, for a row of
     `SETTLING_KINDS`: its amount, which an adjustment signs, or a refund's taken back.
-    Migration 0019's `v_overdue` repeats it."""
+    Migration 0021's `v_overdue` repeats it."""
     return f"CASE WHEN {alias}.kind = 'refund' THEN -{alias}.amount_clp ELSE {alias}.amount_clp END"
 
 

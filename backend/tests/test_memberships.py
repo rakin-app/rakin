@@ -199,6 +199,7 @@ def test_start_refuses_a_day_years_from_today(
 
 
 def test_start_takes_a_day_within_the_window(client: TestClient, sur: uuid.UUID) -> None:
+    # system date: the window is reckoned from UTC's today, as `MembershipCreate` does.
     near = add_months(datetime.now(UTC).date(), -12 * STARTED_ON_WINDOW_YEARS + 1)
     response = start(client, sur, plan(client, sur, "signup"), started_on=near.isoformat())
     assert response.status_code == 201, response.text

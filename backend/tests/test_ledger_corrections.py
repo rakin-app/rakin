@@ -475,7 +475,7 @@ def test_the_book_lists_adjustments_and_refunds(
     assert items["refund"]["period"]["outstanding_clp"] == 15_000
 
 
-# --- the table on its own (migration 0019) ----------------------------------------
+# --- the table on its own (migration 0021) ----------------------------------------
 
 
 def insert(db: Database, gym: uuid.UUID, period: dict[str, str], **columns: Any) -> Any:
@@ -596,9 +596,9 @@ def test_an_overdue_period_counts_a_refund_against_it(db: Database, sur: uuid.UU
 
 
 @pg
-def test_upgrade_and_downgrade_0019() -> None:
+def test_upgrade_and_downgrade_0021() -> None:
     with throwaway_database(require_test_database_url()) as scratch:
-        migrate(scratch, "0018")
+        migrate(scratch, "0020")
         migrate(scratch)
-        command.downgrade(scratch.alembic(), "0018")
+        command.downgrade(scratch.alembic(), "0020")
         migrate(scratch)

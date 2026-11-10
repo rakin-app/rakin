@@ -7,15 +7,15 @@ import {
   redirect,
   type RouterHistory,
 } from '@tanstack/react-router'
-import { PlaceholderPage } from './components/PlaceholderPage'
-import { t } from './i18n/es'
 import { AdminLayout } from './layouts/AdminLayout'
 import { MeLayout } from './layouts/MeLayout'
+import { Classes } from './routes/Classes'
 import { MeHome } from './routes/MeHome'
 import { MemberDetail } from './routes/MemberDetail'
 import { MemberImport } from './routes/MemberImport'
 import { NotFound } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
+import { SessionDetail } from './routes/SessionDetail'
 import { Students, validateStudentsSearch } from './routes/Students'
 import { Today } from './routes/Today'
 import { ValidateProof } from './routes/ValidateProof'
@@ -73,10 +73,18 @@ const adminMemberRoute = createRoute({
   component: MemberDetail,
 })
 
+// "Clases": today's classes, and starting one.
 const adminClassesRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'clases',
-  component: () => <PlaceholderPage title={t.admin.classes.title} />,
+  component: Classes,
+})
+
+// One class: its topic and notes.
+const adminSessionRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'clases/$sessionId',
+  component: SessionDetail,
 })
 
 // "Libro de pagos": the gym's ledger, for who reads it.
@@ -115,6 +123,7 @@ const routeTree = rootRoute.addChildren([
     adminImportRoute,
     adminMemberRoute,
     adminClassesRoute,
+    adminSessionRoute,
     adminPaymentsRoute,
     adminProofReviewRoute,
   ]),

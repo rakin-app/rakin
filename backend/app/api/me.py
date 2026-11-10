@@ -6,7 +6,7 @@ the student page itself (#65).
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -17,7 +17,7 @@ from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
 from app.api.proofs import OPEN_PERIODS, payable_params, to_open_period
 from app.domain.billing import SETTLING_KINDS, settled_amount
-from app.domain.dates import local_date
+from app.domain.dates import gym_today
 from app.domain.ledger import EntryKind, EntryStatus
 from app.roles import role_in_gym
 from app.schemas.guardians import Balance, Dependent
@@ -75,7 +75,7 @@ PAYMENTS_SHOWN = 12
 async def _today(session: AsyncSession, gym_id: uuid.UUID) -> date:
     """Today in the gym's timezone: a period due today is owed today."""
     zone = await session.scalar(text("SELECT timezone FROM gym WHERE id = :id"), {"id": gym_id})
-    return local_date(datetime.now(UTC), str(zone))
+    return gym_today(str(zone))
 
 
 @router.get("/role")
@@ -133,7 +133,7 @@ async def my_page(
     name = await session.scalar(
         text("SELECT name FROM gym_person WHERE person_id = :me"), {"me": tenant.person_id}
     )
-    today = local_date(datetime.now(UTC), str(gym.timezone))
+    today = gym_today(str(gym.timezone))
 
     first = (await session.execute(text(OPEN_PERIODS), payable_params(tenant))).first()
     next_payment = None

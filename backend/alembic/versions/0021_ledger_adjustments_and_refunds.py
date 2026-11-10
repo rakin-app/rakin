@@ -19,9 +19,9 @@ ledger changes (0002).
   other settlement in the app now does. `v_balance` already counted refunds as owed
   and settling adjustments by their amount, so a negative one is owed: it is unchanged.
 
-Revision ID: 0019
-Revises: 0018
-Create Date: 2026-11-09
+Revision ID: 0021
+Revises: 0020
+Create Date: 2026-11-10
 
 """
 
@@ -29,8 +29,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0019"
-down_revision: str | Sequence[str] | None = "0018"
+revision: str = "0021"
+down_revision: str | Sequence[str] | None = "0020"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

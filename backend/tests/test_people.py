@@ -46,6 +46,7 @@ def test_create_normalises_phone_and_rut() -> None:
         {"email": "camila"},
         {"email": "+56912345678"},
         {"rut": "7.654.321-5"},
+        # system date: pydantic's `PastDate` checks against the host's today.
         {"dob": (date.today() + timedelta(days=1)).isoformat()},
         {"gym_id": str(uuid.uuid4())},
     ],

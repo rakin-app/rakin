@@ -7,6 +7,7 @@ dependencies = [
     "alembic>=1.20.1",
     "asyncpg>=0.32.0",
     "boto3>=1.43.126",
+    "cryptography>=50.0.2",
     "defusedxml>=0.7.1",
     "fastapi>=0.162.2",
     "jinja2>=3.1.6",
