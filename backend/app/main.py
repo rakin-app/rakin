@@ -16,6 +16,7 @@ from app.api import (
     health,
     hosts,
     inactive,
+    join,
     ledger,
     me,
     member_import,
@@ -64,6 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings, app.state.integrations.mailer, lambda: app.state.sessionmaker
     )
     app.state.magic_links = links
+    app.state.join_limits = join.build_join_limits()
     app.state.hosts = Hosts.of(settings)
     # Added first, so it runs inside RequestIdMiddleware and its queries log the id;
     # and inside HostMiddleware, so a session is bound knowing the host's gym.
@@ -103,6 +105,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(inactive.router)
     app.include_router(proof_review.router)
     app.include_router(unsubscribe.router)
+    app.include_router(join.public)
+    app.include_router(join.router)
     app.include_router(
         build_router(
             links,

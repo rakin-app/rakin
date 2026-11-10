@@ -57,6 +57,8 @@ Adding someone by a phone another gym already has attaches the existing person, 
 | `person_field_value` | person\_id, gym\_id, field\_key, value jsonb | custom fields; sensitive keys encrypted |
 | `message_log` | gym\_id, person\_id, channel, template, to\_address, status, error, sent\_at, payload jsonb | audit of every message sent: one row per attempt, channel ∈ email, whatsapp, status ∈ sent, failed, suppressed; a WhatsApp row is written when the admin opens its `wa.me` link, which is all `sent` can mean there; payload is what the template was rendered from, never a magic link's URL; sign-in links belong to no gym and have no gym\_id; append-only |
 | `mail_unsubscribe` | gym\_id, person\_id, created\_at | one-click unsubscribe from that gym's non-essential notices |
+| `join_link` | gym\_id, token, program\_id, expires\_on, created\_at | the gym's one join link, `/unirse/<token>`; regenerating replaces the token, revoking deletes the row; program\_id pre-selects a program, expires\_on is its last day in the gym's timezone |
+| `join_request` | id, gym\_id, first\_name, last\_name, rut, phone, email, dob, guardian\_name, guardian\_phone, guardian\_email, program\_id, consented\_at, created\_at | what someone sent through the join link, waiting for staff; not a person: approving adds them through the import's path and deletes it, rejecting deletes it, and the nightly job deletes any left 30 days |
 | `badge_token` | membership\_id, token, issued\_at, expires\_at | signed QR for cross-gym verification |
 | `agreement` | gym\_a\_id, gym\_b\_id, rule jsonb, active | v2: reciprocal terms |
 | `visit` | person\_id, host\_gym\_id, home\_membership\_id, agreement\_id, at | v2: cross-gym visit log |
@@ -102,7 +104,7 @@ Rules the diagram does not show:
 - Validating a payment against a billing period closes that period; an overpayment creates a credit adjustment against the next one.
 - An adjustment on a period is positive in the member's favour, counting towards it, or negative, owed on top; a note says why. A refund gives back part or all of a validated payment and no longer counts towards its period.
 - Rejecting a proof notifies the student with the admin's note and keeps the period open.
-- Nothing is ever deleted: cancellation and rejection are terminal states, corrections are new entries.
+- Nothing is ever deleted: cancellation and rejection are terminal states, corrections are new entries. The one exception is a join request, someone's details before the gym has agreed to keep them, which is deleted once approved or rejected, or after 30 days.
 - The nightly job starts the freezes booked for the day and ends the freezes due (Frozen → Active on to\_date), generates billing periods 7 days ahead, flips Active → Lapsed after grace, and expires credits. It is idempotent per date via `job_run`.
 - A freeze starts the day it is recorded, or is booked for a later day and starts then, and moves the due date past the frozen days as it starts, so a frozen member always reads the day they next pay. Ended early or given a new end, the due date moves again by the days it no longer lasts or gains. What was owed before the freeze is still owed.
 - A period due on day D is in grace through D + grace days and lapses the membership on the day after, if validated payments still leave it short. Each lapse writes a `lapsed` plan event.
@@ -122,6 +124,7 @@ Email is the system of record; WhatsApp is where the reminder gets read. Neither
 | Plan events (frozen, unfrozen, lapsed, promoted) | email | state change | optional per gym |
 | Announcements | email + copy-to-WhatsApp text | admin sends | one message to a program or everyone |
 | Staff invite + first magic link | email | owner or admin invites an admin or coach | the role, and a 7-day link to the admin screens |
+| Join request approved | email | staff approve a join link request | with a plan, the welcome above; without one, `join_approved`: they are in, with no sign-in link until a plan is started |
 | Inactive nudge | wa.me from "A quién llamar" on Hoy | 14 / 30 days without attendance (or since joining, for someone who never came) | to the guardian for a dependent; logged in `message_log` as opened; automation is v2 |
 
 **Email:** hosted Rakin sends from `@rakin.app` through [Resend](https://resend.com)'s SMTP relay (`smtp.resend.com`, user `resend`, the API key as password), with the same `SmtpMailer` self-hosters point at any SMTP server; no provider SDK. Resend rather than Amazon SES because it needs no AWS account just for mail and no sandbox approval before the first real send. Verified domain, DKIM, SPF, DMARC `p=quarantine` from day one; transactional only, no marketing content. Expected cost: cents per gym per month.

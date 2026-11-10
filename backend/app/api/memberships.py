@@ -206,29 +206,47 @@ async def create_membership(
     )
     if not known:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "person not found")
-    terms = await _plan_terms(session, body.plan_id)
-    timezone = await session.scalar(
-        text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
+    created, notice = await start_membership(
+        session, tenant.gym_id, body.person_id, body.plan_id, body.started_on
     )
-    started_on = body.started_on or gym_today(timezone)
+    if notice is not None:
+        # After the response, which is after the membership has committed.
+        background.add_task(notices.send, notice)
+    return created
+
+
+async def start_membership(
+    session: AsyncSession,
+    gym_id: uuid.UUID,
+    person_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    started_on: date | None = None,
+) -> tuple[Membership, Notice | None]:
+    """Start `person_id`, someone in the current gym, on `plan_id` from `started_on`
+    (today in the gym's timezone by default), and the welcome to send them once it has
+    committed: `None` when there is no email to send it to. A 422 for a plan the gym
+    does not have or has deactivated."""
+    terms = await _plan_terms(session, plan_id)
+    timezone = await session.scalar(text("SELECT timezone FROM gym WHERE id = :id"), {"id": gym_id})
+    started_on = started_on or gym_today(timezone)
     try:
         started = domain.start(terms, started_on)
     except (ValueError, OverflowError) as error:
         raise _unprocessable(error) from None
 
     membership_id = await insert_membership(
-        session, body.person_id, body.plan_id, started, start_of_local_day(started_on, timezone)
+        session, person_id, plan_id, started, start_of_local_day(started_on, timezone)
     )
     created = await _get(session, membership_id)
 
     contact = await contact_for(session, created.person_id)
     if contact is None or not contact.email:
         logger.info("welcome: no email to send it to", extra={"membership_id": str(created.id)})
-        return created
+        return created, None
     gym = (
         await session.execute(
             text("SELECT name, settings -> 'bank_account' AS bank_account FROM gym WHERE id = :id"),
-            {"id": tenant.gym_id},
+            {"id": gym_id},
         )
     ).one()
     dependent = None
@@ -238,15 +256,13 @@ async def create_membership(
         )
     notice = welcome(
         contact,
-        gym_id=tenant.gym_id,
+        gym_id=gym_id,
         gym=gym.name,
         plan_name=created.plan_name,
         bank_account=gym.bank_account,
         dependent_name=dependent,
     )
-    # After the response, which is after the membership has committed.
-    background.add_task(notices.send, notice)
-    return created
+    return created, notice
 
 
 def welcome(

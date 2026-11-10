@@ -26,7 +26,8 @@ from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_databas
 # Paths that act in no gym. Every other operation must answer 401 without a tenant.
 # The local BlobStore's URLs carry their own signature instead of a session, and
 # sign-in comes before there is one (`tests/test_auth.py` covers each of its routes).
-# An unsubscribe link's token names its gym (`tests/test_notices.py`).
+# An unsubscribe link's token names its gym (`tests/test_notices.py`), and so does a
+# join link's (`tests/test_join.py`).
 PUBLIC_PATHS = {
     "/healthz",
     "/api/blobs/{key}",
@@ -34,6 +35,7 @@ PUBLIC_PATHS = {
     "/api/auth/callback",
     "/api/auth/logout",
     "/api/mail/unsubscribe/{token}",
+    "/api/join/{token}",
     "/api/host",
     "/internal/tls-allowed",
 }

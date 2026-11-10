@@ -49,7 +49,7 @@ import pytest
 from freezegun import freeze_time
 
 from app.domain.dates import start_of_local_day
-from app.jobs import billing, daily, freezes, lapse
+from app.jobs import billing, daily, freezes, join_requests, lapse
 from app.jobs.runner import Outcome
 from app.seed import load
 from app.seed.build import GYM_ID, build, seed_id
@@ -63,7 +63,7 @@ DAYS = 90
 # Santiago springs forward on 6 Sep 2026 (midnight is skipped) and falls back on
 # 4 Apr 2027 (the last hour of 3 Apr repeats).
 WINDOWS = [date(2026, 8, 1), date(2027, 2, 1)]
-JOBS = [freezes.NAME, billing.NAME, lapse.NAME]
+JOBS = [freezes.NAME, billing.NAME, lapse.NAME, join_requests.NAME]
 # Periods are generated this many days before they fall due (docs/technical.md); not
 # `app.domain.billing.GENERATE_AHEAD_DAYS`, which is what is being checked.
 AHEAD_DAYS = 7

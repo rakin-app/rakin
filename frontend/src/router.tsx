@@ -15,6 +15,7 @@ import { t } from './i18n/es'
 import { MeLayout } from './layouts/MeLayout'
 import { Classes } from './routes/Classes'
 import { ClassTimer } from './routes/ClassTimer'
+import { Join } from './routes/Join'
 import { MeHome } from './routes/MeHome'
 import { MemberDetail } from './routes/MemberDetail'
 import { MemberImport } from './routes/MemberImport'
@@ -92,7 +93,7 @@ const indexRoute = createRoute({
   },
 })
 
-// "Entrar": the one page open to a signed-out visitor.
+// "Entrar": open to a signed-out visitor, as is the join form.
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: SIGN_IN_PATH,
@@ -100,6 +101,13 @@ const signInRoute = createRoute({
   // only an explicit `undefined` overrides it.
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({ redirect: appPath(search.redirect) }),
   component: SignIn,
+})
+
+// "Inscríbete": the form behind a gym's join link (#154), open to anyone with the link.
+const joinRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'unirse/$token',
+  component: Join,
 })
 
 // /admin/*: gym owners and coaches.
@@ -216,6 +224,7 @@ const meHomeRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
+  joinRoute,
   adminRoute.addChildren([
     adminTodayRoute,
     adminStudentsRoute,

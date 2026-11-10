@@ -9,6 +9,7 @@ import { unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
 import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
 import { overdueQuery, type OverduePeriod } from '../api/today'
 import { WhatsAppIcon } from '../components/icons'
+import { JoinRequests } from '../components/JoinRequests'
 import { PageHeader } from '../components/PageHeader'
 import { dayTime, monthName, shortDay, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
@@ -33,7 +34,8 @@ const OVERDUE_SHOWN = 3
  *
  * Money, so for whoever reads the ledger only; a coach sees none of it, since the
  * inactive list says who owes. The WhatsApp reminder on each overdue row joins with the
- * wa.me links (#55).
+ * wa.me links (#55). Above it all, for every staff role, the join link's requests
+ * waiting for approval (#154).
  */
 export function Today() {
   const role = useQuery(myRoleQuery())
@@ -46,6 +48,7 @@ export function Today() {
   return (
     <div className="today">
       <PageHeader title={copy.heading(weekdayDay(new Date()))} />
+      <JoinRequests />
       {money && (
         <>
           <div className="today__counters" aria-label={copy.countersLabel} role="group">

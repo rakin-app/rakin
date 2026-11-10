@@ -8,6 +8,7 @@ import { BlockKindSettings } from './BlockKindSettings'
 import { FieldSettings } from './FieldSettings'
 import { GradingSettings } from './GradingSettings'
 import { GymSettings } from './GymSettings'
+import { JoinLinkSettings } from './JoinLinkSettings'
 import { PlanSettings } from './PlanSettings'
 import { ProgramSettings } from './ProgramSettings'
 import { StaffSettings } from './StaffSettings'
@@ -28,6 +29,7 @@ export const SETTINGS_SECTIONS = [
   { path: 'graduacion', label: copy.sections.grading, component: GradingSettings },
   { path: 'campos', label: copy.sections.fields, component: FieldSettings },
   { path: 'equipo', label: copy.sections.staff, component: StaffSettings },
+  { path: 'inscripcion', label: copy.sections.joinLink, component: JoinLinkSettings },
 ] as const satisfies readonly { path: string; label: string; component: ComponentType }[]
 
 /**

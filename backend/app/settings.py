@@ -76,6 +76,11 @@ class Settings(BaseSettings):
 
     payment_rail: Literal["none"] = "none"
     bank_feed: Literal["none"] = "none"
+    # The join link's public form (`app.integrations.humancheck`): `turnstile` checks
+    # each submission with Cloudflare Turnstile, with these keys.
+    human_check: Literal["none", "turnstile"] = "none"
+    turnstile_site_key: str = ""
+    turnstile_secret_key: str = ""
 
     # The nightly jobs (`app/jobs`): a day's run starts once the day has begun here.
     jobs_timezone: str = "America/Santiago"
@@ -98,6 +103,16 @@ class Settings(BaseSettings):
         if value and not HOST_NAME.fullmatch(value):
             raise ValueError(f"not a host name: {value!r} (no scheme, port or path)")
         return value
+
+    @model_validator(mode="after")
+    def _turnstile_has_its_keys(self) -> "Settings":
+        if self.human_check == "turnstile" and not (
+            self.turnstile_site_key.strip() and self.turnstile_secret_key.strip()
+        ):
+            raise ValueError(
+                "human_check=turnstile needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY"
+            )
+        return self
 
     @model_validator(mode="after")
     def _no_local_secret_in_production(self) -> "Settings":
