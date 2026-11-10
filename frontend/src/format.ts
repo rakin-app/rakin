@@ -44,3 +44,10 @@ export function isoDay(iso: string, timeZone?: string): string {
 export function weekdayDay(date: Date): string {
   return date.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')
 }
+
+/** `19:00`, in `timeZone`. */
+export function clockTime(iso: string, timeZone: string): string {
+  return new Intl.DateTimeFormat('es-CL', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(
+    new Date(iso),
+  )
+}

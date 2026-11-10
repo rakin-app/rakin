@@ -234,6 +234,19 @@ A plan change waits for the next period; proration is v2. Only a monthly or prep
 
 A freeze (#26) is a side trip from Active: only an active membership freezes (a trial, a frozen, a lapsed or a cancelled one is a 409), from today until `to_date`. The days in between are not charged, and the due date moves past them as the freeze starts, so the member reads the day they next pay on all through it: billing resumes after the later of `current_period_end` and the last period that started before today, so that moves by the frozen days; every billing period starting today or later moves by them too, `period_start`, `period_end` and `due_date` alike (a charge already written stays on its period); a monthly plan's `anchor_day` becomes the day after the new `current_period_end`; and a pending plan change's `next_plan_from` moves with them. A credits pack's expiry moves the same way. The freeze is a `membership_freeze` row (`0017`, append-only for `rakin_app`), written with a `frozen` `plan_event`, and a membership read carries it as `freeze` (`id`, `from_date`, `to_date`, `reason`) while frozen. The nightly `freezes` job returns it to Active on `to_date`. Payments may still be recorded against a frozen membership's periods: what it owed before the freeze, it still owes.
 
+## Sessions API
+
+One `session` row per class actually held (migration `0020`, [spec](../docs/technical.md#domain-model)). There is no timetable: a coach starts a session when the class begins, and writes its topic and notes during or after it.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/sessions` | `{"date", "timezone", "sessions": […]}`: the sessions starting on `?date=` (an ISO day; default today), a calendar day in the gym's timezone, earliest first |
+| `POST` | `/api/sessions` | start one: `class_type_id`, and optionally `starts_at` (with its offset; default now), `coach_id` (default the person acting), `topic`, `notes`; 201 with the session |
+| `GET` | `/api/sessions/{id}` | one session; 404 for another gym's |
+| `PATCH` | `/api/sessions/{id}` | change `topic`, `notes` or `coach_id`; only what is sent changes |
+
+A session carries its `class_type_id` and `class_type_name`, `program_id` and `program_name`, `starts_at`, `coach_id` and `coach_name` (the gym's record of them), `topic`, `notes`, `created_at` and `updated_at`. A topic is up to 200 characters and notes up to 4,000; a blank one, or `null`, is none. The class type must be one of the gym's active ones (422 `unknown_class_type` or `inactive_class_type` on `class_type_id`), and the coach on its staff in any role (422 `unknown_coach`) when a session is started or reassigned: a coach who leaves stays the coach of the sessions they taught, since the row references `gym_person`, not `staff`. Any staff role may read, start and edit sessions, coaches included; there is no delete, since attendance (#44) points at a session.
+
 ## Member import
 
 Onboarding a gym is mostly bringing its spreadsheet over. The admin uploads the file, says what each column is, checks it, then imports; the SPA's screen is `/admin/alumnos/importar`. Only an owner or admin may, since it starts memberships.
@@ -331,6 +344,8 @@ Every table with a `gym_id` (and `gym` itself) is isolated by an RLS policy on `
 RLS is **forced**, so it applies to `rakin_owner` as well, not only to the API. A table owner is normally exempt from its own policies; forcing them means a backfill, seed or one-off script run with the owner's credentials sees and writes only the gym in `app.gym_id`, so a missed `SET` returns nothing there too. Work that spans gyms (the nightly jobs, a gym switcher) sets `app.gym_id` per gym or goes through a `SECURITY DEFINER` function written for it. Only a superuser skips RLS.
 
 `ledger_entry` is append-only for every role, the owner and superusers included: triggers reject `DELETE` and `TRUNCATE`, and an `UPDATE` may change only `status`, `validated_by`, `validated_at` and `note`, and only while the entry is `pending`. Violations raise `restrict_violation` (SQLSTATE 23001). A correction is a new entry. The API reads and writes it only for an owner or admin of the gym in `app.person_id` (`0006`); the owner role, which the seed and jobs use, is scoped by the gym alone.
+
+`session` rows are never deleted: `rakin_app` may read, add and change them (`0020`). Each references its class type and its coach with `gym_id` in the key, so a row cannot name another gym's even past RLS.
 
 `plan` rows are never deleted either: triggers reject `DELETE` and `TRUNCATE` for every role (`0007`), since memberships and the ledger point at them; deactivate one with `active = false`. A check holds each row to its kind's parameters, the rest null. A trial keeps its free classes and free days in `credits` and `credit_expiry_days`, with `price_clp` 0.
 
