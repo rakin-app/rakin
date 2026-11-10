@@ -365,7 +365,40 @@
   }
 
   .today__setup {
-    max-width: 640px;
+    max-width: 960px;
     margin-inline: var(--space-8);
+  }
+
+  /* A step's links beside its text on a desktop, not under it. */
+  .today__step {
+    align-items: center;
+    padding: var(--space-2) 0;
+  }
+
+  .today__step .today__row-text {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--space-4);
+  }
+
+  .today__step-links {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    justify-content: flex-end;
+    margin-top: 0;
+  }
+}
+
+/* Wide enough for one line a step: the title, its hint, then its links. */
+@media (min-width: 1200px) {
+  .today__step .today__row-text {
+    grid-template-columns: 18rem minmax(0, 1fr) auto;
+    align-items: baseline;
+  }
+
+  .today__step-links {
+    grid-row: 1;
+    grid-column: 3;
   }
 }
