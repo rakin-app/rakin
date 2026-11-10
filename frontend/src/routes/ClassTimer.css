@@ -1,0 +1,302 @@
+/* The class timer (#139): the block editor reads like the session screen; the countdown
+   takes the whole screen, over the nav, dark and large enough to read across the mat. */
+
+.timer-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.timer-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.timer-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timer-editor__card {
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+}
+
+.timer-editor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.timer-editor__actions {
+  display: flex;
+  gap: var(--space-1-5);
+}
+
+.timer-editor__actions .classes__icon-button {
+  cursor: pointer;
+}
+
+.timer-editor__actions .classes__icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.timer-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.timer-editor__field .classes__input {
+  width: 100%;
+}
+
+.timer-editor__field .classes__input[aria-invalid='true'] {
+  border-color: var(--color-warning);
+}
+
+.timer-editor__rounds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.attendance__add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.timer-done__row {
+  justify-content: space-between;
+}
+
+/* --- the countdown ------------------------------------------------------------------ */
+
+.timer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4)
+    calc(var(--space-4) + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  background: var(--color-inverse);
+  color: var(--color-inverse-text);
+}
+
+.timer--warning {
+  background: var(--color-warning-strong);
+}
+
+.timer__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.timer__back {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  border: 1px solid var(--color-inverse-border);
+  border-radius: var(--radius-md);
+  color: inherit;
+}
+
+.timer__class {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timer__position {
+  flex: none;
+  color: var(--color-inverse-text-muted);
+  font-size: var(--text-sm);
+}
+
+.timer__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 0;
+  text-align: center;
+}
+
+.timer__phase {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(var(--text-xl), 7vmin, 44px);
+  font-weight: var(--font-weight-bold);
+  overflow-wrap: anywhere;
+}
+
+.timer__clock {
+  margin: 0;
+  font-family: var(--font-display);
+  /* As wide as a phone allows, and no taller than the screen leaves room for. */
+  font-size: min(30vw, 34vh);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.timer--paused .timer__clock {
+  opacity: 0.55;
+}
+
+.timer__next {
+  margin: 0;
+  color: var(--color-inverse-text-muted);
+  font-size: clamp(var(--text-base), 4.5vmin, 26px);
+}
+
+.timer__controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.timer__button {
+  min-height: var(--control-height-xl);
+  padding: 0 var(--space-3);
+  background: var(--color-inverse-raised);
+  border: 1px solid var(--color-inverse-border);
+  border-radius: var(--radius-md);
+  color: var(--color-inverse-text);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.timer__button--main {
+  grid-column: 1 / -1;
+  background: var(--color-inverse-text);
+  color: var(--color-inverse);
+  font-size: var(--text-lg);
+}
+
+.timer__button--end {
+  border-color: var(--color-warning);
+  color: var(--color-warning-soft);
+}
+
+.timer__notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--color-inverse-text-muted);
+  font-size: var(--text-sm);
+}
+
+.timer__notes p {
+  margin: 0;
+}
+
+/* The countdown's notes over the light summary screen. */
+.classes .timer__notes {
+  color: var(--color-warning-strong);
+}
+
+.timer__sheet {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom));
+  background: var(--color-inverse-raised);
+  border-top: 1px solid var(--color-inverse-border);
+}
+
+.timer__sheet p {
+  margin: 0;
+}
+
+.timer__sheet-detail {
+  color: var(--color-inverse-text-muted);
+  font-size: var(--text-sm);
+}
+
+.timer__back {
+  background: transparent;
+  cursor: pointer;
+}
+
+.timer__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  overflow-y: auto;
+  padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-5) var(--space-6);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.timer__mini {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Over the countdown there is no bottom nav to stay above. */
+.timer__overlay .attendance__bar {
+  bottom: 0;
+}
+
+/* A phone on its side: the clock on the left, the buttons on the right. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .timer {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    column-gap: var(--space-4);
+    padding-inline: calc(var(--space-4) + env(safe-area-inset-left)) calc(var(--space-4) + env(safe-area-inset-right));
+  }
+
+  .timer__top {
+    grid-column: 1 / -1;
+  }
+
+  .timer__main {
+    grid-row: 2 / 4;
+  }
+
+  .timer__clock {
+    font-size: min(22vw, 46vh);
+  }
+
+  .timer__controls {
+    align-content: center;
+  }
+
+  .timer__button {
+    min-height: var(--control-height);
+  }
+}

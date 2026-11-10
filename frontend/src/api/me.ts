@@ -5,13 +5,25 @@ import type { OpenPeriod } from './proofs'
 
 export type StaffRole = 'owner' | 'admin' | 'coach'
 
+type MyRole = { role: StaffRole | null; person_id: string }
+
 /** The signed-in person's staff role in this gym; `null` for a member. */
 export function myRoleQuery() {
   return queryOptions({
     queryKey: ['me', 'role'],
-    queryFn: () => apiFetch<{ role: StaffRole | null }>('/api/me/role'),
+    queryFn: () => apiFetch<MyRole>('/api/me/role'),
     select: (data) => data.role,
   })
+}
+
+/** Who is signed in, and their role: the same answer as `myRoleQuery`, kept whole. */
+export function myselfQuery() {
+  return queryOptions({ queryKey: ['me', 'role'], queryFn: () => apiFetch<MyRole>('/api/me/role') })
+}
+
+/** Who may run a class's timer: the backend's `_runs`, its coach or an owner or admin. */
+export function runsSession(me: MyRole | undefined, coachId: string): boolean {
+  return me !== undefined && (managesGym(me.role) || (me.role !== null && me.person_id === coachId))
 }
 
 /** Who sees money: the backend's `LEDGER_ROLES`. A coach never does. */

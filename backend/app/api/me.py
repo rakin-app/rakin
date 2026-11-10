@@ -86,8 +86,9 @@ async def my_role(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
 ) -> MyRole:
     """The signed-in person's staff role in this gym, or none for a member: what the
-    admin screens show, such as the pending-proofs badge only to who reads the ledger."""
-    return MyRole(role=await role_in_gym(session, tenant))
+    admin screens show, such as the pending-proofs badge only to who reads the ledger,
+    and who they are, such as the class timer to the session's coach."""
+    return MyRole(role=await role_in_gym(session, tenant), person_id=tenant.person_id)
 
 
 @router.get("/dependents")

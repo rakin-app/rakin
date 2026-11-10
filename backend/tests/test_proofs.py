@@ -400,7 +400,9 @@ def test_my_role_is_the_staff_role_or_none(
         person = add_staff(db, sur, role)
     response = client.get("/api/me/role", headers=as_gym(sur, person))
     assert response.status_code == 200, response.text
-    assert response.json() == {"role": expected}
+    assert response.json()["role"] == expected
+    if person is not None:
+        assert response.json()["person_id"] == str(person)
 
 
 @pg
