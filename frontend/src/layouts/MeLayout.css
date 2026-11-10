@@ -17,20 +17,8 @@
   padding: var(--space-6) var(--space-5) calc(var(--space-8) + env(safe-area-inset-bottom));
 }
 
-.me-footer__sign-out {
-  min-height: var(--control-height);
-  padding: 0 var(--space-4);
-  background: none;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-}
-
 .me-footer__error {
-  color: var(--color-warning-strong);
+  color: var(--color-danger);
   font-size: var(--text-sm);
 }
 

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useId } from 'react'
 import type { MembershipStart } from '../api/people'
 import { plansQuery } from '../api/plans'
+import { Input, Select } from '../components/Field'
 
 /** A plan picked and the day it starts; no plan is `plan_id: ''`. */
 export type PlanChoice = { plan_id: string; started_on: string }
@@ -36,9 +37,8 @@ export function PlanStart({
       <label htmlFor={ids.plan} className="member__label">
         {labels.plan}
       </label>
-      <select
+      <Select
         id={ids.plan}
-        className="member__input"
         value={choice.plan_id}
         onChange={(e) => onChange({ ...choice, plan_id: e.target.value })}
       >
@@ -48,15 +48,14 @@ export function PlanStart({
             {plan.name}
           </option>
         ))}
-      </select>
+      </Select>
       {choice.plan_id && (
         <>
           <label htmlFor={ids.from} className="member__label">
             {labels.startedOn}
           </label>
-          <input
+          <Input
             id={ids.from}
-            className="member__input"
             type="date"
             value={choice.started_on || today}
             onChange={(e) => onChange({ ...choice, started_on: e.target.value })}

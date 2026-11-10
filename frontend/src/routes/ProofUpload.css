@@ -71,51 +71,10 @@
   font-weight: var(--font-weight-medium);
 }
 
-.proof__input {
-  min-height: var(--control-height);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
-}
-
 .proof__pickers {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2);
-}
-
-.proof__button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--control-height);
-  padding: 0 var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-}
-
-.proof__file:focus-visible + .proof__button {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.proof__button--primary {
-  margin-top: var(--space-2);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-inverse-text);
-}
-
-.proof__button--primary:disabled {
-  background: var(--color-border-strong);
-  border-color: var(--color-border-strong);
-  cursor: default;
 }
 
 .proof__note {
@@ -127,9 +86,9 @@
 .proof__error {
   margin: 0;
   padding: var(--space-2-5) var(--space-3);
-  background: var(--color-warning-soft);
+  background: var(--color-danger-soft);
   border-radius: var(--radius-md);
-  color: var(--color-warning-strong);
+  color: var(--color-danger);
   font-size: var(--text-sm);
 }
 
@@ -144,4 +103,10 @@
 
 .proof__sent p {
   margin: 0;
+}
+
+/* The hidden file inputs sit before their labels, which show as the buttons. */
+.proof__file:focus-visible + .button {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

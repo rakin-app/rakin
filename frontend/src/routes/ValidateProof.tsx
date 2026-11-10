@@ -11,6 +11,8 @@ import {
   type ProofReview,
   type Validated,
 } from '../api/review'
+import { Button, buttonClass } from '../components/Button'
+import { Input } from '../components/Field'
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
 import { monthName, shortDay } from '../format'
 import { t } from '../i18n/es'
@@ -35,9 +37,9 @@ export function ValidateProof() {
     return (
       <div className="review__note" role="alert">
         <p>{copy.error}</p>
-        <button type="button" className="review__button" onClick={() => void queue.refetch()}>
+        <Button size="lg" onClick={() => void queue.refetch()}>
           {copy.retry}
-        </button>
+        </Button>
       </div>
     )
   }
@@ -50,7 +52,7 @@ export function ValidateProof() {
   return (
     <div className="review">
       <header className="review__header">
-        <Link to="/admin" className="review__icon-button" aria-label={copy.back}>
+        <Link to="/admin" className={buttonClass({ icon: true })} aria-label={copy.back}>
           <ChevronLeftIcon />
         </Link>
         <div className="review__heading">
@@ -59,9 +61,8 @@ export function ValidateProof() {
         </div>
         {items.length > 1 && (
           <div className="review__pager">
-            <button
-              type="button"
-              className="review__icon-button"
+            <Button
+              icon
               aria-label={copy.previous}
               disabled={at === 0}
               onClick={() => {
@@ -70,10 +71,9 @@ export function ValidateProof() {
               }}
             >
               <ChevronLeftIcon />
-            </button>
-            <button
-              type="button"
-              className="review__icon-button"
+            </Button>
+            <Button
+              icon
               aria-label={copy.next}
               disabled={at === items.length - 1}
               onClick={() => {
@@ -82,7 +82,7 @@ export function ValidateProof() {
               }}
             >
               <ChevronRightIcon />
-            </button>
+            </Button>
           </div>
         )}
       </header>
@@ -200,10 +200,9 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (message: str
         <label htmlFor={ids.note} className="review__label">
           {copy.noteLabel}
         </label>
-        <input
+        <Input
           ref={noteRef}
           id={ids.note}
-          className="review__input"
           type="text"
           maxLength={500}
           placeholder={copy.notePlaceholder}
@@ -225,12 +224,11 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (message: str
       </div>
 
       <div className="review__actions">
-        <button type="button" className="review__button" disabled={busy} onClick={tryReject}>
+        <Button variant="danger" size="lg" disabled={busy} onClick={tryReject}>
           {reject.isPending ? copy.working : copy.reject}
-        </button>
-        <button
-          type="button"
-          className="review__button review__button--primary"
+        </Button>
+        <Button
+          variant="primary" size="lg"
           disabled={busy}
           onClick={() => {
             reject.reset()
@@ -238,7 +236,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (message: str
           }}
         >
           {validate.isPending ? copy.working : copy.confirm(clp(review.amount_clp))}
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -300,9 +298,9 @@ function Zoom({ src, alt, onClose }: { src: string; alt: string; onClose: () => 
 
   return (
     <div className="review__zoom" role="dialog" aria-modal="true" aria-label={alt} onClick={onClose}>
-      <button ref={closeRef} type="button" className="review__zoom-close" onClick={onClose}>
+      <Button ref={closeRef} inverse className="review__zoom-close" onClick={onClose}>
         {copy.close}
-      </button>
+      </Button>
       <img src={src} alt={alt} />
     </div>
   )

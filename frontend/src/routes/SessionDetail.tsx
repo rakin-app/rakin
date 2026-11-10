@@ -21,6 +21,8 @@ import { rankLabel } from '../api/grading'
 import { managesGym, myselfQuery, runsSession } from '../api/me'
 import { sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
+import { Button, buttonClass } from '../components/Button'
+import { Input, Select, Textarea } from '../components/Field'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
 import { clockTime, dayTime, isoDay } from '../format'
 import { t } from '../i18n/es'
@@ -66,9 +68,9 @@ export function SessionDetail() {
         <div className="classes__error" role="alert">
           <p>{missing ? copy.notFound : copy.error}</p>
           {!missing && (
-            <button type="button" className="classes__button" onClick={() => void session.refetch()}>
+            <Button onClick={() => void session.refetch()}>
               {copy.retry}
-            </button>
+            </Button>
           )}
         </div>
       </Shell>
@@ -137,7 +139,7 @@ function Shell({
   return (
     <div className="classes">
       <header className="classes__header">
-        <Link to="/admin/clases" className="classes__icon-button" aria-label={copy.back}>
+        <Link to="/admin/clases" className={buttonClass({ icon: true })} aria-label={copy.back}>
           <ChevronLeftIcon />
         </Link>
         {title && (
@@ -162,7 +164,7 @@ function TimerLink({ session }: { session: ClassSession }) {
     <Link
       to="/admin/clases/$sessionId/timer"
       params={{ sessionId: session.id }}
-      className="classes__button classes__button--primary timer-link"
+      className={buttonClass({ className: 'timer-link' })}
     >
       {running && running.endedAt === null ? copy.timer.resume : copy.timer.open}
     </Link>
@@ -200,9 +202,8 @@ function TopicForm({ session }: { session: ClassSession }) {
       <label htmlFor={topicId} className="classes__label">
         {copy.form.topic}
       </label>
-      <input
+      <Input
         id={topicId}
-        className="classes__input"
         value={topic}
         maxLength={MAX_TOPIC}
         placeholder={copy.form.topicPlaceholder}
@@ -211,9 +212,8 @@ function TopicForm({ session }: { session: ClassSession }) {
       <label htmlFor={notesId} className="classes__label">
         {copy.form.notes}
       </label>
-      <textarea
+      <Textarea
         id={notesId}
-        className="classes__input classes__textarea"
         value={notes}
         maxLength={MAX_NOTES}
         rows={5}
@@ -230,9 +230,9 @@ function TopicForm({ session }: { session: ClassSession }) {
           {copy.form.saved}
         </p>
       )}
-      <button type="submit" className="classes__button classes__button--primary" disabled={save.isPending}>
+      <Button type="submit" variant="primary" disabled={save.isPending}>
         {save.isPending ? copy.form.working : copy.form.submit}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -357,9 +357,9 @@ function Attendance({ sessionId }: { sessionId: string }) {
     return (
       <div className="classes__error" role="alert">
         <p>{words.error}</p>
-        <button type="button" className="classes__button" onClick={() => void roster.refetch()}>
+        <Button onClick={() => void roster.refetch()}>
           {copy.retry}
-        </button>
+        </Button>
       </div>
     )
   }
@@ -435,9 +435,9 @@ function Attendance({ sessionId }: { sessionId: string }) {
             </Link>
           </div>
         )}
-        <button
-          type="button"
-          className={`classes__button classes__button--primary attendance__save${done ? ' attendance__save--done' : ''}`}
+        <Button
+          variant="primary"
+          className={done ? 'attendance__save attendance__save--done' : 'attendance__save'}
           disabled={!changed || save.isPending}
           aria-busy={save.isPending}
           onClick={() => {
@@ -446,7 +446,7 @@ function Attendance({ sessionId }: { sessionId: string }) {
           }}
         >
           {save.isPending ? words.working : done ? words.done : words.save(present)}
-        </button>
+        </Button>
       </div>
     </section>
   )
@@ -571,9 +571,8 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
           <label htmlFor={ids.name} className="classes__label">
             {words.name}
           </label>
-          <input
+          <Input
             id={ids.name}
-            className="classes__input"
             value={name}
             required
             autoComplete="off"
@@ -582,9 +581,8 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
           <label htmlFor={ids.phone} className="classes__label">
             {words.phone}
           </label>
-          <input
+          <Input
             id={ids.phone}
-            className="classes__input"
             type="tel"
             inputMode="tel"
             value={phone}
@@ -597,9 +595,8 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
               <label htmlFor={ids.plan} className="classes__label">
                 {words.plan}
               </label>
-              <select
+              <Select
                 id={ids.plan}
-                className="classes__input"
                 value={chosen}
                 onChange={(e) => setPlanId(e.target.value)}
               >
@@ -608,7 +605,7 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
                     {plan.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </>
           )}
           {failure && (
@@ -616,18 +613,18 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
               {failure}
             </p>
           )}
-          <button
+          <Button
             type="submit"
-            className="classes__button classes__button--primary"
+            variant="primary"
             disabled={add.isPending || !chosen || !name.trim()}
           >
             {add.isPending ? words.working : words.submit}
-          </button>
+          </Button>
         </>
       )}
-      <button type="button" className="classes__button" onClick={() => setOpen(false)}>
+      <Button onClick={() => setOpen(false)}>
         {words.cancel}
-      </button>
+      </Button>
     </form>
   )
 }

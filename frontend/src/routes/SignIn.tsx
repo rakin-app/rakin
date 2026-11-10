@@ -4,6 +4,8 @@ import { useId, useState, type FormEvent } from 'react'
 import { rememberReturnPath, requestLink, retryAfterSeconds, SIGN_IN_PATH } from '../api/auth'
 import { ApiError } from '../api/client'
 import { hostQuery } from '../api/host'
+import { Button } from '../components/Button'
+import { Input } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './SignIn.css'
@@ -41,9 +43,9 @@ export function SignIn() {
         {send.isSuccess ? (
           <>
             <p role="status">{copy.sent(send.variables ?? email.trim())}</p>
-            <button type="button" className="signin__button" onClick={() => send.reset()}>
+            <Button onClick={() => send.reset()}>
               {copy.another}
-            </button>
+            </Button>
           </>
         ) : (
           <form className="signin__form" onSubmit={submit}>
@@ -51,9 +53,8 @@ export function SignIn() {
             <label htmlFor={emailId} className="signin__label">
               {copy.emailLabel}
             </label>
-            <input
+            <Input
               id={emailId}
-              className="signin__input"
               type="email"
               name="email"
               autoComplete="email"
@@ -70,9 +71,9 @@ export function SignIn() {
                 {problem(send.error)}
               </p>
             )}
-            <button type="submit" className="signin__button signin__button--primary" disabled={send.isPending}>
+            <Button type="submit" variant="primary" disabled={send.isPending}>
               {send.isPending ? copy.sending : copy.submit}
-            </button>
+            </Button>
           </form>
         )}
       </div>

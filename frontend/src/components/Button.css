@@ -1,0 +1,114 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button--lg {
+  min-height: var(--control-height-lg);
+  font-size: var(--text-base);
+}
+
+.button--full {
+  width: 100%;
+}
+
+.button--icon {
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+}
+
+.button--icon.button--lg {
+  width: var(--control-height-lg);
+  height: var(--control-height-lg);
+}
+
+/* Black, never the accent: the accent is for links and "por validar". */
+.button--primary,
+.button--primary:hover {
+  background: var(--color-inverse);
+  border-color: var(--color-inverse);
+  color: var(--color-inverse-text);
+}
+
+.button--primary:hover {
+  background: var(--color-inverse-raised);
+}
+
+.button--secondary,
+.button--secondary:hover {
+  background: var(--color-surface);
+  border-color: var(--color-border-input);
+  color: var(--color-text);
+}
+
+.button--ghost,
+.button--ghost:hover {
+  background: transparent;
+  color: var(--color-text);
+}
+
+.button--secondary:hover,
+.button--ghost:hover {
+  background: var(--color-surface-sunken);
+}
+
+.button--danger,
+.button--danger:hover {
+  background: var(--color-surface);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.button--danger:hover {
+  background: var(--color-danger-soft);
+}
+
+/* On a dark surface the primary turns white and the outlines light. */
+.button--inverse.button--primary {
+  background: var(--color-inverse-text);
+  border-color: var(--color-inverse-text);
+  color: var(--color-inverse);
+}
+
+.button--inverse.button--secondary,
+.button--inverse.button--ghost {
+  background: transparent;
+  border-color: var(--color-inverse-border);
+  color: var(--color-inverse-text);
+}
+
+.button--inverse.button--ghost {
+  border-color: transparent;
+}
+
+.button--inverse.button--danger {
+  background: transparent;
+  border-color: var(--color-danger-soft);
+  color: var(--color-danger-soft);
+}
+
+.button--inverse.button--secondary:hover,
+.button--inverse.button--ghost:hover,
+.button--inverse.button--danger:hover {
+  background: var(--color-inverse-raised);
+}
+
+.button:disabled,
+.button[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: default;
+}

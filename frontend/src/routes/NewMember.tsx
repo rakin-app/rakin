@@ -6,6 +6,8 @@ import { customFieldsQuery } from '../api/customFields'
 import { familyConflict, type PersonRef } from '../api/family'
 import { duplicateOf, enrol, type Enrolment, type GuardianChoice } from '../api/people'
 import { useGymToday } from '../api/sessions'
+import { Button, buttonClass } from '../components/Button'
+import { Input } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import { FieldInput, valueOf } from './CustomFieldsPanel'
@@ -124,9 +126,8 @@ export function NewMember() {
           <label htmlFor={ids.first} className="member__label">
             {copy.firstName}
           </label>
-          <input
+          <Input
             id={ids.first}
-            className="member__input"
             autoComplete="off"
             maxLength={100}
             value={person.firstName}
@@ -138,9 +139,8 @@ export function NewMember() {
           <label htmlFor={ids.last} className="member__label">
             {copy.lastName}
           </label>
-          <input
+          <Input
             id={ids.last}
-            className="member__input"
             autoComplete="off"
             maxLength={100}
             value={person.lastName}
@@ -150,9 +150,8 @@ export function NewMember() {
           <label htmlFor={ids.phone} className="member__label">
             {hasGuardian ? copy.phoneOptional : copy.phone}
           </label>
-          <input
+          <Input
             id={ids.phone}
-            className="member__input"
             type="tel"
             inputMode="tel"
             autoComplete="off"
@@ -169,9 +168,8 @@ export function NewMember() {
           <label htmlFor={ids.email} className="member__label">
             {copy.email}
           </label>
-          <input
+          <Input
             id={ids.email}
-            className="member__input"
             type="email"
             autoComplete="off"
             value={person.email}
@@ -181,14 +179,13 @@ export function NewMember() {
           <label htmlFor={ids.rut} className="member__label">
             {copy.rut}
           </label>
-          <input id={ids.rut} className="member__input" autoComplete="off" value={person.rut} onChange={set('rut')} />
+          <Input id={ids.rut} autoComplete="off" value={person.rut} onChange={set('rut')} />
 
           <label htmlFor={ids.dob} className="member__label">
             {copy.dob}
           </label>
-          <input
+          <Input
             id={ids.dob}
-            className="member__input"
             type="date"
             max={today}
             value={person.dob}
@@ -202,20 +199,16 @@ export function NewMember() {
           {checked && problems.guardian && <Needed text={copy.needed.guardian} />}
           {guardian.kind === 'none' ? (
             <div className="member__actions">
-              <button
-                type="button"
-                className="member__button"
+              <Button
                 onClick={() => setGuardian({ kind: 'existing', picked: null })}
               >
                 {copy.guardianExisting}
-              </button>
-              <button
-                type="button"
-                className="member__button"
+              </Button>
+              <Button
                 onClick={() => setGuardian({ kind: 'new', name: '', phone: '', email: '' })}
               >
                 {copy.guardianNew}
-              </button>
+              </Button>
             </div>
           ) : (
             <>
@@ -251,9 +244,8 @@ export function NewMember() {
                   <label htmlFor={ids.gName} className="member__label">
                     {copy.guardianName}
                   </label>
-                  <input
+                  <Input
                     id={ids.gName}
-                    className="member__input"
                     autoComplete="off"
                     maxLength={200}
                     value={guardian.name}
@@ -264,9 +256,8 @@ export function NewMember() {
                   <label htmlFor={ids.gPhone} className="member__label">
                     {copy.guardianPhone}
                   </label>
-                  <input
+                  <Input
                     id={ids.gPhone}
-                    className="member__input"
                     type="tel"
                     inputMode="tel"
                     autoComplete="off"
@@ -278,9 +269,8 @@ export function NewMember() {
                   <label htmlFor={ids.gEmail} className="member__label">
                     {copy.guardianEmail}
                   </label>
-                  <input
+                  <Input
                     id={ids.gEmail}
-                    className="member__input"
                     type="email"
                     autoComplete="off"
                     value={guardian.email}
@@ -288,9 +278,9 @@ export function NewMember() {
                   />
                 </>
               )}
-              <button type="button" className="member__button" onClick={() => setGuardian({ kind: 'none' })}>
+              <Button onClick={() => setGuardian({ kind: 'none' })}>
                 {copy.guardianRemove}
-              </button>
+              </Button>
             </>
           )}
         </section>
@@ -354,12 +344,12 @@ export function NewMember() {
         )}
 
         <div className="member__form-actions">
-          <Link to="/admin/alumnos" className="member__button new-member__cancel">
+          <Link to="/admin/alumnos" className={buttonClass({ className: 'new-member__cancel' })}>
             {copy.cancel}
           </Link>
-          <button type="submit" className="member__button member__button--primary" disabled={save.isPending}>
+          <Button type="submit" variant="primary" disabled={save.isPending}>
             {save.isPending ? copy.working : copy.submit}
-          </button>
+          </Button>
         </div>
       </form>
     </>

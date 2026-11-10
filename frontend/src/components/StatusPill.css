@@ -1,0 +1,42 @@
+.status-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: var(--space-0-5) var(--space-2-5);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.status-pill--success {
+  background: var(--color-success-pill);
+  color: var(--color-success-strong);
+}
+
+.status-pill--accent {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-inverse);
+}
+
+.status-pill--warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-strong);
+}
+
+.status-pill--neutral {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+}
+
+/* The student's "Próximo pago" card is dark: the quiet tones go light on it. */
+.status-pill--inverse.status-pill--accent {
+  background: var(--color-accent-inverse);
+  color: var(--color-accent-inverse-text);
+}
+
+.status-pill--inverse.status-pill--neutral {
+  background: var(--color-inverse-raised);
+  color: var(--color-inverse-text-muted);
+}

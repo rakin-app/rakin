@@ -9,6 +9,8 @@ import {
   type GymSettingsUpdate,
 } from '../api/gym'
 import { validationErrors } from '../api/validation'
+import { Button } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
 
@@ -141,9 +143,8 @@ function GymForm({ settings }: { settings: Settings }) {
         <legend className="settings__legend">{copy.profile}</legend>
         <Field label={copy.name} error={errorOf('name', drafts.name)}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               maxLength={200}
               value={drafts.name}
@@ -152,13 +153,12 @@ function GymForm({ settings }: { settings: Settings }) {
           )}
         </Field>
         <Field label={copy.slug}>
-          {(props) => <input {...props} className="settings__input" type="text" value={settings.slug} readOnly />}
+          {(props) => <Input {...props} type="text" value={settings.slug} readOnly />}
         </Field>
         <Field label={copy.timezone} error={errorOf('timezone', drafts.timezone)}>
           {(props) => (
-            <select
+            <Select
               {...props}
-              className="settings__input"
               value={drafts.timezone}
               onChange={(e) => setDrafts({ ...drafts, timezone: e.target.value })}
             >
@@ -167,7 +167,7 @@ function GymForm({ settings }: { settings: Settings }) {
                   {zone}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
       </fieldset>
@@ -176,9 +176,8 @@ function GymForm({ settings }: { settings: Settings }) {
         <legend className="settings__legend">{copy.billing}</legend>
         <Field label={copy.graceDays} hint={copy.graceDaysHint} error={errorOf('grace_days', drafts.grace_days)}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               inputMode="numeric"
               value={drafts.grace_days}
@@ -192,9 +191,8 @@ function GymForm({ settings }: { settings: Settings }) {
           error={errorOf('reminder_every_days', drafts.reminder_every_days)}
         >
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               inputMode="numeric"
               value={drafts.reminder_every_days}
@@ -222,9 +220,8 @@ function GymForm({ settings }: { settings: Settings }) {
         <p className="settings__hint">{copy.bankHint}</p>
         <Field label={copy.bankName} error={bankError('bank')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               maxLength={200}
               value={drafts.bank.bank}
@@ -234,9 +231,8 @@ function GymForm({ settings }: { settings: Settings }) {
         </Field>
         <Field label={copy.accountType} error={bankError('account_type')}>
           {(props) => (
-            <select
+            <Select
               {...props}
-              className="settings__input"
               value={drafts.bank.account_type}
               onChange={(e) => setBank('account_type', e.target.value)}
             >
@@ -246,14 +242,13 @@ function GymForm({ settings }: { settings: Settings }) {
                   {type}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
         <Field label={copy.holder} error={bankError('holder')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               maxLength={200}
               value={drafts.bank.holder}
@@ -263,9 +258,8 @@ function GymForm({ settings }: { settings: Settings }) {
         </Field>
         <Field label={copy.rut} error={bankError('rut')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               autoComplete="off"
               value={drafts.bank.rut}
@@ -275,9 +269,8 @@ function GymForm({ settings }: { settings: Settings }) {
         </Field>
         <Field label={copy.number} error={bankError('number')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               inputMode="numeric"
               autoComplete="off"
@@ -288,9 +281,8 @@ function GymForm({ settings }: { settings: Settings }) {
         </Field>
         <Field label={copy.bankEmail} error={bankError('email')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="email"
               value={drafts.bank.email}
               onChange={(e) => setBank('email', e.target.value)}
@@ -304,9 +296,8 @@ function GymForm({ settings }: { settings: Settings }) {
         <p className="settings__hint">{copy.privacyHint}</p>
         <Field label={copy.privacyLegalName} error={privacyError('legal_name')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               maxLength={200}
               autoComplete="organization"
@@ -317,9 +308,8 @@ function GymForm({ settings }: { settings: Settings }) {
         </Field>
         <Field label={copy.privacyRut} error={privacyError('rut')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               autoComplete="off"
               value={drafts.privacy.rut}
@@ -329,9 +319,8 @@ function GymForm({ settings }: { settings: Settings }) {
         </Field>
         <Field label={copy.privacyEmail} error={privacyError('email')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="email"
               value={drafts.privacy.email}
               onChange={(e) => setPrivacy('email', e.target.value)}
@@ -340,9 +329,8 @@ function GymForm({ settings }: { settings: Settings }) {
         </Field>
         <Field label={copy.privacyAddress} error={privacyError('address')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               maxLength={200}
               autoComplete="street-address"
@@ -352,7 +340,7 @@ function GymForm({ settings }: { settings: Settings }) {
           )}
         </Field>
         {settings.privacy && (
-          <Link to="/privacidad" target="_blank" className="settings__detail">
+          <Link to="/privacidad" target="_blank" className="settings__link">
             {copy.privacyView}
           </Link>
         )}
@@ -368,9 +356,9 @@ function GymForm({ settings }: { settings: Settings }) {
           {copy.saved}
         </p>
       )}
-      <button type="submit" className="settings__button settings__button--primary" disabled={save.isPending}>
+      <Button type="submit" variant="primary" disabled={save.isPending}>
         {save.isPending ? copy.working : copy.submit}
-      </button>
+      </Button>
     </form>
   )
 }

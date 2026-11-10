@@ -5,6 +5,8 @@ import { ApiError } from '../api/client'
 import { ADULT_AGE, ageOn, joinFormQuery, submitJoinRequest, type JoinSubmission } from '../api/join'
 import { privacyPath } from '../api/privacy'
 import { validationErrors } from '../api/validation'
+import { Button } from '../components/Button'
+import { Field, FieldError, Input } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './Join.css'
@@ -71,9 +73,9 @@ export function Join() {
     return (
       <Shell>
         <p role="alert">{copy.error}</p>
-        <button type="button" className="join__button" onClick={() => void form.refetch()}>
+        <Button onClick={() => void form.refetch()}>
           {copy.retry}
-        </button>
+        </Button>
       </Shell>
     )
   }
@@ -170,11 +172,11 @@ function JoinFormBody({
     <form className="join__form" onSubmit={submit} noValidate>
       {program && <p className="join__program">{copy.program(program)}</p>}
       <p className="join__intro">{copy.intro}</p>
-      <Input label={copy.firstName} error={error('first_name')} value={drafts.first_name} autoComplete="given-name" onChange={(v) => set('first_name', v)} />
-      <Input label={copy.lastName} error={error('last_name')} value={drafts.last_name} autoComplete="family-name" onChange={(v) => set('last_name', v)} />
-      <Input label={copy.rut} hint={copy.rutHint} error={error('rut')} value={drafts.rut} autoComplete="off" onChange={(v) => set('rut', v)} />
-      <Input label={copy.dob} error={error('dob')} value={drafts.dob} type="date" max={today} autoComplete="bday" onChange={(v) => set('dob', v)} />
-      <Input
+      <TextField label={copy.firstName} error={error('first_name')} value={drafts.first_name} autoComplete="given-name" onChange={(v) => set('first_name', v)} />
+      <TextField label={copy.lastName} error={error('last_name')} value={drafts.last_name} autoComplete="family-name" onChange={(v) => set('last_name', v)} />
+      <TextField label={copy.rut} hint={copy.rutHint} error={error('rut')} value={drafts.rut} autoComplete="off" onChange={(v) => set('rut', v)} />
+      <TextField label={copy.dob} error={error('dob')} value={drafts.dob} type="date" max={today} autoComplete="bday" onChange={(v) => set('dob', v)} />
+      <TextField
         label={copy.phone}
         hint={minor ? copy.minorPhoneHint : copy.phoneHint}
         error={error('phone')}
@@ -183,7 +185,7 @@ function JoinFormBody({
         autoComplete="tel"
         onChange={(v) => set('phone', v)}
       />
-      <Input
+      <TextField
         label={copy.email}
         hint={minor ? copy.minorEmailHint : undefined}
         error={error('email')}
@@ -196,9 +198,9 @@ function JoinFormBody({
         <fieldset className="join__guardian">
           <legend className="join__legend">{copy.guardianTitle}</legend>
           <p className="join__intro">{copy.guardianIntro}</p>
-          <Input label={copy.guardianName} error={error('guardian_name')} value={drafts.guardian_name} autoComplete="off" onChange={(v) => set('guardian_name', v)} />
-          <Input label={copy.guardianPhone} error={error('guardian_phone')} value={drafts.guardian_phone} type="tel" autoComplete="off" onChange={(v) => set('guardian_phone', v)} />
-          <Input label={copy.guardianEmail} error={error('guardian_email')} value={drafts.guardian_email} type="email" autoComplete="off" onChange={(v) => set('guardian_email', v)} />
+          <TextField label={copy.guardianName} error={error('guardian_name')} value={drafts.guardian_name} autoComplete="off" onChange={(v) => set('guardian_name', v)} />
+          <TextField label={copy.guardianPhone} error={error('guardian_phone')} value={drafts.guardian_phone} type="tel" autoComplete="off" onChange={(v) => set('guardian_phone', v)} />
+          <TextField label={copy.guardianEmail} error={error('guardian_email')} value={drafts.guardian_email} type="email" autoComplete="off" onChange={(v) => set('guardian_email', v)} />
         </fieldset>
       )}
       {/* The honeypot: out of sight and out of the tab order, so only a script fills it in. */}
@@ -230,9 +232,7 @@ function JoinFormBody({
         </span>
       </label>
       {consentInvalid && (
-        <p id={consentErrorId} className="join__field-error">
-          {copy.refused.consent}
-        </p>
+        <FieldError id={consentErrorId}>{copy.refused.consent}</FieldError>
       )}
       {siteKey && <HumanCheck key={humanRound} siteKey={siteKey} onToken={setHumanToken} />}
       {send.isError && (
@@ -240,9 +240,9 @@ function JoinFormBody({
           {problem(send.error, Object.keys(errors).length > 0)}
         </p>
       )}
-      <button type="submit" className="join__button join__button--primary" disabled={send.isPending}>
+      <Button type="submit" variant="primary" disabled={send.isPending}>
         {send.isPending ? copy.working : copy.submit}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -257,7 +257,8 @@ function problem(error: Error, fields: boolean): string {
   return copy.failed
 }
 
-function Input({
+/** A text field of the form, with its hint and the API's refusal of it underneath. */
+function TextField({
   label,
   hint,
   error,
@@ -276,37 +277,21 @@ function Input({
   autoComplete: string
   max?: string
 }) {
-  const id = useId()
-  const described = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(' ')
   return (
-    <div className="join__field">
-      <label htmlFor={id} className="join__label">
-        {label}
-      </label>
-      <input
-        id={id}
-        className="join__input"
-        type={type}
-        inputMode={type === 'tel' ? 'tel' : type === 'email' ? 'email' : undefined}
-        autoCapitalize={type === 'email' ? 'none' : undefined}
-        autoComplete={autoComplete}
-        max={max}
-        aria-invalid={error !== undefined}
-        aria-describedby={described || undefined}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      {hint && (
-        <p id={`${id}-hint`} className="join__hint">
-          {hint}
-        </p>
+    <Field label={label} hint={hint} error={error}>
+      {(control) => (
+        <Input
+          {...control}
+          type={type}
+          inputMode={type === 'tel' ? 'tel' : type === 'email' ? 'email' : undefined}
+          autoCapitalize={type === 'email' ? 'none' : undefined}
+          autoComplete={autoComplete}
+          max={max}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
       )}
-      {error && (
-        <p id={`${id}-error`} className="join__field-error">
-          {error}
-        </p>
-      )}
-    </div>
+    </Field>
   )
 }
 

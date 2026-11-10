@@ -16,6 +16,8 @@ import {
   type Sheet,
 } from '../api/memberImport'
 import { plansQuery, type Plan } from '../api/people'
+import { Button, buttonClass } from '../components/Button'
+import { Select } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './MemberImport.css'
@@ -77,7 +79,7 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
           disabled={read.isPending}
           onChange={pick}
         />
-        <label htmlFor={inputId} className="import__button import__button--primary">
+        <label htmlFor={inputId} className={buttonClass({ variant: 'primary' })}>
           {copy.choose}
         </label>
       </div>
@@ -173,9 +175,9 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
       <section className="import__card">
         <div className="import__file-row">
           <span className="import__file-name">{copy.fileSummary(name, sheet.rows.length)}</span>
-          <button type="button" className="import__button" onClick={onOther}>
+          <Button onClick={onOther}>
             {copy.otherFile}
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -205,14 +207,13 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
                 {copy.failed}
               </p>
             )}
-            <button
-              type="button"
-              className="import__button import__button--primary"
+            <Button
+              variant="primary"
               disabled={mapping.name === undefined || check.isPending}
               onClick={() => check.mutate()}
             >
               {check.isPending ? copy.checking : copy.check}
-            </button>
+            </Button>
           </section>
         </>
       )}
@@ -247,9 +248,8 @@ function ColumnMapping({
                 {label}
               </label>
               {sample && <span className="import__sample">{copy.sample(sample)}</span>}
-              <select
+              <Select
                 id={id}
-                className="import__select"
                 value={columns[column] ?? ''}
                 onChange={(event) => onChange(column, event.target.value as ImportField | '')}
               >
@@ -259,7 +259,7 @@ function ColumnMapping({
                     {copy.fields[field]}
                   </option>
                 ))}
-              </select>
+              </Select>
             </li>
           )
         })}
@@ -294,9 +294,8 @@ function PlanChoices({
               <label htmlFor={id} className="import__column-name">
                 {value}
               </label>
-              <select
+              <Select
                 id={id}
-                className="import__select"
                 value={planFor(value)}
                 onChange={(event) => onChange(value, event.target.value)}
               >
@@ -309,7 +308,7 @@ function PlanChoices({
                       {plan.name}
                     </option>
                   ))}
-              </select>
+              </Select>
             </li>
           )
         })}
@@ -357,17 +356,16 @@ function Review({
           </p>
         )}
         <div className="import__actions">
-          <button type="button" className="import__button" onClick={onBack} disabled={applying}>
+          <Button onClick={onBack} disabled={applying}>
             {copy.back}
-          </button>
-          <button
-            type="button"
-            className="import__button import__button--primary"
+          </Button>
+          <Button
+            variant="primary"
             disabled={imported === 0 || applying}
             onClick={onApply}
           >
             {applying ? copy.applying : copy.apply(imported)}
-          </button>
+          </Button>
         </div>
       </section>
       <RefusedRows rows={report.rows} />
@@ -388,10 +386,10 @@ function Done({ name, report, onOther }: { name: string; report: ImportReport; o
         </p>
         <Counts report={report} />
         <div className="import__actions">
-          <button type="button" className="import__button" onClick={onOther}>
+          <Button onClick={onOther}>
             {copy.again}
-          </button>
-          <Link to="/admin/alumnos" className="import__button import__button--primary">
+          </Button>
+          <Link to="/admin/alumnos" className={buttonClass({ variant: 'primary' })}>
             {copy.toStudents}
           </Link>
         </div>

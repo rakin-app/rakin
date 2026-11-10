@@ -24,14 +24,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--control-height-sm);
+  min-height: var(--control-height);
   font-size: var(--text-md);
 }
 
-/* A link that reads as the form's other button. */
-.new-member__cancel {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-}

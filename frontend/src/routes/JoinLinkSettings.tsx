@@ -15,6 +15,8 @@ import {
 } from '../api/join'
 import { programsQuery } from '../api/people'
 import { validationErrors } from '../api/validation'
+import { Button, buttonClass } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field, LoadFailed, refusal } from './settingsForm'
 
@@ -110,7 +112,7 @@ function JoinLinkSection({
       {needsPrivacy && (
         <div className="settings__card settings__plan-text" role="alert">
           <p className="settings__detail">{copy.needsPrivacy}</p>
-          <Link to="/admin/ajustes/gimnasio" hash="privacidad" className="settings__button">
+          <Link to="/admin/ajustes/gimnasio" hash="privacidad" className={buttonClass()}>
             {copy.needsPrivacyLink}
           </Link>
         </div>
@@ -123,7 +125,7 @@ function JoinLinkSection({
       {link ? (
         <div className="settings__card settings__plan-text">
           <Field label={copy.linkLabel}>
-            {(props) => <input {...props} className="settings__input" type="url" readOnly value={link.url} />}
+            {(props) => <Input {...props} type="url" readOnly value={link.url} />}
           </Field>
           {link.expires_on && (
             <p className="settings__detail">
@@ -131,11 +133,11 @@ function JoinLinkSection({
             </p>
           )}
           <div className="settings__actions">
-            <button type="button" className="settings__button" onClick={() => void copyLink()}>
+            <Button onClick={() => void copyLink()}>
               {copy.copy}
-            </button>
+            </Button>
             <a
-              className="settings__button settings__button--primary"
+              className={buttonClass({ variant: 'primary' })}
               href={whatsappShareUrl(copy.shareText(gym.data?.name ?? '', link.url))}
               target="_blank"
               rel="noreferrer"
@@ -150,9 +152,8 @@ function JoinLinkSection({
       <form className="settings__form" aria-label={copy.title} onSubmit={submit} noValidate>
         <Field label={copy.program} hint={copy.programHint} error={error('program_id')}>
           {(props) => (
-            <select
+            <Select
               {...props}
-              className="settings__input"
               value={drafts.program_id}
               onChange={(e) => set('program_id', e.target.value)}
             >
@@ -162,14 +163,13 @@ function JoinLinkSection({
                   {p.name}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
         <Field label={copy.expiresOn} hint={copy.expiresOnHint} error={error('expires_on')}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="date"
               value={drafts.expires_on}
               onChange={(e) => set('expires_on', e.target.value)}
@@ -182,13 +182,13 @@ function JoinLinkSection({
           </p>
         )}
         <div className="settings__actions">
-          <button
+          <Button
             type="submit"
-            className="settings__button settings__button--primary"
+            variant="primary"
             disabled={pending || (needsPrivacy && !link)}
           >
             {pending ? copy.working : link ? copy.save : copy.generate}
-          </button>
+          </Button>
         </div>
       </form>
       {link &&
@@ -198,41 +198,37 @@ function JoinLinkSection({
               {confirming === 'regenerate' ? copy.confirmRegenerate : copy.confirmRevoke}
             </p>
             <div className="settings__actions">
-              <button type="button" className="settings__button" disabled={pending} onClick={() => setConfirming(null)}>
+              <Button disabled={pending} onClick={() => setConfirming(null)}>
                 {copy.cancel}
-              </button>
-              <button
-                type="button"
-                className="settings__button settings__button--primary"
+              </Button>
+              <Button
+                variant={confirming === 'revoke' ? 'danger' : 'primary'}
                 disabled={pending}
                 onClick={() => (confirming === 'regenerate' ? generate.mutate() : revoke.mutate())}
               >
                 {copy.confirm}
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
           <div className="settings__actions">
-            <button
-              type="button"
-              className="settings__button"
+            <Button
               onClick={() => {
                 setNotice(null)
                 setConfirming('regenerate')
               }}
             >
               {copy.regenerate}
-            </button>
-            <button
-              type="button"
-              className="settings__button"
+            </Button>
+            <Button
+              variant="danger"
               onClick={() => {
                 setNotice(null)
                 setConfirming('revoke')
               }}
             >
               {copy.revoke}
-            </button>
+            </Button>
           </div>
         ))}
     </section>

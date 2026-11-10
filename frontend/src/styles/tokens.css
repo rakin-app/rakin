@@ -10,9 +10,11 @@
   --color-border: #e3e4e0;
   --color-divider: #eeefeb;
   --color-border-strong: #b8bab4;
+  /* Inputs, selects and chips: 3:1 or more on the surface and the page grey, as WCAG asks of a control's edge. */
+  --color-border-input: #898c86;
   --color-text: #15171a;
   --color-text-muted: #5c6066;
-  --color-text-subtle: #8a8d92;
+  --color-text-subtle: #6b6f75; /* 4.5:1 or more on --color-bg */
 
   /* Inverse surfaces (the student's "Próximo pago" card) */
   --color-inverse: #15171a;
@@ -34,10 +36,14 @@
   --color-success-pill: #d1fae5;
   --color-success-strong: #065f46;
 
-  /* Warning: overdue */
+  /* Warning: overdue, and only that */
   --color-warning: #b45309;
   --color-warning-soft: #ffedd5;
   --color-warning-strong: #9a3412;
+
+  /* Danger: form errors and buttons that delete, remove or refuse */
+  --color-danger: #b42318;
+  --color-danger-soft: #fee4e2;
 
   /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -51,6 +57,7 @@
   --text-sm: 13px; /* section headings, row details */
   --text-md: 14px; /* buttons, desktop body */
   --text-base: 15px; /* mobile body */
+  --text-input: 16px; /* every input, select and textarea: under 16px iOS Safari zooms on focus */
   --text-lg: 20px; /* card figures */
   --text-xl: 22px; /* sub-page titles */
   --text-2xl: 26px;
@@ -85,10 +92,9 @@
   --radius-pill: 999px;
 
   /* Sizes */
-  --control-height-sm: 40px;
   --control-height: 44px; /* minimum touch target */
-  --control-height-lg: 48px;
-  --control-height-xl: 52px;
+  --control-height-lg: 52px; /* a screen's main action on a phone */
   --sidebar-width: 240px;
   --content-max-width: 480px;
+  --content-narrow: 640px; /* forms and single lists; tables run full width */
 }

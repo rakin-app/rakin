@@ -20,6 +20,8 @@ import {
   type SuggestedBlock,
 } from '../api/sessionBlocks'
 import { sessionQuery, useGymTimeZone, type ClassSession } from '../api/sessions'
+import { Button, buttonClass } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, CloseIcon } from '../components/icons'
 import { clockTime } from '../format'
 import { t } from '../i18n/es'
@@ -120,13 +122,11 @@ export function ClassTimer() {
         <div className="classes__error" role="alert">
           <p>{missing ? t.admin.session.notFound : copy.error}</p>
           {!missing && (
-            <button
-              type="button"
-              className="classes__button"
+            <Button
               onClick={() => void (session.isError ? session.refetch() : me.refetch())}
             >
               {copy.retry}
-            </button>
+            </Button>
           )}
         </div>
       </Shell>
@@ -166,7 +166,7 @@ function Shell({ sessionId, title, children }: { sessionId: string; title?: stri
         <Link
           to="/admin/clases/$sessionId"
           params={{ sessionId }}
-          className="classes__icon-button"
+          className={buttonClass({ icon: true })}
           aria-label={copy.back}
         >
           <ChevronLeftIcon />
@@ -302,9 +302,7 @@ function Prepare({
       <Shell sessionId={session.id} title={session.class_type_name}>
         <div className="classes__error" role="alert">
           <p>{copy.error}</p>
-          <button
-            type="button"
-            className="classes__button"
+          <Button
             onClick={() => {
               void plan.refetch()
               void suggested.refetch()
@@ -312,7 +310,7 @@ function Prepare({
             }}
           >
             {copy.retry}
-          </button>
+          </Button>
         </div>
       </Shell>
     )
@@ -466,17 +464,17 @@ function PlanEditor({
             {words.invalid}
           </p>
         )}
-        <button
+        <Button
           type="submit"
-          className="classes__button classes__button--primary"
+          variant="primary"
           disabled={noKinds || (fixed === 0 && drafts.length === 0)}
         >
           {submit}
-        </button>
+        </Button>
         {onCancel && (
-          <button type="button" className="classes__button" onClick={onCancel}>
+          <Button onClick={onCancel}>
             {words.cancel}
-          </button>
+          </Button>
         )}
       </div>
     </form>
@@ -517,9 +515,8 @@ function DraftCard({
       <label htmlFor={`${id}-${field}`} className="classes__label">
         {label}
       </label>
-      <input
+      <Input
         id={`${id}-${field}`}
-        className="classes__input"
         inputMode={mode}
         value={draft[field]}
         aria-invalid={wrong.has(field) || undefined}
@@ -536,40 +533,38 @@ function DraftCard({
         </span>
         {!fixedKind && (
           <span className="timer-editor__actions">
-            <button
-              type="button"
-              className="classes__icon-button"
+            <Button
+              icon
               aria-label={words.up(n)}
               disabled={first}
               onClick={() => onMove(-1)}
             >
               <ChevronUpIcon />
-            </button>
-            <button
-              type="button"
-              className="classes__icon-button"
+            </Button>
+            <Button
+              icon
               aria-label={words.down(n)}
               disabled={last}
               onClick={() => onMove(1)}
             >
               <ChevronDownIcon />
-            </button>
-            <button type="button" className="classes__icon-button" aria-label={words.remove(n)} onClick={onRemove}>
+            </Button>
+            <Button icon aria-label={words.remove(n)} onClick={onRemove}>
               <CloseIcon />
-            </button>
+            </Button>
           </span>
         )}
       </div>
       <label htmlFor={`${id}-kind`} className="classes__label">
         {words.kind}
       </label>
-      <select id={`${id}-kind`} className="classes__input" value={draft.kindId} onChange={(e) => onKind(e.target.value)}>
+      <Select id={`${id}-kind`} value={draft.kindId} onChange={(e) => onKind(e.target.value)}>
         {choices.map((k) => (
           <option key={k.id} value={k.id}>
             {k.name}
           </option>
         ))}
-      </select>
+      </Select>
       {kind?.is_sparring ? (
         <div className="timer-editor__rounds">
           {input('rounds', words.rounds, 'numeric')}
@@ -691,9 +686,9 @@ function Running({
   return (
     <div className={`timer${warning ? ' timer--warning' : ''}${paused ? ' timer--paused' : ''}`}>
       <header className="timer__top">
-        <button type="button" className="timer__back" aria-label={copy.back} onClick={() => setLeaving(true)}>
+        <Button icon inverse aria-label={copy.back} onClick={() => setLeaving(true)}>
           <ChevronLeftIcon />
-        </button>
+        </Button>
         <span className="timer__class">{session.class_type_name}</span>
         <span className="timer__position">{words.position(run.index + 1, run.blocks.length)}</span>
       </header>
@@ -705,46 +700,51 @@ function Running({
         <p className="timer__next">{paused ? words.paused : nextLabel(run, block)}</p>
       </div>
       <div className="timer__controls">
-        <button
-          type="button"
-          className="timer__button timer__button--main"
+        <Button
+          variant="primary"
+          size="lg"
+          inverse
+          className="timer__go"
           onClick={() => act(paused ? (state, at) => ({ state: resume(state, at), finished: [], phaseEndedAt: null }) : pause)}
         >
           {paused ? words.resume : words.pause}
-        </button>
-        <button type="button" className="timer__button" onClick={() => act(addMinute)}>
+        </Button>
+        <Button size="lg" inverse onClick={() => act(addMinute)}>
           {words.addMinute}
-        </button>
-        <button type="button" className="timer__button" onClick={() => act(skip)}>
+        </Button>
+        <Button size="lg" inverse onClick={() => act(skip)}>
           {skipLabel}
-        </button>
+        </Button>
         {!run.openMat && kinds.data && (
-          <button type="button" className="timer__button" onClick={() => setEditing(true)}>
+          <Button size="lg" inverse onClick={() => setEditing(true)}>
             {words.edit}
-          </button>
+          </Button>
         )}
-        <button type="button" className="timer__button timer__button--end" onClick={() => setEnding(true)}>
+        <Button variant="danger" size="lg" inverse onClick={() => setEnding(true)}>
           {words.end}
-        </button>
+        </Button>
       </div>
       <TimerNotes sessionId={session.id} noWakeLock={wakeLock === 'unsupported'} />
       {unseenAt !== null && (
         <div className="timer__sheet" role="alertdialog" aria-label={words.unseen.title}>
           <p>{words.unseen.title}</p>
           <p className="timer__sheet-detail">{words.unseen.detail(clockTime(new Date(unseenAt).toISOString(), timeZone))}</p>
-          <button
-            type="button"
-            className="timer__button timer__button--main"
+          <Button
+            variant="primary"
+            size="lg"
+            inverse
+            className="timer__go"
             onClick={() => {
               setUnseenAt(null)
               act((state, at) => ({ state: resume(state, at), finished: [], phaseEndedAt: null }))
             }}
           >
             {words.unseen.resume}
-          </button>
-          <button
-            type="button"
-            className="timer__button timer__button--end"
+          </Button>
+          <Button
+            variant="danger"
+            size="lg"
+            inverse
             onClick={() => {
               setUnseenAt(null)
               // Paused when last seen, so it ends then.
@@ -752,40 +752,41 @@ function Running({
             }}
           >
             {words.unseen.end(clockTime(new Date(unseenAt).toISOString(), timeZone))}
-          </button>
+          </Button>
         </div>
       )}
       {leaving && (
         <div className="timer__sheet" role="alertdialog" aria-label={words.leave.title}>
           <p>{words.leave.title}</p>
-          <button
-            type="button"
-            className="timer__button"
+          <Button
+            size="lg"
+            inverse
             onClick={() => void navigate({ to: '/admin/clases/$sessionId', params: { sessionId: session.id } })}
           >
             {words.leave.yes}
-          </button>
-          <button type="button" className="timer__button timer__button--main" onClick={() => setLeaving(false)}>
+          </Button>
+          <Button variant="primary" size="lg" inverse className="timer__go" onClick={() => setLeaving(false)}>
             {words.leave.no}
-          </button>
+          </Button>
         </div>
       )}
       {ending && (
         <div className="timer__sheet" role="alertdialog" aria-label={words.end}>
           <p>{words.endConfirm}</p>
-          <button
-            type="button"
-            className="timer__button timer__button--end"
+          <Button
+            variant="danger"
+            size="lg"
+            inverse
             onClick={() => {
               setEnding(false)
               act(endClass)
             }}
           >
             {words.endYes}
-          </button>
-          <button type="button" className="timer__button" onClick={() => setEnding(false)}>
+          </Button>
+          <Button size="lg" inverse onClick={() => setEnding(false)}>
             {words.endNo}
-          </button>
+          </Button>
         </div>
       )}
       {editing && kinds.data && (
@@ -869,16 +870,15 @@ function Finished({ session, run }: { session: ClassSession; run: RunState }) {
           })}
         </ul>
         <TimerNotes sessionId={session.id} noWakeLock={false} />
-        <button
-          type="button"
-          className="classes__button classes__button--primary"
+        <Button
+          variant="primary"
           onClick={() => {
             clearRun(session.id)
             void navigate({ to: '/admin/clases/$sessionId', params: { sessionId: session.id } })
           }}
         >
           {words.back}
-        </button>
+        </Button>
       </section>
     </Shell>
   )

@@ -9,6 +9,8 @@ import {
   UploadFailed,
   type OpenPeriod,
 } from '../api/proofs'
+import { Button, buttonClass } from '../components/Button'
+import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import './ProofUpload.css'
 
@@ -40,9 +42,9 @@ export function ProofUpload() {
       {sent ? (
         <div className="proof__sent" role="status">
           <p>{copy.sent}</p>
-          <button type="button" className="proof__button" onClick={() => setSent(false)}>
+          <Button onClick={() => setSent(false)}>
             {copy.another}
-          </button>
+          </Button>
         </div>
       ) : periods.data.length === 0 ? (
         <p className="proof__note">{copy.none}</p>
@@ -116,9 +118,8 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
       <label htmlFor={ids.amount} className="proof__label">
         {copy.amountLabel}
       </label>
-      <input
+      <Input
         id={ids.amount}
-        className="proof__input"
         inputMode="numeric"
         pattern="[0-9]*"
         required
@@ -140,7 +141,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
           aria-describedby={ids.hint}
           onChange={pickFile}
         />
-        <label htmlFor={ids.camera} className="proof__button">
+        <label htmlFor={ids.camera} className={buttonClass()}>
           {copy.camera}
         </label>
         <input
@@ -151,7 +152,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
           aria-describedby={ids.hint}
           onChange={pickFile}
         />
-        <label htmlFor={ids.choose} className="proof__button">
+        <label htmlFor={ids.choose} className={buttonClass()}>
           {copy.choose}
         </label>
       </div>
@@ -165,13 +166,13 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
         </p>
       )}
 
-      <button
+      <Button
         type="submit"
-        className="proof__button proof__button--primary"
+        variant="primary"
         disabled={!file || problem !== null || !amountOk || send.isPending}
       >
         {send.isPending ? copy.sending : copy.submit}
-      </button>
+      </Button>
     </form>
   )
 }

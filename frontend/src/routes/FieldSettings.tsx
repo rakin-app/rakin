@@ -14,6 +14,8 @@ import {
 } from '../api/customFields'
 import { myRoleQuery } from '../api/me'
 import { validationErrors } from '../api/validation'
+import { Button } from '../components/Button'
+import { Input, Select, Textarea } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field, LoadFailed, refusal } from './settingsForm'
 
@@ -93,9 +95,9 @@ export function FieldSettings() {
       {editing === 'new' ? (
         <FieldForm owner={owner} onCancel={() => setEditing(null)} onDone={done} />
       ) : (
-        <button type="button" className="settings__button settings__button--primary" onClick={() => open('new')}>
+        <Button variant="primary" onClick={() => open('new')}>
           {copy.add}
-        </button>
+        </Button>
       )}
       {reorder.isError && (
         <p className="settings__error" role="alert">
@@ -175,30 +177,26 @@ function FieldRow({
         </p>
       )}
       <div className="settings__actions">
-        <button
-          type="button"
-          className="settings__button"
+        <Button
           aria-label={copy.up(field.label)}
           disabled={first || moving}
           onClick={() => onMove(-1)}
         >
           {copy.upMark}
-        </button>
-        <button
-          type="button"
-          className="settings__button"
+        </Button>
+        <Button
           aria-label={copy.down(field.label)}
           disabled={last || moving}
           onClick={() => onMove(1)}
         >
           {copy.downMark}
-        </button>
-        <button type="button" className="settings__button" onClick={onEdit}>
+        </Button>
+        <Button onClick={onEdit}>
           {copy.edit}
-        </button>
-        <button type="button" className="settings__button" disabled={toggle.isPending} onClick={() => toggle.mutate()}>
+        </Button>
+        <Button disabled={toggle.isPending} onClick={() => toggle.mutate()}>
           {field.archived ? copy.restore : copy.archive}
-        </button>
+        </Button>
       </div>
     </li>
   )
@@ -299,9 +297,8 @@ function FieldForm({
       <h2 className="settings__legend">{field ? form.edit(field.label) : form.create}</h2>
       <Field label={form.label} error={labelError}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="text"
             maxLength={80}
             value={drafts.label}
@@ -311,9 +308,8 @@ function FieldForm({
       </Field>
       <Field label={form.type} hint={field ? undefined : form.typeHint}>
         {(props) => (
-          <select
+          <Select
             {...props}
-            className="settings__input"
             value={drafts.type}
             // The type is set on create, as the API has it.
             disabled={field !== undefined}
@@ -327,15 +323,14 @@ function FieldForm({
                 {copy.types[type]}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </Field>
       {enumField && (
         <Field label={form.options} hint={form.optionsHint} error={optionsError}>
           {(props) => (
-            <textarea
+            <Textarea
               {...props}
-              className="settings__input settings__textarea"
               rows={4}
               value={drafts.options}
               onChange={(e) => setDrafts({ ...drafts, options: e.target.value })}
@@ -365,9 +360,8 @@ function FieldForm({
           </div>
           <Field label={form.visibleTo}>
             {(props) => (
-              <select
+              <Select
                 {...props}
-                className="settings__input"
                 value={drafts.visible_to}
                 onChange={(e) => setDrafts({ ...drafts, visible_to: e.target.value as VisibleTo })}
               >
@@ -376,7 +370,7 @@ function FieldForm({
                     {copy.visibleTo[v]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </Field>
         </>
@@ -388,12 +382,12 @@ function FieldForm({
         </p>
       )}
       <div className="settings__actions">
-        <button type="button" className="settings__button" disabled={save.isPending} onClick={onCancel}>
+        <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="settings__button settings__button--primary" disabled={save.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           {save.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )

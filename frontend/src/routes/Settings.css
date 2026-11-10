@@ -15,7 +15,10 @@
 }
 
 .settings__section-link {
+  display: flex;
   flex: none;
+  align-items: center;
+  min-height: var(--control-height);
   padding: var(--space-2-5) var(--space-3);
   border-bottom: 2px solid transparent;
   color: var(--color-text-muted);
@@ -34,7 +37,7 @@
   flex-direction: column;
   gap: var(--space-5);
   padding: var(--space-5) var(--space-5) var(--space-6);
-  max-width: 720px;
+  max-width: var(--content-narrow);
 }
 
 .settings__section,
@@ -80,31 +83,6 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.settings__input {
-  min-height: var(--control-height);
-  padding: 0 var(--space-3);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
-}
-
-.settings__textarea {
-  padding: var(--space-2) var(--space-3);
-  font-family: inherit;
-  resize: vertical;
-}
-
-.settings__input[readonly],
-.settings__input:disabled {
-  background: var(--color-bg);
-  color: var(--color-text-muted);
-}
-
-.settings__input[aria-invalid='true'] {
-  border-color: var(--color-warning);
-}
-
 .settings__hint,
 .settings__note,
 .settings__detail {
@@ -117,15 +95,18 @@
   padding: 0 var(--space-5);
 }
 
-.settings__body .settings__note {
-  padding: 0;
+/* A link on a line of its own: a 44px target, though it reads as text. */
+.settings__link {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: var(--control-height);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
 }
 
-.settings__field-error {
-  margin: 0;
-  color: var(--color-warning-strong);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
+.settings__body .settings__note {
+  padding: 0;
 }
 
 .settings__check {
@@ -153,8 +134,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  background: var(--color-warning-soft);
-  color: var(--color-warning-strong);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 
 .settings__error p {
@@ -170,29 +151,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: var(--space-2);
-}
-
-.settings__button {
-  min-height: var(--control-height);
-  padding: 0 var(--space-3);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-}
-
-.settings__button--primary {
-  background: var(--color-inverse);
-  border-color: var(--color-inverse);
-  color: var(--color-inverse-text);
-}
-
-.settings__button:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .settings__list {
@@ -286,15 +244,6 @@ h2.settings__plan-name {
   grid-template-columns: minmax(0, 1fr) 5.5rem auto;
 }
 
-/* The button sits level with the inputs, under the labels. */
-.settings__sub-rank > .settings__button {
-  align-self: end;
-  width: var(--control-height);
-  padding: 0;
-  display: grid;
-  place-items: center;
-}
-
 @media (min-width: 960px) {
   .settings__sections {
     margin: 0 var(--space-8);
@@ -363,7 +312,11 @@ h2.settings__plan-name {
   gap: var(--space-3);
 }
 
-.schedule__pair .settings__input {
+/* The button sits level with the inputs, under the labels. */
+.settings__sub-rank > .button {
+  align-self: end;
+}
+
+.schedule__pair .control {
   width: 100%;
-  min-width: 0;
 }

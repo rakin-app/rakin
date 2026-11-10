@@ -12,6 +12,8 @@ import {
 } from '../api/blockKinds'
 import { ApiError } from '../api/client'
 import { validationErrors } from '../api/validation'
+import { Button } from '../components/Button'
+import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field, LoadFailed, refusal } from './settingsForm'
 
@@ -73,9 +75,9 @@ export function BlockKindSettings() {
       {editing === 'new' ? (
         <BlockKindForm onCancel={() => setEditing(null)} onDone={done} />
       ) : (
-        <button type="button" className="settings__button settings__button--primary" onClick={() => open('new')}>
+        <Button variant="primary" onClick={() => open('new')}>
           {copy.add}
-        </button>
+        </Button>
       )}
       {reorder.isError && (
         <p className="settings__error" role="alert">
@@ -153,32 +155,28 @@ function BlockKindRow({
       <div className="settings__actions">
         {!kind.archived && (
           <>
-            <button
-              type="button"
-              className="settings__button"
+            <Button
               aria-label={copy.up(kind.name)}
               disabled={first || moving}
               onClick={() => onMove(-1)}
             >
               {copy.upMark}
-            </button>
-            <button
-              type="button"
-              className="settings__button"
+            </Button>
+            <Button
               aria-label={copy.down(kind.name)}
               disabled={last || moving}
               onClick={() => onMove(1)}
             >
               {copy.downMark}
-            </button>
+            </Button>
           </>
         )}
-        <button type="button" className="settings__button" onClick={onEdit}>
+        <Button onClick={onEdit}>
           {copy.edit}
-        </button>
-        <button type="button" className="settings__button" disabled={toggle.isPending} onClick={() => toggle.mutate()}>
+        </Button>
+        <Button disabled={toggle.isPending} onClick={() => toggle.mutate()}>
           {kind.archived ? copy.restore : copy.archive}
-        </button>
+        </Button>
       </div>
     </li>
   )
@@ -245,9 +243,8 @@ function BlockKindForm({
       <h2 className="settings__legend">{label}</h2>
       <Field label={form.name} error={nameError}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="text"
             maxLength={200}
             value={name}
@@ -274,21 +271,20 @@ function BlockKindForm({
       )}
       <div className="settings__actions">
         {kind && (
-          <button
-            type="button"
-            className="settings__button"
+          <Button
+            variant="danger"
             disabled={save.isPending || remove.isPending}
             onClick={() => remove.mutate()}
           >
             {copy.delete}
-          </button>
+          </Button>
         )}
-        <button type="button" className="settings__button" disabled={save.isPending} onClick={onCancel}>
+        <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="settings__button settings__button--primary" disabled={save.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           {save.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )
