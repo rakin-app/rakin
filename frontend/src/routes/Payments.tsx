@@ -1,6 +1,6 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 import {
   BOOK_FILTERS,
   ledgerBookQuery,
@@ -11,27 +11,39 @@ import {
   type PersonRef,
 } from '../api/ledger'
 import { myRoleQuery, readsLedger } from '../api/me'
+import { membershipLedgerQuery, membershipsQuery, shownMembership } from '../api/member'
+import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
 import { PageHeader } from '../components/PageHeader'
 import { dayTime, isoDay, monthName, monthYear, shortDay, toDate } from '../format'
 import { t } from '../i18n/es'
+import { PaymentForm } from './MemberDetail'
 import './Payments.css'
 
 const copy = t.admin.payments
 const clp = t.common.clp
 
-// The month and filter live in the URL, so coming back to the book finds it as it was left.
+// The month, filter and search live in the URL, so coming back to the book finds it as
+// it was left.
 export type PaymentsSearch = {
   // The first day of the month shown, `2026-10-01`; the current month when absent.
   month?: string
   filter?: BookFilter
+  // A member's name, phone or RUT (#107).
+  q?: string
 }
 
 export function validatePaymentsSearch(search: Record<string, unknown>): PaymentsSearch {
   const month = typeof search.month === 'string' && /^\d{4}-\d{2}-01$/.test(search.month) ? search.month : undefined
   const filter = BOOK_FILTERS.find((f) => f !== 'all' && f === search.filter)
-  return { month, filter }
+  const q = typeof search.q === 'string' && search.q.trim() ? search.q : undefined
+  return { month, filter, q }
 }
+
+// Typing waits this long before it becomes a search, as on the member list.
+const SEARCH_DEBOUNCE_MS = 250
+// The members the picker offers for what was typed.
+const PICKER_ROWS = 8
 
 const route = getRouteApi('/admin/pagos')
 
@@ -42,6 +54,9 @@ const route = getRouteApi('/admin/pagos')
  * Freezes are not ledger entries, but the book lists where each started and ended
  * among them (#26), as rows with no amount. Reminders are not listed. Adjustments and
  * refunds are made on the member's detail (#38) and listed here with their sign.
+ *
+ * A search keeps a member's lines, and a guardian's dependents'; "Registrar pago" picks
+ * a member and opens the member detail's payment form for them (#107).
  */
 export function Payments() {
   const role = useQuery(myRoleQuery())
@@ -64,10 +79,23 @@ function Book() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const filter = search.filter ?? 'all'
-  const book = useInfiniteQuery({ ...ledgerBookQuery(search.month, filter), placeholderData: keepPreviousData })
+  const q = search.q ?? ''
+  const book = useInfiniteQuery({ ...ledgerBookQuery(search.month, filter, q), placeholderData: keepPreviousData })
   // The nav badge's count, so the link stands even while the book cannot load.
   const pending = useQuery(pendingCountQuery()).data ?? 0
   const monthId = useId()
+  const searchId = useId()
+  const [recording, setRecording] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+
+  const [draft, setDraft] = useState(q)
+  useEffect(() => {
+    if (draft.trim() === q.trim()) return
+    const timer = setTimeout(() => {
+      void navigate({ search: (prev) => ({ ...prev, q: draft.trim() ? draft : undefined }), replace: true })
+    }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [draft, q, navigate])
 
   // The last page loaded is the freshest: its total and KPIs are what the footer and
   // tiles show once "Cargar más" has run.
@@ -108,8 +136,34 @@ function Book() {
               {copy.review(pending)}
             </Link>
           )}
+          <button
+            type="button"
+            className="payments__record"
+            aria-expanded={recording}
+            onClick={() => {
+              setDone(null)
+              setRecording(!recording)
+            }}
+          >
+            {copy.record}
+          </button>
         </div>
       </header>
+
+      {done && (
+        <p className="payments__done" role="status">
+          {done}
+        </p>
+      )}
+      {recording && (
+        <RecordPayment
+          onCancel={() => setRecording(false)}
+          onDone={(message) => {
+            setRecording(false)
+            setDone(message)
+          }}
+        />
+      )}
 
       {book.isPending ? (
         <p className="payments__note">{copy.loading}</p>
@@ -125,6 +179,20 @@ function Book() {
           <>
             <Kpis kpis={latest.kpis} />
             <section className="payments__table-card" aria-label={copy.title}>
+              <div role="search" className="payments__search">
+                <label htmlFor={searchId} className="visually-hidden">
+                  {copy.searchLabel}
+                </label>
+                <input
+                  id={searchId}
+                  type="search"
+                  className="payments__search-input"
+                  placeholder={copy.searchPlaceholder}
+                  autoComplete="off"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                />
+              </div>
               <div role="group" aria-label={copy.filtersLabel} className="payments__filters">
                 {BOOK_FILTERS.map((value) => (
                   <button
@@ -139,7 +207,7 @@ function Book() {
                 ))}
               </div>
               {lines.length === 0 ? (
-                <p className="payments__note">{copy.empty}</p>
+                <p className="payments__note">{q.trim() ? copy.noMatch(q.trim()) : copy.empty}</p>
               ) : (
                 <div className="payments__scroll">
                   <table className="payments__table">
@@ -191,6 +259,126 @@ function Book() {
           </>
         )
       )}
+    </div>
+  )
+}
+
+/** "Registrar pago" from the book: pick a member, then the member detail's payment form
+ *  for the membership their detail shows. */
+function RecordPayment({ onCancel, onDone }: { onCancel: () => void; onDone: (message: string) => void }) {
+  const [member, setMember] = useState<MemberRow | null>(null)
+  return (
+    <section className="payments__record-panel" aria-label={copy.record}>
+      {member ? (
+        <PayFor member={member} onBack={() => setMember(null)} onDone={onDone} />
+      ) : (
+        <MemberPicker onPick={setMember} onCancel={onCancel} />
+      )}
+    </section>
+  )
+}
+
+function MemberPicker({ onPick, onCancel }: { onPick: (member: MemberRow) => void; onCancel: () => void }) {
+  const words = copy.picker
+  const inputId = useId()
+  const [draft, setDraft] = useState('')
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setQ(draft.trim()), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [draft])
+  const members = useInfiniteQuery({
+    ...membersQuery({ q, status: [], plan: [], program: [] }),
+    enabled: q !== '',
+    placeholderData: keepPreviousData,
+  })
+  const found = q ? (members.data?.pages[0]?.items ?? []) : []
+
+  return (
+    <div className="payments__picker">
+      <label htmlFor={inputId} className="payments__label">
+        {words.label}
+      </label>
+      <input
+        id={inputId}
+        type="search"
+        className="payments__search-input"
+        placeholder={copy.searchPlaceholder}
+        autoComplete="off"
+        // The panel opens to pick someone: start where the typing goes.
+        autoFocus
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      {members.isError && (
+        <p className="payments__error" role="alert">
+          {words.error}
+        </p>
+      )}
+      {q && members.isSuccess && found.length === 0 && <p className="payments__hint">{words.none}</p>}
+      {found.length > 0 && (
+        <ul className="payments__picks" aria-label={words.results}>
+          {found.slice(0, PICKER_ROWS).map((row) => (
+            <li key={row.id}>
+              <button type="button" className="payments__pick" onClick={() => onPick(row)}>
+                <span className="payments__pick-name">{row.name}</span>
+                <span className="payments__pick-detail">{pickDetail(row)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="button" className="payments__button" onClick={onCancel}>
+        {words.cancel}
+      </button>
+    </div>
+  )
+}
+
+/** `Mensual adultos · Apoderado: Camila Ortiz`: who the picked row is. */
+function pickDetail(row: MemberRow): string {
+  const parts = [row.membership?.plan_name ?? t.admin.member.noPlan]
+  if (row.guardian) parts.push(t.admin.students.guardianOf(row.guardian.name))
+  else if (row.phone) parts.push(row.phone)
+  return parts.join(' · ')
+}
+
+function PayFor({ member, onBack, onDone }: { member: MemberRow; onBack: () => void; onDone: (message: string) => void }) {
+  const words = copy.picker
+  const memberships = useQuery(membershipsQuery(member.id))
+  const membership = memberships.data ? shownMembership(memberships.data) : undefined
+  const ledger = useQuery({ ...membershipLedgerQuery(membership?.id ?? ''), enabled: membership !== undefined })
+  const periods = ledger.data?.open_periods ?? []
+
+  let body
+  if (memberships.isError || ledger.isError) {
+    body = (
+      <p className="payments__error" role="alert">
+        {words.error}
+      </p>
+    )
+  } else if (memberships.isPending || (membership && ledger.isPending)) {
+    body = <p className="payments__hint">{words.loading}</p>
+  } else if (!membership) {
+    body = <p className="payments__hint">{words.noPlan}</p>
+  } else if (periods.length === 0) {
+    body = <p className="payments__hint">{words.upToDate}</p>
+  } else {
+    body = <PaymentForm membership={membership} periods={periods} onCancel={onBack} onDone={onDone} />
+  }
+
+  return (
+    <div className="payments__picker">
+      <div className="payments__picked">
+        <span>
+          <span className="payments__pick-name">{member.name}</span>
+          {membership && <span className="payments__pick-detail">{membership.plan_name}</span>}
+        </span>
+        <button type="button" className="payments__more" onClick={onBack}>
+          {words.change}
+        </button>
+      </div>
+      {body}
     </div>
   )
 }

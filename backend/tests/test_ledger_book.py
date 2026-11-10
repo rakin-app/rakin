@@ -30,6 +30,7 @@ from tests.pg import (
     throwaway_database,
 )
 from tests.test_guardians import add_person, as_owner, bill, new_kid
+from tests.test_member_list import new_phone
 from tests.test_membership_ledger import slug
 from tests.test_plans import add_staff
 
@@ -206,6 +207,56 @@ def test_a_dependents_entries_carry_their_guardian_and_are_the_kids_filter(
     assert juans["guardian"] == {"id": marta, "name": "Marta"}
     assert names(kids) == [("Juan", "charge", 30000)]
     assert kids["total"] == 1
+
+
+@pg
+def test_search_keeps_the_members_it_finds_by_name_phone_or_rut(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    phone = new_phone()
+    ana = add_person(client, sur, "Ana Núñez", phone=phone)
+    bea = add_person(client, sur, "Bea")
+    rut = "UPDATE gym_person SET rut = '7654321-6' WHERE person_id = $1"
+    as_owner(db, sur, rut, uuid.UUID(bea))
+    bill(db, sur, ana, [(-3, 30000, 0, 0)])
+    bill(db, sur, bea, [(-3, 45000, 0, 0)])
+
+    # As the member list searches: accents and case ignored, phone and RUT in any format.
+    assert names(read(client, sur, q="nunez")) == [("Ana Núñez", "charge", 30000)]
+    # `+569 1234 5678` typed as `1234 5678`.
+    spaced = f"{phone[-8:-4]} {phone[-4:]}"
+    assert names(read(client, sur, q=spaced)) == [("Ana Núñez", "charge", 30000)]
+    assert names(read(client, sur, q="7.654.321-6")) == [("Bea", "charge", 45000)]
+    nobody = read(client, sur, q="zzz")
+    assert (nobody["items"], nobody["total"]) == ([], 0)
+    # The KPIs stay the gym's.
+    assert nobody["kpis"] == read(client, sur)["kpis"]
+
+
+@pg
+def test_search_finds_a_guardians_dependents_within_the_filter(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    bill(db, sur, juan, [(-3, 30000, 0, 10000)])
+    bill(db, sur, marta, [(-3, 45000, 0, 0)])
+
+    assert sorted(names(read(client, sur, q="marta"))) == [
+        ("Juan", "charge", 30000),
+        ("Juan", "payment", 10000),
+        ("Marta", "charge", 45000),
+    ]
+    assert sorted(names(read(client, sur, q="marta", filter="kids"))) == [
+        ("Juan", "charge", 30000),
+        ("Juan", "payment", 10000),
+    ]
+    assert names(read(client, sur, q="juan", filter="pending")) == [("Juan", "payment", 10000)]
+
+
+@pg
+def test_search_is_at_most_100_characters(client: TestClient, sur: uuid.UUID) -> None:
+    assert book(client, sur, q="a" * 101).status_code == 422
 
 
 @pg
