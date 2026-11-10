@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import { myRoleQuery, readsLedger } from '../api/me'
+import { managesGym, myRoleQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
-import { ClassesIcon, PaymentsIcon, StudentsIcon, TodayIcon } from '../components/icons'
+import { ClassesIcon, PaymentsIcon, SettingsIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import './AdminLayout.css'
 
 type NavItem = {
-  to: '/admin' | '/admin/alumnos' | '/admin/clases' | '/admin/pagos'
+  to: '/admin' | '/admin/alumnos' | '/admin/clases' | '/admin/pagos' | '/admin/ajustes'
   label: string
   icon: ReactNode
   exact?: boolean
@@ -19,6 +19,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { to: '/admin/alumnos', label: t.nav.students, icon: <StudentsIcon /> },
   { to: '/admin/clases', label: t.nav.classes, icon: <ClassesIcon /> },
   { to: '/admin/pagos', label: t.nav.payments, icon: <PaymentsIcon /> },
+  { to: '/admin/ajustes', label: t.nav.settings, icon: <SettingsIcon /> },
 ]
 
 /**
@@ -32,9 +33,12 @@ export function AdminLayout() {
   const role = useQuery(myRoleQuery())
   const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
   const badge = pending.data ?? 0
-  // Pagos is money: shown only once the role is known to read the ledger, so a coach
-  // never sees the tab, not even while the role loads.
-  const navItems = readsLedger(role.data) ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.to !== '/admin/pagos')
+  // Pagos is money and Ajustes the gym's configuration: each shown only once the role
+  // is known to reach it, so a coach never sees either tab, not even while the role loads.
+  const navItems = NAV_ITEMS.filter(
+    (item) =>
+      (item.to !== '/admin/pagos' || readsLedger(role.data)) && (item.to !== '/admin/ajustes' || managesGym(role.data)),
+  )
 
   return (
     <div className="admin-shell">

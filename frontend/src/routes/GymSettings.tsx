@@ -1,0 +1,298 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, type FormEvent } from 'react'
+import {
+  ACCOUNT_TYPES,
+  gymSettingsQuery,
+  updateGymSettings,
+  type GymSettings as Settings,
+  type GymSettingsUpdate,
+} from '../api/gym'
+import { validationErrors } from '../api/validation'
+import { t } from '../i18n/es'
+import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
+
+const copy = t.admin.settings.gym
+
+const BANK_FIELDS = ['bank', 'account_type', 'holder', 'rut', 'number', 'email'] as const
+type BankField = (typeof BANK_FIELDS)[number]
+
+type Drafts = {
+  name: string
+  timezone: string
+  grace_days: string
+  reminder_every_days: string
+  whatsapp: boolean
+  bank: Record<BankField, string>
+}
+
+function draftsOf(settings: Settings): Drafts {
+  const account = settings.bank_account
+  return {
+    name: settings.name,
+    timezone: settings.timezone,
+    grace_days: String(settings.grace_days),
+    reminder_every_days: String(settings.reminder_every_days),
+    whatsapp: settings.channels.whatsapp,
+    bank: {
+      bank: account?.bank ?? '',
+      account_type: account?.account_type ?? '',
+      holder: account?.holder ?? '',
+      rut: account ? t.common.rut(account.rut) : '',
+      number: account?.number ?? '',
+      email: account?.email ?? '',
+    },
+  }
+}
+
+/** Only what changed, so a setting someone else edited meanwhile is left as they left it. */
+function changesOf(before: Drafts, after: Drafts): GymSettingsUpdate {
+  const changes: GymSettingsUpdate = {}
+  if (after.name !== before.name) changes.name = after.name
+  if (after.timezone !== before.timezone) changes.timezone = after.timezone
+  if (after.grace_days !== before.grace_days) changes.grace_days = integerOf(after.grace_days)
+  if (after.reminder_every_days !== before.reminder_every_days) {
+    changes.reminder_every_days = integerOf(after.reminder_every_days)
+  }
+  if (after.whatsapp !== before.whatsapp) changes.channels = { whatsapp: after.whatsapp }
+  if (BANK_FIELDS.some((f) => after.bank[f] !== before.bank[f])) {
+    // The account is replaced whole; every field emptied takes it away.
+    const bank = after.bank
+    changes.bank_account = BANK_FIELDS.every((f) => bank[f].trim() === '')
+      ? null
+      : { ...bank, email: bank.email.trim() || null }
+  }
+  return changes
+}
+
+/** The zones the browser knows, and the gym's own even if it does not. */
+function timezones(current: string): string[] {
+  const known = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : []
+  return known.includes(current) ? known : [current, ...known]
+}
+
+/** "Gimnasio": the gym's profile, how it bills and reminds, and where students transfer to. */
+export function GymSettings() {
+  const settings = useQuery(gymSettingsQuery())
+
+  if (settings.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (settings.isError) {
+    return <LoadFailed error={settings.error} message={copy.error} retry={() => void settings.refetch()} />
+  }
+  return <GymForm settings={settings.data} />
+}
+
+function GymForm({ settings }: { settings: Settings }) {
+  const queryClient = useQueryClient()
+  const [initial, setInitial] = useState(() => draftsOf(settings))
+  const [drafts, setDrafts] = useState(initial)
+  const [saved, setSaved] = useState(false)
+
+  const save = useMutation({
+    mutationFn: updateGymSettings,
+    onSuccess: (answer) => {
+      queryClient.setQueryData(gymSettingsQuery().queryKey, answer)
+      const next = draftsOf(answer)
+      setInitial(next)
+      setDrafts(next)
+      setSaved(true)
+    },
+  })
+  const errors = validationErrors(save.error)
+  const blank = (value: string) => value.trim() === ''
+  const errorOf = (field: string, draft: string) =>
+    field in errors ? refusal(errors[field]!, field, copy, blank(draft)) : undefined
+  const bankError = (field: BankField) => errorOf(`bank_account.${field}`, drafts.bank[field])
+  const setBank = (field: BankField, value: string) => setDrafts({ ...drafts, bank: { ...drafts.bank, [field]: value } })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setSaved(false)
+    const changes = changesOf(initial, drafts)
+    if (Object.keys(changes).length === 0) {
+      save.reset()
+      setSaved(true)
+      return
+    }
+    save.mutate(changes)
+  }
+
+  return (
+    <form className="settings__form" aria-label={copy.formLabel} onSubmit={submit} noValidate>
+      <fieldset className="settings__card">
+        <legend className="settings__legend">{copy.profile}</legend>
+        <Field label={copy.name} error={errorOf('name', drafts.name)}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              maxLength={200}
+              value={drafts.name}
+              onChange={(e) => setDrafts({ ...drafts, name: e.target.value })}
+            />
+          )}
+        </Field>
+        <Field label={copy.slug}>
+          {(props) => <input {...props} className="settings__input" type="text" value={settings.slug} readOnly />}
+        </Field>
+        <Field label={copy.timezone} error={errorOf('timezone', drafts.timezone)}>
+          {(props) => (
+            <select
+              {...props}
+              className="settings__input"
+              value={drafts.timezone}
+              onChange={(e) => setDrafts({ ...drafts, timezone: e.target.value })}
+            >
+              {timezones(initial.timezone).map((zone) => (
+                <option key={zone} value={zone}>
+                  {zone}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+      </fieldset>
+
+      <fieldset className="settings__card">
+        <legend className="settings__legend">{copy.billing}</legend>
+        <Field label={copy.graceDays} hint={copy.graceDaysHint} error={errorOf('grace_days', drafts.grace_days)}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              inputMode="numeric"
+              value={drafts.grace_days}
+              onChange={(e) => setDrafts({ ...drafts, grace_days: e.target.value })}
+            />
+          )}
+        </Field>
+        <Field
+          label={copy.reminderEveryDays}
+          hint={copy.reminderEveryDaysHint}
+          error={errorOf('reminder_every_days', drafts.reminder_every_days)}
+        >
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              inputMode="numeric"
+              value={drafts.reminder_every_days}
+              onChange={(e) => setDrafts({ ...drafts, reminder_every_days: e.target.value })}
+            />
+          )}
+        </Field>
+      </fieldset>
+
+      <fieldset className="settings__card">
+        <legend className="settings__legend">{copy.channels}</legend>
+        <p className="settings__hint">{copy.email}</p>
+        <label className="settings__check">
+          <input
+            type="checkbox"
+            checked={drafts.whatsapp}
+            onChange={(e) => setDrafts({ ...drafts, whatsapp: e.target.checked })}
+          />
+          <span>{copy.whatsapp}</span>
+        </label>
+      </fieldset>
+
+      <fieldset className="settings__card">
+        <legend className="settings__legend">{copy.bank}</legend>
+        <p className="settings__hint">{copy.bankHint}</p>
+        <Field label={copy.bankName} error={bankError('bank')}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              maxLength={200}
+              value={drafts.bank.bank}
+              onChange={(e) => setBank('bank', e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label={copy.accountType} error={bankError('account_type')}>
+          {(props) => (
+            <select
+              {...props}
+              className="settings__input"
+              value={drafts.bank.account_type}
+              onChange={(e) => setBank('account_type', e.target.value)}
+            >
+              <option value="">{copy.choose}</option>
+              {ACCOUNT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <Field label={copy.holder} error={bankError('holder')}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              maxLength={200}
+              value={drafts.bank.holder}
+              onChange={(e) => setBank('holder', e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label={copy.rut} error={bankError('rut')}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              autoComplete="off"
+              value={drafts.bank.rut}
+              onChange={(e) => setBank('rut', e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label={copy.number} error={bankError('number')}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={drafts.bank.number}
+              onChange={(e) => setBank('number', e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label={copy.bankEmail} error={bankError('email')}>
+          {(props) => (
+            <input
+              {...props}
+              className="settings__input"
+              type="email"
+              value={drafts.bank.email}
+              onChange={(e) => setBank('email', e.target.value)}
+            />
+          )}
+        </Field>
+      </fieldset>
+
+      {save.error && (
+        <p className="settings__error" role="alert">
+          {Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
+        </p>
+      )}
+      {saved && (
+        <p className="settings__done" role="status">
+          {copy.saved}
+        </p>
+      )}
+      <button type="submit" className="settings__button settings__button--primary" disabled={save.isPending}>
+        {save.isPending ? copy.working : copy.submit}
+      </button>
+    </form>
+  )
+}

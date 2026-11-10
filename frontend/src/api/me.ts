@@ -19,6 +19,11 @@ export function readsLedger(role: StaffRole | null | undefined): boolean {
   return role === 'owner' || role === 'admin'
 }
 
+/** Who configures the gym, its settings and plans: the backend's `ADMIN_ROLES`. */
+export function managesGym(role: StaffRole | null | undefined): boolean {
+  return role === 'owner' || role === 'admin'
+}
+
 /** Where students transfer to, as the gym set it (`PATCH /api/gym/settings`). */
 export type BankAccount = {
   bank: string

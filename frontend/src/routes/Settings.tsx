@@ -1,0 +1,57 @@
+import { useQuery } from '@tanstack/react-query'
+import { Link, Outlet } from '@tanstack/react-router'
+import type { ComponentType } from 'react'
+import { managesGym, myRoleQuery } from '../api/me'
+import { PageHeader } from '../components/PageHeader'
+import { t } from '../i18n/es'
+import { GymSettings } from './GymSettings'
+import { PlanSettings } from './PlanSettings'
+import { AdminsOnly } from './settingsForm'
+import './Settings.css'
+
+const copy = t.admin.settings
+
+/**
+ * The sections, in tab order: the router makes a route of each under `/admin/ajustes`,
+ * and the first is where it opens. A new section is its component and an entry here.
+ */
+export const SETTINGS_SECTIONS = [
+  { path: 'gimnasio', label: copy.sections.gym, component: GymSettings },
+  { path: 'planes', label: copy.sections.plans, component: PlanSettings },
+] as const satisfies readonly { path: string; label: string; component: ComponentType }[]
+
+/**
+ * "Ajustes": the gym's configuration, one section per route under it. Owner and admin
+ * only, as the API is; a coach is told so and nothing is asked of the API. The
+ * sections are a row of tabs that scrolls sideways on a phone once there are more
+ * than fit (#57's other config screens hang off it).
+ */
+export function Settings() {
+  const role = useQuery(myRoleQuery())
+
+  return (
+    <div className="settings">
+      <PageHeader title={copy.title} />
+      {managesGym(role.data) ? (
+        <>
+          <nav className="settings__sections" aria-label={copy.sectionsLabel}>
+            {SETTINGS_SECTIONS.map((section) => (
+              <Link key={section.path} to={`/admin/ajustes/${section.path}`} className="settings__section-link">
+                {section.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="settings__body">
+            <Outlet />
+          </div>
+        </>
+      ) : role.isError ? (
+        <p className="settings__note" role="alert">
+          {copy.roleError}
+        </p>
+      ) : (
+        role.isSuccess && <AdminsOnly />
+      )}
+    </div>
+  )
+}
