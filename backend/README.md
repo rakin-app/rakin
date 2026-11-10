@@ -279,7 +279,7 @@ Any staff role may use it, coaches included; a coach may start a trial where onl
 
 ## Class timer API
 
-A coach runs a class from a timer as a sequence of blocks (#136): warm-up, technique, games, sparring rounds. Migration `0024` stores the gym's block kinds, whether a class type is an open mat, and each session's blocks: the plan and what ran. A student's time is the blocks of every session they attended.
+A coach runs a class from a timer as a sequence of blocks (#136): warm-up, technique, games, sparring rounds. Migration `0025` stores the gym's block kinds, whether a class type is an open mat, and each session's blocks: the plan and what ran. A student's time is the blocks of every session they attended.
 
 | Method | Path | Does |
 | --- | --- | --- |

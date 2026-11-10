@@ -46,7 +46,7 @@ class ClassTypeSpec:
     program: str
     name: str
     credit_cost: int = 1
-    # An open mat is rounds of sparring only, and is not counted as a class (0024).
+    # An open mat is rounds of sparring only, and is not counted as a class (0025).
     open_mat: bool = False
 
 
@@ -75,7 +75,7 @@ WEEK = {
 CLASS_DAYS = 21
 TURNOUT = 0.45
 
-# A class's blocks (migration 0024), by default block kind key: seconds, or for
+# A class's blocks (migration 0025), by default block kind key: seconds, or for
 # sparring (rounds, round seconds, rest seconds). Classes alternate the two plans.
 Block = tuple[str, int | tuple[int, int, int]]
 CLASS_PLANS: tuple[tuple[Block, ...], ...] = (

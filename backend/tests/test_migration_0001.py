@@ -134,7 +134,7 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # tests/test_custom_fields.py `person_field_value` (0019),
     # tests/test_sessions.py `session` (0020),
     # tests/test_attendance.py `attendance` (0023), and
-    # tests/test_class_timer.py `block_kind` and `session_block` (0024).
+    # tests/test_class_timer.py `block_kind` and `session_block` (0025).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "auth_session",

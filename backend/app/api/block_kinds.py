@@ -1,4 +1,4 @@
-"""The current gym's block kinds: list, create, edit, order, archive, delete (migration 0024).
+"""The current gym's block kinds: list, create, edit, order, archive, delete (migration 0025).
 
 A block kind is a part of a class the coach's timer counts down (Calentamiento,
 Técnica, Sparring), and `is_sparring` says its time is sparring. Every gym starts with

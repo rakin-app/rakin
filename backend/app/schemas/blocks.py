@@ -1,4 +1,4 @@
-"""The class timer's data (migration 0024): block kinds, a session's blocks, time totals.
+"""The class timer's data (migration 0025): block kinds, a session's blocks, time totals.
 
 A block kind is one of the gym's names for a part of a class (Calentamiento, Técnica,
 Sparring), and `is_sparring` says its time is sparring. A session's plan is its blocks

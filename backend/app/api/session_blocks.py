@@ -1,4 +1,4 @@
-"""A session's blocks (migration 0024): its plan, what each block ran, the plan to start
+"""A session's blocks (migration 0025): its plan, what each block ran, the plan to start
 from, and a person's time from the sessions they attended.
 
 A coach runs a class from a timer as a sequence of blocks. The plan is the session's
