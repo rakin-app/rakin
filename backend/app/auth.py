@@ -7,6 +7,12 @@ one gym writes signs nobody in to another. A session starts in that gym when the
 exactly one; with several it starts in none until they pick (#16), and gym-scoped
 routes answer 401.
 
+On a gym's own host (`app.hosts`) sign-in is that gym's: the link goes back to that
+host, and opening it starts a session in that gym, or, for someone whose address does
+not reach it, none at all and a page that says so. A session on a gym's host works
+only in that gym, whatever it names. Who the link goes to is decided as on the base
+host, so the answer to asking for one is the same whoever is at the address.
+
 The session middleware sets `request.state.person_id` and, when the session has a
 gym, `request.state.tenant`. It never answers 401 itself: `app.tenancy` stays the one
 place a gym-scoped route refuses an anonymous request.
@@ -17,9 +23,11 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Any
 
+from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.hosts import Hosts, host_gym
 from app.integrations.mailer import Mailer
 from app.magiclink import (
     Link,
@@ -28,6 +36,7 @@ from app.magiclink import (
     Pending,
     Recipient,
     Session,
+    Site,
     Texts,
     callback_url,
 )
@@ -52,6 +61,8 @@ TEXTS = Texts(
     button="Entrar",
     invalid="Este enlace venció o ya se usó. Pide uno nuevo.",
     back="Volver al inicio",
+    unreachable="Este correo no tiene acceso a {name}. Si entrenas ahí, pídele al gimnasio"
+    " que lo registre.",
 )
 
 Sessionmaker = Callable[[], async_sessionmaker[AsyncSession]]
@@ -71,15 +82,20 @@ class PeopleDirectory:
             )
             return [Recipient(str(r.person_id), r.email, r.name) for r in rows]
 
-    async def scope(self, subject: str, address: str) -> str | None:
+    async def scope(self, subject: str, address: str, within: str | None = None) -> str | None:
         async with self._sessionmaker()() as session:
-            gyms = (
-                await session.scalars(
-                    text("SELECT auth_gyms_of(:person, :address)"),
-                    {"person": uuid.UUID(subject), "address": address},
-                )
-            ).all()
-        return str(gyms[0]) if len(gyms) == 1 else None
+            gyms = [
+                str(g)
+                for g in (
+                    await session.scalars(
+                        text("SELECT auth_gyms_of(:person, :address)"),
+                        {"person": uuid.UUID(subject), "address": address},
+                    )
+                ).all()
+            ]
+        if within is not None:
+            return within if within in gyms else None
+        return gyms[0] if len(gyms) == 1 else None
 
 
 class PostgresStore:
@@ -192,8 +208,25 @@ class MailSender:
 def bind_session(session: Session, state: dict[str, Any]) -> None:
     person_id = uuid.UUID(session.subject)
     state["person_id"] = person_id
-    if session.scope is not None:
-        state["tenant"] = Tenant(uuid.UUID(session.scope), person_id)
+    if session.scope is None:
+        return
+    # A gym's host is that gym's alone; the base host (None) takes any session's gym.
+    here = host_gym(state)
+    if here is not None and session.scope != str(here.id):
+        return
+    state["tenant"] = Tenant(uuid.UUID(session.scope), person_id)
+
+
+def site_of(hosts: Hosts) -> Callable[[Request], Site]:
+    """Each request's sign-in site: its host's gym (`app.hosts`), or the base host."""
+
+    def site(request: Request) -> Site:
+        gym = host_gym(request.state)
+        if gym is None:
+            return Site(hosts.base_url(None))
+        return Site(hosts.base_url(gym.slug), str(gym.id), gym.name)
+
+    return site
 
 
 def build_notices(settings: Settings, mailer: Mailer, sessionmaker: Sessionmaker) -> Notices:
@@ -204,6 +237,7 @@ def build_notices(settings: Settings, mailer: Mailer, sessionmaker: Sessionmaker
         base_url=settings.public_base_url,
         secret_key=settings.secret_key,
         links=build_magic_links(settings, mailer, sessionmaker),
+        hosts=Hosts.of(settings),
     )
 
 

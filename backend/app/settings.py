@@ -4,6 +4,7 @@ Every field here must be listed in the repo-root `.env.example` with a working
 local default; `tests/test_settings.py` enforces that.
 """
 
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -21,6 +22,8 @@ LOCAL_SECRET_KEY = "local-only-secret-change-me"
 # Encrypts sensitive custom-field values at rest. Its own key, not `SECRET_KEY`, so
 # rotating that after a leak never destroys them; refused in production too.
 LOCAL_FIELD_ENCRYPTION_KEY = "local-only-field-key-change-me"
+# Dot-separated DNS labels: a bare host name, no scheme, port or path.
+HOST_NAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
 
 
 class Settings(BaseSettings):
@@ -41,6 +44,10 @@ class Settings(BaseSettings):
     field_encryption_key: str = Field(default=LOCAL_FIELD_ENCRYPTION_KEY, min_length=16)
     # Where the browser reaches the app (Caddy), for absolute links the API hands out.
     public_base_url: str = "http://localhost:8080"
+    # Each gym is served at `<slug>.<BASE_DOMAIN>` (`app.hosts`), on PUBLIC_BASE_URL's
+    # scheme and port: `staging.rakin.app` serves `meta.staging.rakin.app`. Empty
+    # serves every gym on PUBLIC_BASE_URL alone.
+    base_domain: str = ""
 
     # Integrations (`app/integrations`): each picks an implementation by name. The
     # defaults need no network and no account, so a fresh instance works offline.
@@ -87,6 +94,14 @@ class Settings(BaseSettings):
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError):
             raise ValueError(f"unknown timezone {value!r}") from None
+        return value
+
+    @field_validator("base_domain")
+    @classmethod
+    def _host_name(cls, value: str) -> str:
+        value = value.strip().lower().rstrip(".")
+        if value and not HOST_NAME.fullmatch(value):
+            raise ValueError(f"not a host name: {value!r} (no scheme, port or path)")
         return value
 
     @model_validator(mode="after")

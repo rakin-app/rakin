@@ -2,7 +2,8 @@
 
 The browser PUTs proofs (and GETs them back) at `S3_PUBLIC_ENDPOINT_URL`, another
 origin than the app's, so the bucket has to answer the browser's preflight for
-`PUBLIC_BASE_URL`. Garage's CLI cannot set the rule and providers differ in their
+`PUBLIC_BASE_URL`, and for every gym's own host under `BASE_DOMAIN` (`app.hosts`), as
+one wildcard origin. Garage's CLI cannot set the rule and providers differ in their
 consoles, so this sets it through the S3 API (`PutBucketCors`), which R2, S3 and
 Garage all take:
 
@@ -50,9 +51,19 @@ def origin(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}"
 
 
+def allowed_origins(settings: Settings) -> list[str]:
+    """`PUBLIC_BASE_URL`'s origin, and `scheme://*.<BASE_DOMAIN>[:port]` for the gyms'."""
+    base = origin(settings.public_base_url)
+    if not settings.base_domain:
+        return [base]
+    port = urlsplit(base).port
+    gyms = f"{urlsplit(base).scheme}://*.{settings.base_domain}{f':{port}' if port else ''}"
+    return [base, gyms]
+
+
 def cors_rule(settings: Settings) -> "CORSRuleTypeDef":
     return {
-        "AllowedOrigins": [origin(settings.public_base_url)],
+        "AllowedOrigins": allowed_origins(settings),
         "AllowedMethods": METHODS,
         "AllowedHeaders": HEADERS,
         "ExposeHeaders": ["ETag"],
@@ -143,7 +154,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("dry run: nothing changed; pass --apply to set it", file=sys.stderr)
         return 0
     apply(settings)
-    print(f"bucket {settings.s3_bucket}: CORS set for {origin(settings.public_base_url)}")
+    print(f"bucket {settings.s3_bucket}: CORS set for {', '.join(allowed_origins(settings))}")
     return 0
 
 

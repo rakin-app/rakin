@@ -357,7 +357,7 @@ Owner and admin only (`AdminSession`), and an admin manages coaches only: inviti
 
 ## Join link
 
-A gym shares one link (WhatsApp, a poster, anywhere), and people fill in their own details on their phone (#154). What they send is a request, not a member, until staff approve it. The SPA serves the form at `/unirse/<token>` on the app's own host (`PUBLIC_BASE_URL`); a gym's own subdomain comes with #155.
+A gym shares one link (WhatsApp, a poster, anywhere), and people fill in their own details on their phone (#154). What they send is a request, not a member, until staff approve it. The SPA serves the form at `/unirse/<token>`, and the link is on the gym's own host (`<slug>.BASE_DOMAIN`, `app.hosts`), or on `PUBLIC_BASE_URL` when `BASE_DOMAIN` is empty.
 
 | Method | Path | Does |
 | --- | --- | --- |

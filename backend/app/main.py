@@ -14,6 +14,7 @@ from app.api import (
     guardians,
     gym,
     health,
+    hosts,
     inactive,
     join,
     ledger,
@@ -30,8 +31,9 @@ from app.api import (
     staff,
     unsubscribe,
 )
-from app.auth import LANDINGS, PREFIX, TEXTS, bind_session, build_magic_links
+from app.auth import LANDINGS, PREFIX, TEXTS, bind_session, build_magic_links, site_of
 from app.db import create_engine, create_sessionmaker
+from app.hosts import GymLookup, HostMiddleware, Hosts
 from app.integrations import build_integrations
 from app.logging import configure_logging
 from app.magiclink import SessionMiddleware, build_router, session_cookie_name
@@ -64,15 +66,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.magic_links = links
     app.state.join_limits = join.build_join_limits()
-    # Added first, so it runs inside RequestIdMiddleware and its queries log the id.
+    app.state.hosts = Hosts.of(settings)
+    # Added first, so it runs inside RequestIdMiddleware and its queries log the id;
+    # and inside HostMiddleware, so a session is bound knowing the host's gym.
     app.add_middleware(
         SessionMiddleware,
         links=links,
         bind=bind_session,
         cookie_name=session_cookie_name(settings.public_base_url),
     )
+    app.add_middleware(
+        HostMiddleware,
+        hosts=app.state.hosts,
+        lookup=GymLookup(lambda: app.state.sessionmaker),
+    )
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
+    app.include_router(hosts.router)
     app.include_router(people.router)
     app.include_router(custom_fields.router)
     app.include_router(guardians.router)
@@ -104,6 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             base_url=settings.public_base_url,
             landings=LANDINGS,
             texts=TEXTS,
+            site=site_of(app.state.hosts),
         )
     )
     if settings.blob_store == "local":

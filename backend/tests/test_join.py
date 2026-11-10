@@ -68,7 +68,11 @@ def mailer() -> RecordingMailer:
 
 @pytest.fixture(scope="module")
 def app(db: Database, mailer: RecordingMailer) -> FastAPI:
-    app = create_app(make_settings(database_url=db.api_url, public_base_url="https://rakin.cl"))
+    app = create_app(
+        make_settings(
+            database_url=db.api_url, public_base_url="https://rakin.cl", base_domain="rakin.cl"
+        )
+    )
     app.state.integrations = dataclasses.replace(app.state.integrations, mailer=mailer)
     app.state.join_limits = roomy_limits()
     app.add_middleware(FakeAuth)
@@ -218,10 +222,13 @@ def program(client: TestClient, gym: uuid.UUID, name: str = "Kids") -> str:
 # --- the link -------------------------------------------------------------------------
 
 
-def test_generating_a_link_gives_a_url_to_the_form(client: TestClient, gym: uuid.UUID) -> None:
+def test_generating_a_link_gives_a_url_to_the_form_on_the_gyms_host(
+    client: TestClient, gym: uuid.UUID
+) -> None:
     link = generate(client, gym)
 
-    assert link["url"] == f"https://rakin.cl/unirse/{link['token']}"
+    slug = run_gym_slug(client, gym)
+    assert link["url"] == f"https://{slug}.rakin.cl/unirse/{link['token']}"
     assert len(link["token"]) >= 20
     assert (link["program_id"], link["expires_on"], link["expired"]) == (None, None, False)
     again = client.get("/api/join-link", headers=as_gym(gym))
@@ -329,6 +336,13 @@ def test_the_form_shows_the_gym_and_its_today(client: TestClient, gym: uuid.UUID
         "today": seeded_today().isoformat(),
         "human_check_site_key": None,
     }
+
+
+def run_gym_slug(client: TestClient, gym: uuid.UUID) -> str:
+    response = client.get("/api/gym/settings", headers=as_gym(gym))
+    assert response.status_code == 200, response.text
+    slug: str = response.json()["slug"]
+    return slug
 
 
 def run_gym_name(client: TestClient, gym: uuid.UUID) -> str:

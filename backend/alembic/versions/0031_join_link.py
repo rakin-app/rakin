@@ -21,7 +21,7 @@ Everything else the form does, it does with `app.gym_id` set to that gym, held t
 like any request.
 
 Revision ID: 0031
-Revises: 0029
+Revises: 0030
 Create Date: 2026-11-10
 
 """
@@ -31,7 +31,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0031"
-down_revision: str | Sequence[str] | None = "0029"
+down_revision: str | Sequence[str] | None = "0030"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

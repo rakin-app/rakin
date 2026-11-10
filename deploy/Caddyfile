@@ -2,11 +2,22 @@
 # /srv (deploy/web.Dockerfile). One origin for the SPA and the API, as in dev.
 # SITE_ADDRESS is a bare host name, so Caddy gets and renews its certificate
 # from Let's Encrypt and redirects HTTP to HTTPS.
+#
+# Each gym is also served on its own host, <slug>.BASE_DOMAIN (#155). Those
+# certificates are on demand: one per gym's host, obtained at its first TLS
+# handshake, and only once the api's `ask` endpoint says a gym is there
+# (backend/app/api/hosts.py). So there is no wildcard certificate and no DNS
+# plugin, and a name no gym has never reaches Let's Encrypt. Caddy 2.8 dropped
+# on_demand_tls's own `interval` and `burst`: `ask` is the rate limit, and
+# Let's Encrypt's per-domain limits apply beyond it.
 {
 	email {$ACME_EMAIL}
+	on_demand_tls {
+		ask http://api:8000/internal/tls-allowed
+	}
 }
 
-{$SITE_ADDRESS} {
+(app) {
 	encode zstd gzip
 
 	@api path /api/* /healthz
@@ -28,4 +39,15 @@
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+{$SITE_ADDRESS} {
+	import app
+}
+
+*.{$BASE_DOMAIN} {
+	tls {
+		on_demand
+	}
+	import app
 }

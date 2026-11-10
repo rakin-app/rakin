@@ -36,6 +36,8 @@ PUBLIC_PATHS = {
     "/api/auth/logout",
     "/api/mail/unsubscribe/{token}",
     "/api/join/{token}",
+    "/api/host",
+    "/internal/tls-allowed",
 }
 
 TENANT_TABLES = (

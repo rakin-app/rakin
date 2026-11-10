@@ -58,6 +58,7 @@ from app.api.memberships import start_membership
 from app.api.unsubscribe import in_gym
 from app.contacts import contact_for
 from app.domain.dates import gym_today
+from app.hosts import Hosts
 from app.integrations import Integrations, get_integrations
 from app.magiclink.ratelimit import MemoryRateLimiter, RateLimiter
 from app.member_import.rows import Member
@@ -83,7 +84,7 @@ from app.tenancy import Tenant, current_tenant
 public = APIRouter(prefix="/api/join", tags=["join"])
 router = APIRouter(prefix="/api", tags=["join"])
 
-# Where the SPA serves the form. On the bare host until gyms have their own (#155).
+# Where the SPA serves the form, on the gym's own host (#155).
 FORM_PATH = "/unirse"
 
 # The gym's WiFi is one IP for everyone at the mat, so a class signing up together
@@ -114,9 +115,10 @@ def new_token() -> str:
     return secrets.token_urlsafe(24)
 
 
-def link_url(request: Request, token: str) -> str:
-    base: str = request.app.state.settings.public_base_url
-    return f"{base.rstrip('/')}{FORM_PATH}/{token}"
+def link_url(request: Request, slug: str, token: str) -> str:
+    """The form on the gym's own host (`app.hosts`), or the base host without one."""
+    hosts: Hosts = request.app.state.hosts
+    return f"{hosts.base_url(slug)}{FORM_PATH}/{token}"
 
 
 # --- the gym's link (owner and admin) -------------------------------------------------
@@ -124,7 +126,7 @@ def link_url(request: Request, token: str) -> str:
 # RLS keeps every table to the current gym.
 SELECT_LINK = """
     SELECT l.token, l.program_id, pr.name AS program_name, l.expires_on, l.created_at,
-           g.timezone
+           g.timezone, g.slug
     FROM join_link l
     JOIN gym g ON g.id = l.gym_id
     LEFT JOIN program pr ON pr.gym_id = l.gym_id AND pr.id = l.program_id
@@ -136,7 +138,7 @@ async def _link(request: Request, session: AsyncSession) -> JoinLink:
     if row is None:
         raise NO_LINK
     return JoinLink(
-        url=link_url(request, row.token),
+        url=link_url(request, row.slug, row.token),
         token=row.token,
         program_id=row.program_id,
         program_name=row.program_name,

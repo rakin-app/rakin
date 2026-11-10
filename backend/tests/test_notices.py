@@ -467,7 +467,7 @@ def test_a_notice_without_a_name_is_not_issued_a_link_for_none() -> None:
     )
     notice = replace(proof_notice(), context={k: v for k, v in PROOF.items() if k != "name"})
 
-    assert asyncio.run(notices._page_url(notice)) == PAGE_URL
+    assert asyncio.run(notices._page_url(notice, BASE_URL)) == PAGE_URL
 
     [recipient] = issued.recipients
     assert recipient.name == ""
