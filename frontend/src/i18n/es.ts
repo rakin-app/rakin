@@ -748,8 +748,10 @@ export const es = {
         absent: (days: number) => `${days} d sin venir`,
         save: (n: number) => `Guardar asistencia (${n})`,
         working: 'Guardando…',
+        done: 'Guardado ✓',
         saved: 'Asistencia guardada.',
-        queued: 'Sin conexión: la asistencia quedó guardada en este teléfono y se enviará al volver la señal.',
+        back: 'Volver a clases',
+        queued: 'Sin conexión: quedó en este teléfono. Se guardará cuando vuelva la señal.',
         failed: 'No pudimos guardar la asistencia. Inténtalo de nuevo.',
         dropped: 'La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.',
         guest: {
