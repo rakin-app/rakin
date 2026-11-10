@@ -229,9 +229,11 @@ export function endClass(state: RunState, now: number): Step {
   const block = currentBlock(step.state)
   if (!block) return step
   const at = step.state.pausedAt ?? now
-  const ran = step.state.resting ? 0 : at - step.state.phaseStart
+  // Paused at a `lastSeen` a few seconds stale, the phase may have started after it:
+  // that phase ran nothing, not less than nothing.
+  const ran = step.state.resting ? 0 : Math.max(0, at - step.state.phaseStart)
   const ended = finishBlock(step.state, block, at, step.state.workMs + ran, step.state.roundsDone, step.finished)
-  return { ...step, state: { ...ended, endedAt: at, pausedAt: null } }
+  return { ...step, state: { ...ended, endedAt: Math.max(at, step.state.phaseStart), pausedAt: null } }
 }
 
 /** The blocks after the one running, replaced: what "Editar" changes while the class runs.

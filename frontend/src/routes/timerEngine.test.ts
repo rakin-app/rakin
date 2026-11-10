@@ -134,6 +134,16 @@ describe('the timer engine', () => {
     ])
   })
 
+  it('records no negative time when paused just before the phase it ends started', () => {
+    // The tick moved to "technique" at 10:00, but the run was last seen at 9:57 and paused
+    // there, as a class left unseen is.
+    const moved = advance(startRun([block('warmup', 600), block('technique', 1200)], T0), T0 + 10 * MIN + 2 * S).state
+    const paused = pause(moved, T0 + 10 * MIN - 3 * S).state
+    const step = endClass(paused, T0 + 3 * 60 * MIN)
+    expect(step.finished).toEqual([{ blockId: 'technique', actual_seconds: 0, rounds_completed: null }])
+    expect(step.state.endedAt).toBe(T0 + 10 * MIN)
+  })
+
   it('changes only the blocks still to come', () => {
     const run = advance(startRun([block('a', 60), block('b', 60), block('c', 60)], T0), T0 + 70 * S).state
     const edited = replaceUpcoming(run, [block('d', 120)])
