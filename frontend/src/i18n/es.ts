@@ -69,6 +69,24 @@ export const es = {
         },
         showAll: (n: number) => `Ver los ${n} vencidos`,
       },
+      inactive: {
+        counter: 'Sin venir 14 d',
+        title: 'A quién llamar',
+        error: 'No pudimos cargar a quién llamar.',
+        empty: 'Todos vinieron en las últimas dos semanas.',
+        buckets: { 14: 'Entre 14 y 29 días', 30: '30 días o más' },
+        absent: (days: number) => `${days} días sin venir`,
+        never: (days: number) => `No ha venido desde que entró, hace ${days} días`,
+        payment: {
+          up_to_date: 'al día en pagos',
+          trial: 'en prueba',
+          overdue: (amount: string) => `debe ${amount}`,
+        },
+        nudged: (when: string) => `avisado ${when}`,
+        write: (name: string) => `Escribir por WhatsApp a ${name}`,
+        // A dependent's nudge goes to their guardian.
+        writeFor: (contact: string, name: string) => `Escribir por WhatsApp a ${contact}, por ${name}`,
+      },
       ago: {
         now: 'recién',
         minutes: (n: number) => `hace ${n}\u00a0min`,
@@ -780,8 +798,10 @@ export const es = {
         absent: (days: number) => `${days} d sin venir`,
         save: (n: number) => `Guardar asistencia (${n})`,
         working: 'Guardando…',
+        done: 'Guardado ✓',
         saved: 'Asistencia guardada.',
-        queued: 'Sin conexión: la asistencia quedó guardada en este teléfono y se enviará al volver la señal.',
+        back: 'Volver a clases',
+        queued: 'Sin conexión: quedó en este teléfono. Se guardará cuando vuelva la señal.',
         failed: 'No pudimos guardar la asistencia. Inténtalo de nuevo.',
         dropped: 'La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.',
         guest: {

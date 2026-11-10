@@ -38,7 +38,12 @@ class Messenger(Protocol):
     async def deliver(self, message: Message) -> Delivery: ...
 
 
+def wa_me_link(message: Message) -> str:
+    """The `wa.me` link that opens WhatsApp on `message`, ready to send."""
+    digits = message.to_phone.removeprefix("+")
+    return f"https://wa.me/{digits}?text={quote(message.text, safe='')}"
+
+
 class WaMeMessenger:
     async def deliver(self, message: Message) -> Delivery:
-        digits = message.to_phone.removeprefix("+")
-        return Delivery(link=f"https://wa.me/{digits}?text={quote(message.text, safe='')}")
+        return Delivery(link=wa_me_link(message))
