@@ -173,7 +173,7 @@ The `backup` service takes one every night at 03:00 in `JOBS_TIMEZONE` ([`app/ba
 
 **Retention:** after each upload it deletes what is not the newest dump of one of the 14 most recent days that have one, or of one of the 8 most recent Sundays (UTC dates). It counts dumps rather than days since today, so a job that stops working never ages the last good backups away. Anything in the bucket not named like a backup is left alone.
 
-**Failure:** a failed backup is logged at `ERROR`, which reaches Sentry like the api's errors, and the next one is the next night. Each success writes its time and key to `last_success` in the `backup_state` volume:
+**Failure:** a failed backup is logged at `ERROR`, which reaches Sentry like the api's errors. The service then tries again every hour until one succeeds, instead of waiting for the next night. A failure to apply retention after a successful upload is a warning only, in the log and in Sentry: the new backup is safely in the bucket, and the next run prunes again. Each success writes its time and key to `last_success` in the `backup_state` volume:
 
 ```sh
 docker compose exec backup python -m app.backup status   # the last success; exits 1 if over 26 hours ago
@@ -204,7 +204,7 @@ ssh deploy@<host> 'cd /srv/rakin && ./restore.sh latest' <rakin-backup.key
 ssh deploy@<host> 'cd /srv/rakin && ./restore.sh rakin/production/20261110T060000Z.dump.age' <rakin-backup.key
 ```
 
-It downloads and decrypts the backup in the `backup` service's image, into a Docker volume; restores it with `pg_restore --exit-on-error` into a throwaway `postgres` container with no network (the roles the schema names are created first, without logins); then compares every table's row count with the rows the dump holds, one `ok` or `FAIL` line per table, and exits non-zero on any difference. The container and the volume are removed when it ends, the decrypted dump with them.
+It downloads and decrypts the backup in the `backup` service's image, into a Docker volume; restores it with `pg_restore --exit-on-error` into a throwaway `postgres` container with no network (the roles the schema names are created first, without logins); then compares every table's row count with the rows the dump holds, one `ok` or `FAIL` line per table, and exits non-zero on any difference. **The decrypted dump does land on the host's disk while it runs:** in a Docker volume named `rakin-restore-<pid>` (under `/var/lib/docker/volumes/`), readable by root and by anyone in the `docker` group, along with the scratch database restored from it. A `trap` on exit removes the container and the volume, the decrypted dump with them, whether the restore succeeds, fails or is interrupted (they are deleted, not shredded). Only `kill -9` or a crash of the host skips the trap; then `docker rm -f -v rakin-restore-<pid>` and `docker volume rm rakin-restore-<pid>` clean up, and `docker volume ls | grep rakin-restore` shows whether anything was left. So "the host cannot read its backups" holds between rehearsals, not during one. The key itself is never written: it goes from stdin straight into `age`.
 
 Rehearse it before the second gym onboards and quarterly after, as the [design](technical.md#infrastructure-and-operations) says.
 

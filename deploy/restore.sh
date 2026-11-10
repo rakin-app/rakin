@@ -10,11 +10,40 @@
 # fetch) and decrypts it with the key from stdin into a Docker volume; a
 # throwaway postgres container with no network restores it. Then every
 # table's row count in the restored database is checked against the rows the
-# dump holds. The volume and the container are removed whatever happens.
+# dump holds. The decrypted dump is on the host's disk while this runs, in
+# the volume `rakin-restore-<pid>`; the trap removes the volume and the
+# container on any exit, failure and Ctrl-C included.
 #
 # Restoring to the live database is a separate, deliberate step that this
 # script never takes: docs/deploy.md#restoring-to-live.
 set -euo pipefail
+
+# The roles a schema-only dump names, one per line: every owner, every grantee
+# and every role a policy applies to, each of a list (`TO a, b`) included.
+# PUBLIC and quoted names are skipped; the app has neither.
+# `restore.sh --schema-roles <schema.sql` runs just this, for the tests.
+schema_roles() {
+	awk '
+	function add(list, parts, n, i) {
+		sub(/;.*$/, "", list)
+		n = split(list, parts, /, */)
+		for (i = 1; i <= n; i++)
+			if (parts[i] ~ /^[a-z_][a-z0-9_]*$/) print parts[i]
+	}
+	/^ALTER .* OWNER TO / { sub(/.* OWNER TO /, ""); add($0); next }
+	/^GRANT / { sub(/.* TO /, ""); sub(/ WITH GRANT OPTION.*/, ""); add($0); next }
+	/^REVOKE / { sub(/.* FROM /, ""); sub(/ (CASCADE|RESTRICT);.*/, ""); add($0); next }
+	/^CREATE POLICY / {
+		if (sub(/^CREATE POLICY [^ ]+ ON [^ ]+( AS [A-Z]+)?( FOR [A-Z]+)? TO /, "")) {
+			sub(/ (USING|WITH CHECK)( .*)?$/, "")
+			add($0)
+		}
+	}' | sort -u
+}
+if [ "${1:-}" = --schema-roles ]; then
+	schema_roles
+	exit
+fi
 
 usage="usage: $0 <object key | latest>   (the age private key on stdin)"
 key=${1:?$usage}
@@ -61,13 +90,7 @@ done
 
 # Roles are cluster-wide, so a dump has none: create, without logins, every
 # role the schema owns things as, grants to or names in a policy.
-# shellcheck disable=SC2016 # the sed scripts run in the container
-roles=$(db sh -c 'pg_restore --schema-only -f - /restore/backup.dump | sed -nE \
-	-e "s/^ALTER .* OWNER TO ([a-z_][a-z0-9_]*);\$/\1/p" \
-	-e "s/^GRANT .* TO ([a-z_][a-z0-9_]*);\$/\1/p" \
-	-e "s/^REVOKE .* FROM ([a-z_][a-z0-9_]*);\$/\1/p" \
-	-e "s/^CREATE POLICY [^ ]+ ON [^ ]+( AS [A-Z]+)?( FOR [A-Z]+)? TO ([a-z_][a-z0-9_]*).*/\3/p" |
-	sort -u')
+roles=$(db pg_restore --schema-only -f - /restore/backup.dump | schema_roles)
 for role in $roles; do
 	db psql -U postgres -d restore -v ON_ERROR_STOP=1 -qc \
 		"DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$role') THEN CREATE ROLE $role NOLOGIN; END IF; END \$\$" >/dev/null

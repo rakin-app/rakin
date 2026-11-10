@@ -15,11 +15,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
+import sentry_sdk
 
 from app import backup
 from app.backup import BackupSettings, expired, next_run, object_key, taken_at
 from app.integrations.blobstore import s3_client
-from tests.conftest import make_settings
+from tests.conftest import Captured, make_settings
 
 PREFIX = "rakin/staging/"
 SANTIAGO = ZoneInfo("America/Santiago")
@@ -311,3 +312,70 @@ def test_a_backup_is_uploaded_and_retention_prunes_the_bucket(
     readme = s3.list_objects_v2(Bucket=settings.backup_s3_bucket, Prefix=f"{settings.prefix}R")
     assert readme["KeyCount"] == 1
     assert (settings.backup_state_dir / "last_success").read_text() == f"{now.isoformat()} {key}\n"
+
+
+class FailingListS3:
+    """Takes the upload, then fails to list the bucket, as a flaky R2 might."""
+
+    def __init__(self) -> None:
+        self.uploaded: list[str] = []
+
+    def upload_file(self, path: str, bucket: str, key: str) -> None:
+        self.uploaded.append(key)
+
+    def get_paginator(self, name: str) -> object:
+        raise ConnectionError("R2 went away")
+
+
+def test_a_failed_prune_does_not_fail_an_uploaded_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    sentry: Captured,
+) -> None:
+    fake_tools(tmp_path, monkeypatch, dump="echo dump", age="cat")
+    settings = make_backup_settings(tmp_path)
+    s3 = FailingListS3()
+    monkeypatch.setattr(backup, "client", lambda s: s3)
+    with caplog.at_level(logging.INFO):
+        assert backup.attempt(settings) is True
+
+    [key] = s3.uploaded
+    assert taken_at(key, PREFIX) is not None
+    assert (settings.backup_state_dir / "last_success").exists()
+    [warning] = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warning.levelno == logging.WARNING
+    assert warning.exc_info is not None
+    sentry_sdk.flush()
+    [event] = [e for env in sentry.envelopes if (e := env.get_event()) is not None]
+    assert event["level"] == "warning"
+    [exception] = event["exception"]["values"]
+    assert exception["type"] == "ConnectionError"
+
+
+def test_serve_retries_on_the_next_tick_after_a_failed_night(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = make_backup_settings(tmp_path)
+    settings.backup_state_dir.mkdir()
+    (settings.backup_state_dir / "last_success").write_text(
+        f"{(datetime.now(UTC) - timedelta(hours=30)).isoformat()} k\n"
+    )
+    outcomes = iter([False, False, True])
+    runs: list[bool] = []
+    stop = threading.Event()
+
+    def attempt(s: BackupSettings) -> bool:
+        ok = next(outcomes)
+        runs.append(ok)
+        if ok:
+            (s.backup_state_dir / "last_success").write_text(f"{datetime.now(UTC).isoformat()} k\n")
+            # One more tick, which must not back up again: the success is recent.
+            threading.Timer(0.05, stop.set).start()
+        return ok
+
+    monkeypatch.setattr(backup, "attempt", attempt)
+
+    backup.serve(settings, time(3), stop, tick=timedelta(milliseconds=10))
+
+    assert runs == [False, False, True]

@@ -17,8 +17,10 @@ of the 14 most recent days that have one, plus the newest of each of the 8 most 
 Sundays (by the UTC date in the key). It counts dumps, not days since today, so a job
 that stops working never ages the last good backups away.
 
-A failure is logged at `ERROR`, which Sentry reports (`app.sentry`). Each success writes
-its time and key to `BACKUP_STATE_DIR/last_success`, which `status` reads.
+A failure is logged at `ERROR`, which Sentry reports (`app.sentry`), and `serve` tries
+again every hour until one succeeds. Each success writes its time and key to
+`BACKUP_STATE_DIR/last_success`, which `status` reads. A failure to prune after a
+successful upload is only a warning, in the log and in Sentry: the backup is in the bucket.
 
 Postgres comes from the libpq variables (`PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`):
 the superuser, because several tables force row-level security even on their owner.
@@ -38,6 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import sentry_sdk
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -52,6 +55,11 @@ logger = logging.getLogger(__name__)
 
 DAILY = 14
 WEEKLY = 8
+# How often `serve` wakes: after a failed night it tries again on each of these ticks
+# until a backup succeeds, rather than waiting for the next night.
+TICK = timedelta(hours=1)
+# A last success older than this is retried on the next tick.
+OVERDUE = timedelta(days=1)
 # `status` calls a backup stale after a missed night, with an hour's slack.
 STALE_AFTER = timedelta(hours=26)
 
@@ -168,7 +176,8 @@ def dump_encrypted(path: Path, recipient: str) -> None:
 
 
 def run_once(settings: BackupSettings, now: datetime) -> str:
-    """Take, upload and prune; the new backup's key."""
+    """Take, upload and prune; the new backup's key. A failure to prune is reported but
+    does not fail the backup: by then it is safely in the bucket."""
     s3 = client(settings)
     key = object_key(settings.prefix, now)
     with tempfile.TemporaryDirectory() as tmp:
@@ -176,13 +185,28 @@ def run_once(settings: BackupSettings, now: datetime) -> str:
         dump_encrypted(path, settings.backup_age_recipient)
         size = path.stat().st_size
         s3.upload_file(str(path), settings.backup_s3_bucket, key)
+    settings.backup_state_dir.mkdir(parents=True, exist_ok=True)
+    (settings.backup_state_dir / "last_success").write_text(f"{now.isoformat()} {key}\n")
+    logger.info("backup uploaded", extra={"key": key, "bytes": size})
+    try:
+        gone = prune(s3, settings)
+    except Exception as exc:
+        logger.warning("backup retention failed; the backup itself is uploaded", exc_info=True)
+        # A warning, so the logging integration (events from ERROR up) would not send it.
+        with sentry_sdk.new_scope() as scope:
+            scope.set_level("warning")
+            sentry_sdk.capture_exception(exc)
+    else:
+        logger.info("backup retention applied", extra={"deleted": gone})
+    return key
+
+
+def prune(s3: "S3Client", settings: BackupSettings) -> list[str]:
+    """Delete the backups retention no longer keeps; their keys."""
     gone = sorted(expired((k for k, _ in backups(s3, settings)), settings.prefix))
     for old in gone:
         s3.delete_object(Bucket=settings.backup_s3_bucket, Key=old)
-    settings.backup_state_dir.mkdir(parents=True, exist_ok=True)
-    (settings.backup_state_dir / "last_success").write_text(f"{now.isoformat()} {key}\n")
-    logger.info("backup uploaded", extra={"key": key, "bytes": size, "deleted": gone})
-    return key
+    return gone
 
 
 def attempt(settings: BackupSettings) -> bool:
@@ -212,19 +236,32 @@ def next_run(now: datetime, at: time, tz: ZoneInfo) -> datetime:
     return candidate
 
 
-def serve(settings: BackupSettings, at: time, stop: threading.Event) -> None:
-    """A backup every night at `at`, until `stop`; and one at once if the last success is
-    over a day old (a new host, or one that was down at that hour)."""
+def overdue(settings: BackupSettings, now: datetime) -> bool:
+    last = last_success(settings)
+    return last is None or now - last > OVERDUE
+
+
+def serve(
+    settings: BackupSettings, at: time, stop: threading.Event, tick: timedelta = TICK
+) -> None:
+    """A backup every night at `at`, until `stop`. Between nights it wakes every `tick`,
+    and backs up whenever the last success is over a day old: at once on a new host or
+    after one that was down at that hour, and again on each tick after a failed night."""
     tz = ZoneInfo(settings.jobs_timezone)
     logger.info("backup scheduler started", extra={"at": at.isoformat(), "tz": tz.key})
-    last = last_success(settings)
-    if last is None or datetime.now(UTC) - last > timedelta(days=1):
+    due = next_run(datetime.now(UTC), at, tz)
+    if overdue(settings, datetime.now(UTC)):
         attempt(settings)
     while not stop.is_set():
-        due = next_run(datetime.now(UTC), at, tz)
-        if stop.wait((due - datetime.now(UTC)).total_seconds()):
+        wake = min(due, datetime.now(UTC) + tick)
+        if stop.wait(max((wake - datetime.now(UTC)).total_seconds(), 0)):
             break
-        attempt(settings)
+        now = datetime.now(UTC)
+        if now >= due:
+            due = next_run(now, at, tz)
+            attempt(settings)
+        elif overdue(settings, now):
+            attempt(settings)
     logger.info("backup scheduler stopped")
 
 
