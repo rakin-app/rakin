@@ -18,14 +18,17 @@ import {
 } from '../api/attendance'
 import { ApiError } from '../api/client'
 import { rankLabel } from '../api/grading'
-import { myselfQuery, runsSession } from '../api/me'
-import { sessionQuery, updateSession, useGymTimeZone, type ClassSession } from '../api/sessions'
+import { managesGym, myselfQuery, runsSession } from '../api/me'
+import { sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
-import { clockTime } from '../format'
+import { clockTime, dayTime, isoDay } from '../format'
 import { t } from '../i18n/es'
+import { ClassActions, ClassEdit, refreshSession } from './ClassManage'
+import { TimerRecord } from './TimerRecord'
 import { savedRun } from './timerEngine'
 import './Classes.css'
+import './ClassTimer.css'
 
 const copy = t.admin.session
 
@@ -37,12 +40,17 @@ const MAX_NOTES = 4000
 
 /**
  * One class: what it is, when it started and who teaches it, "Asistencia" (the roster,
- * tapped name by name), and its topic and notes, written during or after class.
+ * tapped name by name), and its topic and notes, written during or after class by its
+ * coach. Once it has begun, "Registro del timer", what its blocks ran, which its coach
+ * or an owner or admin corrects after. An owner or admin also edits it ("Editar clase"),
+ * cancels it or deletes it. A cancelled class takes no attendance and runs no timer.
  */
 export function SessionDetail() {
   const { sessionId } = route.useParams()
   const session = useQuery(sessionQuery(sessionId))
+  const me = useQuery(myselfQuery())
   const timeZone = useGymTimeZone()
+  const today = useGymToday()
 
   if (session.isPending) {
     return (
@@ -68,16 +76,50 @@ export function SessionDetail() {
   }
 
   const data = session.data
+  const cancelled = data.cancelled_at !== null
+  const begun = new Date(data.starts_at) <= new Date()
+  const runs = runsSession(me.data, data.coach_id)
+  // A class moved to another day says which.
+  const when =
+    isoDay(data.starts_at, timeZone) === today ? clockTime(data.starts_at, timeZone) : dayTime(data.starts_at, timeZone)
   return (
-    <Shell
-      eyebrow={copy.eyebrow(data.program_name, clockTime(data.starts_at, timeZone))}
-      title={data.class_type_name}
-      subtitle={copy.coach(data.coach_name)}
-    >
-      <TimerLink session={data} />
-      <Attendance key={`attendance-${data.id}`} sessionId={data.id} />
-      <TopicForm key={data.id} session={data} />
+    <Shell eyebrow={copy.eyebrow(data.program_name, when)} title={data.class_type_name} subtitle={copy.coach(data.coach_name)}>
+      {cancelled && (
+        <div className="classes__error class-cancelled" role="status">
+          <span className="classes__flag classes__flag--cancelled">{copy.cancelled.badge}</span>
+          <p>{copy.cancelled.note}</p>
+        </div>
+      )}
+      {!cancelled && <TimerLink session={data} />}
+      {!cancelled && <Attendance key={`attendance-${data.id}`} sessionId={data.id} />}
+      {runs ? <TopicForm key={data.id} session={data} /> : <TopicView session={data} />}
+      {runs && begun && !cancelled && <TimerRecord key={`record-${data.id}`} session={data} />}
+      {managesGym(me.data?.role) && (
+        <>
+          <ClassEdit key={`edit-${data.id}`} session={data} timeZone={timeZone} />
+          <ClassActions key={`actions-${data.id}`} session={data} />
+        </>
+      )}
     </Shell>
+  )
+}
+
+/** The topic and notes, for a coach who does not teach the class: theirs to read. */
+function TopicView({ session }: { session: ClassSession }) {
+  if (!session.topic && !session.notes) return null
+  return (
+    <section className="classes__card" aria-label={copy.form.label}>
+      <span className="classes__label">{copy.form.topic}</span>
+      <span className={session.topic ? 'classes__topic' : 'classes__topic classes__topic--none'}>
+        {session.topic ?? t.admin.classes.today.noTopic}
+      </span>
+      {session.notes && (
+        <>
+          <span className="classes__label">{copy.form.notes}</span>
+          <p className="classes__topic class-notes">{session.notes}</p>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -141,8 +183,7 @@ function TopicForm({ session }: { session: ClassSession }) {
       setTopic(updated.topic ?? '')
       setNotes(updated.notes ?? '')
       setSaved(true)
-      queryClient.setQueryData(['sessions', 'detail', session.id], updated)
-      void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
+      refreshSession(queryClient, updated)
     },
   })
   // "Guardado" until the next edit.

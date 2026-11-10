@@ -39,6 +39,7 @@ const EVENING: ClassSession = {
   coach_name: 'Rodrigo Fuentes',
   topic: 'Guardia cerrada',
   notes: null,
+  cancelled_at: null,
   created_at: '2026-11-09T22:00:00Z',
   updated_at: '2026-11-09T22:00:00Z',
   present: 12,
@@ -92,7 +93,8 @@ function stubApi({
   )
 
   function route(path: string, method: string, body: unknown): Answer {
-    if (path === '/api/me/role') return { body: { role } }
+    // The class's own coach, unless told otherwise.
+    if (path === '/api/me/role') return { body: { role, person_id: 'coach' } }
     if (path === '/api/class-types') return { body: classTypes }
     if (path === '/api/sessions' && method === 'GET') return { body: day }
     if (path === '/api/sessions' && method === 'POST') {
@@ -237,7 +239,8 @@ describe('Clase', () => {
     renderAt('/admin/clases/s-evening')
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Fundamentos' })).toBeInTheDocument()
-    expect(await screen.findByText(detail.eyebrow('Adultos', '19:00'))).toBeInTheDocument()
+    // Not today: the day too.
+    expect(await screen.findByText(detail.eyebrow('Adultos', '9 nov 19:00'))).toBeInTheDocument()
     expect(screen.getByText(detail.coach('Rodrigo Fuentes'))).toBeInTheDocument()
     expect(screen.getByRole('link', { name: detail.back })).toHaveAttribute('href', '/admin/clases')
   })

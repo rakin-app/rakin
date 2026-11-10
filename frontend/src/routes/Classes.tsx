@@ -70,11 +70,17 @@ function Failed({ message, retry }: { message: string; retry: () => void }) {
 }
 
 function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: string }) {
-  // A class yet to start has no attendance to take: no flag until it has.
-  const unmarked = session.present === 0 && new Date(session.starts_at) <= new Date()
+  // A class yet to start has no attendance to take: no flag until it has. A cancelled
+  // one never has: it says so instead.
+  const cancelled = session.cancelled_at !== null
+  const unmarked = !cancelled && session.present === 0 && new Date(session.starts_at) <= new Date()
   return (
     <li>
-      <Link to="/admin/clases/$sessionId" params={{ sessionId: session.id }} className="classes__row">
+      <Link
+        to="/admin/clases/$sessionId"
+        params={{ sessionId: session.id }}
+        className={cancelled ? 'classes__row classes__row--cancelled' : 'classes__row'}
+      >
         <span className="classes__row-text">
           <span className="classes__name">
             {copy.today.row(clockTime(session.starts_at, timeZone), session.class_type_name)}
@@ -85,6 +91,7 @@ function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: st
           </span>
         </span>
         {unmarked && <span className="classes__flag">{copy.today.unmarked}</span>}
+        {cancelled && <span className="classes__flag classes__flag--cancelled">{copy.today.cancelled}</span>}
         <ChevronRightIcon />
       </Link>
     </li>
