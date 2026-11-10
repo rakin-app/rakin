@@ -1,12 +1,12 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
 import { classTypesQuery } from '../api/classes'
 import { ApiError } from '../api/client'
 import { gymSettingsQuery } from '../api/gym'
 import { recordPayment, type Method } from '../api/member'
-import { myRoleQuery, readsLedger } from '../api/me'
-import { membersQuery, plansQuery } from '../api/people'
+import { myRoleQuery, myselfQuery, readsLedger } from '../api/me'
+import { memberCountQuery, plansQuery } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
 import { unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
 import { staffQuery } from '../api/staff'
@@ -160,25 +160,66 @@ export function Today() {
   )
 }
 
-// Every filter off: the list Alumnos opens on, so the two share one cache entry.
-const EVERYONE = { q: '', status: [], plan: [], program: [], left: 'no' } as const
+// The checklist's answers change only when someone sets something up, and each of those
+// screens refreshes its own; Hoy need not ask again on every visit.
+const SETUP_STALE_MS = 5 * 60_000
+
+/** Where this browser remembers that a gym is set up: per host, which is per gym, and per
+ * person, for a gym served on the instance's own address. */
+export function setupDoneKey(personId: string): string {
+  return `rakin:setup-done:${window.location.host}:${personId}`
+}
+
+// Storage can be refused (a private window); then the checklist just asks again.
+function remembered(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === '1'
+  } catch {
+    return false
+  }
+}
+
+function remember(key: string) {
+  try {
+    window.localStorage.setItem(key, '1')
+  } catch {
+    // Not remembered: the next visit asks the two questions again.
+  }
+}
 
 /**
  * "Configura tu academia": a new gym's steps, each ticked once done and a link to where
- * it is done. Shown until the gym has members and classes; not at all while any answer
- * is missing, so a gym already set up never sees it flash.
+ * it is done. Shown until the gym has members and classes, and never again after that in
+ * this browser: a gym set up once is remembered, and its Hoy asks nothing for it.
  */
 function Setup() {
-  const gym = useQuery(gymSettingsQuery())
-  const plans = useQuery(plansQuery)
-  const classTypes = useQuery(classTypesQuery)
-  const members = useInfiniteQuery(membersQuery(EVERYONE))
-  const staff = useQuery(staffQuery)
-  if (!gym.data || !plans.data || !classTypes.data || !members.data || !staff.data) return null
+  const me = useQuery(myselfQuery())
+  if (!me.data) return null
+  const key = setupDoneKey(me.data.person_id)
+  return remembered(key) ? null : <SetupChecklist doneKey={key} />
+}
 
-  const hasMembers = (members.data.pages[0]?.total ?? 0) > 0
-  const hasClasses = classTypes.data.some((c) => c.active)
-  if (hasMembers && hasClasses) return null
+function SetupChecklist({ doneKey }: { doneKey: string }) {
+  // First the two answers that decide whether it shows at all; the other three only once
+  // it will, so a gym that is set up costs two small requests, once.
+  const members = useQuery({ ...memberCountQuery, staleTime: SETUP_STALE_MS })
+  const classTypes = useQuery({ ...classTypesQuery, staleTime: SETUP_STALE_MS })
+  const hasMembers = (members.data ?? 0) > 0
+  const hasClasses = classTypes.data?.some((c) => c.active) ?? false
+  const setUp = hasMembers && hasClasses
+  const shows = members.data !== undefined && classTypes.data !== undefined && !setUp
+  const gym = useQuery({ ...gymSettingsQuery(), staleTime: SETUP_STALE_MS, enabled: shows })
+  const plans = useQuery({ ...plansQuery, staleTime: SETUP_STALE_MS, enabled: shows })
+  const staff = useQuery({ ...staffQuery, staleTime: SETUP_STALE_MS, enabled: shows })
+
+  useEffect(() => {
+    if (setUp) remember(doneKey)
+  }, [setUp, doneKey])
+
+  // Nothing until every answer is in, and nothing if one fails: the checklist is a nudge,
+  // not something to report an error for, and drawing it on a partial answer would show
+  // a set-up gym unticked steps for a moment. A failed request is retried on the next visit.
+  if (!shows || !gym.data || !plans.data || !staff.data) return null
 
   const steps = copy.setup.steps
   const done = {

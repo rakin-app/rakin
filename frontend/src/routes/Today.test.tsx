@@ -10,7 +10,7 @@ import type { Overdue, OverduePeriod } from '../api/today'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
-import { ago } from './Today'
+import { ago, setupDoneKey } from './Today'
 
 const copy = es.admin.today
 
@@ -174,7 +174,7 @@ function stubApi({
   )
 
   function route(path: string, method: string): Answer {
-    if (path === '/api/me/role') return roleFails ? { status: 500, body: { detail: 'boom' } } : { body: { role } }
+    if (path === '/api/me/role') return roleFails ? { status: 500, body: { detail: 'boom' } } : { body: { role, person_id: 'owner-1' } }
     const configured = setup && setupAnswer(path, setup)
     if (configured) return configured
     if (path === '/api/ledger/pending') return { body: { count: 2 } }
@@ -210,6 +210,7 @@ function renderToday() {
 const section = (name: string) => screen.findByRole('region', { name })
 
 afterEach(() => {
+  localStorage.clear()
   vi.unstubAllGlobals()
 })
 
@@ -509,16 +510,26 @@ describe('Configura tu academia', () => {
     expect(await checklist()).toBeInTheDocument()
   })
 
-  it('is gone once the gym has members and classes', async () => {
+  it('is gone once the gym has members and classes, and is remembered as done', async () => {
     const calls = stubApi({ setup: { members: 12, classTypes: 2 } })
     renderToday()
 
-    await screen.findByRole('region', { name: copy.proofs.title })
-    await vi.waitFor(() => expect(calls.some((c) => c.path === '/api/class-types')).toBe(true))
-    await vi.waitFor(() => expect(calls.some((c) => c.path === '/api/people')).toBe(true))
-    // Every answer in: the one test above that finds it shows the same wait is enough.
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await vi.waitFor(() => expect(localStorage.getItem(setupDoneKey('owner-1'))).toBe('1'))
     expect(screen.queryByRole('region', { name: copy.setup.title })).not.toBeInTheDocument()
+    // The two answers that decide it were enough: nothing else was asked for it (Hoy's
+    // payment form asks for the plans on its own).
+    expect(calls.some((c) => ['/api/gym/settings', '/api/staff'].includes(c.path))).toBe(false)
+  })
+
+  it('asks nothing for a gym this browser already knows is set up', async () => {
+    localStorage.setItem(setupDoneKey('owner-1'), '1')
+    const calls = stubApi({ setup: {} })
+    renderToday()
+
+    await screen.findByRole('region', { name: copy.proofs.title })
+    expect(screen.queryByRole('region', { name: copy.setup.title })).not.toBeInTheDocument()
+    const setupPaths = ['/api/people', '/api/class-types', '/api/gym/settings', '/api/staff']
+    expect(calls.some((c) => setupPaths.includes(c.path))).toBe(false)
   })
 
   it('is never shown to a coach', async () => {
