@@ -9,12 +9,29 @@
 export class ApiError extends Error {
   readonly status: number
   readonly body: unknown
+  readonly headers: Headers
 
-  constructor(status: number, body: unknown) {
+  constructor(status: number, body: unknown, headers: Headers = new Headers()) {
     super(`API request failed with status ${status}`)
     this.name = 'ApiError'
     this.status = status
     this.body = body
+    this.headers = headers
+  }
+}
+
+type UnauthorizedHandler = () => void
+
+let unauthorizedHandler: UnauthorizedHandler | null = null
+
+/**
+ * Who hears of a 401, from any call: the router, which sends the visitor to sign in
+ * (`createAppRouter`). One handler at a time; the returned function removes it.
+ */
+export function onUnauthorized(handler: UnauthorizedHandler): () => void {
+  unauthorizedHandler = handler
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = null
   }
 }
 
@@ -33,7 +50,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const body: unknown = response.status === 204 ? undefined : await readBody(response)
 
   if (!response.ok) {
-    throw new ApiError(response.status, body)
+    if (response.status === 401) unauthorizedHandler?.()
+    throw new ApiError(response.status, body, response.headers)
   }
   return body as T
 }

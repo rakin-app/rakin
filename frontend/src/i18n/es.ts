@@ -31,6 +31,28 @@ export const es = {
     settings: 'Ajustes',
     pendingBadge: (n: number) => (n === 1 ? '1 comprobante por revisar' : `${n} comprobantes por revisar`),
   },
+  signIn: {
+    title: 'Entrar a Rakin',
+    intro: 'Escribe tu correo y te enviamos un link para entrar. No necesitas clave.',
+    emailLabel: 'Correo',
+    submit: 'Enviarme el link',
+    sending: 'Enviando…',
+    // The same whatever the address: it never says whether an account exists.
+    sent: (email: string) =>
+      `Si el correo ${email} está registrado, te llegará un link para entrar. Vence en 15 minutos y sirve una sola vez.`,
+    another: 'Usar otro correo',
+    tooMany: (minutes: number | null) =>
+      minutes === null
+        ? 'Pediste varios links seguidos. Inténtalo de nuevo en unos minutos.'
+        : `Pediste varios links seguidos. Inténtalo de nuevo en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`}.`,
+    invalid: 'Revisa el correo: no parece una dirección válida.',
+    failed: 'No pudimos enviar el link. Revisa tu conexión e inténtalo de nuevo.',
+  },
+  signOut: {
+    label: 'Cerrar sesión',
+    working: 'Cerrando sesión…',
+    failed: 'No pudimos cerrar la sesión. Inténtalo de nuevo.',
+  },
   admin: {
     today: {
       title: 'Hoy',
@@ -1029,6 +1051,7 @@ export const es = {
     },
   },
   common: {
+    loading: 'Cargando…',
     comingSoon: 'Esta sección todavía no está lista.',
     clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
     // An amount that says which way it goes: `+$5.000` in the member's favour, `−$5.000` owed.
