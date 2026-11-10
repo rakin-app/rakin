@@ -854,6 +854,30 @@ describe('Ficha de alumno', () => {
       'Azul · 2 grados11 abr 2026 · registró Sebastián Araya',
       'Azul · 1 grado2 ago 2025 · registró Sebastián Araya · Open de Santiago',
     ])
+    // A scheme without colours: the label alone, and the log's dots.
+    expect(within(graduation).queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('draws the belt the scheme colours, on the ficha and in the log', async () => {
+    const belt = (stripes: number) => ({ colors: ['#1f4fa3'], stripes, max_stripes: 4 })
+    stubApi({
+      grading: {
+        current: { ...GRADING.current!, belt: belt(2) },
+        events: GRADING.events.map((e) => ({ ...e, belt: belt(Number(e.sub_rank)) })),
+      },
+    })
+    renderAt(PATH)
+
+    const graduation = await screen.findByRole('region', { name: copy.grading.title })
+    const [ficha, ...log] = await within(graduation).findAllByRole('img')
+    expect(ficha).not.toHaveClass('belt--compact')
+    expect(ficha).toHaveAccessibleName('Azul, 2 grados')
+    expect(log.map((b) => [b.getAttribute('aria-label'), b.classList.contains('belt--compact')])).toEqual([
+      ['Azul, 2 grados', true],
+      ['Azul, 1 grado', true],
+    ])
+    // The rank still says itself in words beside the drawing.
+    expect(within(graduation).getByText('Azul · 2 grados', { selector: '.member__rank-label' })).toBeInTheDocument()
   })
 
   it("shows the progress towards the next promotion against the rank's target", async () => {

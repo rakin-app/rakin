@@ -24,6 +24,7 @@ const SESSION: ClassSession = {
   notes: null,
   created_at: '2026-11-09T22:00:00Z',
   updated_at: '2026-11-09T22:00:00Z',
+  present: 1,
 }
 
 const member = (id: string, name: string, over: Partial<RosterMember> = {}): RosterMember => ({
@@ -171,6 +172,18 @@ describe('Asistencia', () => {
     expect(rows[3]).toHaveTextContent('Mensual adultos · Vencido · 16 d sin venir')
     expect(screen.getByText(copy.count(1, 4))).toBeInTheDocument()
     expect(screen.getByRole('button', { name: copy.save(1) })).toBeDisabled()
+  })
+
+  it("draws a rank's belt, compact, in place of its name when the scheme colours it", async () => {
+    const rank = { ...ANTONIA.rank!, belt: { colors: ['#1f4fa3'], stripes: 0, max_stripes: 4 } }
+    stubApi({ members: [{ ...ANTONIA, rank }, FELIPE] })
+    renderClass()
+
+    const [antonia] = (await rosterList()).getAllByRole('button')
+    // No stripes yet: the rank alone.
+    expect(within(antonia!).getByRole('img', { name: 'Azul' })).toHaveClass('belt--compact')
+    expect(antonia).toHaveTextContent('Antonia RojasMensual adultos')
+    expect(antonia).toHaveAccessibleName(expect.stringContaining('Azul'))
   })
 
   it('counts each tap and saves what changed', async () => {

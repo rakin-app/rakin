@@ -6,7 +6,7 @@
 
 Three configuration surfaces absorb all sport variance; the rest of the system is identical for BJJ, judo, Muay Thai or boxing. All three live as JSON in `gym.settings` (definitions) and as rows (values).
 
-**Grading scheme** — an ordered list of ranks, each with optional sub-ranks, plus an optional separate kids ladder. Promotion events reference rank and sub-rank by key.
+**Grading scheme** — an ordered list of ranks, each with optional sub-ranks, plus an optional separate kids ladder. Promotion events reference rank and sub-rank by key. A rank may carry its belt's colours (one, or two for a two-tone belt); such a rank is drawn as a belt, its stripes counted by the sub-rank's place after the first, and one without colours shows as its label.
 
 | Sport | Ranks | Sub-ranks | Kids ladder | Goal metric |
 | --- | --- | --- | --- | --- |
@@ -119,6 +119,7 @@ Email is the system of record; WhatsApp is where the reminder gets read. Neither
 | Proof rejected | email + wa.me suggestion | rejection | carries admin's note |
 | Plan events (frozen, unfrozen, lapsed, promoted) | email | state change | optional per gym |
 | Announcements | email + copy-to-WhatsApp text | admin sends | one message to a program or everyone |
+| Staff invite + first magic link | email | owner or admin invites an admin or coach | the role, and a 7-day link to the admin screens |
 | Inactive nudge | wa.me from "A quién llamar" on Hoy | 14 / 30 days without attendance (or since joining, for someone who never came) | to the guardian for a dependent; logged in `message_log` as opened; automation is v2 |
 
 **Email:** hosted Rakin sends from `@rakin.app` through [Resend](https://resend.com)'s SMTP relay (`smtp.resend.com`, user `resend`, the API key as password), with the same `SmtpMailer` self-hosters point at any SMTP server; no provider SDK. Resend rather than Amazon SES because it needs no AWS account just for mail and no sandbox approval before the first real send. Verified domain, DKIM, SPF, DMARC `p=quarantine` from day one; transactional only, no marketing content. Expected cost: cents per gym per month.
@@ -154,7 +155,7 @@ Caddy terminates TLS and serves the built SPA; FastAPI is the only thing that ta
 | --- | --- | --- |
 | Tenancy | shared schema, `gym_id` on every tenant table, Postgres RLS with `SET LOCAL app.gym_id` per request | a missed `WHERE` returns nothing instead of another gym's ledger; schema-per-tenant breaks global identity |
 | API | FastAPI, SQLAlchemy 2, Alembic, Pydantic v2 schemas separate from ORM models | boring and known; async where I/O-bound |
-| Auth | magic links to a session cookie (`HttpOnly`, `Secure`, `SameSite=Lax`); API and SPA on one origin | no passwords for students, no CORS |
+| Auth | magic links to a session cookie (`HttpOnly`, `Secure`, `SameSite=Lax`; on an `http://` base URL, local dev only, a plain `session` cookie without `Secure`), asked for at `/ingresar`; API and SPA on one origin | no passwords for students, no CORS |
 | Frontend | one Vite SPA, `/admin` and `/me` route trees, TanStack Query, `vite-plugin-pwa`, Spanish strings in one i18n file | one build, PWA for free, English later |
 | Jobs | APScheduler or system cron running `python -m app.jobs.daily`; `job_run` table for idempotency | three jobs do not justify Celery or Redis |
 | Files | presigned PUT to S3-compatible storage; key stored on `ledger_entry` | proofs never pass through the API process |

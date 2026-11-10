@@ -149,6 +149,11 @@
   font-weight: var(--font-weight-semibold);
 }
 
+.today__pill--warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-strong);
+}
+
 .today__button {
   flex: none;
   min-height: var(--control-height);

@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GradingPreset, GradingScheme } from '../api/grading'
@@ -17,7 +17,7 @@ const stripes = [
 ]
 const SCHEME: GradingScheme = {
   ranks: [
-    { key: 'white', label: 'Blanca', target: 120, sub_ranks: stripes },
+    { key: 'white', label: 'Blanca', target: 120, colors: ['#f4f4f1'], sub_ranks: stripes },
     { key: 'blue', label: 'Azul', target: null, sub_ranks: stripes },
   ],
   kids_ladder: [],
@@ -29,8 +29,8 @@ const PRESETS: GradingPreset[] = [
     label: 'Judo / karate',
     scheme: {
       ranks: [
-        { key: 'kyu-2', label: '2.º kyu', target: null, sub_ranks: [] },
-        { key: 'kyu-1', label: '1.º kyu', target: null, sub_ranks: [] },
+        { key: 'kyu-2', label: '2.º kyu', target: null, colors: [], sub_ranks: [] },
+        { key: 'kyu-1', label: '1.º kyu', target: null, colors: [], sub_ranks: [] },
       ],
       kids_ladder: [],
       goal_metric: 'time_in_rank',
@@ -139,6 +139,39 @@ describe('Ajustes: Graduación', () => {
     ])
     expect(sent!.kids_ladder.map((r) => r.key)).toEqual(['morada-2'])
     expect(sent!.goal_metric).toBe('classes_since_promotion')
+  })
+
+  it('gives a rank its belt colours, a second for a two-tone belt, and takes them away', async () => {
+    const calls = stubApi()
+    renderGrading()
+    const words = copy.belt
+
+    // A rank with a colour is drawn as its belt, every stripe on the bar.
+    const white = await screen.findByRole('listitem', { name: copy.rank(1) })
+    const whiteBelt = within(white).getByRole('group', { name: words.title })
+    expect(within(whiteBelt).getByRole('img', { name: words.preview('Blanca') })).toBeInTheDocument()
+    expect(within(whiteBelt).getByLabelText(words.main)).toHaveValue('#f4f4f1')
+    await userEvent.click(within(whiteBelt).getByRole('button', { name: words.addTone }))
+    fireEvent.input(within(whiteBelt).getByLabelText(words.tone), { target: { value: '#1b1b1b' } })
+
+    // One without shows as its name until it is given one.
+    const blue = within(rank(copy.ladders.ranks, 2)).getByRole('group', { name: words.title })
+    expect(within(blue).getByText(words.none)).toBeInTheDocument()
+    expect(within(blue).queryByRole('img')).not.toBeInTheDocument()
+    await userEvent.click(within(blue).getByRole('button', { name: words.add }))
+    fireEvent.input(within(blue).getByLabelText(words.main), { target: { value: '#1f4fa3' } })
+    await save()
+
+    await screen.findByText(copy.saved)
+    expect(puts(calls)[0]!.ranks.map((r) => r.colors)).toEqual([['#f4f4f1', '#1b1b1b'], ['#1f4fa3']])
+
+    // The saved scheme reloads the form.
+    const belt = (n: number) => within(rank(copy.ladders.ranks, n)).getByRole('group', { name: words.title })
+    await userEvent.click(within(belt(1)).getByRole('button', { name: words.removeTone }))
+    await userEvent.click(within(belt(2)).getByRole('button', { name: words.remove }))
+    await save()
+    await vi.waitFor(() => expect(puts(calls)).toHaveLength(2))
+    expect(puts(calls)[1]!.ranks.map((r) => r.colors)).toEqual([['#f4f4f1'], []])
   })
 
   it('moves and removes ranks', async () => {

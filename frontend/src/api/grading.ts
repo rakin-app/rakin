@@ -15,6 +15,8 @@ export type SchemeRank = {
   key: string
   label: string
   target?: number | null
+  // The belt's colour, then the stripe through a two-tone one, as `#rrggbb`; none for no belt.
+  colors?: string[]
   sub_ranks: SchemeSubRank[]
 }
 
@@ -28,6 +30,12 @@ export type GradingScheme = {
 /** A starting point for a scheme (`GET /api/gym/grading-scheme/presets`). */
 export type GradingPreset = { key: string; label: string; scheme: GradingScheme }
 
+/**
+ * How to draw a rank (backend `app.schemas.grades.Belt`): the scheme's colours, and the
+ * stripes on the bar. A rank starts at its first sub-rank, with none.
+ */
+export type BeltDrawing = { colors: string[]; stripes: number; max_stripes: number }
+
 /** A rank as awarded, with the scheme's labels (backend `app.schemas.grades.Rank`). */
 export type Rank = {
   rank_key: string
@@ -35,6 +43,8 @@ export type Rank = {
   sub_rank: string | null
   sub_rank_label: string | null
   awarded_on: string
+  // Null when the scheme gives the rank no colours: it shows as its label.
+  belt?: BeltDrawing | null
 }
 
 export type GradeEvent = Rank & {

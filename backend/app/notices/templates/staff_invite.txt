@@ -1,0 +1,13 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+{{ inviter }} te invitó a {{ gym }} en Rakin como {{ role }}. {% if role_is_coach %}Desde ahí tomas asistencia y registras el tema de cada clase.{% else %}Desde ahí llevas los pagos, los alumnos y los ajustes del gimnasio.{% endif %}
+
+Entras siempre con un enlace a este correo, sin contraseña.
+{% endblock %}
+{% block page_link %}
+
+Entrar: {{ page_url }}
+Este enlace te deja entrar sin contraseña. Sirve una sola vez y vence en {{ page_link_days }} días. Después, pide uno nuevo con este correo.
+{% endblock %}

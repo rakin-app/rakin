@@ -39,6 +39,7 @@ const EVENING: ClassSession = {
   notes: null,
   created_at: '2026-11-09T22:00:00Z',
   updated_at: '2026-11-09T22:00:00Z',
+  present: 12,
 }
 
 const MORNING: ClassSession = {
@@ -50,6 +51,7 @@ const MORNING: ClassSession = {
   program_name: KIDS.program_name,
   starts_at: '2026-11-09T10:00:00Z',
   topic: null,
+  present: 0,
 }
 
 type Call = { method: string; path: string; body: unknown }
@@ -155,6 +157,30 @@ describe('Clases', () => {
     expect(rows[0]).toHaveTextContent(copy.today.noTopic)
     expect(rows[1]).toHaveTextContent(copy.today.row('19:00', 'Fundamentos'))
     expect(rows[1]).toHaveTextContent('Guardia cerrada')
+  })
+
+  it('flags a class no one is marked at', async () => {
+    stubApi()
+    renderAt('/admin/clases')
+
+    const today = await screen.findByRole('region', { name: copy.today.title })
+    const [morning, evening] = await within(today).findAllByRole('link')
+    expect(morning).toHaveTextContent(copy.today.unmarked)
+    expect(evening).not.toHaveTextContent(copy.today.unmarked)
+  })
+
+  it('does not flag a class that has not started yet', async () => {
+    const later: ClassSession = {
+      ...MORNING,
+      id: 's-later',
+      starts_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+    }
+    stubApi({ sessions: [later] })
+    renderAt('/admin/clases')
+
+    const today = await screen.findByRole('region', { name: copy.today.title })
+    const [row] = await within(today).findAllByRole('link')
+    expect(row).not.toHaveTextContent(copy.today.unmarked)
   })
 
   it('says when there are no classes yet today', async () => {

@@ -27,6 +27,8 @@ export type ClassSession = {
   notes: string | null
   created_at: string
   updated_at: string
+  /** How many are marked at it; 0 is a class whose attendance was never taken. */
+  present: number
 }
 
 /** A day's sessions in the gym's timezone, earliest first (backend `Day`). */
@@ -60,6 +62,21 @@ export function useGymTimeZone(): string {
  * there, though tomorrow in UTC, and on a device set to another zone. */
 export function useGymToday(): string {
   return isoDay(new Date().toISOString(), useGymTimeZone())
+}
+
+/** The last week's classes, already started, that no one is marked at (backend `Unmarked`). */
+export type UnmarkedSessions = {
+  since: string
+  timezone: string
+  sessions: ClassSession[]
+}
+
+/** The classes nobody took attendance at, latest first. Owner and admin only. */
+export function unmarkedSessionsQuery() {
+  return queryOptions({
+    queryKey: ['sessions', 'unmarked'],
+    queryFn: () => apiFetch<UnmarkedSessions>('/api/sessions/unmarked'),
+  })
 }
 
 export function sessionQuery(id: string) {
