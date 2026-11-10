@@ -309,6 +309,8 @@ function Attendance({ sessionId }: { sessionId: string }) {
   const present = members.filter(here).length
   const change = changeOf(roster.data, taps)
   const changed = change.mark.length + change.unmark.length > 0
+  // "Guardado ✓" until the next tap.
+  const done = saved && !changed && !queued && !save.isPending
 
   const tap = (member: RosterMember, value: boolean): Taps => {
     setSaved(false)
@@ -348,37 +350,42 @@ function Attendance({ sessionId }: { sessionId: string }) {
         ))}
       </ul>
       <TrialGuest sessionId={sessionId} onMember={markMember} />
-      {save.isError && !isOffline(save.error) && !dropped && (
-        <p className="classes__error" role="alert">
-          {words.failed}
-        </p>
-      )}
-      {queued && (
-        <p className="classes__error" role="status">
-          {words.queued}
-        </p>
-      )}
-      {dropped && (
-        <p className="classes__error" role="alert">
-          {words.dropped}
-        </p>
-      )}
-      {saved && !changed && !queued && (
-        <p className="classes__done" role="status">
-          {words.saved}
-        </p>
-      )}
+      {/* Sticky at the foot of the screen, so what a save did is in view however far down the list is. */}
       <div className="attendance__bar">
+        {save.isError && !isOffline(save.error) && !dropped && (
+          <p className="classes__error" role="alert">
+            {words.failed}
+          </p>
+        )}
+        {queued && (
+          <p className="classes__error" role="status">
+            {words.queued}
+          </p>
+        )}
+        {dropped && (
+          <p className="classes__error" role="alert">
+            {words.dropped}
+          </p>
+        )}
+        {done && (
+          <div className="classes__done attendance__done">
+            <p role="status">{words.saved}</p>
+            <Link to="/admin/clases" className="attendance__back">
+              {words.back}
+            </Link>
+          </div>
+        )}
         <button
           type="button"
-          className="classes__button classes__button--primary attendance__save"
+          className={`classes__button classes__button--primary attendance__save${done ? ' attendance__save--done' : ''}`}
           disabled={!changed || save.isPending}
+          aria-busy={save.isPending}
           onClick={() => {
             setSaved(false)
             save.mutate({ change, replay: false })
           }}
         >
-          {save.isPending ? words.working : words.save(present)}
+          {save.isPending ? words.working : done ? words.done : words.save(present)}
         </button>
       </div>
     </section>
