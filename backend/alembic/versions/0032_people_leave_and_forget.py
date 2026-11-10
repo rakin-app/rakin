@@ -26,7 +26,7 @@ It runs as the owner, which FORCEd RLS holds to the current gym as it holds ever
 those tables.
 
 Revision ID: 0032
-Revises: 0029
+Revises: 0030
 Create Date: 2026-11-10
 
 """
@@ -36,7 +36,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0032"
-down_revision: str | Sequence[str] | None = "0029"
+down_revision: str | Sequence[str] | None = "0030"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
