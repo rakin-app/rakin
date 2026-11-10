@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from './api/queryClient'
@@ -23,7 +23,30 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  localStorage.clear()
 })
+
+type Answer = { status: number; body?: unknown }
+
+// Every call answered by `answer`, by path; the calls made are returned.
+function stubApi(answer: (path: string, init?: RequestInit) => Answer) {
+  const calls: { path: string; method: string }[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input, init) => {
+      const path = new URL(String(input), 'http://localhost').pathname
+      calls.push({ path, method: init?.method ?? 'GET' })
+      const { status, body } = answer(path, init)
+      return new Response(status === 204 ? null : JSON.stringify(body ?? {}), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }),
+  )
+  return calls
+}
+
+const signedOut = () => stubApi(() => ({ status: 401, body: { detail: 'Not authenticated' } }))
 
 function renderAt(path: string) {
   const queryClient = createQueryClient()
@@ -86,6 +109,125 @@ describe('/me route tree', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  })
+})
+
+describe('signing in', () => {
+  it('sends a signed-out visitor from / to the sign-in page, not the empty shell', async () => {
+    signedOut()
+    const router = renderAt('/')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/ingresar')
+    expect(router.state.location.search).toEqual({})
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  })
+
+  it.each(['/admin/pagos', '/admin/alumnos?q=ana', '/me'])(
+    'sends a signed-out visitor from %s to sign in, keeping the page',
+    async (path) => {
+      signedOut()
+      const router = renderAt(path)
+
+      expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+      expect(router.state.location.pathname).toBe('/ingresar')
+      expect(router.state.location.search).toEqual({ redirect: path })
+    },
+  )
+
+  it('lands a staff member in /admin with the full nav, and a member on /me', async () => {
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }))
+    const router = renderAt('/')
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Hoy',
+      'Alumnos',
+      'Clases',
+      'Pagos',
+      'Ajustes',
+    ])
+    expect(router.state.location.pathname).toBe('/admin')
+  })
+
+  it('lands a member on /me', async () => {
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: null } } : { status: 404 }))
+    const router = renderAt('/')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/me')
+  })
+
+  it('returns them to the page they had asked for, once', async () => {
+    localStorage.setItem('rakin.returnTo', '/admin/pagos')
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }))
+    const router = renderAt('/')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.admin.payments.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/admin/pagos')
+    expect(localStorage.getItem('rakin.returnTo')).toBeNull()
+  })
+
+  it('lands a member on /me although they had asked for an admin page', async () => {
+    localStorage.setItem('rakin.returnTo', '/admin/pagos')
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: null } } : { status: 404 }))
+    const router = renderAt('/')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/me')
+  })
+
+  it('sends them to sign in when the session ends mid-use', async () => {
+    let live = true
+    stubApi((path) => {
+      if (!live) return { status: 401 }
+      return path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }
+    })
+    const router = renderAt('/admin')
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+
+    live = false
+    await userEvent.click(within(nav).getByRole('link', { name: es.nav.students }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/ingresar')
+    expect(router.state.location.search).toEqual({ redirect: '/admin/alumnos' })
+  })
+})
+
+describe('Cerrar sesión', () => {
+  it.each([
+    ['owner', '/admin'],
+    [null, '/me'],
+  ])('ends the session of a %s on %s and returns to sign in', async (role, path) => {
+    let live = true
+    const calls = stubApi((api) => {
+      if (api === '/api/auth/logout') {
+        live = false
+        return { status: 204 }
+      }
+      if (!live) return { status: 401 }
+      return api === '/api/me/role' ? { status: 200, body: { role } } : { status: 404 }
+    })
+    const router = renderAt(path)
+
+    await userEvent.click(await screen.findByRole('button', { name: es.signOut.label }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/ingresar')
+    expect(calls).toContainEqual({ path: '/api/auth/logout', method: 'POST' })
+  })
+
+  it('stays put and says so when the session could not be ended', async () => {
+    stubApi((api) => {
+      if (api === '/api/auth/logout') return { status: 503 }
+      return api === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }
+    })
+    const router = renderAt('/admin')
+
+    await userEvent.click(await screen.findByRole('button', { name: es.signOut.label }))
+
+    expect(await screen.findByText(es.signOut.failed)).toHaveAttribute('role', 'alert')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin'))
   })
 })
 

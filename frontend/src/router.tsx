@@ -7,7 +7,11 @@ import {
   redirect,
   type RouterHistory,
 } from '@tanstack/react-router'
+import { appPath, landingFor, SIGN_IN_PATH } from './api/auth'
+import { ApiError, onUnauthorized } from './api/client'
+import { myRoleQuery } from './api/me'
 import { AdminLayout } from './layouts/AdminLayout'
+import { t } from './i18n/es'
 import { MeLayout } from './layouts/MeLayout'
 import { Classes } from './routes/Classes'
 import { MeHome } from './routes/MeHome'
@@ -16,6 +20,7 @@ import { MemberImport } from './routes/MemberImport'
 import { NotFound } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { SessionDetail } from './routes/SessionDetail'
+import { SignIn } from './routes/SignIn'
 import { Settings, SETTINGS_SECTIONS } from './routes/Settings'
 import { Students, validateStudentsSearch } from './routes/Students'
 import { Today } from './routes/Today'
@@ -30,18 +35,61 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFound,
 })
 
+// While the session check is slow to answer (after the router's `defaultPendingMs`).
+function Pending() {
+  return (
+    <p className="route-pending" role="status">
+      {t.common.loading}
+    </p>
+  )
+}
+
+/**
+ * Who is signed in, asked once before a shell renders: a 401 sends the visitor to
+ * sign in, keeping the page they asked for. Any other failure lets the shell render,
+ * and its screens say what did not load.
+ */
+async function requireSession(queryClient: QueryClient, href: string) {
+  try {
+    // No retries here: a shell that cannot reach the API still renders, and retries
+    // the role itself.
+    return await queryClient.ensureQueryData({ ...myRoleQuery(), retry: false })
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      throw redirect({ to: SIGN_IN_PATH, search: { redirect: appPath(href) }, replace: true })
+    }
+    return undefined
+  }
+}
+
+// Where a sign-in link lands: the page they had asked for, else staff in /admin and a
+// member on /me.
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: '/admin' })
+  beforeLoad: async ({ context }) => {
+    const me = await requireSession(context.queryClient, '/')
+    throw redirect({ href: me ? landingFor(me.role) : '/admin', replace: true })
   },
+})
+
+// "Entrar": the one page open to a signed-out visitor.
+const signInRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: SIGN_IN_PATH,
+  // Set even when it is no path of ours: the root passes the raw query through, and
+  // only an explicit `undefined` overrides it.
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({ redirect: appPath(search.redirect) }),
+  component: SignIn,
 })
 
 // /admin/*: gym owners and coaches.
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'admin',
+  beforeLoad: async ({ context, location }) => {
+    await requireSession(context.queryClient, location.href)
+  },
   component: AdminLayout,
 })
 
@@ -127,6 +175,9 @@ const adminSettingsSectionRoutes = SETTINGS_SECTIONS.map((section) =>
 const meRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'me',
+  beforeLoad: async ({ context, location }) => {
+    await requireSession(context.queryClient, location.href)
+  },
   component: MeLayout,
 })
 
@@ -138,6 +189,7 @@ const meHomeRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  signInRoute,
   adminRoute.addChildren([
     adminTodayRoute,
     adminStudentsRoute,
@@ -153,14 +205,24 @@ const routeTree = rootRoute.addChildren([
 ])
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
-  return createRouter({
+  const router = createRouter({
     routeTree,
     context,
     history,
     defaultPreload: 'intent',
+    defaultPendingComponent: Pending,
     // Loaders read through TanStack Query, which owns caching and staleness.
     defaultPreloadStaleTime: 0,
   })
+  // A session that ends mid-use (a 401 on any call) goes back to sign in, the same way
+  // a signed-out visitor does, and what it had loaded is forgotten.
+  onUnauthorized(() => {
+    const { pathname, href } = router.state.location
+    if (pathname === SIGN_IN_PATH) return
+    context.queryClient.clear()
+    void router.navigate({ to: SIGN_IN_PATH, search: { redirect: appPath(href) }, replace: true })
+  })
+  return router
 }
 
 declare module '@tanstack/react-router' {

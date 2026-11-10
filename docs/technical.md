@@ -154,7 +154,7 @@ Caddy terminates TLS and serves the built SPA; FastAPI is the only thing that ta
 | --- | --- | --- |
 | Tenancy | shared schema, `gym_id` on every tenant table, Postgres RLS with `SET LOCAL app.gym_id` per request | a missed `WHERE` returns nothing instead of another gym's ledger; schema-per-tenant breaks global identity |
 | API | FastAPI, SQLAlchemy 2, Alembic, Pydantic v2 schemas separate from ORM models | boring and known; async where I/O-bound |
-| Auth | magic links to a session cookie (`HttpOnly`, `Secure`, `SameSite=Lax`); API and SPA on one origin | no passwords for students, no CORS |
+| Auth | magic links to a session cookie (`HttpOnly`, `Secure`, `SameSite=Lax`; on an `http://` base URL, local dev only, a plain `session` cookie without `Secure`), asked for at `/ingresar`; API and SPA on one origin | no passwords for students, no CORS |
 | Frontend | one Vite SPA, `/admin` and `/me` route trees, TanStack Query, `vite-plugin-pwa`, Spanish strings in one i18n file | one build, PWA for free, English later |
 | Jobs | APScheduler or system cron running `python -m app.jobs.daily`; `job_run` table for idempotency | three jobs do not justify Celery or Redis |
 | Files | presigned PUT to S3-compatible storage; key stored on `ledger_entry` | proofs never pass through the API process |
