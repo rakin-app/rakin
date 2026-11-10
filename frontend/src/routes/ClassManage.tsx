@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { sessionPlanQuery } from '../api/sessionBlocks'
+import { updateSlot, type SlotChanges } from '../api/schedule'
 import {
   activeClassTypesQuery,
   cancelSession,
@@ -22,6 +23,7 @@ const copy = t.admin.session
 export function refreshSession(queryClient: QueryClient, session: ClassSession) {
   queryClient.setQueryData(['sessions', 'detail', session.id], session)
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
+  void queryClient.invalidateQueries({ queryKey: ['sessions', 'day'] })
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
 }
 
@@ -33,8 +35,12 @@ function refusedFor(error: unknown, type: string): boolean {
 }
 
 /**
- * "Editar clase", owner and admin: its day and time in the gym's timezone, its class
- * type and its coach. Only what changed is sent; attendance taken stays.
+ * "Editar clase", owner and admin: its day and time in the gym's timezone, its
+ * duration, its class type and its coach. Only what changed is sent; attendance taken
+ * stays. A class of the weekly schedule asks first whether the change is for this
+ * class alone or for it and the ones after it, which changes its slot from its date
+ * on: the time, duration, type and coach then, but not the day, which is the slot's
+ * weekdays (Ajustes, Horario).
  */
 export function ClassEdit({ session, timeZone }: { session: ClassSession; timeZone: string }) {
   const words = copy.edit
@@ -84,7 +90,7 @@ function EditForm({
 }) {
   const words = copy.edit
   const queryClient = useQueryClient()
-  const ids = { day: useId(), time: useId(), type: useId(), coach: useId() }
+  const ids = { day: useId(), time: useId(), duration: useId(), type: useId(), coach: useId() }
   const classTypes = useQuery(activeClassTypesQuery())
   const staff = useQuery(staffQuery)
   const initial = {
@@ -93,13 +99,26 @@ function EditForm({
   }
   const [day, setDay] = useState(initial.day)
   const [time, setTime] = useState(initial.time)
+  const [duration, setDuration] = useState(session.duration_minutes?.toString() ?? '')
   const [classTypeId, setClassTypeId] = useState(session.class_type_id)
   const [coachId, setCoachId] = useState(session.coach_id)
+  const [scope, setScope] = useState<'one' | 'series'>('one')
+  const series = scope === 'series' && session.slot_id !== null && session.slot_date !== null
 
   const save = useMutation({
-    mutationFn: (changes: SessionChanges) => updateSession(session.id, changes),
+    mutationFn: async (change: { one: SessionChanges } | { series: SlotChanges }) => {
+      if ('one' in change) return updateSession(session.id, change.one)
+      await updateSlot(session.slot_id!, { ...change.series, from_date: session.slot_date! })
+      return null
+    },
     onSuccess: (updated) => {
-      refreshSession(queryClient, updated)
+      if (updated) {
+        refreshSession(queryClient, updated)
+      } else {
+        // This class and the ones after it, wherever they are listed.
+        void queryClient.invalidateQueries({ queryKey: ['sessions'] })
+        void queryClient.invalidateQueries({ queryKey: ['schedule'] })
+      }
       // Its type may now be an open mat, or count otherwise: the timer and the roster follow.
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'blocks', session.id] })
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'roster', session.id] })
@@ -117,35 +136,71 @@ function EditForm({
     ? people
     : [{ person_id: session.coach_id, name: session.coach_name }, ...people]
 
+  const minutes = duration.trim() === '' ? null : Number(duration)
+  const badDuration = minutes !== null && !(Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440)
+
   const submit = (event: FormEvent) => {
     event.preventDefault()
+    if (badDuration || (series && minutes === null)) return
+    if (series) {
+      // Only what was changed here: what this class alone differs in (a substitute coach,
+      // a moved time) stays its own, and never spreads to the classes after it.
+      const slotChanges: SlotChanges = {}
+      if (time !== initial.time) slotChanges.start_time = time
+      if (minutes !== session.duration_minutes) slotChanges.duration_minutes = minutes!
+      if (classTypeId !== session.class_type_id) slotChanges.class_type_id = classTypeId
+      if (coachId !== session.coach_id) slotChanges.coach_id = coachId
+      if (Object.keys(slotChanges).length === 0) {
+        onClose(false)
+        return
+      }
+      save.mutate({ series: slotChanges })
+      return
+    }
     const changes: SessionChanges = {}
     if (day !== initial.day || time !== initial.time) changes.starts_at = zonedInstant(day, time, timeZone)
+    if (minutes !== session.duration_minutes) changes.duration_minutes = minutes
     if (classTypeId !== session.class_type_id) changes.class_type_id = classTypeId
     if (coachId !== session.coach_id) changes.coach_id = coachId
     if (Object.keys(changes).length === 0) {
       onClose(false)
       return
     }
-    save.mutate(changes)
+    save.mutate({ one: changes })
   }
 
   return (
     <form className="classes__card classes__form" aria-label={words.label} onSubmit={submit}>
-      <div className="class-edit__when">
-        <div className="class-edit__field">
-          <label htmlFor={ids.day} className="classes__label">
-            {words.day}
+      {session.slot_id !== null && (
+        <fieldset className="class-edit__scope">
+          <legend className="classes__label">{words.scope.label}</legend>
+          <label className="class-edit__choice">
+            <input type="radio" name="scope" checked={scope === 'one'} onChange={() => setScope('one')} />
+            {words.scope.one}
           </label>
-          <input
-            id={ids.day}
-            className="classes__input"
-            type="date"
-            required
-            value={day}
-            onChange={(e) => setDay(e.target.value)}
-          />
-        </div>
+          <label className="class-edit__choice">
+            <input type="radio" name="scope" checked={scope === 'series'} onChange={() => setScope('series')} />
+            {words.scope.series}
+          </label>
+          {series && <p className="classes__note">{words.scope.seriesHint}</p>}
+        </fieldset>
+      )}
+      <div className="class-edit__when">
+        {!series && (
+          <div className="class-edit__field">
+            <label htmlFor={ids.day} className="classes__label">
+              {words.day}
+            </label>
+            <input
+              id={ids.day}
+              className="classes__input"
+              type="date"
+              required
+              value={day}
+              onChange={(e) => setDay(e.target.value)}
+            />
+          </div>
+        )}
         <div className="class-edit__field">
           <label htmlFor={ids.time} className="classes__label">
             {words.time}
@@ -159,7 +214,29 @@ function EditForm({
             onChange={(e) => setTime(e.target.value)}
           />
         </div>
+        <div className="class-edit__field">
+          <label htmlFor={ids.duration} className="classes__label">
+            {words.duration}
+          </label>
+          <input
+            id={ids.duration}
+            className="classes__input"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={1440}
+            required={series}
+            aria-invalid={badDuration}
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+          />
+        </div>
       </div>
+      {badDuration && (
+        <p className="classes__error" role="alert">
+          {words.badDuration}
+        </p>
+      )}
       <label htmlFor={ids.type} className="classes__label">
         {words.classType}
       </label>
@@ -194,7 +271,7 @@ function EditForm({
       <button
         type="submit"
         className="classes__button classes__button--primary"
-        disabled={save.isPending || !day || !time}
+        disabled={save.isPending || !day || !time || badDuration || (series && minutes === null)}
       >
         {save.isPending ? words.working : words.submit}
       </button>
@@ -231,6 +308,7 @@ export function ClassActions({ session }: { session: ClassSession }) {
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ['sessions', 'detail', session.id] })
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
+      void queryClient.invalidateQueries({ queryKey: ['sessions', 'day'] })
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
       // Credits given back, classes and time on the mat changed for whoever was marked.
       void queryClient.invalidateQueries({ queryKey: ['attendance'] })

@@ -30,6 +30,9 @@ const SESSION: ClassSession = {
   created_at: '2026-11-09T22:00:00Z',
   updated_at: '2026-11-09T22:00:00Z',
   present: 1,
+  duration_minutes: null,
+  slot_id: null,
+  slot_date: null,
 }
 
 const kind = (id: string, name: string, position: number, extra: Partial<BlockKind> = {}): BlockKind => ({

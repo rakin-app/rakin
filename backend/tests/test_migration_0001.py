@@ -134,13 +134,15 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # tests/test_custom_fields.py `person_field_value` (0019),
     # tests/test_sessions.py `session` (0020),
     # tests/test_attendance.py `attendance` (0023),
-    # tests/test_class_timer.py `block_kind` and `session_block` (0028), and
-    # tests/test_join.py `join_link` and `join_request` (0031).
+    # tests/test_class_timer.py `block_kind` and `session_block` (0028),
+    # tests/test_join.py `join_link` and `join_request` (0031), and
+    # tests/test_schedule.py `schedule_slot` and `closed_day` (0035).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "auth_session",
         "block_kind",
         "class_type",
+        "closed_day",
         "grade_event",
         "guardian_link",
         "join_link",
@@ -151,6 +153,7 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
         "person_field_value",
         "plan_event",
         "program",
+        "schedule_slot",
         "session",
         "session_block",
     }

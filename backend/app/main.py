@@ -28,6 +28,7 @@ from app.api import (
     programs,
     proof_review,
     proofs,
+    schedule,
     session_blocks,
     sessions,
     staff,
@@ -95,6 +96,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(programs.router)
     app.include_router(class_types.router)
     app.include_router(sessions.router)
+    app.include_router(schedule.router)
+    app.include_router(schedule.closed)
     app.include_router(attendance.router)
     app.include_router(block_kinds.router)
     app.include_router(session_blocks.router)

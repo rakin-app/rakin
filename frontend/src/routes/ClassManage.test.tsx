@@ -43,6 +43,9 @@ const SESSION: ClassSession = {
   created_at: '2026-11-09T22:00:00Z',
   updated_at: '2026-11-09T22:00:00Z',
   present: 12,
+  duration_minutes: null,
+  slot_id: null,
+  slot_date: null,
 }
 
 const kind = (id: string, name: string, is_sparring = false): BlockKind => ({
@@ -159,6 +162,7 @@ function stubApi({
       return { body: current }
     }
     if (path === '/api/sessions/s1' && method === 'DELETE') return { status: 204 }
+    if (path === '/api/schedule/slot1' && method === 'PATCH') return { body: { id: 'slot2' } }
     if (path === '/api/sessions/s1/roster') return { body: { session_id: 's1', present: 0, members: [] } }
     if (path === '/api/sessions/s1/blocks' && method === 'GET') {
       return { body: { session_id: 's1', class_kind: 'class', blocks: plan } }
@@ -244,6 +248,95 @@ describe('Editar clase', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Open mat' })).toBeInTheDocument()
     expect(screen.getByText(copy.coach('Tomás Vidal'))).toBeInTheDocument()
     expect(screen.getByText(copy.eyebrow('Adultos', '8 nov 07:30'))).toBeInTheDocument()
+  })
+
+  it('sets and clears a duration for this class alone', async () => {
+    const calls = stubApi()
+    renderAt('/admin/clases/s1')
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.edit.open }))
+    const form = await screen.findByRole('form', { name: copy.edit.label })
+    // A one-off class has no scope to choose.
+    expect(within(form).queryByRole('radio')).not.toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.edit.duration), '90')
+    await userEvent.click(within(form).getByRole('button', { name: copy.edit.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.edit.saved)
+    expect(writes(calls)).toEqual([{ method: 'PATCH', path: '/api/sessions/s1', body: { duration_minutes: 90 } }])
+  })
+
+  it('refuses a duration out of range before sending it', async () => {
+    const calls = stubApi()
+    renderAt('/admin/clases/s1')
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.edit.open }))
+    const form = await screen.findByRole('form', { name: copy.edit.label })
+    await userEvent.type(within(form).getByLabelText(copy.edit.duration), '0')
+    expect(within(form).getByRole('alert')).toHaveTextContent(copy.edit.badDuration)
+    expect(within(form).getByRole('button', { name: copy.edit.submit })).toBeDisabled()
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('changes this class alone, or its schedule from its date on', async () => {
+    const scheduled = { ...SESSION, duration_minutes: 90, slot_id: 'slot1', slot_date: '2026-11-09' }
+    const calls = stubApi({ session: scheduled })
+    renderAt('/admin/clases/s1')
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.edit.open }))
+    let form = await screen.findByRole('form', { name: copy.edit.label })
+    expect(within(form).getByRole('radio', { name: copy.edit.scope.one })).toBeChecked()
+    await userEvent.click(within(form).getByRole('radio', { name: copy.edit.scope.series }))
+    // The day is the schedule's weekdays, not this form's.
+    expect(within(form).queryByLabelText(copy.edit.day)).not.toBeInTheDocument()
+    expect(within(form).getByText(copy.edit.scope.seriesHint)).toBeInTheDocument()
+    const time = within(form).getByLabelText(copy.edit.time)
+    await userEvent.clear(time)
+    await userEvent.type(time, '20:00')
+    await userEvent.click(within(form).getByRole('button', { name: copy.edit.submit }))
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.edit.saved)
+
+    await userEvent.click(screen.getByRole('button', { name: copy.edit.open }))
+    form = await screen.findByRole('form', { name: copy.edit.label })
+    await userEvent.clear(within(form).getByLabelText(copy.edit.duration))
+    await userEvent.type(within(form).getByLabelText(copy.edit.duration), '60')
+    await userEvent.click(within(form).getByRole('button', { name: copy.edit.submit }))
+    await screen.findByRole('status')
+
+    expect(writes(calls)).toEqual([
+      {
+        method: 'PATCH',
+        path: '/api/schedule/slot1',
+        body: { start_time: '20:00', from_date: '2026-11-09' },
+      },
+      { method: 'PATCH', path: '/api/sessions/s1', body: { duration_minutes: 60 } },
+    ])
+  })
+
+  it("keeps this class's own coach out of a series change of its duration", async () => {
+    // A substitute coach for this class alone; the schedule's is someone else.
+    const scheduled = {
+      ...SESSION,
+      coach_id: 'other',
+      coach_name: 'Tomás Vidal',
+      duration_minutes: 90,
+      slot_id: 'slot1',
+      slot_date: '2026-11-09',
+    }
+    const calls = stubApi({ session: scheduled })
+    renderAt('/admin/clases/s1')
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.edit.open }))
+    const form = await screen.findByRole('form', { name: copy.edit.label })
+    await userEvent.click(within(form).getByRole('radio', { name: copy.edit.scope.series }))
+    const duration = within(form).getByLabelText(copy.edit.duration)
+    await userEvent.clear(duration)
+    await userEvent.type(duration, '75')
+    await userEvent.click(within(form).getByRole('button', { name: copy.edit.submit }))
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.edit.saved)
+
+    expect(writes(calls)).toEqual([
+      { method: 'PATCH', path: '/api/schedule/slot1', body: { duration_minutes: 75, from_date: '2026-11-09' } },
+    ])
   })
 
   it('sends nothing when nothing changed', async () => {

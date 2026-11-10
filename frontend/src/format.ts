@@ -77,3 +77,16 @@ export function zonedInstant(day: string, time: string, timeZone: string): strin
   instant = wall - offset(instant)
   return new Date(instant).toISOString()
 }
+
+/** `19:00–20:30`, in `timeZone`: from `iso` for `minutes`; `19:00` when it has no duration. */
+export function timeRange(iso: string, minutes: number | null, timeZone: string): string {
+  const start = clockTime(iso, timeZone)
+  if (minutes === null) return start
+  return `${start}–${clockTime(new Date(new Date(iso).getTime() + minutes * 60_000).toISOString(), timeZone)}`
+}
+
+/** An ISO day `days` later (earlier, if negative): `2026-11-10` and 1 is `2026-11-11`. */
+export function shiftDay(day: string, days: number): string {
+  const [y, m, d] = day.split('-').map(Number) as [number, number, number]
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}

@@ -3,7 +3,9 @@
 A session is one class of a class type, started at a time and taught by a coach, with
 the topic and notes the coach writes after it. A blank topic or notes is no topic or
 notes: both are stored as null. A class that won't happen is cancelled (0033): it
-stays, with `cancelled_at`, and counts for nothing.
+stays, with `cancelled_at`, and counts for nothing. A class lasts `duration_minutes`,
+or has no duration set (0035); one made by the weekly schedule carries its slot
+(`slot_id`) and the date it was made for (`slot_date`).
 """
 
 import uuid
@@ -15,6 +17,7 @@ from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
+    Field,
     StringConstraints,
     model_validator,
 )
@@ -23,6 +26,8 @@ from app.schemas.classes import never_null
 
 MAX_TOPIC = 200
 MAX_NOTES = 4000
+# A class lasts at most a day.
+MAX_DURATION = 1440
 
 
 def _blank_is_none(value: str | None) -> str | None:
@@ -39,6 +44,7 @@ Notes = Annotated[
     StringConstraints(strip_whitespace=True, max_length=MAX_NOTES),
     AfterValidator(_blank_is_none),
 ]
+Duration = Annotated[int, Field(ge=1, le=MAX_DURATION)]
 
 
 class SessionCreate(BaseModel):
@@ -48,6 +54,7 @@ class SessionCreate(BaseModel):
 
     class_type_id: uuid.UUID
     starts_at: AwareDatetime | None = None
+    duration_minutes: Duration | None = None
     coach_id: uuid.UUID | None = None
     topic: Topic = None
     notes: Notes = None
@@ -56,8 +63,11 @@ class SessionCreate(BaseModel):
 class SessionUpdate(BaseModel):
     """Only the fields sent change; `null` or a blank string clears a topic or notes.
 
-    Moving a class, changing its type or its coach is an owner's or admin's; its own
-    coach may change only its topic and notes (`app.api.sessions`)."""
+    Moving a class, changing its duration, its type or its coach is an owner's or
+    admin's; its own coach may change only its topic and notes (`app.api.sessions`).
+    `duration_minutes: null` clears the duration. For a class of the weekly schedule
+    this changes that one class ("solo esta clase"); the slot's own change is
+    `PATCH /api/schedule/{id}` ("esta y las siguientes")."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -66,6 +76,7 @@ class SessionUpdate(BaseModel):
     coach_id: uuid.UUID | None = None
     class_type_id: uuid.UUID | None = None
     starts_at: AwareDatetime | None = None
+    duration_minutes: Duration | None = None
 
     @model_validator(mode="after")
     def _set(self) -> "SessionUpdate":
@@ -80,6 +91,8 @@ class Session(BaseModel):
     program_id: uuid.UUID
     program_name: str
     starts_at: datetime
+    # How long it lasts; null when no one set it.
+    duration_minutes: int | None
     coach_id: uuid.UUID
     coach_name: str
     topic: str | None
@@ -90,6 +103,10 @@ class Session(BaseModel):
     updated_at: datetime
     # How many are marked at it; 0 is a class whose attendance was never taken.
     present: int
+    # The weekly schedule's slot it was made from, and the gym-local date it was made
+    # for; both null for a one-off class.
+    slot_id: uuid.UUID | None
+    slot_date: date | None
 
 
 class Day(BaseModel):
