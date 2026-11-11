@@ -264,16 +264,16 @@ function DataForm({
           const id = `${formId}-${field.key}`
           return (
             <div key={field.key} className="member__form-field">
-                <label htmlFor={id} className="member__label">
-                  {field.label}
-                </label>
-                <FieldInput
-                  id={id}
-                  field={field}
-                  value={drafts[field.key] ?? ''}
-                  invalid={refused.has(field.key)}
-                  onChange={(value) => setDrafts({ ...drafts, [field.key]: value })}
-                />
+              <label htmlFor={id} className="member__label">
+                {field.label}
+              </label>
+              <FieldInput
+                id={id}
+                field={field}
+                value={drafts[field.key] ?? ''}
+                invalid={refused.has(field.key)}
+                onChange={(value) => setDrafts({ ...drafts, [field.key]: value })}
+              />
             </div>
           )
         })}

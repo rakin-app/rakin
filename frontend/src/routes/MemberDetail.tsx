@@ -313,7 +313,7 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
       </Button>
       {/* What cannot be done here is not offered, rather than greyed out with no reason. */}
       {(known.length > 0 || payments.length > 0 || (!freeze && membership.status === 'active')) && (
-        <div className="member__actions member__actions--row">
+        <div className="member__actions">
           {known.length > 0 && (
             <Button aria-expanded={open === 'adjustment'} onClick={() => toggle('adjustment')}>
               {copy.adjust}
