@@ -8,11 +8,11 @@ What lives where:
 | --- | --- |
 | Images | `ghcr.io/rakin-app/rakin-api` (api, jobs, migrate) and `ghcr.io/rakin-app/rakin-web` (Caddy plus the built SPA), built by [`images.yml`](../.github/workflows/images.yml) for every commit on `main`, tagged `sha-<commit>` and `main` |
 | Releases | a `v*` git tag; [`deploy.yml`](../.github/workflows/deploy.yml) tags that commit's images with it and runs it on the host |
-| The stack | [`deploy/docker-compose.yml`](../deploy/docker-compose.yml): `caddy`, `api`, `jobs`, `backup`, `postgres`, and the one-shot `migrate`. No Garage, no Vite, no source mounts |
+| The stack | [`deploy/docker-compose.yml`](../deploy/docker-compose.yml): `caddy`, `api`, `jobs`, `postgres`, the one-shot `migrate`, and `backup` when enabled. No Garage, no Vite, no source mounts |
 | Settings | `/srv/rakin/.env` on the host only, from [`deploy/.env.example`](../deploy/.env.example). Never in the repo, the image or a CI secret |
 | Deploy and rollback | [`deploy/deploy.sh`](../deploy/deploy.sh), on the host beside the Compose file |
 | Post-deploy check | [`deploy/smoke.sh`](../deploy/smoke.sh) `<url>` |
-| Backups | the `backup` service ([`app/backup.py`](../backend/app/backup.py)), nightly to a bucket of their own; [`deploy/restore.sh`](../deploy/restore.sh) restores one into a scratch database ([below](#backups)) |
+| Backups | the opt-in `backup` service ([`app/backup.py`](../backend/app/backup.py)), nightly to a bucket of their own; [`deploy/restore.sh`](../deploy/restore.sh) restores one into a scratch database ([below](#backups)) |
 
 CI boots this exact stack from each PR's images (`deploy/test-hosted.sh`), smoke-tests it, and backs it up and restores the backup, so a release is never the first time the images, the Caddyfile and the Compose file meet.
 
@@ -192,8 +192,10 @@ docker compose logs backup                               # "backup uploaded" lin
    ```
 
    Store the whole file in the team's password manager, then delete it from the laptop. The `age1...` public key goes in `BACKUP_AGE_RECIPIENT`. Losing the private key loses every backup; anyone who has it can read them all.
-3. **`.env`:** the `BACKUP_*` lines from [`deploy/.env.example`](../deploy/.env.example), `BACKUP_ENV` being `staging` or `production`. Compose refuses to start anything until they are set, so set them before the deploy that brings the `backup` service.
-4. After the deploy, `docker compose logs backup` shows the first `backup uploaded`; then rehearse a restore, below.
+3. **`.env`:** the `BACKUP_*` lines from [`deploy/.env.example`](../deploy/.env.example), `BACKUP_ENV` being `staging` or `production`, and uncomment `COMPOSE_PROFILES=backup` to turn the service on.
+4. Run `docker compose up -d --wait` (or the next deploy, which runs the same), and `docker compose logs backup` shows the first `backup uploaded`; then rehearse a restore, below.
+
+**Backups are opt-in.** The `backup` service sits behind the Compose profile `backup`, so a host whose `.env` has no `COMPOSE_PROFILES=backup` runs and deploys everything else without it, `BACKUP_*` unset. Turned on with a `BACKUP_*` setting missing or invalid, the service does not back up: it logs `backups are enabled but not configured`, naming each variable (never its value), at `ERROR`, so Sentry reports it, and again every day until it is fixed. It stays running rather than exit, so the deploy and the other services go on as normal.
 
 ### Restoring, to check a backup
 

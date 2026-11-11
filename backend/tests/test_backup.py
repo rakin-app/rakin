@@ -136,6 +136,94 @@ def test_settings_do_not_need_the_apis(tmp_path: Path) -> None:
     assert settings.prefix == PREFIX
 
 
+BACKUP_VARIABLES = (
+    "BACKUP_ENV",
+    "BACKUP_AGE_RECIPIENT",
+    "BACKUP_S3_ENDPOINT_URL",
+    "BACKUP_S3_REGION",
+    "BACKUP_S3_BUCKET",
+    "BACKUP_S3_ACCESS_KEY_ID",
+    "BACKUP_S3_SECRET_ACCESS_KEY",
+)
+
+
+def unconfigured(monkeypatch: pytest.MonkeyPatch, **values: str) -> list[str]:
+    """The environment Compose gives the service when `.env` sets no `BACKUP_*`: each
+    variable present and empty, but for `values`. The Sentry DSNs it was started with."""
+    for name in BACKUP_VARIABLES:
+        monkeypatch.setenv(name, values.get(name, ""))
+    monkeypatch.setattr(backup, "configure_logging", lambda level: None)
+    started: list[str] = []
+    monkeypatch.setattr(backup, "init_sentry", lambda s: started.append(s.sentry_dsn))
+    return started
+
+
+def test_enabled_without_its_settings_a_backup_says_which_are_missing(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    started = unconfigured(monkeypatch, BACKUP_S3_SECRET_ACCESS_KEY="hunter2")
+    monkeypatch.setenv("SENTRY_DSN", "https://public@sentry.invalid/1")
+
+    with caplog.at_level(logging.INFO):
+        status = backup.main(["run"])
+
+    assert status == 1
+    assert started == ["https://public@sentry.invalid/1"]
+    # ERROR, so Sentry's logging integration reports it.
+    [refusal] = [r for r in caplog.records if r.levelno == logging.ERROR]
+    message = refusal.getMessage()
+    assert message.startswith("backups are enabled but not configured")
+    for name in ("BACKUP_ENV", "BACKUP_AGE_RECIPIENT", "BACKUP_S3_BUCKET"):
+        assert f"{name}: Field required" in message
+    # Set, so not reported; and an empty region falls back to its default.
+    assert "SECRET_ACCESS_KEY" not in message
+    assert "REGION" not in message
+
+
+def test_an_invalid_setting_is_named_but_its_value_is_not_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    unconfigured(
+        monkeypatch,
+        BACKUP_ENV="staging",
+        BACKUP_AGE_RECIPIENT="AGE-SECRET-KEY-1SECRET",
+        BACKUP_S3_ENDPOINT_URL="http://s3.invalid",
+        BACKUP_S3_BUCKET="b",
+        BACKUP_S3_ACCESS_KEY_ID="k",
+        BACKUP_S3_SECRET_ACCESS_KEY="s",
+    )
+
+    assert backup.main(["status"]) == 1
+
+    [refusal] = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert "BACKUP_AGE_RECIPIENT: String should match pattern" in refusal.getMessage()
+    assert "AGE-SECRET-KEY" not in refusal.getMessage()
+
+
+def test_serve_without_its_settings_stays_up_and_keeps_saying_so(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Exiting would restart the container in a loop, and fail `up --wait` for the
+    # whole stack; so it waits for `docker compose stop`, repeating the error.
+    started = unconfigured(monkeypatch)
+    stop = threading.Event()
+    waits: list[float] = []
+
+    def wait(timeout: float) -> bool:
+        waits.append(timeout)
+        return len(waits) == 3
+
+    monkeypatch.setattr(stop, "wait", wait)
+    monkeypatch.setattr(backup, "serving_stop", lambda: stop)
+
+    assert backup.main(["serve"]) == 0
+
+    assert started == [""]
+    assert waits == [backup.NAG.total_seconds()] * 3
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 3
+
+
 def fake_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dump: str, age: str) -> None:
     """`pg_dump` and `age` on `PATH` as shell scripts."""
     bin_dir = tmp_path / "bin"
