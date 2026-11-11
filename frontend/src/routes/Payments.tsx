@@ -143,6 +143,9 @@ function Book() {
               </select>
             </label>
           )}
+          <Link to="/admin/pagos/cobros" className={buttonClass({ variant: 'ghost' })}>
+            {copy.extra}
+          </Link>
           {pending > 0 && (
             <Link to="/admin/pagos/comprobantes" className={buttonClass({ variant: 'primary' })}>
               {copy.review(pending)}
@@ -426,7 +429,9 @@ function Kpis({ kpis }: { kpis: BookKpis }) {
       key: 'collected',
       label: words.collected,
       amount: kpis.collected_clp,
-      detail: words.collectedDetail(kpis.collected_payments, kpis.refunds ? clp(kpis.refunded_clp) : null),
+      detail:
+        words.collectedDetail(kpis.collected_payments, kpis.refunds ? clp(kpis.refunded_clp) : null) +
+        (kpis.collected_extra_clp ? copy.kpiExtra(clp(kpis.collected_extra_clp)) : ''),
     },
     { key: 'pending', label: words.pending, amount: kpis.pending_clp, detail: words.pendingDetail(kpis.pending_payments) },
     { key: 'overdue', label: words.overdue, amount: kpis.overdue_clp, detail: words.overdueDetail(kpis.overdue_members, days) },
@@ -522,6 +527,7 @@ const MONTH_DAYS = 31
 
 /** `Nov 2026`, or `Dic 2026 – May 2027` for a period longer than a month. */
 function periodLabel(entry: BookEntry): string {
+  if (entry.extra) return entry.extra.title
   const period = entry.period
   if (!period) return copy.credit
   const start = toDate(period.period_start)
@@ -535,7 +541,12 @@ function periodLabel(entry: BookEntry): string {
 /** The "Detalle" column: how the money came; for a charge, the plan it bills; for an
  *  adjustment, its note. */
 function detailLabel(entry: BookEntry): string {
-  if (entry.kind === 'charge') return entry.plan_name
+  if (entry.kind === 'charge') return entry.plan_name ?? '—'
+  // A cobro extra, labelled by its category (#195), then how the money came.
+  if (entry.extra) {
+    const category = t.admin.extra.category[entry.extra.category]
+    return entry.method ? `${category} · ${copy.method[entry.method]}` : category
+  }
   if (entry.method) return copy.method[entry.method]
   return entry.note ?? '—'
 }

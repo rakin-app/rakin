@@ -49,6 +49,7 @@ export function MeHome() {
         <Grid>
           <div className="me-home__column">
             <NextPayment page={page.data} />
+            <ExtraCharges page={page.data} />
           </div>
           <div className="me-home__column">
             <Training page={page.data} />
@@ -119,6 +120,51 @@ function NextPayment({ page }: { page: MyPage }) {
         {uploading && <ProofUpload />}
       </div>
     </>
+  )
+}
+
+/**
+ * "Cobros extra" (#195): a rifa, a seminar or a shared cost, beside the plan's payment
+ * and never part of it. Each opens the same "Subir comprobante", on that cobro.
+ */
+function ExtraCharges({ page }: { page: MyPage }) {
+  const words = copy.extra
+  const [uploading, setUploading] = useState<string | null>(null)
+  const lines = page.extra_charges ?? []
+  if (lines.length === 0) return null
+  const today = zonedDay(new Date().toISOString(), page.timezone)
+  return (
+    <section className="extra-mine" aria-labelledby="extra-mine-title">
+      <h2 id="extra-mine-title" className="history__title">
+        {words.title}
+      </h2>
+      <ul className="extra-mine__list">
+        {lines.map((line) => {
+          const status = line.status === 'in_review' ? 'in_review' : line.due_date < today ? 'overdue' : 'open'
+          return (
+            <li key={line.id} className="extra-mine__row">
+              <div className="extra-mine__top">
+                <span className="extra-mine__title">{line.title}</span>
+                <StatusPill status={status}>{words.status[status]}</StatusPill>
+              </div>
+              <span className="extra-mine__amount">{t.common.clp(line.outstanding_clp)}</span>
+              <span className="extra-mine__detail">
+                {words.due(t.common.longDay(line.due_date), line.person_id === page.person_id ? null : line.person_name)}
+              </span>
+              {line.message && <p className="extra-mine__message">{line.message}</p>}
+              <Button
+                aria-label={words.upload(line.title)}
+                aria-expanded={uploading === line.id}
+                onClick={() => setUploading(uploading === line.id ? null : line.id)}
+              >
+                {copy.next.upload}
+              </Button>
+              {uploading === line.id && <ProofUpload initial={line.id} />}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 
@@ -218,7 +264,8 @@ function History({ page }: { page: MyPage }) {
               <span className="history__what">
                 <span className="history__month">
                   {copy.history.month(
-                    payment.period_start ? t.common.month(payment.period_start, year) : copy.history.payment,
+                    payment.charge_title ??
+                      (payment.period_start ? t.common.month(payment.period_start, year) : copy.history.payment),
                     payment.person_id === page.person_id ? null : payment.person_name,
                   )}
                 </span>
