@@ -88,4 +88,22 @@ describe('OfflineNotice', () => {
     expect(notice()).toBeEmptyDOMElement()
     expect(fetch).not.toHaveBeenCalled()
   })
+
+  it('forgets a refusal once the signal is back, when it drops again (#231 review)', async () => {
+    const fetch = stubFetch()
+    renderForm('refuse')
+    setOnline(false)
+    await userEvent.click(screen.getByRole('button', { name: LABEL }))
+    expect(await screen.findByText(copy.refused)).toBeInTheDocument()
+
+    setOnline(true)
+    expect(notice()).toBeEmptyDOMElement()
+    setOnline(false)
+    expect(notice()).toBeEmptyDOMElement()
+
+    // A new refusal in this spell speaks again.
+    await userEvent.click(screen.getByRole('button', { name: LABEL }))
+    expect(await screen.findByText(copy.refused)).toBeInTheDocument()
+    expect(fetch).not.toHaveBeenCalled()
+  })
 })

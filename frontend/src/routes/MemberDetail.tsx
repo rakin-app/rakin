@@ -408,6 +408,7 @@ function addDays(day: string, days: number): string {
 function useFreezeChange(mutationFn: () => Promise<Membership>, onSuccess: (membership: Membership) => void) {
   const queryClient = useQueryClient()
   return useSubmit({
+    offline: 'refuse',
     mutationFn,
     onSuccess: async (membership: Membership) => {
       onSuccess(membership)

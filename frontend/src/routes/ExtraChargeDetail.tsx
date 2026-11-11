@@ -275,6 +275,7 @@ function PayForm({ charge, line, onDone, onClose }: FormProps) {
 function AmountForm({ charge, line, onDone, onClose }: FormProps) {
   const [amount, setAmount] = useState(String(line.amount_due_clp))
   const change = useSubmit({
+    offline: 'refuse',
     mutationFn: () => changeLineAmount(charge.id, line.id, Number(amount)),
     onSuccess: () => onDone(),
   })
@@ -346,7 +347,11 @@ function CancelForm({ charge, line, onDone, onClose }: FormProps) {
     queryFn: () => cancelPreview(charge.id, line.id),
   })
   const [resplit, setResplit] = useState(false)
-  const cancel = useSubmit({ mutationFn: () => cancelLine(charge.id, line.id, resplit), onSuccess: () => onDone() })
+  const cancel = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => cancelLine(charge.id, line.id, resplit),
+    onSuccess: () => onDone(),
+  })
   const names = new Map(charge.people.map((l) => [l.id, l.person.name]))
   return (
     <form

@@ -113,6 +113,7 @@ function GymForm({ settings }: { settings: Settings }) {
   const [saved, setSaved] = useState(false)
 
   const save = useSubmit({
+    offline: 'refuse',
     mutationFn: updateGymSettings,
     onSuccess: (answer) => {
       queryClient.setQueryData(gymSettingsQuery().queryKey, answer)
