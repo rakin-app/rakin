@@ -13,6 +13,8 @@ export type MyRole = {
   name: string | null
   email: string | null
   gym_name: string
+  // Holds a membership here or pays for a dependent: the student page has something for them.
+  student_page: boolean
 }
 
 /** The signed-in person's staff role in this gym; `null` for a member. */

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { apiFetch } from './client'
+import { forgetDrafts } from './drafts'
 import type { StaffRole } from './me'
 
 export const SIGN_IN_PATH = '/ingresar'
@@ -37,10 +38,43 @@ export function rememberReturnPath(value: string | undefined): void {
   }
 }
 
+// Set while this browser holds a session, so a sign-in page reached through a 401
+// says the session expired, not merely that one is needed (#212). Gone on signing out.
+const SIGNED_IN_KEY = 'rakin.signedIn'
+
+export function markSignedIn(): void {
+  try {
+    localStorage.setItem(SIGNED_IN_KEY, '1')
+  } catch {
+    // Storage off: the sign-in page just asks them to sign in.
+  }
+}
+
+function forgetSignedIn(): void {
+  try {
+    localStorage.removeItem(SIGNED_IN_KEY)
+  } catch {
+    // Storage off: nothing was set.
+  }
+}
+
+/** Whether this browser had a session, forgotten as it is asked: one sign-in page says so. */
+export function hadSession(): boolean {
+  let had = false
+  try {
+    had = localStorage.getItem(SIGNED_IN_KEY) !== null
+  } catch {
+    // Storage off: as if it had none.
+  }
+  forgetSignedIn()
+  return had
+}
+
 /**
  * Where a freshly signed-in person goes: the page they had asked for, when their role
- * reaches it, else their default. Staff land in `/admin`, a member on `/me`. The kept
- * path is used once.
+ * reaches it, else their default. Staff land in `/admin`, a member on `/me`. Staff
+ * reach `/me` too, since a coach often trains at their own gym (#214); a member never
+ * reaches `/admin`. The kept path is used once.
  */
 export function landingFor(role: StaffRole | null): string {
   let kept: string | undefined
@@ -51,10 +85,15 @@ export function landingFor(role: StaffRole | null): string {
     kept = undefined
   }
   const home = role === null ? '/me' : '/admin'
-  return kept && (kept === home || kept.startsWith(`${home}/`) || kept.startsWith(`${home}?`)) ? kept : home
+  const reaches = role === null ? ['/me'] : ['/admin', '/me']
+  const within = (base: string) => kept === base || kept?.startsWith(`${base}/`) || kept?.startsWith(`${base}?`)
+  return kept && reaches.some(within) ? kept : home
 }
 
-/** "Cerrar sesión": ends the session, forgets what this browser had loaded, back to sign in. */
+/**
+ * "Cerrar sesión": ends the session, forgets what this browser had loaded and any text
+ * kept from an expired session, back to sign in.
+ */
 export function useSignOut() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -62,6 +101,8 @@ export function useSignOut() {
     mutationFn: () => apiFetch<void>('/api/auth/logout', { method: 'POST' }),
     onSuccess: async () => {
       queryClient.clear()
+      forgetSignedIn()
+      forgetDrafts()
       await navigate({ to: SIGN_IN_PATH, replace: true })
     },
   })

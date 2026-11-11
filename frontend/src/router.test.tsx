@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from './api/queryClient'
@@ -205,7 +205,88 @@ describe('signing in', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/ingresar')
-    expect(router.state.location.search).toEqual({ redirect: '/admin/alumnos' })
+    expect(router.state.location.search).toEqual({ redirect: '/admin/alumnos', expired: true })
+    expect(screen.getByText(es.signIn.expired)).toBeInTheDocument()
+  })
+
+  it('says the session expired when a page is opened after it did (#212)', async () => {
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: null } } : { status: 404 }))
+    renderAt('/me')
+    await screen.findByRole('heading', { level: 1, name: es.me.home.title })
+    cleanup()
+
+    signedOut()
+    const router = renderAt('/me')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.search).toEqual({ redirect: '/me', expired: true })
+    expect(screen.getByText(es.signIn.expired)).toBeInTheDocument()
+  })
+
+  it('does not say a session expired to someone who signed out, or never signed in', async () => {
+    stubApi((path) =>
+      path === '/api/me/role' ? { status: 200, body: { role: null } } : path === '/api/auth/logout' ? { status: 204 } : { status: 404 },
+    )
+    renderAt('/me')
+    await userEvent.click(await screen.findByRole('button', { name: es.signOut.label }))
+    await screen.findByRole('heading', { level: 1, name: es.signIn.title })
+    cleanup()
+
+    signedOut()
+    const router = renderAt('/me')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.search).toEqual({ redirect: '/me' })
+    expect(screen.queryByText(es.signIn.expired)).not.toBeInTheDocument()
+  })
+})
+
+describe('staff who also train (#214)', () => {
+  const asRole = (role: string | null, studentPage: boolean) =>
+    stubApi((path) =>
+      path === '/api/me/role'
+        ? { status: 200, body: { role, person_id: 'me', name: 'Felipe', email: null, gym_name: 'Academia Sur', student_page: studentPage } }
+        : { status: 404 },
+    )
+
+  it('lands them on /me when that is the page they asked for', async () => {
+    localStorage.setItem('rakin.returnTo', '/me')
+    asRole('coach', true)
+    const router = renderAt('/')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/me')
+  })
+
+  it('gives staff with a membership a "Mi página" link in the nav, and the student page a way back', async () => {
+    asRole('coach', true)
+    const router = renderAt('/admin')
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+
+    await userEvent.click(await within(nav).findByRole('link', { name: es.nav.myPage }))
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/me')
+
+    await userEvent.click(screen.getByRole('link', { name: es.me.toAdmin }))
+    expect(await screen.findByRole('navigation', { name: es.nav.label })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/admin')
+  })
+
+  it('shows no "Mi página" to staff without a membership', async () => {
+    asRole('owner', false)
+    renderAt('/admin')
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    await within(nav).findByRole('link', { name: es.nav.settings })
+
+    expect(within(nav).queryByRole('link', { name: es.nav.myPage })).not.toBeInTheDocument()
+  })
+
+  it('shows a member no way into the panel', async () => {
+    asRole(null, true)
+    renderAt('/me')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: es.me.toAdmin })).not.toBeInTheDocument()
   })
 })
 

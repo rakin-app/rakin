@@ -2,10 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { useSignOut } from '../api/auth'
-import { managesGym, myRoleQuery, readsLedger } from '../api/me'
+import { managesGym, myRoleQuery, myselfQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
 import { useTimerSync } from '../api/sessionBlocks'
-import { ClassesIcon, PaymentsIcon, SettingsIcon, SignOutIcon, StudentsIcon, TodayIcon } from '../components/icons'
+import { ClassesIcon, MyPageIcon, PaymentsIcon, SettingsIcon, SignOutIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { useGymName } from '../pageTitle'
 import './AdminLayout.css'
@@ -31,12 +31,15 @@ const NAV_ITEMS: readonly NavItem[] = [
  * desktop ledger design, with the gym's name under the mark. One <nav>, restyled by CSS,
  * so both share a tab order. "Cerrar sesión" is the sidebar's last item; on a phone it
  * is in Ajustes → Cuenta instead, so the bar keeps to the sections (#177), except for a
- * coach, who has no Ajustes and three tabs.
+ * coach, who has no Ajustes and three tabs. "Mi página", the student page of staff who
+ * also train (#214), sits above it, and goes the same way: in Cuenta on an owner's phone,
+ * a fourth tab on a coach's.
  */
 export function AdminLayout() {
   // Proofs waiting for review, on the Pagos tab: asked for only by those who read
   // the ledger, so a coach never polls a request that would be refused.
   const role = useQuery(myRoleQuery())
+  const studentPage = useQuery(myselfQuery()).data?.student_page ?? false
   const signOut = useSignOut()
   // A class timed without signal reaches the API from whichever screen is open.
   useTimerSync()
@@ -49,6 +52,8 @@ export function AdminLayout() {
     (item) =>
       (item.to !== '/admin/pagos' || readsLedger(role.data)) && (item.to !== '/admin/ajustes' || managesGym(role.data)),
   )
+
+  const endClass = role.isSuccess && !managesGym(role.data) ? 'admin-nav__end admin-nav__end--bar' : 'admin-nav__end'
 
   return (
     <div className="admin-shell">
@@ -78,9 +83,19 @@ export function AdminLayout() {
               </Link>
             </li>
           ))}
+          {studentPage && (
+            <li className={endClass}>
+              <Link to="/me" className="admin-nav__link">
+                <span className="admin-nav__icon">
+                  <MyPageIcon />
+                </span>
+                <span>{t.nav.myPage}</span>
+              </Link>
+            </li>
+          )}
           {/* On a phone it is in Ajustes → Cuenta; a coach has no Ajustes, so their bar keeps it. Only
               once the role is known: a bar that showed it while loading would flash a sixth tab. */}
-          <li className={role.isSuccess && !managesGym(role.data) ? 'admin-nav__end admin-nav__end--bar' : 'admin-nav__end'}>
+          <li className={endClass}>
             <button
               type="button"
               className="admin-nav__link"

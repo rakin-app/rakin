@@ -195,7 +195,8 @@
 }
 
 .classes__error,
-.classes__done {
+.classes__done,
+.classes__restored {
   margin: 0;
   padding: var(--space-2-5) var(--space-3);
   border-radius: var(--radius-md);
@@ -214,6 +215,12 @@
 .classes__done {
   background: var(--color-success-soft);
   color: var(--color-success-strong);
+}
+
+/* Text given back after signing in again (#212): not saved yet. */
+.classes__restored {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-strong);
 }
 
 /* "Asistencia": rows a thumb can hit, a check that fills when present. */

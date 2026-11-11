@@ -457,6 +457,7 @@ def test_my_role_names_who_is_signed_in_and_the_gym(
         "name": "x",
         "email": None,
         "gym_name": slug,
+        "student_page": False,
     }
 
 
