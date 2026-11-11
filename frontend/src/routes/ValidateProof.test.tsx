@@ -58,7 +58,10 @@ const JUAN: ProofReview = {
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 
-function stubApi(initial: ProofReview[], answers: { validate?: Answer; reject?: Answer } = {}) {
+function stubApi(
+  initial: ProofReview[],
+  answers: { validate?: Answer; reject?: Answer; reminders?: unknown[] } = {},
+) {
   let queue = [...initial]
   const calls: Call[] = []
   vi.stubGlobal(
@@ -80,6 +83,8 @@ function stubApi(initial: ProofReview[], answers: { validate?: Answer; reject?: 
     if (path === '/api/me/role') return { body: { role: 'owner' } }
     if (path === '/api/ledger/pending') return { body: { count: queue.length } }
     if (path === '/api/ledger/proofs') return { body: queue }
+    if (path === '/api/reminders') return { body: answers.reminders ?? [] }
+    if (path.startsWith('/api/reminders/') && method === 'POST') return { status: 201, body: {} }
     const action = /^\/api\/ledger\/proofs\/([^/]+)\/(validate|reject)$/.exec(path)
     if (action && method === 'POST') {
       const answer = answers[action[2] as 'validate' | 'reject']
@@ -201,6 +206,40 @@ describe('Validar comprobante', () => {
       { method: 'POST', path: '/api/ledger/proofs/e-juan/reject', body: { note: 'falta $5.000' } },
     ])
     expect(await screen.findByText(copy.empty)).toBeInTheDocument()
+    // With no WhatsApp to send it on, the email is the follow-up.
+    expect(screen.queryByRole('link', { name: /WhatsApp/ })).not.toBeInTheDocument()
+  })
+
+  it('offers the follow-up by WhatsApp after a rejection, and logs it as it opens', async () => {
+    const user = userEvent.setup()
+    const followUp = {
+      billing_period_id: 'p-juan',
+      person_id: 'juan',
+      person_name: 'Juan Rojas',
+      kind: 'proof_rejected_followup',
+      rejection_note: 'falta $5.000',
+      contact_name: 'Marta Rojas',
+      whatsapp_url: 'https://wa.me/56912345678?text=Hola',
+      reminders_sent: 0,
+      reminded_at: null,
+      reminder_due: true,
+    }
+    const calls = stubApi([JUAN], { reminders: [followUp] })
+    renderAt(PATH)
+    await screen.findByRole('heading', { name: 'Juan Rojas' })
+
+    await user.type(screen.getByLabelText(copy.noteLabel), 'falta $5.000')
+    await user.click(screen.getByRole('button', { name: copy.reject }))
+
+    const link = await screen.findByRole('link', {
+      name: es.admin.reminders.writeFor('Marta Rojas', 'Juan Rojas', '1.er'),
+    })
+    expect(link).toHaveTextContent(es.admin.reminders.followUp('Marta Rojas'))
+    expect(link).toHaveAttribute('href', 'https://wa.me/56912345678?text=Hola')
+
+    await user.click(link)
+
+    await vi.waitFor(() => expect(posts(calls).map((c) => c.path)).toContain('/api/reminders/p-juan'))
   })
 
   it('explains a period paid meanwhile', async () => {

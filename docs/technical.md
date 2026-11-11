@@ -127,10 +127,10 @@ Email is the system of record; WhatsApp is where the reminder gets read. Neither
 | --- | --- | --- | --- |
 | Welcome + first magic link | email | membership created | sets expectations: how to pay, how to upload proof |
 | Upcoming charge (statement) | email | 7 days before due (nightly `statements` job) | amount, due date, bank details, magic link to upload |
-| Reminder | WhatsApp via `wa.me` deep link from admin's overdue list | due date, then every 3 days while overdue (admin taps) | prefilled Spanish template; API automation is v2 |
+| Reminder | WhatsApp via `wa.me` deep link beside "Pagó" on Hoy's overdue rows, in Hoy's "Por avisar" (due today) and in the member's ficha header | due date, then every `reminder_every_days` (3 by default) while overdue (admin taps) | prefilled Spanish template (`payment_due_today`, `payment_overdue`), to the guardian for a dependent; each says which one it is ("2.º aviso") and is logged in `message_log` as opened, its period in `payload`; none while a proof for the period waits for review; API automation is v2 |
 | Proof received | email to student, in-app badge to admin | upload | admin sees pending count on dashboard |
 | Payment validated (receipt) | email | validation | includes period covered and running balance |
-| Proof rejected | email + wa.me suggestion | rejection | carries admin's note |
+| Proof rejected | email + wa.me suggestion | rejection | carries admin's note; the `proof_rejected_followup` wa.me link is offered on "Validar comprobante" as it is rejected, and is the period's next reminder until one is sent |
 | Plan events (frozen, unfrozen, lapsed, promoted) | email | state change | optional per gym |
 | Announcements | email + copy-to-WhatsApp text | admin sends | one message to a program or everyone |
 | Staff invite + first magic link | email | owner or admin invites an admin or coach | the role, and a 7-day link to the admin screens |

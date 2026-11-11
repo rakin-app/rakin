@@ -30,6 +30,7 @@ from app.api import (
     programs,
     proof_review,
     proofs,
+    reminders,
     schedule,
     session_blocks,
     sessions,
@@ -111,6 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(grades.router)
     app.include_router(ledger.router)
     app.include_router(inactive.router)
+    app.include_router(reminders.router)
     app.include_router(proof_review.router)
     app.include_router(extra_charges.router)
     app.include_router(extra_charges.people_router)
