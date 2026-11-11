@@ -5,8 +5,10 @@ import { useSignOut } from '../api/auth'
 import { managesGym, myRoleQuery, myselfQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
 import { useTimerSync } from '../api/sessionBlocks'
+import { GymMark } from '../components/GymMark'
 import { ClassesIcon, MyPageIcon, PaymentsIcon, SettingsIcon, SignOutIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
+import { useRise } from '../motion'
 import { useGymName } from '../pageTitle'
 import './AdminLayout.css'
 
@@ -27,8 +29,9 @@ const NAV_ITEMS: readonly NavItem[] = [
 
 /**
  * Shell for the owner and coach screens. On a phone the nav is the bottom tab
- * bar from the mobile designs, five tabs at most; from 960px it becomes the sidebar of the
- * desktop ledger design, with the gym's name under the mark. One <nav>, restyled by CSS,
+ * bar from the mobile designs, five tabs at most, under a dark bar with the mark and the
+ * gym's name; from 960px it becomes the dark sidebar of the desktop ledger design, with
+ * the gym's name under the mark (#199). One <nav>, restyled by CSS,
  * so both share a tab order. "Cerrar sesión" is the sidebar's last item; on a phone it
  * is in Ajustes → Cuenta instead, so the bar keeps to the sections (#177), except for a
  * coach, who has no Ajustes and three tabs. "Mi página", the student page of staff who
@@ -46,6 +49,7 @@ export function AdminLayout() {
   const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
   const badge = pending.data ?? 0
   const gym = useGymName()
+  const rise = useRise<HTMLDivElement>()
   // Pagos is money and Ajustes the gym's configuration: each shown only once the role
   // is known to reach it, so a coach never sees either tab, not even while the role loads.
   const navItems = NAV_ITEMS.filter(
@@ -57,12 +61,29 @@ export function AdminLayout() {
 
   return (
     <div className="admin-shell">
+      {/* A phone's dark bar over the page: the mark, and the gym's own with its name. */}
+      <header className="admin-top">
+        <span className="admin-top__brand" aria-hidden="true">
+          {t.app.name}
+        </span>
+        {gym && (
+          <span className="admin-top__gym">
+            <GymMark name={gym} />
+            <span className="admin-top__gym-name">{gym}</span>
+          </span>
+        )}
+      </header>
       <nav className="admin-nav" aria-label={t.nav.label}>
         <div className="admin-nav__head">
           <span className="admin-nav__brand" aria-hidden="true">
             {t.app.name}
           </span>
-          {gym && <span className="admin-nav__gym">{gym}</span>}
+          {gym && (
+            <span className="admin-nav__gym">
+              <GymMark name={gym} />
+              <span className="admin-nav__gym-name">{gym}</span>
+            </span>
+          )}
         </div>
         <ul className="admin-nav__list">
           {navItems.map((item) => (
@@ -116,7 +137,9 @@ export function AdminLayout() {
         )}
       </nav>
       <main className="admin-main">
-        <Outlet />
+        <div ref={rise}>
+          <Outlet />
+        </div>
       </main>
     </div>
   )

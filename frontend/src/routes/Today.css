@@ -265,6 +265,9 @@
   color: var(--color-success-strong);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-bold);
+  transition:
+    background-color var(--duration-base) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out);
 }
 
 .today__step--done .today__check {

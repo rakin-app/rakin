@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-14) var(--space-5) var(--space-3);
+  padding: var(--page-top) var(--space-5) var(--space-3);
 }
 
 .classes__heading {

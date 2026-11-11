@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Host } from '../api/host'
@@ -7,6 +7,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { storedTheme } from '../theme'
 
 const copy = es.signIn
 
@@ -61,6 +62,16 @@ describe('Entrar', () => {
     expect(sent).toEqual([{ path: '/api/auth/link', body: { email: 'ana@example.cl' } }])
     // The answer never depends on the address: the API gives none, and the copy has one shape.
     expect(copy.sent('nadie@example.cl')).toBe(copy.sent('ana@example.cl').replace('ana@', 'nadie@'))
+  })
+
+  it("wears the gym's theme on its own address, before anyone signs in (#199)", async () => {
+    stubLink(202, {}, { slug: 'meta', name: 'Meta', theme: 'oceano' })
+    renderAt('/ingresar')
+
+    expect(await screen.findByRole('heading', { name: copy.titleAt('Meta') })).toBeInTheDocument()
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('oceano'))
+    // Kept, so the next visit opens in it rather than flashing the default first.
+    expect(storedTheme()).toBe('oceano')
   })
 
   it("names Rakin on the shared address, and the gym on the gym's own", async () => {

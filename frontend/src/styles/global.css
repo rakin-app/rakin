@@ -6,6 +6,8 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* Checkboxes, radios and ranges in the theme's dark shade, not the browser's blue. */
+  accent-color: var(--color-heading);
 }
 
 body {
@@ -127,10 +129,19 @@ textarea {
   animation: appear var(--duration-base) var(--ease-out) both;
 }
 
+/* A message that comes and goes ("Guardado", "Enviado", a failure) fades in where it
+   appears, rather than popping into the layout. */
+[role='status'],
+[role='alert'] {
+  animation: appear var(--duration-base) var(--ease-out) both;
+}
+
 /* Reduced motion keeps only the change in opacity: nothing moves. */
 @media (prefers-reduced-motion: reduce) {
   .rise,
-  .appear {
+  .appear,
+  [role='status'],
+  [role='alert'] {
     animation-name: fade-in;
   }
 }

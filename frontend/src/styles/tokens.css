@@ -227,6 +227,9 @@
   --duration-slow: 500ms; /* a page rising in on a route change */
   --rise-distance: 8px;
 
+  /* Space above a page's title on a phone: the screen's top, or less under a bar. */
+  --page-top: var(--space-14);
+
   /* Sizes */
   --control-height: 44px; /* minimum touch target */
   --control-height-lg: 52px; /* a screen's main action on a phone */
