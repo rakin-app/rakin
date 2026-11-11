@@ -1,3 +1,4 @@
+import { onlineManager } from '@tanstack/react-query'
 import { createMemoryHistory } from '@tanstack/react-router'
 import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -67,7 +68,7 @@ type Stub = {
   plans?: unknown[]
   // `offline` throws as fetch does without signal.
   change?: Answer | 'offline'
-  person?: Answer
+  person?: Answer | 'offline'
   trial?: Answer
   // Who is signed in, as `/api/me/role` answers.
   me?: unknown
@@ -103,6 +104,9 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
         if (stub.change === 'offline') throw new TypeError('Failed to fetch')
         if (stub.hold) await stub.hold
       }
+      if (method === 'POST' && url.pathname === '/api/people' && stub.person === 'offline') {
+        throw new TypeError('Failed to fetch')
+      }
       const reply = route(url.pathname, method, body)
       return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
         status: reply.status ?? 200,
@@ -126,7 +130,8 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
       return { body: answer() }
     }
     if (path === '/api/people' && method === 'POST') {
-      return stub.person ?? { status: 201, body: { id: 'camila' } }
+      if (stub.person && stub.person !== 'offline') return stub.person
+      return { status: 201, body: { id: 'camila' } }
     }
     if (path === '/api/sessions/s1/trials' && method === 'POST') {
       if (stub.trial) return stub.trial
@@ -167,7 +172,15 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  onlineManager.setOnline(true)
 })
+
+/** The phone loses its signal as a browser says so: `offline`, which React Query hears. */
+function goOffline() {
+  act(() => {
+    onlineManager.setOnline(false)
+  })
+}
 
 describe('Asistencia', () => {
   it('lists the roster by name, with who is present, the count and the overdue dot', async () => {
@@ -304,6 +317,31 @@ describe('Asistencia', () => {
       { mark: ['m-felipe'], unmark: [] },
       { mark: ['m-felipe'], unmark: [] },
     ])
+  })
+
+  it('says it is waiting for signal when the browser knows it is offline (#215)', async () => {
+    const api = stubApi({ change: 'offline' })
+    renderClass()
+
+    const list = await rosterList()
+    goOffline()
+    await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
+    await userEvent.click(screen.getByRole('button', { name: copy.save(2) }))
+
+    // Not "Guardando…" for as long as the signal is gone: the change waits on the phone.
+    expect(await screen.findByText(copy.queued)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.working })).not.toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('rakin:attendance:s1')!)).toEqual({ mark: ['m-felipe'], unmark: [] })
+
+    api.online()
+    act(() => {
+      onlineManager.setOnline(true)
+      window.dispatchEvent(new Event('online'))
+    })
+
+    expect(await screen.findByText(copy.saved)).toBeInTheDocument()
+    expect(screen.queryByText(copy.queued)).not.toBeInTheDocument()
+    expect(localStorage.getItem('rakin:attendance:s1')).toBeNull()
   })
 
   it('sends what an earlier visit left on the phone', async () => {
@@ -560,6 +598,18 @@ describe('Alumno de prueba', () => {
     await addGuest('Camila Ortiz', '7.654.321-6', '12')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.guest.invalid)
+  })
+
+  it('says to add them when the signal is back, when the browser knows it is offline (#215)', async () => {
+    stubApi({ person: 'offline' })
+    renderClass()
+
+    await rosterList()
+    goOffline()
+    await addGuest('Camila Ortiz', '7.654.321-6', '9 1234 5678')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.guest.offline)
+    expect(screen.queryByRole('button', { name: copy.guest.working })).not.toBeInTheDocument()
   })
 
   it('needs a trial plan', async () => {
