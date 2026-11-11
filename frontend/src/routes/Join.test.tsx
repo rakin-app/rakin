@@ -11,7 +11,7 @@ import { createAppRouter } from '../router'
 
 const copy = es.join
 
-const FORM: JoinForm = { gym: 'Academia Sur', program: null, today: '2026-11-10', human_check_site_key: null }
+const FORM: JoinForm = { gym: 'Academia Sur', gym_logo: null, program: null, today: '2026-11-10', human_check_site_key: null }
 
 type Sent = { method: string; path: string; body: Record<string, unknown> | undefined }
 type Answer = { status?: number; body?: unknown }

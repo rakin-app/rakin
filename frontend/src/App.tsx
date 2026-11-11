@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 import { hostQuery } from './api/host'
 import { myselfQuery } from './api/me'
 import type { createAppRouter } from './router'
+import { logoIcon } from './logo'
+import { setTabIcon } from './tabIcon'
 import { applyTheme, isTheme } from './theme'
 
 type Props = {
@@ -15,6 +17,7 @@ export function App({ queryClient, router }: Props) {
   return (
     <QueryClientProvider client={queryClient}>
       <GymTheme />
+      <GymTabIcon />
       <RouterProvider router={router} />
     </QueryClientProvider>
   )
@@ -33,5 +36,15 @@ function GymTheme() {
   useEffect(() => {
     if (isTheme(theme)) applyTheme(theme)
   }, [theme])
+  return null
+}
+
+/** On a gym's own address, the tab shows the gym's logo once it has one (#223); else,
+ * and on the shared address, Rakin's. */
+function GymTabIcon() {
+  const logo = useQuery(hostQuery()).data?.gym?.logo
+  useEffect(() => {
+    setTabIcon(logo ? logoIcon(logo) : null)
+  }, [logo])
   return null
 }

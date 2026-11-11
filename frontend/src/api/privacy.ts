@@ -4,6 +4,8 @@ import { apiFetch } from './client'
 /** What the gym's privacy notice says of it (backend `PrivacyNotice`, #168). */
 export type PrivacyNotice = {
   gym: string
+  // Where the gym's logo is (`logo.ts`); `null` with none (#223).
+  gym_logo: string | null
   // The controller of the members' data: the gym, by its legal name and RUT.
   legal_name: string
   rut: string
@@ -17,7 +19,7 @@ export type PrivacyNotice = {
 }
 
 /** The privacy details as Ajustes edits them (backend `Privacy`). */
-export type Privacy = Omit<PrivacyNotice, 'gym' | 'updated_on' | 'human_check'>
+export type Privacy = Omit<PrivacyNotice, 'gym' | 'gym_logo' | 'updated_on' | 'human_check'>
 
 // The day the notice's text (`t.privacy`) last changed; the notice is as new as this
 // or the gym's details, whichever is later. Change it with the text.

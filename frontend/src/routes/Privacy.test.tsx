@@ -11,6 +11,7 @@ const copy = es.privacy
 
 const NOTICE: PrivacyNotice = {
   gym: 'Academia Sur',
+  gym_logo: null,
   legal_name: 'Academia Sur SpA',
   rut: '76432109-K',
   email: 'privacidad@academiasur.example.com',

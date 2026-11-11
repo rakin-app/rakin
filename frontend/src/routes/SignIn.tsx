@@ -6,6 +6,7 @@ import { ApiError } from '../api/client'
 import { hostQuery } from '../api/host'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
+import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
 import { RakinLogo } from '../components/RakinLogo'
 import { t } from '../i18n/es'
@@ -41,6 +42,7 @@ export function SignIn() {
   return (
     <div className="signin">
       <PageHeader
+        mark={gym && <GymMark name={gym.name} logo={gym.logo} size="large" />}
         eyebrow={
           <>
             <RakinLogo className="signin__logo" />

@@ -1,4 +1,4 @@
-/* A round mark the size of a line of the gym's name; #223 puts the logo inside it. */
+/* The gym's mark: its logo in a circle, or its initials on the accent (#223). */
 .gym-mark {
   display: inline-flex;
   flex: none;
@@ -8,10 +8,17 @@
   height: 32px;
   overflow: hidden;
   background: var(--color-moss);
-  border-radius: var(--radius-pill);
+  border-radius: 50%;
   color: var(--color-moss-text);
   font-family: var(--font-display);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-display);
   letter-spacing: var(--tracking-label);
+  object-fit: cover;
+}
+
+.gym-mark--large {
+  width: 56px;
+  height: 56px;
+  font-size: var(--text-lg);
 }
