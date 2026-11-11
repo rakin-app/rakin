@@ -39,12 +39,14 @@ import {
   type TimelineEntry,
 } from '../api/member'
 import { myRoleQuery, readsLedger } from '../api/me'
+import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { ChevronLeftIcon } from '../components/icons'
 import { MemberMatTime } from '../components/MatTime'
+import { ReminderLink } from '../components/ReminderLink'
 import { StatusPill } from '../components/StatusPill'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
@@ -72,6 +74,9 @@ const route = getRouteApi('/admin/alumnos/$personId')
  *
  * Below them, the gym's custom fields the signed-in role may see (#20), and their
  * record to edit, "Dar de baja" or "Reactivar", and "Eliminar" (#157).
+ *
+ * For whoever reads the ledger, the header has the WhatsApp reminder about what they
+ * owe, the longest overdue first, when there is one to send (#55).
  *
  */
 export function MemberDetail() {
@@ -114,11 +119,16 @@ export function MemberDetail() {
   // Latest first, so the last is the earliest: a member since their first plan here.
   const since = monthYear(memberships.data.at(-1)?.started_on ?? person.data.created_at)
   const rank = grades.data?.current
+  const money = readsLedger(role.data)
 
   return (
-    <Shell title={person.data.name} subtitle={rank ? copy.rankSince(rankLabel(rank), since) : copy.since(since)}>
+    <Shell
+      title={person.data.name}
+      subtitle={rank ? copy.rankSince(rankLabel(rank), since) : copy.since(since)}
+      action={money && <HeaderReminder personId={personId} />}
+    >
       {membership ? (
-        <Standing membership={membership} money={readsLedger(role.data)} />
+        <Standing membership={membership} money={money} />
       ) : (
         <p className="member__note">{copy.noPlan}</p>
       )}
@@ -135,7 +145,17 @@ export function MemberDetail() {
   )
 }
 
-function Shell({ title, subtitle, children }: { title?: string; subtitle?: string; children: ReactNode }) {
+function Shell({
+  title,
+  subtitle,
+  action,
+  children,
+}: {
+  title?: string
+  subtitle?: string
+  action?: ReactNode
+  children: ReactNode
+}) {
   return (
     <div className="member">
       <header className="member__header">
@@ -148,10 +168,18 @@ function Shell({ title, subtitle, children }: { title?: string; subtitle?: strin
             {subtitle && <span className="member__subtitle">{subtitle}</span>}
           </div>
         )}
+        {action}
       </header>
       <div className="member__body">{children}</div>
     </div>
   )
+}
+
+/** The reminder about the member's longest overdue period, or today's, or a rejected proof's. */
+function HeaderReminder({ personId }: { personId: string }) {
+  const reminders = useQuery(remindersQuery(personId))
+  const first = reminders.data?.[0]
+  return first ? <ReminderLink reminder={first} /> : null
 }
 
 /** The plan and how it stands; with `money`, what is owed, the actions and the ledger. */

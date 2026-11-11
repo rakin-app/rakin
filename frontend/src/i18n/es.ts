@@ -56,6 +56,20 @@ export const es = {
     failed: 'No pudimos cerrar la sesión. Inténtalo de nuevo.',
   },
   admin: {
+    // The wa.me payment reminders on Hoy, the proof review and the ficha (#55).
+    reminders: {
+      // `ordinal` is "1.er", "2.º": the reminder this one would be.
+      next: (ordinal: string) => `${ordinal} aviso`,
+      write: (name: string, ordinal: string) => `Recordar por WhatsApp a ${name} (${ordinal} aviso)`,
+      // A dependent's reminder goes to their guardian.
+      writeFor: (contact: string, name: string, ordinal: string) =>
+        `Recordar por WhatsApp a ${contact}, por ${name} (${ordinal} aviso)`,
+      sent: (ordinal: string, when: string) => `${ordinal} aviso ${when}`,
+      dueToday: (amount: string, plan: string) => `Vence hoy · ${amount} · ${plan}`,
+      rejected: (note: string) => `Comprobante rechazado: ${note}`,
+      // After rejecting a proof: the follow-up by WhatsApp beside the email.
+      followUp: (name: string) => `Avisar por WhatsApp a ${name}`,
+    },
     today: {
       title: 'Hoy',
       heading: (day: string) => `Hoy, ${day}`,
@@ -94,6 +108,11 @@ export const es = {
           failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
         },
         showAll: (n: number) => `Ver los ${n} vencidos`,
+      },
+      // Due today, or a rejected proof to follow up: each a tap from its WhatsApp reminder.
+      remind: {
+        title: 'Por avisar',
+        count: (n: number) => (n === 1 ? '1 pago' : `${n} pagos`),
       },
       inactive: {
         counter: 'Sin venir 14 d',
@@ -1571,11 +1590,11 @@ export const es = {
       },
     },
     payments: {
-      title: 'Libro de pagos',
-      subtitle: 'Cada línea es un asiento: cargos, pagos, ajustes. Nada se borra; las correcciones son asientos nuevos.',
+      title: 'Pagos',
+      subtitle: 'Cobros, pagos y ajustes del mes. Nada se borra: una corrección es un movimiento nuevo.',
       coachesOnly: 'Los coaches no ven esta sección.',
-      loading: 'Cargando el libro…',
-      error: 'No pudimos cargar el libro de pagos.',
+      loading: 'Cargando los pagos…',
+      error: 'No pudimos cargar los pagos.',
       retry: 'Reintentar',
       month: 'Período',
       kpisLabel: 'Resumen del mes',
@@ -1593,14 +1612,14 @@ export const es = {
           `${active === 1 ? '1 membresía activa' : `${active} membresías activas`}` +
           (frozen ? ` · ${frozen === 1 ? '1 congelada' : `${frozen} congeladas`}` : ''),
       },
-      filtersLabel: 'Filtrar asientos',
+      filtersLabel: 'Filtrar movimientos',
       filters: { all: 'Todos', pending: 'Por validar', overdue: 'Vencidos', kids: 'Kids' },
       columns: {
         date: 'Fecha',
         student: 'Alumno',
-        kind: 'Asiento',
+        kind: 'Tipo',
         period: 'Período',
-        method: 'Medio',
+        detail: 'Detalle',
         status: 'Estado',
         amount: 'Monto',
       },
@@ -1618,14 +1637,14 @@ export const es = {
         freezeStart: 'Inicio',
         freezeEnd: 'Fin',
       },
-      empty: 'No hay asientos para mostrar.',
+      empty: 'No hay movimientos para mostrar.',
       showing: (shown: number, total: number, month: string | null) =>
-        `Mostrando ${shown} de ${total} ${total === 1 ? 'asiento' : 'asientos'}${month ? ` de ${month}` : ''}`,
+        `Mostrando ${shown} de ${total} ${total === 1 ? 'movimiento' : 'movimientos'}${month ? ` de ${month}` : ''}`,
       more: 'Cargar más',
       review: (n: number) => (n === 1 ? 'Revisar 1 comprobante' : `Revisar ${n} comprobantes`),
-      searchLabel: 'Buscar en el libro',
+      searchLabel: 'Buscar en los pagos',
       searchPlaceholder: 'Nombre, teléfono o RUT',
-      noMatch: (q: string) => `No hay asientos de «${q}».`,
+      noMatch: (q: string) => `No hay movimientos de «${q}».`,
       record: 'Registrar pago',
       picker: {
         label: '¿Quién paga?',

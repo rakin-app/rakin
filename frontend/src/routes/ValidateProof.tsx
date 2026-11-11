@@ -11,9 +11,11 @@ import {
   type ProofReview,
   type Validated,
 } from '../api/review'
+import { remindersQuery, type PaymentReminder } from '../api/reminders'
 import { Button, buttonClass } from '../components/Button'
 import { Input } from '../components/Field'
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
+import { ReminderLink } from '../components/ReminderLink'
 import { monthName, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
@@ -27,12 +29,15 @@ const clp = t.common.clp
  * what the period owes, the proof itself and the member's recent history, and
  * one tap to confirm it or, with a note the student is emailed, reject it. The
  * pager walks the queue, oldest first.
+ *
+ * A rejection also offers its follow-up by WhatsApp, the note prefilled, to the
+ * student or their guardian (#55).
  */
 export function ValidateProof() {
   usePageTitle(copy.title)
   const queue = useQuery(proofQueueQuery())
   const [index, setIndex] = useState(0)
-  const [done, setDone] = useState<string | null>(null)
+  const [done, setDone] = useState<Done | null>(null)
 
   if (queue.isPending) return <p className="review__note">{copy.loading}</p>
   if (queue.isError) {
@@ -90,9 +95,12 @@ export function ValidateProof() {
       </header>
 
       {done && (
-        <p className="review__done" role="status">
-          {done}
-        </p>
+        <div className="review__done" role="status">
+          <p>{done.message}</p>
+          {done.followUp && (
+            <ReminderLink reminder={done.followUp} label={t.admin.reminders.followUp(done.followUp.contact_name)} />
+          )}
+        </div>
       )}
 
       {item ? (
@@ -105,7 +113,10 @@ export function ValidateProof() {
   )
 }
 
-function Review({ review, onDone }: { review: ProofReview; onDone: (message: string) => void }) {
+/** What the last review did, and the WhatsApp follow-up to a rejection, if there is one. */
+type Done = { message: string; followUp?: PaymentReminder }
+
+function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) => void }) {
   const queryClient = useQueryClient()
   const [note, setNote] = useState('')
   const [noteNeeded, setNoteNeeded] = useState(false)
@@ -117,15 +128,24 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (message: str
     mutationFn: () => validateProof(review.id),
     onSuccess: async (result: Validated) => {
       const credit = result.credit ? copy.credit(clp(result.credit.amount_clp)) : ''
-      onDone(copy.validated(review.person_name, clp(review.amount_clp)) + credit)
+      onDone({ message: copy.validated(review.person_name, clp(review.amount_clp)) + credit })
       await settle()
     },
   })
   const reject = useMutation({
     mutationFn: (text: string) => rejectProof(review.id, text),
     onSuccess: async () => {
-      onDone(copy.rejected(review.claimed_by_name ?? review.person_name))
+      const message = copy.rejected(review.claimed_by_name ?? review.person_name)
+      onDone({ message })
       await settle()
+      // The follow-up is the period's reminder now; failing to find it leaves the email.
+      const reminders = await queryClient
+        .fetchQuery(remindersQuery(review.person_id))
+        .catch((): PaymentReminder[] => [])
+      const followUp = reminders.find(
+        (r) => r.billing_period_id === review.period.id && r.kind === 'proof_rejected_followup',
+      )
+      if (followUp?.whatsapp_url) onDone({ message, followUp })
     },
   })
   const busy = validate.isPending || reject.isPending
