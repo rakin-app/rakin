@@ -4,6 +4,7 @@ import { rankLabel } from '../api/grading'
 import { myPageQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
 import { RankBelt } from '../components/Belt'
 import { Button } from '../components/Button'
+import { Grid, PageContainer } from '../components/Layout'
 import { MyMatTime } from '../components/MatTime'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
@@ -16,14 +17,15 @@ const copy = t.me
 /**
  * "Mi página", the student page: what is due next and where to transfer it,
  * the proof upload, their belt and classes, their time on the mat, and the payments
- * already sent with how each was reviewed.
+ * already sent with how each was reviewed. From 1024px it is two columns: the payment
+ * and its upload, and beside them the rest.
  */
 export function MeHome() {
   const page = useQuery(myPageQuery())
 
   if (page.isPending || page.isError) {
     return (
-      <>
+      <PageContainer>
         <PageHeader title={copy.home.title} />
         {page.isPending ? (
           <p className="me-home__note">{copy.home.loading}</p>
@@ -35,22 +37,28 @@ export function MeHome() {
             </Button>
           </div>
         )}
-      </>
+      </PageContainer>
     )
   }
 
   const firstName = page.data.name.split(' ')[0]
   return (
-    <>
+    <PageContainer>
       <PageHeader eyebrow={page.data.gym_name} title={firstName ? copy.home.hello(firstName) : copy.home.title} />
       <div className="me-home">
-        <NextPayment page={page.data} />
-        <Training page={page.data} />
-        <MyMatTime />
-        <History page={page.data} />
+        <Grid>
+          <div className="me-home__column">
+            <NextPayment page={page.data} />
+          </div>
+          <div className="me-home__column">
+            <Training page={page.data} />
+            <MyMatTime />
+            <History page={page.data} />
+          </div>
+        </Grid>
         <p className="me-home__footnote">{copy.home.signedIn}</p>
       </div>
-    </>
+    </PageContainer>
   )
 }
 

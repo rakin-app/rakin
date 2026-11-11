@@ -4,7 +4,31 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: 0 var(--space-5) var(--space-6);
+  padding-bottom: var(--space-6);
+}
+
+/* The page container gives the side padding. */
+.students__page > .join-requests {
+  padding-inline: 0;
+}
+
+/* On a phone the name, then the phone and RUT, then the rest, one under the other. */
+.students__title {
+  display: contents;
+}
+
+.students__contact {
+  order: 1;
+}
+
+.students__title > .students__details,
+.students__title > .students__flag {
+  order: 2;
+}
+
+/* "+56 9 1234 4417 · 7.654.321-6" on a phone. */
+.students__phone + .students__rut::before {
+  content: ' · ';
 }
 
 .students__filters {
@@ -122,7 +146,7 @@
 
 @media (--desktop) {
   .students {
-    padding: 0 var(--space-8) var(--space-8);
+    padding-bottom: var(--space-8);
   }
 
   /* One line on a desktop: the status, the plan, then "Familia". */
@@ -232,11 +256,81 @@
   z-index: 1;
 }
 
-.family__form > .button {
+.family__form > .button,
+.family__toggle {
   align-self: flex-start;
 }
 
 .family__form .control,
 .family__search {
   width: 100%;
+}
+
+/*
+ * A desktop row is one line, a column each: name, phone, RUT, plan, status, then
+ * "Familia". What says more about them (family, "Falta teléfono") goes under the name.
+ */
+@media (--wide) {
+  .students__row {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(max-content, 0.8fr)
+      auto;
+    align-items: center;
+    column-gap: var(--space-4);
+    min-height: 0;
+    padding-block: var(--space-0-5);
+  }
+
+  .students__who,
+  .students__plan-cell,
+  .students__contact {
+    display: contents;
+  }
+
+  .students__phone {
+    grid-area: 1 / 2;
+  }
+
+  .students__rut {
+    grid-area: 1 / 3;
+  }
+
+  .students__phone + .students__rut::before {
+    content: none;
+  }
+
+  .students__plan-name {
+    grid-area: 1 / 4;
+  }
+
+  .students__plan-cell .status-pill {
+    grid-area: 1 / 5;
+    justify-self: start;
+  }
+
+  .students__plan-cell .button {
+    grid-area: 1 / 6;
+  }
+
+  /* What more there is to say follows the name on its line, wrapping only if it must. */
+  .students__title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--space-2);
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+
+  .students__phone,
+  .students__rut {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .students__plan-name {
+    font-size: var(--text-sm);
+  }
 }

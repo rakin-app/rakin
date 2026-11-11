@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { personAttendanceQuery } from '../api/attendance'
+import { familyQuery } from '../api/family'
 import { ApiError } from '../api/client'
 import {
   awardGrade,
@@ -32,6 +33,7 @@ import {
   type MembershipLedger,
   type Method,
   type OpenPeriod,
+  type Person,
   type RecordedAdjustment,
   type RecordedPayment,
   type RecordedRefund,
@@ -44,16 +46,17 @@ import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
 import { Input, Select } from '../components/Field'
-import { ChevronLeftIcon } from '../components/icons'
+import { ChevronLeftIcon, WhatsAppIcon } from '../components/icons'
+import { Grid, PageContainer } from '../components/Layout'
 import { MemberMatTime } from '../components/MatTime'
 import { ReminderLink } from '../components/ReminderLink'
 import { StatusPill } from '../components/StatusPill'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
-import { CustomFieldsPanel } from './CustomFieldsPanel'
 import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
+import { PersonData } from './PersonData'
 import './MemberDetail.css'
 
 const copy = t.admin.member
@@ -72,12 +75,12 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * Their attendance, in the last 30 days and in all, and in Graduación the classes since
  * their last promotion; their time on the mat by block kind (#141).
  *
- * Below them, the gym's custom fields the signed-in role may see (#20), and their
- * record to edit, "Dar de baja" or "Reactivar", and "Eliminar" (#157).
+ * Below them, "Datos": their record and the gym's custom fields the signed-in role may
+ * see (#20), edited together; then "Dar de baja" or "Reactivar", and "Eliminar" (#157).
+ * On a desktop, the money and its ledger on the left and the rest on the right (#179).
  *
- * For whoever reads the ledger, the header has the WhatsApp reminder about what they
- * owe, the longest overdue first, when there is one to send (#55).
- *
+ * In the header, WhatsApp: for whoever reads the ledger, the reminder about what they
+ * owe, the longest overdue first, when there is one to send (#55); else a plain chat.
  */
 export function MemberDetail() {
   const { personId } = route.useParams()
@@ -125,22 +128,34 @@ export function MemberDetail() {
     <Shell
       title={person.data.name}
       subtitle={rank ? copy.rankSince(rankLabel(rank), since) : copy.since(since)}
-      action={money && <HeaderReminder personId={personId} />}
+      action={<HeaderWhatsApp person={person.data} money={money} />}
     >
-      {membership ? (
-        <Standing membership={membership} money={money} />
-      ) : (
-        <p className="member__note">{copy.noPlan}</p>
+      {person.data.left_on && (
+        <p className="member__error" role="status">
+          {copy.leftBanner(t.common.day(person.data.left_on))}
+        </p>
       )}
-      <Attendance personId={personId} />
-      <MemberMatTime personId={personId} />
-      <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
-      <section className="member__section" aria-label={t.admin.family.toggle}>
-        <h2 className="member__section-title">{t.admin.family.toggle}</h2>
-        <FamilyPanel person={person.data} />
-      </section>
-      <CustomFieldsPanel personId={person.data.id} />
-      <PersonActions person={person.data} role={role.data} />
+      {/* On a desktop the money on the left, everything else beside it. */}
+      <Grid className="member__columns">
+        <div className="member__column">
+          {membership ? (
+            <Standing membership={membership} money={money} />
+          ) : (
+            <p className="member__note">{copy.noPlan}</p>
+          )}
+        </div>
+        <div className="member__column">
+          <Attendance personId={personId} />
+          <MemberMatTime personId={personId} />
+          <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
+          <section className="member__section" aria-label={t.admin.family.toggle}>
+            <h2 className="member__section-title">{t.admin.family.toggle}</h2>
+            <FamilyPanel person={person.data} />
+          </section>
+          <PersonData person={person.data} />
+          <PersonActions person={person.data} role={role.data} />
+        </div>
+      </Grid>
     </Shell>
   )
 }
@@ -157,7 +172,7 @@ function Shell({
   children: ReactNode
 }) {
   return (
-    <div className="member">
+    <PageContainer className="member">
       <header className="member__header">
         <Link to="/admin/alumnos" className={buttonClass({ icon: true })} aria-label={copy.back}>
           <ChevronLeftIcon />
@@ -171,15 +186,51 @@ function Shell({
         {action}
       </header>
       <div className="member__body">{children}</div>
-    </div>
+    </PageContainer>
   )
 }
 
-/** The reminder about the member's longest overdue period, or today's, or a rejected proof's. */
-function HeaderReminder({ personId }: { personId: string }) {
-  const reminders = useQuery(remindersQuery(personId))
-  const first = reminders.data?.[0]
-  return first ? <ReminderLink reminder={first} /> : null
+/**
+ * The header's WhatsApp: the reminder about what the member owes when there is one
+ * (#55), which is counted and logged; else a chat with them. One button, never two.
+ */
+function HeaderWhatsApp({ person, money }: { person: Person; money: boolean }) {
+  const reminders = useQuery({ ...remindersQuery(person.id), enabled: money })
+  if (money && reminders.isPending) return null
+  const first = reminders.data?.find((r) => r.whatsapp_url)
+  return first ? <ReminderLink reminder={first} /> : <WhatsAppButton person={person} />
+}
+
+/**
+ * WhatsApp to whoever the gym writes to about the member: them, or their guardian, as
+ * the reminders go (`app/contacts.py`). Not drawn without a phone, or with "No tiene
+ * WhatsApp".
+ */
+function WhatsAppButton({ person }: { person: Person }) {
+  const family = useQuery(familyQuery(person.id))
+  const guardianId = family.data?.guardian?.id
+  const guardian = useQuery({ ...personQuery(guardianId ?? ''), enabled: guardianId !== undefined })
+  if (family.isPending) return null
+  const contact = guardianId ? guardian.data : person
+  const href = contact && whatsappUrl(contact)
+  if (!contact || !href) return null
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={buttonClass({ icon: true })}
+      aria-label={guardianId ? copy.whatsappGuardian(contact.name) : copy.whatsapp(contact.name)}
+    >
+      <WhatsAppIcon />
+    </a>
+  )
+}
+
+/** The `wa.me` chat with `person`; null with no phone or "No tiene WhatsApp". */
+export function whatsappUrl(person: Pick<Person, 'phone' | 'no_whatsapp'>): string | null {
+  const digits = person.phone?.replace(/\D/g, '')
+  return digits && !person.no_whatsapp ? `https://wa.me/${digits}` : null
 }
 
 /** The plan and how it stands; with `money`, what is owed, the actions and the ledger. */
@@ -239,7 +290,7 @@ function Owed({ ledger }: { ledger: MembershipLedger }) {
     detail = due.length > 1 ? copy.pendingPeriods(due.length) : copy.pendingMonth(monthName(due[0].period_start))
   } else if (next) {
     amount = next.outstanding_clp
-    detail = copy.nextDue(shortDay(next.due_date))
+    detail = copy.upToDateNext(shortDay(next.due_date))
   }
   return (
     <div className="member__owed">
@@ -275,52 +326,37 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
   }
   return (
     <>
-      <div className="member__actions">
-        <Button
-          variant="primary"
-          aria-expanded={open === 'payment'}
-          disabled={periods.length === 0}
-          onClick={() => toggle('payment')}
-        >
-          {copy.record}
-        </Button>
-        <Button
-          aria-expanded={open === 'adjustment'}
-          disabled={known.length === 0}
-          onClick={() => toggle('adjustment')}
-        >
-          {copy.adjust}
-        </Button>
-        <Button
-          aria-expanded={open === 'refund'}
-          disabled={payments.length === 0}
-          onClick={() => toggle('refund')}
-        >
-          {copy.refund}
-        </Button>
-        {!freeze && (
-          <Button
-            aria-expanded={open === 'freeze'}
-            disabled={membership.status !== 'active'}
-            onClick={() => toggle('freeze')}
-          >
-            {copy.freeze}
-          </Button>
-        )}
-      </div>
-      {/* A row of their own: two long labels do not fit beside the others at 390px. */}
-      {freeze && (
+      {/* "Registrar pago" on a line of its own: the others fit beside each other at 390px only without it. */}
+      <Button variant="primary" fullWidth aria-expanded={open === 'payment'} onClick={() => toggle('payment')}>
+        {copy.record}
+      </Button>
+      {/* What cannot be done here is not offered, rather than greyed out with no reason. */}
+      {(known.length > 0 || payments.length > 0 || (!freeze && membership.status === 'active')) && (
         <div className="member__actions">
-          <Button
-            aria-expanded={open === 'editFreeze'}
-            onClick={() => toggle('editFreeze')}
-          >
+          {known.length > 0 && (
+            <Button aria-expanded={open === 'adjustment'} onClick={() => toggle('adjustment')}>
+              {copy.adjust}
+            </Button>
+          )}
+          {payments.length > 0 && (
+            <Button aria-expanded={open === 'refund'} onClick={() => toggle('refund')}>
+              {copy.refund}
+            </Button>
+          )}
+          {!freeze && membership.status === 'active' && (
+            <Button aria-expanded={open === 'freeze'} onClick={() => toggle('freeze')}>
+              {copy.freeze}
+            </Button>
+          )}
+        </div>
+      )}
+      {/* Two long labels: side by side where they fit whole, else one under the other. */}
+      {freeze && (
+        <div className="member__actions member__actions--wrap">
+          <Button aria-expanded={open === 'editFreeze'} onClick={() => toggle('editFreeze')}>
             {copy.editFreeze}
           </Button>
-          <Button
-            aria-expanded={open === 'endFreeze'}
-            onClick={() => toggle('endFreeze')}
-          >
+          <Button aria-expanded={open === 'endFreeze'} onClick={() => toggle('endFreeze')}>
             {freeze.started ? copy.endFreeze : copy.callOffFreeze}
           </Button>
         </div>
@@ -330,9 +366,15 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
           {done}
         </p>
       )}
-      {open === 'payment' && periods.length > 0 && (
-        <PaymentForm membership={membership} periods={periods} onCancel={() => setOpen(null)} onDone={finish} />
-      )}
+      {open === 'payment' &&
+        (periods.length > 0 ? (
+          <PaymentForm membership={membership} periods={periods} onCancel={() => setOpen(null)} onDone={finish} />
+        ) : (
+          // Al día, with no period open yet: a payment needs one to go to.
+          <p className="member__note" role="status">
+            {copy.nothingToRecord}
+          </p>
+        ))}
       {open === 'adjustment' && known.length > 0 && (
         <AdjustmentForm membership={membership} periods={known} onCancel={() => setOpen(null)} onDone={finish} />
       )}
@@ -1351,9 +1393,14 @@ function timeline(ledger: MembershipLedger): Line[] {
   return [...lines, ...freezes.map((line) => ({ kind: 'freeze' as const, line }))]
 }
 
+// The ledger shows its latest lines; the rest open in place.
+const LEDGER_SHOWN = 4
+
 function Ledger({ ledger }: { ledger: MembershipLedger }) {
+  const [all, setAll] = useState(false)
   const open = new Set(ledger.open_periods.map((p) => p.id))
   const lines = timeline(ledger)
+  const shown = all ? lines : lines.slice(0, LEDGER_SHOWN)
   return (
     <section className="member__section" aria-label={copy.ledger.title}>
       <h2 className="member__section-title">{copy.ledger.title}</h2>
@@ -1361,7 +1408,7 @@ function Ledger({ ledger }: { ledger: MembershipLedger }) {
         <p className="member__note">{copy.ledger.empty}</p>
       ) : (
         <ul className="member__ledger">
-          {lines.map((line) =>
+          {shown.map((line) =>
             line.kind === 'entry' ? (
               <Entry
                 key={line.entry.id}
@@ -1373,6 +1420,11 @@ function Ledger({ ledger }: { ledger: MembershipLedger }) {
             ),
           )}
         </ul>
+      )}
+      {lines.length > LEDGER_SHOWN && (
+        <Button variant="ghost" className="member__more" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? copy.ledger.fewer : copy.ledger.all(lines.length)}
+        </Button>
       )}
     </section>
   )

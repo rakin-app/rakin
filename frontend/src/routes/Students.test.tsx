@@ -175,7 +175,7 @@ describe('Alumnos', () => {
 
     const rows = within(await list()).getAllByRole('listitem')
     expect(rows.map((row) => row.textContent)).toEqual([
-      `Camila Rojas+56 9 8765 4321 · 7.654.321-6ActivoMensual adultos${es.admin.family.toggle}`,
+      `Camila Rojas+56 9 8765 43217.654.321-6ActivoMensual adultos${es.admin.family.toggle}`,
       `Diego Soto${copy.noPlan}${es.admin.family.toggle}`,
     ])
     expect(screen.getByText(copy.count(2))).toBeInTheDocument()

@@ -41,7 +41,7 @@ export const es = {
     sending: 'Enviando…',
     // The same whatever the address: it never says whether an account exists.
     sent: (email: string) =>
-      `Si el correo ${email} está registrado, te llegará un link para entrar. Vence en 15 minutos y sirve una sola vez.`,
+      `Si el correo ${email} está registrado, te llegará un link para entrar. Vence en 15 minutos y sirve una sola vez. Si no llega en un par de minutos, revisa spam o promociones.`,
     another: 'Usar otro correo',
     tooMany: (minutes: number | null) =>
       minutes === null
@@ -454,6 +454,7 @@ export const es = {
       unlink: 'Desvincular',
       unlinkLabel: (name: string) => `Desvincular a ${name}`,
       addTitle: 'Agregar a alguien a cargo',
+      close: 'Cerrar',
       addHint: 'Sin teléfono ni correo: todo le llega al apoderado.',
       name: 'Nombre',
       rut: 'RUT (opcional)',
@@ -490,10 +491,14 @@ export const es = {
       freezeBooked: (from: string, to: string) => `Congelación programada: del ${from} al ${to}`,
       pendingMonth: (month: string) => `${month} pendiente`,
       pendingPeriods: (n: number) => `${n} períodos pendientes`,
-      nextDue: (day: string) => `vence el ${day}`,
-      upToDate: 'al día',
+      upToDate: 'Al día',
+      upToDateNext: (day: string) => `Al día · vence el ${day}`,
+      nothingToRecord: 'Está al día y no tiene un período abierto: el pago se registra cuando se genere el próximo cobro.',
+      whatsapp: (name: string) => `WhatsApp a ${name}`,
+      whatsappGuardian: (name: string) => `WhatsApp a ${name}, su apoderado`,
       ledgerError: 'No pudimos cargar los pagos.',
       editPerson: 'Editar datos',
+      exitLabel: 'Dar de baja o eliminar',
       editForm: {
         title: 'Editar datos',
         name: 'Nombre y apellido',
@@ -673,6 +678,10 @@ export const es = {
       },
       fields: {
         title: 'Datos',
+        phone: 'Teléfono',
+        email: 'Correo',
+        rut: 'RUT',
+        dob: 'Fecha de nacimiento',
         loading: 'Cargando datos…',
         error: 'No pudimos cargar los datos.',
         empty: 'Sin dato',
@@ -748,6 +757,8 @@ export const es = {
         freezeStart: 'Congelación',
         freezeEnd: 'Fin de congelación',
         returns: (day: string) => `vuelve el ${day}`,
+        all: (n: number) => `Ver todo el libro (${n})`,
+        fewer: 'Ver menos',
       },
     },
     classes: {
@@ -863,7 +874,7 @@ export const es = {
         reminderEveryDays: 'Recordar cada (días)',
         reminderEveryDaysHint: 'Los recordatorios de pago vencido salen el día del vencimiento y luego cada tantos días.',
         channels: 'Canales',
-        email: 'El correo está siempre activo: lleva los avisos y los enlaces de acceso.',
+        email: 'El correo está siempre activo: lleva los avisos y los links de acceso.',
         whatsapp: 'Recordatorios por WhatsApp',
         bank: 'Datos bancarios',
         bankHint: 'Es lo que ven los alumnos para pagar por transferencia. Deja todos los campos vacíos para quitarlos.',
@@ -1157,7 +1168,7 @@ export const es = {
           rutHint: 'Si no tiene RUT, el correo lo identifica.',
           phone: 'Teléfono (opcional)',
           email: 'Correo',
-          emailHint: 'Le enviamos un enlace para entrar. Siempre entra con este correo, sin contraseña.',
+          emailHint: 'Le enviamos un link para entrar. Siempre entra con este correo, sin contraseña.',
           role: 'Rol',
           adminOnlyHint: 'Solo el dueño invita admins.',
         },
@@ -1174,7 +1185,7 @@ export const es = {
           rut: 'RUT no válido: revisa el dígito verificador.',
           email: 'Correo no válido.',
         } as Record<string, string>,
-        invited: (name: string, email: string) => `Invitamos a ${name}. Le llegará un enlace a ${email}.`,
+        invited: (name: string, email: string) => `Invitamos a ${name}. Le llegará un link a ${email}.`,
         makeAdmin: 'Hacer admin',
         makeCoach: 'Hacer coach',
         roleChanged: (name: string, role: string) => `${name} ahora es ${role.toLowerCase()}.`,
@@ -1722,7 +1733,7 @@ export const es = {
     sparring: 'Sparring',
     byKind: 'Tiempo por bloque',
     openMat: (n: number, time: string) => `Open mat: ${n} · ${time}`,
-    openMatNote: 'Su tiempo cuenta también como sparring.',
+    openMatNote: 'Tu tiempo cuenta también como sparring.',
     // Seconds as `4 h 30 min`, `2 h` or `45 min`; under half a minute, but some, `< 1 min`.
     duration: (seconds: number) => {
       const minutes = Math.round(seconds / 60)
@@ -1746,13 +1757,13 @@ export const es = {
       loading: 'Cargando tu página…',
       error: 'No pudimos cargar tu página.',
       retry: 'Reintentar',
-      signedIn: 'Entraste con un enlace de tu correo. No necesitas clave.',
+      signedIn: 'Entraste con un link de tu correo. No necesitas clave.',
     },
     next: {
       title: 'Próximo pago',
       status: {
         in_review: 'Comprobante en revisión',
-        overdue: 'Atrasado',
+        overdue: 'Vencido',
         due: 'Por pagar',
         paid: 'Al día',
       },
@@ -1861,13 +1872,24 @@ export const es = {
     consentLink: 'política de privacidad',
     consentAfter: '.',
     honeypot: 'No llenes este campo',
-    submit: 'Enviar',
+    submit: 'Enviar inscripción',
     working: 'Enviando…',
     done: 'Listo, la academia confirmará tu inscripción.',
     invalidFields: 'Revisa los campos marcados.',
     failed: 'No pudimos enviar tus datos. Inténtalo de nuevo.',
     humanCheck: 'No pudimos comprobar que no eres un robot. Inténtalo de nuevo.',
     tooMany: 'Hubo demasiados envíos desde aquí. Espera un rato e inténtalo de nuevo.',
+    // A required field left empty: what to write in it. No `rut`: it is optional (#165).
+    required: {
+      first_name: 'Escribe tu nombre.',
+      last_name: 'Escribe tu apellido.',
+      dob: 'Escribe tu fecha de nacimiento.',
+      phone: 'Escribe tu teléfono.',
+      email: 'Escribe tu correo.',
+      guardian_name: 'Escribe el nombre del apoderado.',
+      guardian_phone: 'Escribe el teléfono del apoderado.',
+      guardian_email: 'Escribe el correo del apoderado.',
+    } as Record<string, string>,
     refused: {
       missing: 'Obligatorio.',
       string_too_short: 'Obligatorio.',
@@ -1913,7 +1935,7 @@ export const es = {
     purpose: [
       'Administrar tu membresía y tus clases.',
       'Cobrar y registrar tus pagos.',
-      'Contactarte por WhatsApp y correo: avisos, recordatorios de pago y enlaces de acceso.',
+      'Contactarte por WhatsApp y correo: avisos, recordatorios de pago y links de acceso.',
       'Tu seguridad mientras entrenas.',
     ],
     purposeAfter: 'No vendemos tus datos ni los usamos para publicidad.',

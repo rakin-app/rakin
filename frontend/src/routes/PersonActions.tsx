@@ -1,34 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
-import { ApiError } from '../api/client'
 import type { StaffRole } from '../api/me'
 import type { Person } from '../api/member'
-import {
-  deletePerson,
-  deletionQuery,
-  deletionRefused,
-  duplicateOf,
-  leaveGym,
-  returnToGym,
-  updatePerson,
-  type PersonEdit,
-} from '../api/people'
+import { deletePerson, deletionQuery, deletionRefused, leaveGym, returnToGym } from '../api/people'
 import { useGymToday } from '../api/sessions'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
-import { formatPhone, formatRut } from '../format'
 import { t } from '../i18n/es'
+import { useRefresh } from './PersonData'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
 
 const copy = t.admin.member
 
-type Open = 'edit' | 'leave' | 'return' | 'remove' | null
+type Open = 'leave' | 'return' | 'remove' | null
 
 /**
- * A member's record and the ways out of the gym (#157): "Editar datos" for every staff
- * role, as the API allows; "Dar de baja" and "Reactivar" for the owner and admins,
- * since they end or start what a member is charged; "Eliminar" for the owner alone.
+ * The ways out of the gym (#157), set apart at the foot of the ficha: "Dar de baja" and
+ * "Reactivar" for the owner and admins, since they end or start what a member is
+ * charged; "Eliminar" for the owner alone. A coach gets none of them. The record is
+ * edited in "Datos" (`PersonData`).
  */
 export function PersonActions({ person, role }: { person: Person; role: StaffRole | null | undefined }) {
   const [open, setOpen] = useState<Open>(null)
@@ -43,51 +34,22 @@ export function PersonActions({ person, role }: { person: Person; role: StaffRol
     setDone(message)
   }
 
+  if (!manages) return null
+
   return (
-    <section className="member__section" aria-label={copy.editForm.title}>
-      {person.left_on && (
-        <p className="member__error" role="status">
-          {copy.leftBanner(t.common.day(person.left_on))}
-        </p>
-      )}
-      {person.missing_phone && (
-        <p className="member__error" role="status">
-          {copy.missingPhone}
-        </p>
-      )}
-      {person.missing_rut && (
-        <p className="member__error" role="status">
-          {copy.missingRut}
-        </p>
-      )}
-      {person.no_whatsapp && <p className="member__detail">{copy.noWhatsapp}</p>}
+    <section className="member__section member__exit" aria-label={copy.exitLabel}>
       <div className="member__actions">
-        <Button aria-expanded={open === 'edit'} onClick={() => toggle('edit')}>
-          {copy.editPerson}
-        </Button>
-        {manages &&
-          (person.left_on ? (
-            <Button
-              aria-expanded={open === 'return'}
-              onClick={() => toggle('return')}
-            >
-              {copy.reactivate}
-            </Button>
-          ) : (
-            <Button
-              variant="danger"
-              aria-expanded={open === 'leave'}
-              onClick={() => toggle('leave')}
-            >
-              {copy.leave}
-            </Button>
-          ))}
+        {person.left_on ? (
+          <Button aria-expanded={open === 'return'} onClick={() => toggle('return')}>
+            {copy.reactivate}
+          </Button>
+        ) : (
+          <Button variant="danger" aria-expanded={open === 'leave'} onClick={() => toggle('leave')}>
+            {copy.leave}
+          </Button>
+        )}
         {role === 'owner' && (
-          <Button
-            variant="danger"
-            aria-expanded={open === 'remove'}
-            onClick={() => toggle('remove')}
-          >
+          <Button variant="danger" aria-expanded={open === 'remove'} onClick={() => toggle('remove')}>
             {copy.remove}
           </Button>
         )}
@@ -97,7 +59,6 @@ export function PersonActions({ person, role }: { person: Person; role: StaffRol
           {done}
         </p>
       )}
-      {open === 'edit' && <EditForm person={person} onCancel={() => setOpen(null)} onDone={finish} />}
       {open === 'leave' && <LeaveForm person={person} onCancel={() => setOpen(null)} onDone={finish} />}
       {open === 'return' && <ReturnForm person={person} onCancel={() => setOpen(null)} onDone={finish} />}
       {open === 'remove' && (
@@ -109,160 +70,6 @@ export function PersonActions({ person, role }: { person: Person; role: StaffRol
       )}
     </section>
   )
-}
-
-/** After a change to who someone is in the gym: the lists, their ficha and their money. */
-function useRefresh() {
-  const queryClient = useQueryClient()
-  return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['people'] }),
-      queryClient.invalidateQueries({ queryKey: ['memberships'] }),
-      queryClient.invalidateQueries({ queryKey: ['ledger'] }),
-    ])
-}
-
-function EditForm({
-  person,
-  onCancel,
-  onDone,
-}: {
-  person: Person
-  onCancel: () => void
-  onDone: (message: string) => void
-}) {
-  const form = copy.editForm
-  const refresh = useRefresh()
-  const ids = { name: useId(), phone: useId(), noWhatsapp: useId(), email: useId(), rut: useId(), dob: useId() }
-  const initial = {
-    name: person.name,
-    phone: person.phone ? formatPhone(person.phone) : '',
-    email: person.email ?? '',
-    rut: person.rut ? formatRut(person.rut) : '',
-    dob: person.dob ?? '',
-  }
-  const [noWhatsapp, setNoWhatsapp] = useState(person.no_whatsapp)
-  const [draft, setDraft] = useState(initial)
-  const [checked, setChecked] = useState(false)
-  const nameOk = draft.name.trim() !== ''
-
-  const save = useMutation({
-    mutationFn: (body: PersonEdit) => updatePerson(person.id, body),
-    onSuccess: async () => {
-      onDone(form.saved)
-      await refresh()
-    },
-  })
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    setChecked(true)
-    if (!nameOk) return
-    // Only what changed; an optional field emptied is cleared.
-    const body: PersonEdit = {}
-    if (draft.name.trim() !== initial.name) body.name = draft.name.trim()
-    if (draft.phone.trim() !== initial.phone) body.phone = draft.phone.trim() || null
-    if (noWhatsapp !== person.no_whatsapp) body.no_whatsapp = noWhatsapp
-    if (draft.email.trim() !== initial.email) body.email = draft.email.trim() || null
-    if (draft.rut.trim() !== initial.rut) body.rut = draft.rut.trim() || null
-    if (draft.dob !== initial.dob) body.dob = draft.dob || null
-    if (Object.keys(body).length === 0) {
-      onCancel()
-      return
-    }
-    save.mutate(body)
-  }
-
-  const set = (key: keyof typeof draft) => (e: { target: { value: string } }) =>
-    setDraft({ ...draft, [key]: e.target.value })
-  const duplicate = duplicateOf(save.error)
-
-  return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit} noValidate>
-      <label htmlFor={ids.name} className="member__label">
-        {form.name}
-      </label>
-      <Input
-        id={ids.name}
-        maxLength={200}
-        value={draft.name}
-        aria-invalid={checked && !nameOk}
-        onChange={set('name')}
-      />
-      {checked && !nameOk && (
-        <p className="member__error" role="alert">
-          {form.nameNeeded}
-        </p>
-      )}
-      <label htmlFor={ids.phone} className="member__label">
-        {form.phone}
-      </label>
-      <Input id={ids.phone} type="tel" inputMode="tel" value={draft.phone} onChange={set('phone')} />
-      <label htmlFor={ids.noWhatsapp} className="new-member__check">
-        <input
-          id={ids.noWhatsapp}
-          type="checkbox"
-          checked={noWhatsapp}
-          onChange={(e) => setNoWhatsapp(e.target.checked)}
-        />
-        {form.noWhatsapp}
-      </label>
-      <label htmlFor={ids.email} className="member__label">
-        {form.email}
-      </label>
-      <Input id={ids.email} type="email" value={draft.email} onChange={set('email')} />
-      <label htmlFor={ids.rut} className="member__label">
-        {form.rut}
-      </label>
-      <Input id={ids.rut} value={draft.rut} onChange={set('rut')} />
-      <label htmlFor={ids.dob} className="member__label">
-        {form.dob}
-      </label>
-      <Input id={ids.dob} type="date" value={draft.dob} onChange={set('dob')} />
-
-      {save.error && (
-        <div className="member__error" role="alert">
-          {duplicate ? (
-            <>
-              {form.refused[duplicate.code]}{' '}
-              <Link to="/admin/alumnos/$personId" params={{ personId: duplicate.person_id }}>
-                {form.refused.open}
-              </Link>
-            </>
-          ) : refusedFor(save.error, 'a RUT or an email') ? (
-            form.refused.identity
-          ) : phoneRequired(save.error) ? (
-            form.refused.phone
-          ) : save.error instanceof ApiError && save.error.status === 422 ? (
-            form.refused.invalid
-          ) : (
-            form.refused.failed
-          )}
-        </div>
-      )}
-
-      <div className="member__form-actions">
-        <Button disabled={save.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={save.isPending}>
-          {save.isPending ? form.working : form.save}
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-/** Whether the API refused an edit with the 422 whose detail starts with `reason`. */
-function refusedFor(error: unknown, reason: string): boolean {
-  if (!(error instanceof ApiError) || error.status !== 422) return false
-  const detail = (error.body as { detail?: unknown } | undefined)?.detail
-  return typeof detail === 'string' && detail.startsWith(reason)
-}
-
-/** The 422 a member's edit gets for leaving them with no phone and no "No tiene WhatsApp". */
-function phoneRequired(error: unknown): boolean {
-  return refusedFor(error, 'a phone is required')
 }
 
 function LeaveForm({

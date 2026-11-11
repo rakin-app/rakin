@@ -14,6 +14,7 @@ import { Button, buttonClass } from '../components/Button'
 import { Chip, ChipGroup } from '../components/Chip'
 import { Input, Select } from '../components/Field'
 import { JoinRequests } from '../components/JoinRequests'
+import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { formatPhone, formatRut } from '../format'
@@ -141,7 +142,7 @@ export function Students() {
   const total = members.data?.pages[0]?.total
 
   return (
-    <>
+    <PageContainer className="students__page">
       <PageHeader title={copy.title} />
       <JoinRequests />
       <div className="students">
@@ -267,14 +268,13 @@ export function Students() {
           </Button>
         )}
       </div>
-    </>
+    </PageContainer>
   )
 }
 
 function MemberItem({ row }: { row: MemberRow }) {
   const [open, setOpen] = useState(false)
   const panelId = useId()
-  const details = [row.phone && formatPhone(row.phone), row.rut && formatRut(row.rut)].filter(Boolean)
   const family = row.guardian
     ? copy.guardianOf(row.guardian.name)
     : row.dependents > 0
@@ -284,15 +284,24 @@ function MemberItem({ row }: { row: MemberRow }) {
     <li className="students__item">
       <div className="students__row">
         <div className="students__who">
-          <Link to="/admin/alumnos/$personId" params={{ personId: row.id }} className="students__name">
-            {row.name}
-          </Link>
-          {details.length > 0 && <span className="students__details">{details.join(' · ')}</span>}
-          {family && <span className="students__details">{family}</span>}
-          {row.left_on && <span className="students__details">{copy.leftOn(t.common.day(row.left_on))}</span>}
-          {row.missing_phone && <span className="students__flag">{copy.missingPhone}</span>}
-          {row.missing_rut && <span className="students__flag">{copy.missingRut}</span>}
-          {row.no_whatsapp && <span className="students__details">{copy.noWhatsapp}</span>}
+          {/* The name and what more there is to say about them; on a desktop, one cell. */}
+          <div className="students__title">
+            <Link to="/admin/alumnos/$personId" params={{ personId: row.id }} className="students__name">
+              {row.name}
+            </Link>
+            {family && <span className="students__details">{family}</span>}
+            {row.left_on && <span className="students__details">{copy.leftOn(t.common.day(row.left_on))}</span>}
+            {row.missing_phone && <span className="students__flag">{copy.missingPhone}</span>}
+            {row.missing_rut && <span className="students__flag">{copy.missingRut}</span>}
+            {row.no_whatsapp && <span className="students__details">{copy.noWhatsapp}</span>}
+          </div>
+          {(row.phone || row.rut) && (
+            // One line on a phone; on a desktop, a column each.
+            <span className="students__details students__contact">
+              {row.phone && <span className="students__phone">{formatPhone(row.phone)}</span>}
+              {row.rut && <span className="students__rut">{formatRut(row.rut)}</span>}
+            </span>
+          )}
         </div>
         <div className="students__plan-cell">
           {row.membership ? (

@@ -397,7 +397,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
 
     const card = await money()
-    expect(await within(card).findByText(copy.nextDue('30 nov'))).toBeInTheDocument()
+    expect(await within(card).findByText(copy.upToDateNext('30 nov'))).toBeInTheDocument()
     expect(within(card).getByText(es.admin.students.status.active)).toBeInTheDocument()
   })
 
@@ -422,7 +422,27 @@ describe('Ficha de alumno', () => {
     ])
     // The ledger is read again: nothing is owed now.
     await waitFor(() => expect(within(card).getByText(copy.upToDate)).toBeInTheDocument())
-    expect(within(card).getByRole('button', { name: copy.record })).toBeDisabled()
+    // Still offered, and it says why there is nothing to record against (#179).
+    const record = within(card).getByRole('button', { name: copy.record })
+    expect(record).toBeEnabled()
+    await userEvent.click(record)
+    expect(within(card).getByText(copy.nothingToRecord)).toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: copy.form.title })).not.toBeInTheDocument()
+  })
+
+  it('offers only what can be done: no adjustment, refund or freeze with nothing to do it on', async () => {
+    stubApi({
+      memberships: [{ ...MONTHLY, status: 'lapsed' }],
+      ledger: { ...LEDGER, periods: [], refundable_payments: [] },
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    expect(await within(card).findByRole('button', { name: copy.record })).toBeEnabled()
+    expect(within(card).queryByRole('button', { name: copy.adjust })).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: copy.refund })).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: copy.freeze })).not.toBeInTheDocument()
+    expect(within(card).queryAllByRole('button').filter((b) => b.hasAttribute('disabled'))).toEqual([])
   })
 
   it('says what a partial payment leaves to pay', async () => {
@@ -579,7 +599,8 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    expect(await within(card).findByRole('button', { name: copy.refund })).toBeDisabled()
+    await within(card).findByRole('button', { name: copy.record })
+    expect(within(card).queryByRole('button', { name: copy.refund })).not.toBeInTheDocument()
   })
 
   it('says so when the period was paid meanwhile', async () => {
@@ -644,6 +665,8 @@ describe('Ficha de alumno', () => {
     })
     expect(link).toHaveAttribute('href', 'https://wa.me/56912345678?text=Hola')
     expect(link).toHaveTextContent(es.admin.reminders.next('2.º'))
+    // The reminder takes the plain chat's place: one WhatsApp button, never two (#179).
+    expect(within(header).queryByRole('link', { name: copy.whatsapp('Felipe Díaz') })).not.toBeInTheDocument()
 
     await userEvent.click(link)
 
@@ -865,6 +888,62 @@ describe('Ficha de alumno', () => {
       `${copy.ledger.freezeStart}Viaje · vuelve el 24 oct · 10 oct${es.common.noAmount}`,
       'Pago septiembretransferencia · validó Martín · 2 oct$45.000',
     ])
+  })
+
+  it('shows the last four ledger lines, and the rest in place', async () => {
+    const more = [1, 2, 3].map((n) =>
+      entry({ id: `old-${n}`, kind: 'charge', period_start: '2026-0' + (n + 5) + '-30', created_at: '2026-0' + (n + 5) + '-23T12:00:00Z' }),
+    )
+    stubApi({ ledger: { ...LEDGER, entries: [...LEDGER.entries, ...more] } })
+    renderAt(PATH)
+
+    const ledger = await screen.findByRole('region', { name: copy.ledger.title })
+    expect(within(ledger).getAllByRole('listitem')).toHaveLength(4)
+    await userEvent.click(within(ledger).getByRole('button', { name: copy.ledger.all(7) }))
+    expect(within(ledger).getAllByRole('listitem')).toHaveLength(7)
+    await userEvent.click(within(ledger).getByRole('button', { name: copy.ledger.fewer }))
+    expect(within(ledger).getAllByRole('listitem')).toHaveLength(4)
+  })
+
+  it('has no "Ver todo el libro" while the ledger is four lines or fewer', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    const ledger = await screen.findByRole('region', { name: copy.ledger.title })
+    expect(within(ledger).getAllByRole('listitem')).toHaveLength(4)
+    expect(within(ledger).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('has a WhatsApp button to the member in the header', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    const link = await screen.findByRole('link', { name: copy.whatsapp('Felipe Díaz') })
+    expect(link).toHaveAttribute('href', 'https://wa.me/56912344417')
+  })
+
+  it("writes to a dependent's guardian on WhatsApp", async () => {
+    stubApi({
+      person: { body: { ...FELIPE, phone: null } },
+      extra: (path) => {
+        if (path === '/api/people/felipe/family') return { body: { guardian: { id: 'ana', name: 'Ana Díaz' }, dependents: [] } }
+        if (path === '/api/people/ana') return { body: { ...FELIPE, id: 'ana', name: 'Ana Díaz', phone: '+56987654321' } }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    const link = await screen.findByRole('link', { name: copy.whatsappGuardian('Ana Díaz') })
+    expect(link).toHaveAttribute('href', 'https://wa.me/56987654321')
+  })
+
+  it('has no WhatsApp button without a phone, or with "No tiene WhatsApp"', async () => {
+    stubApi({ person: { body: { ...FELIPE, no_whatsapp: true } } })
+    renderAt(PATH)
+
+    await screen.findByRole('region', { name: es.admin.family.toggle })
+    await screen.findByText('Tomás Díaz')
+    expect(screen.queryByRole('link', { name: copy.whatsapp('Felipe Díaz') })).not.toBeInTheDocument()
   })
 
   it('shows who they pay for', async () => {
@@ -1102,8 +1181,13 @@ describe('Ficha de alumno: datos', () => {
     renderAt(PATH)
 
     const section = await fields()
+    await within(section).findByText('Contacto de emergencia')
     const rows = within(section).getAllByRole('term').map((term) => [term.textContent, term.nextSibling?.textContent])
     expect(rows).toEqual([
+      [copy.fields.phone, '+56 9 1234 4417'],
+      [copy.fields.email, copy.fields.empty],
+      [copy.fields.rut, copy.fields.empty],
+      [copy.fields.dob, copy.fields.empty],
       ['Contacto de emergencia', 'Ana Díaz +56 9 8765 4321'],
       ['Categoría competencia', 'Pluma'],
       ['Peso (kg)', '72,5'],
@@ -1112,19 +1196,59 @@ describe('Ficha de alumno: datos', () => {
     ])
   })
 
-  it('draws nothing when no field is open to the role', async () => {
+  it('shows only the record when no field is open to the role', async () => {
     stubApi({ role: 'coach', fields: [] })
     renderAt(PATH)
 
-    await screen.findByRole('region', { name: es.admin.family.toggle })
-    expect(screen.queryByRole('region', { name: copy.fields.title })).not.toBeInTheDocument()
+    const section = await fields()
+    await waitFor(() => expect(within(section).getByRole('button', { name: copy.editPerson })).toBeEnabled())
+    expect(within(section).getAllByRole('term').map((term) => term.textContent)).toEqual([
+      copy.fields.phone,
+      copy.fields.email,
+      copy.fields.rut,
+      copy.fields.dob,
+    ])
+  })
+
+  it('has "Editar datos" once on the ficha', async () => {
+    stubApi({ fields: FIELDS })
+    renderAt(PATH)
+
+    await within(await fields()).findByText('Contacto de emergencia')
+    expect(screen.getAllByRole('button', { name: copy.editPerson })).toHaveLength(1)
+  })
+
+  it('saves the record and the fields from the one form', async () => {
+    const calls = stubApi({
+      fields: FIELDS,
+      extra: (path, method, body) =>
+        path === '/api/people/felipe' && method === 'PATCH' ? { body: { ...FELIPE, ...(body as object) } } : undefined,
+    })
+    renderAt(PATH)
+
+    const section = await fields()
+    await within(section).findByText('Contacto de emergencia')
+    await userEvent.click(within(section).getByRole('button', { name: copy.editPerson }))
+    const form = screen.getByRole('form', { name: copy.editForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.editForm.email), 'felipe@example.cl')
+    await userEvent.clear(within(form).getByLabelText('Peso (kg)'))
+    await userEvent.type(within(form).getByLabelText('Peso (kg)'), '74')
+    await userEvent.click(within(form).getByRole('button', { name: copy.editForm.save }))
+
+    expect(await screen.findByText(copy.fields.saved)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
+      { method: 'PATCH', path: '/api/people/felipe', body: { email: 'felipe@example.cl' } },
+      { method: 'PATCH', path: '/api/people/felipe/fields', body: { values: { peso: 74 } } },
+    ])
   })
 
   it('saves only the fields that changed', async () => {
     const calls = stubApi({ fields: FIELDS })
     renderAt(PATH)
 
-    await userEvent.click(within(await fields()).getByRole('button', { name: copy.fields.edit }))
+    const opened = await fields()
+    await within(opened).findByText('Contacto de emergencia')
+    await userEvent.click(within(opened).getByRole('button', { name: copy.fields.edit }))
     const form = screen.getByRole('form', { name: copy.fields.formTitle })
     expect(within(form).getByLabelText('Peso (kg)')).toHaveValue('72.5')
     await userEvent.clear(within(form).getByLabelText('Peso (kg)'))
@@ -1151,7 +1275,9 @@ describe('Ficha de alumno: datos', () => {
     const calls = stubApi({ fields: FIELDS, fieldsUpdate: refused })
     renderAt(PATH)
 
-    await userEvent.click(within(await fields()).getByRole('button', { name: copy.fields.edit }))
+    const opened = await fields()
+    await within(opened).findByText('Contacto de emergencia')
+    await userEvent.click(within(opened).getByRole('button', { name: copy.fields.edit }))
     const form = screen.getByRole('form', { name: copy.fields.formTitle })
     await userEvent.clear(within(form).getByLabelText('Peso (kg)'))
     await userEvent.type(within(form).getByLabelText('Peso (kg)'), 'setenta')
@@ -1165,16 +1291,23 @@ describe('Ficha de alumno: datos', () => {
 })
 
 describe('the record and the ways out (#157)', () => {
-  const actions = () => screen.findByRole('region', { name: copy.editForm.title })
+  const actions = () => screen.findByRole('region', { name: copy.exitLabel })
+  // "Editar datos", in Datos, once its custom fields are read.
+  const edit = async () => {
+    const section = await screen.findByRole('region', { name: copy.fields.title })
+    const button = within(section).getByRole('button', { name: copy.editPerson })
+    await waitFor(() => expect(button).toBeEnabled())
+    return button
+  }
 
   it('shows a coach "Editar datos" and neither "Dar de baja" nor "Eliminar"', async () => {
     stubApi({ role: 'coach' })
     renderAt(PATH)
 
-    const section = await actions()
-    expect(within(section).getByRole('button', { name: copy.editPerson })).toBeInTheDocument()
-    expect(within(section).queryByRole('button', { name: copy.leave })).not.toBeInTheDocument()
-    expect(within(section).queryByRole('button', { name: copy.remove })).not.toBeInTheDocument()
+    expect(await edit()).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: copy.exitLabel })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.leave })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.remove })).not.toBeInTheDocument()
   })
 
   it('gives an admin "Dar de baja" but not "Eliminar"', async () => {
@@ -1186,6 +1319,16 @@ describe('the record and the ways out (#157)', () => {
     expect(within(section).queryByRole('button', { name: copy.remove })).not.toBeInTheDocument()
   })
 
+  it('draws "Dar de baja" and "Eliminar" as destructive, apart from "Editar datos"', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    const section = await actions()
+    expect(within(section).getByRole('button', { name: copy.leave })).toHaveClass('button--danger')
+    expect(within(section).getByRole('button', { name: copy.remove })).toHaveClass('button--danger')
+    expect(within(section).queryByRole('button', { name: copy.editPerson })).not.toBeInTheDocument()
+  })
+
   it('edits the record through PATCH, sending only what changed', async () => {
     const calls = stubApi({
       extra: (path, method, body) =>
@@ -1193,7 +1336,7 @@ describe('the record and the ways out (#157)', () => {
     })
     renderAt(PATH)
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: copy.editPerson }))
+    await userEvent.click(await edit())
     const form = screen.getByRole('form', { name: copy.editForm.title })
     // The phone is a contact, edited like the rest (#165).
     const phone = within(form).getByLabelText(copy.editForm.phone)
@@ -1219,7 +1362,7 @@ describe('the record and the ways out (#157)', () => {
     })
     renderAt(PATH)
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: copy.editPerson }))
+    await userEvent.click(await edit())
     const form = screen.getByRole('form', { name: copy.editForm.title })
     await userEvent.clear(within(form).getByLabelText(copy.editForm.phone))
     await userEvent.click(within(form).getByRole('button', { name: copy.editForm.save }))
@@ -1243,7 +1386,7 @@ describe('the record and the ways out (#157)', () => {
     })
     renderAt(PATH)
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: copy.editPerson }))
+    await userEvent.click(await edit())
     const form = screen.getByRole('form', { name: copy.editForm.title })
     await userEvent.type(within(form).getByLabelText(copy.editForm.rut), '7.654.321-6')
     await userEvent.click(within(form).getByRole('button', { name: copy.editForm.save }))

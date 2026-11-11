@@ -1,15 +1,23 @@
+@import '../styles/media.css';
+
+/* A phone's column, and from 1024px a wider card whose fields go two by two. */
 .join {
-  max-width: var(--content-max-width);
+  max-width: calc(var(--content-max-width) + 2 * var(--space-5));
   min-height: 100dvh;
-  margin: 0 auto;
   padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom));
+}
+
+@media (--wide) {
+  .join {
+    max-width: calc(var(--content-narrow) + 2 * var(--space-8));
+  }
 }
 
 .join__card {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin: var(--space-3) var(--space-5) 0;
+  margin-top: var(--space-3);
   padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -17,9 +25,15 @@
 }
 
 .join__form,
-.join__guardian {
+.join__guardian,
+.join__stack {
   display: flex;
   flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The form's own rhythm, not `Grid`'s wider gap. */
+.join__form .join__row {
   gap: var(--space-3);
 }
 

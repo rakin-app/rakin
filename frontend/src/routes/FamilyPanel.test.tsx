@@ -99,6 +99,11 @@ async function openFamily(name: string) {
   await userEvent.click(await screen.findByRole('button', { name: copy.toggleLabel(name) }))
 }
 
+// The forms that add someone open behind "Agregar a alguien a cargo" (#179).
+async function openAdding() {
+  await userEvent.click(await screen.findByRole('button', { name: copy.addTitle }))
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -126,12 +131,26 @@ describe('Familia', () => {
     expect(panel).toBeVisible()
   })
 
+  it('keeps the forms that add someone closed until asked for', async () => {
+    stubApi({ camila: { guardian: null, dependents: [] } })
+    renderStudents()
+    await openFamily('Camila Ortiz')
+
+    await openAdding()
+    expect(screen.getByLabelText(copy.name)).toBeInTheDocument()
+    expect(screen.getByRole('searchbox', { name: copy.linkSearch })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: copy.close }))
+    expect(screen.queryByLabelText(copy.name)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.addTitle })).toBeInTheDocument()
+  })
+
   it('adds a new dependent with no phone', async () => {
     const calls = stubApi({ camila: { guardian: null, dependents: [{ id: 'mateo', name: 'Mateo Ortiz' }] } })
     renderStudents()
     await openFamily('Camila Ortiz')
 
     expect(await screen.findByText('Mateo Ortiz', { selector: '.family__person span' })).toBeInTheDocument()
+    await openAdding()
     await userEvent.type(screen.getByLabelText(copy.name), 'Sofía Ortiz')
     await userEvent.type(screen.getByLabelText(copy.rut), '23.456.789-0')
     await userEvent.click(screen.getByRole('button', { name: copy.add }))
@@ -149,6 +168,7 @@ describe('Familia', () => {
     const calls = stubApi({ camila: { guardian: null, dependents: [] } })
     renderStudents()
     await openFamily('Camila Ortiz')
+    await openAdding()
 
     await userEvent.type(await screen.findByRole('searchbox', { name: copy.linkSearch }), 'Ortiz')
     // Mateo already has a guardian, and Camila is the guardian: neither is offered.
@@ -184,6 +204,7 @@ describe('Familia', () => {
     stubApi({ camila: { guardian: null, dependents: [] } }, { status: 409, body: { detail: { code: 'one_level' } } })
     renderStudents()
     await openFamily('Camila Ortiz')
+    await openAdding()
 
     await userEvent.type(await screen.findByLabelText(copy.name), 'Abuela')
     await userEvent.click(screen.getByRole('button', { name: copy.add }))
