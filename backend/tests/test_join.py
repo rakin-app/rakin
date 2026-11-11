@@ -379,6 +379,7 @@ def test_the_form_shows_the_gym_and_its_today(client: TestClient, gym: uuid.UUID
     assert form.status_code == 200
     assert form.json() == {
         "gym": run_gym_name(client, gym),
+        "gym_logo": None,
         "program": None,
         "today": seeded_today().isoformat(),
         "human_check_site_key": None,

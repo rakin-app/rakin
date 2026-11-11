@@ -10,6 +10,9 @@
 <tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:8px;">
 <tr><td style="padding:28px 24px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:16px;line-height:1.5;color:#18181b;">
+{% if logo_url %}
+<p style="margin:0 0 20px;"><img src="{{ logo_url }}" alt="{{ gym if gym is defined else '' }}" width="48" height="48" style="display:block;width:48px;height:48px;border:0;border-radius:50%;object-fit:cover;"></p>
+{% endif %}
 {% block body %}{% endblock %}
 {% if page_url %}
 {% block page_link %}

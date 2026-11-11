@@ -77,6 +77,7 @@ from app.contacts import contact_for
 from app.domain.dates import gym_today
 from app.hosts import Hosts
 from app.integrations import Integrations, get_integrations
+from app.logos import logo_path
 from app.magiclink.ratelimit import MemoryRateLimiter, RateLimiter
 from app.member_import.rows import Member, own_guardian
 from app.notices import JOIN_APPROVED, Notice, Notices, get_notices
@@ -253,7 +254,8 @@ Token = Annotated[str, Path()]
 
 # The link, read with `app.gym_id` set to its gym.
 FORM = f"""
-    SELECT g.name AS gym, g.timezone, pr.id AS program_id, pr.name AS program,
+    SELECT g.id AS gym_id, g.name AS gym, g.logo_version, g.timezone,
+           pr.id AS program_id, pr.name AS program,
            l.expires_on, {HAS_PRIVACY} AS has_privacy
     FROM join_link l
     JOIN gym g ON g.id = l.gym_id
@@ -265,6 +267,8 @@ FORM = f"""
 @dataclass(frozen=True)
 class _OpenLink:
     gym: str
+    # Where its logo's files are (`app.logos.logo_path`); None with no logo.
+    gym_logo: str | None
     timezone: str
     program_id: uuid.UUID | None
     program: str | None
@@ -290,7 +294,14 @@ async def _open(request: Request, token: str) -> AsyncIterator[_OpenLink]:
             or not row.has_privacy
         ):
             raise INVALID_LINK
-        yield _OpenLink(row.gym, row.timezone, row.program_id, row.program, session)
+        yield _OpenLink(
+            row.gym,
+            logo_path(row.gym_id, row.logo_version),
+            row.timezone,
+            row.program_id,
+            row.program,
+            session,
+        )
 
 
 @public.get("/{token}")
@@ -302,6 +313,7 @@ async def join_form(
     async with _open(request, token) as link:
         return JoinForm(
             gym=link.gym,
+            gym_logo=link.gym_logo,
             program=link.program,
             today=gym_today(link.timezone),
             human_check_site_key=integrations.human_check.site_key,

@@ -462,8 +462,8 @@ def test_rakin_auth_cannot_log_in_and_holds_only_what_the_lookups_read(db: Datab
 
 
 def test_rakin_auth_reads_of_a_gym_only_what_the_host_lookup_returns(db: Database) -> None:
-    # The theme (0039) beside the id, name and slug; never `settings`, which holds the
-    # gym's bank details.
+    # The theme (0039) and the logo's version (0040) beside the id, name and slug; never
+    # `settings`, which holds the gym's bank details.
     rows = run(
         db.admin_url,
         lambda c: c.fetch(
@@ -472,4 +472,4 @@ def test_rakin_auth_reads_of_a_gym_only_what_the_host_lookup_returns(db: Databas
             " AND privilege_type = 'SELECT'"
         ),
     )
-    assert sorted(r["column_name"] for r in rows) == ["id", "name", "slug", "theme"]
+    assert sorted(r["column_name"] for r in rows) == ["id", "logo_version", "name", "slug", "theme"]

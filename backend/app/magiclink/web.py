@@ -45,7 +45,7 @@ PAGE_HEADERS = {
     "Cache-Control": "no-store",
     "Referrer-Policy": "same-origin",
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; "
-    "form-action 'self'; frame-ancestors 'none'",
+    "img-src 'self'; form-action 'self'; frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
 }
 
@@ -69,8 +69,9 @@ class Texts:
 
 # The pages' look, unless the application brings its own: plain and unbranded, with no
 # variants. The markup an application's `stylesheet` styles: a `main` with an optional
-# `.eyebrow` (the site's name), an `h1`, and a `.card` holding a paragraph and one
-# `.button`, a `button` or a link, also marked `.button--primary` or `.button--secondary`.
+# `img.mark` (the site's logo) and `.eyebrow` (the site's name), an `h1`, and a `.card`
+# holding a paragraph and one `.button`, a `button` or a link, also marked
+# `.button--primary` or `.button--secondary`.
 STYLESHEET = (
     "body{font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem;"
     "line-height:1.5}.eyebrow{margin:0;text-transform:uppercase;font-size:.75rem}"
@@ -84,12 +85,13 @@ class Site:
     """Where a request was made: the base URL its links point back to, and the scope a
     session signed in there must start in (None: whatever the directory says), with
     its name for the pages to say, and the theme they wear (`data-theme` on the page's
-    root, None for the stylesheet's own)."""
+    root, None for the stylesheet's own), and the URL of the logo they show, if any."""
 
     base_url: str
     scope: str | None = None
     name: str = ""
     theme: str | None = None
+    logo: str | None = None
 
 
 class LinkRequest(BaseModel):
@@ -177,12 +179,18 @@ def build_router(
         heading = html.escape(title.format(name=name))
         eyebrow = f'<p class="eyebrow">{html.escape(name)}</p>' if name else ""
         theme = f' data-theme="{html.escape(here.theme)}"' if here.theme else ""
+        # Beside the name, which says it: no alternative text of its own.
+        mark = (
+            f'<img class="mark" src="{html.escape(here.logo)}" alt="" width="56" height="56">'
+            if here.logo
+            else ""
+        )
         document = (
             f'<!doctype html><html lang="{html.escape(texts.lang)}"{theme}><head>'
             '<meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1">'
             f"<title>{heading}</title><style>{stylesheet}</style></head>"
-            f"<body><main>{eyebrow}<h1>{heading}</h1>"
+            f"<body><main>{mark}{eyebrow}<h1>{heading}</h1>"
             f'<div class="card">{body}</div></main></body></html>'
         )
         return HTMLResponse(document, status_code=status_code, headers=PAGE_HEADERS)

@@ -112,6 +112,9 @@ class GymSettings(BaseModel):
     # The colours the gym's pages wear (#199): a column, not a settings key, since the
     # sign-in pages read it before anyone signs in.
     theme: Theme
+    # Where the gym's logo is (`app.logos.logo_path`), `<logo>/<variant>`; None with none.
+    # Changed by its own endpoints, `PUT` and `DELETE /api/gym/logo` (#223).
+    logo: str | None
     grace_days: int
     reminder_every_days: int
     channels: Channels
@@ -126,6 +129,7 @@ class GymSettings(BaseModel):
         web_address: str,
         timezone: str,
         theme: Theme,
+        logo: str | None,
         settings: Mapping[str, Any],
     ) -> "GymSettings":
         return cls(
@@ -134,6 +138,7 @@ class GymSettings(BaseModel):
             web_address=web_address,
             timezone=timezone,
             theme=theme,
+            logo=logo,
             grace_days=settings.get("grace_days", DEFAULT_GRACE_DAYS),
             reminder_every_days=settings.get("reminder_every_days", DEFAULT_REMINDER_EVERY_DAYS),
             channels=settings.get("channels", {}),

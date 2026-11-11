@@ -13,7 +13,8 @@ Every notice about someone's membership carries a sign-in link to the student pa
 due. It goes in under the message as `page_url`, which is never part of the payload.
 
 A gym's notices link to its own host (`app.hosts`), its sign-in and unsubscribe links
-both: `meta.rakin.app` for Meta's. A notice of no gym links to the base host.
+both: `meta.rakin.app` for Meta's. A notice of no gym links to the base host. A gym
+with a logo (#223) has it over the message, as a PNG on that host (`app.api.logos`).
 
 A non-essential notice (plan events, announcements) carries a one-click unsubscribe
 link, in its footer and as `List-Unsubscribe` with `List-Unsubscribe-Post` (RFC 8058),
@@ -52,6 +53,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.money import format_clp
 from app.hosts import Hosts
 from app.integrations.mailer import Email, MailDeliveryError, Mailer, check_recipient
+from app.logos import EMAIL_VARIANT, logo_path
 from app.magiclink import MagicLinks, Recipient
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
 
@@ -151,14 +153,17 @@ def render(
     *,
     unsubscribe_url: str | None = None,
     page_url: str | None = None,
+    logo_url: str | None = None,
     env: Environment = ENVIRONMENT,
 ) -> Email:
-    """The message `notice` is, with its unsubscribe and sign-in links when it has them."""
+    """The message `notice` is, with its unsubscribe and sign-in links when it has them,
+    and the gym's logo over it when it has one."""
     name = notice.template.name
     context = {
         **notice.context,
         "unsubscribe_url": unsubscribe_url,
         "page_url": page_url,
+        "logo_url": logo_url,
         "page_link_days": PAGE_LINK_TTL.days,
     }
     subject = " ".join(env.get_template(f"{name}.subject.txt").render(context).split())
@@ -212,13 +217,21 @@ class Notices:
         base = (base_url or self._base_url).rstrip("/")
         return f"{base}{UNSUBSCRIBE_PATH}/{self._signer.sign(gym_id, person_id)}"
 
-    async def base_url_of(self, gym_id: uuid.UUID | None) -> str:
-        """Where the gym's notices link to: its own host, or the base host."""
-        if self._hosts is None or gym_id is None:
-            return self._base_url
+    async def gym_host(self, gym_id: uuid.UUID | None) -> tuple[str, str | None]:
+        """Where the gym's notices link to, its own host or the base host, and the URL
+        of its logo there for the header (#223), None with no logo."""
+        if gym_id is None:
+            return self._base_url, None
         async with self._in_gym(gym_id) as session:
-            slug = await session.scalar(text("SELECT slug FROM gym WHERE id = :g"), {"g": gym_id})
-        return self._hosts.base_url(slug)
+            row = (
+                await session.execute(
+                    text("SELECT slug, logo_version FROM gym WHERE id = :g"), {"g": gym_id}
+                )
+            ).one_or_none()
+        slug, version = (None, None) if row is None else (row.slug, row.logo_version)
+        base_url = self._base_url if self._hosts is None else self._hosts.base_url(slug)
+        path = logo_path(gym_id, version)
+        return base_url, None if path is None else f"{base_url}{path}/{EMAIL_VARIANT}"
 
     async def send(self, notice: Notice) -> Outcome:
         """Send `notice` unless its addressee unsubscribed from it, and record what
@@ -226,7 +239,7 @@ class Notices:
         unsubscribe_url = None
         extra = {"template": notice.template.name, "person_id": str(notice.person_id)}
         try:
-            base_url = await self.base_url_of(notice.gym_id)
+            base_url, logo_url = await self.gym_host(notice.gym_id)
         # The database down, say: a link to the wrong host is no better than none.
         except Exception as exc:
             logger.exception("notice host not found", extra=extra)
@@ -255,7 +268,11 @@ class Notices:
                 return Outcome.FAILED
         try:
             email = render(
-                notice, unsubscribe_url=unsubscribe_url, page_url=page_url, env=self._env
+                notice,
+                unsubscribe_url=unsubscribe_url,
+                page_url=page_url,
+                logo_url=logo_url,
+                env=self._env,
             )
             await self._mailer.send(email)
         # A template that cannot render is a bug, not a bad day at the relay.

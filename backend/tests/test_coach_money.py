@@ -33,7 +33,7 @@ MONEY = re.compile(r"clp|amount|price|discount|balance|owed|ledger|paid", re.IGN
 # Not the gym's staff screens, so not this rule's: the person's own student page (a
 # coach who trains pays like anyone), the public pages a link opens, and the plumbing.
 NOT_STAFF = re.compile(
-    r"^(/api/me/|/api/join/\{token\}|/api/mail/|/api/auth/|/api/blobs/|/api/host"
+    r"^(/api/me/|/api/join/\{token\}|/api/mail/|/api/auth/|/api/blobs/|/api/logos/|/api/host"
     r"|/healthz|/internal/)"
 )
 
