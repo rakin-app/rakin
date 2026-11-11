@@ -11,6 +11,7 @@ import { proofQueueQuery, type ProofReview } from '../api/review'
 import { todaySessionsQuery, unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
+import { remindersQuery, ordinal, type PaymentReminder } from '../api/reminders'
 import { overdueQuery, type OverduePeriod } from '../api/today'
 import { Button, buttonClass } from '../components/Button'
 import { EmptyState } from '../components/Card'
@@ -19,6 +20,7 @@ import { WhatsAppIcon } from '../components/icons'
 import { JoinRequests } from '../components/JoinRequests'
 import { Grid, PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
+import { ReminderLink } from '../components/ReminderLink'
 import { dayTime, monthName, shortDay, timeRange, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
 import './Today.css'
@@ -43,8 +45,12 @@ const OVERDUE_SHOWN = 3
  *
  * Money, so for whoever reads the ledger only. A coach's Hoy is today's classes, each a
  * tap from its attendance, and the join link's requests a coach can act on (#178). The
- * WhatsApp reminder on each overdue row joins with the wa.me links (#55). The join
- * link's requests come first for an owner or admin (#154).
+ * join link's requests come first for an owner or admin (#154).
+ *
+ * Each overdue row has its WhatsApp reminder beside "Pagó", saying which one it is
+ * ("2.º aviso") and standing out when the gym's cadence says the next is due; "Por
+ * avisar" has the periods due today and the rejected proofs to follow up, when there
+ * are any (#55).
  *
  * A phone stacks it all; from 1024px the counters run across the top and the lists sit
  * in a grid of two.
@@ -140,6 +146,10 @@ function OwnerToday() {
   const overdue = useQuery(overdueQuery())
   const inactive = useQuery(inactiveQuery())
   const unmarked = useQuery(unmarkedSessionsQuery())
+  const reminders = useQuery(remindersQuery())
+  const reminderFor = new Map((reminders.data ?? []).map((r) => [r.billing_period_id, r]))
+  // The overdue ones are on their "Vencidos" rows.
+  const toRemind = (reminders.data ?? []).filter((r) => r.days_overdue <= 0)
 
   return (
     <>
@@ -190,9 +200,19 @@ function OwnerToday() {
           ) : overdue.data.periods.length === 0 ? (
             <p className="today__note">{copy.overdue.empty}</p>
           ) : (
-            <OverdueList periods={overdue.data.periods} />
+            <OverdueList periods={overdue.data.periods} reminderFor={reminderFor} />
           )}
         </section>
+        {toRemind.length > 0 && (
+          <section id="por-avisar" className="today__section" aria-labelledby="por-avisar-title">
+            <SectionHead id="por-avisar-title" title={copy.remind.title} aside={copy.remind.count(toRemind.length)} />
+            <ul className="today__list">
+              {toRemind.map((reminder) => (
+                <RemindRow key={reminder.billing_period_id} reminder={reminder} />
+              ))}
+            </ul>
+          </section>
+        )}
         <section id="inactivos" className="today__section" aria-labelledby="inactivos-title">
           <SectionHead
             id="inactivos-title"
@@ -491,7 +511,19 @@ export function ago(iso: string, now: Date): string {
   return shortDay(iso)
 }
 
-function OverdueList({ periods }: { periods: OverduePeriod[] }) {
+/** "2.º aviso ayer": the last reminder about the period, if one was sent. */
+function remindedDetail(reminder: PaymentReminder | undefined): string | null {
+  if (!reminder?.reminded_at) return null
+  return t.admin.reminders.sent(ordinal(reminder.reminders_sent), ago(reminder.reminded_at, new Date()))
+}
+
+function OverdueList({
+  periods,
+  reminderFor,
+}: {
+  periods: OverduePeriod[]
+  reminderFor: Map<string, PaymentReminder>
+}) {
   const [all, setAll] = useState(false)
   const [done, setDone] = useState<string | null>(null)
   const shown = all ? periods : periods.slice(0, OVERDUE_SHOWN)
@@ -504,7 +536,12 @@ function OverdueList({ periods }: { periods: OverduePeriod[] }) {
       )}
       <ul className="today__list">
         {shown.map((period) => (
-          <OverdueRow key={period.billing_period_id} period={period} onDone={setDone} />
+          <OverdueRow
+            key={period.billing_period_id}
+            period={period}
+            reminder={reminderFor.get(period.billing_period_id)}
+            onDone={setDone}
+          />
         ))}
       </ul>
       {!all && periods.length > OVERDUE_SHOWN && (
@@ -518,9 +555,44 @@ function OverdueList({ periods }: { periods: OverduePeriod[] }) {
 
 const METHODS: readonly Method[] = ['cash', 'transfer', 'other']
 
-function OverdueRow({ period, onDone }: { period: OverduePeriod; onDone: (message: string) => void }) {
+/** "Por avisar": a period due today, or a rejected proof to follow up. */
+function RemindRow({ reminder }: { reminder: PaymentReminder }) {
+  const words = t.admin.reminders
+  const detail =
+    reminder.kind === 'proof_rejected_followup' && reminder.rejection_note
+      ? words.rejected(reminder.rejection_note)
+      : words.dueToday(clp(reminder.outstanding_clp), reminder.plan_name)
+  const reminded = remindedDetail(reminder)
+  return (
+    <li className="today__row">
+      <div className="today__row-line">
+        <Link
+          to="/admin/alumnos/$personId"
+          params={{ personId: reminder.person_id }}
+          className="today__row-text today__row-text--link"
+        >
+          <span className="today__name">{reminder.person_name}</span>
+          <span className="today__detail">{detail}</span>
+          {reminded && <span className="today__detail">{reminded}</span>}
+        </Link>
+        <ReminderLink reminder={reminder} />
+      </div>
+    </li>
+  )
+}
+
+function OverdueRow({
+  period,
+  reminder,
+  onDone,
+}: {
+  period: OverduePeriod
+  reminder: PaymentReminder | undefined
+  onDone: (message: string) => void
+}) {
   const [open, setOpen] = useState(false)
   const amount = clp(period.outstanding_clp)
+  const reminded = remindedDetail(reminder)
   return (
     <li className="today__row today__row--overdue">
       <div className="today__row-line">
@@ -533,7 +605,9 @@ function OverdueRow({ period, onDone }: { period: OverduePeriod; onDone: (messag
           <span className="today__detail today__detail--warning">
             {copy.overdue.detail(period.days_overdue, amount, period.plan_name)}
           </span>
+          {reminded && <span className="today__detail">{reminded}</span>}
         </Link>
+        {!open && reminder && <ReminderLink reminder={reminder} />}
         {!open && (
           <Button
             aria-label={copy.overdue.paidLabel(period.person_name)}

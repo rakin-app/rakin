@@ -56,6 +56,20 @@ export const es = {
     failed: 'No pudimos cerrar la sesión. Inténtalo de nuevo.',
   },
   admin: {
+    // The wa.me payment reminders on Hoy, the proof review and the ficha (#55).
+    reminders: {
+      // `ordinal` is "1.er", "2.º": the reminder this one would be.
+      next: (ordinal: string) => `${ordinal} aviso`,
+      write: (name: string, ordinal: string) => `Recordar por WhatsApp a ${name} (${ordinal} aviso)`,
+      // A dependent's reminder goes to their guardian.
+      writeFor: (contact: string, name: string, ordinal: string) =>
+        `Recordar por WhatsApp a ${contact}, por ${name} (${ordinal} aviso)`,
+      sent: (ordinal: string, when: string) => `${ordinal} aviso ${when}`,
+      dueToday: (amount: string, plan: string) => `Vence hoy · ${amount} · ${plan}`,
+      rejected: (note: string) => `Comprobante rechazado: ${note}`,
+      // After rejecting a proof: the follow-up by WhatsApp beside the email.
+      followUp: (name: string) => `Avisar por WhatsApp a ${name}`,
+    },
     today: {
       title: 'Hoy',
       heading: (day: string) => `Hoy, ${day}`,
@@ -94,6 +108,11 @@ export const es = {
           failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
         },
         showAll: (n: number) => `Ver los ${n} vencidos`,
+      },
+      // Due today, or a rejected proof to follow up: each a tap from its WhatsApp reminder.
+      remind: {
+        title: 'Por avisar',
+        count: (n: number) => (n === 1 ? '1 pago' : `${n} pagos`),
       },
       inactive: {
         counter: 'Sin venir 14 d',
