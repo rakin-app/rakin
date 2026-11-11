@@ -188,7 +188,7 @@ const adminSessionTimerRoute = createRoute({
   component: ClassTimer,
 })
 
-// "Libro de pagos": the gym's ledger, for who reads it.
+// Pagos: the gym's ledger, for who reads it.
 const adminPaymentsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'pagos',
