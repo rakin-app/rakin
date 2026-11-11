@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
 import type { InactiveMember } from '../api/inactive'
 import type { ProofReview } from '../api/review'
-import type { ClassSession, UnmarkedSessions } from '../api/sessions'
+import type { ClassSession, SessionDay, UnmarkedSessions } from '../api/sessions'
 import type { Overdue, OverduePeriod } from '../api/today'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -109,6 +109,16 @@ const UNMARKED_CLASS: ClassSession = {
   slot_date: null,
 }
 
+// Tuesday the 10th: one class held, with 8 marked, and one at night yet to start.
+const TODAY: SessionDay = {
+  date: '2026-11-10',
+  timezone: 'America/Santiago',
+  sessions: [
+    { ...UNMARKED_CLASS, id: 's-noon', starts_at: '2026-11-10T15:00:00Z', duration_minutes: 60, present: 8 },
+    { ...UNMARKED_CLASS, id: 's-night', class_type_name: 'Avanzado', starts_at: '2026-11-10T22:30:00Z' },
+  ],
+}
+
 const UNMARKED: UnmarkedSessions = { since: '2026-11-04', timezone: 'America/Santiago', sessions: [UNMARKED_CLASS] }
 
 type Call = { method: string; path: string; body: unknown }
@@ -120,6 +130,8 @@ type Stub = {
   payment?: Answer
   inactive?: InactiveMember[]
   unmarked?: Answer
+  // Today's classes, which a coach's Hoy lists.
+  today?: Answer
   // The role request fails: the server is down, say.
   roleFails?: boolean
   // A gym's setup as "Configura tu academia" reads it; none is a gym that is set up.
@@ -161,6 +173,7 @@ function stubApi({
   payment,
   inactive = INACTIVE,
   unmarked,
+  today,
   setup,
   setupFails = false,
   roleFails = false,
@@ -193,6 +206,8 @@ function stubApi({
     if (path === '/api/ledger/overdue') return { body: current }
     if (path === '/api/inactive') return { body: away }
     if (path === '/api/sessions/unmarked') return unmarked ?? { body: UNMARKED }
+    if (path === '/api/sessions') return today ?? { body: TODAY }
+    if (path === '/api/join-requests') return { body: { items: [], total: 0 } }
     const nudged = /^\/api\/inactive\/(.+)\/nudge$/.exec(path)
     if (nudged && method === 'POST') {
       const sentAt = new Date().toISOString()
@@ -236,6 +251,10 @@ describe('Hoy', () => {
     expect(await within(counters).findByRole('link', { name: `2 ${copy.proofs.title}` })).toHaveAttribute(
       'href',
       '#validar',
+    )
+    expect(await within(counters).findByRole('link', { name: `1 ${copy.unmarked.title}` })).toHaveAttribute(
+      'href',
+      '#sin-asistencia',
     )
   })
 
@@ -358,22 +377,39 @@ describe('Hoy', () => {
     renderToday()
 
     expect(await screen.findByRole('heading', { level: 1, name: /^Hoy,/ })).toBeInTheDocument()
-    // The role answers before the lists would be asked for.
-    await screen.findByRole('navigation', { name: es.nav.label })
-    await vi.waitFor(() => expect(calls.some((c) => c.path === '/api/me/role')).toBe(true))
-    expect(screen.queryByRole('region')).not.toBeInTheDocument()
+    await section(copy.classes.title)
+    expect(screen.queryByRole('group', { name: copy.countersLabel })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: copy.overdue.title })).not.toBeInTheDocument()
     const asked = calls.filter(
       (c) => c.path.startsWith('/api/ledger/') || c.path.startsWith('/api/inactive') || c.path === '/api/sessions/unmarked',
     )
     expect(asked).toEqual([])
   })
 
-  it('points a coach at Clases instead of an empty page', async () => {
+  it("shows a coach today's classes, each a tap from taking its attendance", async () => {
     stubApi({ role: 'coach' })
     renderToday()
 
-    expect(await screen.findByText(copy.coach.note)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: copy.coach.link })).toHaveAttribute('href', '/admin/clases')
+    const classes = await section(copy.classes.title)
+    expect(await within(classes).findByText(copy.classes.count(2))).toBeInTheDocument()
+    const noon = within(classes).getByRole('link', {
+      name: copy.classes.takeLabel(copy.unmarked.row('12:00–13:00', 'Fundamentos')),
+    })
+    expect(noon).toHaveAttribute('href', '/admin/clases/s-noon')
+    expect(noon).toHaveTextContent(`Rodrigo Fuentes · ${copy.classes.present(8)}`)
+    expect(noon).toHaveTextContent(copy.classes.take)
+    expect(
+      within(classes).getByRole('link', { name: copy.classes.takeLabel(copy.unmarked.row('19:30', 'Avanzado')) }),
+    ).toHaveTextContent(copy.classes.present(0))
+  })
+
+  it('offers a coach Crear clase on a day with no classes, never a blank page', async () => {
+    stubApi({ role: 'coach', today: { body: { ...TODAY, sessions: [] } } })
+    renderToday()
+
+    const classes = await section(copy.classes.title)
+    expect(await within(classes).findByText(copy.classes.empty)).toBeInTheDocument()
+    expect(within(classes).getByRole('link', { name: copy.classes.create })).toHaveAttribute('href', '/admin/clases')
   })
 
   it('says so when it cannot tell who is signed in, instead of an empty page', async () => {
@@ -395,21 +431,43 @@ describe('Hoy', () => {
     )
   })
 
-  it('lists who to call in the 14 and 30 day buckets, with how they stand on payments', async () => {
+  it('lists who to call, the most recently away first, with how they stand on payments', async () => {
     stubApi()
     renderToday()
 
     const inactive = await section(copy.inactive.title)
-    const fourteen = await within(inactive).findByRole('list', { name: new RegExp(copy.inactive.buckets[14]) })
-    const thirty = within(inactive).getByRole('list', { name: new RegExp(copy.inactive.buckets[30]) })
-    expect(within(fourteen).getAllByRole('listitem')).toHaveLength(2)
-    expect(within(fourteen).getByText('16 días sin venir · al día en pagos')).toBeInTheDocument()
-    expect(within(fourteen).getByText('20 días sin venir · debe $30.000')).toBeInTheDocument()
-    expect(within(thirty).getByText(`${copy.inactive.never(41)} · en prueba`)).toBeInTheDocument()
+    const rows = within(await within(inactive).findByRole('list')).getAllByRole('listitem')
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toHaveTextContent('16 días sin venir · al día en pagos')
+    expect(rows[1]).toHaveTextContent('20 días sin venir · debe $30.000')
+    expect(rows[2]).toHaveTextContent(`${copy.inactive.never(41)} · en prueba`)
     expect(within(inactive).getByRole('link', { name: /^Ignacio Vera/ })).toHaveAttribute(
       'href',
       '/admin/alumnos/Ignacio%20Vera',
     )
+    expect(within(inactive).queryByRole('link', { name: /^Ver los/ })).not.toBeInTheDocument()
+  })
+
+  it('shows five to call, and the rest in Alumnos, filtered to them', async () => {
+    const many = Array.from({ length: 20 }, (_, i) => away(`Alumno ${i + 1}`, 14 + i * 70))
+    stubApi({ inactive: many })
+    const router = renderToday()
+
+    const inactive = await section(copy.inactive.title)
+    expect(await within(inactive).findByText(copy.inactive.count(20))).toBeInTheDocument()
+    const rows = within(within(inactive).getByRole('list')).getAllByRole('listitem')
+    expect(rows.map((row) => within(row).getByText(/^Alumno \d+$/).textContent)).toEqual([
+      'Alumno 1',
+      'Alumno 2',
+      'Alumno 3',
+      'Alumno 4',
+      'Alumno 5',
+    ])
+    const all = within(inactive).getByRole('link', { name: copy.inactive.showAll(20) })
+    expect(all).toHaveAttribute('href', '/admin/alumnos?away=true')
+
+    await userEvent.click(all)
+    await vi.waitFor(() => expect(router.state.location.search).toEqual({ away: true }))
   })
 
   it('opens WhatsApp in one tap, to the guardian for a dependent, and logs it', async () => {
@@ -557,7 +615,7 @@ describe('Configura tu academia', () => {
     const calls = stubApi({ role: 'coach', setup: {} })
     renderToday()
 
-    await screen.findByText(copy.coach.note)
+    await section(copy.classes.title)
     expect(screen.queryByRole('region', { name: copy.setup.title })).not.toBeInTheDocument()
     expect(calls.some((c) => c.path === '/api/staff' || c.path === '/api/gym/settings')).toBe(false)
   })

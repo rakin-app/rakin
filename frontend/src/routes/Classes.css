@@ -42,6 +42,25 @@
   padding: var(--space-1) var(--space-5) var(--space-6);
 }
 
+/* The list page: "Crear clase" and the day, then from 1024px the week beside them. */
+.classes__page {
+  padding-bottom: var(--space-6);
+}
+
+.classes__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+/* A phone stacks the columns at the page's gap, the grid's from 1024px. */
+@media (max-width: 1023px) {
+  .classes__page > .grid {
+    gap: var(--space-5);
+  }
+}
+
 .classes__section {
   display: flex;
   flex-direction: column;
@@ -155,6 +174,13 @@
   font-style: italic;
 }
 
+.classes__count {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
 /* "Sin asistencia": a class no one has been marked at yet. */
 .classes__flag {
   flex: none;
@@ -190,6 +216,7 @@
 
 /* "Asistencia": rows a thumb can hit, a check that fills when present. */
 .attendance__count {
+  margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-md);
   font-weight: var(--font-weight-bold);
@@ -377,5 +404,100 @@
 }
 
 .class-edit__field .control {
+  width: 100%;
+}
+
+/* A day's class on one line from 1024px: time and type, program and coach, then the topic. */
+@media (min-width: 1024px) {
+  .classes__row .classes__row-text {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+
+  .classes__row .classes__name,
+  .classes__row .classes__detail {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .classes__row .classes__topic {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* "Semana": a day under each heading, its classes rows of one card, today's marked. */
+.week {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.week__day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.week__title {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.week__day--today .week__title {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.week__list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  list-style: none;
+}
+
+.week__list > li + li {
+  border-top: 1px solid var(--color-divider);
+}
+
+.week__class[aria-pressed='true'] {
+  background: var(--color-surface-sunken);
+  box-shadow: inset 3px 0 0 var(--color-text);
+}
+
+.week__present {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5) var(--space-3);
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  list-style: none;
+}
+
+/* The roster's search stays at the top of the screen while the names scroll under it. */
+.attendance__search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin-inline: calc(-1 * var(--space-5));
+  padding: var(--space-2) var(--space-5);
+  background: var(--color-bg);
+}
+
+.attendance__search .control {
   width: 100%;
 }

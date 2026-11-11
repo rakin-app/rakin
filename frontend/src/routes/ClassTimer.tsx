@@ -284,7 +284,7 @@ function initialDrafts(plan: SessionBlock[], suggested: SuggestedBlock[], openMa
   return suggested.map((b) => draftOf(b, newId()))
 }
 
-/** "Iniciar clase": the blocks, prefilled, then "Comenzar". */
+/** "Abrir timer": the blocks, prefilled, then "Comenzar". */
 function Prepare({
   session,
   onStart,

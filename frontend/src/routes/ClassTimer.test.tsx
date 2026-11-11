@@ -185,13 +185,13 @@ describe('who runs the timer', () => {
     ['the class coach', 'coach', 'coach'],
     ['an owner', 'owner', 'someone'],
     ['an admin', 'admin', 'someone'],
-  ] as const)('shows "Iniciar clase" on the session to %s', async (_who, role, me) => {
+  ] as const)('shows "Abrir timer" on the session to %s', async (_who, role, me) => {
     stubApi({ role, me })
     renderAt('/admin/clases/s1')
-    expect(await screen.findByRole('link', { name: es.admin.session.timer.open })).toHaveAttribute(
-      'href',
-      '/admin/clases/s1/timer',
-    )
+    const link = await screen.findByRole('link', { name: 'Abrir timer' })
+    expect(link).toHaveAttribute('href', '/admin/clases/s1/timer')
+    // A secondary button: "Guardar asistencia" is the screen's one primary.
+    expect(link).toHaveClass('button--secondary')
   })
 
   it('hides it from another coach, and refuses them the timer', async () => {
@@ -405,7 +405,7 @@ describe('the running class', () => {
       ),
     )
     renderAt('/admin/clases/s1')
-    expect(await screen.findByRole('link', { name: es.admin.session.timer.resume })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Volver al timer' })).toBeInTheDocument()
   })
 
   it('asks before leaving a running class by the back arrow', async () => {

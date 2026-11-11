@@ -8,16 +8,18 @@ import { recordPayment, type Method } from '../api/member'
 import { myRoleQuery, myselfQuery, readsLedger } from '../api/me'
 import { memberCountQuery, plansQuery } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
-import { unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
+import { todaySessionsQuery, unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
 import { overdueQuery, type OverduePeriod } from '../api/today'
 import { Button, buttonClass } from '../components/Button'
+import { EmptyState } from '../components/Card'
 import { Select } from '../components/Field'
 import { WhatsAppIcon } from '../components/icons'
 import { JoinRequests } from '../components/JoinRequests'
+import { Grid, PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
-import { dayTime, monthName, shortDay, toDate, weekdayDay } from '../format'
+import { dayTime, monthName, shortDay, timeRange, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
 import './Today.css'
 
@@ -28,137 +30,211 @@ const clp = t.common.clp
 const OVERDUE_SHOWN = 3
 
 /**
- * "Hoy": the owner's day at a glance. How many periods are overdue and how many proofs
- * wait for review, then both lists, each a tap from acting on it: "Revisar" opens the
+ * "Hoy": the owner's day at a glance. How many periods are overdue, how many proofs
+ * wait for review, how many classes went without attendance and how many members
+ * stopped coming, then each list, each a tap from acting on it: "Revisar" opens the
  * proof queue, "Pagó" records the payment in place.
  *
- * "Sin venir 14 d" and "A quién llamar" are the members who stopped coming (#50), in
- * two buckets, 14 and 30 days, each a tap from a WhatsApp nudge.
+ * "Sin venir 14 d" and "A quién llamar" are the members who stopped coming (#50): the
+ * five most recently away, each a tap from a WhatsApp nudge, and the rest in Alumnos.
  *
- * Under them, "Sin asistencia": the week's classes no one was marked at, each a tap
- * from taking its attendance, so a class taught without a list does not go unseen.
+ * "Sin asistencia": the week's classes no one was marked at, each a tap from taking
+ * its attendance, so a class taught without a list does not go unseen.
  *
- * Money, so for whoever reads the ledger only; a coach sees none of it, since the
- * inactive list says who owes. The WhatsApp reminder on each overdue row joins with the
- * wa.me links (#55). Above it all, for every staff role, the join link's requests
- * waiting for approval (#154).
+ * Money, so for whoever reads the ledger only. A coach's Hoy is today's classes, each a
+ * tap from its attendance, and the join link's requests a coach can act on (#178). The
+ * WhatsApp reminder on each overdue row joins with the wa.me links (#55). The join
+ * link's requests come first for an owner or admin (#154).
+ *
+ * A phone stacks it all; from 1024px the counters run across the top and the lists sit
+ * in a grid of two.
  *
  * A gym on its first day has none of that: "Configura tu academia" leads the owner
- * through setting it up, until it has members and classes (#166). A coach, who sees
- * no money, is pointed at Clases instead of a blank page.
+ * through setting it up, until it has members and classes (#166).
  */
 export function Today() {
   const role = useQuery(myRoleQuery())
   const money = readsLedger(role.data)
-  const proofs = useQuery({ ...proofQueueQuery(), enabled: money })
-  const overdue = useQuery({ ...overdueQuery(), enabled: money })
-  const inactive = useQuery({ ...inactiveQuery(), enabled: money })
-  const unmarked = useQuery({ ...unmarkedSessionsQuery(), enabled: money })
 
   return (
     <div className="today">
-      <PageHeader title={copy.heading(weekdayDay(new Date()))} />
-      <JoinRequests />
-      {role.isError && (
-        <div className="today__lead">
-          <Failed message={copy.roleError} retry={() => void role.refetch()} />
-        </div>
-      )}
-      {role.data === 'coach' && (
-        <p className="today__note today__lead">
-          {copy.coach.note}{' '}
-          <Link to="/admin/clases" className="today__link">
-            {copy.coach.link}
-          </Link>
-        </p>
-      )}
-      {money && (
-        <>
-          <Setup />
-          <div className="today__counters" aria-label={copy.countersLabel} role="group">
-            <Counter href="#vencidos" value={overdue.data?.periods.length} label={copy.overdue.title} tone="warning" />
-            <Counter href="#validar" value={proofs.data?.length} label={copy.proofs.title} tone="accent" />
-            <Counter href="#inactivos" value={inactive.data?.length} label={copy.inactive.counter} tone="muted" />
-          </div>
-          <div className="today__body">
-            <section id="validar" className="today__section" aria-labelledby="validar-title">
-              <SectionHead
-                id="validar-title"
-                title={copy.proofs.title}
-                aside={proofs.data && proofs.data.length > 0 ? copy.proofs.count(proofs.data.length) : null}
-              />
-              {proofs.isPending ? (
-                <p className="today__note">{copy.loading}</p>
-              ) : proofs.isError ? (
-                <Failed message={copy.proofs.error} retry={() => void proofs.refetch()} />
-              ) : proofs.data.length === 0 ? (
-                <p className="today__note">{copy.proofs.empty}</p>
-              ) : (
-                <ul className="today__list">
-                  {proofs.data.map((proof) => (
-                    <ProofRow key={proof.id} proof={proof} />
-                  ))}
-                </ul>
-              )}
-            </section>
-            <section id="vencidos" className="today__section" aria-labelledby="vencidos-title">
-              <SectionHead
-                id="vencidos-title"
-                title={copy.overdue.title}
-                aside={
-                  overdue.data && overdue.data.total_clp > 0 ? copy.overdue.total(clp(overdue.data.total_clp)) : null
-                }
-              />
-              {overdue.isPending ? (
-                <p className="today__note">{copy.loading}</p>
-              ) : overdue.isError ? (
-                <Failed message={copy.overdue.error} retry={() => void overdue.refetch()} />
-              ) : overdue.data.periods.length === 0 ? (
-                <p className="today__note">{copy.overdue.empty}</p>
-              ) : (
-                <OverdueList periods={overdue.data.periods} />
-              )}
-            </section>
-            <section id="inactivos" className="today__section" aria-labelledby="inactivos-title">
-              <SectionHead id="inactivos-title" title={copy.inactive.title} aside={null} />
-              {inactive.isPending ? (
-                <p className="today__note">{copy.loading}</p>
-              ) : inactive.isError ? (
-                <Failed message={copy.inactive.error} retry={() => void inactive.refetch()} />
-              ) : inactive.data.length === 0 ? (
-                <p className="today__note">{copy.inactive.empty}</p>
-              ) : (
-                <InactiveList members={inactive.data} />
-              )}
-            </section>
-            <section id="sin-asistencia" className="today__section" aria-labelledby="sin-asistencia-title">
-              <SectionHead
-                id="sin-asistencia-title"
-                title={copy.unmarked.title}
-                aside={
-                  unmarked.data && unmarked.data.sessions.length > 0
-                    ? copy.unmarked.count(unmarked.data.sessions.length)
-                    : null
-                }
-              />
-              {unmarked.isPending ? (
-                <p className="today__note">{copy.loading}</p>
-              ) : unmarked.isError ? (
-                <Failed message={copy.unmarked.error} retry={() => void unmarked.refetch()} />
-              ) : unmarked.data.sessions.length === 0 ? (
-                <p className="today__note">{copy.unmarked.empty}</p>
-              ) : (
-                <ul className="today__list">
-                  {unmarked.data.sessions.map((session) => (
-                    <UnmarkedRow key={session.id} session={session} timeZone={unmarked.data.timezone} />
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
-        </>
-      )}
+      <PageContainer className="today__page">
+        <PageHeader title={copy.heading(weekdayDay(new Date()))} />
+        {role.isError && <Failed message={copy.roleError} retry={() => void role.refetch()} />}
+        {role.data === 'coach' && <CoachToday />}
+        {money && <OwnerToday />}
+      </PageContainer>
     </div>
+  )
+}
+
+/** A coach's Hoy: today's classes, each a tap from its attendance, then the join requests. */
+function CoachToday() {
+  const words = copy.classes
+  const day = useQuery(todaySessionsQuery())
+  return (
+    <>
+      <section className="today__section" aria-labelledby="clases-hoy-title">
+        <SectionHead
+          id="clases-hoy-title"
+          title={words.title}
+          aside={day.data && day.data.sessions.length > 0 ? words.count(day.data.sessions.length) : null}
+        />
+        {day.isPending ? (
+          <p className="today__note">{copy.loading}</p>
+        ) : day.isError ? (
+          <Failed message={words.error} retry={() => void day.refetch()} />
+        ) : day.data.sessions.length === 0 ? (
+          <EmptyState
+            action={
+              <Link to="/admin/clases" className={buttonClass({ variant: 'primary' })}>
+                {words.create}
+              </Link>
+            }
+          >
+            {words.empty}
+          </EmptyState>
+        ) : (
+          <ul className="today__list">
+            {day.data.sessions.map((session) => (
+              <ClassRow key={session.id} session={session} timeZone={day.data.timezone} />
+            ))}
+          </ul>
+        )}
+      </section>
+      <JoinRequests />
+    </>
+  )
+}
+
+function ClassRow({ session, timeZone }: { session: ClassSession; timeZone: string }) {
+  const words = copy.classes
+  const name = copy.unmarked.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)
+  const detail = [
+    session.coach_name,
+    session.cancelled_at !== null ? words.cancelled : words.present(session.present),
+  ].join(' · ')
+  return (
+    <li>
+      <Link
+        to="/admin/clases/$sessionId"
+        params={{ sessionId: session.id }}
+        className="today__row today__row--link"
+        aria-label={words.takeLabel(name)}
+      >
+        <span className="today__row-text">
+          <span className="today__name">{name}</span>
+          <span className="today__detail">{detail}</span>
+        </span>
+        <span className={buttonClass()} aria-hidden="true">
+          {words.take}
+        </span>
+      </Link>
+    </li>
+  )
+}
+
+/** The owner's and an admin's Hoy: the money, who stopped coming, the unmarked classes. */
+function OwnerToday() {
+  const proofs = useQuery(proofQueueQuery())
+  const overdue = useQuery(overdueQuery())
+  const inactive = useQuery(inactiveQuery())
+  const unmarked = useQuery(unmarkedSessionsQuery())
+
+  return (
+    <>
+      <Setup />
+      <div className="today__counters" aria-label={copy.countersLabel} role="group">
+        <Counter href="#vencidos" value={overdue.data?.periods.length} label={copy.overdue.title} tone="warning" />
+        <Counter href="#validar" value={proofs.data?.length} label={copy.proofs.title} tone="accent" />
+        <Counter
+          href="#sin-asistencia"
+          value={unmarked.data?.sessions.length}
+          label={copy.unmarked.title}
+          tone="muted"
+        />
+        <Counter href="#inactivos" value={inactive.data?.length} label={copy.inactive.counter} tone="muted" />
+      </div>
+      <Grid className="today__grid">
+        <JoinRequests />
+        <section id="validar" className="today__section" aria-labelledby="validar-title">
+          <SectionHead
+            id="validar-title"
+            title={copy.proofs.title}
+            aside={proofs.data && proofs.data.length > 0 ? copy.proofs.count(proofs.data.length) : null}
+          />
+          {proofs.isPending ? (
+            <p className="today__note">{copy.loading}</p>
+          ) : proofs.isError ? (
+            <Failed message={copy.proofs.error} retry={() => void proofs.refetch()} />
+          ) : proofs.data.length === 0 ? (
+            <p className="today__note">{copy.proofs.empty}</p>
+          ) : (
+            <ul className="today__list">
+              {proofs.data.map((proof) => (
+                <ProofRow key={proof.id} proof={proof} />
+              ))}
+            </ul>
+          )}
+        </section>
+        <section id="vencidos" className="today__section" aria-labelledby="vencidos-title">
+          <SectionHead
+            id="vencidos-title"
+            title={copy.overdue.title}
+            aside={overdue.data && overdue.data.total_clp > 0 ? copy.overdue.total(clp(overdue.data.total_clp)) : null}
+          />
+          {overdue.isPending ? (
+            <p className="today__note">{copy.loading}</p>
+          ) : overdue.isError ? (
+            <Failed message={copy.overdue.error} retry={() => void overdue.refetch()} />
+          ) : overdue.data.periods.length === 0 ? (
+            <p className="today__note">{copy.overdue.empty}</p>
+          ) : (
+            <OverdueList periods={overdue.data.periods} />
+          )}
+        </section>
+        <section id="inactivos" className="today__section" aria-labelledby="inactivos-title">
+          <SectionHead
+            id="inactivos-title"
+            title={copy.inactive.title}
+            aside={inactive.data && inactive.data.length > 0 ? copy.inactive.count(inactive.data.length) : null}
+          />
+          {inactive.isPending ? (
+            <p className="today__note">{copy.loading}</p>
+          ) : inactive.isError ? (
+            <Failed message={copy.inactive.error} retry={() => void inactive.refetch()} />
+          ) : inactive.data.length === 0 ? (
+            <p className="today__note">{copy.inactive.empty}</p>
+          ) : (
+            <InactiveList members={inactive.data} />
+          )}
+        </section>
+        <section id="sin-asistencia" className="today__section" aria-labelledby="sin-asistencia-title">
+          <SectionHead
+            id="sin-asistencia-title"
+            title={copy.unmarked.title}
+            aside={
+              unmarked.data && unmarked.data.sessions.length > 0
+                ? copy.unmarked.count(unmarked.data.sessions.length)
+                : null
+            }
+          />
+          {unmarked.isPending ? (
+            <p className="today__note">{copy.loading}</p>
+          ) : unmarked.isError ? (
+            <Failed message={copy.unmarked.error} retry={() => void unmarked.refetch()} />
+          ) : unmarked.data.sessions.length === 0 ? (
+            <p className="today__note">{copy.unmarked.empty}</p>
+          ) : (
+            <ul className="today__list">
+              {unmarked.data.sessions.map((session) => (
+                <UnmarkedRow key={session.id} session={session} timeZone={unmarked.data.timezone} />
+              ))}
+            </ul>
+          )}
+        </section>
+      </Grid>
+    </>
   )
 }
 
@@ -221,11 +297,7 @@ function SetupChecklist({ doneKey }: { doneKey: string }) {
   // A failed answer says so, with a retry, rather than leaving a new gym with no checklist.
   const failed = [members, classTypes, gym, plans, staff].filter((q) => q.isError)
   if (failed.length > 0) {
-    return (
-      <div className="today__lead">
-        <Failed message={copy.setup.error} retry={() => failed.forEach((q) => void q.refetch())} />
-      </div>
-    )
+    return <Failed message={copy.setup.error} retry={() => failed.forEach((q) => void q.refetch())} />
   }
   // Nothing until every answer is in: drawing it on a partial answer would show a set-up
   // gym unticked steps for a moment.
@@ -377,7 +449,7 @@ function ProofRow({ proof }: { proof: ProofReview }) {
           <span className="today__name">{name}</span>
           <span className="today__detail">{detail}</span>
         </span>
-        <span className="today__action" aria-hidden="true">
+        <span className={buttonClass()} aria-hidden="true">
           {copy.proofs.review}
         </span>
       </Link>
@@ -399,7 +471,7 @@ function UnmarkedRow({ session, timeZone }: { session: ClassSession; timeZone: s
           <span className="today__name">{name}</span>
           <span className="today__detail">{copy.unmarked.detail(session.program_name, session.coach_name)}</span>
         </span>
-        <span className="today__action" aria-hidden="true">
+        <span className={buttonClass()} aria-hidden="true">
           {copy.unmarked.take}
         </span>
       </Link>
@@ -540,27 +612,25 @@ function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCance
   )
 }
 
-const BUCKETS = [14, 30] as const
+// "A quién llamar" shows this many, the most recently away, until "Ver los N" in Alumnos.
+const INACTIVE_SHOWN = 5
 
-/** "A quién llamar": each bucket under its heading, nearest the line first. */
+/** "A quién llamar": the most recently away first, as the API lists them, the rest in Alumnos. */
 function InactiveList({ members }: { members: InactiveMember[] }) {
-  return BUCKETS.map((bucket) => {
-    const inBucket = members.filter((m) => m.bucket === bucket)
-    if (inBucket.length === 0) return null
-    const headingId = `inactivos-${bucket}`
-    return (
-      <div key={bucket} className="today__group">
-        <h3 id={headingId} className="today__group-title">
-          {copy.inactive.buckets[bucket]} <span className="today__aside">{inBucket.length}</span>
-        </h3>
-        <ul className="today__list" aria-labelledby={headingId}>
-          {inBucket.map((member) => (
-            <InactiveRow key={member.person_id} member={member} />
-          ))}
-        </ul>
-      </div>
-    )
-  })
+  return (
+    <>
+      <ul className="today__list">
+        {members.slice(0, INACTIVE_SHOWN).map((member) => (
+          <InactiveRow key={member.person_id} member={member} />
+        ))}
+      </ul>
+      {members.length > INACTIVE_SHOWN && (
+        <Link to="/admin/alumnos" search={{ away: true }} className={buttonClass({ variant: 'ghost' })}>
+          {copy.inactive.showAll(members.length)}
+        </Link>
+      )}
+    </>
+  )
 }
 
 function InactiveRow({ member }: { member: InactiveMember }) {
