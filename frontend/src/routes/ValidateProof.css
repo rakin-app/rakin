@@ -23,17 +23,18 @@
 
 .review__eyebrow {
   color: var(--color-text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
 }
 
 .review__title {
   margin: 0;
+  color: var(--color-heading);
   font-family: var(--font-display);
-  font-size: var(--text-xl);
+  font-size: var(--text-3xl);
   font-weight: var(--font-weight-display);
+  letter-spacing: var(--tracking-title);
+  line-height: 1.1;
 }
 
 .review__pager {
@@ -55,25 +56,23 @@
   gap: var(--space-2-5);
 }
 
+/* "Dice haber pagado" beside "Debe": two wells, as on the board (#199). */
 .review__figure {
   display: flex;
   flex-direction: column;
   gap: var(--space-1-5);
-  padding: var(--space-3-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  padding: var(--space-3-5) var(--space-4);
+  background: var(--color-surface-sunken);
   border-radius: var(--radius-lg);
 }
 
 .review__figure-label {
   color: var(--color-text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--text-sm);
 }
 
 .review__figure-amount {
+  color: var(--color-heading);
   font-family: var(--font-display);
   font-size: var(--text-2xl);
   font-weight: var(--font-weight-display);
@@ -119,9 +118,9 @@
   height: 300px;
   padding: 0;
   overflow: hidden;
-  background: var(--color-surface);
+  background: var(--color-surface-sunken);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   cursor: zoom-in;
@@ -164,10 +163,11 @@
   flex-direction: column;
   gap: var(--space-2-5);
   margin: 0;
-  padding: var(--space-3-5);
+  padding: var(--space-4) var(--space-5);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
   font-size: var(--text-md);
 }
 
