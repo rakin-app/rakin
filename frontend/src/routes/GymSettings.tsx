@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import {
@@ -15,6 +15,7 @@ import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { DEFAULT_THEME, THEMES, type Theme } from '../theme'
 import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.gym
 
@@ -110,7 +111,7 @@ function GymForm({ settings }: { settings: Settings }) {
   const [drafts, setDrafts] = useState(initial)
   const [saved, setSaved] = useState(false)
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: updateGymSettings,
     onSuccess: (answer) => {
       queryClient.setQueryData(gymSettingsQuery().queryKey, answer)
@@ -383,7 +384,7 @@ function GymForm({ settings }: { settings: Settings }) {
           {copy.saved}
         </p>
       )}
-      <Button type="submit" variant="primary" disabled={save.isPending}>
+      <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
         {save.isPending ? copy.working : copy.submit}
       </Button>
     </form>

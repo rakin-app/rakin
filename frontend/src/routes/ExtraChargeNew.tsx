@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
@@ -27,6 +27,7 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { PeoplePicker, SubHeader } from './ExtraCharges'
 import './ExtraCharges.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.extra
 const words = copy.wizard
@@ -127,7 +128,7 @@ function Wizard() {
   // The amount and the last look wait for it; an error is shown, not waited on.
   const waiting = (step === 2 || step === LAST) && amountClp > 0 && !fresh && !preview.isError
 
-  const create = useMutation({
+  const create = useSubmit({
     mutationFn: () => createCharge(draft!),
     onSuccess: async (charge) => {
       await queryClient.invalidateQueries({ queryKey: ['extra'] })
@@ -253,7 +254,7 @@ function Wizard() {
         )}
         <div className="extra__form-actions">
           {step > 0 && <Button onClick={() => setStep(step - 1)}>{words.previous}</Button>}
-          <Button type="submit" variant="primary" disabled={create.isPending || waiting}>
+          <Button type="submit" variant="primary" disabled={create.isPending || waiting} busy={create.isPending}>
             {waiting
               ? words.previewLoading
               : step === LAST

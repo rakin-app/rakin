@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { classTypesQuery, createClassType, createProgram, updateClassType, updateProgram } from '../api/classes'
 import { ApiError } from '../api/client'
@@ -11,6 +11,7 @@ import { Input, Select } from '../components/Field'
 import { ChevronRightIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { EditRow, Field, integerOf, LoadFailed, refusal } from './settingsForm'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.programs
 
@@ -40,7 +41,7 @@ function FormActions({ pending, onCancel }: { pending: boolean; onCancel: () => 
       <Button disabled={pending} onClick={onCancel}>
         {copy.cancel}
       </Button>
-      <Button type="submit" variant="primary" disabled={pending}>
+      <Button type="submit" variant="primary" disabled={pending} busy={pending}>
         {pending ? copy.working : copy.submit}
       </Button>
     </div>
@@ -195,7 +196,7 @@ function useToggle<T extends { name: string; active: boolean }>(
   onDone: (message: string) => void,
 ) {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useSubmit({
     mutationFn,
     onSuccess: async (answer) => {
       onDone(answer.active ? messages.on(answer.name) : messages.off(answer.name))
@@ -221,7 +222,7 @@ function ProgramForm({
     programsQuery.queryKey,
     onDone,
   )
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: () => (program ? updateProgram(program.id, { name }) : createProgram(name)),
     onSuccess: async (answer) => {
       onDone(program ? copy.programRenamed(answer.name) : copy.programCreated(answer.name))
@@ -354,7 +355,7 @@ function ClassTypeForm({
     Object.fromEntries(keys.map((key) => [key, key === 'credit_cost' ? integerOf(drafts[key]) : drafts[key]]))
   const changed = CLASS_TYPE_FIELDS.filter((k) => drafts[k] !== initial[k])
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: () =>
       classType
         ? updateClassType(classType.id, fields(changed))

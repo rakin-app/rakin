@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
 import { classTypesQuery } from '../api/classes'
@@ -25,6 +25,7 @@ import { dayTime, monthName, shortDay, timeRange, toDate, weekdayDay } from '../
 import { t } from '../i18n/es'
 import { useGymName, usePageTitle } from '../pageTitle'
 import './Today.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.today
 const clp = t.common.clp
@@ -648,7 +649,7 @@ function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCance
   const queryClient = useQueryClient()
   const methodId = useId()
   const [method, setMethod] = useState<Method>('cash')
-  const record = useMutation({
+  const record = useSubmit({
     mutationFn: () =>
       recordPayment({
         membership_id: period.membership_id,
@@ -690,7 +691,7 @@ function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCance
         <Button disabled={record.isPending} onClick={onCancel}>
           {copy.overdue.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={record.isPending}>
+        <Button type="submit" variant="primary" disabled={record.isPending} busy={record.isPending}>
           {record.isPending ? copy.overdue.working : copy.overdue.submit(clp(period.outstanding_clp))}
         </Button>
       </div>
@@ -722,7 +723,7 @@ function InactiveList({ members }: { members: InactiveMember[] }) {
 function InactiveRow({ member }: { member: InactiveMember }) {
   const queryClient = useQueryClient()
   // The link opens WhatsApp itself; this only records that it was opened.
-  const nudge = useMutation({
+  const nudge = useSubmit({
     mutationFn: () => logNudge(member.person_id),
     onSettled: () => queryClient.invalidateQueries({ queryKey: inactiveQuery().queryKey }),
   })

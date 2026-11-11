@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useId, useMemo, useState, type ChangeEvent } from 'react'
 import {
@@ -22,6 +22,7 @@ import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './MemberImport.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.import
 
@@ -54,7 +55,7 @@ export function MemberImport() {
 function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void }) {
   const inputId = useId()
   const [tooLarge, setTooLarge] = useState(false)
-  const read = useMutation({
+  const read = useSubmit({
     mutationFn: (file: File) => uploadSheet(file),
     onSuccess: (sheet, file) => onRead(file.name, sheet),
   })
@@ -145,8 +146,8 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
     }
     return runImport({ rows: sheet.rows, mapping, plans: choices, dry_run: dryRun })
   }
-  const check = useMutation({ mutationFn: () => request(true), onSuccess: setReport })
-  const apply = useMutation({
+  const check = useSubmit({ mutationFn: () => request(true), onSuccess: setReport })
+  const apply = useSubmit({
     mutationFn: () => request(false),
     onSuccess: (done) => {
       setReport(done)
@@ -364,6 +365,7 @@ function Review({
           <Button
             variant="primary"
             disabled={imported === 0 || applying}
+            busy={applying}
             onClick={onApply}
           >
             {applying ? copy.applying : copy.apply(imported)}

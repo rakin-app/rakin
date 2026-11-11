@@ -113,3 +113,8 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* Its request is on its way (`busy`): disabled, and says so to the pointer. */
+.button[aria-busy='true'] {
+  cursor: progress;
+}

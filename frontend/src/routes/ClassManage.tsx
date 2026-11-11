@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
@@ -18,6 +18,7 @@ import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { clockTime, isoDay, zonedInstant } from '../format'
 import { t } from '../i18n/es'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.session
 
@@ -105,7 +106,7 @@ function EditForm({
   const [scope, setScope] = useState<'one' | 'series'>('one')
   const series = scope === 'series' && session.slot_id !== null && session.slot_date !== null
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: async (change: { one: SessionChanges } | { series: SlotChanges }) => {
       if ('one' in change) return updateSession(session.id, change.one)
       await updateSlot(session.slot_id!, { ...change.series, from_date: session.slot_date! })
@@ -267,7 +268,7 @@ function EditForm({
       <Button
         type="submit"
         variant="primary"
-        disabled={save.isPending || !day || !time || badDuration || (series && minutes === null)}
+        disabled={save.isPending || !day || !time || badDuration || (series && minutes === null)} busy={save.isPending}
       >
         {save.isPending ? words.working : words.submit}
       </Button>
@@ -291,7 +292,7 @@ export function ClassActions({ session }: { session: ClassSession }) {
   const plan = useQuery(sessionPlanQuery(session.id))
   const [asking, setAsking] = useState<Asking>(null)
 
-  const status = useMutation({
+  const status = useSubmit({
     mutationFn: (to: 'cancel' | 'reactivate') =>
       to === 'cancel' ? cancelSession(session.id) : reactivateSession(session.id),
     onSuccess: (updated) => {
@@ -299,7 +300,7 @@ export function ClassActions({ session }: { session: ClassSession }) {
       setAsking(null)
     },
   })
-  const remove = useMutation({
+  const remove = useSubmit({
     mutationFn: () => deleteSession(session.id),
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ['sessions', 'detail', session.id] })

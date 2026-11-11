@@ -49,6 +49,7 @@ from app.auth import (
 )
 from app.db import create_engine, create_sessionmaker
 from app.hosts import GymLookup, HostMiddleware, Hosts
+from app.idempotency import IdempotencyMiddleware
 from app.integrations import build_integrations
 from app.logging import configure_logging
 from app.magiclink import SessionMiddleware, build_router, session_cookie_name
@@ -82,7 +83,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.magic_links = links
     app.state.join_limits = join.build_join_limits()
     app.state.hosts = Hosts.of(settings)
-    # Added first, so it runs inside RequestIdMiddleware and its queries log the id;
+    # Inside SessionMiddleware, so a key is scoped to the tenant it sets.
+    app.add_middleware(IdempotencyMiddleware, sessionmaker=lambda: app.state.sessionmaker)
+    # Added before the next two, so it runs inside RequestIdMiddleware and its queries log the id;
     # and inside HostMiddleware, so a session is bound knowing the host's gym.
     app.add_middleware(
         SessionMiddleware,

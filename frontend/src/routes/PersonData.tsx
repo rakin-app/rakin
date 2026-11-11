@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
@@ -16,6 +16,7 @@ import { Input } from '../components/Field'
 import { formatPhone, formatRut } from '../format'
 import { t } from '../i18n/es'
 import { FieldInput, valueOf } from './CustomFieldsPanel'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.member
 const words = copy.fields
@@ -163,11 +164,11 @@ function DataForm({
   const [checked, setChecked] = useState(false)
   const nameOk = draft.name.trim() !== ''
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: (body: PersonEdit) => updatePerson(person.id, body),
     onSuccess: refresh,
   })
-  const saveFields = useMutation({
+  const saveFields = useSubmit({
     mutationFn: (values: Record<string, FieldValue>) => updatePersonFields(person.id, values),
     onSuccess: (answer) => queryClient.setQueryData(personFieldsQuery(person.id).queryKey, answer),
   })
@@ -309,7 +310,7 @@ function DataForm({
         <Button disabled={busy} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={busy}>
+        <Button type="submit" variant="primary" disabled={busy} busy={busy}>
           {busy ? form.working : form.save}
         </Button>
       </div>

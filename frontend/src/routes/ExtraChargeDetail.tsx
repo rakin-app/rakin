@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
@@ -27,6 +27,7 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { Progress, SubHeader } from './ExtraCharges'
 import './ExtraCharges.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.extra
 const words = copy.detail
@@ -72,7 +73,7 @@ export function ExtraChargeDetail() {
 
 function Detail({ charge }: { charge: ExtraCharge }) {
   const [done, setDone] = useState<string | null>(null)
-  const remind = useMutation({
+  const remind = useSubmit({
     mutationFn: () => remindPending(charge.id),
     onSuccess: (r) => setDone(words.reminded(r.sent, r.without_email)),
   })
@@ -133,7 +134,7 @@ function lineStatus(line: Line, dueDate: string): { status: Status; label: strin
 function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; onDone: (message: string) => void }) {
   const [panel, setPanel] = useState<Panel>(null)
   const queryClient = useQueryClient()
-  const notify = useMutation({
+  const notify = useSubmit({
     mutationFn: () => notifyLine(charge.id, line.id),
     onSuccess: (r) => onDone(r.sent ? words.notified : words.noEmail),
   })
@@ -239,7 +240,7 @@ function Actions({ busy, error, onClose }: { busy: boolean; error: unknown; onCl
         </p>
       ) : null}
       <div className="extra__form-actions">
-        <Button type="submit" variant="primary" disabled={busy}>
+        <Button type="submit" variant="primary" disabled={busy} busy={busy}>
           {busy ? words.saving : words.save}
         </Button>
         <Button onClick={onClose}>{words.close}</Button>
@@ -251,7 +252,7 @@ function Actions({ busy, error, onClose }: { busy: boolean; error: unknown; onCl
 function PayForm({ charge, line, onDone, onClose }: FormProps) {
   const [amount, setAmount] = useState(String(line.outstanding_clp))
   const [method, setMethod] = useState<Method>('transfer')
-  const pay = useMutation({ mutationFn: () => payLine(charge.id, line.id, Number(amount), method), onSuccess: () => onDone() })
+  const pay = useSubmit({ mutationFn: () => payLine(charge.id, line.id, Number(amount), method), onSuccess: () => onDone() })
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (Number(amount) > 0) pay.mutate()
@@ -269,7 +270,7 @@ function PayForm({ charge, line, onDone, onClose }: FormProps) {
 
 function AmountForm({ charge, line, onDone, onClose }: FormProps) {
   const [amount, setAmount] = useState(String(line.amount_due_clp))
-  const change = useMutation({
+  const change = useSubmit({
     mutationFn: () => changeLineAmount(charge.id, line.id, Number(amount)),
     onSuccess: () => onDone(),
   })
@@ -294,7 +295,7 @@ function RefundForm({ line, onDone, onClose }: Omit<FormProps, 'charge'>) {
   const payment = line.refundable_payments.find((p) => p.id === paymentId) ?? line.refundable_payments[0]!
   const [amount, setAmount] = useState(String(payment.refundable_clp))
   const [method, setMethod] = useState<Method>('transfer')
-  const refund = useMutation({
+  const refund = useSubmit({
     mutationFn: () => refundPayment(payment.id, Number(amount), method),
     onSuccess: () => onDone(),
   })
@@ -340,7 +341,7 @@ function CancelForm({ charge, line, onDone, onClose }: FormProps) {
     queryFn: () => cancelPreview(charge.id, line.id),
   })
   const [resplit, setResplit] = useState(false)
-  const cancel = useMutation({ mutationFn: () => cancelLine(charge.id, line.id, resplit), onSuccess: () => onDone() })
+  const cancel = useSubmit({ mutationFn: () => cancelLine(charge.id, line.id, resplit), onSuccess: () => onDone() })
   const names = new Map(charge.people.map((l) => [l.id, l.person.name]))
   return (
     <form
@@ -377,7 +378,7 @@ function CancelForm({ charge, line, onDone, onClose }: FormProps) {
         </p>
       ) : null}
       <div className="extra__form-actions">
-        <Button type="submit" variant="danger" disabled={cancel.isPending || preview.isPending}>
+        <Button type="submit" variant="danger" disabled={preview.isPending} busy={cancel.isPending}>
           {cancel.isPending ? words.saving : words.cancelConfirm}
         </Button>
         <Button onClick={onClose}>{words.close}</Button>
