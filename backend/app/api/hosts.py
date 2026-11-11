@@ -2,7 +2,8 @@
 whether a host may have a certificate.
 
 Both answer before anyone signs in. `GET /api/host` says only what the address bar
-already does, the gym's name for its slug, and the theme its pages wear (#199).
+already does, the gym's name for its slug, and the theme its pages wear (#199) and
+its logo (#223).
 `GET /internal/tls-allowed?domain=` is Caddy's on-demand TLS `ask` (deploy/Caddyfile):
 200 for a gym's host, 404 for any other, so a certificate is only ever requested for a
 gym that exists. Caddy reaches it on the api's own port; the public site proxies only
@@ -23,7 +24,9 @@ router = APIRouter(tags=["hosts"])
 async def this_host(request: Request) -> HostInfo:
     gym = host_gym(request.state)
     return HostInfo(
-        gym=None if gym is None else HostGymInfo(slug=gym.slug, name=gym.name, theme=gym.theme)
+        gym=None
+        if gym is None
+        else HostGymInfo(slug=gym.slug, name=gym.name, theme=gym.theme, logo=gym.logo)
     )
 
 

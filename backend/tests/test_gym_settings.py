@@ -149,6 +149,7 @@ def test_a_new_gym_reads_the_defaults(client: TestClient, db: Database) -> None:
         "web_address": "dojo-nuevo.rakin.app",
         "timezone": "America/Santiago",
         "theme": "bosque",
+        "logo": None,
         "grace_days": 5,
         "reminder_every_days": 3,
         "channels": {"whatsapp": True},
@@ -175,6 +176,7 @@ def test_a_change_is_read_back_and_stored(client: TestClient, db: Database) -> N
         **body,
         "slug": "academia-sur",
         "web_address": "academia-sur.rakin.app",
+        "logo": None,
         "bank_account": BANK_STORED,
         "privacy": None,
     }

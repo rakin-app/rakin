@@ -89,6 +89,9 @@ TEXTS = Texts(
 # Where "Pedir otro link" goes: the SPA's sign-in screen.
 SIGN_IN = "/ingresar"
 
+# The logo's file the sign-in link's pages show, at 56 px.
+LOGO_VARIANT = "128.webp"
+
 # The design tokens the pages use, as `frontend/src/styles/tokens.css` has them (a test
 # holds them to it): the pages are plain HTML from here, with no SPA bundle to load.
 # The colours come in the gym's theme (#199); the first theme is the default.
@@ -192,6 +195,9 @@ STYLESHEET = (
     "-webkit-font-smoothing:antialiased}"
     "main{max-width:var(--content-max-width);margin:0 auto;"
     "padding:var(--space-14) var(--space-5) calc(var(--space-8) + env(safe-area-inset-bottom))}"
+    # The gym's logo (#223), round like the app's mark; `cover` fills the circle.
+    ".mark{display:block;width:56px;height:56px;margin-bottom:var(--space-3);"
+    "border-radius:50%;object-fit:cover}"
     ".eyebrow{margin:0 0 var(--space-0-5);color:var(--color-text-muted);font-size:var(--text-xs);"
     "font-weight:600;letter-spacing:var(--tracking-eyebrow);text-transform:uppercase}"
     ".eyebrow--logo{margin-bottom:var(--space-3);color:var(--color-heading);font-size:20px;"
@@ -388,7 +394,8 @@ def site_of(hosts: Hosts) -> Callable[[Request], Site]:
         gym = host_gym(request.state)
         if gym is None:
             return Site(hosts.base_url(None))
-        return Site(hosts.base_url(gym.slug), str(gym.id), gym.name, gym.theme)
+        logo = None if gym.logo is None else f"{gym.logo}/{LOGO_VARIANT}"
+        return Site(hosts.base_url(gym.slug), str(gym.id), gym.name, gym.theme, logo)
 
     return site
 

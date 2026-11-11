@@ -102,6 +102,12 @@ class BlobStore(Protocol):
         """The stored file's size and content type, or None if there is none."""
         ...
 
+    async def get(self, key: str) -> bytes | None:
+        """The stored file's bytes, read from the server side, or None if there is none.
+
+        For small files the API serves itself, such as a gym's logo (`app.logos`)."""
+        ...
+
     async def delete(self, key: str) -> None:
         """Remove the file; a key with no file is not an error."""
         ...
@@ -184,6 +190,20 @@ class S3BlobStore:
             raise
         return StoredBlob(size=head["ContentLength"], content_type=head["ContentType"])
 
+    async def get(self, key: str) -> bytes | None:
+        validate_key(key)
+        try:
+            found = await asyncio.to_thread(self._client.get_object, Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return None
+            raise
+        body = found["Body"]
+        try:
+            return await asyncio.to_thread(body.read)
+        finally:
+            body.close()
+
     async def delete(self, key: str) -> None:
         validate_key(key)
         await asyncio.to_thread(self._client.delete_object, Bucket=self.bucket, Key=key)
@@ -243,6 +263,16 @@ class LocalBlobStore:
         path, content_type = found
         size = (await asyncio.to_thread(path.stat)).st_size
         return StoredBlob(size=size, content_type=content_type)
+
+    async def get(self, key: str) -> bytes | None:
+        validate_key(key)
+        found = await asyncio.to_thread(self.stored, key)
+        if found is None:
+            return None
+        try:
+            return await asyncio.to_thread(found[0].read_bytes)
+        except FileNotFoundError:  # deleted in between
+            return None
 
     async def delete(self, key: str) -> None:
         validate_key(key)

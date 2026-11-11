@@ -55,6 +55,8 @@ export function whatsappShareUrl(text: string): string {
 /** What the public form shows (backend `JoinForm`). */
 export type JoinForm = {
   gym: string
+  // Where the gym's logo is (`logo.ts`); `null` with none (#223).
+  gym_logo: string | null
   program: string | null
   // The gym's today, which says who is a minor.
   today: string

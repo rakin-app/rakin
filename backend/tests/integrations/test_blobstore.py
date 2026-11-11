@@ -248,6 +248,16 @@ def test_a_put_from_the_server_can_be_downloaded(harness: Harness, key: str) -> 
     assert harness.http.get(harness.store.presign_download(key)).content == PNG
 
 
+def test_get_reads_back_what_was_stored_and_none_for_a_missing_key(
+    harness: Harness, key: str
+) -> None:
+    assert asyncio.run(harness.store.get(key)) is None
+    asyncio.run(harness.store.put(key, "image/png", PNG))
+    assert asyncio.run(harness.store.get(key)) == PNG
+    asyncio.run(harness.store.delete(key))
+    assert asyncio.run(harness.store.get(key)) is None
+
+
 @pytest.mark.parametrize(
     ("content_type", "data"),
     [("text/html", b"<script>"), ("image/png", b""), ("image/png", bytes(MAX_UPLOAD_BYTES + 1))],

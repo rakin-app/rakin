@@ -290,3 +290,5 @@ class MyRole(BaseModel):
     student_page: bool
     # The gym's theme (#199): every signed-in screen wears it, whoever reads it.
     theme: Theme
+    # Where the gym's logo's files are (`app.logos.logo_path`); None with no logo (#223).
+    gym_logo: str | None = None

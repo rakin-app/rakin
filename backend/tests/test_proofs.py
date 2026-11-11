@@ -460,6 +460,7 @@ def test_my_role_names_who_is_signed_in_and_the_gym(
         "student_page": False,
         # The gym's theme, which a coach's screens wear too (#199).
         "theme": "bosque",
+        "gym_logo": None,
     }
 
 

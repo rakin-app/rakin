@@ -14,6 +14,7 @@ import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { DEFAULT_THEME, THEMES, type Theme } from '../theme'
+import { LogoSettings } from './LogoSettings'
 import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
 import { useSubmit } from '../api/submit'
 
@@ -179,6 +180,8 @@ function GymForm({ settings }: { settings: Settings }) {
           )}
         </Field>
       </fieldset>
+
+      <LogoSettings settings={settings} />
 
       <fieldset className="settings__card">
         <legend className="settings__legend">{copy.theme}</legend>

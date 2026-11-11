@@ -65,6 +65,7 @@ def on_host(slug: str) -> dict[str, str]:
 def notice(slug: str) -> dict[str, Any]:
     return {
         "gym": slug,
+        "gym_logo": None,
         "legal_name": "Academia Sur SpA",
         "rut": "76432109-K",
         "email": "privacidad@academiasur.example.com",

@@ -65,7 +65,7 @@ describe('Entrar', () => {
   })
 
   it("wears the gym's theme on its own address, before anyone signs in (#199)", async () => {
-    stubLink(202, {}, { slug: 'meta', name: 'Meta', theme: 'oceano' })
+    stubLink(202, {}, { slug: 'meta', name: 'Meta', theme: 'oceano', logo: null })
     renderAt('/ingresar')
 
     expect(await screen.findByRole('heading', { name: copy.titleAt('Meta') })).toBeInTheDocument()
@@ -81,7 +81,7 @@ describe('Entrar', () => {
     vi.unstubAllGlobals()
     cleanup()
 
-    const sent = stubLink(202, {}, { slug: 'meta', name: 'Meta', theme: 'bosque' })
+    const sent = stubLink(202, {}, { slug: 'meta', name: 'Meta', theme: 'bosque', logo: null })
     renderAt('/ingresar')
     expect(await screen.findByRole('heading', { name: copy.titleAt('Meta') })).toBeInTheDocument()
 

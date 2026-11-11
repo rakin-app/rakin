@@ -22,6 +22,7 @@ from sqlalchemy import text
 from app.api.unsubscribe import in_gym
 from app.hosts import host_gym
 from app.integrations import Integrations, get_integrations
+from app.logos import logo_path
 from app.schemas.gym import StoredPrivacy
 from app.schemas.privacy import PrivacyNotice
 from app.tenancy import Tenant
@@ -65,7 +66,7 @@ async def privacy_notice(
     async with in_gym(request, gym_id) as session:
         row = (
             await session.execute(
-                text("SELECT name, settings FROM gym WHERE id = :id"), {"id": gym_id}
+                text("SELECT name, logo_version, settings FROM gym WHERE id = :id"), {"id": gym_id}
             )
         ).one_or_none()
     privacy = None if row is None else stored_privacy(row.settings)
@@ -73,6 +74,7 @@ async def privacy_notice(
         raise NO_NOTICE
     return PrivacyNotice(
         gym=row.name,
+        gym_logo=logo_path(gym_id, row.logo_version),
         human_check=integrations.human_check.site_key is not None,
         **privacy.model_dump(),
     )

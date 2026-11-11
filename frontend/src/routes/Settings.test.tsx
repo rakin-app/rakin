@@ -22,6 +22,7 @@ const SETTINGS: GymSettings = {
   web_address: 'academia-sur.rakin.app',
   timezone: 'America/Santiago',
   theme: 'bosque',
+  logo: null,
   grace_days: 5,
   reminder_every_days: 3,
   channels: { whatsapp: true },

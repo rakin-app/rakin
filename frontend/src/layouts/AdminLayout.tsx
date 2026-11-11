@@ -50,6 +50,7 @@ export function AdminLayout() {
   const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
   const badge = pending.data ?? 0
   const gym = useGymName()
+  const logo = useQuery(myselfQuery()).data?.gym_logo
   const rise = useRise<HTMLDivElement>()
   // Pagos is money and Ajustes the gym's configuration: each shown only once the role
   // is known to reach it, so a coach never sees either tab, not even while the role loads.
@@ -69,7 +70,7 @@ export function AdminLayout() {
         </span>
         {gym && (
           <span className="admin-top__gym">
-            <GymMark name={gym} />
+            <GymMark name={gym} logo={logo} />
             <span className="admin-top__gym-name">{gym}</span>
           </span>
         )}
@@ -81,7 +82,7 @@ export function AdminLayout() {
           </span>
           {gym && (
             <span className="admin-nav__gym">
-              <GymMark name={gym} />
+              <GymMark name={gym} logo={logo} />
               <span className="admin-nav__gym-name">{gym}</span>
             </span>
           )}
