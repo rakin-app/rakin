@@ -44,8 +44,9 @@ What changed from v2:
   and an "Activos" tile; Hoy keeps its four counters (overdue, to validate, classes
   without attendance, away 14 days) and its lists, in the board's tiles and cards.
 - **Registrar pago stays inline.** The board draws it as a dialog; the app opens it in
-  place, in the ficha's card and in Pagos, now as a sunken well. A dialog would change
-  how it opens and closes, which this redesign leaves alone.
+  place. In the ficha it opens inside the payment card, now as a sunken well; in Pagos
+  it opens in its own card under the header, as before. A dialog would change how it
+  opens and closes, which this redesign leaves alone.
 - **No "Registrar pago" in the shell or "Pagar" on every Alumnos row.** Both are new
   ways in, not a new look; they wait for the owner's say.
 - **No counts on the filters.** The board's chips say "Vencidos 6"; the API does not
