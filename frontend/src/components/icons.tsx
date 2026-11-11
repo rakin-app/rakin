@@ -137,3 +137,12 @@ export function WhatsAppIcon() {
     </Icon>
   )
 }
+
+export function SearchIcon() {
+  return (
+    <Icon width={18} height={18}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" />
+    </Icon>
+  )
+}

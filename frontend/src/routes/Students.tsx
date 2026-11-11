@@ -12,7 +12,7 @@ import {
 } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
 import { Chip, ChipGroup } from '../components/Chip'
-import { Input, Select } from '../components/Field'
+import { SearchInput, Select } from '../components/Field'
 import { JoinRequests } from '../components/JoinRequests'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -160,9 +160,8 @@ export function Students() {
           <label htmlFor={searchId} className="visually-hidden">
             {copy.searchLabel}
           </label>
-          <Input
+          <SearchInput
             id={searchId}
-            type="search"
             className="students__search"
             placeholder={copy.searchPlaceholder}
             autoComplete="off"
@@ -251,11 +250,21 @@ export function Students() {
         ) : rows.length === 0 ? (
           <p className="students__note">{filtered ? copy.noMatches : copy.empty}</p>
         ) : (
-          <ul className="students__list" aria-label={copy.title}>
-            {rows.map((row) => (
-              <MemberItem key={row.id} row={row} />
-            ))}
-          </ul>
+          <div className="students__table">
+            {/* The columns' labels, over a desktop's one-line rows; the list is still a list. */}
+            <div className="students__columns" aria-hidden="true">
+              <span>{copy.columns.name}</span>
+              <span>{copy.columns.phone}</span>
+              <span>{copy.columns.rut}</span>
+              <span>{copy.columns.plan}</span>
+              <span>{copy.columns.status}</span>
+            </div>
+            <ul className="students__list" aria-label={copy.title}>
+              {rows.map((row) => (
+                <MemberItem key={row.id} row={row} />
+              ))}
+            </ul>
+          </div>
         )}
 
         {members.hasNextPage && (

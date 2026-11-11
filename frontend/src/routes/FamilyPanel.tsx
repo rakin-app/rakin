@@ -11,7 +11,7 @@ import {
 } from '../api/family'
 import { membersPath, type MemberPage, type MemberRow } from '../api/people'
 import { Button } from '../components/Button'
-import { Input } from '../components/Field'
+import { Input, SearchInput } from '../components/Field'
 import { t } from '../i18n/es'
 import { useSubmit } from '../api/submit'
 
@@ -230,9 +230,8 @@ export function PeopleSearch({
       <label htmlFor={searchId} className="visually-hidden">
         {label}
       </label>
-      <Input
+      <SearchInput
         id={searchId}
-        type="search"
         className="family__search"
         placeholder={label}
         autoComplete="off"

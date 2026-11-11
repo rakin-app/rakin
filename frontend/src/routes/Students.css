@@ -52,13 +52,23 @@
   font-size: var(--text-sm);
 }
 
+/* The list as v3's table card: the columns' labels (on a desktop) over the rows. */
+.students__table {
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.students__columns {
+  display: none;
+}
+
 .students__list {
   margin: 0;
   padding: 0;
   list-style: none;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
 }
 
 /* Name and status on one top line; the details below each. */
@@ -69,7 +79,7 @@
   justify-content: space-between;
   gap: var(--space-3);
   min-height: var(--control-height-lg);
-  padding: var(--space-2-5) var(--space-4);
+  padding: var(--space-3) var(--space-4);
 }
 
 .students__item + .students__item {
@@ -93,7 +103,7 @@
 
 .students__name {
   color: var(--color-text);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-medium);
   overflow-wrap: anywhere;
   text-decoration: none;
 }
@@ -127,10 +137,10 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-3);
-  padding: var(--space-4);
+  padding: var(--space-5);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
@@ -271,15 +281,24 @@
  * "Familia". What says more about them (family, "Falta teléfono") goes under the name.
  */
 @media (--wide) {
-  .students__row {
+  .students__row,
+  .students__columns {
     display: grid;
     grid-template-columns:
       minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(max-content, 0.8fr)
-      auto;
+      /* "Familia", a ghost button's width */
+      6.5rem;
     align-items: center;
     column-gap: var(--space-4);
     min-height: 0;
     padding-block: var(--space-0-5);
+  }
+
+  .students__columns {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
   }
 
   .students__who,

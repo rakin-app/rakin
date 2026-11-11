@@ -23,7 +23,7 @@ import { managesGym, myselfQuery, runsSession } from '../api/me'
 import { sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
-import { Input, Select, Textarea } from '../components/Field'
+import { Input, SearchInput, Select, Textarea } from '../components/Field'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
 import { clockTime, dayTime, isoDay } from '../format'
 import { t } from '../i18n/es'
@@ -439,9 +439,8 @@ function Attendance({ sessionId }: { sessionId: string }) {
           <label htmlFor={searchId} className="visually-hidden">
             {words.search}
           </label>
-          <Input
+          <SearchInput
             id={searchId}
-            type="search"
             autoComplete="off"
             placeholder={words.searchPlaceholder}
             value={search}

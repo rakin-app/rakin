@@ -7,30 +7,35 @@
 
 .join-requests__title {
   margin: 0;
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  color: var(--color-heading);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-display);
+  letter-spacing: var(--tracking-title);
 }
 
+/* One card, its requests split by rules (v3, #199). */
 .join-requests__list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
   margin: 0;
-  padding: 0;
+  padding: 0 var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
   list-style: none;
+}
+
+.join-requests__list > li + li {
+  border-top: 1px solid var(--color-divider);
 }
 
 .join-requests__row {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-3-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  padding: var(--space-4) 0;
 }
 
 .join-requests__text {

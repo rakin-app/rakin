@@ -1,10 +1,22 @@
 import { useId, type ComponentProps, type ReactNode } from 'react'
 import { cx } from './classNames'
+import { SearchIcon } from './icons'
 import './Field.css'
 
 /** A text input at 16px, so iOS Safari does not zoom in on focus. */
 export function Input({ className, ...rest }: ComponentProps<'input'>) {
   return <input className={cx('control', className)} {...rest} />
+}
+
+/** A search box with the board's magnifier in it (#199). `className` sizes the box; the
+ * rest goes to the input, as `Input` takes it. */
+export function SearchInput({ className, ...rest }: Omit<ComponentProps<'input'>, 'type'>) {
+  return (
+    <span className={cx('search-control', className)}>
+      <SearchIcon />
+      <input type="search" className="control search-control__input" {...rest} />
+    </span>
+  )
 }
 
 export function Select({ className, ...rest }: ComponentProps<'select'>) {

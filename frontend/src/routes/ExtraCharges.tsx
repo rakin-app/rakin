@@ -16,7 +16,7 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import { membersPath, membersQuery, plansQuery, programsQuery, type MemberRow } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
 import { Card, EmptyState, ListRowContent, listRowClass, SectionHeader } from '../components/Card'
-import { Field, Input, Select } from '../components/Field'
+import { Field, Input, SearchInput, Select } from '../components/Field'
 import { ChevronLeftIcon } from '../components/icons'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -419,9 +419,8 @@ export function PeoplePicker({
       <label htmlFor={inputId} className="extra__legend">
         {label}
       </label>
-      <Input
+      <SearchInput
         id={inputId}
-        type="search"
         autoComplete="off"
         placeholder={copy.groups.searchPlaceholder}
         value={draft}
