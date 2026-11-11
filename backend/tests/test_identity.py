@@ -531,7 +531,7 @@ def test_the_downgrade_refuses_what_it_would_lose(change: str) -> None:
             )
 
         run(db.admin_url, seed)
-        migrate(db)
+        migrate(db, "0036")
         run(db.admin_url, lambda c: c.execute(change, sur))
 
         with pytest.raises(Exception, match="downgrade from 0036 refused"):

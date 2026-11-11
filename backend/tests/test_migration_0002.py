@@ -43,6 +43,7 @@ IMMUTABLE: dict[str, object] = {
     "bank_tx_ref": "TX-OTHER",
     "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
     "refund_of": uuid.uuid4(),
+    "extra_line_id": uuid.uuid4(),
 }
 
 APPEND_ONLY = "append-only"
