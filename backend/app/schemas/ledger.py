@@ -22,6 +22,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
+from app.domain.billing import MAX_PAID_AHEAD
 from app.domain.ledger import EntryKind, EntryStatus
 from app.domain.membership import MembershipStatus
 from app.schemas.plans import MAX_PRICE_CLP
@@ -136,6 +137,9 @@ class RecordedRefund(BaseModel):
     refund: Entry
     # The period as the refund leaves it: open again if it no longer covers it.
     period: Period
+    # The adjustment that takes what was given back off a period starting after its
+    # membership was cancelled, which is not owed (#196).
+    waived: Entry | None = None
 
 
 class OpenPeriod(BaseModel):
@@ -231,6 +235,48 @@ class MembershipLedger(BaseModel):
     # capped as `entries` is.
     periods: list[LedgerPeriod]
     refundable_payments: list[RefundablePayment]
+    # The last day its periods are paid through, every one before it settled: "Pagado
+    # hasta" (#196). `None` with no period yet, or with the first still owing.
+    paid_through: date | None = None
+
+
+class AheadPeriod(BaseModel):
+    """A period a member paying ahead would be billed, not written yet (#196)."""
+
+    period_start: date
+    period_end: date
+    amount_due_clp: int
+
+
+class AheadQuote(BaseModel):
+    """What paying ahead costs: the next `MAX_PAID_AHEAD` periods after the last one
+    billed, oldest first, each priced as the nightly job will price it. Empty when the
+    membership cannot pay ahead: not Active, not monthly or prepaid, or with a period
+    still open, which is paid first."""
+
+    periods: list[AheadPeriod]
+
+
+class PaymentAheadRecord(BaseModel):
+    """Money received for the next `periods` periods of a membership with none open
+    (#196), recorded as "Registrar pago" records a payment."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    membership_id: uuid.UUID
+    periods: Annotated[int, Field(ge=1, le=MAX_PAID_AHEAD)]
+    # What those periods cost, as the quote said: anything else is a 409, so a price
+    # changed since the quote is not recorded unseen.
+    amount_clp: Amount
+    method: Method
+    note: Note | None = None
+
+
+class RecordedAhead(BaseModel):
+    # One payment per period, oldest first, each for what its period costs.
+    payments: list[Entry]
+    periods: list[Period]
+    paid_through: date
 
 
 class BookFilter(StrEnum):

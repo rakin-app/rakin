@@ -39,14 +39,18 @@ from app.api.entries import insert_entry
 from app.api.extra_lines import refund_line_payment
 from app.api.people import people_matching
 from app.contacts import Contact, contact_for
+from app.db import driver_connection
 from app.domain import billing
-from app.domain.billing import SETTLING_KINDS, BillingPeriod, Settlement, settled_amount
+from app.domain.billing import SETTLING_KINDS, Billing, BillingPeriod, Settlement, settled_amount
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
+from app.jobs.billing import billable_membership, write_billing
 from app.notices import RECEIPT, Notice, Notices, get_notices
 from app.roles import LedgerSession
 from app.schemas.ledger import (
     AdjustmentRecord,
+    AheadPeriod,
+    AheadQuote,
     BookEntry,
     BookExtra,
     BookFilter,
@@ -61,10 +65,12 @@ from app.schemas.ledger import (
     OpenPeriod,
     Overdue,
     OverduePeriod,
+    PaymentAheadRecord,
     PaymentRecord,
     Period,
     PersonRef,
     RecordedAdjustment,
+    RecordedAhead,
     RecordedPayment,
     RecordedRefund,
     RefundablePayment,
@@ -168,6 +174,112 @@ async def record_payment(
     return result
 
 
+# Paying ahead (#196): the next periods of a membership with none open are billed on
+# the spot, as the nightly job would bill them later (`app.jobs.billing`), and each is
+# paid with a payment of its own. The job then finds them there and bills on after
+# them; a refund gives back a month as it gives back any payment.
+
+CANNOT_PAY_AHEAD = HTTPException(
+    status.HTTP_409_CONFLICT,
+    "only an Active monthly or prepaid membership with no period open pays ahead",
+)
+
+AMOUNT_CHANGED = HTTPException(
+    status.HTTP_409_CONFLICT, "the amount is not what those periods cost"
+)
+
+
+async def ahead_of(session: AsyncSession, membership_id: uuid.UUID, count: int) -> Billing | None:
+    """The next `count` periods the membership would pay ahead; `None` when it cannot:
+    a period still open is paid first."""
+    conn = await driver_connection(session)
+    billable = await billable_membership(conn, membership_id)
+    if billable is None:
+        raise NO_MEMBERSHIP
+    params = {
+        "id": membership_id,
+        "validated": EntryStatus.VALIDATED.value,
+        "settling": sorted(k.value for k in SETTLING_KINDS),
+    }
+    if (await session.execute(OPEN_PERIODS, params)).first() is not None:
+        return None
+    owed = billing.periods_ahead(billable, count)
+    return owed if owed.periods else None
+
+
+@router.get("/memberships/{membership_id}/ahead")
+async def ahead_quote(membership_id: uuid.UUID, session: LedgerSession) -> AheadQuote:
+    """What the next periods would cost paid ahead, for "Registrar pago" to offer 1 to
+    `MAX_PAID_AHEAD` of them."""
+    owed = await ahead_of(session, membership_id, billing.MAX_PAID_AHEAD)
+    return AheadQuote(
+        periods=[
+            AheadPeriod(
+                period_start=p.period_start,
+                period_end=p.period_end,
+                amount_due_clp=p.amount_due_clp,
+            )
+            for p in (owed.periods if owed else ())
+        ]
+    )
+
+
+@router.post("/payments/ahead", status_code=status.HTTP_201_CREATED)
+async def record_payment_ahead(
+    body: PaymentAheadRecord,
+    session: LedgerSession,
+    notices: Annotated[Notices, Depends(get_notices)],
+    background: BackgroundTasks,
+) -> RecordedAhead:
+    """Bill the membership's next `periods` periods now and pay each in full, validated
+    by the admin recording it, as `record_payment` pays one; one receipt for them all."""
+    # Locked as a payment locks it, before anything about it is read.
+    await session.execute(LOCK_MEMBERSHIP, {"membership_id": body.membership_id})
+    owed = await ahead_of(session, body.membership_id, body.periods)
+    if owed is None:
+        raise CANNOT_PAY_AHEAD
+    if sum(p.amount_due_clp for p in owed.periods) != body.amount_clp:
+        raise AMOUNT_CHANGED
+    written = await write_billing(await driver_connection(session), body.membership_id, owed)
+    # The membership is locked and its periods were read under the lock, so none of
+    # them can be there already.
+    assert len(written) == len(owed.periods)
+
+    payments, periods = [], []
+    for period_id, period in written:
+        if period.amount_due_clp == 0:
+            continue
+        payment = LedgerEntry(
+            kind=EntryKind.PAYMENT,
+            amount_clp=period.amount_due_clp,
+            status=EntryStatus.VALIDATED,
+            note=body.note,
+        )
+        settlement = billing.apply(period, payment)
+        payments.append(
+            await insert_entry(
+                session,
+                settlement.entry,
+                membership_id=body.membership_id,
+                billing_period_id=period_id,
+                method=body.method.value,
+            )
+        )
+        periods.append(period_after(period_id, settlement.period))
+    result = RecordedAhead(
+        payments=payments, periods=periods, paid_through=owed.periods[-1].period_end
+    )
+    await send_receipt_for(
+        session,
+        payments,
+        last_period_id=periods[-1].id,
+        period_outstanding_clp=0,
+        notices=notices,
+        background=background,
+    )
+    return result
+
+
 async def settled(
     session: AsyncSession,
     period_id: uuid.UUID,
@@ -231,7 +343,8 @@ REFUNDED = text(
 async def record_refund(body: RefundRecord, session: LedgerSession) -> RecordedRefund:
     """Give back part or all of a validated payment: what is left of it after its
     earlier refunds, at most. The refund carries the payment's period, or its cobro line
-    (#195), which no longer counts it and may be open again."""
+    (#195), which no longer counts it and may be open again: unless the membership was
+    cancelled before the period started, which is then not owed (`AFTER_LEAVING`)."""
     found = (
         await session.execute(PAYMENT, {"id": body.payment_id, "payment": EntryKind.PAYMENT.value})
     ).one_or_none()
@@ -258,7 +371,35 @@ async def record_refund(body: RefundRecord, session: LedgerSession) -> RecordedR
         method=body.method.value,
         refund_of=body.payment_id,
     )
-    return RecordedRefund(refund=refund, period=period_after(row.id, settlement.period))
+    waived = None
+    if not settlement.period.closed and await session.scalar(AFTER_LEAVING, {"id": row.id}):
+        # Not owed: the member left before it started. The refund gives back what was
+        # paid for it, and an adjustment of as much takes it off what it owes, so it is
+        # not a debt once it falls due.
+        waiver = billing.adjust(
+            settlement.period,
+            min(body.amount_clp, settlement.period.outstanding_clp),
+            UNUSED_AFTER_LEAVING,
+        )
+        waived = await insert_entry(
+            session, waiver.entry, membership_id=found.membership_id, billing_period_id=row.id
+        )
+        settlement = waiver
+    return RecordedRefund(
+        refund=refund, period=period_after(row.id, settlement.period), waived=waived
+    )
+
+
+# The period starts after its membership was cancelled, in the gym's timezone: paid
+# ahead (#196) by a member who then left.
+AFTER_LEAVING = text(
+    "SELECT m.status = 'cancelled'"
+    " AND bp.period_start > (m.cancelled_at AT TIME ZONE g.timezone)::date"
+    " FROM billing_period bp JOIN membership m ON m.id = bp.membership_id"
+    " JOIN gym g ON g.id = m.gym_id WHERE bp.id = :id"
+)
+
+UNUSED_AFTER_LEAVING = "Período posterior a la baja: no se cobra"
 
 
 # Who a notice about a period goes to, and what it says about it. RLS keeps it to the
@@ -294,19 +435,45 @@ async def send_receipt(
     the payment has committed."""
     payment = recorded.payment
     assert payment.billing_period_id is not None
-    facts, contact = await period_facts(session, payment.billing_period_id)
+    await send_receipt_for(
+        session,
+        [payment],
+        last_period_id=payment.billing_period_id,
+        period_outstanding_clp=recorded.period.outstanding_clp,
+        notices=notices,
+        background=background,
+    )
+
+
+async def send_receipt_for(
+    session: AsyncSession,
+    payments: list[Entry],
+    *,
+    last_period_id: uuid.UUID,
+    period_outstanding_clp: int,
+    notices: Notices,
+    background: BackgroundTasks,
+) -> None:
+    """Email one receipt for `payments` of one membership, oldest period first: their
+    total, from the first one's period to the end of `last_period_id`'s."""
+    first = payments[0]
+    assert first.billing_period_id is not None
+    facts, contact = await period_facts(session, first.billing_period_id)
     if contact is None:
-        logger.info("receipt: no email to send it to", extra={"entry_id": str(payment.id)})
+        logger.info("receipt: no email to send it to", extra={"entry_id": str(first.id)})
         return
-    balance = await session.scalar(BALANCE, {"id": payment.membership_id})
+    last = facts if last_period_id == first.billing_period_id else None
+    if last is None:
+        last, _ = await period_facts(session, last_period_id)
+    balance = await session.scalar(BALANCE, {"id": first.membership_id})
     notice = receipt(
         contact,
         gym_id=facts.gym_id,
         gym=facts.gym_name,
-        amount_clp=payment.amount_clp,
+        amount_clp=sum(p.amount_clp for p in payments),
         period_start=facts.period_start,
-        period_end=facts.period_end,
-        period_outstanding_clp=recorded.period.outstanding_clp,
+        period_end=last.period_end,
+        period_outstanding_clp=period_outstanding_clp,
         balance_clp=int(balance or 0),
         dependent_name=facts.person_name if contact.on_behalf_of else None,
     )
@@ -448,6 +615,10 @@ async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) ->
     entries = (
         await session.execute(TIMELINE, {"id": membership_id, "limit": TIMELINE_LIMIT})
     ).all()
+    every_period = [
+        LedgerPeriod.model_validate(row, from_attributes=True)
+        for row in await session.execute(PERIODS, params)
+    ]
     open_periods = [
         OpenPeriod(
             id=row.id,
@@ -470,14 +641,14 @@ async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) ->
             FreezeLine.model_validate(row, from_attributes=True)
             for row in await session.execute(MEMBERSHIP_FREEZES, {"id": membership_id})
         ],
-        periods=[
-            LedgerPeriod.model_validate(row, from_attributes=True)
-            for row in await session.execute(PERIODS, params)
-        ],
+        periods=every_period,
         refundable_payments=[
             RefundablePayment.model_validate(row, from_attributes=True)
             for row in await session.execute(REFUNDABLE, {"id": membership_id})
         ],
+        paid_through=billing.paid_through(
+            (p.period_start, p.period_end, p.outstanding_clp) for p in every_period
+        ),
     )
 
 

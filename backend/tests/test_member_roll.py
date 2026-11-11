@@ -572,29 +572,7 @@ def test_deleting_is_refused_with_a_ledger_or_staff_or_dependents(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     paying = enrolled(client, gym, membership={"plan_id": plan(client, gym)})
-    [membership] = memberships(client, gym, paying["id"])
-
-    async def charge(conn: asyncpg.Connection) -> None:
-        async with conn.transaction():
-            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym))
-            period = await conn.fetchval(
-                "INSERT INTO billing_period"
-                " (gym_id, membership_id, period_start, period_end, amount_due_clp, due_date)"
-                " VALUES ($1, $2, $3, $3, 45000, $3) RETURNING id",
-                gym,
-                uuid.UUID(membership["id"]),
-                seeded_today(),
-            )
-            await conn.execute(
-                "INSERT INTO ledger_entry"
-                " (gym_id, membership_id, billing_period_id, amount_clp, kind)"
-                " VALUES ($1, $2, $3, 45000, 'charge')",
-                gym,
-                uuid.UUID(membership["id"]),
-                period,
-            )
-
-    run(db.owner_url, charge)
+    # Enrolling on a plan billed its first period: a charge is in the ledger.
     response = forget(client, gym, paying["id"])
     assert response.status_code == 409
     assert response.json()["detail"] == {"code": "ledger"}

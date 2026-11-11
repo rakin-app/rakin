@@ -23,7 +23,7 @@ from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.jobgym import Gym
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
-from tests.test_memberships import add_staff, cancel, plan, start
+from tests.test_memberships import add_staff, cancel, plan, start, unbilled
 from tests.test_proofs import RecordingMailer
 
 pytestmark = pytest.mark.postgres
@@ -114,7 +114,7 @@ def test_a_freeze_moves_the_due_date_and_the_periods_not_yet_started(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     now = today(db, sur)
-    started = member(client, sur, "signup", now - 27 * DAY)
+    started = unbilled(client, db, sur, "signup", now - 27 * DAY)
     # One period under way, one billed ahead that starts in three days.
     bill(db, sur, started["id"], now - 27 * DAY, now + 2 * DAY)
     bill(db, sur, started["id"], now + 3 * DAY, now + 32 * DAY)
@@ -155,7 +155,7 @@ def test_a_freeze_moves_a_pending_plan_change(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     now = today(db, sur)
-    started = member(client, sur, "signup", now - 27 * DAY)
+    started = unbilled(client, db, sur, "signup", now - 27 * DAY)
     bill(db, sur, started["id"], now - 27 * DAY, now + 2 * DAY)
     other = plan(client, sur, "first")
     changed = client.post(
@@ -301,7 +301,7 @@ def test_ending_a_freeze_early_moves_the_due_date_back_by_the_days_left(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     now = today(db, sur)
-    started = member(client, sur, "signup", now - 27 * DAY)
+    started = unbilled(client, db, sur, "signup", now - 27 * DAY)
     bill(db, sur, started["id"], now - 27 * DAY, now + 2 * DAY)
     bill(db, sur, started["id"], now + 3 * DAY, now + 32 * DAY)
     other = plan(client, sur, "first")
@@ -346,7 +346,7 @@ def test_a_freeze_ended_on_its_first_day_moves_no_date(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     now = today(db, sur)
-    started = member(client, sur, "signup", now - 27 * DAY)
+    started = unbilled(client, db, sur, "signup", now - 27 * DAY)
     bill(db, sur, started["id"], now - 27 * DAY, now + 2 * DAY)
     bill(db, sur, started["id"], now + 3 * DAY, now + 32 * DAY)
     assert freeze(client, sur, started["id"], now + 14 * DAY).status_code == 200
@@ -369,7 +369,7 @@ def test_editing_a_running_freeze_end_moves_the_due_date_by_the_difference(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     now = today(db, sur)
-    started = member(client, sur, "signup", now - 27 * DAY)
+    started = unbilled(client, db, sur, "signup", now - 27 * DAY)
     bill(db, sur, started["id"], now - 27 * DAY, now + 2 * DAY)
     bill(db, sur, started["id"], now + 3 * DAY, now + 32 * DAY)
     assert freeze(client, sur, started["id"], now + 14 * DAY).status_code == 200
@@ -419,7 +419,7 @@ def test_a_freeze_booked_ahead_waits_for_its_first_day(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     now = today(db, sur)
-    started = member(client, sur, "signup", now - 27 * DAY)
+    started = unbilled(client, db, sur, "signup", now - 27 * DAY)
     bill(db, sur, started["id"], now - 27 * DAY, now + 2 * DAY)
     before = read(client, sur, started["id"])
 

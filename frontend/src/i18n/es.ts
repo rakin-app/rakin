@@ -508,6 +508,7 @@ export const es = {
       pendingPeriods: (n: number) => `${n} períodos pendientes`,
       upToDate: 'Al día',
       upToDateNext: (day: string) => `Al día · vence el ${day}`,
+      paidThrough: (day: string) => `Al día · pagado hasta el ${day}`,
       nothingToRecord: 'Está al día y no tiene un período abierto: el pago se registra cuando se genere el próximo cobro.',
       whatsapp: (name: string) => `WhatsApp a ${name}`,
       whatsappGuardian: (name: string) => `WhatsApp a ${name}, su apoderado`,
@@ -690,6 +691,20 @@ export const es = {
         refused: {
           paid: 'Ese período ya está pagado.',
           failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
+        },
+        // Paying ahead (#196): al día, with no period open.
+        ahead: {
+          intro: 'Está al día. Registra lo que paga por adelantado.',
+          periods: 'Paga',
+          // `3 meses · hasta el 10 feb · $135.000`
+          option: (n: number, monthly: boolean, until: string, amount: string) =>
+            `${n} ${monthly ? (n === 1 ? 'mes' : 'meses') : n === 1 ? 'período' : 'períodos'} · hasta el ${until} · ${amount}`,
+          loading: 'Calculando los próximos períodos…',
+          error: 'No pudimos calcular los próximos períodos.',
+          recorded: (amount: string, day: string) => `Pago registrado: ${amount}. Pagado hasta el ${day}.`,
+          refused: {
+            changed: 'El precio o los períodos cambiaron. Vuelve a abrir Registrar pago.',
+          },
         },
       },
       fields: {
@@ -1984,6 +1999,7 @@ export const es = {
       // `whose`: the dependent it is for, when it is not the student's own.
       due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
       paidUp: 'No tienes pagos pendientes.',
+      paidThrough: (day: string) => `No tienes pagos pendientes. Pagado hasta el ${day}.`,
       bankLabel: 'Datos para transferir',
       bank: 'Banco',
       holder: 'Titular',

@@ -6,7 +6,9 @@ its anchor day to the day before the next; a prepaid one a block of `period_mont
 a credits pack (or a drop-in) a single charge for the whole of it; a trial nothing.
 Each is priced at the plan's price less the membership's discount, in whole pesos.
 A pending plan change prices the first period starting on or after its day at the new
-plan, which becomes the membership's plan from then on.
+plan, which becomes the membership's plan from then on. A member paying ahead is
+billed the next periods on the spot (`periods_ahead`, #196), the same periods the job
+would write later, which it then finds already there.
 
 A period closes once validated payments (and credit carried in from an earlier
 overpayment) cover its amount due. Whatever is paid beyond that becomes a credit
@@ -19,6 +21,7 @@ amount due. A refund gives back part or all of a payment (`refund`) and no longe
 counts towards the payment's period, which may open again (#38).
 """
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
@@ -248,18 +251,39 @@ def due_periods(billable: Billable, today: date, *, ahead: int = GENERATE_AHEAD_
     falls due on its first day, so a run after downtime catches up every period
     missed, one per cycle.
     """
+    horizon = today + timedelta(days=ahead)
+    return _billing(billable, lambda start, _: start <= horizon)
+
+
+# How many periods a member may pay ahead at once (#196).
+MAX_PAID_AHEAD = 12
+
+
+def periods_ahead(billable: Billable, count: int) -> Billing:
+    """The next `count` periods of an Active monthly or prepaid membership, after the
+    last one billed, for a member paying ahead (#196): each priced, and a pending plan
+    change applied, as the nightly job would when it reached it. None for any other."""
+    if not 1 <= count <= MAX_PAID_AHEAD:
+        raise ValueError(f"count must be 1..{MAX_PAID_AHEAD}, got {count}")
+    if billable.plan.terms.kind not in memberships.RECURRING:
+        return Billing((), plan_changed=False, plan=billable.plan, anchor_day=billable.anchor_day)
+    return _billing(billable, lambda _, billed: billed < count)
+
+
+def _billing(billable: Billable, more: Callable[[date, int], bool]) -> Billing:
+    """The periods `billable` owes from the first day not billed, oldest first, while
+    `more(start, periods so far)` says another starting on `start` is billed."""
     plan, anchor_day = billable.plan, billable.anchor_day
     unchanged = Billing((), plan_changed=False, plan=plan, anchor_day=anchor_day)
     if billable.status is not MembershipStatus.ACTIVE or plan.terms.kind is PlanKind.TRIAL:
         return unchanged
     start = _first_unbilled(billable)
-    horizon = today + timedelta(days=ahead)
     pending, pending_from = billable.next_plan, billable.next_plan_from
     changed = False
     # A monthly row from before anchor days were stored bills on the day it resumes.
     fallback_anchor = start.day if start is not None else None
     periods: list[BillingPeriod] = []
-    while start is not None and start <= horizon:
+    while start is not None and more(start, len(periods)):
         if pending is not None and pending_from is not None and start >= pending_from:
             if pending.terms.kind not in memberships.RECURRING:
                 raise ValueError(f"a plan change moves to a monthly or prepaid plan, not {pending}")
@@ -270,3 +294,15 @@ def due_periods(billable: Billable, today: date, *, ahead: int = GENERATE_AHEAD_
         periods.append(BillingPeriod(start, end, amount_due_clp=amount, due_date=start))
         start = end + timedelta(days=1) if plan.terms.kind not in SINGLE_CHARGE else None
     return Billing(tuple(periods), plan_changed=changed, plan=plan, anchor_day=anchor_day)
+
+
+def paid_through(periods: Iterable[tuple[date, date, int]]) -> date | None:
+    """The last day a membership's periods, as `(start, end, outstanding)`, are paid
+    through: the end of the latest one with every one before it settled. `None` with
+    no period, or with the first one still owing ("Pagado hasta", #196)."""
+    through = None
+    for _, end, outstanding in sorted(periods):
+        if outstanding > 0:
+            break
+        through = end
+    return through

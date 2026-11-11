@@ -24,7 +24,7 @@ import { StatusPill, type Status } from '../components/StatusPill'
 import { dayTime, isoDay, monthName, monthYear, shortDay, toDate } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
-import { PaymentForm } from './MemberDetail'
+import { PaymentAheadForm, PaymentForm } from './MemberDetail'
 import './Payments.css'
 
 const copy = t.admin.payments
@@ -374,7 +374,14 @@ function PayFor({ member, onBack, onDone }: { member: MemberRow; onBack: () => v
   } else if (!membership) {
     body = <p className="payments__hint">{words.noPlan}</p>
   } else if (periods.length === 0) {
-    body = <p className="payments__hint">{words.upToDate}</p>
+    body = (
+      <PaymentAheadForm
+        membership={membership}
+        onCancel={onBack}
+        onDone={onDone}
+        nothing={<p className="payments__hint">{words.upToDate}</p>}
+      />
+    )
   } else {
     body = <PaymentForm membership={membership} periods={periods} onCancel={onBack} onDone={onDone} />
   }

@@ -16,6 +16,7 @@ import {
   type Rank,
 } from '../api/grading'
 import {
+  aheadQuery,
   editFreeze,
   endFreeze,
   freezeMembership,
@@ -24,6 +25,7 @@ import {
   personQuery,
   recordAdjustment,
   recordPayment,
+  recordPaymentAhead,
   recordRefund,
   shownMembership,
   type Freeze,
@@ -35,6 +37,7 @@ import {
   type OpenPeriod,
   type Person,
   type RecordedAdjustment,
+  type RecordedAhead,
   type RecordedPayment,
   type RecordedRefund,
   type RefundablePayment,
@@ -294,6 +297,8 @@ function Owed({ ledger }: { ledger: MembershipLedger }) {
   } else if (next) {
     amount = next.outstanding_clp
     detail = copy.upToDateNext(shortDay(next.due_date))
+  } else if (ledger.paid_through) {
+    detail = copy.paidThrough(shortDay(ledger.paid_through))
   }
   return (
     <div className="member__owed">
@@ -373,10 +378,17 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
         (periods.length > 0 ? (
           <PaymentForm membership={membership} periods={periods} onCancel={() => setOpen(null)} onDone={finish} />
         ) : (
-          // Al día, with no period open yet: a payment needs one to go to.
-          <p className="member__note" role="status">
-            {copy.nothingToRecord}
-          </p>
+          <PaymentAheadForm
+            membership={membership}
+            onCancel={() => setOpen(null)}
+            onDone={finish}
+            // Al día, and nothing to pay ahead (a pack, say): a payment needs a period to go to.
+            nothing={
+              <p className="member__note" role="status">
+                {copy.nothingToRecord}
+              </p>
+            }
+          />
         ))}
       {open === 'adjustment' && known.length > 0 && (
         <AdjustmentForm membership={membership} periods={known} onCancel={() => setOpen(null)} onDone={finish} />
@@ -799,6 +811,122 @@ export function PaymentForm({
         </Button>
         <Button type="submit" variant="primary" disabled={record.isPending} busy={record.isPending}>
           {record.isPending ? form.working : form.submit(clp(value))}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/** "Registrar pago" for a member al día, with no period open (#196): the next 1 to 12
+ *  periods, billed and paid at once, for what the quote says they cost. `nothing` when
+ *  the membership cannot pay ahead. The book's header opens it too. */
+export function PaymentAheadForm({
+  membership,
+  onCancel,
+  onDone,
+  nothing,
+}: {
+  membership: Membership
+  onCancel: () => void
+  onDone: (message: string) => void
+  nothing: ReactNode
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.form
+  const words = form.ahead
+  const ids = { periods: useId(), method: useId(), note: useId() }
+  const quote = useQuery(aheadQuery(membership.id))
+  const [count, setCount] = useState(1)
+  const [method, setMethod] = useState<Method>('cash')
+  const [note, setNote] = useState('')
+  const periods = quote.data?.periods ?? []
+  const chosen = periods.slice(0, count)
+  const total = chosen.reduce((sum, p) => sum + p.amount_due_clp, 0)
+
+  const record = useSubmit({
+    mutationFn: () =>
+      recordPaymentAhead({
+        membership_id: membership.id,
+        periods: count,
+        amount_clp: total,
+        method,
+        ...(note.trim() ? { note: note.trim() } : {}),
+      }),
+    onSuccess: async (result: RecordedAhead) => {
+      onDone(words.recorded(clp(total), shortDay(result.paid_through)))
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  if (quote.isPending) {
+    return (
+      <p className="member__note" role="status">
+        {words.loading}
+      </p>
+    )
+  }
+  if (quote.isError) {
+    return (
+      <p className="member__error" role="alert">
+        {words.error}
+      </p>
+    )
+  }
+  if (periods.length === 0) return <>{nothing}</>
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    record.mutate()
+  }
+  const monthly = membership.plan_kind === 'monthly'
+
+  return (
+    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <p className="member__note">{words.intro}</p>
+      <label htmlFor={ids.periods} className="member__label">
+        {words.periods}
+      </label>
+      <Select id={ids.periods} value={String(count)} onChange={(e) => setCount(Number(e.target.value))}>
+        {periods.map((p, i) => (
+          <option key={p.period_start} value={String(i + 1)}>
+            {words.option(
+              i + 1,
+              monthly,
+              shortDay(p.period_end),
+              clp(periods.slice(0, i + 1).reduce((sum, q) => sum + q.amount_due_clp, 0)),
+            )}
+          </option>
+        ))}
+      </Select>
+
+      <label htmlFor={ids.method} className="member__label">
+        {form.method}
+      </label>
+      <Select id={ids.method} value={method} onChange={(e) => setMethod(e.target.value as Method)}>
+        {METHODS.map((m) => (
+          <option key={m} value={m}>
+            {form.methods[m]}
+          </option>
+        ))}
+      </Select>
+
+      <label htmlFor={ids.note} className="member__label">
+        {form.note}
+      </label>
+      <Input id={ids.note} type="text" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
+
+      {record.error && (
+        <p className="member__error" role="alert">
+          {record.error instanceof ApiError && record.error.status === 409 ? words.refused.changed : form.refused.failed}
+        </p>
+      )}
+
+      <div className="member__form-actions">
+        <Button disabled={record.isPending} onClick={onCancel}>
+          {form.cancel}
+        </Button>
+        <Button type="submit" variant="primary" disabled={record.isPending} busy={record.isPending}>
+          {record.isPending ? form.working : form.submit(clp(total))}
         </Button>
       </div>
     </form>
