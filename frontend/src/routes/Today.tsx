@@ -218,9 +218,17 @@ function SetupChecklist({ doneKey }: { doneKey: string }) {
     if (setUp) remember(doneKey)
   }, [setUp, doneKey])
 
-  // Nothing until every answer is in, and nothing if one fails: the checklist is a nudge,
-  // not something to report an error for, and drawing it on a partial answer would show
-  // a set-up gym unticked steps for a moment. A failed request is retried on the next visit.
+  // A failed answer says so, with a retry, rather than leaving a new gym with no checklist.
+  const failed = [members, classTypes, gym, plans, staff].filter((q) => q.isError)
+  if (failed.length > 0) {
+    return (
+      <div className="today__lead">
+        <Failed message={copy.setup.error} retry={() => failed.forEach((q) => void q.refetch())} />
+      </div>
+    )
+  }
+  // Nothing until every answer is in: drawing it on a partial answer would show a set-up
+  // gym unticked steps for a moment.
   if (!shows || !gym.data || !plans.data || !staff.data) return null
 
   const steps = copy.setup.steps

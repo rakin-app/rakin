@@ -216,13 +216,9 @@ export function NewMember() {
                 (guardian.picked ? (
                   <div className="new-member__picked">
                     <span>{copy.guardianPicked(guardian.picked.name)}</span>
-                    <button
-                      type="button"
-                      className="family__action"
-                      onClick={() => setGuardian({ kind: 'existing', picked: null })}
-                    >
+                    <Button onClick={() => setGuardian({ kind: 'existing', picked: null })}>
                       {copy.guardianChange}
-                    </button>
+                    </Button>
                   </div>
                 ) : (
                   <>

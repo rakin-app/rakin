@@ -1,4 +1,5 @@
 import type { ComponentProps } from 'react'
+import { cx } from './classNames'
 import './Button.css'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
@@ -28,7 +29,7 @@ export function buttonClass({
   inverse,
   className,
 }: ButtonStyle = {}): string {
-  return [
+  return cx(
     'button',
     `button--${variant}`,
     size === 'lg' && 'button--lg',
@@ -36,9 +37,7 @@ export function buttonClass({
     icon && 'button--icon',
     inverse && 'button--inverse',
     className,
-  ]
-    .filter(Boolean)
-    .join(' ')
+  )
 }
 
 type Props = ButtonStyle & Omit<ComponentProps<'button'>, 'className'>

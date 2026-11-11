@@ -115,13 +115,19 @@ describe('StatusPill', () => {
     ['validated', 'success'],
     ['pending', 'accent'],
     ['overdue', 'warning'],
-    ['lapsed', 'warning'],
+    ['rejected', 'danger'],
+    ['lapsed', 'neutral'],
     ['trial', 'neutral'],
     ['frozen', 'neutral'],
   ] as const)('shows %s in the %s tone', (status, tone) => {
     render(<StatusPill status={status}>x</StatusPill>)
     expect(screen.getByText('x')).toHaveClass('status-pill', `status-pill--${tone}`)
     expect(STATUS_TONE[status]).toBe(tone)
+  })
+
+  it('keeps orange for overdue alone', () => {
+    const warning = Object.entries(STATUS_TONE).filter(([, tone]) => tone === 'warning').map(([status]) => status)
+    expect(warning).toEqual(['overdue'])
   })
 
   it('is not a control', () => {

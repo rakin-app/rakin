@@ -291,9 +291,15 @@
 .today__step-links {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
-  margin-top: var(--space-1);
+  column-gap: var(--space-4);
   font-size: var(--text-sm);
+}
+
+/* Each step's link is a whole 44px target, not just its line of text. */
+.today__step-links .today__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
 }
 
 @media (min-width: 960px) {

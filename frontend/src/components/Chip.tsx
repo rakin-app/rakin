@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
+import { cx } from './classNames'
 import './Chip.css'
 
 type ChipProps = Omit<ComponentProps<'button'>, 'type' | 'aria-pressed'> & { pressed: boolean }
@@ -9,7 +10,7 @@ export function Chip({ pressed, className, ...rest }: ChipProps) {
     <button
       type="button"
       aria-pressed={pressed}
-      className={className ? `chip ${className}` : 'chip'}
+      className={cx('chip', className)}
       {...rest}
     />
   )

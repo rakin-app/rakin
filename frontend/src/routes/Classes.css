@@ -241,17 +241,6 @@
   border-radius: 50%;
 }
 
-.attendance__add {
-  min-height: var(--control-height);
-  background: transparent;
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-}
-
 /* "Guardar asistencia" stays under the thumb while the roster scrolls, above the
    bottom nav (AdminLayout.css) on a phone. */
 .attendance__bar {

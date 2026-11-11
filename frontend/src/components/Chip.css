@@ -3,6 +3,9 @@
   gap: var(--space-2);
   overflow-x: auto;
   scrollbar-width: none;
+  /* A scroller clips on both axes: this keeps a focused chip's outline (2px out, 2px wide) in view. */
+  margin: calc(-1 * var(--space-1));
+  padding: var(--space-1);
 }
 
 .chip {

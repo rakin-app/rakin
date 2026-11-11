@@ -292,13 +292,9 @@ function RecordEditor({
       </ol>
       {full && <p className="classes__note">{copy.tooMany(MAX_BLOCKS)}</p>}
       {canAdd && (
-        <button
-          type="button"
-          className="attendance__add"
-          onClick={() => setDrafts((all) => [...all, newDraft(openMat ? choices[0] : firstKind)])}
-        >
+        <Button fullWidth onClick={() => setDrafts((all) => [...all, newDraft(openMat ? choices[0] : firstKind)])}>
           {copy.add}
-        </button>
+        </Button>
       )}
       {checked && !valid && (
         <p className="classes__error" role="alert">

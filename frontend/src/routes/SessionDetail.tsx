@@ -531,9 +531,8 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
             {done}
           </p>
         )}
-        <button
-          type="button"
-          className="attendance__add"
+        <Button
+          fullWidth
           onClick={() => {
             setDone(null)
             add.reset()
@@ -541,7 +540,7 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
           }}
         >
           {words.open}
-        </button>
+        </Button>
       </>
     )
   }

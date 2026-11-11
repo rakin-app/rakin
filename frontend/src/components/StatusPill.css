@@ -25,6 +25,11 @@
   color: var(--color-warning-strong);
 }
 
+.status-pill--danger {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
 .status-pill--neutral {
   background: var(--color-surface-sunken);
   color: var(--color-text-muted);

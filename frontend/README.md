@@ -47,7 +47,8 @@ npm run build      # outputs dist/
   - `Chip` in a `ChipGroup` for filters; `SegmentedControl` for a few views of
     one thing.
   - `StatusPill`: a status, never a control. Its `status` picks the tone from the
-    one shared mapping in `StatusPill.tsx`; blue is "por validar" only.
+    one shared mapping in `StatusPill.tsx`; blue is "por validar" only, orange is
+    overdue only, red is a refused payment.
   - `Card`, `SectionHeader`, `ListRow` / `listRowClass`, `EmptyState`.
 - **API:** call the backend through `apiFetch` in `src/api/client.ts` with a
   path starting with `/`, and wrap it in a TanStack Query `queryOptions`.

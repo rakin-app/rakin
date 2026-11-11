@@ -54,11 +54,6 @@
   gap: var(--space-2);
 }
 
-.attendance__add:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .timer-done__row {
   justify-content: space-between;
 }

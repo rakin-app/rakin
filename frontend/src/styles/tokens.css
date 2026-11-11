@@ -41,7 +41,7 @@
   --color-warning-soft: #ffedd5;
   --color-warning-strong: #9a3412;
 
-  /* Danger: form errors and buttons that delete, remove or refuse */
+  /* Danger: form errors, buttons that delete, remove or refuse, and a refused payment */
   --color-danger: #b42318;
   --color-danger-soft: #fee4e2;
 

@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
+import { cx } from './classNames'
 import './StatusPill.css'
 
-export type StatusTone = 'success' | 'accent' | 'warning' | 'neutral'
+export type StatusTone = 'success' | 'accent' | 'warning' | 'danger' | 'neutral'
 
 /**
  * Every status a pill shows, across the admin and the student page. A membership's
@@ -25,19 +26,22 @@ export type Status =
   | 'freeze'
   | 'none'
 
-/** The one mapping from status to colour: green is settled, blue waits on the gym, orange is overdue. */
+/**
+ * The one mapping from status to colour: green is settled, blue waits on the gym, orange is
+ * overdue and nothing else, red is a payment the gym refused.
+ */
 export const STATUS_TONE: Record<Status, StatusTone> = {
   active: 'success',
   validated: 'success',
   paid: 'success',
   pending: 'accent',
   in_review: 'accent',
-  lapsed: 'warning',
   overdue: 'warning',
+  rejected: 'danger',
+  lapsed: 'neutral',
   trial: 'neutral',
   frozen: 'neutral',
   cancelled: 'neutral',
-  rejected: 'neutral',
   open: 'neutral',
   due: 'neutral',
   freeze: 'neutral',
@@ -56,7 +60,7 @@ export function StatusPill({
 }) {
   const tone = STATUS_TONE[status]
   return (
-    <span className={`status-pill status-pill--${tone}${inverse ? ' status-pill--inverse' : ''}`} data-status={status}>
+    <span className={cx('status-pill', `status-pill--${tone}`, inverse && 'status-pill--inverse')} data-status={status}>
       {children}
     </span>
   )

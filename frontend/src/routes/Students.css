@@ -204,27 +204,12 @@
   font-size: var(--text-sm);
 }
 
-.family__action {
-  min-height: var(--control-height);
-  padding: 0;
-  background: none;
-  border: 0;
-  color: var(--color-accent);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.family__action:disabled {
-  color: var(--color-text-subtle);
-  cursor: default;
-}
-
 .students__links {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
 
 /* The name is the row's link, and the whole row is its target; the family toggle sits above it. */
 .students__name::after {

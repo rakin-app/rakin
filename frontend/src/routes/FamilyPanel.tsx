@@ -108,15 +108,9 @@ function Linked({ person, disabled, onUnlink }: { person: PersonRef; disabled: b
   return (
     <li className="family__person">
       <span>{person.name}</span>
-      <button
-        type="button"
-        className="family__action"
-        aria-label={copy.unlinkLabel(person.name)}
-        disabled={disabled}
-        onClick={onUnlink}
-      >
+      <Button variant="danger" aria-label={copy.unlinkLabel(person.name)} disabled={disabled} onClick={onUnlink}>
         {copy.unlink}
-      </button>
+      </Button>
     </li>
   )
 }
@@ -239,15 +233,9 @@ export function PeopleSearch({
             {matches.data.map((row) => (
               <li key={row.id} className="family__person">
                 <span>{row.name}</span>
-                <button
-                  type="button"
-                  className="family__action"
-                  aria-label={actionLabel(row.name)}
-                  disabled={busy}
-                  onClick={() => onPick(row)}
-                >
+                <Button aria-label={actionLabel(row.name)} disabled={busy} onClick={() => onPick(row)}>
                   {action}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

@@ -448,14 +448,9 @@ function PlanEditor({
       {!openMat && !noKinds && (
         <>
           {full && <p className="classes__note">{words.tooMany(MAX_BLOCKS)}</p>}
-          <button
-            type="button"
-            className="attendance__add"
-            disabled={full}
-            onClick={() => setDrafts((all) => [...all, newDraft(firstKind)])}
-          >
+          <Button fullWidth disabled={full} onClick={() => setDrafts((all) => [...all, newDraft(firstKind)])}>
             {words.add}
-          </button>
+          </Button>
         </>
       )}
       <div className="attendance__bar">

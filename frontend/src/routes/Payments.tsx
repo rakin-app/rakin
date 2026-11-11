@@ -15,6 +15,7 @@ import { membershipLedgerQuery, membershipsQuery, shownMembership } from '../api
 import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
 import { Button, buttonClass } from '../components/Button'
+import { ListRowContent, listRowClass } from '../components/Card'
 import { Chip, ChipGroup } from '../components/Chip'
 import { Input } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
@@ -321,9 +322,8 @@ function MemberPicker({ onPick, onCancel }: { onPick: (member: MemberRow) => voi
         <ul className="payments__picks" aria-label={words.results}>
           {found.slice(0, PICKER_ROWS).map((row) => (
             <li key={row.id}>
-              <button type="button" className="payments__pick" onClick={() => onPick(row)}>
-                <span className="payments__pick-name">{row.name}</span>
-                <span className="payments__pick-detail">{pickDetail(row)}</span>
+              <button type="button" className={listRowClass(true)} onClick={() => onPick(row)}>
+                <ListRowContent title={row.name} detail={pickDetail(row)} />
               </button>
             </li>
           ))}

@@ -1,19 +1,18 @@
 import { useId, type ComponentProps, type ReactNode } from 'react'
+import { cx } from './classNames'
 import './Field.css'
-
-const join = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ')
 
 /** A text input at 16px, so iOS Safari does not zoom in on focus. */
 export function Input({ className, ...rest }: ComponentProps<'input'>) {
-  return <input className={join('control', className)} {...rest} />
+  return <input className={cx('control', className)} {...rest} />
 }
 
 export function Select({ className, ...rest }: ComponentProps<'select'>) {
-  return <select className={join('control', 'control--select', className)} {...rest} />
+  return <select className={cx('control', 'control--select', className)} {...rest} />
 }
 
 export function Textarea({ className, ...rest }: ComponentProps<'textarea'>) {
-  return <textarea className={join('control', 'control--textarea', className)} {...rest} />
+  return <textarea className={cx('control', 'control--textarea', className)} {...rest} />
 }
 
 /** What a `Field` hands its control, so the label, hint and error belong to it. */
@@ -38,9 +37,9 @@ export function Field({
 }) {
   const id = useId()
   const hasError = error !== undefined && error !== null && error !== false && error !== ''
-  const described = join(hint ? `${id}-hint` : undefined, hasError && `${id}-error`)
+  const described = cx(hint ? `${id}-hint` : undefined, hasError && `${id}-error`)
   return (
-    <div className={join('field', className)}>
+    <div className={cx('field', className)}>
       <label htmlFor={id} className="field__label">
         {label}
       </label>

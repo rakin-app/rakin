@@ -37,43 +37,39 @@
 }
 
 /* Black, never the accent: the accent is for links and "por validar". */
-.button--primary,
-.button--primary:hover {
+.button--primary {
   background: var(--color-inverse);
   border-color: var(--color-inverse);
   color: var(--color-inverse-text);
 }
 
-.button--primary:hover {
+.button--primary:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--color-inverse-raised);
 }
 
-.button--secondary,
-.button--secondary:hover {
+.button--secondary {
   background: var(--color-surface);
   border-color: var(--color-border-input);
   color: var(--color-text);
 }
 
-.button--ghost,
-.button--ghost:hover {
+.button--ghost {
   background: transparent;
   color: var(--color-text);
 }
 
-.button--secondary:hover,
-.button--ghost:hover {
+.button--secondary:hover:not(:disabled, [aria-disabled='true']),
+.button--ghost:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--color-surface-sunken);
 }
 
-.button--danger,
-.button--danger:hover {
+.button--danger {
   background: var(--color-surface);
   border-color: var(--color-danger);
   color: var(--color-danger);
 }
 
-.button--danger:hover {
+.button--danger:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--color-danger-soft);
 }
 
@@ -101,9 +97,14 @@
   color: var(--color-danger-soft);
 }
 
-.button--inverse.button--secondary:hover,
-.button--inverse.button--ghost:hover,
-.button--inverse.button--danger:hover {
+.button--inverse.button--primary:hover:not(:disabled, [aria-disabled='true']) {
+  background: var(--color-inverse-text-muted);
+  border-color: var(--color-inverse-text-muted);
+}
+
+.button--inverse.button--secondary:hover:not(:disabled, [aria-disabled='true']),
+.button--inverse.button--ghost:hover:not(:disabled, [aria-disabled='true']),
+.button--inverse.button--danger:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--color-inverse-raised);
 }
 

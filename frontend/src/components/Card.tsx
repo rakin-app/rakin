@@ -1,11 +1,10 @@
 import type { ComponentProps, ReactNode } from 'react'
+import { cx } from './classNames'
 import './Card.css'
-
-const join = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ')
 
 /** A white panel on the page's grey. */
 export function Card({ className, ...rest }: ComponentProps<'section'>) {
-  return <section className={join('card', className)} {...rest} />
+  return <section className={cx('card', className)} {...rest} />
 }
 
 /** A section's eyebrow on the left and its count or total on the right. */
@@ -48,7 +47,7 @@ export function ListRowContent({ title, detail, trailing }: { title: ReactNode; 
 
 /** The class of a row; `tappable` when the row itself is a link or a button. */
 export function listRowClass(tappable = false, className?: string): string {
-  return join('list-row', tappable && 'list-row--tappable', className)
+  return cx('list-row', tappable && 'list-row--tappable', className)
 }
 
 /** A row that is not a target itself, though its trailing slot may hold one. */

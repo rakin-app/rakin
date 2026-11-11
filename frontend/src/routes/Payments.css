@@ -102,24 +102,17 @@
   border-top: 1px solid var(--color-divider);
 }
 
-.payments__pick {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-  width: 100%;
+/* The "por validar" pill is the link to the queue: a 44px target around it. */
+.payments__to-review {
+  display: inline-flex;
+  align-items: center;
   min-height: var(--control-height);
-  padding: var(--space-2-5) var(--space-3-5);
-  background: none;
-  border: 0;
-  color: var(--color-text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+  border-radius: var(--radius-pill);
+  text-decoration: none;
 }
 
-.payments__pick:hover {
-  background: var(--color-surface-sunken);
+.payments__to-review:hover .status-pill {
+  text-decoration: underline;
 }
 
 .payments__picked {
