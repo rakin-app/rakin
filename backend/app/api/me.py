@@ -17,8 +17,9 @@ from app.api.attendance import attended
 from app.api.extra_charges import open_lines
 from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
-from app.api.proofs import OPEN_PERIODS, payable_params, to_open_period
+from app.api.proofs import OPEN_PERIODS, PAYABLE, payable_params, to_open_period
 from app.api.session_blocks import person_time_of
+from app.domain import billing
 from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.ledger import EntryKind, EntryStatus
@@ -219,6 +220,8 @@ async def my_page(
         )
         next_payment = NextPayment(period=period, status=status)
 
+    paid_through = None if next_payment else await _paid_through(session, tenant)
+
     payments = await session.execute(
         text(PAYMENTS),
         {
@@ -242,9 +245,27 @@ async def my_page(
         person_id=tenant.person_id,
         name=name or "",
         next_payment=next_payment,
+        paid_through=paid_through,
         bank_account=gym.bank_account,
         rank=await current_rank(session, tenant.person_id, readable_scheme(gym.settings)),
         attendance=MyAttendance(this_month=this_month, total=total),
         payments=[MyPayment.model_validate(dict(row._mapping)) for row in payments],
         extra_charges=await open_lines(session, tenant.person_id),
     )
+
+
+# The periods of their memberships and their dependents' still running.
+RUNNING_PERIODS = PAYABLE + " AND m.status IN ('active', 'frozen')"
+
+
+async def _paid_through(session: AsyncSession, tenant: Tenant) -> date | None:
+    """The day the earliest paid up of their running memberships, or their dependents',
+    is paid through: "Pagado hasta" (#196)."""
+    periods: dict[uuid.UUID, list[tuple[date, date, int]]] = {}
+    for row in await session.execute(text(RUNNING_PERIODS), payable_params(tenant)):
+        outstanding = max(row.amount_due_clp - (row.paid_clp or 0), 0)
+        periods.setdefault(row.membership_id, []).append(
+            (row.period_start, row.period_end, outstanding)
+        )
+    through = [d for each in periods.values() if (d := billing.paid_through(each)) is not None]
+    return min(through, default=None)

@@ -93,6 +93,8 @@ export type MyPage = {
   person_id: string
   name: string
   next_payment: { period: OpenPeriod; status: NextPaymentStatus } | null
+  // With nothing owed, the day they are paid through (#196); null when no period is paid yet.
+  paid_through?: string | null
   bank_account: BankAccount | null
   // Their latest promotion; null until the gym records one.
   rank: Rank | null

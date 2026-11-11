@@ -71,6 +71,10 @@ class MyPage(BaseModel):
     name: str
     # The earliest open period, theirs or a dependent's; `None` when nothing is owed.
     next_payment: NextPayment | None
+    # With nothing owed, the day they are paid through: "Pagado hasta" (#196). The
+    # earliest of their running memberships' and their dependents'; `None` when none
+    # has a period paid yet.
+    paid_through: date | None = None
     # Where to transfer; `None` until the gym sets it (`PATCH /api/gym/settings`).
     bank_account: BankAccount | None
     # Their latest promotion here (`grade_event`, 0018); `None` until they have one.

@@ -18,6 +18,8 @@ from fastapi.testclient import TestClient
 
 from alembic import command
 from app.domain.dates import add_months, local_date, start_of_local_day
+from app.domain.membership import PlanKind, PlanTerms
+from app.domain.membership import start as domain_start
 from app.main import create_app
 from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
 from tests.auth import FakeAuth, as_gym
@@ -108,6 +110,48 @@ def start(
 def started(client: TestClient, gym: uuid.UUID, key: str, **body: Any) -> dict[str, Any]:
     response = start(client, gym, plan(client, gym, key), started_on=NOV_15, **body)
     assert response.status_code == 201, response.text
+    return dict(response.json())
+
+
+def unbilled(
+    client: TestClient, db: Database, gym: uuid.UUID, key: str, started_on: date
+) -> dict[str, Any]:
+    """A membership on a new `key` plan from `started_on`, as `POST /api/memberships`
+    starts one but with nothing billed yet, which that request bills at once (#196):
+    for a test that writes the periods it needs."""
+    plan_id = uuid.UUID(plan(client, gym, key))
+    person_id = uuid.UUID(person(client, gym))
+
+    async def query(conn: asyncpg.Connection) -> uuid.UUID:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym))
+            row = await conn.fetchrow(
+                "SELECT p.kind, p.anchor, p.credits, p.credit_expiry_days, g.timezone"
+                " FROM plan p JOIN gym g ON g.id = p.gym_id WHERE p.id = $1",
+                plan_id,
+            )
+            terms = PlanTerms(
+                PlanKind(row["kind"]), row["anchor"], row["credits"], row["credit_expiry_days"]
+            )
+            begun = domain_start(terms, started_on)
+            membership: uuid.UUID = await conn.fetchval(
+                "INSERT INTO membership (gym_id, person_id, plan_id, status, anchor_day,"
+                " started_at, current_period_end, credits_remaining)"
+                " VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+                gym,
+                person_id,
+                plan_id,
+                begun.status.value,
+                begun.anchor_day,
+                start_of_local_day(started_on, row["timezone"]),
+                begun.current_period_end,
+                begun.credits_remaining,
+            )
+            return membership
+
+    membership = run(db.owner_url, query)
+    response = client.get(f"/api/memberships/{membership}", headers=as_gym(gym))
+    assert response.status_code == 200, response.text
     return dict(response.json())
 
 
@@ -275,7 +319,7 @@ def add_period(db: Database, gym: uuid.UUID, membership: str, start: str, end: s
 def test_a_plan_change_waits_for_the_first_period_not_yet_billed(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    membership = started(client, sur, "signup")
+    membership = unbilled(client, db, sur, "signup", date.fromisoformat(NOV_15))
     prepaid = plan(client, sur, "prepaid")
 
     # Nothing billed or paid yet: the first period is on the new plan.

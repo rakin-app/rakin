@@ -360,3 +360,105 @@ def test_settled_amount_takes_a_refund_back() -> None:
         "CASE WHEN e.kind = 'refund' THEN -e.amount_clp ELSE e.amount_clp END"
     )
     assert EntryKind.REFUND in billing.SETTLING_KINDS
+
+
+# --- paying ahead (#196) ----------------------------------------------------------
+
+
+def test_paying_ahead_bills_the_next_periods_after_the_last_one_billed() -> None:
+    paid_up = billable(billed_through=date(2026, 12, 14), discount_pct=10)
+
+    owed = billing.periods_ahead(paid_up, 3)
+
+    assert spans(owed) == [
+        (date(2026, 12, 15), date(2027, 1, 14), 40_500),
+        (date(2027, 1, 15), date(2027, 2, 14), 40_500),
+        (date(2027, 2, 15), date(2027, 3, 14), 40_500),
+    ]
+    assert not owed.plan_changed
+
+
+def test_paying_ahead_bills_the_periods_the_nightly_job_would() -> None:
+    paid_up = billable(billed_through=date(2026, 12, 14))
+    ahead = billing.periods_ahead(paid_up, 2)
+
+    later = billing.due_periods(paid_up, date(2027, 1, 8))
+
+    assert ahead.periods == later.periods
+
+
+def test_prepaid_pays_ahead_a_block_at_a_time() -> None:
+    owed = billing.periods_ahead(billable(PREPAID, billed_through=date(2027, 5, 14)), 1)
+
+    assert spans(owed) == [(date(2027, 5, 15), date(2027, 11, 14), 240_000)]
+
+
+def test_paying_ahead_past_a_plan_change_prices_it_from_its_day() -> None:
+    changing = billable(
+        billed_through=date(2026, 11, 14),
+        next_plan=FIRST,
+        next_plan_from=date(2026, 12, 15),
+    )
+
+    owed = billing.periods_ahead(changing, 3)
+
+    assert spans(owed) == [
+        (date(2026, 11, 15), date(2026, 12, 14), 45_000),
+        (date(2026, 12, 15), date(2026, 12, 31), 40_000),
+        (date(2027, 1, 1), date(2027, 1, 31), 40_000),
+    ]
+    assert owed.plan_changed
+    assert owed.anchor_day == 1
+
+
+@pytest.mark.parametrize("plan", [CREDITS, DROPIN, TRIAL])
+def test_only_a_monthly_or_prepaid_plan_pays_ahead(plan: billing.Plan) -> None:
+    assert billing.periods_ahead(billable(plan), 1).periods == ()
+
+
+@pytest.mark.parametrize(
+    "status", [MembershipStatus.FROZEN, MembershipStatus.LAPSED, MembershipStatus.CANCELLED]
+)
+def test_only_an_active_membership_pays_ahead(status: MembershipStatus) -> None:
+    assert billing.periods_ahead(billable(status=status), 1).periods == ()
+
+
+@pytest.mark.parametrize("count", [0, billing.MAX_PAID_AHEAD + 1])
+def test_paying_ahead_is_one_to_a_year_of_periods(count: int) -> None:
+    with pytest.raises(ValueError):
+        billing.periods_ahead(billable(), count)
+
+
+NOV, DEC, JAN = (
+    (date(2026, 11, 15), date(2026, 12, 14)),
+    (date(2026, 12, 15), date(2027, 1, 14)),
+    (date(2027, 1, 15), date(2027, 2, 14)),
+)
+
+
+@pytest.mark.parametrize(
+    ("periods", "through"),
+    [
+        ([], None),
+        ([(*NOV, 45_000)], None),
+        ([(*NOV, 0)], NOV[1]),
+        ([(*JAN, 0), (*NOV, 0), (*DEC, 0)], JAN[1]),
+        ([(*NOV, 0), (*DEC, 5_000), (*JAN, 0)], NOV[1]),
+    ],
+    ids=["none", "first-owing", "paid", "unordered", "gap"],
+)
+def test_paid_through_is_the_end_of_the_last_period_with_none_owing_before_it(
+    periods: list[tuple[date, date, int]], through: date | None
+) -> None:
+    assert billing.paid_through(periods) == through
+
+
+def test_due_periods_stops_at_its_limit() -> None:
+    owed = billing.due_periods(
+        billable(billed_through=date(2026, 11, 14)), date(2027, 3, 7), limit=2
+    )
+
+    assert spans(owed) == [
+        (date(2026, 11, 15), date(2026, 12, 14), 45_000),
+        (date(2026, 12, 15), date(2027, 1, 14), 45_000),
+    ]

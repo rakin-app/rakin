@@ -129,7 +129,28 @@ export type MembershipLedger = {
   // not cut to the latest entries as `entries` is.
   periods: LedgerPeriod[]
   refundable_payments: RefundablePayment[]
+  // The last day its periods are paid through, none owing before it: "Pagado hasta".
+  // Null with no period yet, or with the first one still owing.
+  paid_through: string | null
 }
+
+/** A period paying ahead would bill, not written yet (backend `AheadPeriod`, #196). */
+export type AheadPeriod = { period_start: string; period_end: string; amount_due_clp: number }
+
+/** The next periods after the last one billed, oldest first; empty when the membership
+ *  cannot pay ahead: not active, not monthly or prepaid, or with a period still open. */
+export type AheadQuote = { periods: AheadPeriod[] }
+
+export type PaymentAheadRecord = {
+  membership_id: string
+  periods: number
+  // What those periods cost, as the quote said; anything else is a 409.
+  amount_clp: number
+  method: Method
+  note?: string
+}
+
+export type RecordedAhead = { paid_through: string }
 
 export type PaymentRecord = {
   membership_id: string
@@ -190,6 +211,17 @@ export function membershipLedgerQuery(membershipId: string) {
 
 export function recordPayment(body: PaymentRecord): Promise<RecordedPayment> {
   return apiFetch<RecordedPayment>('/api/ledger/payments', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function aheadQuery(membershipId: string) {
+  return queryOptions({
+    queryKey: ['ledger', 'ahead', membershipId],
+    queryFn: () => apiFetch<AheadQuote>(`/api/ledger/memberships/${encodeURIComponent(membershipId)}/ahead`),
+  })
+}
+
+export function recordPaymentAhead(body: PaymentAheadRecord): Promise<RecordedAhead> {
+  return apiFetch<RecordedAhead>('/api/ledger/payments/ahead', { method: 'POST', body: JSON.stringify(body) })
 }
 
 export function recordAdjustment(body: AdjustmentRecord): Promise<RecordedAdjustment> {

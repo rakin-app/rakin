@@ -14,7 +14,9 @@ another day, and the due date moves again by the days it no longer lasts or gain
 booked can change its end, or be called off. Cancelling is terminal and
 needs a reason; the database refuses any later change to a cancelled row.
 
-Starting one emails the member, or their guardian, a welcome: how to pay and how to
+A membership starting is billed at once, what the nightly job would bill it tonight
+(`bill_now`), so a member who pays at the desk on their first day can be recorded
+then (#196). Starting one emails the member, or their guardian, a welcome: how to pay and how to
 upload a proof, with their first sign-in link to the student page. Nobody who has left
 the gym (dado de baja, #157) starts one, by any path: `insert_membership` refuses them
 until they are reactivated.
@@ -34,10 +36,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contacts import Contact, contact_for
+from app.db import driver_connection
+from app.domain import billing
 from app.domain import membership as domain
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.errors import InvalidTransition
 from app.domain.membership import MAX_FREEZE_DAYS, MembershipStatus, PlanKind, PlanTerms
+from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
 from app.roles import AdminSession, SeesMoney, StaffSession
 from app.schemas.memberships import (
@@ -235,7 +240,25 @@ async def start_membership(
         )
     except PersonHasLeft:
         raise HAS_LEFT from None
+    await bill_now(session, membership_id, gym_today(timezone))
     return await _get(session, membership_id)
+
+
+# The most periods a membership starting is billed in its request: a start back-dated
+# years catches up the rest in the nightly job, which bills on after the latest period.
+BILLED_AT_START = 24
+
+
+async def bill_now(session: AsyncSession, membership_id: uuid.UUID, today: date) -> None:
+    """Bill what the membership owes by `today` plus the job's lead time, as the nightly
+    job would tonight, its first `BILLED_AT_START` periods at most: a member starting
+    today can pay at the desk today (#196)."""
+    conn = await driver_connection(session)
+    billable = await billable_membership(conn, membership_id)
+    if billable is None:  # just written, in this transaction
+        raise NOT_FOUND
+    owed = billing.due_periods(billable, today, limit=BILLED_AT_START)
+    await write_billing(conn, membership_id, owed)
 
 
 async def welcome_for(session: AsyncSession, tenant: Tenant, created: Membership) -> Notice | None:
