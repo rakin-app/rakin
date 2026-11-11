@@ -185,6 +185,8 @@ type Stub = {
   time?: Answer
   // The gym's timezone, as today's sessions give it.
   timeZone?: string
+  // The member's WhatsApp payment reminders (#55); none by default.
+  reminders?: unknown[]
   // Answers anything else first: the record's own actions (#157).
   extra?: (path: string, method: string, body: unknown) => Answer | undefined
 }
@@ -206,6 +208,7 @@ function stubApi({
   attendance = { body: { last_30_days: 9, total: 184, since_promotion: 62 } },
   time = { body: FELIPE_TIME },
   timeZone = 'America/Santiago',
+  reminders = [],
   extra,
 }: Stub = {}) {
   const calls: Call[] = []
@@ -260,6 +263,8 @@ function stubApi({
       return { body: ended }
     }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
+    if (path === '/api/reminders' && url.searchParams.get('person_id') === 'felipe') return { body: reminders }
+    if (path.startsWith('/api/reminders/') && method === 'POST') return { status: 201, body: {} }
     if (path === '/api/gym/grading-scheme') return { body: scheme }
     if (path === '/api/people/felipe/attendance') return attendance
     if (path === '/api/people/felipe/time') return time
@@ -632,6 +637,50 @@ describe('Ficha de alumno', () => {
     expect(screen.queryByRole('button', { name: copy.record })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: copy.ledger.title })).not.toBeInTheDocument()
     expect(calls.some((c) => c.path.startsWith('/api/ledger/memberships'))).toBe(false)
+    expect(calls.some((c) => c.path.startsWith('/api/reminders'))).toBe(false)
+  })
+
+  it('has the WhatsApp reminder in the header when they owe, and logs it as it opens', async () => {
+    const calls = stubApi({
+      reminders: [
+        {
+          billing_period_id: 'p-oct',
+          person_id: 'felipe',
+          person_name: 'Felipe Díaz',
+          kind: 'payment_overdue',
+          rejection_note: null,
+          contact_name: 'Felipe Díaz',
+          whatsapp_url: 'https://wa.me/56912345678?text=Hola',
+          reminders_sent: 1,
+          reminded_at: '2026-11-01T12:00:00Z',
+          reminder_due: true,
+        },
+      ],
+    })
+    renderAt(PATH)
+
+    const header = (await screen.findByRole('heading', { level: 1, name: 'Felipe Díaz' })).closest('header')!
+    const link = await within(header).findByRole('link', {
+      name: es.admin.reminders.write('Felipe Díaz', '2.º'),
+    })
+    expect(link).toHaveAttribute('href', 'https://wa.me/56912345678?text=Hola')
+    expect(link).toHaveTextContent(es.admin.reminders.next('2.º'))
+    // The reminder takes the plain chat's place: one WhatsApp button, never two (#179).
+    expect(within(header).queryByRole('link', { name: copy.whatsapp('Felipe Díaz') })).not.toBeInTheDocument()
+
+    await userEvent.click(link)
+
+    await vi.waitFor(() =>
+      expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual(['/api/reminders/p-oct']),
+    )
+  })
+
+  it('has no reminder in the header when nothing is due', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    await money()
+    expect(screen.queryByRole('link', { name: /Recordar por WhatsApp/ })).not.toBeInTheDocument()
   })
 
   it('freezes the membership until the day chosen, with a reason', async () => {

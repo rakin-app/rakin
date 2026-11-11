@@ -41,6 +41,7 @@ import {
   type TimelineEntry,
 } from '../api/member'
 import { myRoleQuery, readsLedger } from '../api/me'
+import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
@@ -48,6 +49,7 @@ import { Input, Select } from '../components/Field'
 import { ChevronLeftIcon, WhatsAppIcon } from '../components/icons'
 import { Grid, PageContainer } from '../components/Layout'
 import { MemberMatTime } from '../components/MatTime'
+import { ReminderLink } from '../components/ReminderLink'
 import { StatusPill } from '../components/StatusPill'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
@@ -75,6 +77,9 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * Below them, "Datos": their record and the gym's custom fields the signed-in role may
  * see (#20), edited together; then "Dar de baja" or "Reactivar", and "Eliminar" (#157).
  * On a desktop, the money and its ledger on the left and the rest on the right (#179).
+ *
+ * In the header, WhatsApp: for whoever reads the ledger, the reminder about what they
+ * owe, the longest overdue first, when there is one to send (#55); else a plain chat.
  */
 export function MemberDetail() {
   const { personId } = route.useParams()
@@ -115,12 +120,13 @@ export function MemberDetail() {
   // Latest first, so the last is the earliest: a member since their first plan here.
   const since = monthYear(memberships.data.at(-1)?.started_on ?? person.data.created_at)
   const rank = grades.data?.current
+  const money = readsLedger(role.data)
 
   return (
     <Shell
       title={person.data.name}
       subtitle={rank ? copy.rankSince(rankLabel(rank), since) : copy.since(since)}
-      action={<WhatsAppButton person={person.data} />}
+      action={<HeaderWhatsApp person={person.data} money={money} />}
     >
       {person.data.left_on && (
         <p className="member__error" role="status">
@@ -131,7 +137,7 @@ export function MemberDetail() {
       <Grid className="member__columns">
         <div className="member__column">
           {membership ? (
-            <Standing membership={membership} money={readsLedger(role.data)} />
+            <Standing membership={membership} money={money} />
           ) : (
             <p className="member__note">{copy.noPlan}</p>
           )}
@@ -180,6 +186,17 @@ function Shell({
       <div className="member__body">{children}</div>
     </PageContainer>
   )
+}
+
+/**
+ * The header's WhatsApp: the reminder about what the member owes when there is one
+ * (#55), which is counted and logged; else a chat with them. One button, never two.
+ */
+function HeaderWhatsApp({ person, money }: { person: Person; money: boolean }) {
+  const reminders = useQuery({ ...remindersQuery(person.id), enabled: money })
+  if (money && reminders.isPending) return null
+  const first = reminders.data?.find((r) => r.whatsapp_url)
+  return first ? <ReminderLink reminder={first} /> : <WhatsAppButton person={person} />
 }
 
 /**

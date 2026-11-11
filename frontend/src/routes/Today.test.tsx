@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
 import type { InactiveMember } from '../api/inactive'
+import type { PaymentReminder } from '../api/reminders'
 import type { ProofReview } from '../api/review'
 import type { ClassSession, SessionDay, UnmarkedSessions } from '../api/sessions'
 import type { Overdue, OverduePeriod } from '../api/today'
@@ -68,6 +69,42 @@ const OVERDUE: Overdue = {
   periods: [late('Felipe Díaz', 9), late('Javiera Silva', 4), late('Tomás Pérez', 2, 30000)],
 }
 
+const remind = (name: string, extra: Partial<PaymentReminder> = {}): PaymentReminder => ({
+  billing_period_id: `p-${name}`,
+  membership_id: `m-${name}`,
+  person_id: name,
+  person_name: name,
+  plan_name: 'Mensual adultos',
+  period_start: '2026-10-30',
+  due_date: '2026-10-30',
+  outstanding_clp: 45000,
+  days_overdue: 9,
+  kind: 'payment_overdue',
+  rejection_note: null,
+  contact_name: name,
+  whatsapp_url: `https://wa.me/56912345678?text=${encodeURIComponent(name)}`,
+  reminders_sent: 0,
+  reminded_at: null,
+  reminder_due: true,
+  ...extra,
+})
+
+// Felipe owes and has not been reminded; Javiera was reminded once, two days ago, so
+// her next is not due; Tomás has no phone. Two more are not overdue: Rocío is due
+// today and Bruno's proof was rejected.
+const REMINDERS: PaymentReminder[] = [
+  remind('Felipe Díaz'),
+  remind('Javiera Silva', { days_overdue: 4, reminders_sent: 1, reminded_at: '2026-11-07T12:00:00Z', reminder_due: false }),
+  remind('Tomás Pérez', { days_overdue: 2, whatsapp_url: null }),
+  remind('Rocío Fuentes', { days_overdue: 0, kind: 'payment_due_today', outstanding_clp: 30000 }),
+  remind('Bruno Díaz', {
+    days_overdue: -10,
+    kind: 'proof_rejected_followup',
+    rejection_note: 'falta $5.000',
+    contact_name: 'Carla Díaz',
+  }),
+]
+
 const away = (name: string, days: number, extra: Partial<InactiveMember> = {}): InactiveMember => ({
   person_id: name,
   name,
@@ -129,6 +166,7 @@ type Stub = {
   overdue?: Overdue
   payment?: Answer
   inactive?: InactiveMember[]
+  reminders?: PaymentReminder[]
   unmarked?: Answer
   // Today's classes, which a coach's Hoy lists.
   today?: Answer
@@ -172,6 +210,7 @@ function stubApi({
   overdue = OVERDUE,
   payment,
   inactive = INACTIVE,
+  reminders = REMINDERS,
   unmarked,
   today,
   setup,
@@ -181,6 +220,7 @@ function stubApi({
   const calls: Call[] = []
   let current = overdue
   let away = inactive
+  let toRemind = reminders
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input, init) => {
@@ -205,6 +245,18 @@ function stubApi({
     if (path === '/api/ledger/proofs') return proofs ?? { body: [DIEGO, MATEO] }
     if (path === '/api/ledger/overdue') return { body: current }
     if (path === '/api/inactive') return { body: away }
+    if (path === '/api/reminders') return { body: toRemind }
+    const reminded = /^\/api\/reminders\/(.+)$/.exec(path)
+    if (reminded && method === 'POST') {
+      const sentAt = new Date().toISOString()
+      const id = decodeURIComponent(reminded[1]!)
+      toRemind = toRemind.map((r) =>
+        r.billing_period_id === id
+          ? { ...r, reminders_sent: r.reminders_sent + 1, reminded_at: sentAt, reminder_due: false }
+          : r,
+      )
+      return { status: 201, body: { message_id: 'msg-1', sent_at: sentAt, kind: 'payment_overdue', ordinal: 1 } }
+    }
     if (path === '/api/sessions/unmarked') return unmarked ?? { body: UNMARKED }
     if (path === '/api/sessions') return today ?? { body: TODAY }
     if (path === '/api/join-requests') return { body: { items: [], total: 0 } }
@@ -279,7 +331,7 @@ describe('Hoy', () => {
 
     const overdue = await section(copy.overdue.title)
     expect(await within(overdue).findByText(copy.overdue.total('$120.000'))).toBeInTheDocument()
-    const felipe = within(overdue).getByRole('link', { name: /Felipe Díaz/ })
+    const felipe = within(overdue).getByRole('link', { name: /^Felipe Díaz/ })
     expect(felipe).toHaveAttribute('href', '/admin/alumnos/Felipe%20D%C3%ADaz')
     expect(within(felipe).getByText('Venció hace 9 días · $45.000 · Mensual adultos')).toBeInTheDocument()
   })
@@ -381,7 +433,11 @@ describe('Hoy', () => {
     expect(screen.queryByRole('group', { name: copy.countersLabel })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: copy.overdue.title })).not.toBeInTheDocument()
     const asked = calls.filter(
-      (c) => c.path.startsWith('/api/ledger/') || c.path.startsWith('/api/inactive') || c.path === '/api/sessions/unmarked',
+      (c) =>
+        c.path.startsWith('/api/ledger/') ||
+        c.path.startsWith('/api/inactive') ||
+        c.path.startsWith('/api/reminders') ||
+        c.path === '/api/sessions/unmarked',
     )
     expect(asked).toEqual([])
   })
@@ -512,6 +568,64 @@ describe('Hoy', () => {
     renderToday()
 
     expect(await within(await section(copy.inactive.title)).findByText(copy.inactive.empty)).toBeInTheDocument()
+  })
+})
+
+describe('Recordatorios por WhatsApp', () => {
+  const words = es.admin.reminders
+
+  it('puts the reminder beside Pagó on each overdue row, saying which one it is', async () => {
+    stubApi()
+    renderToday()
+    const overdue = await section(copy.overdue.title)
+
+    const felipe = await within(overdue).findByRole('link', { name: words.write('Felipe Díaz', '1.er') })
+    expect(felipe).toHaveAttribute('href', 'https://wa.me/56912345678?text=Felipe%20D%C3%ADaz')
+    expect(felipe).toHaveAttribute('target', '_blank')
+    expect(felipe).toHaveTextContent(words.next('1.er'))
+    expect(felipe).toHaveClass('button--secondary')
+    // Reminded two days ago, every three: the next is there, but quiet.
+    const javiera = within(overdue).getByRole('link', { name: words.write('Javiera Silva', '2.º') })
+    expect(javiera).toHaveClass('button--ghost')
+    expect(within(overdue).getByText(/^1\.er aviso /)).toBeInTheDocument()
+    // No phone to write to: no link.
+    expect(within(overdue).queryByRole('link', { name: /WhatsApp a Tomás/ })).not.toBeInTheDocument()
+  })
+
+  it('logs the reminder as it is opened, and counts it', async () => {
+    const calls = stubApi()
+    renderToday()
+    const overdue = await section(copy.overdue.title)
+
+    await userEvent.click(await within(overdue).findByRole('link', { name: words.write('Felipe Díaz', '1.er') }))
+
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual(['/api/reminders/p-Felipe%20D%C3%ADaz'])
+    expect(await within(overdue).findByRole('link', { name: words.write('Felipe Díaz', '2.º') })).toHaveClass(
+      'button--ghost',
+    )
+  })
+
+  it('lists what is due today and the rejected proofs to follow up, to the guardian for a dependent', async () => {
+    stubApi()
+    renderToday()
+    const toRemind = await section(copy.remind.title)
+
+    expect(within(toRemind).getByText(copy.remind.count(2))).toBeInTheDocument()
+    expect(within(toRemind).getByText(words.dueToday('$30.000', 'Mensual adultos'))).toBeInTheDocument()
+    expect(within(toRemind).getByText(words.rejected('falta $5.000'))).toBeInTheDocument()
+    expect(
+      within(toRemind).getByRole('link', { name: words.writeFor('Carla Díaz', 'Bruno Díaz', '1.er') }),
+    ).toBeInTheDocument()
+    // The overdue are on their own rows, not here.
+    expect(within(toRemind).queryByText('Felipe Díaz')).not.toBeInTheDocument()
+  })
+
+  it('has no Por avisar when nothing is due today', async () => {
+    stubApi({ reminders: REMINDERS.filter((r) => r.days_overdue > 0) })
+    renderToday()
+
+    await section(copy.overdue.title)
+    expect(screen.queryByRole('region', { name: copy.remind.title })).not.toBeInTheDocument()
   })
 })
 
