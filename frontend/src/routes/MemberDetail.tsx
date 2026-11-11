@@ -703,6 +703,7 @@ export function PaymentForm({
   const value = Number(amount.replace(/\D/g, ''))
 
   const record = useSubmit({
+    offline: 'refuse',
     mutationFn: () =>
       recordPayment({
         membership_id: membership.id,
@@ -1158,6 +1159,7 @@ function AdjustmentForm({
   const noteOk = note.trim() !== ''
 
   const adjust = useSubmit({
+    offline: 'refuse',
     mutationFn: () =>
       recordAdjustment({
         membership_id: membership.id,
@@ -1278,6 +1280,7 @@ function RefundForm({
   const value = Number(amount.replace(/\D/g, ''))
 
   const refund = useSubmit({
+    offline: 'refuse',
     mutationFn: () =>
       recordRefund({
         payment_id: payment.id,
