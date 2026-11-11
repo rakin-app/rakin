@@ -2,9 +2,16 @@
   min-height: 100dvh;
 }
 
+/* A phone's column; from 1024px the page's two (MeHome), within `--content-wide`. */
 .me-main {
-  max-width: var(--content-max-width);
+  max-width: calc(var(--content-max-width) + 2 * var(--space-5));
   margin: 0 auto;
+}
+
+@media (min-width: 1024px) {
+  .me-main {
+    max-width: none;
+  }
 }
 
 .me-footer {

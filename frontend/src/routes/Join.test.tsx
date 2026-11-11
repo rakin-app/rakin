@@ -111,6 +111,7 @@ describe('Inscríbete', () => {
     renderAt('/unirse/tok-123456789012345678901')
 
     await userEvent.type(await screen.findByLabelText(copy.firstName), 'Juan')
+    await userEvent.type(screen.getByLabelText(copy.lastName), 'Rojas')
     expect(screen.queryByLabelText(copy.guardianName)).not.toBeInTheDocument()
     // Eighteen tomorrow, on the gym's today.
     fireEvent.change(screen.getByLabelText(copy.dob), { target: { value: '2008-11-11' } })
@@ -184,6 +185,55 @@ describe('Inscríbete', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.invalidFields)
     expect(screen.getByLabelText(copy.rut)).toHaveAccessibleDescription(`${copy.rutHint} ${copy.refused.rut}`)
+  })
+
+  it('says what to write in each required field left empty, and sends nothing', async () => {
+    const sent = stubApi()
+    renderAt('/unirse/tok-123456789012345678901')
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.submit }))
+
+    expect(screen.getByLabelText(copy.firstName)).toHaveAccessibleDescription(copy.required.first_name!)
+    expect(screen.getByLabelText(copy.lastName)).toHaveAccessibleDescription(copy.required.last_name!)
+    expect(screen.getByLabelText(copy.dob)).toHaveAccessibleDescription(copy.required.dob!)
+    expect(screen.getByLabelText(copy.phone)).toHaveAccessibleDescription(`${copy.phoneHint} ${copy.required.phone}`)
+    expect(screen.getByLabelText(copy.email)).toHaveAccessibleDescription(copy.required.email!)
+    // The RUT is optional, and an empty field is never a malformed one.
+    expect(screen.getByLabelText(copy.rut)).toHaveAccessibleDescription(copy.rutHint)
+    expect(screen.queryByText(copy.refused.rut!)).not.toBeInTheDocument()
+    expect(screen.queryByText(copy.refused.dob!)).not.toBeInTheDocument()
+    expect(sent.filter((s) => s.method === 'POST')).toEqual([])
+
+    // Typing clears a field's message; "No tengo WhatsApp" clears the phone's.
+    await userEvent.type(screen.getByLabelText(copy.firstName), 'Ana')
+    expect(screen.queryByText(copy.required.first_name!)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: copy.noWhatsapp }))
+    expect(screen.queryByText(copy.required.phone!)).not.toBeInTheDocument()
+  })
+
+  it('asks a minor for their guardian’s details when they are left empty', async () => {
+    stubApi()
+    renderAt('/unirse/tok-123456789012345678901')
+
+    fireEvent.change(await screen.findByLabelText(copy.dob), { target: { value: '2012-03-01' } })
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+
+    expect(screen.getByLabelText(copy.guardianName)).toHaveAccessibleDescription(copy.required.guardian_name!)
+    expect(screen.getByLabelText(copy.guardianEmail)).toHaveAccessibleDescription(copy.required.guardian_email!)
+    expect(screen.queryByText(copy.required.email!)).not.toBeInTheDocument()
+    expect(screen.queryByText(copy.required.phone!)).not.toBeInTheDocument()
+  })
+
+  it('drops a refusal of what was typed once the field is empty again', async () => {
+    stubApi({ submit: { status: 422, body: { detail: [{ type: 'value_error', loc: ['body', 'rut'], msg: 'x' }] } } })
+    renderAt('/unirse/tok-123456789012345678901')
+
+    await fillAdult()
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+    expect(await screen.findByText(copy.refused.rut!)).toBeInTheDocument()
+
+    await userEvent.clear(screen.getByLabelText(copy.rut))
+    expect(screen.queryByText(copy.refused.rut!)).not.toBeInTheDocument()
   })
 
   it('says when there were too many submissions', async () => {
@@ -287,6 +337,7 @@ describe('ageOn', () => {
     await userEvent.click(consentBox())
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 
+    expect(screen.queryByText(copy.required.first_name!)).not.toBeInTheDocument()
     expect(consentBox()).toHaveAccessibleDescription(copy.refused.consent!)
     expect(consentBox()).toHaveAttribute('aria-invalid', 'true')
     expect(sent.filter((s) => s.method === 'POST')).toEqual([])

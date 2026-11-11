@@ -103,7 +103,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
               onChange={() => pickPeriod(p.id)}
             />
             <span>
-              <span className="proof__period-name">{copy.period(p.person_name, p.plan_name, t.common.day(p.due_date))}</span>
+              <span className="proof__period-name">{copy.period(p.person_name, p.plan_name, t.common.longDay(p.due_date))}</span>
               <span className="proof__period-detail">{copy.outstanding(t.common.clp(p.outstanding_clp))}</span>
               {p.pending_clp > 0 && (
                 <span className="proof__period-detail proof__period-detail--review">
@@ -118,13 +118,13 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
       <label htmlFor={ids.amount} className="proof__label">
         {copy.amountLabel}
       </label>
+      {/* Pesos as the card writes them, `$45.000`, while the state keeps the digits. */}
       <Input
         id={ids.amount}
         inputMode="numeric"
-        pattern="[0-9]*"
         required
-        value={amount}
-        onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
+        value={amount === '' ? '' : t.common.clp(Number(amount))}
+        onChange={(e) => setAmount(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 12))}
       />
 
       <span className="proof__label">{copy.fileLabel}</span>

@@ -27,6 +27,7 @@ from app.magiclink import (
     Session,
     SessionMiddleware,
     Site,
+    Texts,
     build_router,
     callback_url,
     session_cookie_name,
@@ -147,6 +148,7 @@ def make_app(
     base_url: str = BASE_URL,
     cookie_name: str | None = None,
     site: Callable[[Request], Site] | None = None,
+    **options: Any,
 ) -> FastAPI:
     app = FastAPI()
     app.include_router(
@@ -157,6 +159,7 @@ def make_app(
             landings=frozenset({"/me"}),
             cookie_name=cookie_name,
             site=site,
+            **options,
         )
     )
 
@@ -195,6 +198,7 @@ def make_harness(
     cookie_name: str | None = None,
     site: Callable[[Request], Site] | None = None,
     client_url: str | None = None,
+    **options: Any,
 ) -> Iterator[Harness]:
     clock, directory, store, outbox = Clock(), Directory(), Store(), Outbox()
     links = MagicLinks(
@@ -207,7 +211,7 @@ def make_harness(
         per_ip=MemoryRateLimiter(limit=5, window_seconds=900),
         clock=clock,
     )
-    app = make_app(links, base_url, cookie_name, site)
+    app = make_app(links, base_url, cookie_name, site, **options)
     # Errors come back as 500s, as a browser would see them.
     with TestClient(
         app,
@@ -482,7 +486,31 @@ def test_a_bad_token_gets_the_expired_page(harness: Harness, token: str) -> None
     opened = harness.client.get(f"{PREFIX}/callback", params={"token": token})
     spent = harness.client.post(f"{PREFIX}/callback", data={"token": token})
     assert (opened.status_code, spent.status_code) == (400, 400)
+    # With nowhere else named to ask for a new link, the start.
     assert 'href="/"' in opened.text
+    # A site with no name says none.
+    assert '<p class="eyebrow">' not in opened.text
+
+
+def test_the_pages_are_the_applications_words_and_look() -> None:
+    texts = Texts(
+        name="App",
+        title="Sign in to {name}",
+        invalid_title="Gone",
+        invalid="Ask again.",
+        again="New link",
+    )
+    for harness in make_harness(texts=texts, sign_in="/signin", stylesheet="main{color:red}"):
+        harness.request_link(ANA.address)
+        opened = harness.client.get(harness.outbox.url_for(ANA)).text
+        expired = harness.client.get(f"{PREFIX}/callback", params={"token": "nonsense"}).text
+
+        assert "<style>main{color:red}</style>" in opened
+        # A site with no name of its own goes by the application's.
+        assert '<p class="eyebrow">App</p><h1>Sign in to App</h1>' in opened
+        assert '<button class="button button--primary" type="submit">' in opened
+        assert "<h1>Gone</h1>" in expired
+        assert '<a class="button button--primary" href="/signin">New link</a>' in expired
 
 
 def test_a_form_posted_from_another_site_is_refused(harness: Harness) -> None:
@@ -563,6 +591,12 @@ def tenant_site(request: Request) -> Site:
 @pytest.fixture
 def tenant() -> Iterator[Harness]:
     yield from make_harness(site=tenant_site, client_url=TENANT_URL)
+
+
+def test_a_sites_pages_carry_its_name(tenant: Harness) -> None:
+    tenant.request_link(ANA.address)
+    page = tenant.client.get(tenant.outbox.url_for(ANA)).text
+    assert '<p class="eyebrow">Sur</p>' in page
 
 
 def test_a_link_asked_for_on_a_site_points_back_to_it(tenant: Harness) -> None:

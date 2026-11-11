@@ -56,13 +56,104 @@ PER_IP = (30, 15 * 60)
 
 TEXTS = Texts(
     lang="es",
-    title="Entrar a Rakin",
+    name="Rakin",
+    title="Entrar a {name}",
     confirm="Toca el botón para entrar.",
     button="Entrar",
-    invalid="Este enlace venció o ya se usó. Pide uno nuevo.",
+    invalid_title="Este link ya no sirve",
+    invalid="Venció o ya se usó: cada link dura 15 minutos y sirve una sola vez.",
+    again="Pedir otro link",
     back="Volver al inicio",
     unreachable="Este correo no tiene acceso a {name}. Si entrenas ahí, pídele al gimnasio"
     " que lo registre.",
+)
+
+# Where "Pedir otro link" goes: the SPA's sign-in screen.
+SIGN_IN = "/ingresar"
+
+# The design tokens the pages use, as `frontend/src/styles/tokens.css` has them (a test
+# holds them to it): the pages are plain HTML from here, with no SPA bundle to load.
+TOKENS = {
+    "--color-bg": "#f7f7f5",
+    "--color-surface": "#ffffff",
+    "--color-surface-sunken": "#f3f4f1",
+    "--color-border": "#e3e4e0",
+    "--color-border-input": "#898c86",
+    "--color-text": "#15171a",
+    "--color-text-muted": "#5c6066",
+    "--color-inverse": "#15171a",
+    "--color-inverse-raised": "#26292e",
+    "--color-inverse-text": "#ffffff",
+    "--color-accent": "#1d4ed8",
+    "--font-sans": "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
+    "--font-display": "'Space Grotesk', 'Inter', system-ui, sans-serif",
+    "--text-xs": "12px",
+    "--text-base": "15px",
+    "--text-3xl": "28px",
+    "--tracking-eyebrow": "0.06em",
+    "--tracking-title": "-0.01em",
+    "--space-0-5": "2px",
+    "--space-3": "12px",
+    "--space-4": "16px",
+    "--space-5": "20px",
+    "--space-7": "28px",
+    "--space-8": "32px",
+    "--space-14": "56px",
+    "--radius-md": "12px",
+    "--radius-lg": "14px",
+    "--control-height-lg": "52px",
+    "--content-max-width": "480px",
+}
+
+# Fixed-name copies of the SPA's fonts, which `frontend/vite.config.ts` serves.
+FONTS = (
+    ("Inter", 400, "inter-latin-400-normal"),
+    ("Inter", 600, "inter-latin-600-normal"),
+    ("Space Grotesk", 700, "space-grotesk-latin-700-normal"),
+)
+
+# The sign-in link's pages as `/ingresar` looks: the gym's name over the title, then a
+# card with the text and one full-width 52px button. Light only, as the app is.
+STYLESHEET = (
+    "".join(
+        f"@font-face{{font-family:'{family}';font-style:normal;font-weight:{weight};"
+        f"font-display:swap;src:url(/fonts/{file}.woff2) format('woff2')}}"
+        for family, weight, file in FONTS
+    )
+    + ":root{color-scheme:light;"
+    + "".join(f"{name}:{value};" for name, value in TOKENS.items())
+    + "}"
+    "*{box-sizing:border-box}"
+    "html{-webkit-text-size-adjust:100%}"
+    "body{margin:0;background:var(--color-bg);color:var(--color-text);"
+    "font-family:var(--font-sans);font-size:var(--text-base);line-height:1.4;"
+    "-webkit-font-smoothing:antialiased}"
+    "main{max-width:var(--content-max-width);margin:0 auto;"
+    "padding:var(--space-14) var(--space-5) calc(var(--space-8) + env(safe-area-inset-bottom))}"
+    ".eyebrow{margin:0 0 var(--space-0-5);color:var(--color-text-muted);font-size:var(--text-xs);"
+    "font-weight:600;letter-spacing:var(--tracking-eyebrow);text-transform:uppercase}"
+    "h1{margin:0;padding-bottom:var(--space-3);font-family:var(--font-display);"
+    "font-size:var(--text-3xl);font-weight:700;letter-spacing:var(--tracking-title);"
+    "line-height:1.2}"
+    ".card{display:flex;flex-direction:column;gap:var(--space-4);margin-top:var(--space-3);"
+    "padding:var(--space-4);"
+    "background:var(--color-surface);border:1px solid var(--color-border);"
+    "border-radius:var(--radius-lg)}"
+    ".card p{margin:0;color:var(--color-text-muted)}"
+    ".card form{margin:0}"
+    ".button{display:flex;align-items:center;justify-content:center;width:100%;"
+    "min-height:var(--control-height-lg);padding:0 var(--space-3);border:1px solid transparent;"
+    "border-radius:var(--radius-md);font:inherit;font-size:var(--text-base);font-weight:600;"
+    "line-height:1.2;text-align:center;text-decoration:none;cursor:pointer;"
+    "-webkit-appearance:none;appearance:none}"
+    ".button--primary{background:var(--color-inverse);border-color:var(--color-inverse);"
+    "color:var(--color-inverse-text)}"
+    ".button--primary:hover{background:var(--color-inverse-raised)}"
+    ".button--secondary{background:var(--color-surface);border-color:var(--color-border-input);"
+    "color:var(--color-text)}"
+    ".button--secondary:hover{background:var(--color-surface-sunken)}"
+    ":focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}"
+    "@media (min-width:960px){main{padding-top:var(--space-7)}}"
 )
 
 Sessionmaker = Callable[[], async_sessionmaker[AsyncSession]]

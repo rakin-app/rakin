@@ -34,7 +34,16 @@ from app.api import (
     staff,
     unsubscribe,
 )
-from app.auth import LANDINGS, PREFIX, TEXTS, bind_session, build_magic_links, site_of
+from app.auth import (
+    LANDINGS,
+    PREFIX,
+    SIGN_IN,
+    STYLESHEET,
+    TEXTS,
+    bind_session,
+    build_magic_links,
+    site_of,
+)
 from app.db import create_engine, create_sessionmaker
 from app.hosts import GymLookup, HostMiddleware, Hosts
 from app.integrations import build_integrations
@@ -122,6 +131,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             landings=LANDINGS,
             texts=TEXTS,
             site=site_of(app.state.hosts),
+            sign_in=SIGN_IN,
+            stylesheet=STYLESHEET,
         )
     )
     if settings.blob_store == "local":

@@ -121,7 +121,9 @@ describe('Subir comprobante', () => {
     await openUpload()
 
     await screen.findByRole('heading', { name: copy.title })
-    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('45000')
+    // Due as the card above writes it, not `05-11-2026`.
+    expect(screen.getByRole('radio', { name: /vence el 5 de noviembre/ })).toBeChecked()
+    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('$45.000')
     await userEvent.upload(screen.getByLabelText(copy.choose), photo())
     expect(screen.getByText(copy.chosen('transferencia.jpg'))).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
@@ -155,9 +157,11 @@ describe('Subir comprobante', () => {
     const juan = await screen.findByRole('radio', { name: /Juan Rojas/ })
     expect(screen.getByText(copy.inReview('$25.000'))).toBeInTheDocument()
     await userEvent.click(juan)
-    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('25000')
+    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('$25.000')
     await userEvent.clear(screen.getByLabelText(copy.amountLabel))
     await userEvent.type(screen.getByLabelText(copy.amountLabel), '20000')
+    // Pesos as they are typed.
+    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('$20.000')
     await userEvent.upload(screen.getByLabelText(copy.camera), photo())
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 

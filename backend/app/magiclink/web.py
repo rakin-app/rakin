@@ -44,7 +44,7 @@ CALLBACK = "/callback"
 PAGE_HEADERS = {
     "Cache-Control": "no-store",
     "Referrer-Policy": "same-origin",
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; "
     "form-action 'self'; frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
 }
@@ -52,16 +52,30 @@ PAGE_HEADERS = {
 
 @dataclass(frozen=True)
 class Texts:
-    """Everything the pages say, for an application to translate."""
+    """Everything the pages say, for an application to translate. `{name}` is the
+    site's, or `name` on a site that has none."""
 
     lang: str = "en"
+    name: str = ""
     title: str = "Sign in"
     confirm: str = "Tap the button to sign in."
     button: str = "Sign in"
-    invalid: str = "This link has expired or was already used. Ask for a new one."
+    invalid_title: str = "This link no longer works"
+    invalid: str = "It has expired or was already used. Ask for a new one."
+    again: str = "Ask for a new link"
     back: str = "Back to the start"
-    # `{name}` is the site's.
     unreachable: str = "This address has no access to {name}."
+
+
+# The pages' look, unless the application brings its own. Every page is a `main` with
+# an optional `.eyebrow` (the site's name), an `h1`, and a `.card` holding a paragraph
+# and one `.button`: a `button--primary` or `button--secondary`, a `button` or a link.
+STYLESHEET = (
+    "body{font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem;"
+    "line-height:1.5}.eyebrow{margin:0;text-transform:uppercase;font-size:.75rem}"
+    ".card p{margin:0 0 1rem}"
+    ".button{display:block;width:100%;padding:.75rem 1.5rem;font:inherit;text-align:center}"
+)
 
 
 @dataclass(frozen=True)
@@ -118,6 +132,8 @@ def build_router(
     cookie_name: str | None = None,
     texts: Texts | None = None,
     site: Callable[[Request], Site] | None = None,
+    sign_in: str | None = None,
+    stylesheet: str = STYLESHEET,
 ) -> APIRouter:
     """The endpoints, under `prefix`. `base_url` is where browsers reach the app.
 
@@ -126,6 +142,10 @@ def build_router(
 
     `site` names each request's site, on `base_url` with no scope unless given. Every
     site's base URL must share `base_url`'s scheme, which decides the cookie.
+
+    A link that no longer works offers a new one at `sign_in`, by default `after_login`.
+    The pages' look is `stylesheet`, CSS for the markup `STYLESHEET` describes; fonts it
+    names must be on the app's own origin.
 
     The cookie is `Secure` unless `base_url` is `http://`, whatever `cookie_name` says;
     by default it is named by `session_cookie_name`, as `SessionMiddleware` must read it.
@@ -147,29 +167,43 @@ def build_router(
     def landing(next_: str) -> str:
         return next_ if next_ in landings else after_login
 
-    def page(body: str, status_code: int = status.HTTP_200_OK) -> HTMLResponse:
+    def page(request: Request, title: str, body: str, status_code: int = 200) -> HTMLResponse:
+        """A page of `body`, already HTML, under `title`, both after `{name}` is filled in."""
+        name = site_of(request).name or texts.name
+        heading = html.escape(title.format(name=name))
+        eyebrow = f'<p class="eyebrow">{html.escape(name)}</p>' if name else ""
         document = (
             f'<!doctype html><html lang="{html.escape(texts.lang)}"><head>'
             '<meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1">'
-            f"<title>{html.escape(texts.title)}</title>"
-            "<style>body{font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;"
-            "padding:0 1rem;line-height:1.5}button{font:inherit;padding:.75rem 1.5rem}</style>"
-            f"</head><body><h1>{html.escape(texts.title)}</h1>{body}</body></html>"
+            f"<title>{heading}</title><style>{stylesheet}</style></head>"
+            f"<body><main>{eyebrow}<h1>{heading}</h1>"
+            f'<div class="card">{body}</div></main></body></html>'
         )
         return HTMLResponse(document, status_code=status_code, headers=PAGE_HEADERS)
 
-    def unreachable(name: str) -> HTMLResponse:
+    def link_button(href: str, label: str, variant: str) -> str:
+        return (
+            f'<a class="button button--{variant}" href="{html.escape(href)}">'
+            f"{html.escape(label)}</a>"
+        )
+
+    def unreachable(request: Request) -> HTMLResponse:
+        name = site_of(request).name or texts.name
         return page(
+            request,
+            texts.title,
             f"<p>{html.escape(texts.unreachable.format(name=name))}</p>"
-            f'<p><a href="{html.escape(after_login)}">{html.escape(texts.back)}</a></p>',
+            f"{link_button(after_login, texts.back, 'secondary')}",
             status.HTTP_403_FORBIDDEN,
         )
 
-    def invalid() -> HTMLResponse:
+    def invalid(request: Request) -> HTMLResponse:
         return page(
+            request,
+            texts.invalid_title,
             f"<p>{html.escape(texts.invalid)}</p>"
-            f'<p><a href="{html.escape(after_login)}">{html.escape(texts.back)}</a></p>',
+            f"{link_button(sign_in or after_login, texts.again, 'primary')}",
             status.HTTP_400_BAD_REQUEST,
         )
 
@@ -201,18 +235,22 @@ def build_router(
 
     @router.get(CALLBACK, response_class=HTMLResponse)
     async def open_link(
+        request: Request,
         token: Annotated[str, Query(max_length=512)] = "",
         next_: Annotated[str, Query(alias="next", max_length=512)] = "",
     ) -> HTMLResponse:
         """The page a link opens: a button that signs in. It does not spend the link."""
         if not links.looks_valid(token):
-            return invalid()
+            return invalid(request)
         return page(
+            request,
+            texts.title,
             f"<p>{html.escape(texts.confirm)}</p>"
             f'<form method="post" action="{html.escape(callback_path)}">'
             f'<input type="hidden" name="token" value="{html.escape(token)}">'
             f'<input type="hidden" name="next" value="{html.escape(landing(next_))}">'
-            f'<button type="submit">{html.escape(texts.button)}</button></form>'
+            f'<button class="button button--primary" type="submit">'
+            f"{html.escape(texts.button)}</button></form>",
         )
 
     @router.post(CALLBACK, response_class=HTMLResponse)
@@ -227,9 +265,9 @@ def build_router(
         try:
             session_token = await links.redeem(form.get("token", [""])[0], within=here.scope)
         except Unreachable:
-            return unreachable(here.name)
+            return unreachable(request)
         if session_token is None:
-            return invalid()
+            return invalid(request)
         destination = landing(form.get("next", [""])[0])
         response = RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
         response.set_cookie(
