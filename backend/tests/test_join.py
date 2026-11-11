@@ -17,6 +17,7 @@ import asyncpg
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.api.join import JoinLimits
@@ -659,6 +660,62 @@ def test_a_human_check_must_pass(app: FastAPI, client: TestClient, gym: uuid.UUI
         )
         assert submit(client, token, adult(phone=None, human_check_token="ok")).status_code == 422
         assert len(check.seen) == seen
+    finally:
+        app.state.integrations = integrations
+
+
+@dataclasses.dataclass
+class PoolWatchingCheck:
+    """A check that notes how many of the app's connections are out while it runs."""
+
+    app: FastAPI
+    site_key: str | None = "site-key"
+    checked_out: list[int] = dataclasses.field(default_factory=list)
+
+    async def verify(self, token: str | None, ip: str | None) -> bool:
+        self.checked_out.append(self.app.state.engine.pool.checkedout())
+        return True
+
+
+def test_the_human_check_holds_no_connection(
+    app: FastAPI, client: TestClient, gym: uuid.UUID
+) -> None:
+    # siteverify is an HTTP round trip: a connection held across it is one a burst
+    # of submissions takes from sign-in and Hoy (#162).
+    check = PoolWatchingCheck(app)
+    integrations = app.state.integrations
+    app.state.integrations = dataclasses.replace(integrations, human_check=check)
+    try:
+        submitted(client, token_of(client, gym), adult(human_check_token="ok"))
+        assert check.checked_out == [0]
+        assert len(queue(client, gym)) == 1
+    finally:
+        app.state.integrations = integrations
+
+
+def test_a_link_revoked_during_the_human_check_stores_nothing(
+    app: FastAPI, client: TestClient, gym: uuid.UUID
+) -> None:
+    token = token_of(client, gym)
+
+    @dataclasses.dataclass
+    class RevokingCheck:
+        site_key: str | None = "site-key"
+
+        async def verify(self, token: str | None, ip: str | None) -> bool:
+            async with app.state.sessionmaker() as session, session.begin():
+                await session.execute(
+                    text("SELECT set_config('app.gym_id', :id, true)"), {"id": str(gym)}
+                )
+                await session.execute(text("DELETE FROM join_link"))
+            return True
+
+    integrations = app.state.integrations
+    app.state.integrations = dataclasses.replace(integrations, human_check=RevokingCheck())
+    try:
+        refused = submit(client, token, adult(human_check_token="ok"))
+        assert (refused.status_code, refused.json()) == (404, {"detail": "invalid_link"})
+        assert queue(client, gym) == []
     finally:
         app.state.integrations = integrations
 

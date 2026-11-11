@@ -51,7 +51,7 @@ import {
   type Step,
   type TimerBlock,
 } from './timerEngine'
-import { signal, unlockSound, useWakeLock } from './timerSignal'
+import { signal, switchSignal, unlockSound, useSoundState, useWakeLock, type SoundState } from './timerSignal'
 import './Classes.css'
 import './ClassTimer.css'
 
@@ -619,6 +619,7 @@ function Running({
   const navigate = useNavigate()
   const timeZone = useGymTimeZone()
   const wakeLock = useWakeLock(true)
+  const sound = useSoundState()
   // The run as last committed, for the tick and the buttons between renders.
   const latest = useRef(run)
   const warned = useRef<string | null>(null)
@@ -647,11 +648,12 @@ function Running({
         setNow(at)
         return
       }
-      const step = advance(latest.current, at)
+      const before = latest.current
+      const step = advance(before, at)
       const seen = touch(step.state, at)
-      if (seen !== latest.current) {
+      if (seen !== before) {
         apply({ ...step, state: seen })
-        if (step.phaseEndedAt !== null && at - step.phaseEndedAt < SIGNAL_LATE_MS) signal('end')
+        if (step.phaseEndedAt !== null && at - step.phaseEndedAt < SIGNAL_LATE_MS) signal(switchSignal(before, step.state))
       }
       const state = latest.current
       if (state.endedAt === null && state.pausedAt === null && phaseMs(state) > WARN_MS) {
@@ -679,9 +681,15 @@ function Running({
   const paused = run.pausedAt !== null
   const warning = !paused && left <= WARN_MS
   const skipLabel = !block.sparring ? words.skip : run.resting ? words.skipRest : words.skipRound
+  // A sparring block is green while fighting and red while resting, and says so in words too.
+  const mode = !block.sparring ? null : run.resting ? 'rest' : 'fight'
 
   return (
-    <div className={`timer${warning ? ' timer--warning' : ''}${paused ? ' timer--paused' : ''}`}>
+    // Any tap allows sound: a class opened again after a reload has had none yet.
+    <div
+      className={`timer${mode ? ` timer--${mode}` : ''}${warning ? ' timer--warning' : ''}${paused ? ' timer--paused' : ''}`}
+      onPointerDown={unlockSound}
+    >
       <header className="timer__top">
         <Button icon inverse aria-label={copy.back} onClick={() => setLeaving(true)}>
           <ChevronLeftIcon />
@@ -690,6 +698,7 @@ function Running({
         <span className="timer__position">{words.position(run.index + 1, run.blocks.length)}</span>
       </header>
       <div className="timer__main">
+        {mode && <p className="timer__mode">{mode === 'rest' ? words.restMode : words.fightMode}</p>}
         <p className="timer__phase">{phaseLabel(run, block)}</p>
         <p className="timer__clock" role="timer" aria-label={words.countdown}>
           {clock(left)}
@@ -721,7 +730,7 @@ function Running({
           {words.end}
         </Button>
       </div>
-      <TimerNotes sessionId={session.id} noWakeLock={wakeLock === 'unsupported'} />
+      <TimerNotes sessionId={session.id} noWakeLock={wakeLock === 'unsupported'} sound={sound} />
       {unseenAt !== null && (
         <div className="timer__sheet" role="alertdialog" aria-label={words.unseen.title}>
           <p>{words.unseen.title}</p>
@@ -811,14 +820,23 @@ function Running({
   )
 }
 
-/** Below the controls: blocks waiting for signal, a screen that will not stay on. */
-function TimerNotes({ sessionId, noWakeLock }: { sessionId: string; noWakeLock: boolean }) {
+/** Below the controls: blocks waiting for signal, a screen that will not stay on, no sound. */
+function TimerNotes({
+  sessionId,
+  noWakeLock,
+  sound = 'on',
+}: {
+  sessionId: string
+  noWakeLock: boolean
+  sound?: SoundState
+}) {
   const pending = useDelayed(usePendingSync(sessionId))
-  if (!pending && !noWakeLock) return null
+  if (!pending && !noWakeLock && sound === 'on') return null
   return (
     <div className="timer__notes">
       {pending && <p role="status">{copy.sync.pending}</p>}
       {noWakeLock && <p>{copy.running.noWakeLock}</p>}
+      {sound !== 'on' && <p>{sound === 'locked' ? copy.running.soundLocked : copy.running.noSound}</p>}
     </div>
   )
 }

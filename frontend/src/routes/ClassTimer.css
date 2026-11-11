@@ -78,6 +78,63 @@
   background: var(--color-warning-strong);
 }
 
+/* A sparring round green, its rest red (#187). The muted text goes full strength on
+   colour, and the 10-second warning is a pulsing frame and clock, not a third background. */
+.timer--fight {
+  --timer-colour: var(--color-timer-fight);
+  --color-inverse-text: var(--color-timer-fight-text);
+  --color-inverse-text-muted: var(--color-timer-fight-text);
+  --color-inverse-border: color-mix(in srgb, var(--color-timer-fight-text) 60%, transparent);
+}
+
+.timer--rest {
+  --timer-colour: var(--color-timer-rest);
+  --color-inverse-text: var(--color-timer-rest-text);
+  --color-inverse-text-muted: var(--color-timer-rest-text);
+  --color-inverse-border: color-mix(in srgb, var(--color-timer-rest-text) 60%, transparent);
+}
+
+.timer--fight,
+.timer--rest {
+  background: var(--timer-colour);
+  color: var(--color-inverse-text);
+}
+
+/* Paused, the colour dims toward the dark, and the text only gains on it. */
+.timer--fight.timer--paused,
+.timer--rest.timer--paused {
+  background: color-mix(in srgb, var(--timer-colour) 45%, var(--color-inverse));
+}
+
+.timer--fight.timer--paused .timer__clock,
+.timer--rest.timer--paused .timer__clock {
+  opacity: 1;
+}
+
+.timer--fight.timer--warning,
+.timer--rest.timer--warning {
+  box-shadow: inset 0 0 0 var(--space-3) var(--color-inverse-text);
+}
+
+.timer--fight.timer--warning .timer__clock,
+.timer--rest.timer--warning .timer__clock {
+  animation: timer-pulse 1s ease-in-out infinite;
+}
+
+/* A pulse in size, not in opacity: the clock keeps its contrast throughout. */
+@keyframes timer-pulse {
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timer--fight.timer--warning .timer__clock,
+  .timer--rest.timer--warning .timer__clock {
+    animation: none;
+  }
+}
+
 .timer__top {
   display: flex;
   align-items: center;
@@ -109,6 +166,15 @@
   gap: var(--space-2);
   min-height: 0;
   text-align: center;
+}
+
+.timer__mode {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(var(--text-3xl), 12vmin, 72px);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-label);
+  line-height: 1;
 }
 
 .timer__phase {
@@ -225,8 +291,9 @@
     grid-row: 2 / 4;
   }
 
+  /* "10:00" fits its column with room for the warning's pulse, which grows it 8%. */
   .timer__clock {
-    font-size: min(22vw, 46vh);
+    font-size: min(18vw, 46vh);
   }
 
   .timer__controls {
