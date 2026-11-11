@@ -107,8 +107,9 @@ class State:
     entries: list[Entry]
     lapsed_on: dict[uuid.UUID, list[date]]
     unfrozen_on: dict[uuid.UUID, list[date]]
-    # Each membership's latest freeze's end.
+    # Each membership's latest freeze's end, and its first day.
     frozen_until: dict[uuid.UUID, date]
+    frozen_since: dict[uuid.UUID, date]
     balances: dict[uuid.UUID, int]
     grace: int
 
@@ -181,13 +182,12 @@ def fetch_state(db: Database) -> State:
                 "SELECT kind, membership_id, occurred_on FROM plan_event ORDER BY occurred_on"
             ):
                 events[r[0]][r[1]].append(r[2])
-            frozen_until = {
-                r[0]: r[1]
-                for r in await conn.fetch(
-                    "SELECT DISTINCT ON (membership_id) membership_id, to_date"
-                    " FROM membership_freeze ORDER BY membership_id, from_date DESC"
-                )
-            }
+            latest_freezes = await conn.fetch(
+                "SELECT DISTINCT ON (membership_id) membership_id, from_date, to_date"
+                " FROM membership_freeze ORDER BY membership_id, from_date DESC"
+            )
+            frozen_until = {r[0]: r[2] for r in latest_freezes}
+            frozen_since = {r[0]: r[1] for r in latest_freezes}
             balances = {
                 r[0]: r[1]
                 for r in await conn.fetch("SELECT membership_id, balance_clp FROM v_balance")
@@ -200,6 +200,7 @@ def fetch_state(db: Database) -> State:
             dict(events["lapsed"]),
             dict(events["unfrozen"]),
             frozen_until,
+            frozen_since,
             balances,
             grace,
         )
@@ -264,8 +265,14 @@ def check_periods(state: State, day: date) -> None:
 
     for member_id, periods in by_member.items():
         member = state.members[member_id]
+        until = state.frozen_until.get(member_id)
+        since = state.frozen_since.get(member_id)
         for before, after in itertools.pairwise(periods):
-            assert after.start == before.end + timedelta(days=1), (member_id, before, after)
+            gap = timedelta(days=1)
+            # The freeze moved the due date past its days (`app.domain.membership.freeze`).
+            if until is not None and since is not None and before.start < since <= after.start:
+                gap += until - since
+            assert after.start == before.end + gap, (member_id, before, after)
         for p in periods:
             assert p.start <= p.end and p.due == p.start, p
             assert p.start <= horizon, f"{p} billed past {horizon}"
@@ -274,14 +281,18 @@ def check_periods(state: State, day: date) -> None:
                 assert charges[(p.id, p.amount_due)] == 1, p
             else:
                 assert charged_periods[p.id] == 0, p
-            if member.kind == "monthly":
+            # One billed before a freeze ended is on the anchor day it had then.
+            if member.kind == "monthly" and (until is None or p.start >= until):
                 assert member.anchor_day is not None
                 last = calendar.monthrange(p.start.year, p.start.month)[1]
                 assert p.start.day == min(member.anchor_day, last), (member, p)
         if member.kind not in RECURRING:
             assert len(periods) == 1, periods
         elif member.status == "active":
-            assert periods[-1].end >= horizon, f"{member_id} billed only to {periods[-1].end}"
+            # Billed from past the later of the two (`app.domain.billing`): a freeze moved
+            # the paid-through date past the last period.
+            billed = max(periods[-1].end, member.current_period_end or periods[-1].end)
+            assert billed >= horizon, f"{member_id} billed only to {billed}"
     for member_id, member in state.members.items():
         if member.status == "active" and member.kind in RECURRING:
             assert member_id in by_member, f"active {member_id} has no periods"

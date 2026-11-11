@@ -30,6 +30,8 @@ CONFLICT_KEYS = {
     "gym_person": "(gym_id, person_id)",
     "guardian_link": "(gym_id, dependent_person_id)",
     "attendance": "(session_id, membership_id)",
+    # A class of the schedule the API made again, deleted and refilled, has a new id.
+    "session": "",
 }
 # `ON CONFLICT` holds the new row to the table's read policy, and a person joins the
 # gym only once their `gym_person` row exists (0004), so these rows are tried one by one.
@@ -66,7 +68,8 @@ async def load(conn: asyncpg.Connection, today: date | None = None) -> Loaded:
                 f" VALUES ({', '.join(f'${i}' for i in range(1, len(columns) + 1))})"
             )
             if table not in NO_ON_CONFLICT:
-                sql += f" ON CONFLICT {CONFLICT_KEYS.get(table, '(id)')} DO NOTHING"
+                target = CONFLICT_KEYS.get(table, "(id)")
+                sql += f" ON CONFLICT {target} DO NOTHING" if target else " ON CONFLICT DO NOTHING"
             count = 0
             for row in rows:
                 count += await _insert(conn, table, sql, [row[c] for c in columns])
