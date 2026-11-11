@@ -12,6 +12,8 @@ import {
   type PlanKind,
 } from '../api/plans'
 import { validationErrors } from '../api/validation'
+import { Button } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
 
@@ -119,9 +121,9 @@ export function PlanSettings() {
       {editing === 'new' ? (
         <PlanForm programs={programList} onCancel={() => setEditing(null)} onDone={done} />
       ) : (
-        <button type="button" className="settings__button settings__button--primary" onClick={() => open('new')}>
+        <Button variant="primary" onClick={() => open('new')}>
           {copy.add}
-        </button>
+        </Button>
       )}
       {plans.data.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
@@ -184,12 +186,12 @@ function PlanRow({
         </p>
       )}
       <div className="settings__actions">
-        <button type="button" className="settings__button" onClick={onEdit}>
+        <Button onClick={onEdit}>
           {copy.edit}
-        </button>
-        <button type="button" className="settings__button" disabled={toggle.isPending} onClick={() => toggle.mutate()}>
+        </Button>
+        <Button variant={plan.active ? 'danger' : 'secondary'} disabled={toggle.isPending} onClick={() => toggle.mutate()}>
           {plan.active ? copy.deactivate : copy.reactivate}
-        </button>
+        </Button>
       </div>
     </li>
   )
@@ -254,9 +256,8 @@ function PlanForm({
       <h2 className="settings__legend">{plan ? form.edit(plan.name) : form.create}</h2>
       <Field label={form.kind}>
         {(props) => (
-          <select
+          <Select
             {...props}
-            className="settings__input"
             value={kind}
             // The kind is set on create: an edit changes the kind's parameters, not the kind.
             disabled={plan !== undefined}
@@ -271,14 +272,13 @@ function PlanForm({
                 {copy.kinds[k]}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </Field>
       <Field label={form.name} error={errorOf('name')}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="text"
             maxLength={200}
             value={drafts.name}
@@ -288,9 +288,8 @@ function PlanForm({
       </Field>
       <Field label={form.program} error={errorOf('program_id')}>
         {(props) => (
-          <select
+          <Select
             {...props}
-            className="settings__input"
             value={drafts.program_id}
             onChange={(e) => set('program_id', e.target.value)}
           >
@@ -300,7 +299,7 @@ function PlanForm({
                 {p.active ? p.name : form.inactiveProgram(p.name)}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </Field>
       {params.map((param) => (
@@ -312,9 +311,8 @@ function PlanForm({
         >
           {(props) =>
             param === 'anchor' ? (
-              <select
+              <Select
                 {...props}
-                className="settings__input"
                 value={drafts.anchor}
                 onChange={(e) => set('anchor', e.target.value)}
               >
@@ -323,11 +321,10 @@ function PlanForm({
                     {copy.anchors[anchor]}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
-              <input
+              <Input
                 {...props}
-                className="settings__input"
                 type="text"
                 inputMode="numeric"
                 value={drafts[param]}
@@ -348,12 +345,12 @@ function PlanForm({
         </p>
       )}
       <div className="settings__actions">
-        <button type="button" className="settings__button" disabled={save.isPending} onClick={onCancel}>
+        <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="settings__button settings__button--primary" disabled={save.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           {save.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )

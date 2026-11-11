@@ -7,6 +7,8 @@ import {
   type FieldValue,
   type PersonField,
 } from '../api/customFields'
+import { Button } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 
 const copy = t.admin.member.fields
@@ -63,16 +65,14 @@ export function CustomFieldsPanel({ personId }: { personId: string }) {
             </p>
           )}
           <div className="member__actions">
-            <button
-              type="button"
-              className="member__button"
+            <Button
               onClick={() => {
                 setSaved(false)
                 setEditing(true)
               }}
             >
               {copy.edit}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -164,12 +164,12 @@ function FieldsForm({
       )}
 
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={save.isPending} onClick={onCancel}>
+        <Button disabled={save.isPending} onClick={onCancel}>
           {copy.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={save.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           {save.isPending ? copy.working : copy.save}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -191,24 +191,23 @@ export function FieldInput({
 }) {
   const props = {
     id,
-    className: 'member__input',
     value,
     'aria-invalid': invalid,
     onChange: (e: { target: { value: string } }) => onChange(e.target.value),
   }
   if (field.type === 'enum') {
     return (
-      <select {...props}>
+      <Select {...props}>
         <option value="">{copy.choose}</option>
         {(field.options ?? []).map((option) => (
           <option key={option} value={option}>
             {option}
           </option>
         ))}
-      </select>
+      </Select>
     )
   }
-  if (field.type === 'number') return <input {...props} type="text" inputMode="decimal" />
-  if (field.type === 'date') return <input {...props} type="date" />
-  return <input {...props} type="text" maxLength={1000} />
+  if (field.type === 'number') return <Input {...props} type="text" inputMode="decimal" />
+  if (field.type === 'date') return <Input {...props} type="date" />
+  return <Input {...props} type="text" maxLength={1000} />
 }

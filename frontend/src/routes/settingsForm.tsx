@@ -1,10 +1,10 @@
+import { Button } from '../components/Button'
 /**
  * What every Ajustes section builds on: its load failure, its labelled fields and what
  * the API's 422s on them mean. A module of its own, so the sections import it without
  * importing `Settings.tsx`, which imports them.
  */
 
-import { useId, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { t } from '../i18n/es'
 
@@ -20,9 +20,9 @@ export function LoadFailed({ error, message, retry }: { error: Error; message: s
   return (
     <div className="settings__error" role="alert">
       <p>{message}</p>
-      <button type="button" className="settings__button" onClick={retry}>
+      <Button onClick={retry}>
         {copy.retry}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -65,38 +65,5 @@ export function integerOf(draft: string): number | string {
   return /^-?\d+$/.test(text) ? Number(text) : text
 }
 
-type ControlProps = { id: string; 'aria-invalid': boolean; 'aria-describedby': string | undefined }
-
 /** A labelled control, with its hint and the API's refusal of it underneath. */
-export function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string
-  hint?: string
-  error?: string
-  children: (props: ControlProps) => ReactNode
-}) {
-  const id = useId()
-  const described = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(' ')
-  return (
-    <div className="settings__field">
-      <label htmlFor={id} className="settings__label">
-        {label}
-      </label>
-      {children({ id, 'aria-invalid': error !== undefined, 'aria-describedby': described || undefined })}
-      {hint && (
-        <p id={`${id}-hint`} className="settings__hint">
-          {hint}
-        </p>
-      )}
-      {error && (
-        <p id={`${id}-error`} className="settings__field-error">
-          {error}
-        </p>
-      )}
-    </div>
-  )
-}
+export { Field } from '../components/Field'

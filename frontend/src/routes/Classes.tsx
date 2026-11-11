@@ -10,6 +10,8 @@ import {
   type ClassSession,
   type ClassType,
 } from '../api/sessions'
+import { Button } from '../components/Button'
+import { Select } from '../components/Field'
 import { ChevronRightIcon } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
 import { shiftDay, timeRange, toDate, weekdayDay } from '../format'
@@ -49,17 +51,17 @@ export function Classes() {
             )}
           </div>
           <nav className="classes__days" aria-label={copy.days.label}>
-            <button type="button" className="classes__button" onClick={() => go(shiftDay(shown, -1))}>
+            <Button onClick={() => go(shiftDay(shown, -1))}>
               {copy.days.previous}
-            </button>
+            </Button>
             {!isToday && (
-              <button type="button" className="classes__button" onClick={() => go(gymToday)}>
+              <Button onClick={() => go(gymToday)}>
                 {copy.days.today}
-              </button>
+              </Button>
             )}
-            <button type="button" className="classes__button" onClick={() => go(shiftDay(shown, 1))}>
+            <Button onClick={() => go(shiftDay(shown, 1))}>
               {copy.days.next}
-            </button>
+            </Button>
           </nav>
           {day.isPending ? (
             <p className="classes__note">{copy.loading}</p>
@@ -84,9 +86,9 @@ function Failed({ message, retry }: { message: string; retry: () => void }) {
   return (
     <div className="classes__error" role="alert">
       <p>{message}</p>
-      <button type="button" className="classes__button" onClick={retry}>
+      <Button onClick={retry}>
         {copy.retry}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -166,9 +168,8 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
       <label htmlFor={selectId} className="classes__label">
         {copy.start.classType}
       </label>
-      <select
+      <Select
         id={selectId}
-        className="classes__input"
         value={classTypeId}
         onChange={(e) => setClassTypeId(e.target.value)}
       >
@@ -181,15 +182,15 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
             ))}
           </optgroup>
         ))}
-      </select>
+      </Select>
       {start.isError && (
         <p className="classes__error" role="alert">
           {copy.start.failed}
         </p>
       )}
-      <button type="submit" className="classes__button classes__button--primary" disabled={start.isPending}>
+      <Button type="submit" variant="primary" disabled={start.isPending}>
         {start.isPending ? copy.start.working : copy.start.submit}
-      </button>
+      </Button>
     </form>
   )
 }

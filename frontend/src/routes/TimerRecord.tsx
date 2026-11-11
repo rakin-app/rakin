@@ -18,6 +18,8 @@ import {
   type SessionPlan,
 } from '../api/sessionBlocks'
 import type { ClassSession } from '../api/sessions'
+import { Button } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { savedRun } from './timerEngine'
@@ -187,16 +189,14 @@ export function TimerRecord({ session }: { session: ClassSession }) {
           {busy ? (
             <p className="classes__note">{busy}</p>
           ) : (
-            <button
-              type="button"
-              className="classes__button"
+            <Button
               onClick={() => {
                 setSaved(false)
                 setEditing(true)
               }}
             >
               {copy.edit}
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -292,13 +292,9 @@ function RecordEditor({
       </ol>
       {full && <p className="classes__note">{copy.tooMany(MAX_BLOCKS)}</p>}
       {canAdd && (
-        <button
-          type="button"
-          className="attendance__add"
-          onClick={() => setDrafts((all) => [...all, newDraft(openMat ? choices[0] : firstKind)])}
-        >
+        <Button fullWidth onClick={() => setDrafts((all) => [...all, newDraft(openMat ? choices[0] : firstKind)])}>
           {copy.add}
-        </button>
+        </Button>
       )}
       {checked && !valid && (
         <p className="classes__error" role="alert">
@@ -310,12 +306,12 @@ function RecordEditor({
           {copy.failed}
         </p>
       )}
-      <button type="submit" className="classes__button classes__button--primary" disabled={save.isPending}>
+      <Button type="submit" variant="primary" disabled={save.isPending}>
         {save.isPending ? copy.working : copy.submit}
-      </button>
-      <button type="button" className="classes__button" onClick={() => onClose(false)}>
+      </Button>
+      <Button onClick={() => onClose(false)}>
         {copy.close}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -347,9 +343,8 @@ function RecordCard({
       <label htmlFor={`${id}-${field}`} className="classes__label">
         {label}
       </label>
-      <input
+      <Input
         id={`${id}-${field}`}
-        className="classes__input"
         inputMode={mode}
         value={draft[field]}
         aria-invalid={wrong.has(field) || undefined}
@@ -366,22 +361,22 @@ function RecordCard({
         </span>
         {removable && (
           <span className="timer-editor__actions">
-            <button type="button" className="classes__icon-button" aria-label={copy.remove(n)} onClick={onRemove}>
+            <Button icon aria-label={copy.remove(n)} onClick={onRemove}>
               <CloseIcon />
-            </button>
+            </Button>
           </span>
         )}
       </div>
       <label htmlFor={`${id}-kind`} className="classes__label">
         {copy.kind}
       </label>
-      <select id={`${id}-kind`} className="classes__input" value={draft.kindId} onChange={(e) => onKind(e.target.value)}>
+      <Select id={`${id}-kind`} value={draft.kindId} onChange={(e) => onKind(e.target.value)}>
         {choices.map((k) => (
           <option key={k.id} value={k.id}>
             {k.name}
           </option>
         ))}
-      </select>
+      </Select>
       {kind?.is_sparring ? (
         <div className="timer-editor__rounds">
           {input('rounds', copy.rounds, 'numeric')}

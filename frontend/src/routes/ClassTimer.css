@@ -41,15 +41,6 @@
   gap: var(--space-1-5);
 }
 
-.timer-editor__actions .classes__icon-button {
-  cursor: pointer;
-}
-
-.timer-editor__actions .classes__icon-button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
 .timer-editor__field {
   display: flex;
   flex-direction: column;
@@ -57,23 +48,10 @@
   min-width: 0;
 }
 
-.timer-editor__field .classes__input {
-  width: 100%;
-}
-
-.timer-editor__field .classes__input[aria-invalid='true'] {
-  border-color: var(--color-warning);
-}
-
 .timer-editor__rounds {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
-}
-
-.attendance__add:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .timer-done__row {
@@ -105,18 +83,6 @@
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
-}
-
-.timer__back {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-height);
-  height: var(--control-height);
-  border: 1px solid var(--color-inverse-border);
-  border-radius: var(--radius-md);
-  color: inherit;
 }
 
 .timer__class {
@@ -180,30 +146,6 @@
   gap: var(--space-2);
 }
 
-.timer__button {
-  min-height: var(--control-height-xl);
-  padding: 0 var(--space-3);
-  background: var(--color-inverse-raised);
-  border: 1px solid var(--color-inverse-border);
-  border-radius: var(--radius-md);
-  color: var(--color-inverse-text);
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-}
-
-.timer__button--main {
-  grid-column: 1 / -1;
-  background: var(--color-inverse-text);
-  color: var(--color-inverse);
-  font-size: var(--text-lg);
-}
-
-.timer__button--end {
-  border-color: var(--color-warning);
-  color: var(--color-warning-soft);
-}
-
 .timer__notes {
   display: flex;
   flex-direction: column;
@@ -240,11 +182,6 @@
 .timer__sheet-detail {
   color: var(--color-inverse-text-muted);
   font-size: var(--text-sm);
-}
-
-.timer__back {
-  background: transparent;
-  cursor: pointer;
 }
 
 .timer__overlay {
@@ -296,7 +233,14 @@
     align-content: center;
   }
 
-  .timer__button {
-    min-height: var(--control-height);
-  }
+}
+
+/* "Empezar" / "Pausar": the whole row, a step bigger. */
+.timer__go {
+  grid-column: 1 / -1;
+  font-size: var(--text-lg);
+}
+
+.timer-editor__field .control {
+  width: 100%;
 }

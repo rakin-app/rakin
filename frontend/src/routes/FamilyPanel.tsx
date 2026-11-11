@@ -10,6 +10,8 @@ import {
   type PersonRef,
 } from '../api/family'
 import { membersPath, type MemberPage, type MemberRow } from '../api/people'
+import { Button } from '../components/Button'
+import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 
 const copy = t.admin.family
@@ -106,15 +108,9 @@ function Linked({ person, disabled, onUnlink }: { person: PersonRef; disabled: b
   return (
     <li className="family__person">
       <span>{person.name}</span>
-      <button
-        type="button"
-        className="family__action"
-        aria-label={copy.unlinkLabel(person.name)}
-        disabled={disabled}
-        onClick={onUnlink}
-      >
+      <Button variant="danger" aria-label={copy.unlinkLabel(person.name)} disabled={disabled} onClick={onUnlink}>
         {copy.unlink}
-      </button>
+      </Button>
     </li>
   )
 }
@@ -144,14 +140,14 @@ function NewDependentForm({ busy, onAdd }: { busy: boolean; onAdd: (body: AddDep
       <h3 className="family__title">{copy.addTitle}</h3>
       <p className="family__hint">{copy.addHint}</p>
       <label htmlFor={ids.name}>{copy.name}</label>
-      <input id={ids.name} className="family__input" required value={name} onChange={(e) => setName(e.target.value)} />
+      <Input id={ids.name} required value={name} onChange={(e) => setName(e.target.value)} />
       <label htmlFor={ids.rut}>{copy.rut}</label>
-      <input id={ids.rut} className="family__input" value={rut} onChange={(e) => setRut(e.target.value)} />
+      <Input id={ids.rut} value={rut} onChange={(e) => setRut(e.target.value)} />
       <label htmlFor={ids.dob}>{copy.dob}</label>
-      <input id={ids.dob} className="family__input" type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
-      <button type="submit" className="students__button" disabled={busy || !name.trim()}>
+      <Input id={ids.dob} type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+      <Button type="submit" disabled={busy || !name.trim()}>
         {copy.add}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -220,10 +216,10 @@ export function PeopleSearch({
       <label htmlFor={searchId} className="visually-hidden">
         {label}
       </label>
-      <input
+      <Input
         id={searchId}
         type="search"
-        className="family__input"
+        className="family__search"
         placeholder={label}
         autoComplete="off"
         value={draft}
@@ -237,15 +233,9 @@ export function PeopleSearch({
             {matches.data.map((row) => (
               <li key={row.id} className="family__person">
                 <span>{row.name}</span>
-                <button
-                  type="button"
-                  className="family__action"
-                  aria-label={actionLabel(row.name)}
-                  disabled={busy}
-                  onClick={() => onPick(row)}
-                >
+                <Button aria-label={actionLabel(row.name)} disabled={busy} onClick={() => onPick(row)}>
                   {action}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

@@ -122,8 +122,10 @@ type Stub = {
   unmarked?: Answer
   // The role request fails: the server is down, say.
   roleFails?: boolean
-  // A gym's setup as "Configura tu academia" reads it; none answers 404, as before #166.
+  // A gym's setup as "Configura tu academia" reads it; none is a gym that is set up.
   setup?: Setup
+  // The checklist's member count fails.
+  setupFails?: boolean
 }
 
 type Setup = {
@@ -149,6 +151,9 @@ function setupAnswer(path: string, setup: Setup): Answer | null {
   return null
 }
 
+// With no setup given, the gym is set up, and the checklist does not show.
+const SET_UP: Setup = { bankAccount: true, plans: 1, classTypes: 1, members: 1, staff: 2 }
+
 function stubApi({
   role = 'owner',
   proofs,
@@ -157,6 +162,7 @@ function stubApi({
   inactive = INACTIVE,
   unmarked,
   setup,
+  setupFails = false,
   roleFails = false,
 }: Stub = {}) {
   const calls: Call[] = []
@@ -179,7 +185,8 @@ function stubApi({
 
   function route(path: string, method: string): Answer {
     if (path === '/api/me/role') return roleFails ? { status: 500, body: { detail: 'boom' } } : { body: { role, person_id: 'owner-1' } }
-    const configured = setup && setupAnswer(path, setup)
+    if (setupFails && path === '/api/people') return { status: 500, body: { detail: 'boom' } }
+    const configured = setupAnswer(path, setup ?? SET_UP)
     if (configured) return configured
     if (path === '/api/ledger/pending') return { body: { count: 2 } }
     if (path === '/api/ledger/proofs') return proofs ?? { body: [DIEGO, MATEO] }
@@ -491,6 +498,16 @@ describe('Configura tu academia', () => {
     expect(href(steps.members.joinLink)).toBe('/admin/ajustes/inscripcion')
     expect(href(steps.staff.link)).toBe('/admin/ajustes/equipo')
     expect(within(setup).getByText(steps.gym.title)).toHaveTextContent(copy.setup.state(false).trim())
+  })
+
+  it('says so when it cannot tell, and asks again on retry', async () => {
+    const calls = stubApi({ setup: {}, setupFails: true })
+    renderToday()
+
+    const alert = await screen.findByText(copy.setup.error, {}, { timeout: 5000 })
+    const asked = calls.filter((c) => c.path === '/api/people').length
+    await userEvent.click(within(alert.closest('[role="alert"]') as HTMLElement).getByRole('button', { name: copy.retry }))
+    await vi.waitFor(() => expect(calls.filter((c) => c.path === '/api/people').length).toBeGreaterThan(asked))
   })
 
   it('ticks each step once it is done', async () => {

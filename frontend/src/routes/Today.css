@@ -116,6 +116,8 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
+  justify-content: center;
+  min-height: var(--control-height);
   gap: var(--space-0-5);
   min-width: 0;
 }
@@ -139,43 +141,12 @@
   color: var(--color-warning);
 }
 
-.today__pill {
+/* What the whole row does, at its end: link-coloured text, since the row is the link. */
+.today__action {
   flex: none;
-  padding: var(--space-1) var(--space-2-5);
-  background: var(--color-accent-soft);
-  border-radius: var(--radius-pill);
   color: var(--color-accent);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: var(--font-weight-semibold);
-}
-
-.today__pill--warning {
-  background: var(--color-warning-soft);
-  color: var(--color-warning-strong);
-}
-
-.today__button {
-  flex: none;
-  min-height: var(--control-height);
-  padding: 0 var(--space-3-5);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-}
-
-.today__button--primary {
-  background: var(--color-inverse);
-  border-color: var(--color-inverse);
-  color: var(--color-inverse-text);
-}
-
-.today__button:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .today__form {
@@ -188,15 +159,6 @@
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-semibold);
-}
-
-.today__input {
-  min-height: var(--control-height);
-  padding: 0 var(--space-3);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
 }
 
 .today__form-actions {
@@ -214,8 +176,8 @@
 }
 
 .today__error {
-  background: var(--color-warning-soft);
-  color: var(--color-warning-strong);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 
 .today__error p {
@@ -227,17 +189,6 @@
   color: var(--color-success-strong);
 }
 
-.today__more {
-  align-self: center;
-  padding: var(--space-2-5) var(--space-4);
-  background: none;
-  border: 0;
-  color: var(--color-accent);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-}
-
 @media (min-width: 960px) {
   .today__counters,
   .today__body {
@@ -245,7 +196,7 @@
   }
 
   .today__counters {
-    max-width: 640px;
+    max-width: var(--content-narrow);
   }
 }
 
@@ -263,20 +214,6 @@
   margin: var(--space-1) 0 0;
   font-size: var(--text-sm);
   font-weight: var(--font-weight-semibold);
-}
-
-/* The WhatsApp nudge: a 44px square tap target, as in the design. */
-.today__icon-button {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
 }
 
 /* A line under the heading in place of the money sections: a coach's pointer to Clases, or why there is nothing. */
@@ -354,9 +291,15 @@
 .today__step-links {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
-  margin-top: var(--space-1);
+  column-gap: var(--space-4);
   font-size: var(--text-sm);
+}
+
+/* Each step's link is a whole 44px target, not just its line of text. */
+.today__step-links .today__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
 }
 
 @media (min-width: 960px) {

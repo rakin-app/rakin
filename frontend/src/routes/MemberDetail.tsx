@@ -41,8 +41,11 @@ import {
 import { myRoleQuery, readsLedger } from '../api/me'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
+import { Button, buttonClass } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { ChevronLeftIcon } from '../components/icons'
 import { MemberMatTime } from '../components/MatTime'
+import { StatusPill } from '../components/StatusPill'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { CustomFieldsPanel } from './CustomFieldsPanel'
@@ -91,16 +94,14 @@ export function MemberDetail() {
         <div className="member__note" role="alert">
           <p>{missing ? copy.notFound : copy.error}</p>
           {!missing && (
-            <button
-              type="button"
-              className="member__button"
+            <Button
               onClick={() => {
                 void person.refetch()
                 void memberships.refetch()
               }}
             >
               {copy.retry}
-            </button>
+            </Button>
           )}
         </div>
       </Shell>
@@ -136,7 +137,7 @@ function Shell({ title, subtitle, children }: { title?: string; subtitle?: strin
   return (
     <div className="member">
       <header className="member__header">
-        <Link to="/admin/alumnos" className="member__icon-button" aria-label={copy.back}>
+        <Link to="/admin/alumnos" className={buttonClass({ icon: true })} aria-label={copy.back}>
           <ChevronLeftIcon />
         </Link>
         {title && (
@@ -191,17 +192,11 @@ function planLine(membership: Membership): string {
  * is past due; else the membership's status. A freeze booked ahead is a line of its own. */
 function Badge({ membership, ledger }: { membership: Membership; ledger: MembershipLedger | undefined }) {
   if (membership.freeze?.started) {
-    return (
-      <span className="member__badge member__badge--frozen">{copy.frozenUntil(shortDay(membership.freeze.to_date))}</span>
-    )
+    return <StatusPill status="frozen">{copy.frozenUntil(shortDay(membership.freeze.to_date))}</StatusPill>
   }
   const late = ledger?.open_periods[0]?.days_overdue ?? 0
-  if (late > 0) return <span className="member__badge member__badge--lapsed">{copy.overdue(late)}</span>
-  return (
-    <span className={`member__badge member__badge--${membership.status}`}>
-      {t.admin.students.status[membership.status]}
-    </span>
-  )
+  if (late > 0) return <StatusPill status="overdue">{copy.overdue(late)}</StatusPill>
+  return <StatusPill status={membership.status}>{t.admin.students.status[membership.status]}</StatusPill>
 }
 
 function Owed({ ledger }: { ledger: MembershipLedger }) {
@@ -251,64 +246,53 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
   return (
     <>
       <div className="member__actions">
-        <button
-          type="button"
-          className="member__button member__button--primary"
+        <Button
+          variant="primary"
           aria-expanded={open === 'payment'}
           disabled={periods.length === 0}
           onClick={() => toggle('payment')}
         >
           {copy.record}
-        </button>
-        <button
-          type="button"
-          className="member__button"
+        </Button>
+        <Button
           aria-expanded={open === 'adjustment'}
           disabled={known.length === 0}
           onClick={() => toggle('adjustment')}
         >
           {copy.adjust}
-        </button>
-        <button
-          type="button"
-          className="member__button"
+        </Button>
+        <Button
           aria-expanded={open === 'refund'}
           disabled={payments.length === 0}
           onClick={() => toggle('refund')}
         >
           {copy.refund}
-        </button>
+        </Button>
         {!freeze && (
-          <button
-            type="button"
-            className="member__button"
+          <Button
             aria-expanded={open === 'freeze'}
             disabled={membership.status !== 'active'}
             onClick={() => toggle('freeze')}
           >
             {copy.freeze}
-          </button>
+          </Button>
         )}
       </div>
       {/* A row of their own: two long labels do not fit beside the others at 390px. */}
       {freeze && (
         <div className="member__actions">
-          <button
-            type="button"
-            className="member__button"
+          <Button
             aria-expanded={open === 'editFreeze'}
             onClick={() => toggle('editFreeze')}
           >
             {copy.editFreeze}
-          </button>
-          <button
-            type="button"
-            className="member__button"
+          </Button>
+          <Button
             aria-expanded={open === 'endFreeze'}
             onClick={() => toggle('endFreeze')}
           >
             {freeze.started ? copy.endFreeze : copy.callOffFreeze}
-          </button>
+          </Button>
         </div>
       )}
       {done && (
@@ -408,9 +392,8 @@ function FreezeForm({
       <label htmlFor={ids.from} className="member__label">
         {form.from}
       </label>
-      <input
+      <Input
         id={ids.from}
-        className="member__input"
         type="date"
         min={first}
         value={from}
@@ -426,9 +409,8 @@ function FreezeForm({
       <label htmlFor={ids.until} className="member__label">
         {form.until}
       </label>
-      <input
+      <Input
         id={ids.until}
-        className="member__input"
         type="date"
         min={addDays(fromOk ? from : first, 1)}
         value={until}
@@ -448,9 +430,8 @@ function FreezeForm({
       <label htmlFor={ids.reason} className="member__label">
         {form.reason}
       </label>
-      <input
+      <Input
         id={ids.reason}
-        className="member__input"
         type="text"
         maxLength={500}
         value={reason}
@@ -470,12 +451,12 @@ function FreezeForm({
       )}
 
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={freeze.isPending} onClick={onCancel}>
+        <Button disabled={freeze.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={freeze.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={freeze.isPending}>
           {freeze.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -520,9 +501,8 @@ function EditFreezeForm({
       <label htmlFor={ids.until} className="member__label">
         {form.until}
       </label>
-      <input
+      <Input
         id={ids.until}
-        className="member__input"
         type="date"
         min={first}
         value={until}
@@ -542,9 +522,8 @@ function EditFreezeForm({
       <label htmlFor={ids.reason} className="member__label">
         {form.reason}
       </label>
-      <input
+      <Input
         id={ids.reason}
-        className="member__input"
         type="text"
         maxLength={500}
         value={reason}
@@ -564,12 +543,12 @@ function EditFreezeForm({
       )}
 
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={edit.isPending} onClick={onCancel}>
+        <Button disabled={edit.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={edit.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={edit.isPending}>
           {edit.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -611,12 +590,12 @@ function EndFreezeForm({
       )}
 
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={end.isPending} onClick={onCancel}>
+        <Button disabled={end.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={end.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={end.isPending}>
           {end.isPending ? form.working : freeze.started ? form.end : form.callOff}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -679,9 +658,8 @@ export function PaymentForm({
       <label htmlFor={ids.period} className="member__label">
         {form.period}
       </label>
-      <select
+      <Select
         id={ids.period}
-        className="member__input"
         value={period.id}
         onChange={(e) => {
           setPeriodId(e.target.value)
@@ -694,14 +672,13 @@ export function PaymentForm({
             {form.periodOption(monthName(p.period_start), clp(p.outstanding_clp))}
           </option>
         ))}
-      </select>
+      </Select>
 
       <label htmlFor={ids.amount} className="member__label">
         {form.amount}
       </label>
-      <input
+      <Input
         id={ids.amount}
-        className="member__input"
         inputMode="numeric"
         value={amount}
         aria-invalid={amountNeeded && !value}
@@ -716,20 +693,19 @@ export function PaymentForm({
       <label htmlFor={ids.method} className="member__label">
         {form.method}
       </label>
-      <select id={ids.method} className="member__input" value={method} onChange={(e) => setMethod(e.target.value as Method)}>
+      <Select id={ids.method} value={method} onChange={(e) => setMethod(e.target.value as Method)}>
         {METHODS.map((m) => (
           <option key={m} value={m}>
             {form.methods[m]}
           </option>
         ))}
-      </select>
+      </Select>
 
       <label htmlFor={ids.note} className="member__label">
         {form.note}
       </label>
-      <input
+      <Input
         id={ids.note}
-        className="member__input"
         type="text"
         maxLength={500}
         value={note}
@@ -743,12 +719,12 @@ export function PaymentForm({
       )}
 
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={record.isPending} onClick={onCancel}>
+        <Button disabled={record.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={record.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={record.isPending}>
           {record.isPending ? form.working : form.submit(clp(value))}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -821,9 +797,7 @@ function Graduation({ personId, canAward }: { personId: string; canAward: boolea
         {ranked && canAward && scheme.data && (
           <>
             <div className="member__actions">
-              <button
-                type="button"
-                className="member__button"
+              <Button
                 aria-expanded={open}
                 onClick={() => {
                   setDone(null)
@@ -831,7 +805,7 @@ function Graduation({ personId, canAward }: { personId: string; canAward: boolea
                 }}
               >
                 {words.award}
-              </button>
+              </Button>
             </div>
             {done && (
               <p className="member__done" role="status">
@@ -981,9 +955,8 @@ function GradeForm({
       <label htmlFor={ids.rank} className="member__label">
         {form.rank}
       </label>
-      <select
+      <Select
         id={ids.rank}
-        className="member__input"
         value={rankKey}
         onChange={(e) => {
           setRankKey(e.target.value)
@@ -1003,29 +976,28 @@ function GradeForm({
         ) : (
           <RankOptions ranks={scheme.ranks} />
         )}
-      </select>
+      </Select>
 
       {rank && rank.sub_ranks.length > 0 && (
         <>
           <label htmlFor={ids.sub} className="member__label">
             {form.subRank}
           </label>
-          <select id={ids.sub} className="member__input" value={subRank ?? ''} onChange={(e) => setSubRank(e.target.value)}>
+          <Select id={ids.sub} value={subRank ?? ''} onChange={(e) => setSubRank(e.target.value)}>
             {rank.sub_ranks.map((s) => (
               <option key={s.key} value={s.key}>
                 {s.label}
               </option>
             ))}
-          </select>
+          </Select>
         </>
       )}
 
       <label htmlFor={ids.date} className="member__label">
         {form.date}
       </label>
-      <input
+      <Input
         id={ids.date}
-        className="member__input"
         type="date"
         required
         max={today}
@@ -1036,9 +1008,8 @@ function GradeForm({
       <label htmlFor={ids.note} className="member__label">
         {form.note}
       </label>
-      <input
+      <Input
         id={ids.note}
-        className="member__input"
         type="text"
         maxLength={500}
         value={note}
@@ -1052,12 +1023,12 @@ function GradeForm({
       )}
 
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={award.isPending} onClick={onCancel}>
+        <Button disabled={award.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={award.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={award.isPending}>
           {award.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -1137,9 +1108,8 @@ function AdjustmentForm({
       <label htmlFor={ids.direction} className="member__label">
         {form.direction}
       </label>
-      <select
+      <Select
         id={ids.direction}
-        className="member__input"
         value={direction}
         onChange={(e) => setDirection(e.target.value as Direction)}
       >
@@ -1148,25 +1118,24 @@ function AdjustmentForm({
             {form.directions[d]}
           </option>
         ))}
-      </select>
+      </Select>
 
       <label htmlFor={ids.period} className="member__label">
         {form.period}
       </label>
-      <select id={ids.period} className="member__input" value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
+      <Select id={ids.period} value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
         {choices.map((p) => (
           <option key={p.id} value={p.id}>
             {form.periodOption(monthName(p.period_start), clp(p.outstanding_clp))}
           </option>
         ))}
-      </select>
+      </Select>
 
       <label htmlFor={ids.amount} className="member__label">
         {form.amount}
       </label>
-      <input
+      <Input
         id={ids.amount}
-        className="member__input"
         inputMode="numeric"
         value={amount}
         aria-invalid={checked && !value}
@@ -1181,9 +1150,8 @@ function AdjustmentForm({
       <label htmlFor={ids.note} className="member__label">
         {form.note}
       </label>
-      <input
+      <Input
         id={ids.note}
-        className="member__input"
         type="text"
         maxLength={500}
         value={note}
@@ -1203,12 +1171,12 @@ function AdjustmentForm({
       )}
 
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={adjust.isPending} onClick={onCancel}>
+        <Button disabled={adjust.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={adjust.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={adjust.isPending}>
           {adjust.isPending ? form.working : form.submit(t.common.signedClp(signed))}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -1263,9 +1231,8 @@ function RefundForm({
       <label htmlFor={ids.payment} className="member__label">
         {form.payment}
       </label>
-      <select
+      <Select
         id={ids.payment}
-        className="member__input"
         value={payment.id}
         onChange={(e) => {
           setPaymentId(e.target.value)
@@ -1282,14 +1249,13 @@ function RefundForm({
             )}
           </option>
         ))}
-      </select>
+      </Select>
 
       <label htmlFor={ids.amount} className="member__label">
         {form.amount}
       </label>
-      <input
+      <Input
         id={ids.amount}
-        className="member__input"
         inputMode="numeric"
         value={amount}
         aria-invalid={amountNeeded && !value}
@@ -1304,20 +1270,19 @@ function RefundForm({
       <label htmlFor={ids.method} className="member__label">
         {form.method}
       </label>
-      <select id={ids.method} className="member__input" value={method} onChange={(e) => setMethod(e.target.value as Method)}>
+      <Select id={ids.method} value={method} onChange={(e) => setMethod(e.target.value as Method)}>
         {METHODS.map((m) => (
           <option key={m} value={m}>
             {copy.form.methods[m]}
           </option>
         ))}
-      </select>
+      </Select>
 
       <label htmlFor={ids.note} className="member__label">
         {form.note}
       </label>
-      <input
+      <Input
         id={ids.note}
-        className="member__input"
         type="text"
         maxLength={500}
         value={note}
@@ -1331,12 +1296,12 @@ function RefundForm({
       )}
 
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={refund.isPending} onClick={onCancel}>
+        <Button disabled={refund.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={refund.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={refund.isPending}>
           {refund.isPending ? form.working : form.submit(clp(value))}
-        </button>
+        </Button>
       </div>
     </form>
   )

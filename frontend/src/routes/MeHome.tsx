@@ -3,8 +3,10 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { rankLabel } from '../api/grading'
 import { myPageQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
 import { RankBelt } from '../components/Belt'
+import { Button } from '../components/Button'
 import { MyMatTime } from '../components/MatTime'
 import { PageHeader } from '../components/PageHeader'
+import { StatusPill } from '../components/StatusPill'
 import { t } from '../i18n/es'
 import './MeHome.css'
 import { ProofUpload } from './ProofUpload'
@@ -28,9 +30,9 @@ export function MeHome() {
         ) : (
           <div className="me-home__note" role="alert">
             <p>{copy.home.error}</p>
-            <button type="button" className="me-home__retry" onClick={() => void page.refetch()}>
+            <Button className="me-home__retry" onClick={() => void page.refetch()}>
               {copy.home.retry}
-            </button>
+            </Button>
           </div>
         )}
       </>
@@ -67,7 +69,9 @@ function NextPayment({ page }: { page: MyPage }) {
       <section className="next" aria-label={copy.next.title}>
         <div className="next__top">
           <span className="next__eyebrow">{copy.next.title}</span>
-          <span className="next__pill next__pill--paid">{copy.next.status.paid}</span>
+          <StatusPill status="paid" inverse>
+            {copy.next.status.paid}
+          </StatusPill>
         </div>
         <p className="next__paid-up">{copy.next.paidUp}</p>
       </section>
@@ -80,7 +84,9 @@ function NextPayment({ page }: { page: MyPage }) {
       <section className="next" aria-label={copy.next.title}>
         <div className="next__top">
           <span className="next__eyebrow">{copy.next.title}</span>
-          <span className={`next__pill next__pill--${status}`}>{copy.next.status[status]}</span>
+          <StatusPill status={status} inverse>
+            {copy.next.status[status]}
+          </StatusPill>
         </div>
         <div className="next__amount">
           <span className="next__figure">{t.common.clp(period.outstanding_clp)}</span>
@@ -91,15 +97,14 @@ function NextPayment({ page }: { page: MyPage }) {
         {page.bank_account ? <Bank account={page.bank_account} /> : <p className="next__no-bank">{copy.next.noBank}</p>}
         <div className={page.bank_account ? 'next__actions' : 'next__actions next__actions--single'}>
           {page.bank_account && <CopyBank account={page.bank_account} />}
-          <button
-            type="button"
-            className="next__button next__button--primary"
+          <Button
+            variant="primary" size="lg" inverse
             aria-expanded={uploading}
             aria-controls={uploadId}
             onClick={() => setUploading((open) => !open)}
           >
             {copy.next.upload}
-          </button>
+          </Button>
         </div>
       </section>
       <div id={uploadId} ref={uploadRef} hidden={!uploading}>
@@ -151,9 +156,9 @@ function CopyBank({ account }: { account: BankAccount }) {
 
   return (
     <>
-      <button type="button" className="next__button" onClick={() => void copyBank()}>
+      <Button size="lg" inverse onClick={() => void copyBank()}>
         {state === 'copied' ? copy.next.copied : copy.next.copy}
-      </button>
+      </Button>
       <span className="visually-hidden" role="status">
         {state === 'copied' ? copy.next.copied : ''}
       </span>
@@ -211,7 +216,7 @@ function History({ page }: { page: MyPage }) {
                 </span>
                 <span className="history__detail">{detail(payment, page.timezone)}</span>
               </span>
-              <span className="history__status">
+              <span className="history__state">
                 {payment.status === 'validated' ? t.common.clp(payment.amount_clp) : copy.history.status[payment.status]}
               </span>
             </li>

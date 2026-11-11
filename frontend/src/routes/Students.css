@@ -11,75 +11,19 @@
   gap: var(--space-2-5);
 }
 
-/* The toolbar's controls, buttons, search, chips and selects, share one height and
-   one type size: 44px on a phone, a touch target, and 40px on a desktop. */
-.students {
-  --students-control: var(--control-height);
-}
-
 .students__search,
-.students__select {
+.students__picker {
   box-sizing: border-box;
   width: 100%;
-  height: var(--students-control);
-  padding: 0 var(--space-3-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  font-family: inherit;
-  font-size: var(--text-md);
-}
-
-.students__search::placeholder {
-  color: var(--color-text-subtle);
-}
-
-/* One row of chips that scrolls sideways on a phone instead of wrapping. */
-.students__chips {
-  display: flex;
-  gap: var(--space-2);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.students__chip {
-  flex: none;
-  height: var(--students-control);
-  padding: 0 var(--space-3-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  color: var(--color-text-muted);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.students__chip[aria-pressed='true'] {
-  background: var(--color-inverse);
-  border-color: var(--color-inverse);
-  color: var(--color-inverse-text);
 }
 
 .students__summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: var(--control-height-sm);
+  min-height: var(--control-height);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
-}
-
-.students__clear {
-  min-height: var(--control-height-sm);
-  padding: 0;
-  background: none;
-  border: 0;
-  color: var(--color-accent);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
 }
 
 .students__list {
@@ -93,11 +37,12 @@
 
 /* Name and status on one top line; the details below each. */
 .students__row {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
-  min-height: var(--control-height-xl);
+  min-height: var(--control-height-lg);
   padding: var(--space-2-5) var(--space-4);
 }
 
@@ -118,14 +63,6 @@
   align-items: flex-end;
   gap: var(--space-1);
   max-width: 45%;
-}
-
-/* "Familia", a text link here: its tap target is the line, not a 40px box. */
-.students__plan-cell .students__clear {
-  min-height: 0;
-  padding: var(--space-0-5) 0;
-  font-size: var(--text-xs);
-  line-height: 1.4;
 }
 
 .students__name {
@@ -159,30 +96,6 @@
   white-space: nowrap;
 }
 
-.students__status {
-  padding: var(--space-0-5) var(--space-2);
-  background: var(--color-surface-sunken);
-  border-radius: var(--radius-pill);
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-}
-
-.students__status--active {
-  background: var(--color-success-pill);
-  color: var(--color-success-strong);
-}
-
-.students__status--trial {
-  background: var(--color-accent-soft);
-  color: var(--color-accent-inverse);
-}
-
-.students__status--lapsed {
-  background: var(--color-warning-soft);
-  color: var(--color-warning-strong);
-}
-
 .students__note {
   display: flex;
   flex-direction: column;
@@ -196,29 +109,6 @@
   font-size: var(--text-sm);
 }
 
-.students__button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  min-height: var(--control-height);
-  padding: 0 var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.students__button--primary {
-  background: var(--color-inverse);
-  border-color: var(--color-inverse);
-  color: var(--color-inverse-text);
-}
-
 .students__more {
   align-self: center;
 }
@@ -230,13 +120,7 @@
 
 @media (min-width: 960px) {
   .students {
-    --students-control: var(--control-height-sm);
-
     padding: 0 var(--space-8) var(--space-8);
-  }
-
-  .students__links .students__button {
-    min-height: var(--students-control);
   }
 
   /* One line on a desktop: the status, the plan, then "Familia". */
@@ -257,7 +141,7 @@
     width: auto;
   }
 
-  .students__select {
+  .students__picker {
     width: auto;
   }
 }
@@ -284,9 +168,9 @@
 .family__error {
   margin: 0;
   padding: var(--space-2-5) var(--space-3);
-  background: var(--color-warning-soft);
+  background: var(--color-danger-soft);
   border-radius: var(--radius-md);
-  color: var(--color-warning-strong);
+  color: var(--color-danger);
   font-size: var(--text-sm);
 }
 
@@ -306,10 +190,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-.family__form .students__button {
-  align-self: flex-start;
-}
-
 .family__title {
   margin: 0;
   font-size: var(--text-sm);
@@ -327,35 +207,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  min-height: var(--control-height-sm);
-  font-size: var(--text-sm);
-}
-
-.family__input {
-  width: 100%;
   min-height: var(--control-height);
-  padding: 0 var(--space-3-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  font-size: var(--text-base);
-}
-
-.family__action {
-  min-height: var(--control-height-sm);
-  padding: 0;
-  background: none;
-  border: 0;
-  color: var(--color-accent);
   font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.family__action:disabled {
-  color: var(--color-text-subtle);
-  cursor: default;
 }
 
 .students__links {
@@ -363,4 +216,25 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* The name is the row's link, and the whole row is its target; the family toggle sits above it. */
+.students__name::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.students__plan-cell .button {
+  position: relative;
+  z-index: 1;
+}
+
+.family__form > .button {
+  align-self: flex-start;
+}
+
+.family__form .control,
+.family__search {
+  width: 100%;
 }

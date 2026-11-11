@@ -14,6 +14,8 @@ import {
   type StaffMember,
 } from '../api/staff'
 import { validationErrors } from '../api/validation'
+import { Button } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field, LoadFailed, refusal } from './settingsForm'
 
@@ -50,16 +52,15 @@ export function StaffSettings() {
       {inviting ? (
         <InviteForm acting={role.data} onCancel={() => setInviting(false)} onDone={done} />
       ) : (
-        <button
-          type="button"
-          className="settings__button settings__button--primary"
+        <Button
+          variant="primary"
           onClick={() => {
             setNotice(null)
             setInviting(true)
           }}
         >
           {copy.add}
-        </button>
+        </Button>
       )}
       <ul className="settings__list">
         {staff.data.map((member) => (
@@ -122,31 +123,30 @@ function StaffRow({
         <div className="settings__plan-text" role="group" aria-label={copy.confirmRevoke(member.name)}>
           <p className="settings__detail">{copy.confirmRevoke(member.name)}</p>
           <div className="settings__actions">
-            <button type="button" className="settings__button" disabled={pending} onClick={() => setConfirming(false)}>
+            <Button disabled={pending} onClick={() => setConfirming(false)}>
               {copy.cancel}
-            </button>
-            <button
-              type="button"
-              className="settings__button settings__button--primary"
+            </Button>
+            <Button
+              variant="danger"
               disabled={pending}
               onClick={() => revoke.mutate()}
             >
               {copy.confirm}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         (mayChange || mayRevoke) && (
           <div className="settings__actions">
             {mayChange && (
-              <button type="button" className="settings__button" disabled={pending} onClick={() => change.mutate()}>
+              <Button disabled={pending} onClick={() => change.mutate()}>
                 {other === 'admin' ? copy.makeAdmin : copy.makeCoach}
-              </button>
+              </Button>
             )}
             {mayRevoke && (
-              <button type="button" className="settings__button" disabled={pending} onClick={() => setConfirming(true)}>
+              <Button variant="danger" disabled={pending} onClick={() => setConfirming(true)}>
                 {copy.revoke}
-              </button>
+              </Button>
             )}
           </div>
         )
@@ -209,9 +209,8 @@ function InviteForm({
       <h2 className="settings__legend">{copy.form.title}</h2>
       <Field label={copy.form.name} error={error('name')}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="text"
             maxLength={200}
             autoComplete="off"
@@ -222,9 +221,8 @@ function InviteForm({
       </Field>
       <Field label={copy.form.rut} hint={copy.form.rutHint} error={error('rut')}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="text"
             autoComplete="off"
             value={drafts.rut}
@@ -234,9 +232,8 @@ function InviteForm({
       </Field>
       <Field label={copy.form.phone} error={error('phone')}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="tel"
             inputMode="tel"
             autoComplete="off"
@@ -247,9 +244,8 @@ function InviteForm({
       </Field>
       <Field label={copy.form.email} hint={copy.form.emailHint} error={error('email')}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="email"
             inputMode="email"
             autoComplete="off"
@@ -264,9 +260,8 @@ function InviteForm({
         error={error('role')}
       >
         {(props) => (
-          <select
+          <Select
             {...props}
-            className="settings__input"
             value={drafts.role}
             onChange={(e) => set('role', e.target.value)}
           >
@@ -275,7 +270,7 @@ function InviteForm({
                 {copy.roles[r]}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </Field>
       {save.isError && (
@@ -284,12 +279,12 @@ function InviteForm({
         </p>
       )}
       <div className="settings__actions">
-        <button type="button" className="settings__button" disabled={save.isPending} onClick={onCancel}>
+        <Button disabled={save.isPending} onClick={onCancel}>
           {copy.cancel}
-        </button>
-        <button type="submit" className="settings__button settings__button--primary" disabled={save.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           {save.isPending ? copy.working : copy.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )

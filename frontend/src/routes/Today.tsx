@@ -12,6 +12,8 @@ import { unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
 import { overdueQuery, type OverduePeriod } from '../api/today'
+import { Button, buttonClass } from '../components/Button'
+import { Select } from '../components/Field'
 import { WhatsAppIcon } from '../components/icons'
 import { JoinRequests } from '../components/JoinRequests'
 import { PageHeader } from '../components/PageHeader'
@@ -216,9 +218,17 @@ function SetupChecklist({ doneKey }: { doneKey: string }) {
     if (setUp) remember(doneKey)
   }, [setUp, doneKey])
 
-  // Nothing until every answer is in, and nothing if one fails: the checklist is a nudge,
-  // not something to report an error for, and drawing it on a partial answer would show
-  // a set-up gym unticked steps for a moment. A failed request is retried on the next visit.
+  // A failed answer says so, with a retry, rather than leaving a new gym with no checklist.
+  const failed = [members, classTypes, gym, plans, staff].filter((q) => q.isError)
+  if (failed.length > 0) {
+    return (
+      <div className="today__lead">
+        <Failed message={copy.setup.error} retry={() => failed.forEach((q) => void q.refetch())} />
+      </div>
+    )
+  }
+  // Nothing until every answer is in: drawing it on a partial answer would show a set-up
+  // gym unticked steps for a moment.
   if (!shows || !gym.data || !plans.data || !staff.data) return null
 
   const steps = copy.setup.steps
@@ -339,9 +349,9 @@ function Failed({ message, retry }: { message: string; retry: () => void }) {
   return (
     <div className="today__error" role="alert">
       <p>{message}</p>
-      <button type="button" className="today__button" onClick={retry}>
+      <Button onClick={retry}>
         {copy.retry}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -367,7 +377,7 @@ function ProofRow({ proof }: { proof: ProofReview }) {
           <span className="today__name">{name}</span>
           <span className="today__detail">{detail}</span>
         </span>
-        <span className="today__pill" aria-hidden="true">
+        <span className="today__action" aria-hidden="true">
           {copy.proofs.review}
         </span>
       </Link>
@@ -389,7 +399,7 @@ function UnmarkedRow({ session, timeZone }: { session: ClassSession; timeZone: s
           <span className="today__name">{name}</span>
           <span className="today__detail">{copy.unmarked.detail(session.program_name, session.coach_name)}</span>
         </span>
-        <span className="today__pill today__pill--warning" aria-hidden="true">
+        <span className="today__action" aria-hidden="true">
           {copy.unmarked.take}
         </span>
       </Link>
@@ -426,9 +436,9 @@ function OverdueList({ periods }: { periods: OverduePeriod[] }) {
         ))}
       </ul>
       {!all && periods.length > OVERDUE_SHOWN && (
-        <button type="button" className="today__more" onClick={() => setAll(true)}>
+        <Button variant="ghost" onClick={() => setAll(true)}>
           {copy.overdue.showAll(periods.length)}
-        </button>
+        </Button>
       )}
     </>
   )
@@ -453,14 +463,12 @@ function OverdueRow({ period, onDone }: { period: OverduePeriod; onDone: (messag
           </span>
         </Link>
         {!open && (
-          <button
-            type="button"
-            className="today__button today__button--primary"
+          <Button
             aria-label={copy.overdue.paidLabel(period.person_name)}
             onClick={() => setOpen(true)}
           >
             {copy.overdue.paid}
-          </button>
+          </Button>
         )}
       </div>
       {open && (
@@ -506,18 +514,13 @@ function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCance
       <label htmlFor={methodId} className="today__label">
         {copy.overdue.method}
       </label>
-      <select
-        id={methodId}
-        className="today__input"
-        value={method}
-        onChange={(e) => setMethod(e.target.value as Method)}
-      >
+      <Select id={methodId} value={method} onChange={(e) => setMethod(e.target.value as Method)}>
         {METHODS.map((m) => (
           <option key={m} value={m}>
             {t.admin.member.form.methods[m]}
           </option>
         ))}
-      </select>
+      </Select>
       {record.error && (
         <p className="today__error" role="alert">
           {record.error instanceof ApiError && record.error.status === 409
@@ -526,12 +529,12 @@ function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCance
         </p>
       )}
       <div className="today__form-actions">
-        <button type="button" className="today__button" disabled={record.isPending} onClick={onCancel}>
+        <Button disabled={record.isPending} onClick={onCancel}>
           {copy.overdue.cancel}
-        </button>
-        <button type="submit" className="today__button today__button--primary" disabled={record.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={record.isPending}>
           {record.isPending ? copy.overdue.working : copy.overdue.submit(clp(period.outstanding_clp))}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -604,7 +607,7 @@ function InactiveRow({ member }: { member: InactiveMember }) {
             href={member.whatsapp_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="today__icon-button"
+            className={buttonClass({ icon: true })}
             aria-label={label}
             onClick={() => nudge.mutate()}
             // A middle-click opens it in a new tab too.

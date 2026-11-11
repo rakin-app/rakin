@@ -5,6 +5,8 @@ import { ApiError } from '../api/client'
 import { programsQuery, type Program } from '../api/people'
 import { CLASS_KINDS, type ClassKind, type ClassType } from '../api/sessions'
 import { validationErrors } from '../api/validation'
+import { Button } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
 
@@ -33,12 +35,12 @@ function FormAlert({ error }: { error: Error | null }) {
 function FormActions({ pending, onCancel }: { pending: boolean; onCancel: () => void }) {
   return (
     <div className="settings__actions">
-      <button type="button" className="settings__button" disabled={pending} onClick={onCancel}>
+      <Button disabled={pending} onClick={onCancel}>
         {copy.cancel}
-      </button>
-      <button type="submit" className="settings__button settings__button--primary" disabled={pending}>
+      </Button>
+      <Button type="submit" variant="primary" disabled={pending}>
         {pending ? copy.working : copy.submit}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -87,13 +89,12 @@ export function ProgramSettings() {
       {isOpen('program', 'new') ? (
         <ProgramForm onCancel={close} onDone={done} />
       ) : (
-        <button
-          type="button"
-          className="settings__button settings__button--primary"
+        <Button
+          variant="primary"
           onClick={() => open({ kind: 'program', id: 'new' })}
         >
           {copy.add}
-        </button>
+        </Button>
       )}
       {programs.data.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
@@ -152,9 +153,7 @@ export function ProgramSettings() {
                 ) : (
                   // A deactivated program takes no new class types until it is reactivated.
                   program.active && (
-                    <button
-                      type="button"
-                      className="settings__button"
+                    <Button
                       onClick={() =>
                         open({
                           kind: 'classType',
@@ -164,7 +163,7 @@ export function ProgramSettings() {
                       }
                     >
                       {copy.addClassType}
-                    </button>
+                    </Button>
                   )
                 )}
               </li>
@@ -220,12 +219,12 @@ function ProgramHeader({
         </p>
       )}
       <div className="settings__actions">
-        <button type="button" className="settings__button" onClick={onRename}>
+        <Button onClick={onRename}>
           {copy.rename}
-        </button>
-        <button type="button" className="settings__button" disabled={toggle.isPending} onClick={() => toggle.mutate()}>
+        </Button>
+        <Button variant={program.active ? 'danger' : 'secondary'} disabled={toggle.isPending} onClick={() => toggle.mutate()}>
           {program.active ? copy.deactivate : copy.reactivate}
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -269,9 +268,8 @@ function ProgramForm({
       <h2 className="settings__legend">{label}</h2>
       <Field label={copy.programForm.name} error={errorOf(save.error, 'name', name, copy.programTaken)}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="text"
             maxLength={200}
             value={name}
@@ -329,12 +327,12 @@ function ClassTypeRow({
         </p>
       )}
       <div className="settings__actions">
-        <button type="button" className="settings__button" onClick={onEdit}>
+        <Button onClick={onEdit}>
           {copy.edit}
-        </button>
-        <button type="button" className="settings__button" disabled={toggle.isPending} onClick={() => toggle.mutate()}>
+        </Button>
+        <Button variant={classType.active ? 'danger' : 'secondary'} disabled={toggle.isPending} onClick={() => toggle.mutate()}>
           {classType.active ? copy.deactivate : copy.reactivate}
-        </button>
+        </Button>
       </div>
     </li>
   )
@@ -414,9 +412,8 @@ function ClassTypeForm({
       <h3 className="settings__legend">{label}</h3>
       <Field label={form.name} error={error('name')}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="text"
             maxLength={200}
             value={drafts.name}
@@ -426,9 +423,8 @@ function ClassTypeForm({
       </Field>
       <Field label={form.program} error={error('program_id')}>
         {(props) => (
-          <select
+          <Select
             {...props}
-            className="settings__input"
             value={drafts.program_id}
             onChange={(e) => set('program_id', e.target.value)}
           >
@@ -437,14 +433,13 @@ function ClassTypeForm({
                 {p.active ? p.name : form.inactiveProgram(p.name)}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </Field>
       <Field label={form.creditCost} hint={form.creditCostHint} error={error('credit_cost')}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="text"
             inputMode="numeric"
             value={drafts.credit_cost}
@@ -454,9 +449,8 @@ function ClassTypeForm({
       </Field>
       <Field label={form.kind} hint={form.kindHint}>
         {(props) => (
-          <select
+          <Select
             {...props}
-            className="settings__input"
             value={drafts.kind}
             // As the API does: a class counts as a class by default, an open mat does not.
             onChange={(e) => {
@@ -469,7 +463,7 @@ function ClassTypeForm({
                 {form.kinds[kind]}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </Field>
       <div className="settings__field">

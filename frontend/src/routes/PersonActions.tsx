@@ -15,6 +15,8 @@ import {
   type PersonEdit,
 } from '../api/people'
 import { useGymToday } from '../api/sessions'
+import { Button } from '../components/Button'
+import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import { formatPhone, formatRut } from './Students'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
@@ -60,38 +62,34 @@ export function PersonActions({ person, role }: { person: Person; role: StaffRol
       )}
       {person.no_whatsapp && <p className="member__detail">{copy.noWhatsapp}</p>}
       <div className="member__actions">
-        <button type="button" className="member__button" aria-expanded={open === 'edit'} onClick={() => toggle('edit')}>
+        <Button aria-expanded={open === 'edit'} onClick={() => toggle('edit')}>
           {copy.editPerson}
-        </button>
+        </Button>
         {manages &&
           (person.left_on ? (
-            <button
-              type="button"
-              className="member__button"
+            <Button
               aria-expanded={open === 'return'}
               onClick={() => toggle('return')}
             >
               {copy.reactivate}
-            </button>
+            </Button>
           ) : (
-            <button
-              type="button"
-              className="member__button"
+            <Button
+              variant="danger"
               aria-expanded={open === 'leave'}
               onClick={() => toggle('leave')}
             >
               {copy.leave}
-            </button>
+            </Button>
           ))}
         {role === 'owner' && (
-          <button
-            type="button"
-            className="member__button"
+          <Button
+            variant="danger"
             aria-expanded={open === 'remove'}
             onClick={() => toggle('remove')}
           >
             {copy.remove}
-          </button>
+          </Button>
         )}
       </div>
       {done && (
@@ -184,9 +182,8 @@ function EditForm({
       <label htmlFor={ids.name} className="member__label">
         {form.name}
       </label>
-      <input
+      <Input
         id={ids.name}
-        className="member__input"
         maxLength={200}
         value={draft.name}
         aria-invalid={checked && !nameOk}
@@ -200,14 +197,7 @@ function EditForm({
       <label htmlFor={ids.phone} className="member__label">
         {form.phone}
       </label>
-      <input
-        id={ids.phone}
-        className="member__input"
-        type="tel"
-        inputMode="tel"
-        value={draft.phone}
-        onChange={set('phone')}
-      />
+      <Input id={ids.phone} type="tel" inputMode="tel" value={draft.phone} onChange={set('phone')} />
       <label htmlFor={ids.noWhatsapp} className="new-member__check">
         <input
           id={ids.noWhatsapp}
@@ -220,15 +210,15 @@ function EditForm({
       <label htmlFor={ids.email} className="member__label">
         {form.email}
       </label>
-      <input id={ids.email} className="member__input" type="email" value={draft.email} onChange={set('email')} />
+      <Input id={ids.email} type="email" value={draft.email} onChange={set('email')} />
       <label htmlFor={ids.rut} className="member__label">
         {form.rut}
       </label>
-      <input id={ids.rut} className="member__input" value={draft.rut} onChange={set('rut')} />
+      <Input id={ids.rut} value={draft.rut} onChange={set('rut')} />
       <label htmlFor={ids.dob} className="member__label">
         {form.dob}
       </label>
-      <input id={ids.dob} className="member__input" type="date" value={draft.dob} onChange={set('dob')} />
+      <Input id={ids.dob} type="date" value={draft.dob} onChange={set('dob')} />
 
       {save.error && (
         <div className="member__error" role="alert">
@@ -252,12 +242,12 @@ function EditForm({
       )}
 
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={save.isPending} onClick={onCancel}>
+        <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={save.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           {save.isPending ? form.working : form.save}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -316,9 +306,8 @@ function LeaveForm({
       <label htmlFor={id} className="member__label">
         {form.on}
       </label>
-      <input
+      <Input
         id={id}
-        className="member__input"
         type="date"
         max={today}
         value={on}
@@ -336,12 +325,12 @@ function LeaveForm({
         </p>
       )}
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={leave.isPending} onClick={onCancel}>
+        <Button disabled={leave.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={leave.isPending}>
+        </Button>
+        <Button type="submit" variant="danger" disabled={leave.isPending}>
           {leave.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -384,12 +373,12 @@ function ReturnForm({
         </p>
       )}
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={back.isPending} onClick={onCancel}>
+        <Button disabled={back.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="member__button member__button--primary" disabled={back.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={back.isPending}>
           {back.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -436,13 +425,13 @@ function RemoveForm({
       <div className="member__form" role="alert">
         <p className="member__detail">{form.refused[refused]}</p>
         <div className="member__form-actions">
-          <button type="button" className="member__button" onClick={onCancel}>
+          <Button onClick={onCancel}>
             {form.cancel}
-          </button>
+          </Button>
           {refused === 'ledger' && onLeave && (
-            <button type="button" className="member__button member__button--primary" onClick={onLeave}>
+            <Button variant="danger" onClick={onLeave}>
               {copy.leave}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -460,9 +449,8 @@ function RemoveForm({
       <label htmlFor={id} className="member__label">
         {form.confirm(person.name)}
       </label>
-      <input
+      <Input
         id={id}
-        className="member__input"
         autoComplete="off"
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
@@ -473,16 +461,16 @@ function RemoveForm({
         </p>
       )}
       <div className="member__form-actions">
-        <button type="button" className="member__button" disabled={remove.isPending} onClick={onCancel}>
+        <Button disabled={remove.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button
+        </Button>
+        <Button
           type="submit"
-          className="member__button member__button--primary"
+          variant="danger"
           disabled={remove.isPending || !sameName(typed, person.name)}
         >
           {remove.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )

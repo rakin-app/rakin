@@ -131,6 +131,7 @@ export const es = {
       // A new gym's first day: what to set up, each step a link to where it is done.
       setup: {
         title: 'Configura tu academia',
+        error: 'No pudimos revisar los primeros pasos de tu academia.',
         progress: (done: number, total: number) => `${done} de ${total} listos`,
         // After a step's title, for a screen reader: the tick says it to the eye.
         state: (done: boolean) => (done ? ' (listo)' : ' (pendiente)'),

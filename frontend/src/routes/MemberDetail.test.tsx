@@ -697,6 +697,7 @@ describe('Ficha de alumno', () => {
     const next = isoDay(new Date(Date.now() + 6 * 86_400_000).toISOString())
 
     await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    // Today in the gym's timezone, not the test runner's.
     expect(screen.getByLabelText(copy.freezeForm.from)).toHaveValue(isoDay(new Date().toISOString(), 'America/Santiago'))
     fireEvent.change(screen.getByLabelText(copy.freezeForm.from), { target: { value: from } })
 

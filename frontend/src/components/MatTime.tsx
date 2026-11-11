@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { hasTime, myTimeQuery, personTimeQuery, type PersonTime, type TimeTotals } from '../api/matTime'
 import { t } from '../i18n/es'
+import { SegmentedControl } from './Chip'
 import './MatTime.css'
 
 const copy = t.matTime
@@ -66,19 +67,15 @@ export function MatTime({ time, mine }: { time: PersonTime; mine: boolean }) {
         <h2 id={titleId} className="mat-time__title">
           {title}
         </h2>
-        <div className="mat-time__periods" role="group" aria-label={copy.periods}>
-          {(['month', 'allTime'] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              className="mat-time__period"
-              aria-pressed={period === p}
-              onClick={() => setPeriod(p)}
-            >
-              {copy[p]}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label={copy.periods}
+          options={[
+            { value: 'month', label: copy.month },
+            { value: 'allTime', label: copy.allTime },
+          ]}
+          value={period}
+          onChange={setPeriod}
+        />
       </div>
       <Totals totals={totals} />
     </section>

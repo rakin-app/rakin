@@ -15,6 +15,8 @@ import {
 import { activeClassTypesQuery, useGymToday } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { validationErrors } from '../api/validation'
+import { Button } from '../components/Button'
+import { FieldError, Input, Select } from '../components/Field'
 import { shortDay, weekdayDay, toDate } from '../format'
 import { t } from '../i18n/es'
 import { Field, LoadFailed } from './settingsForm'
@@ -86,9 +88,9 @@ export function ScheduleSettings() {
         {editing === 'new' ? (
           <SlotForm today={today} onCancel={() => setEditing(null)} onDone={done} />
         ) : (
-          <button type="button" className="settings__button settings__button--primary" onClick={() => open('new')}>
+          <Button variant="primary" onClick={() => open('new')}>
             {copy.add}
-          </button>
+          </Button>
         )}
         {current.length === 0 ? (
           <p className="settings__note">{copy.empty}</p>
@@ -156,27 +158,26 @@ function SlotRow({
             </p>
           )}
           <div className="settings__actions">
-            <button type="button" className="settings__button" disabled={remove.isPending} onClick={() => setAsking(false)}>
+            <Button disabled={remove.isPending} onClick={() => setAsking(false)}>
               {form.cancel}
-            </button>
-            <button
-              type="button"
-              className="settings__button settings__button--primary"
+            </Button>
+            <Button
+              variant="danger"
               disabled={remove.isPending}
               onClick={() => remove.mutate()}
             >
               {remove.isPending ? form.working : copy.deleteYes}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <div className="settings__actions">
-          <button type="button" className="settings__button" onClick={onEdit}>
+          <Button onClick={onEdit}>
             {copy.edit}
-          </button>
-          <button type="button" className="settings__button" onClick={() => setAsking(true)}>
+          </Button>
+          <Button variant="danger" onClick={() => setAsking(true)}>
             {copy.delete}
-          </button>
+          </Button>
         </div>
       )}
     </li>
@@ -278,9 +279,9 @@ function SlotForm({
       <div className="settings__card settings__form">
         <p className="settings__note">{form.noClassTypes}</p>
         <div className="settings__actions">
-          <button type="button" className="settings__button" onClick={onCancel}>
+          <Button onClick={onCancel}>
             {form.cancel}
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -290,13 +291,13 @@ function SlotForm({
       <h2 className="settings__legend">{label}</h2>
       <Field label={form.classType}>
         {(props) => (
-          <select {...props} className="settings__input" value={chosenType} onChange={(e) => setClassTypeId(e.target.value)}>
+          <Select {...props} value={chosenType} onChange={(e) => setClassTypeId(e.target.value)}>
             {typeChoices.map((type) => (
               <option key={type.id} value={type.id}>
                 {type.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </Field>
       <fieldset className="settings__field schedule__days">
@@ -309,14 +310,13 @@ function SlotForm({
             </label>
           ))}
         </div>
-        {noDays && <p className="settings__field-error">{form.noDays}</p>}
+        {noDays && <FieldError>{form.noDays}</FieldError>}
       </fieldset>
       <div className="schedule__pair">
         <Field label={form.time}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="time"
               required
               value={time}
@@ -326,9 +326,8 @@ function SlotForm({
         </Field>
         <Field label={form.duration} error={badDuration ? form.badDuration : undefined}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="number"
               inputMode="numeric"
               min={1}
@@ -341,20 +340,19 @@ function SlotForm({
       </div>
       <Field label={form.coach}>
         {(props) => (
-          <select {...props} className="settings__input" value={chosenCoach} onChange={(e) => setCoachId(e.target.value)}>
+          <Select {...props} value={chosenCoach} onChange={(e) => setCoachId(e.target.value)}>
             {coachChoices.map((person) => (
               <option key={person.person_id} value={person.person_id}>
                 {person.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </Field>
       <Field label={form.topic} hint={form.topicHint}>
         {(props) => (
-          <input
+          <Input
             {...props}
-            className="settings__input"
             type="text"
             maxLength={200}
             value={topic}
@@ -365,9 +363,8 @@ function SlotForm({
       <div className="schedule__pair">
         <Field label={slot ? form.fromDate : form.validFrom} hint={slot ? form.fromHint : undefined}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="date"
               required
               value={from}
@@ -377,9 +374,8 @@ function SlotForm({
         </Field>
         <Field label={form.validTo} hint={form.validToHint} error={endsTooSoon ? form.endsTooSoon : undefined}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="date"
               value={until}
               onChange={(e) => setUntil(e.target.value)}
@@ -399,12 +395,12 @@ function SlotForm({
         </p>
       )}
       <div className="settings__actions">
-        <button type="button" className="settings__button" disabled={save.isPending} onClick={onCancel}>
+        <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
-        </button>
-        <button type="submit" className="settings__button settings__button--primary" disabled={save.isPending}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           {save.isPending ? form.working : form.submit}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -459,9 +455,8 @@ function ClosedDays({ today }: { today: string }) {
         <div className="schedule__pair">
           <Field label={words.day} error={day && day < today ? words.past : undefined}>
             {(props) => (
-              <input
+              <Input
                 {...props}
-                className="settings__input"
                 type="date"
                 min={today}
                 value={day}
@@ -471,9 +466,8 @@ function ClosedDays({ today }: { today: string }) {
           </Field>
           <Field label={words.label}>
             {(props) => (
-              <input
+              <Input
                 {...props}
-                className="settings__input"
                 type="text"
                 maxLength={100}
                 placeholder={words.labelPlaceholder}
@@ -489,13 +483,9 @@ function ClosedDays({ today }: { today: string }) {
           </p>
         )}
         <div className="settings__actions">
-          <button
-            type="submit"
-            className="settings__button settings__button--primary"
-            disabled={close.isPending || !day || day < today}
-          >
+          <Button type="submit" disabled={close.isPending || !day || day < today}>
             {close.isPending ? form.working : words.add}
-          </button>
+          </Button>
         </div>
       </form>
       {days.isPending ? (
@@ -513,9 +503,7 @@ function ClosedDays({ today }: { today: string }) {
                 {closed.label && <span className="settings__detail">{closed.label}</span>}
               </div>
               <div className="settings__actions">
-                <button
-                  type="button"
-                  className="settings__button"
+                <Button
                   disabled={reopen.isPending}
                   onClick={() => {
                     setNotice(null)
@@ -523,7 +511,7 @@ function ClosedDays({ today }: { today: string }) {
                   }}
                 >
                   {words.reopen}
-                </button>
+                </Button>
               </div>
             </li>
           ))}

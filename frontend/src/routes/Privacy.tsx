@@ -3,6 +3,7 @@ import { getRouteApi } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { lastUpdated, privacyNoticeQuery, type PrivacyNotice } from '../api/privacy'
+import { Button } from '../components/Button'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './Privacy.css'
@@ -44,9 +45,9 @@ export function Privacy() {
     return (
       <Shell>
         <p role="alert">{copy.error}</p>
-        <button type="button" className="privacy__button" onClick={() => void notice.refetch()}>
+        <Button onClick={() => void notice.refetch()}>
           {copy.retry}
-        </button>
+        </Button>
       </Shell>
     )
   }

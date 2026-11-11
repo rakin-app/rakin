@@ -13,6 +13,8 @@ import {
 } from '../api/grading'
 import { validationErrors } from '../api/validation'
 import { Belt } from '../components/Belt'
+import { Button } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { ChevronDownIcon, ChevronUpIcon, CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
@@ -212,9 +214,8 @@ function GradingEditor({
           <>
             <Field label={copy.preset} hint={copy.presetHint}>
               {(props) => (
-                <select
+                <Select
                   {...props}
-                  className="settings__input"
                   value={preset}
                   onChange={(e) => setPreset(e.target.value)}
                 >
@@ -224,12 +225,12 @@ function GradingEditor({
                       {p.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </Field>
-            <button type="button" className="settings__button" disabled={preset === ''} onClick={apply}>
+            <Button disabled={preset === ''} onClick={apply}>
               {repairing ? copy.reapply : copy.apply}
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -238,9 +239,8 @@ function GradingEditor({
         <div className="settings__card">
           <Field label={copy.goalMetric} hint={copy.goalMetricHint}>
             {(props) => (
-              <select
+              <Select
                 {...props}
-                className="settings__input"
                 value={draft.goal_metric ?? ''}
                 onChange={(e) =>
                   change({
@@ -255,7 +255,7 @@ function GradingEditor({
                     {copy.goalMetrics[m]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </Field>
         </div>
@@ -277,9 +277,9 @@ function GradingEditor({
             {'' in errors ? copy.schemeInvalid : Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
           </p>
         )}
-        <button type="submit" className="settings__button settings__button--primary" disabled={save.isPending}>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           {save.isPending ? copy.working : copy.submit}
-        </button>
+        </Button>
       </form>
     </section>
   )
@@ -341,13 +341,11 @@ function LadderEditor({
           ))}
         </ol>
       )}
-      <button
-        type="button"
-        className="settings__button"
+      <Button
         onClick={() => onChange([...ranks, { ...blank(), colors: [], sub_ranks: [] }])}
       >
         {copy.addRank}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -387,9 +385,8 @@ function RankEditor({
       <div className="settings__rank-fields">
         <Field label={copy.rank(number)} error={errorOf(`${path}.label`, 'label', rank.label)}>
           {(props) => (
-            <input
+            <Input
               {...props}
-              className="settings__input"
               type="text"
               maxLength={60}
               value={rank.label}
@@ -404,9 +401,8 @@ function RankEditor({
             error={errorOf(`${path}.target`, 'target', rank.target)}
           >
             {(props) => (
-              <input
+              <Input
                 {...props}
-                className="settings__input"
                 type="text"
                 inputMode="numeric"
                 value={rank.target}
@@ -418,27 +414,23 @@ function RankEditor({
       </div>
       <BeltColors rank={rank} name={name} onChange={(colors) => onChange({ ...rank, colors })} />
       <div className="settings__actions">
-        <button
-          type="button"
-          className="settings__button"
+        <Button
           aria-label={copy.moveUp(name)}
           disabled={first}
           onClick={() => onMove(-1)}
         >
           <ChevronUpIcon />
-        </button>
-        <button
-          type="button"
-          className="settings__button"
+        </Button>
+        <Button
           aria-label={copy.moveDown(name)}
           disabled={last}
           onClick={() => onMove(1)}
         >
           <ChevronDownIcon />
-        </button>
-        <button type="button" className="settings__button" aria-label={copy.remove(name)} onClick={onRemove}>
+        </Button>
+        <Button aria-label={copy.remove(name)} onClick={onRemove}>
           <CloseIcon />
-        </button>
+        </Button>
       </div>
       <details
         className="settings__sub-ranks"
@@ -456,9 +448,8 @@ function RankEditor({
               >
                 <Field label={copy.subRank(index + 1)} error={errorOf(`${subPath}.label`, 'label', sub.label)}>
                   {(props) => (
-                    <input
+                    <Input
                       {...props}
-                      className="settings__input"
                       type="text"
                       maxLength={60}
                       value={sub.label}
@@ -476,9 +467,8 @@ function RankEditor({
                 {metric && (
                   <Field label={copy.subTarget[metric]} error={errorOf(`${subPath}.target`, 'target', sub.target)}>
                     {(props) => (
-                      <input
+                      <Input
                         {...props}
-                        className="settings__input"
                         type="text"
                         inputMode="numeric"
                         placeholder={rank.target}
@@ -495,21 +485,20 @@ function RankEditor({
                     )}
                   </Field>
                 )}
-                <button
-                  type="button"
-                  className="settings__button"
+                <Button
+                  icon
                   aria-label={copy.remove(sub.label.trim() || copy.subRank(index + 1))}
                   onClick={() => setSubRanks(removed(rank.sub_ranks, index))}
                 >
                   <CloseIcon />
-                </button>
+                </Button>
               </li>
             )
           })}
         </ol>
-        <button type="button" className="settings__button" onClick={() => setSubRanks([...rank.sub_ranks, blank()])}>
+        <Button onClick={() => setSubRanks([...rank.sub_ranks, blank()])}>
           {copy.addSubRank}
-        </button>
+        </Button>
       </details>
     </li>
   )
@@ -529,9 +518,9 @@ function BeltColors({ rank, name, onChange }: { rank: DraftRank; name: string; o
       {main === undefined ? (
         <>
           <p className="settings__hint">{words.none}</p>
-          <button type="button" className="settings__button" onClick={() => onChange([DEFAULT_COLOR])}>
+          <Button onClick={() => onChange([DEFAULT_COLOR])}>
             {words.add}
-          </button>
+          </Button>
         </>
       ) : (
         <>
@@ -542,23 +531,23 @@ function BeltColors({ rank, name, onChange }: { rank: DraftRank; name: string; o
               {words.main}
             </label>
             {tone === undefined ? (
-              <button type="button" className="settings__button" onClick={() => onChange([main, DEFAULT_COLOR])}>
+              <Button onClick={() => onChange([main, DEFAULT_COLOR])}>
                 {words.addTone}
-              </button>
+              </Button>
             ) : (
               <>
                 <label className="settings__belt-color">
                   <input type="color" value={tone} onChange={(e) => onChange([main, e.target.value])} />
                   {words.tone}
                 </label>
-                <button type="button" className="settings__button" onClick={() => onChange([main])}>
+                <Button onClick={() => onChange([main])}>
                   {words.removeTone}
-                </button>
+                </Button>
               </>
             )}
-            <button type="button" className="settings__button" onClick={() => onChange([])}>
+            <Button onClick={() => onChange([])}>
               {words.remove}
-            </button>
+            </Button>
           </div>
         </>
       )}

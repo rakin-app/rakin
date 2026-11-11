@@ -10,8 +10,12 @@ import {
   type MemberRow,
   type MembershipStatus,
 } from '../api/people'
+import { Button, buttonClass } from '../components/Button'
+import { Chip, ChipGroup } from '../components/Chip'
+import { Input, Select } from '../components/Field'
 import { JoinRequests } from '../components/JoinRequests'
 import { PageHeader } from '../components/PageHeader'
+import { StatusPill } from '../components/StatusPill'
 import { t } from '../i18n/es'
 import { FamilyPanel } from './FamilyPanel'
 import './Students.css'
@@ -132,10 +136,10 @@ export function Students() {
       <div className="students">
         {readsLedger(role.data) && (
           <div className="students__links">
-            <Link to="/admin/alumnos/nuevo" className="students__button students__button--primary">
+            <Link to="/admin/alumnos/nuevo" className={buttonClass({ variant: 'primary' })}>
               {copy.newLink}
             </Link>
-            <Link to="/admin/alumnos/importar" className="students__button">
+            <Link to="/admin/alumnos/importar" className={buttonClass()}>
               {copy.importLink}
             </Link>
           </div>
@@ -144,7 +148,7 @@ export function Students() {
           <label htmlFor={searchId} className="visually-hidden">
             {copy.searchLabel}
           </label>
-          <input
+          <Input
             id={searchId}
             type="search"
             className="students__search"
@@ -153,46 +157,30 @@ export function Students() {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
           />
-          <div role="group" aria-label={copy.statusLabel} className="students__chips">
+          <ChipGroup label={copy.statusLabel}>
             {MEMBERSHIP_STATUSES.map((value) => (
-              <button
-                key={value}
-                type="button"
-                className="students__chip"
-                aria-pressed={status.includes(value)}
-                onClick={() => toggleStatus(value)}
-              >
+              <Chip key={value} pressed={status.includes(value)} onClick={() => toggleStatus(value)}>
                 {copy.status[value]}
-              </button>
+              </Chip>
             ))}
-            <button type="button" className="students__chip" aria-pressed={search.left === true} onClick={toggleLeft}>
+            <Chip pressed={search.left === true} onClick={toggleLeft}>
               {copy.left}
-            </button>
-            <button
-              type="button"
-              className="students__chip"
-              aria-pressed={search.missingPhone === true}
-              onClick={toggleMissingPhone}
-            >
+            </Chip>
+            <Chip pressed={search.missingPhone === true} onClick={toggleMissingPhone}>
               {copy.missingPhone}
-            </button>
-            <button
-              type="button"
-              className="students__chip"
-              aria-pressed={search.missingRut === true}
-              onClick={toggleMissingRut}
-            >
+            </Chip>
+            <Chip pressed={search.missingRut === true} onClick={toggleMissingRut}>
               {copy.missingRut}
-            </button>
-          </div>
+            </Chip>
+          </ChipGroup>
           {plans.data && plans.data.length > 0 && (
             <>
               <label htmlFor={planId} className="visually-hidden">
                 {copy.planLabel}
               </label>
-              <select
+              <Select
                 id={planId}
-                className="students__select"
+                className="students__picker"
                 value={search.plan ?? ''}
                 onChange={(event) => setPlan(event.target.value)}
               >
@@ -202,7 +190,7 @@ export function Students() {
                     {plan.active ? plan.name : copy.inactivePlan(plan.name)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </>
           )}
           {programs.data && programs.data.length > 0 && (
@@ -210,9 +198,9 @@ export function Students() {
               <label htmlFor={programId} className="visually-hidden">
                 {copy.programLabel}
               </label>
-              <select
+              <Select
                 id={programId}
-                className="students__select"
+                className="students__picker"
                 value={search.program ?? ''}
                 onChange={(event) => setProgram(event.target.value)}
               >
@@ -222,7 +210,7 @@ export function Students() {
                     {program.active ? program.name : copy.inactiveProgram(program.name)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </>
           )}
         </div>
@@ -230,9 +218,9 @@ export function Students() {
         <div className="students__summary" aria-live="polite">
           {total !== undefined && <span>{copy.count(total)}</span>}
           {filtered && (
-            <button type="button" className="students__clear" onClick={clear}>
+            <Button variant="ghost" onClick={clear}>
               {copy.clearFilters}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -241,9 +229,9 @@ export function Students() {
         ) : members.isError && rows.length === 0 ? (
           <div className="students__note" role="alert">
             <p>{copy.error}</p>
-            <button type="button" className="students__button" onClick={() => void members.refetch()}>
+            <Button onClick={() => void members.refetch()}>
               {copy.retry}
-            </button>
+            </Button>
           </div>
         ) : rows.length === 0 ? (
           <p className="students__note">{filtered ? copy.noMatches : copy.empty}</p>
@@ -256,14 +244,13 @@ export function Students() {
         )}
 
         {members.hasNextPage && (
-          <button
-            type="button"
-            className="students__button students__more"
+          <Button
+            className="students__more"
             disabled={members.isFetchingNextPage}
             onClick={() => void members.fetchNextPage()}
           >
             {copy.more}
-          </button>
+          </Button>
         )}
       </div>
     </>
@@ -296,24 +283,21 @@ function MemberItem({ row }: { row: MemberRow }) {
         <div className="students__plan-cell">
           {row.membership ? (
             <>
-              <span className={`students__status students__status--${row.membership.status}`}>
-                {copy.status[row.membership.status]}
-              </span>
+              <StatusPill status={row.membership.status}>{copy.status[row.membership.status]}</StatusPill>
               <span className="students__plan-name">{row.membership.plan_name}</span>
             </>
           ) : (
-            <span className="students__status">{copy.noPlan}</span>
+            <StatusPill status="none">{copy.noPlan}</StatusPill>
           )}
-          <button
-            type="button"
-            className="students__clear"
+          <Button
+            variant="ghost"
             aria-expanded={open}
             aria-controls={panelId}
             aria-label={t.admin.family.toggleLabel(row.name)}
             onClick={() => setOpen(!open)}
           >
             {t.admin.family.toggle}
-          </button>
+          </Button>
         </div>
       </div>
       {/* Always there, so `aria-controls` names an element; filled only when open. */}

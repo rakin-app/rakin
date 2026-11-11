@@ -1,5 +1,6 @@
 import { Link, Outlet } from '@tanstack/react-router'
 import { useSignOut } from '../api/auth'
+import { Button } from '../components/Button'
 import { t } from '../i18n/es'
 import './MeLayout.css'
 
@@ -21,14 +22,9 @@ export function MeLayout() {
             {t.signOut.failed}
           </p>
         )}
-        <button
-          type="button"
-          className="me-footer__sign-out"
-          disabled={signOut.isPending}
-          onClick={() => signOut.mutate()}
-        >
+        <Button disabled={signOut.isPending} onClick={() => signOut.mutate()}>
           {signOut.isPending ? t.signOut.working : t.signOut.label}
-        </button>
+        </Button>
         <Link to="/privacidad" className="me-footer__link">
           {t.privacy.link}
         </Link>

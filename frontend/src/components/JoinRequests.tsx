@@ -14,6 +14,8 @@ import { plansQuery, type Plan } from '../api/plans'
 import { useGymTimeZone, useGymToday } from '../api/sessions'
 import { isoDay } from '../format'
 import { t } from '../i18n/es'
+import { Button } from './Button'
+import { Select } from './Field'
 import './JoinRequests.css'
 
 const copy = t.admin.joinRequests
@@ -163,9 +165,8 @@ function RequestRow({
           <label htmlFor={planFieldId} className="join-requests__label">
             {copy.plan}
           </label>
-          <select
+          <Select
             id={planFieldId}
-            className="join-requests__input"
             value={planId}
             disabled={pending}
             onChange={(event) => setPlanId(event.target.value)}
@@ -176,7 +177,7 @@ function RequestRow({
                 {plan.name}
               </option>
             ))}
-          </select>
+          </Select>
           {planId === '' && <p className="join-requests__hint">{copy.planHint}</p>}
         </div>
       ) : (
@@ -191,39 +192,35 @@ function RequestRow({
         <div className="join-requests__confirm" role="group" aria-label={copy.confirmReject(name)}>
           <p className="join-requests__detail">{copy.confirmReject(name)}</p>
           <div className="join-requests__actions">
-            <button type="button" className="join-requests__button" disabled={pending} onClick={() => setConfirming(false)}>
+            <Button disabled={pending} onClick={() => setConfirming(false)}>
               {copy.cancel}
-            </button>
-            <button
-              type="button"
-              className="join-requests__button join-requests__button--primary"
+            </Button>
+            <Button
+              variant="danger"
               disabled={pending}
               onClick={() => reject.mutate()}
             >
               {copy.confirm}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <div className="join-requests__actions">
-          <button
-            type="button"
-            className="join-requests__button"
+          <Button
+            variant="danger"
             aria-label={copy.rejectLabel(name)}
             disabled={pending}
             onClick={() => setConfirming(true)}
           >
             {copy.reject}
-          </button>
-          <button
-            type="button"
-            className="join-requests__button join-requests__button--primary"
+          </Button>
+          <Button
             aria-label={copy.approveLabel(name)}
             disabled={pending}
             onClick={() => approve.mutate()}
           >
             {approve.isPending ? copy.working : copy.approve}
-          </button>
+          </Button>
         </div>
       )}
     </li>

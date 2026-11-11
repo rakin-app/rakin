@@ -14,6 +14,8 @@ import {
   type SessionChanges,
 } from '../api/sessions'
 import { staffQuery } from '../api/staff'
+import { Button } from '../components/Button'
+import { Input, Select } from '../components/Field'
 import { clockTime, isoDay, zonedInstant } from '../format'
 import { t } from '../i18n/es'
 
@@ -54,16 +56,14 @@ export function ClassEdit({ session, timeZone }: { session: ClassSession; timeZo
             {words.saved}
           </p>
         )}
-        <button
-          type="button"
-          className="classes__button"
+        <Button
           onClick={() => {
             setSaved(false)
             setOpen(true)
           }}
         >
           {words.open}
-        </button>
+        </Button>
       </>
     )
   }
@@ -191,9 +191,8 @@ function EditForm({
             <label htmlFor={ids.day} className="classes__label">
               {words.day}
             </label>
-            <input
+            <Input
               id={ids.day}
-              className="classes__input"
               type="date"
               required
               value={day}
@@ -205,9 +204,8 @@ function EditForm({
           <label htmlFor={ids.time} className="classes__label">
             {words.time}
           </label>
-          <input
+          <Input
             id={ids.time}
-            className="classes__input"
             type="time"
             required
             value={time}
@@ -218,9 +216,8 @@ function EditForm({
           <label htmlFor={ids.duration} className="classes__label">
             {words.duration}
           </label>
-          <input
+          <Input
             id={ids.duration}
-            className="classes__input"
             type="number"
             inputMode="numeric"
             min={1}
@@ -240,9 +237,8 @@ function EditForm({
       <label htmlFor={ids.type} className="classes__label">
         {words.classType}
       </label>
-      <select
+      <Select
         id={ids.type}
-        className="classes__input"
         value={classTypeId}
         onChange={(e) => setClassTypeId(e.target.value)}
       >
@@ -251,33 +247,33 @@ function EditForm({
             {type.name}
           </option>
         ))}
-      </select>
+      </Select>
       <label htmlFor={ids.coach} className="classes__label">
         {words.coach}
       </label>
-      <select id={ids.coach} className="classes__input" value={coachId} onChange={(e) => setCoachId(e.target.value)}>
+      <Select id={ids.coach} value={coachId} onChange={(e) => setCoachId(e.target.value)}>
         {coachChoices.map((person) => (
           <option key={person.person_id} value={person.person_id}>
             {person.name}
           </option>
         ))}
-      </select>
+      </Select>
       <p className="classes__note">{words.hint}</p>
       {save.isError && (
         <p className="classes__error" role="alert">
           {refusedFor(save.error, 'open_mat_plan') ? words.openMatPlan : words.failed}
         </p>
       )}
-      <button
+      <Button
         type="submit"
-        className="classes__button classes__button--primary"
+        variant="primary"
         disabled={save.isPending || !day || !time || badDuration || (series && minutes === null)}
       >
         {save.isPending ? words.working : words.submit}
-      </button>
-      <button type="button" className="classes__button" onClick={() => onClose(false)}>
+      </Button>
+      <Button onClick={() => onClose(false)}>
         {words.close}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -336,42 +332,38 @@ export function ClassActions({ session }: { session: ClassSession }) {
           ) : (
             <>
               <p className="classes__note">{words.cancelConfirm}</p>
-              <button
-                type="button"
-                className="classes__button class-actions__danger"
+              <Button
+                variant="danger"
                 disabled={working}
                 onClick={() => status.mutate('cancel')}
               >
                 {working ? words.working : words.cancelYes}
-              </button>
+              </Button>
             </>
           )}
-          <button type="button" className="classes__button" onClick={() => ask(null)}>
+          <Button onClick={() => ask(null)}>
             {words.back}
-          </button>
+          </Button>
         </div>
       ) : asking === 'delete' ? (
         <div className="classes__card class-actions__confirm" role="group" aria-label={words.delete}>
           <p className="classes__note">{words.deleteConfirm(session.present, (plan.data?.blocks.length ?? 0) > 0)}</p>
           {session.present > 0 && <p className="classes__note">{words.credits}</p>}
-          <button
-            type="button"
-            className="classes__button class-actions__danger"
+          <Button
+            variant="danger"
             disabled={working || plan.isPending}
             onClick={() => remove.mutate()}
           >
             {working ? words.working : words.deleteYes}
-          </button>
-          <button type="button" className="classes__button" onClick={() => ask(null)}>
+          </Button>
+          <Button onClick={() => ask(null)}>
             {words.back}
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="class-actions__buttons">
           {session.cancelled_at ? (
-            <button
-              type="button"
-              className="classes__button"
+            <Button
               disabled={working}
               onClick={() => {
                 status.reset()
@@ -379,15 +371,15 @@ export function ClassActions({ session }: { session: ClassSession }) {
               }}
             >
               {working ? words.working : words.reactivate}
-            </button>
+            </Button>
           ) : (
-            <button type="button" className="classes__button" onClick={() => ask('cancel')}>
+            <Button variant="danger" onClick={() => ask('cancel')}>
               {words.cancel}
-            </button>
+            </Button>
           )}
-          <button type="button" className="classes__button class-actions__danger" onClick={() => ask('delete')}>
+          <Button variant="danger" onClick={() => ask('delete')}>
             {words.delete}
-          </button>
+          </Button>
         </div>
       )}
       {failed && (

@@ -14,7 +14,12 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import { membershipLedgerQuery, membershipsQuery, shownMembership } from '../api/member'
 import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
+import { Button, buttonClass } from '../components/Button'
+import { ListRowContent, listRowClass } from '../components/Card'
+import { Chip, ChipGroup } from '../components/Chip'
+import { Input } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
+import { StatusPill, type Status } from '../components/StatusPill'
 import { dayTime, isoDay, monthName, monthYear, shortDay, toDate } from '../format'
 import { t } from '../i18n/es'
 import { PaymentForm } from './MemberDetail'
@@ -132,13 +137,12 @@ function Book() {
             </label>
           )}
           {pending > 0 && (
-            <Link to="/admin/pagos/comprobantes" className="payments__review-link">
+            <Link to="/admin/pagos/comprobantes" className={buttonClass()}>
               {copy.review(pending)}
             </Link>
           )}
-          <button
-            type="button"
-            className="payments__record"
+          <Button
+            variant="primary"
             aria-expanded={recording}
             onClick={() => {
               setDone(null)
@@ -146,7 +150,7 @@ function Book() {
             }}
           >
             {copy.record}
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -170,9 +174,7 @@ function Book() {
       ) : book.isError && !latest ? (
         <div className="payments__note" role="alert">
           <p>{copy.error}</p>
-          <button type="button" className="payments__button" onClick={() => void book.refetch()}>
-            {copy.retry}
-          </button>
+          <Button onClick={() => void book.refetch()}>{copy.retry}</Button>
         </div>
       ) : (
         latest && (
@@ -183,7 +185,7 @@ function Book() {
                 <label htmlFor={searchId} className="visually-hidden">
                   {copy.searchLabel}
                 </label>
-                <input
+                <Input
                   id={searchId}
                   type="search"
                   className="payments__search-input"
@@ -193,18 +195,18 @@ function Book() {
                   onChange={(event) => setDraft(event.target.value)}
                 />
               </div>
-              <div role="group" aria-label={copy.filtersLabel} className="payments__filters">
-                {BOOK_FILTERS.map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className="payments__chip"
-                    aria-pressed={filter === value}
-                    onClick={() => setSearch({ filter: value === 'all' ? undefined : value })}
-                  >
-                    {copy.filters[value]}
-                  </button>
-                ))}
+              <div className="payments__filters">
+                <ChipGroup label={copy.filtersLabel}>
+                  {BOOK_FILTERS.map((value) => (
+                    <Chip
+                      key={value}
+                      pressed={filter === value}
+                      onClick={() => setSearch({ filter: value === 'all' ? undefined : value })}
+                    >
+                      {copy.filters[value]}
+                    </Chip>
+                  ))}
+                </ChipGroup>
               </div>
               {lines.length === 0 ? (
                 <p className="payments__note">{q.trim() ? copy.noMatch(q.trim()) : copy.empty}</p>
@@ -245,14 +247,13 @@ function Book() {
                   )}
                 </span>
                 {book.hasNextPage && (
-                  <button
-                    type="button"
-                    className="payments__more"
+                  <Button
+                    variant="ghost"
                     disabled={book.isFetchingNextPage}
                     onClick={() => void book.fetchNextPage()}
                   >
                     {copy.more}
-                  </button>
+                  </Button>
                 )}
               </div>
             </section>
@@ -300,7 +301,7 @@ function MemberPicker({ onPick, onCancel }: { onPick: (member: MemberRow) => voi
       <label htmlFor={inputId} className="payments__label">
         {words.label}
       </label>
-      <input
+      <Input
         id={inputId}
         type="search"
         className="payments__search-input"
@@ -321,17 +322,16 @@ function MemberPicker({ onPick, onCancel }: { onPick: (member: MemberRow) => voi
         <ul className="payments__picks" aria-label={words.results}>
           {found.slice(0, PICKER_ROWS).map((row) => (
             <li key={row.id}>
-              <button type="button" className="payments__pick" onClick={() => onPick(row)}>
-                <span className="payments__pick-name">{row.name}</span>
-                <span className="payments__pick-detail">{pickDetail(row)}</span>
+              <button type="button" className={listRowClass(true)} onClick={() => onPick(row)}>
+                <ListRowContent title={row.name} detail={pickDetail(row)} />
               </button>
             </li>
           ))}
         </ul>
       )}
-      <button type="button" className="payments__button" onClick={onCancel}>
+      <Button onClick={onCancel}>
         {words.cancel}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -375,9 +375,9 @@ function PayFor({ member, onBack, onDone }: { member: MemberRow; onBack: () => v
           <span className="payments__pick-name">{member.name}</span>
           {membership && <span className="payments__pick-detail">{membership.plan_name}</span>}
         </span>
-        <button type="button" className="payments__more" onClick={onBack}>
+        <Button variant="ghost" onClick={onBack}>
           {words.change}
-        </button>
+        </Button>
       </div>
       {body}
     </div>
@@ -451,11 +451,11 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
       <td>{mediumLabel(entry)}</td>
       <td>
         {status.review ? (
-          <Link to="/admin/pagos/comprobantes" className={`payments__pill payments__pill--${status.tone}`}>
-            {status.label}
+          <Link to="/admin/pagos/comprobantes" className="payments__to-review">
+            <StatusPill status={status.status}>{status.label}</StatusPill>
           </Link>
         ) : (
-          <span className={`payments__pill payments__pill--${status.tone}`}>{status.label}</span>
+          <StatusPill status={status.status}>{status.label}</StatusPill>
         )}
       </td>
       <td className={`payments__amount payments__amount--${entry.status}`}>
@@ -494,9 +494,7 @@ function FreezeRow({ line }: { line: BookFreeze }) {
       <td>{t.common.span(shortDay(line.from_date), shortDay(line.to_date))}</td>
       <td>{line.reason}</td>
       <td>
-        <span className="payments__pill payments__pill--muted">
-          {line.edge === 'start' ? copy.status.freezeStart : copy.status.freezeEnd}
-        </span>
+        <StatusPill status="freeze">{line.edge === 'start' ? copy.status.freezeStart : copy.status.freezeEnd}</StatusPill>
       </td>
       <td className="payments__amount payments__muted">{t.common.noAmount}</td>
     </tr>
@@ -531,20 +529,18 @@ function mediumLabel(entry: BookEntry): string {
   return entry.note ?? '—'
 }
 
-type Tone = 'pending' | 'paid' | 'overdue' | 'muted'
-
-function describeStatus(entry: BookEntry): { label: string; tone: Tone; review?: boolean } {
+function describeStatus(entry: BookEntry): { label: string; status: Status; review?: boolean } {
   const words = copy.status
   if (entry.kind === 'charge' && entry.period) {
     const period = entry.period
-    if (period.outstanding_clp === 0) return { label: words.paid, tone: 'paid' }
-    if (period.days_overdue > 0) return { label: words.overdue(period.days_overdue), tone: 'overdue' }
-    return { label: words.open(shortDay(period.due_date)), tone: 'muted' }
+    if (period.outstanding_clp === 0) return { label: words.paid, status: 'paid' }
+    if (period.days_overdue > 0) return { label: words.overdue(period.days_overdue), status: 'overdue' }
+    return { label: words.open(shortDay(period.due_date)), status: 'open' }
   }
-  if (entry.status === 'pending') return { label: words.pending, tone: 'pending', review: entry.kind === 'payment' }
-  if (entry.status === 'rejected') return { label: words.rejected, tone: 'muted' }
+  if (entry.status === 'pending') return { label: words.pending, status: 'pending', review: entry.kind === 'payment' }
+  if (entry.status === 'rejected') return { label: words.rejected, status: 'rejected' }
   return {
     label: entry.validated_by_name ? words.validatedBy(entry.validated_by_name) : words.validated,
-    tone: 'paid',
+    status: 'validated',
   }
 }
