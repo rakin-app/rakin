@@ -39,7 +39,7 @@ from app.domain.dates import gym_today, start_of_local_day
 from app.domain.errors import InvalidTransition
 from app.domain.membership import MAX_FREEZE_DAYS, MembershipStatus, PlanKind, PlanTerms
 from app.notices import WELCOME, Notice, Notices, get_notices
-from app.roles import AdminSession, StaffSession
+from app.roles import AdminSession, SeesMoney, StaffSession
 from app.schemas.memberships import (
     Cancellation,
     Freeze,
@@ -49,9 +49,11 @@ from app.schemas.memberships import (
     HasLeftConflict,
     Membership,
     MembershipCreate,
+    MembershipForCoach,
     MembershipStart,
     PendingPlanChange,
     PlanChange,
+    for_coach,
 )
 from app.tenancy import Tenant, current_tenant
 
@@ -316,18 +318,24 @@ def welcome(
 
 
 @router.get("")
-async def list_memberships(person_id: uuid.UUID, session: StaffSession) -> list[Membership]:
-    """A person's memberships in this gym, latest first."""
+async def list_memberships(
+    person_id: uuid.UUID, session: StaffSession, money: SeesMoney
+) -> list[Membership] | list[MembershipForCoach]:
+    """A person's memberships in this gym, latest first; a coach's without discounts."""
     result = await session.execute(
         text(f"{SELECT_MEMBERSHIP} WHERE m.person_id = :id ORDER BY m.started_at DESC, m.id"),
         {"id": person_id},
     )
-    return [_membership(row) for row in result]
+    memberships = [_membership(row) for row in result]
+    return memberships if money else [for_coach(m) for m in memberships]
 
 
 @router.get("/{membership_id}")
-async def get_membership(membership_id: uuid.UUID, session: StaffSession) -> Membership:
-    return await _get(session, membership_id)
+async def get_membership(
+    membership_id: uuid.UUID, session: StaffSession, money: SeesMoney
+) -> Membership | MembershipForCoach:
+    membership = await _get(session, membership_id)
+    return membership if money else for_coach(membership)
 
 
 @router.post("/{membership_id}/plan-change")

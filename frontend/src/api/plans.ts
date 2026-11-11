@@ -39,7 +39,8 @@ export type PlanFields = Partial<{
   free_days: number | string | null
 }>
 
-/** Every plan, active ones first, then by name. Any staff role may read them. */
+/** Every plan, active ones first, then by name. Any staff role may read them; a coach's
+ * come without `price_clp` (#205), so only the owner's and admin's screens read it. */
 export const plansQuery = queryOptions({
   queryKey: ['plans'],
   queryFn: () => apiFetch<Plan[]>('/api/plans'),
