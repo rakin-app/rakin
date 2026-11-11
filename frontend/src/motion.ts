@@ -6,6 +6,11 @@ import { useEffect, useRef } from 'react'
  * `--rise-distance` below, once, over `--duration-slow`. Under reduced motion it only
  * fades. Played on the element rather than by remounting it, so a screen whose list and
  * detail share a page (#178–#181) keeps its state across the change.
+ *
+ * The rise moves `top` on a `position: relative` element, never `transform`: a
+ * transformed element is the containing block of every `position: fixed` one inside it,
+ * so a sheet or the proof zoom opened mid-rise would be placed against the page instead
+ * of the screen. The element must be `position: relative` (`.page-rise`).
  */
 export function useRise<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -27,8 +32,8 @@ export function useRise<T extends HTMLElement>() {
       still
         ? [{ opacity: 0 }, { opacity: 1 }]
         : [
-            { opacity: 0, transform: `translateY(${distance})` },
-            { opacity: 1, transform: 'none' },
+            { opacity: 0, top: distance },
+            { opacity: 1, top: '0px' },
           ],
       {
         duration: milliseconds(styles.getPropertyValue('--duration-slow'), 500),

@@ -21,7 +21,10 @@ export function App({ queryClient, router }: Props) {
 }
 
 /** Wears the gym's theme: the signed-in gym's, as `/api/me/role` says once a screen has
- * asked, else the one this address serves. Neither answered: what the last visit wore. */
+ * asked, else the one this address serves. With neither (the shared address, nobody
+ * signed in, where `/api/host` names no gym) it leaves what the last visit wore, kept by
+ * `theme.ts`, on purpose: someone who signs in to a gym from there sees its colours
+ * from the first screen. That is the default until anyone has signed in on this browser. */
 function GymTheme() {
   const host = useQuery(hostQuery())
   // Read, never fetched here: the screens that need a session ask for it.

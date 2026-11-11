@@ -89,18 +89,7 @@ textarea {
 }
 
 /* Motion (#199). A page's content rises into place once when the route changes
-   (`.rise`); a confirmation or a new item fades in (`.appear`). */
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(var(--rise-distance));
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
+   (`useRise` in src/motion.ts, on `.page-rise`); a message fades in (below). */
 @keyframes appear {
   from {
     opacity: 0;
@@ -121,12 +110,10 @@ textarea {
   }
 }
 
-.rise {
-  animation: rise var(--duration-slow) var(--ease-out) both;
-}
-
-.appear {
-  animation: appear var(--duration-base) var(--ease-out) both;
+/* What `useRise` moves: by `top`, so it never becomes the containing block of a fixed
+   sheet inside it, as a transform would. */
+.page-rise {
+  position: relative;
 }
 
 /* A message that comes and goes ("Guardado", "Enviado", a failure) fades in where it
@@ -138,8 +125,6 @@ textarea {
 
 /* Reduced motion keeps only the change in opacity: nothing moves. */
 @media (prefers-reduced-motion: reduce) {
-  .rise,
-  .appear,
   [role='status'],
   [role='alert'] {
     animation-name: fade-in;

@@ -148,6 +148,12 @@ def test_a_found_gym_is_kept_a_while_and_a_missing_one_is_asked_again() -> None:
     asyncio.run(go())
     assert asked == ["meta", "nada", "nada", "meta"]
 
+    # Forgotten, it is asked again at once, however long it had left.
+    lookup.forget("meta")
+    lookup.forget("nunca")
+    asyncio.run(lookup("meta"))
+    assert asked == ["meta", "nada", "nada", "meta", "meta"]
+
 
 def session_in(scope: uuid.UUID | None) -> Session:
     expires = datetime.now(UTC) + timedelta(days=1)
@@ -513,6 +519,18 @@ def test_a_gyms_host_and_its_sign_in_pages_wear_its_theme(site: Site) -> None:
     with site.client(None) as client:
         page = client.post("/api/auth/callback", data={"token": "x" * 43})
         assert '<html lang="es">' in page.text
+
+
+@pytest.mark.postgres
+def test_a_theme_saved_in_ajustes_reaches_the_host_at_once(site: Site) -> None:
+    with site.client(site.slug_b) as client:
+        # Kept by the lookup now, for a minute.
+        assert client.get("/api/host").json()["gym"]["theme"] == "bosque"
+        response = client.patch(
+            "/api/gym/settings", json={"theme": "oceano"}, headers=as_gym(site.b)
+        )
+        assert response.status_code == 200, response.text
+        assert client.get("/api/host").json()["gym"]["theme"] == "oceano"
 
 
 @pytest.mark.postgres

@@ -137,7 +137,7 @@ export function AdminLayout() {
         )}
       </nav>
       <main className="admin-main">
-        <div ref={rise}>
+        <div ref={rise} className="page-rise">
           <Outlet />
         </div>
       </main>

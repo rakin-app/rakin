@@ -168,6 +168,12 @@ class GymLookup:
             self._found[slug] = (now + self._ttl, gym)
         return gym
 
+    def forget(self, slug: str) -> None:
+        """Drops what is kept for `slug`, so the next request reads it afresh: after a
+        change to what a host shows, such as the gym's theme. The API runs as one
+        process (backend/Dockerfile), so this is every copy there is."""
+        self._found.pop(slug, None)
+
 
 class HostMiddleware:
     """Puts the gym the request's host names, or None, on `request.state.host_gym`."""

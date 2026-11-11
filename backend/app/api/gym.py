@@ -75,4 +75,7 @@ async def update_settings(
             {**columns, "removed": removed, "patch": json.dumps(patch), "id": tenant.gym_id},
         )
     ).one()
+    if "theme" in columns:
+        # The pages shown before sign-in wear it at once, not when the kept copy expires.
+        request.app.state.gym_lookup.forget(row.slug)
     return _settings(request, row)
