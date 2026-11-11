@@ -5,6 +5,14 @@
   padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom));
 }
 
+/* Rakin's logo in the eyebrow's place: the page is Rakin's, whichever gym it is for. */
+.signin__logo {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xl);
+  text-transform: none;
+  letter-spacing: var(--tracking-title);
+}
+
 .signin__card {
   display: flex;
   flex-direction: column;

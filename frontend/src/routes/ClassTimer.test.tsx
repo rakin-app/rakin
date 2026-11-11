@@ -471,7 +471,7 @@ describe('the running class', () => {
 describe('fight and rest', () => {
   const screenOf = () => screen.getByRole('timer').closest('.timer')!
 
-  it('is green with "LUCHA" in a round, red with "DESCANSO" in the rest, neutral elsewhere', async () => {
+  it('is green with "RONDA" in a round, red with "DESCANSO" in the rest, neutral elsewhere', async () => {
     stubApi()
     await startClass()
     expect(screenOf()).not.toHaveClass('timer--fight')

@@ -57,6 +57,9 @@ class Texts:
 
     lang: str = "en"
     name: str = ""
+    # The application's logo, as trusted HTML: shown over the title in place of the
+    # site's name, which the title still says. Empty: the name is shown.
+    logo: str = ""
     title: str = "Sign in"
     confirm: str = "Tap the button to sign in."
     button: str = "Sign in"
@@ -69,8 +72,9 @@ class Texts:
 
 # The pages' look, unless the application brings its own: plain and unbranded, with no
 # variants. The markup an application's `stylesheet` styles: a `main` with an optional
-# `.eyebrow` (the site's name), an `h1`, and a `.card` holding a paragraph and one
-# `.button`, a `button` or a link, also marked `.button--primary` or `.button--secondary`.
+# `.eyebrow` (the site's name, or `.eyebrow--logo` holding its logo), an `h1`, and a
+# `.card` holding a paragraph and one `.button`, a `button` or a link, also marked
+# `.button--primary` or `.button--secondary`.
 STYLESHEET = (
     "body{font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem;"
     "line-height:1.5}.eyebrow{margin:0;text-transform:uppercase;font-size:.75rem}"
@@ -175,7 +179,10 @@ def build_router(
         here = site_of(request)
         name = here.name or texts.name
         heading = html.escape(title.format(name=name))
-        eyebrow = f'<p class="eyebrow">{html.escape(name)}</p>' if name else ""
+        if texts.logo:
+            eyebrow = f'<p class="eyebrow eyebrow--logo">{texts.logo}</p>'
+        else:
+            eyebrow = f'<p class="eyebrow">{html.escape(name)}</p>' if name else ""
         theme = f' data-theme="{html.escape(here.theme)}"' if here.theme else ""
         document = (
             f'<!doctype html><html lang="{html.escape(texts.lang)}"{theme}><head>'

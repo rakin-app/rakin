@@ -513,6 +513,19 @@ def test_the_pages_are_the_applications_words_and_look() -> None:
         assert '<a class="button button--primary" href="/signin">New link</a>' in expired
 
 
+def test_an_applications_logo_stands_over_the_title_in_place_of_the_name() -> None:
+    texts = Texts(name="App", title="Sign in to {name}", logo='<img alt="App" src="/logo.svg">')
+    for harness in make_harness(texts=texts):
+        harness.request_link(ANA.address)
+        opened = harness.client.get(harness.outbox.url_for(ANA)).text
+
+        # Trusted markup, not escaped; the title still names the site.
+        assert (
+            '<p class="eyebrow eyebrow--logo"><img alt="App" src="/logo.svg"></p>'
+            "<h1>Sign in to App</h1>"
+        ) in opened
+
+
 def test_a_form_posted_from_another_site_is_refused(harness: Harness) -> None:
     harness.request_link(ANA.address)
     form = {"token": token_of(harness.outbox.url_for(ANA))}

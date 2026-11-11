@@ -26,6 +26,7 @@ from app.integrations.mailer import Email
 from app.magiclink import COOKIE_NAME, Session
 from app.main import create_app
 from app.notices import Notices
+from app.seed.data import GRADING
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
@@ -201,6 +202,11 @@ def test_the_command_reads_its_arguments() -> None:
     assert (gym.slug, gym.name, gym.timezone) == ("meta", "Meta", "America/Santiago")
     assert gym.owner_phone == "+56912345678"
     assert gym.owner_rut is None
+    assert gym.grading == "none"
+
+
+def test_the_command_starts_from_a_grading_preset_when_asked() -> None:
+    assert parse([*ARGS, "--grading", "bjj"]).grading == "bjj"
 
 
 def test_the_owner_phone_is_optional_and_the_rut_normalised() -> None:
@@ -217,6 +223,7 @@ def test_the_owner_phone_is_optional_and_the_rut_normalised() -> None:
         ("--owner-phone", "123"),
         ("--owner-rut", "7.654.321-0"),
         ("--timezone", "Mars/Base"),
+        ("--grading", "ajedrez"),
     ],
 )
 def test_the_command_refuses_bad_arguments(
@@ -299,7 +306,24 @@ def test_create_makes_an_empty_gym_with_its_owner(db: Database) -> None:
     row = run(db.admin_url, query)
     assert (row["name"], row["timezone"], row["role"]) == (gym.name, gym.timezone, "owner")
     assert (row["owner"], row["email"]) == (gym.owner_name, gym.owner_email)
-    assert json.loads(row["settings"])["grading"]["ranks"]
+    # Grading is a module a gym turns on: a new one has no grades, so no belts anywhere.
+    assert json.loads(row["settings"])["grading"] == {
+        "ranks": [],
+        "kids_ladder": [],
+        "goal_metric": None,
+    }
+
+
+@pytest.mark.postgres
+def test_create_with_a_grading_preset_starts_the_gym_on_it(db: Database) -> None:
+    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"grading": "bjj"})
+
+    created = create(db, gym)
+
+    async def query(conn: asyncpg.Connection) -> Any:
+        return await conn.fetchval("SELECT settings FROM gym WHERE id = $1", created.gym_id)
+
+    assert json.loads(run(db.admin_url, query))["grading"] == GRADING
 
 
 @pytest.mark.postgres
@@ -515,6 +539,8 @@ def test_a_gyms_host_and_its_sign_in_pages_wear_its_theme(site: Site) -> None:
         page = site.open(client, site.ask_link(client, email))
         assert page.status_code == 403
         assert '<html lang="es" data-theme="volcan">' in page.text
+        # Rakin's logo over the title, in the gym's theme's colours.
+        assert 'aria-label="Rakin"' in page.text
     # The base host is no gym's: its pages wear the stylesheet's default.
     with site.client(None) as client:
         page = client.post("/api/auth/callback", data={"token": "x" * 43})

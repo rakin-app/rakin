@@ -66,6 +66,10 @@ Sessionmaker = Callable[[], async_sessionmaker[AsyncSession]]
 STUDENT_PAGE = "/me"
 PAGE_LINK_TTL = timedelta(days=7)
 
+# Rakin's logo in the footer: a PNG, since mail clients show no SVG, built with the
+# rest by docs/brand/build.py and served from the SPA's public files.
+LOGO_PATH = "/email-logo.png"
+
 
 @dataclass(frozen=True)
 class Template:
@@ -151,14 +155,17 @@ def render(
     *,
     unsubscribe_url: str | None = None,
     page_url: str | None = None,
+    logo_url: str | None = None,
     env: Environment = ENVIRONMENT,
 ) -> Email:
-    """The message `notice` is, with its unsubscribe and sign-in links when it has them."""
+    """The message `notice` is, with its unsubscribe and sign-in links when it has them.
+    `logo_url` is Rakin's logo for the footer; without it the footer names Rakin in text."""
     name = notice.template.name
     context = {
         **notice.context,
         "unsubscribe_url": unsubscribe_url,
         "page_url": page_url,
+        "logo_url": logo_url,
         "page_link_days": PAGE_LINK_TTL.days,
     }
     subject = " ".join(env.get_template(f"{name}.subject.txt").render(context).split())
@@ -205,6 +212,12 @@ class Notices:
         self._signer = UnsubscribeSigner(secret_key)
         self._links = links
         self._env = env
+
+    @property
+    def logo_url(self) -> str:
+        """Rakin's logo for the emails' footer (#224), always on the base host: it is
+        Rakin's mark, not the gym's, and one address lets mail clients cache it."""
+        return f"{self._base_url}{LOGO_PATH}"
 
     def unsubscribe_url(
         self, gym_id: uuid.UUID, person_id: uuid.UUID, base_url: str | None = None
@@ -255,7 +268,11 @@ class Notices:
                 return Outcome.FAILED
         try:
             email = render(
-                notice, unsubscribe_url=unsubscribe_url, page_url=page_url, env=self._env
+                notice,
+                unsubscribe_url=unsubscribe_url,
+                page_url=page_url,
+                logo_url=self.logo_url,
+                env=self._env,
             )
             await self._mailer.send(email)
         # A template that cannot render is a bug, not a bad day at the relay.
