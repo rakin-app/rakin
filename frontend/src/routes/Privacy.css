@@ -13,7 +13,8 @@
   padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
 }
 
 .privacy__text {
@@ -35,8 +36,11 @@
 
 .privacy__heading {
   margin: var(--space-3) 0 0;
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
+  color: var(--color-heading);
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-display);
+  letter-spacing: var(--tracking-title);
 }
 
 .privacy__list {
