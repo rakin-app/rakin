@@ -5,7 +5,14 @@ import type { OpenPeriod } from './proofs'
 
 export type StaffRole = 'owner' | 'admin' | 'coach'
 
-type MyRole = { role: StaffRole | null; person_id: string }
+/** Who is signed in: their role here, and their name and email as the gym has them; and the gym's name. */
+export type MyRole = {
+  role: StaffRole | null
+  person_id: string
+  name: string | null
+  email: string | null
+  gym_name: string
+}
 
 /** The signed-in person's staff role in this gym; `null` for a member. */
 export function myRoleQuery() {

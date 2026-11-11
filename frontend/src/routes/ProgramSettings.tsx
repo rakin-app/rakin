@@ -6,9 +6,11 @@ import { programsQuery, type Program } from '../api/people'
 import { CLASS_KINDS, type ClassKind, type ClassType } from '../api/sessions'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
+import { ListRowContent, listRowClass } from '../components/Card'
 import { Input, Select } from '../components/Field'
+import { ChevronRightIcon } from '../components/icons'
 import { t } from '../i18n/es'
-import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
+import { EditRow, Field, integerOf, LoadFailed, refusal } from './settingsForm'
 
 const copy = t.admin.settings.programs
 
@@ -105,21 +107,37 @@ export function ProgramSettings() {
             return (
               <li
                 key={program.id}
-                className={program.active ? 'settings__card' : 'settings__card settings__plan--inactive'}
+                className={
+                  program.active
+                    ? 'settings__card settings__card--rows'
+                    : 'settings__card settings__card--rows settings__row--inactive'
+                }
               >
                 {isOpen('program', program.id) ? (
                   <ProgramForm program={program} onCancel={close} onDone={done} />
                 ) : (
-                  <ProgramHeader
-                    program={program}
-                    onRename={() => open({ kind: 'program', id: program.id })}
-                    onDone={done}
-                  />
+                  <h2 className="settings__row-heading">
+                    <button
+                      type="button"
+                      className={listRowClass(true)}
+                      onClick={() => open({ kind: 'program', id: program.id })}
+                    >
+                      <ListRowContent
+                        title={
+                          <>
+                            {program.name}
+                            {!program.active && <span className="settings__tag">{copy.inactive}</span>}
+                          </>
+                        }
+                        trailing={<ChevronRightIcon />}
+                      />
+                    </button>
+                  </h2>
                 )}
                 {types.length === 0 ? (
-                  <p className="settings__detail">{copy.noClassTypes}</p>
+                  <p className="settings__detail settings__row-note">{copy.noClassTypes}</p>
                 ) : (
-                  <ul className="settings__list" aria-label={copy.classTypesLabel(program.name)}>
+                  <ul className="settings__menu settings__subrows" aria-label={copy.classTypesLabel(program.name)}>
                     {types.map((classType) =>
                       isOpen('classType', classType.id) ? (
                         <li key={classType.id}>
@@ -132,17 +150,17 @@ export function ProgramSettings() {
                           />
                         </li>
                       ) : (
-                        <ClassTypeRow
+                        <EditRow
                           key={classType.id}
-                          classType={classType}
-                          onEdit={() =>
-                            open({
-                              kind: 'classType',
-                              id: classType.id,
-                              programId: program.id,
-                            })
+                          inactive={!classType.active}
+                          title={
+                            <>
+                              {classType.name}
+                              {!classType.active && <span className="settings__tag">{copy.inactive}</span>}
+                            </>
                           }
-                          onDone={done}
+                          detail={classTypeSummary(classType)}
+                          onOpen={() => open({ kind: 'classType', id: classType.id, programId: program.id })}
                         />
                       ),
                     )}
@@ -153,17 +171,11 @@ export function ProgramSettings() {
                 ) : (
                   // A deactivated program takes no new class types until it is reactivated.
                   program.active && (
-                    <Button
-                      onClick={() =>
-                        open({
-                          kind: 'classType',
-                          id: 'new',
-                          programId: program.id,
-                        })
-                      }
-                    >
-                      {copy.addClassType}
-                    </Button>
+                    <div className="settings__row-note">
+                      <Button onClick={() => open({ kind: 'classType', id: 'new', programId: program.id })}>
+                        {copy.addClassType}
+                      </Button>
+                    </div>
                   )
                 )}
               </li>
@@ -192,44 +204,6 @@ function useToggle<T extends { name: string; active: boolean }>(
   })
 }
 
-function ProgramHeader({
-  program,
-  onRename,
-  onDone,
-}: {
-  program: Program
-  onRename: () => void
-  onDone: (message: string) => void
-}) {
-  const toggle = useToggle(
-    () => updateProgram(program.id, { active: !program.active }),
-    { on: copy.programReactivated, off: copy.programDeactivated },
-    programsQuery.queryKey,
-    onDone,
-  )
-  return (
-    <>
-      <h2 className="settings__plan-name">
-        {program.name}
-        {!program.active && <span className="settings__tag">{copy.inactive}</span>}
-      </h2>
-      {toggle.isError && (
-        <p className="settings__error" role="alert">
-          {copy.toggleFailed}
-        </p>
-      )}
-      <div className="settings__actions">
-        <Button onClick={onRename}>
-          {copy.rename}
-        </Button>
-        <Button variant={program.active ? 'danger' : 'secondary'} disabled={toggle.isPending} onClick={() => toggle.mutate()}>
-          {program.active ? copy.deactivate : copy.reactivate}
-        </Button>
-      </div>
-    </>
-  )
-}
-
 function ProgramForm({
   program,
   onCancel,
@@ -241,6 +215,12 @@ function ProgramForm({
 }) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(program?.name ?? '')
+  const toggle = useToggle(
+    () => updateProgram(program!.id, { active: !program!.active }),
+    { on: copy.programReactivated, off: copy.programDeactivated },
+    programsQuery.queryKey,
+    onDone,
+  )
   const save = useMutation({
     mutationFn: () => (program ? updateProgram(program.id, { name }) : createProgram(name)),
     onSuccess: async (answer) => {
@@ -264,7 +244,7 @@ function ProgramForm({
   }
 
   return (
-    <form className="settings__form" aria-label={label} onSubmit={submit} noValidate>
+    <form className="settings__card settings__form" aria-label={label} onSubmit={submit} noValidate>
       <h2 className="settings__legend">{label}</h2>
       <Field label={copy.programForm.name} error={errorOf(save.error, 'name', name, copy.programTaken)}>
         {(props) => (
@@ -279,62 +259,52 @@ function ProgramForm({
       </Field>
       <FormAlert error={save.error} />
       <FormActions pending={save.isPending} onCancel={onCancel} />
+      {program && (
+        <ToggleActive
+          active={program.active}
+          pending={save.isPending || toggle.isPending}
+          failed={toggle.isError}
+          onToggle={() => toggle.mutate()}
+        />
+      )}
     </form>
   )
 }
 
-function ClassTypeRow({
-  classType,
-  onEdit,
-  onDone,
+/** A class type's line: an open mat says so, then what it costs a pack, and if it does not count. */
+function classTypeSummary(classType: ClassType): string {
+  return [
+    classType.kind === 'open_mat' && copy.openMat,
+    copy.credits(classType.credit_cost),
+    !classType.counts_as_class && copy.notCounted,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** Deactivating or reactivating, in an item's edit view (#177), with its own failure. */
+function ToggleActive({
+  active,
+  pending,
+  failed,
+  onToggle,
 }: {
-  classType: ClassType
-  onEdit: () => void
-  onDone: (message: string) => void
+  active: boolean
+  pending: boolean
+  failed: boolean
+  onToggle: () => void
 }) {
-  const toggle = useToggle(
-    () => updateClassType(classType.id, { active: !classType.active }),
-    { on: copy.classTypeReactivated, off: copy.classTypeDeactivated },
-    classTypesQuery.queryKey,
-    onDone,
-  )
   return (
-    <li
-      className={
-        classType.active
-          ? 'settings__subcard settings__plan'
-          : 'settings__subcard settings__plan settings__plan--inactive'
-      }
-    >
-      <div className="settings__plan-text">
-        <span className="settings__plan-name">
-          {classType.name}
-          {!classType.active && <span className="settings__tag">{copy.inactive}</span>}
-        </span>
-        <span className="settings__detail">
-          {[
-            classType.kind === 'open_mat' && copy.openMat,
-            copy.credits(classType.credit_cost),
-            !classType.counts_as_class && copy.notCounted,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        </span>
-      </div>
-      {toggle.isError && (
+    <div className="settings__danger">
+      {failed && (
         <p className="settings__error" role="alert">
           {copy.toggleFailed}
         </p>
       )}
-      <div className="settings__actions">
-        <Button onClick={onEdit}>
-          {copy.edit}
-        </Button>
-        <Button variant={classType.active ? 'danger' : 'secondary'} disabled={toggle.isPending} onClick={() => toggle.mutate()}>
-          {classType.active ? copy.deactivate : copy.reactivate}
-        </Button>
-      </div>
-    </li>
+      <Button variant={active ? 'danger' : 'secondary'} disabled={pending} onClick={onToggle}>
+        {active ? copy.deactivate : copy.reactivate}
+      </Button>
+    </div>
   )
 }
 
@@ -363,6 +333,12 @@ function ClassTypeForm({
 }) {
   const queryClient = useQueryClient()
   const form = copy.classTypeForm
+  const toggle = useToggle(
+    () => updateClassType(classType!.id, { active: !classType!.active }),
+    { on: copy.classTypeReactivated, off: copy.classTypeDeactivated },
+    classTypesQuery.queryKey,
+    onDone,
+  )
   const [initial] = useState<ClassTypeDrafts>(() => ({
     name: classType?.name ?? '',
     program_id: classType?.program_id ?? programId,
@@ -408,7 +384,7 @@ function ClassTypeForm({
   }
 
   return (
-    <form className="settings__subcard settings__form" aria-label={label} onSubmit={submit} noValidate>
+    <form className="settings__card settings__form" aria-label={label} onSubmit={submit} noValidate>
       <h3 className="settings__legend">{label}</h3>
       <Field label={form.name} error={error('name')}>
         {(props) => (
@@ -479,6 +455,14 @@ function ClassTypeForm({
       </div>
       <FormAlert error={save.error} />
       <FormActions pending={save.isPending} onCancel={onCancel} />
+      {classType && (
+        <ToggleActive
+          active={classType.active}
+          pending={save.isPending || toggle.isPending}
+          failed={toggle.isError}
+          onToggle={() => toggle.mutate()}
+        />
+      )}
     </form>
   )
 }

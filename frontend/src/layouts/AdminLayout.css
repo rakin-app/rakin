@@ -21,8 +21,17 @@
   border-top: 1px solid var(--color-border);
 }
 
-.admin-nav__brand {
+.admin-nav__head {
   display: none;
+}
+
+/* Cerrar sesión is in Ajustes → Cuenta on a phone: the bar holds the sections only. */
+.admin-nav__end {
+  display: none;
+}
+
+.admin-nav__end--bar {
+  display: block;
 }
 
 .admin-nav__list {
@@ -45,6 +54,8 @@
   font-size: var(--text-2xs);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-muted);
+  /* Five tabs at 390: every label fits on one line. */
+  white-space: nowrap;
 }
 
 button.admin-nav__link {
@@ -116,9 +127,22 @@ button.admin-nav__link {
     border-right: 1px solid var(--color-border);
   }
 
+  .admin-nav__head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+  }
+
+  .admin-nav__gym {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    overflow-wrap: anywhere;
+  }
+
   .admin-nav__brand {
     display: block;
-    padding: 0 var(--space-2);
     font-family: var(--font-display);
     font-size: var(--text-lg);
     font-weight: var(--font-weight-bold);
@@ -151,6 +175,7 @@ button.admin-nav__link {
 
   /* Cerrar sesión, apart from the sections. */
   .admin-nav__end {
+    display: block;
     margin-top: var(--space-6);
     padding-top: var(--space-4);
     border-top: 1px solid var(--color-divider);

@@ -11,6 +11,8 @@ export type GymSettings = {
   name: string
   // The gym's address in URLs; set when the gym is created, not editable.
   slug: string
+  // Where it is served, as the address bar shows it: `academia-sur.rakin.app`.
+  web_address: string
   timezone: string
   grace_days: number
   reminder_every_days: number

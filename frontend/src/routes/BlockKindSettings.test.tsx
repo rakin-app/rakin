@@ -93,6 +93,11 @@ async function row(name: string) {
   return within(section).getByText(name).closest('li')!
 }
 
+/** Opens a kind's edit form: its row is the button (#177). */
+async function open(name: string) {
+  await userEvent.click(within(await row(name)).getByRole('button', { name: new RegExp(`^${name}`) }))
+}
+
 const IN_USE = { status: 409, body: { detail: { code: 'block_kind_in_use', blocks: 3 } } }
 
 describe('Ajustes: Bloques', () => {
@@ -104,7 +109,7 @@ describe('Ajustes: Bloques', () => {
 
     const section = await screen.findByRole('region', { name: copy.title })
     const rows = within(section).getAllByRole('listitem')
-    expect(rows.map((r) => within(r).getByText(/./, { selector: '.settings__plan-name' }).textContent)).toEqual([
+    expect(rows.map((r) => within(r).getByText(/./, { selector: '.list-row__title' }).textContent)).toEqual([
       'Calentamiento',
       'Técnica',
       `Sparring${copy.sparring}`,
@@ -112,9 +117,13 @@ describe('Ajustes: Bloques', () => {
     ])
     expect(within(rows[0]!).getByRole('button', { name: copy.up('Calentamiento') })).toBeDisabled()
     expect(within(rows[2]!).getByRole('button', { name: copy.down('Sparring') })).toBeDisabled()
-    // An archived kind keeps its place at the end.
+    // An archived kind keeps its place at the end, and the row holds no Editar or Desactivar (#177).
     expect(within(rows[3]!).queryByRole('button', { name: copy.up('Yoga') })).not.toBeInTheDocument()
-    expect(within(rows[3]!).getByRole('button', { name: copy.restore })).toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: copy.edit })).not.toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: copy.archive })).not.toBeInTheDocument()
+    await open('Yoga')
+    const edit = screen.getByRole('form', { name: form.edit('Yoga') })
+    expect(within(edit).getByRole('button', { name: copy.restore })).toBeInTheDocument()
   })
 
   it('creates a sparring kind', async () => {
@@ -137,7 +146,7 @@ describe('Ajustes: Bloques', () => {
     const calls = stubApi()
     renderAt('/admin/ajustes/bloques')
 
-    await userEvent.click(within(await row('Técnica')).getByRole('button', { name: copy.edit }))
+    await open('Técnica')
     const edit = screen.getByRole('form', { name: form.edit('Técnica') })
     const name = within(edit).getByLabelText(form.name)
     await userEvent.clear(name)
@@ -154,7 +163,7 @@ describe('Ajustes: Bloques', () => {
     stubApi({ save: { status: 409, body: { detail: 'the gym already has a block kind by this name' } } })
     renderAt('/admin/ajustes/bloques')
 
-    await userEvent.click(within(await row('Técnica')).getByRole('button', { name: copy.edit }))
+    await open('Técnica')
     let edit = screen.getByRole('form', { name: form.edit('Técnica') })
     await userEvent.clear(within(edit).getByLabelText(form.name))
     await userEvent.type(within(edit).getByLabelText(form.name), 'Sparring')
@@ -164,7 +173,7 @@ describe('Ajustes: Bloques', () => {
 
     stubApi({ save: IN_USE })
     await userEvent.click(within(edit).getByRole('button', { name: form.cancel }))
-    await userEvent.click(within(await row('Técnica')).getByRole('button', { name: copy.edit }))
+    await open('Técnica')
     edit = screen.getByRole('form', { name: form.edit('Técnica') })
     await userEvent.click(within(edit).getByRole('checkbox', { name: form.sparring }))
     await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
@@ -197,7 +206,7 @@ describe('Ajustes: Bloques', () => {
     const calls = stubApi()
     renderAt('/admin/ajustes/bloques')
 
-    await userEvent.click(within(await row('Calentamiento')).getByRole('button', { name: copy.edit }))
+    await open('Calentamiento')
     const edit = screen.getByRole('form', { name: form.edit('Calentamiento') })
     await userEvent.click(within(edit).getByRole('button', { name: copy.delete }))
     expect(await screen.findByRole('status')).toHaveTextContent(copy.deleted('Calentamiento'))
@@ -209,13 +218,12 @@ describe('Ajustes: Bloques', () => {
     const calls = stubApi({ remove: IN_USE })
     renderAt('/admin/ajustes/bloques')
 
-    await userEvent.click(within(await row('Técnica')).getByRole('button', { name: copy.edit }))
+    await open('Técnica')
     const edit = screen.getByRole('form', { name: form.edit('Técnica') })
     await userEvent.click(within(edit).getByRole('button', { name: copy.delete }))
     expect(await within(edit).findByRole('alert')).toHaveTextContent(copy.inUse(3))
 
-    await userEvent.click(within(edit).getByRole('button', { name: form.cancel }))
-    await userEvent.click(within(await row('Técnica')).getByRole('button', { name: copy.archive }))
+    await userEvent.click(within(edit).getByRole('button', { name: copy.archive }))
     expect(await screen.findByRole('status')).toHaveTextContent(copy.archivedDone('Técnica'))
     expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ archived: true }])
   })

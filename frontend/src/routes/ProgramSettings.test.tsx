@@ -128,6 +128,11 @@ async function programCard(name: string) {
   return heading.closest('li')!
 }
 
+/** A row of `card` by the start of its name: the program's own, or one of its class types'. */
+function rowButton(card: HTMLElement, name: string) {
+  return within(card).getByRole('button', { name: new RegExp(`^${name}`) })
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -142,6 +147,7 @@ describe('Ajustes: Programas y clases', () => {
       name: copy.classTypesLabel('Adultos'),
     })
     const rows = within(types).getAllByRole('listitem')
+    expect(copy.credits(1)).toBe('Descuenta 1 clase')
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringContaining(`Fundamentos${copy.credits(1)}`),
       expect.stringContaining(`Open mat${copy.openMat} · ${copy.credits(0)} · ${copy.notCounted}`),
@@ -149,10 +155,11 @@ describe('Ajustes: Programas y clases', () => {
     expect(within(await programCard('Kids')).getByText(copy.noClassTypes)).toBeInTheDocument()
 
     const old = await programCard('Competición')
-    expect(old).toHaveTextContent(copy.inactive)
-    // The program's own, and its inactive class type's.
-    expect(within(old).getAllByRole('button', { name: copy.reactivate })).toHaveLength(2)
-    expect(within(old).getByText('Sparring').closest('li')).toHaveTextContent(copy.inactive)
+    expect(rowButton(old, 'Competición')).toHaveTextContent(copy.inactive)
+    // No Editar / Desactivar pairs on the rows: those are in each one's form.
+    expect(within(old).queryByRole('button', { name: copy.reactivate })).not.toBeInTheDocument()
+    expect(within(old).queryByRole('button', { name: copy.edit })).not.toBeInTheDocument()
+    expect(rowButton(old, 'Sparring')).toHaveTextContent(copy.inactive)
     // A deactivated program takes no new class types.
     expect(within(old).queryByRole('button', { name: copy.addClassType })).not.toBeInTheDocument()
   })
@@ -190,7 +197,7 @@ describe('Ajustes: Programas y clases', () => {
     renderAt('/admin/ajustes/programas')
 
     const kids = await programCard('Kids')
-    await userEvent.click(within(kids).getByRole('button', { name: copy.rename }))
+    await userEvent.click(rowButton(kids, 'Kids'))
     const rename = within(kids).getByRole('form', {
       name: copy.programForm.rename('Kids'),
     })
@@ -208,11 +215,11 @@ describe('Ajustes: Programas y clases', () => {
     renderAt('/admin/ajustes/programas')
 
     let kids = await programCard('Kids')
-    await userEvent.click(within(kids).getByRole('button', { name: copy.rename }))
+    await userEvent.click(rowButton(kids, 'Kids'))
     await userEvent.click(within(kids).getByRole('button', { name: copy.submit }))
     expect(within(kids).queryByRole('form')).not.toBeInTheDocument()
 
-    await userEvent.click(within(kids).getByRole('button', { name: copy.rename }))
+    await userEvent.click(rowButton(kids, 'Kids'))
     const name = within(kids).getByLabelText(copy.programForm.name)
     await userEvent.clear(name)
     await userEvent.type(name, 'Infantil')
@@ -234,9 +241,13 @@ describe('Ajustes: Programas y clases', () => {
     renderAt('/admin/ajustes/programas')
 
     const kids = await programCard('Kids')
+    // Desactivar is in the program's form, not on its row.
+    await userEvent.click(rowButton(kids, 'Kids'))
     await userEvent.click(within(kids).getByRole('button', { name: copy.deactivate }))
     expect(await screen.findByRole('status')).toHaveTextContent(copy.programDeactivated('Kids'))
-    await userEvent.click(await within(kids).findByRole('button', { name: copy.reactivate }))
+    expect(await within(kids).findByText(copy.inactive)).toBeInTheDocument()
+    await userEvent.click(rowButton(kids, 'Kids'))
+    await userEvent.click(within(kids).getByRole('button', { name: copy.reactivate }))
     expect(await screen.findByRole('status')).toHaveTextContent(copy.programReactivated('Kids'))
 
     expect(calls.filter((c) => c.method === 'PATCH').map((c) => [c.path, c.body])).toEqual([
@@ -307,8 +318,7 @@ describe('Ajustes: Programas y clases', () => {
     renderAt('/admin/ajustes/programas')
 
     const adults = await programCard('Adultos')
-    const row = within(adults).getByText('Open mat').closest('li')!
-    await userEvent.click(within(row).getByRole('button', { name: copy.edit }))
+    await userEvent.click(rowButton(adults, 'Open mat'))
     const edit = within(adults).getByRole('form', { name: form.edit('Open mat') })
     expect(within(edit).getByLabelText(form.kind)).toHaveValue('open_mat')
     await userEvent.click(within(edit).getByRole('checkbox', { name: form.countsAsClass }))
@@ -318,7 +328,7 @@ describe('Ajustes: Programas y clases', () => {
     expect(calls.filter((c) => c.method === 'PATCH').map((c) => [c.path, c.body])).toEqual([
       ['/api/class-types/open', { counts_as_class: true }],
     ])
-    const saved = within(await programCard('Adultos')).getByText('Open mat').closest('li')!
+    const saved = rowButton(await programCard('Adultos'), 'Open mat')
     expect(saved).not.toHaveTextContent(copy.notCounted)
   })
 
@@ -357,8 +367,7 @@ describe('Ajustes: Programas y clases', () => {
     renderAt('/admin/ajustes/programas')
 
     const adults = await programCard('Adultos')
-    const fundamentos = within(adults).getByText('Fundamentos').closest('li')!
-    await userEvent.click(within(fundamentos).getByRole('button', { name: copy.edit }))
+    await userEvent.click(rowButton(adults, 'Fundamentos'))
     const edit = within(adults).getByRole('form', {
       name: form.edit('Fundamentos'),
     })
@@ -376,8 +385,7 @@ describe('Ajustes: Programas y clases', () => {
     renderAt('/admin/ajustes/programas')
 
     const adults = await programCard('Adultos')
-    const open = within(adults).getByText('Open mat').closest('li')!
-    await userEvent.click(within(open).getByRole('button', { name: copy.edit }))
+    await userEvent.click(rowButton(adults, 'Open mat'))
     const edit = within(adults).getByRole('form', {
       name: form.edit('Open mat'),
     })
@@ -400,7 +408,7 @@ describe('Ajustes: Programas y clases', () => {
     renderAt('/admin/ajustes/programas')
 
     const old = await programCard('Competición')
-    await userEvent.click(within(old).getByRole('button', { name: copy.edit }))
+    await userEvent.click(rowButton(old, 'Sparring'))
     const program = within(old).getByLabelText(form.program)
     expect(program).toHaveValue('old')
     expect(
@@ -415,11 +423,12 @@ describe('Ajustes: Programas y clases', () => {
     renderAt('/admin/ajustes/programas')
 
     const adults = await programCard('Adultos')
-    const fundamentos = within(adults).getByText('Fundamentos').closest('li')!
-    await userEvent.click(within(fundamentos).getByRole('button', { name: copy.deactivate }))
+    await userEvent.click(rowButton(adults, 'Fundamentos'))
+    const edit = within(adults).getByRole('form', { name: form.edit('Fundamentos') })
+    await userEvent.click(within(edit).getByRole('button', { name: copy.deactivate }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.classTypeDeactivated('Fundamentos'))
-    expect(await within(fundamentos).findByText(copy.inactive)).toBeInTheDocument()
+    expect(await within(adults).findByRole('button', { name: new RegExp(`^Fundamentos${copy.inactive}`) })).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
       {
         method: 'PATCH',

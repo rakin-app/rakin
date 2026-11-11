@@ -48,6 +48,7 @@ import { MemberMatTime } from '../components/MatTime'
 import { StatusPill } from '../components/StatusPill'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import { CustomFieldsPanel } from './CustomFieldsPanel'
 import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
@@ -76,6 +77,7 @@ const route = getRouteApi('/admin/alumnos/$personId')
 export function MemberDetail() {
   const { personId } = route.useParams()
   const person = useQuery(personQuery(personId))
+  usePageTitle(person.data?.name)
   const memberships = useQuery(membershipsQuery(personId))
   const grades = useQuery(gradesQuery(personId))
   const role = useQuery(myRoleQuery())

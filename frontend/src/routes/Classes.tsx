@@ -20,6 +20,7 @@ import { Grid, PageContainer, useWide } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { clockTime, isoDay, shiftDay, shortDay, timeRange, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import './Classes.css'
 
 const copy = t.admin.classes
@@ -36,6 +37,7 @@ const copy = t.admin.classes
  * those who usually do. A phone keeps the one column, and never asks for the week.
  */
 export function Classes() {
+  usePageTitle(copy.title)
   const gymToday = useGymToday()
   const timeZone = useGymTimeZone()
   const wide = useWide()

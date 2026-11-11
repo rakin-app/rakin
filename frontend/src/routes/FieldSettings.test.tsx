@@ -98,6 +98,11 @@ function renderAt(path: string) {
 
 const writes = (calls: Call[]) => calls.filter((c) => c.method !== 'GET')
 
+/** Opens a field's edit form: its row is the button (#177). */
+async function open(item: HTMLElement, label: string) {
+  await userEvent.click(within(item).getByRole('button', { name: new RegExp(`^${label}`) }))
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -117,7 +122,7 @@ describe('Ajustes: Campos', () => {
 
     const section = await screen.findByRole('region', { name: copy.title })
     const items = within(section).getAllByRole('listitem')
-    expect(items.map((item) => within(item).getByText((_, el) => el?.className === 'settings__plan-name').textContent)).toEqual([
+    expect(items.map((item) => within(item).getByText((_, el) => el?.className === 'list-row__title').textContent)).toEqual([
       'Talla de kimono',
       `Condición médica${copy.sensitive}`,
       `Apodo${copy.archived}`,
@@ -126,7 +131,12 @@ describe('Ajustes: Campos', () => {
     expect(within(items[1]!).getByText(copy.row(copy.types.text, copy.visibleTo.admin))).toBeInTheDocument()
     expect(within(items[0]!).getByRole('button', { name: copy.up('Talla de kimono') })).toBeDisabled()
     expect(within(items[2]!).getByRole('button', { name: copy.down('Apodo') })).toBeDisabled()
-    expect(within(items[2]!).getByRole('button', { name: copy.restore })).toBeInTheDocument()
+    // No Editar or Desactivar on the rows (#177): Reactivar is in the archived field's form.
+    expect(within(section).queryByRole('button', { name: copy.edit })).not.toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: copy.restore })).not.toBeInTheDocument()
+    await open(items[2]!, 'Apodo')
+    const edit = within(section).getByRole('form', { name: form.edit('Apodo') })
+    expect(within(edit).getByRole('button', { name: copy.restore })).toBeInTheDocument()
   })
 
   it('shows an admin neither who sees a field nor the controls that set it', async () => {
@@ -134,7 +144,7 @@ describe('Ajustes: Campos', () => {
     renderAt('/admin/ajustes/campos')
 
     const section = await screen.findByRole('region', { name: copy.title })
-    expect(within(section).getAllByText(copy.types.text, { selector: '.settings__detail' })).toHaveLength(2)
+    expect(within(section).getAllByText(copy.types.text, { selector: '.list-row__detail' })).toHaveLength(2)
     expect(within(section).queryByText(copy.visibleTo.admin, { exact: false })).not.toBeInTheDocument()
 
     await userEvent.click(within(section).getByRole('button', { name: copy.add }))
@@ -191,7 +201,7 @@ describe('Ajustes: Campos', () => {
 
     const section = await screen.findByRole('region', { name: copy.title })
     const [belt] = within(section).getAllByRole('listitem')
-    await userEvent.click(within(belt!).getByRole('button', { name: copy.edit }))
+    await open(belt!, 'Talla de kimono')
     const edit = within(section).getByRole('form', { name: form.edit('Talla de kimono') })
     expect(within(edit).getByLabelText(form.type)).toBeDisabled()
     const options = within(edit).getByLabelText(form.options)
@@ -211,7 +221,7 @@ describe('Ajustes: Campos', () => {
 
     const section = await screen.findByRole('region', { name: copy.title })
     const [, health] = within(section).getAllByRole('listitem')
-    await userEvent.click(within(health!).getByRole('button', { name: copy.edit }))
+    await open(health!, 'Condición médica')
     const edit = within(section).getByRole('form', { name: form.edit('Condición médica') })
     // Whitespace around the label is trimmed by the API, so it is no change.
     await userEvent.type(within(edit).getByLabelText(form.label), '  ')
@@ -227,7 +237,7 @@ describe('Ajustes: Campos', () => {
 
     const section = await screen.findByRole('region', { name: copy.title })
     const [belt] = within(section).getAllByRole('listitem')
-    await userEvent.click(within(belt!).getByRole('button', { name: copy.edit }))
+    await open(belt!, 'Talla de kimono')
     const edit = within(section).getByRole('form', { name: form.edit('Talla de kimono') })
     const options = within(edit).getByLabelText(form.options)
     await userEvent.clear(options)
@@ -277,7 +287,7 @@ describe('Ajustes: Campos', () => {
     ])
     const labels = within(section)
       .getAllByRole('listitem')
-      .map((item) => item.querySelector('.settings__plan-name')?.firstChild?.textContent)
+      .map((item) => item.querySelector('.list-row__title')?.firstChild?.textContent)
     expect(labels).toEqual(['Condición médica', 'Talla de kimono', 'Apodo'])
   })
 
@@ -297,11 +307,15 @@ describe('Ajustes: Campos', () => {
 
     const section = await screen.findByRole('region', { name: copy.title })
     const [belt] = within(section).getAllByRole('listitem')
-    await userEvent.click(within(belt!).getByRole('button', { name: copy.archive }))
+    await open(belt!, 'Talla de kimono')
+    const edit = within(section).getByRole('form', { name: form.edit('Talla de kimono') })
+    await userEvent.click(within(edit).getByRole('button', { name: copy.archive }))
     expect(await within(section).findByRole('status')).toHaveTextContent(copy.archivedDone('Talla de kimono'))
 
     const [archived] = within(section).getAllByRole('listitem')
-    await userEvent.click(await within(archived!).findByRole('button', { name: copy.restore }))
+    await open(archived!, 'Talla de kimono')
+    const again = within(section).getByRole('form', { name: form.edit('Talla de kimono') })
+    await userEvent.click(await within(again).findByRole('button', { name: copy.restore }))
     expect(await within(section).findByText(copy.restored('Talla de kimono'))).toBeInTheDocument()
     expect(writes(calls)).toEqual([
       { method: 'PATCH', path: '/api/custom-fields/talla', body: { archived: true } },

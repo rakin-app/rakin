@@ -105,6 +105,8 @@ class GymSettings(BaseModel):
     name: str
     # The gym's address in URLs; set when the gym is created, not editable here.
     slug: str
+    # Where it is served, as the address bar shows it: `academia-sur.rakin.app` (#177).
+    web_address: str
     timezone: str
     grace_days: int
     reminder_every_days: int
@@ -114,11 +116,12 @@ class GymSettings(BaseModel):
 
     @classmethod
     def from_row(
-        cls, name: str, slug: str, timezone: str, settings: Mapping[str, Any]
+        cls, name: str, slug: str, web_address: str, timezone: str, settings: Mapping[str, Any]
     ) -> "GymSettings":
         return cls(
             name=name,
             slug=slug,
+            web_address=web_address,
             timezone=timezone,
             grace_days=settings.get("grace_days", DEFAULT_GRACE_DAYS),
             reminder_every_days=settings.get("reminder_every_days", DEFAULT_REMINDER_EVERY_DAYS),

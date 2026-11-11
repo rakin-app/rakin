@@ -21,6 +21,7 @@ import { Grid, PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { dayTime, monthName, shortDay, timeRange, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
+import { useGymName, usePageTitle } from '../pageTitle'
 import './Today.css'
 
 const copy = t.admin.today
@@ -55,11 +56,13 @@ const OVERDUE_SHOWN = 3
 export function Today() {
   const role = useQuery(myRoleQuery())
   const money = readsLedger(role.data)
+  const gym = useGymName()
+  usePageTitle(copy.title)
 
   return (
     <div className="today">
       <PageContainer className="today__page">
-        <PageHeader title={copy.heading(weekdayDay(new Date()))} />
+        <PageHeader eyebrow={gym} title={copy.heading(weekdayDay(new Date()))} />
         {role.isError && <Failed message={copy.roleError} retry={() => void role.refetch()} />}
         {role.data === 'coach' && <CoachToday />}
         {money && <OwnerToday />}

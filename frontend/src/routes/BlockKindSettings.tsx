@@ -15,7 +15,7 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { t } from '../i18n/es'
-import { Field, LoadFailed, refusal } from './settingsForm'
+import { EditRow, Field, LoadFailed, MoveButtons, refusal } from './settingsForm'
 
 const copy = t.admin.settings.blocks
 const form = copy.form
@@ -23,9 +23,10 @@ const form = copy.form
 /**
  * "Bloques": the parts the coach's timer runs a class in (Calentamiento, Técnica,
  * Sparring…), in the order the timer offers them, and whether each one's time counts
- * as sparring. A kind no class has used yet can be deleted; one in use is archived,
- * which keeps the time already recorded, and whether it is sparring is then fixed.
- * Deleting is in the edit form.
+ * as sparring. A kind no class has used yet can be deleted; one in use is deactivated
+ * (archived, to the API), which keeps the time already recorded, and whether it is
+ * sparring is then fixed. A row opens its edit form, which deactivates and deletes; the
+ * row keeps its ↑ ↓.
  */
 export function BlockKindSettings() {
   const queryClient = useQueryClient()
@@ -87,7 +88,7 @@ export function BlockKindSettings() {
       {list.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
-        <ul className="settings__list">
+        <ul className="settings__card settings__card--rows settings__menu">
           {list.map((kind) => {
             const index = active.indexOf(kind)
             return editing === kind.id ? (
@@ -95,90 +96,36 @@ export function BlockKindSettings() {
                 <BlockKindForm kind={kind} onCancel={() => setEditing(null)} onDone={done} />
               </li>
             ) : (
-              <BlockKindRow
+              <EditRow
                 key={kind.id}
-                kind={kind}
-                first={index === 0}
-                last={index === active.length - 1}
-                moving={reorder.isPending}
-                onMove={(by) => move(index, by)}
-                onEdit={() => open(kind.id)}
-                onDone={done}
+                inactive={kind.archived}
+                title={
+                  <>
+                    {kind.name}
+                    {kind.is_sparring && <span className="settings__tag">{copy.sparring}</span>}
+                    {kind.archived && <span className="settings__tag">{copy.archived}</span>}
+                  </>
+                }
+                onOpen={() => open(kind.id)}
+                controls={
+                  // Archived kinds sit last, out of the timer's order: only the others move.
+                  !kind.archived && (
+                    <MoveButtons
+                      up={copy.up(kind.name)}
+                      down={copy.down(kind.name)}
+                      first={index === 0}
+                      last={index === active.length - 1}
+                      disabled={reorder.isPending}
+                      onMove={(by) => move(index, by)}
+                    />
+                  )
+                }
               />
             )
           })}
         </ul>
       )}
     </section>
-  )
-}
-
-function BlockKindRow({
-  kind,
-  first,
-  last,
-  moving,
-  onMove,
-  onEdit,
-  onDone,
-}: {
-  kind: BlockKind
-  first: boolean
-  last: boolean
-  moving: boolean
-  onMove: (by: -1 | 1) => void
-  onEdit: () => void
-  onDone: (message: string) => void
-}) {
-  const queryClient = useQueryClient()
-  const toggle = useMutation({
-    mutationFn: () => updateBlockKind(kind.id, { archived: !kind.archived }),
-    onSuccess: async (answer) => {
-      onDone(answer.archived ? copy.archivedDone(answer.name) : copy.restored(answer.name))
-      await queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey })
-    },
-  })
-  return (
-    <li className={kind.archived ? 'settings__card settings__plan settings__plan--inactive' : 'settings__card settings__plan'}>
-      <div className="settings__plan-text">
-        <span className="settings__plan-name">
-          {kind.name}
-          {kind.is_sparring && <span className="settings__tag">{copy.sparring}</span>}
-          {kind.archived && <span className="settings__tag">{copy.archived}</span>}
-        </span>
-      </div>
-      {toggle.isError && (
-        <p className="settings__error" role="alert">
-          {copy.toggleFailed}
-        </p>
-      )}
-      <div className="settings__actions">
-        {!kind.archived && (
-          <>
-            <Button
-              aria-label={copy.up(kind.name)}
-              disabled={first || moving}
-              onClick={() => onMove(-1)}
-            >
-              {copy.upMark}
-            </Button>
-            <Button
-              aria-label={copy.down(kind.name)}
-              disabled={last || moving}
-              onClick={() => onMove(1)}
-            >
-              {copy.downMark}
-            </Button>
-          </>
-        )}
-        <Button onClick={onEdit}>
-          {copy.edit}
-        </Button>
-        <Button disabled={toggle.isPending} onClick={() => toggle.mutate()}>
-          {kind.archived ? copy.restore : copy.archive}
-        </Button>
-      </div>
-    </li>
   )
 }
 
@@ -210,7 +157,14 @@ function BlockKindForm({
       await queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey })
     },
   })
-  // Deleting is in the form, not on the row: five buttons do not fit a phone's row.
+  // Deactivating and deleting are in the form, not on the row (#177): the row keeps its moves.
+  const toggle = useMutation({
+    mutationFn: () => updateBlockKind(kind!.id, { archived: !kind!.archived }),
+    onSuccess: async (answer) => {
+      onDone(answer.archived ? copy.archivedDone(answer.name) : copy.restored(answer.name))
+      await queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey })
+    },
+  })
   const remove = useMutation({
     mutationFn: () => deleteBlockKind(kind!.id),
     onSuccess: async () => {
@@ -264,21 +218,7 @@ function BlockKindForm({
           {inUse !== null ? form.sparringInUse(inUse) : taken || Object.keys(errors).length > 0 ? form.invalid : form.failed}
         </p>
       )}
-      {remove.error && (
-        <p className="settings__error" role="alert">
-          {removedInUse !== null ? copy.inUse(removedInUse) : form.failed}
-        </p>
-      )}
       <div className="settings__actions">
-        {kind && (
-          <Button
-            variant="danger"
-            disabled={save.isPending || remove.isPending}
-            onClick={() => remove.mutate()}
-          >
-            {copy.delete}
-          </Button>
-        )}
         <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
@@ -286,6 +226,34 @@ function BlockKindForm({
           {save.isPending ? form.working : form.submit}
         </Button>
       </div>
+      {kind && (
+        <div className="settings__danger">
+          {remove.error && (
+            <p className="settings__error" role="alert">
+              {removedInUse !== null ? copy.inUse(removedInUse) : form.failed}
+            </p>
+          )}
+          {toggle.isError && (
+            <p className="settings__error" role="alert">
+              {copy.toggleFailed}
+            </p>
+          )}
+          <Button
+            variant={kind.archived ? 'secondary' : 'danger'}
+            disabled={save.isPending || toggle.isPending || remove.isPending}
+            onClick={() => toggle.mutate()}
+          >
+            {kind.archived ? copy.restore : copy.archive}
+          </Button>
+          <Button
+            variant="danger"
+            disabled={save.isPending || toggle.isPending || remove.isPending}
+            onClick={() => remove.mutate()}
+          >
+            {copy.delete}
+          </Button>
+        </div>
+      )}
     </form>
   )
 }

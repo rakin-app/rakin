@@ -16,6 +16,7 @@ import { Input } from '../components/Field'
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
 import { monthName, shortDay } from '../format'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import './ValidateProof.css'
 
 const copy = t.admin.review
@@ -28,6 +29,7 @@ const clp = t.common.clp
  * pager walks the queue, oldest first.
  */
 export function ValidateProof() {
+  usePageTitle(copy.title)
   const queue = useQuery(proofQueueQuery())
   const [index, setIndex] = useState(0)
   const [done, setDone] = useState<string | null>(null)

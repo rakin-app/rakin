@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type ComponentProps } from 'react'
+import { useCallback, useSyncExternalStore, type ComponentProps } from 'react'
 import { cx } from './classNames'
 import './Layout.css'
 
@@ -18,15 +18,24 @@ export function Grid({ columns = 2, className, ...rest }: { columns?: 2 | 3 } & 
 
 // Where `Grid` goes to columns: Layout.css's breakpoint.
 const WIDE = '(min-width: 1024px)'
+// Where the shell's bottom bar becomes the sidebar: AdminLayout.css's breakpoint.
+const DESKTOP = '(min-width: 960px)'
 
-function wideQuery(): MediaQueryList | null {
-  return typeof window.matchMedia === 'function' ? window.matchMedia(WIDE) : null
+function mediaQuery(query: string): MediaQueryList | null {
+  return typeof window.matchMedia === 'function' ? window.matchMedia(query) : null
 }
 
-function subscribeWide(onChange: () => void): () => void {
-  const query = wideQuery()
-  query?.addEventListener('change', onChange)
-  return () => query?.removeEventListener('change', onChange)
+/** Whether the window matches `query`, kept current as it is resized. False where the browser cannot say. */
+function useMedia(query: string): boolean {
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const list = mediaQuery(query)
+      list?.addEventListener('change', onChange)
+      return () => list?.removeEventListener('change', onChange)
+    },
+    [query],
+  )
+  return useSyncExternalStore(subscribe, () => mediaQuery(query)?.matches ?? false)
 }
 
 /**
@@ -34,5 +43,10 @@ function subscribeWide(onChange: () => void): () => void {
  * desktop and should not fetch on a phone. False where the browser cannot say.
  */
 export function useWide(): boolean {
-  return useSyncExternalStore(subscribeWide, () => wideQuery()?.matches ?? false)
+  return useMedia(WIDE)
+}
+
+/** Whether the shell is the desktop one, with the sidebar (960px and up). False where the browser cannot say. */
+export function useDesktop(): boolean {
+  return useMedia(DESKTOP)
 }

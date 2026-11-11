@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import {
   GOAL_METRICS,
@@ -14,10 +14,11 @@ import {
 import { validationErrors } from '../api/validation'
 import { Belt } from '../components/Belt'
 import { Button } from '../components/Button'
+import { ListRowContent, listRowClass } from '../components/Card'
 import { Input, Select } from '../components/Field'
-import { ChevronDownIcon, ChevronUpIcon, CloseIcon } from '../components/icons'
+import { ChevronDownIcon, CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
-import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
+import { Field, integerOf, LoadFailed, MoveButtons, refusal } from './settingsForm'
 
 const copy = t.admin.settings.grading
 const LADDERS = ['ranks', 'kids_ladder'] as const
@@ -159,14 +160,24 @@ function GradingEditor({
   const [notice, setNotice] = useState<string | null>(null)
   // The stored scheme stays broken until one is saved over it.
   const [repairing, setRepairing] = useState(stale)
+  // The one rank open to edit, by its draft id (#177): the rest are a row each.
+  const [opened, setOpened] = useState<number | null>(null)
 
   const save = useMutation({
     mutationFn: () => saveGradingScheme(schemeOf(draft)),
     onSuccess: (answer) => {
       setDraft(draftOf(answer))
+      setOpened(null)
       setRepairing(false)
       setNotice(copy.saved)
       queryClient.setQueryData(gradingSchemeQuery().queryKey, answer)
+    },
+    // The first rank the API refused opens, so its error shows.
+    onError: (error) => {
+      const path = Object.keys(validationErrors(error)).find((key) => /^(ranks|kids_ladder)\.\d+\./.test(key))
+      const [ladder, index] = path?.split('.') ?? []
+      const rank = ladder ? draft[ladder as Ladder][Number(index)] : undefined
+      if (rank) setOpened(rank.id)
     },
   })
   const errors = validationErrors(save.error)
@@ -184,6 +195,7 @@ function GradingEditor({
     const chosen = presets?.find((p) => p.key === preset)
     if (!chosen) return
     save.reset()
+    setOpened(null)
     setDraft(draftOf(chosen.scheme))
     setNotice(copy.applied(chosen.label))
   }
@@ -206,8 +218,12 @@ function GradingEditor({
           {notice}
         </p>
       )}
-      <div className="settings__card" role="group" aria-label={copy.start}>
-        <h2 className="settings__legend">{copy.start}</h2>
+      {/* Closed unless the stored scheme needs one (#177): a preset is a starting point, not a daily edit. */}
+      <details className="settings__card settings__start" open={repairing || undefined} aria-label={copy.start}>
+        <summary className="settings__legend">
+          {copy.start}
+          <ChevronDownIcon />
+        </summary>
         {presetsFailed ? (
           <p className="settings__detail">{copy.presetsError}</p>
         ) : (
@@ -233,7 +249,7 @@ function GradingEditor({
             </Button>
           </>
         )}
-      </div>
+      </details>
 
       <form className="settings__form" aria-label={copy.title} onSubmit={submit} noValidate>
         <div className="settings__card">
@@ -268,6 +284,8 @@ function GradingEditor({
             metric={draft.goal_metric}
             errorOf={errorOf}
             refused={refused}
+            opened={opened}
+            onOpen={setOpened}
             onChange={(ranks) => setLadder(ladder, ranks)}
           />
         ))}
@@ -305,6 +323,8 @@ function LadderEditor({
   metric,
   errorOf,
   refused,
+  opened,
+  onOpen,
   onChange,
 }: {
   ladder: Ladder
@@ -312,6 +332,8 @@ function LadderEditor({
   metric: GoalMetric | null
   errorOf: ErrorOf
   refused: Refused
+  opened: number | null
+  onOpen: (id: number | null) => void
   onChange: (ranks: DraftRank[]) => void
 }) {
   const title = copy.ladders[ladder]
@@ -322,7 +344,7 @@ function LadderEditor({
       {ranks.length === 0 ? (
         <p className="settings__detail">{copy.emptyLadder}</p>
       ) : (
-        <ol className="settings__list">
+        <ol className="settings__menu settings__ladder">
           {ranks.map((rank, index) => (
             <RankEditor
               key={rank.id}
@@ -334,15 +356,25 @@ function LadderEditor({
               last={index === ranks.length - 1}
               errorOf={errorOf}
               refused={refused}
+              open={opened === rank.id}
+              onToggle={() => onOpen(opened === rank.id ? null : rank.id)}
               onChange={(next) => onChange(replaced(ranks, index, next))}
               onMove={(by) => onChange(moved(ranks, index, by))}
-              onRemove={() => onChange(removed(ranks, index))}
+              onRemove={() => {
+                onOpen(null)
+                onChange(removed(ranks, index))
+              }}
             />
           ))}
         </ol>
       )}
       <Button
-        onClick={() => onChange([...ranks, { ...blank(), colors: [], sub_ranks: [] }])}
+        onClick={() => {
+          // A new rank opens, to be named.
+          const rank = { ...blank(), colors: [], sub_ranks: [] }
+          onChange([...ranks, rank])
+          onOpen(rank.id)
+        }}
       >
         {copy.addRank}
       </Button>
@@ -350,6 +382,11 @@ function LadderEditor({
   )
 }
 
+/**
+ * A rank, closed: a row with its belt, its name and what it takes to the next, and its
+ * ↑ ↓ (#177). Tapping the row opens it to edit its name, target, belt and sub-ranks; one
+ * rank is open at a time, so a scheme of twenty is not twenty forms.
+ */
 function RankEditor({
   path,
   number,
@@ -359,6 +396,8 @@ function RankEditor({
   last,
   errorOf,
   refused,
+  open,
+  onToggle,
   onChange,
   onMove,
   onRemove,
@@ -371,135 +410,167 @@ function RankEditor({
   last: boolean
   errorOf: ErrorOf
   refused: Refused
+  open: boolean
+  onToggle: () => void
   onChange: (rank: DraftRank) => void
-  onMove: (by: number) => void
+  onMove: (by: -1 | 1) => void
   onRemove: () => void
 }) {
   const name = rank.label.trim() || copy.unnamed
   const setSubRanks = (sub_ranks: DraftSubRank[]) => onChange({ ...rank, sub_ranks })
   // A rank whose sub-ranks were refused opens on them.
-  const [open, setOpen] = useState(false)
+  const [subOpen, setSubOpen] = useState(false)
+  const panel = useId()
+  const target = Number(rank.target)
+  const detail = refused(`${path}.`) ? (
+    <span className="settings__refused">{copy.refusedRank}</span>
+  ) : (
+    [
+      // A rank with no target of its own says nothing about one.
+      metric && rank.target.trim() !== '' && Number.isFinite(target) && copy.summary[metric](target),
+      rank.sub_ranks.length > 0 && copy.subRanks(rank.sub_ranks.length),
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  )
 
   return (
-    <li className="settings__subcard" aria-label={copy.rank(number)}>
-      <div className="settings__rank-fields">
-        <Field label={copy.rank(number)} error={errorOf(`${path}.label`, 'label', rank.label)}>
-          {(props) => (
-            <Input
-              {...props}
-              type="text"
-              maxLength={60}
-              value={rank.label}
-              onChange={(e) => onChange({ ...rank, label: e.target.value })}
-            />
-          )}
-        </Field>
-        {metric && (
-          <Field
-            label={copy.target[metric]}
-            hint={rank.sub_ranks.length > 0 ? copy.targetHint : undefined}
-            error={errorOf(`${path}.target`, 'target', rank.target)}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                type="text"
-                inputMode="numeric"
-                value={rank.target}
-                onChange={(e) => onChange({ ...rank, target: e.target.value })}
-              />
-            )}
-          </Field>
-        )}
-      </div>
-      <BeltColors rank={rank} name={name} onChange={(colors) => onChange({ ...rank, colors })} />
-      <div className="settings__actions">
-        <Button
-          aria-label={copy.moveUp(name)}
-          disabled={first}
-          onClick={() => onMove(-1)}
+    <li aria-label={copy.rank(number)}>
+      <div className="settings__row">
+        <button
+          type="button"
+          className={listRowClass(true)}
+          aria-expanded={open}
+          aria-controls={panel}
+          onClick={onToggle}
         >
-          <ChevronUpIcon />
-        </Button>
-        <Button
-          aria-label={copy.moveDown(name)}
-          disabled={last}
-          onClick={() => onMove(1)}
-        >
-          <ChevronDownIcon />
-        </Button>
-        <Button aria-label={copy.remove(name)} onClick={onRemove}>
-          <CloseIcon />
-        </Button>
+          <span className="settings__rank-belt" aria-hidden="true">
+            {rank.colors.length > 0 && <Belt colors={rank.colors} stripes={0} maxStripes={0} label="" compact />}
+          </span>
+          <ListRowContent
+            title={`${number}. ${name}`}
+            detail={detail || undefined}
+          />
+        </button>
+        <div className="settings__row-controls">
+          <MoveButtons up={copy.moveUp(name)} down={copy.moveDown(name)} first={first} last={last} onMove={onMove} />
+        </div>
       </div>
-      <details
-        className="settings__sub-ranks"
-        open={open || refused(`${path}.sub_ranks.`)}
-        onToggle={(e) => setOpen(e.currentTarget.open)}
-      >
-        <summary>{copy.subRanks(rank.sub_ranks.length)}</summary>
-        <ol className="settings__list">
-          {rank.sub_ranks.map((sub, index) => {
-            const subPath = `${path}.sub_ranks.${index}`
-            return (
-              <li
-                key={sub.id}
-                className={metric ? 'settings__sub-rank settings__sub-rank--target' : 'settings__sub-rank'}
-              >
-                <Field label={copy.subRank(index + 1)} error={errorOf(`${subPath}.label`, 'label', sub.label)}>
+      <div id={panel} className="settings__rank-panel" hidden={!open}>
+        {open && (
+          <>
+            <div className="settings__rank-fields">
+              <Field label={copy.rank(number)} error={errorOf(`${path}.label`, 'label', rank.label)}>
+                {(props) => (
+                  <Input
+                    {...props}
+                    type="text"
+                    maxLength={60}
+                    value={rank.label}
+                    onChange={(e) => onChange({ ...rank, label: e.target.value })}
+                  />
+                )}
+              </Field>
+              {metric && (
+                <Field
+                  label={copy.target[metric]}
+                  hint={rank.sub_ranks.length > 0 ? copy.targetHint : undefined}
+                  error={errorOf(`${path}.target`, 'target', rank.target)}
+                >
                   {(props) => (
                     <Input
                       {...props}
                       type="text"
-                      maxLength={60}
-                      value={sub.label}
-                      onChange={(e) =>
-                        setSubRanks(
-                          replaced(rank.sub_ranks, index, {
-                            ...sub,
-                            label: e.target.value,
-                          }),
-                        )
-                      }
+                      inputMode="numeric"
+                      value={rank.target}
+                      onChange={(e) => onChange({ ...rank, target: e.target.value })}
                     />
                   )}
                 </Field>
-                {metric && (
-                  <Field label={copy.subTarget[metric]} error={errorOf(`${subPath}.target`, 'target', sub.target)}>
-                    {(props) => (
-                      <Input
-                        {...props}
-                        type="text"
-                        inputMode="numeric"
-                        placeholder={rank.target}
-                        value={sub.target}
-                        onChange={(e) =>
-                          setSubRanks(
-                            replaced(rank.sub_ranks, index, {
-                              ...sub,
-                              target: e.target.value,
-                            }),
-                          )
-                        }
-                      />
-                    )}
-                  </Field>
-                )}
-                <Button
-                  icon
-                  aria-label={copy.remove(sub.label.trim() || copy.subRank(index + 1))}
-                  onClick={() => setSubRanks(removed(rank.sub_ranks, index))}
-                >
-                  <CloseIcon />
-                </Button>
-              </li>
-            )
-          })}
-        </ol>
-        <Button onClick={() => setSubRanks([...rank.sub_ranks, blank()])}>
-          {copy.addSubRank}
-        </Button>
-      </details>
+              )}
+            </div>
+            <BeltColors rank={rank} name={name} onChange={(colors) => onChange({ ...rank, colors })} />
+            <details
+              className="settings__sub-ranks"
+              open={subOpen || refused(`${path}.sub_ranks.`)}
+              onToggle={(e) => setSubOpen(e.currentTarget.open)}
+            >
+              <summary>{copy.subRanks(rank.sub_ranks.length)}</summary>
+              <ol className="settings__list">
+                {rank.sub_ranks.map((sub, index) => {
+                  const subPath = `${path}.sub_ranks.${index}`
+                  return (
+                    <li
+                      key={sub.id}
+                      className={metric ? 'settings__sub-rank settings__sub-rank--target' : 'settings__sub-rank'}
+                    >
+                      <Field label={copy.subRank(index + 1)} error={errorOf(`${subPath}.label`, 'label', sub.label)}>
+                        {(props) => (
+                          <Input
+                            {...props}
+                            type="text"
+                            maxLength={60}
+                            value={sub.label}
+                            onChange={(e) =>
+                              setSubRanks(
+                                replaced(rank.sub_ranks, index, {
+                                  ...sub,
+                                  label: e.target.value,
+                                }),
+                              )
+                            }
+                          />
+                        )}
+                      </Field>
+                      {metric && (
+                        <Field label={copy.subTarget[metric]} error={errorOf(`${subPath}.target`, 'target', sub.target)}>
+                          {(props) => (
+                            <Input
+                              {...props}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder={rank.target}
+                              value={sub.target}
+                              onChange={(e) =>
+                                setSubRanks(
+                                  replaced(rank.sub_ranks, index, {
+                                    ...sub,
+                                    target: e.target.value,
+                                  }),
+                                )
+                              }
+                            />
+                          )}
+                        </Field>
+                      )}
+                      <Button
+                        icon
+                        aria-label={copy.remove(sub.label.trim() || copy.subRank(index + 1))}
+                        onClick={() => setSubRanks(removed(rank.sub_ranks, index))}
+                      >
+                        <CloseIcon />
+                      </Button>
+                    </li>
+                  )
+                })}
+              </ol>
+              <Button onClick={() => setSubRanks([...rank.sub_ranks, blank()])}>
+                {copy.addSubRank}
+              </Button>
+            </details>
+            <div className="settings__actions">
+              <Button onClick={onToggle}>
+                {copy.done}
+              </Button>
+            </div>
+            <div className="settings__danger">
+              <Button variant="danger" onClick={onRemove}>
+                {copy.remove(name)}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
     </li>
   )
 }

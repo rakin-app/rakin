@@ -1,11 +1,15 @@
-import { Button } from '../components/Button'
 /**
- * What every Ajustes section builds on: its load failure, its labelled fields and what
- * the API's 422s on them mean. A module of its own, so the sections import it without
- * importing `Settings.tsx`, which imports them.
+ * What every Ajustes section builds on: its load failure, its labelled fields, its rows
+ * and what the API's 422s on them mean. A module of its own, so the sections import it
+ * without importing `Settings.tsx`, which imports them.
  */
 
+import type { ReactNode } from 'react'
 import { ApiError } from '../api/client'
+import { Button } from '../components/Button'
+import { ListRowContent, listRowClass } from '../components/Card'
+import { cx } from '../components/classNames'
+import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from '../components/icons'
 import { t } from '../i18n/es'
 
 const copy = t.admin.settings
@@ -24,6 +28,62 @@ export function LoadFailed({ error, message, retry }: { error: Error; message: s
         {copy.retry}
       </Button>
     </div>
+  )
+}
+
+/**
+ * A list's item (#177): the whole row is the button that opens it to edit, and what
+ * deactivates or deletes it is in there, not beside an Editar on every row. `controls`,
+ * the move buttons, stay at the row's end.
+ */
+export function EditRow({
+  title,
+  detail,
+  inactive = false,
+  onOpen,
+  controls,
+}: {
+  title: ReactNode
+  detail?: ReactNode
+  inactive?: boolean
+  onOpen: () => void
+  controls?: ReactNode
+}) {
+  return (
+    <li className={cx('settings__row', inactive && 'settings__row--inactive')}>
+      <button type="button" className={listRowClass(true)} onClick={onOpen}>
+        <ListRowContent title={title} detail={detail} trailing={<ChevronRightIcon />} />
+      </button>
+      {controls && <div className="settings__row-controls">{controls}</div>}
+    </li>
+  )
+}
+
+/** An item's ↑ and ↓, on its row: `up` and `down` name what they move. */
+export function MoveButtons({
+  up,
+  down,
+  first,
+  last,
+  disabled = false,
+  onMove,
+}: {
+  up: string
+  down: string
+  first: boolean
+  last: boolean
+  disabled?: boolean
+  onMove: (by: -1 | 1) => void
+}) {
+  return (
+    <>
+      <Button variant="ghost" icon aria-label={up} disabled={first || disabled} onClick={() => onMove(-1)}>
+        <ChevronUpIcon />
+      </Button>
+      <Button variant="ghost" icon aria-label={down} disabled={last || disabled} onClick={() => onMove(1)}>
+        <ChevronDownIcon />
+      </Button>
+    </>
   )
 }
 

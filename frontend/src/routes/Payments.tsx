@@ -22,6 +22,7 @@ import { PageHeader } from '../components/PageHeader'
 import { StatusPill, type Status } from '../components/StatusPill'
 import { dayTime, isoDay, monthName, monthYear, shortDay, toDate } from '../format'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import { PaymentForm } from './MemberDetail'
 import './Payments.css'
 
@@ -64,6 +65,7 @@ const route = getRouteApi('/admin/pagos')
  * a member and opens the member detail's payment form for them (#107).
  */
 export function Payments() {
+  usePageTitle(t.nav.payments)
   const role = useQuery(myRoleQuery())
 
   if (readsLedger(role.data)) return <Book />

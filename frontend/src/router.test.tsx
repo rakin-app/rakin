@@ -13,7 +13,8 @@ beforeEach(() => {
     'fetch',
     vi.fn<typeof fetch>(async (input) => {
       const owner = new URL(String(input), 'http://localhost').pathname === '/api/me/role'
-      return new Response(JSON.stringify(owner ? { role: 'owner' } : { detail: 'Not Found' }), {
+      const me = { role: 'owner', person_id: 'me', name: 'Martín', email: null, gym_name: 'Academia Sur' }
+      return new Response(JSON.stringify(owner ? me : { detail: 'Not Found' }), {
         status: owner ? 200 : 404,
         headers: { 'Content-Type': 'application/json' },
       })
@@ -79,7 +80,8 @@ describe('/admin route tree', () => {
     ['/admin/alumnos', es.nav.students, es.admin.students.title],
     ['/admin/clases', es.nav.classes, es.admin.classes.title],
     ['/admin/pagos', es.nav.payments, es.admin.payments.title],
-    ['/admin/ajustes/planes', es.nav.settings, es.admin.settings.title],
+    // A phone's section page is titled by its section.
+    ['/admin/ajustes/planes', es.nav.settings, es.admin.settings.sections.plans],
   ])('%s marks %s as the current page', async (path, navLabel, title) => {
     renderAt(path)
 
@@ -90,6 +92,19 @@ describe('/admin route tree', () => {
       .getAllByRole('link')
       .filter((link) => link.getAttribute('aria-current') === 'page')
     expect(current.map((link) => link.textContent)).toEqual([navLabel])
+  })
+
+  it('names the gym in the sidebar, on Hoy and in each tab title', async () => {
+    const router = renderAt('/admin')
+
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    expect(await within(nav).findByText('Academia Sur')).toBeInTheDocument()
+    const main = screen.getByRole('main')
+    expect(await within(main).findByText('Academia Sur')).toBeInTheDocument()
+    await waitFor(() => expect(document.title).toBe(`${es.admin.today.title} · Academia Sur`))
+
+    await router.navigate({ to: '/admin/alumnos' })
+    await waitFor(() => expect(document.title).toBe(`${es.admin.students.title} · Academia Sur`))
   })
 
   it('navigates between sections from the nav', async () => {

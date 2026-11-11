@@ -17,6 +17,7 @@ import { JoinRequests } from '../components/JoinRequests'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import { FamilyPanel } from './FamilyPanel'
 import './Students.css'
 
@@ -57,6 +58,7 @@ const route = getRouteApi('/admin/alumnos')
 const SEARCH_DEBOUNCE_MS = 250
 
 export function Students() {
+  usePageTitle(copy.title)
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const status = search.status ?? []
