@@ -1,19 +1,19 @@
-.me-home {
+/* The container gives the sides, so the cards line up with "Hola, …" at any width. */
+.me-home,
+.me-home__column {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding: var(--space-1) var(--space-5) var(--space-8);
+}
+
+.me-home {
+  padding: var(--space-1) 0 var(--space-8);
 }
 
 .me-home__note {
   margin: 0;
-  padding: 0 var(--space-5);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
-}
-
-.me-home .me-home__note {
-  padding: 0;
 }
 
 .me-home__retry {
