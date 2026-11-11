@@ -37,21 +37,20 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-3-5);
+  padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
 }
 
 .training__eyebrow {
   color: var(--color-text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font-size: var(--text-sm);
 }
 
 .training__figure {
+  color: var(--color-heading);
   font-family: var(--font-display);
   font-size: var(--text-lg);
   font-weight: var(--font-weight-display);
@@ -68,8 +67,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3-5);
-  padding: calc(var(--space-4) + var(--space-0-5)) var(--space-4);
-  background: var(--color-inverse);
+  padding: var(--space-5);
+  /* The page's one hero figure, on the theme's dark gradient (v3, #199). */
+  background: var(--gradient-hero);
+  box-shadow: var(--shadow-card);
   border-radius: var(--radius-xl);
   color: var(--color-inverse-text);
 }
@@ -83,10 +84,7 @@
 
 .next__eyebrow {
   color: var(--color-inverse-text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font-size: var(--text-sm);
 }
 
 .next__amount {
@@ -100,6 +98,7 @@
   font-family: var(--font-display);
   font-size: var(--text-5xl);
   font-weight: var(--font-weight-display);
+  letter-spacing: var(--tracking-title);
   line-height: 1;
 }
 
@@ -161,11 +160,11 @@
 }
 
 .history__title {
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  color: var(--color-heading);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-display);
+  letter-spacing: var(--tracking-title);
 }
 
 .history__list {
@@ -176,7 +175,8 @@
   list-style: none;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
 }
 
 .history__row {
@@ -245,11 +245,12 @@
 
 .extra-mine__row {
   display: grid;
-  gap: var(--space-2, 8px);
-  padding: var(--space-4, 16px);
+  gap: var(--space-2);
+  padding: var(--space-5);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
 }
 
 .extra-mine__top {

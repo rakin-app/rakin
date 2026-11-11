@@ -107,6 +107,7 @@ THEME_TOKENS = {
         "--color-inverse-text": "#f5f6eb",
         "--color-moss": "#a0c79b",
         "--color-focus": "#4e7f58",
+        "--shadow-card": "0 1px 2px rgb(16 39 25 / 0.06), 0 8px 24px -12px rgb(16 39 25 / 0.18)",
     },
     "oceano": {
         "--color-bg": "#f2f8fd",
@@ -122,6 +123,7 @@ THEME_TOKENS = {
         "--color-inverse-text": "#edf6ff",
         "--color-moss": "#85c5df",
         "--color-focus": "#47769d",
+        "--shadow-card": "0 1px 2px rgb(16 35 52 / 0.06), 0 8px 24px -12px rgb(16 35 52 / 0.18)",
     },
     "volcan": {
         "--color-bg": "#fdf4f4",
@@ -137,6 +139,7 @@ THEME_TOKENS = {
         "--color-inverse-text": "#fff1f1",
         "--color-moss": "#e4ac93",
         "--color-focus": "#9b5e60",
+        "--shadow-card": "0 1px 2px rgb(50 25 26 / 0.06), 0 8px 24px -12px rgb(50 25 26 / 0.18)",
     },
 }
 TOKENS = {
@@ -211,7 +214,7 @@ STYLESHEET = (
     ".card{display:flex;flex-direction:column;gap:var(--space-4);margin-top:var(--space-3);"
     "padding:var(--space-4);"
     "background:var(--color-surface);border:1px solid var(--color-border);"
-    "border-radius:var(--radius-xl)}"
+    "border-radius:var(--radius-xl);box-shadow:var(--shadow-card)}"
     ".card p{margin:0;color:var(--color-text-muted)}"
     ".card form{margin:0}"
     ".button{display:flex;align-items:center;justify-content:center;width:100%;"
