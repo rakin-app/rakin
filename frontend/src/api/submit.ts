@@ -60,8 +60,22 @@ export function newKey(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-function identify(variables: unknown): string {
-  return JSON.stringify(variables) ?? ''
+/**
+ * Which submission `variables` are. A file is told apart by what the browser knows of
+ * it, since `JSON.stringify` makes every `File` `{}`: another file is another
+ * submission, with a key of its own (ProofUpload, MemberImport).
+ */
+export function identify(variables: unknown): string {
+  return (
+    JSON.stringify(variables, (_key, value: unknown) => {
+      if (value instanceof File) {
+        return { file: value.name, size: value.size, type: value.type, lastModified: value.lastModified }
+      }
+      if (value instanceof Blob) return { blob: value.size, type: value.type }
+      if (value instanceof FormData) return [...value.entries()]
+      return value
+    }) ?? ''
+  )
 }
 
 /** `useMutation`, for a form: a repeat while it runs is the same submission, and keyed. */

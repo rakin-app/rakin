@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch } from './client'
-import { newKey, submissionKey, useSubmit, withSubmission } from './submit'
+import { identify, newKey, submissionKey, useSubmit, withSubmission } from './submit'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
@@ -131,5 +131,44 @@ describe('useSubmit', () => {
     // The retry that landed still had it; the next submission is a new one.
     expect(after[0]!.key).toBe(sent[0]!.key)
     expect(after[1]!.key).not.toBe(sent[0]!.key)
+  })
+
+  it('tells files apart: another file is another submission, the same one a retry', async () => {
+    const first = new File(['a'], 'transferencia.jpg', { type: 'image/jpeg', lastModified: 1 })
+    const other = new File(['bb'], 'transferencia.jpg', { type: 'image/jpeg', lastModified: 2 })
+    const { sent, release } = stubFetch({ status: 503, held: true })
+    const { result } = renderHook(
+      () => useSubmit({ mutationFn: ({ file }: { file: File; amount: number }) => post(`/api/me/proofs/${file.size}`) }),
+      { wrapper },
+    )
+
+    let runs: Promise<unknown>[] = []
+    act(() => {
+      runs = [
+        result.current.mutateAsync({ file: first, amount: 1 }).catch(() => {}),
+        result.current.mutateAsync({ file: other, amount: 1 }).catch(() => {}),
+      ]
+    })
+    release()
+    await act(() => Promise.all(runs))
+    // Failed: the same file again is a retry, with its key.
+    await act(() => result.current.mutateAsync({ file: first, amount: 1 }).catch(() => {}))
+
+    expect(sent.map((s) => s.path)).toEqual(['/api/me/proofs/1', '/api/me/proofs/2', '/api/me/proofs/1'])
+    expect(sent[0]!.key).not.toBe(sent[1]!.key)
+    expect(sent[2]!.key).toBe(sent[0]!.key)
+  })
+
+  it('identifies a file in FormData too', () => {
+    const form = (file: File) => {
+      const data = new FormData()
+      data.append('sheet', file)
+      return data
+    }
+    const a = new File(['a'], 'alumnos.csv', { lastModified: 1 })
+    const b = new File(['a'], 'alumnos.csv', { lastModified: 2 })
+    expect(identify(a)).not.toBe(identify(b))
+    expect(identify(form(a))).not.toBe(identify(form(b)))
+    expect(identify(form(a))).toBe(identify(form(new File(['a'], 'alumnos.csv', { lastModified: 1 }))))
   })
 })

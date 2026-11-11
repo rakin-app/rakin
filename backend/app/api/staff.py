@@ -110,13 +110,16 @@ async def invite_staff(
 ) -> StaffMember:
     role = Role(body.role)
     _may_manage(await role_in_gym(session, tenant), role)
-    # One invite of an email at a time, so a second waits and finds the first's person,
-    # a 409, instead of creating another with the same email (#204). Released when the
-    # transaction ends.
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtext('rakin.invite'), hashtext(:gym_email))"),
-        {"gym_email": f"{tenant.gym_id}:{body.email.lower()}"},
-    )
+    # One invite of an email, and of a RUT, at a time: `find_in_gym` matches either, so a
+    # second waits and finds the first's person, a 409, instead of creating another
+    # (#204). Taken in one order, so two invites never wait on each other; released when
+    # the transaction ends.
+    locks = {f"email:{body.email.lower()}"} | ({f"rut:{body.rut.lower()}"} if body.rut else set())
+    for name in sorted(locks):
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('rakin.invite'), hashtext(:name))"),
+            {"name": f"{tenant.gym_id}:{name}"},
+        )
 
     found = await find_in_gym(session, body.rut, body.email)
     if found is not None:

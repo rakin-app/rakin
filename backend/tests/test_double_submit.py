@@ -10,6 +10,7 @@ of one email (#204) and an import (#203) take a lock per gym.
 import asyncio
 import dataclasses
 import threading
+import time
 import uuid
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -20,11 +21,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
+from app.idempotency import IdempotencyMiddleware, KeyScope
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.ids import random_rut
+from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_guardians import add_person
 from tests.test_join import adult, roomy_limits, with_privacy
 from tests.test_ledger_payments import new_period
@@ -250,6 +254,86 @@ def test_keys_older_than_a_day_are_forgotten(
     assert payments(db, gym, period) == 2
 
 
+def stale_claim(db: Database, gym: uuid.UUID, key: str, fingerprint: str) -> None:
+    """A claim with no answer, older than `STALE`: its request died mid-way."""
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "INSERT INTO idempotency_key (gym_id, person_id, key, fingerprint, created_at)"
+            " VALUES ($1, $2, $3, $4, now() - interval '2 minutes')",
+            gym,
+            seeded_owner(gym),
+            key,
+            fingerprint,
+        ),
+    )
+
+
+def test_a_claim_whose_request_never_finished_is_taken_over(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """A restart mid-request leaves the claim with no answer; the retry runs, at once."""
+    period = new_period(db, gym)
+    key = str(uuid.uuid4())
+    stale_claim(db, gym, key, "POST /api/ledger/payments")
+
+    started = time.monotonic()
+    retry = pay(client, gym, period, key)
+    assert retry.status_code == 201, retry.text
+    assert "idempotent-replayed" not in retry.headers
+    assert time.monotonic() - started < 5
+    assert payments(db, gym, period) == 1
+    assert pay(client, gym, period, key).headers["idempotent-replayed"] == "true"
+
+
+def test_a_stale_claim_for_another_path_is_taken_over_too(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    period = new_period(db, gym)
+    key = str(uuid.uuid4())
+    stale_claim(db, gym, key, "POST /api/programs")
+    assert pay(client, gym, period, key).status_code == 201
+    assert payments(db, gym, period) == 1
+
+
+def test_a_request_taken_over_stores_and_releases_nothing_of_the_new_one(
+    db: Database, gym: uuid.UUID
+) -> None:
+    where = KeyScope(gym, seeded_owner(gym), str(uuid.uuid4()))
+    fingerprint = "POST /api/ledger/payments"
+
+    async def go() -> list[Any]:
+        engine = create_engine(db.settings)
+        sessions = create_sessionmaker(engine)
+        middleware = IdempotencyMiddleware(app=None, sessionmaker=lambda: sessions)  # type: ignore[arg-type]
+        try:
+            old = await middleware._claim(where, fingerprint)
+            assert old is not None
+            admin = await asyncpg.connect(to_dsn(db.admin_url))
+            try:
+                await admin.execute(
+                    "UPDATE idempotency_key SET created_at = created_at - interval '2 minutes'"
+                    " WHERE key = $1",
+                    where.key,
+                )
+            finally:
+                await admin.close()
+            new = await middleware._claim(where, fingerprint)
+            assert new is not None and new != old
+            # The first request comes back: its answer, and its release, are not this claim's.
+            await middleware._store(where, old, 201, None, b"old")
+            await middleware._release(where, old)
+            stored = await middleware._stored(where)
+            await middleware._store(where, new, 201, "application/json", b"new")
+            return [stored, await middleware._stored(where)]
+        finally:
+            await engine.dispose()
+
+    during, after = asyncio.run(go())
+    assert during is not None and during.status_code is None
+    assert after is not None and (after.status_code, after.body) == (201, b"new")
+
+
 def test_a_scope_sees_only_its_own_keys(db: Database, gym: uuid.UUID) -> None:
     run(
         db.admin_url,
@@ -368,6 +452,58 @@ def test_two_invites_of_one_email_at_once_make_one_person(
     )
     assert sorted(r.status_code for r in answers) == [201, 409], [r.text for r in answers]
     assert with_email(db, gym, email) == 1
+
+
+def test_two_invites_of_one_rut_at_once_make_one_person(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """`find_in_gym` matches a RUT as well as an email, so the lock takes both."""
+    rut, tag = random_rut(), uuid.uuid4().hex[:6]
+
+    def invite_as(email: str) -> Any:
+        body = {"name": "Coach Nuevo", "email": email, "rut": rut, "role": "coach"}
+        return client.post("/api/staff", json=body, headers=as_gym(gym))
+
+    answers = at_once(
+        lambda: invite_as(f"uno.{tag}@example.cl"), lambda: invite_as(f"dos.{tag}@example.cl")
+    )
+    assert sorted(r.status_code for r in answers) == [201, 409], [r.text for r in answers]
+    assert count(db, gym, "SELECT count(*) FROM staff WHERE role = 'coach'") == 1
+
+
+def test_an_invite_waits_for_another_invite_of_its_rut(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """The lock is the RUT's as well as the email's: held here as an invite holds it."""
+    rut = random_rut()
+    body = {"name": "Coach Nuevo", "email": f"c.{uuid.uuid4().hex[:6]}@example.cl", "rut": rut}
+
+    async def go() -> None:
+        other = await asyncpg.connect(to_dsn(db.admin_url))
+        try:
+            await other.execute("BEGIN")
+            await other.execute(
+                "SELECT pg_advisory_xact_lock(hashtext('rakin.invite'), hashtext($1))",
+                f"{gym}:rut:{rut.lower()}",
+            )
+            with ThreadPoolExecutor(1) as pool:
+                inviting = asyncio.wrap_future(
+                    pool.submit(
+                        client.post,
+                        "/api/staff",
+                        json={**body, "role": "coach"},
+                        headers=as_gym(gym),
+                    )
+                )
+                await asyncio.sleep(0.5)
+                assert not inviting.done(), "the invite did not wait for its RUT's lock"
+                await other.execute("COMMIT")
+                response = await inviting
+            assert response.status_code == 201, response.text
+        finally:
+            await other.close()
+
+    asyncio.run(go())
 
 
 # --- Enviar comprobante, Crear clase, Enviar inscripción (#208) -----------------------

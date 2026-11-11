@@ -16,6 +16,12 @@ was refused or failed had no effect (its transaction rolled back), so its key is
 released and a retry with the same key runs again. Keys are kept `TTL`; each claim
 deletes its own scope's older keys.
 
+A claim with no answer older than `STALE` is a request that never finished: the
+process died or restarted mid-request, or storing its answer failed. The next request
+with its key takes it over and runs, rather than waiting a day for `TTL`. Each claim
+is told apart by its `created_at`, so a request that was taken over stores and
+releases nothing of the new one's.
+
 A request without the header runs as before. So do the sign-in routes under
 `/api/auth`, whose answers set cookies that a replay would not carry.
 
@@ -32,7 +38,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -45,6 +51,8 @@ REPLAYED_HEADER = b"idempotent-replayed"
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 EXCLUDED_PREFIX = "/api/auth/"
 TTL = timedelta(hours=24)
+# Well past the longest request: an import of the largest sheet takes a few seconds.
+STALE = timedelta(seconds=60)
 SCOPE = "gym_id IS NOT DISTINCT FROM :gym_id AND person_id IS NOT DISTINCT FROM :person_id"
 # What a client may send: a UUID, or any short printable token.
 _VALID_KEY = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
@@ -95,8 +103,9 @@ class IdempotencyMiddleware:
 
         deadline = time.monotonic() + self.wait_seconds
         while True:
-            if await self._claim(where, fingerprint):
-                await self._run(where, scope, receive, send)
+            claimed_at = await self._claim(where, fingerprint)
+            if claimed_at is not None:
+                await self._run(where, claimed_at, scope, receive, send)
                 return
             stored = await self._stored(where)
             if stored is None:
@@ -112,7 +121,9 @@ class IdempotencyMiddleware:
                 return
             await asyncio.sleep(self.poll_seconds)
 
-    async def _run(self, where: KeyScope, scope: Scope, receive: Receive, send: Send) -> None:
+    async def _run(
+        self, where: KeyScope, claimed_at: datetime, scope: Scope, receive: Receive, send: Send
+    ) -> None:
         status = 500
         content_type: str | None = None
         chunks: list[bytes] = []
@@ -131,12 +142,12 @@ class IdempotencyMiddleware:
         try:
             await self.app(scope, receive, capture)
         except BaseException:
-            await asyncio.shield(self._release(where))
+            await asyncio.shield(self._release(where, claimed_at))
             raise
         if 200 <= status < 300:
-            await self._store(where, status, content_type, b"".join(chunks))
+            await self._store(where, claimed_at, status, content_type, b"".join(chunks))
         else:
-            await self._release(where)
+            await self._release(where, claimed_at)
 
     @asynccontextmanager
     async def _session(self, where: KeyScope) -> AsyncIterator[AsyncSession]:
@@ -157,8 +168,8 @@ class IdempotencyMiddleware:
     def _params(self, where: KeyScope, **more: object) -> dict[str, object]:
         return {"gym_id": where.gym_id, "person_id": where.person_id, "key": where.key, **more}
 
-    async def _claim(self, where: KeyScope, fingerprint: str) -> bool:
-        """Whether this request claimed the key; False if another holds it."""
+    async def _claim(self, where: KeyScope, fingerprint: str) -> datetime | None:
+        """When this request claimed the key, or None if another holds it."""
         async with self._session(where) as session:
             await session.execute(
                 text(
@@ -171,11 +182,17 @@ class IdempotencyMiddleware:
                 text(
                     "INSERT INTO idempotency_key (gym_id, person_id, key, fingerprint)"
                     " VALUES (:gym_id, :person_id, :key, :fingerprint)"
-                    " ON CONFLICT (gym_id, person_id, key) DO NOTHING RETURNING 1"
+                    " ON CONFLICT (gym_id, person_id, key) DO UPDATE"
+                    " SET fingerprint = EXCLUDED.fingerprint, created_at = now()"
+                    # Taken over only from a request that never finished.
+                    " WHERE idempotency_key.status_code IS NULL"
+                    " AND idempotency_key.created_at < now() - CAST(:stale AS interval)"
+                    " RETURNING created_at"
                 ),
-                self._params(where, fingerprint=fingerprint),
+                self._params(where, fingerprint=fingerprint, stale=STALE),
             )
-            return claimed.first() is not None
+            row = claimed.first()
+            return None if row is None else row.created_at
 
     async def _stored(self, where: KeyScope) -> Stored | None:
         async with self._session(where) as session:
@@ -191,23 +208,37 @@ class IdempotencyMiddleware:
         return None if row is None else Stored(*row)
 
     async def _store(
-        self, where: KeyScope, status: int, content_type: str | None, body: bytes
+        self,
+        where: KeyScope,
+        claimed_at: datetime,
+        status: int,
+        content_type: str | None,
+        body: bytes,
     ) -> None:
         async with self._session(where) as session:
             await session.execute(
                 text(
                     "UPDATE idempotency_key"
                     " SET status_code = :status, content_type = :content_type, body = :body"
-                    f" WHERE {SCOPE} AND key = :key"
+                    f" WHERE {SCOPE} AND key = :key AND created_at = :claimed_at"
                 ),
-                self._params(where, status=status, content_type=content_type, body=body),
+                self._params(
+                    where,
+                    claimed_at=claimed_at,
+                    status=status,
+                    content_type=content_type,
+                    body=body,
+                ),
             )
 
-    async def _release(self, where: KeyScope) -> None:
+    async def _release(self, where: KeyScope, claimed_at: datetime) -> None:
         async with self._session(where) as session:
             await session.execute(
-                text(f"DELETE FROM idempotency_key WHERE {SCOPE} AND key = :key"),
-                self._params(where),
+                text(
+                    f"DELETE FROM idempotency_key WHERE {SCOPE}"
+                    " AND key = :key AND created_at = :claimed_at"
+                ),
+                self._params(where, claimed_at=claimed_at),
             )
 
 
