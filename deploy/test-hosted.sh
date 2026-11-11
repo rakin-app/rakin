@@ -6,7 +6,7 @@
 #
 # Caddy serves plain HTTP on :80 here (SITE_ADDRESS=:80): no certificate,
 # no DNS. Object storage and mail (Resend) are configured but never reached.
-# Backups are: a Garage beside the stack stands in for their R2 bucket, and
+# Backups are, under COMPOSE_PROFILES=backup: a Garage beside the stack stands in for their R2 bucket, and
 # a backup of a gym is restored with deploy/restore.sh and checked.
 set -euo pipefail
 
@@ -57,6 +57,7 @@ sed \
 	-e 's|^SITE_ADDRESS=.*|SITE_ADDRESS=:80|' \
 	-e 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=http://localhost|' \
 	-e 's|^SENTRY_DSN=.*|SENTRY_DSN=|' \
+	-e 's|^# COMPOSE_PROFILES=backup$|COMPOSE_PROFILES=backup|' \
 	-e 's|^S3_ENDPOINT_URL=.*|S3_ENDPOINT_URL=http://s3.invalid|' \
 	-e 's|^S3_PUBLIC_ENDPOINT_URL=.*|S3_PUBLIC_ENDPOINT_URL=http://s3.invalid|' \
 	-e "s|^BACKUP_AGE_RECIPIENT=.*|BACKUP_AGE_RECIPIENT=$recipient|" \
@@ -71,13 +72,25 @@ if grep -n '<' "$dir/.env" | grep -v '^[0-9]*:#' | grep -v '^[0-9]*:MAIL_FROM=';
 	exit 1
 fi
 
+grep -qx 'COMPOSE_PROFILES=backup' "$dir/.env"
+
+# Backups are opt-in: a host with no BACKUP_* and no profile renders, without them.
+grep -v -e '^BACKUP_' -e '^COMPOSE_PROFILES=' "$dir/.env" >"$dir/bare.env"
+services=$(docker compose -f "$dir/docker-compose.yml" --env-file "$dir/bare.env" config --services)
+if grep -qx backup <<<"$services"; then
+	echo "test-hosted: backup runs without COMPOSE_PROFILES=backup" >&2
+	exit 1
+fi
+rm "$dir/bare.env"
+echo "ok   - the stack renders without BACKUP_*, and without the backup service"
+
 # As environment, so restore.sh's own `docker compose` finds this stack too.
 export COMPOSE_PROJECT_NAME=rakin-hosted-test COMPOSE_FILE="$dir/docker-compose.yml:$dir/garage.yml"
 compose() { docker compose "$@"; }
 cleanup() {
 	status=$?
 	[ $status = 0 ] || compose logs --no-color --tail 50 || true
-	compose --profile migrate --profile garage-init down -v --remove-orphans >/dev/null 2>&1 || true
+	compose --profile migrate --profile garage-init --profile backup down -v --remove-orphans >/dev/null 2>&1 || true
 	rm -rf "$dir"
 	exit $status
 }
@@ -87,6 +100,8 @@ compose run --rm garage-init
 compose run --rm migrate
 compose up -d --wait --wait-timeout 180
 "$root/deploy/smoke.sh" http://localhost
+compose ps --services --status running | grep -qx backup
+echo "ok   - with COMPOSE_PROFILES=backup, up starts the backup service"
 
 # Backup and restore: a gym's rows go into a backup, and come back out of it.
 compose run --rm api python -m app.gyms create --slug meta --name Meta \
@@ -98,3 +113,11 @@ echo "$out"
 grep -q '^ok   - public.gym: 1 rows$' <<<"$out"
 grep -q 'every count matches$' <<<"$out"
 echo "ok   - a backup restores into a scratch database, every row accounted for"
+
+# Enabled with a setting missing: the job names it, exits non-zero, and backs nothing up.
+if out=$(compose run --rm -T -e BACKUP_AGE_RECIPIENT= backup python -m app.backup run 2>&1); then
+	echo "test-hosted: a backup without BACKUP_AGE_RECIPIENT succeeded" >&2
+	exit 1
+fi
+grep -q 'backups are enabled but not configured.*BACKUP_AGE_RECIPIENT: Field required' <<<"$out"
+echo "ok   - enabled without BACKUP_AGE_RECIPIENT, the job says so and refuses"

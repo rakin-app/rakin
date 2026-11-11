@@ -22,6 +22,11 @@ again every hour until one succeeds. Each success writes its time and key to
 `BACKUP_STATE_DIR/last_success`, which `status` reads. A failure to prune after a
 successful upload is only a warning, in the log and in Sentry: the backup is in the bucket.
 
+Backups are opt-in: Compose runs the service only under its `backup` profile. Enabled
+with a `BACKUP_*` setting missing or invalid, every command logs which ones at `ERROR`
+(and so to Sentry) and exits non-zero, except `serve`, which stays up and says it again
+every day: a container in a restart loop would fail the deploy of everything else.
+
 Postgres comes from the libpq variables (`PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`):
 the superuser, because several tables force row-level security even on their owner.
 `deploy/restore.sh` is the other half: it restores a backup into a scratch database.
@@ -41,7 +46,7 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import sentry_sdk
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.integrations.blobstore import s3_client
@@ -73,14 +78,22 @@ def encrypt_command(recipient: str) -> list[str]:
     return ["age", "--encrypt", "--recipient", recipient]
 
 
-class BackupSettings(BaseSettings):
-    """The `backup` service's settings, from its environment only: never a `.env` file."""
+class ReportingSettings(BaseSettings):
+    """What the `backup` service needs to log and report to Sentry: enough to say that
+    the rest of its settings are missing. From its environment only, never a `.env`
+    file; an empty variable counts as unset, which is what Compose passes for one that
+    `.env` does not set."""
 
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore", env_ignore_empty=True)
 
     environment: str = "local"
     log_level: str = "INFO"
     sentry_dsn: str = ""
+
+
+class BackupSettings(ReportingSettings):
+    """The `backup` service's settings."""
+
     jobs_timezone: str = "America/Santiago"
     # `staging` or `production`: the folder this host's dumps go in.
     backup_env: str = Field(pattern=r"^[a-z0-9-]+$")
@@ -108,6 +121,29 @@ class BackupSettings(BaseSettings):
 
 class BackupError(Exception):
     pass
+
+
+# How often a `serve` that is missing settings says so again.
+NAG = timedelta(days=1)
+
+
+def problems(exc: ValidationError) -> str:
+    """The settings `exc` refused, by variable name; never their values."""
+    return "; ".join(
+        f"{'.'.join(map(str, error['loc'])).upper()}: {error['msg']}"
+        for error in exc.errors(include_url=False, include_input=False)
+    )
+
+
+def refuse(exc: ValidationError, stop: threading.Event | None, every: timedelta = NAG) -> None:
+    """Log, and so report to Sentry, that backups are enabled but cannot run. Once, or
+    with `stop` every `every` until it is set: `serve` stays up rather than exit, since
+    a container that keeps restarting would fail `docker compose up --wait` and with it
+    a deploy of everything else."""
+    while True:
+        logger.error("backups are enabled but not configured, so none are taken: %s", problems(exc))
+        if stop is None or stop.wait(every.total_seconds()):
+            return
 
 
 def object_key(prefix: str, at: datetime) -> str:
@@ -265,6 +301,14 @@ def serve(
     logger.info("backup scheduler stopped")
 
 
+def serving_stop() -> threading.Event:
+    """Set by `docker compose stop`'s SIGTERM, or by Ctrl-C."""
+    stop = threading.Event()
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(signum, lambda *_: stop.set())
+    return stop
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Encrypted database backups.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -278,7 +322,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands.add_parser("status", help="when the last backup succeeded")
     args = parser.parse_args(argv)
 
-    settings = BackupSettings()
+    try:
+        settings = BackupSettings()
+    except ValidationError as exc:
+        reporting = ReportingSettings()
+        configure_logging(reporting.log_level)
+        if args.command in ("run", "serve"):
+            init_sentry(reporting)
+        stop = serving_stop() if args.command == "serve" else None
+        refuse(exc, stop)
+        return 0 if stop is not None else 1
     configure_logging(settings.log_level)
 
     match args.command:
@@ -287,10 +340,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0 if attempt(settings) else 1
         case "serve":
             init_sentry(settings)
-            stop = threading.Event()
-            for signum in (signal.SIGTERM, signal.SIGINT):
-                signal.signal(signum, lambda *_: stop.set())
-            serve(settings, args.at, stop)
+            serve(settings, args.at, serving_stop())
             return 0
         case "list":
             for key, size in backups(client(settings), settings):

@@ -45,8 +45,12 @@ def test_compose_defaults_match_env_example() -> None:
     mismatched = {
         name: (default, listed[name])
         for name, op, default in interpolations()
-        # A `<placeholder>` is a value to fill in, which the default need not match.
-        if op == ":-" and default != listed[name] and not listed[name].startswith("<")
+        # A `<placeholder>` is a value to fill in, which the default need not match;
+        # nor need an opt-in backup's settings, empty unless backups are turned on.
+        if op == ":-"
+        and default != listed[name]
+        and not listed[name].startswith("<")
+        and not (name.startswith("BACKUP_") and default == "")
     }
     assert mismatched == {}
 
@@ -60,10 +64,25 @@ def test_secrets_have_no_default() -> None:
         "POSTGRES_PASSWORD",
         "POSTGRES_API_PASSWORD",
         "POSTGRES_OWNER_PASSWORD",
-        "BACKUP_S3_SECRET_ACCESS_KEY",
     }
     ops = {(name, op) for name, op, _ in interpolations() if name in secrets}
     assert ops == {(name, ":?") for name in secrets}
+    # Opt-in, so it cannot be required: empty, which the job refuses to run with.
+    backup = {
+        (op, arg) for name, op, arg in interpolations() if name == "BACKUP_S3_SECRET_ACCESS_KEY"
+    }
+    assert backup == {(":-", "")}
+
+
+def test_backups_are_opt_in() -> None:
+    # Compose interpolates every service, enabled or not: one required variable of
+    # the backup's would stop a host without backups from deploying anything (#185).
+    assert 'profiles: ["backup"]' in services(COMPOSE_FILE)["backup"]
+    required = {
+        name for name, op, _ in interpolations() if name.startswith("BACKUP_") and op != ":-"
+    }
+    assert required == set()
+    assert "# COMPOSE_PROFILES=backup\n" in ENV_EXAMPLE.read_text()
 
 
 def test_hosted_runs_released_images_only() -> None:
