@@ -4,7 +4,9 @@
 the day they last came. The list is those away for 14 days or more, in two buckets, 14
 and 30, nearest the line first: the ones still easiest to bring back. Someone who has
 not come to a class yet counts from the day their membership started, so a member who
-joined yesterday is not on it.
+joined yesterday is not on it, or from the day it was entered in Rakin if that is later
+(#209): a member imported with a start months back has trained all along, and Rakin
+has none of their classes from before the import.
 
 Each says whether they are up to date on their payments, so it is money, and owner and
 admin only (`LedgerSession`), as the rest of "Hoy" is. Coaches never see money.
@@ -38,8 +40,9 @@ NOT_INACTIVE = HTTPException(status.HTTP_404_NOT_FOUND, "not on the inactive lis
 NO_WHATSAPP = HTTPException(status.HTTP_409_CONFLICT, "no WhatsApp to send it to")
 
 # Each person on `v_inactive` with how long they have been away: since their last class,
-# or since their membership started when they have not come to one. RLS holds every
-# table to the gym. The member list's "Sin venir" filter reads it too.
+# or since their membership started when they have not come to one, but never from
+# before it was entered in Rakin (`created_at`), which has no class of theirs from then.
+# RLS holds every table to the gym. The member list's "Sin venir" filter reads it too.
 AWAY = """
 SELECT i.gym_id, i.person_id, i.last_attended_on,
        coalesce(i.days_absent, t.today - (l.since AT TIME ZONE g.timezone)::date) AS days_absent,
@@ -48,7 +51,8 @@ FROM v_inactive i
 JOIN gym g ON g.id = i.gym_id
 CROSS JOIN LATERAL (SELECT (now() AT TIME ZONE g.timezone)::date AS today) t
 CROSS JOIN LATERAL (
-    SELECT min(m.started_at) AS since, bool_and(m.status = 'trial') AS trial_only
+    SELECT min(greatest(m.started_at, m.created_at)) AS since,
+           bool_and(m.status = 'trial') AS trial_only
     FROM membership m
     WHERE m.gym_id = i.gym_id AND m.person_id = i.person_id
       AND m.status IN ('trial', 'active')

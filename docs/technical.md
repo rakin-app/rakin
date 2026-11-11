@@ -137,7 +137,7 @@ Email is the system of record; WhatsApp is where the reminder gets read. Neither
 | Announcements | email + copy-to-WhatsApp text | admin sends | one message to a program or everyone |
 | Staff invite + first magic link | email | owner or admin invites an admin or coach | the role, and a 7-day link to the admin screens |
 | Join request approved | email | staff approve a join link request | with a plan, the welcome above; without one, `join_approved`: they are in, with no sign-in link until a plan is started |
-| Inactive nudge | wa.me from "A quién llamar" on Hoy | 14 / 30 days without attendance (or since joining, for someone who never came) | to the guardian for a dependent; logged in `message_log` as opened; automation is v2 |
+| Inactive nudge | wa.me from "A quién llamar" on Hoy | 14 / 30 days without attendance (or since joining, for someone who never came, counted from no earlier than the day Rakin had them, so an import does not list everyone) | to the guardian for a dependent; logged in `message_log` as opened; automation is v2 |
 
 **Email:** hosted Rakin sends from `@rakin.app` through [Resend](https://resend.com)'s SMTP relay (`smtp.resend.com`, user `resend`, the API key as password), with the same `SmtpMailer` self-hosters point at any SMTP server; no provider SDK. Resend rather than Amazon SES because it needs no AWS account just for mail and no sandbox approval before the first real send. Verified domain, DKIM, SPF, DMARC `p=quarantine` from day one; transactional only, no marketing content. Expected cost: cents per gym per month.
 
