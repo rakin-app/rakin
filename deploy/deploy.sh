@@ -52,7 +52,9 @@ compose pull --quiet
 if [ $rollback = 0 ]; then
 	compose run --rm migrate
 fi
-# `migrate` is a one-shot under its own profile, so `up` leaves it alone.
+# `migrate` is a one-shot under its own profile, so `up` leaves it alone. No
+# --profile here: it would replace .env's COMPOSE_PROFILES, which is what turns on
+# the opt-in `backup` service.
 restarting=1
 "$docker" compose up -d --wait --remove-orphans
 
