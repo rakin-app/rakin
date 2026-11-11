@@ -39,8 +39,9 @@ export function rememberReturnPath(value: string | undefined): void {
 
 /**
  * Where a freshly signed-in person goes: the page they had asked for, when their role
- * reaches it, else their default. Staff land in `/admin`, a member on `/me`. The kept
- * path is used once.
+ * reaches it, else their default. Staff land in `/admin`, a member on `/me`. Staff
+ * reach `/me` too, since a coach often trains at their own gym (#214); a member never
+ * reaches `/admin`. The kept path is used once.
  */
 export function landingFor(role: StaffRole | null): string {
   let kept: string | undefined
@@ -51,7 +52,9 @@ export function landingFor(role: StaffRole | null): string {
     kept = undefined
   }
   const home = role === null ? '/me' : '/admin'
-  return kept && (kept === home || kept.startsWith(`${home}/`) || kept.startsWith(`${home}?`)) ? kept : home
+  const reaches = role === null ? ['/me'] : ['/admin', '/me']
+  const within = (base: string) => kept === base || kept?.startsWith(`${base}/`) || kept?.startsWith(`${base}?`)
+  return kept && reaches.some(within) ? kept : home
 }
 
 /** "Cerrar sesión": ends the session, forgets what this browser had loaded, back to sign in. */
