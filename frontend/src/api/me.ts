@@ -18,6 +18,8 @@ export type MyRole = {
   student_page: boolean
   // The gym's theme (#199), which every signed-in screen wears.
   theme: Theme
+  // Where the gym's logo is (`logo.ts`); `null` with none (#223).
+  gym_logo: string | null
 }
 
 /** The signed-in person's staff role in this gym; `null` for a member. */

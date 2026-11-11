@@ -17,6 +17,8 @@ export type GymSettings = {
   timezone: string
   // The colours every screen of the gym wears (#199).
   theme: Theme
+  // Where its logo is (`logo.ts`), `null` with none; changed by `uploadLogo` and `removeLogo`.
+  logo: string | null
   grace_days: number
   reminder_every_days: number
   channels: { whatsapp: boolean }
@@ -47,4 +49,22 @@ export function gymSettingsQuery() {
 
 export function updateGymSettings(changes: GymSettingsUpdate): Promise<GymSettings> {
   return apiFetch<GymSettings>('/api/gym/settings', { method: 'PATCH', body: JSON.stringify(changes) })
+}
+
+/** The square of the picture to keep, in its pixels as it shows upright. */
+export type LogoCrop = { x: number; y: number; size: number }
+
+/** The logo, as the owner picked it, cut to `crop` on the server (#223). */
+export function uploadLogo(file: Blob, crop: LogoCrop): Promise<GymSettings> {
+  const query = new URLSearchParams({ x: String(crop.x), y: String(crop.y), size: String(crop.size) })
+  return apiFetch<GymSettings>(`/api/gym/logo?${query}`, {
+    method: 'PUT',
+    body: file,
+    headers: { 'Content-Type': file.type },
+  })
+}
+
+/** "Quitar logo": the gym shows its initials again. */
+export function removeLogo(): Promise<GymSettings> {
+  return apiFetch<GymSettings>('/api/gym/logo', { method: 'DELETE' })
 }

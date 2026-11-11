@@ -41,6 +41,12 @@ npm run build      # outputs dist/
   never names a colour itself. A new colour token goes in all three blocks, and
   `components/controls.test.tsx` holds each to WCAG AA. Success and the timer's
   fight and rest colours stay the same in every theme.
+- **The gym's logo:** `GymMark` (#223) is the gym's mark wherever it is named: its
+  logo in a circle, sized by `srcset` from the API's 64, 128 and 512 px files
+  (`src/logo.ts`), or its initials on the accent when it has none or the file fails, the
+  same size either way. It is decorative (`alt=""`): the name is always beside it.
+  Ajustes › Gimnasio uploads it (`LogoSettings`, framed in `LogoCropper`), and on a
+  gym's own address `App`'s `GymTabIcon` puts it in the tab (`setTabIcon`).
 - **Motion:** a control changes colour only (`--duration-fast`); a page rises in on
   a route change (`useRise` in `src/motion.ts`); a `role="status"` or `"alert"`
   message fades in. Under `prefers-reduced-motion` only opacity changes.

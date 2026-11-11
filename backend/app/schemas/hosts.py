@@ -7,6 +7,8 @@ class HostGymInfo(BaseModel):
     slug: str
     name: str
     theme: Theme
+    # Its logo's files (`app.logos.logo_path`), or None with no logo (#223).
+    logo: str | None = None
 
 
 class HostInfo(BaseModel):

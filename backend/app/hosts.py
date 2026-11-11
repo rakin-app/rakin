@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from app.logos import logo_path
 from app.schemas.theme import DEFAULT_THEME, Theme
 from app.settings import Settings
 
@@ -129,15 +130,23 @@ class HostGym:
     name: str
     # The gym's theme (#199), for the pages shown before anyone signs in.
     theme: Theme = DEFAULT_THEME
+    # Its logo's version (#223, `app.logos`), None with no logo; for the same pages.
+    logo_version: str | None = None
+
+    @property
+    def logo(self) -> str | None:
+        """Where its logo's files are, `<logo>/<variant>`; None with no logo."""
+        return logo_path(self.id, self.logo_version)
 
 
 async def gym_by_slug(session: AsyncSession, slug: str) -> HostGym | None:
     row = (
         await session.execute(
-            text("SELECT id, name, theme FROM auth_gym_by_slug(:slug)"), {"slug": slug}
+            text("SELECT id, name, theme, logo_version FROM auth_gym_by_slug(:slug)"),
+            {"slug": slug},
         )
     ).one_or_none()
-    return None if row is None else HostGym(row.id, slug, row.name, row.theme)
+    return None if row is None else HostGym(row.id, slug, row.name, row.theme, row.logo_version)
 
 
 class GymLookup:
@@ -170,7 +179,7 @@ class GymLookup:
 
     def forget(self, slug: str) -> None:
         """Drops what is kept for `slug`, so the next request reads it afresh: after a
-        change to what a host shows, such as the gym's theme. The API runs as one
+        change to what a host shows, such as the gym's theme or logo. The API runs as one
         process (backend/Dockerfile), so this is every copy there is."""
         self._found.pop(slug, None)
 

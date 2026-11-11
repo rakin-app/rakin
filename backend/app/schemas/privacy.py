@@ -8,6 +8,8 @@ class PrivacyNotice(BaseModel):
 
     # The gym's name, as its members know it.
     gym: str
+    # Where the gym's logo's files are (`app.logos.logo_path`); None with no logo (#223).
+    gym_logo: str | None = None
     # The controller of the members' data: the gym, by its legal name and RUT.
     legal_name: str
     rut: str

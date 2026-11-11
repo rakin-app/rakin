@@ -20,6 +20,7 @@ from app.api import (
     inactive,
     join,
     ledger,
+    logos,
     me,
     member_import,
     member_roll,
@@ -131,6 +132,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(join.public)
     app.include_router(join.router)
     app.include_router(privacy.router)
+    app.include_router(logos.router)
     app.include_router(
         build_router(
             links,

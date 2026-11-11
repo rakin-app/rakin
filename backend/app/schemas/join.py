@@ -56,6 +56,8 @@ class JoinForm(BaseModel):
     """What the public form shows for a link that works."""
 
     gym: str
+    # Where the gym's logo's files are (`app.logos.logo_path`); None with no logo (#223).
+    gym_logo: str | None = None
     program: str | None
     # The gym's today, which says who is a minor.
     today: date

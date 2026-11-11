@@ -53,6 +53,11 @@ What changed from v2:
   count per filter, and the chips stay 44px tall, the app's touch target.
 - **Overdue stays orange.** The board's "Vencidos" figure is red; in the app orange
   means overdue and nothing else, and red is a refusal.
+- **The timer keeps its own screen.** Fight and rest fill it green and red in every
+  theme (#187); only its set-up and the buttons around it take the theme.
+- **Eyebrows stay small capitals.** The line over a page's title ("ADULTOS · 7 NOV",
+  the gym's name on Hoy) is not on the boards; it keeps its small capitals, so a page's
+  title and its context read apart. Section headings inside a page are display type.
 - **Hex, not oklch.** The file writes oklch; `tokens.css` holds the same colours in
   hex, as the sign-in link's server-rendered pages (`backend/app/auth.py`) copy them.
 

@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState } from 'react'
 import { rankLabel } from '../api/grading'
-import { myPageQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
+import { myPageQuery, myselfQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
 import { RankBelt } from '../components/Belt'
 import { Button } from '../components/Button'
+import { GymMark } from '../components/GymMark'
 import { Grid, PageContainer } from '../components/Layout'
 import { MyMatTime } from '../components/MatTime'
 import { PageHeader } from '../components/PageHeader'
@@ -22,6 +23,8 @@ const copy = t.me
  */
 export function MeHome() {
   const page = useQuery(myPageQuery())
+  // The shell asks for it on every visit; read here, not fetched again.
+  const logo = useQuery(myselfQuery()).data?.gym_logo
 
   if (page.isPending || page.isError) {
     return (
@@ -44,7 +47,11 @@ export function MeHome() {
   const firstName = page.data.name.split(' ')[0]
   return (
     <PageContainer>
-      <PageHeader eyebrow={page.data.gym_name} title={firstName ? copy.home.hello(firstName) : copy.home.title} />
+      <PageHeader
+        mark={<GymMark name={page.data.gym_name} logo={logo} size="large" />}
+        eyebrow={page.data.gym_name}
+        title={firstName ? copy.home.hello(firstName) : copy.home.title}
+      />
       <div className="me-home">
         <Grid>
           <div className="me-home__column">

@@ -3,11 +3,13 @@ certificate `ask`."""
 
 import asyncio
 import dataclasses
+import io
 import json
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -15,13 +17,16 @@ import asyncpg
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from PIL import Image
 from pydantic import ValidationError
 
 from app.auth import MailSender, bind_session
 from app.blob_cors import cors_rule
+from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.gyms import NewGym, create_gym, parse
 from app.hosts import GymLookup, HostGym, Hosts, host_name, slug_problem
+from app.integrations.blobstore import LocalBlobStore
 from app.integrations.mailer import Email
 from app.magiclink import COOKIE_NAME, Session
 from app.main import create_app
@@ -132,7 +137,16 @@ def test_a_found_gym_is_kept_a_while_and_a_missing_one_is_asked_again() -> None:
             row = (
                 None
                 if found is None
-                else type("Row", (), {"id": found.id, "name": found.name, "theme": found.theme})
+                else type(
+                    "Row",
+                    (),
+                    {
+                        "id": found.id,
+                        "name": found.name,
+                        "theme": found.theme,
+                        "logo_version": found.logo_version,
+                    },
+                )
             )
             return type("Result", (), {"one_or_none": lambda self: row})()
 
@@ -517,7 +531,7 @@ def new_gym_slug(site: Site, gym_id: uuid.UUID) -> str:
 def test_the_host_names_its_gym_for_the_sign_in_page(site: Site) -> None:
     with site.client(site.slug_a) as client:
         assert client.get("/api/host").json() == {
-            "gym": {"slug": site.slug_a, "name": site.slug_a, "theme": "bosque"}
+            "gym": {"slug": site.slug_a, "name": site.slug_a, "theme": "bosque", "logo": None}
         }
     with site.client(None) as client:
         assert client.get("/api/host").json() == {"gym": None}
@@ -557,6 +571,80 @@ def test_a_theme_saved_in_ajustes_reaches_the_host_at_once(site: Site) -> None:
         )
         assert response.status_code == 200, response.text
         assert client.get("/api/host").json()["gym"]["theme"] == "oceano"
+
+
+@pytest.mark.postgres
+def test_a_gyms_host_and_its_sign_in_pages_show_its_logo(site: Site) -> None:
+    version = "0123456789abcdef"
+    run(
+        site.db.admin_url,
+        lambda c: c.execute("UPDATE gym SET logo_version = $1 WHERE id = $2", version, site.b),
+    )
+    email = address()
+    person_in(site, [site.a], email)
+    logo = f"/api/logos/{site.b}/{version}"
+
+    with site.client(site.slug_b) as client:
+        assert client.get("/api/host").json()["gym"]["logo"] == logo
+        page = site.open(client, site.ask_link(client, email))
+        assert page.status_code == 403
+        # Beside the gym's name, which says it.
+        assert f'<img class="mark" src="{logo}/128.webp" alt=""' in page.text
+        assert "img-src 'self'" in page.headers["content-security-policy"]
+    # A gym with none shows none.
+    with site.client(site.slug_a) as client:
+        assert client.get("/api/host").json()["gym"]["logo"] is None
+        page = site.open(client, site.ask_link(client, email))
+        assert 'class="mark"' not in page.text
+
+
+@pytest.mark.postgres
+def test_a_logo_changed_in_ajustes_reaches_the_host_at_once(site: Site, tmp_path: Path) -> None:
+    site.app.state.integrations = dataclasses.replace(
+        site.app.state.integrations,
+        blob_store=LocalBlobStore(root=tmp_path, secret_key="k" * 32, ttl_seconds=900),
+    )
+    buffer = io.BytesIO()
+    Image.new("RGB", (64, 64), (200, 0, 0)).save(buffer, "PNG")
+    with site.client(site.slug_b) as client:
+        # Kept by the lookup now, for a minute.
+        assert client.get("/api/host").json()["gym"]["logo"] is None
+        headers = {**as_gym(site.b), "Content-Type": "image/png"}
+        response = client.put("/api/gym/logo", content=buffer.getvalue(), headers=headers)
+        assert response.status_code == 200, response.text
+        logo = response.json()["logo"]
+        assert client.get("/api/host").json()["gym"]["logo"] == logo
+        assert client.delete("/api/gym/logo", headers=as_gym(site.b)).status_code == 200
+        assert client.get("/api/host").json()["gym"]["logo"] is None
+
+
+@pytest.mark.postgres
+def test_a_gyms_emails_name_its_logo_on_its_host(site: Site) -> None:
+    version = "fedcba9876543210"
+    run(
+        site.db.admin_url,
+        lambda c: c.execute("UPDATE gym SET logo_version = $1 WHERE id = $2", version, site.b),
+    )
+
+    async def hosts_of(*gyms: uuid.UUID) -> list[tuple[str, str | None]]:
+        engine = create_engine(site.db.settings)
+        try:
+            sessionmaker = create_sessionmaker(engine)
+            notices = Notices(
+                site.outbox,
+                lambda: sessionmaker,
+                base_url=BASE_URL,
+                secret_key="k" * 32,
+                hosts=HOSTS,
+            )
+            return [await notices.gym_host(gym) for gym in gyms]
+        finally:
+            await engine.dispose()
+
+    (base, logo), none = asyncio.run(hosts_of(site.b, site.a))
+    assert base == HOSTS.base_url(site.slug_b)
+    assert logo == f"{base}/api/logos/{site.b}/{version}/128.png"
+    assert none == (HOSTS.base_url(site.slug_a), None)
 
 
 @pytest.mark.postgres

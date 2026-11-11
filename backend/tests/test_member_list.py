@@ -1,5 +1,5 @@
-"""The member list (Alumnos): search by name, phone or RUT, filter by status, plan and
-program.
+"""The member list (Alumnos): search by name, phone or RUT, filter by status, plan,
+program and belt.
 
 Each test seeds its own gym, so the list it reads holds exactly what it put there:
 the seeded owner (active on "Mensual") plus the people it adds.
@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.schemas.grading import PRESETS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
@@ -244,6 +245,84 @@ def test_filters_by_program_through_the_plan(
     assert names(client, gym, program_id=str(adults)) == []
 
 
+def use_scheme(client: TestClient, gym: uuid.UUID, preset: str) -> None:
+    scheme = next(p.scheme.model_dump() for p in PRESETS if p.key == preset)
+    response = client.put("/api/gym/grading-scheme", json=scheme, headers=as_gym(gym))
+    assert response.status_code == 200, response.text
+
+
+def promote(client: TestClient, gym: uuid.UUID, person: str, rank_key: str) -> None:
+    rank = client.get("/api/gym/grading-scheme", headers=as_gym(gym)).json()
+    sub_ranks = next(
+        r["sub_ranks"] for r in rank["ranks"] + rank["kids_ladder"] if r["key"] == rank_key
+    )
+    body = {"rank_key": rank_key, "sub_rank": sub_ranks[0]["key"] if sub_ranks else None}
+    response = client.post(f"/api/people/{person}/grades", json=body, headers=as_gym(gym))
+    assert response.status_code == 201, response.text
+
+
+def test_filters_by_belt_exactly_and_at_least(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    use_scheme(client, gym, "bjj")
+    monthly = mensual(db, gym)
+    people = {}
+    for name in ("Ana", "Bruno", "Carla", "Diego", "Elisa", "Felipe"):
+        people[name] = add_person(client, gym, name)
+        join(db, gym, people[name], monthly, "active")
+    promote(client, gym, people["Ana"], "white")
+    promote(client, gym, people["Bruno"], "blue")
+    promote(client, gym, people["Carla"], "purple")
+    promote(client, gym, people["Diego"], "black")
+    promote(client, gym, people["Elisa"], "grey")  # a kids belt, on its own ladder
+    # Felipe was blue, and is purple now: his latest promotion is his belt.
+    promote(client, gym, people["Felipe"], "blue")
+    promote(client, gym, people["Felipe"], "purple")
+
+    assert names(client, gym, rank="blue") == ["Bruno"]
+    assert names(client, gym, rank=["purple", "white"]) == ["Ana", "Carla", "Felipe"]
+    assert names(client, gym, rank_min="blue") == ["Bruno", "Carla", "Diego", "Felipe"]
+    assert names(client, gym, rank_min="purple", q="fel") == ["Felipe"]
+    assert names(client, gym, rank_min="black") == ["Diego"]
+    # "Blanca o superior" is every adult belt, not the kids' ladder, nor the unranked.
+    assert names(client, gym, rank_min="white") == ["Ana", "Bruno", "Carla", "Diego", "Felipe"]
+    assert names(client, gym, rank_min="grey") == ["Elisa"]
+    assert names(client, gym, rank="purple", rank_min="blue") == ["Carla", "Felipe"]
+    assert listing(client, gym, rank_min="blue")["total"] == 4
+    assert names(client, gym, rank="red") == []
+
+
+def test_belt_order_is_the_schemes_for_any_sport(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    use_scheme(client, gym, "judo-karate")
+    monthly = mensual(db, gym)
+    for name, rank in [
+        ("Ana", "kyu-10"),
+        ("Bruno", "kyu-1"),
+        ("Carla", "dan-1"),
+        ("Diego", "dan-3"),
+    ]:
+        person = add_person(client, gym, name)
+        join(db, gym, person, monthly, "active")
+        promote(client, gym, person, rank)
+
+    # Kyu count down and dan up: "1.º kyu o superior" is by the scheme's order, not the key's.
+    assert names(client, gym, rank_min="kyu-1") == ["Bruno", "Carla", "Diego"]
+    assert names(client, gym, rank_min="dan-2") == ["Diego"]
+    assert names(client, gym, rank="kyu-10") == ["Ana"]
+
+
+def test_an_unknown_rank_min_is_refused(client: TestClient, gym: uuid.UUID) -> None:
+    # The seeded gym has no scheme: no rank to be above.
+    response = client.get("/api/people", params={"rank_min": "blue"}, headers=as_gym(gym))
+    assert response.status_code == 422
+    assert response.json()["detail"] == {"code": "unknown_rank"}
+    use_scheme(client, gym, "bjj")
+    response = client.get("/api/people", params={"rank_min": "red"}, headers=as_gym(gym))
+    assert response.json()["detail"] == {"code": "unknown_rank"}
+
+
 def test_the_row_shows_the_latest_membership_not_cancelled(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
@@ -287,6 +366,7 @@ def test_pages(client: TestClient, gym: uuid.UUID) -> None:
         {"limit": 201},
         {"offset": -1},
         {"q": "x" * 101},
+        {"rank_min": "x" * 41},
     ],
     ids=str,
 )

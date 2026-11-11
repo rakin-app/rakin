@@ -2,6 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { GradingScheme } from '../api/grading'
 import type { MemberPage, MemberRow, Plan, Program } from '../api/people'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
@@ -46,6 +47,13 @@ const PROGRAMS: Program[] = [
   { id: 'program-old', name: 'Competición', active: false },
 ]
 
+const rank = (key: string, label: string) => ({ key, label, sub_ranks: [] })
+const BJJ: GradingScheme = {
+  ranks: [rank('white', 'Blanca'), rank('blue', 'Azul'), rank('black', 'Negra')],
+  kids_ladder: [rank('grey', 'Gris'), rank('yellow', 'Amarilla')],
+  goal_metric: null,
+}
+
 type Answer = { status?: number; body: unknown }
 
 // Answers by path, and records every /api/people query it was asked.
@@ -55,6 +63,8 @@ function stubApi(
   programs: Answer = { body: PROGRAMS },
   // Who is signed in; unanswered, as if the role never loaded.
   role?: 'owner' | 'admin' | 'coach',
+  // The gym's grading scheme; unanswered, as a gym that does not grade.
+  scheme?: GradingScheme,
 ) {
   const asked: URLSearchParams[] = []
   vi.stubGlobal(
@@ -69,6 +79,8 @@ function stubApi(
         answer = plans
       } else if (url.pathname === '/api/programs') {
         answer = programs
+      } else if (url.pathname === '/api/gym/grading-scheme' && scheme) {
+        answer = { body: scheme }
       } else if (url.pathname === '/api/me/role' && role) {
         answer = { body: { role, person_id: 'me' } }
       } else {
@@ -273,6 +285,60 @@ describe('Alumnos', () => {
     expect(screen.queryByRole('combobox', { name: copy.programLabel })).not.toBeInTheDocument()
   })
 
+  it('filters by belt, exactly or "o superior", adults and kids apart', async () => {
+    const asked = stubApi(() => page([CAMILA]), undefined, undefined, undefined, BJJ)
+    const router = renderAt('/admin/alumnos')
+    const select = await screen.findByRole('combobox', { name: copy.rankLabel })
+
+    const groups = within(select).getAllByRole('group')
+    expect(groups.map((g) => g.getAttribute('label'))).toEqual(['Adultos', 'Kids'])
+    // The top of a ladder "o superior" is that belt alone: offered once.
+    expect(within(groups[0]!).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Blanca',
+      'Blanca o superior',
+      'Azul',
+      'Azul o superior',
+      'Negra',
+    ])
+    expect(within(groups[1]!).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Gris',
+      'Gris o superior',
+      'Amarilla',
+    ])
+
+    await userEvent.selectOptions(select, 'Azul o superior')
+    await waitFor(() => expect(asked.at(-1)?.get('rank_min')).toBe('blue'))
+    expect(asked.at(-1)?.getAll('rank')).toEqual([])
+    expect(router.state.location.search).toEqual({ belt: 'blue', beltUp: true })
+
+    await userEvent.selectOptions(select, 'Azul')
+    await waitFor(() => expect(asked.at(-1)?.getAll('rank')).toEqual(['blue']))
+    expect(asked.at(-1)?.get('rank_min')).toBeNull()
+    expect(router.state.location.search).toEqual({ belt: 'blue' })
+
+    // Back to the unfiltered list, already in the cache.
+    await userEvent.selectOptions(select, copy.allRanks)
+    await waitFor(() => expect(router.state.location.search).toEqual({}))
+  })
+
+  it('has no belt filter while the gym does not grade', async () => {
+    const none: GradingScheme = { ranks: [], kids_ladder: [], goal_metric: null }
+    stubApi(() => page([CAMILA]), undefined, undefined, undefined, none)
+    renderAt('/admin/alumnos')
+
+    await screen.findByRole('combobox', { name: copy.programLabel })
+    expect(screen.queryByRole('combobox', { name: copy.rankLabel })).not.toBeInTheDocument()
+  })
+
+  it('opens with the belt in the URL', async () => {
+    const asked = stubApi(() => page([CAMILA]), undefined, undefined, undefined, BJJ)
+    renderAt('/admin/alumnos?belt=%22grey%22&beltUp=true')
+
+    expect(await screen.findByRole('combobox', { name: copy.rankLabel })).toHaveDisplayValue('Gris o superior')
+    expect(asked[0]?.get('rank_min')).toBe('grey')
+    expect(screen.getByRole('button', { name: copy.clearFilters })).toBeInTheDocument()
+  })
+
   it('opens with the filters in the URL and clears them all', async () => {
     const asked = stubApi((params) => page(params.toString().includes('q=') ? [] : [CAMILA]))
     const router = renderAt(
@@ -342,6 +408,9 @@ describe('validateStudentsSearch', () => {
       plan: undefined,
       program: undefined,
     })
+    // "o superior" means nothing without a belt.
+    expect(validateStudentsSearch({ belt: 'blue', beltUp: 'true' })).toMatchObject({ belt: 'blue', beltUp: true })
+    expect(validateStudentsSearch({ belt: '', beltUp: true })).toMatchObject({ belt: undefined, beltUp: undefined })
     expect(validateStudentsSearch({})).toEqual({
       q: undefined,
       status: undefined,

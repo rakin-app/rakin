@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { lastUpdated, privacyNoticeQuery, type PrivacyNotice } from '../api/privacy'
 import { Button } from '../components/Button'
+import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './Privacy.css'
@@ -52,16 +53,28 @@ export function Privacy() {
     )
   }
   return (
-    <Shell title={copy.title(notice.data.gym)}>
+    <Shell title={copy.title(notice.data.gym)} gym={notice.data}>
       <NoticeText notice={notice.data} />
     </Shell>
   )
 }
 
-function Shell({ title, children }: { title?: string; children: ReactNode }) {
+function Shell({
+  title,
+  gym,
+  children,
+}: {
+  title?: string
+  gym?: { gym: string; gym_logo: string | null }
+  children: ReactNode
+}) {
   return (
     <div className="privacy">
-      <PageHeader eyebrow={copy.eyebrow} title={title ?? t.app.name} />
+      <PageHeader
+        mark={gym && <GymMark name={gym.gym} logo={gym.gym_logo} size="large" />}
+        eyebrow={copy.eyebrow}
+        title={title ?? t.app.name}
+      />
       <div className="privacy__card">{children}</div>
     </div>
   )

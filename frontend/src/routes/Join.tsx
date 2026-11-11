@@ -8,6 +8,7 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Field, FieldError, Input } from '../components/Field'
 import { Grid, PageContainer } from '../components/Layout'
+import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './Join.css'
@@ -95,7 +96,7 @@ export function Join() {
     )
   }
   return (
-    <Shell title={copy.title(form.data.gym)}>
+    <Shell title={copy.title(form.data.gym)} gym={form.data}>
       <JoinFormBody
         token={token}
         today={form.data.today}
@@ -106,10 +107,22 @@ export function Join() {
   )
 }
 
-function Shell({ title, children }: { title?: string; children: ReactNode }) {
+function Shell({
+  title,
+  gym,
+  children,
+}: {
+  title?: string
+  gym?: { gym: string; gym_logo: string | null }
+  children: ReactNode
+}) {
   return (
     <PageContainer className="join">
-      <PageHeader eyebrow={copy.eyebrow} title={title ?? t.app.name} />
+      <PageHeader
+        mark={gym && <GymMark name={gym.gym} logo={gym.gym_logo} size="large" />}
+        eyebrow={copy.eyebrow}
+        title={title ?? t.app.name}
+      />
       <div className="join__card">{children}</div>
     </PageContainer>
   )

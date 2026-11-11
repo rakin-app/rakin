@@ -94,6 +94,17 @@ class GradingScheme(BaseModel):
         """The rank `key` names, in the ranks or the kids ladder."""
         return next((r for r in (*self.ranks, *self.kids_ladder) if r.key == key), None)
 
+    def at_least(self, key: str) -> list[str] | None:
+        """The keys of rank `key` and every rank above it on its own ladder, the ranks or
+        the kids ladder, in the scheme's order (#219): "Azul o superior". A kids belt is
+        on another ladder than the adult ones, so neither counts as above the other.
+        `None` for a key the scheme does not have."""
+        for ladder in (self.ranks, self.kids_ladder):
+            keys = [r.key for r in ladder]
+            if key in keys:
+                return keys[keys.index(key) :]
+        return None
+
 
 class Preset(BaseModel):
     key: str

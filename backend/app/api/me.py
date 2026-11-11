@@ -23,6 +23,7 @@ from app.domain import billing
 from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.ledger import EntryKind, EntryStatus
+from app.logos import logo_path
 from app.roles import role_in_gym
 from app.schemas.blocks import PersonTime
 from app.schemas.guardians import Balance, Dependent
@@ -105,7 +106,7 @@ PAYMENTS = """
 # for them, a membership here or a dependent they pay for, so staff who also train
 # get a way to it (#214).
 WHO = """
-    SELECT g.name AS gym_name, g.theme, gp.name, gp.email,
+    SELECT g.name AS gym_name, g.theme, g.logo_version, gp.name, gp.email,
            (EXISTS (SELECT 1 FROM membership m WHERE m.gym_id = g.id AND m.person_id = :me)
             OR EXISTS (SELECT 1 FROM guardian_link l
                        WHERE l.gym_id = g.id AND l.guardian_person_id = :me)) AS student_page
@@ -145,6 +146,7 @@ async def my_role(
         gym_name=who.gym_name,
         student_page=who.student_page,
         theme=who.theme,
+        gym_logo=logo_path(tenant.gym_id, who.logo_version),
     )
 
 
