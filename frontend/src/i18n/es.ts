@@ -363,6 +363,12 @@ export const es = {
       },
       refused: {
         invalid: 'Revisa los datos: el teléfono, el RUT, el correo o una fecha no son válidos.',
+        // When the API names the fields, each says why under itself, as the join form does (#211).
+        fields: 'Revisa los campos marcados.',
+        rut: 'RUT no válido: revisa el dígito verificador.',
+        email: 'Correo no válido.',
+        phone: 'Escribe un celular, como +56 9 1234 5678.',
+        dob: 'Escribe una fecha pasada.',
         one_level: 'Ese apoderado está a cargo de otro apoderado: elige a otra persona.',
         failed: 'No pudimos guardar al alumno. Inténtalo de nuevo.',
       },

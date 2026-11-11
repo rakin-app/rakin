@@ -253,6 +253,55 @@ describe('Nuevo alumno', () => {
     )
   })
 
+  it('marks the field the API refused, under the field, rather than a generic error (#211)', async () => {
+    const refusal = (loc: string[]) => ({ type: 'value_error', loc: ['body', ...loc], msg: 'Value error' })
+    stubApi({
+      status: 422,
+      body: {
+        detail: [
+          refusal(['rut']),
+          { type: 'date_past', loc: ['body', 'dob'], msg: 'Date should be in the past' },
+          refusal(['guardian', 'function-after[_identified(), NewGuardian]', 'email']),
+          // The other branch of the union says nothing about what was typed.
+          { type: 'extra_forbidden', loc: ['body', 'guardian', 'ExistingGuardian', 'rut'], msg: 'Extra inputs' },
+        ],
+      },
+    })
+    renderAt('/admin/alumnos/nuevo')
+    const f = await form()
+
+    await userEvent.type(within(f).getByLabelText(copy.firstName), 'Camila')
+    await userEvent.type(within(f).getByLabelText(copy.rut), '12.345.678-0')
+    await userEvent.type(within(f).getByLabelText(copy.phone), '987654321')
+    await userEvent.click(within(f).getByRole('button', { name: copy.guardianNew }))
+    await userEvent.type(within(f).getByLabelText(copy.guardianName), 'Marta Vera')
+    await userEvent.type(within(f).getByLabelText(copy.guardianEmail), 'marta@example')
+    await userEvent.type(within(f).getByLabelText(copy.guardianPhone), '+56 9 1111 2222')
+    await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
+
+    expect(await within(f).findByText(copy.refused.rut)).toBeInTheDocument()
+    expect(within(f).getByLabelText(copy.rut)).toHaveAttribute('aria-invalid', 'true')
+    expect(within(f).getByText(copy.refused.dob)).toBeInTheDocument()
+    expect(within(f).getByLabelText(copy.guardianEmail)).toHaveAttribute('aria-invalid', 'true')
+    expect(within(f).getByLabelText(copy.guardianRut)).toHaveAttribute('aria-invalid', 'false')
+    expect(within(f).getByLabelText(copy.email)).toHaveAttribute('aria-invalid', 'false')
+    expect(within(f).getByText(copy.refused.fields)).toBeInTheDocument()
+    expect(within(f).queryByText(copy.refused.invalid)).not.toBeInTheDocument()
+  })
+
+  it('keeps the general message for a 422 that names no field it shows', async () => {
+    stubApi({ status: 422, body: { detail: [{ type: 'value_error', loc: ['body'], msg: 'Value error' }] } })
+    renderAt('/admin/alumnos/nuevo')
+    const f = await form()
+
+    await userEvent.type(within(f).getByLabelText(copy.firstName), 'Camila')
+    await userEvent.type(within(f).getByLabelText(copy.rut), '7.654.321-6')
+    await userEvent.type(within(f).getByLabelText(copy.phone), '987654321')
+    await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
+
+    expect(await within(f).findByText(copy.refused.invalid)).toBeInTheDocument()
+  })
+
   it('names who already has the RUT, with a link to their ficha', async () => {
     stubApi({ status: 409, body: { detail: { code: 'rut_in_gym', person_id: 'camila' } } })
     renderAt('/admin/alumnos/nuevo')
