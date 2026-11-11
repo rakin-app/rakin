@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .member {
   display: flex;
   flex-direction: column;
@@ -245,7 +247,7 @@
   text-decoration: line-through;
 }
 
-@media (min-width: 960px) {
+@media (--desktop) {
   .member {
     max-width: var(--content-narrow);
   }

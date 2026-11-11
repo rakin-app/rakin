@@ -78,8 +78,9 @@ export function AdminLayout() {
               </Link>
             </li>
           ))}
-          {/* On a phone it is in Ajustes → Cuenta; a coach has no Ajustes, so their bar keeps it. */}
-          <li className={managesGym(role.data) ? 'admin-nav__end' : 'admin-nav__end admin-nav__end--bar'}>
+          {/* On a phone it is in Ajustes → Cuenta; a coach has no Ajustes, so their bar keeps it. Only
+              once the role is known: a bar that showed it while loading would flash a sixth tab. */}
+          <li className={role.isSuccess && !managesGym(role.data) ? 'admin-nav__end admin-nav__end--bar' : 'admin-nav__end'}>
             <button
               type="button"
               className="admin-nav__link"

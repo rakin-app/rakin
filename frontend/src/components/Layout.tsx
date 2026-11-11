@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore, type ComponentProps } from 'react'
+import breakpoints from '../styles/media.css?raw'
 import { cx } from './classNames'
 import './Layout.css'
 
@@ -16,10 +17,17 @@ export function Grid({ columns = 2, className, ...rest }: { columns?: 2 | 3 } & 
   return <div className={cx('grid', `grid--${columns}`, className)} {...rest} />
 }
 
-// Where `Grid` goes to columns: Layout.css's breakpoint.
-const WIDE = '(min-width: 1024px)'
-// Where the shell's bottom bar becomes the sidebar: AdminLayout.css's breakpoint.
-const DESKTOP = '(min-width: 960px)'
+/** A breakpoint's query as `styles/media.css` defines it, the one source the stylesheets use too. */
+function customMedia(name: string): string {
+  const query = new RegExp(`@custom-media\\s+--${name}\\s+([^;]+);`).exec(breakpoints)?.[1]
+  if (!query) throw new Error(`styles/media.css defines no --${name}`)
+  return query.trim()
+}
+
+// Where `Grid` goes to columns.
+const WIDE = customMedia('wide')
+// Where the shell's bottom bar becomes the sidebar.
+const DESKTOP = customMedia('desktop')
 
 function mediaQuery(query: string): MediaQueryList | null {
   return typeof window.matchMedia === 'function' ? window.matchMedia(query) : null

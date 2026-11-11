@@ -17,8 +17,8 @@ import {
 import { useGymToday } from '../api/sessions'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
+import { formatPhone, formatRut } from '../format'
 import { t } from '../i18n/es'
-import { formatPhone, formatRut } from './Students'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
 
 const copy = t.admin.member

@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .today {
   display: flex;
   flex-direction: column;
@@ -35,7 +37,7 @@
 }
 
 /* A phone stacks the sections at the page's gap, the grid's from 1024px. */
-@media (max-width: 1023px) {
+@media not (--wide) {
   .today__grid {
     gap: var(--space-5);
   }
@@ -288,7 +290,7 @@
   min-height: var(--control-height);
 }
 
-@media (min-width: 960px) {
+@media (--desktop) {
   /* A step's links beside its text on a desktop, not under it. */
   .today__step {
     align-items: center;

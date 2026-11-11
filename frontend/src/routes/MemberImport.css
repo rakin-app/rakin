@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .import {
   display: flex;
   flex-direction: column;
@@ -115,7 +117,7 @@
   font-size: var(--text-sm);
 }
 
-@media (min-width: 960px) {
+@media (--desktop) {
   .import {
     padding: 0 var(--space-8) var(--space-8);
   }

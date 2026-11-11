@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .students {
   display: flex;
   flex-direction: column;
@@ -118,7 +120,7 @@
   cursor: default;
 }
 
-@media (min-width: 960px) {
+@media (--desktop) {
   .students {
     padding: 0 var(--space-8) var(--space-8);
   }

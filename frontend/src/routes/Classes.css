@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .classes {
   display: flex;
   flex-direction: column;
@@ -55,7 +57,7 @@
 }
 
 /* A phone stacks the columns at the page's gap, the grid's from 1024px. */
-@media (max-width: 1023px) {
+@media not (--wide) {
   .classes__page > .grid {
     gap: var(--space-5);
   }
@@ -362,7 +364,7 @@
   gap: var(--space-2);
 }
 
-@media (min-width: 960px) {
+@media (--desktop) {
   .classes__header,
   .classes__body {
     padding-inline: var(--space-8);
@@ -408,7 +410,7 @@
 }
 
 /* A day's class on one line from 1024px: time and type, program and coach, then the topic. */
-@media (min-width: 1024px) {
+@media (--wide) {
   .classes__row .classes__row-text {
     flex-direction: row;
     align-items: baseline;

@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .payments {
   display: flex;
   flex-direction: column;
@@ -327,7 +329,7 @@
  * markup stays the table's; the row wraps as a flex line, broken by its two pseudo
  * elements, and the date gives way.
  */
-@media (max-width: 959.98px) {
+@media not (--desktop) {
   .payments__table,
   .payments__table tbody {
     display: block;
@@ -435,7 +437,7 @@
   }
 }
 
-@media (min-width: 960px) {
+@media (--desktop) {
   .payments {
     padding-block: var(--space-8);
   }

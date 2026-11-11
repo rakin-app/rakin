@@ -17,9 +17,9 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { ListRow } from '../components/Card'
 import { Input, Select } from '../components/Field'
+import { formatPhone } from '../format'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, refusal } from './settingsForm'
-import { formatPhone } from './Students'
 
 const copy = t.admin.settings.staff
 

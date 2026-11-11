@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .settings {
   display: flex;
   flex-direction: column;
@@ -247,7 +249,7 @@ h2.settings__plan-name {
   grid-template-columns: minmax(0, 1fr) 5.5rem auto;
 }
 
-@media (min-width: 960px) {
+@media (--desktop) {
   .settings__body {
     padding: var(--space-5) 0 var(--space-10);
   }
@@ -422,7 +424,7 @@ h2.settings__plan-name {
 }
 
 /* From 1024px an item's form puts its fields two to a row; the rest runs the width. */
-@media (min-width: 1024px) {
+@media (--wide) {
   .settings__form.settings__card,
   .settings__form.settings__subcard {
     display: grid;

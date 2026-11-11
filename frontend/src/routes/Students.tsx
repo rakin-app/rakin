@@ -16,6 +16,7 @@ import { Input, Select } from '../components/Field'
 import { JoinRequests } from '../components/JoinRequests'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
+import { formatPhone, formatRut } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { FamilyPanel } from './FamilyPanel'
@@ -319,17 +320,4 @@ function MemberItem({ row }: { row: MemberRow }) {
       </div>
     </li>
   )
-}
-
-/** `+56987654321` as `+56 9 8765 4321`; any other number as stored. */
-export function formatPhone(phone: string): string {
-  const match = /^\+56(9)(\d{4})(\d{4})$/.exec(phone)
-  return match ? `+56 ${match[1]} ${match[2]} ${match[3]}` : phone
-}
-
-/** `7654321-6` as `7.654.321-6`. */
-export function formatRut(rut: string): string {
-  const [body, digit] = rut.split('-')
-  if (!body || !digit) return rut
-  return `${body.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}-${digit}`
 }
