@@ -8,7 +8,7 @@ link's pages), so the lookup that finds a host's gym before anyone has signed in
 which hold the gym's bank details.
 
 Revision ID: 0039
-Revises: 0037
+Revises: 0038
 Create Date: 2026-11-11
 
 """
@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0039"
-down_revision: str | Sequence[str] | None = "0037"
+down_revision: str | Sequence[str] | None = "0038"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
