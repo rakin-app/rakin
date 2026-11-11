@@ -451,3 +451,14 @@ def test_paid_through_is_the_end_of_the_last_period_with_none_owing_before_it(
     periods: list[tuple[date, date, int]], through: date | None
 ) -> None:
     assert billing.paid_through(periods) == through
+
+
+def test_due_periods_stops_at_its_limit() -> None:
+    owed = billing.due_periods(
+        billable(billed_through=date(2026, 11, 14)), date(2027, 3, 7), limit=2
+    )
+
+    assert spans(owed) == [
+        (date(2026, 11, 15), date(2026, 12, 14), 45_000),
+        (date(2026, 12, 15), date(2027, 1, 14), 45_000),
+    ]

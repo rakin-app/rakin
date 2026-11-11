@@ -244,13 +244,21 @@ async def start_membership(
     return await _get(session, membership_id)
 
 
+# The most periods a membership starting is billed in its request: a start back-dated
+# years catches up the rest in the nightly job, which bills on after the latest period.
+BILLED_AT_START = 24
+
+
 async def bill_now(session: AsyncSession, membership_id: uuid.UUID, today: date) -> None:
     """Bill what the membership owes by `today` plus the job's lead time, as the nightly
-    job would tonight: a member starting today can pay at the desk today (#196)."""
+    job would tonight, its first `BILLED_AT_START` periods at most: a member starting
+    today can pay at the desk today (#196)."""
     conn = await driver_connection(session)
     billable = await billable_membership(conn, membership_id)
-    assert billable is not None  # just written, in this transaction
-    await write_billing(conn, membership_id, billing.due_periods(billable, today))
+    if billable is None:  # just written, in this transaction
+        raise NOT_FOUND
+    owed = billing.due_periods(billable, today, limit=BILLED_AT_START)
+    await write_billing(conn, membership_id, owed)
 
 
 async def welcome_for(session: AsyncSession, tenant: Tenant, created: Membership) -> Notice | None:

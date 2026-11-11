@@ -17,6 +17,7 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.memberships import BILLED_AT_START
 from app.domain.dates import add_months
 from app.jobs import billing
 from app.main import create_app
@@ -308,6 +309,35 @@ def test_paying_ahead_emails_one_receipt_for_the_whole(
     assert "validó tu pago de $135.000" in email.text
 
 
+def test_the_receipt_runs_to_the_end_of_a_free_period_paid_through(
+    client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    today = seeded_today()
+    _, membership = paid_up(client, sur)
+    free = plan(client, sur, {**MONTHLY, "name": "Becado", "price_clp": 0})
+    # The second month ahead is on a free plan: billed, but nothing to pay on it.
+    second = date.fromisoformat(month_span(today, 2)[0])
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE membership SET next_plan_id = $2, next_plan_from = $3 WHERE id = $1",
+            uuid.UUID(membership),
+            uuid.UUID(free),
+            second,
+        ),
+    )
+    assert [p["amount_due_clp"] for p in quote(client, sur, membership)[:2]] == [45_000, 0]
+    mailer.sent.clear()
+
+    recorded = ok(pay_ahead(client, sur, membership, 2), 201)
+
+    assert len(recorded["payments"]) == 1
+    [email] = mailer.sent
+    assert recorded["paid_through"] == month_span(today, 2)[1]
+    end = date.fromisoformat(recorded["paid_through"])
+    assert f"al {end:%d-%m-%Y}." in email.text
+
+
 def test_paying_ahead_waits_for_an_open_period(client: TestClient, sur: uuid.UUID) -> None:
     _, membership = enrol(client, sur)
 
@@ -318,6 +348,7 @@ def test_paying_ahead_waits_for_an_open_period(client: TestClient, sur: uuid.UUI
         headers=as_gym(sur),
     )
     assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["code"] == "cannot_pay_ahead"
 
 
 def test_an_amount_other_than_the_quote_is_refused(client: TestClient, sur: uuid.UUID) -> None:
@@ -326,6 +357,7 @@ def test_an_amount_other_than_the_quote_is_refused(client: TestClient, sur: uuid
     refused = pay_ahead(client, sur, membership, 2, amount_clp=45_000)
 
     assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["code"] == "amount_changed"
     assert len(ledger(client, sur, membership)["periods"]) == 1
 
 
@@ -354,6 +386,20 @@ def pay_ahead_as(client: TestClient, gym: uuid.UUID, membership: str) -> Any:
         json={"membership_id": membership, "periods": 1, "amount_clp": 45_000, "method": "cash"},
         headers=as_gym(gym),
     )
+
+
+def test_a_start_back_dated_years_bills_a_bounded_batch_and_the_job_the_rest(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    today = seeded_today()
+    long_ago = add_months(today, -36)
+
+    _, membership = enrol(client, sur, started_on=long_ago.isoformat())
+
+    assert len(ledger(client, sur, membership)["periods"]) == BILLED_AT_START
+    run_billing(db, today)
+    starts = [p[0] for p in spans(ledger(client, sur, membership))]
+    assert starts == [add_months(long_ago, n).isoformat() for n in range(37)]
 
 
 # --- boundaries -------------------------------------------------------------------

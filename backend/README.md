@@ -192,7 +192,7 @@ A member who is up to date pays the next 1 to 12 periods at once (#196). They ar
 | Method | Path | Does |
 | --- | --- | --- |
 | `GET` | `/api/ledger/memberships/{id}/ahead` | `{periods}`: the next 12 periods after the last one billed, oldest first, each with `period_start`, `period_end` and `amount_due_clp`, priced as billing will price them. Empty when the membership cannot pay ahead: not Active, not monthly or prepaid, or with a period still open, which is paid with `POST /api/ledger/payments` first. 404 for a membership not in this gym |
-| `POST` | `/api/ledger/payments/ahead` | `{"membership_id", "periods", "amount_clp", "method", "note"?}`, `periods` 1 to 12: 201 with `{payments, periods, paid_through}`, one payment per period, oldest first, and the day they leave it paid through. `amount_clp` must be what those periods cost, as the quote says: anything else is a 409, so a price changed since is not recorded unseen. 409 too when it cannot pay ahead. One receipt is emailed, for the total, from the first period's start to the last one's end |
+| `POST` | `/api/ledger/payments/ahead` | `{"membership_id", "periods", "amount_clp", "method", "note"?}`, `periods` 1 to 12: 201 with `{payments, periods, paid_through}`, one payment per period, oldest first, and the day they leave it paid through. `amount_clp` must be what those periods cost, as the quote says: anything else is a 409 `amount_changed`, so a price changed since is not recorded unseen. 409 `cannot_pay_ahead` when it cannot pay ahead, and `already_billed` if a period it would bill is there already. Each 409's `detail` is `{code, message}`. One receipt is emailed, for the total, from the first period's start to the last one's end |
 
 ### Adjustments and refunds
 
@@ -293,7 +293,7 @@ The body is told apart by `kind`, and each kind takes exactly its own parameters
 
 | Method | Path | Does |
 | --- | --- | --- |
-| `POST` | `/api/memberships` | start `person_id` on `plan_id` from `started_on` (default: today in the gym's timezone; at most 5 years either side of it); 201 with the membership, billed at once for what the nightly job would bill it tonight (`bill_now`, #196), so a member who pays on their first day is recorded then. Reactivar on a plan and an accepted join request start one the same way |
+| `POST` | `/api/memberships` | start `person_id` on `plan_id` from `started_on` (default: today in the gym's timezone; at most 5 years either side of it); 201 with the membership, billed at once for what the nightly job would bill it tonight, its first 24 periods at most (`bill_now`, #196: a start back-dated further leaves the rest to the job), so a member who pays on their first day is recorded then. Reactivar on a plan and an accepted join request start one the same way |
 | `GET` | `/api/memberships?person_id=…` | a person's memberships in this gym, latest first |
 | `GET` | `/api/memberships/{id}` | one membership; 404 for another gym's |
 | `POST` | `/api/memberships/{id}/plan-change` | `{"plan_id": …}`: move to that plan from the next period; the membership's own plan withdraws a pending change |

@@ -174,6 +174,7 @@ type Stub = {
   ledger?: MembershipLedger
   payment?: Answer
   ahead?: Answer
+  aheadPayment?: Answer
   adjustment?: Answer
   refund?: Answer
   grading?: Grading
@@ -200,6 +201,7 @@ function stubApi({
   ledger = LEDGER,
   payment,
   ahead,
+  aheadPayment,
   adjustment,
   refund,
   grading = GRADING,
@@ -268,7 +270,7 @@ function stubApi({
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
     if (path === '/api/ledger/memberships/m-felipe/ahead') return ahead ?? { body: { periods: [] } }
     if (path === '/api/ledger/payments/ahead' && method === 'POST') {
-      return { status: 201, body: { paid_through: '2027-02-28' } }
+      return aheadPayment ?? { status: 201, body: { paid_through: '2027-02-28' } }
     }
     if (path === '/api/reminders' && url.searchParams.get('person_id') === 'felipe') return { body: reminders }
     if (path.startsWith('/api/reminders/') && method === 'POST') return { status: 201, body: {} }
@@ -485,6 +487,25 @@ describe('Ficha de alumno', () => {
       },
     ])
   })
+
+  it.each(['cannot_pay_ahead', 'amount_changed', 'already_billed'] as const)(
+    'says why paying ahead was refused: %s',
+    async (code) => {
+      stubApi({
+        ledger: { ...LEDGER, open_periods: [], owed_clp: 0, paid_through: '2026-11-30' },
+        ahead: { body: { periods: [{ period_start: '2026-12-01', period_end: '2026-12-31', amount_due_clp: 45000 }] } },
+        aheadPayment: { status: 409, body: { detail: { code, message: 'refused' } } },
+      })
+      renderAt(PATH)
+      const card = await money()
+
+      await userEvent.click(await within(card).findByRole('button', { name: copy.record }))
+      const form = await screen.findByRole('form', { name: copy.form.title })
+      await userEvent.click(within(form).getByRole('button', { name: copy.form.submit('$45.000') }))
+
+      expect(await within(form).findByRole('alert')).toHaveTextContent(copy.form.ahead.refused[code])
+    },
+  )
 
   it('offers only what can be done: no adjustment, refund or freeze with nothing to do it on', async () => {
     stubApi({

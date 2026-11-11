@@ -179,13 +179,23 @@ async def record_payment(
 # paid with a payment of its own. The job then finds them there and bills on after
 # them; a refund gives back a month as it gives back any payment.
 
+# Each 409 says which it is, for "Registrar pago" to say so (`code`).
 CANNOT_PAY_AHEAD = HTTPException(
     status.HTTP_409_CONFLICT,
-    "only an Active monthly or prepaid membership with no period open pays ahead",
+    {
+        "code": "cannot_pay_ahead",
+        "message": "only an Active monthly or prepaid membership with no period open pays ahead",
+    },
 )
 
 AMOUNT_CHANGED = HTTPException(
-    status.HTTP_409_CONFLICT, "the amount is not what those periods cost"
+    status.HTTP_409_CONFLICT,
+    {"code": "amount_changed", "message": "the amount is not what those periods cost"},
+)
+
+ALREADY_BILLED = HTTPException(
+    status.HTTP_409_CONFLICT,
+    {"code": "already_billed", "message": "a period paid ahead was billed meanwhile"},
 )
 
 
@@ -242,8 +252,9 @@ async def record_payment_ahead(
         raise AMOUNT_CHANGED
     written = await write_billing(await driver_connection(session), body.membership_id, owed)
     # The membership is locked and its periods were read under the lock, so none of
-    # them can be there already.
-    assert len(written) == len(owed.periods)
+    # them should be there already; if one is, the request rolls back.
+    if len(written) != len(owed.periods):
+        raise ALREADY_BILLED
 
     payments, periods = [], []
     for period_id, period in written:
@@ -272,7 +283,8 @@ async def record_payment_ahead(
     await send_receipt_for(
         session,
         payments,
-        last_period_id=periods[-1].id,
+        # The last period billed, free or not: the receipt runs to `paid_through`.
+        last_period_id=written[-1][0],
         period_outstanding_clp=0,
         notices=notices,
         background=background,

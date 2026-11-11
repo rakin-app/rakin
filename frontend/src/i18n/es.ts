@@ -710,8 +710,12 @@ export const es = {
           loading: 'Calculando los próximos períodos…',
           error: 'No pudimos calcular los próximos períodos.',
           recorded: (amount: string, day: string) => `Pago registrado: ${amount}. Pagado hasta el ${day}.`,
+          // One for each 409 `code` of `POST /api/ledger/payments/ahead`.
           refused: {
-            changed: 'El precio o los períodos cambiaron. Vuelve a abrir Registrar pago.',
+            cannot_pay_ahead:
+              'Ya no puede pagar por adelantado: tiene un período abierto o su plan cambió. Revisa su ficha.',
+            amount_changed: 'El precio de esos períodos cambió. Revisa el nuevo total y vuelve a registrar.',
+            already_billed: 'Esos períodos se generaron mientras tanto. Revisa su ficha antes de registrar.',
           },
         },
       },

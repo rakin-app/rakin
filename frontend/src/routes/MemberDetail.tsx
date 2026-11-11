@@ -856,6 +856,13 @@ export function PaymentAheadForm({
       onDone(words.recorded(clp(total), shortDay(result.paid_through)))
       await queryClient.invalidateQueries({ queryKey: ['ledger'] })
     },
+    // A new price: read the quote again, so the total shown is the one to record. The
+    // other refusals stay on screen rather than swapping the form out under them.
+    onError: async (error: Error) => {
+      if (refusalCode(error) === 'amount_changed') {
+        await queryClient.invalidateQueries({ queryKey: aheadQuery(membership.id).queryKey })
+      }
+    },
   })
 
   if (quote.isPending) {
@@ -917,7 +924,7 @@ export function PaymentAheadForm({
 
       {record.error && (
         <p className="member__error" role="alert">
-          {record.error instanceof ApiError && record.error.status === 409 ? words.refused.changed : form.refused.failed}
+          {aheadRefusal(record.error) ?? form.refused.failed}
         </p>
       )}
 
@@ -931,6 +938,19 @@ export function PaymentAheadForm({
       </div>
     </form>
   )
+}
+
+/** What a 409 from paying ahead says, by its `code`; `null` for any other error. */
+function aheadRefusal(error: unknown): string | null {
+  const refused = copy.form.ahead.refused
+  const code = refusalCode(error)
+  return code !== null && code in refused ? refused[code as keyof typeof refused] : null
+}
+
+function refusalCode(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
+  return typeof code === 'string' ? code : null
 }
 
 /** "Asistencia": classes in the last 30 days, and in all. */

@@ -243,8 +243,15 @@ def _first_unbilled(billable: Billable) -> date | None:
     return max(ends) + timedelta(days=1) if ends else billable.started_on
 
 
-def due_periods(billable: Billable, today: date, *, ahead: int = GENERATE_AHEAD_DAYS) -> Billing:
-    """Every period `billable` owes that falls due by `today + ahead`, oldest first.
+def due_periods(
+    billable: Billable,
+    today: date,
+    *,
+    ahead: int = GENERATE_AHEAD_DAYS,
+    limit: int | None = None,
+) -> Billing:
+    """Every period `billable` owes that falls due by `today + ahead`, oldest first;
+    the first `limit` of them, if given.
 
     Only an Active membership is billed: a trial is free, a frozen one waits for its
     due date to shift, and a lapsed or cancelled one is not charged further. A period
@@ -252,7 +259,9 @@ def due_periods(billable: Billable, today: date, *, ahead: int = GENERATE_AHEAD_
     missed, one per cycle.
     """
     horizon = today + timedelta(days=ahead)
-    return _billing(billable, lambda start, _: start <= horizon)
+    return _billing(
+        billable, lambda start, billed: start <= horizon and (limit is None or billed < limit)
+    )
 
 
 # How many periods a member may pay ahead at once (#196).
