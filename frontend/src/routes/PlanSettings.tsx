@@ -15,7 +15,7 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
-import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
+import { EditRow, Field, integerOf, LoadFailed, refusal } from './settingsForm'
 
 const copy = t.admin.settings.plans
 const form = copy.form
@@ -128,72 +128,33 @@ export function PlanSettings() {
       {plans.data.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
-        <ul className="settings__list">
-          {plans.data.map((plan) =>
-            editing === plan.id ? (
+        <ul className="settings__card settings__card--rows settings__menu">
+          {plans.data.map((plan) => {
+            const program = programList.find((p) => p.id === plan.program_id)
+            return editing === plan.id ? (
               <li key={plan.id}>
                 <PlanForm plan={plan} programs={programList} onCancel={() => setEditing(null)} onDone={done} />
               </li>
             ) : (
-              <PlanRow
+              <EditRow
                 key={plan.id}
-                plan={plan}
-                program={programList.find((p) => p.id === plan.program_id)}
-                onEdit={() => open(plan.id)}
-                onDone={done}
+                inactive={!plan.active}
+                title={
+                  <>
+                    {plan.name}
+                    {!plan.active && <span className="settings__tag">{copy.inactive}</span>}
+                  </>
+                }
+                detail={[copy.row(copy.kinds[plan.kind], summary(plan)), program?.name ?? (plan.program_id ? '' : copy.anyProgram)]
+                  .filter(Boolean)
+                  .join(' · ')}
+                onOpen={() => open(plan.id)}
               />
-            ),
-          )}
+            )
+          })}
         </ul>
       )}
     </section>
-  )
-}
-
-function PlanRow({
-  plan,
-  program,
-  onEdit,
-  onDone,
-}: {
-  plan: Plan
-  program: Program | undefined
-  onEdit: () => void
-  onDone: (message: string) => void
-}) {
-  const queryClient = useQueryClient()
-  const toggle = useMutation({
-    mutationFn: () => updatePlan(plan.id, { active: !plan.active }),
-    onSuccess: async (answer) => {
-      onDone(answer.active ? copy.reactivated(answer.name) : copy.deactivated(answer.name))
-      await queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
-    },
-  })
-
-  return (
-    <li className={plan.active ? 'settings__card settings__plan' : 'settings__card settings__plan settings__plan--inactive'}>
-      <div className="settings__plan-text">
-        <span className="settings__plan-name">
-          {plan.name}
-          {!plan.active && <span className="settings__tag">{copy.inactive}</span>}
-        </span>
-        <span className="settings__detail">{copy.row(copy.kinds[plan.kind], summary(plan))}</span>
-        <span className="settings__detail">{program?.name ?? (plan.program_id ? '' : copy.anyProgram)}</span>
-      </div>
-      {toggle.isError && (
-        <p className="settings__error" role="alert">
-          {copy.toggleFailed}
-        </p>
-      )}
-      <div className="settings__actions">
-        <Button onClick={onEdit}>
-          {copy.edit}
-        </Button>
-        <Button variant={plan.active ? 'danger' : 'secondary'} disabled={toggle.isPending} onClick={() => toggle.mutate()}>
-          {plan.active ? copy.deactivate : copy.reactivate}
-        </Button>
-      </div>
-    </li>
   )
 }
 
@@ -209,6 +170,14 @@ function PlanForm({
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
+  // Deactivating is here, not on the row (#177): the members already on it keep it.
+  const toggle = useMutation({
+    mutationFn: () => updatePlan(plan!.id, { active: !plan!.active }),
+    onSuccess: async (answer) => {
+      onDone(answer.active ? copy.reactivated(answer.name) : copy.deactivated(answer.name))
+      await queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
+    },
+  })
   const [kind, setKind] = useState<PlanKind>(plan?.kind ?? 'monthly')
   const [initial] = useState(() => draftsOf(plan))
   const [drafts, setDrafts] = useState(initial)
@@ -352,6 +321,22 @@ function PlanForm({
           {save.isPending ? form.working : form.submit}
         </Button>
       </div>
+      {plan && (
+        <div className="settings__danger">
+          {toggle.isError && (
+            <p className="settings__error" role="alert">
+              {copy.toggleFailed}
+            </p>
+          )}
+          <Button
+            variant={plan.active ? 'danger' : 'secondary'}
+            disabled={save.isPending || toggle.isPending}
+            onClick={() => toggle.mutate()}
+          >
+            {plan.active ? copy.deactivate : copy.reactivate}
+          </Button>
+        </div>
+      )}
     </form>
   )
 }

@@ -17,7 +17,7 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input, Select, Textarea } from '../components/Field'
 import { t } from '../i18n/es'
-import { Field, LoadFailed, refusal } from './settingsForm'
+import { EditRow, Field, LoadFailed, MoveButtons, refusal } from './settingsForm'
 
 const copy = t.admin.settings.fields
 const form = copy.form
@@ -40,8 +40,9 @@ function summary(field: FieldDefinition, owner: boolean): string {
 
 /**
  * "Campos": the gym's custom fields on a member, in the order the member's Datos shows
- * them, and the forms that define, reorder and archive them. There is no delete: an
- * archived field keeps its values but is not shown. Only the owner sees and sets
+ * them, and the forms that define, reorder and deactivate them. There is no delete: a
+ * deactivated (archived) field keeps its values but is not shown. A row opens its form,
+ * which deactivates it; the row keeps its ↑ ↓. Only the owner sees and sets
  * whether a field is sensitive and who sees it; an admin is answered only the fields
  * they may see, and the form leaves both out, as the API refuses them from an admin.
  */
@@ -107,98 +108,41 @@ export function FieldSettings() {
       {list.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
-        <ul className="settings__list">
+        <ul className="settings__card settings__card--rows settings__menu">
           {list.map((field, index) =>
             editing === field.key ? (
               <li key={field.key}>
                 <FieldForm field={field} owner={owner} onCancel={() => setEditing(null)} onDone={done} />
               </li>
             ) : (
-              <FieldRow
+              <EditRow
                 key={field.key}
-                field={field}
-                owner={owner}
-                first={index === 0}
-                last={index === list.length - 1}
-                moving={reorder.isPending}
-                onMove={(by) => move(index, by)}
-                onEdit={() => open(field.key)}
-                onDone={done}
+                inactive={field.archived}
+                title={
+                  <>
+                    {field.label}
+                    {field.sensitive && <span className="settings__tag">{copy.sensitive}</span>}
+                    {field.archived && <span className="settings__tag">{copy.archived}</span>}
+                  </>
+                }
+                detail={summary(field, owner)}
+                onOpen={() => open(field.key)}
+                controls={
+                  <MoveButtons
+                    up={copy.up(field.label)}
+                    down={copy.down(field.label)}
+                    first={index === 0}
+                    last={index === list.length - 1}
+                    disabled={reorder.isPending}
+                    onMove={(by) => move(index, by)}
+                  />
+                }
               />
             ),
           )}
         </ul>
       )}
     </section>
-  )
-}
-
-function FieldRow({
-  field,
-  owner,
-  first,
-  last,
-  moving,
-  onMove,
-  onEdit,
-  onDone,
-}: {
-  field: FieldDefinition
-  owner: boolean
-  first: boolean
-  last: boolean
-  moving: boolean
-  onMove: (by: -1 | 1) => void
-  onEdit: () => void
-  onDone: (message: string) => void
-}) {
-  const queryClient = useQueryClient()
-  const toggle = useMutation({
-    mutationFn: () => updateField(field.key, { archived: !field.archived }),
-    onSuccess: async (answer) => {
-      onDone(answer.archived ? copy.archivedDone(answer.label) : copy.restored(answer.label))
-      await refresh(queryClient)
-    },
-  })
-
-  return (
-    <li className={field.archived ? 'settings__card settings__plan settings__plan--inactive' : 'settings__card settings__plan'}>
-      <div className="settings__plan-text">
-        <span className="settings__plan-name">
-          {field.label}
-          {field.sensitive && <span className="settings__tag">{copy.sensitive}</span>}
-          {field.archived && <span className="settings__tag">{copy.archived}</span>}
-        </span>
-        <span className="settings__detail">{summary(field, owner)}</span>
-      </div>
-      {toggle.isError && (
-        <p className="settings__error" role="alert">
-          {copy.toggleFailed}
-        </p>
-      )}
-      <div className="settings__actions">
-        <Button
-          aria-label={copy.up(field.label)}
-          disabled={first || moving}
-          onClick={() => onMove(-1)}
-        >
-          {copy.upMark}
-        </Button>
-        <Button
-          aria-label={copy.down(field.label)}
-          disabled={last || moving}
-          onClick={() => onMove(1)}
-        >
-          {copy.downMark}
-        </Button>
-        <Button onClick={onEdit}>
-          {copy.edit}
-        </Button>
-        <Button disabled={toggle.isPending} onClick={() => toggle.mutate()}>
-          {field.archived ? copy.restore : copy.archive}
-        </Button>
-      </div>
-    </li>
   )
 }
 
@@ -245,6 +189,14 @@ function FieldForm({
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
+  // Deactivating is here, not on the row (#177): the row keeps its moves.
+  const toggle = useMutation({
+    mutationFn: () => updateField(field!.key, { archived: !field!.archived }),
+    onSuccess: async (answer) => {
+      onDone(answer.archived ? copy.archivedDone(answer.label) : copy.restored(answer.label))
+      await refresh(queryClient)
+    },
+  })
   const [initial] = useState(() => draftsOf(field))
   const [drafts, setDrafts] = useState(initial)
   const enumField = drafts.type === 'enum'
@@ -389,6 +341,22 @@ function FieldForm({
           {save.isPending ? form.working : form.submit}
         </Button>
       </div>
+      {field && (
+        <div className="settings__danger">
+          {toggle.isError && (
+            <p className="settings__error" role="alert">
+              {copy.toggleFailed}
+            </p>
+          )}
+          <Button
+            variant={field.archived ? 'secondary' : 'danger'}
+            disabled={save.isPending || toggle.isPending}
+            onClick={() => toggle.mutate()}
+          >
+            {field.archived ? copy.restore : copy.archive}
+          </Button>
+        </div>
+      )}
     </form>
   )
 }

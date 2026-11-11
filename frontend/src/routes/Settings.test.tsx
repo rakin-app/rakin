@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GymSettings } from '../api/gym'
@@ -19,6 +19,7 @@ const invalid = copy.invalid
 const SETTINGS: GymSettings = {
   name: 'Academia Sur',
   slug: 'academia-sur',
+  web_address: 'academia-sur.rakin.app',
   timezone: 'America/Santiago',
   grace_days: 5,
   reminder_every_days: 3,
@@ -88,7 +89,10 @@ function stubApi({ role = 'owner', settings, saveSettings, savePlan }: Stub = {}
   )
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
-    if (path === '/api/me/role') return { body: { role } }
+    if (path === '/api/me/role') {
+      return { body: { role, person_id: 'me', name: 'Carla Soto', email: 'carla@example.cl', gym_name: 'Academia Sur' } }
+    }
+    if (path === '/api/auth/logout') return { status: 204 }
     if (path === '/api/gym/settings' && method === 'GET') return settings ?? { body: current }
     if (path === '/api/gym/settings' && method === 'PATCH') {
       if (saveSettings) return saveSettings
@@ -139,28 +143,73 @@ describe('Ajustes', () => {
     expect(calls.filter((c) => c.path.startsWith('/api/gym') || c.path.startsWith('/api/plans'))).toEqual([])
   })
 
-  it('opens on Gimnasio, with a tab per section', async () => {
+  const SECTIONS = [
+    [copy.sections.gym, '/admin/ajustes/gimnasio'],
+    [copy.sections.plans, '/admin/ajustes/planes'],
+    [copy.sections.programs, '/admin/ajustes/programas'],
+    [copy.sections.schedule, '/admin/ajustes/horario'],
+    [copy.sections.blocks, '/admin/ajustes/bloques'],
+    [copy.sections.grading, '/admin/ajustes/graduacion'],
+    [copy.sections.fields, '/admin/ajustes/campos'],
+    [copy.sections.staff, '/admin/ajustes/equipo'],
+    [copy.sections.joinLink, '/admin/ajustes/inscripcion'],
+    [copy.sections.account, '/admin/ajustes/cuenta'],
+  ]
+
+  it('opens on a list of every section on a phone, each a way in and back', async () => {
     stubApi({ role: 'admin' })
     const router = renderAt('/admin/ajustes')
 
     const sections = await screen.findByRole('navigation', { name: copy.sectionsLabel })
-    expect(within(sections).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
-      [copy.sections.gym, '/admin/ajustes/gimnasio'],
-      [copy.sections.plans, '/admin/ajustes/planes'],
-      [copy.sections.programs, '/admin/ajustes/programas'],
-      [copy.sections.schedule, '/admin/ajustes/horario'],
-      [copy.sections.blocks, '/admin/ajustes/bloques'],
-      [copy.sections.grading, '/admin/ajustes/graduacion'],
-      [copy.sections.fields, '/admin/ajustes/campos'],
-      [copy.sections.staff, '/admin/ajustes/equipo'],
-      [copy.sections.joinLink, '/admin/ajustes/inscripcion'],
-    ])
+    const links = within(sections).getAllByRole('link')
+    expect(links.map((l) => [l.querySelector('.list-row__title')?.textContent, l.getAttribute('href')])).toEqual(SECTIONS)
+    expect(links[1]).toHaveTextContent(copy.descriptions.plans)
+    expect(screen.getByRole('heading', { level: 1, name: copy.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/admin/ajustes')
+    await waitFor(() => expect(document.title).toBe(`${copy.title} · Academia Sur`))
+
+    await userEvent.click(links[1]!)
+    expect(await screen.findByRole('region', { name: plans.title })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: copy.sections.plans })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: copy.sectionsLabel })).not.toBeInTheDocument()
+    await waitFor(() => expect(document.title).toBe(`${copy.sections.plans} · Academia Sur`))
+
+    await userEvent.click(screen.getByRole('link', { name: copy.backLabel }))
+    expect(await screen.findByRole('navigation', { name: copy.sectionsLabel })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/admin/ajustes')
+  })
+
+  it('opens on Gimnasio on a desktop, with a tab per section', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({ matches: true, media: query, addEventListener: () => {}, removeEventListener: () => {} })),
+    )
+    stubApi({ role: 'admin' })
+    const router = renderAt('/admin/ajustes')
+
+    const sections = await screen.findByRole('navigation', { name: copy.sectionsLabel })
+    expect(within(sections).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual(SECTIONS)
     expect(await screen.findByRole('form', { name: gym.formLabel })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: copy.title })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: copy.backLabel })).not.toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/admin/ajustes/gimnasio')
     expect(within(sections).getByRole('link', { name: copy.sections.gym })).toHaveAttribute('aria-current', 'page')
 
     await userEvent.click(within(sections).getByRole('link', { name: copy.sections.plans }))
     expect(await screen.findByRole('region', { name: plans.title })).toBeInTheDocument()
+  })
+
+  it('has Cuenta: who is signed in, and Cerrar sesión', async () => {
+    const calls = stubApi({ role: 'admin' })
+    const router = renderAt('/admin/ajustes/cuenta')
+
+    const account = await screen.findByRole('region', { name: copy.account.title })
+    expect(await within(account).findByText('Carla Soto')).toBeInTheDocument()
+    expect(within(account).getByText('carla@example.cl')).toBeInTheDocument()
+    await userEvent.click(within(account).getByRole('button', { name: es.signOut.label }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/ingresar'))
+    expect(calls.some((c) => c.method === 'POST' && c.path === '/api/auth/logout')).toBe(true)
   })
 
   it('tells an admin whose role was taken away that the section is not theirs', async () => {
@@ -177,7 +226,7 @@ describe('Ajustes: Gimnasio', () => {
     renderAt('/admin/ajustes/gimnasio')
 
     const settings = await screen.findByRole('form', { name: gym.formLabel })
-    expect(within(settings).getByLabelText(gym.slug)).toHaveValue('academia-sur')
+    expect(within(settings).getByLabelText(gym.slug)).toHaveValue('academia-sur.rakin.app')
     expect(within(settings).getByLabelText(gym.timezone)).toHaveValue('America/Santiago')
     expect(within(settings).getByLabelText(gym.rut)).toHaveValue('76.432.109-K')
     const name = within(settings).getByLabelText(gym.name)
@@ -328,12 +377,14 @@ describe('Ajustes: Planes', () => {
     expect(rows).toHaveLength(3)
     expect(rows[0]).toHaveTextContent('Mensual adultos')
     expect(rows[0]).toHaveTextContent(plans.row(plans.kinds.monthly, plans.row('$35.000 al mes', plans.anchors.signup)))
-    expect(await within(rows[0]!).findByText('Adultos')).toBeInTheDocument()
+    await waitFor(() => expect(rows[0]).toHaveTextContent('Adultos'))
     expect(rows[1]).toHaveTextContent(plans.row(plans.kinds.trial, 'Gratis · 2 clases · 7 días'))
     expect(rows[1]).toHaveTextContent(plans.anyProgram)
     expect(rows[2]).toHaveTextContent(plans.inactive)
     expect(rows[2]).toHaveTextContent(plans.row(plans.kinds.credits, '$40.000 por 10 clases · vencen en 60 días'))
-    expect(within(rows[2]!).getByRole('button', { name: plans.reactivate })).toBeInTheDocument()
+    // A row is the way into its plan: no Editar or Desactivar beside it (#177).
+    for (const row of rows) expect(within(row).getAllByRole('button')).toHaveLength(1)
+    expect(within(section).queryByRole('button', { name: plans.reactivate })).not.toBeInTheDocument()
   })
 
   it('creates a plan of the kind chosen, with its own parameters and program', async () => {
@@ -403,7 +454,7 @@ describe('Ajustes: Planes', () => {
 
     const section = await screen.findByRole('region', { name: plans.title })
     const trial = (await within(section).findAllByRole('listitem'))[1]!
-    await userEvent.click(within(trial).getByRole('button', { name: plans.edit }))
+    await userEvent.click(within(trial).getByRole('button'))
     const edit = within(section).getByRole('form', { name: form.edit('Clase de prueba') })
     // The kind is set on create.
     expect(within(edit).getByLabelText(form.kind)).toBeDisabled()
@@ -414,7 +465,11 @@ describe('Ajustes: Planes', () => {
     expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
       { method: 'PATCH', path: '/api/plans/prueba', body: { free_days: null } },
     ])
-    expect(await within(section).findByText(plans.row(plans.kinds.trial, 'Gratis · 2 clases'))).toBeInTheDocument()
+    await waitFor(() =>
+      expect((within(section).getAllByRole('listitem'))[1]).toHaveTextContent(
+        `${plans.row(plans.kinds.trial, 'Gratis · 2 clases')} · ${plans.anyProgram}`,
+      ),
+    )
   })
 
   it('closes an edit that changed nothing without asking the API', async () => {
@@ -423,7 +478,7 @@ describe('Ajustes: Planes', () => {
 
     const section = await screen.findByRole('region', { name: plans.title })
     const monthly = (await within(section).findAllByRole('listitem'))[0]!
-    await userEvent.click(within(monthly).getByRole('button', { name: plans.edit }))
+    await userEvent.click(within(monthly).getByRole('button'))
     const edit = within(section).getByRole('form', { name: form.edit('Mensual adultos') })
     await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
 
@@ -454,7 +509,7 @@ describe('Ajustes: Planes', () => {
 
     const section = await screen.findByRole('region', { name: plans.title })
     const trial = (await within(section).findAllByRole('listitem'))[1]!
-    await userEvent.click(within(trial).getByRole('button', { name: plans.edit }))
+    await userEvent.click(within(trial).getByRole('button'))
     const edit = within(section).getByRole('form', { name: form.edit('Clase de prueba') })
     await userEvent.clear(within(edit).getByLabelText(form.freeClasses))
     await userEvent.clear(within(edit).getByLabelText(form.freeDays))
@@ -469,7 +524,7 @@ describe('Ajustes: Planes', () => {
 
     const section = await screen.findByRole('region', { name: plans.title })
     const pack = (await within(section).findAllByRole('listitem'))[2]!
-    await userEvent.click(within(pack).getByRole('button', { name: plans.edit }))
+    await userEvent.click(within(pack).getByRole('button'))
     const edit = within(section).getByRole('form', { name: form.edit('Pack 10') })
     const program = within(edit).getByLabelText(form.program)
     expect(program).toHaveValue('old')
@@ -481,10 +536,16 @@ describe('Ajustes: Planes', () => {
     renderAt('/admin/ajustes/planes')
 
     const section = await screen.findByRole('region', { name: plans.title })
-    const monthly = (await within(section).findAllByRole('listitem'))[0]!
-    await userEvent.click(within(monthly).getByRole('button', { name: plans.deactivate }))
+    const open = async () =>
+      userEvent.click(within((await within(section).findAllByRole('listitem'))[0]!).getByRole('button'))
+    // Deactivating is in the plan's edit view, not on its row.
+    await open()
+    const edit = within(section).getByRole('form', { name: form.edit('Mensual adultos') })
+    await userEvent.click(within(edit).getByRole('button', { name: plans.deactivate }))
     expect(await within(section).findByRole('status')).toHaveTextContent(plans.deactivated('Mensual adultos'))
-    await userEvent.click(await within(monthly).findByRole('button', { name: plans.reactivate }))
+    expect(within(section).queryByRole('form')).not.toBeInTheDocument()
+    await open()
+    await userEvent.click(within(section).getByRole('button', { name: plans.reactivate }))
     expect(await within(section).findByRole('status')).toHaveTextContent(plans.reactivated('Mensual adultos'))
 
     expect(calls.filter((c) => c.method === 'PATCH').map((c) => [c.path, c.body])).toEqual([

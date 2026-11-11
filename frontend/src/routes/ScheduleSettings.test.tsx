@@ -128,6 +128,11 @@ async function section() {
   return screen.findByRole('region', { name: copy.title })
 }
 
+/** The slot's row, the button that opens its form. */
+async function slotRow() {
+  return within(await section()).findByRole('button', { name: /^Lun · Mié · Vie/ })
+}
+
 describe('Ajustes: Horario', () => {
   afterEach(() => vi.unstubAllGlobals())
 
@@ -138,8 +143,11 @@ describe('Ajustes: Horario', () => {
     const rows = within(await section()).getAllByRole('listitem')
     expect(rows).toHaveLength(1)
     expect(within(rows[0]!).getByText(copy.row('Lun · Mié · Vie', '19:00–20:30', 'Fundamentos'))).toBeInTheDocument()
-    expect(within(rows[0]!).getByText(copy.detail('Adultos', 'Rodrigo Fuentes', 'Guardia'))).toBeInTheDocument()
-    expect(within(rows[0]!).getByText(copy.validity(null, null))).toBeInTheDocument()
+    expect(rows[0]).toHaveTextContent(copy.detail('Adultos', 'Rodrigo Fuentes', 'Guardia'))
+    expect(rows[0]).toHaveTextContent(copy.validity(null, null))
+    // The row opens the slot; no Editar / Eliminar pair on it.
+    expect(within(rows[0]!).queryByRole('button', { name: copy.edit })).not.toBeInTheDocument()
+    expect(within(rows[0]!).queryByRole('button', { name: copy.delete })).not.toBeInTheDocument()
   })
 
   it('creates a slot from today, on the days ticked', async () => {
@@ -183,7 +191,7 @@ describe('Ajustes: Horario', () => {
     const calls = stubApi()
     renderAt('/admin/ajustes/horario')
 
-    await userEvent.click(within(await section()).getByRole('button', { name: copy.edit }))
+    await userEvent.click(await slotRow())
     const edit = await screen.findByRole('form', { name: form.edit('Fundamentos') })
     expect(within(edit).getByLabelText(form.fromDate)).toHaveValue(today())
     await userEvent.click(within(edit).getByRole('checkbox', { name: 'Vie' }))
@@ -203,7 +211,7 @@ describe('Ajustes: Horario', () => {
     stubApi({ save: { status: 422, body: { detail } } })
     renderAt('/admin/ajustes/horario')
 
-    await userEvent.click(within(await section()).getByRole('button', { name: copy.edit }))
+    await userEvent.click(await slotRow())
     const edit = await screen.findByRole('form', { name: form.edit('Fundamentos') })
     await userEvent.click(within(edit).getByRole('checkbox', { name: 'Sáb' }))
     await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
@@ -214,7 +222,10 @@ describe('Ajustes: Horario', () => {
     const calls = stubApi()
     renderAt('/admin/ajustes/horario')
 
-    await userEvent.click(within(await section()).getByRole('button', { name: copy.delete }))
+    // Eliminar is in the slot's form, and asks first.
+    await userEvent.click(await slotRow())
+    const edit = await screen.findByRole('form', { name: form.edit('Fundamentos') })
+    await userEvent.click(within(edit).getByRole('button', { name: copy.delete }))
     expect(screen.getByText(copy.deleteConfirm)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: copy.deleteYes }))
 

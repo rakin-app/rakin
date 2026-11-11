@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .member {
   display: flex;
   flex-direction: column;
@@ -289,7 +291,7 @@
   text-decoration: line-through;
 }
 
-@media (min-width: 960px) {
+@media (--desktop) {
   .member__header {
     padding-top: var(--space-7);
   }

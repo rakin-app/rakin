@@ -25,7 +25,7 @@ import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { Privacy, validatePrivacySearch } from './routes/Privacy'
 import { SessionDetail } from './routes/SessionDetail'
 import { SignIn } from './routes/SignIn'
-import { Settings, SETTINGS_SECTIONS } from './routes/Settings'
+import { Settings, SETTINGS_SECTIONS, SettingsHome } from './routes/Settings'
 import { Students, validateStudentsSearch } from './routes/Students'
 import { Today } from './routes/Today'
 import { ValidateProof } from './routes/ValidateProof'
@@ -210,13 +210,11 @@ const adminSettingsRoute = createRoute({
   component: Settings,
 })
 
-// It opens on its first section.
+// It opens on the list of its sections on a phone, on its first section on a desktop.
 const adminSettingsIndexRoute = createRoute({
   getParentRoute: () => adminSettingsRoute,
   path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: `/admin/ajustes/${SETTINGS_SECTIONS[0].path}`, replace: true })
-  },
+  component: SettingsHome,
 })
 
 const adminSettingsSectionRoutes = SETTINGS_SECTIONS.map((section) =>

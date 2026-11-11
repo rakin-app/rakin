@@ -15,9 +15,11 @@ import {
 } from '../api/staff'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
+import { ListRow } from '../components/Card'
 import { Input, Select } from '../components/Field'
+import { formatPhone } from '../format'
 import { t } from '../i18n/es'
-import { Field, LoadFailed, refusal } from './settingsForm'
+import { EditRow, Field, LoadFailed, refusal } from './settingsForm'
 
 const copy = t.admin.settings.staff
 
@@ -31,10 +33,13 @@ export function StaffSettings() {
   const staff = useQuery(staffQuery)
   const role = useQuery(myRoleQuery())
   const [inviting, setInviting] = useState(false)
+  // The one member open to act on (#177).
+  const [opened, setOpened] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const done = (message: string) => {
     setInviting(false)
+    setOpened(null)
     setNotice(message)
   }
 
@@ -62,28 +67,93 @@ export function StaffSettings() {
           {copy.add}
         </Button>
       )}
-      <ul className="settings__list">
+      <ul className="settings__card settings__card--rows settings__menu">
         {staff.data.map((member) => (
-          <StaffRow key={member.person_id} member={member} acting={role.data} onDone={done} />
+          <StaffRow
+            key={member.person_id}
+            member={member}
+            acting={role.data}
+            open={opened === member.person_id}
+            onOpen={() => {
+              setNotice(null)
+              setOpened(member.person_id)
+            }}
+            onClose={() => setOpened(null)}
+            onDone={done}
+          />
         ))}
       </ul>
     </section>
   )
 }
 
+/**
+ * A member of the staff: a row that opens, for whoever may act on them, to move them to
+ * the other role or take their access away (#177). The owner, and anyone the signed-in
+ * role may not manage, is a row and nothing more.
+ */
 function StaffRow({
   member,
   acting,
+  open,
+  onOpen,
+  onClose,
   onDone,
 }: {
   member: StaffMember
   acting: StaffRole | null | undefined
+  open: boolean
+  onOpen: () => void
+  onClose: () => void
+  onDone: (message: string) => void
+}) {
+  const other: InvitableRole = member.role === 'admin' ? 'coach' : 'admin'
+  // Moving to the other role needs managing both: only the owner moves anyone to or from admin.
+  const mayChange = managesRole(acting, member.role) && managesRole(acting, other)
+  const mayRevoke = managesRole(acting, member.role)
+  const title = (
+    <>
+      {member.name}
+      <span className="settings__tag">{copy.roles[member.role]}</span>
+    </>
+  )
+  const detail = [member.phone && formatPhone(member.phone), member.email].filter(Boolean).join(' · ')
+
+  if (open) {
+    return (
+      <li aria-label={member.name}>
+        <StaffPanel member={member} other={other} mayChange={mayChange} mayRevoke={mayRevoke} onClose={onClose} onDone={onDone} />
+      </li>
+    )
+  }
+  if (!mayChange && !mayRevoke) {
+    return (
+      <li aria-label={member.name}>
+        <ListRow title={title} detail={detail} />
+      </li>
+    )
+  }
+  return <EditRow title={title} detail={detail} onOpen={onOpen} />
+}
+
+function StaffPanel({
+  member,
+  other,
+  mayChange,
+  mayRevoke,
+  onClose,
+  onDone,
+}: {
+  member: StaffMember
+  other: InvitableRole
+  mayChange: boolean
+  mayRevoke: boolean
+  onClose: () => void
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
   const [confirming, setConfirming] = useState(false)
   const refresh = () => queryClient.invalidateQueries({ queryKey: staffQuery.queryKey })
-  const other: InvitableRole = member.role === 'admin' ? 'coach' : 'admin'
 
   const change = useMutation({
     mutationFn: () => changeStaffRole(member.person_id, other),
@@ -100,58 +170,51 @@ function StaffRow({
       await refresh()
     },
   })
-  // Moving to the other role needs managing both: only the owner moves anyone to or from admin.
-  const mayChange = managesRole(acting, member.role) && managesRole(acting, other)
-  const mayRevoke = managesRole(acting, member.role)
   const pending = change.isPending || revoke.isPending
 
   return (
-    <li className="settings__card settings__plan" aria-label={member.name}>
-      <div className="settings__plan-text">
-        <span className="settings__plan-name">
-          {member.name}
-          <span className="settings__tag">{copy.roles[member.role]}</span>
-        </span>
-        <span className="settings__detail">{[member.phone, member.email].filter(Boolean).join(' · ')}</span>
-      </div>
+    <div className="settings__card settings__form" role="group" aria-label={member.name}>
+      <h2 className="settings__legend">{copy.panelTitle(member.name, copy.roles[member.role]!)}</h2>
+      <p className="settings__detail">
+        {[member.phone && formatPhone(member.phone), member.email].filter(Boolean).join(' · ')}
+      </p>
       {(change.isError || revoke.isError) && (
         <p className="settings__error" role="alert">
           {copy.actionFailed}
         </p>
       )}
-      {confirming ? (
-        <div className="settings__plan-text" role="group" aria-label={copy.confirmRevoke(member.name)}>
-          <p className="settings__detail">{copy.confirmRevoke(member.name)}</p>
-          <div className="settings__actions">
-            <Button disabled={pending} onClick={() => setConfirming(false)}>
-              {copy.cancel}
+      <div className="settings__actions">
+        <Button disabled={pending} onClick={onClose}>
+          {copy.close}
+        </Button>
+        {mayChange && (
+          <Button variant="primary" disabled={pending} onClick={() => change.mutate()}>
+            {other === 'admin' ? copy.makeAdmin : copy.makeCoach}
+          </Button>
+        )}
+      </div>
+      {mayRevoke && (
+        <div className="settings__danger">
+          {confirming ? (
+            <div className="settings__plan-text" role="group" aria-label={copy.confirmRevoke(member.name)}>
+              <p className="settings__detail">{copy.confirmRevoke(member.name)}</p>
+              <div className="settings__actions">
+                <Button disabled={pending} onClick={() => setConfirming(false)}>
+                  {copy.cancel}
+                </Button>
+                <Button variant="danger" disabled={pending} onClick={() => revoke.mutate()}>
+                  {copy.confirm}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button variant="danger" disabled={pending} onClick={() => setConfirming(true)}>
+              {copy.revoke}
             </Button>
-            <Button
-              variant="danger"
-              disabled={pending}
-              onClick={() => revoke.mutate()}
-            >
-              {copy.confirm}
-            </Button>
-          </div>
+          )}
         </div>
-      ) : (
-        (mayChange || mayRevoke) && (
-          <div className="settings__actions">
-            {mayChange && (
-              <Button disabled={pending} onClick={() => change.mutate()}>
-                {other === 'admin' ? copy.makeAdmin : copy.makeCoach}
-              </Button>
-            )}
-            {mayRevoke && (
-              <Button variant="danger" disabled={pending} onClick={() => setConfirming(true)}>
-                {copy.revoke}
-              </Button>
-            )}
-          </div>
-        )
       )}
-    </li>
+    </div>
   )
 }
 
@@ -205,7 +268,7 @@ function InviteForm({
   }
 
   return (
-    <form className="settings__form" aria-label={copy.form.title} onSubmit={submit} noValidate>
+    <form className="settings__card settings__form" aria-label={copy.form.title} onSubmit={submit} noValidate>
       <h2 className="settings__legend">{copy.form.title}</h2>
       <Field label={copy.form.name} error={error('name')}>
         {(props) => (

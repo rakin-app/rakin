@@ -7,6 +7,7 @@ import { pendingCountQuery } from '../api/proofs'
 import { useTimerSync } from '../api/sessionBlocks'
 import { ClassesIcon, PaymentsIcon, SettingsIcon, SignOutIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
+import { useGymName } from '../pageTitle'
 import './AdminLayout.css'
 
 type NavItem = {
@@ -26,8 +27,11 @@ const NAV_ITEMS: readonly NavItem[] = [
 
 /**
  * Shell for the owner and coach screens. On a phone the nav is the bottom tab
- * bar from the mobile designs; from 960px it becomes the sidebar of the
- * desktop ledger design. One <nav>, restyled by CSS, so both share a tab order.
+ * bar from the mobile designs, five tabs at most; from 960px it becomes the sidebar of the
+ * desktop ledger design, with the gym's name under the mark. One <nav>, restyled by CSS,
+ * so both share a tab order. "Cerrar sesión" is the sidebar's last item; on a phone it
+ * is in Ajustes → Cuenta instead, so the bar keeps to the sections (#177), except for a
+ * coach, who has no Ajustes and three tabs.
  */
 export function AdminLayout() {
   // Proofs waiting for review, on the Pagos tab: asked for only by those who read
@@ -38,6 +42,7 @@ export function AdminLayout() {
   useTimerSync()
   const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
   const badge = pending.data ?? 0
+  const gym = useGymName()
   // Pagos is money and Ajustes the gym's configuration: each shown only once the role
   // is known to reach it, so a coach never sees either tab, not even while the role loads.
   const navItems = NAV_ITEMS.filter(
@@ -48,9 +53,12 @@ export function AdminLayout() {
   return (
     <div className="admin-shell">
       <nav className="admin-nav" aria-label={t.nav.label}>
-        <span className="admin-nav__brand" aria-hidden="true">
-          {t.app.name}
-        </span>
+        <div className="admin-nav__head">
+          <span className="admin-nav__brand" aria-hidden="true">
+            {t.app.name}
+          </span>
+          {gym && <span className="admin-nav__gym">{gym}</span>}
+        </div>
         <ul className="admin-nav__list">
           {navItems.map((item) => (
             <li key={item.to}>
@@ -70,7 +78,9 @@ export function AdminLayout() {
               </Link>
             </li>
           ))}
-          <li className="admin-nav__end">
+          {/* On a phone it is in Ajustes → Cuenta; a coach has no Ajustes, so their bar keeps it. Only
+              once the role is known: a bar that showed it while loading would flash a sixth tab. */}
+          <li className={role.isSuccess && !managesGym(role.data) ? 'admin-nav__end admin-nav__end--bar' : 'admin-nav__end'}>
             <button
               type="button"
               className="admin-nav__link"

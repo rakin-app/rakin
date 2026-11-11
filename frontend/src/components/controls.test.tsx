@@ -129,7 +129,7 @@ describe('Layout', () => {
 
   it('stays one column below 1024px and caps the page at the wide width', () => {
     const css = read('./Layout.css')
-    const [phone, wide] = css.split('@media (min-width: 1024px)')
+    const [phone, wide] = css.split('@media (--wide)')
     expect(phone).toMatch(/\.grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/)
     expect(phone).not.toMatch(/grid--[23] \{/)
     expect(wide).toMatch(/\.grid--3 \{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/)

@@ -1,4 +1,5 @@
-import { useSyncExternalStore, type ComponentProps } from 'react'
+import { useCallback, useSyncExternalStore, type ComponentProps } from 'react'
+import breakpoints from '../styles/media.css?raw'
 import { cx } from './classNames'
 import './Layout.css'
 
@@ -16,17 +17,33 @@ export function Grid({ columns = 2, className, ...rest }: { columns?: 2 | 3 } & 
   return <div className={cx('grid', `grid--${columns}`, className)} {...rest} />
 }
 
-// Where `Grid` goes to columns: Layout.css's breakpoint.
-const WIDE = '(min-width: 1024px)'
-
-function wideQuery(): MediaQueryList | null {
-  return typeof window.matchMedia === 'function' ? window.matchMedia(WIDE) : null
+/** A breakpoint's query as `styles/media.css` defines it, the one source the stylesheets use too. */
+function customMedia(name: string): string {
+  const query = new RegExp(`@custom-media\\s+--${name}\\s+([^;]+);`).exec(breakpoints)?.[1]
+  if (!query) throw new Error(`styles/media.css defines no --${name}`)
+  return query.trim()
 }
 
-function subscribeWide(onChange: () => void): () => void {
-  const query = wideQuery()
-  query?.addEventListener('change', onChange)
-  return () => query?.removeEventListener('change', onChange)
+// Where `Grid` goes to columns.
+const WIDE = customMedia('wide')
+// Where the shell's bottom bar becomes the sidebar.
+const DESKTOP = customMedia('desktop')
+
+function mediaQuery(query: string): MediaQueryList | null {
+  return typeof window.matchMedia === 'function' ? window.matchMedia(query) : null
+}
+
+/** Whether the window matches `query`, kept current as it is resized. False where the browser cannot say. */
+function useMedia(query: string): boolean {
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const list = mediaQuery(query)
+      list?.addEventListener('change', onChange)
+      return () => list?.removeEventListener('change', onChange)
+    },
+    [query],
+  )
+  return useSyncExternalStore(subscribe, () => mediaQuery(query)?.matches ?? false)
 }
 
 /**
@@ -34,5 +51,10 @@ function subscribeWide(onChange: () => void): () => void {
  * desktop and should not fetch on a phone. False where the browser cannot say.
  */
 export function useWide(): boolean {
-  return useSyncExternalStore(subscribeWide, () => wideQuery()?.matches ?? false)
+  return useMedia(WIDE)
+}
+
+/** Whether the shell is the desktop one, with the sidebar (960px and up). False where the browser cannot say. */
+export function useDesktop(): boolean {
+  return useMedia(DESKTOP)
 }

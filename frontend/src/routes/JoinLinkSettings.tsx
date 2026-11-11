@@ -149,7 +149,7 @@ function JoinLinkSection({
       ) : (
         <p className="settings__note">{copy.none}</p>
       )}
-      <form className="settings__form" aria-label={copy.title} onSubmit={submit} noValidate>
+      <form className="settings__card settings__form" aria-label={copy.title} onSubmit={submit} noValidate>
         <Field label={copy.program} hint={copy.programHint} error={error('program_id')}>
           {(props) => (
             <Select

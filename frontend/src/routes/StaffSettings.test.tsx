@@ -77,6 +77,17 @@ async function row(name: string) {
   return within(await section()).findByRole('listitem', { name })
 }
 
+/** A member the signed-in role may act on: their row is a button, named by its text. */
+async function rowButton(name: string) {
+  return within(await section()).findByRole('button', { name: new RegExp(`^${name}`) })
+}
+
+/** Opens a member's row, and answers the panel it opens to. */
+async function open(name: string) {
+  await userEvent.click(await rowButton(name))
+  return within(await section()).getByRole('group', { name })
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -89,10 +100,20 @@ describe('Ajustes: Equipo', () => {
     const owner = await row('Martín')
     expect(owner).toHaveTextContent(copy.roles.owner!)
     expect(within(owner).queryByRole('button')).not.toBeInTheDocument()
-    const admin = await row('Carla')
-    expect(admin).toHaveTextContent('+56922222222 · carla@example.cl')
-    expect(within(admin).getByRole('button', { name: copy.makeCoach })).toBeInTheDocument()
-    expect(within(await row('Beto')).getByRole('button', { name: copy.makeAdmin })).toBeInTheDocument()
+    // Phones as they read, not as stored.
+    const admin = await rowButton('Carla')
+    expect(admin).toHaveTextContent('+56 9 2222 2222 · carla@example.cl')
+    // No Editar / Quitar pair on the row: its actions are behind it.
+    expect(within(await section()).queryByRole('button', { name: copy.revoke })).not.toBeInTheDocument()
+
+    const carla = await open('Carla')
+    expect(within(carla).getByRole('button', { name: copy.makeCoach })).toBeInTheDocument()
+    expect(within(carla).getByRole('button', { name: copy.revoke })).toBeInTheDocument()
+    await userEvent.click(within(carla).getByRole('button', { name: copy.close }))
+    expect(within(await section()).queryByRole('group', { name: 'Carla' })).not.toBeInTheDocument()
+
+    // One open at a time.
+    expect(within(await open('Beto')).getByRole('button', { name: copy.makeAdmin })).toBeInTheDocument()
   })
 
   it('invites a coach by name, phone and email', async () => {
@@ -109,7 +130,7 @@ describe('Ajustes: Equipo', () => {
     await userEvent.click(within(invite).getByRole('button', { name: copy.submit }))
 
     expect(await within(region).findByRole('status')).toHaveTextContent(copy.invited('Pedro', 'pedro@example.cl'))
-    expect(await row('Pedro')).toBeInTheDocument()
+    expect(await rowButton('Pedro')).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       {
         method: 'POST',
@@ -175,10 +196,12 @@ describe('Ajustes: Equipo', () => {
     const calls = stubApi()
     renderAt('/admin/ajustes/equipo')
 
-    await userEvent.click(within(await row('Beto')).getByRole('button', { name: copy.makeAdmin }))
+    await userEvent.click(within(await open('Beto')).getByRole('button', { name: copy.makeAdmin }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.roleChanged('Beto', copy.roles.admin!))
-    expect(await within(await row('Beto')).findByRole('button', { name: copy.makeCoach })).toBeInTheDocument()
+    // The panel closes on the change; the row now reads the new role.
+    expect(await rowButton('Beto')).toHaveTextContent(copy.roles.admin!)
+    expect(within(await open('Beto')).getByRole('button', { name: copy.makeCoach })).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
       { method: 'PATCH', path: '/api/staff/c', body: { role: 'admin' } },
     ])
@@ -188,7 +211,7 @@ describe('Ajustes: Equipo', () => {
     const calls = stubApi()
     renderAt('/admin/ajustes/equipo')
 
-    const beto = await row('Beto')
+    const beto = await open('Beto')
     await userEvent.click(within(beto).getByRole('button', { name: copy.revoke }))
     const confirm = within(beto).getByRole('group', { name: copy.confirmRevoke('Beto') })
     await userEvent.click(within(confirm).getByRole('button', { name: copy.cancel }))
@@ -198,7 +221,7 @@ describe('Ajustes: Equipo', () => {
     await userEvent.click(within(beto).getByRole('button', { name: copy.confirm }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.revoked('Beto'))
-    expect(within(await section()).queryByRole('listitem', { name: 'Beto' })).not.toBeInTheDocument()
+    expect(within(await section()).queryByRole('button', { name: /^Beto/ })).not.toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'DELETE')).toEqual([
       { method: 'DELETE', path: '/api/staff/c', body: undefined },
     ])
@@ -209,7 +232,7 @@ describe('Ajustes: Equipo', () => {
     renderAt('/admin/ajustes/equipo')
 
     expect(within(await row('Carla')).queryByRole('button')).not.toBeInTheDocument()
-    const beto = await row('Beto')
+    const beto = await open('Beto')
     expect(within(beto).getByRole('button', { name: copy.revoke })).toBeInTheDocument()
     expect(within(beto).queryByRole('button', { name: copy.makeAdmin })).not.toBeInTheDocument()
 

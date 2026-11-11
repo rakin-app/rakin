@@ -25,6 +25,7 @@ import { Input, Select } from '../components/Field'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, CloseIcon } from '../components/icons'
 import { clockTime } from '../format'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import {
   addMinute,
   advance,
@@ -93,6 +94,7 @@ export function ClassTimer() {
   const { sessionId } = route.useParams()
   const queryClient = useQueryClient()
   const session = useQuery(sessionQuery(sessionId))
+  usePageTitle(session.data && copy.pageTitle(session.data.class_type_name))
   const me = useQuery(myselfQuery())
   const [run, setRun] = useState<RunState | null>(() => savedRun(sessionId))
 

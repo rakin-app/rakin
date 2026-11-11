@@ -71,6 +71,16 @@ PAYMENTS = """
     LIMIT :limit
 """
 
+# Who is signed in, as this gym knows them, and the gym's name: what the admin shell
+# shows on every screen, a coach's included. Left-joined, so a session with no record
+# here still answers its role.
+WHO = """
+    SELECT g.name AS gym_name, gp.name, gp.email
+    FROM gym g
+    LEFT JOIN gym_person gp ON gp.gym_id = g.id AND gp.person_id = :me
+    WHERE g.id = :gym
+"""
+
 # How far back "Mis pagos" goes: a year of monthly payments.
 PAYMENTS_SHOWN = 12
 
@@ -87,8 +97,16 @@ async def my_role(
 ) -> MyRole:
     """The signed-in person's staff role in this gym, or none for a member: what the
     admin screens show, such as the pending-proofs badge only to who reads the ledger,
-    and who they are, such as the class timer to the session's coach."""
-    return MyRole(role=await role_in_gym(session, tenant), person_id=tenant.person_id)
+    and who they are, such as the class timer to the session's coach, Ajustes → Cuenta
+    and the gym's name in the sidebar and the page titles."""
+    who = (await session.execute(text(WHO), {"me": tenant.person_id, "gym": tenant.gym_id})).one()
+    return MyRole(
+        role=await role_in_gym(session, tenant),
+        person_id=tenant.person_id,
+        name=who.name,
+        email=who.email,
+        gym_name=who.gym_name,
+    )
 
 
 @router.get("/dependents")

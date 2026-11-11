@@ -1,14 +1,24 @@
+@import '../styles/media.css';
+
 .settings {
   display: flex;
   flex-direction: column;
   min-height: 100%;
 }
 
-/* The sections, as tabs: a row that scrolls sideways once there are more than fit. */
+/* A phone's section page: back to the list, over the section's title. */
+.settings__back {
+  margin: var(--space-4) 0 0 calc(-1 * var(--space-3));
+}
+
+.settings__back + .page-header {
+  padding-top: var(--space-1);
+}
+
+/* The sections, as tabs on a desktop: a row that scrolls sideways if they do not fit. */
 .settings__sections {
   display: flex;
   gap: var(--space-1);
-  margin: 0 var(--space-5);
   overflow-x: auto;
   border-bottom: 1px solid var(--color-border);
   scrollbar-width: none;
@@ -36,8 +46,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  padding: var(--space-5) var(--space-5) var(--space-6);
-  max-width: var(--content-narrow);
+  padding: var(--space-5) 0 var(--space-6);
 }
 
 .settings__section,
@@ -89,10 +98,6 @@
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--text-sm);
-}
-
-.settings__note {
-  padding: 0 var(--space-5);
 }
 
 /* A link on a line of its own: a 44px target, though it reads as text. */
@@ -244,17 +249,227 @@ h2.settings__plan-name {
   grid-template-columns: minmax(0, 1fr) 5.5rem auto;
 }
 
-@media (min-width: 960px) {
-  .settings__sections {
-    margin: 0 var(--space-8);
-  }
-
+@media (--desktop) {
   .settings__body {
-    padding: var(--space-5) var(--space-8) var(--space-10);
+    padding: var(--space-5) 0 var(--space-10);
+  }
+}
+
+/* A card of rows: the section list, Cuenta, a list's items. Edge to edge, a line between. */
+.settings__card--rows {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.settings__card--rows > li + li,
+.settings__card--rows > .list-row + .list-row {
+  border-top: 1px solid var(--color-divider);
+}
+
+.settings__menu {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings__menu .list-row__trailing,
+.settings__row .list-row__trailing {
+  color: var(--color-text-muted);
+}
+
+/*
+ * A list's item (#177): the row is the button that opens it to edit; the move buttons,
+ * if any, sit at its end. What deactivates or deletes it is in the edit view.
+ */
+.settings__row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.settings__row > .list-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings__row--inactive .list-row__title {
+  color: var(--color-text-muted);
+}
+
+.settings__row-controls {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  padding-right: var(--space-2);
+}
+
+/* Graduación's "Punto de partida": a 44px summary that opens the presets. */
+.settings__start:not([open]) {
+  gap: 0;
+}
+
+.settings__start > summary {
+  float: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-height);
+  margin: calc(-1 * var(--space-2)) 0;
+  list-style: none;
+  cursor: pointer;
+}
+
+.settings__start > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings__start[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+/* Graduación (#177): a rank's belt at the start of its row, and its form when open. */
+.settings__rank-belt {
+  display: inline-flex;
+  flex: none;
+  width: 48px;
+  margin-right: var(--space-1);
+}
+
+/* A ladder's ranks run the card's width, a line between each. */
+.settings__ladder.settings__menu {
+  margin: 0 calc(-1 * var(--space-4));
+  border-top: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.settings__ladder > li + li {
+  border-top: 1px solid var(--color-divider);
+}
+
+.settings__ladder .list-row {
+  gap: var(--space-2);
+}
+
+.settings__rank-panel:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-divider);
+}
+
+.settings__refused {
+  color: var(--color-danger);
+}
+
+/* Programas y clases: a program's row is its heading; its class types are rows under it. */
+.settings__row-heading {
+  margin: 0;
+  font-size: inherit;
+}
+
+.settings__row-heading .list-row__title {
+  font-size: var(--text-lg);
+}
+
+.settings__subrows {
+  border-top: 1px solid var(--color-divider);
+}
+
+.settings__subrows > li + li {
+  border-top: 1px solid var(--color-divider);
+}
+
+.settings__subrows .list-row {
+  padding-left: var(--space-6);
+}
+
+.settings__row-note {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+/* An item open in a card of rows: the card is its frame. */
+.settings__card--rows .settings__form.settings__card {
+  border: 0;
+  border-radius: 0;
+}
+
+.settings__card--rows > li + li > .settings__form,
+.settings__card--rows .settings__subrows .settings__form,
+.settings__card--rows > .settings__form + *,
+.settings__card--rows > * + .settings__form {
+  border-top: 1px solid var(--color-divider);
+}
+
+/* What takes an item away, under the form's own buttons and apart from them. */
+.settings__danger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+}
+
+.settings__danger > .button {
+  flex: 1 1 0;
+}
+
+.settings__danger > .settings__error,
+.settings__danger > .settings__plan-text {
+  flex: 1 0 100%;
+}
+
+/* From 1024px an item's form puts its fields two to a row; the rest runs the width. */
+@media (--wide) {
+  .settings__form.settings__card,
+  .settings__form.settings__subcard {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-5);
   }
 
-  .settings__note {
-    padding: 0 var(--space-8);
+  .settings__form.settings__card > :not(.field),
+  .settings__form.settings__subcard > :not(.field) {
+    grid-column: 1 / -1;
+  }
+
+  .settings__actions {
+    grid-template-columns: repeat(auto-fit, minmax(0, 12rem));
+    justify-content: end;
+  }
+
+  .settings__danger {
+    justify-content: flex-start;
+  }
+
+  /* A section's "Nuevo …" is a button, not a bar across the page. */
+  .settings__section > .button--primary {
+    align-self: flex-start;
+    min-width: 12rem;
+  }
+
+  /* Gimnasio: its cards two to a row; its messages and Guardar under them. */
+  .settings__form--panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .settings__form--panels > :not(.settings__card) {
+    grid-column: 1 / -1;
+  }
+
+  .settings__form--panels > .button {
+    justify-self: end;
+    min-width: 12rem;
+  }
+
+  .settings__danger > .button {
+    flex: 0 0 12rem;
   }
 }
 

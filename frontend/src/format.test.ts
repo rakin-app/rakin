@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shiftDay, timeRange, zonedInstant } from './format'
+import { formatPhone, formatRut, shiftDay, timeRange, zonedInstant } from './format'
 
 describe('zonedInstant', () => {
   it("is the wall time in the gym's timezone, not the device's", () => {
@@ -40,5 +40,23 @@ describe('shiftDay', () => {
   it('is calendar days, whatever the clock change', () => {
     expect(shiftDay('2027-09-04', 1)).toBe('2027-09-05')
     expect(shiftDay('2027-04-04', -1)).toBe('2027-04-03')
+  })
+})
+
+describe('formatting', () => {
+  it.each([
+    ['+56987654321', '+56 9 8765 4321'],
+    ['+5491123456789', '+5491123456789'],
+  ])('shows phone %s as %s', (phone, shown) => {
+    expect(formatPhone(phone)).toBe(shown)
+  })
+
+  it.each([
+    ['7654321-6', '7.654.321-6'],
+    ['76123456-0', '76.123.456-0'],
+    ['1-9', '1-9'],
+    ['12345678-K', '12.345.678-K'],
+  ])('shows RUT %s as %s', (rut, shown) => {
+    expect(formatRut(rut)).toBe(shown)
   })
 })

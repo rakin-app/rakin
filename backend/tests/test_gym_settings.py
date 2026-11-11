@@ -113,7 +113,11 @@ def db() -> Iterator[Database]:
 
 @pytest.fixture(scope="module")
 def client(db: Database) -> Iterator[TestClient]:
-    app = create_app(make_settings(database_url=db.api_url))
+    # Gyms on their own hosts, so the settings name the gym's (#177).
+    settings = make_settings(
+        database_url=db.api_url, public_base_url="https://rakin.app", base_domain="rakin.app"
+    )
+    app = create_app(settings)
     app.add_middleware(FakeAuth)
     with TestClient(app) as c:
         yield c
@@ -139,6 +143,7 @@ def test_a_new_gym_reads_the_defaults(client: TestClient, db: Database) -> None:
     assert response.json() == {
         "name": "dojo-nuevo",
         "slug": "dojo-nuevo",
+        "web_address": "dojo-nuevo.rakin.app",
         "timezone": "America/Santiago",
         "grace_days": 5,
         "reminder_every_days": 3,
@@ -161,7 +166,13 @@ def test_a_change_is_read_back_and_stored(client: TestClient, db: Database) -> N
     }
     response = client.patch(URL, json=body, headers=as_gym(gym))
     assert response.status_code == 200
-    expected = {**body, "slug": "academia-sur", "bank_account": BANK_STORED, "privacy": None}
+    expected = {
+        **body,
+        "slug": "academia-sur",
+        "web_address": "academia-sur.rakin.app",
+        "bank_account": BANK_STORED,
+        "privacy": None,
+    }
     assert response.json() == expected
     assert client.get(URL, headers=as_gym(gym)).json() == expected
 

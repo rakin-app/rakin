@@ -26,6 +26,7 @@ import { Input, Select, Textarea } from '../components/Field'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
 import { clockTime, dayTime, isoDay } from '../format'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import { ClassActions, ClassEdit, refreshSession } from './ClassManage'
 import { TimerRecord } from './TimerRecord'
 import { savedRun } from './timerEngine'
@@ -50,6 +51,7 @@ const MAX_NOTES = 4000
 export function SessionDetail() {
   const { sessionId } = route.useParams()
   const session = useQuery(sessionQuery(sessionId))
+  usePageTitle(session.data?.class_type_name)
   const me = useQuery(myselfQuery())
   const timeZone = useGymTimeZone()
   const today = useGymToday()

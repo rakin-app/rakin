@@ -10,6 +10,7 @@ import { Button, buttonClass } from '../components/Button'
 import { Input } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import { FieldInput, valueOf } from './CustomFieldsPanel'
 import { PeopleSearch } from './FamilyPanel'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
@@ -48,6 +49,7 @@ type Guardian =
  * "No tiene WhatsApp" is ticked. With a guardian, it is the guardian's that is required.
  */
 export function NewMember() {
+  usePageTitle(copy.title)
   const today = useGymToday()
   const navigate = useNavigate()
   const queryClient = useQueryClient()

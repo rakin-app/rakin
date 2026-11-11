@@ -88,6 +88,16 @@ const puts = (calls: Call[]) => calls.filter((c) => c.method === 'PUT').map((c) 
 const ladder = (name: string) => screen.getByRole('group', { name })
 const rank = (name: string, n: number) => within(ladder(name)).getByRole('listitem', { name: copy.rank(n) })
 const save = () => userEvent.click(screen.getByRole('button', { name: copy.submit }))
+/** A rank's row: the button that opens it, named `N. Label` and its line. */
+const rowOf = (name: string, n: number) =>
+  within(rank(name, n)).getByRole('button', { name: new RegExp(`^${n}\\. `) })
+/** Opens rank `n` of a ladder (closing whichever was open), and answers its list item. */
+async function open(name: string, n: number) {
+  const row = rowOf(name, n)
+  if (row.getAttribute('aria-expanded') !== 'true') await userEvent.click(row)
+  return rank(name, n)
+}
+const RANKS = copy.ladders.ranks
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -98,7 +108,10 @@ describe('Ajustes: Graduación', () => {
     const calls = stubApi()
     renderGrading()
 
-    const white = await screen.findByRole('listitem', { name: copy.rank(1) })
+    await screen.findByRole('listitem', { name: copy.rank(1) })
+    // Closed, a rank says what it takes to the next.
+    expect(rowOf(RANKS, 1)).toHaveTextContent(copy.summary.classes_since_promotion(120))
+    const white = await open(RANKS, 1)
     expect(within(white).getByLabelText(copy.rank(1))).toHaveValue('Blanca')
     expect(within(white).getAllByLabelText(copy.target.classes_since_promotion)[0]).toHaveValue('120')
 
@@ -113,9 +126,10 @@ describe('Ajustes: Graduación', () => {
     await userEvent.click(within(white).getByRole('button', { name: copy.addSubRank }))
     await userEvent.type(within(white).getByLabelText(copy.subRank(3)), '2 grados')
 
-    // A new rank, and one in the kids ladder whose name would make the same key.
+    // A new rank opens to be named, and one in the kids ladder whose name would make the same key.
     const ranks = ladder(copy.ladders.ranks)
     await userEvent.click(within(ranks).getByRole('button', { name: copy.addRank }))
+    expect(rowOf(RANKS, 1)).toHaveAttribute('aria-expanded', 'false')
     await userEvent.type(within(rank(copy.ladders.ranks, 3)).getByLabelText(copy.rank(3)), 'Morada')
     await userEvent.click(
       within(ladder(copy.ladders.kids_ladder)).getByRole('button', {
@@ -141,21 +155,42 @@ describe('Ajustes: Graduación', () => {
     expect(sent!.goal_metric).toBe('classes_since_promotion')
   })
 
+  it('shows every rank closed, as a row, and opens one at a time', async () => {
+    stubApi()
+    renderGrading()
+
+    await screen.findByRole('listitem', { name: copy.rank(1) })
+    expect(screen.queryByRole('textbox', { name: copy.rank(1) })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: copy.rank(2) })).not.toBeInTheDocument()
+    expect(rowOf(RANKS, 1)).toHaveAttribute('aria-expanded', 'false')
+    expect(rowOf(RANKS, 2)).toHaveTextContent(copy.subRanks(2))
+
+    const white = await open(RANKS, 1)
+    expect(rowOf(RANKS, 1)).toHaveAttribute('aria-expanded', 'true')
+    expect(within(white).getByLabelText(copy.rank(1))).toHaveValue('Blanca')
+    await open(RANKS, 2)
+    expect(screen.queryByRole('textbox', { name: copy.rank(1) })).not.toBeInTheDocument()
+    expect(within(rank(RANKS, 2)).getByLabelText(copy.rank(2))).toHaveValue('Azul')
+
+    await userEvent.click(within(rank(RANKS, 2)).getByRole('button', { name: copy.done }))
+    expect(screen.queryByRole('textbox', { name: copy.rank(2) })).not.toBeInTheDocument()
+  })
+
   it('gives a rank its belt colours, a second for a two-tone belt, and takes them away', async () => {
     const calls = stubApi()
     renderGrading()
     const words = copy.belt
 
     // A rank with a colour is drawn as its belt, every stripe on the bar.
-    const white = await screen.findByRole('listitem', { name: copy.rank(1) })
-    const whiteBelt = within(white).getByRole('group', { name: words.title })
+    await screen.findByRole('listitem', { name: copy.rank(1) })
+    const whiteBelt = within(await open(RANKS, 1)).getByRole('group', { name: words.title })
     expect(within(whiteBelt).getByRole('img', { name: words.preview('Blanca') })).toBeInTheDocument()
     expect(within(whiteBelt).getByLabelText(words.main)).toHaveValue('#f4f4f1')
     await userEvent.click(within(whiteBelt).getByRole('button', { name: words.addTone }))
     fireEvent.input(within(whiteBelt).getByLabelText(words.tone), { target: { value: '#1b1b1b' } })
 
     // One without shows as its name until it is given one.
-    const blue = within(rank(copy.ladders.ranks, 2)).getByRole('group', { name: words.title })
+    const blue = within(await open(RANKS, 2)).getByRole('group', { name: words.title })
     expect(within(blue).getByText(words.none)).toBeInTheDocument()
     expect(within(blue).queryByRole('img')).not.toBeInTheDocument()
     await userEvent.click(within(blue).getByRole('button', { name: words.add }))
@@ -165,10 +200,10 @@ describe('Ajustes: Graduación', () => {
     await screen.findByText(copy.saved)
     expect(puts(calls)[0]!.ranks.map((r) => r.colors)).toEqual([['#f4f4f1', '#1b1b1b'], ['#1f4fa3']])
 
-    // The saved scheme reloads the form.
-    const belt = (n: number) => within(rank(copy.ladders.ranks, n)).getByRole('group', { name: words.title })
-    await userEvent.click(within(belt(1)).getByRole('button', { name: words.removeTone }))
-    await userEvent.click(within(belt(2)).getByRole('button', { name: words.remove }))
+    // The saved scheme reloads the form, every rank closed again.
+    const belt = async (n: number) => within(await open(RANKS, n)).getByRole('group', { name: words.title })
+    await userEvent.click(within(await belt(1)).getByRole('button', { name: words.removeTone }))
+    await userEvent.click(within(await belt(2)).getByRole('button', { name: words.remove }))
     await save()
     await vi.waitFor(() => expect(puts(calls)).toHaveLength(2))
     expect(puts(calls)[1]!.ranks.map((r) => r.colors)).toEqual([['#f4f4f1'], []])
@@ -179,9 +214,11 @@ describe('Ajustes: Graduación', () => {
     renderGrading()
 
     await screen.findByRole('listitem', { name: copy.rank(1) })
+    // The moves are on the closed rows; removing is in the open rank.
     await userEvent.click(screen.getByRole('button', { name: copy.moveDown('Blanca') }))
     expect(screen.getByRole('button', { name: copy.moveUp('Azul') })).toBeDisabled()
-    await userEvent.click(screen.getByRole('button', { name: copy.remove('Blanca') }))
+    expect(screen.queryByRole('button', { name: copy.remove('Blanca') })).not.toBeInTheDocument()
+    await userEvent.click(within(await open(RANKS, 2)).getByRole('button', { name: copy.remove('Blanca') }))
     await save()
 
     await screen.findByRole('status')
@@ -192,15 +229,20 @@ describe('Ajustes: Graduación', () => {
     const calls = stubApi()
     renderGrading()
 
+    // A starting point, closed until asked for.
     const start = await screen.findByRole('group', { name: copy.start })
+    expect(start).not.toHaveAttribute('open')
+    await userEvent.click(within(start).getByText(copy.start))
+    expect(start).toHaveAttribute('open')
     await userEvent.selectOptions(await within(start).findByLabelText(copy.preset), 'Judo / karate')
     await userEvent.click(within(start).getByRole('button', { name: copy.apply }))
 
     expect(screen.getByRole('status')).toHaveTextContent(copy.applied('Judo / karate'))
     expect(screen.getByLabelText(copy.goalMetric)).toHaveValue('time_in_rank')
-    expect(within(rank(copy.ladders.ranks, 1)).getByLabelText(copy.rank(1))).toHaveValue('2.º kyu')
+    const kyu = await open(RANKS, 1)
+    expect(within(kyu).getByLabelText(copy.rank(1))).toHaveValue('2.º kyu')
     // Months in rank, for this metric.
-    expect(within(rank(copy.ladders.ranks, 1)).getByLabelText(copy.target.time_in_rank)).toBeInTheDocument()
+    expect(within(kyu).getByLabelText(copy.target.time_in_rank)).toBeInTheDocument()
     expect(puts(calls)).toEqual([])
 
     await save()
@@ -213,6 +255,8 @@ describe('Ajustes: Graduación', () => {
     renderGrading()
 
     await screen.findByRole('listitem', { name: copy.rank(1) })
+    const white = await open(RANKS, 1)
+    expect(within(white).getByLabelText(copy.target.classes_since_promotion)).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText(copy.goalMetric), copy.goalMetrics.none)
     expect(screen.queryByLabelText(copy.target.classes_since_promotion)).not.toBeInTheDocument()
     await save()
@@ -223,7 +267,7 @@ describe('Ajustes: Graduación', () => {
     expect(sent!.ranks[0]!.target).toBeNull()
   })
 
-  it("puts the API's refusals under the fields they name, opening a rank's sub-ranks for them", async () => {
+  it("puts the API's refusals under the fields they name, opening the first refused rank and its sub-ranks", async () => {
     stubApi({
       save: {
         status: 422,
@@ -246,14 +290,19 @@ describe('Ajustes: Graduación', () => {
     renderGrading()
 
     await screen.findByRole('listitem', { name: copy.rank(1) })
-    await userEvent.clear(within(rank(copy.ladders.ranks, 2)).getByLabelText(copy.rank(2)))
+    await userEvent.clear(within(await open(RANKS, 2)).getByLabelText(copy.rank(2)))
+    // Closed again before saving: the refusal opens it.
+    await userEvent.click(rowOf(RANKS, 2))
     await save()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.invalid)
+    expect(rowOf(RANKS, 2)).toHaveAttribute('aria-expanded', 'true')
     expect(within(rank(copy.ladders.ranks, 2)).getByLabelText(copy.rank(2))).toHaveAccessibleDescription(
       settings.invalid.required,
     )
-    const sub = within(rank(copy.ladders.ranks, 1)).getAllByRole('listitem')[1]!
+    // Another refused rank says so on its row.
+    expect(rowOf(RANKS, 1)).toHaveTextContent(copy.refusedRank)
+    const sub = within(await open(RANKS, 1)).getAllByRole('listitem')[1]!
     expect(sub.closest('details')).toHaveAttribute('open')
     expect(within(sub).getByLabelText(copy.subTarget.classes_since_promotion)).toHaveAccessibleDescription(
       copy.range.target,
@@ -288,6 +337,7 @@ describe('Ajustes: Graduación', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.stale)
     const start = screen.getByRole('group', { name: copy.start })
+    expect(start).toHaveAttribute('open')
     await userEvent.selectOptions(await within(start).findByLabelText(copy.preset), 'Sin grados')
     await userEvent.click(within(start).getByRole('button', { name: copy.reapply }))
     expect(screen.getByRole('alert')).toHaveTextContent(copy.stale)

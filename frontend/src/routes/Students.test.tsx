@@ -7,7 +7,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
-import { formatPhone, formatRut, validateStudentsSearch } from './Students'
+import { validateStudentsSearch } from './Students'
 
 const copy = es.admin.students
 
@@ -348,23 +348,5 @@ describe('validateStudentsSearch', () => {
       plan: undefined,
       program: undefined,
     })
-  })
-})
-
-describe('formatting', () => {
-  it.each([
-    ['+56987654321', '+56 9 8765 4321'],
-    ['+5491123456789', '+5491123456789'],
-  ])('shows phone %s as %s', (phone, shown) => {
-    expect(formatPhone(phone)).toBe(shown)
-  })
-
-  it.each([
-    ['7654321-6', '7.654.321-6'],
-    ['76123456-0', '76.123.456-0'],
-    ['1-9', '1-9'],
-    ['12345678-K', '12.345.678-K'],
-  ])('shows RUT %s as %s', (rut, shown) => {
-    expect(formatRut(rut)).toBe(shown)
   })
 })

@@ -16,10 +16,11 @@ import { activeClassTypesQuery, useGymToday } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
+import { ListRow } from '../components/Card'
 import { FieldError, Input, Select } from '../components/Field'
 import { shortDay, weekdayDay, toDate } from '../format'
 import { t } from '../i18n/es'
-import { Field, LoadFailed } from './settingsForm'
+import { EditRow, Field, LoadFailed } from './settingsForm'
 
 const copy = t.admin.settings.schedule
 const form = copy.form
@@ -95,14 +96,14 @@ export function ScheduleSettings() {
         {current.length === 0 ? (
           <p className="settings__note">{copy.empty}</p>
         ) : (
-          <ul className="settings__list">
+          <ul className="settings__card settings__card--rows settings__menu">
             {current.map((slot) =>
               editing === slot.id ? (
                 <li key={slot.id}>
                   <SlotForm slot={slot} today={today} onCancel={() => setEditing(null)} onDone={done} />
                 </li>
               ) : (
-                <SlotRow key={slot.id} slot={slot} today={today} onEdit={() => open(slot.id)} onDone={done} />
+                <SlotRow key={slot.id} slot={slot} today={today} onEdit={() => open(slot.id)} />
               ),
             )}
           </ul>
@@ -113,17 +114,33 @@ export function ScheduleSettings() {
   )
 }
 
-function SlotRow({
-  slot,
-  today,
-  onEdit,
-  onDone,
-}: {
-  slot: ScheduleSlot
-  today: string
-  onEdit: () => void
-  onDone: (message: string) => void
-}) {
+function SlotRow({ slot, today, onEdit }: { slot: ScheduleSlot; today: string; onEdit: () => void }) {
+  const days = slot.weekdays.map((d) => copy.weekdays[d - 1]).join(' · ')
+  return (
+    <EditRow
+      inactive={!slot.class_type_active}
+      title={
+        <>
+          {copy.row(days, slotRange(slot.start_time, slot.duration_minutes), slot.class_type_name)}
+          {!slot.class_type_active && <span className="settings__tag">{copy.inactive}</span>}
+        </>
+      }
+      detail={[
+        copy.detail(slot.program_name, slot.coach_name, slot.topic),
+        copy.validity(
+          slot.valid_from > today ? shortDay(slot.valid_from) : null,
+          slot.valid_to ? shortDay(slot.valid_to) : null,
+        ),
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+      onOpen={onEdit}
+    />
+  )
+}
+
+/** Deleting a slot, in its edit view (#177), once asked. */
+function DeleteSlot({ slot, onDone }: { slot: ScheduleSlot; onDone: (message: string) => void }) {
   const queryClient = useQueryClient()
   const [asking, setAsking] = useState(false)
   const remove = useMutation({
@@ -133,25 +150,11 @@ function SlotRow({
       onDone(copy.deleted(slot.class_type_name))
     },
   })
-  const days = slot.weekdays.map((d) => copy.weekdays[d - 1]).join(' · ')
   return (
-    <li className={slot.class_type_active ? 'settings__card settings__plan' : 'settings__card settings__plan settings__plan--inactive'}>
-      <div className="settings__plan-text">
-        <span className="settings__plan-name">
-          {copy.row(days, slotRange(slot.start_time, slot.duration_minutes), slot.class_type_name)}
-          {!slot.class_type_active && <span className="settings__tag">{copy.inactive}</span>}
-        </span>
-        <span className="settings__detail">{copy.detail(slot.program_name, slot.coach_name, slot.topic)}</span>
-        <span className="settings__detail">
-          {copy.validity(
-            slot.valid_from > today ? shortDay(slot.valid_from) : null,
-            slot.valid_to ? shortDay(slot.valid_to) : null,
-          )}
-        </span>
-      </div>
+    <div className="settings__danger">
       {asking ? (
-        <div className="settings__subcard" role="group" aria-label={copy.delete}>
-          <p className="settings__note">{copy.deleteConfirm}</p>
+        <div className="settings__plan-text" role="group" aria-label={copy.delete}>
+          <p className="settings__detail">{copy.deleteConfirm}</p>
           {remove.isError && (
             <p className="settings__error" role="alert">
               {copy.deleteFailed}
@@ -161,26 +164,17 @@ function SlotRow({
             <Button disabled={remove.isPending} onClick={() => setAsking(false)}>
               {form.cancel}
             </Button>
-            <Button
-              variant="danger"
-              disabled={remove.isPending}
-              onClick={() => remove.mutate()}
-            >
+            <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
               {remove.isPending ? form.working : copy.deleteYes}
             </Button>
           </div>
         </div>
       ) : (
-        <div className="settings__actions">
-          <Button onClick={onEdit}>
-            {copy.edit}
-          </Button>
-          <Button variant="danger" onClick={() => setAsking(true)}>
-            {copy.delete}
-          </Button>
-        </div>
+        <Button variant="danger" onClick={() => setAsking(true)}>
+          {copy.delete}
+        </Button>
       )}
-    </li>
+    </div>
   )
 }
 
@@ -402,6 +396,7 @@ function SlotForm({
           {save.isPending ? form.working : form.submit}
         </Button>
       </div>
+      {slot && <DeleteSlot slot={slot} onDone={onDone} />}
     </form>
   )
 }
@@ -495,24 +490,24 @@ function ClosedDays({ today }: { today: string }) {
       ) : days.data.length === 0 ? (
         <p className="settings__note">{words.empty}</p>
       ) : (
-        <ul className="settings__list">
+        <ul className="settings__card settings__card--rows settings__menu">
           {days.data.map((closed) => (
-            <li key={closed.day} className="settings__card settings__plan">
-              <div className="settings__plan-text">
-                <span className="settings__plan-name">{weekdayDay(toDate(closed.day))}</span>
-                {closed.label && <span className="settings__detail">{closed.label}</span>}
-              </div>
-              <div className="settings__actions">
-                <Button
-                  disabled={reopen.isPending}
-                  onClick={() => {
-                    setNotice(null)
-                    reopen.mutate(closed.day)
-                  }}
-                >
-                  {words.reopen}
-                </Button>
-              </div>
+            <li key={closed.day}>
+              <ListRow
+                title={weekdayDay(toDate(closed.day))}
+                detail={closed.label}
+                trailing={
+                  <Button
+                    disabled={reopen.isPending}
+                    onClick={() => {
+                      setNotice(null)
+                      reopen.mutate(closed.day)
+                    }}
+                  >
+                    {words.reopen}
+                  </Button>
+                }
+              />
             </li>
           ))}
         </ul>

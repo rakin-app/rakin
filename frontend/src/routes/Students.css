@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .students {
   display: flex;
   flex-direction: column;
@@ -142,7 +144,7 @@
   cursor: default;
 }
 
-@media (min-width: 960px) {
+@media (--desktop) {
   .students {
     padding-bottom: var(--space-8);
   }
@@ -268,7 +270,7 @@
  * A desktop row is one line, a column each: name, phone, RUT, plan, status, then
  * "Familia". What says more about them (family, "Falta teléfono") goes under the name.
  */
-@media (min-width: 1024px) {
+@media (--wide) {
   .students__row {
     display: grid;
     grid-template-columns:

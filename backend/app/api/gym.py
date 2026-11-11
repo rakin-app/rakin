@@ -10,11 +10,13 @@ updated.
 
 import json
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text
 
 from app.domain.dates import gym_today
+from app.hosts import Hosts
 from app.roles import AdminSession
 from app.schemas.gym import SETTINGS_KEYS, GymSettings, GymSettingsUpdate
 from app.tenancy import Tenant, current_tenant
@@ -24,24 +26,28 @@ router = APIRouter(prefix="/api/gym", tags=["gym"])
 COLUMNS = "name, slug, timezone, settings"
 
 
-def _settings(row: Any) -> GymSettings:
-    return GymSettings.from_row(row.name, row.slug, row.timezone, row.settings)
+def _settings(request: Request, row: Any) -> GymSettings:
+    hosts: Hosts = request.app.state.hosts
+    # The address as the address bar shows it: `academia-sur.rakin.app`, no scheme.
+    address = urlsplit(hosts.base_url(row.slug)).netloc
+    return GymSettings.from_row(row.name, row.slug, address, row.timezone, row.settings)
 
 
 @router.get("/settings")
 async def get_settings(
-    tenant: Annotated[Tenant, Depends(current_tenant)], session: AdminSession
+    request: Request, tenant: Annotated[Tenant, Depends(current_tenant)], session: AdminSession
 ) -> GymSettings:
     row = (
         await session.execute(
             text(f"SELECT {COLUMNS} FROM gym WHERE id = :id"), {"id": tenant.gym_id}
         )
     ).one()
-    return _settings(row)
+    return _settings(request, row)
 
 
 @router.patch("/settings")
 async def update_settings(
+    request: Request,
     body: GymSettingsUpdate,
     tenant: Annotated[Tenant, Depends(current_tenant)],
     session: AdminSession,
@@ -67,4 +73,4 @@ async def update_settings(
             {**columns, "removed": removed, "patch": json.dumps(patch), "id": tenant.gym_id},
         )
     ).one()
-    return _settings(row)
+    return _settings(request, row)

@@ -18,6 +18,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
 import { ReminderLink } from '../components/ReminderLink'
 import { monthName, shortDay } from '../format'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import './ValidateProof.css'
 
 const copy = t.admin.review
@@ -33,6 +34,7 @@ const clp = t.common.clp
  * student or their guardian (#55).
  */
 export function ValidateProof() {
+  usePageTitle(copy.title)
   const queue = useQuery(proofQueueQuery())
   const [index, setIndex] = useState(0)
   const [done, setDone] = useState<Done | null>(null)

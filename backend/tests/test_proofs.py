@@ -406,6 +406,25 @@ def test_my_role_is_the_staff_role_or_none(
 
 
 @pg
+def test_my_role_names_who_is_signed_in_and_the_gym(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    owner = client.get("/api/me/role", headers=as_gym(sur))
+    assert owner.status_code == 200, owner.text
+    slug = owner.json()["gym_name"]
+    assert slug.startswith("academia-sur-")
+    assert owner.json()["name"] == f"owner of {slug}"
+    coach = client.get("/api/me/role", headers=as_gym(sur, add_staff(db, sur, "coach")))
+    assert coach.json() | {"person_id": None} == {
+        "role": "coach",
+        "person_id": None,
+        "name": "x",
+        "email": None,
+        "gym_name": slug,
+    }
+
+
+@pg
 def test_an_unauthenticated_request_is_refused(client: TestClient) -> None:
     body = {"content_type": "image/png", "size_bytes": 10}
     assert client.post("/api/me/proofs", json=body).status_code == 401

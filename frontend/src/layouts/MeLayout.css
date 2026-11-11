@@ -1,3 +1,5 @@
+@import '../styles/media.css';
+
 .me-shell {
   min-height: 100dvh;
 }
@@ -8,7 +10,7 @@
   margin: 0 auto;
 }
 
-@media (min-width: 1024px) {
+@media (--wide) {
   .me-main {
     max-width: none;
   }

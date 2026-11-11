@@ -1,0 +1,11 @@
+/*
+ * The breakpoints, in one place: every stylesheet that changes at one `@import`s this
+ * file and writes `@media (--desktop)`, and `components/Layout.tsx` reads the same
+ * lines for `useDesktop` and `useWide`. lightningcss (vite.config.ts) resolves them.
+ */
+
+/* The shell's bottom bar becomes the sidebar. */
+@custom-media --desktop (min-width: 960px);
+
+/* `Grid` goes to columns; forms and cards two to a row. */
+@custom-media --wide (min-width: 1024px);

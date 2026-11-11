@@ -276,7 +276,11 @@ class MemberPage(BaseModel):
 
 class MyRole(BaseModel):
     """The person acting's role in the current gym; `None` for a member. `person_id` is
-    who they are, for a screen that answers differently to the coach of a class."""
+    who they are, for a screen that answers differently to the coach of a class; `name`
+    and `email` as this gym has them (Ajustes → Cuenta), and the gym's own name."""
 
     role: Role | None
     person_id: uuid.UUID
+    name: str | None
+    email: str | None
+    gym_name: str

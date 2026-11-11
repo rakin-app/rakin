@@ -13,9 +13,9 @@ import type { Person } from '../api/member'
 import { duplicateOf, updatePerson, type PersonEdit } from '../api/people'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
+import { formatPhone, formatRut } from '../format'
 import { t } from '../i18n/es'
 import { FieldInput, valueOf } from './CustomFieldsPanel'
-import { formatPhone, formatRut } from './Students'
 
 const copy = t.admin.member
 const words = copy.fields

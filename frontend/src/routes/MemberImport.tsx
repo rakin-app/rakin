@@ -20,6 +20,7 @@ import { Button, buttonClass } from '../components/Button'
 import { Select } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
 import './MemberImport.css'
 
 const copy = t.admin.import
@@ -33,6 +34,7 @@ const NO_PLAN = 'none'
  * rows stay here and go back to the API with the mapping each time.
  */
 export function MemberImport() {
+  usePageTitle(copy.title)
   const [file, setFile] = useState<{ name: string; sheet: Sheet } | null>(null)
 
   return (

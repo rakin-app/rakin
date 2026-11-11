@@ -44,6 +44,11 @@ function fixedFonts(): Plugin {
 
 export default defineConfig({
   plugins: [react(), fixedFonts()],
+  // lightningcss, for `@custom-media`: the breakpoints live in `src/styles/media.css` alone.
+  css: {
+    transformer: 'lightningcss',
+    lightningcss: { drafts: { customMedia: true } },
+  },
   server: {
     proxy: {
       '/api': apiTarget,
@@ -54,5 +59,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // The breakpoints, which `components/Layout.tsx` reads as text; other CSS stays stubbed.
+    css: { include: [/styles\/media\.css/] },
   },
 })

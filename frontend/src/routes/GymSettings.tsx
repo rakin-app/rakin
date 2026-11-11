@@ -138,7 +138,7 @@ function GymForm({ settings }: { settings: Settings }) {
   }
 
   return (
-    <form className="settings__form" aria-label={copy.formLabel} onSubmit={submit} noValidate>
+    <form className="settings__form settings__form--panels" aria-label={copy.formLabel} onSubmit={submit} noValidate>
       <fieldset className="settings__card">
         <legend className="settings__legend">{copy.profile}</legend>
         <Field label={copy.name} error={errorOf('name', drafts.name)}>
@@ -153,7 +153,7 @@ function GymForm({ settings }: { settings: Settings }) {
           )}
         </Field>
         <Field label={copy.slug}>
-          {(props) => <Input {...props} type="text" value={settings.slug} readOnly />}
+          {(props) => <Input {...props} type="text" value={settings.web_address} readOnly />}
         </Field>
         <Field label={copy.timezone} error={errorOf('timezone', drafts.timezone)}>
           {(props) => (
