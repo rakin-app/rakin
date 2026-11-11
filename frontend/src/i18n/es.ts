@@ -750,6 +750,8 @@ export const es = {
         refund: (month: string) => `Devolución ${month}`,
         generated: (day: string) => `generado ${day}`,
         unpaid: 'sin pago',
+        // A charge partly paid: what has come in against it so far.
+        partlyPaid: (amount: string) => `abonado ${amount}`,
         validatedBy: (name: string) => `validó ${name}`,
         pending: 'por validar',
         rejected: 'rechazado',

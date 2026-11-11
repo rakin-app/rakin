@@ -1398,7 +1398,7 @@ const LEDGER_SHOWN = 4
 
 function Ledger({ ledger }: { ledger: MembershipLedger }) {
   const [all, setAll] = useState(false)
-  const open = new Set(ledger.open_periods.map((p) => p.id))
+  const open = new Map(ledger.open_periods.map((p) => [p.id, p.paid_clp]))
   const lines = timeline(ledger)
   const shown = all ? lines : lines.slice(0, LEDGER_SHOWN)
   return (
@@ -1414,6 +1414,7 @@ function Ledger({ ledger }: { ledger: MembershipLedger }) {
                 key={line.entry.id}
                 entry={line.entry}
                 unpaid={line.entry.billing_period_id !== null && open.has(line.entry.billing_period_id)}
+                paidClp={line.entry.billing_period_id === null ? 0 : (open.get(line.entry.billing_period_id) ?? 0)}
               />
             ) : (
               <FreezeEntry key={`${line.line.freeze_id}-${line.line.edge}`} line={line.line} />
@@ -1449,8 +1450,8 @@ function FreezeEntry({ line }: { line: FreezeLine }) {
   )
 }
 
-function Entry({ entry, unpaid }: { entry: TimelineEntry; unpaid: boolean }) {
-  const { title, detail, tone } = describeEntry(entry, unpaid)
+function Entry({ entry, unpaid, paidClp }: { entry: TimelineEntry; unpaid: boolean; paidClp: number }) {
+  const { title, detail, tone } = describeEntry(entry, unpaid, paidClp)
   return (
     <li className={`member__entry member__entry--${tone}`}>
       <span className="member__dot" aria-hidden="true" />
@@ -1473,7 +1474,7 @@ function entryAmount(entry: TimelineEntry): string {
 type Tone = 'paid' | 'owed' | 'muted' | 'rejected'
 
 /** What a ledger row says: `Pago septiembre`, `transferencia · validó Martín · 2 sep`. */
-function describeEntry(entry: TimelineEntry, unpaid: boolean): { title: string; detail: string; tone: Tone } {
+function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { title: string; detail: string; tone: Tone } {
   const words = copy.ledger
   const month = entry.period_start ? monthName(entry.period_start) : ''
   const method = entry.method ? words.method[entry.method] : null
@@ -1484,7 +1485,10 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean): { title: string; 
     case 'charge':
       return {
         title: words.charge(month),
-        detail: join(words.generated(shortDay(entry.created_at)), unpaid ? words.unpaid : null),
+        detail: join(
+          words.generated(shortDay(entry.created_at)),
+          unpaid ? (paidClp > 0 ? words.partlyPaid(clp(paidClp)) : words.unpaid) : null,
+        ),
         tone: unpaid ? 'owed' : 'muted',
       }
     case 'payment': {
