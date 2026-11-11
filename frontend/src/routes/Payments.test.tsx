@@ -301,6 +301,32 @@ describe('Pagos', () => {
     ])
   })
 
+  it('lists a cobro extra\'s payment by its title and category, and Cobrado says what they brought', async () => {
+    const rifa = entry({
+      id: 'rifa',
+      kind: 'payment',
+      amount_clp: 10000,
+      method: 'transfer',
+      membership_id: null,
+      plan_name: null,
+      period: null,
+      validated_by_name: 'Martín',
+      extra: { id: 'x-rifa', title: 'Rifa de fin de año', category: 'rifa' },
+    })
+    stubApi({
+      book: () => ({ ...BOOK, items: [rifa], total: 1, kpis: { ...BOOK.kpis, collected_extra_clp: 10000 } }),
+    })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map(cells)).toEqual([
+      ['8 nov 14:12', 'Diego Morales', 'Pago', 'Rifa de fin de año', 'Rifa · Transferencia', 'Validado · Martín', '$10.000'],
+    ])
+    const kpis = screen.getByRole('region', { name: copy.kpisLabel })
+    expect(kpis.textContent).toContain(copy.kpiExtra('$10.000'))
+    expect(screen.getByRole('link', { name: copy.extra })).toHaveAttribute('href', '/admin/pagos/cobros')
+  })
+
   it('lists the month\'s freezes among the entries, after their day\'s, with no amount', async () => {
     stubApi({ book: () => ({ ...BOOK, freezes: [SOFIA_FROZEN] }) })
     renderAt('/admin/pagos')

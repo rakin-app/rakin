@@ -51,7 +51,7 @@ const JUAN: ProofReview = {
   proof_content_type: 'application/pdf',
   anchor_day: null,
   plan_name: 'Kids',
-  period: { ...DIEGO.period, id: 'p-juan', amount_due_clp: 25000, outstanding_clp: 25000 },
+  period: { ...DIEGO.period!, id: 'p-juan', amount_due_clp: 25000, outstanding_clp: 25000 },
   last_payments: [],
 }
 
@@ -130,6 +130,41 @@ describe('Validar comprobante', () => {
     expect(screen.getByText('8 oct · 9 sept')).toBeInTheDocument()
     expect(screen.getByText(copy.attendanceCount(9))).toBeInTheDocument()
     expect(screen.getByRole('button', { name: copy.confirm('$45.000') })).toBeInTheDocument()
+  })
+
+  it('shows a cobro extra\'s proof against what its line owes, with no plan or history', async () => {
+    const rifa: ProofReview = {
+      ...DIEGO,
+      id: 'e-rifa',
+      membership_id: null,
+      amount_clp: 10000,
+      plan_name: null,
+      plan_kind: null,
+      anchor_day: null,
+      period: null,
+      extra_line: {
+        id: 'l-rifa',
+        extra_charge_id: 'x-rifa',
+        title: 'Rifa de fin de año',
+        category: 'rifa',
+        due_date: '2026-11-30',
+        amount_due_clp: 10000,
+        paid_clp: 0,
+        outstanding_clp: 10000,
+      },
+      prior_balance_clp: 0,
+      last_payments: [],
+    }
+    stubApi([rifa])
+    renderAt(PATH)
+
+    const figures = await screen.findByRole('region', { name: copy.claimLabel })
+    expect(within(figures).getAllByText('$10.000')).toHaveLength(2)
+    expect(within(figures).getByText(copy.extraDue('Rifa', '30 nov'))).toBeInTheDocument()
+    expect(screen.getByText(copy.match.matches)).toBeInTheDocument()
+    expect(screen.getByText('Rifa de fin de año')).toBeInTheDocument()
+    expect(screen.queryByText(copy.priorBalance)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.confirm('$10.000') })).toBeInTheDocument()
   })
 
   it('pages through the queue', async () => {

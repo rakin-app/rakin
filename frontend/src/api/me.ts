@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 import type { Rank } from './grading'
+import type { MyExtraLine } from './extraCharges'
 import type { OpenPeriod } from './proofs'
 
 export type StaffRole = 'owner' | 'admin' | 'coach'
@@ -66,6 +67,8 @@ export type MyPayment = {
   amount_clp: number
   status: PaymentStatus
   period_start: string | null
+  // The cobro extra it pays instead, when it pays one (#195).
+  charge_title?: string | null
   claimed_at: string | null
   validated_at: string | null
   // A rejection's note, written for the student.
@@ -87,6 +90,8 @@ export type MyPage = {
   attendance: { this_month: number; total: number }
   // Newest first.
   payments: MyPayment[]
+  // Cobros extra still owed, theirs and their dependents', earliest due first (#195).
+  extra_charges?: MyExtraLine[]
 }
 
 export function myPageQuery() {

@@ -14,6 +14,9 @@ import { AdminLayout } from './layouts/AdminLayout'
 import { t } from './i18n/es'
 import { MeLayout } from './layouts/MeLayout'
 import { Classes } from './routes/Classes'
+import { ExtraChargeDetail } from './routes/ExtraChargeDetail'
+import { ExtraChargeNew } from './routes/ExtraChargeNew'
+import { ExtraCharges } from './routes/ExtraCharges'
 import { ClassTimer } from './routes/ClassTimer'
 import { Join } from './routes/Join'
 import { MeHome } from './routes/MeHome'
@@ -203,6 +206,26 @@ const adminProofReviewRoute = createRoute({
   component: ValidateProof,
 })
 
+// Pagos › "Cobros extra" (#195): one-off charges and the groups they target, a new one
+// through its wizard, and one cobro's people. Static paths win over `$chargeId`.
+const adminExtraChargesRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'pagos/cobros',
+  component: ExtraCharges,
+})
+
+const adminExtraChargeNewRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'pagos/cobros/nuevo',
+  component: ExtraChargeNew,
+})
+
+const adminExtraChargeRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'pagos/cobros/$chargeId',
+  component: ExtraChargeDetail,
+})
+
 // "Ajustes": the gym's configuration, owner and admin only, one route per section.
 const adminSettingsRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -253,6 +276,9 @@ const routeTree = rootRoute.addChildren([
     adminSessionTimerRoute,
     adminPaymentsRoute,
     adminProofReviewRoute,
+    adminExtraChargesRoute,
+    adminExtraChargeNewRoute,
+    adminExtraChargeRoute,
     adminSettingsRoute.addChildren([adminSettingsIndexRoute, ...adminSettingsSectionRoutes]),
   ]),
   meRoute.addChildren([meHomeRoute]),

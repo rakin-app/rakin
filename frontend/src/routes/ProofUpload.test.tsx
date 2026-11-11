@@ -2,6 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { MyExtraLine } from '../api/extraCharges'
 import type { MyPage } from '../api/me'
 import type { OpenPeriod } from '../api/proofs'
 import { createQueryClient } from '../api/queryClient'
@@ -45,7 +46,14 @@ const NO_TIME = { timezone: 'America/Santiago', month_start: '2026-11-01', this_
 
 function stubApi(
   periods: OpenPeriod[],
-  answers: { put?: number; claim?: Answer; pending?: Answer; role?: string | null; page?: MyPage } = {},
+  answers: {
+    put?: number
+    claim?: Answer
+    pending?: Answer
+    role?: string | null
+    page?: MyPage
+    lines?: MyExtraLine[]
+  } = {},
 ) {
   const calls: Call[] = []
   vi.stubGlobal(
@@ -67,6 +75,7 @@ function stubApi(
   function route(url: URL, method: string): Answer {
     if (url.href === UPLOAD_URL && method === 'PUT') return { status: answers.put ?? 200 }
     if (url.pathname === '/api/me/periods') return { body: periods }
+    if (url.pathname === '/api/me/extra-lines') return { body: answers.lines ?? [] }
     if (url.pathname === '/api/me/page') return { body: answers.page ?? pageFor(periods) }
     if (url.pathname === '/api/me/time') return { body: NO_TIME }
     if (url.pathname === '/api/me/proofs') {
@@ -139,6 +148,41 @@ describe('Subir comprobante', () => {
     expect(writes[1]!.body).toBeInstanceOf(File)
     expect(writes[1]!.headers.get('Content-Type')).toBe('image/jpeg')
     expect(writes[2]!.body).toEqual({ billing_period_id: 'p-ana', amount_clp: 45000, proof_key: 'proofs/g/ana/k' })
+  })
+
+  it('pays a cobro extra from its own card, with the same upload', async () => {
+    const line: MyExtraLine = {
+      id: 'l-rifa',
+      extra_charge_id: 'x-rifa',
+      title: 'Rifa de fin de año',
+      category: 'rifa',
+      message: 'Diez números cada uno.',
+      due_date: '2026-11-30',
+      person_id: 'ana',
+      person_name: 'Ana Rojas',
+      amount_due_clp: 10000,
+      paid_clp: 0,
+      outstanding_clp: 10000,
+      pending_clp: 0,
+      status: 'open',
+    }
+    const calls = stubApi([ANA], { lines: [line], page: { ...pageFor([ANA]), extra_charges: [line] } })
+    renderAt('/me')
+
+    const card = await screen.findByRole('region', { name: es.me.extra.title })
+    expect(within(card).getByText('Diez números cada uno.')).toBeInTheDocument()
+    expect(within(card).getByText('$10.000')).toBeInTheDocument()
+    await userEvent.click(within(card).getByRole('button', { name: es.me.extra.upload(line.title) }))
+
+    // The upload opens on the cobro, not on the plan's period.
+    expect(await within(card).findByRole('radio', { name: /Rifa de fin de año/ })).toBeChecked()
+    expect(within(card).getByLabelText(copy.amountLabel)).toHaveValue('$10.000')
+    await userEvent.upload(within(card).getByLabelText(copy.choose), photo())
+    await userEvent.click(within(card).getByRole('button', { name: copy.submit }))
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(copy.sent)
+    const claim = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/me/payments'))
+    expect(claim!.body).toEqual({ extra_line_id: 'l-rifa', amount_clp: 10000, proof_key: 'proofs/g/ana/k' })
   })
 
   it('keeps the caret where it was put while the amount is edited', async () => {

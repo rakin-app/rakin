@@ -456,7 +456,11 @@ function ProofRow({ proof }: { proof: ProofReview }) {
   const name =
     sender && sender !== proof.person_name ? copy.proofs.sentFor(sender, proof.person_name) : proof.person_name
   const detail = [
-    copy.proofs.detail(clp(proof.amount_clp), monthName(proof.period.period_start)),
+    copy.proofs.detail(
+      clp(proof.amount_clp),
+      // A cobro extra's proof names the cobro instead of a month (#195).
+      proof.period ? monthName(proof.period.period_start) : (proof.extra_line?.title ?? ''),
+    ),
     proof.claimed_at && ago(proof.claimed_at, new Date()),
   ]
     .filter(Boolean)

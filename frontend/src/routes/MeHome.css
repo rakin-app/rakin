@@ -229,3 +229,49 @@
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
 }
+
+/* "Cobros extra" (#195): each still owed, with its own "Subir comprobante". */
+.extra-mine {
+  margin-top: var(--space-6, 24px);
+}
+
+.extra-mine__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3, 12px);
+}
+
+.extra-mine__row {
+  display: grid;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+}
+
+.extra-mine__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.extra-mine__title {
+  font-weight: 600;
+}
+
+.extra-mine__amount {
+  font-size: var(--text-xl, 1.5rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.extra-mine__detail,
+.extra-mine__message {
+  margin: 0;
+  color: var(--color-text-muted);
+  white-space: pre-line;
+}

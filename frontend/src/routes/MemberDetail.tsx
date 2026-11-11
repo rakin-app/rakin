@@ -56,6 +56,7 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
+import { PersonExtraLines } from './PersonExtraLines'
 import { PersonData } from './PersonData'
 import './MemberDetail.css'
 
@@ -143,6 +144,7 @@ export function MemberDetail() {
           ) : (
             <p className="member__note">{copy.noPlan}</p>
           )}
+          {money && <PersonExtraLines personId={personId} />}
         </div>
         <div className="member__column">
           <Attendance personId={personId} />
