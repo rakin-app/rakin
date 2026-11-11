@@ -539,6 +539,8 @@ def test_a_gyms_host_and_its_sign_in_pages_wear_its_theme(site: Site) -> None:
         page = site.open(client, site.ask_link(client, email))
         assert page.status_code == 403
         assert '<html lang="es" data-theme="volcan">' in page.text
+        # Rakin's logo over the title, in the gym's theme's colours.
+        assert 'aria-label="Rakin"' in page.text
     # The base host is no gym's: its pages wear the stylesheet's default.
     with site.client(None) as client:
         page = client.post("/api/auth/callback", data={"token": "x" * 43})

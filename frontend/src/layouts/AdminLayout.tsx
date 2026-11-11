@@ -6,6 +6,7 @@ import { managesGym, myRoleQuery, myselfQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
 import { useTimerSync } from '../api/sessionBlocks'
 import { GymMark } from '../components/GymMark'
+import { RakinLogo } from '../components/RakinLogo'
 import { ClassesIcon, MyPageIcon, PaymentsIcon, SettingsIcon, SignOutIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { useRise } from '../motion'
@@ -63,8 +64,8 @@ export function AdminLayout() {
     <div className="admin-shell">
       {/* A phone's dark bar over the page: the mark, and the gym's own with its name. */}
       <header className="admin-top">
-        <span className="admin-top__brand" aria-hidden="true">
-          {t.app.name}
+        <span className="admin-top__brand">
+          <RakinLogo surface="dark" />
         </span>
         {gym && (
           <span className="admin-top__gym">
@@ -75,8 +76,8 @@ export function AdminLayout() {
       </header>
       <nav className="admin-nav" aria-label={t.nav.label}>
         <div className="admin-nav__head">
-          <span className="admin-nav__brand" aria-hidden="true">
-            {t.app.name}
+          <span className="admin-nav__brand">
+            <RakinLogo surface="dark" />
           </span>
           {gym && (
             <span className="admin-nav__gym">

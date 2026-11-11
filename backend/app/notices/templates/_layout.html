@@ -20,7 +20,12 @@
 </td></tr>
 </table>
 <p style="max-width:560px;margin:16px auto 0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.5;color:#71717a;">
-{% if gym is defined %}{{ gym }}, a través de Rakin{% else %}Rakin{% endif %}
+{% if logo_url %}
+{% set rakin %}<img src="{{ logo_url }}" alt="Rakin" width="69" height="20" style="display:inline-block;height:20px;width:auto;vertical-align:middle;border:0;">{% endset %}
+{% else %}
+{% set rakin = "Rakin" %}
+{% endif %}
+{% if gym is defined %}{{ gym }}, a través de {{ rakin }}{% else %}{{ rakin }}{% endif %}
 {% if unsubscribe_url %}
 <br><a href="{{ unsubscribe_url }}" style="color:#71717a;">Dejar de recibir estos avisos</a>
 {% endif %}

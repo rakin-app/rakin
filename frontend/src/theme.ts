@@ -34,6 +34,10 @@ export function storedTheme(): Theme {
 /** Wears `theme` now, and remembers it for the next visit. */
 export function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme
+  // The browser's own bar (a phone's status bar, Safari's tab strip) takes the colour of
+  // the shell's dark top bar, read from the theme's tokens (#224).
+  const sidebar = getComputedStyle(document.documentElement).getPropertyValue('--color-sidebar').trim()
+  if (sidebar) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', sidebar)
   try {
     localStorage.setItem(STORAGE_KEY, theme)
   } catch {
