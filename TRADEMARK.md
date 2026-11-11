@@ -2,6 +2,8 @@
 
 The code in this repository is licensed under AGPL-3.0. The name **Rakin**, the **rakin.app** domain and any Rakin logos are not covered by that license.
 
+The logo's files, and how to use them (clear space, minimum size, don'ts), are in [docs/brand](docs/brand/README.md).
+
 **You may:**
 
 - Self-host Rakin for your own gym or gyms and call it Rakin internally
