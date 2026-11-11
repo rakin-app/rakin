@@ -50,9 +50,11 @@ npm run build      # outputs dist/
     one shared mapping in `StatusPill.tsx`; blue is "por validar" only, orange is
     overdue only, red is a refused payment.
   - `Card`, `SectionHeader`, `ListRow` / `listRowClass`, `EmptyState`.
-  - `PageContainer`: a screen's body under its `PageHeader`, up to `--content-wide`
-    (1280px) and centred, with the breakpoint's side padding. `Grid`: one column
-    below 1024px, then `columns` 2 (default) or 3.
+  - `PageContainer`: a screen's header and body, up to `--content-wide` (1280px) and
+    centred, with the breakpoint's side padding; a `PageHeader` inside it lines up
+    with the body. `Grid`: one column
+    below 1024px, then `columns` 2 (default) or 3. `useWide()` is true from that
+    same 1024px, for what a screen shows (and fetches) only on a desktop.
 - **API:** call the backend through `apiFetch` in `src/api/client.ts` with a
   path starting with `/`, and wrap it in a TanStack Query `queryOptions`.
 - **Routes:** add routes in `src/router.tsx` under the `admin` or `me` tree.

@@ -100,7 +100,9 @@ export const es = {
         title: 'A quién llamar',
         error: 'No pudimos cargar a quién llamar.',
         empty: 'Todos vinieron en las últimas dos semanas.',
-        buckets: { 14: 'Entre 14 y 29 días', 30: '30 días o más' },
+        count: (n: number) => (n === 1 ? '1 alumno' : `${n} alumnos`),
+        // The five most recently away are on Hoy; the rest are in Alumnos.
+        showAll: (n: number) => `Ver los ${n}`,
         absent: (days: number) => `${days} días sin venir`,
         never: (days: number) => `No ha venido desde que entró, hace ${days} días`,
         payment: {
@@ -123,10 +125,17 @@ export const es = {
         take: 'Pasar lista',
         takeLabel: (name: string) => `Pasar lista de ${name}`,
       },
-      // A coach sees no money, so Hoy would be empty without this.
-      coach: {
-        note: 'Las clases de hoy y su asistencia están en Clases.',
-        link: 'Ir a Clases',
+      // A coach's Hoy: today's classes, each a tap from its attendance.
+      classes: {
+        title: 'Clases de hoy',
+        count: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
+        error: 'No pudimos cargar las clases de hoy.',
+        empty: 'No hay clases hoy.',
+        create: 'Crear clase',
+        present: (n: number) => (n === 0 ? 'sin asistencia' : n === 1 ? '1 presente' : `${n} presentes`),
+        cancelled: 'cancelada',
+        take: 'Tomar asistencia',
+        takeLabel: (name: string) => `Tomar asistencia de ${name}`,
       },
       // A new gym's first day: what to set up, each step a link to where it is done.
       setup: {
@@ -242,6 +251,8 @@ export const es = {
       missingPhone: 'Falta teléfono',
       // No RUT and no email: found again only by name.
       missingRut: 'Falta RUT',
+      // Away 14 days or more: Hoy's "A quién llamar", in full.
+      away: 'Sin venir 14 d',
       noWhatsapp: 'Sin WhatsApp',
     },
     newMember: {
@@ -725,13 +736,13 @@ export const es = {
       loading: 'Cargando…',
       retry: 'Reintentar',
       start: {
-        title: 'Iniciar clase',
+        title: 'Crear clase',
         classType: 'Tipo de clase',
-        submit: 'Iniciar clase',
-        working: 'Iniciando…',
+        submit: 'Crear clase',
+        working: 'Creando…',
         noClassTypes: 'Todavía no hay tipos de clase. El dueño o un admin del gimnasio los configura.',
         error: 'No pudimos cargar los tipos de clase.',
-        failed: 'No pudimos iniciar la clase. Inténtalo de nuevo.',
+        failed: 'No pudimos crear la clase. Inténtalo de nuevo.',
       },
       today: {
         title: 'Hoy',
@@ -743,6 +754,25 @@ export const es = {
         noTopic: 'Sin tema',
         unmarked: 'Sin asistencia',
         cancelled: 'Cancelada',
+        present: (n: number) => (n === 1 ? '1 presente' : `${n} presentes`),
+      },
+      // From 1024px: the week the day is in, and the class picked in it.
+      week: {
+        title: 'Semana',
+        range: (from: string, to: string) => `${from} – ${to}`,
+        error: 'No pudimos cargar este día.',
+        empty: 'Sin clases.',
+        picked: 'Clase elegida',
+        pick: 'Elige una clase de la semana para ver su asistencia.',
+        cancelled: 'Esta clase está cancelada.',
+        upcoming: 'Todavía no empieza.',
+        rosterError: 'No pudimos cargar la asistencia.',
+        // Of those who came to this class type in the last 30 days.
+        present: (present: number, regulars: number) =>
+          `${present === 1 ? '1 presente' : `${present} presentes`} · ${regulars === 1 ? '1 habitual' : `${regulars} habituales`}`,
+        presentLabel: 'Presentes',
+        take: 'Tomar asistencia',
+        open: 'Ver clase',
       },
       days: {
         label: 'Cambiar de día',
@@ -1286,7 +1316,14 @@ export const es = {
       },
       attendance: {
         title: 'Asistencia',
+        // Of the regulars: who came to this class type in the last 30 days.
         count: (present: number, total: number) => `${present} de ${total}`,
+        search: 'Buscar alumno',
+        searchPlaceholder: 'Nombre o RUT',
+        noMatches: 'Nadie con ese nombre o RUT.',
+        others: (n: number, present: number) =>
+          present > 0 ? `Otros alumnos (${n}) · ${present} presentes` : `Otros alumnos (${n})`,
+        othersLabel: 'Otros alumnos',
         hint: 'Toca un nombre para marcar presente. El punto naranja indica pago vencido: puede entrenar, pero conviene avisar.',
         loading: 'Cargando alumnos…',
         error: 'No pudimos cargar los alumnos.',
@@ -1324,7 +1361,7 @@ export const es = {
         },
       },
       timer: {
-        open: 'Iniciar clase',
+        open: 'Abrir timer',
         resume: 'Volver al timer',
       },
       cancelled: {

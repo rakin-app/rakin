@@ -27,6 +27,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.inactive import AWAY_IDS
 from app.domain.membership import MembershipStatus
 from app.roles import StaffSession
 from app.schemas.people import (
@@ -176,6 +177,8 @@ async def list_people(
     # Only the members with "Falta teléfono", or "Falta RUT".
     missing_phone: bool = False,
     missing_rut: bool = False,
+    # Only those away 14 days or more: "A quién llamar" on Hoy, in full.
+    away: bool = False,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MemberPage:
@@ -192,6 +195,8 @@ async def list_people(
         where.append("missing_phone")
     if missing_rut:
         where.append("missing_rut")
+    if away:
+        where.append(f"id IN ({AWAY_IDS})")
     if q.strip():
         clause, params = _search(q.strip())
         where.append(clause)

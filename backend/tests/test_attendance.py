@@ -196,6 +196,8 @@ def test_the_roster_is_who_the_program_admits_by_name(
         12,
     )
     assert (paula["present"], paula["days_absent"], paula["rank"]) == (False, None, None)
+    assert paula["regular"] is False
+    assert paula["rut"] is not None
 
 
 def _slug(client: TestClient, gym: uuid.UUID) -> str:
@@ -499,6 +501,38 @@ def test_days_absent_count_from_the_last_class_before_this_one(
     changed(client, gym, now, mark=[ignacio])
     assert row(roster(client, gym, now), "Ignacio Vera")["days_absent"] == 16
     assert row(roster(client, gym, long_ago), "Ignacio Vera")["days_absent"] is None
+
+
+@pg
+def test_a_regular_came_to_this_class_type_in_the_30_days_before(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    adults = program(client, gym, "Adultos")
+    fundamentals = class_type(client, gym, adults)
+    sparring = class_type(client, gym, adults, "Sparring")
+    pack = plan(client, gym, CREDITS)
+    ignacio = join(client, gym, add_person(client, gym, "Ignacio Vera"), pack)
+    paula = join(client, gym, add_person(client, gym, "Paula Contreras"), pack)
+    tomas = join(client, gym, add_person(client, gym, "Tomás Pérez"), pack)
+    today = seeded_today()
+    changed(
+        client,
+        gym,
+        session_of(client, gym, fundamentals, today - timedelta(days=29)),
+        mark=[ignacio],
+    )
+    changed(
+        client, gym, session_of(client, gym, fundamentals, today - timedelta(days=31)), mark=[paula]
+    )
+    changed(client, gym, session_of(client, gym, sparring, today - timedelta(days=2)), mark=[tomas])
+    now = session_of(client, gym, fundamentals, today)
+    changed(client, gym, now, mark=[tomas])
+
+    listed = roster(client, gym, now)
+    assert row(listed, "Ignacio Vera")["regular"] is True
+    # Too long ago, and another class type; being marked at this one does not count.
+    assert row(listed, "Paula Contreras")["regular"] is False
+    assert row(listed, "Tomás Pérez")["regular"] is False
 
 
 @pg

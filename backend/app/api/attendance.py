@@ -65,8 +65,8 @@ SESSION_NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "session not found"
 CANCELLED = HTTPException(status.HTTP_409_CONFLICT, "the class is cancelled")
 
 SELECT_SESSION = """
-    SELECT s.id, s.starts_at, s.cancelled_at, c.program_id, c.credit_cost, g.timezone,
-           g.settings
+    SELECT s.id, s.starts_at, s.cancelled_at, s.class_type_id, c.program_id, c.credit_cost,
+           g.timezone, g.settings
     FROM session s
     JOIN class_type c ON c.id = s.class_type_id
     JOIN gym g ON g.id = s.gym_id
@@ -77,10 +77,14 @@ SELECT_SESSION = """
 # who turns up is marked, spends nothing (`app.domain.attendance`) and stays frozen.
 ON_ROSTER = ("active", "trial", "lapsed", "frozen")
 
+# Days before a class in which coming to one of its type makes someone a regular of it.
+REGULAR_DAYS = 30
+
 # One row per person: the membership marked present, else their one the program admits,
 # by `ON_ROSTER`'s order, latest first. `days_absent` counts from their last class
-# before this one, on the gym's calendar, once per person kept. RLS keeps every table
-# to the current gym.
+# before this one, on the gym's calendar, once per person kept. `regular` is whether
+# they came to a class of this one's type in the `REGULAR_DAYS` before it, which the
+# screen lists first (#178). RLS keeps every table to the current gym.
 ROSTER = f"""
 SELECT roster.*,
        (:starts_at AT TIME ZONE :zone)::date - (
@@ -89,10 +93,18 @@ SELECT roster.*,
            JOIN session ps ON ps.id = pa.session_id
            JOIN membership pm ON pm.id = pa.membership_id
            WHERE pm.person_id = roster.person_id AND ps.starts_at < :starts_at
-       ) AS days_absent
+       ) AS days_absent,
+       EXISTS (
+           SELECT FROM attendance ra
+           JOIN session rs ON rs.id = ra.session_id
+           JOIN membership rm ON rm.id = ra.membership_id
+           WHERE rm.person_id = roster.person_id AND rs.class_type_id = :class_type
+             AND rs.starts_at < :starts_at
+             AND rs.starts_at >= :starts_at - make_interval(days => {REGULAR_DAYS})
+       ) AS regular
 FROM (
     SELECT DISTINCT ON (m.person_id)
-           m.id AS membership_id, m.person_id, gp.name, pl.name AS plan_name,
+           m.id AS membership_id, m.person_id, gp.name, gp.rut, pl.name AS plan_name,
            pl.kind AS plan_kind, m.status, m.credits_remaining,
            a.membership_id IS NOT NULL AS present,
            m.id IN (SELECT overdue_memberships()) AS overdue,
@@ -170,6 +182,7 @@ class _Class:
     id: uuid.UUID
     starts_at: datetime
     cancelled_at: datetime | None
+    class_type_id: uuid.UUID
     program_id: uuid.UUID
     credit_cost: int
     timezone: str
@@ -209,6 +222,7 @@ async def _roster(session: AsyncSession, held: _Class) -> Roster:
         {
             "session": held.id,
             "program": held.program_id,
+            "class_type": held.class_type_id,
             "starts_at": held.starts_at,
             "zone": held.timezone,
         },

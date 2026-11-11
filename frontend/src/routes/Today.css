@@ -4,11 +4,41 @@
   min-height: 100%;
 }
 
+.today__page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-bottom: var(--space-6);
+}
+
+/* The page's gap stands for the header's own bottom padding. */
+.today__page > .page-header {
+  padding-bottom: 0;
+}
+
+/* Two by two on a phone, then the four in a row across the top. */
 .today__counters {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2-5);
-  padding: var(--space-2) var(--space-5) var(--space-4);
+}
+
+@media (min-width: 560px) {
+  .today__counters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* The page places the join requests, as one of its sections. */
+.today .join-requests {
+  padding: 0;
+}
+
+/* A phone stacks the sections at the page's gap, the grid's from 1024px. */
+@media (max-width: 1023px) {
+  .today__grid {
+    gap: var(--space-5);
+  }
 }
 
 .today__counter {
@@ -49,13 +79,6 @@
 .today__note {
   margin: 0;
   font-size: var(--text-sm);
-}
-
-.today__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  padding: 0 var(--space-5) var(--space-6);
 }
 
 .today__section {
@@ -141,14 +164,6 @@
   color: var(--color-warning);
 }
 
-/* What the whole row does, at its end: link-coloured text, since the row is the link. */
-.today__action {
-  flex: none;
-  color: var(--color-accent);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
-}
-
 .today__form {
   display: flex;
   flex-direction: column;
@@ -189,36 +204,8 @@
   color: var(--color-success-strong);
 }
 
-@media (min-width: 960px) {
-  .today__counters,
-  .today__body {
-    padding-inline: var(--space-8);
-  }
-
-  .today__counters {
-    max-width: var(--content-narrow);
-  }
-}
-
 .today__counter-value--muted {
   color: var(--color-text);
-}
-
-.today__group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.today__group-title {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
-}
-
-/* A line under the heading in place of the money sections: a coach's pointer to Clases, or why there is nothing. */
-.today__lead {
-  padding: 0 var(--space-5);
 }
 
 .today__link {
@@ -232,7 +219,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin: var(--space-2) var(--space-5) var(--space-4);
   padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -303,15 +289,6 @@
 }
 
 @media (min-width: 960px) {
-  .today__lead {
-    padding-inline: var(--space-8);
-  }
-
-  .today__setup {
-    max-width: 960px;
-    margin-inline: var(--space-8);
-  }
-
   /* A step's links beside its text on a desktop, not under it. */
   .today__step {
     align-items: center;
@@ -344,4 +321,9 @@
     grid-row: 1;
     grid-column: 3;
   }
+}
+
+/* "No hay clases hoy.": in line with the section's heading, not inset as in a card. */
+.today__section .empty-state {
+  padding: 0;
 }

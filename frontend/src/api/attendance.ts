@@ -10,6 +10,8 @@ export type RosterMember = {
   membership_id: string
   person_id: string
   name: string
+  // For the roster's search, by name or RUT.
+  rut: string | null
   plan_name: string
   plan_kind: PlanKind
   status: MembershipStatus
@@ -19,6 +21,8 @@ export type RosterMember = {
   overdue: boolean
   // Days since their last class before this one; null for a first.
   days_absent: number | null
+  // Came to a class of this type in the 30 days before this one: listed first.
+  regular: boolean
   rank: Rank | null
   present: boolean
 }

@@ -49,6 +49,8 @@ class RosterMember(BaseModel):
     membership_id: uuid.UUID
     person_id: uuid.UUID
     name: str
+    # For the roster's search, by name or RUT.
+    rut: str | None
     plan_name: str
     plan_kind: PlanKind
     status: MembershipStatus
@@ -58,6 +60,8 @@ class RosterMember(BaseModel):
     overdue: bool
     # Days since their last class before this one; `None` if this is their first.
     days_absent: int | None
+    # Came to a class of this type in the 30 days before this one: listed first.
+    regular: bool
     rank: Rank | None
     present: bool
 

@@ -155,7 +155,7 @@ function Shell({
   )
 }
 
-/** "Iniciar clase": the class timer, for who may run it; "Volver al timer" while it runs. */
+/** "Abrir timer": the class timer, a secondary button for who may run it; "Volver al timer" while it runs. */
 function TimerLink({ session }: { session: ClassSession }) {
   const me = useQuery(myselfQuery())
   if (!runsSession(me.data, session.coach_id)) return null
@@ -230,7 +230,8 @@ function TopicForm({ session }: { session: ClassSession }) {
           {copy.form.saved}
         </p>
       )}
-      <Button type="submit" variant="primary" disabled={save.isPending}>
+      {/* Secondary: "Guardar asistencia" is the screen's one primary. */}
+      <Button type="submit" disabled={save.isPending}>
         {save.isPending ? copy.form.working : copy.form.submit}
       </Button>
     </form>
@@ -282,6 +283,9 @@ function Attendance({ sessionId }: { sessionId: string }) {
   const [queued, setQueued] = useState(() => queuedChange(sessionId) !== null)
   const [saved, setSaved] = useState(false)
   const [dropped, setDropped] = useState(false)
+  const [search, setSearch] = useState('')
+  const [othersOpen, setOthersOpen] = useState(false)
+  const searchId = useId()
   // The taps as of the last render, for a save that fails after more taps were made.
   const latestTaps = useRef(taps)
   useEffect(() => {
@@ -367,6 +371,17 @@ function Attendance({ sessionId }: { sessionId: string }) {
   const members = roster.data.members
   const here = (member: RosterMember) => taps.get(member.membership_id) ?? member.present
   const present = members.filter(here).length
+  // Regulars first, and whoever is already saved present; the rest under "Otros alumnos".
+  // A class type nobody has come to lately has no regulars: everyone is listed as one.
+  const first = members.filter((m) => m.regular || m.present)
+  const grouped = first.length > 0
+  const top = grouped ? first : members
+  const rest = grouped ? members.filter((m) => !(m.regular || m.present)) : []
+  const matches = matcher(search)
+  const searching = search.trim() !== ''
+  const shownTop = top.filter(matches)
+  const shownRest = rest.filter(matches)
+  const restOpen = othersOpen || searching
   const change = changeOf(roster.data, taps)
   const changed = change.mark.length + change.unmark.length > 0
   // "Guardado ✓" until the next tap.
@@ -398,17 +413,49 @@ function Attendance({ sessionId }: { sessionId: string }) {
           {words.title}
         </h2>
         <span className="attendance__count" aria-live="polite">
-          {words.count(present, members.length)}
+          {words.count(top.filter(here).length, top.length)}
         </span>
       </div>
       <p className="classes__note">{members.length === 0 ? words.empty : words.hint}</p>
-      <ul className="classes__list" aria-label={words.title}>
-        {members.map((member) => (
-          <li key={member.membership_id}>
-            <RosterRow member={member} here={here(member)} onToggle={() => toggle(member)} />
-          </li>
-        ))}
-      </ul>
+      {members.length > 0 && (
+        <div role="search" className="attendance__search">
+          <label htmlFor={searchId} className="visually-hidden">
+            {words.search}
+          </label>
+          <Input
+            id={searchId}
+            type="search"
+            autoComplete="off"
+            placeholder={words.searchPlaceholder}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      )}
+      {searching && shownTop.length + shownRest.length === 0 && <p className="classes__note">{words.noMatches}</p>}
+      {shownTop.length > 0 && (
+        <ul className="classes__list" aria-label={words.title}>
+          {shownTop.map((member) => (
+            <li key={member.membership_id}>
+              <RosterRow member={member} here={here(member)} onToggle={() => toggle(member)} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {rest.length > 0 && !searching && (
+        <Button fullWidth aria-expanded={othersOpen} onClick={() => setOthersOpen(!othersOpen)}>
+          {words.others(rest.length, rest.filter(here).length)}
+        </Button>
+      )}
+      {restOpen && shownRest.length > 0 && (
+        <ul className="classes__list" aria-label={words.othersLabel}>
+          {shownRest.map((member) => (
+            <li key={member.membership_id}>
+              <RosterRow member={member} here={here(member)} onToggle={() => toggle(member)} />
+            </li>
+          ))}
+        </ul>
+      )}
       <TrialGuest sessionId={sessionId} onMember={markMember} />
       {/* Sticky at the foot of the screen, so what a save did is in view however far down the list is. */}
       <div className="attendance__bar">
@@ -450,6 +497,22 @@ function Attendance({ sessionId }: { sessionId: string }) {
       </div>
     </section>
   )
+}
+
+/** Lower case, accents gone: "martin" finds "Martín". */
+function fold(text: string): string {
+  return text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+}
+
+/** Whether a roster row is what `query` looks for: by name, or by RUT when it holds a digit,
+ * typed in any format (`12.345.678-5`, `123456785`). */
+export function matcher(query: string): (member: RosterMember) => boolean {
+  const name = fold(query.trim())
+  const rut = /\d/.test(query) ? query.toUpperCase().replace(/[^0-9K]/g, '') : ''
+  if (!name) return () => true
+  return (member) =>
+    fold(member.name).includes(name) ||
+    (rut !== '' && member.rut !== null && member.rut.toUpperCase().replace(/[^0-9K]/g, '').includes(rut))
 }
 
 function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boolean; onToggle: () => void }) {
