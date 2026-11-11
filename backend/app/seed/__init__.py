@@ -7,16 +7,19 @@
 date, and `load` writes them. Every row has a fixed id, so loading again inserts
 nothing new: the ledger is append-only and the seed never deletes or rewrites. The
 first load stores its date in `gym.settings["seed"]["as_of"]`, and later loads build
-for that date again, so the rows stay consistent with each other.
+for that date again, so the rows stay consistent with each other. `store_proofs` puts a
+placeholder image at every seeded transfer's proof key, so Validar comprobante opens one.
 """
 
 import json
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 import asyncpg
 
 from app.domain.dates import gym_today
+from app.integrations.blobstore import BlobStore
 from app.seed.build import GYM_ID, Seed, build
 from app.seed.data import TIMEZONE
 
@@ -31,6 +34,9 @@ CONFLICT_KEYS = {
 # `ON CONFLICT` holds the new row to the table's read policy, and a person joins the
 # gym only once their `gym_person` row exists (0004), so these rows are tried one by one.
 NO_ON_CONFLICT = {"person": "person_pkey"}
+# What every seeded proof shows: a made-up receipt marked as demo data. Its keys end in
+# `.jpg`, as `build` writes them.
+PROOF_IMAGE = Path(__file__).with_name("proof.jpg")
 
 
 @dataclass(frozen=True)
@@ -82,3 +88,17 @@ async def _insert(conn: asyncpg.Connection, table: str, sql: str, values: list[o
             raise
         return 0
     return 1
+
+
+async def store_proofs(seed: Seed, store: BlobStore) -> int:
+    """Put `PROOF_IMAGE` at each proof key of `seed` that has no file yet; how many it put.
+
+    Like the rows, a file already there is left as it is."""
+    image = PROOF_IMAGE.read_bytes()
+    keys = sorted({e["proof_object_key"] for e in seed.ledger_entries if e["proof_object_key"]})
+    count = 0
+    for key in keys:
+        if await store.stat(key) is None:
+            await store.put(key, "image/jpeg", image)
+            count += 1
+    return count
