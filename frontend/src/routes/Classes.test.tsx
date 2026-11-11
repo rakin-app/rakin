@@ -3,11 +3,13 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
+import type { RosterMember } from '../api/attendance'
 import type { ClassSession, ClassType, SessionDay } from '../api/sessions'
 import { App } from '../App'
 import { isoDay, shiftDay, toDate, weekdayDay } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { mondayOf } from './Classes'
 
 const copy = es.admin.classes
 const detail = es.admin.session
@@ -69,6 +71,10 @@ type Stub = {
   sessions?: ClassSession[]
   start?: Answer
   update?: Answer
+  // Every day's classes, each answered on its own date; without it, any date is `sessions`.
+  week?: ClassSession[]
+  // Who is on each class's roster.
+  roster?: RosterMember[]
 }
 
 function stubApi({
@@ -77,6 +83,8 @@ function stubApi({
   sessions = [MORNING, EVENING],
   start,
   update,
+  week,
+  roster = [],
 }: Stub = {}) {
   const calls: Call[] = []
   let day: SessionDay = { date: '2026-11-09', timezone: 'America/Santiago', sessions }
@@ -88,7 +96,7 @@ function stubApi({
       const raw = init?.body
       const body: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
       calls.push({ method, path: `${url.pathname}${url.search}`, body })
-      const answer = route(url.pathname, method, body)
+      const answer = route(url.pathname, method, body, url.searchParams.get('date'))
       return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
         status: answer.status ?? 200,
         headers: { 'Content-Type': 'application/json' },
@@ -96,10 +104,14 @@ function stubApi({
     }),
   )
 
-  function route(path: string, method: string, body: unknown): Answer {
+  function route(path: string, method: string, body: unknown, date: string | null): Answer {
     // The class's own coach, unless told otherwise.
     if (path === '/api/me/role') return { body: { role, person_id: 'coach' } }
     if (path === '/api/class-types') return { body: classTypes }
+    if (path === '/api/sessions' && method === 'GET' && week) {
+      const on = date ?? isoDay(new Date().toISOString(), 'America/Santiago')
+      return { body: { ...day, date: on, sessions: week.filter((s) => isoDay(s.starts_at, 'America/Santiago') === on) } }
+    }
     if (path === '/api/sessions' && method === 'GET') return { body: day }
     if (path === '/api/sessions' && method === 'POST') {
       if (start) return start
@@ -117,8 +129,10 @@ function stubApi({
       return { status: 201, body: created }
     }
     // The roster has its own tests (SessionDetail.test.tsx).
-    const rostered = day.sessions.find((s) => path === `/api/sessions/${s.id}/roster`)
-    if (rostered) return { body: { session_id: rostered.id, present: 0, members: [] } }
+    const rostered = [...day.sessions, ...(week ?? [])].find((s) => path === `/api/sessions/${s.id}/roster`)
+    if (rostered) {
+      return { body: { session_id: rostered.id, present: roster.filter((m) => m.present).length, members: roster } }
+    }
     if (path === '/api/plans') return { body: [] }
     const found = day.sessions.find((s) => path === `/api/sessions/${s.id}`)
     if (found && method === 'GET') return { body: found }
@@ -182,6 +196,16 @@ describe('Clases', () => {
 
     await userEvent.click(within(next).getByRole('button', { name: copy.days.today }))
     expect(await screen.findByRole('region', { name: copy.today.title })).toBeInTheDocument()
+  })
+
+  it('shows how many came on each class of the day', async () => {
+    stubApi()
+    renderAt('/admin/clases')
+
+    const today = await screen.findByRole('region', { name: copy.today.title })
+    const [morning, evening] = await within(today).findAllByRole('link')
+    expect(morning).not.toHaveTextContent(copy.today.present(0))
+    expect(evening).toHaveTextContent(copy.today.present(12))
   })
 
   it('flags a class no one is marked at', async () => {
@@ -309,5 +333,82 @@ describe('Clase', () => {
     renderAt('/admin/clases/nope')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(detail.notFound)
+  })
+})
+
+const onDay = (day: string, time: string) => new Date(`${day}T${time}:00-03:00`).toISOString()
+
+const onRoster = (id: string, name: string, present: boolean, regular = true): RosterMember => ({
+  membership_id: `m-${id}`,
+  person_id: id,
+  name,
+  rut: null,
+  plan_name: 'Mensual adultos',
+  plan_kind: 'monthly',
+  status: 'active',
+  credits_remaining: null,
+  overdue: false,
+  days_absent: 2,
+  regular,
+  rank: null,
+  present,
+})
+
+describe('Clases on a desktop', () => {
+  const wide = (matches: boolean) =>
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({ matches, media: query, addEventListener: () => {}, removeEventListener: () => {} })),
+    )
+
+  it('finds the Monday of the week', () => {
+    expect(mondayOf('2026-11-10')).toBe('2026-11-09')
+    expect(mondayOf('2026-11-09')).toBe('2026-11-09')
+    expect(mondayOf('2026-11-15')).toBe('2026-11-09')
+  })
+
+  it('shows the week beside the day, and who came to the class picked in it', async () => {
+    wide(true)
+    const today = isoDay(new Date().toISOString(), 'America/Santiago')
+    const monday = mondayOf(today)
+    const days = Array.from({ length: 7 }, (_, i) => shiftDay(monday, i))
+    // Today's at midnight has begun, whatever the hour the test runs at.
+    const begun: ClassSession = { ...EVENING, id: 's-begun', starts_at: onDay(today, '00:00'), present: 2 }
+    // Yet to start, unless the test runs in the week's last minute.
+    const sunday: ClassSession = { ...MORNING, id: 's-sunday', starts_at: onDay(days[6]!, '23:59') }
+    const calls = stubApi({
+      week: [begun, sunday],
+      roster: [onRoster('ana', 'Ana Soto', true), onRoster('beto', 'Beto Díaz', true, false), onRoster('caro', 'Caro Vera', false)],
+    })
+    renderAt('/admin/clases')
+
+    const week = await screen.findByRole('region', { name: copy.week.title })
+    for (const day of days) {
+      expect(within(week).getByRole('heading', { name: weekdayDay(toDate(day)) })).toBeInTheDocument()
+      const asked = day === today ? '/api/sessions' : `/api/sessions?date=${day}`
+      expect(calls.map((c) => c.path)).toContain(asked)
+    }
+
+    // Today's class that has begun is picked to start with: two came, and two are regulars.
+    await screen.findByText(copy.week.present(2, 2))
+    const picked = screen.getByRole('region', { name: copy.week.picked })
+    const present = within(picked).getByRole('list', { name: copy.week.presentLabel })
+    expect(within(present).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Ana Soto', 'Beto Díaz'])
+    expect(within(picked).getByRole('link', { name: copy.week.take })).toHaveAttribute('href', '/admin/clases/s-begun')
+
+    const later = within(week).getByRole('button', { name: new RegExp(copy.today.row('23:59', 'Kids 8 a 12')) })
+    await userEvent.click(later)
+    expect(later).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByText(copy.week.upcoming)).toBeInTheDocument()
+  })
+
+  it('never asks for the week on a phone', async () => {
+    wide(false)
+    const calls = stubApi()
+    renderAt('/admin/clases')
+
+    await screen.findByRole('region', { name: copy.today.title })
+    expect(screen.queryByRole('region', { name: copy.week.title })).not.toBeInTheDocument()
+    expect(calls.filter((c) => c.path.startsWith('/api/sessions?date='))).toEqual([])
   })
 })

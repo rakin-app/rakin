@@ -35,12 +35,15 @@ const member = (id: string, name: string, over: Partial<RosterMember> = {}): Ros
   membership_id: `m-${id}`,
   person_id: id,
   name,
+  rut: null,
   plan_name: 'Mensual adultos',
   plan_kind: 'monthly',
   status: 'active',
   credits_remaining: null,
   overdue: false,
   days_absent: 2,
+  // A regular of the class type, unless a test says otherwise.
+  regular: true,
   rank: null,
   present: false,
   ...over,
@@ -176,6 +179,66 @@ describe('Asistencia', () => {
     expect(rows[3]).toHaveTextContent('Mensual adultos · Vencido · 16 d sin venir')
     expect(screen.getByText(copy.count(1, 4))).toBeInTheDocument()
     expect(screen.getByRole('button', { name: copy.save(1) })).toBeDisabled()
+  })
+
+  it('lists regulars first, the others under "Otros alumnos", one tap away', async () => {
+    const others = [member('rosa', 'Rosa Soto', { regular: false }), member('tomas', 'Tomás Pérez', { regular: false })]
+    stubApi({ members: [ANTONIA, FELIPE, ...others] })
+    renderClass()
+
+    const list = await rosterList()
+    expect(list.getAllByRole('button').map((r) => r.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
+    // The count is of the regulars.
+    expect(screen.getByText(copy.count(1, 2))).toBeInTheDocument()
+    expect(screen.queryByText('Rosa Soto')).not.toBeInTheDocument()
+
+    const open = screen.getByRole('button', { name: copy.others(2, 0) })
+    expect(open).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(open)
+
+    const rest = within(screen.getByRole('list', { name: copy.othersLabel }))
+    await userEvent.click(rest.getByRole('button', { name: /Rosa Soto/ }))
+    expect(rest.getByRole('button', { name: /Rosa Soto/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: copy.others(2, 1) })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.save(2) })).toBeEnabled()
+  })
+
+  it('finds anyone on the roster by name or RUT as it is typed', async () => {
+    const rosa = member('rosa', 'Rosa Núñez', { regular: false, rut: '12345678-5' })
+    stubApi({ members: [ANTONIA, FELIPE, rosa] })
+    renderClass()
+
+    const search = await screen.findByRole('searchbox', { name: copy.search })
+    await userEvent.type(search, 'nu')
+    // The others open on a search: a non-regular is found without opening them.
+    expect(screen.getByRole('button', { name: /Rosa Núñez/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Antonia Rojas/ })).not.toBeInTheDocument()
+
+    await userEvent.clear(search)
+    await userEvent.type(search, '12.345')
+    expect(screen.getByRole('button', { name: /Rosa Núñez/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Felipe Díaz/ })).not.toBeInTheDocument()
+
+    await userEvent.clear(search)
+    await userEvent.type(search, 'zz')
+    expect(screen.getByText(copy.noMatches)).toBeInTheDocument()
+  })
+
+  it('lists everyone as one when the class type has no regulars yet', async () => {
+    stubApi({ members: [FELIPE, PAULA].map((m) => ({ ...m, regular: false })) })
+    renderClass()
+
+    expect((await rosterList()).getAllByRole('button')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: /^Otros alumnos/ })).not.toBeInTheDocument()
+  })
+
+  it('has "Guardar asistencia" as its one primary button', async () => {
+    stubApi()
+    renderClass()
+
+    await rosterList()
+    const primaries = document.querySelectorAll('.button--primary')
+    expect([...primaries].map((b) => b.textContent)).toEqual([copy.save(1)])
   })
 
   it("draws a rank's belt, compact, in place of its name when the scheme colours it", async () => {

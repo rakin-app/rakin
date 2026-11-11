@@ -34,6 +34,8 @@ export type StudentsSearch = {
   missingPhone?: true
   // "Falta RUT": members with neither a RUT nor an email, found again only by name.
   missingRut?: true
+  // "Sin venir 14 d": members away 14 days or more, as Hoy's "A quién llamar" counts them.
+  away?: true
 }
 
 export function validateStudentsSearch(search: Record<string, unknown>): StudentsSearch {
@@ -45,7 +47,8 @@ export function validateStudentsSearch(search: Record<string, unknown>): Student
   const left = search.left === true || search.left === 'true' ? true : undefined
   const missingPhone = search.missingPhone === true || search.missingPhone === 'true' ? true : undefined
   const missingRut = search.missingRut === true || search.missingRut === 'true' ? true : undefined
-  return { q, status: status.length ? status : undefined, plan, program, left, missingPhone, missingRut }
+  const away = search.away === true || search.away === 'true' ? true : undefined
+  return { q, status: status.length ? status : undefined, plan, program, left, missingPhone, missingRut, away }
 }
 
 const route = getRouteApi('/admin/alumnos')
@@ -65,6 +68,7 @@ export function Students() {
     left: search.left ? ('only' as const) : ('no' as const),
     missingPhone: search.missingPhone === true,
     missingRut: search.missingRut === true,
+    away: search.away === true,
   }
   const filtered =
     filters.q.trim() !== '' ||
@@ -73,7 +77,8 @@ export function Students() {
     search.program !== undefined ||
     search.left !== undefined ||
     search.missingPhone !== undefined ||
-    search.missingRut !== undefined
+    search.missingRut !== undefined ||
+    search.away !== undefined
 
   const [draft, setDraft] = useState(filters.q)
   useEffect(() => {
@@ -111,6 +116,9 @@ export function Students() {
       search: (prev) => ({ ...prev, missingPhone: prev.missingPhone ? undefined : true }),
       replace: true,
     })
+  }
+  const toggleAway = () => {
+    void navigate({ search: (prev) => ({ ...prev, away: prev.away ? undefined : true }), replace: true })
   }
   const setPlan = (plan: string) => {
     void navigate({ search: (prev) => ({ ...prev, plan: plan || undefined }), replace: true })
@@ -171,6 +179,9 @@ export function Students() {
             </Chip>
             <Chip pressed={search.missingRut === true} onClick={toggleMissingRut}>
               {copy.missingRut}
+            </Chip>
+            <Chip pressed={search.away === true} onClick={toggleAway}>
+              {copy.away}
             </Chip>
           </ChipGroup>
           {plans.data && plans.data.length > 0 && (

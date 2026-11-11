@@ -171,6 +171,20 @@ def test_members_away_14_days_or_more_in_two_buckets_nearest_first(
 
 
 @pg
+def test_the_member_list_filters_to_those_away_as_hoy_counts_them(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    a_member(client, gym, "Antonia Rojas", 5)
+    a_member(client, gym, "Diego Morales", 31)
+    a_member(client, gym, "Tomás Pérez", 14)
+
+    page = client.get("/api/people?away=true", headers=as_gym(gym)).json()
+
+    assert [r["name"] for r in page["items"]] == ["Diego Morales", "Tomás Pérez"]
+    assert page["total"] == len(listed(client, gym))
+
+
+@pg
 def test_someone_who_never_came_counts_from_when_they_joined(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:

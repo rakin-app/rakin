@@ -37,36 +37,48 @@ router = APIRouter(prefix="/api/inactive", tags=["retention"])
 NOT_INACTIVE = HTTPException(status.HTTP_404_NOT_FOUND, "not on the inactive list")
 NO_WHATSAPP = HTTPException(status.HTTP_409_CONFLICT, "no WhatsApp to send it to")
 
-# Each person on `v_inactive`, as the list shows them: away how long, owing what, whom
-# to write to and when they were last nudged. RLS holds every table to the gym.
+# Each person on `v_inactive` with how long they have been away: since their last class,
+# or since their membership started when they have not come to one. RLS holds every
+# table to the gym. The member list's "Sin venir" filter reads it too.
+AWAY = """
+SELECT i.gym_id, i.person_id, i.last_attended_on,
+       coalesce(i.days_absent, t.today - (l.since AT TIME ZONE g.timezone)::date) AS days_absent,
+       l.trial_only
+FROM v_inactive i
+JOIN gym g ON g.id = i.gym_id
+CROSS JOIN LATERAL (SELECT (now() AT TIME ZONE g.timezone)::date AS today) t
+CROSS JOIN LATERAL (
+    SELECT min(m.started_at) AS since, bool_and(m.status = 'trial') AS trial_only
+    FROM membership m
+    WHERE m.gym_id = i.gym_id AND m.person_id = i.person_id
+      AND m.status IN ('trial', 'active')
+) l
+"""
+
+# The ids of everyone away 14 days or more, as a subquery: those "A quién llamar" lists.
+AWAY_IDS = f"SELECT person_id FROM ({AWAY}) a WHERE a.days_absent >= {int(Bucket.DAYS_14)}"
+
+# Each of them as the list shows them: away how long, owing what, whom to write to and
+# when they were last nudged.
 INACTIVE = f"""
 SELECT * FROM (
-    SELECT i.person_id, gp.name, i.last_attended_on,
-           coalesce(i.days_absent, t.today - (l.since AT TIME ZONE g.timezone)::date)
-               AS days_absent,
-           l.trial_only, coalesce(o.owed, 0) AS overdue_clp,
+    SELECT a.person_id, gp.name, a.last_attended_on, a.days_absent,
+           a.trial_only, coalesce(o.owed, 0) AS overdue_clp,
            c.person_id AS contact_id, c.name AS contact_name, c.phone, c.on_behalf_of,
            g.name AS gym_name, g.settings, n.nudged_at
-    FROM v_inactive i
-    JOIN gym g ON g.id = i.gym_id
-    CROSS JOIN LATERAL (SELECT (now() AT TIME ZONE g.timezone)::date AS today) t
-    JOIN gym_person gp ON gp.gym_id = i.gym_id AND gp.person_id = i.person_id
-    CROSS JOIN LATERAL (
-        SELECT min(m.started_at) AS since, bool_and(m.status = 'trial') AS trial_only
-        FROM membership m
-        WHERE m.gym_id = i.gym_id AND m.person_id = i.person_id
-          AND m.status IN ('trial', 'active')
-    ) l
+    FROM ({AWAY}) a
+    JOIN gym g ON g.id = a.gym_id
+    JOIN gym_person gp ON gp.gym_id = a.gym_id AND gp.person_id = a.person_id
     LEFT JOIN LATERAL (
         SELECT sum(o.outstanding_clp)::bigint AS owed FROM v_overdue o
-        WHERE o.gym_id = i.gym_id AND o.person_id = i.person_id
+        WHERE o.gym_id = a.gym_id AND o.person_id = a.person_id
           AND o.membership_status = 'active'
     ) o ON true
-    LEFT JOIN LATERAL ({contact_query("i.person_id")}) c ON true
+    LEFT JOIN LATERAL ({contact_query("a.person_id")}) c ON true
     LEFT JOIN LATERAL (
         SELECT max(ml.sent_at) AS nudged_at FROM message_log ml
         WHERE ml.template = :template AND ml.status = 'sent'
-          AND ml.payload ->> 'about' = i.person_id::text
+          AND ml.payload ->> 'about' = a.person_id::text
     ) n ON true
 ) r
 WHERE r.days_absent >= :threshold AND (CAST(:person AS uuid) IS NULL OR r.person_id = :person)

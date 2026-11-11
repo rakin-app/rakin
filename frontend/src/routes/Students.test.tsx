@@ -160,6 +160,15 @@ describe('Alumnos', () => {
     expect(await within(await list()).findByText(copy.missingRut)).toBeInTheDocument()
   })
 
+  it('"Sin venir 14 d" lists who is away, as Hoy\'s "Ver los N" opens it', async () => {
+    const asked = stubApi((params) => page(params.get('away') === 'true' ? [DIEGO] : [CAMILA, DIEGO]))
+    renderAt('/admin/alumnos?away=true')
+
+    expect(await within(await list()).findByText('Diego Soto')).toBeInTheDocument()
+    expect(asked.map((params) => params.get('away'))).toEqual(['true'])
+    expect(screen.getByRole('button', { name: copy.away })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('lists members with their phone, RUT, status and plan', async () => {
     stubApi(() => page([CAMILA, DIEGO]))
     renderAt('/admin/alumnos')

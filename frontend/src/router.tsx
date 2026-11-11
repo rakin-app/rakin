@@ -181,7 +181,7 @@ const adminSessionRoute = createRoute({
   component: SessionDetail,
 })
 
-// "Iniciar clase": the class timer, its blocks and countdown, for the coach (#139).
+// "Abrir timer": the class timer, its blocks and countdown, for the coach (#139).
 const adminSessionTimerRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'clases/$sessionId/timer',
