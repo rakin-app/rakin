@@ -245,6 +245,8 @@ export const es = {
     students: {
       title: 'Alumnos',
       searchLabel: 'Buscar alumno',
+      // The list's column labels on a desktop, where each row is one line (#199).
+      columns: { name: 'Alumno', phone: 'Teléfono', rut: 'RUT', plan: 'Plan', status: 'Estado' },
       searchPlaceholder: 'Nombre, teléfono o RUT',
       filtersLabel: 'Filtros',
       statusLabel: 'Estado',

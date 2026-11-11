@@ -55,3 +55,25 @@
 .control[aria-invalid='true'] {
   border-color: var(--color-danger);
 }
+
+/* A search box: the magnifier inside its left edge, the text clear of it. */
+.search-control {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.search-control > svg {
+  position: absolute;
+  top: 50%;
+  left: var(--space-3);
+  color: var(--color-text-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.search-control__input {
+  flex: 1 1 auto;
+  width: 100%;
+  padding-left: calc(var(--space-3) + 18px + var(--space-2));
+}

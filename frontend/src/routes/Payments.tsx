@@ -17,7 +17,7 @@ import { pendingCountQuery } from '../api/proofs'
 import { Button, buttonClass } from '../components/Button'
 import { ListRowContent, listRowClass } from '../components/Card'
 import { Chip, ChipGroup } from '../components/Chip'
-import { Input } from '../components/Field'
+import { SearchInput } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill, type Status } from '../components/StatusPill'
@@ -195,9 +195,8 @@ function Book() {
                 <label htmlFor={searchId} className="visually-hidden">
                   {copy.searchLabel}
                 </label>
-                <Input
+                <SearchInput
                   id={searchId}
-                  type="search"
                   className="payments__search-input"
                   placeholder={copy.searchPlaceholder}
                   autoComplete="off"
@@ -314,9 +313,8 @@ function MemberPicker({ onPick, onCancel }: { onPick: (member: MemberRow) => voi
       <label htmlFor={inputId} className="payments__label">
         {words.label}
       </label>
-      <Input
+      <SearchInput
         id={inputId}
-        type="search"
         className="payments__search-input"
         placeholder={copy.searchPlaceholder}
         autoComplete="off"
