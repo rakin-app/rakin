@@ -53,6 +53,7 @@ function stubApi(
     role?: string | null
     page?: MyPage
     lines?: MyExtraLine[]
+    linesFail?: boolean
   } = {},
 ) {
   const calls: Call[] = []
@@ -75,7 +76,9 @@ function stubApi(
   function route(url: URL, method: string): Answer {
     if (url.href === UPLOAD_URL && method === 'PUT') return { status: answers.put ?? 200 }
     if (url.pathname === '/api/me/periods') return { body: periods }
-    if (url.pathname === '/api/me/extra-lines') return { body: answers.lines ?? [] }
+    if (url.pathname === '/api/me/extra-lines') {
+      return answers.linesFail ? { status: 500, body: { detail: 'boom' } } : { body: answers.lines ?? [] }
+    }
     if (url.pathname === '/api/me/page') return { body: answers.page ?? pageFor(periods) }
     if (url.pathname === '/api/me/time') return { body: NO_TIME }
     if (url.pathname === '/api/me/proofs') {
@@ -183,6 +186,19 @@ describe('Subir comprobante', () => {
     expect(await within(card).findByRole('status')).toHaveTextContent(copy.sent)
     const claim = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/me/payments'))
     expect(claim!.body).toEqual({ extra_line_id: 'l-rifa', amount_clp: 10000, proof_key: 'proofs/g/ana/k' })
+  })
+
+  it('still takes a proof for the plan when the cobros cannot load', async () => {
+    const calls = stubApi([ANA], { linesFail: true })
+    await openUpload()
+
+    expect(await screen.findByRole('radio', { name: /vence el 5 de noviembre/ })).toBeChecked()
+    await userEvent.upload(screen.getByLabelText(copy.choose), photo())
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.sent)
+    const claim = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/me/payments'))
+    expect(claim!.body).toEqual({ billing_period_id: 'p-ana', amount_clp: 45000, proof_key: 'proofs/g/ana/k' })
   })
 
   it('keeps the caret where it was put while the amount is edited', async () => {

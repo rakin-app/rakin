@@ -31,8 +31,13 @@ export function ProofUpload({ initial }: { initial?: string } = {}) {
   const lines = useQuery(myLinesQuery())
   const [sent, setSent] = useState(false)
 
-  if (periods.isPending || lines.isPending) return <p className="proof__note">{copy.loading}</p>
-  if (periods.isError || lines.isError) {
+  // The cobros are waited for only when the upload opened on one. Otherwise the plan's
+  // periods show at once, and a cobro list that is slow or cannot load is left out, as
+  // if there were none, rather than standing in the way of paying the plan.
+  if (periods.isPending || (initial !== undefined && lines.isPending)) {
+    return <p className="proof__note">{copy.loading}</p>
+  }
+  if (periods.isError) {
     return (
       <p className="proof__note" role="alert">
         {copy.error}
@@ -48,7 +53,7 @@ export function ProofUpload({ initial }: { initial?: string } = {}) {
       outstanding_clp: p.outstanding_clp,
       pending_clp: p.pending_clp,
     })),
-    ...lines.data.map((l) => ({
+    ...(lines.data ?? []).map((l) => ({
       kind: 'line' as const,
       id: l.id,
       label: copy.line(l.person_name, l.title, t.common.longDay(l.due_date)),

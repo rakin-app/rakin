@@ -277,6 +277,52 @@ describe('Validar comprobante', () => {
     await vi.waitFor(() => expect(posts(calls).map((c) => c.path)).toContain('/api/reminders/p-juan'))
   })
 
+  it('looks for no period follow-up after rejecting a cobro extra\'s proof', async () => {
+    const user = userEvent.setup()
+    const rifa: ProofReview = {
+      ...DIEGO,
+      id: 'e-rifa',
+      membership_id: null,
+      amount_clp: 10000,
+      plan_name: null,
+      plan_kind: null,
+      anchor_day: null,
+      period: null,
+      extra_line: {
+        id: 'l-rifa',
+        extra_charge_id: 'x-rifa',
+        title: 'Rifa de fin de año',
+        category: 'rifa',
+        due_date: '2026-11-30',
+        amount_due_clp: 10000,
+        paid_clp: 0,
+        outstanding_clp: 10000,
+      },
+      last_payments: [],
+    }
+    // A follow-up with no period at all: a cobro's proof must not take it for its own.
+    const stray = {
+      person_id: 'diego',
+      person_name: 'Diego Morales',
+      kind: 'proof_rejected_followup',
+      rejection_note: 'no se ve',
+      contact_name: 'Diego Morales',
+      whatsapp_url: 'https://wa.me/56912345678?text=Hola',
+      reminders_sent: 0,
+      reminded_at: null,
+      reminder_due: true,
+    }
+    stubApi([rifa], { reminders: [stray] })
+    renderAt(PATH)
+    await screen.findByRole('heading', { name: 'Diego Morales' })
+
+    await user.type(screen.getByLabelText(copy.noteLabel), 'no se ve')
+    await user.click(screen.getByRole('button', { name: copy.reject }))
+
+    expect(await screen.findByText(copy.rejected('Diego Morales'))).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /WhatsApp/ })).not.toBeInTheDocument()
+  })
+
   it('explains a period paid meanwhile', async () => {
     const user = userEvent.setup()
     stubApi([DIEGO], { validate: { status: 409, body: { detail: 'billing period is already paid in full' } } })

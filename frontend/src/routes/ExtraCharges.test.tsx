@@ -96,7 +96,10 @@ const PREVIEW: Preview = {
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 
-function stubApi(role: string, extra: (path: string, method: string, body: unknown) => Answer | undefined = () => undefined) {
+function stubApi(
+  role: string,
+  extra: (path: string, method: string, body: unknown) => Answer | Promise<Answer> | undefined = () => undefined,
+) {
   const calls: Call[] = []
   vi.stubGlobal(
     'fetch',
@@ -106,7 +109,7 @@ function stubApi(role: string, extra: (path: string, method: string, body: unkno
       const raw = init?.body
       const body = typeof raw === 'string' ? JSON.parse(raw) : raw
       calls.push({ method, path: url.pathname + url.search, body })
-      const answer = extra(url.pathname, method, body) ?? base(url.pathname, method)
+      const answer = (await extra(url.pathname, method, body)) ?? base(url.pathname, method)
       return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
         status: answer.status ?? 200,
         headers: { 'Content-Type': 'application/json' },
@@ -224,7 +227,8 @@ describe('Nuevo cobro extra', () => {
     const luis = within(preview).getByLabelText(words.overrideLabel('Luis Mora'))
     await user.clear(luis)
     await user.type(luis, '0')
-    await user.click(screen.getByRole('button', { name: words.next }))
+    // Next waits for the preview of the draft as it now stands.
+    await user.click(await screen.findByRole('button', { name: words.next }))
 
     await user.type(screen.getByLabelText(words.messageLabel), 'Nos vamos el sábado.')
     await user.click(screen.getByRole('button', { name: words.next }))
@@ -251,6 +255,47 @@ describe('Nuevo cobro extra', () => {
       overrides: [{ person_id: 'p-luis', amount_clp: 0 }],
       notify: true,
     })
+  })
+})
+
+describe('Nuevo cobro extra, while the preview catches up', () => {
+  it('neither advances nor confirms on a preview for an older draft', async () => {
+    const user = userEvent.setup()
+    const words = copy.wizard
+    // Each preview waits until the test lets it answer, for the amount it was asked.
+    const gates: { amount: number; open: () => void }[] = []
+    stubApi('owner', (path, _method, body) => {
+      if (path !== '/api/extra-charges/preview') return undefined
+      const amount = (body as { amount_clp: number }).amount_clp
+      return new Promise<Answer>((resolve) => {
+        gates.push({ amount, open: () => resolve({ body: { ...PREVIEW, total_clp: amount } }) })
+      })
+    })
+    renderAt('/admin/pagos/cobros/nuevo')
+
+    await user.type(await screen.findByLabelText(words.titleLabel), 'Rifa')
+    await user.type(screen.getByLabelText(words.dueLabel), '2026-11-30')
+    await user.click(screen.getByRole('button', { name: words.next }))
+    await user.click(screen.getByRole('button', { name: words.next }))
+
+    await user.type(screen.getByLabelText(words.amountLabel.fixed), '5000')
+    // Asked, not yet answered: Next waits, and says so.
+    const waiting = await screen.findByRole('button', { name: words.previewLoading })
+    expect(waiting).toBeDisabled()
+    await vi.waitFor(() => expect(gates.length).toBe(1))
+    gates[0]!.open()
+    expect(await screen.findByRole('button', { name: words.next })).toBeEnabled()
+
+    // A new amount: the old preview stays on screen, but it no longer counts.
+    await user.type(screen.getByLabelText(words.amountLabel.fixed), '0')
+    expect(screen.getByRole('button', { name: words.previewLoading })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: words.previewLoading }))
+    expect(screen.getByRole('region', { name: words.stepOf(3, 5, words.steps[2]!) })).toBeInTheDocument()
+    await vi.waitFor(() => expect(gates.length).toBe(2))
+    expect(gates[1]!.amount).toBe(50000)
+    gates[1]!.open()
+    await user.click(await screen.findByRole('button', { name: words.next }))
+    expect(screen.getByRole('region', { name: words.stepOf(4, 5, words.steps[3]!) })).toBeInTheDocument()
   })
 })
 

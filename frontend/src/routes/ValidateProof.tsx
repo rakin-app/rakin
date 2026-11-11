@@ -143,9 +143,11 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
       const reminders = await queryClient
         .fetchQuery(remindersQuery(review.person_id))
         .catch((): PaymentReminder[] => [])
-      const followUp = reminders.find(
-        (r) => r.billing_period_id === review.period?.id && r.kind === 'proof_rejected_followup',
-      )
+      // A cobro extra's proof has no period, and so no period's follow-up (#195).
+      const period = review.period
+      const followUp = period
+        ? reminders.find((r) => r.billing_period_id === period.id && r.kind === 'proof_rejected_followup')
+        : undefined
       if (followUp?.whatsapp_url) onDone({ message, followUp })
     },
   })

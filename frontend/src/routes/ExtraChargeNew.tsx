@@ -114,6 +114,19 @@ function Wizard() {
     retry: false,
   })
 
+  // The preview shows what will be charged only once it answers for the draft as it
+  // stands: not a placeholder from an earlier one, not mid-refetch, and not for a draft
+  // the debounce has yet to catch up with.
+  const fresh =
+    preview.isSuccess &&
+    !preview.isPlaceholderData &&
+    !preview.isFetching &&
+    draft !== null &&
+    settled !== null &&
+    JSON.stringify(previewBody(draft)) === JSON.stringify(previewBody(settled))
+  // The amount and the last look wait for it; an error is shown, not waited on.
+  const waiting = (step === 2 || step === LAST) && amountClp > 0 && !fresh && !preview.isError
+
   const create = useMutation({
     mutationFn: () => createCharge(draft!),
     onSuccess: async (charge) => {
@@ -132,10 +145,11 @@ function Wizard() {
 
   const next = (event: FormEvent) => {
     event.preventDefault()
-    if (problem || (step === 2 && !preview.isSuccess)) {
+    if (problem) {
       setTried(true)
       return
     }
+    if (waiting) return
     setTried(false)
     if (step < LAST) setStep(step + 1)
     else create.mutate()
@@ -239,8 +253,14 @@ function Wizard() {
         )}
         <div className="extra__form-actions">
           {step > 0 && <Button onClick={() => setStep(step - 1)}>{words.previous}</Button>}
-          <Button type="submit" variant="primary" disabled={create.isPending}>
-            {step === LAST ? (create.isPending ? words.creating : words.create) : words.next}
+          <Button type="submit" variant="primary" disabled={create.isPending || waiting}>
+            {waiting
+              ? words.previewLoading
+              : step === LAST
+                ? create.isPending
+                  ? words.creating
+                  : words.create
+                : words.next}
           </Button>
           {step === 0 && (
             <Link to="/admin/pagos/cobros" className={buttonClass({ variant: 'ghost' })}>
