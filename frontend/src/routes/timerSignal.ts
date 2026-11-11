@@ -1,28 +1,73 @@
 import { useEffect, useState } from 'react'
+import type { RunState } from './timerEngine'
 
 /**
  * What the timer does besides its numbers: a beep and a buzz at the 10-second warning and
- * when a round or block ends, and the screen kept on while it runs.
+ * at each switch, and the screen kept on while it runs. Each switch sounds its own way, so
+ * the mat hears whether to fight or to stop without looking: a bell to start a round, a
+ * long low tone to stop for the rest, and a chime when one block gives way to the next.
  *
  * The sound is made with Web Audio, so there is no file to load offline. A phone plays it
- * only once a tap has allowed it, which is what `unlockSound` is for: "Comenzar" calls it.
+ * only once a tap has allowed it, which is what `unlockSound` is for: "Comenzar" calls it,
+ * and so does any tap on the running timer, for a class opened again after a reload.
  */
 let audio: AudioContext | null = null
+// Set when this browser has no Web Audio, or refused to make one.
+let unsupported = false
+
+/** `warn`: ten seconds left. `fight`: a round starts. `rest`: a round stops for the rest.
+ * `block`: a block ran out, and the next starts. */
+export type Signal = 'warn' | 'fight' | 'rest' | 'block'
+
+export const VIBRATION: Record<Signal, number | number[]> = {
+  warn: 200,
+  fight: [150, 100, 150],
+  rest: [1000],
+  block: [400, 150, 400, 150, 600],
+}
+
+/** The signal for the switch from `before` to `after`, a phase that ran out: `block` when
+ * the block changed (or the class ended), else `rest` or `fight` for the phase now on. */
+export function switchSignal(before: RunState, after: RunState): Signal {
+  if (after.index !== before.index || after.endedAt !== null) return 'block'
+  return after.resting ? 'rest' : 'fight'
+}
 
 export function unlockSound(): void {
   try {
-    if (typeof window.AudioContext !== 'function') return
+    if (typeof window.AudioContext !== 'function') {
+      unsupported = true
+      return
+    }
+    // Safari 17+: play through the ringer switch, as a timer must.
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+    if (session) session.type = 'playback'
     audio ??= new window.AudioContext()
-    void audio.resume()
+    void audio.resume().catch(() => undefined)
+    // iOS lets a context play only once something has played inside the tap: a silent blip.
+    const silent = audio.createBufferSource()
+    silent.buffer = audio.createBuffer(1, 1, audio.sampleRate)
+    silent.connect(audio.destination)
+    silent.start(0)
   } catch {
     // No sound on this phone; the vibration and the screen still say it.
+    unsupported = true
   }
 }
 
-function beep(frequency: number, seconds: number, at: number): void {
+export type SoundState = 'on' | 'locked' | 'unsupported'
+
+/** `locked`: no tap has allowed sound yet on this page (a class opened after a reload). */
+export function soundState(): SoundState {
+  if (unsupported) return 'unsupported'
+  return audio?.state === 'running' ? 'on' : 'locked'
+}
+
+function beep(frequency: number, seconds: number, at: number, type: OscillatorType = 'sine'): void {
   if (!audio) return
   const tone = audio.createOscillator()
   const gain = audio.createGain()
+  tone.type = type
   tone.frequency.value = frequency
   gain.gain.setValueAtTime(0.4, audio.currentTime + at)
   gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + at + seconds)
@@ -31,11 +76,18 @@ function beep(frequency: number, seconds: number, at: number): void {
   tone.stop(audio.currentTime + at + seconds)
 }
 
-/** `warn`: ten seconds left. `end`: a round, rest or block ran out. */
-export function signal(kind: 'warn' | 'end'): void {
+export function signal(kind: Signal): void {
   try {
     if (kind === 'warn') {
       beep(880, 0.15, 0)
+    } else if (kind === 'fight') {
+      // A bell: two bright strikes, each with a ringing overtone.
+      for (const at of [0, 0.3]) {
+        beep(1320, 0.28, at, 'triangle')
+        beep(2640, 0.18, at)
+      }
+    } else if (kind === 'rest') {
+      beep(330, 1.2, 0, 'square')
     } else {
       beep(660, 0.25, 0)
       beep(660, 0.25, 0.35)
@@ -44,7 +96,7 @@ export function signal(kind: 'warn' | 'end'): void {
   } catch {
     // A sound that fails is no reason to stop the timer.
   }
-  if (typeof navigator.vibrate === 'function') navigator.vibrate(kind === 'warn' ? 200 : [400, 150, 400, 150, 600])
+  if (typeof navigator.vibrate === 'function') navigator.vibrate(VIBRATION[kind])
 }
 
 export type WakeLockState = 'on' | 'unsupported' | 'off'

@@ -1444,6 +1444,8 @@ export const es = {
         round: (kind: string, round: number, rounds: number) => `${kind} · ronda ${round}/${rounds}`,
         rest: (round: number, rounds: number) => `Descanso · sigue la ronda ${round}/${rounds}`,
         paused: 'En pausa',
+        fightMode: 'LUCHA',
+        restMode: 'DESCANSO',
         next: (what: string) => `Sigue: ${what}`,
         nextRound: (round: number, rounds: number) => `ronda ${round}/${rounds}`,
         nextRest: (duration: string) => `descanso de ${duration}`,
@@ -1473,6 +1475,8 @@ export const es = {
           no: 'Quedarme',
         },
         noWakeLock: 'Este teléfono no permite mantener la pantalla encendida: desactiva el bloqueo automático mientras corre el timer.',
+        noSound: 'Sin sonido en este teléfono: solo vibra y cambia de color.',
+        soundLocked: 'Sin sonido: toca la pantalla para activarlo.',
       },
       done: {
         title: 'Clase terminada',
