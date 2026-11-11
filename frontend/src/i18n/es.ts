@@ -3,6 +3,12 @@
  * inline copy (enforced by `react/jsx-no-literals` in eslint.config.js).
  * English, when it comes, is a second file with the same shape.
  */
+
+import type { MembershipStatus } from '../api/people'
+
+// A word per membership status, where only some of them need one.
+type Statuses = Partial<Record<MembershipStatus, string>>
+
 const MONTHS = [
   'enero',
   'febrero',
@@ -100,6 +106,8 @@ export const es = {
         empty: 'Nadie tiene pagos vencidos.',
         detail: (days: number, amount: string, plan: string) =>
           `Venció hace ${days === 1 ? '1 día' : `${days} días`} · ${amount} · ${plan}`,
+        // A debt outlives its plan (#207): the row says what became of the membership.
+        membership: { lapsed: 'plan caducado', cancelled: 'dado de baja', frozen: 'congelado' } as Statuses,
         paid: 'Pagó',
         paidLabel: (name: string) => `Registrar el pago de ${name}`,
         method: 'Medio de pago',
@@ -260,7 +268,8 @@ export const es = {
         active: 'Activo',
         trial: 'Prueba',
         frozen: 'Congelado',
-        lapsed: 'Vencido',
+        // Not "Vencido", which is a payment past due (#193, #207): the plan itself ran out.
+        lapsed: 'Caducado',
         cancelled: 'Cancelado',
       },
       guardianOf: (name: string) => `Apoderado: ${name}`,
@@ -583,17 +592,18 @@ export const es = {
       adjustForm: {
         title: 'Ajuste',
         direction: 'Tipo de ajuste',
-        directions: { favor: 'A favor del alumno: descuenta', owed: 'A cobrar: suma al período' },
+        directions: { favor: 'Descuento: resta de lo que debe', owed: 'Recargo: suma a lo que debe' },
         period: 'Período',
         periodOption: (month: string, amount: string) => `${month} · ${amount} por pagar`,
         amount: 'Monto (CLP)',
         note: 'Motivo',
-        submit: (amount: string) => `Registrar ajuste de ${amount}`,
+        // No sign on the button: the word says which way it goes (#210).
+        submit: (favor: boolean, amount: string) => `Registrar ${favor ? 'descuento' : 'recargo'} de ${amount}`,
         cancel: 'Cancelar',
         working: 'Guardando…',
         amountNeeded: 'Escribe el monto del ajuste.',
         noteNeeded: 'Escribe el motivo del ajuste.',
-        done: (amount: string) => `Ajuste registrado: ${amount}.`,
+        done: (favor: boolean, amount: string) => `${favor ? 'Descuento' : 'Recargo'} registrado: ${amount}.`,
         refused: {
           exceeds: 'Un ajuste a favor no puede superar lo que queda por pagar del período.',
           failed: 'No pudimos registrar el ajuste. Inténtalo de nuevo.',
@@ -749,11 +759,14 @@ export const es = {
         empty: 'Sin movimientos todavía.',
         charge: (month: string) => `Cargo ${month}`,
         payment: (month: string) => `Pago ${month}`,
-        adjustment: (month: string) => `Ajuste ${month}`,
+        // An adjustment by which way it goes (#210): a discount takes from what is owed.
+        adjustment: (favor: boolean, month: string) => `${favor ? 'Descuento' : 'Recargo'} ${month}`,
         credit: 'Saldo a favor',
         refund: (month: string) => `Devolución ${month}`,
         generated: (day: string) => `generado ${day}`,
         unpaid: 'sin pago',
+        // A charge partly paid: what has come in against it so far.
+        partlyPaid: (amount: string) => `abonado ${amount}`,
         validatedBy: (name: string) => `validó ${name}`,
         pending: 'por validar',
         rejected: 'rechazado',
@@ -880,7 +893,7 @@ export const es = {
         themeSample: { collected: 'Cobrado', figure: '$2.115.000', paid: 'Pagado', overdue: 'Vencido', action: 'Registrar' },
         billing: 'Cobro',
         graceDays: 'Días de gracia',
-        graceDaysHint: 'Días después del vencimiento antes de marcar a un alumno como vencido.',
+        graceDaysHint: 'Días después del vencimiento de un pago antes de que el plan del alumno caduque.',
         reminderEveryDays: 'Recordar cada (días)',
         reminderEveryDaysHint: 'Los recordatorios de pago vencido salen el día del vencimiento y luego cada tantos días.',
         channels: 'Canales',
@@ -1614,7 +1627,9 @@ export const es = {
     },
     payments: {
       title: 'Pagos',
-      subtitle: 'Cobros, pagos y ajustes del mes. Nada se borra: una corrección es un movimiento nuevo.',
+      // A charge is in its period's month, a payment in the day it came (#206).
+      subtitle:
+        'Cobros, pagos y ajustes del mes: un cargo, en el mes de su período; un pago, el día en que llegó. Nada se borra: una corrección es un movimiento nuevo.',
       coachesOnly: 'Los coaches no ven esta sección.',
       loading: 'Cargando los pagos…',
       error: 'No pudimos cargar los pagos.',
@@ -1647,6 +1662,10 @@ export const es = {
         amount: 'Monto',
       },
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
+      // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.
+      adjustment: { favor: 'Descuento', owed: 'Recargo' },
+      // A debt outlives its plan (#207): what became of the membership, beside the plan.
+      membership: { lapsed: 'Plan caducado', cancelled: 'Dado de baja', frozen: 'Congelado' } as Statuses,
       method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },
       credit: 'A favor',
       status: {
@@ -2007,6 +2026,14 @@ export const es = {
       rejected: (when: string, note: string | null) => (note ? `rechazado ${when}: ${note}` : `rechazado ${when}`),
       status: { pending: 'En revisión', rejected: 'Rechazado' },
       today: (time: string) => `hoy ${time}`,
+      // The rest of what settles a period (#210), so the list adds up to "Próximo pago".
+      refund: 'Devolución',
+      refunded: (when: string) => `te devolvieron ${when}`,
+      discount: 'Descuento',
+      discounted: (when: string) => `se descuenta de lo que debes · ${when}`,
+      surcharge: 'Recargo',
+      surcharged: (when: string) => `se suma a lo que debes · ${when}`,
+      credit: 'Saldo a favor',
     },
     proof: {
       title: 'Subir comprobante',
@@ -2174,8 +2201,11 @@ export const es = {
     loading: 'Cargando…',
     comingSoon: 'Esta sección todavía no está lista.',
     clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
-    // An amount that says which way it goes: `+$5.000` in the member's favour, `−$5.000` owed.
+    // An amount that says which way it goes: `+$5.000` or `−$5.000`.
     signedClp: (amount: number) => `${amount < 0 ? '−' : '+'}$${Math.abs(amount).toLocaleString('es-CL')}`,
+    // An adjustment by what it does to what is owed (#210): a discount, positive in the
+    // member's favour, takes from it, `−$5.000`; a surcharge adds to it, `+$5.000`.
+    adjustmentClp: (amount: number) => `${amount > 0 ? '−' : '+'}$${Math.abs(amount).toLocaleString('es-CL')}`,
     // Where an amount would go on a line that moves no money.
     noAmount: '—',
     span: (from: string, to: string) => `${from} – ${to}`,
