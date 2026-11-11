@@ -321,6 +321,10 @@ function Attendance({ sessionId }: { sessionId: string }) {
 
   const save = useSubmit({
     mutationKey,
+    // Sent even when the browser says it is offline: React Query's default would pause the
+    // save, "Guardando…" for as long as the signal is gone, before this screen could queue
+    // it on the phone and say so (#215). The failed request is what queues it.
+    networkMode: 'always',
     mutationFn: ({ change }: Save) => changeAttendance(sessionId, change),
     onSuccess: (updated, { change: sent }) => {
       queryClient.setQueryData(rosterQuery(sessionId).queryKey, updated)
@@ -585,6 +589,8 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
   const [planId, setPlanId] = useState('')
   const [done, setDone] = useState<string | null>(null)
   const add = useSubmit({
+    // Tried offline too, so the coach reads "Sin conexión" rather than "Agregando…" (#215).
+    networkMode: 'always',
     mutationFn: (guest: { name: string; who: string; phone: string; planId: string }) =>
       addTrialGuest(sessionId, guest),
     onSuccess: (added, guest) => {
