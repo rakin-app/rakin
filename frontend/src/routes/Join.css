@@ -21,7 +21,8 @@
   padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
 }
 
 .join__form,
@@ -46,7 +47,11 @@
 
 .join__legend {
   padding: 0;
-  font-weight: var(--font-weight-semibold);
+  color: var(--color-heading);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-display);
+  letter-spacing: var(--tracking-title);
 }
 
 .join__program,

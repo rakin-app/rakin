@@ -58,6 +58,13 @@ What changed from v2:
 - **Eyebrows stay small capitals.** The line over a page's title ("ADULTOS · 7 NOV",
   the gym's name on Hoy) is not on the boards; it keeps its small capitals, so a page's
   title and its context read apart. Section headings inside a page are display type.
+- **The student's "Subir comprobante" stays the light button on the dark card.** The
+  board fills it with moss; the app's buttons keep their four variants, and on a dark
+  card the main one is the light one, as before.
+- **Pages before sign-in wear the gym's theme on its own address.** The join form, the
+  sign-in screen and the sign-in link's pages read the theme from the host
+  (`/api/host`); on the shared address, which is no gym's, they wear the default or
+  what the browser last wore.
 - **Hex, not oklch.** The file writes oklch; `tokens.css` holds the same colours in
   hex, as the sign-in link's server-rendered pages (`backend/app/auth.py`) copy them.
 
