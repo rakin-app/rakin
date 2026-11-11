@@ -17,6 +17,9 @@ staff approve them into members.
   stores nothing), then the rate limits per IP and per link, and last the human
   check, when one is configured (`app.integrations.humancheck`), so neither a
   made-up token nor a form that would be refused spends a limit or a call to it.
+  The human check runs with no transaction open, since it is an HTTP round trip
+  (#162); the request is written in a second one, which finds the link again, so a
+  link revoked meanwhile is a 404 `invalid_link` and stores nothing.
 - `/api/join-requests` is the queue, for every staff role: each request with whoever
   in this gym already has its RUT, or its email when it has none, approving one and
   rejecting one.
@@ -49,6 +52,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import (
@@ -344,54 +348,64 @@ async def submit_join_request(
     integrations: Annotated[Integrations, Depends(get_integrations)],
 ) -> Response:
     """Leave a request for the gym's staff. The answer is the same whatever it holds."""
+    # Checked in a short transaction, then the human check with none open: siteverify
+    # is an HTTP round trip, and a connection held across it is one a burst of
+    # submissions takes from everyone else (#162).
     async with _open(request, token) as link:
-        values = body.model_dump(
-            include={"first_name", "last_name", "rut", "phone", "email", "dob", "no_whatsapp"}
-        )
-        if age_on(body.dob, gym_today(link.timezone)) < ADULT_AGE:
-            # The guardian's phone is the one the gym uses, unless they have no WhatsApp.
-            needed = ("guardian_name", "guardian_phone", "guardian_email")
-            missing = [
-                f
-                for f in needed
-                if getattr(body, f) is None and not (f == "guardian_phone" and body.no_whatsapp)
-            ]
-            if missing:
-                raise _missing(*missing)
-            guardian = {
-                "guardian_name": body.guardian_name,
-                "guardian_phone": body.guardian_phone,
-                "guardian_email": body.guardian_email,
-            }
-            # A child given their parent's email or phone has none of their own.
-            shared = Member(
-                0,
-                "",
-                phone=body.phone,
-                email=body.email,
-                guardian_phone=body.guardian_phone,
-                guardian_email=body.guardian_email,
-            )
-            own_guardian(shared)
-            values.update(phone=shared.phone, email=shared.email)
-        else:
-            missing = ["email"] if body.email is None else []
-            if body.phone is None and not body.no_whatsapp:
-                missing.append("phone")
-            if missing:
-                raise _missing(*missing)
-            guardian = dict.fromkeys(("guardian_name", "guardian_phone", "guardian_email"))
+        values = _request_values(body, gym_today(link.timezone))
         ip = request.client.host if request.client else "unknown"
         _admit(request, token, ip)
-        if body.website:
-            # A script filled in the field people never see: answer as if it worked.
-            return Response(status_code=status.HTTP_202_ACCEPTED)
-        if not await integrations.human_check.verify(body.human_check_token, ip):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "human_check_failed")
-        await link.session.execute(
-            text(INSERT_REQUEST), {**values, **guardian, "program_id": link.program_id}
-        )
+    if body.website:
+        # A script filled in the field people never see: answer as if it worked.
+        return Response(status_code=status.HTTP_202_ACCEPTED)
+    if not await integrations.human_check.verify(body.human_check_token, ip):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "human_check_failed")
+    # Opened again, so a link revoked meanwhile stores nothing.
+    async with _open(request, token) as link:
+        await link.session.execute(text(INSERT_REQUEST), {**values, "program_id": link.program_id})
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+def _request_values(body: JoinSubmission, today: date) -> dict[str, Any]:
+    """What `INSERT_REQUEST` stores but the program; a 422 for a field the form needs."""
+    values = body.model_dump(
+        include={"first_name", "last_name", "rut", "phone", "email", "dob", "no_whatsapp"}
+    )
+    if age_on(body.dob, today) < ADULT_AGE:
+        # The guardian's phone is the one the gym uses, unless they have no WhatsApp.
+        needed = ("guardian_name", "guardian_phone", "guardian_email")
+        missing = [
+            f
+            for f in needed
+            if getattr(body, f) is None and not (f == "guardian_phone" and body.no_whatsapp)
+        ]
+        if missing:
+            raise _missing(*missing)
+        # A child given their parent's email or phone has none of their own.
+        shared = Member(
+            0,
+            "",
+            phone=body.phone,
+            email=body.email,
+            guardian_phone=body.guardian_phone,
+            guardian_email=body.guardian_email,
+        )
+        own_guardian(shared)
+        values.update(
+            phone=shared.phone,
+            email=shared.email,
+            guardian_name=body.guardian_name,
+            guardian_phone=body.guardian_phone,
+            guardian_email=body.guardian_email,
+        )
+    else:
+        missing = ["email"] if body.email is None else []
+        if body.phone is None and not body.no_whatsapp:
+            missing.append("phone")
+        if missing:
+            raise _missing(*missing)
+        values.update(dict.fromkeys(("guardian_name", "guardian_phone", "guardian_email")))
+    return values
 
 
 # --- the queue (every staff role) -----------------------------------------------------
