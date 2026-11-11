@@ -1,5 +1,6 @@
+import { onlineManager } from '@tanstack/react-query'
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
@@ -291,6 +292,7 @@ const section = (name: string) => screen.findByRole('region', { name })
 afterEach(() => {
   localStorage.clear()
   vi.unstubAllGlobals()
+  onlineManager.setOnline(true)
 })
 
 describe('Hoy', () => {
@@ -389,6 +391,23 @@ describe('Hoy', () => {
     })
     expect(await within(overdue).findByText(copy.overdue.total('$75.000'))).toBeInTheDocument()
     expect(within(overdue).queryByRole('link', { name: /Felipe Díaz/ })).not.toBeInTheDocument()
+  })
+
+  it('refuses "Pagó" offline, saying it was not saved, rather than waiting on it (#231)', async () => {
+    const calls = stubApi()
+    renderToday()
+    const overdue = await section(copy.overdue.title)
+
+    await userEvent.click(await within(overdue).findByRole('button', { name: copy.overdue.paidLabel('Felipe Díaz') }))
+    act(() => {
+      onlineManager.setOnline(false)
+    })
+    await userEvent.click(within(overdue).getByRole('button', { name: copy.overdue.submit('$45.000') }))
+
+    expect(await screen.findByText(es.offline.refused)).toBeInTheDocument()
+    expect(within(overdue).getByRole('alert')).toHaveTextContent(copy.overdue.refused.failed)
+    expect(within(overdue).getByRole('button', { name: copy.overdue.submit('$45.000') })).toBeEnabled()
+    expect(calls.find((c) => c.path === '/api/ledger/payments')).toBeUndefined()
   })
 
   it('says so when the period was paid meanwhile', async () => {

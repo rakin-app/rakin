@@ -648,6 +648,7 @@ function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCance
   const methodId = useId()
   const [method, setMethod] = useState<Method>('cash')
   const record = useSubmit({
+    offline: 'refuse',
     mutationFn: () =>
       recordPayment({
         membership_id: period.membership_id,

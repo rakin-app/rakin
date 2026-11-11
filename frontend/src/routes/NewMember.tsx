@@ -126,6 +126,7 @@ export function NewMember() {
   const ready = !Object.values(problems).some(Boolean)
 
   const save = useSubmit({
+    offline: 'refuse',
     mutationFn: (body: Enrolment) => enrol(body),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ['people'] })

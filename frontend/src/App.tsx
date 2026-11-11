@@ -3,6 +3,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { hostQuery } from './api/host'
 import { myselfQuery } from './api/me'
+import { OfflineNotice } from './components/OfflineNotice'
 import type { createAppRouter } from './router'
 import { logoIcon } from './logo'
 import { setTabIcon } from './tabIcon'
@@ -19,6 +20,7 @@ export function App({ queryClient, router }: Props) {
       <GymTheme />
       <GymTabIcon />
       <RouterProvider router={router} />
+      <OfflineNotice />
     </QueryClientProvider>
   )
 }

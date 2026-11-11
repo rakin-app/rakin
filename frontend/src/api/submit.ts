@@ -19,8 +19,19 @@
  * `<key>:2`, `<key>:3`: the same on a retry. A request made after an `await` gets
  * none unless the flow passes one: `submissionKey()` read at its start, with a step
  * name (`submitProof`).
+ *
+ * Offline (#231), a submission waits for the connection by default: React Query pauses
+ * it and runs it once the signal is back, with the key it was given, so the wait cannot
+ * make it twice. `OfflineNotice` says so while it waits. A form that should not wait
+ * (money, an import) passes `offline: 'refuse'`: it fails at once with `OfflineError`,
+ * and the notice says it was not saved.
  */
-import { useMutation, type UseMutationOptions, type UseMutationResult } from '@tanstack/react-query'
+import {
+  onlineManager,
+  useMutation,
+  type UseMutationOptions,
+  type UseMutationResult,
+} from '@tanstack/react-query'
 import { useCallback, useMemo, useRef } from 'react'
 
 type Running = { key: string; taken: number }
@@ -78,17 +89,36 @@ export function identify(variables: unknown): string {
   )
 }
 
+/** A submission refused because the browser is offline (`offline: 'refuse'`). */
+export class OfflineError extends Error {
+  constructor() {
+    super('offline')
+    this.name = 'OfflineError'
+  }
+}
+
+/** Whether a submission waits for the connection, the default, or is refused without one. */
+export type OfflinePolicy = 'wait' | 'refuse'
+
+type SubmitOptions<TData, TError, TVariables, TContext> = UseMutationOptions<TData, TError, TVariables, TContext> & {
+  offline?: OfflinePolicy
+}
+
 /** `useMutation`, for a form: a repeat while it runs is the same submission, and keyed. */
-export function useSubmit<TData = unknown, TError = Error, TVariables = void, TContext = unknown>(
-  options: UseMutationOptions<TData, TError, TVariables, TContext>,
-): UseMutationResult<TData, TError, TVariables, TContext> {
+export function useSubmit<TData = unknown, TError = Error, TVariables = void, TContext = unknown>({
+  offline = 'wait',
+  ...options
+}: SubmitOptions<TData, TError, TVariables, TContext>): UseMutationResult<TData, TError, TVariables, TContext> {
   const keys = useRef(new Map<string, string>())
   const inFlight = useRef(new Map<string, Promise<TData>>())
   const { mutationFn } = options
   const mutation = useMutation({
     ...options,
+    // Run, not paused, so the refusal reaches the form at once.
+    ...(offline === 'refuse' ? { networkMode: 'always' as const } : {}),
     mutationFn: (variables, context) => {
       if (mutationFn === undefined) throw new Error('useSubmit needs a mutationFn')
+      if (offline === 'refuse' && !onlineManager.isOnline()) return Promise.reject(new OfflineError())
       const id = identify(variables)
       let key = keys.current.get(id)
       if (key === undefined) {

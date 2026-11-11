@@ -528,6 +528,7 @@ export const es = {
       pendingPeriods: (n: number) => `${n} períodos pendientes`,
       upToDate: 'Al día',
       upToDateNext: (day: string) => `Al día · vence el ${day}`,
+      paidThrough: (day: string) => `Al día · pagado hasta el ${day}`,
       nothingToRecord: 'Está al día y no tiene un período abierto: el pago se registra cuando se genere el próximo cobro.',
       // Dado de baja: no charge is coming, so none to wait for (#213).
       nothingToRecordLeft: 'Su plan terminó y no debe nada: no hay pagos por registrar.',
@@ -712,6 +713,24 @@ export const es = {
         refused: {
           paid: 'Ese período ya está pagado.',
           failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
+        },
+        // Paying ahead (#196): al día, with no period open.
+        ahead: {
+          intro: 'Está al día. Registra lo que paga por adelantado.',
+          periods: 'Paga',
+          // `3 meses · hasta el 10 feb · $135.000`
+          option: (n: number, monthly: boolean, until: string, amount: string) =>
+            `${n} ${monthly ? (n === 1 ? 'mes' : 'meses') : n === 1 ? 'período' : 'períodos'} · hasta el ${until} · ${amount}`,
+          loading: 'Calculando los próximos períodos…',
+          error: 'No pudimos calcular los próximos períodos.',
+          recorded: (amount: string, day: string) => `Pago registrado: ${amount}. Pagado hasta el ${day}.`,
+          // One for each 409 `code` of `POST /api/ledger/payments/ahead`.
+          refused: {
+            cannot_pay_ahead:
+              'Ya no puede pagar por adelantado: tiene un período abierto o su plan cambió. Revisa su ficha.',
+            amount_changed: 'El precio de esos períodos cambió. Revisa el nuevo total y vuelve a registrar.',
+            already_billed: 'Esos períodos se generaron mientras tanto. Revisa su ficha antes de registrar.',
+          },
         },
       },
       fields: {
@@ -2036,6 +2055,7 @@ export const es = {
       // `whose`: the dependent it is for, when it is not the student's own.
       due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
       paidUp: 'No tienes pagos pendientes.',
+      paidThrough: (day: string) => `No tienes pagos pendientes. Pagado hasta el ${day}.`,
       bankLabel: 'Datos para transferir',
       bank: 'Banco',
       holder: 'Titular',
@@ -2288,6 +2308,11 @@ export const es = {
       return `${Number(body).toLocaleString('es-CL')}-${digit}`
     },
     today: 'hoy',
+  },
+  // Any form, offline (#231): one that waits for the signal, and one that does not.
+  offline: {
+    waiting: 'Sin conexión: se guardará cuando vuelva la señal.',
+    refused: 'Sin conexión: no se guardó. Inténtalo de nuevo cuando vuelva la señal.',
   },
   notFound: {
     title: 'Página no encontrada',

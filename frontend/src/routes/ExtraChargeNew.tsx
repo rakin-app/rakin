@@ -129,6 +129,7 @@ function Wizard() {
   const waiting = (step === 2 || step === LAST) && amountClp > 0 && !fresh && !preview.isError
 
   const create = useSubmit({
+    offline: 'refuse',
     mutationFn: () => createCharge(draft!),
     onSuccess: async (charge) => {
       await queryClient.invalidateQueries({ queryKey: ['extra'] })

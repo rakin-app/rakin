@@ -170,6 +170,7 @@ const DIEGO_LEDGER: MembershipLedger = {
   freezes: [],
   periods: [],
   refundable_payments: [],
+  paid_through: null,
 }
 
 type Stub = {
@@ -205,6 +206,8 @@ function stubApi({
       } else if (url.pathname === '/api/people') body = people(url.searchParams)
       else if (url.pathname === '/api/memberships') body = memberships
       else if (url.pathname === `/api/ledger/memberships/${DIEGO_MEMBERSHIP.id}`) body = ledger
+      // Nothing to pay ahead: the member is on a plan that cannot (#196).
+      else if (url.pathname === `/api/ledger/memberships/${DIEGO_MEMBERSHIP.id}/ahead`) body = { periods: [] }
       else if (url.pathname === '/api/ledger/payments' && init?.method === 'POST') {
         payments.push(JSON.parse(String(init.body)))
         status = 201

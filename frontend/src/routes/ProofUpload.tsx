@@ -95,6 +95,7 @@ function ProofForm({ payables, initial, onSent }: { payables: Payable[]; initial
   const ids = { amount: useId(), camera: useId(), choose: useId(), hint: useId() }
 
   const send = useSubmit({
+    offline: 'refuse',
     mutationFn: ({ file, amount }: { file: File; amount: number }) =>
       submitProof(file, { kind: period.kind, id: period.id }, amount),
     onSuccess: () => {

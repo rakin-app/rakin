@@ -91,7 +91,9 @@ function NextPayment({ page }: { page: MyPage }) {
             {copy.next.status.paid}
           </StatusPill>
         </div>
-        <p className="next__paid-up">{copy.next.paidUp}</p>
+        <p className="next__paid-up">
+          {page.paid_through ? copy.next.paidThrough(t.common.longDay(page.paid_through)) : copy.next.paidUp}
+        </p>
       </section>
     )
   }

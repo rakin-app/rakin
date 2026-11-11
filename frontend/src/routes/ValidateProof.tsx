@@ -127,6 +127,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
 
   const settle = () => queryClient.invalidateQueries({ queryKey: ['ledger'] })
   const validate = useSubmit({
+    offline: 'refuse',
     mutationFn: () => validateProof(review.id),
     onSuccess: async (result: Validated) => {
       const credit = result.credit ? copy.credit(clp(result.credit.amount_clp)) : ''
@@ -135,6 +136,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
     },
   })
   const reject = useSubmit({
+    offline: 'refuse',
     mutationFn: (text: string) => rejectProof(review.id, text),
     onSuccess: async () => {
       const message = copy.rejected(review.claimed_by_name ?? review.person_name)

@@ -12,6 +12,11 @@ through, if later), so a second run on the same date finds nothing owed. The
 `(membership_id, period_start)` key backs that up: a period already there is skipped,
 and its charge with it.
 
+A request bills one membership with the same code (`write_billing`): a membership
+as it starts, so its first period is there on its first day, and a member paying
+ahead, whose next periods it writes on the spot (#196). The job then finds those
+periods there and bills on after them.
+
 On its first run a credits pack or drop-in with no period yet is charged once, with a
 period starting on the day it started, even if that day is past; a monthly or prepaid
 membership catches up from its paid-through date. That is accepted because no
@@ -29,12 +34,13 @@ would want its own local date; v1 has none.
 """
 
 import logging
+import uuid
 from datetime import date
 
 import asyncpg
 
 from app.domain import billing
-from app.domain.billing import Billable, Plan
+from app.domain.billing import Billable, Billing, BillingPeriod, Plan
 from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
 from app.jobs.gyms import MembershipFailed, each_gym
 from app.jobs.runner import Job
@@ -43,9 +49,8 @@ logger = logging.getLogger(__name__)
 
 NAME = "billing_periods"
 
-# RLS holds every table to the gym in `app.gym_id`. Locked so a plan change waits for
-# the periods it would be billed against (`POST /api/memberships/{id}/plan-change`).
-SELECT_BILLABLE = """
+# RLS holds every table to the gym in `app.gym_id`.
+BILLABLE = """
 SELECT m.id, m.status, (m.started_at AT TIME ZONE g.timezone)::date AS started_on,
        m.current_period_end, m.anchor_day, m.discount_pct, m.next_plan_from,
        (SELECT max(b.period_end) FROM billing_period b WHERE b.membership_id = m.id)
@@ -59,10 +64,15 @@ FROM membership m
 JOIN gym g ON g.id = m.gym_id
 JOIN plan pl ON pl.id = m.plan_id
 LEFT JOIN plan np ON np.id = m.next_plan_id
-WHERE m.status = 'active'
-ORDER BY m.id
-FOR UPDATE OF m
 """
+
+# Locked so a plan change waits for the periods it would be billed against
+# (`POST /api/memberships/{id}/plan-change`).
+SELECT_BILLABLE = f"{BILLABLE} WHERE m.status = 'active' ORDER BY m.id FOR UPDATE OF m"
+
+# One membership in any status, for a request that bills it on the spot: a new member
+# on their first day, or one paying ahead (#196).
+SELECT_ONE_BILLABLE = f"{BILLABLE} WHERE m.id = $1"
 
 INSERT_PERIOD = """
 INSERT INTO billing_period
@@ -128,12 +138,29 @@ async def bill_gym(conn: asyncpg.Connection, day: date) -> int:
 
 
 async def _bill_membership(conn: asyncpg.Connection, row: asyncpg.Record, day: date) -> int:
-    written = 0
-    owed = billing.due_periods(_billable(row), day)
+    written = await write_billing(conn, row["id"], billing.due_periods(_billable(row), day))
+    return len(written)
+
+
+async def billable_membership(
+    conn: asyncpg.Connection, membership_id: uuid.UUID
+) -> Billable | None:
+    """The membership in `app.gym_id` as billing sees it, `None` if there is none. The
+    caller holds its row locked, so the periods read are the ones it bills after."""
+    row = await conn.fetchrow(SELECT_ONE_BILLABLE, membership_id)
+    return None if row is None else _billable(row)
+
+
+async def write_billing(
+    conn: asyncpg.Connection, membership_id: uuid.UUID, owed: Billing
+) -> list[tuple[uuid.UUID, BillingPeriod]]:
+    """Write `owed`'s periods of the membership, each with its charge, and the plan
+    change they apply; the periods written, with their ids, skipping any already there."""
+    written = []
     for period in owed.periods:
         period_id = await conn.fetchval(
             INSERT_PERIOD,
-            row["id"],
+            membership_id,
             period.period_start,
             period.period_end,
             period.amount_due_clp,
@@ -141,11 +168,11 @@ async def _bill_membership(conn: asyncpg.Connection, row: asyncpg.Record, day: d
         )
         if period_id is None:
             continue
-        written += 1
+        written.append((period_id, period))
         if period.amount_due_clp > 0:
-            await conn.execute(INSERT_CHARGE, row["id"], period_id, period.amount_due_clp)
+            await conn.execute(INSERT_CHARGE, membership_id, period_id, period.amount_due_clp)
     if owed.plan_changed:
-        await conn.execute(APPLY_PLAN_CHANGE, row["id"], owed.anchor_day)
+        await conn.execute(APPLY_PLAN_CHANGE, membership_id, owed.anchor_day)
     return written
 
 

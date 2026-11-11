@@ -131,6 +131,7 @@ const LEDGER: MembershipLedger = {
       refundable_clp: 45000,
     },
   ],
+  paid_through: null,
 }
 
 const stripes = [0, 1, 2, 3, 4].map((n) => ({ key: String(n), label: n === 0 ? 'Sin grados' : n === 1 ? '1 grado' : `${n} grados` }))
@@ -172,6 +173,8 @@ type Stub = {
   memberships?: Membership[]
   ledger?: MembershipLedger
   payment?: Answer
+  ahead?: Answer
+  aheadPayment?: Answer
   adjustment?: Answer
   refund?: Answer
   grading?: Grading
@@ -197,6 +200,8 @@ function stubApi({
   memberships = [MONTHLY],
   ledger = LEDGER,
   payment,
+  ahead,
+  aheadPayment,
   adjustment,
   refund,
   grading = GRADING,
@@ -263,6 +268,10 @@ function stubApi({
       return { body: ended }
     }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
+    if (path === '/api/ledger/memberships/m-felipe/ahead') return ahead ?? { body: { periods: [] } }
+    if (path === '/api/ledger/payments/ahead' && method === 'POST') {
+      return aheadPayment ?? { status: 201, body: { paid_through: '2027-02-28' } }
+    }
     if (path === '/api/reminders' && url.searchParams.get('person_id') === 'felipe') return { body: reminders }
     if (path.startsWith('/api/reminders/') && method === 'POST') return { status: 201, body: {} }
     if (path === '/api/gym/grading-scheme') return { body: scheme }
@@ -457,6 +466,61 @@ describe('Ficha de alumno', () => {
     expect(within(card).getByText(copy.nothingToRecord)).toBeInTheDocument()
     expect(screen.queryByRole('form', { name: copy.form.title })).not.toBeInTheDocument()
   })
+
+  it('records a payment ahead for a member al día, for what the periods cost (#196)', async () => {
+    const ahead = [
+      { period_start: '2026-12-01', period_end: '2026-12-31', amount_due_clp: 45000 },
+      { period_start: '2027-01-01', period_end: '2027-01-31', amount_due_clp: 45000 },
+      { period_start: '2027-02-01', period_end: '2027-02-28', amount_due_clp: 40000 },
+    ]
+    const calls = stubApi({
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, paid_through: '2026-11-30' },
+      ahead: { body: { periods: ahead } },
+    })
+    renderAt(PATH)
+    const card = await money()
+    expect(await within(card).findByText(copy.paidThrough('30 nov'))).toBeInTheDocument()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.record }))
+    const form = await screen.findByRole('form', { name: copy.form.title })
+    const periods = within(form).getByLabelText(copy.form.ahead.periods)
+    expect(within(periods).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      copy.form.ahead.option(1, true, '31 dic', '$45.000'),
+      copy.form.ahead.option(2, true, '31 ene', '$90.000'),
+      copy.form.ahead.option(3, true, '28 feb', '$130.000'),
+    ])
+    await userEvent.selectOptions(periods, '3')
+    await userEvent.selectOptions(within(form).getByLabelText(copy.form.method), 'transfer')
+    await userEvent.click(within(form).getByRole('button', { name: copy.form.submit('$130.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.form.ahead.recorded('$130.000', '28 feb'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/ledger/payments/ahead',
+        body: { membership_id: 'm-felipe', periods: 3, amount_clp: 130000, method: 'transfer' },
+      },
+    ])
+  })
+
+  it.each(['cannot_pay_ahead', 'amount_changed', 'already_billed'] as const)(
+    'says why paying ahead was refused: %s',
+    async (code) => {
+      stubApi({
+        ledger: { ...LEDGER, open_periods: [], owed_clp: 0, paid_through: '2026-11-30' },
+        ahead: { body: { periods: [{ period_start: '2026-12-01', period_end: '2026-12-31', amount_due_clp: 45000 }] } },
+        aheadPayment: { status: 409, body: { detail: { code, message: 'refused' } } },
+      })
+      renderAt(PATH)
+      const card = await money()
+
+      await userEvent.click(await within(card).findByRole('button', { name: copy.record }))
+      const form = await screen.findByRole('form', { name: copy.form.title })
+      await userEvent.click(within(form).getByRole('button', { name: copy.form.submit('$45.000') }))
+
+      expect(await within(form).findByRole('alert')).toHaveTextContent(copy.form.ahead.refused[code])
+    },
+  )
 
   it('offers only what can be done: no adjustment, refund or freeze with nothing to do it on', async () => {
     stubApi({
