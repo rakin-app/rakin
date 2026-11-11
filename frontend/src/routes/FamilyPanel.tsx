@@ -24,6 +24,7 @@ const MATCHES = 5
 /** A person's guardian or dependents, and the forms that change them. */
 export function FamilyPanel({ person }: { person: PersonRef }) {
   const family = useQuery(familyQuery(person.id))
+  const [adding, setAdding] = useState(false)
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['people'] })
 
@@ -85,12 +86,24 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
               </ul>
             )}
           </section>
-          <NewDependentForm busy={add.isPending} onAdd={(body) => add.mutateAsync(body)} />
-          <LinkExisting
-            exclude={[person.id, ...dependents.map((d) => d.id)]}
-            busy={add.isPending}
-            onLink={(id) => add.mutate({ person_id: id })}
-          />
+          {/* Closed until asked for: most fichas never add anyone (#179). */}
+          {adding ? (
+            <>
+              <NewDependentForm busy={add.isPending} onAdd={(body) => add.mutateAsync(body)} />
+              <LinkExisting
+                exclude={[person.id, ...dependents.map((d) => d.id)]}
+                busy={add.isPending}
+                onLink={(id) => add.mutate({ person_id: id })}
+              />
+              <Button className="family__toggle" onClick={() => setAdding(false)}>
+                {copy.close}
+              </Button>
+            </>
+          ) : (
+            <Button className="family__toggle" onClick={() => setAdding(true)}>
+              {copy.addTitle}
+            </Button>
+          )}
         </>
       )}
     </div>
