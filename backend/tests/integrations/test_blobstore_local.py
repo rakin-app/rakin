@@ -69,7 +69,6 @@ def test_stat_reports_size_and_type(client: TestClient) -> None:
 def test_a_url_signed_with_another_secret_is_refused(client: TestClient, tmp_path: Path) -> None:
     forger = LocalBlobStore(
         root=tmp_path,
-        base_url="http://testserver",
         secret_key="someone-elses-secret-key",
         ttl_seconds=900,
     )
@@ -78,10 +77,10 @@ def test_a_url_signed_with_another_secret_is_refused(client: TestClient, tmp_pat
     assert client.put(presigned.url, content=b"x", headers=presigned.headers).status_code == 403
 
 
-def test_urls_are_absolute_under_the_public_base_url(client: TestClient) -> None:
-    assert (
-        store(client).presign_download("a/b.png").startswith("http://testserver/api/blobs/a/b.png?")
-    )
+def test_urls_are_root_relative(client: TestClient) -> None:
+    s = store(client)
+    assert s.presign_download("a/b.png").startswith("/api/blobs/a/b.png?")
+    assert s.presign_upload("a/b.png", "image/png", 1).url.startswith("/api/blobs/a/b.png?")
 
 
 def test_the_routes_exist_only_for_the_local_store() -> None:

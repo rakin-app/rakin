@@ -261,3 +261,65 @@ def test_refunds_and_adjustments_are_listed_so_the_history_adds_up(
     # An admin's note is theirs, as on a recorded payment.
     assert {p["note"] for p in mine["payments"]} == {None}
     assert mine["next_payment"]["period"]["outstanding_clp"] == 20000
+
+
+@pg
+def test_refunds_and_adjustments_never_push_a_payment_off_the_list(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    # A year of payments, then two discounts on the latest period: still a year of
+    # payments, and both discounts on top.
+    ana = add_person(client, sur, "Ana")
+    months = PAYMENTS_SHOWN + 2
+    membership = bill(
+        db, sur, ana, [(-30 * i, 45000, 45000 if i > 1 else 0, 0) for i in range(months, 0, -1)]
+    )
+    period = page(client, sur, ana)["next_payment"]["period"]["id"]
+    for amount in (1000, 2000):
+        response = client.post(
+            "/api/ledger/adjustments",
+            json={
+                "membership_id": membership,
+                "billing_period_id": period,
+                "amount_clp": amount,
+                "note": "beca",
+            },
+            headers=as_gym(sur),
+        )
+        assert response.status_code == 201, response.text
+
+    payments = page(client, sur, ana)["payments"]
+
+    kinds = [p["kind"] for p in payments]
+    assert kinds == ["adjustment", "adjustment", *["payment"] * PAYMENTS_SHOWN]
+
+
+# --- who has a student page (#214) -------------------------------------------------
+
+
+def student_page(client: TestClient, gym: uuid.UUID, person: uuid.UUID) -> Any:
+    response = client.get("/api/me/role", headers=as_gym(gym, person))
+    assert response.status_code == 200, response.text
+    return response.json()["student_page"]
+
+
+@pg
+def test_staff_who_also_train_have_a_student_page(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    coach = add_staff(db, sur, "coach")
+    assert student_page(client, sur, coach) is False
+    bill(db, sur, str(coach), [])
+    assert student_page(client, sur, coach) is True
+
+
+@pg
+def test_members_and_guardians_have_a_student_page(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    member = add_person(client, sur, "Ana")
+    bill(db, sur, member, [])
+    assert student_page(client, sur, uuid.UUID(member)) is True
+    guardian = add_person(client, sur, "Carla")
+    new_kid(client, sur, guardian, "Simón")
+    assert student_page(client, sur, uuid.UUID(guardian)) is True

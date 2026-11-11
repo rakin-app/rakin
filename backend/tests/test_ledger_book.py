@@ -323,13 +323,16 @@ def test_a_charge_is_in_the_month_its_period_starts_in(
         datetime(2020, 3, 26, 15, tzinfo=UTC),
     )
     dated_entry(db, sur, membership, "payment", 9000, datetime(2020, 3, 27, 15, tzinfo=UTC))
+    # Made before the charge's period starts, so listed after it: the book goes by the
+    # day it files each entry under, the one its date column shows.
+    dated_entry(db, sur, membership, "payment", 7000, datetime(2020, 4, 1, 15, tzinfo=UTC))
 
     march = read(client, sur, month="2020-03-01")
     april = read(client, sur, month="2020-04-01")
     kids = read(client, sur, month="2020-04-01", filter="kids")
 
     assert names(march) == [("Ana", "payment", 9000)]
-    assert names(april) == [("Ana", "charge", 30000)]
+    assert names(april) == [("Ana", "charge", 30000), ("Ana", "payment", 7000)]
     assert april["items"][0]["period"]["period_start"] == "2020-04-02"
     assert {"2020-03-01", "2020-04-01"} <= set(april["months"])
     assert names(kids) == []

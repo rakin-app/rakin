@@ -4,9 +4,11 @@ Most of this checks `build` alone. The Postgres tests load it twice into a migra
 database, as the owner, and read it back as the API user under RLS.
 """
 
+import asyncio
 from collections import Counter, defaultdict
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import asyncpg
 import pytest
@@ -16,7 +18,8 @@ from app.domain.dates import add_months
 from app.domain.membership import Membership, MembershipStatus, PlanKind, is_due_to_lapse
 from app.domain.phone import normalize_phone
 from app.domain.rut import is_valid_rut
-from app.seed import Loaded, load
+from app.integrations.blobstore import LocalBlobStore, StoredBlob
+from app.seed import PROOF_IMAGE, Loaded, load, store_proofs
 from app.seed.build import (
     GYM_ID,
     ZONE,
@@ -202,6 +205,22 @@ def test_design_pending_proofs(seed: Seed) -> None:
         if who[e["claimed_by"]] == "Camila Ortiz"
     }
     assert camila == {"Mateo Ortiz", "Sofía Ortiz"}
+
+
+def test_every_proof_has_a_placeholder_file_and_a_rerun_puts_none(
+    seed: Seed, tmp_path: Path
+) -> None:
+    # #216: Validar comprobante said "No encontramos el archivo del comprobante".
+    store = LocalBlobStore(root=tmp_path, secret_key="k" * 32, ttl_seconds=900)
+    keys = {e["proof_object_key"] for e in seed.ledger_entries if e["proof_object_key"]}
+    pending = [e for e in seed.ledger_entries if e["status"] == "pending"]
+    assert pending and all(e["proof_object_key"] in keys for e in pending)
+
+    assert asyncio.run(store_proofs(seed, store)) == len(keys)
+
+    image = StoredBlob(PROOF_IMAGE.stat().st_size, "image/jpeg")
+    assert all(asyncio.run(store.stat(key)) == image for key in keys)
+    assert asyncio.run(store_proofs(seed, store)) == 0
 
 
 def test_design_credit_adjustment(seed: Seed) -> None:

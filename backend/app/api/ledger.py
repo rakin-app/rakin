@@ -683,7 +683,11 @@ async def ledger_book(
     matching = f"{BOOK_ROWS} WHERE {BOOK_FILTERS[book_filter]} AND {searched}"
     total = await session.scalar(text(f"SELECT count(*) FROM ({matching}) f"), params)
     rows = await session.execute(
-        text(f"{matching} ORDER BY e.created_at DESC, e.id DESC LIMIT :limit OFFSET :offset"),
+        # By the day each is filed under, the one "Fecha" shows (#206), then as made.
+        text(
+            f"{matching} ORDER BY {BOOK_DAY} DESC, e.created_at DESC, e.id DESC"
+            " LIMIT :limit OFFSET :offset"
+        ),
         {**params, "limit": limit, "offset": offset},
     )
     kpis = (

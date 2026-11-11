@@ -1,10 +1,12 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
+import type { Category } from './extraCharges'
 
 /** A pending proof, with what the admin needs to decide on it (backend `ProofReview`). */
 export type ProofReview = {
   id: string
-  membership_id: string
+  // Null, with the plan, `period` and history, on a cobro extra's proof (#195).
+  membership_id: string | null
   person_id: string
   person_name: string
   amount_clp: number
@@ -15,8 +17,8 @@ export type ProofReview = {
   // Null when the file is missing from storage.
   proof_url: string | null
   proof_content_type: string | null
-  plan_name: string
-  plan_kind: string
+  plan_name: string | null
+  plan_kind: string | null
   anchor_day: number | null
   period: {
     id: string
@@ -26,7 +28,18 @@ export type ProofReview = {
     amount_due_clp: number
     paid_clp: number
     outstanding_clp: number
-  }
+  } | null
+  // The cobro extra line it pays instead (#195).
+  extra_line?: {
+    id: string
+    extra_charge_id: string
+    title: string
+    category: Category
+    due_date: string
+    amount_due_clp: number
+    paid_clp: number
+    outstanding_clp: number
+  } | null
   // What the membership still owes on its other periods already due.
   prior_balance_clp: number
   // Newest first, at most three.
@@ -62,8 +75,13 @@ export function rejectProof(id: string, note: string): Promise<unknown> {
 /** How the claimed amount compares with what the period still owes. */
 export type AmountMatch = { kind: 'matches' } | { kind: 'over' | 'short'; difference: number }
 
+/** What the proof's period, or its cobro line, still owes. */
+export function owed(review: ProofReview): number {
+  return review.period?.outstanding_clp ?? review.extra_line?.outstanding_clp ?? 0
+}
+
 export function amountMatch(review: ProofReview): AmountMatch {
-  const difference = review.amount_clp - review.period.outstanding_clp
+  const difference = review.amount_clp - owed(review)
   if (difference === 0) return { kind: 'matches' }
   return difference > 0 ? { kind: 'over', difference } : { kind: 'short', difference: -difference }
 }

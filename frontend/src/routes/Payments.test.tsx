@@ -266,8 +266,9 @@ describe('Pagos', () => {
     expect(rows.map(cells)).toEqual([
       ['8 nov 14:12', 'Diego Morales', 'Pago', 'Nov 2026', 'Transferencia', 'Por validar', '$45.000'],
       ['7 nov 09:05', 'Mateo OrtizApoderado: Camila Ortiz', 'Pago', 'Nov 2026', 'Efectivo', 'Validado · Martín', '$45.000'],
-      ['6 nov 00:10', 'Andrés Molina', 'Cargo', 'Dic 2026 – May 2027', 'Prepago 6 meses', 'Abierto · vence 1 dic', '$240.000'],
-      ['25 oct 00:10', 'Felipe Díaz', 'Cargo', 'Oct 2026', 'Mensual adultos', 'Vencido 9 d', '$45.000'],
+      // A charge is dated by its period's start, the day the book files it under (#206).
+      ['1 dic', 'Andrés Molina', 'Cargo', 'Dic 2026 – May 2027', 'Prepago 6 meses', 'Abierto · vence 1 dic', '$240.000'],
+      ['31 oct', 'Felipe Díaz', 'Cargo', 'Oct 2026', 'Mensual adultos', 'Vencido 9 d', '$45.000'],
       ['4 nov 20:01', 'Paula Contreras', 'Ajuste', 'A favor', 'Pagó $50.000; quedan $5.000 a favor', 'Validado · Martín', '$5.000'],
     ])
     expect(within(rows[0]!).getByRole('link', { name: 'Diego Morales' })).toHaveAttribute('href', '/admin/alumnos/diego')
@@ -321,6 +322,32 @@ describe('Pagos', () => {
       ['8 nov 14:12', 'Diego Morales', 'Recargo', 'Nov 2026', 'matrícula', 'Validado · Martín', '+$5.000'],
       ['8 nov 14:12', 'Diego Morales', 'Descuento', 'Nov 2026', 'hermano', 'Validado · Martín', '−$5.000'],
     ])
+  })
+
+  it('lists a cobro extra\'s payment by its title and category, and Cobrado says what they brought', async () => {
+    const rifa = entry({
+      id: 'rifa',
+      kind: 'payment',
+      amount_clp: 10000,
+      method: 'transfer',
+      membership_id: null,
+      plan_name: null,
+      period: null,
+      validated_by_name: 'Martín',
+      extra: { id: 'x-rifa', title: 'Rifa de fin de año', category: 'rifa' },
+    })
+    stubApi({
+      book: () => ({ ...BOOK, items: [rifa], total: 1, kpis: { ...BOOK.kpis, collected_extra_clp: 10000 } }),
+    })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map(cells)).toEqual([
+      ['8 nov 14:12', 'Diego Morales', 'Pago', 'Rifa de fin de año', 'Rifa · Transferencia', 'Validado · Martín', '$10.000'],
+    ])
+    const kpis = screen.getByRole('region', { name: copy.kpisLabel })
+    expect(kpis.textContent).toContain(copy.kpiExtra('$10.000'))
+    expect(screen.getByRole('link', { name: copy.extra })).toHaveAttribute('href', '/admin/pagos/cobros')
   })
 
   it('lists the month\'s freezes among the entries, after their day\'s, with no amount', async () => {

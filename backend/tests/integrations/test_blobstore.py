@@ -51,7 +51,6 @@ def local_harness(tmp_path: Path) -> Iterator[Harness]:
     def expired_download(key: str) -> str:
         past = LocalBlobStore(
             root=tmp_path,
-            base_url="http://testserver",
             secret_key=settings.secret_key,
             ttl_seconds=60,
             clock=lambda: time.time() - 61,
@@ -240,3 +239,23 @@ def test_stat_reports_an_upload_and_none_for_a_missing_key(harness: Harness, key
     upload(harness, key, PNG)
 
     assert asyncio.run(harness.store.stat(key)) == StoredBlob(len(PNG), "image/png")
+
+
+def test_a_put_from_the_server_can_be_downloaded(harness: Harness, key: str) -> None:
+    asyncio.run(harness.store.put(key, "image/png", PNG))
+
+    assert asyncio.run(harness.store.stat(key)) == StoredBlob(len(PNG), "image/png")
+    assert harness.http.get(harness.store.presign_download(key)).content == PNG
+
+
+@pytest.mark.parametrize(
+    ("content_type", "data"),
+    [("text/html", b"<script>"), ("image/png", b""), ("image/png", bytes(MAX_UPLOAD_BYTES + 1))],
+    ids=["type", "empty", "too-large"],
+)
+def test_a_put_holds_to_the_upload_rules(
+    harness: Harness, key: str, content_type: str, data: bytes
+) -> None:
+    with pytest.raises(ValueError):
+        asyncio.run(harness.store.put(key, content_type, data))
+    assert asyncio.run(harness.store.stat(key)) is None

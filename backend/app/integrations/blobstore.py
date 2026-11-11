@@ -15,7 +15,7 @@ import os
 import re
 import tempfile
 import time
-from collections.abc import AsyncIterable, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol
@@ -91,6 +91,13 @@ class BlobStore(Protocol):
         """A URL the browser GETs the file from."""
         ...
 
+    async def put(self, key: str, content_type: str, data: bytes) -> None:
+        """Store `data` from the server side, as the seed does; replaces any file there.
+
+        Raises `ValueError` as `presign_upload` does.
+        """
+        ...
+
     async def stat(self, key: str) -> StoredBlob | None:
         """The stored file's size and content type, or None if there is none."""
         ...
@@ -157,6 +164,16 @@ class S3BlobStore:
             ExpiresIn=self.ttl_seconds,
         )
 
+    async def put(self, key: str, content_type: str, data: bytes) -> None:
+        await asyncio.to_thread(
+            self._client.put_object,
+            Bucket=self.bucket,
+            Key=validate_key(key),
+            Body=data,
+            ContentType=validate_content_type(content_type),
+            ContentLength=validate_size(len(data)),
+        )
+
     async def stat(self, key: str) -> StoredBlob | None:
         validate_key(key)
         try:
@@ -179,7 +196,8 @@ class LocalBlobStore:
     """Files under `root`, behind HMAC-signed URLs served by `app/api/blobs.py`.
 
     `root/data/<key>` holds the bytes and `root/meta/<key>` the content type they were
-    uploaded with.
+    uploaded with. URLs are root-relative, so the browser sends them to the host the page
+    is on: a gym's own subdomain is same-origin and needs no CORS rule.
     """
 
     PATH_PREFIX = "/api/blobs/"
@@ -188,13 +206,11 @@ class LocalBlobStore:
         self,
         *,
         root: Path,
-        base_url: str,
         secret_key: str,
         ttl_seconds: int,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.root = root
-        self.base_url = base_url.rstrip("/")
         self.ttl_seconds = ttl_seconds
         self._secret = hashlib.sha256(b"rakin-blobstore\0" + secret_key.encode()).digest()
         self._clock = clock
@@ -207,6 +223,17 @@ class LocalBlobStore:
 
     def presign_download(self, key: str) -> str:
         return self._sign("get", validate_key(key), "", None)
+
+    async def put(self, key: str, content_type: str, data: bytes) -> None:
+        async def chunks() -> AsyncIterator[bytes]:
+            yield data
+
+        await self.write(
+            validate_key(key),
+            validate_content_type(content_type),
+            validate_size(len(data)),
+            chunks(),
+        )
 
     async def stat(self, key: str) -> StoredBlob | None:
         validate_key(key)
@@ -291,7 +318,7 @@ class LocalBlobStore:
         if size is not None:
             query["len"] = str(size)
         query["sig"] = self._signature(op, key, content_type, size, expires_at)
-        return f"{self.base_url}{self.PATH_PREFIX}{quote(key)}?{urlencode(query)}"
+        return f"{self.PATH_PREFIX}{quote(key)}?{urlencode(query)}"
 
     def _signature(
         self, op: Operation, key: str, content_type: str, size: int | None, expires_at: int

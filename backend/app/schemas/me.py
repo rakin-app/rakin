@@ -76,7 +76,8 @@ class MyPage(BaseModel):
     # Their latest promotion here (`grade_event`, 0018); `None` until they have one.
     rank: Rank | None
     attendance: MyAttendance
-    # Newest first, at most `PAYMENTS_SHOWN`.
+    # Newest first: at most `PAYMENTS_SHOWN` payments, with the refunds and adjustments
+    # made since the oldest of them.
     payments: list[MyPayment]
     # The cobros extra still owed, theirs and their dependents', earliest due first
     # (#195): beside the plan's, never part of `next_payment`.

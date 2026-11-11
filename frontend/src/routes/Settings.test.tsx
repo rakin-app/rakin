@@ -58,6 +58,8 @@ type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 type Stub = {
   role?: 'owner' | 'admin' | 'coach'
+  // Holds a membership here too (#214).
+  studentPage?: boolean
   settings?: Answer
   saveSettings?: Answer
   savePlan?: Answer
@@ -68,7 +70,7 @@ const refused = (...errors: [string[], string][]): Answer => ({
   body: { detail: errors.map(([loc, type]) => ({ loc, type, msg: type })) },
 })
 
-function stubApi({ role = 'owner', settings, saveSettings, savePlan }: Stub = {}) {
+function stubApi({ role = 'owner', studentPage = false, settings, saveSettings, savePlan }: Stub = {}) {
   const calls: Call[] = []
   let current = SETTINGS
   let list: Plan[] = [MONTHLY, TRIAL, OLD_CREDITS]
@@ -90,7 +92,16 @@ function stubApi({ role = 'owner', settings, saveSettings, savePlan }: Stub = {}
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
     if (path === '/api/me/role') {
-      return { body: { role, person_id: 'me', name: 'Carla Soto', email: 'carla@example.cl', gym_name: 'Academia Sur' } }
+      return {
+        body: {
+          role,
+          person_id: 'me',
+          name: 'Carla Soto',
+          email: 'carla@example.cl',
+          gym_name: 'Academia Sur',
+          student_page: studentPage,
+        },
+      }
     }
     if (path === '/api/auth/logout') return { status: 204 }
     if (path === '/api/gym/settings' && method === 'GET') return settings ?? { body: current }
@@ -210,6 +221,25 @@ describe('Ajustes', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/ingresar'))
     expect(calls.some((c) => c.method === 'POST' && c.path === '/api/auth/logout')).toBe(true)
+  })
+
+  it('has "Mi página" in Cuenta for an owner who also trains, the way to it on a phone (#214)', async () => {
+    stubApi({ studentPage: true })
+    const router = renderAt('/admin/ajustes/cuenta')
+
+    const account = await screen.findByRole('region', { name: copy.account.title })
+    await userEvent.click(await within(account).findByRole('link', { name: es.nav.myPage }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+  })
+
+  it('has no "Mi página" in Cuenta for an owner who does not train', async () => {
+    stubApi()
+    renderAt('/admin/ajustes/cuenta')
+
+    const account = await screen.findByRole('region', { name: copy.account.title })
+    await within(account).findByText('Carla Soto')
+    expect(within(account).queryByRole('link', { name: es.nav.myPage })).not.toBeInTheDocument()
   })
 
   it('tells an admin whose role was taken away that the section is not theirs', async () => {

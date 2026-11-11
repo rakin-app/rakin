@@ -23,6 +23,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.domain.ledger import EntryKind, EntryStatus
+from app.domain.membership import MembershipStatus
 from app.schemas.plans import MAX_PRICE_CLP
 
 
@@ -286,7 +287,7 @@ class BookEntry(BaseModel):
     plan_name: str | None
     # The membership's status today (`lapsed` once its plan lapsed), so a debt left on a
     # lapsed or cancelled plan reads as such (#207). Null for a cobro extra line.
-    membership_status: str | None = None
+    membership_status: MembershipStatus | None = None
     # Whose membership or line it is, and who pays for them when they are a dependent.
     person: PersonRef
     guardian: PersonRef | None
@@ -357,7 +358,7 @@ class OverduePeriod(BaseModel):
     person_id: uuid.UUID
     person_name: str
     plan_name: str
-    membership_status: str
+    membership_status: MembershipStatus
     period_start: date
     due_date: date
     outstanding_clp: int

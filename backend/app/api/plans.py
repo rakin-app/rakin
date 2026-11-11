@@ -5,8 +5,9 @@ plan is deactivated with `PATCH {"active": false}`, and the database refuses a
 `DELETE` from any role (migration 0007), since memberships and the ledger keep
 pointing at it. A `program_id` must be one of the gym's programs, or it is a 422.
 
-Any staff role may read the plans, coaches included; only an owner or admin may
-create or change one. Members may not use it at all.
+Any staff role may read the plans, coaches included, though a coach reads them without
+their prices (#205); only an owner or admin may create or change one. Members may not
+use it at all.
 """
 
 import uuid
@@ -19,14 +20,16 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.programs import require_program
-from app.roles import AdminSession, StaffSession
+from app.roles import AdminSession, SeesMoney, StaffSession
 from app.schemas.plans import (
     COLUMNS,
     PLAN,
     PLAN_CREATE,
     Plan,
     PlanCreate,
+    PlanForCoach,
     PlanUpdate,
+    for_coach,
     from_row,
     to_columns,
 )
@@ -69,18 +72,24 @@ async def create_plan(body: PlanCreate, session: AdminSession) -> Plan:
 
 
 @router.get("")
-async def list_plans(session: StaffSession, active: bool | None = None) -> list[Plan]:
+async def list_plans(
+    session: StaffSession, money: SeesMoney, active: bool | None = None
+) -> list[Plan] | list[PlanForCoach]:
     """Active plans first, then by name; `?active=true` for the ones a member can join."""
     where = "" if active is None else " WHERE active = :active"
     result = await session.execute(
         text(f"{SELECT_PLAN}{where} ORDER BY active DESC, name, created_at"), {"active": active}
     )
-    return [_plan(row) for row in result]
+    plans = [_plan(row) for row in result]
+    return plans if money else [for_coach(plan) for plan in plans]
 
 
 @router.get("/{plan_id}")
-async def get_plan(plan_id: uuid.UUID, session: StaffSession) -> Plan:
-    return await _get(session, plan_id)
+async def get_plan(
+    plan_id: uuid.UUID, session: StaffSession, money: SeesMoney
+) -> Plan | PlanForCoach:
+    plan = await _get(session, plan_id)
+    return plan if money else for_coach(plan)
 
 
 @router.patch("/{plan_id}")

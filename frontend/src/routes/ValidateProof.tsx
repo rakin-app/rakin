@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import {
   amountMatch,
   isImage,
+  owed,
   proofQueueQuery,
   rejectProof,
   validateProof,
@@ -142,9 +143,11 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
       const reminders = await queryClient
         .fetchQuery(remindersQuery(review.person_id))
         .catch((): PaymentReminder[] => [])
-      const followUp = reminders.find(
-        (r) => r.billing_period_id === review.period.id && r.kind === 'proof_rejected_followup',
-      )
+      // A cobro extra's proof has no period, and so no period's follow-up (#195).
+      const period = review.period
+      const followUp = period
+        ? reminders.find((r) => r.billing_period_id === period.id && r.kind === 'proof_rejected_followup')
+        : undefined
       if (followUp?.whatsapp_url) onDone({ message, followUp })
     },
   })
@@ -163,7 +166,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
   }
 
   const match = amountMatch(review)
-  const { period } = review
+  const { period, extra_line: line } = review
 
   return (
     <>
@@ -181,9 +184,11 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
           </div>
           <div className="review__figure">
             <span className="review__figure-label">{copy.owes}</span>
-            <span className="review__figure-amount">{clp(period.outstanding_clp)}</span>
+            <span className="review__figure-amount">{clp(owed(review))}</span>
             <span className="review__figure-detail">
-              {copy.periodDue(monthName(period.period_start), shortDay(period.due_date))}
+              {period
+                ? copy.periodDue(monthName(period.period_start), shortDay(period.due_date))
+                : line && copy.extraDue(t.admin.extra.category[line.category], shortDay(line.due_date))}
             </span>
           </div>
         </section>
@@ -197,22 +202,36 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
         <Proof review={review} />
 
         <dl className="review__details">
-          <div>
-            <dt>{copy.plan}</dt>
-            <dd>{review.anchor_day ? copy.planDay(review.plan_name, review.anchor_day) : review.plan_name}</dd>
-          </div>
-          <div>
-            <dt>{copy.priorBalance}</dt>
-            <dd>{clp(review.prior_balance_clp)}</dd>
-          </div>
-          <div>
-            <dt>{copy.lastPayments}</dt>
-            <dd>
-              {review.last_payments.length
-                ? review.last_payments.map((p) => shortDay(p.paid_at)).join(' · ')
-                : copy.noPayments}
-            </dd>
-          </div>
+          {line ? (
+            // A cobro extra has no plan, prior balance or history of its own (#195).
+            <div>
+              <dt>{copy.extra}</dt>
+              <dd>{line.title}</dd>
+            </div>
+          ) : (
+            <>
+              <div>
+                <dt>{copy.plan}</dt>
+                <dd>
+                  {review.anchor_day && review.plan_name
+                    ? copy.planDay(review.plan_name, review.anchor_day)
+                    : review.plan_name}
+                </dd>
+              </div>
+              <div>
+                <dt>{copy.priorBalance}</dt>
+                <dd>{clp(review.prior_balance_clp)}</dd>
+              </div>
+              <div>
+                <dt>{copy.lastPayments}</dt>
+                <dd>
+                  {review.last_payments.length
+                    ? review.last_payments.map((p) => shortDay(p.paid_at)).join(' · ')
+                    : copy.noPayments}
+                </dd>
+              </div>
+            </>
+          )}
           <div>
             <dt>{copy.attendance}</dt>
             <dd>{copy.attendanceCount(review.attendance_30d)}</dd>
@@ -331,7 +350,9 @@ function Zoom({ src, alt, onClose }: { src: string; alt: string; onClose: () => 
 function refusal(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) {
     const detail = (error.body as { detail?: unknown } | undefined)?.detail
-    return detail === 'billing period is already paid in full' ? copy.refused.paid : copy.refused.reviewed
+    return detail === 'billing period is already paid in full' || detail === 'the line is already paid in full'
+      ? copy.refused.paid
+      : copy.refused.reviewed
   }
   return copy.refused.failed
 }

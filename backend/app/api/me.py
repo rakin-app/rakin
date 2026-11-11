@@ -56,37 +56,58 @@ DEPENDENTS = f"""
 
 # The money on the person's memberships and their dependents': payments, and the
 # refunds and adjustments that change what they settle, so "Mis pagos" adds up to what
-# "Próximo pago" asks for (#210). Newest recorded first; entries recorded at the same
-# moment go by the period they pay, latest first. Only the notes written for the
-# student are shown: a rejection's, and a carried credit's ("Pagó $X, quedan $Y a
-# favor"); an admin's note on anything else is theirs.
+# "Próximo pago" asks for (#210). The latest `:limit` payments, and every refund and
+# adjustment made since the oldest of them (all of them while there are fewer), so a
+# refund or a discount never pushes a payment off the list. Newest recorded first;
+# entries recorded at the same moment go by the period they pay, latest first. Only the
+# notes written for the student are shown: a rejection's, and a carried credit's
+# ("Pagó $X, quedan $Y a favor"); an admin's note on anything else is theirs.
 PAYMENTS = """
-    SELECT e.id, e.kind, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
-           bp.period_start, x.title AS charge_title, e.claimed_at, e.validated_at,
-           CASE WHEN e.status = :rejected
-                  OR (e.kind = :adjustment AND e.billing_period_id IS NULL
-                      AND e.extra_line_id IS NULL)
-                THEN e.note END AS note,
-           e.created_at
-    FROM ledger_entry e
-    LEFT JOIN membership m ON m.id = e.membership_id
-    LEFT JOIN extra_line l ON l.id = e.extra_line_id
-    LEFT JOIN extra_charge x ON x.id = l.extra_charge_id
-    CROSS JOIN LATERAL (SELECT coalesce(m.person_id, l.person_id) AS person_id) w
-    JOIN gym_person gp ON gp.gym_id = e.gym_id AND gp.person_id = w.person_id
-    LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
-    WHERE e.kind = ANY(CAST(:kinds AS text[]))
-      AND (w.person_id = :me OR w.person_id IN (
-          SELECT g.dependent_person_id FROM guardian_link g WHERE g.guardian_person_id = :me))
-    ORDER BY e.created_at DESC, bp.period_start DESC NULLS LAST, e.id
-    LIMIT :limit
+    WITH mine AS (
+        SELECT e.id, e.kind, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
+               bp.period_start, x.title AS charge_title, e.claimed_at, e.validated_at,
+               CASE WHEN e.status = :rejected
+                      OR (e.kind = :adjustment AND e.billing_period_id IS NULL
+                          AND e.extra_line_id IS NULL)
+                    THEN e.note END AS note,
+               e.created_at
+        FROM ledger_entry e
+        LEFT JOIN membership m ON m.id = e.membership_id
+        LEFT JOIN extra_line l ON l.id = e.extra_line_id
+        LEFT JOIN extra_charge x ON x.id = l.extra_charge_id
+        CROSS JOIN LATERAL (SELECT coalesce(m.person_id, l.person_id) AS person_id) w
+        JOIN gym_person gp ON gp.gym_id = e.gym_id AND gp.person_id = w.person_id
+        LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
+        WHERE e.kind = ANY(CAST(:kinds AS text[]))
+          AND (w.person_id = :me OR w.person_id IN (
+              SELECT g.dependent_person_id FROM guardian_link g
+              WHERE g.guardian_person_id = :me))
+    ),
+    shown AS (
+        SELECT * FROM mine WHERE kind = :payment
+        ORDER BY created_at DESC, period_start DESC NULLS LAST, id
+        LIMIT :limit
+    ),
+    since AS (
+        SELECT CASE WHEN count(*) < :limit THEN NULL ELSE min(created_at) END AS at FROM shown
+    )
+    SELECT * FROM shown
+    UNION ALL
+    SELECT mine.* FROM mine CROSS JOIN since
+    WHERE mine.kind <> :payment AND (since.at IS NULL OR mine.created_at >= since.at)
+    ORDER BY created_at DESC, period_start DESC NULLS LAST, id
 """
 
 # Who is signed in, as this gym knows them, and the gym's name: what the admin shell
 # shows on every screen, a coach's included. Left-joined, so a session with no record
-# here still answers its role.
+# here still answers its role. `student_page`: whether the student page has anything
+# for them, a membership here or a dependent they pay for, so staff who also train
+# get a way to it (#214).
 WHO = """
-    SELECT g.name AS gym_name, gp.name, gp.email
+    SELECT g.name AS gym_name, gp.name, gp.email,
+           (EXISTS (SELECT 1 FROM membership m WHERE m.gym_id = g.id AND m.person_id = :me)
+            OR EXISTS (SELECT 1 FROM guardian_link l
+                       WHERE l.gym_id = g.id AND l.guardian_person_id = :me)) AS student_page
     FROM gym g
     LEFT JOIN gym_person gp ON gp.gym_id = g.id AND gp.person_id = :me
     WHERE g.id = :gym
@@ -95,7 +116,8 @@ WHO = """
 # What "Mis pagos" lists: everything but the charges, which "Próximo pago" stands for.
 MY_KINDS = (EntryKind.PAYMENT, EntryKind.REFUND, EntryKind.ADJUSTMENT)
 
-# How far back "Mis pagos" goes: a year of monthly payments.
+# How far back "Mis pagos" goes: a year of monthly payments, with the refunds and
+# adjustments made since the oldest of them on top.
 PAYMENTS_SHOWN = 12
 
 
@@ -120,6 +142,7 @@ async def my_role(
         name=who.name,
         email=who.email,
         gym_name=who.gym_name,
+        student_page=who.student_page,
     )
 
 
@@ -198,6 +221,7 @@ async def my_page(
         {
             "me": tenant.person_id,
             "kinds": [k.value for k in MY_KINDS],
+            "payment": EntryKind.PAYMENT.value,
             "adjustment": EntryKind.ADJUSTMENT.value,
             "rejected": EntryStatus.REJECTED.value,
             "limit": PAYMENTS_SHOWN,

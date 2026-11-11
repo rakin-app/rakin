@@ -9,6 +9,7 @@ import dataclasses
 import uuid
 from collections.abc import Iterator
 from typing import Any
+from urllib.parse import urlsplit
 
 import asyncpg
 import pytest
@@ -191,6 +192,41 @@ def stored_entry(db: Database, entry_id: str) -> dict[str, Any]:
         lambda c: c.fetchrow("SELECT * FROM ledger_entry WHERE id = $1", uuid.UUID(entry_id)),
     )
     return dict(row)
+
+
+@pg
+def test_an_upload_from_a_gyms_subdomain_stays_on_that_host(
+    db: Database, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    # #202: with gym subdomains, a URL on PUBLIC_BASE_URL is another origin than the
+    # page's, and the browser's preflight fails. A root-relative URL stays on the page's.
+    app = create_app(
+        make_settings(
+            database_url=db.api_url,
+            blob_store="local",
+            blob_local_dir=tmp_path_factory.mktemp("blobs"),
+            public_base_url="http://localhost:8094",
+            base_domain="localhost",
+        )
+    )
+    app.add_middleware(FakeAuth)
+    slug = f"academia-sur-{uuid.uuid4().hex[:6]}"
+    gym = seed_gym(db, slug)
+    with TestClient(app, base_url=f"http://{slug}.localhost:8094") as on_gym:
+        ana = add_person(on_gym, gym, "Ana")
+        ticket = on_gym.post(
+            "/api/me/proofs",
+            json={"content_type": "application/pdf", "size_bytes": len(PDF)},
+            headers=as_gym(gym, me(ana)),
+        )
+        assert ticket.status_code == 201, ticket.text
+        url = ticket.json()["url"]
+        assert urlsplit(url).netloc == ""
+        assert url.startswith("/api/blobs/")
+        put = on_gym.put(url, content=PDF, headers=ticket.json()["headers"])
+
+    assert put.status_code == 200, put.text
+    assert put.url.host == f"{slug}.localhost"
 
 
 @pg
@@ -421,6 +457,7 @@ def test_my_role_names_who_is_signed_in_and_the_gym(
         "name": "x",
         "email": None,
         "gym_name": slug,
+        "student_page": False,
     }
 
 

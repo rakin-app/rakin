@@ -88,6 +88,7 @@ function stubPage(answer: MyPage | { status: number }, time: PersonTime = NO_TIM
         return Response.json(answer)
       }
       if (url.pathname === '/api/me/periods') return Response.json([NOVEMBER])
+      if (url.pathname === '/api/me/extra-lines') return Response.json([])
       if (url.pathname === '/api/me/time') return Response.json(time)
       return Response.json({ detail: 'Not Found' }, { status: 404 })
     }),
