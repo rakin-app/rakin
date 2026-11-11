@@ -23,6 +23,8 @@ function stubApi({ form = { body: FORM }, submit = { status: 202 } }: { form?: A
     vi.fn<typeof fetch>(async (input, init) => {
       const path = new URL(String(input), 'http://localhost').pathname
       const method = init?.method ?? 'GET'
+      // The theme this address wears (App's `GymTheme`), asked on every page: not the form's.
+      if (path === '/api/host') return Response.json({ gym: null })
       sent.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined })
       const answer = method === 'GET' ? form : submit
       return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {

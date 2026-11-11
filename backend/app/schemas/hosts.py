@@ -1,9 +1,12 @@
 from pydantic import BaseModel
 
+from app.schemas.theme import Theme
+
 
 class HostGymInfo(BaseModel):
     slug: str
     name: str
+    theme: Theme
 
 
 class HostInfo(BaseModel):

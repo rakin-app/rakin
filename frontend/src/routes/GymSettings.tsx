@@ -8,10 +8,12 @@ import {
   type GymSettings as Settings,
   type GymSettingsUpdate,
 } from '../api/gym'
+import { myselfQuery, type MyRole } from '../api/me'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
+import { DEFAULT_THEME, THEMES, type Theme } from '../theme'
 import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
 
 const copy = t.admin.settings.gym
@@ -25,6 +27,7 @@ type PrivacyField = (typeof PRIVACY_FIELDS)[number]
 type Drafts = {
   name: string
   timezone: string
+  theme: Theme
   grace_days: string
   reminder_every_days: string
   whatsapp: boolean
@@ -37,6 +40,7 @@ function draftsOf(settings: Settings): Drafts {
   return {
     name: settings.name,
     timezone: settings.timezone,
+    theme: settings.theme,
     grace_days: String(settings.grace_days),
     reminder_every_days: String(settings.reminder_every_days),
     whatsapp: settings.channels.whatsapp,
@@ -62,6 +66,7 @@ function changesOf(before: Drafts, after: Drafts): GymSettingsUpdate {
   const changes: GymSettingsUpdate = {}
   if (after.name !== before.name) changes.name = after.name
   if (after.timezone !== before.timezone) changes.timezone = after.timezone
+  if (after.theme !== before.theme) changes.theme = after.theme
   if (after.grace_days !== before.grace_days) changes.grace_days = integerOf(after.grace_days)
   if (after.reminder_every_days !== before.reminder_every_days) {
     changes.reminder_every_days = integerOf(after.reminder_every_days)
@@ -109,6 +114,8 @@ function GymForm({ settings }: { settings: Settings }) {
     mutationFn: updateGymSettings,
     onSuccess: (answer) => {
       queryClient.setQueryData(gymSettingsQuery().queryKey, answer)
+      // Every screen wears the new theme at once (App's `GymTheme` reads it there).
+      queryClient.setQueryData<MyRole>(myselfQuery().queryKey, (me) => me && { ...me, theme: answer.theme })
       const next = draftsOf(answer)
       setInitial(next)
       setDrafts(next)
@@ -170,6 +177,26 @@ function GymForm({ settings }: { settings: Settings }) {
             </Select>
           )}
         </Field>
+      </fieldset>
+
+      <fieldset className="settings__card">
+        <legend className="settings__legend">{copy.theme}</legend>
+        <p className="settings__hint">{copy.themeHint}</p>
+        <div className="theme-picker">
+          {THEMES.map((theme) => (
+            <label key={theme} className="theme-picker__option">
+              <input
+                type="radio"
+                name="theme"
+                value={theme}
+                className="theme-picker__input"
+                checked={drafts.theme === theme}
+                onChange={() => setDrafts({ ...drafts, theme })}
+              />
+              <ThemePreview theme={theme} />
+            </label>
+          ))}
+        </div>
       </fieldset>
 
       <fieldset className="settings__card">
@@ -360,5 +387,28 @@ function GymForm({ settings }: { settings: Settings }) {
         {save.isPending ? copy.working : copy.submit}
       </Button>
     </form>
+  )
+}
+
+/** A theme as it looks: its name, the hero card, a button and the paid and overdue
+ * pills, in the theme's own colours whatever the page wears. */
+function ThemePreview({ theme }: { theme: Theme }) {
+  const sample = copy.themeSample
+  return (
+    <span className="theme-preview" data-theme={theme}>
+      <span className="theme-preview__head">
+        <span className="theme-preview__name">{copy.themes[theme]}</span>
+        {theme === DEFAULT_THEME && <span className="theme-preview__default">{copy.themeDefault}</span>}
+      </span>
+      <span className="theme-preview__hero" aria-hidden="true">
+        <span className="theme-preview__hero-label">{sample.collected}</span>
+        <span className="theme-preview__hero-figure">{sample.figure}</span>
+      </span>
+      <span className="theme-preview__row" aria-hidden="true">
+        <span className="theme-preview__pill theme-preview__pill--paid">{sample.paid}</span>
+        <span className="theme-preview__pill theme-preview__pill--overdue">{sample.overdue}</span>
+        <span className="theme-preview__button">{sample.action}</span>
+      </span>
+    </span>
   )
 }

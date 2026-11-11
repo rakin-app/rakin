@@ -70,7 +70,7 @@ describe('Entrar', () => {
     vi.unstubAllGlobals()
     cleanup()
 
-    const sent = stubLink(202, {}, { slug: 'meta', name: 'Meta' })
+    const sent = stubLink(202, {}, { slug: 'meta', name: 'Meta', theme: 'bosque' })
     renderAt('/ingresar')
     expect(await screen.findByRole('heading', { name: copy.titleAt('Meta') })).toBeInTheDocument()
 

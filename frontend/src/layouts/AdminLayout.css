@@ -147,7 +147,7 @@ button.admin-nav__link {
     display: block;
     font-family: var(--font-display);
     font-size: var(--text-lg);
-    font-weight: var(--font-weight-bold);
+    font-weight: var(--font-weight-display);
     letter-spacing: var(--tracking-label);
   }
 

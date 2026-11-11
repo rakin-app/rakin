@@ -25,7 +25,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   overflow-wrap: anywhere;
 }
 
@@ -88,7 +88,7 @@
 .member__amount {
   font-family: var(--font-display);
   font-size: var(--text-4xl);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   line-height: 1;
 }
 
@@ -178,7 +178,7 @@
 .member__rank-label {
   font-family: var(--font-display);
   font-size: var(--text-lg);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   line-height: 1.1;
 }
 

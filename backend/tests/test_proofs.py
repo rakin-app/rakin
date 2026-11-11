@@ -458,6 +458,8 @@ def test_my_role_names_who_is_signed_in_and_the_gym(
         "email": None,
         "gym_name": slug,
         "student_page": False,
+        # The gym's theme, which a coach's screens wear too (#199).
+        "theme": "bosque",
     }
 
 

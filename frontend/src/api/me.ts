@@ -3,6 +3,7 @@ import { apiFetch } from './client'
 import type { Rank } from './grading'
 import type { MyExtraLine } from './extraCharges'
 import type { OpenPeriod } from './proofs'
+import type { Theme } from '../theme'
 
 export type StaffRole = 'owner' | 'admin' | 'coach'
 
@@ -15,6 +16,8 @@ export type MyRole = {
   gym_name: string
   // Holds a membership here or pays for a dependent: the student page has something for them.
   student_page: boolean
+  // The gym's theme (#199), which every signed-in screen wears.
+  theme: Theme
 }
 
 /** The signed-in person's staff role in this gym; `null` for a member. */

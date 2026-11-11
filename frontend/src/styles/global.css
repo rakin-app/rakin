@@ -15,6 +15,8 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.4;
+  /* Figures line up in a column: amounts, counts and dates. */
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -28,6 +30,7 @@ p {
 a {
   color: var(--color-accent);
   text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 a:hover {
@@ -41,6 +44,17 @@ textarea {
   font: inherit;
 }
 
+/* A control changes colour, and only colour, when it is hovered, pressed or chosen. */
+button,
+input,
+select,
+textarea,
+[role='button'] {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-out);
+}
+
 input,
 select,
 textarea {
@@ -48,7 +62,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -70,4 +84,53 @@ textarea {
   padding: var(--space-14) var(--space-5);
   color: var(--color-text-muted);
   text-align: center;
+}
+
+/* Motion (#199). A page's content rises into place once when the route changes
+   (`.rise`); a confirmation or a new item fades in (`.appear`). */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise-distance));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--rise-distance) / 2));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.rise {
+  animation: rise var(--duration-slow) var(--ease-out) both;
+}
+
+.appear {
+  animation: appear var(--duration-base) var(--ease-out) both;
+}
+
+/* Reduced motion keeps only the change in opacity: nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .appear {
+    animation-name: fade-in;
+  }
 }

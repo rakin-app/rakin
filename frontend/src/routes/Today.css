@@ -58,7 +58,7 @@
 .today__counter-value {
   font-family: var(--font-display);
   font-size: var(--text-4xl);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   line-height: 1;
 }
 
@@ -231,7 +231,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-lg);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
 }
 
 .today__steps {

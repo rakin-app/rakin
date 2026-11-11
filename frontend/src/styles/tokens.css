@@ -1,64 +1,184 @@
 /*
- * Design tokens extracted from docs/design/ui-design.html.
- * Components use these variables, never raw values.
+ * Design tokens from docs/design/ui-design.html (v3, #199). Components use these
+ * variables, never raw values.
+ *
+ * Colour comes in three themes, chosen per gym (Ajustes › Gimnasio › Tema) and set as
+ * `data-theme` on <html> (src/theme.ts). Each theme writes the same names, so no
+ * component knows which one it is in. Bosque is the default, and the :root block.
+ * The design's oklch values are converted to hex here; where a design value fell
+ * under WCAG AA (an input's edge, the warning text, danger on its tint) the shade is
+ * darkened until it passes. src/styles/tokens.test.ts holds every theme to it.
+ *
+ * What each colour is for:
+ * - bg, surface, surface-sunken: the page, a card, a well or hovered row.
+ * - border, divider, border-strong: a card's edge, a rule between rows, a dashed edge.
+ * - border-input: an input's, select's or chip's edge, 3:1 or more on the surfaces.
+ * - text, text-muted, text-subtle: body text, secondary lines, the faintest that is
+ *   still 4.5:1 on the page.
+ * - heading: page titles and figures, the brand's dark shade.
+ * - inverse*: the brand's dark fills, a primary button and the "Próximo pago" card.
+ * - accent*: links, the selected tab, "por validar" and "en revisión".
+ * - moss*: the brand's light fill, a secondary call to action ("Registrar pago").
+ * - focus: the focus ring.
+ * - sidebar*: the dark shell, the desktop sidebar and the phone's top bar.
+ * - success, warning, danger: paid or present; overdue, and only that; errors,
+ *   refusals and buttons that delete. Success stays green in every theme, so a paid
+ *   row never reads like an overdue one.
  */
+:root,
+[data-theme='bosque'] {
+  --color-bg: #f6f8f1;
+  --color-surface: #fcfdf9;
+  --color-surface-sunken: #ebeee6;
+  --color-border: #d8dfd4;
+  --color-divider: #eaeee6;
+  --color-border-strong: #b3baad;
+  --color-border-input: #818a7a;
+  --color-text: #102719;
+  --color-text-muted: #57685a;
+  --color-text-subtle: #627064;
+  --color-heading: #153c25;
+  --color-inverse: #153c25;
+  --color-inverse-raised: #264c34;
+  --color-inverse-border: #476651;
+  --color-inverse-text: #f5f6eb;
+  --color-inverse-text-muted: #cfd4c2;
+  --color-accent: #23643f;
+  --color-accent-hover: #153c25;
+  --color-accent-soft: #e3edde;
+  --color-accent-inverse: #2b5139;
+  --color-accent-inverse-text: #a0c79b;
+  --color-moss: #a0c79b;
+  --color-moss-text: #092917;
+  --color-moss-hover: #8eb889;
+  --color-focus: #4e7f58;
+  --color-sidebar: #0f2e1b;
+  --color-sidebar-raised: #1b3e29;
+  --color-sidebar-border: #264531;
+  --color-sidebar-text: #e5ebd8;
+  --color-sidebar-active: #a0c79b;
+  --color-sidebar-active-text: #092012;
+  --color-success: #35794b;
+  --color-success-soft: #ecf2eb;
+  --color-success-pill: #dee9df;
+  --color-success-strong: #1e5b34;
+  --color-warning: #9d580c;
+  --color-warning-soft: #f6e9ce;
+  --color-warning-strong: #43260a;
+  --color-danger: #bd321b;
+  --color-danger-soft: #f6e6e0;
+  --gradient-hero: linear-gradient(160deg, #0f3620 0%, #072014 100%);
+  --shadow-card: 0 1px 2px rgb(16 39 25 / 0.06), 0 8px 24px -12px rgb(16 39 25 / 0.18);
+}
+
+[data-theme='oceano'] {
+  --color-bg: #f2f8fd;
+  --color-surface: #fafdff;
+  --color-surface-sunken: #e6eef5;
+  --color-border: #d4dee7;
+  --color-divider: #e7eef3;
+  --color-border-strong: #adb9c4;
+  --color-border-input: #7a8895;
+  --color-text: #102334;
+  --color-text-muted: #556574;
+  --color-text-subtle: #606e7a;
+  --color-heading: #15364f;
+  --color-inverse: #15364f;
+  --color-inverse-raised: #254560;
+  --color-inverse-border: #466178;
+  --color-inverse-text: #edf6ff;
+  --color-inverse-text-muted: #c4d3e1;
+  --color-accent: #225984;
+  --color-accent-hover: #15364f;
+  --color-accent-soft: #deebf8;
+  --color-accent-inverse: #2a4b66;
+  --color-accent-inverse-text: #85c5df;
+  --color-moss: #85c5df;
+  --color-moss-text: #092438;
+  --color-moss-hover: #71b6d1;
+  --color-focus: #47769d;
+  --color-sidebar: #0e293d;
+  --color-sidebar-raised: #1b3850;
+  --color-sidebar-border: #264056;
+  --color-sidebar-text: #dbeaf8;
+  --color-sidebar-active: #85c5df;
+  --color-sidebar-active-text: #091c2c;
+  --color-success: #35794b;
+  --color-success-soft: #eaf2f1;
+  --color-success-pill: #dce9e4;
+  --color-success-strong: #1e5b34;
+  --color-warning: #9d580c;
+  --color-warning-soft: #f5e9d2;
+  --color-warning-strong: #43260a;
+  --color-danger: #bd321b;
+  --color-danger-soft: #f4e6e5;
+  --gradient-hero: linear-gradient(160deg, #0f304a 0%, #091c2c 100%);
+  --shadow-card: 0 1px 2px rgb(16 35 52 / 0.06), 0 8px 24px -12px rgb(16 35 52 / 0.18);
+}
+
+[data-theme='volcan'] {
+  --color-bg: #fdf4f4;
+  --color-surface: #fffbfb;
+  --color-surface-sunken: #f5eaea;
+  --color-border: #e7d8d8;
+  --color-divider: #f3eaea;
+  --color-border-strong: #c4b3b2;
+  --color-border-input: #958080;
+  --color-text: #32191a;
+  --color-text-muted: #745d5d;
+  --color-text-subtle: #7a6666;
+  --color-heading: #4d2527;
+  --color-inverse: #4d2527;
+  --color-inverse-raised: #5e3536;
+  --color-inverse-border: #775253;
+  --color-inverse-text: #fff1f1;
+  --color-inverse-text-muted: #e1cbcb;
+  --color-accent: #803f42;
+  --color-accent-hover: #4d2527;
+  --color-accent-soft: #f8e4e4;
+  --color-accent-inverse: #643a3b;
+  --color-accent-inverse-text: #e4ac93;
+  --color-moss: #e4ac93;
+  --color-moss-text: #361718;
+  --color-moss-hover: #d69b81;
+  --color-focus: #9b5e60;
+  --color-sidebar: #3b1c1d;
+  --color-sidebar-raised: #4e292b;
+  --color-sidebar-border: #543233;
+  --color-sidebar-text: #f8e2e2;
+  --color-sidebar-active: #e4ac93;
+  --color-sidebar-active-text: #2b1213;
+  --color-success: #35794b;
+  --color-success-soft: #eff1ed;
+  --color-success-pill: #e1e8e1;
+  --color-success-strong: #1e5b34;
+  --color-warning: #9d580c;
+  --color-warning-soft: #f8e7cf;
+  --color-warning-strong: #43260a;
+  --color-danger: #bd321b;
+  --color-danger-soft: #f9e5e2;
+  --gradient-hero: linear-gradient(160deg, #472022 0%, #2b1213 100%);
+  --shadow-card: 0 1px 2px rgb(50 25 26 / 0.06), 0 8px 24px -12px rgb(50 25 26 / 0.18);
+}
+
 :root {
-  /* Neutrals */
-  --color-bg: #f7f7f5;
-  --color-surface: #ffffff;
-  --color-surface-sunken: #f3f4f1;
-  --color-border: #e3e4e0;
-  --color-divider: #eeefeb;
-  --color-border-strong: #b8bab4;
-  /* Inputs, selects and chips: 3:1 or more on the surface and the page grey, as WCAG asks of a control's edge. */
-  --color-border-input: #898c86;
-  --color-text: #15171a;
-  --color-text-muted: #5c6066;
-  --color-text-subtle: #6b6f75; /* 4.5:1 or more on --color-bg */
+  color-scheme: light;
 
-  /* Inverse surfaces (the student's "Próximo pago" card) */
-  --color-inverse: #15171a;
-  --color-inverse-raised: #26292e;
-  --color-inverse-border: #4b4f56;
-  --color-inverse-text: #ffffff;
-  --color-inverse-text-muted: #c9cbc6;
-
-  /* Accent: links, "por validar", "en revisión" */
-  --color-accent: #1d4ed8;
-  --color-accent-hover: #1e40af;
-  --color-accent-soft: #dbeafe;
-  --color-accent-inverse: #1e3a8a;
-  --color-accent-inverse-text: #bfdbfe;
-
-  /* Success: validated payments, present in class */
-  --color-success: #0f766e;
-  --color-success-soft: #ecfdf5;
-  --color-success-pill: #d1fae5;
-  --color-success-strong: #065f46;
-
-  /* Warning: overdue, and only that */
-  --color-warning: #b45309;
-  --color-warning-soft: #ffedd5;
-  --color-warning-strong: #9a3412;
-
-  /* Danger: form errors, buttons that delete, remove or refuse, and a refused payment */
-  --color-danger: #b42318;
-  --color-danger-soft: #fee4e2;
-
-  /* The class timer (#187): a sparring round is green, its rest red, each read from across
-     the mat; the text on both is white, 4.5:1 or more, and so is --color-danger-soft. */
+  /* The class timer (#187): a sparring round is green, its rest red, in every theme,
+     each read from across the mat; the text on both is white, 4.5:1 or more. */
   --color-timer-fight: #166534;
   --color-timer-fight-text: #ffffff;
   --color-timer-rest: #b91c1c;
   --color-timer-rest-text: #ffffff;
 
-  /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  /* Typography: Figtree for text, Bricolage Grotesque for titles, brand and big figures. */
+  --font-sans: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
+  --font-weight-display: 600; /* the one weight of Bricolage Grotesque the app ships */
   --text-2xs: 11px; /* bottom-nav labels */
   --text-xs: 12px; /* eyebrows, pills, secondary lines */
   --text-sm: 13px; /* section headings, row details */
@@ -68,12 +188,12 @@
   --text-lg: 20px; /* card figures */
   --text-xl: 22px; /* sub-page titles */
   --text-2xl: 26px;
-  --text-3xl: 28px; /* page titles */
-  --text-4xl: 30px; /* stat tiles */
-  --text-5xl: 36px; /* amount due */
+  --text-3xl: 30px; /* page titles */
+  --text-4xl: 32px; /* stat tiles */
+  --text-5xl: 36px; /* amount due, the hero figure */
   --tracking-eyebrow: 0.06em;
   --tracking-label: 0.04em;
-  --tracking-title: -0.01em;
+  --tracking-title: -0.02em;
 
   /* Spacing */
   --space-0-5: 2px;
@@ -91,17 +211,26 @@
   --space-10: 40px;
   --space-14: 56px;
 
-  /* Radii */
-  --radius-sm: 10px;
-  --radius-md: 12px;
-  --radius-lg: 14px;
-  --radius-xl: 16px;
+  /* Radii: controls 10, cards 20, pills round. */
+  --radius-sm: 8px;
+  --radius-md: 10px; /* buttons, inputs, chips */
+  --radius-lg: 14px; /* tiles and wells inside a card */
+  --radius-xl: 20px; /* cards */
+  --radius-2xl: 24px; /* the hero card, dialogs */
   --radius-pill: 999px;
+
+  /* Motion: a page rises into place once; a control only changes colour, never
+     scale or bounce. Under reduced motion only the opacity changes (global.css). */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --duration-fast: 150ms; /* colour: hovers, presses, a selected chip */
+  --duration-base: 250ms; /* a confirmation or a checklist item appearing */
+  --duration-slow: 500ms; /* a page rising in on a route change */
+  --rise-distance: 8px;
 
   /* Sizes */
   --control-height: 44px; /* minimum touch target */
   --control-height-lg: 52px; /* a screen's main action on a phone */
-  --sidebar-width: 240px;
+  --sidebar-width: 248px;
   --content-max-width: 480px;
   --content-narrow: 640px; /* forms and single lists; tables run full width */
   --content-wide: 1280px; /* a page's widest: the container that holds every screen */

@@ -23,14 +23,14 @@ from app.tenancy import Tenant, current_tenant
 
 router = APIRouter(prefix="/api/gym", tags=["gym"])
 
-COLUMNS = "name, slug, timezone, settings"
+COLUMNS = "name, slug, timezone, theme, settings"
 
 
 def _settings(request: Request, row: Any) -> GymSettings:
     hosts: Hosts = request.app.state.hosts
     # The address as the address bar shows it: `academia-sur.rakin.app`, no scheme.
     address = urlsplit(hosts.base_url(row.slug)).netloc
-    return GymSettings.from_row(row.name, row.slug, address, row.timezone, row.settings)
+    return GymSettings.from_row(row.name, row.slug, address, row.timezone, row.theme, row.settings)
 
 
 @router.get("/settings")
@@ -53,7 +53,9 @@ async def update_settings(
     session: AdminSession,
 ) -> GymSettings:
     changes = body.model_dump(mode="json", exclude_unset=True)
-    columns: dict[str, Any] = {c: changes.pop(c) for c in ("name", "timezone") if c in changes}
+    columns: dict[str, Any] = {
+        c: changes.pop(c) for c in ("name", "timezone", "theme") if c in changes
+    }
     if changes.get("privacy") is not None:
         timezone = columns.get("timezone") or await session.scalar(
             text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
