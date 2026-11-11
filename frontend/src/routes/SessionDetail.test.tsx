@@ -258,6 +258,16 @@ describe('Asistencia', () => {
     expect(antonia).toHaveAccessibleName(expect.stringContaining('Azul'))
   })
 
+  it('shows no belt and no rank in a gym with no grades (#226)', async () => {
+    stubApi({ members: [FELIPE, PAULA] })
+    renderClass()
+
+    const [felipe, paula] = (await rosterList()).getAllByRole('button')
+    expect(felipe).toHaveTextContent(/^Felipe Díaz/)
+    expect(paula).toHaveTextContent(/^Paula Contreras/)
+    expect(document.querySelector('.belt')).toBeNull()
+  })
+
   it('counts each tap and saves what changed', async () => {
     const api = stubApi()
     renderClass()

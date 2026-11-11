@@ -198,7 +198,7 @@ describe('Mi página', () => {
     expect(screen.getByRole('button', { name: copy.next.upload })).toBeInTheDocument()
   })
 
-  it('shows the belt and since when', async () => {
+  it('calls an uncoloured rank a grade, not a belt, and since when', async () => {
     stubPage(
       diego({
         rank: { rank_key: 'purple', rank_label: 'Morada', sub_rank: '1', sub_rank_label: '1 grado', awarded_on: '2025-06-14' },
@@ -207,7 +207,8 @@ describe('Mi página', () => {
     renderMe()
 
     const card = within(await screen.findByRole('region', { name: copy.training.title }))
-    expect(card.getByText(copy.training.belt)).toBeInTheDocument()
+    expect(card.getByText(copy.training.rank)).toBeInTheDocument()
+    expect(card.queryByText(copy.training.belt)).not.toBeInTheDocument()
     expect(card.getByText('Morada · 1 grado')).toBeInTheDocument()
     expect(card.getByText('desde 14 jun 2025')).toBeInTheDocument()
     expect(card.queryByRole('img')).not.toBeInTheDocument()
@@ -229,16 +230,19 @@ describe('Mi página', () => {
     renderMe()
 
     const card = within(await screen.findByRole('region', { name: copy.training.title }))
+    expect(card.getByText(copy.training.belt)).toBeInTheDocument()
     expect(card.getByRole('img', { name: 'Negra, 1 grado' })).toBeInTheDocument()
     expect(card.getByText('Negra · 1 grado')).toBeInTheDocument()
   })
 
-  it('has no belt card until the gym records a rank', async () => {
+  it('has no belt card until the gym records a rank, as in a gym with no grades (#226)', async () => {
     stubPage(diego())
     renderMe()
 
     const card = within(await screen.findByRole('region', { name: copy.training.title }))
     expect(card.queryByText(copy.training.belt)).not.toBeInTheDocument()
+    expect(card.queryByText(copy.training.rank)).not.toBeInTheDocument()
+    expect(document.querySelector('.belt')).toBeNull()
   })
 
   it("counts this month's classes and all of them", async () => {

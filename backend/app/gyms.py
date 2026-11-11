@@ -2,10 +2,13 @@
 
     uv run python -m app.gyms create --slug meta --name "Meta" \\
         --timezone America/Santiago \\
-        --owner-email … --owner-name … [--owner-rut …] [--owner-phone …]
+        --owner-email … --owner-name … [--owner-rut …] [--owner-phone …] \\
+        [--grading <preset key>]
 
 The gym gets what the demo seed's has before anyone trains there (`app.seed.data`):
-its grading scheme, its programs, and the block kinds every gym is given (0028); and
+its programs and the block kinds every gym is given (0028); a grading scheme only when
+`--grading` names a preset (`app.domain.grading`), since grading is a module a gym turns
+on, not every sport has one: by default it has no grades and shows no belts; and
 its owner, a staff row on the person with that RUT, found or created as the API adds
 anyone (`join_gym`, 0036), or with no RUT someone new keyed by the email. The phone is
 optional, a contact only. Its slug is its host, `<slug>.<BASE_DOMAIN>` (`app.hosts`).
@@ -29,12 +32,16 @@ import asyncpg
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from app.db_bootstrap import to_dsn
+from app.domain.grading import PRESETS
 from app.hosts import Hosts, slug_problem
 from app.roles import Role
 from app.schemas.gym import Timezone
 from app.schemas.people import Email, Name, Phone, Rut
-from app.seed.data import GRADING, PROGRAMS
+from app.seed.data import PROGRAMS
 from app.settings import get_settings
+
+# A preset's key, as `--grading` takes it, to the scheme the gym starts with.
+SCHEMES = {preset["key"]: preset["scheme"] for preset in PRESETS}
 
 
 class NewGym(BaseModel):
@@ -47,6 +54,7 @@ class NewGym(BaseModel):
     owner_name: Name
     owner_rut: Rut | None = None
     owner_phone: Phone | None = None
+    grading: str = "none"
 
     @field_validator("slug")
     @classmethod
@@ -54,6 +62,13 @@ class NewGym(BaseModel):
         problem = slug_problem(value)
         if problem is not None:
             raise ValueError(problem)
+        return value
+
+    @field_validator("grading")
+    @classmethod
+    def _a_preset(cls, value: str) -> str:
+        if value not in SCHEMES:
+            raise ValueError(f"not a grading preset: one of {', '.join(SCHEMES)}")
         return value
 
 
@@ -82,7 +97,7 @@ async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
             gym.name,
             gym.slug,
             gym.timezone,
-            json.dumps({"grading": copy.deepcopy(GRADING)}),
+            json.dumps({"grading": copy.deepcopy(SCHEMES[gym.grading])}),
         )
         await conn.executemany(
             "INSERT INTO program (gym_id, name) VALUES ($1, $2)",
@@ -123,6 +138,11 @@ def parse(argv: Sequence[str] | None = None) -> NewGym:
     create.add_argument("--owner-name", required=True)
     create.add_argument("--owner-rut")
     create.add_argument("--owner-phone")
+    create.add_argument(
+        "--grading",
+        default="none",
+        help=f"a grading preset to start from: {', '.join(SCHEMES)}",
+    )
     args = parser.parse_args(argv)
     try:
         return NewGym(
@@ -133,6 +153,7 @@ def parse(argv: Sequence[str] | None = None) -> NewGym:
             owner_name=args.owner_name,
             owner_rut=args.owner_rut,
             owner_phone=args.owner_phone,
+            grading=args.grading,
         )
     except ValidationError as error:
         for problem in error.errors():
