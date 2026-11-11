@@ -40,6 +40,18 @@ What changed from v2:
   status means the same thing in every gym.
 - **Some shades are darker than the file's**, wherever the file's value fell under
   WCAG AA: an input's edge (3:1), the warning text, and danger text on its own tint.
+- **Hoy keeps its name and its lists.** The board's "Resumen" has a month's takings
+  and an "Activos" tile; Hoy keeps its four counters (overdue, to validate, classes
+  without attendance, away 14 days) and its lists, in the board's tiles and cards.
+- **Registrar pago stays inline.** The board draws it as a dialog; the app opens it in
+  place, in the ficha's card and in Pagos, now as a sunken well. A dialog would change
+  how it opens and closes, which this redesign leaves alone.
+- **No "Registrar pago" in the shell or "Pagar" on every Alumnos row.** Both are new
+  ways in, not a new look; they wait for the owner's say.
+- **No counts on the filters.** The board's chips say "Vencidos 6"; the API does not
+  count per filter, and the chips stay 44px tall, the app's touch target.
+- **Overdue stays orange.** The board's "Vencidos" figure is red; in the app orange
+  means overdue and nothing else, and red is a refusal.
 - **Hex, not oklch.** The file writes oklch; `tokens.css` holds the same colours in
   hex, as the sign-in link's server-rendered pages (`backend/app/auth.py`) copy them.
 
