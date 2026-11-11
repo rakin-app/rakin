@@ -487,6 +487,8 @@ export const es = {
       none: 'No tiene a nadie a cargo.',
       unlink: 'Desvincular',
       unlinkLabel: (name: string) => `Desvincular a ${name}`,
+      unlinkConfirm: (name: string) => `¿Desvincular a ${name}? Ambos siguen en el gimnasio; solo deja de estar a cargo.`,
+      unlinkCancel: 'Cancelar',
       addTitle: 'Agregar a alguien a cargo',
       close: 'Cerrar',
       addHint: 'Sin teléfono ni correo: todo le llega al apoderado.',
@@ -933,6 +935,8 @@ export const es = {
           'Los colores de la app, la página del alumno, el formulario de inscripción y la entrada. El cronómetro sigue verde y rojo en todos.',
         themes: { bosque: 'Bosque', oceano: 'Océano', volcan: 'Volcán' },
         themeDefault: 'Por defecto',
+        themePreview: (name: string, saved: string) => `Así se ve ${name}. Guarda para dejarlo, o cancela para volver a ${saved}.`,
+        themeCancel: 'Cancelar',
         themeSample: { collected: 'Cobrado', figure: '$2.115.000', paid: 'Pagado', overdue: 'Vencido', action: 'Registrar' },
         logo: {
           title: 'Logo',

@@ -19,7 +19,7 @@ import { ListRow } from '../components/Card'
 import { Input, Select } from '../components/Field'
 import { formatPhone } from '../format'
 import { t } from '../i18n/es'
-import { EditRow, Field, LoadFailed, refusal } from './settingsForm'
+import { EditRow, Field, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.staff
@@ -49,25 +49,28 @@ export function StaffSettings() {
 
   return (
     <section className="settings__section" aria-label={copy.title}>
-      <p className="settings__note">{copy.intro}</p>
+      <SectionHead
+        intro={copy.intro}
+        action={
+          !inviting && (
+            <Button
+              variant="primary"
+              onClick={() => {
+                setNotice(null)
+                setInviting(true)
+              }}
+            >
+              {copy.add}
+            </Button>
+          )
+        }
+      />
       {notice && (
         <p className="settings__done" role="status">
           {notice}
         </p>
       )}
-      {inviting ? (
-        <InviteForm acting={role.data} onCancel={() => setInviting(false)} onDone={done} />
-      ) : (
-        <Button
-          variant="primary"
-          onClick={() => {
-            setNotice(null)
-            setInviting(true)
-          }}
-        >
-          {copy.add}
-        </Button>
-      )}
+      {inviting && <InviteForm acting={role.data} onCancel={() => setInviting(false)} onDone={done} />}
       <ul className="settings__card settings__card--rows settings__menu">
         {staff.data.map((member) => (
           <StaffRow

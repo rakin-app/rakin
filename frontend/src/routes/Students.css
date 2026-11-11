@@ -244,7 +244,38 @@
   justify-content: space-between;
   gap: var(--space-3);
   min-height: var(--control-height);
+  font-size: var(--text-md);
+}
+
+/* A line between rows, as the ficha's other lists have (#241). */
+.family__person + .family__person {
+  border-top: 1px solid var(--color-divider);
+}
+
+.family__name {
+  min-width: 0;
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+/* Desvincular is there, not shouting: a quiet text button that asks before it acts. */
+.button.family__unlink {
+  flex: none;
+  margin-right: calc(-1 * var(--space-3));
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
+}
+
+.family__person--asking {
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--space-3) 0;
+}
+
+.family__confirm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
 }
 
 .students__links {

@@ -18,6 +18,20 @@ export function AdminsOnly() {
   return <p className="settings__note">{copy.adminsOnly}</p>
 }
 
+/**
+ * What every section opens with (#241): one line on what it holds and, for a section
+ * that lists things, the one button that adds one. Side by side from 1024px, the
+ * button at the end; stacked on a phone.
+ */
+export function SectionHead({ intro, action }: { intro: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="settings__head">
+      <p className="settings__intro">{intro}</p>
+      {action}
+    </div>
+  )
+}
+
 /** A section's load failure: the role was taken away meanwhile (403), or a plain failure. */
 export function LoadFailed({ error, message, retry }: { error: Error; message: string; retry: () => void }) {
   if (error instanceof ApiError && error.status === 403) return <AdminsOnly />

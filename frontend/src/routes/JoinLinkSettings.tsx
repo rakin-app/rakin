@@ -18,7 +18,7 @@ import { validationErrors } from '../api/validation'
 import { Button, buttonClass } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
-import { Field, LoadFailed, refusal } from './settingsForm'
+import { Field, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.joinLink
@@ -109,7 +109,7 @@ function JoinLinkSection({
 
   return (
     <section className="settings__section" aria-label={copy.title}>
-      <p className="settings__note">{copy.intro}</p>
+      <SectionHead intro={copy.intro} />
       {needsPrivacy && (
         <div className="settings__card settings__plan-text" role="alert">
           <p className="settings__detail">{copy.needsPrivacy}</p>

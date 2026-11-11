@@ -239,6 +239,12 @@
   gap: var(--space-2);
 }
 
+/* Familia in the ficha (#241): a card like the others, its rows at the card's edge. */
+.member__family .family,
+.member__family .family__note {
+  padding: 0;
+}
+
 .member__ledger {
   display: flex;
   flex-direction: column;

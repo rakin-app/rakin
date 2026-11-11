@@ -20,7 +20,7 @@ import { ListRow } from '../components/Card'
 import { FieldError, Input, Select } from '../components/Field'
 import { shortDay, weekdayDay, toDate } from '../format'
 import { t } from '../i18n/es'
-import { EditRow, Field, LoadFailed } from './settingsForm'
+import { EditRow, Field, LoadFailed, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.schedule
@@ -81,19 +81,22 @@ export function ScheduleSettings() {
   return (
     <>
       <section className="settings__section" aria-label={copy.title}>
-        <p className="settings__note">{copy.intro}</p>
+        <SectionHead
+          intro={copy.intro}
+          action={
+            editing !== 'new' && (
+              <Button variant="primary" onClick={() => open('new')}>
+                {copy.add}
+              </Button>
+            )
+          }
+        />
         {notice && (
           <p className="settings__done" role="status">
             {notice}
           </p>
         )}
-        {editing === 'new' ? (
-          <SlotForm today={today} onCancel={() => setEditing(null)} onDone={done} />
-        ) : (
-          <Button variant="primary" onClick={() => open('new')}>
-            {copy.add}
-          </Button>
-        )}
+        {editing === 'new' && <SlotForm today={today} onCancel={() => setEditing(null)} onDone={done} />}
         {current.length === 0 ? (
           <p className="settings__note">{copy.empty}</p>
         ) : (
@@ -443,16 +446,16 @@ function ClosedDays({ today }: { today: string }) {
 
   return (
     <section className="settings__section" aria-labelledby="closed-days">
-      <h2 id="closed-days" className="settings__legend">
-        {words.title}
-      </h2>
-      <p className="settings__note">{words.intro}</p>
       {notice && (
         <p className="settings__done" role="status">
           {notice}
         </p>
       )}
       <form className="settings__card settings__form" aria-label={words.add} onSubmit={submit} noValidate>
+        <h2 id="closed-days" className="settings__legend">
+          {words.title}
+        </h2>
+        <p className="settings__hint">{words.intro}</p>
         <div className="schedule__pair">
           <Field label={words.day} error={day && day < today ? words.past : undefined}>
             {(props) => (

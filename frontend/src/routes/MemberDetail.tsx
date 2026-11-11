@@ -156,7 +156,9 @@ export function MemberDetail() {
           <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
           <section className="member__section" aria-label={t.admin.family.toggle}>
             <h2 className="member__section-title">{t.admin.family.toggle}</h2>
-            <FamilyPanel person={person.data} />
+            <div className="member__card member__family">
+              <FamilyPanel person={person.data} />
+            </div>
           </section>
           <PersonData person={person.data} />
           <PersonActions person={person.data} role={role.data} />

@@ -6,6 +6,7 @@ import { Button } from '../components/Button'
 import { ListRow, ListRowContent, listRowClass } from '../components/Card'
 import { ChevronRightIcon, SignOutIcon } from '../components/icons'
 import { t } from '../i18n/es'
+import { SectionHead } from './settingsForm'
 
 const copy = t.admin.settings.account
 
@@ -20,6 +21,7 @@ export function AccountSettings() {
 
   return (
     <section className="settings__section" aria-label={copy.title}>
+      <SectionHead intro={t.admin.settings.descriptions.account} />
       <div className="settings__card settings__card--rows">
         <ListRow title={copy.name} trailing={me.data?.name ?? copy.none} />
         <ListRow title={copy.email} trailing={me.data?.email ?? copy.none} />
@@ -34,10 +36,12 @@ export function AccountSettings() {
           {t.signOut.failed}
         </p>
       )}
-      <Button size="lg" fullWidth disabled={signOut.isPending} onClick={() => signOut.mutate()}>
-        <SignOutIcon />
-        {signOut.isPending ? t.signOut.working : t.signOut.label}
-      </Button>
+      <div className="settings__actions">
+        <Button disabled={signOut.isPending} onClick={() => signOut.mutate()}>
+          <SignOutIcon />
+          {signOut.isPending ? t.signOut.working : t.signOut.label}
+        </Button>
+      </div>
     </section>
   )
 }

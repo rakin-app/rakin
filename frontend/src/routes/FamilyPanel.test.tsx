@@ -196,6 +196,13 @@ describe('Familia', () => {
     const panel = await screen.findByRole('heading', { name: copy.guardian })
     expect(screen.queryByRole('button', { name: copy.add })).not.toBeInTheDocument()
     await userEvent.click(within(panel.parentElement!).getByRole('button', { name: copy.unlinkLabel('Camila Ortiz') }))
+    // It asks first (#241): nothing goes until it is confirmed, and Cancelar takes it back.
+    await userEvent.click(screen.getByRole('button', { name: copy.unlinkCancel }))
+    await userEvent.click(within(panel.parentElement!).getByRole('button', { name: copy.unlinkLabel('Camila Ortiz') }))
+    const asking = screen.getByRole('group', { name: copy.unlinkLabel('Camila Ortiz') })
+    expect(asking).toHaveTextContent(copy.unlinkConfirm('Camila Ortiz'))
+    expect(calls).toEqual([])
+    await userEvent.click(within(asking).getByRole('button', { name: copy.unlink }))
 
     await waitFor(() => expect(calls).toEqual([{ method: 'DELETE', path: '/api/people/camila/dependents/mateo', body: undefined }]))
   })

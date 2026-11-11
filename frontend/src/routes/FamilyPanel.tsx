@@ -118,11 +118,37 @@ function refusal(error: unknown): string {
   return copy.refused.failed
 }
 
+/**
+ * A linked person's row: their name, and a quiet "Desvincular" (#241) that asks before
+ * it acts, since the link is the whole of what a guardian is for the gym.
+ */
 function Linked({ person, disabled, onUnlink }: { person: PersonRef; disabled: boolean; onUnlink: () => void }) {
+  const [asking, setAsking] = useState(false)
+  if (asking) {
+    return (
+      <li className="family__person family__person--asking" role="group" aria-label={copy.unlinkLabel(person.name)}>
+        <p className="family__hint">{copy.unlinkConfirm(person.name)}</p>
+        <div className="family__confirm">
+          <Button disabled={disabled} onClick={() => setAsking(false)}>
+            {copy.unlinkCancel}
+          </Button>
+          <Button variant="danger" disabled={disabled} busy={disabled} onClick={onUnlink}>
+            {copy.unlink}
+          </Button>
+        </div>
+      </li>
+    )
+  }
   return (
     <li className="family__person">
-      <span>{person.name}</span>
-      <Button variant="danger" aria-label={copy.unlinkLabel(person.name)} disabled={disabled} onClick={onUnlink}>
+      <span className="family__name">{person.name}</span>
+      <Button
+        variant="ghost"
+        className="family__unlink"
+        aria-label={copy.unlinkLabel(person.name)}
+        disabled={disabled}
+        onClick={() => setAsking(true)}
+      >
         {copy.unlink}
       </Button>
     </li>

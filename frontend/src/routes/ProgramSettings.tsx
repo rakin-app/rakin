@@ -10,7 +10,7 @@ import { ListRowContent, listRowClass } from '../components/Card'
 import { Input, Select } from '../components/Field'
 import { ChevronRightIcon } from '../components/icons'
 import { t } from '../i18n/es'
-import { EditRow, Field, integerOf, LoadFailed, refusal } from './settingsForm'
+import { EditRow, Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.programs
@@ -84,21 +84,22 @@ export function ProgramSettings() {
 
   return (
     <section className="settings__section" aria-label={copy.title}>
+      <SectionHead
+        intro={t.admin.settings.descriptions.programs}
+        action={
+          !isOpen('program', 'new') && (
+            <Button variant="primary" onClick={() => open({ kind: 'program', id: 'new' })}>
+              {copy.add}
+            </Button>
+          )
+        }
+      />
       {notice && (
         <p className="settings__done" role="status">
           {notice}
         </p>
       )}
-      {isOpen('program', 'new') ? (
-        <ProgramForm onCancel={close} onDone={done} />
-      ) : (
-        <Button
-          variant="primary"
-          onClick={() => open({ kind: 'program', id: 'new' })}
-        >
-          {copy.add}
-        </Button>
-      )}
+      {isOpen('program', 'new') && <ProgramForm onCancel={close} onDone={done} />}
       {programs.data.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
