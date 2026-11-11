@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import {
   createField,
@@ -18,6 +18,7 @@ import { Button } from '../components/Button'
 import { Input, Select, Textarea } from '../components/Field'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, MoveButtons, refusal } from './settingsForm'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.fields
 const form = copy.form
@@ -53,7 +54,7 @@ export function FieldSettings() {
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const reorder = useMutation({
+  const reorder = useSubmit({
     mutationFn: reorderFields,
     onSuccess: async (answer) => {
       queryClient.setQueryData(customFieldsQuery.queryKey, answer)
@@ -190,7 +191,7 @@ function FieldForm({
 }) {
   const queryClient = useQueryClient()
   // Deactivating is here, not on the row (#177): the row keeps its moves.
-  const toggle = useMutation({
+  const toggle = useSubmit({
     mutationFn: () => updateField(field!.key, { archived: !field!.archived }),
     onSuccess: async (answer) => {
       onDone(answer.archived ? copy.archivedDone(answer.label) : copy.restored(answer.label))
@@ -214,7 +215,7 @@ function FieldForm({
     return out
   }
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: () =>
       field
         ? updateField(field.key, changes())
@@ -337,7 +338,7 @@ function FieldForm({
         <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={save.isPending}>
+        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
           {save.isPending ? form.working : form.submit}
         </Button>
       </div>

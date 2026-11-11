@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type FormEvent } from 'react'
 import { blockKindsQuery, type BlockKind } from '../api/blockKinds'
 import {
@@ -23,6 +23,7 @@ import { Input, Select } from '../components/Field'
 import { CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { savedRun } from './timerEngine'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.session.record
 const timerCopy = t.admin.timer
@@ -229,7 +230,7 @@ function RecordEditor({
   // An open mat is one sparring block: added if it has none, never removed.
   const canAdd = !full && choices.length > 0 && (!openMat || drafts.length === 0)
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: async (blocks: { plan: PlannedBlock; actual: BlockActual }[]) => {
       // The plan first: a block given another kind starts unrecorded, and a new one
       // must be there before what it ran is.
@@ -306,7 +307,7 @@ function RecordEditor({
           {copy.failed}
         </p>
       )}
-      <Button type="submit" variant="primary" disabled={save.isPending}>
+      <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
         {save.isPending ? copy.working : copy.submit}
       </Button>
       <Button onClick={() => onClose(false)}>

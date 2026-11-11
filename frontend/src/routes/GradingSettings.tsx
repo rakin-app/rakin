@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import {
@@ -19,6 +19,7 @@ import { Input, Select } from '../components/Field'
 import { ChevronDownIcon, CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { Field, integerOf, LoadFailed, MoveButtons, refusal } from './settingsForm'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.grading
 const LADDERS = ['ranks', 'kids_ladder'] as const
@@ -163,7 +164,7 @@ function GradingEditor({
   // The one rank open to edit, by its draft id (#177): the rest are a row each.
   const [opened, setOpened] = useState<number | null>(null)
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: () => saveGradingScheme(schemeOf(draft)),
     onSuccess: (answer) => {
       setDraft(draftOf(answer))
@@ -295,7 +296,7 @@ function GradingEditor({
             {'' in errors ? copy.schemeInvalid : Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
           </p>
         )}
-        <Button type="submit" variant="primary" disabled={save.isPending}>
+        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
           {save.isPending ? copy.working : copy.submit}
         </Button>
       </form>

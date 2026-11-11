@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ImportReport, ImportRequest, RowResult, Sheet } from '../api/memberImport'
@@ -156,6 +156,21 @@ describe('Importar alumnos', () => {
     expect(await screen.findByText(copy.doneSummary('alumnos.csv', 1, 2))).toBeInTheDocument()
     expect(sent[1]?.dry_run).toBe(false)
     expect(screen.getByRole('link', { name: copy.toStudents })).toHaveAttribute('href', '/admin/alumnos')
+  })
+
+  it('imports once for a double tap on Importar (#203)', async () => {
+    const sent = stubApi()
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+    await userEvent.click(await screen.findByRole('button', { name: copy.check }))
+    await screen.findByText(copy.summary(1, 2))
+
+    const apply = screen.getByRole('button', { name: copy.apply(1) })
+    fireEvent.click(apply)
+    fireEvent.click(apply)
+
+    expect(await screen.findByText(copy.doneSummary('alumnos.csv', 1, 2))).toBeInTheDocument()
+    expect(sent.filter((body) => !body.dry_run)).toHaveLength(1)
   })
 
   it('sends the plan the admin chose and a remapped column', async () => {

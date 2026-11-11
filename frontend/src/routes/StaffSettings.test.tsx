@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
@@ -138,6 +138,24 @@ describe('Ajustes: Equipo', () => {
         body: { name: 'Pedro', phone: '9 4444 4444', email: 'pedro@example.cl', role: 'coach' },
       },
     ])
+  })
+
+  it('invites once for a double tap on Enviar invitación (#204)', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/equipo')
+
+    const region = await section()
+    await userEvent.click(within(region).getByRole('button', { name: copy.add }))
+    const invite = within(region).getByRole('form', { name: form.title })
+    await userEvent.type(within(invite).getByLabelText(form.name), 'Pedro')
+    await userEvent.type(within(invite).getByLabelText(form.email), 'pedro@example.cl')
+    // Both taps before the button re-renders disabled, as a thumb does on a phone.
+    const submit = within(invite).getByRole('button', { name: copy.submit })
+    fireEvent.click(submit)
+    fireEvent.click(submit)
+
+    expect(await within(region).findByRole('status')).toHaveTextContent(copy.invited('Pedro', 'pedro@example.cl'))
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1)
   })
 
   it('says so when the person is already on the staff', async () => {

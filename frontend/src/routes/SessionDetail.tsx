@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
@@ -33,6 +33,7 @@ import { TimerRecord } from './TimerRecord'
 import { savedRun } from './timerEngine'
 import './Classes.css'
 import './ClassTimer.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.session
 
@@ -184,7 +185,7 @@ function TopicForm({ session }: { session: ClassSession }) {
   const [topic, setTopic] = useState(restored?.topic ?? session.topic ?? '')
   const [notes, setNotes] = useState(restored?.notes ?? session.notes ?? '')
   const [saved, setSaved] = useState(false)
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: () => updateSession(session.id, { topic, notes }),
     onSuccess: (updated) => {
       // As stored: trimmed, and blank as none.
@@ -243,7 +244,7 @@ function TopicForm({ session }: { session: ClassSession }) {
         </p>
       )}
       {/* Secondary: "Guardar asistencia" is the screen's one primary. */}
-      <Button type="submit" disabled={save.isPending}>
+      <Button type="submit" disabled={save.isPending} busy={save.isPending}>
         {save.isPending ? copy.form.working : copy.form.submit}
       </Button>
     </form>
@@ -318,7 +319,7 @@ function Attendance({ sessionId }: { sessionId: string }) {
     }
   }
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationKey,
     mutationFn: ({ change }: Save) => changeAttendance(sessionId, change),
     onSuccess: (updated, { change: sent }) => {
@@ -583,7 +584,7 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
   const [phone, setPhone] = useState('')
   const [planId, setPlanId] = useState('')
   const [done, setDone] = useState<string | null>(null)
-  const add = useMutation({
+  const add = useSubmit({
     mutationFn: (guest: { name: string; who: string; phone: string; planId: string }) =>
       addTrialGuest(sessionId, guest),
     onSuccess: (added, guest) => {
@@ -705,7 +706,7 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
           <Button
             type="submit"
             variant="primary"
-            disabled={add.isPending || !chosen || !name.trim() || !who.trim()}
+            disabled={add.isPending || !chosen || !name.trim() || !who.trim()} busy={add.isPending}
           >
             {add.isPending ? words.working : words.submit}
           </Button>

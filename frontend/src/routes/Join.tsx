@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
@@ -11,6 +11,7 @@ import { Grid, PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './Join.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.join
 const route = getRouteApi('/unirse/$token')
@@ -150,7 +151,7 @@ function JoinFormBody({
     setGuardianNoWhatsapp(false)
   }
 
-  const send = useMutation({
+  const send = useSubmit({
     mutationFn: () => {
       const body: JoinSubmission = {
         first_name: drafts.first_name,
@@ -293,7 +294,7 @@ function JoinFormBody({
           {problem(send.error, Object.keys(errors).length > 0)}
         </p>
       )}
-      <Button type="submit" variant="primary" disabled={send.isPending}>
+      <Button type="submit" variant="primary" disabled={send.isPending} busy={send.isPending}>
         {send.isPending ? copy.working : copy.submit}
       </Button>
     </form>

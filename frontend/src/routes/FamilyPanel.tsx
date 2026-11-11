@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { ApiError, apiFetch } from '../api/client'
 import {
@@ -13,6 +13,7 @@ import { membersPath, type MemberPage, type MemberRow } from '../api/people'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { t } from '../i18n/es'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.family
 
@@ -28,11 +29,11 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['people'] })
 
-  const add = useMutation({
+  const add = useSubmit({
     mutationFn: (body: AddDependent) => addDependent(person.id, body),
     onSuccess: invalidate,
   })
-  const unlink = useMutation({
+  const unlink = useSubmit({
     mutationFn: ({ guardian, dependent }: { guardian: string; dependent: string }) =>
       removeDependent(guardian, dependent),
     onSuccess: invalidate,
@@ -158,7 +159,7 @@ function NewDependentForm({ busy, onAdd }: { busy: boolean; onAdd: (body: AddDep
       <Input id={ids.rut} value={rut} onChange={(e) => setRut(e.target.value)} />
       <label htmlFor={ids.dob}>{copy.dob}</label>
       <Input id={ids.dob} type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
-      <Button type="submit" disabled={busy || !name.trim()}>
+      <Button type="submit" disabled={busy || !name.trim()} busy={busy}>
         {copy.add}
       </Button>
     </form>

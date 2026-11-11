@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError, apiFetch } from './client'
+import { submissionKey } from './submit'
 
 /** A billing period the signed-in person can pay: theirs or a dependent's. */
 export type OpenPeriod = {
@@ -94,11 +95,14 @@ export class UploadFailed extends Error {
 export type ProofTarget = { kind: 'period' | 'line'; id: string }
 
 export async function submitProof(file: File, target: ProofTarget, amountClp: number): Promise<void> {
+  // Each step by its own name, so a double tap uploads to one key and claims once (#208).
+  const key = submissionKey()
   const contentType = proofContentType(file)
   if (contentType === null) throw new Error(`not a proof type: ${file.name}`)
   const upload = await apiFetch<ProofUpload>('/api/me/proofs', {
     method: 'POST',
     body: JSON.stringify({ content_type: contentType, size_bytes: file.size }),
+    idempotencyKey: key && `${key}:upload`,
   })
   // Not `apiFetch`: the URL may be the storage's own origin. The browser sends
   // the file's size as Content-Length, which the signature covers.
@@ -111,6 +115,7 @@ export async function submitProof(file: File, target: ProofTarget, amountClp: nu
       amount_clp: amountClp,
       proof_key: upload.key,
     }),
+    idempotencyKey: key && `${key}:claim`,
   })
 }
 

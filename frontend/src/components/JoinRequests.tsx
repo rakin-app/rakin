@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import { ApiError } from '../api/client'
@@ -17,6 +17,7 @@ import { t } from '../i18n/es'
 import { Button } from './Button'
 import { Select } from './Field'
 import './JoinRequests.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.joinRequests
 
@@ -89,14 +90,14 @@ function RequestRow({
     await queryClient.invalidateQueries({ queryKey: joinRequestsQuery.queryKey })
     await queryClient.invalidateQueries({ queryKey: ['members'] })
   }
-  const approve = useMutation({
+  const approve = useSubmit({
     mutationFn: () => approveJoinRequest(request.id, planId || null),
     onSuccess: async () => {
       onDone(copy.approved(name))
       await refresh()
     },
   })
-  const reject = useMutation({
+  const reject = useSubmit({
     mutationFn: () => rejectJoinRequest(request.id),
     onSuccess: async () => {
       onDone(copy.rejected(name))

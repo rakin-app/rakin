@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { personAttendanceQuery } from '../api/attendance'
@@ -59,6 +59,7 @@ import { PersonActions } from './PersonActions'
 import { PersonExtraLines } from './PersonExtraLines'
 import { PersonData } from './PersonData'
 import './MemberDetail.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.member
 const clp = t.common.clp
@@ -406,7 +407,7 @@ function addDays(day: string, days: number): string {
 /** A change to a freeze: the membership and its ledger are read again after it. */
 function useFreezeChange(mutationFn: () => Promise<Membership>, onSuccess: (membership: Membership) => void) {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useSubmit({
     mutationFn,
     onSuccess: async (membership: Membership) => {
       onSuccess(membership)
@@ -528,7 +529,7 @@ function FreezeForm({
         <Button disabled={freeze.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={freeze.isPending}>
+        <Button type="submit" variant="primary" disabled={freeze.isPending} busy={freeze.isPending}>
           {freeze.isPending ? form.working : form.submit}
         </Button>
       </div>
@@ -620,7 +621,7 @@ function EditFreezeForm({
         <Button disabled={edit.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={edit.isPending}>
+        <Button type="submit" variant="primary" disabled={edit.isPending} busy={edit.isPending}>
           {edit.isPending ? form.working : form.submit}
         </Button>
       </div>
@@ -667,7 +668,7 @@ function EndFreezeForm({
         <Button disabled={end.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={end.isPending}>
+        <Button type="submit" variant="primary" disabled={end.isPending} busy={end.isPending}>
           {end.isPending ? form.working : freeze.started ? form.end : form.callOff}
         </Button>
       </div>
@@ -701,7 +702,7 @@ export function PaymentForm({
   const [amountNeeded, setAmountNeeded] = useState(false)
   const value = Number(amount.replace(/\D/g, ''))
 
-  const record = useMutation({
+  const record = useSubmit({
     mutationFn: () =>
       recordPayment({
         membership_id: membership.id,
@@ -796,7 +797,7 @@ export function PaymentForm({
         <Button disabled={record.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={record.isPending}>
+        <Button type="submit" variant="primary" disabled={record.isPending} busy={record.isPending}>
           {record.isPending ? form.working : form.submit(clp(value))}
         </Button>
       </div>
@@ -1001,7 +1002,7 @@ function GradeForm({
   const [note, setNote] = useState('')
   const rank = [...scheme.ranks, ...scheme.kids_ladder].find((r) => r.key === rankKey)
 
-  const award = useMutation({
+  const award = useSubmit({
     mutationFn: () =>
       awardGrade(personId, {
         rank_key: rankKey,
@@ -1100,7 +1101,7 @@ function GradeForm({
         <Button disabled={award.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={award.isPending}>
+        <Button type="submit" variant="primary" disabled={award.isPending} busy={award.isPending}>
           {award.isPending ? form.working : form.submit}
         </Button>
       </div>
@@ -1156,7 +1157,7 @@ function AdjustmentForm({
   const signed = direction === 'favor' ? value : -value
   const noteOk = note.trim() !== ''
 
-  const adjust = useMutation({
+  const adjust = useSubmit({
     mutationFn: () =>
       recordAdjustment({
         membership_id: membership.id,
@@ -1248,7 +1249,7 @@ function AdjustmentForm({
         <Button disabled={adjust.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={adjust.isPending}>
+        <Button type="submit" variant="primary" disabled={adjust.isPending} busy={adjust.isPending}>
           {adjust.isPending ? form.working : form.submit(direction === 'favor', clp(value))}
         </Button>
       </div>
@@ -1276,7 +1277,7 @@ function RefundForm({
   const [amountNeeded, setAmountNeeded] = useState(false)
   const value = Number(amount.replace(/\D/g, ''))
 
-  const refund = useMutation({
+  const refund = useSubmit({
     mutationFn: () =>
       recordRefund({
         payment_id: payment.id,
@@ -1373,7 +1374,7 @@ function RefundForm({
         <Button disabled={refund.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={refund.isPending}>
+        <Button type="submit" variant="primary" disabled={refund.isPending} busy={refund.isPending}>
           {refund.isPending ? form.working : form.submit(clp(value))}
         </Button>
       </div>
