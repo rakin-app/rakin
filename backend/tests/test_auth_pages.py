@@ -7,7 +7,7 @@ copies to the originals, so a token changed in `tokens.css` cannot drift here un
 import re
 from pathlib import Path
 
-from app.auth import FONTS, STYLESHEET, THEME_TOKENS, TOKENS
+from app.auth import FONTS, LOGO, STYLESHEET, TEXTS, THEME_TOKENS, TOKENS
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -47,3 +47,12 @@ def test_every_font_the_pages_load_is_one_the_spa_serves() -> None:
 
 def test_the_pages_stay_light() -> None:
     assert "color-scheme:light" in STYLESHEET
+
+
+def test_the_pages_open_with_rakins_logo_in_the_themes_colours() -> None:
+    assert TEXTS.logo == LOGO
+    assert '<span class="logo" role="img" aria-label="Rakin">' in LOGO
+    # Each colour it wears is one every theme sets.
+    for colour in ("--color-inverse", "--color-inverse-text", "--color-moss", "--color-focus"):
+        assert f"var({colour})" in STYLESHEET
+        assert all(colour in colours for colours in THEME_TOKENS.values())

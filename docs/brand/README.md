@@ -36,7 +36,8 @@ cd .. && uv run docs/brand/build.py
 The wordmark is outlined from Bricolage Grotesque 600 with −0.02em tracking, so
 the files need no font installed. In the app it is live text in the display
 font, beside an inline copy of the symbol (`frontend/src/components/RakinLogo.tsx`),
-so it takes the theme's colours.
+so it takes the theme's colours. The sign-in link's pages, plain HTML from the API,
+draw the same in `backend/app/auth.py` (`LOGO`).
 
 ## Colours
 
