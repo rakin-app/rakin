@@ -1,11 +1,12 @@
 """Members in and out by hand (#157): add one, dar de baja, reactivar, eliminar.
 
 `POST /api/people/enrol` adds a member as the import would, all or nothing: their
-record, by phone as anyone joins (`join_by_phone`, #18) or, for a dependent with none,
-by name alone; the guardian a minor needs, someone already here or someone new by their
-phone; the gym's custom fields; and the plan they start on, with the welcome if asked.
-A phone or RUT someone in this gym already has is a 409 naming them, as for
-`POST /api/people`; a guardian's phone already here is that person.
+record, by RUT or email as anyone joins (`add_to_gym`, #165) or, for a dependent with
+neither, by name alone; the guardian a minor needs, someone already here or someone new
+by their RUT or email; the gym's custom fields; and the plan they start on, with the
+welcome if asked. A RUT someone in this gym already has, or the email of someone here
+when no RUT is given, is a 409 naming them, as for `POST /api/people`; a new guardian
+whose RUT or email is someone's here is that person.
 
 `POST .../leave` is the normal way out (dado de baja): every membership they hold ends
 with the reason `dado de baja` (`app.domain.membership.leave`), so billing writes no
@@ -31,9 +32,18 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.custom_fields import field_cipher, write_person_fields
-from app.api.guardians import NEW_GYM_PERSON, NEW_PERSON, link
+from app.api.guardians import link
 from app.api.memberships import CALL_OFF_BOOKED, start_membership, welcome_for
-from app.api.people import NOT_FOUND, in_gym, join_by_phone, read_person, refuse_rut_in_gym
+from app.api.people import (
+    NOT_FOUND,
+    add_to_gym,
+    find_in_gym,
+    give_identity,
+    in_gym,
+    join_gym,
+    read_person,
+    refuse_email_in_gym,
+)
 from app.domain import membership as domain
 from app.domain.dates import add_months, gym_today, is_minor
 from app.domain.membership import MembershipStatus, PlanKind
@@ -58,10 +68,7 @@ router = APIRouter(prefix="/api/people", tags=["people"])
 
 CurrentTenant = Annotated[Tenant, Depends(current_tenant)]
 
-BY_PHONE = """
-    SELECT gp.person_id FROM gym_person gp JOIN person p ON p.id = gp.person_id
-    WHERE p.phone = :phone
-"""
+REACHABLE = text("SELECT phone IS NOT NULL OR no_whatsapp FROM gym_person WHERE person_id = :id")
 
 # Their record, locked so a leave and a return take turns. RLS keeps it to the gym.
 LOCK_RECORD = text("SELECT left_on FROM gym_person WHERE person_id = :id FOR UPDATE")
@@ -102,38 +109,43 @@ async def _today(session: AsyncSession, tenant: Tenant) -> date:
 
 
 async def _guardian(session: AsyncSession, body: Enrolment) -> uuid.UUID | None:
-    """The guardian `body` names, added to the gym if new to it."""
+    """The guardian `body` names, added to the gym if new to it. They are who the gym
+    messages about the minor, so they need a phone, or "No tiene WhatsApp" ticked. One
+    the gym has already is left as it has them: a phone typed here is not theirs to
+    change, and one they lack is added on their own ficha."""
     guardian = body.guardian
     if guardian is None:
         return None
     if isinstance(guardian, ExistingGuardian):
         if not await in_gym(session, guardian.person_id):
             raise _unprocessable("guardian not found")
-        return guardian.person_id
-    found = await session.scalar(text(BY_PHONE), {"phone": guardian.phone})
-    if found is not None:
-        # Their phone is who they are, so the guardian is whoever here has it.
-        found_id: uuid.UUID = found
-        return found_id
-    return await join_by_phone(session, guardian.phone, guardian.name, guardian.email)
+        guardian_id = guardian.person_id
+    elif (found := await find_in_gym(session, guardian.rut, guardian.email)) is not None:
+        # Whoever this gym has under the RUT, or, with no RUT of their own, the email.
+        guardian_id = found.person_id
+        if found.by == "email_in_gym":
+            await give_identity(session, guardian_id, guardian.rut, None)
+    else:
+        # New here: their record takes the phone and "No tiene WhatsApp" typed.
+        await refuse_email_in_gym(session, guardian.email)
+        guardian_id, _ = await join_gym(session, **guardian.model_dump())
+    if not await session.scalar(REACHABLE, {"id": guardian_id}):
+        raise _unprocessable("the guardian needs a phone, or no_whatsapp")
+    return guardian_id
 
 
 async def _member(session: AsyncSession, body: Enrolment) -> uuid.UUID:
-    """The new member's record in this gym, by phone, or by name alone without one."""
-    if body.phone is not None:
-        return await join_by_phone(session, body.phone, body.name, body.email, body.rut, body.dob)
-    await refuse_rut_in_gym(session, body.rut)
-    person_id = uuid.uuid4()
-    values = {
-        "id": person_id,
-        "name": body.name,
-        "email": body.email,
-        "rut": body.rut,
-        "dob": body.dob,
-    }
-    await session.execute(text(NEW_PERSON), values)
-    await session.execute(text(NEW_GYM_PERSON), values)
-    return person_id
+    """The new member's record in this gym, by RUT or email, or by name alone, for a
+    dependent, with neither."""
+    return await add_to_gym(
+        session,
+        name=body.name,
+        rut=body.rut,
+        email=body.email,
+        phone=body.phone,
+        no_whatsapp=body.no_whatsapp,
+        dob=body.dob,
+    )
 
 
 @router.post(

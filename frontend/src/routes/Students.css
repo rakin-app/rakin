@@ -82,6 +82,13 @@
   font-size: var(--text-xs);
 }
 
+/* "Falta teléfono": the gym cannot reach them on WhatsApp yet. */
+.students__flag {
+  color: var(--color-warning-strong);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
 .students__plan-name {
   overflow: hidden;
   max-width: 100%;

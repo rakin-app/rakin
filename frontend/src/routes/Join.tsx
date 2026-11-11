@@ -113,6 +113,9 @@ function JoinFormBody({
 }) {
   const [drafts, setDrafts] = useState<Drafts>(EMPTY)
   const [consent, setConsent] = useState(false)
+  // "No tiene WhatsApp": the adult's own, or a minor's guardian's, never carried over.
+  const [adultNoWhatsapp, setAdultNoWhatsapp] = useState(false)
+  const [guardianNoWhatsapp, setGuardianNoWhatsapp] = useState(false)
   // Sent without it: the form says so itself, in Spanish, rather than ask the API.
   const [consentMissing, setConsentMissing] = useState(false)
   const consentErrorId = useId()
@@ -122,19 +125,28 @@ function JoinFormBody({
   const set = (field: keyof Drafts, value: string) => setDrafts({ ...drafts, [field]: value })
   const age = ageOn(drafts.dob, today)
   const minor = age !== null && age < ADULT_AGE
+  // A birth date that turns them from adult to minor, or back, starts both boxes over:
+  // a box ticked for one is not an answer for the other.
+  const [wasMinor, setWasMinor] = useState(minor)
+  if (wasMinor !== minor) {
+    setWasMinor(minor)
+    setAdultNoWhatsapp(false)
+    setGuardianNoWhatsapp(false)
+  }
 
   const send = useMutation({
     mutationFn: () => {
       const body: JoinSubmission = {
         first_name: drafts.first_name,
         last_name: drafts.last_name,
-        rut: drafts.rut,
+        rut: orNull(drafts.rut),
         phone: orNull(drafts.phone),
         email: orNull(drafts.email),
         dob: drafts.dob,
         guardian_name: minor ? orNull(drafts.guardian_name) : null,
         guardian_phone: minor ? orNull(drafts.guardian_phone) : null,
         guardian_email: minor ? orNull(drafts.guardian_email) : null,
+        no_whatsapp: minor ? guardianNoWhatsapp : adultNoWhatsapp,
         consent,
         website: drafts.website,
         human_check_token: humanToken,
@@ -185,6 +197,7 @@ function JoinFormBody({
         autoComplete="tel"
         onChange={(v) => set('phone', v)}
       />
+      {!minor && <NoWhatsapp label={copy.noWhatsapp} checked={adultNoWhatsapp} onChange={setAdultNoWhatsapp} />}
       <TextField
         label={copy.email}
         hint={minor ? copy.minorEmailHint : undefined}
@@ -199,7 +212,12 @@ function JoinFormBody({
           <legend className="join__legend">{copy.guardianTitle}</legend>
           <p className="join__intro">{copy.guardianIntro}</p>
           <TextField label={copy.guardianName} error={error('guardian_name')} value={drafts.guardian_name} autoComplete="off" onChange={(v) => set('guardian_name', v)} />
-          <TextField label={copy.guardianPhone} error={error('guardian_phone')} value={drafts.guardian_phone} type="tel" autoComplete="off" onChange={(v) => set('guardian_phone', v)} />
+          <TextField label={copy.guardianPhone} hint={copy.guardianPhoneHint} error={error('guardian_phone')} value={drafts.guardian_phone} type="tel" autoComplete="off" onChange={(v) => set('guardian_phone', v)} />
+          <NoWhatsapp
+            label={copy.guardianNoWhatsapp}
+            checked={guardianNoWhatsapp}
+            onChange={setGuardianNoWhatsapp}
+          />
           <TextField label={copy.guardianEmail} error={error('guardian_email')} value={drafts.guardian_email} type="email" autoComplete="off" onChange={(v) => set('guardian_email', v)} />
         </fieldset>
       )}
@@ -244,6 +262,16 @@ function JoinFormBody({
         {send.isPending ? copy.working : copy.submit}
       </Button>
     </form>
+  )
+}
+
+/** "No tiene WhatsApp": the rare person the gym cannot message, who may leave the phone out. */
+function NoWhatsapp({ label, checked, onChange }: { label: string; checked: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="join__consent">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
   )
 }
 

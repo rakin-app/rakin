@@ -22,7 +22,9 @@ from app.main import create_app
 from app.seed.build import GYM_ID, seed_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_rut
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.test_join import with_privacy
 from tests.test_people import new_phone
 from tests.test_plans import add_staff
 from tests.test_seed import DESIGN_DAY, load_as_owner
@@ -52,7 +54,8 @@ REFUSED = {
     10: [{"field": "phone", "code": "invalid_phone"}],
     11: [{"field": "due_on", "code": "required"}],
     12: [{"field": "plan", "code": "dropin_plan"}],
-    14: [{"field": "phone", "code": "repeated"}],
+    # Camila again, with no RUT: the name is all that says who she is.
+    14: [{"field": "name", "code": "repeated"}],
     15: [{"field": "rut", "code": "invalid_rut"}],
 }
 
@@ -130,6 +133,11 @@ def people(db: Database, gym: uuid.UUID) -> int:
     rows = run(db.owner_url, in_gym(gym, "SELECT count(*) FROM gym_person"))
     count: int = rows[0][0]
     return count
+
+
+def people_count(client: TestClient, gym: uuid.UUID, name: str) -> int:
+    items = client.get("/api/people", params={"q": name}, headers=as_gym(gym)).json()["items"]
+    return sum(p["name"] == name for p in items)
 
 
 def find(client: TestClient, gym: uuid.UUID, name: str) -> dict[str, Any]:
@@ -247,6 +255,9 @@ def test_a_dry_run_reports_each_rows_errors_and_writes_nothing(
         "people_created": 7,
         "links_created": 3,
         "memberships_created": 5,
+        # Every contact has a phone; Diego and Agustín have no RUT and no email.
+        "missing_phone": 0,
+        "missing_identity": 2,
     }
     assert [r["row"] for r in report["rows"]] == [2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15]
     assert people(db, gym) == before
@@ -375,14 +386,19 @@ def test_a_live_membership_keeps_its_plan_and_dates_and_says_so(
 
 
 @pg
-def test_a_guardians_own_row_goes_first_wherever_it_is(client: TestClient, gym: uuid.UUID) -> None:
-    mother = new_phone()
-    teen = new_phone()
-    # Lucas's row names his mother by phone alone, above her own row.
-    rows = [["Lucas Díaz", teen, mother], ["Paula Díaz", mother, ""]]
+@pytest.mark.parametrize(
+    ("guardian_column", "named"),
+    [("guardian_rut", "7.654.321-6"), ("guardian_name", "PAULA DIAZ")],
+    ids=["by-rut", "by-name-alone"],
+)
+def test_a_guardians_own_row_goes_first_wherever_it_is(
+    client: TestClient, gym: uuid.UUID, guardian_column: str, named: str
+) -> None:
+    # Lucas's row names his mother, above her own row.
+    rows = [["Lucas Díaz", "", named], ["Paula Díaz", "7654321-6", ""]]
     sheet = {
         "rows": [{"number": n, "cells": cells} for n, cells in enumerate(rows, start=2)],
-        "mapping": {"name": 0, "phone": 1, "guardian_phone": 2},
+        "mapping": {"name": 0, "rut": 1, guardian_column: 2},
     }
     report = imported(client, gym, sheet, dry_run=False)
     assert [(r["errors"], r["person"]) for r in report["rows"]] == [
@@ -391,19 +407,20 @@ def test_a_guardians_own_row_goes_first_wherever_it_is(client: TestClient, gym: 
     ]
     assert (report["rows"][0]["guardian"], report["rows"][0]["link"]) == ("existing", "created")
     assert find(client, gym, "Lucas Díaz")["guardian"]["name"] == "Paula Díaz"
+    assert people_count(client, gym, "Paula Díaz") == 1
 
 
 @pg
-def test_someone_already_in_the_gym_is_found_by_phone_and_left_as_they_are(
+def test_someone_already_in_the_gym_is_found_by_rut_and_left_as_they_are(
     client: TestClient, gym: uuid.UUID
 ) -> None:
-    body = {"phone": "+56987654321", "name": "Cami Ortiz", "email": "cami@example.cl"}
+    body = {"rut": "12.345.678-5", "name": "Cami Ortiz", "email": "cami@example.cl"}
     assert client.post("/api/people", json=body, headers=as_gym(gym)).status_code == 201
     report = imported(client, gym, sheet_of(client, gym), dry_run=False)
 
     assert report["rows"][0]["person"] == "existing"
     # Kept as the gym has her, and the report names each sheet field that leaves unapplied.
-    assert report["rows"][0]["ignored"] == ["name", "email", "rut", "dob"]
+    assert report["rows"][0]["ignored"] == ["name", "phone", "email", "dob"]
     cami = find(client, gym, "Cami Ortiz")
     assert cami["dependents"] == 2
     assert cami["membership"]["plan_name"] == "Mensual"
@@ -414,27 +431,33 @@ def test_another_gyms_member_joins_this_gym_with_what_the_sheet_says(
     client: TestClient, gym: uuid.UUID, db: Database
 ) -> None:
     other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
-    phone = new_phone()
-    body = {"phone": phone, "name": "Nombre en otro gimnasio"}
-    assert client.post("/api/people", json=body, headers=as_gym(other)).status_code == 201
+    rut, phone = random_rut(), new_phone()
+    body = {"rut": rut, "phone": new_phone(), "name": "Nombre en otro gimnasio"}
+    known = client.post("/api/people", json=body, headers=as_gym(other)).json()["id"]
+    # Someone else's phone there finds nobody: Pedro is new.
+    shared = {"rut": random_rut(), "phone": phone, "name": "Pedro en otro gimnasio"}
+    assert client.post("/api/people", json=shared, headers=as_gym(other)).status_code == 201
 
     sheet = {
-        "rows": [{"number": 2, "cells": ["Ana Rojas", phone]}],
-        "mapping": {"name": 0, "phone": 1},
+        "rows": [
+            {"number": 2, "cells": ["Ana Rojas", rut, phone]},
+            {"number": 3, "cells": ["Pedro Gil", "", phone]},
+        ],
+        "mapping": {"name": 0, "rut": 1, "phone": 2},
     }
     report = imported(client, gym, sheet, dry_run=False)
-    assert report["rows"][0]["person"] == "created"
-    assert find(client, gym, "Ana Rojas")["phone"] == phone
+    assert [r["person"] for r in report["rows"]] == ["created", "created"]
+    ana = find(client, gym, "Ana Rojas")
+    assert (ana["id"], ana["phone"]) == (known, phone)
+    assert find(client, gym, "Pedro Gil")["id"] not in (known,)
 
 
 @pg
 def test_a_link_the_database_refuses_fails_that_row_alone(
     client: TestClient, gym: uuid.UUID, db: Database
 ) -> None:
-    mother = new_phone()
-    teen = new_phone()
-    other = new_phone()
-    # Lucas, with a phone, is Paula's dependent; then a kid names Lucas as guardian, and
+    mother, teen, other = random_rut(), random_rut(), random_rut()
+    # Lucas, with a RUT, is Paula's dependent; then a kid names Lucas as guardian, and
     # Lucas is named again with another guardian.
     rows = [
         ["Paula Díaz", mother, "", ""],
@@ -445,7 +468,7 @@ def test_a_link_the_database_refuses_fails_that_row_alone(
     ]
     sheet = {
         "rows": [{"number": n, "cells": cells} for n, cells in enumerate(rows, start=2)],
-        "mapping": {"name": 0, "phone": 1, "guardian_name": 2, "guardian_phone": 3},
+        "mapping": {"name": 0, "rut": 1, "guardian_name": 2, "guardian_rut": 3},
     }
     before = people(db, gym)
     report = imported(client, gym, sheet, dry_run=False)
@@ -453,9 +476,9 @@ def test_a_link_the_database_refuses_fails_that_row_alone(
     assert [r["errors"] for r in report["rows"]] == [
         [],
         [],
-        [{"field": "guardian_phone", "code": "one_level"}],
+        [{"field": "guardian_name", "code": "one_level"}],
         [],
-        [{"field": "phone", "code": "repeated"}],
+        [{"field": "rut", "code": "repeated"}],
     ]
     assert report["rows"][1]["link"] == "created"
     # Emilia's row wrote nothing: Paula, Lucas and Pedro are the only people added.
@@ -466,7 +489,7 @@ def test_a_link_the_database_refuses_fails_that_row_alone(
         "mapping": sheet["mapping"],
     }
     [row] = imported(client, gym, lucas_again, dry_run=False)["rows"]
-    assert row["errors"] == [{"field": "guardian_phone", "code": "has_guardian"}]
+    assert row["errors"] == [{"field": "guardian_name", "code": "has_guardian"}]
 
 
 @pg
@@ -512,7 +535,7 @@ DEMO_REFUSED = {
     35: [{"field": "phone", "code": "invalid_phone"}],
     36: [{"field": "plan", "code": "unknown_plan"}],
     37: [{"field": "due_on", "code": "due_before_start"}],
-    38: [{"field": "phone", "code": "repeated"}],
+    38: [{"field": "rut", "code": "repeated"}],
 }
 
 
@@ -547,10 +570,13 @@ def test_the_demo_sheet_dry_runs_against_the_seeded_gym(
         "people_created": 34,
         "links_created": 8,
         "memberships_created": 28,
+        "missing_phone": 0,
+        # Gonzalo Painemal and Isidora Contreras: found again by name.
+        "missing_identity": 2,
     }
     assert {r["row"]: r["errors"] for r in report["rows"] if r["errors"]} == DEMO_REFUSED
     rows = report["rows"]
-    # Felipe Díaz is in the seed: found by phone, and "Ya existen" lists the email.
+    # Felipe Díaz is in the seed: found by his RUT, and "Ya existen" lists the email.
     kept = {r["row"]: (r["name"], r["person"], r["ignored"]) for r in rows if r["ignored"]}
     assert kept == {39: ("Felipe Díaz", "existing", ["email"])}
     by_name = {r["name"]: r for r in rows}
@@ -564,3 +590,284 @@ def test_the_demo_sheet_dry_runs_against_the_seeded_gym(
         "created",
         "created",
     ]
+
+
+# --- rows with no RUT and no email (#165) ------------------------------------------
+
+
+def sheet_with(*rows: list[str], mapping: dict[str, int]) -> dict[str, Any]:
+    return {
+        "rows": [{"number": n, "cells": cells} for n, cells in enumerate(rows, start=2)],
+        "mapping": mapping,
+    }
+
+
+def person_rut(db: Database, person_id: str) -> str | None:
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch("SELECT rut FROM person WHERE id = $1", uuid.UUID(person_id)),
+    )
+    rut: str | None = rows[0]["rut"]
+    return rut
+
+
+NAME_DOB_PHONE = {"name": 0, "dob": 1, "phone": 2}
+
+
+@pg
+def test_a_row_with_no_rut_or_email_imports_flagged_falta_rut_and_is_found_again(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    sheet = sheet_with(["Diego Soto", "", "9 1111 0001"], mapping=NAME_DOB_PHONE)
+    [first] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert (first["errors"], first["person"], first["missing_identity"]) == ([], "created", True)
+    diego = find(client, gym, "Diego Soto")
+    assert diego["missing_rut"] is True
+    listed = client.get("/api/people?missing_rut=true", headers=as_gym(gym)).json()["items"]
+    assert [p["id"] for p in listed] == [diego["id"]]
+
+    count = people(db, gym)
+    [again] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert again["person"] == "existing"
+    assert people(db, gym) == count
+
+
+@pg
+def test_two_of_one_name_are_told_apart_by_birth_date_then_phone_or_refused(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    rows = [
+        ["Ana Pérez", "1990-01-01", "9 1111 0002"],
+        ["Ana Pérez", "2001-05-05", "9 1111 0003"],
+    ]
+    first = imported(client, gym, sheet_with(*rows, mapping=NAME_DOB_PHONE), dry_run=False)
+    assert [r["person"] for r in first["rows"]] == ["created", "created"]
+    count = people(db, gym)
+
+    def again(*cells: str) -> Any:
+        [row] = imported(
+            client, gym, sheet_with(list(cells), mapping=NAME_DOB_PHONE), dry_run=True
+        )["rows"]
+        return row
+
+    assert again("Ana Pérez", "2001-05-05", "")["person"] == "existing"
+    assert again("Ana Pérez", "", "+56911110002")["person"] == "existing"
+    refused = again("Ana Pérez", "", "")
+    assert refused["errors"] == [{"field": "name", "code": "ambiguous_name"}]
+    assert people(db, gym) == count
+
+
+@pg
+def test_a_guardian_named_alone_is_found_in_this_gym_by_name_and_phone(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    mapping = {"name": 0, "phone": 1, "guardian_name": 2, "guardian_phone": 3}
+    parents = [["Marta Vera", "9 1111 0004", "", ""], ["Marta Vera", "9 1111 0005", "", ""]]
+    imported(client, gym, sheet_with(*parents, mapping=mapping), dry_run=False)
+
+    kids = [
+        ["Tomás Vera", "", "Marta Vera", "9 1111 0005"],
+        ["Sofía Vera", "", "MARTA VERA", ""],
+    ]
+    tomas, sofia = imported(client, gym, sheet_with(*kids, mapping=mapping), dry_run=False)["rows"]
+    assert (tomas["errors"], tomas["guardian"]) == ([], "existing")
+    assert sofia["errors"] == [{"field": "guardian_name", "code": "ambiguous_name"}]
+    guardian = find(client, gym, "Tomás Vera")["guardian"]["id"]
+    phone = client.get(f"/api/people/{guardian}", headers=as_gym(gym)).json()["phone"]
+    assert phone == "+56911110005"
+
+
+@pg
+def test_a_name_never_finds_anyone_in_another_gym(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
+    theirs = imported(
+        client, other, sheet_with(["Lucía Rojas", "", ""], mapping=NAME_DOB_PHONE), dry_run=False
+    )["rows"][0]
+    assert theirs["person"] == "created"
+    [ours] = imported(
+        client, gym, sheet_with(["Lucía Rojas", "", ""], mapping=NAME_DOB_PHONE), dry_run=False
+    )["rows"]
+    assert ours["person"] == "created"
+    assert find(client, gym, "Lucía Rojas")["id"] != find(client, other, "Lucía Rojas")["id"]
+
+
+@pg
+def test_a_rut_given_later_becomes_who_they_are_and_says_nothing_of_other_gyms(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
+    taken = random_rut()
+    elsewhere = client.post(
+        "/api/people", json={"rut": taken, "name": "Otra"}, headers=as_gym(other)
+    ).json()["id"]
+    plain = {"name": 0}
+    imported(client, gym, sheet_with(["Pablo Soto"], ["Rosa Soto"], mapping=plain), dry_run=False)
+    pablo, rosa = find(client, gym, "Pablo Soto")["id"], find(client, gym, "Rosa Soto")["id"]
+
+    free = random_rut()
+    keyed = {"name": 0, "rut": 1}
+    report = imported(
+        client,
+        gym,
+        sheet_with(["Pablo Soto", free], ["Rosa Soto", taken], mapping=keyed),
+        dry_run=False,
+    )
+    # The same answer whether the RUT was free or someone's in another gym.
+    assert [(r["errors"], r["person"], r["ignored"]) for r in report["rows"]] == [
+        ([], "existing", []),
+        ([], "existing", []),
+    ]
+    assert find(client, gym, "Pablo Soto")["id"] == pablo
+    assert (person_rut(db, pablo), find(client, gym, "Pablo Soto")["rut"]) == (free, free)
+    # Taken elsewhere: this gym's record holds it; who they are is unchanged (a merge).
+    assert (person_rut(db, rosa), find(client, gym, "Rosa Soto")["rut"]) == (None, taken)
+    assert person_rut(db, elsewhere) == taken
+    assert find(client, gym, "Rosa Soto")["missing_rut"] is False
+
+
+@pg
+def test_a_rut_typed_on_the_ficha_becomes_who_they_are_when_nobody_has_it(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
+    taken = random_rut()
+    client.post("/api/people", json={"rut": taken, "name": "Otra"}, headers=as_gym(other))
+    imported(
+        client, gym, sheet_with(["Pablo Gil"], ["Rosa Gil"], mapping={"name": 0}), dry_run=False
+    )
+    pablo, rosa = find(client, gym, "Pablo Gil")["id"], find(client, gym, "Rosa Gil")["id"]
+
+    free = random_rut()
+    answers = [
+        client.patch(f"/api/people/{person}", json={"rut": rut}, headers=as_gym(gym))
+        for person, rut in ((pablo, free), (rosa, taken))
+    ]
+    assert [a.status_code for a in answers] == [200, 200]
+    assert set(answers[0].json()) == set(answers[1].json())
+    assert (person_rut(db, pablo), person_rut(db, rosa)) == (free, None)
+
+
+@pg
+def test_a_join_request_with_a_rut_keys_someone_the_gym_had_by_name(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    imported(client, gym, sheet_with(["Ana Pérez"], mapping={"name": 0}), dry_run=False)
+    ana = find(client, gym, "Ana Pérez")["id"]
+    with_privacy(client, gym)
+    link = client.post("/api/join-link", json={}, headers=as_gym(gym)).json()["token"]
+    rut = random_rut()
+    body = {
+        "first_name": "Ana",
+        "last_name": "Pérez",
+        "rut": rut,
+        "phone": new_phone(),
+        "email": f"{uuid.uuid4().hex[:8]}@example.cl",
+        "dob": "1990-05-20",
+        "consent": True,
+    }
+    assert client.post(f"/api/join/{link}", json=body).status_code == 202
+    [request] = client.get("/api/join-requests", headers=as_gym(gym)).json()["items"]
+    approved = client.post(
+        f"/api/join-requests/{request['id']}/approve", json={}, headers=as_gym(gym)
+    )
+
+    assert approved.json()["person_id"] == ana
+    assert person_rut(db, ana) == rut
+
+
+# --- one lookup for RUT and email, and one fold for names (#175 review) ------------
+
+
+@pg
+def test_a_row_with_a_rut_and_email_is_whoever_the_gym_has_under_the_email(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    known = client.post(
+        "/api/people", json={"name": "Ana Soto", "email": address}, headers=as_gym(gym)
+    ).json()["id"]
+    rut = random_rut()
+    sheet = sheet_with(["Ana Soto", rut, address], mapping={"name": 0, "rut": 1, "email": 2})
+    count = people(db, gym)
+
+    [row] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert (row["errors"], row["person"]) == ([], "existing")
+    assert people(db, gym) == count
+    assert (person_rut(db, known), find(client, gym, "Ana Soto")["rut"]) == (rut, rut)
+    # And again: found by the RUT now, still nobody new.
+    [again] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert again["person"] == "existing"
+    assert people(db, gym) == count
+
+
+@pg
+def test_a_name_matches_whatever_its_accents(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    mapping = {"name": 0, "dob": 1}
+    imported(
+        client,
+        gym,
+        sheet_with(["François Müller-Öberg", "1990-01-01"], mapping=mapping),
+        dry_run=False,
+    )
+    count = people(db, gym)
+    [again] = imported(
+        client, gym, sheet_with(["francois  MULLER-oberg", ""], mapping=mapping), dry_run=False
+    )["rows"]
+    assert again["person"] == "existing"
+    assert people(db, gym) == count
+
+    # A second of the name, born another day; then a row that says only the name.
+    second = sheet_with(["Francois Muller-Oberg", "2001-02-02"], mapping=mapping)
+    assert imported(client, gym, second, dry_run=False)["rows"][0]["person"] == "created"
+    [refused] = imported(
+        client, gym, sheet_with(["FRANÇOIS MÜLLER-ÖBERG", ""], mapping=mapping), dry_run=True
+    )["rows"]
+    assert refused["errors"] == [{"field": "name", "code": "ambiguous_name"}]
+
+
+@pg
+def test_a_row_never_gives_someone_an_email_another_person_here_has(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    client.post(
+        "/api/people",
+        json={"name": "Otra", "rut": random_rut(), "email": address},
+        headers=as_gym(gym),
+    )
+    imported(client, gym, sheet_with(["Ana Paz"], mapping={"name": 0}), dry_run=False)
+    keyed = {"name": 0, "rut": 1, "email": 2}
+    [row] = imported(
+        client, gym, sheet_with(["Ana Paz", random_rut(), address], mapping=keyed), dry_run=False
+    )["rows"]
+    assert row["errors"] == [{"field": "email", "code": "email_in_gym"}]
+    assert find(client, gym, "Ana Paz")["missing_rut"] is True
+
+
+@pg
+def test_a_new_row_or_guardian_never_takes_an_email_another_rut_has(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    client.post(
+        "/api/people",
+        json={"name": "Otra", "rut": random_rut(), "email": address},
+        headers=as_gym(gym),
+    )
+    count = people(db, gym)
+    keyed = {"name": 0, "rut": 1, "email": 2}
+    [row] = imported(
+        client, gym, sheet_with(["Ana Paz", random_rut(), address], mapping=keyed), dry_run=False
+    )["rows"]
+    assert row["errors"] == [{"field": "email", "code": "email_in_gym"}]
+    guarded = {"name": 0, "rut": 1, "guardian_name": 2, "guardian_rut": 3, "guardian_email": 4}
+    sheet = sheet_with(
+        ["Tomás Paz", random_rut(), "Marta Paz", random_rut(), address], mapping=guarded
+    )
+    [row] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert row["errors"] == [{"field": "guardian_email", "code": "email_in_gym"}]
+    assert people(db, gym) == count

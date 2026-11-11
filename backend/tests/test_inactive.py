@@ -142,7 +142,8 @@ def logged(db: Database, gym: uuid.UUID) -> list[Any]:
 
 def phone_of(db: Database, person: str) -> str:
     rows = run(
-        db.admin_url, lambda c: c.fetch("SELECT phone FROM person WHERE id = $1", uuid.UUID(person))
+        db.admin_url,
+        lambda c: c.fetch("SELECT phone FROM gym_person WHERE person_id = $1", uuid.UUID(person)),
     )
     return str(rows[0]["phone"])
 
@@ -290,9 +291,23 @@ def test_someone_with_no_phone_to_write_to_has_no_link(
     ignacio = a_member(client, gym, "Ignacio Vera", 16)
     run(
         db.admin_url,
-        lambda c: c.execute("UPDATE person SET phone = NULL WHERE id = $1", uuid.UUID(ignacio)),
+        lambda c: c.execute(
+            "UPDATE gym_person SET phone = NULL WHERE person_id = $1", uuid.UUID(ignacio)
+        ),
     )
 
+    assert listed(client, gym)[0]["whatsapp_url"] is None
+    assert nudge(client, gym, ignacio).status_code == 409
+
+
+@pg
+def test_someone_marked_sin_whatsapp_has_no_link(client: TestClient, gym: uuid.UUID) -> None:
+    ignacio = a_member(client, gym, "Ignacio Vera", 16)
+    marked = client.patch(f"/api/people/{ignacio}", json={"no_whatsapp": True}, headers=as_gym(gym))
+    assert marked.status_code == 200, marked.text
+
+    # They keep the phone, which may be a landline; no WhatsApp link goes to it.
+    assert marked.json()["phone"] is not None
     assert listed(client, gym)[0]["whatsapp_url"] is None
     assert nudge(client, gym, ignacio).status_code == 409
 

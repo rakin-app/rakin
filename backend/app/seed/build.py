@@ -507,12 +507,13 @@ def build(as_of: date) -> Seed:
             },
             "created_at": local(opened),
         },
-        people=people,
+        # The phone is the gym's, a contact on its record (0036), not the person's.
+        people=[{c: v for c, v in p.items() if c != "phone"} for p in people],
         gym_people=[
             {
                 "gym_id": GYM_ID,
                 "person_id": p["id"],
-                **{c: p[c] for c in ("name", "email", "rut", "dob")},
+                **{c: p[c] for c in ("name", "email", "rut", "phone", "dob")},
                 "created_at": p["created_at"],
                 "updated_at": p["created_at"],
             }

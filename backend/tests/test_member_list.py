@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_rut
 from tests.pg import Database, migrate, run, seed_gym, throwaway_database
 
 pytestmark = pytest.mark.postgres
@@ -101,7 +102,9 @@ def join(
 
 
 def add_person(client: TestClient, gym: uuid.UUID, name: str, **fields: Any) -> str:
-    body = {"phone": new_phone(), "name": name, **fields}
+    # Someone is their RUT, or an email (0036): a made-up RUT unless either is given.
+    key = {} if fields.keys() & {"rut", "email"} else {"rut": random_rut()}
+    body = {"phone": new_phone(), "name": name, **key, **fields}
     response = client.post("/api/people", json=body, headers=as_gym(gym))
     assert response.status_code == 201, response.text
     person: str = response.json()["id"]
@@ -136,6 +139,9 @@ def test_everyone_by_name_with_the_membership_shown(
         "id": tomas,
         "name": "Tomás Vera",
         "phone": row["phone"],
+        "no_whatsapp": False,
+        "missing_phone": False,
+        "missing_rut": False,
         "rut": "7654321-6",
         "membership": {
             "id": membership,
@@ -306,10 +312,10 @@ def test_another_gyms_members_are_not_listed(
     assert names(client, gym, plan_id=str(mensual(db, other))) == []
     assert listing(client, gym)["total"] == 1  # the owner
 
-    # The same phone in this gym lists this gym's record only, without other's membership.
-    add_person(client, gym, "Pedro", phone=phone)
+    # The same person in this gym lists this gym's record only, without other's membership.
+    add_person(client, gym, "Pedro", phone=phone, rut="7.654.321-6")
     [row] = listing(client, gym, q=phone)["items"]
-    assert (row["name"], row["rut"], row["membership"]) == ("Pedro", None, None)
+    assert (row["name"], row["membership"]) == ("Pedro", None)
 
 
 def test_coaches_may_list_and_members_may_not(

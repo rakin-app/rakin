@@ -14,7 +14,7 @@ from app.domain.phone import InvalidPhoneError, normalize_phone
 
 @dataclass(frozen=True)
 class Message:
-    to_phone: str  # E.164, as stored on `person.phone`
+    to_phone: str  # E.164, as stored on `gym_person.phone`
     text: str
 
     def __post_init__(self) -> None:

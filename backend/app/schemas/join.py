@@ -71,14 +71,19 @@ class JoinSubmission(BaseModel):
 
     first_name: NamePart
     last_name: NamePart
-    rut: Rut
-    # An adult's are required; a minor may leave them to their guardian's.
+    # Who they are when they give one (#165); with none, their email is.
+    rut: Rut | None = None
+    # An adult's email is required; a minor may leave it to their guardian's. An
+    # adult's phone is required too, the gym's way to reach them on WhatsApp, unless
+    # `no_whatsapp`; a minor's is optional, and their guardian's required instead.
     phone: Phone | None = None
     email: Email | None = None
     dob: PastDate
     guardian_name: GuardianName | None = None
     guardian_phone: Phone | None = None
     guardian_email: Email | None = None
+    # "No tiene WhatsApp", for the adult, or for a minor's guardian.
+    no_whatsapp: bool = False
     consent: Literal[True]
     # The honeypot: a field people never see, so only a script fills it in.
     website: Annotated[str, Field(max_length=200)] = ""
@@ -88,7 +93,7 @@ class JoinSubmission(BaseModel):
 
 class JoinGuardian(BaseModel):
     name: str
-    phone: str
+    phone: str | None
     email: str
 
 
@@ -98,21 +103,22 @@ class JoinRequest(BaseModel):
     id: uuid.UUID
     first_name: str
     last_name: str
-    rut: str
+    rut: str | None
     phone: str | None
     email: str | None
     dob: date
+    no_whatsapp: bool
     guardian: JoinGuardian | None
     program_id: uuid.UUID | None
     program_name: str | None
     created_at: datetime
-    # Someone in this gym with the request's phone, or its RUT.
-    phone_in_gym: PersonRef | None
+    # Someone in this gym with the request's RUT, or, for a request with none, its
+    # email: whom approving links.
     rut_in_gym: PersonRef | None
-    # The request's emails approving leaves unused: someone here has the phone, and
-    # keeps the email this gym has for them.
+    email_in_gym: PersonRef | None
+    # The request's email, when approving leaves it unused: someone here has the RUT,
+    # and keeps the email this gym has for them.
     ignored_email: str | None
-    ignored_guardian_email: str | None
 
 
 class JoinRequestPage(BaseModel):

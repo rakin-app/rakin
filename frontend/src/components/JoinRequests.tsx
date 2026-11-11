@@ -117,32 +117,38 @@ function RequestRow({
       <div className="join-requests__text">
         <span className="join-requests__name">{name}</span>
         <span className="join-requests__detail">
-          {[t.common.rut(request.rut), age === null ? null : copy.age(age)].filter(Boolean).join(' · ')}
+          {[request.rut && t.common.rut(request.rut), age === null ? null : copy.age(age)].filter(Boolean).join(' · ')}
         </span>
         <span className="join-requests__detail">
-          {[request.phone, request.email].filter(Boolean).join(' · ')}
+          {[request.phone, request.email, request.no_whatsapp && !request.guardian ? copy.noWhatsapp : null]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
         {request.guardian && (
           <span className="join-requests__detail">
-            {[copy.guardian(request.guardian.name), request.guardian.phone, request.guardian.email].join(' · ')}
+            {[
+              copy.guardian(request.guardian.name),
+              request.guardian.phone,
+              request.guardian.email,
+              request.no_whatsapp ? copy.noWhatsapp : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </span>
         )}
         {request.program_name && <span className="join-requests__detail">{copy.program(request.program_name)}</span>}
         <span className="join-requests__detail">{copy.sent(t.common.longDay(sentOn))}</span>
-        {request.phone_in_gym && (
+        {request.email_in_gym && (
           <Link
             to="/admin/alumnos/$personId"
-            params={{ personId: request.phone_in_gym.id }}
+            params={{ personId: request.email_in_gym.id }}
             className="join-requests__warning"
           >
-            {copy.phoneInGym(request.phone_in_gym.name)}
+            {copy.emailInGym(request.email_in_gym.name)}
           </Link>
         )}
         {request.ignored_email && (
           <span className="join-requests__warning">{copy.ignoredEmail(request.ignored_email)}</span>
-        )}
-        {request.ignored_guardian_email && (
-          <span className="join-requests__warning">{copy.ignoredGuardianEmail(request.ignored_guardian_email)}</span>
         )}
         {request.rut_in_gym && (
           <Link

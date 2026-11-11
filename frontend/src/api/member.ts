@@ -5,7 +5,14 @@ import type { MembershipStatus } from './people'
 /** This gym's record of a person (backend `Person`). */
 export type Person = {
   id: string
+  // A contact, this gym's: what WhatsApp links go to. Never who they are.
   phone: string | null
+  // "No tiene WhatsApp": no WhatsApp link goes to them (#165).
+  no_whatsapp: boolean
+  // A member with no phone and the box unticked: "Falta teléfono".
+  missing_phone: boolean
+  // No RUT and no email, found again only by name: "Falta RUT".
+  missing_rut: boolean
   name: string
   email: string | null
   rut: string | null

@@ -426,41 +426,46 @@ describe('Asistencia', () => {
 })
 
 describe('Alumno de prueba', () => {
-  async function addGuest(name: string, phone: string) {
+  async function addGuest(name: string, who: string, phone: string) {
     await userEvent.click(await screen.findByRole('button', { name: copy.guest.open }))
     const form = within(screen.getByRole('form', { name: copy.guest.label }))
     await userEvent.type(form.getByLabelText(copy.guest.name), name)
+    await userEvent.type(form.getByLabelText(copy.guest.who), who)
     await userEvent.type(form.getByLabelText(copy.guest.phone), phone)
     await userEvent.click(form.getByRole('button', { name: copy.guest.submit }))
   }
 
-  it('adds someone by phone on the trial plan, present at the class', async () => {
+  it('adds someone by RUT, with their phone, on the trial plan, present at the class', async () => {
     const api = stubApi()
     renderClass()
 
-    await addGuest('Camila Ortiz', '9 1234 5678')
+    await addGuest('Camila Ortiz', '7.654.321-6', '9 1234 5678')
 
     expect(await screen.findByText(copy.guest.done('Camila Ortiz'))).toBeInTheDocument()
     const list = await rosterList()
     expect(list.getByRole('button', { name: /Camila Ortiz/ })).toHaveAttribute('aria-pressed', 'true')
     expect(writes(api.calls)).toEqual([
-      { method: 'POST', path: '/api/people', body: { name: 'Camila Ortiz', phone: '9 1234 5678' } },
+      {
+        method: 'POST',
+        path: '/api/people',
+        body: { name: 'Camila Ortiz', rut: '7.654.321-6', phone: '9 1234 5678' },
+      },
       { method: 'POST', path: '/api/sessions/s1/trials', body: { person_id: 'camila', plan_id: 'trial' } },
     ])
   })
 
   it('marks someone already a member instead', async () => {
     const api = stubApi({
-      person: { status: 409, body: { detail: { code: 'phone_in_gym', person_id: 'felipe' } } },
+      person: { status: 409, body: { detail: { code: 'email_in_gym', person_id: 'felipe' } } },
       trial: { status: 409, body: { detail: { code: 'already_member', membership_id: 'm-felipe' } } },
     })
     renderClass()
 
-    await addGuest('Felipe', '9 8765 4321')
+    await addGuest('Felipe', 'felipe@example.cl', '9 8765 4321')
 
     expect(await screen.findByText(copy.guest.member('Felipe'))).toBeInTheDocument()
     expect(writes(api.calls).map((c) => [c.path, c.body])).toEqual([
-      ['/api/people', { name: 'Felipe', phone: '9 8765 4321' }],
+      ['/api/people', { name: 'Felipe', email: 'felipe@example.cl', phone: '9 8765 4321' }],
       ['/api/sessions/s1/trials', { person_id: 'felipe', plan_id: 'trial' }],
       ['/api/sessions/s1/attendance', { mark: ['m-felipe'], unmark: [] }],
     ])
@@ -470,23 +475,23 @@ describe('Alumno de prueba', () => {
 
   it('sends someone dado de baja to Reactivar instead of a trial', async () => {
     stubApi({
-      person: { status: 409, body: { detail: { code: 'phone_in_gym', person_id: 'felipe' } } },
+      person: { status: 409, body: { detail: { code: 'rut_in_gym', person_id: 'felipe' } } },
       trial: { status: 409, body: { detail: { code: 'has_left' } } },
     })
     renderClass()
 
-    await addGuest('Felipe', '9 8765 4321')
+    await addGuest('Felipe', '7.654.321-6', '9 8765 4321')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.guest.hasLeft)
   })
 
-  it('asks to check a phone the API refuses', async () => {
+  it('asks to check what the API refuses', async () => {
     stubApi({ person: { status: 422, body: { detail: [] } } })
     renderClass()
 
-    await addGuest('Camila Ortiz', '12')
+    await addGuest('Camila Ortiz', '7.654.321-6', '12')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(copy.guest.badPhone)
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.guest.invalid)
   })
 
   it('needs a trial plan', async () => {

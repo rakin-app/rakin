@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { myRoleQuery, type StaffRole } from '../api/me'
+import { duplicateOf } from '../api/people'
 import {
   changeStaffRole,
   INVITABLE_ROLES,
@@ -154,7 +155,7 @@ function StaffRow({
   )
 }
 
-type Drafts = { name: string; phone: string; email: string; role: InvitableRole }
+type Drafts = { name: string; rut: string; email: string; phone: string; role: InvitableRole }
 
 function InviteForm({
   acting,
@@ -167,21 +168,33 @@ function InviteForm({
 }) {
   const queryClient = useQueryClient()
   const roles = INVITABLE_ROLES.filter((r) => managesRole(acting, r))
-  const [drafts, setDrafts] = useState<Drafts>({ name: '', phone: '', email: '', role: 'coach' })
+  const [drafts, setDrafts] = useState<Drafts>({ name: '', rut: '', email: '', phone: '', role: 'coach' })
   const set = (field: keyof Drafts, value: string) => setDrafts({ ...drafts, [field]: value })
 
   const save = useMutation({
-    mutationFn: () => inviteStaff(drafts),
+    // The optional ones only when typed: an empty RUT or phone is none, not an invalid one.
+    mutationFn: () =>
+      inviteStaff({
+        name: drafts.name,
+        email: drafts.email,
+        rut: drafts.rut.trim() || undefined,
+        phone: drafts.phone.trim() || undefined,
+        role: drafts.role,
+      }),
     onSuccess: async (answer) => {
       onDone(copy.invited(answer.name, answer.email ?? drafts.email))
       await queryClient.invalidateQueries({ queryKey: staffQuery.queryKey })
     },
   })
+  // A 409 is someone already on the staff, or an email another person here has.
   const taken = save.error instanceof ApiError && save.error.status === 409
+  const emailTaken = duplicateOf(save.error)?.code === 'email_in_gym'
   const errors = validationErrors(save.error)
   const error = (field: keyof Drafts) =>
-    field === 'phone' && taken
-      ? copy.alreadyStaff
+    field === 'email' && taken
+      ? emailTaken
+        ? copy.emailTaken
+        : copy.alreadyStaff
       : field in errors
         ? refusal(errors[field]!, field, copy, drafts[field].trim() === '')
         : undefined
@@ -203,6 +216,17 @@ function InviteForm({
             autoComplete="off"
             value={drafts.name}
             onChange={(e) => set('name', e.target.value)}
+          />
+        )}
+      </Field>
+      <Field label={copy.form.rut} hint={copy.form.rutHint} error={error('rut')}>
+        {(props) => (
+          <Input
+            {...props}
+            type="text"
+            autoComplete="off"
+            value={drafts.rut}
+            onChange={(e) => set('rut', e.target.value)}
           />
         )}
       </Field>

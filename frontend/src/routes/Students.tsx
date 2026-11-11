@@ -30,6 +30,10 @@ export type StudentsSearch = {
   program?: string
   // "Dados de baja": who has left the gym, instead of who is in it.
   left?: true
+  // "Falta teléfono": members the gym cannot reach on WhatsApp yet (#165).
+  missingPhone?: true
+  // "Falta RUT": members with neither a RUT nor an email, found again only by name.
+  missingRut?: true
 }
 
 export function validateStudentsSearch(search: Record<string, unknown>): StudentsSearch {
@@ -39,7 +43,9 @@ export function validateStudentsSearch(search: Record<string, unknown>): Student
   const plan = typeof search.plan === 'string' && search.plan ? search.plan : undefined
   const program = typeof search.program === 'string' && search.program ? search.program : undefined
   const left = search.left === true || search.left === 'true' ? true : undefined
-  return { q, status: status.length ? status : undefined, plan, program, left }
+  const missingPhone = search.missingPhone === true || search.missingPhone === 'true' ? true : undefined
+  const missingRut = search.missingRut === true || search.missingRut === 'true' ? true : undefined
+  return { q, status: status.length ? status : undefined, plan, program, left, missingPhone, missingRut }
 }
 
 const route = getRouteApi('/admin/alumnos')
@@ -57,13 +63,17 @@ export function Students() {
     plan: search.plan ? [search.plan] : [],
     program: search.program ? [search.program] : [],
     left: search.left ? ('only' as const) : ('no' as const),
+    missingPhone: search.missingPhone === true,
+    missingRut: search.missingRut === true,
   }
   const filtered =
     filters.q.trim() !== '' ||
     status.length > 0 ||
     search.plan !== undefined ||
     search.program !== undefined ||
-    search.left !== undefined
+    search.left !== undefined ||
+    search.missingPhone !== undefined ||
+    search.missingRut !== undefined
 
   const [draft, setDraft] = useState(filters.q)
   useEffect(() => {
@@ -89,6 +99,18 @@ export function Students() {
   }
   const toggleLeft = () => {
     void navigate({ search: (prev) => ({ ...prev, left: prev.left ? undefined : true }), replace: true })
+  }
+  const toggleMissingRut = () => {
+    void navigate({
+      search: (prev) => ({ ...prev, missingRut: prev.missingRut ? undefined : true }),
+      replace: true,
+    })
+  }
+  const toggleMissingPhone = () => {
+    void navigate({
+      search: (prev) => ({ ...prev, missingPhone: prev.missingPhone ? undefined : true }),
+      replace: true,
+    })
   }
   const setPlan = (plan: string) => {
     void navigate({ search: (prev) => ({ ...prev, plan: plan || undefined }), replace: true })
@@ -143,6 +165,12 @@ export function Students() {
             ))}
             <Chip pressed={search.left === true} onClick={toggleLeft}>
               {copy.left}
+            </Chip>
+            <Chip pressed={search.missingPhone === true} onClick={toggleMissingPhone}>
+              {copy.missingPhone}
+            </Chip>
+            <Chip pressed={search.missingRut === true} onClick={toggleMissingRut}>
+              {copy.missingRut}
             </Chip>
           </ChipGroup>
           {plans.data && plans.data.length > 0 && (
@@ -248,6 +276,9 @@ function MemberItem({ row }: { row: MemberRow }) {
           {details.length > 0 && <span className="students__details">{details.join(' · ')}</span>}
           {family && <span className="students__details">{family}</span>}
           {row.left_on && <span className="students__details">{copy.leftOn(t.common.day(row.left_on))}</span>}
+          {row.missing_phone && <span className="students__flag">{copy.missingPhone}</span>}
+          {row.missing_rut && <span className="students__flag">{copy.missingRut}</span>}
+          {row.no_whatsapp && <span className="students__details">{copy.noWhatsapp}</span>}
         </div>
         <div className="students__plan-cell">
           {row.membership ? (
