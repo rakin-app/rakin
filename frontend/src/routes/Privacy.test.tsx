@@ -59,6 +59,7 @@ describe('Política de privacidad', () => {
     renderAt('/privacidad')
 
     expect(await screen.findByRole('heading', { name: copy.title('Academia Sur') })).toBeInTheDocument()
+    expect(document.title).toBe('Privacidad · Academia Sur')
     expect(screen.getByText(copy.controller('Academia Sur SpA', '76.432.109-K', 'Academia Sur'), { exact: false })).toBeInTheDocument()
     expect(screen.getByText(copy.address(NOTICE.address!), { exact: false })).toBeInTheDocument()
     for (const link of screen.getAllByRole('link', { name: NOTICE.email })) {

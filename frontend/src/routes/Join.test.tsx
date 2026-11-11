@@ -66,6 +66,7 @@ describe('Inscríbete', () => {
     const router = renderAt('/unirse/tok-123456789012345678901')
 
     expect(await screen.findByRole('heading', { name: copy.title('Academia Sur') })).toBeInTheDocument()
+    expect(document.title).toBe('Inscripción · Academia Sur')
     await fillAdult()
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 

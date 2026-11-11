@@ -383,9 +383,10 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
             onCancel={() => setOpen(null)}
             onDone={finish}
             // Al día, and nothing to pay ahead (a pack, say): a payment needs a period to go to.
+            // Dado de baja, none will open (#213).
             nothing={
               <p className="member__note" role="status">
-                {copy.nothingToRecord}
+                {membership.status === 'cancelled' ? copy.nothingToRecordLeft : copy.nothingToRecord}
               </p>
             }
           />

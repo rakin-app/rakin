@@ -196,7 +196,8 @@ describe('Asistencia', () => {
     expect(rows[2]).toHaveTextContent('Pack 12 clases · quedan 4')
     expect(rows[3]).toHaveTextContent('Mensual adultos · Caducado · 16 d sin venir')
     expect(screen.getByText(copy.count(1, 4))).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: copy.save(1) })).toBeDisabled()
+    // Nothing tapped: what is marked is saved, and the button says so (#213).
+    expect(screen.getByRole('button', { name: copy.upToDate(1) })).toBeDisabled()
   })
 
   it('lists regulars first, the others under "Otros alumnos", one tap away', async () => {
@@ -254,9 +255,10 @@ describe('Asistencia', () => {
     stubApi()
     renderClass()
 
-    await rosterList()
+    const list = await rosterList()
+    await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
     const primaries = document.querySelectorAll('.button--primary')
-    expect([...primaries].map((b) => b.textContent)).toEqual([copy.save(1)])
+    expect([...primaries].map((b) => b.textContent)).toEqual([copy.save(2)])
   })
 
   it("draws a rank's belt, compact, in place of its name when the scheme colours it", async () => {
@@ -560,6 +562,8 @@ describe('Alumno de prueba', () => {
     expect(await screen.findByText(copy.guest.done('Camila Ortiz'))).toBeInTheDocument()
     const list = await rosterList()
     expect(list.getByRole('button', { name: /Camila Ortiz/ })).toHaveAttribute('aria-pressed', 'true')
+    // Already saved: the button does not ask for a save it does not need (#213).
+    expect(screen.getByRole('button', { name: copy.upToDate(2) })).toBeDisabled()
     expect(writes(api.calls)).toEqual([
       {
         method: 'POST',

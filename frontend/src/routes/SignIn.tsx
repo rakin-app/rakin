@@ -10,6 +10,7 @@ import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
 import { RakinLogo } from '../components/RakinLogo'
 import { t } from '../i18n/es'
+import { RAKIN, useDocumentTitle } from '../pageTitle'
 import './SignIn.css'
 import { useSubmit } from '../api/submit'
 
@@ -25,6 +26,7 @@ const route = getRouteApi(SIGN_IN_PATH)
 export function SignIn() {
   const { redirect, expired } = route.useSearch()
   const gym = useQuery(hostQuery()).data?.gym ?? null
+  useDocumentTitle(copy.tab, gym?.name ?? RAKIN)
   const [email, setEmail] = useState('')
   const emailId = useId()
   const send = useSubmit({

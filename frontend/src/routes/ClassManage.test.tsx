@@ -431,6 +431,16 @@ describe('Cancelar y eliminar', () => {
     expect(writes(calls)).toEqual([{ method: 'DELETE', path: '/api/sessions/s1', body: undefined }])
   })
 
+  it('agrees the verb with what deleting takes (#213)', () => {
+    expect(copy.manage.deleteConfirm(1, false)).toBe('¿Eliminar esta clase? Se borra 1 asistencia. No se puede deshacer.')
+    expect(copy.manage.deleteConfirm(0, true)).toBe(
+      '¿Eliminar esta clase? Se borra el registro del timer. No se puede deshacer.',
+    )
+    expect(copy.manage.deleteConfirm(1, true)).toBe(
+      '¿Eliminar esta clase? Se borran 1 asistencia y el registro del timer. No se puede deshacer.',
+    )
+  })
+
   it('says a class with nothing taken has nothing to lose', async () => {
     stubApi({ session: { ...SESSION, present: 0 }, blocks: [] })
     renderAt('/admin/clases/s1')

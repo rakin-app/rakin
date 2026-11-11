@@ -508,7 +508,13 @@ function Attendance({ sessionId }: { sessionId: string }) {
             save.mutate({ change, replay: false })
           }}
         >
-          {save.isPending ? words.working : done ? words.done : words.save(present)}
+          {save.isPending
+            ? words.working
+            : done
+              ? words.done
+              : !changed && present > 0
+                ? words.upToDate(present)
+                : words.save(present)}
         </Button>
       </div>
     </section>

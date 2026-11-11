@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PersonTime } from '../api/matTime'
@@ -116,6 +116,7 @@ describe('Mi página', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Hola, Diego' })).toBeInTheDocument()
     expect(screen.getByText('Academia Sur')).toBeInTheDocument()
     expect(screen.getByText(copy.home.signedIn)).toBeInTheDocument()
+    await waitFor(() => expect(document.title).toBe('Mi página · Academia Sur'))
   })
 
   it('shows the next payment with its proof in review, and where to transfer', async () => {

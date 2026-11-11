@@ -10,6 +10,7 @@ import { MyMatTime } from '../components/MatTime'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { t } from '../i18n/es'
+import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
 import { ProofUpload } from './ProofUpload'
 
@@ -23,6 +24,7 @@ const copy = t.me
  */
 export function MeHome() {
   const page = useQuery(myPageQuery())
+  useDocumentTitle(copy.home.title, page.data?.gym_name)
   // The shell asks for it on every visit; read here, not fetched again.
   const logo = useQuery(myselfQuery()).data?.gym_logo
 
