@@ -18,6 +18,7 @@ import { Button, buttonClass } from '../components/Button'
 import { ListRowContent, listRowClass } from '../components/Card'
 import { Chip, ChipGroup } from '../components/Chip'
 import { Input } from '../components/Field'
+import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill, type Status } from '../components/StatusPill'
 import { dayTime, isoDay, monthName, monthYear, shortDay, toDate } from '../format'
@@ -53,8 +54,8 @@ const PICKER_ROWS = 8
 const route = getRouteApi('/admin/pagos')
 
 /**
- * "Libro de pagos": every ledger entry, newest first, with the month's KPIs. Owner and
- * admin only; a coach is told so and nothing is asked of the API.
+ * Pagos, the gym's book: every ledger entry, newest first, with the month's KPIs. Owner
+ * and admin only; a coach is told so and nothing is asked of the API.
  *
  * Freezes are not ledger entries, but the book lists where each started and ended
  * among them (#26), as rows with no amount. Reminders are not listed. Adjustments and
@@ -62,6 +63,10 @@ const route = getRouteApi('/admin/pagos')
  *
  * A search keeps a member's lines, and a guardian's dependents'; "Registrar pago" picks
  * a member and opens the member detail's payment form for them (#107).
+ *
+ * One primary action: "Revisar N comprobantes" while proofs wait, else "Registrar pago".
+ * Below 960px each line of the table is drawn as a card (Payments.css) and the KPIs are
+ * a 2×2 grid, so a phone sees name, status and amount with no sideways scroll (#180).
  */
 export function Payments() {
   const role = useQuery(myRoleQuery())
@@ -112,7 +117,7 @@ function Book() {
   }
 
   return (
-    <div className="payments">
+    <PageContainer className="payments">
       <header className="payments__header">
         <div className="payments__heading">
           <h1 className="payments__title">{copy.title}</h1>
@@ -137,12 +142,12 @@ function Book() {
             </label>
           )}
           {pending > 0 && (
-            <Link to="/admin/pagos/comprobantes" className={buttonClass()}>
+            <Link to="/admin/pagos/comprobantes" className={buttonClass({ variant: 'primary' })}>
               {copy.review(pending)}
             </Link>
           )}
           <Button
-            variant="primary"
+            variant={pending > 0 ? 'secondary' : 'primary'}
             aria-expanded={recording}
             onClick={() => {
               setDone(null)
@@ -219,7 +224,7 @@ function Book() {
                         <th scope="col">{copy.columns.student}</th>
                         <th scope="col">{copy.columns.kind}</th>
                         <th scope="col">{copy.columns.period}</th>
-                        <th scope="col">{copy.columns.method}</th>
+                        <th scope="col">{copy.columns.detail}</th>
                         <th scope="col">{copy.columns.status}</th>
                         <th scope="col" className="payments__amount">
                           {copy.columns.amount}
@@ -260,7 +265,7 @@ function Book() {
           </>
         )
       )}
-    </div>
+    </PageContainer>
   )
 }
 
@@ -443,13 +448,13 @@ function Kpis({ kpis }: { kpis: BookKpis }) {
 function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
   const status = describeStatus(entry)
   return (
-    <tr>
-      <td className="payments__muted">{dayTime(entry.created_at, timeZone)}</td>
+    <tr className="payments__line">
+      <td className="payments__muted payments__date">{dayTime(entry.created_at, timeZone)}</td>
       <Student person={entry.person} guardian={entry.guardian} />
-      <td>{copy.kind[entry.kind]}</td>
-      <td>{periodLabel(entry)}</td>
-      <td>{mediumLabel(entry)}</td>
-      <td>
+      <td className="payments__kind">{copy.kind[entry.kind]}</td>
+      <td className="payments__period">{periodLabel(entry)}</td>
+      <td className="payments__detail">{detailLabel(entry)}</td>
+      <td className="payments__status">
         {status.review ? (
           <Link to="/admin/pagos/comprobantes" className="payments__to-review">
             <StatusPill status={status.status}>{status.label}</StatusPill>
@@ -475,7 +480,7 @@ function bookAmount(entry: BookEntry): string {
 
 function Student({ person, guardian }: { person: PersonRef; guardian: PersonRef | null }) {
   return (
-    <td>
+    <td className="payments__who">
       <Link to="/admin/alumnos/$personId" params={{ personId: person.id }} className="payments__student">
         {person.name}
       </Link>
@@ -487,13 +492,13 @@ function Student({ person, guardian }: { person: PersonRef; guardian: PersonRef 
 /** A freeze starting or ending: the days it covers and why, with no amount. */
 function FreezeRow({ line }: { line: BookFreeze }) {
   return (
-    <tr className="payments__freeze">
-      <td className="payments__muted">{shortDay(line.day)}</td>
+    <tr className="payments__line payments__freeze">
+      <td className="payments__muted payments__date">{shortDay(line.day)}</td>
       <Student person={line.person} guardian={line.guardian} />
-      <td>{copy.kind.freeze}</td>
-      <td>{t.common.span(shortDay(line.from_date), shortDay(line.to_date))}</td>
-      <td>{line.reason}</td>
-      <td>
+      <td className="payments__kind">{copy.kind.freeze}</td>
+      <td className="payments__period">{t.common.span(shortDay(line.from_date), shortDay(line.to_date))}</td>
+      <td className="payments__detail">{line.reason}</td>
+      <td className="payments__status">
         <StatusPill status="freeze">{line.edge === 'start' ? copy.status.freezeStart : copy.status.freezeEnd}</StatusPill>
       </td>
       <td className="payments__amount payments__muted">{t.common.noAmount}</td>
@@ -522,8 +527,9 @@ function periodLabel(entry: BookEntry): string {
     : shortMonth(period.period_start)
 }
 
-/** How the money came; for a charge, the plan it bills; for an adjustment, its note. */
-function mediumLabel(entry: BookEntry): string {
+/** The "Detalle" column: how the money came; for a charge, the plan it bills; for an
+ *  adjustment, its note. */
+function detailLabel(entry: BookEntry): string {
   if (entry.kind === 'charge') return entry.plan_name
   if (entry.method) return copy.method[entry.method]
   return entry.note ?? '—'

@@ -177,6 +177,8 @@ type Stub = {
   people?: (params: URLSearchParams) => MemberPage
   memberships?: Membership[]
   ledger?: MembershipLedger
+  // Proofs waiting for review.
+  pending?: number
 }
 
 function stubApi({
@@ -185,6 +187,7 @@ function stubApi({
   people = () => ({ items: [DIEGO], total: 1 }),
   memberships = [DIEGO_MEMBERSHIP],
   ledger = DIEGO_LEDGER,
+  pending = 3,
 }: Stub = {}) {
   const asked: URLSearchParams[] = []
   vi.stubGlobal(
@@ -194,7 +197,7 @@ function stubApi({
       let body: unknown = { detail: 'Not Found' }
       let status = 200
       if (url.pathname === '/api/me/role') body = { role }
-      else if (url.pathname === '/api/ledger/pending') body = { count: 3 }
+      else if (url.pathname === '/api/ledger/pending') body = { count: pending }
       else if (url.pathname === '/api/ledger/book') {
         asked.push(url.searchParams)
         body = book(url.searchParams)
@@ -230,7 +233,7 @@ afterEach(() => {
   payments = []
 })
 
-describe('Libro de pagos', () => {
+describe('Pagos', () => {
   it('shows the KPIs', async () => {
     stubApi()
     renderAt('/admin/pagos')
@@ -412,6 +415,36 @@ describe('Libro de pagos', () => {
     renderAt('/admin/pagos')
 
     expect(await screen.findByRole('link', { name: copy.review(3) })).toHaveAttribute('href', '/admin/pagos/comprobantes')
+  })
+
+  it('makes reviewing the waiting proofs the one primary action, recording a payment the other', async () => {
+    stubApi()
+    renderAt('/admin/pagos')
+
+    const review = await screen.findByRole('link', { name: copy.review(3) })
+    expect(review).toHaveClass('button--primary')
+    expect(screen.getByRole('button', { name: copy.record })).not.toHaveClass('button--primary')
+    expect(document.querySelectorAll('.payments__header .button--primary')).toHaveLength(1)
+  })
+
+  it('makes recording a payment the primary action when no proof waits', async () => {
+    stubApi({ pending: 0 })
+    renderAt('/admin/pagos')
+
+    await table()
+    expect(screen.queryByRole('link', { name: copy.review(0) })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.record })).toHaveClass('button--primary')
+  })
+
+  it('names the lines in plain words, with no accounting jargon', async () => {
+    stubApi()
+    renderAt('/admin/pagos')
+
+    await table()
+    expect(screen.getByRole('heading', { level: 1, name: 'Pagos' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: copy.columns.kind })).toHaveTextContent('Tipo')
+    expect(screen.getByRole('columnheader', { name: copy.columns.detail })).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/asiento/i)
   })
 
   it('says so when there is nothing to show', async () => {
