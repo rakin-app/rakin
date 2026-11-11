@@ -253,4 +253,9 @@
     grid-template-columns: 1fr 1fr auto;
     align-items: end;
   }
+
+  /* With the belt filter, a gym that grades (#219). */
+  .extra__filters--ranks {
+    grid-template-columns: 1fr 1fr 1fr auto;
+  }
 }

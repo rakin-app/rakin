@@ -14,6 +14,9 @@ The list leaves out whoever has left the gym (dado de baja, migration 0032) unle
 asked for them: `left=only` is the "Dados de baja" list, `left=any` everyone, for a
 picker that must still find them (a payment they owe).
 
+It filters by belt too (#219): `rank` a current rank exactly, `rank_min` that rank or
+any above it, by the order of the gym's grading scheme, whatever the sport.
+
 Every staff role may use it, coaches included; members may not.
 """
 
@@ -23,10 +26,11 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.grading import stored_scheme
 from app.api.inactive import AWAY_IDS
 from app.domain.membership import MembershipStatus
 from app.roles import StaffSession
@@ -43,6 +47,7 @@ from app.schemas.people import (
     PersonRef,
     PersonUpdate,
 )
+from app.tenancy import Tenant, current_tenant
 
 router = APIRouter(prefix="/api/people", tags=["people"])
 
@@ -129,6 +134,14 @@ MEMBERS = f"""
        OR NOT EXISTS (SELECT FROM staff s WHERE s.person_id = gp.person_id)
 """
 
+# Everyone's current rank here: their latest promotion over every membership (as
+# `app.api.grades.CURRENT` reads one person's). RLS keeps both tables to the gym.
+CURRENT_RANKS = """
+    SELECT DISTINCT ON (m.person_id) m.person_id, ge.rank_key
+    FROM grade_event ge JOIN membership m ON m.id = ge.membership_id
+    ORDER BY m.person_id, ge.awarded_on DESC, ge.created_at DESC, ge.id
+"""
+
 _LIKE_SPECIALS = re.compile(r"([\\%_])")
 
 
@@ -168,6 +181,7 @@ def people_matching(q: str) -> tuple[str, dict[str, Any]]:
 @router.get("")
 async def list_people(
     session: StaffSession,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
     q: Annotated[str, Query(max_length=100)] = "",
     # Repeatable, `?status=active&status=trial`. FastAPI copies the defaults per request.
     statuses: Annotated[list[MembershipStatus], Query(alias="status")] = [],  # noqa: B006
@@ -179,12 +193,17 @@ async def list_people(
     missing_rut: bool = False,
     # Only those away 14 days or more: "A quién llamar" on Hoy, in full.
     away: bool = False,
+    # A current rank by key, repeatable; or that rank or any above it ("Azul o superior").
+    ranks: Annotated[list[str], Query(alias="rank")] = [],  # noqa: B006
+    rank_min: Annotated[str | None, Query(max_length=40)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MemberPage:
     """The member list, by name. Filters combine with AND; several values of one filter
     with OR. `status`, `plan_id` and `program_id` match the membership each row shows:
-    a member is in a program through their plan (migration 0016)."""
+    a member is in a program through their plan (migration 0016). `rank` and `rank_min`
+    match the person's current rank; a `rank_min` the gym's scheme does not have is a
+    422 `unknown_rank`."""
     where: list[str] = []
     params: dict[str, Any] = {}
     if left == "no":
@@ -211,6 +230,18 @@ async def list_people(
             "plan_id IN (SELECT id FROM plan WHERE program_id = ANY(CAST(:program_ids AS uuid[])))"
         )
         params["program_ids"] = program_ids
+    if ranks:
+        where.append(_ranked(":ranks"))
+        params["ranks"] = ranks
+    if rank_min is not None:
+        settings = await session.scalar(
+            text("SELECT settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
+        )
+        at_least = stored_scheme(tenant.gym_id, settings).at_least(rank_min)
+        if at_least is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"code": "unknown_rank"})
+        where.append(_ranked(":rank_min"))
+        params["rank_min"] = at_least
     filtered = f"SELECT * FROM ({MEMBERS}) members"
     if where:
         filtered += " WHERE " + " AND ".join(where)
@@ -239,6 +270,14 @@ async def list_people(
         for row in rows
     ]
     return MemberPage(items=items, total=total or 0)
+
+
+def _ranked(keys: str) -> str:
+    """Whether the row's current rank is one of `keys`, a parameter holding a list."""
+    return (
+        f"id IN (SELECT person_id FROM ({CURRENT_RANKS}) r"
+        f" WHERE rank_key = ANY(CAST({keys} AS text[])))"
+    )
 
 
 def shown_membership(row: Any) -> MembershipSummary | None:

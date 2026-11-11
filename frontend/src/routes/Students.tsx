@@ -1,6 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
+import { gradingSchemeQuery } from '../api/grading'
 import { myRoleQuery, readsLedger } from '../api/me'
 import {
   MEMBERSHIP_STATUSES,
@@ -16,6 +17,7 @@ import { SearchInput, Select } from '../components/Field'
 import { JoinRequests } from '../components/JoinRequests'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
+import { hasRanks, RankFilter, rankFilters, type RankChoice } from '../components/RankFilter'
 import { StatusPill } from '../components/StatusPill'
 import { formatPhone, formatRut } from '../format'
 import { t } from '../i18n/es'
@@ -39,6 +41,9 @@ export type StudentsSearch = {
   missingRut?: true
   // "Sin venir 14 d": members away 14 days or more, as Hoy's "A quién llamar" counts them.
   away?: true
+  // A belt by rank key (#219); with `beltUp`, that belt or any above it ("Azul o superior").
+  belt?: string
+  beltUp?: true
 }
 
 export function validateStudentsSearch(search: Record<string, unknown>): StudentsSearch {
@@ -51,7 +56,20 @@ export function validateStudentsSearch(search: Record<string, unknown>): Student
   const missingPhone = search.missingPhone === true || search.missingPhone === 'true' ? true : undefined
   const missingRut = search.missingRut === true || search.missingRut === 'true' ? true : undefined
   const away = search.away === true || search.away === 'true' ? true : undefined
-  return { q, status: status.length ? status : undefined, plan, program, left, missingPhone, missingRut, away }
+  const belt = typeof search.belt === 'string' && search.belt ? search.belt : undefined
+  const beltUp = belt && (search.beltUp === true || search.beltUp === 'true') ? true : undefined
+  return {
+    q,
+    status: status.length ? status : undefined,
+    plan,
+    program,
+    left,
+    missingPhone,
+    missingRut,
+    away,
+    belt,
+    beltUp,
+  }
 }
 
 const route = getRouteApi('/admin/alumnos')
@@ -64,6 +82,7 @@ export function Students() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const status = search.status ?? []
+  const belt: RankChoice | null = search.belt ? { rank: search.belt, orHigher: search.beltUp === true } : null
   const filters = {
     q: search.q ?? '',
     status,
@@ -73,6 +92,7 @@ export function Students() {
     missingPhone: search.missingPhone === true,
     missingRut: search.missingRut === true,
     away: search.away === true,
+    ...rankFilters(belt),
   }
   const filtered =
     filters.q.trim() !== '' ||
@@ -82,7 +102,8 @@ export function Students() {
     search.left !== undefined ||
     search.missingPhone !== undefined ||
     search.missingRut !== undefined ||
-    search.away !== undefined
+    search.away !== undefined ||
+    search.belt !== undefined
 
   const [draft, setDraft] = useState(filters.q)
   useEffect(() => {
@@ -98,6 +119,8 @@ export function Students() {
   const plans = useQuery(plansQuery)
   // Likewise programs: a gym that has none yet gets no program filter.
   const programs = useQuery(programsQuery)
+  // A gym that does not grade (#226) gets no belt filter.
+  const scheme = useQuery(gradingSchemeQuery())
   // Importing starts memberships, which only an owner or admin may.
   const role = useQuery(myRoleQuery())
 
@@ -130,6 +153,12 @@ export function Students() {
   const setProgram = (program: string) => {
     void navigate({ search: (prev) => ({ ...prev, program: program || undefined }), replace: true })
   }
+  const setBelt = (choice: RankChoice | null) => {
+    void navigate({
+      search: (prev) => ({ ...prev, belt: choice?.rank, beltUp: choice?.orHigher ? true : undefined }),
+      replace: true,
+    })
+  }
   const clear = () => {
     setDraft('')
     void navigate({ search: {}, replace: true })
@@ -138,6 +167,7 @@ export function Students() {
   const searchId = useId()
   const planId = useId()
   const programId = useId()
+  const rankId = useId()
   const rows = members.data?.pages.flatMap((page) => page.items) ?? []
   const total = members.data?.pages[0]?.total
 
@@ -225,6 +255,21 @@ export function Students() {
                   </option>
                 ))}
               </Select>
+            </>
+          )}
+          {hasRanks(scheme.data) && (
+            <>
+              <label htmlFor={rankId} className="visually-hidden">
+                {copy.rankLabel}
+              </label>
+              <RankFilter
+                id={rankId}
+                className="students__picker"
+                scheme={scheme.data}
+                value={belt}
+                onChange={setBelt}
+                anyLabel={copy.allRanks}
+              />
             </>
           )}
         </div>

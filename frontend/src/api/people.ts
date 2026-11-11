@@ -45,6 +45,9 @@ export type MemberFilters = {
   missingRut?: boolean
   // Only those away 14 days or more: "A quién llamar", in full.
   away?: boolean
+  // A current rank by key; or that rank or any above it in the gym's scheme (#219).
+  rank?: readonly string[]
+  rankMin?: string
 }
 
 export type LeftFilter = 'no' | 'only' | 'any'
@@ -65,6 +68,8 @@ export function membersPath(filters: MemberFilters, offset: number): string {
   if (filters.missingPhone) params.set('missing_phone', 'true')
   if (filters.missingRut) params.set('missing_rut', 'true')
   if (filters.away) params.set('away', 'true')
+  for (const rank of filters.rank ?? []) params.append('rank', rank)
+  if (filters.rankMin) params.set('rank_min', filters.rankMin)
   params.set('limit', String(MEMBERS_PAGE_SIZE))
   params.set('offset', String(offset))
   return `/api/people?${params}`
@@ -85,6 +90,8 @@ export function membersQuery(filters: MemberFilters) {
         missingPhone: filters.missingPhone ?? false,
         missingRut: filters.missingRut ?? false,
         away: filters.away ?? false,
+        rank: filters.rank ?? [],
+        rankMin: filters.rankMin ?? null,
       },
     ],
     queryFn: ({ pageParam }) => apiFetch<MemberPage>(membersPath(filters, pageParam)),

@@ -196,6 +196,70 @@ describe('Cobros extra', () => {
   })
 })
 
+describe('Cobros extra: a group by belt', () => {
+  const scheme = {
+    ranks: [
+      { key: 'white', label: 'Blanca', sub_ranks: [] },
+      { key: 'blue', label: 'Azul', sub_ranks: [] },
+      { key: 'black', label: 'Negra', sub_ranks: [] },
+    ],
+    kids_ladder: [],
+    goal_metric: null,
+  }
+
+  it('adds everyone "Azul o superior", with a program or without', async () => {
+    const user = userEvent.setup()
+    const calls = stubApi('owner', (path, method) => {
+      if (path === '/api/gym/grading-scheme') return { body: scheme }
+      if (path === '/api/people' && method === 'GET') {
+        return { body: { items: [{ id: 'p-blue', name: 'Ana Azul', membership: null }], total: 1 } }
+      }
+      return undefined
+    })
+    renderAt('/admin/pagos/cobros')
+
+    await user.click(await screen.findByRole('button', { name: copy.groups.create }))
+    const belt = await screen.findByLabelText(copy.groups.rank)
+    // No ladder for kids, so no groups: the adult belts, each exactly or "o superior".
+    expect(within(belt).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      copy.groups.any,
+      'Blanca',
+      'Blanca o superior',
+      'Azul',
+      'Azul o superior',
+      'Negra',
+    ])
+    await user.selectOptions(belt, 'Azul o superior')
+    await user.click(await screen.findByRole('button', { name: copy.groups.addAll(1) }))
+    expect(screen.getByText(copy.groups.members(1))).toBeInTheDocument()
+    const asked = calls.filter((c) => c.path.startsWith('/api/people?')).map((c) => new URLSearchParams(c.path.split('?')[1]))
+    expect(asked.at(-1)?.get('rank_min')).toBe('blue')
+
+    await user.selectOptions(screen.getByLabelText(copy.groups.program), 'pr-kids')
+    await user.selectOptions(belt, 'Negra')
+    await screen.findByRole('button', { name: copy.groups.addAll(1) })
+    const last = calls.filter((c) => c.path.startsWith('/api/people?')).at(-1)!
+    const params = new URLSearchParams(last.path.split('?')[1])
+    expect([params.getAll('rank'), params.get('rank_min'), params.getAll('program_id')]).toEqual([
+      ['black'],
+      null,
+      ['pr-kids'],
+    ])
+  })
+
+  it('offers no belt while the gym does not grade', async () => {
+    const user = userEvent.setup()
+    stubApi('owner', (path) =>
+      path === '/api/gym/grading-scheme' ? { body: { ranks: [], kids_ladder: [], goal_metric: null } } : undefined,
+    )
+    renderAt('/admin/pagos/cobros')
+
+    await user.click(await screen.findByRole('button', { name: copy.groups.create }))
+    await screen.findByLabelText(copy.groups.program)
+    expect(screen.queryByLabelText(copy.groups.rank)).not.toBeInTheDocument()
+  })
+})
+
 describe('Nuevo cobro extra', () => {
   it('walks the details, the group, a split with its preview and override, the message, and creates it', async () => {
     const user = userEvent.setup()

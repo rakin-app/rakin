@@ -116,6 +116,8 @@ The list holds everyone the gym has a record of except staff with no membership 
 | `q` | the name, ignoring case and accents (`martin` finds `Martín`); and when it holds a digit, the phone or the RUT in any format (`9 8765 4321`, `7.654.321`) |
 | `status` | the row's membership status; repeatable, any of them (`?status=frozen&status=lapsed`) |
 | `plan_id` | the row's membership plan; repeatable, any of them |
+| `rank` | the person's current rank, their latest promotion, by key; repeatable, any of them (`?rank=blue`) |
+| `rank_min` | that rank or any above it on its own ladder, by the order of the gym's grading scheme: "Azul o superior" (#219). Kyu count down then dan up, so `kyu-1` finds the dan grades too; a kids belt is on another ladder, so neither counts as above an adult one. A key the scheme does not have is a 422 `unknown_rank` |
 | `left` | who has left the gym: `no` (the default) leaves them out, `only` is the "Dados de baja" list, `any` everyone, as the Pagos picker asks, since they still owe what they owe |
 | `limit`, `offset` | the page: `limit` 1–200, 50 by default |
 

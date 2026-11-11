@@ -242,6 +242,12 @@ export const es = {
       ignoredEmail: (email: string) => `Su ficha mantiene su correo; ${email} no se usará.`,
       oldestShown: (n: number) => `Mostrando las ${n} más antiguas.`,
     },
+    // The belt filter of Alumnos and the group builder (#219), by the scheme's order.
+    rankFilter: {
+      orHigher: (label: string) => `${label} o superior`,
+      ranks: 'Adultos',
+      kids: 'Kids',
+    },
     students: {
       title: 'Alumnos',
       searchLabel: 'Buscar alumno',
@@ -256,6 +262,8 @@ export const es = {
       programLabel: 'Programa',
       allPrograms: 'Todos los programas',
       inactiveProgram: (name: string) => `${name} (programa inactivo)`,
+      rankLabel: 'Cinturón',
+      allRanks: 'Todos los cinturones',
       clearFilters: 'Limpiar filtros',
       count: (n: number) => (n === 1 ? '1 alumno' : `${n.toLocaleString('es-CL')} alumnos`),
       pickPlan: 'Elegir un plan…',
@@ -1774,6 +1782,7 @@ export const es = {
         filters: 'Agregar desde filtros',
         program: 'Programa',
         plan: 'Plan',
+        rank: 'Cinturón',
         any: 'Todos',
         addAll: (n: number) => (n === 1 ? 'Agregar a 1 persona' : `Agregar a las ${n} personas`),
         loadingFilter: 'Buscando…',
