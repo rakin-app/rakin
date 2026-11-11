@@ -121,7 +121,9 @@ describe('Subir comprobante', () => {
     await openUpload()
 
     await screen.findByRole('heading', { name: copy.title })
-    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('45000')
+    // Due as the card above writes it, not `05-11-2026`.
+    expect(screen.getByRole('radio', { name: /vence el 5 de noviembre/ })).toBeChecked()
+    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('$45.000')
     await userEvent.upload(screen.getByLabelText(copy.choose), photo())
     expect(screen.getByText(copy.chosen('transferencia.jpg'))).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
@@ -137,6 +139,22 @@ describe('Subir comprobante', () => {
     expect(writes[1]!.body).toBeInstanceOf(File)
     expect(writes[1]!.headers.get('Content-Type')).toBe('image/jpeg')
     expect(writes[2]!.body).toEqual({ billing_period_id: 'p-ana', amount_clp: 45000, proof_key: 'proofs/g/ana/k' })
+  })
+
+  it('keeps the caret where it was put while the amount is edited', async () => {
+    stubApi([ANA])
+    await openUpload()
+
+    const amount = await screen.findByLabelText(copy.amountLabel)
+    await userEvent.click(amount)
+    expect(amount).toHaveValue('45000')
+    // Into the middle, `45|000`: the digit lands there, not at the end.
+    ;(amount as HTMLInputElement).setSelectionRange(2, 2)
+    await userEvent.keyboard('1')
+    expect(amount).toHaveValue('451000')
+    expect((amount as HTMLInputElement).selectionStart).toBe(3)
+    await userEvent.tab()
+    expect(amount).toHaveValue('$451.000')
   })
 
   it('offers the camera on a phone', async () => {
@@ -155,9 +173,13 @@ describe('Subir comprobante', () => {
     const juan = await screen.findByRole('radio', { name: /Juan Rojas/ })
     expect(screen.getByText(copy.inReview('$25.000'))).toBeInTheDocument()
     await userEvent.click(juan)
-    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('25000')
+    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('$25.000')
     await userEvent.clear(screen.getByLabelText(copy.amountLabel))
     await userEvent.type(screen.getByLabelText(copy.amountLabel), '20000')
+    // Digits while typing, so the caret stays put; pesos once out of the field.
+    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('20000')
+    await userEvent.tab()
+    expect(screen.getByLabelText(copy.amountLabel)).toHaveValue('$20.000')
     await userEvent.upload(screen.getByLabelText(copy.camera), photo())
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 

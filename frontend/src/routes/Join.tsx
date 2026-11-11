@@ -7,6 +7,7 @@ import { privacyPath } from '../api/privacy'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Field, FieldError, Input } from '../components/Field'
+import { Grid, PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './Join.css'
@@ -43,13 +44,26 @@ const EMPTY: Drafts = {
 const orNull = (value: string) => value.trim() || null
 
 /**
+ * The fields the form asks for itself, as the API would: both names and the birth
+ * date; an adult's email, and phone unless they have no WhatsApp; a minor's guardian's
+ * name and email, and phone unless the guardian has no WhatsApp.
+ */
+function requiredFields(minor: boolean, noWhatsapp: boolean): (keyof Drafts)[] {
+  const own: (keyof Drafts)[] = minor
+    ? ['guardian_name', 'guardian_email', ...(noWhatsapp ? [] : ['guardian_phone' as const])]
+    : ['email', ...(noWhatsapp ? [] : ['phone' as const])]
+  return ['first_name', 'last_name', 'dob', ...own]
+}
+
+/**
  * "Inscríbete": the form behind a gym's join link (#154), for someone with no account,
  * on their phone. They fill in their own details, and a guardian's when their birth
  * date makes them a minor on the gym's today; what they send waits for the gym's staff
  * to approve. The answer is the same whoever they are, so the form never tells who the
  * gym, or any other, already knows. A link revoked, regenerated or past its last day
  * says it no longer works. Consent, which the form requires, is to the gym's privacy
- * notice (#168), which the checkbox links.
+ * notice (#168), which the checkbox links. An empty field it needs says what to write
+ * in it; whether what was written is valid, the API says.
  */
 export function Join() {
   const { token } = route.useParams()
@@ -93,10 +107,10 @@ export function Join() {
 
 function Shell({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <div className="join">
+    <PageContainer className="join">
       <PageHeader eyebrow={copy.eyebrow} title={title ?? t.app.name} />
       <div className="join__card">{children}</div>
-    </div>
+    </PageContainer>
   )
 }
 
@@ -118,6 +132,8 @@ function JoinFormBody({
   const [guardianNoWhatsapp, setGuardianNoWhatsapp] = useState(false)
   // Sent without it: the form says so itself, in Spanish, rather than ask the API.
   const [consentMissing, setConsentMissing] = useState(false)
+  // Sent at least once: from then on, each required field left empty says so.
+  const [tried, setTried] = useState(false)
   const consentErrorId = useId()
   const [humanToken, setHumanToken] = useState<string | null>(null)
   // Bumped after a failed submission: a widget token is good once, so the widget starts over.
@@ -158,8 +174,15 @@ function JoinFormBody({
       setHumanRound((round) => round + 1)
     },
   })
+  const required = requiredFields(minor, minor ? guardianNoWhatsapp : adultNoWhatsapp)
+  const empty = (field: keyof Drafts) => drafts[field].trim() === ''
   const errors = validationErrors(send.error)
-  const error = (field: string) => {
+  // An empty field is only ever missing, never malformed: "Escribe tu RUT no válido"
+  // is no help to someone who has written nothing.
+  const error = (field: keyof Drafts) => {
+    if (empty(field)) {
+      return (tried && required.includes(field)) || field in errors ? copy.required[field] : undefined
+    }
     const code = errors[field]
     if (code === undefined) return undefined
     return copy.refused[code === 'missing' || code.startsWith('string_') ? code : field] ?? copy.refused.failed
@@ -173,10 +196,9 @@ function JoinFormBody({
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (!consent) {
-      setConsentMissing(true)
-      return
-    }
+    setTried(true)
+    if (!consent) setConsentMissing(true)
+    if (!consent || required.some(empty)) return
     send.mutate()
   }
 
@@ -184,41 +206,54 @@ function JoinFormBody({
     <form className="join__form" onSubmit={submit} noValidate>
       {program && <p className="join__program">{copy.program(program)}</p>}
       <p className="join__intro">{copy.intro}</p>
-      <TextField label={copy.firstName} error={error('first_name')} value={drafts.first_name} autoComplete="given-name" onChange={(v) => set('first_name', v)} />
-      <TextField label={copy.lastName} error={error('last_name')} value={drafts.last_name} autoComplete="family-name" onChange={(v) => set('last_name', v)} />
-      <TextField label={copy.rut} hint={copy.rutHint} error={error('rut')} value={drafts.rut} autoComplete="off" onChange={(v) => set('rut', v)} />
-      <TextField label={copy.dob} error={error('dob')} value={drafts.dob} type="date" max={today} autoComplete="bday" onChange={(v) => set('dob', v)} />
-      <TextField
-        label={copy.phone}
-        hint={minor ? copy.minorPhoneHint : copy.phoneHint}
-        error={error('phone')}
-        value={drafts.phone}
-        type="tel"
-        autoComplete="tel"
-        onChange={(v) => set('phone', v)}
-      />
-      {!minor && <NoWhatsapp label={copy.noWhatsapp} checked={adultNoWhatsapp} onChange={setAdultNoWhatsapp} />}
-      <TextField
-        label={copy.email}
-        hint={minor ? copy.minorEmailHint : undefined}
-        error={error('email')}
-        value={drafts.email}
-        type="email"
-        autoComplete="email"
-        onChange={(v) => set('email', v)}
-      />
+      {/* Side by side from 1024px, in pairs that read together. */}
+      <Grid className="join__row">
+        <TextField label={copy.firstName} error={error('first_name')} value={drafts.first_name} autoComplete="given-name" onChange={(v) => set('first_name', v)} />
+        <TextField label={copy.lastName} error={error('last_name')} value={drafts.last_name} autoComplete="family-name" onChange={(v) => set('last_name', v)} />
+      </Grid>
+      <Grid className="join__row">
+        <TextField label={copy.rut} hint={copy.rutHint} error={error('rut')} value={drafts.rut} autoComplete="off" onChange={(v) => set('rut', v)} />
+        <TextField label={copy.dob} error={error('dob')} value={drafts.dob} type="date" max={today} autoComplete="bday" onChange={(v) => set('dob', v)} />
+      </Grid>
+      <Grid className="join__row">
+        <div className="join__stack">
+          <TextField
+            label={copy.phone}
+            hint={minor ? copy.minorPhoneHint : copy.phoneHint}
+            error={error('phone')}
+            value={drafts.phone}
+            type="tel"
+            autoComplete="tel"
+            onChange={(v) => set('phone', v)}
+          />
+          {!minor && <NoWhatsapp label={copy.noWhatsapp} checked={adultNoWhatsapp} onChange={setAdultNoWhatsapp} />}
+        </div>
+        <TextField
+          label={copy.email}
+          hint={minor ? copy.minorEmailHint : undefined}
+          error={error('email')}
+          value={drafts.email}
+          type="email"
+          autoComplete="email"
+          onChange={(v) => set('email', v)}
+        />
+      </Grid>
       {minor && (
         <fieldset className="join__guardian">
           <legend className="join__legend">{copy.guardianTitle}</legend>
           <p className="join__intro">{copy.guardianIntro}</p>
           <TextField label={copy.guardianName} error={error('guardian_name')} value={drafts.guardian_name} autoComplete="off" onChange={(v) => set('guardian_name', v)} />
-          <TextField label={copy.guardianPhone} hint={copy.guardianPhoneHint} error={error('guardian_phone')} value={drafts.guardian_phone} type="tel" autoComplete="off" onChange={(v) => set('guardian_phone', v)} />
-          <NoWhatsapp
-            label={copy.guardianNoWhatsapp}
-            checked={guardianNoWhatsapp}
-            onChange={setGuardianNoWhatsapp}
-          />
-          <TextField label={copy.guardianEmail} error={error('guardian_email')} value={drafts.guardian_email} type="email" autoComplete="off" onChange={(v) => set('guardian_email', v)} />
+          <Grid className="join__row">
+            <div className="join__stack">
+              <TextField label={copy.guardianPhone} hint={copy.guardianPhoneHint} error={error('guardian_phone')} value={drafts.guardian_phone} type="tel" autoComplete="off" onChange={(v) => set('guardian_phone', v)} />
+              <NoWhatsapp
+                label={copy.guardianNoWhatsapp}
+                checked={guardianNoWhatsapp}
+                onChange={setGuardianNoWhatsapp}
+              />
+            </div>
+            <TextField label={copy.guardianEmail} error={error('guardian_email')} value={drafts.guardian_email} type="email" autoComplete="off" onChange={(v) => set('guardian_email', v)} />
+          </Grid>
         </fieldset>
       )}
       {/* The honeypot: out of sight and out of the tab order, so only a script fills it in. */}

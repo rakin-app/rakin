@@ -61,6 +61,8 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
   const period = periods.find((p) => p.id === periodId) ?? periods[0]!
   const [amount, setAmount] = useState(String(period.outstanding_clp))
   const [file, setFile] = useState<File | null>(null)
+  // Raw digits while they type, so the caret stays where they put it; `$45.000` otherwise.
+  const [editing, setEditing] = useState(false)
   const ids = { amount: useId(), camera: useId(), choose: useId(), hint: useId() }
 
   const send = useMutation({
@@ -103,7 +105,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
               onChange={() => pickPeriod(p.id)}
             />
             <span>
-              <span className="proof__period-name">{copy.period(p.person_name, p.plan_name, t.common.day(p.due_date))}</span>
+              <span className="proof__period-name">{copy.period(p.person_name, p.plan_name, t.common.longDay(p.due_date))}</span>
               <span className="proof__period-detail">{copy.outstanding(t.common.clp(p.outstanding_clp))}</span>
               {p.pending_clp > 0 && (
                 <span className="proof__period-detail proof__period-detail--review">
@@ -118,13 +120,15 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
       <label htmlFor={ids.amount} className="proof__label">
         {copy.amountLabel}
       </label>
+      {/* Pesos as the card writes them, `$45.000`, once out of the field; the state keeps the digits. */}
       <Input
         id={ids.amount}
         inputMode="numeric"
-        pattern="[0-9]*"
         required
-        value={amount}
-        onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
+        value={editing || amount === '' ? amount : t.common.clp(Number(amount))}
+        onFocus={() => setEditing(true)}
+        onBlur={() => setEditing(false)}
+        onChange={(e) => setAmount(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 12))}
       />
 
       <span className="proof__label">{copy.fileLabel}</span>
