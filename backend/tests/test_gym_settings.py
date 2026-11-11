@@ -77,6 +77,8 @@ def test_update_normalises_the_bank_rut_and_takes_only_the_fields_sent() -> None
         {"privacy": {k: v for k, v in PRIVACY.items() if k != "email"}},
         {"privacy": {**PRIVACY, "updated_on": "2026-11-10"}},
         {"settings": {}},
+        {"theme": "neon"},
+        {"theme": None},
     ],
     ids=str,
 )
@@ -126,11 +128,12 @@ def client(db: Database) -> Iterator[TestClient]:
 def stored(db: Database, gym: uuid.UUID) -> dict[str, Any]:
     row = run(
         db.admin_url,
-        lambda c: c.fetchrow("SELECT name, timezone, settings FROM gym WHERE id = $1", gym),
+        lambda c: c.fetchrow("SELECT name, timezone, theme, settings FROM gym WHERE id = $1", gym),
     )
     return {
         "name": row["name"],
         "timezone": row["timezone"],
+        "theme": row["theme"],
         "settings": json.loads(row["settings"]),
     }
 
@@ -145,6 +148,7 @@ def test_a_new_gym_reads_the_defaults(client: TestClient, db: Database) -> None:
         "slug": "dojo-nuevo",
         "web_address": "dojo-nuevo.rakin.app",
         "timezone": "America/Santiago",
+        "theme": "bosque",
         "grace_days": 5,
         "reminder_every_days": 3,
         "channels": {"whatsapp": True},
@@ -159,6 +163,7 @@ def test_a_change_is_read_back_and_stored(client: TestClient, db: Database) -> N
     body = {
         "name": "Academia Sur",
         "timezone": "America/Punta_Arenas",
+        "theme": "oceano",
         "grace_days": 10,
         "reminder_every_days": 2,
         "channels": {"whatsapp": False},
@@ -178,6 +183,9 @@ def test_a_change_is_read_back_and_stored(client: TestClient, db: Database) -> N
 
     row = stored(db, gym)
     assert (row["name"], row["timezone"]) == ("Academia Sur", "America/Punta_Arenas")
+    # A column (0039), not a settings key: the sign-in pages read it before a session.
+    assert row["theme"] == "oceano"
+    assert "theme" not in row["settings"]
     assert row["settings"]["grace_days"] == 10
 
 

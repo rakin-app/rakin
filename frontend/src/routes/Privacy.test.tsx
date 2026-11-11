@@ -27,6 +27,8 @@ function stubApi(notice: Answer = { body: NOTICE }) {
     'fetch',
     vi.fn<typeof fetch>(async (input) => {
       const url = new URL(String(input), 'http://localhost')
+      // The theme this address wears (App's `GymTheme`), asked on every page: not the notice's.
+      if (url.pathname === '/api/host') return Response.json({ gym: null })
       asked.push(`${url.pathname}${url.search}`)
       let answer: Answer = { status: 404, body: { detail: 'Not Found' } }
       if (url.pathname === '/api/privacy') answer = notice

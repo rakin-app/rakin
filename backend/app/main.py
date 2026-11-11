@@ -93,11 +93,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bind=bind_session,
         cookie_name=session_cookie_name(settings.public_base_url),
     )
-    app.add_middleware(
-        HostMiddleware,
-        hosts=app.state.hosts,
-        lookup=GymLookup(lambda: app.state.sessionmaker),
-    )
+    # Kept on the state too, so a change to what it keeps (the theme) can drop the entry.
+    app.state.gym_lookup = GymLookup(lambda: app.state.sessionmaker)
+    app.add_middleware(HostMiddleware, hosts=app.state.hosts, lookup=app.state.gym_lookup)
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
     app.include_router(hosts.router)

@@ -21,6 +21,7 @@ const SETTINGS: GymSettings = {
   slug: 'academia-sur',
   web_address: 'academia-sur.rakin.app',
   timezone: 'America/Santiago',
+  theme: 'bosque',
   grace_days: 5,
   reminder_every_days: 3,
   channels: { whatsapp: true },
@@ -100,6 +101,7 @@ function stubApi({ role = 'owner', studentPage = false, settings, saveSettings, 
           email: 'carla@example.cl',
           gym_name: 'Academia Sur',
           student_page: studentPage,
+          theme: current.theme,
         },
       }
     }
@@ -276,6 +278,27 @@ describe('Ajustes: Gimnasio', () => {
         body: { name: 'Academia Sur Ñuñoa', grace_days: 7, channels: { whatsapp: false } },
       },
     ])
+  })
+
+  it('picks the theme from a preview of each, and the screens wear it once saved (#199)', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/gimnasio')
+
+    const settings = await screen.findByRole('form', { name: gym.formLabel })
+    const bosque = within(settings).getByRole('radio', { name: new RegExp(gym.themes.bosque) })
+    expect(bosque).toBeChecked()
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('bosque'))
+    // Each preview wears its own theme, whatever the page wears.
+    expect(bosque.nextElementSibling).toHaveAttribute('data-theme', 'bosque')
+
+    await userEvent.click(within(settings).getByRole('radio', { name: new RegExp(gym.themes.volcan) }))
+    // Picked, not yet saved: the page keeps the gym's theme.
+    expect(document.documentElement.dataset.theme).toBe('bosque')
+    await userEvent.click(within(settings).getByRole('button', { name: gym.submit }))
+
+    expect(await within(settings).findByRole('status')).toHaveTextContent(gym.saved)
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ theme: 'volcan' }])
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('volcan'))
   })
 
   it('sends the bank account whole, and clears it once every field is empty', async () => {

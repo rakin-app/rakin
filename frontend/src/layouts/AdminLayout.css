@@ -7,10 +7,47 @@
 }
 
 .admin-main {
+  /* The phone's dark bar is above: a page's title needs less room on top. */
+  --page-top: var(--space-6);
+
   flex: 1 1 auto;
   min-width: 0;
   /* Keep content clear of the fixed bottom nav. */
   padding-bottom: calc(var(--space-6) + 72px + env(safe-area-inset-bottom));
+}
+
+/* Mobile: a dark bar on top, the mark and the gym (#199) */
+.admin-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-5) var(--space-3);
+  background: var(--color-sidebar);
+  color: var(--color-sidebar-text);
+}
+
+.admin-top__brand,
+.admin-nav__brand {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-display);
+  letter-spacing: var(--tracking-title);
+}
+
+.admin-top__gym {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.admin-top__gym-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Mobile: bottom tab bar */
@@ -73,7 +110,7 @@ button.admin-nav__link {
 
 .admin-nav__link[aria-current='page'] {
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text);
+  color: var(--color-heading);
 }
 
 .admin-nav__icon {
@@ -112,7 +149,13 @@ button.admin-nav__link {
   }
 
   .admin-main {
+    --page-top: var(--space-7);
+
     padding-bottom: var(--space-10);
+  }
+
+  .admin-top {
+    display: none;
   }
 
   .admin-nav {
@@ -125,35 +168,29 @@ button.admin-nav__link {
     flex-direction: column;
     gap: var(--space-6);
     padding: var(--space-7) var(--space-4);
+    background: var(--color-sidebar);
+    color: var(--color-sidebar-text);
     border-top: 0;
-    border-right: 1px solid var(--color-border);
   }
 
   .admin-nav__head {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--space-3);
     padding: 0 var(--space-2);
-  }
-
-  .admin-nav__gym {
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-    font-weight: var(--font-weight-semibold);
-    overflow-wrap: anywhere;
   }
 
   .admin-nav__brand {
     display: block;
-    font-family: var(--font-display);
-    font-size: var(--text-lg);
-    font-weight: var(--font-weight-bold);
-    letter-spacing: var(--tracking-label);
   }
 
-  .admin-nav__brand::after {
-    content: '.';
-    color: var(--color-accent);
+  .admin-nav__gym {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    overflow-wrap: anywhere;
   }
 
   .admin-nav__list {
@@ -166,13 +203,40 @@ button.admin-nav__link {
     flex-direction: row;
     gap: var(--space-2-5);
     padding: var(--space-2-5) var(--space-3);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     font-size: var(--text-md);
-    color: var(--color-text);
+    color: var(--color-sidebar-text);
+  }
+
+  .admin-nav__link:hover {
+    background: var(--color-sidebar-raised);
+    color: var(--color-sidebar-text);
   }
 
   .admin-nav__link[aria-current='page'] {
-    background: var(--color-bg);
+    background: var(--color-sidebar-raised);
+    color: var(--color-sidebar-text);
+  }
+
+  .admin-nav__link:focus-visible {
+    outline-color: var(--color-sidebar-active);
+  }
+
+  /* The count sits at the row's end, clear of the label. */
+  .admin-nav__link {
+    position: relative;
+  }
+
+  .admin-nav__icon {
+    position: static;
+  }
+
+  .admin-nav__badge {
+    top: 50%;
+    right: var(--space-3);
+    background: var(--color-sidebar-active);
+    color: var(--color-sidebar-active-text);
+    transform: translateY(-50%);
   }
 
   /* Cerrar sesión, apart from the sections. */
@@ -180,7 +244,7 @@ button.admin-nav__link {
     display: block;
     margin-top: var(--space-6);
     padding-top: var(--space-4);
-    border-top: 1px solid var(--color-divider);
+    border-top: 1px solid var(--color-sidebar-border);
   }
 
   /* "Mi página" then Cerrar sesión: one group, one rule above it. */
@@ -191,6 +255,7 @@ button.admin-nav__link {
   }
 
   .admin-nav__error {
+    color: var(--color-sidebar-text);
     text-align: left;
   }
 }
