@@ -67,9 +67,10 @@ class Texts:
     unreachable: str = "This address has no access to {name}."
 
 
-# The pages' look, unless the application brings its own. Every page is a `main` with
-# an optional `.eyebrow` (the site's name), an `h1`, and a `.card` holding a paragraph
-# and one `.button`: a `button--primary` or `button--secondary`, a `button` or a link.
+# The pages' look, unless the application brings its own: plain and unbranded, with no
+# variants. The markup an application's `stylesheet` styles: a `main` with an optional
+# `.eyebrow` (the site's name), an `h1`, and a `.card` holding a paragraph and one
+# `.button`, a `button` or a link, also marked `.button--primary` or `.button--secondary`.
 STYLESHEET = (
     "body{font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem;"
     "line-height:1.5}.eyebrow{margin:0;text-transform:uppercase;font-size:.75rem}"

@@ -1832,7 +1832,7 @@ export const es = {
     failed: 'No pudimos enviar tus datos. Inténtalo de nuevo.',
     humanCheck: 'No pudimos comprobar que no eres un robot. Inténtalo de nuevo.',
     tooMany: 'Hubo demasiados envíos desde aquí. Espera un rato e inténtalo de nuevo.',
-    // A required field left empty: what to write in it.
+    // A required field left empty: what to write in it. No `rut`: it is optional (#165).
     required: {
       first_name: 'Escribe tu nombre.',
       last_name: 'Escribe tu apellido.',

@@ -61,6 +61,8 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
   const period = periods.find((p) => p.id === periodId) ?? periods[0]!
   const [amount, setAmount] = useState(String(period.outstanding_clp))
   const [file, setFile] = useState<File | null>(null)
+  // Raw digits while they type, so the caret stays where they put it; `$45.000` otherwise.
+  const [editing, setEditing] = useState(false)
   const ids = { amount: useId(), camera: useId(), choose: useId(), hint: useId() }
 
   const send = useMutation({
@@ -118,12 +120,14 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
       <label htmlFor={ids.amount} className="proof__label">
         {copy.amountLabel}
       </label>
-      {/* Pesos as the card writes them, `$45.000`, while the state keeps the digits. */}
+      {/* Pesos as the card writes them, `$45.000`, once out of the field; the state keeps the digits. */}
       <Input
         id={ids.amount}
         inputMode="numeric"
         required
-        value={amount === '' ? '' : t.common.clp(Number(amount))}
+        value={editing || amount === '' ? amount : t.common.clp(Number(amount))}
+        onFocus={() => setEditing(true)}
+        onBlur={() => setEditing(false)}
         onChange={(e) => setAmount(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 12))}
       />
 
