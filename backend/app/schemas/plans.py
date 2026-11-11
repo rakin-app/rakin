@@ -7,7 +7,8 @@ The body is told apart by `kind`, and each kind takes exactly its own parameters
 
 The kind is set on create. An edit changes the name, the price or the kind's own
 parameters, the program, and `active`: a plan is deactivated, never deleted. Any kind
-may name the program it is for (`program_id`, migration 0016).
+may name the program it is for (`program_id`, migration 0016). A coach reads a plan
+without its price (`PlanForCoach`, #205).
 """
 
 import uuid
@@ -46,27 +47,42 @@ class _Plan(BaseModel):
     program_id: uuid.UUID | None = None
 
 
-class MonthlyPlanCreate(_Plan):
+# Each priced kind's terms without its price: what a coach reads of it (#205).
+
+
+class _MonthlyTerms(_Plan):
     kind: Literal[PlanKind.MONTHLY]
-    price_clp: Price
     anchor: Anchor
 
 
-class PrepaidPlanCreate(_Plan):
+class _PrepaidTerms(_Plan):
     kind: Literal[PlanKind.PREPAID]
-    price_clp: Price
     period_months: Count
 
 
-class CreditsPlanCreate(_Plan):
+class _CreditsTerms(_Plan):
     kind: Literal[PlanKind.CREDITS]
-    price_clp: Price
     credits: Count
     credit_expiry_days: Count
 
 
-class DropinPlanCreate(_Plan):
+class _DropinTerms(_Plan):
     kind: Literal[PlanKind.DROPIN]
+
+
+class MonthlyPlanCreate(_MonthlyTerms):
+    price_clp: Price
+
+
+class PrepaidPlanCreate(_PrepaidTerms):
+    price_clp: Price
+
+
+class CreditsPlanCreate(_CreditsTerms):
+    price_clp: Price
+
+
+class DropinPlanCreate(_DropinTerms):
     price_clp: Price
 
 
@@ -151,6 +167,41 @@ Plan = Annotated[
     Field(discriminator="kind"),
 ]
 PLAN: TypeAdapter[Plan] = TypeAdapter(Plan)
+
+
+class MonthlyPlanForCoach(_MonthlyTerms, _Stored):
+    pass
+
+
+class PrepaidPlanForCoach(_PrepaidTerms, _Stored):
+    pass
+
+
+class CreditsPlanForCoach(_CreditsTerms, _Stored):
+    pass
+
+
+class DropinPlanForCoach(_DropinTerms, _Stored):
+    pass
+
+
+# A plan as a coach reads it: what it is and how it runs, never what it costs. Coaches
+# never see money (`app.roles`), in the screens or in what the API sends them (#205).
+# A trial has no price, so it reads the same.
+PlanForCoach = Annotated[
+    MonthlyPlanForCoach
+    | PrepaidPlanForCoach
+    | CreditsPlanForCoach
+    | DropinPlanForCoach
+    | TrialPlan,
+    Field(discriminator="kind"),
+]
+PLAN_FOR_COACH: TypeAdapter[PlanForCoach] = TypeAdapter(PlanForCoach)
+
+
+def for_coach(plan: Plan) -> PlanForCoach:
+    return PLAN_FOR_COACH.validate_python(plan.model_dump(exclude={"price_clp"}))
+
 
 KIND_MODELS: dict[PlanKind, type[_Plan]] = {
     PlanKind.MONTHLY: MonthlyPlanCreate,

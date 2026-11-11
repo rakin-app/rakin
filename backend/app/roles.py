@@ -11,6 +11,10 @@ admin changing how the gym is set up (its plans and settings), `LedgerSession` f
 on the ledger, `OwnerSession` for the owner alone (deleting a member, #157). Without the
 role, the request is a 403; without a tenant, still a 401, before any database work.
 
+An endpoint every staff role may read but whose answer carries money (a plan's price,
+a membership's discount) takes `SeesMoney` too, and leaves the amounts out for a coach
+(#205).
+
 The ledger is closed to coaches at the database too (migration 0006): RLS lets the
 API read or write `ledger_entry` only for an owner or admin in `app.person_id`, so an
 endpoint that took the wrong session still returns no ledger rows to a coach. The
@@ -72,3 +76,13 @@ StaffSession = Annotated[AsyncSession, Depends(requires(STAFF_ROLES))]
 AdminSession = Annotated[AsyncSession, Depends(requires(ADMIN_ROLES))]
 LedgerSession = Annotated[AsyncSession, Depends(requires(LEDGER_ROLES))]
 OwnerSession = Annotated[AsyncSession, Depends(requires(OWNER_ROLES))]
+
+
+async def sees_money(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
+) -> bool:
+    """Whether the person acting may see amounts: an owner or admin, never a coach."""
+    return await role_in_gym(session, tenant) in LEDGER_ROLES
+
+
+SeesMoney = Annotated[bool, Depends(sees_money)]
