@@ -495,19 +495,22 @@ function refreshFlags(queryClient: QueryClient, sessionId: string) {
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
 }
 
-/** "+ Agregar alumno de prueba": someone trying a class, added by phone, present at it. */
+/** "+ Agregar alumno de prueba": someone trying a class, added by their RUT or email, with
+ * their phone, present at it. */
 function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (membershipId: string) => void }) {
   const words = copy.attendance.guest
   const queryClient = useQueryClient()
   const plans = useQuery(trialPlansQuery())
-  const ids = { name: useId(), phone: useId(), plan: useId() }
+  const ids = { name: useId(), who: useId(), phone: useId(), plan: useId() }
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
+  const [who, setWho] = useState('')
   const [phone, setPhone] = useState('')
   const [planId, setPlanId] = useState('')
   const [done, setDone] = useState<string | null>(null)
   const add = useMutation({
-    mutationFn: (guest: { name: string; phone: string; planId: string }) => addTrialGuest(sessionId, guest),
+    mutationFn: (guest: { name: string; who: string; phone: string; planId: string }) =>
+      addTrialGuest(sessionId, guest),
     onSuccess: (added, guest) => {
       if ('roster' in added) {
         queryClient.setQueryData(rosterQuery(sessionId).queryKey, added.roster)
@@ -519,6 +522,7 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
       }
       setOpen(false)
       setName('')
+      setWho('')
       setPhone('')
     },
   })
@@ -550,13 +554,13 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
   const chosen = planId || trials[0]?.id || ''
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    add.mutate({ name: name.trim(), phone, planId: chosen })
+    add.mutate({ name: name.trim(), who, phone, planId: chosen })
   }
   const failure = add.isError
     ? isOffline(add.error)
       ? words.offline
       : add.error instanceof ApiError && add.error.status === 422
-        ? words.badPhone
+        ? words.invalid
         : hasLeft(add.error)
           ? words.hasLeft
           : words.failed
@@ -578,6 +582,18 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
             required
             autoComplete="off"
             onChange={(e) => setName(e.target.value)}
+          />
+          <label htmlFor={ids.who} className="classes__label">
+            {words.who}
+          </label>
+          <input
+            id={ids.who}
+            className="classes__input"
+            value={who}
+            required
+            autoComplete="off"
+            placeholder={words.whoPlaceholder}
+            onChange={(e) => setWho(e.target.value)}
           />
           <label htmlFor={ids.phone} className="classes__label">
             {words.phone}
@@ -619,7 +635,7 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
           <button
             type="submit"
             className="classes__button classes__button--primary"
-            disabled={add.isPending || !chosen || !name.trim()}
+            disabled={add.isPending || !chosen || !name.trim() || !who.trim()}
           >
             {add.isPending ? words.working : words.submit}
           </button>

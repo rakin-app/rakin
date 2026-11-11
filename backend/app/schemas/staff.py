@@ -1,9 +1,10 @@
 """The gym's staff: who holds a role here, inviting someone to one, changing and
 revoking it.
 
-An invite names the person as a member is added, by phone, and needs an email: Rakin
-signs staff in by a link to it (docs/technical.md, magic links). The owner is not a
-role anyone is invited to or moved into.
+An invite names the person as a member is added, by RUT if they give one, and needs
+an email: Rakin signs staff in by a link to it (docs/technical.md, magic links), and
+with no RUT the email is who they are in this gym. The phone is optional. The owner is
+not a role anyone is invited to or moved into.
 """
 
 import uuid
@@ -13,7 +14,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from app.roles import Role
-from app.schemas.people import Email, Name, Phone
+from app.schemas.people import Email, Name, Phone, Rut
 
 # The roles an invite or a change may give: owner is not one of them.
 InvitableRole = Literal["admin", "coach"]
@@ -22,9 +23,10 @@ InvitableRole = Literal["admin", "coach"]
 class StaffInvite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    phone: Phone
     name: Name
     email: Email
+    rut: Rut | None = None
+    phone: Phone | None = None
     role: InvitableRole
 
 
@@ -50,6 +52,6 @@ class StaffConflict(BaseModel):
 
 
 class AlreadyStaff(BaseModel):
-    """409 body: the phone belongs to someone already on this gym's staff."""
+    """409 body: the RUT or email is someone's already on this gym's staff."""
 
     detail: StaffConflict

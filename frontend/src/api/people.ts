@@ -10,6 +10,12 @@ export type MemberRow = {
   id: string
   name: string
   phone: string | null
+  // "No tiene WhatsApp": no WhatsApp link goes to them.
+  no_whatsapp: boolean
+  // A member with no phone and the box unticked: "Falta teléfono".
+  missing_phone: boolean
+  // No RUT and no email, found again only by name: "Falta RUT".
+  missing_rut: boolean
   rut: string | null
   membership: {
     id: string
@@ -34,6 +40,9 @@ export type MemberFilters = {
   program: readonly string[]
   // Who has left the gym: left out (the default), only them ("Dados de baja"), or anyone.
   left?: LeftFilter
+  // Only the members with "Falta teléfono", or "Falta RUT".
+  missingPhone?: boolean
+  missingRut?: boolean
 }
 
 export type LeftFilter = 'no' | 'only' | 'any'
@@ -51,6 +60,8 @@ export function membersPath(filters: MemberFilters, offset: number): string {
   for (const plan of filters.plan) params.append('plan_id', plan)
   for (const program of filters.program) params.append('program_id', program)
   if (filters.left && filters.left !== 'no') params.set('left', filters.left)
+  if (filters.missingPhone) params.set('missing_phone', 'true')
+  if (filters.missingRut) params.set('missing_rut', 'true')
   params.set('limit', String(MEMBERS_PAGE_SIZE))
   params.set('offset', String(offset))
   return `/api/people?${params}`
@@ -68,6 +79,8 @@ export function membersQuery(filters: MemberFilters) {
         plan: filters.plan,
         program: filters.program,
         left: filters.left ?? 'no',
+        missingPhone: filters.missingPhone ?? false,
+        missingRut: filters.missingRut ?? false,
       },
     ],
     queryFn: ({ pageParam }) => apiFetch<MemberPage>(membersPath(filters, pageParam)),
@@ -97,16 +110,22 @@ export const programsQuery = queryOptions({
 /** A plan to start someone on, from a day (today in the gym's timezone when omitted). */
 export type MembershipStart = { plan_id: string; started_on?: string }
 
-/** Who answers for a minor: someone already in the gym, or someone new by their phone. */
-export type GuardianChoice = { person_id: string } | { phone: string; name: string; email?: string }
+/** Who answers for a minor: someone already in the gym, or someone new by their RUT or
+ * email. The guardian is who the gym messages, so a new one needs a phone, unless they
+ * have no WhatsApp. */
+export type GuardianChoice =
+  | { person_id: string }
+  | { name: string; rut?: string; email?: string; phone?: string; no_whatsapp?: boolean }
 
 /** A member added by hand (backend `Enrolment`): all of it is written, or none. */
 export type Enrolment = {
-  // Without one, a guardian is needed: kids have none.
-  phone?: string
   name: string
-  email?: string
+  // Who they are: a RUT, or an email. A dependent may have neither.
   rut?: string
+  email?: string
+  // Required for an adult, unless `no_whatsapp`; a minor's guardian's is the one used.
+  phone?: string
+  no_whatsapp?: boolean
   dob?: string
   guardian?: GuardianChoice
   fields?: Record<string, FieldValue>
@@ -119,8 +138,16 @@ export function enrol(body: Enrolment): Promise<Person> {
   return apiFetch<Person>('/api/people/enrol', { method: 'POST', body: JSON.stringify(body) })
 }
 
-/** Only the fields sent change; `null` clears an optional one. The phone never changes. */
-export type PersonEdit = Partial<{ name: string; email: string | null; rut: string | null; dob: string | null }>
+/** Only the fields sent change; `null` clears an optional one. A member's phone is
+ * cleared only with `no_whatsapp` in its place. */
+export type PersonEdit = Partial<{
+  name: string
+  email: string | null
+  phone: string | null
+  no_whatsapp: boolean
+  rut: string | null
+  dob: string | null
+}>
 
 export function updatePerson(id: string, body: PersonEdit): Promise<Person> {
   return apiFetch<Person>(`/api/people/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) })
@@ -163,13 +190,14 @@ export function deletionRefused(error: unknown): DeletionRefusal | null {
   return code === 'ledger' || code === 'staff' || code === 'guardian' ? code : null
 }
 
-/** Someone in the gym already has the phone or RUT: who, to open them instead. */
-export type Duplicate = { code: 'phone_in_gym' | 'rut_in_gym'; person_id: string }
+/** Someone in the gym already has the RUT, or the email: who, to
+ * open them instead. */
+export type Duplicate = { code: 'rut_in_gym' | 'email_in_gym'; person_id: string }
 
 export function duplicateOf(error: unknown): Duplicate | null {
   if (!(error instanceof ApiError) || error.status !== 409) return null
   const detail = (error.body as { detail?: { code?: unknown; person_id?: unknown } } | undefined)?.detail
-  if ((detail?.code !== 'phone_in_gym' && detail?.code !== 'rut_in_gym') || typeof detail.person_id !== 'string') {
+  if ((detail?.code !== 'rut_in_gym' && detail?.code !== 'email_in_gym') || typeof detail.person_id !== 'string') {
     return null
   }
   return { code: detail.code, person_id: detail.person_id }

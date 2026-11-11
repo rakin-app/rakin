@@ -17,6 +17,7 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
+from app.domain.rut import format_rut
 from app.jobs import billing
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
@@ -67,7 +68,9 @@ def enrol(client: TestClient, gym: uuid.UUID, by: uuid.UUID | None = None, **bod
 
 
 def enrolled(client: TestClient, gym: uuid.UUID, **body: Any) -> dict[str, Any]:
-    response = enrol(client, gym, **{"phone": new_phone(), "name": "Ana Soto", **body})
+    # Someone is their RUT or an email (0036): a made-up RUT unless the body says who.
+    key = {} if body.keys() & {"rut", "email", "guardian"} else {"rut": new_rut()}
+    response = enrol(client, gym, **{"phone": new_phone(), "name": "Ana Soto", **key, **body})
     assert response.status_code == 201, response.text
     return dict(response.json())
 
@@ -149,25 +152,42 @@ def test_the_welcome_is_sent_only_when_asked(
 
 @pg
 def test_the_welcome_needs_a_plan(client: TestClient, gym: uuid.UUID) -> None:
-    response = enrol(client, gym, phone=new_phone(), name="Ana", send_welcome=True)
+    response = enrol(client, gym, phone=new_phone(), rut=new_rut(), name="Ana", send_welcome=True)
     assert response.status_code == 422
 
 
 @pg
-def test_a_phone_or_rut_already_here_is_refused_naming_who(
+def test_a_rut_or_email_already_here_is_refused_naming_who(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     phone, rut = new_phone(), new_rut()
     first = enrolled(client, gym, phone=phone, rut=rut)
+    by_email = enrolled(client, gym, email="sin.rut@example.com", name="Sin RUT")
 
-    again = enrol(client, gym, phone=phone, name="Otra")
-    assert again.status_code == 409
-    assert again.json()["detail"] == {"code": "phone_in_gym", "person_id": first["id"]}
+    # A phone finds nobody: someone else may share it.
+    assert enrol(client, gym, phone=phone, rut=new_rut(), name="Hermana").status_code == 201
 
     same_rut = enrol(client, gym, phone=new_phone(), name="Otra", rut=rut)
     assert same_rut.status_code == 409
     assert same_rut.json()["detail"] == {"code": "rut_in_gym", "person_id": first["id"]}
+    same_email = enrol(client, gym, phone=new_phone(), name="Otra", email="SIN.RUT@example.com")
+    assert same_email.status_code == 409
+    assert same_email.json()["detail"] == {"code": "email_in_gym", "person_id": by_email["id"]}
     assert count(db, gym, "SELECT count(*) FROM gym_person WHERE name = 'Otra'") == 0
+
+
+@pg
+def test_a_new_guardian_with_another_persons_email_is_refused(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    address = f"marta.{uuid.uuid4().hex[:6]}@example.com"
+    marta = enrolled(client, gym, rut=new_rut(), email=address, name="Marta Vera")
+    ten = (seeded_today() - timedelta(days=365 * 10)).isoformat()
+    guardian = {"rut": new_rut(), "phone": new_phone(), "name": "Otra", "email": address}
+    refused = enrol(client, gym, phone=None, name="Tomás", dob=ten, guardian=guardian)
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == {"code": "email_in_gym", "person_id": marta["id"]}
+    assert count(db, gym, "SELECT count(*) FROM gym_person WHERE name IN ('Otra', 'Tomás')") == 0
 
 
 @pg
@@ -184,13 +204,13 @@ def test_a_rut_already_here_is_refused_on_an_edit_too(client: TestClient, gym: u
 
 
 @pg
-def test_a_phone_another_gym_has_is_the_same_person(
+def test_a_rut_another_gym_has_is_the_same_person(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}")
-    phone = new_phone()
-    theirs = enrolled(client, norte, phone=phone, name="Ana N.", email="ana@norte.cl")
-    ours = enrolled(client, gym, phone=phone, name="Ana Soto")
+    rut = new_rut()
+    theirs = enrolled(client, norte, rut=rut, name="Ana N.", email="ana@norte.cl")
+    ours = enrolled(client, gym, rut=rut, name="Ana Soto")
     assert ours["id"] == theirs["id"]
     # Only what this gym typed.
     assert (ours["name"], ours["email"]) == ("Ana Soto", None)
@@ -199,7 +219,7 @@ def test_a_phone_another_gym_has_is_the_same_person(
 @pg
 def test_a_minor_needs_a_guardian(client: TestClient, gym: uuid.UUID) -> None:
     ten = (seeded_today() - timedelta(days=365 * 10)).isoformat()
-    response = enrol(client, gym, phone=new_phone(), name="Tomás", dob=ten)
+    response = enrol(client, gym, phone=new_phone(), rut=new_rut(), name="Tomás", dob=ten)
     assert response.status_code == 422
 
 
@@ -228,13 +248,17 @@ def test_a_minor_with_a_new_guardian_and_no_phone(
 
 
 @pg
-def test_a_guardian_already_here_by_pick_or_by_phone(client: TestClient, gym: uuid.UUID) -> None:
-    phone = new_phone()
-    marta = enrolled(client, gym, phone=phone, name="Marta Vera")
+def test_a_guardian_already_here_by_pick_or_by_rut(client: TestClient, gym: uuid.UUID) -> None:
+    rut = new_rut()
+    marta = enrolled(client, gym, rut=rut, name="Marta Vera")
 
     picked = enrolled(client, gym, phone=None, name="Tomás", guardian={"person_id": marta["id"]})
     typed = enrolled(
-        client, gym, phone=None, name="Sofía", guardian={"phone": phone, "name": "M. Vera"}
+        client,
+        gym,
+        phone=None,
+        name="Sofía",
+        guardian={"rut": format_rut(rut), "phone": new_phone(), "name": "M. Vera"},
     )
     family = client.get(f"/api/people/{marta['id']}/family", headers=as_gym(gym)).json()
     assert {d["id"] for d in family["dependents"]} == {picked["id"], typed["id"]}
@@ -249,7 +273,7 @@ def test_a_guardian_who_is_a_dependent_is_refused(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     marta = enrolled(client, gym, name="Marta")
-    kid = enrolled(client, gym, phone=None, name="Tomás", guardian={"person_id": marta["id"]})
+    kid = enrolled(client, gym, name="Tomás", guardian={"person_id": marta["id"]})
     response = enrol(client, gym, phone=None, name="Sofía", guardian={"person_id": kid["id"]})
     assert response.status_code == 409
     assert response.json()["detail"] == {"code": "one_level"}
@@ -257,8 +281,87 @@ def test_a_guardian_who_is_a_dependent_is_refused(
 
 
 @pg
-def test_a_member_needs_a_phone_or_a_guardian(client: TestClient, gym: uuid.UUID) -> None:
-    assert enrol(client, gym, name="Nadie").status_code == 422
+def test_a_member_needs_a_rut_or_an_email_or_a_guardian(client: TestClient, gym: uuid.UUID) -> None:
+    assert enrol(client, gym, name="Nadie", phone=new_phone()).status_code == 422
+
+
+# --- the phone a member needs (#165) ---------------------------------------------
+
+
+@pg
+def test_a_member_needs_a_phone_unless_they_have_no_whatsapp(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    refused = enrol(client, gym, rut=new_rut(), name="Sin fono")
+    assert refused.status_code == 422
+    body = enrolled(client, gym, phone=None, name="Sin WhatsApp", no_whatsapp=True)
+    assert (body["phone"], body["no_whatsapp"], body["missing_phone"]) == (None, True, False)
+
+
+@pg
+def test_a_minor_needs_their_guardians_phone_not_their_own(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    ten = (seeded_today() - timedelta(days=365 * 10)).isoformat()
+    guardian = {"name": "Marta", "email": f"marta.{uuid.uuid4().hex[:6]}@example.com"}
+    refused = enrol(client, gym, name="Tomás", dob=ten, guardian=guardian)
+    assert refused.status_code == 422
+    sin_whatsapp = enrolled(
+        client, gym, phone=None, name="Tomás", dob=ten, guardian={**guardian, "no_whatsapp": True}
+    )
+    family = client.get(f"/api/people/{sin_whatsapp['id']}/family", headers=as_gym(gym)).json()
+    marta = client.get(f"/api/people/{family['guardian']['id']}", headers=as_gym(gym)).json()
+    assert (marta["phone"], marta["no_whatsapp"]) == (None, True)
+    # The kid is their guardian's to reach, so is never "Falta teléfono".
+    assert (sin_whatsapp["phone"], sin_whatsapp["missing_phone"]) == (None, False)
+
+
+@pg
+def test_a_guardian_the_gym_has_with_no_phone_is_refused_and_left_as_they_are(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    rut = new_rut()
+    marta = enrolled(client, gym, rut=rut, name="Marta")
+    # A record with no phone, as the migration leaves some: "Falta teléfono".
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE gym_person SET phone = NULL WHERE person_id = $1", uuid.UUID(marta["id"])
+        ),
+    )
+
+    picked = enrol(client, gym, phone=None, name="Tomás", guardian={"person_id": marta["id"]})
+    assert picked.status_code == 422
+    # Typed again by their RUT with a phone: that phone is not this form's to give them,
+    # so the record stays as the gym has it, and the enrolment is refused.
+    typed = enrol(
+        client,
+        gym,
+        phone=None,
+        name="Tomás",
+        guardian={"rut": rut, "name": "M.", "phone": new_phone()},
+    )
+    assert typed.status_code == 422
+    assert count(db, gym, "SELECT count(*) FROM gym_person WHERE name = 'Tomás'") == 0
+    assert client.get(f"/api/people/{marta['id']}", headers=as_gym(gym)).json()["phone"] is None
+
+
+@pg
+def test_a_new_guardian_takes_the_phone_typed(client: TestClient, gym: uuid.UUID) -> None:
+    phone = new_phone()
+    kid = enrolled(
+        client,
+        gym,
+        phone=None,
+        name="Tomás",
+        guardian={"rut": new_rut(), "name": "Marta", "phone": phone},
+    )
+    family = client.get(f"/api/people/{kid['id']}/family", headers=as_gym(gym)).json()
+    guardian = family["guardian"]["id"]
+    assert (
+        client.get(f"/api/people/{guardian}", headers=as_gym(gym)).json()["phone"]
+        == "+56" + phone[3:]
+    )
 
 
 @pg
@@ -272,7 +375,9 @@ def test_custom_fields_are_written_with_the_member_or_nothing_is(
     values = client.get(f"/api/people/{body['id']}/fields", headers=as_gym(gym)).json()
     assert [(v["key"], v["value"]) for v in values] == [(field["key"], "M")]
 
-    refused = enrol(client, gym, phone=new_phone(), name="Sin campo", fields={"nope": "x"})
+    refused = enrol(
+        client, gym, phone=new_phone(), rut=new_rut(), name="Sin campo", fields={"nope": "x"}
+    )
     assert refused.status_code == 422
     assert count(db, gym, "SELECT count(*) FROM gym_person WHERE name = 'Sin campo'") == 0
 
@@ -502,9 +607,9 @@ def test_deleting_reaches_only_this_gyms_records(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}")
-    phone = new_phone()
-    theirs = enrolled(client, norte, phone=phone, name="Ana N.")
-    enrolled(client, gym, phone=phone, name="Ana Soto")
+    rut = new_rut()
+    theirs = enrolled(client, norte, rut=rut, name="Ana N.")
+    enrolled(client, gym, rut=rut, name="Ana Soto")
 
     # Another gym's owner cannot reach this gym's record of someone it does not know.
     stranger = enrolled(client, gym, name="Solo Sur")
@@ -513,7 +618,7 @@ def test_deleting_reaches_only_this_gyms_records(
     assert forget(client, gym, theirs["id"]).status_code == 204
     assert client.get(f"/api/people/{theirs['id']}", headers=as_gym(norte)).json() == theirs
     # The identity stays: the other gym still has them.
-    rows = run(db.admin_url, lambda c: c.fetch("SELECT id FROM person WHERE phone = $1", phone))
+    rows = run(db.admin_url, lambda c: c.fetch("SELECT id FROM person WHERE rut = $1", rut))
     assert [str(r["id"]) for r in rows] == [theirs["id"]]
 
 
@@ -539,7 +644,7 @@ def test_coaches_may_do_none_of_it_and_admins_may_not_delete(
     coach = add_staff(db, gym, "coach")
     admin = add_staff(db, gym, "admin")
     headers = as_gym(gym, coach)
-    assert enrol(client, gym, coach, phone=new_phone(), name="X").status_code == 403
+    assert enrol(client, gym, coach, rut=new_rut(), phone=new_phone(), name="X").status_code == 403
     assert (
         client.post(f"/api/people/{body['id']}/leave", json={}, headers=headers).status_code == 403
     )
@@ -551,7 +656,7 @@ def test_coaches_may_do_none_of_it_and_admins_may_not_delete(
     deletion = f"/api/people/{body['id']}/deletion"
     assert client.get(deletion, headers=as_gym(gym, admin)).status_code == 403
 
-    assert enrol(client, gym, admin, phone=new_phone(), name="Y").status_code == 201
+    assert enrol(client, gym, admin, rut=new_rut(), phone=new_phone(), name="Y").status_code == 201
     left = client.post(f"/api/people/{body['id']}/leave", json={}, headers=as_gym(gym, admin))
     assert left.status_code == 200
 
@@ -563,8 +668,8 @@ def test_coaches_may_do_none_of_it_and_admins_may_not_delete(
 def test_no_path_starts_a_membership_for_someone_who_left(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    phone = new_phone()
-    body = enrolled(client, gym, phone=phone, name="Se Fue")
+    rut = new_rut()
+    body = enrolled(client, gym, rut=rut, name="Se Fue")
     leave(client, gym, body["id"])
 
     # Starting one by hand.
@@ -597,14 +702,14 @@ def test_no_path_starts_a_membership_for_someone_who_left(
     # A sheet that still lists them: that row is refused, the others import.
     due = (seeded_today() + timedelta(days=10)).isoformat()
     rows = [
-        {"number": 2, "cells": ["Se Fue", phone, "Mensual", due]},
-        {"number": 3, "cells": ["Llega", new_phone(), "Mensual", due]},
+        {"number": 2, "cells": ["Se Fue", rut, "Mensual", due]},
+        {"number": 3, "cells": ["Llega", new_rut(), "Mensual", due]},
     ]
     report = client.post(
         "/api/import/members",
         json={
             "rows": rows,
-            "mapping": {"name": 0, "phone": 1, "plan": 2, "due_on": 3},
+            "mapping": {"name": 0, "rut": 1, "plan": 2, "due_on": 3},
             "dry_run": False,
         },
         headers=as_gym(gym),

@@ -48,12 +48,15 @@ async function fillAdult() {
   fireEvent.change(screen.getByLabelText(copy.dob), { target: { value: '1990-05-20' } })
   await userEvent.type(screen.getByLabelText(copy.phone), '9 8765 4321')
   await userEvent.type(screen.getByLabelText(copy.email), 'ana@example.cl')
-  await userEvent.click(screen.getByRole('checkbox'))
+  await userEvent.click(consentBox())
 }
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+// The consent box, beside "No tengo WhatsApp".
+const consentBox = () => screen.getByRole('checkbox', { name: new RegExp(copy.consentBefore.slice(0, 20)) })
 
 describe('Inscríbete', () => {
   it('shows the gym and sends an adult’s details, with no session', async () => {
@@ -80,10 +83,27 @@ describe('Inscríbete', () => {
       guardian_name: null,
       guardian_phone: null,
       guardian_email: null,
+      no_whatsapp: false,
       consent: true,
       website: '',
       human_check_token: null,
     })
+  })
+
+  it('sends no RUT and no phone for someone without either who has no WhatsApp', async () => {
+    const sent = stubApi()
+    renderAt('/unirse/tok-123456789012345678901')
+
+    await userEvent.type(await screen.findByLabelText(copy.firstName), 'Ana')
+    await userEvent.type(screen.getByLabelText(copy.lastName), 'Pérez')
+    fireEvent.change(screen.getByLabelText(copy.dob), { target: { value: '1990-05-20' } })
+    await userEvent.type(screen.getByLabelText(copy.email), 'ana@example.cl')
+    await userEvent.click(screen.getByRole('checkbox', { name: copy.noWhatsapp }))
+    await userEvent.click(consentBox())
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+
+    await screen.findByRole('status')
+    expect(sent[1]!.body).toMatchObject({ rut: null, phone: null, email: 'ana@example.cl', no_whatsapp: true })
   })
 
   it('asks a minor for their guardian, on the gym’s today', async () => {
@@ -99,7 +119,7 @@ describe('Inscríbete', () => {
     await userEvent.type(screen.getByLabelText(copy.guardianName), 'Marta')
     await userEvent.type(screen.getByLabelText(copy.guardianPhone), '912345678')
     await userEvent.type(screen.getByLabelText(copy.guardianEmail), 'marta@example.cl')
-    await userEvent.click(screen.getByRole('checkbox'))
+    await userEvent.click(consentBox())
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 
     await screen.findByRole('status')
@@ -111,6 +131,27 @@ describe('Inscríbete', () => {
       guardian_phone: '912345678',
       guardian_email: 'marta@example.cl',
     })
+  })
+
+  it('starts "No tiene WhatsApp" over when the birth date makes them a minor', async () => {
+    const sent = stubApi()
+    renderAt('/unirse/tok-123456789012345678901')
+
+    await userEvent.type(await screen.findByLabelText(copy.firstName), 'Juan')
+    await userEvent.type(screen.getByLabelText(copy.lastName), 'Pérez')
+    fireEvent.change(screen.getByLabelText(copy.dob), { target: { value: '1990-05-20' } })
+    await userEvent.click(screen.getByRole('checkbox', { name: copy.noWhatsapp }))
+    fireEvent.change(screen.getByLabelText(copy.dob), { target: { value: '2016-03-01' } })
+
+    expect(screen.getByRole('checkbox', { name: copy.guardianNoWhatsapp })).not.toBeChecked()
+    await userEvent.type(screen.getByLabelText(copy.guardianName), 'Marta')
+    await userEvent.type(screen.getByLabelText(copy.guardianPhone), '912345678')
+    await userEvent.type(screen.getByLabelText(copy.guardianEmail), 'marta@example.cl')
+    await userEvent.click(consentBox())
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+
+    await screen.findByRole('status')
+    expect(sent[1]!.body).toMatchObject({ no_whatsapp: false, guardian_phone: '912345678' })
   })
 
   it('stops asking for a guardian once the birth date makes them an adult', async () => {
@@ -234,8 +275,8 @@ describe('ageOn', () => {
     const notice = await screen.findByRole('link', { name: copy.consentLink })
     expect(notice).toHaveAttribute('href', '/privacidad?enlace=tok-123456789012345678901')
     expect(notice).toHaveAttribute('target', '_blank')
-    expect(screen.getByRole('checkbox')).toBeRequired()
-    expect(screen.getByRole('checkbox')).not.toHaveAttribute('required')
+    expect(consentBox()).toBeRequired()
+    expect(consentBox()).not.toHaveAttribute('required')
   })
 
   it('asks for consent in its own words before sending anything', async () => {
@@ -243,14 +284,14 @@ describe('ageOn', () => {
     renderAt('/unirse/tok-123456789012345678901')
 
     await fillAdult()
-    await userEvent.click(screen.getByRole('checkbox'))
+    await userEvent.click(consentBox())
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 
-    expect(screen.getByRole('checkbox')).toHaveAccessibleDescription(copy.refused.consent!)
-    expect(screen.getByRole('checkbox')).toHaveAttribute('aria-invalid', 'true')
+    expect(consentBox()).toHaveAccessibleDescription(copy.refused.consent!)
+    expect(consentBox()).toHaveAttribute('aria-invalid', 'true')
     expect(sent.filter((s) => s.method === 'POST')).toEqual([])
 
-    await userEvent.click(screen.getByRole('checkbox'))
+    await userEvent.click(consentBox())
     expect(screen.queryByText(copy.refused.consent!)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
     expect(await screen.findByRole('status')).toHaveTextContent(copy.done)

@@ -17,7 +17,7 @@ import './NewMember.css'
 const copy = t.admin.newMember
 
 // A Chilean mobile as people type one; the API normalises and is the real check.
-const MOBILE = /^(\+?56)?\s*9[\s.-]*(\d[\s.-]*){8}$/
+export const MOBILE = /^(\+?56)?\s*9[\s.-]*(\d[\s.-]*){8}$/
 
 /** Whether someone born on `dob` is under 18 on `today`, both ISO days, as the API reads it. */
 export function isMinor(dob: string, today: string): boolean {
@@ -27,15 +27,23 @@ export function isMinor(dob: string, today: string): boolean {
   return comesOfAge > today
 }
 
+// A guardian picked from the gym: whether the gym can reach them, by phone or because
+// they have no WhatsApp, is the API's check too.
+type Picked = PersonRef & { reachable: boolean }
+
 type Guardian =
   | { kind: 'none' }
-  | { kind: 'existing'; picked: PersonRef | null }
-  | { kind: 'new'; name: string; phone: string; email: string }
+  | { kind: 'existing'; picked: Picked | null }
+  | { kind: 'new'; name: string; rut: string; email: string; phone: string; noWhatsapp: boolean }
 
 /**
  * "Nuevo alumno" (#157): a member added by hand, as the import adds one. Their record,
  * a guardian when they are a minor, the gym's custom fields and, if picked, a plan from
  * a day, with the welcome if asked. Saved all at once; then their ficha opens.
+ *
+ * Someone is their RUT, or their email when they have none (#165); a kid with a guardian
+ * may have neither. The phone is how the gym reaches them on WhatsApp: required, unless
+ * "No tiene WhatsApp" is ticked. With a guardian, it is the guardian's that is required.
  */
 export function NewMember() {
   const today = useGymToday()
@@ -45,6 +53,7 @@ export function NewMember() {
   const fields = (definitions.data ?? []).filter((field) => !field.archived)
 
   const [person, setPerson] = useState({ firstName: '', lastName: '', phone: '', email: '', rut: '', dob: '' })
+  const [noWhatsapp, setNoWhatsapp] = useState(false)
   const [guardian, setGuardian] = useState<Guardian>({ kind: 'none' })
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [plan, setPlan] = useState<PlanChoice>({ plan_id: '', started_on: '' })
@@ -55,11 +64,15 @@ export function NewMember() {
     last: useId(),
     phone: useId(),
     phoneHint: useId(),
+    noWhatsapp: useId(),
     email: useId(),
     rut: useId(),
+    rutHint: useId(),
     dob: useId(),
     gName: useId(),
+    gRut: useId(),
     gPhone: useId(),
+    gNoWhatsapp: useId(),
     gEmail: useId(),
     welcome: useId(),
     fields: useId(),
@@ -69,11 +82,17 @@ export function NewMember() {
   const hasGuardian = guardian.kind !== 'none'
   const problems = {
     firstName: person.firstName.trim() === '',
-    phone: person.phone.trim() === '' ? !hasGuardian : !MOBILE.test(person.phone.trim()),
+    // Who they are; a guardian's dependent may have neither.
+    identity: !hasGuardian && person.rut.trim() === '' && person.email.trim() === '',
+    phone: person.phone.trim() === '' ? !hasGuardian && !noWhatsapp : !MOBILE.test(person.phone.trim()),
     guardian: minor && !hasGuardian,
     guardianPicked: guardian.kind === 'existing' && guardian.picked === null,
+    guardianUnreachable: guardian.kind === 'existing' && guardian.picked !== null && !guardian.picked.reachable,
     guardianName: guardian.kind === 'new' && guardian.name.trim() === '',
-    guardianPhone: guardian.kind === 'new' && !MOBILE.test(guardian.phone.trim()),
+    guardianIdentity: guardian.kind === 'new' && guardian.rut.trim() === '' && guardian.email.trim() === '',
+    guardianPhone:
+      guardian.kind === 'new' &&
+      (guardian.phone.trim() === '' ? !guardian.noWhatsapp : !MOBILE.test(guardian.phone.trim())),
   }
   const ready = !Object.values(problems).some(Boolean)
 
@@ -93,7 +112,13 @@ export function NewMember() {
     let chosen: GuardianChoice | undefined
     if (guardian.kind === 'existing' && guardian.picked) chosen = { person_id: guardian.picked.id }
     if (guardian.kind === 'new') {
-      chosen = { name: guardian.name.trim(), phone: guardian.phone.trim(), email: optional(guardian.email) }
+      chosen = {
+        name: guardian.name.trim(),
+        rut: optional(guardian.rut),
+        email: optional(guardian.email),
+        phone: optional(guardian.phone),
+        no_whatsapp: guardian.noWhatsapp || undefined,
+      }
     }
     const values = Object.fromEntries(
       fields.filter((f) => (drafts[f.key] ?? '').trim() !== '').map((f) => [f.key, valueOf(f, drafts[f.key] ?? '')]),
@@ -101,9 +126,11 @@ export function NewMember() {
     const membership = membershipOf(plan, today)
     save.mutate({
       name: [person.firstName, person.lastName].map((part) => part.trim()).filter(Boolean).join(' '),
-      phone: optional(person.phone),
-      email: optional(person.email),
       rut: optional(person.rut),
+      email: optional(person.email),
+      phone: optional(person.phone),
+      // Theirs only without a guardian: with one, the guardian is who the gym messages.
+      no_whatsapp: (!hasGuardian && noWhatsapp) || undefined,
       dob: optional(person.dob),
       guardian: chosen,
       fields: Object.keys(values).length > 0 ? values : undefined,
@@ -147,8 +174,38 @@ export function NewMember() {
             onChange={set('lastName')}
           />
 
+          <label htmlFor={ids.rut} className="member__label">
+            {copy.rut}
+          </label>
+          <input
+            id={ids.rut}
+            className="member__input"
+            autoComplete="off"
+            value={person.rut}
+            aria-describedby={ids.rutHint}
+            aria-invalid={checked && problems.identity}
+            onChange={set('rut')}
+          />
+          <p id={ids.rutHint} className="member__detail">
+            {copy.rutHint}
+          </p>
+
+          <label htmlFor={ids.email} className="member__label">
+            {copy.email}
+          </label>
+          <input
+            id={ids.email}
+            className="member__input"
+            type="email"
+            autoComplete="off"
+            value={person.email}
+            aria-invalid={checked && problems.identity}
+            onChange={set('email')}
+          />
+          {checked && problems.identity && <Needed text={copy.needed.identity} />}
+
           <label htmlFor={ids.phone} className="member__label">
-            {hasGuardian ? copy.phoneOptional : copy.phone}
+            {hasGuardian || noWhatsapp ? copy.phoneOptional : copy.phone}
           </label>
           <input
             id={ids.phone}
@@ -162,26 +219,20 @@ export function NewMember() {
             onChange={set('phone')}
           />
           <p id={ids.phoneHint} className="member__detail">
-            {copy.phoneHint}
+            {hasGuardian ? copy.phoneHintMinor : copy.phoneHint}
           </p>
+          {!hasGuardian && (
+            <label htmlFor={ids.noWhatsapp} className="new-member__check">
+              <input
+                id={ids.noWhatsapp}
+                type="checkbox"
+                checked={noWhatsapp}
+                onChange={(e) => setNoWhatsapp(e.target.checked)}
+              />
+              {copy.noWhatsapp}
+            </label>
+          )}
           {checked && problems.phone && <Needed text={copy.needed.phone} />}
-
-          <label htmlFor={ids.email} className="member__label">
-            {copy.email}
-          </label>
-          <input
-            id={ids.email}
-            className="member__input"
-            type="email"
-            autoComplete="off"
-            value={person.email}
-            onChange={set('email')}
-          />
-
-          <label htmlFor={ids.rut} className="member__label">
-            {copy.rut}
-          </label>
-          <input id={ids.rut} className="member__input" autoComplete="off" value={person.rut} onChange={set('rut')} />
 
           <label htmlFor={ids.dob} className="member__label">
             {copy.dob}
@@ -212,7 +263,9 @@ export function NewMember() {
               <button
                 type="button"
                 className="member__button"
-                onClick={() => setGuardian({ kind: 'new', name: '', phone: '', email: '' })}
+                onClick={() =>
+                  setGuardian({ kind: 'new', name: '', rut: '', email: '', phone: '', noWhatsapp: false })
+                }
               >
                 {copy.guardianNew}
               </button>
@@ -230,6 +283,7 @@ export function NewMember() {
                     >
                       {copy.guardianChange}
                     </button>
+                    {checked && problems.guardianUnreachable && <Needed text={copy.needed.guardianUnreachable} />}
                   </div>
                 ) : (
                   <>
@@ -241,7 +295,12 @@ export function NewMember() {
                       // A guardian is never someone's dependent (one level, 0010).
                       offered={(row) => !row.guardian}
                       busy={false}
-                      onPick={(row) => setGuardian({ kind: 'existing', picked: { id: row.id, name: row.name } })}
+                      onPick={(row) =>
+                        setGuardian({
+                          kind: 'existing',
+                          picked: { id: row.id, name: row.name, reachable: row.phone !== null || row.no_whatsapp },
+                        })
+                      }
                     />
                     {checked && problems.guardianPicked && <Needed text={copy.needed.guardianPicked} />}
                   </>
@@ -261,8 +320,32 @@ export function NewMember() {
                     onChange={(e) => setGuardian({ ...guardian, name: e.target.value })}
                   />
                   {checked && problems.guardianName && <Needed text={copy.needed.guardianName} />}
+                  <label htmlFor={ids.gRut} className="member__label">
+                    {copy.guardianRut}
+                  </label>
+                  <input
+                    id={ids.gRut}
+                    className="member__input"
+                    autoComplete="off"
+                    value={guardian.rut}
+                    aria-invalid={checked && problems.guardianIdentity}
+                    onChange={(e) => setGuardian({ ...guardian, rut: e.target.value })}
+                  />
+                  <label htmlFor={ids.gEmail} className="member__label">
+                    {copy.guardianEmail}
+                  </label>
+                  <input
+                    id={ids.gEmail}
+                    className="member__input"
+                    type="email"
+                    autoComplete="off"
+                    value={guardian.email}
+                    aria-invalid={checked && problems.guardianIdentity}
+                    onChange={(e) => setGuardian({ ...guardian, email: e.target.value })}
+                  />
+                  {checked && problems.guardianIdentity && <Needed text={copy.needed.guardianIdentity} />}
                   <label htmlFor={ids.gPhone} className="member__label">
-                    {copy.guardianPhone}
+                    {guardian.noWhatsapp ? copy.guardianPhoneOptional : copy.guardianPhone}
                   </label>
                   <input
                     id={ids.gPhone}
@@ -274,18 +357,16 @@ export function NewMember() {
                     aria-invalid={checked && problems.guardianPhone}
                     onChange={(e) => setGuardian({ ...guardian, phone: e.target.value })}
                   />
-                  {checked && problems.guardianPhone && <Needed text={copy.needed.guardianPhone} />}
-                  <label htmlFor={ids.gEmail} className="member__label">
-                    {copy.guardianEmail}
+                  <label htmlFor={ids.gNoWhatsapp} className="new-member__check">
+                    <input
+                      id={ids.gNoWhatsapp}
+                      type="checkbox"
+                      checked={guardian.noWhatsapp}
+                      onChange={(e) => setGuardian({ ...guardian, noWhatsapp: e.target.checked })}
+                    />
+                    {copy.noWhatsapp}
                   </label>
-                  <input
-                    id={ids.gEmail}
-                    className="member__input"
-                    type="email"
-                    autoComplete="off"
-                    value={guardian.email}
-                    onChange={(e) => setGuardian({ ...guardian, email: e.target.value })}
-                  />
+                  {checked && problems.guardianPhone && <Needed text={copy.needed.guardianPhone} />}
                 </>
               )}
               <button type="button" className="member__button" onClick={() => setGuardian({ kind: 'none' })}>

@@ -48,6 +48,17 @@ export function PersonActions({ person, role }: { person: Person; role: StaffRol
           {copy.leftBanner(t.common.day(person.left_on))}
         </p>
       )}
+      {person.missing_phone && (
+        <p className="member__error" role="status">
+          {copy.missingPhone}
+        </p>
+      )}
+      {person.missing_rut && (
+        <p className="member__error" role="status">
+          {copy.missingRut}
+        </p>
+      )}
+      {person.no_whatsapp && <p className="member__detail">{copy.noWhatsapp}</p>}
       <div className="member__actions">
         <button type="button" className="member__button" aria-expanded={open === 'edit'} onClick={() => toggle('edit')}>
           {copy.editPerson}
@@ -124,13 +135,15 @@ function EditForm({
 }) {
   const form = copy.editForm
   const refresh = useRefresh()
-  const ids = { name: useId(), phone: useId(), email: useId(), rut: useId(), dob: useId() }
+  const ids = { name: useId(), phone: useId(), noWhatsapp: useId(), email: useId(), rut: useId(), dob: useId() }
   const initial = {
     name: person.name,
+    phone: person.phone ? formatPhone(person.phone) : '',
     email: person.email ?? '',
     rut: person.rut ? formatRut(person.rut) : '',
     dob: person.dob ?? '',
   }
+  const [noWhatsapp, setNoWhatsapp] = useState(person.no_whatsapp)
   const [draft, setDraft] = useState(initial)
   const [checked, setChecked] = useState(false)
   const nameOk = draft.name.trim() !== ''
@@ -150,6 +163,8 @@ function EditForm({
     // Only what changed; an optional field emptied is cleared.
     const body: PersonEdit = {}
     if (draft.name.trim() !== initial.name) body.name = draft.name.trim()
+    if (draft.phone.trim() !== initial.phone) body.phone = draft.phone.trim() || null
+    if (noWhatsapp !== person.no_whatsapp) body.no_whatsapp = noWhatsapp
     if (draft.email.trim() !== initial.email) body.email = draft.email.trim() || null
     if (draft.rut.trim() !== initial.rut) body.rut = draft.rut.trim() || null
     if (draft.dob !== initial.dob) body.dob = draft.dob || null
@@ -182,15 +197,26 @@ function EditForm({
           {form.nameNeeded}
         </p>
       )}
-      {person.phone && (
-        <>
-          <label htmlFor={ids.phone} className="member__label">
-            {form.phone}
-          </label>
-          <input id={ids.phone} className="member__input" value={formatPhone(person.phone)} readOnly disabled />
-          <p className="member__detail">{form.phoneFixed}</p>
-        </>
-      )}
+      <label htmlFor={ids.phone} className="member__label">
+        {form.phone}
+      </label>
+      <input
+        id={ids.phone}
+        className="member__input"
+        type="tel"
+        inputMode="tel"
+        value={draft.phone}
+        onChange={set('phone')}
+      />
+      <label htmlFor={ids.noWhatsapp} className="new-member__check">
+        <input
+          id={ids.noWhatsapp}
+          type="checkbox"
+          checked={noWhatsapp}
+          onChange={(e) => setNoWhatsapp(e.target.checked)}
+        />
+        {form.noWhatsapp}
+      </label>
       <label htmlFor={ids.email} className="member__label">
         {form.email}
       </label>
@@ -213,6 +239,10 @@ function EditForm({
                 {form.refused.open}
               </Link>
             </>
+          ) : refusedFor(save.error, 'a RUT or an email') ? (
+            form.refused.identity
+          ) : phoneRequired(save.error) ? (
+            form.refused.phone
           ) : save.error instanceof ApiError && save.error.status === 422 ? (
             form.refused.invalid
           ) : (
@@ -231,6 +261,18 @@ function EditForm({
       </div>
     </form>
   )
+}
+
+/** Whether the API refused an edit with the 422 whose detail starts with `reason`. */
+function refusedFor(error: unknown, reason: string): boolean {
+  if (!(error instanceof ApiError) || error.status !== 422) return false
+  const detail = (error.body as { detail?: unknown } | undefined)?.detail
+  return typeof detail === 'string' && detail.startsWith(reason)
+}
+
+/** The 422 a member's edit gets for leaving them with no phone and no "No tiene WhatsApp". */
+function phoneRequired(error: unknown): boolean {
+  return refusedFor(error, 'a phone is required')
 }
 
 function LeaveForm({

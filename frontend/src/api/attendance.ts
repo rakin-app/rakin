@@ -66,16 +66,23 @@ export function trialPlansQuery() {
   })
 }
 
+/** A guest's RUT or email, as typed in one box: an `@` makes it an email. */
+export function identityOf(typed: string): { rut: string } | { email: string } {
+  const value = typed.trim()
+  return value.includes('@') ? { email: value } : { rut: value }
+}
+
 /**
- * Add someone by phone and start them on `planId`, present at the session: the roster
- * then. A phone already in the gym is that person, and one who is already a member is
- * their membership instead, for the screen to mark as any other tap.
+ * Add someone by their RUT or email and start them on `planId`, present at the
+ * session: the roster then. A RUT already in the gym, or the email of someone here with
+ * none, is that person, and one who is already a member is their membership instead,
+ * for the screen to mark as any other tap. The phone is their contact.
  */
 export async function addTrialGuest(
   sessionId: string,
-  guest: { name: string; phone: string; planId: string },
+  guest: { name: string; who: string; phone: string; planId: string },
 ): Promise<{ roster: Roster } | { member: string }> {
-  const personId = await addPerson(guest.name, guest.phone)
+  const personId = await addPerson(guest.name, guest.who, guest.phone)
   try {
     const roster = await apiFetch<Roster>(`/api/sessions/${encodeURIComponent(sessionId)}/trials`, {
       method: 'POST',
@@ -89,15 +96,15 @@ export async function addTrialGuest(
   }
 }
 
-async function addPerson(name: string, phone: string): Promise<string> {
+async function addPerson(name: string, who: string, phone: string): Promise<string> {
   try {
     const person = await apiFetch<{ id: string }>('/api/people', {
       method: 'POST',
-      body: JSON.stringify({ name, phone }),
+      body: JSON.stringify({ name, phone, ...identityOf(who) }),
     })
     return person.id
   } catch (error) {
-    const existing = conflict(error, 'phone_in_gym', 'person_id')
+    const existing = conflict(error, 'rut_in_gym', 'person_id') ?? conflict(error, 'email_in_gym', 'person_id')
     if (existing === null) throw error
     return existing
   }

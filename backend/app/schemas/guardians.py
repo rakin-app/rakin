@@ -1,8 +1,9 @@
 """Guardians and dependents: a gym's family links, and what a guardian sees of each kid.
 
-A dependent may have no phone and no email (kids have neither), so adding a new one
-takes a name and nothing else. Without a phone there is no global identity to find,
-so each new dependent is a new person (migration 0010).
+A dependent may have no RUT and no email (kids seldom have either to hand), so adding
+a new one takes a name and nothing else. With neither there is no identity to find,
+so such a dependent is a new person (migrations 0010, 0036); one with their own RUT is
+the person that RUT is, as anyone is.
 """
 
 import uuid
@@ -10,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, PastDate
 
-from app.schemas.people import Email, MembershipSummary, Name, PersonRef, Rut
+from app.schemas.people import Email, MembershipSummary, Name, PersonRef, Phone, Rut
 
 
 class Family(BaseModel):
@@ -29,13 +30,14 @@ class LinkDependent(BaseModel):
 
 
 class NewDependent(BaseModel):
-    """Add someone new to this gym as a dependent, with no phone."""
+    """Add someone new to this gym as a dependent."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: Name
     email: Email | None = None
     rut: Rut | None = None
+    phone: Phone | None = None
     dob: PastDate | None = None
 
 

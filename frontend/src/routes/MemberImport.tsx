@@ -371,6 +371,7 @@ function Review({
         </div>
       </section>
       <RefusedRows rows={report.rows} />
+      <WarningRows rows={report.rows} />
       <KeptRows rows={report.rows} />
     </>
   )
@@ -397,8 +398,59 @@ function Done({ name, report, onOther }: { name: string; report: ImportReport; o
         </div>
       </section>
       <RefusedRows rows={report.rows} />
+      <WarningRows rows={report.rows} />
       <KeptRows rows={report.rows} />
     </>
+  )
+}
+
+/** Rows imported with a warning, not an error: "Falta teléfono", or neither a RUT nor an
+ * email to say who they are. */
+function WarningRows({ rows }: { rows: RowResult[] }) {
+  return (
+    <>
+      <Warned
+        id="import-missing-phone-title"
+        rows={rows.filter((row) => row.errors.length === 0 && row.missing_phone)}
+        title={copy.missingPhoneTitle}
+        hint={copy.missingPhoneHint}
+      />
+      <Warned
+        id="import-missing-identity-title"
+        rows={rows.filter((row) => row.errors.length === 0 && row.missing_identity)}
+        title={copy.missingIdentityTitle}
+        hint={copy.missingIdentityHint}
+      />
+    </>
+  )
+}
+
+function Warned({
+  id,
+  rows,
+  title,
+  hint,
+}: {
+  id: string
+  rows: RowResult[]
+  title: (n: number) => string
+  hint: string
+}) {
+  if (rows.length === 0) return null
+  return (
+    <section className="import__card" aria-labelledby={id}>
+      <h2 id={id} className="import__title">
+        {title(rows.length)}
+      </h2>
+      <p className="import__note">{hint}</p>
+      <ul className="import__errors" aria-label={title(rows.length)}>
+        {rows.map((row) => (
+          <li key={row.row} className="import__error-row">
+            <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -439,7 +491,9 @@ function RefusedRows({ rows }: { rows: RowResult[] }) {
             <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
             {row.errors.map((error) => (
               <span key={`${error.field}-${error.code}`} className="import__error-what">
-                {copy.fieldError(copy.fields[error.field], copy.error[error.code])}
+                {error.code === 'ambiguous_name'
+                  ? copy.error.ambiguous_name
+                  : copy.fieldError(copy.fields[error.field], copy.error[error.code])}
               </span>
             ))}
           </li>

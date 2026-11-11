@@ -16,6 +16,9 @@ const copy = es.admin.newMember
 const CREATED: Person = {
   id: 'new',
   phone: '+56987654321',
+  no_whatsapp: false,
+  missing_phone: false,
+  missing_rut: false,
   name: 'Camila Rojas',
   email: null,
   rut: null,
@@ -28,6 +31,9 @@ const MARTA: MemberRow = {
   id: 'marta',
   name: 'Marta Vera',
   phone: '+56911112222',
+  no_whatsapp: false,
+  missing_phone: false,
+  missing_rut: false,
   rut: null,
   membership: null,
   guardian: null,
@@ -150,10 +156,15 @@ describe('Nuevo alumno', () => {
 
     expect(within(f).getByRole('checkbox', { name: copy.welcome })).toBeDisabled()
     await userEvent.type(within(f).getByLabelText(copy.firstName), 'Camila')
+    await userEvent.type(within(f).getByLabelText(copy.email), 'camila@example.com')
     await userEvent.type(within(f).getByLabelText(copy.phone), '987654321')
     await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
 
-    await waitFor(() => expect(enrolments(calls)).toEqual([{ name: 'Camila', phone: '987654321', send_welcome: false }]))
+    await waitFor(() =>
+      expect(enrolments(calls)).toEqual([
+        { name: 'Camila', email: 'camila@example.com', phone: '987654321', send_welcome: false },
+      ]),
+    )
   })
 
   it('asks a minor for a guardian, and takes one already in the gym', async () => {
@@ -181,7 +192,7 @@ describe('Nuevo alumno', () => {
     )
   })
 
-  it('takes a new guardian by name and phone', async () => {
+  it('takes a new guardian by RUT or email, with their phone', async () => {
     const calls = stubApi()
     renderAt('/admin/alumnos/nuevo')
     const f = await form()
@@ -189,17 +200,26 @@ describe('Nuevo alumno', () => {
     await userEvent.type(within(f).getByLabelText(copy.firstName), 'Tomás')
     await userEvent.click(within(f).getByRole('button', { name: copy.guardianNew }))
     await userEvent.type(within(f).getByLabelText(copy.guardianName), 'Marta Vera')
+    await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
+    expect(within(f).getByText(copy.needed.guardianIdentity)).toBeInTheDocument()
+    expect(within(f).getByText(copy.needed.guardianPhone)).toBeInTheDocument()
+
+    await userEvent.type(within(f).getByLabelText(copy.guardianRut), '11.111.111-1')
     await userEvent.type(within(f).getByLabelText(copy.guardianPhone), '+56 9 1111 2222')
     await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
 
     await waitFor(() =>
       expect(enrolments(calls)).toEqual([
-        { name: 'Tomás', guardian: { name: 'Marta Vera', phone: '+56 9 1111 2222' }, send_welcome: false },
+        {
+          name: 'Tomás',
+          guardian: { name: 'Marta Vera', rut: '11.111.111-1', phone: '+56 9 1111 2222' },
+          send_welcome: false,
+        },
       ]),
     )
   })
 
-  it('needs a phone when there is no guardian', async () => {
+  it('needs a RUT or an email, and a phone, when there is no guardian', async () => {
     const calls = stubApi()
     renderAt('/admin/alumnos/nuevo')
     const f = await form()
@@ -208,20 +228,42 @@ describe('Nuevo alumno', () => {
     await userEvent.type(within(f).getByLabelText(copy.phone), '22 345 6789')
     await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
 
+    expect(within(f).getByText(copy.needed.identity)).toBeInTheDocument()
     expect(within(f).getByText(copy.needed.phone)).toBeInTheDocument()
     expect(enrolments(calls)).toEqual([])
   })
 
-  it('names who already has the phone, with a link to their ficha', async () => {
-    stubApi({ status: 409, body: { detail: { code: 'phone_in_gym', person_id: 'camila' } } })
+  it('saves someone with no phone when "No tiene WhatsApp" is ticked', async () => {
+    const calls = stubApi()
     renderAt('/admin/alumnos/nuevo')
     const f = await form()
 
     await userEvent.type(within(f).getByLabelText(copy.firstName), 'Camila')
+    await userEvent.type(within(f).getByLabelText(copy.rut), '7.654.321-6')
+    await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
+    expect(within(f).getByText(copy.needed.phone)).toBeInTheDocument()
+
+    await userEvent.click(within(f).getByRole('checkbox', { name: copy.noWhatsapp }))
+    await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
+
+    await waitFor(() =>
+      expect(enrolments(calls)).toEqual([
+        { name: 'Camila', rut: '7.654.321-6', no_whatsapp: true, send_welcome: false },
+      ]),
+    )
+  })
+
+  it('names who already has the RUT, with a link to their ficha', async () => {
+    stubApi({ status: 409, body: { detail: { code: 'rut_in_gym', person_id: 'camila' } } })
+    renderAt('/admin/alumnos/nuevo')
+    const f = await form()
+
+    await userEvent.type(within(f).getByLabelText(copy.firstName), 'Camila')
+    await userEvent.type(within(f).getByLabelText(copy.rut), '7.654.321-6')
     await userEvent.type(within(f).getByLabelText(copy.phone), '987654321')
     await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
 
-    const alert = await within(f).findByText(copy.duplicate.phone_in_gym, { exact: false })
+    const alert = await within(f).findByText(copy.duplicate.rut_in_gym, { exact: false })
     expect(within(alert).getByRole('link', { name: copy.duplicate.open })).toHaveAttribute(
       'href',
       '/admin/alumnos/camila',

@@ -1,7 +1,8 @@
 """Chilean mobile numbers, normalised to E.164 (`+56912345678`).
 
-The phone is a person's identity because it is what WhatsApp uses, so only mobiles are
-accepted: since 2012 every Chilean mobile is `9` followed by eight digits.
+The phone is how a gym reaches someone on WhatsApp (a contact, never who they are:
+migration 0036), so only mobiles are accepted: since 2012 every Chilean mobile is `9`
+followed by eight digits.
 """
 
 import re

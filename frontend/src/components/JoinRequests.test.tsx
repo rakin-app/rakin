@@ -18,14 +18,14 @@ const ANA: JoinRequest = {
   phone: '+56987654321',
   email: 'ana@example.cl',
   dob: '1990-05-20',
+  no_whatsapp: false,
   guardian: null,
   program_id: 'kids',
   program_name: 'Kids',
   created_at: '2026-11-09T15:00:00Z',
-  phone_in_gym: { id: 'p9', name: 'Ana Antigua' },
-  rut_in_gym: null,
+  rut_in_gym: { id: 'p9', name: 'Ana Antigua' },
+  email_in_gym: null,
   ignored_email: 'ana@example.cl',
-  ignored_guardian_email: null,
 }
 
 const JUAN: JoinRequest = {
@@ -37,9 +37,24 @@ const JUAN: JoinRequest = {
   email: null,
   dob: '2016-03-01',
   guardian: { name: 'Marta Pérez', phone: '+56912345678', email: 'marta@example.cl' },
+  no_whatsapp: true,
   program_id: null,
   program_name: null,
-  phone_in_gym: null,
+  rut_in_gym: null,
+  ignored_email: null,
+}
+
+// No RUT: found by their email.
+const LUCIA: JoinRequest = {
+  ...ANA,
+  id: 'r3',
+  first_name: 'Lucía',
+  rut: null,
+  phone: null,
+  email: 'lucia@example.cl',
+  no_whatsapp: true,
+  rut_in_gym: null,
+  email_in_gym: { id: 'p7', name: 'Lucía Antigua' },
   ignored_email: null,
 }
 
@@ -109,7 +124,7 @@ afterEach(() => {
 })
 
 describe('Solicitudes', () => {
-  it('lists the requests in Alumnos, with a warning for a phone already here', async () => {
+  it('lists the requests in Alumnos, with a warning for a RUT or email already here', async () => {
     stubApi()
     renderAt('/admin/alumnos')
 
@@ -117,14 +132,26 @@ describe('Solicitudes', () => {
     const ana = await row('Ana Pérez')
     expect(within(ana).getByText(`${es.common.rut('7654321-6')} · ${copy.age(ageOn(ANA.dob, new Date().toISOString().slice(0, 10))!)}`)).toBeInTheDocument()
     expect(within(ana).getByText(copy.program('Kids'))).toBeInTheDocument()
-    expect(within(ana).getByRole('link', { name: copy.phoneInGym('Ana Antigua') })).toHaveAttribute(
+    expect(within(ana).getByRole('link', { name: copy.rutInGym('Ana Antigua') })).toHaveAttribute(
       'href',
       '/admin/alumnos/p9',
     )
     expect(within(ana).getByText(copy.ignoredEmail('ana@example.cl'))).toBeInTheDocument()
     const juan = await row('Juan Pérez')
-    expect(within(juan).getByText(/Apoderado: Marta Pérez/)).toBeInTheDocument()
+    expect(within(juan).getByText(/Apoderado: Marta Pérez/)).toHaveTextContent(copy.noWhatsapp)
     expect(within(juan).queryByText(/no se usará/)).not.toBeInTheDocument()
+  })
+
+  it('warns of an email already here on a request with no RUT', async () => {
+    stubApi({ requests: [LUCIA] })
+    renderAt('/admin/alumnos')
+
+    const lucia = await row('Lucía Pérez')
+    expect(within(lucia).getByText(`lucia@example.cl · ${copy.noWhatsapp}`)).toBeInTheDocument()
+    expect(within(lucia).getByRole('link', { name: copy.emailInGym('Lucía Antigua') })).toHaveAttribute(
+      'href',
+      '/admin/alumnos/p7',
+    )
   })
 
   it('says to approve with no plan someone who is a member already', async () => {

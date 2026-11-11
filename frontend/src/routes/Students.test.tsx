@@ -15,6 +15,9 @@ const CAMILA: MemberRow = {
   id: 'p1',
   name: 'Camila Rojas',
   phone: '+56987654321',
+  no_whatsapp: false,
+  missing_phone: false,
+  missing_rut: false,
   rut: '7654321-6',
   membership: { id: 'm1', status: 'active', plan_id: 'plan-adults', plan_name: 'Mensual adultos' },
   guardian: null,
@@ -25,6 +28,9 @@ const DIEGO: MemberRow = {
   id: 'p2',
   name: 'Diego Soto',
   phone: null,
+  no_whatsapp: false,
+  missing_phone: false,
+  missing_rut: false,
   rut: null,
   membership: null,
   guardian: null,
@@ -121,6 +127,37 @@ describe('Alumnos', () => {
     expect(asked.map((params) => params.get('left'))).toEqual([null, 'only'])
     expect(router.state.location.search).toEqual({ left: true })
     expect(screen.getByRole('button', { name: copy.left })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('"Falta teléfono" lists who the gym cannot reach yet, and flags them', async () => {
+    const unreachable: MemberRow = { ...DIEGO, missing_phone: true }
+    const sinWhatsapp: MemberRow = { ...CAMILA, phone: null, no_whatsapp: true }
+    const asked = stubApi((params) =>
+      page(params.get('missing_phone') === 'true' ? [unreachable] : [sinWhatsapp, unreachable]),
+    )
+    const router = renderAt('/admin/alumnos')
+    const members = await list()
+    expect(within(members).getByText(copy.noWhatsapp)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.missingPhone }))
+
+    await waitFor(() => expect(asked.map((params) => params.get('missing_phone'))).toEqual([null, 'true']))
+    expect(router.state.location.search).toEqual({ missingPhone: true })
+    expect(screen.getByRole('button', { name: copy.missingPhone })).toHaveAttribute('aria-pressed', 'true')
+    expect(await within(await list()).findByText(copy.missingPhone)).toBeInTheDocument()
+  })
+
+  it('"Falta RUT" lists who has neither a RUT nor an email, and flags them', async () => {
+    const keyless: MemberRow = { ...DIEGO, missing_rut: true }
+    const asked = stubApi((params) => page(params.get('missing_rut') === 'true' ? [keyless] : [CAMILA, keyless]))
+    const router = renderAt('/admin/alumnos')
+    await list()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.missingRut }))
+
+    await waitFor(() => expect(asked.map((params) => params.get('missing_rut'))).toEqual([null, 'true']))
+    expect(router.state.location.search).toEqual({ missingRut: true })
+    expect(await within(await list()).findByText(copy.missingRut)).toBeInTheDocument()
   })
 
   it('lists members with their phone, RUT, status and plan', async () => {

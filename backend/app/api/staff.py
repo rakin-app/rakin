@@ -6,11 +6,12 @@ A revoked person keeps the gym's record of them and everything that names them, 
 as the classes they taught (migration 0020); with no membership either, their session
 here ends at once (migration 0005).
 
-An invite adds the person the way a member is added, by phone through
-`join_gym_by_phone`, so a phone another gym knows attaches that person without the gym
-learning so (migration 0004). Someone this gym already has, a member say, keeps their
-record and gains the role; the invite's email becomes the record's, since it is the
-address they sign in with. It then emails them a sign-in link to the admin screens.
+An invite adds the person the way a member is added, through `join_gym`: by their RUT
+when given, so a RUT another gym knows attaches that person without the gym learning
+so, else by the email in this gym (migration 0036). Someone this gym already has, a
+member say, keeps their record and gains the role; the invite's email becomes the
+record's, since it is the address they sign in with. The phone is optional, a contact
+only. It then emails them a sign-in link to the admin screens.
 
 A sign-in with an email reaches only the gyms whose own record holds it (migration
 0029), so the invite's email signs in to this gym and no other, whoever else knows the
@@ -28,6 +29,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.people import find_in_gym, give_identity, join_gym, refuse_email_in_gym
 from app.notices import STAFF_INVITE, Notice, Notices, get_notices
 from app.roles import AdminSession, Role, role_in_gym
 from app.schemas.staff import (
@@ -50,10 +52,9 @@ ROLE_NAMES = {Role.ADMIN: "administrador", Role.COACH: "coach"}
 
 # RLS keeps every table to the current gym.
 SELECT_STAFF = """
-    SELECT s.person_id, gp.name, p.phone, gp.email, s.role, s.created_at AS since
+    SELECT s.person_id, gp.name, gp.phone, gp.email, s.role, s.created_at AS since
     FROM staff s
     JOIN gym_person gp ON gp.gym_id = s.gym_id AND gp.person_id = s.person_id
-    JOIN person p ON p.id = s.person_id
 """
 
 # The owner first, then admins, then coaches, each by name.
@@ -110,12 +111,18 @@ async def invite_staff(
     role = Role(body.role)
     _may_manage(await role_in_gym(session, tenant), role)
 
-    result = await session.execute(
-        text("SELECT person_id, joined FROM join_gym_by_phone(:phone, :name, :email, NULL, NULL)"),
-        {"phone": body.phone, "name": body.name, "email": body.email},
-    )
-    person_id, joined = result.one()
-    # The insert is the check, so two invites of one phone at once give a 409, not a 500.
+    found = await find_in_gym(session, body.rut, body.email)
+    if found is not None:
+        # Whoever this gym has under the RUT, or, with no RUT of their own, the email.
+        person_id, joined = found.person_id, False
+        if found.by == "email_in_gym":
+            await give_identity(session, person_id, body.rut, None)
+    else:
+        await refuse_email_in_gym(session, body.email)
+        person_id, joined = await join_gym(
+            session, name=body.name, rut=body.rut, email=body.email, phone=body.phone
+        )
+    # The insert is the check, so two invites of one person at once give a 409, not a 500.
     added = await session.scalar(
         text(
             "INSERT INTO staff (gym_id, person_id, role) VALUES (:gym, :id, :role)"
@@ -127,7 +134,7 @@ async def invite_staff(
         # Raised, so the transaction rolls back; nothing was written.
         conflict = StaffConflict(person_id=person_id)
         raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
-    # A record new here took the invite's email from `join_gym_by_phone`; a known one did not.
+    # A record new here took the invite's email from `join_gym`; a known one did not.
     if not joined:
         await session.execute(
             text(

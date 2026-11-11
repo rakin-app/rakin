@@ -13,11 +13,11 @@ The roster flags an overdue member with a dot and never says what they owe: a co
 may not read the ledger (migration 0006), so it asks `overdue_memberships()` (0023)
 for the ids alone.
 
-A trial guest is someone trying a class: the screen adds them by phone (`POST
-/api/people`), then starts them on one of the gym's trial plans, present at the class
-(`POST .../trials`). A trial charges nothing, which is why a coach may start one where
-only an owner or admin may start any other membership. No welcome is sent: the person
-added at the mat has given a phone, not an email, and has nothing to pay yet.
+A trial guest is someone trying a class: the screen adds them by RUT or email, with
+their phone (`POST /api/people`), then starts them on one of the gym's trial plans,
+present at the class (`POST .../trials`). A trial charges nothing, which is why a coach
+may start one where only an owner or admin may start any other membership. No welcome
+is sent: the person added at the mat has nothing to pay yet.
 
 A cancelled class (migration 0033) takes no attendance: marking at it, or adding a
 trial guest to it, is a 409. Cancelling is refused once anyone is marked, so it has

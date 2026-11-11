@@ -140,10 +140,10 @@ Each gym is served on its own host, `<slug>.<BASE_DOMAIN>`: Meta at `meta.stagin
 cd /srv/rakin
 docker compose run --rm api python -m app.gyms create --slug meta --name "Meta" \
   --timezone America/Santiago \
-  --owner-email <owner@example.com> --owner-name "<Owner's name>" --owner-phone "<+56 9 …>"
+  --owner-email <owner@example.com> --owner-name "<Owner's name>" --owner-rut "<12.345.678-5>"
 ```
 
-It creates the gym with what the demo gym has before anyone trains there (the BJJ grading scheme, its programs and the default block kinds) and no members, plans or classes, and makes the person with that phone its owner (found if another gym already has them, created otherwise), with that email on Meta's record of them. Run again with the same slug, it changes nothing and says so. The slug is the host: lower-case letters, digits and hyphens, and not a name the app keeps (`www`, `app`, `api`, `staging`, `admin`, `mail` and others, in [`app/hosts.py`](../backend/app/hosts.py)).
+It creates the gym with what the demo gym has before anyone trains there (the BJJ grading scheme, its programs and the default block kinds) and no members, plans or classes, and makes the person with that RUT its owner (found if another gym already has them, created otherwise), with that email on Meta's record of them. Without `--owner-rut` the owner is someone new, keyed by the email in this gym. `--owner-phone` is optional: staff need no phone. Run again with the same slug, it changes nothing and says so. The slug is the host: lower-case letters, digits and hyphens, and not a name the app keeps (`www`, `app`, `api`, `staging`, `admin`, `mail` and others, in [`app/hosts.py`](../backend/app/hosts.py)).
 
 Then the owner opens `https://meta.staging.rakin.app`, which shows Meta's name, and signs in with that email. On a gym's host:
 

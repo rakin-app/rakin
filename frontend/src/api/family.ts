@@ -6,7 +6,8 @@ export type PersonRef = { id: string; name: string }
 /** Who pays for this person, or whom they pay for: never both. */
 export type Family = { guardian: PersonRef | null; dependents: PersonRef[] }
 
-/** Someone new, added by name with no phone: kids have none. */
+/** Someone new, added by name: with their own RUT they are the person it is; with none,
+ * someone new. Their guardian's phone is the one the gym uses. */
 export type NewDependent = { name: string; rut?: string; dob?: string }
 
 export type AddDependent = { person_id: string } | NewDependent
