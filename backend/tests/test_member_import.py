@@ -9,7 +9,7 @@ sheet, `app/seed/demo_import.csv` and its XLSX twin, is dry-run against `make se
 import io
 import uuid
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,15 @@ from app.seed.build import GYM_ID, seed_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import (
+    Database,
+    in_gym,
+    migrate,
+    run,
+    seed_gym,
+    seeded_today,
+    throwaway_database,
+)
 from tests.test_join import with_privacy
 from tests.test_people import new_phone
 from tests.test_plans import add_staff
@@ -871,3 +879,23 @@ def test_a_new_row_or_guardian_never_takes_an_email_another_rut_has(
     [row] = imported(client, gym, sheet, dry_run=False)["rows"]
     assert row["errors"] == [{"field": "guardian_email", "code": "email_in_gym"}]
     assert people(db, gym) == count
+
+
+@pg
+def test_someone_imported_is_not_on_a_quien_llamar_for_the_months_before_rakin(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # Training there since long before the import (#209): Rakin has no class of theirs
+    # from then, so it counts from the import, not from the sheet's Fecha de ingreso.
+    today = seeded_today()
+    joined = (today - timedelta(days=119)).isoformat()
+    due = (today + timedelta(days=10)).isoformat()
+    mapping = {"name": 0, "plan": 1, "due_on": 2, "started_on": 3}
+    sheet = sheet_with(["Isidora Contreras", "Mensual", due, joined], mapping=mapping)
+    [row] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert (row["errors"], row["membership"]) == ([], "created")
+    assert membership_of(client, gym, "Isidora Contreras")["started_on"] == joined
+
+    response = client.get("/api/inactive", headers=as_gym(gym))
+    assert response.status_code == 200, response.text
+    assert response.json() == []

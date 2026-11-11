@@ -60,20 +60,32 @@ CLASS_TYPES = (
 )
 
 
-# The adults' week (migration 0020 has no timetable; this is what was held), by ISO
-# weekday: class type key, gym-local hour. Kids and competition hold none in the seed.
-WEEK = {
-    1: ("fundamentals", 19),
-    2: ("advanced", 20),
-    3: ("fundamentals", 19),
-    4: ("advanced", 20),
-    5: ("fundamentals", 19),
-    6: ("open-mat", 11),
-}
-# How many days of that week before the seed date were held, and the share of the
-# adults with an active membership at each.
+@dataclass(frozen=True)
+class SlotSpec:
+    """One class of the adults' weekly schedule (migration 0035), which made every class
+    the seed holds. Kids and competition have none in the seed."""
+
+    key: str
+    class_type: str
+    # ISO weekdays, 1 is Monday.
+    weekdays: tuple[int, ...]
+    # Gym-local start.
+    hour: int
+    duration_minutes: int
+    # The share of the adults with an active membership marked at each class held.
+    turnout: float
+
+
+SLOTS = (
+    # Early, so on any day Hoy has a class that has started, which nobody marked yet.
+    SlotSpec("morning", "fundamentals", (1, 2, 3, 4, 5), 7, 60, 0.15),
+    SlotSpec("weekend", "fundamentals", (6, 7), 9, 60, 0.2),
+    SlotSpec("fundamentals", "fundamentals", (1, 3, 5), 19, 60, 0.45),
+    SlotSpec("advanced", "advanced", (2, 4), 20, 75, 0.45),
+    SlotSpec("open-mat", "open-mat", (6, 7), 11, 90, 0.3),
+)
+# How many days of the schedule before the seed date were held.
 CLASS_DAYS = 21
-TURNOUT = 0.45
 
 # A class's blocks (migration 0028), by default block kind key: seconds, or for
 # sparring (rounds, round seconds, rest seconds). Classes alternate the two plans.
@@ -138,7 +150,7 @@ CUSTOM_FIELDS = [
         "key": "weight_class",
         "label": "Categoría competencia",
         "type": "enum",
-        "options": ["Gallo", "Pluma", "Pena", "Leve", "Medio", "Meio-pesado", "Pesado"],
+        "options": ["Gallo", "Pluma", "Pena", "Liviano", "Medio", "Medio pesado", "Pesado"],
     },
     {"key": "medical_notes", "label": "Notas médicas", "type": "text", "sensitive": True},
 ]
