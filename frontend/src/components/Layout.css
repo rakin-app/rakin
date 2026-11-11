@@ -32,3 +32,8 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* A `PageHeader` inside the container takes its side padding, so the title lines up with the body at any width. */
+.page-container > .page-header {
+  padding-inline: 0;
+}

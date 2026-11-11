@@ -58,8 +58,8 @@ export function Today() {
 
   return (
     <div className="today">
-      <PageHeader title={copy.heading(weekdayDay(new Date()))} />
       <PageContainer className="today__page">
+        <PageHeader title={copy.heading(weekdayDay(new Date()))} />
         {role.isError && <Failed message={copy.roleError} retry={() => void role.refetch()} />}
         {role.data === 'coach' && <CoachToday />}
         {money && <OwnerToday />}

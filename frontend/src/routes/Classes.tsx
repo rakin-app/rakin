@@ -48,8 +48,8 @@ export function Classes() {
 
   return (
     <div className="classes">
-      <PageHeader title={copy.title} eyebrow={weekdayDay(toDate(gymToday))} />
       <PageContainer className="classes__page">
+        <PageHeader title={copy.title} eyebrow={weekdayDay(toDate(gymToday))} />
         <Grid>
           <div className="classes__column">
             <StartSession />

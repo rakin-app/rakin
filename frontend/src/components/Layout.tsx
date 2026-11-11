@@ -3,8 +3,9 @@ import { cx } from './classNames'
 import './Layout.css'
 
 /**
- * A screen's body under its `PageHeader`: as wide as the window up to `--content-wide`,
- * centred, with the side padding of the breakpoint it is on.
+ * A screen's header and body: as wide as the window up to `--content-wide`, centred,
+ * with the side padding of the breakpoint it is on. A `PageHeader` inside it lines up
+ * with the body.
  */
 export function PageContainer({ className, ...rest }: ComponentProps<'div'>) {
   return <div className={cx('page-container', className)} {...rest} />

@@ -44,7 +44,6 @@
 
 /* The list page: "Crear clase" and the day, then from 1024px the week beside them. */
 .classes__page {
-  padding-top: var(--space-1);
   padding-bottom: var(--space-6);
 }
 
