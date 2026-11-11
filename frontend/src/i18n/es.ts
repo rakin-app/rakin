@@ -543,7 +543,7 @@ export const es = {
       leaveForm: {
         title: 'Dar de baja',
         intro:
-          'Termina su plan desde ese día: no se le cobra nada más y sale de las listas, de la asistencia y de Hoy. Lo que debe sigue pendiente en Pagos, y su historial (pagos, asistencia, grados, tiempo en el tatami) se mantiene.',
+          'Termina su plan desde ese día: no se le cobra nada más y sale de las listas, de la asistencia y de Hoy. Lo que debe sigue pendiente en Pagos, y su historial (pagos, asistencia, grados, tiempo de entrenamiento) se mantiene.',
         on: 'Desde',
         submit: 'Dar de baja',
         cancel: 'Cancelar',
@@ -853,7 +853,7 @@ export const es = {
         programs: 'Tus programas y sus tipos de clase.',
         schedule: 'Las clases de cada semana y los días cerrados.',
         blocks: 'Las partes de una clase en el timer.',
-        grading: 'Grados, cinturones y cuándo está listo para graduarse.',
+        grading: 'Opcional: grados o cinturones, si tu academia los usa, y cuándo alguien está listo para graduarse.',
         fields: 'Datos extra en la ficha de cada alumno.',
         staff: 'Admins y coaches, y quién tiene acceso.',
         joinLink: 'El link para que se inscriban solos.',
@@ -1566,7 +1566,7 @@ export const es = {
         round: (kind: string, round: number, rounds: number) => `${kind} · ronda ${round}/${rounds}`,
         rest: (round: number, rounds: number) => `Descanso · sigue la ronda ${round}/${rounds}`,
         paused: 'En pausa',
-        fightMode: 'LUCHA',
+        fightMode: 'RONDA',
         restMode: 'DESCANSO',
         next: (what: string) => `Sigue: ${what}`,
         nextRound: (round: number, rounds: number) => `ronda ${round}/${rounds}`,
@@ -1926,10 +1926,10 @@ export const es = {
       },
     },
   },
-  // "Tiempo en el tatami" (#141): the student page and the ficha read the same totals.
+  // "Tiempo de entrenamiento" (#141, #226): the student page and the ficha read the same totals.
   matTime: {
-    mine: 'Tu tiempo en el tatami',
-    theirs: 'Tiempo en el tatami',
+    mine: 'Tu tiempo de entrenamiento',
+    theirs: 'Tiempo de entrenamiento',
     periods: 'Periodo',
     month: 'Este mes',
     allTime: 'Siempre',
@@ -1951,8 +1951,8 @@ export const es = {
     emptyMine: 'Todavía no hay clases con tiempo registrado. Aparecerá aquí cuando tu profe use el cronómetro.',
     emptyTheirs: 'Todavía no hay clases con tiempo registrado.',
     emptyMonth: 'Este mes todavía no hay tiempo registrado.',
-    loading: 'Cargando el tiempo en el tatami…',
-    error: 'No pudimos cargar el tiempo en el tatami.',
+    loading: 'Cargando el tiempo de entrenamiento…',
+    error: 'No pudimos cargar el tiempo de entrenamiento.',
   },
   me: {
     // From the student page back to the admin screens, for staff who also train (#214).
@@ -2004,7 +2004,9 @@ export const es = {
     },
     training: {
       title: 'Mi entrenamiento',
+      // A rank drawn as a belt is a belt; one with no colours (kyu, a level) is a grade.
       belt: 'Cinturón',
+      rank: 'Grado',
       since: (day: string) => `desde ${day}`,
       month: 'Este mes',
       classes: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
@@ -2149,7 +2151,7 @@ export const es = {
       'Identificación: nombre, RUT y fecha de nacimiento.',
       'Contacto: teléfono y correo.',
       'Si eres menor de edad, los datos que entrega tu apoderado, y los suyos.',
-      'Tu actividad en la academia: asistencia a clases, grado o cinturón y tiempo de entrenamiento.',
+      'Tu actividad en la academia: asistencia a clases, grado o cinturón si la academia los usa, y tiempo de entrenamiento.',
       'Pagos: tu plan, tus cobros y pagos, y los comprobantes de transferencia que subas.',
       'Los campos adicionales que pida la academia, como un contacto de emergencia.',
     ],

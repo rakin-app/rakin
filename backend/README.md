@@ -368,7 +368,7 @@ A coach runs a class from a timer as a sequence of blocks (#136): warm-up, techn
 | `PUT` | `/api/sessions/{id}/blocks/{block_id}/actual` | `{"actual_seconds", "rounds_completed"}`: what the block ran; 200 with the block |
 | `GET` | `/api/sessions/{id}/blocks/suggested` | `{"session_id", "from_session_id", "blocks": […]}`: the plan of the latest other session of the same class type that has one, without ids, actuals or archived kinds; none when there is no such session |
 | `GET` | `/api/people/{id}/time` | `{"timezone", "month_start", "this_month", "all_time"}`, each `{"by_kind", "sparring_seconds", "open_mat_seconds", "classes", "open_mats"}` |
-| `GET` | `/api/me/time` | the signed-in person's own time, as above: the student page's "Tu tiempo en el tatami" |
+| `GET` | `/api/me/time` | the signed-in person's own time, as above: the student page's "Tu tiempo de entrenamiento" |
 
 Every gym starts with six kinds, Calentamiento, Técnica, Drilling, Juegos, Sparring (`is_sparring`) and Otro: a trigger on `gym` gives a new gym them, and the migration gave the gyms already there theirs. Their ids are derived from the gym's (`block_kind_default_id`, and `app.seed.build.default_block_kind_id` in Python), so the seed points at them. A kind in use is archived rather than deleted, and planned no more; a block already of it may stay in a replanned session.
 

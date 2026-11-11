@@ -178,7 +178,7 @@ async def my_time(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
 ) -> PersonTime:
     """The signed-in person's time on the mat, as `GET /api/people/{id}/time` gives it:
-    what the student page's "Tu tiempo en el tatami" shows."""
+    what the student page's "Tu tiempo de entrenamiento" shows."""
     return await person_time_of(session, tenant.gym_id, tenant.person_id)
 
 
