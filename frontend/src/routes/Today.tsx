@@ -610,7 +610,12 @@ function OverdueRow({
         >
           <span className="today__name">{period.person_name}</span>
           <span className="today__detail today__detail--warning">
-            {copy.overdue.detail(period.days_overdue, amount, period.plan_name)}
+            {[
+              copy.overdue.detail(period.days_overdue, amount, period.plan_name),
+              copy.overdue.membership[period.membership_status],
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </span>
           {reminded && <span className="today__detail">{reminded}</span>}
         </Link>

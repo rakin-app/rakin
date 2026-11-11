@@ -58,6 +58,7 @@ const late = (name: string, days: number, amount = 45000): OverduePeriod => ({
   person_id: name,
   person_name: name,
   plan_name: 'Mensual adultos',
+  membership_status: 'active',
   period_start: '2026-10-30',
   due_date: '2026-10-30',
   outstanding_clp: amount,
@@ -334,6 +335,26 @@ describe('Hoy', () => {
     const felipe = within(overdue).getByRole('link', { name: /^Felipe Díaz/ })
     expect(felipe).toHaveAttribute('href', '/admin/alumnos/Felipe%20D%C3%ADaz')
     expect(within(felipe).getByText('Venció hace 9 días · $45.000 · Mensual adultos')).toBeInTheDocument()
+  })
+
+  it('keeps what a lapsed or cancelled plan still owes, saying what became of it', async () => {
+    // The debt outlives the plan (#207).
+    stubApi({
+      overdue: {
+        total_clp: 90000,
+        periods: [
+          { ...late('Agustín Cortés', 34), membership_status: 'lapsed' },
+          { ...late('Rosa Paz', 20), membership_status: 'cancelled' },
+        ],
+      },
+    })
+    renderToday()
+
+    const overdue = await section(copy.overdue.title)
+    expect(
+      await within(overdue).findByText('Venció hace 34 días · $45.000 · Mensual adultos · plan caducado'),
+    ).toBeInTheDocument()
+    expect(within(overdue).getByText('Venció hace 20 días · $45.000 · Mensual adultos · dado de baja')).toBeInTheDocument()
   })
 
   it('shows three overdue until asked for all', async () => {

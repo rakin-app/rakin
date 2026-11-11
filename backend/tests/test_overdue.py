@@ -1,8 +1,8 @@
 """The gym's overdue periods, as the owner's dashboard reads them ("Hoy", #58).
 
 `v_overdue` decides what is overdue (`tests/test_reporting_views.py`); this is what
-the endpoint adds: only Active memberships, who owes it and on which plan, the total,
-and the longest overdue first.
+the endpoint adds: every membership's, whatever its status (#207), who owes it and on
+which plan, the total, and the longest overdue first.
 """
 
 import uuid
@@ -103,14 +103,32 @@ def test_lists_active_overdue_periods_longest_first_with_the_total(
 
 
 @pg
-@pytest.mark.parametrize("status", ["lapsed", "cancelled"])
-def test_leaves_out_memberships_that_are_not_active(
+@pytest.mark.parametrize("status", ["lapsed", "cancelled", "frozen"])
+def test_lists_what_a_membership_that_is_not_active_still_owes(
     client: TestClient, db: Database, sur: uuid.UUID, status: str
 ) -> None:
-    membership = bill(db, sur, add_person(client, sur, "Ana"), [(-30, 30000, 0, 0)])
+    # A lapsed plan is not a paid one (#207): the debt stays until it is paid, adjusted
+    # or written off, whatever became of the membership.
+    ana = add_person(client, sur, "Ana")
+    membership = bill(db, sur, ana, [(-30, 30000, 0, 0)])
     set_status(db, membership, status)
 
-    assert read(client, sur) == {"total_clp": 0, "periods": []}
+    found = read(client, sur)
+
+    assert found["total_clp"] == 30000
+    [period] = found["periods"]
+    assert (period["membership_id"], period["membership_status"]) == (membership, status)
+
+
+@pg
+def test_each_period_says_its_memberships_status(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    bill(db, sur, add_person(client, sur, "Ana"), [(-3, 30000, 0, 0)])
+
+    [period] = read(client, sur)["periods"]
+
+    assert period["membership_status"] == "active"
 
 
 @pg

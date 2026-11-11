@@ -1,13 +1,16 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
+import type { MembershipStatus } from './people'
 
-/** A period of an Active membership past due and not paid in full (backend `OverduePeriod`). */
+/** A period past due and not paid in full, of a membership in any status (backend `OverduePeriod`). */
 export type OverduePeriod = {
   billing_period_id: string
   membership_id: string
   person_id: string
   person_name: string
   plan_name: string
+  // A lapsed or cancelled plan still owes what it owed (#207).
+  membership_status: MembershipStatus
   period_start: string
   due_date: string
   outstanding_clp: number

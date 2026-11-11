@@ -264,15 +264,14 @@ function History({ page }: { page: MyPage }) {
               <span className="history__what">
                 <span className="history__month">
                   {copy.history.month(
-                    payment.charge_title ??
-                      (payment.period_start ? t.common.month(payment.period_start, year) : copy.history.payment),
+                    title(payment, year),
                     payment.person_id === page.person_id ? null : payment.person_name,
                   )}
                 </span>
                 <span className="history__detail">{detail(payment, page.timezone)}</span>
               </span>
               <span className="history__state">
-                {payment.status === 'validated' ? t.common.clp(payment.amount_clp) : copy.history.status[payment.status]}
+                {payment.status === 'validated' ? amount(payment) : copy.history.status[payment.status]}
               </span>
             </li>
           ))}
@@ -282,7 +281,35 @@ function History({ page }: { page: MyPage }) {
   )
 }
 
+/** `Octubre` for a payment, or the cobro extra it pays; `Devolución octubre`, `Descuento
+ * octubre`; `Saldo a favor`. */
+function title(payment: MyPayment, year: string): string {
+  const words = copy.history
+  const month = payment.period_start ? t.common.month(payment.period_start, year) : null
+  const what = payment.charge_title ?? month
+  if (payment.kind === 'payment') return what ?? words.payment
+  if (payment.kind === 'adjustment' && what === null) return words.credit
+  const kind = payment.kind === 'refund' ? words.refund : payment.amount_clp > 0 ? words.discount : words.surcharge
+  if (payment.charge_title) return `${kind} · ${payment.charge_title}`
+  return month ? `${kind} ${month.toLowerCase()}` : kind
+}
+
+/** A payment as paid; a refund given back, `−$20.000`; an adjustment by what it does to
+ * what is owed, a discount `−$5.000` and a surcharge `+$5.000`; a credit as held. */
+function amount(payment: MyPayment): string {
+  if (payment.kind === 'refund') return t.common.signedClp(-payment.amount_clp)
+  if (payment.kind === 'adjustment' && payment.period_start) return t.common.adjustmentClp(payment.amount_clp)
+  return t.common.clp(payment.amount_clp)
+}
+
 function detail(payment: MyPayment, timeZone: string): string {
+  const words = copy.history
+  const made = when(payment.validated_at ?? payment.created_at, timeZone)
+  if (payment.kind === 'refund') return words.refunded(made)
+  if (payment.kind === 'adjustment') {
+    if (!payment.period_start) return [payment.note, made].filter(Boolean).join(' · ')
+    return payment.amount_clp > 0 ? words.discounted(made) : words.surcharged(made)
+  }
   if (payment.status === 'pending') return copy.history.sent(when(payment.claimed_at ?? payment.created_at, timeZone))
   const reviewed = when(payment.validated_at ?? payment.created_at, timeZone)
   return payment.status === 'validated' ? copy.history.validated(reviewed) : copy.history.rejected(reviewed, payment.note)

@@ -459,9 +459,9 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
   const status = describeStatus(entry)
   return (
     <tr className="payments__line" role="row">
-      <td role="cell" className="payments__muted payments__date">{dayTime(entry.created_at, timeZone)}</td>
+      <td role="cell" className="payments__muted payments__date">{entryDate(entry, timeZone)}</td>
       <Student person={entry.person} guardian={entry.guardian} />
-      <td role="cell" className="payments__kind">{copy.kind[entry.kind]}</td>
+      <td role="cell" className="payments__kind">{kindLabel(entry)}</td>
       <td role="cell" className="payments__period">{periodLabel(entry)}</td>
       <td role="cell" className="payments__detail">{detailLabel(entry)}</td>
       <td role="cell" className="payments__status">
@@ -480,10 +480,23 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
   )
 }
 
-/** An adjustment with its sign, `+$5.000` in the member's favour or `−$5.000` owed; a
- * refund, money out, `−$10.000`. */
+/** A charge on a period by the day its period starts, the day the book files it under
+ * (#206); any other entry by when it was made, `8 nov 14:12`. */
+function entryDate(entry: BookEntry, timeZone: string): string {
+  if (entry.kind === 'charge' && entry.period) return shortDay(entry.period.period_start)
+  return dayTime(entry.created_at, timeZone)
+}
+
+/** `Descuento` or `Recargo` for an adjustment on a period (#210); any other kind as named. */
+function kindLabel(entry: BookEntry): string {
+  if (entry.kind === 'adjustment' && entry.period) return copy.adjustment[entry.amount_clp > 0 ? 'favor' : 'owed']
+  return copy.kind[entry.kind]
+}
+
+/** An adjustment by what it does to what is owed, a discount `−$5.000` and a surcharge
+ * `+$5.000`, and a carried credit as held; a refund, money out, `−$10.000`. */
 function bookAmount(entry: BookEntry): string {
-  if (entry.kind === 'adjustment') return t.common.signedClp(entry.amount_clp)
+  if (entry.kind === 'adjustment' && entry.period) return t.common.adjustmentClp(entry.amount_clp)
   if (entry.kind === 'refund') return t.common.signedClp(-entry.amount_clp)
   return clp(entry.amount_clp)
 }
@@ -538,10 +551,15 @@ function periodLabel(entry: BookEntry): string {
     : shortMonth(period.period_start)
 }
 
-/** The "Detalle" column: how the money came; for a charge, the plan it bills; for an
- *  adjustment, its note. */
+/** The "Detalle" column: how the money came; for a charge, the plan it bills, and what
+ *  became of the membership once it is no longer active (#207); for an adjustment, its
+ *  note. */
 function detailLabel(entry: BookEntry): string {
-  if (entry.kind === 'charge') return entry.plan_name ?? '—'
+  if (entry.kind === 'charge') {
+    const plan = entry.plan_name ?? '—'
+    const membership = entry.membership_status && copy.membership[entry.membership_status]
+    return membership ? `${plan} · ${membership}` : plan
+  }
   // A cobro extra, labelled by its category (#195), then how the money came.
   if (entry.extra) {
     const category = t.admin.extra.category[entry.extra.category]

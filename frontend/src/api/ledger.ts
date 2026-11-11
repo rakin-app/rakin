@@ -2,6 +2,7 @@ import { infiniteQueryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 import type { Category } from './extraCharges'
 import type { FreezeLine, Method, TimelineEntry } from './member'
+import type { MembershipStatus } from './people'
 
 export const BOOK_FILTERS = ['all', 'pending', 'overdue', 'kids'] as const
 /** `all` and `kids` are the month's entries; `pending` and `overdue` how the gym stands today. */
@@ -34,6 +35,8 @@ export type BookEntry = {
   // Null, with `plan_name`, on a cobro extra's entry, which `extra` names (#195).
   membership_id: string | null
   plan_name: string | null
+  // The membership's status today; a lapsed or cancelled plan still owes (#207).
+  membership_status: MembershipStatus | null
   person: PersonRef
   // Who pays for them, when they are a dependent.
   guardian: PersonRef | null
