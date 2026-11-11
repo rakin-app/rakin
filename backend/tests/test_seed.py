@@ -18,6 +18,7 @@ from app.domain.dates import add_months
 from app.domain.membership import Membership, MembershipStatus, PlanKind, is_due_to_lapse
 from app.domain.phone import normalize_phone
 from app.domain.rut import is_valid_rut
+from app.domain.schedule import HORIZON_DAYS, horizon
 from app.integrations.blobstore import LocalBlobStore, StoredBlob
 from app.seed import PROOF_IMAGE, Loaded, load, store_proofs
 from app.seed.build import (
@@ -190,21 +191,42 @@ def test_design_overdue(seed: Seed) -> None:
 
 
 def test_design_pending_proofs(seed: Seed) -> None:
-    # "Por validar $162.000 · 3 comprobantes"
+    # "Por validar · 3 comprobantes". Sofía is frozen, so nothing of hers is waiting (#216).
     pending = [e for e in seed.ledger_entries if e["status"] == "pending"]
     assert all(e["kind"] == "payment" for e in pending)
-    assert sum(e["amount_clp"] for e in pending) == 162_000
+    assert sum(e["amount_clp"] for e in pending) == 126_000
     who = names(seed)
     by_payer = Counter(who[e["claimed_by"]] for e in pending)
-    assert by_payer == {"Diego Morales": 1, "Camila Ortiz": 2, "Catalina Reyes": 1}
-    # Camila's one transfer covers Mateo and Sofía.
+    assert by_payer == {"Diego Morales": 1, "Camila Ortiz": 1, "Catalina Reyes": 1}
     memberships = by_id(seed.memberships)
     camila = {
         who[memberships[e["membership_id"]]["person_id"]]
         for e in pending
         if who[e["claimed_by"]] == "Camila Ortiz"
     }
-    assert camila == {"Mateo Ortiz", "Sofía Ortiz"}
+    assert camila == {"Mateo Ortiz"}
+
+
+def test_frozen_members_are_not_billed_while_frozen(seed: Seed) -> None:
+    """#216: a frozen membership waits (`app.domain.billing.due_periods`), and the freeze
+    moved its due date by the frozen days (`app.domain.membership.freeze`)."""
+    frozen = [m for m in seed.memberships if m["status"] == "frozen"]
+    assert {names(seed)[m["person_id"]] for m in frozen} == {"Sofía Ortiz", "Cristóbal Herrera"}
+    freezes = {f["membership_id"]: f for f in seed.freezes}
+    for m in frozen:
+        start, end = freezes[m["id"]]["from_date"], freezes[m["id"]]["to_date"]
+        assert start <= seed.as_of < end
+        own = [p for p in seed.billing_periods if p["membership_id"] == m["id"]]
+        assert own and all(p["period_start"] < start for p in own)
+        # Nothing was charged or claimed once the freeze began.
+        assert all(
+            e["created_at"] < local(start)
+            for e in seed.ledger_entries
+            if e["membership_id"] == m["id"]
+        )
+        billed_through = max(p["period_end"] for p in own)
+        assert m["current_period_end"] == billed_through + (end - start)
+        assert m["anchor_day"] == (m["current_period_end"] + timedelta(days=1)).day
 
 
 def test_every_proof_has_a_placeholder_file_and_a_rerun_puts_none(
@@ -273,7 +295,8 @@ def test_monthly_paid_through_and_generation(seed: Seed) -> None:
             continue
         own = sorted(periods[m["id"]], key=lambda p: p["period_start"])
         ends = [p["period_end"] for p in own if p["id"] in paid]
-        if ends:
+        # A freeze moved a frozen one's (`test_frozen_members_are_not_billed_while_frozen`).
+        if ends and m["status"] != "frozen":
             assert m["current_period_end"] == ends[-1]
         if m["status"] == "active":
             # The nightly job would already have generated the next one (#31).
@@ -307,9 +330,12 @@ def test_nothing_happens_after_the_seed_date(seed: Seed) -> None:
 
 
 def test_weeks_of_classes_ran_in_blocks(seed: Seed) -> None:
-    """Every session ran blocks of the default kinds; an open mat ran one of rounds; the
-    adults at each are active members of a plan for them that spends no credits."""
-    assert len(seed.sessions) >= 15
+    """Every class before the seed date ran blocks of the default kinds; an open mat ran
+    one of rounds; the adults at each are active members of a plan for them that spends
+    no credits. None from the seed date on has run yet."""
+    today = local(seed.as_of)
+    held = [s for s in seed.sessions if s["starts_at"] < today]
+    assert len(held) >= 15
     open_mat = seed_id("class_type", "open-mat")
     sparring = default_block_kind_id(GYM_ID, "sparring")
     by_session: defaultdict[object, list[Row]] = defaultdict(list)
@@ -318,19 +344,52 @@ def test_weeks_of_classes_ran_in_blocks(seed: Seed) -> None:
         assert 0 < block["actual_seconds"] <= block["planned_seconds"] + 60
         if block["block_kind_id"] == sparring:
             assert block["actual_seconds"] == block["rounds_completed"] * block["round_seconds"]
-    for session in seed.sessions:
-        assert session["starts_at"] < local(seed.as_of)
+    for session in held:
         blocks = by_session[session["id"]]
         if session["class_type_id"] == open_mat:
             assert [b["block_kind_id"] for b in blocks] == [sparring]
         else:
             assert len(blocks) == 4
     memberships = {m["id"]: m for m in seed.memberships}
+    marked = {mark["session_id"] for mark in seed.attendance}
     for mark in seed.attendance:
         membership = memberships[mark["membership_id"]]
         assert membership["status"] == MembershipStatus.ACTIVE.value
         assert mark["credits_consumed"] == 0
-    assert len(seed.attendance) >= 5 * len(seed.sessions)
+    assert len(seed.attendance) >= 5 * len(held)
+    assert {s["id"] for s in held} <= marked
+    upcoming = {s["id"] for s in seed.sessions} - {s["id"] for s in held}
+    assert not upcoming & (marked | set(by_session))
+
+
+def test_the_weekly_schedule_made_the_classes(seed: Seed) -> None:
+    """#216: Hoy and Clases had nothing today. The schedule's slots made every class, the
+    held ones and those through the horizon, as the `schedule` job would have."""
+    slots = by_id(seed.schedule_slots)
+    assert slots
+    first, last = horizon(seed.as_of)
+    for slot in slots.values():
+        assert slot["valid_from"] <= seed.as_of - timedelta(days=21)
+        assert slot["generated_until"] == last
+        assert slot["coach_id"] == seed_id("person", "sebastian")
+    for session in seed.sessions:
+        slot = slots[session["slot_id"]]
+        day = session["slot_date"]
+        assert slot["valid_from"] <= day <= last
+        assert day.isoweekday() in slot["weekdays"]
+        starts = datetime.combine(day, slot["start_time"], tzinfo=ZONE)
+        assert session["starts_at"] == starts
+        assert session["class_type_id"] == slot["class_type_id"]
+        assert session["duration_minutes"] == slot["duration_minutes"]
+        assert session["created_at"] <= session["starts_at"]
+    days = Counter(s["slot_date"] for s in seed.sessions)
+    assert set(days) >= {first + timedelta(days=n) for n in range(HORIZON_DAYS)}
+    # Today has classes, one in the morning: by the time anyone opens Hoy it has
+    # started, and nobody has marked it, so it is under "Sin asistencia".
+    today = [s for s in seed.sessions if s["slot_date"] == seed.as_of]
+    assert len(today) >= 2
+    assert min(s["starts_at"] for s in today) <= local(seed.as_of, 9)
+    assert not {s["id"] for s in today} & {a["session_id"] for a in seed.attendance}
 
 
 # --- Postgres ---
@@ -378,3 +437,30 @@ def test_api_user_reads_the_whole_gym(db: Database) -> None:
         # Every person has a membership or staff row, so RLS hides none of them.
         assert found[0]["n"] == len(rows), table
     assert run(db.api_url, in_gym(None, "SELECT count(*) AS n FROM person"))[0]["n"] == 0
+
+
+@pytest.mark.postgres
+def test_a_rerun_keeps_a_class_the_schedule_made_again(db: Database) -> None:
+    """A class of the schedule deleted and made again by a refill has a new id; loading
+    again leaves it be instead of failing on its slot and date."""
+    seed = load_as_owner(db, DESIGN_DAY).seed
+    upcoming = next(s for s in seed.sessions if s["slot_date"] > seed.as_of)
+
+    async def remake(conn: asyncpg.Connection) -> None:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(GYM_ID))
+            await conn.execute("DELETE FROM session WHERE id = $1", upcoming["id"])
+            await conn.execute(
+                "INSERT INTO session (gym_id, class_type_id, starts_at, coach_id, slot_id,"
+                " slot_date) VALUES ($1, $2, $3, $4, $5, $6)",
+                GYM_ID,
+                upcoming["class_type_id"],
+                upcoming["starts_at"],
+                upcoming["coach_id"],
+                upcoming["slot_id"],
+                upcoming["slot_date"],
+            )
+
+    run(db.owner_url, remake)
+    again = load_as_owner(db, None)
+    assert again.inserted["session"] == 0
