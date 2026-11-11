@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding: var(--space-5) var(--space-5) var(--space-6);
+  padding-block: var(--space-5) var(--space-6);
 }
 
 .payments__header {
@@ -102,11 +102,13 @@
   border-top: 1px solid var(--color-divider);
 }
 
-/* The "por validar" pill is the link to the queue: a 44px target around it. */
+/* The "por validar" pill is the link to the queue: a 44px target around it, reaching
+   11px past the 22px pill on each side so the row does not grow by it. */
 .payments__to-review {
   display: inline-flex;
   align-items: center;
   min-height: var(--control-height);
+  margin-block: -11px;
   border-radius: var(--radius-pill);
   text-decoration: none;
 }
@@ -176,17 +178,19 @@
   margin: var(--space-4);
 }
 
+/* Two by two on a phone, so the list starts in the first screen; four across from 960px. */
 .payments__kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
 }
 
 .payments__kpi {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1-5);
-  padding: var(--space-4);
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -202,7 +206,7 @@
 
 .payments__kpi-amount {
   font-family: var(--font-display);
-  font-size: var(--text-3xl);
+  font-size: var(--text-xl);
   font-weight: var(--font-weight-bold);
   line-height: 1;
 }
@@ -317,9 +321,137 @@
   font-size: var(--text-xs);
 }
 
+/*
+ * Below 960px each line of the table is a card: the name (and "Apoderado: …") with the
+ * amount on its right, then "Pago · Nov 2026 · Transferencia", then the status. The
+ * markup stays the table's; the row wraps as a flex line, broken by its two pseudo
+ * elements, and the date gives way.
+ */
+@media (max-width: 959.98px) {
+  .payments__table,
+  .payments__table tbody {
+    display: block;
+    min-width: 0;
+  }
+
+  .payments__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .payments__line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-divider);
+  }
+
+  .payments__table tbody .payments__line:last-child {
+    border-bottom: 0;
+  }
+
+  .payments__line::before,
+  .payments__line::after {
+    content: '';
+    flex-basis: 100%;
+  }
+
+  .payments__table .payments__line td {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  .payments__table .payments__line .payments__date {
+    display: none;
+  }
+
+  .payments__line .payments__who {
+    order: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: var(--text-base);
+  }
+
+  .payments__table .payments__line .payments__amount {
+    order: 2;
+    padding-left: var(--space-3);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .payments__line::before {
+    order: 3;
+  }
+
+  .payments__line .payments__kind,
+  .payments__line .payments__period,
+  .payments__line .payments__detail {
+    margin-top: var(--space-1);
+    color: var(--color-text-muted);
+  }
+
+  .payments__line .payments__kind {
+    order: 4;
+  }
+
+  .payments__line .payments__period {
+    order: 5;
+  }
+
+  .payments__line .payments__detail {
+    order: 6;
+    min-width: 0;
+  }
+
+  .payments__line .payments__period::before,
+  .payments__line .payments__detail::before {
+    /* Plain first: a browser without alt text for `content` (Safari < 17.4, Firefox < 128)
+       drops the second declaration and keeps the dot. */
+    content: '·';
+    content: '·' / '';
+    margin-inline: var(--space-1-5);
+  }
+
+  .payments__line::after {
+    order: 7;
+  }
+
+  .payments__line .payments__status {
+    order: 8;
+    margin-top: var(--space-1-5);
+  }
+
+  .payments__line.payments__freeze {
+    background: var(--color-surface-sunken);
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+}
+
 @media (min-width: 960px) {
   .payments {
-    padding: var(--space-8);
+    padding-block: var(--space-8);
+  }
+
+  .payments__kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .payments__kpi {
+    gap: var(--space-1-5);
+    padding: var(--space-4);
+  }
+
+  .payments__kpi-amount {
+    font-size: var(--text-3xl);
   }
 
   .payments__note {
