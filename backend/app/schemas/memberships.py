@@ -120,7 +120,10 @@ class PendingPlanChange(BaseModel):
     starts_on: date
 
 
-class Membership(BaseModel):
+class MembershipForCoach(BaseModel):
+    """A membership as a coach reads it: without its discount, since coaches never see
+    money (`app.roles`, #205)."""
+
     id: uuid.UUID
     person_id: uuid.UUID
     plan_id: uuid.UUID
@@ -132,10 +135,17 @@ class Membership(BaseModel):
     started_on: date
     current_period_end: date | None
     credits_remaining: int | None
-    discount_pct: int
     next_plan: PendingPlanChange | None
     # The freeze it is in, while Frozen; the one booked ahead, while Active.
     freeze: Freeze | None
     cancel_reason: str | None
     cancelled_at: datetime | None
     created_at: datetime
+
+
+class Membership(MembershipForCoach):
+    discount_pct: int
+
+
+def for_coach(membership: Membership) -> MembershipForCoach:
+    return MembershipForCoach.model_validate(membership.model_dump(exclude={"discount_pct"}))

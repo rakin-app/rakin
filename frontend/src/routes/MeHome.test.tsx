@@ -39,6 +39,7 @@ const NOVEMBER: OpenPeriod = {
 
 const payment = (over: Partial<MyPayment>): MyPayment => ({
   id: 'e-1',
+  kind: 'payment',
   person_id: 'diego',
   person_name: 'Diego Morales',
   amount_clp: 45000,
@@ -87,6 +88,7 @@ function stubPage(answer: MyPage | { status: number }, time: PersonTime = NO_TIM
         return Response.json(answer)
       }
       if (url.pathname === '/api/me/periods') return Response.json([NOVEMBER])
+      if (url.pathname === '/api/me/extra-lines') return Response.json([])
       if (url.pathname === '/api/me/time') return Response.json(time)
       return Response.json({ detail: 'Not Found' }, { status: 404 })
     }),
@@ -301,6 +303,44 @@ describe('Mi página', () => {
       expect.stringMatching(/^Noviembrecomprobante enviado hoy \d{2}:\d{2}En revisión$/),
       'Octubrevalidado 8 oct$45.000',
       `Septiembre ${YEAR - 1}validado 9 sep$45.000`,
+    ])
+  })
+
+  it('lists refunds and adjustments, so the history adds up to what is owed', async () => {
+    // Two payments of $20.000 against $45.000, one given back, and a $5.000 discount (#210).
+    const at = (day: string) => ({
+      claimed_at: null,
+      validated_at: `${YEAR}-11-${day}T15:00:00Z`,
+      created_at: `${YEAR}-11-${day}T15:00:00Z`,
+    })
+    const nov = `${YEAR}-11-10`
+    stubPage(
+      diego({
+        payments: [
+          payment({ id: 'a-2', kind: 'adjustment', amount_clp: -3000, period_start: nov, ...at('06') }),
+          payment({ id: 'a-1', kind: 'adjustment', amount_clp: 5000, period_start: nov, ...at('05') }),
+          payment({ id: 'r-1', kind: 'refund', amount_clp: 20000, period_start: nov, ...at('04') }),
+          payment({ id: 'p-2', amount_clp: 20000, period_start: nov, ...at('03') }),
+          payment({
+            id: 'c-1',
+            kind: 'adjustment',
+            amount_clp: 5000,
+            period_start: null,
+            note: 'Pagó $50.000, quedan $5.000 a favor',
+            ...at('02'),
+          }),
+        ],
+      }),
+    )
+    renderMe()
+
+    const history = within(await screen.findByRole('region', { name: copy.history.title }))
+    expect(history.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'Recargo noviembrese suma a lo que debes · 6 nov+$3.000',
+      'Descuento noviembrese descuenta de lo que debes · 5 nov−$5.000',
+      'Devolución noviembrete devolvieron 4 nov−$20.000',
+      'Noviembrevalidado 3 nov$20.000',
+      'Saldo a favorPagó $50.000, quedan $5.000 a favor · 2 nov$5.000',
     ])
   })
 

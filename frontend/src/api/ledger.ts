@@ -1,6 +1,8 @@
 import { infiniteQueryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
+import type { Category } from './extraCharges'
 import type { FreezeLine, Method, TimelineEntry } from './member'
+import type { MembershipStatus } from './people'
 
 export const BOOK_FILTERS = ['all', 'pending', 'overdue', 'kids'] as const
 /** `all` and `kids` are the month's entries; `pending` and `overdue` how the gym stands today. */
@@ -30,14 +32,18 @@ export type BookEntry = {
   note: string | null
   // The payment a refund gives back; null on every other kind.
   refund_of: string | null
-  membership_id: string
-  plan_name: string
+  // Null, with `plan_name`, on a cobro extra's entry, which `extra` names (#195).
+  membership_id: string | null
+  plan_name: string | null
+  // The membership's status today; a lapsed or cancelled plan still owes (#207).
+  membership_status: MembershipStatus | null
   person: PersonRef
   // Who pays for them, when they are a dependent.
   guardian: PersonRef | null
-  // Null for a credit carried to a later period.
+  // Null for a credit carried to a later period, and on a cobro extra's entry.
   period: BookPeriod | null
   validated_by_name: string | null
+  extra?: { id: string; title: string; category: Category } | null
 }
 
 /** A freeze line in the book (backend `BookFreeze`): no money, listed among the entries. */
@@ -55,6 +61,8 @@ export type BookKpis = {
   collected_payments: number
   refunded_clp: number
   refunds: number
+  // What of `collected_clp` the cobros extra brought in.
+  collected_extra_clp?: number
   expected_clp: number
   // Today's, whichever month is shown.
   pending_clp: number

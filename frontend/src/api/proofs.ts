@@ -91,7 +91,10 @@ export class UploadFailed extends Error {
  * storage on the presigned URL, never through the API; only then is the
  * pending payment recorded against its key.
  */
-export async function submitProof(file: File, periodId: string, amountClp: number): Promise<void> {
+/** What a proof pays: a billing period, or a cobro extra line (#195). */
+export type ProofTarget = { kind: 'period' | 'line'; id: string }
+
+export async function submitProof(file: File, target: ProofTarget, amountClp: number): Promise<void> {
   // Each step by its own name, so a double tap uploads to one key and claims once (#208).
   const key = submissionKey()
   const contentType = proofContentType(file)
@@ -107,7 +110,11 @@ export async function submitProof(file: File, periodId: string, amountClp: numbe
   if (!put.ok) throw new UploadFailed(put.status)
   await apiFetch('/api/me/payments', {
     method: 'POST',
-    body: JSON.stringify({ billing_period_id: periodId, amount_clp: amountClp, proof_key: upload.key }),
+    body: JSON.stringify({
+      [target.kind === 'period' ? 'billing_period_id' : 'extra_line_id']: target.id,
+      amount_clp: amountClp,
+      proof_key: upload.key,
+    }),
     idempotencyKey: key && `${key}:claim`,
   })
 }

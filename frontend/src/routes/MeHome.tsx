@@ -49,6 +49,7 @@ export function MeHome() {
         <Grid>
           <div className="me-home__column">
             <NextPayment page={page.data} />
+            <ExtraCharges page={page.data} />
           </div>
           <div className="me-home__column">
             <Training page={page.data} />
@@ -119,6 +120,51 @@ function NextPayment({ page }: { page: MyPage }) {
         {uploading && <ProofUpload />}
       </div>
     </>
+  )
+}
+
+/**
+ * "Cobros extra" (#195): a rifa, a seminar or a shared cost, beside the plan's payment
+ * and never part of it. Each opens the same "Subir comprobante", on that cobro.
+ */
+function ExtraCharges({ page }: { page: MyPage }) {
+  const words = copy.extra
+  const [uploading, setUploading] = useState<string | null>(null)
+  const lines = page.extra_charges ?? []
+  if (lines.length === 0) return null
+  const today = zonedDay(new Date().toISOString(), page.timezone)
+  return (
+    <section className="extra-mine" aria-labelledby="extra-mine-title">
+      <h2 id="extra-mine-title" className="history__title">
+        {words.title}
+      </h2>
+      <ul className="extra-mine__list">
+        {lines.map((line) => {
+          const status = line.status === 'in_review' ? 'in_review' : line.due_date < today ? 'overdue' : 'open'
+          return (
+            <li key={line.id} className="extra-mine__row">
+              <div className="extra-mine__top">
+                <span className="extra-mine__title">{line.title}</span>
+                <StatusPill status={status}>{words.status[status]}</StatusPill>
+              </div>
+              <span className="extra-mine__amount">{t.common.clp(line.outstanding_clp)}</span>
+              <span className="extra-mine__detail">
+                {words.due(t.common.longDay(line.due_date), line.person_id === page.person_id ? null : line.person_name)}
+              </span>
+              {line.message && <p className="extra-mine__message">{line.message}</p>}
+              <Button
+                aria-label={words.upload(line.title)}
+                aria-expanded={uploading === line.id}
+                onClick={() => setUploading(uploading === line.id ? null : line.id)}
+              >
+                {copy.next.upload}
+              </Button>
+              {uploading === line.id && <ProofUpload initial={line.id} />}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 
@@ -218,14 +264,14 @@ function History({ page }: { page: MyPage }) {
               <span className="history__what">
                 <span className="history__month">
                   {copy.history.month(
-                    payment.period_start ? t.common.month(payment.period_start, year) : copy.history.payment,
+                    title(payment, year),
                     payment.person_id === page.person_id ? null : payment.person_name,
                   )}
                 </span>
                 <span className="history__detail">{detail(payment, page.timezone)}</span>
               </span>
               <span className="history__state">
-                {payment.status === 'validated' ? t.common.clp(payment.amount_clp) : copy.history.status[payment.status]}
+                {payment.status === 'validated' ? amount(payment) : copy.history.status[payment.status]}
               </span>
             </li>
           ))}
@@ -235,7 +281,35 @@ function History({ page }: { page: MyPage }) {
   )
 }
 
+/** `Octubre` for a payment, or the cobro extra it pays; `Devolución octubre`, `Descuento
+ * octubre`; `Saldo a favor`. */
+function title(payment: MyPayment, year: string): string {
+  const words = copy.history
+  const month = payment.period_start ? t.common.month(payment.period_start, year) : null
+  const what = payment.charge_title ?? month
+  if (payment.kind === 'payment') return what ?? words.payment
+  if (payment.kind === 'adjustment' && what === null) return words.credit
+  const kind = payment.kind === 'refund' ? words.refund : payment.amount_clp > 0 ? words.discount : words.surcharge
+  if (payment.charge_title) return `${kind} · ${payment.charge_title}`
+  return month ? `${kind} ${month.toLowerCase()}` : kind
+}
+
+/** A payment as paid; a refund given back, `−$20.000`; an adjustment by what it does to
+ * what is owed, a discount `−$5.000` and a surcharge `+$5.000`; a credit as held. */
+function amount(payment: MyPayment): string {
+  if (payment.kind === 'refund') return t.common.signedClp(-payment.amount_clp)
+  if (payment.kind === 'adjustment' && payment.period_start) return t.common.adjustmentClp(payment.amount_clp)
+  return t.common.clp(payment.amount_clp)
+}
+
 function detail(payment: MyPayment, timeZone: string): string {
+  const words = copy.history
+  const made = when(payment.validated_at ?? payment.created_at, timeZone)
+  if (payment.kind === 'refund') return words.refunded(made)
+  if (payment.kind === 'adjustment') {
+    if (!payment.period_start) return [payment.note, made].filter(Boolean).join(' · ')
+    return payment.amount_clp > 0 ? words.discounted(made) : words.surcharged(made)
+  }
   if (payment.status === 'pending') return copy.history.sent(when(payment.claimed_at ?? payment.created_at, timeZone))
   const reviewed = when(payment.validated_at ?? payment.created_at, timeZone)
   return payment.status === 'validated' ? copy.history.validated(reviewed) : copy.history.rejected(reviewed, payment.note)

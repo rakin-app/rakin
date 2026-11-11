@@ -3,6 +3,12 @@
  * inline copy (enforced by `react/jsx-no-literals` in eslint.config.js).
  * English, when it comes, is a second file with the same shape.
  */
+
+import type { MembershipStatus } from '../api/people'
+
+// A word per membership status, where only some of them need one.
+type Statuses = Partial<Record<MembershipStatus, string>>
+
 const MONTHS = [
   'enero',
   'febrero',
@@ -29,6 +35,8 @@ export const es = {
     classes: 'Clases',
     payments: 'Pagos',
     settings: 'Ajustes',
+    // Their own student page, for staff who also train at the gym (#214).
+    myPage: 'Mi página',
     pendingBadge: (n: number) => (n === 1 ? '1 comprobante por revisar' : `${n} comprobantes por revisar`),
   },
   signIn: {
@@ -49,6 +57,8 @@ export const es = {
         : `Pediste varios links seguidos. Inténtalo de nuevo en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`}.`,
     invalid: 'Revisa el correo: no parece una dirección válida.',
     failed: 'No pudimos enviar el link. Revisa tu conexión e inténtalo de nuevo.',
+    // Why they are here, when the session ended rather than never began (#212).
+    expired: 'Tu sesión venció. Entra de nuevo para seguir.',
   },
   signOut: {
     label: 'Cerrar sesión',
@@ -96,6 +106,8 @@ export const es = {
         empty: 'Nadie tiene pagos vencidos.',
         detail: (days: number, amount: string, plan: string) =>
           `Venció hace ${days === 1 ? '1 día' : `${days} días`} · ${amount} · ${plan}`,
+        // A debt outlives its plan (#207): the row says what became of the membership.
+        membership: { lapsed: 'plan caducado', cancelled: 'dado de baja', frozen: 'congelado' } as Statuses,
         paid: 'Pagó',
         paidLabel: (name: string) => `Registrar el pago de ${name}`,
         method: 'Medio de pago',
@@ -104,7 +116,7 @@ export const es = {
         working: 'Guardando…',
         recorded: (name: string, amount: string) => `Pago registrado: ${name}, ${amount}.`,
         refused: {
-          paid: 'Ese período ya está pagado.',
+          paid: 'Eso ya está pagado.',
           failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
         },
         showAll: (n: number) => `Ver los ${n} vencidos`,
@@ -256,7 +268,8 @@ export const es = {
         active: 'Activo',
         trial: 'Prueba',
         frozen: 'Congelado',
-        lapsed: 'Vencido',
+        // Not "Vencido", which is a payment past due (#193, #207): the plan itself ran out.
+        lapsed: 'Caducado',
         cancelled: 'Cancelado',
       },
       guardianOf: (name: string) => `Apoderado: ${name}`,
@@ -579,17 +592,18 @@ export const es = {
       adjustForm: {
         title: 'Ajuste',
         direction: 'Tipo de ajuste',
-        directions: { favor: 'A favor del alumno: descuenta', owed: 'A cobrar: suma al período' },
+        directions: { favor: 'Descuento: resta de lo que debe', owed: 'Recargo: suma a lo que debe' },
         period: 'Período',
         periodOption: (month: string, amount: string) => `${month} · ${amount} por pagar`,
         amount: 'Monto (CLP)',
         note: 'Motivo',
-        submit: (amount: string) => `Registrar ajuste de ${amount}`,
+        // No sign on the button: the word says which way it goes (#210).
+        submit: (favor: boolean, amount: string) => `Registrar ${favor ? 'descuento' : 'recargo'} de ${amount}`,
         cancel: 'Cancelar',
         working: 'Guardando…',
         amountNeeded: 'Escribe el monto del ajuste.',
         noteNeeded: 'Escribe el motivo del ajuste.',
-        done: (amount: string) => `Ajuste registrado: ${amount}.`,
+        done: (favor: boolean, amount: string) => `${favor ? 'Descuento' : 'Recargo'} registrado: ${amount}.`,
         refused: {
           exceeds: 'Un ajuste a favor no puede superar lo que queda por pagar del período.',
           failed: 'No pudimos registrar el ajuste. Inténtalo de nuevo.',
@@ -745,11 +759,14 @@ export const es = {
         empty: 'Sin movimientos todavía.',
         charge: (month: string) => `Cargo ${month}`,
         payment: (month: string) => `Pago ${month}`,
-        adjustment: (month: string) => `Ajuste ${month}`,
+        // An adjustment by which way it goes (#210): a discount takes from what is owed.
+        adjustment: (favor: boolean, month: string) => `${favor ? 'Descuento' : 'Recargo'} ${month}`,
         credit: 'Saldo a favor',
         refund: (month: string) => `Devolución ${month}`,
         generated: (day: string) => `generado ${day}`,
         unpaid: 'sin pago',
+        // A charge partly paid: what has come in against it so far.
+        partlyPaid: (amount: string) => `abonado ${amount}`,
         validatedBy: (name: string) => `validó ${name}`,
         pending: 'por validar',
         rejected: 'rechazado',
@@ -870,7 +887,7 @@ export const es = {
         timezone: 'Zona horaria',
         billing: 'Cobro',
         graceDays: 'Días de gracia',
-        graceDaysHint: 'Días después del vencimiento antes de marcar a un alumno como vencido.',
+        graceDaysHint: 'Días después del vencimiento de un pago antes de que el plan del alumno caduque.',
         reminderEveryDays: 'Recordar cada (días)',
         reminderEveryDaysHint: 'Los recordatorios de pago vencido salen el día del vencimiento y luego cada tantos días.',
         channels: 'Canales',
@@ -1377,6 +1394,8 @@ export const es = {
         working: 'Guardando…',
         saved: 'Guardado.',
         failed: 'No pudimos guardar. Inténtalo de nuevo.',
+        // What was typed when the session expired, back after signing in again (#212).
+        restored: 'Recuperamos lo que habías escrito antes de que venciera tu sesión. Guárdalo para no perderlo.',
       },
       attendance: {
         title: 'Asistencia',
@@ -1602,7 +1621,9 @@ export const es = {
     },
     payments: {
       title: 'Pagos',
-      subtitle: 'Cobros, pagos y ajustes del mes. Nada se borra: una corrección es un movimiento nuevo.',
+      // A charge is in its period's month, a payment in the day it came (#206).
+      subtitle:
+        'Cobros, pagos y ajustes del mes: un cargo, en el mes de su período; un pago, el día en que llegó. Nada se borra: una corrección es un movimiento nuevo.',
       coachesOnly: 'Los coaches no ven esta sección.',
       loading: 'Cargando los pagos…',
       error: 'No pudimos cargar los pagos.',
@@ -1635,6 +1656,10 @@ export const es = {
         amount: 'Monto',
       },
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
+      // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.
+      adjustment: { favor: 'Descuento', owed: 'Recargo' },
+      // A debt outlives its plan (#207): what became of the membership, beside the plan.
+      membership: { lapsed: 'Plan caducado', cancelled: 'Dado de baja', frozen: 'Congelado' } as Statuses,
       method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },
       credit: 'A favor',
       status: {
@@ -1657,6 +1682,8 @@ export const es = {
       searchPlaceholder: 'Nombre, teléfono o RUT',
       noMatch: (q: string) => `No hay movimientos de «${q}».`,
       record: 'Registrar pago',
+      extra: 'Cobros extra',
+      kpiExtra: (amount: string) => ` · ${amount} de cobros extra`,
       picker: {
         label: '¿Quién paga?',
         results: 'Alumnos encontrados',
@@ -1667,6 +1694,181 @@ export const es = {
         upToDate: 'Está al día: no tiene períodos por pagar.',
         change: 'Cambiar alumno',
         cancel: 'Cancelar',
+      },
+    },
+    // Cobros extra (#195): one-off charges, fixed or split across a group.
+    extra: {
+      title: 'Cobros extra',
+      subtitle: 'Rifas, seminarios, equipamiento y gastos compartidos. No afectan el plan de nadie.',
+      back: 'Volver a Pagos',
+      open: 'Cobros extra',
+      ficha: 'Cobros extra pendientes',
+      create: 'Nuevo cobro',
+      loading: 'Cargando…',
+      error: 'No pudimos cargar los cobros extra.',
+      retry: 'Reintentar',
+      empty: 'Todavía no hay cobros extra.',
+      listLabel: 'Cobros extra',
+      category: {
+        rifa: 'Rifa',
+        seminario: 'Seminario',
+        equipamiento: 'Equipamiento',
+        gasto_compartido: 'Gasto compartido',
+        otro: 'Otro',
+      },
+      due: (day: string) => `vence ${day}`,
+      progress: (paid: number, lines: number, collected: string, due: string) =>
+        `${paid} de ${lines} pagaron · ${collected} de ${due}`,
+      waived: (n: number) => (n === 1 ? '1 exento' : `${n} exentos`),
+      status: {
+        open: 'Pendiente',
+        overdue: 'Vencido',
+        in_review: 'Comprobante enviado',
+        paid: 'Pagado',
+        waived: 'Exento',
+        cancelled: 'Anulado',
+      },
+      groups: {
+        title: 'Grupos',
+        intro: 'Listas de personas para reutilizar en los cobros: un grupo es una foto, no se actualiza solo.',
+        create: 'Nuevo grupo',
+        empty: 'Todavía no hay grupos.',
+        size: (n: number) => (n === 1 ? '1 persona' : `${n} personas`),
+        option: (name: string, n: number) => `${name} (${n === 1 ? '1 persona' : `${n} personas`})`,
+        edit: 'Editar',
+        name: 'Nombre del grupo',
+        namePlaceholder: 'p. ej. Clasificados final',
+        filters: 'Agregar desde filtros',
+        program: 'Programa',
+        plan: 'Plan',
+        any: 'Todos',
+        addAll: (n: number) => (n === 1 ? 'Agregar a 1 persona' : `Agregar a las ${n} personas`),
+        loadingFilter: 'Buscando…',
+        search: 'Agregar a mano',
+        searchPlaceholder: 'Nombre, teléfono o RUT',
+        add: (name: string) => `Agregar a ${name}`,
+        remove: (name: string) => `Quitar a ${name}`,
+        removeShort: 'Quitar',
+        members: (n: number) => (n === 1 ? '1 persona en el grupo' : `${n} personas en el grupo`),
+        noMembers: 'Nadie en el grupo todavía.',
+        save: 'Guardar grupo',
+        saving: 'Guardando…',
+        cancel: 'Cancelar',
+        delete: 'Eliminar grupo',
+        deleteConfirm: 'Sí, eliminar',
+        deleteNote: 'Los cobros que ya lo usaron quedan como están.',
+        taken: 'Ya hay un grupo con ese nombre.',
+        nameNeeded: 'Ponle un nombre al grupo.',
+        failed: 'No pudimos guardar el grupo. Inténtalo de nuevo.',
+        saved: (name: string) => `Grupo «${name}» guardado.`,
+      },
+      wizard: {
+        title: 'Nuevo cobro extra',
+        steps: ['Detalles', 'Para quién', 'Monto', 'Mensaje', 'Confirmar'] as readonly string[],
+        stepOf: (i: number, n: number, name: string) => `Paso ${i} de ${n}: ${name}`,
+        next: 'Siguiente',
+        previous: 'Atrás',
+        cancel: 'Cancelar',
+        titleLabel: 'Título',
+        titlePlaceholder: 'p. ej. Bencina final de Santiago',
+        titleNeeded: 'Ponle un título al cobro.',
+        categoryLabel: 'Tipo',
+        descriptionLabel: 'Descripción (opcional)',
+        dueLabel: 'Vence el',
+        dueNeeded: 'Elige hasta cuándo se puede pagar.',
+        targetLabel: '¿A quién se le cobra?',
+        target: {
+          active: 'A todos los activos',
+          program: 'A un programa',
+          group: 'A un grupo',
+          people: 'Elegir personas',
+        },
+        programLabel: 'Programa',
+        groupLabel: 'Grupo',
+        noGroups: 'No hay grupos: créalos en Cobros extra › Grupos, o elige personas.',
+        pickNeeded: 'Elige a quién se le cobra.',
+        modeLabel: '¿Cómo se cobra?',
+        mode: {
+          fixed: 'Monto fijo por persona',
+          split: 'Total a dividir',
+        },
+        amountLabel: { fixed: 'Monto por persona (CLP)', split: 'Total a dividir (CLP)' },
+        amountNeeded: 'Escribe el monto.',
+        previewLabel: 'Cuánto paga cada uno',
+        previewLoading: 'Calculando…',
+        previewError: 'No pudimos calcular los montos.',
+        nobody: 'Ese grupo no tiene a nadie a quién cobrarle.',
+        tooSmall: 'El total no alcanza para un peso por persona.',
+        split: (share: string, n: number) => `${share} cada uno entre ${n === 1 ? '1 persona' : `${n} personas`}`,
+        remainder: (n: number) =>
+          n === 1 ? 'El peso que sobra lo paga la primera persona por orden alfabético.' : `Los ${n} pesos que sobran los paga un peso más cada uno de los primeros ${n} por orden alfabético.`,
+        total: (amount: string, n: number) => `Total ${amount} · ${n === 1 ? '1 persona' : `${n} personas`}`,
+        overrideLabel: (name: string) => `Monto de ${name}`,
+        overridden: 'Ajustado a mano',
+        undo: 'Deshacer',
+        reset: (name: string) => `Volver al monto calculado para ${name}`,
+        guardian: (name: string) => `aviso a ${name}`,
+        messageLabel: 'Mensaje del correo (opcional)',
+        messageHint: 'Va en el correo, sobre el monto que le toca a cada persona.',
+        notify: 'Enviar un correo a cada persona con su monto',
+        notifyHint: 'A los menores, el correo le llega a su apoderado.',
+        summary: (title: string, n: number, total: string) =>
+          `${title}: ${n === 1 ? '1 persona' : `${n} personas`}, ${total} en total.`,
+        noEmail: (n: number) =>
+          n === 1 ? '1 persona no tiene correo: avísale por WhatsApp.' : `${n} personas no tienen correo: avísales por WhatsApp.`,
+        whatsapp: (name: string) => `Avisar a ${name} por WhatsApp`,
+        personAmount: (name: string, amount: string) => `${name} · ${amount}`,
+        noWhatsapp: 'sin WhatsApp',
+        create: 'Crear cobro',
+        creating: 'Creando…',
+        failed: 'No pudimos crear el cobro. Inténtalo de nuevo.',
+      },
+      detail: {
+        loading: 'Cargando el cobro…',
+        error: 'No pudimos cargar el cobro.',
+        notFound: 'Ese cobro no existe.',
+        peopleLabel: 'Personas',
+        remind: 'Recordar a los pendientes',
+        reminding: 'Enviando…',
+        reminded: (sent: number, without: number) =>
+          (sent === 1 ? 'Enviamos 1 recordatorio.' : `Enviamos ${sent} recordatorios.`) +
+          (without ? ` ${without === 1 ? '1 persona no tiene' : `${without} personas no tienen`} correo.` : ''),
+        guardianOf: (name: string) => `Apoderado: ${name}`,
+        owes: (amount: string) => `debe ${amount}`,
+        paidOf: (paid: string, due: string) => `pagó ${paid} de ${due}`,
+        overridden: 'monto ajustado',
+        actions: (name: string) => `Acciones para ${name}`,
+        markPaid: 'Marcar pagado',
+        editAmount: 'Editar monto',
+        cancelLine: 'Anular',
+        notify: 'Reenviar aviso',
+        notified: 'Aviso reenviado.',
+        noEmail: 'No tiene correo: no se envió nada.',
+        whatsapp: (name: string) => `Recordar a ${name} por WhatsApp`,
+        whatsappShort: 'Recordar por WhatsApp',
+        review: 'Ver comprobante',
+        refund: 'Devolver',
+        amountLabel: 'Monto (CLP)',
+        methodLabel: 'Cómo pagó',
+        refundMethodLabel: 'Cómo se devolvió',
+        method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },
+        save: 'Guardar',
+        saving: 'Guardando…',
+        close: 'Cerrar',
+        cancelChecking: 'Revisando…',
+        cancelConfirm: 'Sí, anular',
+        resplit: 'Volver a dividir el total entre los que quedan',
+        resplitAmount: (name: string, amount: string) => `${name}: ${amount}`,
+        noResplit: 'El total no se vuelve a dividir: alguien ya pagó, o no es un total a dividir.',
+        refundOf: (amount: string, left: string) => `Pago de ${amount} · quedan ${left} por devolver`,
+        failed: 'No pudimos guardarlo. Inténtalo de nuevo.',
+        refused: {
+          paid: 'Esa persona ya pagó todo.',
+          belowPaid: 'No puede ser menos de lo que ya pagó.',
+          money: 'Tiene dinero o un comprobante pendiente: devuélvelo o revísalo primero.',
+          resplit: 'Ya no se puede volver a dividir el total.',
+          cancelled: 'Esta línea está anulada.',
+        },
       },
     },
     review: {
@@ -1686,7 +1888,7 @@ export const es = {
       method: { transfer: 'transferencia', cash: 'efectivo', other: 'otro' },
       periodDue: (month: string, due: string) => `${month} · vence ${due}`,
       match: {
-        matches: 'El monto coincide con el período abierto',
+        matches: 'El monto coincide con lo que se debe',
         over: (amount: string) => `Paga ${amount} de más: quedarán a favor`,
         short: (amount: string) => `Faltan ${amount} para cerrar el período`,
       },
@@ -1699,6 +1901,8 @@ export const es = {
       missing: 'No encontramos el archivo del comprobante.',
       sentByStudent: 'Enviada desde la página del alumno',
       sentBy: (name: string) => `Enviada por ${name}`,
+      extra: 'Cobro extra',
+      extraDue: (category: string, due: string) => `${category} · vence ${due}`,
       plan: 'Plan',
       planDay: (plan: string, day: number) => `${plan} · día ${day}`,
       priorBalance: 'Saldo antes',
@@ -1751,6 +1955,8 @@ export const es = {
     error: 'No pudimos cargar el tiempo en el tatami.',
   },
   me: {
+    // From the student page back to the admin screens, for staff who also train (#214).
+    toAdmin: 'Ir al panel del gimnasio',
     home: {
       title: 'Mi página',
       hello: (firstName: string) => `Hola, ${firstName}`,
@@ -1789,6 +1995,13 @@ export const es = {
           .join('\n'),
       upload: 'Subir comprobante',
     },
+    extra: {
+      title: 'Cobros extra',
+      due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
+      status: { open: 'Por pagar', overdue: 'Vencido', in_review: 'Comprobante en revisión' },
+      upload: (title: string) => `Subir comprobante de ${title}`,
+      left: (amount: string) => `quedan ${amount}`,
+    },
     training: {
       title: 'Mi entrenamiento',
       belt: 'Cinturón',
@@ -1807,6 +2020,14 @@ export const es = {
       rejected: (when: string, note: string | null) => (note ? `rechazado ${when}: ${note}` : `rechazado ${when}`),
       status: { pending: 'En revisión', rejected: 'Rechazado' },
       today: (time: string) => `hoy ${time}`,
+      // The rest of what settles a period (#210), so the list adds up to "Próximo pago".
+      refund: 'Devolución',
+      refunded: (when: string) => `te devolvieron ${when}`,
+      discount: 'Descuento',
+      discounted: (when: string) => `se descuenta de lo que debes · ${when}`,
+      surcharge: 'Recargo',
+      surcharged: (when: string) => `se suma a lo que debes · ${when}`,
+      credit: 'Saldo a favor',
     },
     proof: {
       title: 'Subir comprobante',
@@ -1815,6 +2036,7 @@ export const es = {
       none: 'No tienes pagos pendientes.',
       periodLabel: 'Qué estás pagando',
       period: (name: string, plan: string, due: string) => `${name} · ${plan} · vence el ${due}`,
+      line: (name: string, title: string, due: string) => `${name} · ${title} · vence el ${due}`,
       outstanding: (amount: string) => `Por pagar: ${amount}`,
       inReview: (amount: string) => `Comprobante en revisión: ${amount}`,
       amountLabel: 'Monto transferido (CLP)',
@@ -1973,8 +2195,11 @@ export const es = {
     loading: 'Cargando…',
     comingSoon: 'Esta sección todavía no está lista.',
     clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
-    // An amount that says which way it goes: `+$5.000` in the member's favour, `−$5.000` owed.
+    // An amount that says which way it goes: `+$5.000` or `−$5.000`.
     signedClp: (amount: number) => `${amount < 0 ? '−' : '+'}$${Math.abs(amount).toLocaleString('es-CL')}`,
+    // An adjustment by what it does to what is owed (#210): a discount, positive in the
+    // member's favour, takes from it, `−$5.000`; a surcharge adds to it, `+$5.000`.
+    adjustmentClp: (amount: number) => `${amount > 0 ? '−' : '+'}$${Math.abs(amount).toLocaleString('es-CL')}`,
     // Where an amount would go on a line that moves no money.
     noAmount: '—',
     span: (from: string, to: string) => `${from} – ${to}`,

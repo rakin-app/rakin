@@ -510,11 +510,20 @@ MEMBERSHIP_FREEZES = text(
 # An entry's gym-local day, for `e`, a `ledger_entry`, and `t`, `GYM_CLOCK`.
 ENTRY_DAY = "(e.created_at AT TIME ZONE t.timezone)::date"
 
+# The day the book files an entry under, for `e`, `t` and `bp`, the entry's period: a
+# charge's is the day its period starts, so a November charge billed in late October is
+# November's, as its "Período" and the overdue KPI say (#206); any other entry's, a
+# payment's included, is the day it was made.
+BOOK_DAY = (
+    f"CASE WHEN e.kind = 'charge' AND bp.id IS NOT NULL THEN bp.period_start ELSE {ENTRY_DAY} END"
+)
+
 # The months with entries, newest first. RLS keeps them to the gym.
 BOOK_MONTHS = text(
     f"""
-    SELECT DISTINCT date_trunc('month', {ENTRY_DAY})::date AS month
+    SELECT DISTINCT date_trunc('month', {BOOK_DAY})::date AS month
     FROM ledger_entry e CROSS JOIN ({GYM_CLOCK}) t
+    LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     ORDER BY month DESC
     """
 )
@@ -524,7 +533,7 @@ BOOK_MONTHS = text(
 # entry on a cobro extra line (#195) has no membership: `m` is whoever's line it is.
 BOOK_ROWS = f"""
     SELECT e.id, e.created_at, e.kind, e.status, e.amount_clp, e.method, e.note,
-           e.refund_of, e.membership_id, pl.name AS plan_name,
+           e.refund_of, e.membership_id, pl.name AS plan_name, em.status AS membership_status,
            m.person_id, mp.name AS person_name,
            x.id AS extra_charge_id, x.title AS charge_title, x.category AS charge_category,
            gl.guardian_person_id AS guardian_id, gp.name AS guardian_name,
@@ -556,15 +565,14 @@ BOOK_ROWS = f"""
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
 """
 
-IN_MONTH = f"{ENTRY_DAY} >= :month AND {ENTRY_DAY} < (:month + interval '1 month')::date"
+IN_MONTH = f"{BOOK_DAY} >= :month AND {BOOK_DAY} < (:month + interval '1 month')::date"
 
 # What each filter keeps of `BOOK_ROWS`.
 BOOK_FILTERS = {
     BookFilter.ALL: IN_MONTH,
     BookFilter.PENDING: "e.kind = 'payment' AND e.status = 'pending'",
     BookFilter.OVERDUE: (
-        "e.kind = 'charge' AND e.billing_period_id IN"
-        " (SELECT billing_period_id FROM v_overdue WHERE membership_status = 'active')"
+        "e.kind = 'charge' AND e.billing_period_id IN (SELECT billing_period_id FROM v_overdue)"
     ),
     BookFilter.KIDS: f"{IN_MONTH} AND gl.dependent_person_id IS NOT NULL",
 }
@@ -595,8 +603,9 @@ EXPECTED_STATUSES = ("active", "lapsed")
 
 # The book's KPIs. Collected and expected are the month's; pending and overdue, and the
 # membership counts, are how the gym stands today. Collected is net of the month's
-# refunds, which it reports beside it (#126). Overdue counts active memberships only,
-# as the owner's "Vencido" does (`v_overdue`).
+# refunds, which it reports beside it (#126). Overdue is every unpaid period past due
+# (`v_overdue`), as the owner's "Vencidos" lists them: a lapsed, frozen or cancelled
+# membership still owes what it owed (#207).
 #
 # Expected ("Esperado") is what is owed for the month: the periods falling due in it of
 # active and lapsed memberships, since a lapsed member still owes what was billed. A
@@ -634,7 +643,7 @@ BOOK_KPIS = text(
                coalesce(avg(days), 0)::float AS avg_days
         FROM (
             SELECT person_id, sum(outstanding_clp) AS outstanding, max(days_overdue) AS days
-            FROM v_overdue WHERE membership_status = 'active' GROUP BY person_id
+            FROM v_overdue GROUP BY person_id
         ) per_member
     ) overdue
     """
@@ -674,7 +683,11 @@ async def ledger_book(
     matching = f"{BOOK_ROWS} WHERE {BOOK_FILTERS[book_filter]} AND {searched}"
     total = await session.scalar(text(f"SELECT count(*) FROM ({matching}) f"), params)
     rows = await session.execute(
-        text(f"{matching} ORDER BY e.created_at DESC, e.id DESC LIMIT :limit OFFSET :offset"),
+        # By the day each is filed under, the one "Fecha" shows (#206), then as made.
+        text(
+            f"{matching} ORDER BY {BOOK_DAY} DESC, e.created_at DESC, e.id DESC"
+            " LIMIT :limit OFFSET :offset"
+        ),
         {**params, "limit": limit, "offset": offset},
     )
     kpis = (
@@ -741,6 +754,7 @@ def book_entry(row: Any) -> BookEntry:
         refund_of=row.refund_of,
         membership_id=row.membership_id,
         plan_name=row.plan_name,
+        membership_status=row.membership_status,
         person=PersonRef(id=row.person_id, name=row.person_name),
         guardian=None
         if row.guardian_id is None
@@ -763,18 +777,17 @@ def book_entry(row: Any) -> BookEntry:
     )
 
 
-# `v_overdue` keeps the unpaid periods of lapsed and cancelled memberships; the owner's
-# "Vencidos" counts the Active ones (backend README, Reporting views).
+# Every membership's unpaid periods past due, whatever its status: a plan that lapsed
+# or was cancelled still owes them until they are paid or adjusted (#207).
 OVERDUE = text(
     """
     SELECT o.billing_period_id, o.membership_id, o.person_id, gp.name AS person_name,
-           pl.name AS plan_name, o.period_start, o.due_date, o.outstanding_clp,
-           o.days_overdue
+           pl.name AS plan_name, o.membership_status, o.period_start, o.due_date,
+           o.outstanding_clp, o.days_overdue
     FROM v_overdue o
     JOIN membership m ON m.id = o.membership_id
     JOIN plan pl ON pl.id = m.plan_id
     JOIN gym_person gp ON gp.gym_id = o.gym_id AND gp.person_id = o.person_id
-    WHERE o.membership_status = 'active'
     ORDER BY o.days_overdue DESC, gp.name, o.billing_period_id
     """
 )
@@ -782,8 +795,8 @@ OVERDUE = text(
 
 @router.get("/overdue")
 async def overdue(session: LedgerSession) -> Overdue:
-    """The Active memberships' periods past due and not paid in full: the owner's
-    "Vencidos" ("Hoy", #58)."""
+    """The periods past due and not paid in full, of memberships in any status: the
+    owner's "Vencidos" ("Hoy", #58)."""
     periods = [
         OverduePeriod.model_validate(row, from_attributes=True)
         for row in (await session.execute(OVERDUE)).all()

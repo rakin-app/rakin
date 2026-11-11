@@ -52,7 +52,6 @@ def build_blob_store(settings: Settings) -> BlobStore:
         case "local":
             return LocalBlobStore(
                 root=settings.blob_local_dir,
-                base_url=settings.public_base_url,
                 secret_key=settings.secret_key,
                 ttl_seconds=settings.blob_url_ttl_seconds,
             )

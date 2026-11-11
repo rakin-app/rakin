@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Roster, RosterMember } from '../api/attendance'
@@ -69,6 +69,10 @@ type Stub = {
   change?: Answer | 'offline'
   person?: Answer
   trial?: Answer
+  // Who is signed in, as `/api/me/role` answers.
+  me?: unknown
+  // How a topic save (`PATCH /api/sessions/s1`) is answered.
+  save?: Answer
   // A save waits for this before it is answered.
   hold?: Promise<void>
 }
@@ -108,10 +112,11 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
   )
 
   function route(path: string, method: string, body: unknown): Answer {
-    if (path === '/api/me/role') return { body: { role: 'coach', person_id: 'coach' } }
+    if (path === '/api/me/role') return { body: stub.me ?? { role: 'coach', person_id: 'coach' } }
     if (path === '/api/sessions' && method === 'GET') {
       return { body: { date: '2026-11-09', timezone: 'America/Santiago', sessions: [SESSION] } }
     }
+    if (path === '/api/sessions/s1' && method === 'PATCH' && stub.save) return stub.save
     if (path === '/api/sessions/s1') return { body: SESSION }
     if (path === '/api/sessions/s1/roster') return { body: answer() }
     if (path === '/api/plans') return { body: plans }
@@ -176,7 +181,7 @@ describe('Asistencia', () => {
     expect(within(rows[1]!).getByRole('img', { name: copy.overdue })).toBeInTheDocument()
     expect(within(rows[0]!).queryByRole('img', { name: copy.overdue })).not.toBeInTheDocument()
     expect(rows[2]).toHaveTextContent('Pack 12 clases · quedan 4')
-    expect(rows[3]).toHaveTextContent('Mensual adultos · Vencido · 16 d sin venir')
+    expect(rows[3]).toHaveTextContent('Mensual adultos · Caducado · 16 d sin venir')
     expect(screen.getByText(copy.count(1, 4))).toBeInTheDocument()
     expect(screen.getByRole('button', { name: copy.save(1) })).toBeDisabled()
   })
@@ -565,5 +570,63 @@ describe('Alumno de prueba', () => {
     const form = within(screen.getByRole('form', { name: copy.guest.label }))
     expect(await form.findByText(copy.guest.noPlans)).toBeInTheDocument()
     expect(form.queryByRole('button', { name: copy.guest.submit })).not.toBeInTheDocument()
+  })
+})
+
+describe('Tema de la clase, when the session expires (#212)', () => {
+  const form = es.admin.session.form
+
+  it('keeps what was typed across signing in again, and says why the sign-in page is there', async () => {
+    stubApi({ save: { status: 401, body: { detail: 'Not authenticated' } } })
+    renderClass()
+    const topicForm = await screen.findByRole('form', { name: form.label })
+    await userEvent.type(within(topicForm).getByLabelText(form.topic), 'Pasaje de guardia')
+    await userEvent.type(within(topicForm).getByLabelText(form.notes), 'Repetir el lunes.')
+    await userEvent.click(within(topicForm).getByRole('button', { name: form.submit }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(screen.getByText(es.signIn.expired)).toBeInTheDocument()
+
+    // Signed in again, in a fresh page: the class opens with the text as it was left.
+    cleanup()
+    stubApi()
+    renderClass()
+    const again = await screen.findByRole('form', { name: form.label })
+    expect(within(again).getByLabelText(form.topic)).toHaveValue('Pasaje de guardia')
+    expect(within(again).getByLabelText(form.notes)).toHaveValue('Repetir el lunes.')
+    expect(within(again).getByText(form.restored)).toBeInTheDocument()
+  })
+
+  it('gives the text back only once', async () => {
+    stubApi({ save: { status: 401 } })
+    renderClass()
+    const topicForm = await screen.findByRole('form', { name: form.label })
+    await userEvent.type(within(topicForm).getByLabelText(form.topic), 'Pasaje de guardia')
+    await userEvent.click(within(topicForm).getByRole('button', { name: form.submit }))
+    await screen.findByRole('heading', { level: 1, name: es.signIn.title })
+
+    cleanup()
+    stubApi()
+    renderClass()
+    await screen.findByRole('form', { name: form.label })
+    cleanup()
+    renderClass()
+    const later = await screen.findByRole('form', { name: form.label })
+    expect(within(later).getByLabelText(form.topic)).toHaveValue('')
+  })
+
+  it('gives nobody else the text kept for another person', async () => {
+    stubApi({ save: { status: 401 } })
+    renderClass()
+    const topicForm = await screen.findByRole('form', { name: form.label })
+    await userEvent.type(within(topicForm).getByLabelText(form.topic), 'Pasaje de guardia')
+    await userEvent.click(within(topicForm).getByRole('button', { name: form.submit }))
+    await screen.findByRole('heading', { level: 1, name: es.signIn.title })
+
+    cleanup()
+    stubApi({ me: { role: 'owner', person_id: 'someone-else' } })
+    renderClass()
+    const other = await screen.findByRole('form', { name: form.label })
+    expect(within(other).getByLabelText(form.topic)).toHaveValue('')
   })
 })

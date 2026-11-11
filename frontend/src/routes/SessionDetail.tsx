@@ -17,6 +17,7 @@ import {
   type RosterMember,
 } from '../api/attendance'
 import { ApiError } from '../api/client'
+import { useKeptDraft, useRestoredDraft } from '../api/drafts'
 import { rankLabel } from '../api/grading'
 import { managesGym, myselfQuery, runsSession } from '../api/me'
 import { sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
@@ -178,8 +179,11 @@ function TopicForm({ session }: { session: ClassSession }) {
   const queryClient = useQueryClient()
   const topicId = useId()
   const notesId = useId()
-  const [topic, setTopic] = useState(session.topic ?? '')
-  const [notes, setNotes] = useState(session.notes ?? '')
+  // What was typed here when the session last ended, given back after signing in again (#212).
+  const draftKey = `class-topic:${session.id}`
+  const restored = useRestoredDraft(draftKey, useQuery(myselfQuery()).data?.person_id)
+  const [topic, setTopic] = useState(restored?.topic ?? session.topic ?? '')
+  const [notes, setNotes] = useState(restored?.notes ?? session.notes ?? '')
   const [saved, setSaved] = useState(false)
   const save = useSubmit({
     mutationFn: () => updateSession(session.id, { topic, notes }),
@@ -193,6 +197,7 @@ function TopicForm({ session }: { session: ClassSession }) {
   })
   // "Guardado" until the next edit.
   const changed = topic !== (session.topic ?? '') || notes !== (session.notes ?? '')
+  useKeptDraft(draftKey, changed ? { topic, notes } : null)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -223,6 +228,11 @@ function TopicForm({ session }: { session: ClassSession }) {
         placeholder={copy.form.notesPlaceholder}
         onChange={(e) => setNotes(e.target.value)}
       />
+      {restored && changed && !save.isError && (
+        <p className="classes__restored" role="status">
+          {copy.form.restored}
+        </p>
+      )}
       {save.isError && (
         <p className="classes__error" role="alert">
           {copy.form.failed}

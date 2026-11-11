@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type ChangeEvent, type FormEvent } from 'react'
+import { myLinesQuery } from '../api/extraCharges'
 import {
   isConflict,
   openPeriodsQuery,
@@ -7,7 +8,7 @@ import {
   proofProblem,
   submitProof,
   UploadFailed,
-  type OpenPeriod,
+  type ProofTarget,
 } from '../api/proofs'
 import { Button, buttonClass } from '../components/Button'
 import { Input } from '../components/Field'
@@ -17,16 +18,26 @@ import { useSubmit } from '../api/submit'
 
 const copy = t.me.proof
 
+/** One thing a proof can pay, as the form lists it. */
+type Payable = ProofTarget & { label: string; outstanding_clp: number; pending_clp: number }
+
 /**
- * "Subir comprobante": pick the period, say how much was transferred, and
- * send a photo or PDF of the transfer. The file goes straight to storage;
- * the payment then waits, pending, for the gym to check it.
+ * "Subir comprobante": pick what it pays, a plan's period or a cobro extra (#195), say
+ * how much was transferred, and send a photo or PDF of the transfer. The file goes
+ * straight to storage; the payment then waits, pending, for the gym to check it.
+ * `initial` is the cobro line to start on, when the student came from one.
  */
-export function ProofUpload() {
+export function ProofUpload({ initial }: { initial?: string } = {}) {
   const periods = useQuery(openPeriodsQuery())
+  const lines = useQuery(myLinesQuery())
   const [sent, setSent] = useState(false)
 
-  if (periods.isPending) return <p className="proof__note">{copy.loading}</p>
+  // The cobros are waited for only when the upload opened on one. Otherwise the plan's
+  // periods show at once, and a cobro list that is slow or cannot load is left out, as
+  // if there were none, rather than standing in the way of paying the plan.
+  if (periods.isPending || (initial !== undefined && lines.isPending)) {
+    return <p className="proof__note">{copy.loading}</p>
+  }
   if (periods.isError) {
     return (
       <p className="proof__note" role="alert">
@@ -34,6 +45,23 @@ export function ProofUpload() {
       </p>
     )
   }
+
+  const payables: Payable[] = [
+    ...periods.data.map((p) => ({
+      kind: 'period' as const,
+      id: p.id,
+      label: copy.period(p.person_name, p.plan_name, t.common.longDay(p.due_date)),
+      outstanding_clp: p.outstanding_clp,
+      pending_clp: p.pending_clp,
+    })),
+    ...(lines.data ?? []).map((l) => ({
+      kind: 'line' as const,
+      id: l.id,
+      label: copy.line(l.person_name, l.title, t.common.longDay(l.due_date)),
+      outstanding_clp: l.outstanding_clp,
+      pending_clp: l.pending_clp,
+    })),
+  ]
 
   return (
     <section className="proof" aria-labelledby="proof-title">
@@ -47,19 +75,19 @@ export function ProofUpload() {
             {copy.another}
           </Button>
         </div>
-      ) : periods.data.length === 0 ? (
+      ) : payables.length === 0 ? (
         <p className="proof__note">{copy.none}</p>
       ) : (
-        <ProofForm periods={periods.data} onSent={() => setSent(true)} />
+        <ProofForm payables={payables} initial={initial} onSent={() => setSent(true)} />
       )}
     </section>
   )
 }
 
-function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => void }) {
+function ProofForm({ payables, initial, onSent }: { payables: Payable[]; initial?: string; onSent: () => void }) {
   const queryClient = useQueryClient()
-  const [periodId, setPeriodId] = useState(periods[0]!.id)
-  const period = periods.find((p) => p.id === periodId) ?? periods[0]!
+  const [periodId, setPeriodId] = useState((payables.find((p) => p.id === initial) ?? payables[0]!).id)
+  const period = payables.find((p) => p.id === periodId) ?? payables[0]!
   const [amount, setAmount] = useState(String(period.outstanding_clp))
   const [file, setFile] = useState<File | null>(null)
   // Raw digits while they type, so the caret stays where they put it; `$45.000` otherwise.
@@ -67,7 +95,8 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
   const ids = { amount: useId(), camera: useId(), choose: useId(), hint: useId() }
 
   const send = useSubmit({
-    mutationFn: ({ file, amount }: { file: File; amount: number }) => submitProof(file, period.id, amount),
+    mutationFn: ({ file, amount }: { file: File; amount: number }) =>
+      submitProof(file, { kind: period.kind, id: period.id }, amount),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['me'] })
       onSent()
@@ -80,7 +109,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
 
   const pickPeriod = (id: string) => {
     setPeriodId(id)
-    const picked = periods.find((p) => p.id === id)
+    const picked = payables.find((p) => p.id === id)
     if (picked) setAmount(String(picked.outstanding_clp))
   }
   const pickFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -96,7 +125,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
     <form className="proof__form" onSubmit={submit}>
       <fieldset className="proof__periods">
         <legend className="proof__label">{copy.periodLabel}</legend>
-        {periods.map((p) => (
+        {payables.map((p) => (
           <label key={p.id} className="proof__period">
             <input
               type="radio"
@@ -106,7 +135,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
               onChange={() => pickPeriod(p.id)}
             />
             <span>
-              <span className="proof__period-name">{copy.period(p.person_name, p.plan_name, t.common.longDay(p.due_date))}</span>
+              <span className="proof__period-name">{p.label}</span>
               <span className="proof__period-detail">{copy.outstanding(t.common.clp(p.outstanding_clp))}</span>
               {p.pending_clp > 0 && (
                 <span className="proof__period-detail proof__period-detail--review">

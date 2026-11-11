@@ -457,7 +457,11 @@ function ProofRow({ proof }: { proof: ProofReview }) {
   const name =
     sender && sender !== proof.person_name ? copy.proofs.sentFor(sender, proof.person_name) : proof.person_name
   const detail = [
-    copy.proofs.detail(clp(proof.amount_clp), monthName(proof.period.period_start)),
+    copy.proofs.detail(
+      clp(proof.amount_clp),
+      // A cobro extra's proof names the cobro instead of a month (#195).
+      proof.period ? monthName(proof.period.period_start) : (proof.extra_line?.title ?? ''),
+    ),
     proof.claimed_at && ago(proof.claimed_at, new Date()),
   ]
     .filter(Boolean)
@@ -607,7 +611,12 @@ function OverdueRow({
         >
           <span className="today__name">{period.person_name}</span>
           <span className="today__detail today__detail--warning">
-            {copy.overdue.detail(period.days_overdue, amount, period.plan_name)}
+            {[
+              copy.overdue.detail(period.days_overdue, amount, period.plan_name),
+              copy.overdue.membership[period.membership_status],
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </span>
           {reminded && <span className="today__detail">{reminded}</span>}
         </Link>

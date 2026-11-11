@@ -17,7 +17,8 @@ class Bucket(IntEnum):
 class PaymentStatus(StrEnum):
     # Every period due is paid.
     UP_TO_DATE = "up_to_date"
-    # An Active membership has a period past due and not paid in full (`v_overdue`).
+    # A membership of theirs, in any status, has a period past due and not paid in full
+    # (`v_overdue`, #207).
     OVERDUE = "overdue"
     # On a trial only, which charges nothing.
     TRIAL = "trial"

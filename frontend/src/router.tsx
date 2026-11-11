@@ -7,13 +7,17 @@ import {
   redirect,
   type RouterHistory,
 } from '@tanstack/react-router'
-import { appPath, landingFor, SIGN_IN_PATH } from './api/auth'
+import { appPath, hadSession, landingFor, markSignedIn, SIGN_IN_PATH } from './api/auth'
 import { ApiError, onUnauthorized } from './api/client'
-import { myRoleQuery } from './api/me'
+import { keepDrafts } from './api/drafts'
+import { myRoleQuery, type MyRole } from './api/me'
 import { AdminLayout } from './layouts/AdminLayout'
 import { t } from './i18n/es'
 import { MeLayout } from './layouts/MeLayout'
 import { Classes } from './routes/Classes'
+import { ExtraChargeDetail } from './routes/ExtraChargeDetail'
+import { ExtraChargeNew } from './routes/ExtraChargeNew'
+import { ExtraCharges } from './routes/ExtraCharges'
 import { ClassTimer } from './routes/ClassTimer'
 import { Join } from './routes/Join'
 import { MeHome } from './routes/MeHome'
@@ -71,12 +75,15 @@ async function requireSession({ queryClient, signIn }: AppContext, href: string)
   try {
     // No retries here: a shell that cannot reach the API still renders, and retries
     // the role itself.
-    return await queryClient.ensureQueryData({ ...myRoleQuery(), retry: false })
+    const me = await queryClient.ensureQueryData({ ...myRoleQuery(), retry: false })
+    markSignedIn()
+    return me
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       signIn.redirecting = true
       queryClient.clear()
-      throw redirect({ to: SIGN_IN_PATH, search: { redirect: appPath(href) }, replace: true })
+      const expired = hadSession() || undefined
+      throw redirect({ to: SIGN_IN_PATH, search: { redirect: appPath(href), expired }, replace: true })
     }
     return undefined
   } finally {
@@ -101,7 +108,11 @@ const signInRoute = createRoute({
   path: SIGN_IN_PATH,
   // Set even when it is no path of ours: the root passes the raw query through, and
   // only an explicit `undefined` overrides it.
-  validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({ redirect: appPath(search.redirect) }),
+  // `expired`: the session ended rather than never began, which the page says (#212).
+  validateSearch: (search: Record<string, unknown>): { redirect?: string; expired?: true } => ({
+    redirect: appPath(search.redirect),
+    expired: search.expired === true || search.expired === 'true' ? true : undefined,
+  }),
   component: SignIn,
 })
 
@@ -203,6 +214,26 @@ const adminProofReviewRoute = createRoute({
   component: ValidateProof,
 })
 
+// Pagos › "Cobros extra" (#195): one-off charges and the groups they target, a new one
+// through its wizard, and one cobro's people. Static paths win over `$chargeId`.
+const adminExtraChargesRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'pagos/cobros',
+  component: ExtraCharges,
+})
+
+const adminExtraChargeNewRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'pagos/cobros/nuevo',
+  component: ExtraChargeNew,
+})
+
+const adminExtraChargeRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'pagos/cobros/$chargeId',
+  component: ExtraChargeDetail,
+})
+
 // "Ajustes": the gym's configuration, owner and admin only, one route per section.
 const adminSettingsRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -253,6 +284,9 @@ const routeTree = rootRoute.addChildren([
     adminSessionTimerRoute,
     adminPaymentsRoute,
     adminProofReviewRoute,
+    adminExtraChargesRoute,
+    adminExtraChargeNewRoute,
+    adminExtraChargeRoute,
     adminSettingsRoute.addChildren([adminSettingsIndexRoute, ...adminSettingsSectionRoutes]),
   ]),
   meRoute.addChildren([meHomeRoute]),
@@ -270,13 +304,17 @@ export function createAppRouter(context: RouterContext, history?: RouterHistory)
     defaultPreloadStaleTime: 0,
   })
   // A session that ends mid-use (a 401 on any call) goes back to sign in, the same way
-  // a signed-out visitor does, and what it had loaded is forgotten.
+  // a signed-out visitor does, saying it expired; what it had loaded is forgotten.
   onUnauthorized(() => {
     const { pathname, href } = router.state.location
     if (signIn.redirecting || signIn.checking > 0 || pathname === SIGN_IN_PATH) return
     signIn.redirecting = true
+    // What the open screen held unsaved, kept for after signing in again (#212).
+    keepDrafts(context.queryClient.getQueryData<MyRole>(['me', 'role'])?.person_id)
+    // Said by the URL here: the flag is not needed for this sign-in page.
+    hadSession()
     context.queryClient.clear()
-    void router.navigate({ to: SIGN_IN_PATH, search: { redirect: appPath(href) }, replace: true })
+    void router.navigate({ to: SIGN_IN_PATH, search: { redirect: appPath(href), expired: true }, replace: true })
   })
   router.subscribe('onResolved', ({ toLocation }) => {
     if (toLocation.pathname === SIGN_IN_PATH) signIn.redirecting = false

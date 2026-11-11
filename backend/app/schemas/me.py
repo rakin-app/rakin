@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.domain.ledger import EntryStatus
+from app.domain.ledger import EntryKind, EntryStatus
 from app.schemas.extra_charges import MyExtraLine
 from app.schemas.grades import Rank
 from app.schemas.gym import BankAccount
@@ -29,9 +29,15 @@ class NextPayment(BaseModel):
 
 class MyPayment(BaseModel):
     """A payment on one of the person's memberships or a dependent's, as the ledger
-    records it: pending while a proof awaits review, then validated or rejected."""
+    records it: pending while a proof awaits review, then validated or rejected. Or a
+    refund of one, or an adjustment of what a period owes (#210), each validated as it
+    is made."""
 
     id: uuid.UUID
+    # `payment`, `refund` (money given back, so a payment counts less) or `adjustment`:
+    # positive in the student's favour, negative owed on top; with no period, credit
+    # carried from an overpayment.
+    kind: EntryKind = EntryKind.PAYMENT
     person_id: uuid.UUID
     person_name: str
     amount_clp: int
@@ -70,7 +76,8 @@ class MyPage(BaseModel):
     # Their latest promotion here (`grade_event`, 0018); `None` until they have one.
     rank: Rank | None
     attendance: MyAttendance
-    # Newest first, at most `PAYMENTS_SHOWN`.
+    # Newest first: at most `PAYMENTS_SHOWN` payments, with the refunds and adjustments
+    # made since the oldest of them.
     payments: list[MyPayment]
     # The cobros extra still owed, theirs and their dependents', earliest due first
     # (#195): beside the plan's, never part of `next_payment`.

@@ -18,10 +18,10 @@ const route = getRouteApi(SIGN_IN_PATH)
  * "Entrar": ask for a sign-in link by email. The answer is the same whether or not
  * the address has an account, so the screen never tells who is registered. On a
  * gym's own address it names the gym; until that loads, or if it never does, it is
- * Rakin's.
+ * Rakin's. Reached because a session expired, it says so first (#212).
  */
 export function SignIn() {
-  const { redirect } = route.useSearch()
+  const { redirect, expired } = route.useSearch()
   const gym = useQuery(hostQuery()).data?.gym ?? null
   const [email, setEmail] = useState('')
   const emailId = useId()
@@ -50,6 +50,11 @@ export function SignIn() {
           </>
         ) : (
           <form className="signin__form" onSubmit={submit}>
+            {expired && (
+              <p className="signin__expired" role="status">
+                {copy.expired}
+              </p>
+            )}
             <p className="signin__intro">{copy.intro}</p>
             <label htmlFor={emailId} className="signin__label">
               {copy.emailLabel}

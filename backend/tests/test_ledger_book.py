@@ -278,7 +278,7 @@ def test_pending_is_the_review_queue_of_any_month(
 
 
 @pg
-def test_overdue_is_the_charges_active_members_owe_past_their_due_date(
+def test_overdue_is_the_charges_members_owe_past_their_due_date(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     ana = add_person(client, sur, "Ana")
@@ -286,17 +286,56 @@ def test_overdue_is_the_charges_active_members_owe_past_their_due_date(
     eva = add_person(client, sur, "Eva")
     # Ana: one period late, one paid, one not due yet.
     bill(db, sur, ana, [(-12, 45000, 5000, 0), (-40, 45000, 45000, 0), (4, 45000, 0, 0)])
-    # Bea is late but lapsed: the owner's "Vencido" counts active members only.
-    set_status(db, sur, bill(db, sur, bea, [(-30, 45000, 0, 0)]), "lapsed")
+    # Bea is late and lapsed: her plan lapsing did not pay what she owes (#207).
+    set_status(db, sur, bill(db, sur, bea, [(-30, 30000, 0, 0)]), "lapsed")
     # Eva is due today: not late yet.
     bill(db, sur, eva, [(0, 45000, 0, 0)])
 
     found = read(client, sur, filter="overdue")
 
-    assert names(found) == [("Ana", "charge", 45000)]
-    [late] = found["items"]
-    assert late["period"]["outstanding_clp"] == 40000
-    assert late["period"]["days_overdue"] >= 12
+    assert sorted(names(found)) == [("Ana", "charge", 45000), ("Bea", "charge", 30000)]
+    late = {e["person"]["name"]: e for e in found["items"]}
+    assert late["Ana"]["period"]["outstanding_clp"] == 40000
+    assert late["Ana"]["period"]["days_overdue"] >= 12
+    assert (late["Ana"]["membership_status"], late["Bea"]["membership_status"]) == (
+        "active",
+        "lapsed",
+    )
+
+
+@pg
+def test_a_charge_is_in_the_month_its_period_starts_in(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    # Billed on March 26 for the period starting April 2 (#206): April owes it, so
+    # April's book lists it. A payment is in the month it came in.
+    ana = add_person(client, sur, "Ana")
+    membership = bill(db, sur, ana, [(-1, 30000, 0, 0)])
+    dated_period(db, sur, membership, date(2020, 4, 2), 30000)
+    as_owner(
+        db,
+        sur,
+        "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
+        " kind, status, validated_at, created_at)"
+        " SELECT gym_id, membership_id, id, 30000, 'charge', 'validated', $2, $2"
+        " FROM billing_period WHERE membership_id = $1 AND period_start = '2020-04-02'",
+        uuid.UUID(membership),
+        datetime(2020, 3, 26, 15, tzinfo=UTC),
+    )
+    dated_entry(db, sur, membership, "payment", 9000, datetime(2020, 3, 27, 15, tzinfo=UTC))
+    # Made before the charge's period starts, so listed after it: the book goes by the
+    # day it files each entry under, the one its date column shows.
+    dated_entry(db, sur, membership, "payment", 7000, datetime(2020, 4, 1, 15, tzinfo=UTC))
+
+    march = read(client, sur, month="2020-03-01")
+    april = read(client, sur, month="2020-04-01")
+    kids = read(client, sur, month="2020-04-01", filter="kids")
+
+    assert names(march) == [("Ana", "payment", 9000)]
+    assert names(april) == [("Ana", "charge", 30000), ("Ana", "payment", 7000)]
+    assert april["items"][0]["period"]["period_start"] == "2020-04-02"
+    assert {"2020-03-01", "2020-04-01"} <= set(april["months"])
+    assert names(kids) == []
 
 
 @pg
@@ -354,7 +393,7 @@ def test_kpis_are_the_months_collected_and_expected_and_todays_pending_and_overd
     bea = add_person(client, sur, "Bea")
     cata = add_person(client, sur, "Cata")
     # Ana: two late periods, 10 and 40 days, 70.000 short. Bea: 4 days late and a claim
-    # in review. Cata: frozen, and late, which does not count.
+    # in review. Cata: frozen, and 20 days late, which still counts (#207).
     ana_m = bill(db, sur, ana, [(-40, 45000, 0, 0), (-10, 45000, 20000, 0)])
     bill(db, sur, bea, [(-4, 30000, 0, 12000)])
     cata_m = bill(db, sur, cata, [(-20, 30000, 0, 5000)])
@@ -375,10 +414,10 @@ def test_kpis_are_the_months_collected_and_expected_and_todays_pending_and_overd
     assert kpis["expected_clp"] == 45000
     # Pending and overdue are today's, whichever month is shown.
     assert (kpis["pending_clp"], kpis["pending_payments"]) == (12000 + 5000 + 8000, 3)
-    assert kpis["overdue_clp"] == 70000 + 30000
-    assert kpis["overdue_members"] == 2
-    # Ana's oldest is 40 days late, Bea's 4: each member counts once.
-    assert kpis["overdue_avg_days"] == pytest.approx(22, abs=1)
+    assert kpis["overdue_clp"] == 70000 + 30000 + 30000
+    assert kpis["overdue_members"] == 3
+    # Ana's oldest is 40 days late, Bea's 4, Cata's 20: each member counts once.
+    assert kpis["overdue_avg_days"] == pytest.approx(21, abs=1)
     # The seeded member, Ana and Bea are active; Cata is frozen.
     assert (kpis["active_memberships"], kpis["frozen_memberships"]) == (3, 1)
 

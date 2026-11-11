@@ -339,11 +339,24 @@ describe('Ficha de alumno', () => {
       'Cargo octubregenerado 23 oct · sin pago$45.000',
       'Pago septiembretransferencia · validó Martín · 2 oct$45.000',
       'Pago octubretransferencia · por validar · 5 nov$20.000',
-      `${copy.ledger.credit}Pagó $50.000; quedan $5.000 a favor · 23 oct+$5.000`,
+      `${copy.ledger.credit}Pagó $50.000; quedan $5.000 a favor · 23 oct$5.000`,
     ])
   })
 
-  it('lists adjustments with their sign and refunds as money out', async () => {
+  it('says what has come in against a partly paid charge, not "sin pago"', async () => {
+    // $40.000 of $45.000 validated (#210).
+    stubApi({
+      ledger: { ...LEDGER, open_periods: [{ ...OCTOBER, paid_clp: 40000, outstanding_clp: 5000 }], owed_clp: 5000 },
+    })
+    renderAt(PATH)
+
+    const ledger = await screen.findByRole('region', { name: copy.ledger.title })
+    expect(within(ledger).getAllByRole('listitem')[0]).toHaveTextContent(
+      `Cargo octubregenerado 23 oct · ${copy.ledger.partlyPaid('$40.000')}$45.000`,
+    )
+  })
+
+  it('lists a discount and a surcharge by what each does to what is owed, and refunds as money out', async () => {
     stubApi({
       ledger: {
         ...LEDGER,
@@ -386,8 +399,8 @@ describe('Ficha de alumno', () => {
     const ledger = await screen.findByRole('region', { name: copy.ledger.title })
     expect(within(ledger).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
       'Devolución septiembreefectivo · se lesionó · 6 nov−$10.000',
-      'Ajuste octubrematrícula · 4 nov−$5.000',
-      'Ajuste octubrebeca · 3 nov+$3.000',
+      'Recargo octubrematrícula · 4 nov+$5.000',
+      'Descuento octubrebeca · 3 nov−$3.000',
     ])
   })
 
@@ -473,10 +486,10 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByLabelText(copy.adjustForm.direction)).toHaveValue('favor')
     await userEvent.type(within(form).getByLabelText(copy.adjustForm.amount), '5000')
     await userEvent.type(within(form).getByLabelText(copy.adjustForm.note), ' descuento hermano ')
-    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit('+$5.000') }))
+    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit(true, '$5.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      copy.adjustForm.done('+$5.000') + copy.form.remainder('$40.000'),
+      copy.adjustForm.done(true, '$5.000') + copy.form.remainder('$40.000'),
     )
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       {
@@ -507,9 +520,9 @@ describe('Ficha de alumno', () => {
     )
     await userEvent.type(within(form).getByLabelText(copy.adjustForm.amount), '5000')
     await userEvent.type(within(form).getByLabelText(copy.adjustForm.note), 'matrícula')
-    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit('−$5.000') }))
+    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit(false, '$5.000') }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent(copy.adjustForm.done('−$5.000'))
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.adjustForm.done(false, '$5.000'))
     expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([
       { membership_id: 'm-felipe', billing_period_id: 'p-sep', amount_clp: -5000, note: 'matrícula' },
     ])
@@ -521,7 +534,7 @@ describe('Ficha de alumno', () => {
     const card = await money()
 
     await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
-    await userEvent.click(screen.getByRole('button', { name: copy.adjustForm.submit('+$0') }))
+    await userEvent.click(screen.getByRole('button', { name: copy.adjustForm.submit(true, '$0') }))
 
     const alerts = await screen.findAllByRole('alert')
     expect(alerts.map((a) => a.textContent)).toEqual([copy.adjustForm.amountNeeded, copy.adjustForm.noteNeeded])
@@ -536,7 +549,7 @@ describe('Ficha de alumno', () => {
     await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
     await userEvent.type(screen.getByLabelText(copy.adjustForm.amount), '50000')
     await userEvent.type(screen.getByLabelText(copy.adjustForm.note), 'beca')
-    await userEvent.click(screen.getByRole('button', { name: copy.adjustForm.submit('+$50.000') }))
+    await userEvent.click(screen.getByRole('button', { name: copy.adjustForm.submit(true, '$50.000') }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.adjustForm.refused.exceeds)
   })
