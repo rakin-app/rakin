@@ -449,6 +449,14 @@ def test_leaving_stops_billing_and_the_roster_and_keeps_what_is_owed(
     periods = "SELECT count(*) FROM billing_period WHERE membership_id = $1"
     billed = count(db, gym, periods, uuid.UUID(membership["id"]))
     assert billed > 0
+    # In Rakin since then too, so the 20 days without a class count (#209).
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE membership SET created_at = started_at WHERE id = $1",
+            uuid.UUID(membership["id"]),
+        ),
+    )
     inactive = client.get("/api/inactive", headers=as_gym(gym)).json()
     assert body["id"] in {m["person_id"] for m in inactive}
 
