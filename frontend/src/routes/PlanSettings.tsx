@@ -15,7 +15,7 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
-import { EditRow, Field, integerOf, LoadFailed, refusal } from './settingsForm'
+import { EditRow, Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.plans
@@ -114,18 +114,22 @@ export function PlanSettings() {
   const programList = programs.data ?? []
   return (
     <section className="settings__section" aria-label={copy.title}>
+      <SectionHead
+        intro={t.admin.settings.descriptions.plans}
+        action={
+          editing !== 'new' && (
+            <Button variant="primary" onClick={() => open('new')}>
+              {copy.add}
+            </Button>
+          )
+        }
+      />
       {notice && (
         <p className="settings__done" role="status">
           {notice}
         </p>
       )}
-      {editing === 'new' ? (
-        <PlanForm programs={programList} onCancel={() => setEditing(null)} onDone={done} />
-      ) : (
-        <Button variant="primary" onClick={() => open('new')}>
-          {copy.add}
-        </Button>
-      )}
+      {editing === 'new' && <PlanForm programs={programList} onCancel={() => setEditing(null)} onDone={done} />}
       {plans.data.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (

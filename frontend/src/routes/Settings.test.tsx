@@ -143,6 +143,7 @@ function renderAt(path: string) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  localStorage.clear()
 })
 
 describe('Ajustes', () => {
@@ -281,7 +282,7 @@ describe('Ajustes: Gimnasio', () => {
     ])
   })
 
-  it('picks the theme from a preview of each, and the screens wear it once saved (#199)', async () => {
+  it('picks the theme from a preview of each, and Guardar keeps it (#199, #241)', async () => {
     const calls = stubApi()
     renderAt('/admin/ajustes/gimnasio')
 
@@ -293,13 +294,42 @@ describe('Ajustes: Gimnasio', () => {
     expect(bosque.nextElementSibling).toHaveAttribute('data-theme', 'bosque')
 
     await userEvent.click(within(settings).getByRole('radio', { name: new RegExp(gym.themes.volcan) }))
-    // Picked, not yet saved: the page keeps the gym's theme.
-    expect(document.documentElement.dataset.theme).toBe('bosque')
+    // Picked, not yet saved: every screen wears it at once, and nothing is remembered.
+    expect(document.documentElement.dataset.theme).toBe('volcan')
+    expect(localStorage.getItem('rakin.theme')).not.toBe('volcan')
+    expect(within(settings).getByText(gym.themePreview(gym.themes.volcan, gym.themes.bosque))).toBeInTheDocument()
     await userEvent.click(within(settings).getByRole('button', { name: gym.submit }))
 
-    expect(await within(settings).findByRole('status')).toHaveTextContent(gym.saved)
+    expect(await within(settings).findByText(gym.saved)).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ theme: 'volcan' }])
-    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('volcan'))
+    expect(within(settings).queryByText(gym.themePreview(gym.themes.volcan, gym.themes.bosque))).not.toBeInTheDocument()
+    await waitFor(() => expect(localStorage.getItem('rakin.theme')).toBe('volcan'))
+    // Saved: leaving Gimnasio keeps it on.
+    await userEvent.click(screen.getByRole('link', { name: copy.backLabel }))
+    await screen.findByRole('navigation', { name: copy.sectionsLabel })
+    expect(document.documentElement.dataset.theme).toBe('volcan')
+  })
+
+  it('puts the saved theme back on Cancelar, or on leaving without saving (#241)', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/gimnasio')
+
+    const settings = await screen.findByRole('form', { name: gym.formLabel })
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('bosque'))
+    const oceano = within(settings).getByRole('radio', { name: new RegExp(gym.themes.oceano) })
+
+    await userEvent.click(oceano)
+    expect(document.documentElement.dataset.theme).toBe('oceano')
+    await userEvent.click(within(settings).getByRole('button', { name: gym.themeCancel }))
+    expect(document.documentElement.dataset.theme).toBe('bosque')
+    expect(within(settings).getByRole('radio', { name: new RegExp(gym.themes.bosque) })).toBeChecked()
+
+    await userEvent.click(oceano)
+    expect(document.documentElement.dataset.theme).toBe('oceano')
+    await userEvent.click(screen.getByRole('link', { name: copy.backLabel }))
+    await screen.findByRole('navigation', { name: copy.sectionsLabel })
+    expect(document.documentElement.dataset.theme).toBe('bosque')
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([])
   })
 
   it('sends the bank account whole, and clears it once every field is empty', async () => {

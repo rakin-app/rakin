@@ -18,7 +18,7 @@ import { ListRowContent, listRowClass } from '../components/Card'
 import { Input, Select } from '../components/Field'
 import { ChevronDownIcon, CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
-import { Field, integerOf, LoadFailed, MoveButtons, refusal } from './settingsForm'
+import { Field, integerOf, LoadFailed, MoveButtons, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.grading
@@ -209,6 +209,7 @@ function GradingEditor({
 
   return (
     <section className="settings__section" aria-label={copy.title}>
+      <SectionHead intro={t.admin.settings.descriptions.grading} />
       {repairing && (
         <p className="settings__error" role="alert">
           {copy.stale}
@@ -296,9 +297,11 @@ function GradingEditor({
             {'' in errors ? copy.schemeInvalid : Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
           </p>
         )}
-        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
-          {save.isPending ? copy.working : copy.submit}
-        </Button>
+        <div className="settings__actions settings__actions--sticky">
+          <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
+            {save.isPending ? copy.working : copy.submit}
+          </Button>
+        </div>
       </form>
     </section>
   )

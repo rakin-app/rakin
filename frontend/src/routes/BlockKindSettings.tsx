@@ -15,7 +15,7 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { t } from '../i18n/es'
-import { EditRow, Field, LoadFailed, MoveButtons, refusal } from './settingsForm'
+import { EditRow, Field, LoadFailed, MoveButtons, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.blocks
@@ -68,19 +68,22 @@ export function BlockKindSettings() {
 
   return (
     <section className="settings__section" aria-label={copy.title}>
-      <p className="settings__note">{copy.intro}</p>
+      <SectionHead
+        intro={copy.intro}
+        action={
+          editing !== 'new' && (
+            <Button variant="primary" onClick={() => open('new')}>
+              {copy.add}
+            </Button>
+          )
+        }
+      />
       {notice && (
         <p className="settings__done" role="status">
           {notice}
         </p>
       )}
-      {editing === 'new' ? (
-        <BlockKindForm onCancel={() => setEditing(null)} onDone={done} />
-      ) : (
-        <Button variant="primary" onClick={() => open('new')}>
-          {copy.add}
-        </Button>
-      )}
+      {editing === 'new' && <BlockKindForm onCancel={() => setEditing(null)} onDone={done} />}
       {reorder.isError && (
         <p className="settings__error" role="alert">
           {copy.reorderFailed}

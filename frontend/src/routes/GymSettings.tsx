@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ACCOUNT_TYPES,
   gymSettingsQuery,
@@ -13,9 +13,9 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
-import { DEFAULT_THEME, THEMES, type Theme } from '../theme'
+import { DEFAULT_THEME, THEMES, wearTheme, type Theme } from '../theme'
 import { LogoSettings } from './LogoSettings'
-import { Field, integerOf, LoadFailed, refusal } from './settingsForm'
+import { Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.gym
@@ -99,11 +99,18 @@ function timezones(current: string): string[] {
 export function GymSettings() {
   const settings = useQuery(gymSettingsQuery())
 
-  if (settings.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
-  if (settings.isError) {
-    return <LoadFailed error={settings.error} message={copy.error} retry={() => void settings.refetch()} />
-  }
-  return <GymForm settings={settings.data} />
+  return (
+    <section className="settings__section" aria-label={t.admin.settings.sections.gym}>
+      <SectionHead intro={t.admin.settings.descriptions.gym} />
+      {settings.isPending ? (
+        <p className="settings__note">{t.admin.settings.loading}</p>
+      ) : settings.isError ? (
+        <LoadFailed error={settings.error} message={copy.error} retry={() => void settings.refetch()} />
+      ) : (
+        <GymForm settings={settings.data} />
+      )}
+    </section>
+  )
 }
 
 function GymForm({ settings }: { settings: Settings }) {
@@ -111,6 +118,15 @@ function GymForm({ settings }: { settings: Settings }) {
   const [initial, setInitial] = useState(() => draftsOf(settings))
   const [drafts, setDrafts] = useState(initial)
   const [saved, setSaved] = useState(false)
+
+  // A theme picked is worn at once, on every screen, as a preview (#241); until it is
+  // saved, leaving Gimnasio puts the saved one back.
+  const savedTheme = useRef(initial.theme)
+  useEffect(() => () => wearTheme(savedTheme.current), [])
+  const pickTheme = (theme: Theme) => {
+    setDrafts({ ...drafts, theme })
+    wearTheme(theme)
+  }
 
   const save = useSubmit({
     offline: 'refuse',
@@ -120,6 +136,7 @@ function GymForm({ settings }: { settings: Settings }) {
       // Every screen wears the new theme at once (App's `GymTheme` reads it there).
       queryClient.setQueryData<MyRole>(myselfQuery().queryKey, (me) => me && { ...me, theme: answer.theme })
       const next = draftsOf(answer)
+      savedTheme.current = next.theme
       setInitial(next)
       setDrafts(next)
       setSaved(true)
@@ -196,12 +213,18 @@ function GymForm({ settings }: { settings: Settings }) {
                 value={theme}
                 className="theme-picker__input"
                 checked={drafts.theme === theme}
-                onChange={() => setDrafts({ ...drafts, theme })}
+                onChange={() => pickTheme(theme)}
               />
               <ThemePreview theme={theme} />
             </label>
           ))}
         </div>
+        {drafts.theme !== initial.theme && (
+          <div className="settings__preview">
+            <p className="settings__hint" role="status">{copy.themePreview(copy.themes[drafts.theme], copy.themes[initial.theme])}</p>
+            <Button onClick={() => pickTheme(initial.theme)}>{copy.themeCancel}</Button>
+          </div>
+        )}
       </fieldset>
 
       <fieldset className="settings__card">
@@ -388,9 +411,11 @@ function GymForm({ settings }: { settings: Settings }) {
           {copy.saved}
         </p>
       )}
-      <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
-        {save.isPending ? copy.working : copy.submit}
-      </Button>
+      <div className="settings__actions settings__actions--sticky">
+        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
+          {save.isPending ? copy.working : copy.submit}
+        </Button>
+      </div>
     </form>
   )
 }

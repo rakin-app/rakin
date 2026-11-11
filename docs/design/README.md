@@ -32,6 +32,28 @@ What changed from v2:
   0.5s, `cubic-bezier(0.2, 0.7, 0.2, 1)`); controls change colour only (150ms), with
   no scale and no bounce. Under reduced motion only opacity changes.
 
+## Ajustes: one layout for every section (#241)
+
+The boards draw no Ajustes, so the app sets its own pattern, and every section keeps it:
+
+1. **Head.** One line on what the section holds and, for a section that lists things,
+   its one primary button ("Nuevo plan", "Invitar"). Side by side from 1024px, the
+   button at the end of the row; stacked on a phone.
+2. **Groups.** One card per group, in one column at every width. A card's title comes
+   first in display type, then its hint, then its fields (two to a row from 1024px) or
+   its rows. A list is a card of rows; an item opens in place to edit.
+3. **Buttons.** At the end of the form they act on: Cancelar, then the primary, at the
+   end of the row from 1024px and across it on a phone. Gimnasio's and Graduación's
+   Guardar stays in view on a desktop while the long form scrolls. Those two forms save
+   the whole page and show only Guardar: there is nothing to cancel back to but the page
+   as loaded, and Gimnasio's one Cancelar is in Tema's preview strip, for the theme
+   being tried. A secondary action
+   inside a card ("Agregar grado", "Nueva clase") is a secondary button at the card's
+   start, as wide as its words.
+
+Picking a theme in Gimnasio › Tema wears it at once on every screen, as a preview;
+Guardar keeps it, and Cancelar or leaving Gimnasio puts the saved one back.
+
 ## Where the app differs from the file, and why
 
 - **Success stays green in every theme.** In the file, Océano and Volcán move

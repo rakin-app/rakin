@@ -49,11 +49,51 @@
   padding: var(--space-5) 0 var(--space-6);
 }
 
+/*
+ * Every section is laid out the same way (#241):
+ *
+ * 1. Its head: one line on what it holds and, if it lists things, the one primary
+ *    button that adds one ("Nuevo plan", "Invitar"). Side by side from 1024px.
+ * 2. Its groups, one per card, one column at every width. A card's title comes first,
+ *    in display type, then its hint, then its fields (two to a row from 1024px) or its
+ *    rows. A list is a card of rows, its items opening in place.
+ * 3. Its buttons, at the end of the form they act on: Cancelar, then the primary, at
+ *    the end of the row from 1024px and across it on a phone. Gimnasio's and
+ *    Graduación's Guardar stays in view on a desktop as the long form scrolls; those
+ *    two save the whole page and show only Guardar (Gimnasio's Cancelar is in Tema's
+ *    preview strip, for the theme being tried).
+ *    A secondary action inside a card ("Agregar grado", "Nueva clase") is a secondary
+ *    button at the card's start, as wide as its words from 1024px.
+ */
 .settings__section,
 .settings__form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
+}
+
+.settings__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings__intro {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* A theme picked but not saved yet: what is on, and the way back. */
+.settings__preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-md);
 }
 
 .settings__card {
@@ -378,6 +418,16 @@ h2.settings__plan-name {
   .settings__body {
     padding: var(--space-5) 0 var(--space-10);
   }
+
+  /* A long form's Guardar, kept in view at the bottom as the page scrolls. */
+  .settings__actions--sticky {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    padding: var(--space-3) 0 var(--space-5);
+    background: var(--color-bg);
+    border-top: 1px solid var(--color-divider);
+  }
 }
 
 /* A card of rows: the section list, Cuenta, a list's items. Edge to edge, a line between. */
@@ -571,25 +621,36 @@ h2.settings__plan-name {
     justify-content: flex-start;
   }
 
-  /* A section's "Nuevo …" is a button, not a bar across the page. */
-  .settings__section > .button--primary {
-    align-self: flex-start;
+  /* The head's line, and its "Nuevo …" at the end of the row. */
+  .settings__head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-5);
+  }
+
+  .settings__head > .button {
+    flex: none;
     min-width: 12rem;
   }
 
-  /* Gimnasio: its cards two to a row; its messages and Guardar under them. */
-  .settings__form--panels {
+  /* Gimnasio: one card per group, down the page, its fields two to a row. */
+  .settings__form--panels > .settings__card {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
+    column-gap: var(--space-5);
   }
 
-  .settings__form--panels > :not(.settings__card) {
+  .settings__form--panels > .settings__card > :not(.field) {
     grid-column: 1 / -1;
   }
 
-  .settings__form--panels > .button {
-    justify-self: end;
+  /* A secondary action inside a card is as wide as its words, at the card's start. */
+  .settings__card > .button,
+  .settings__card > a.button,
+  .settings__row-note > .button {
+    justify-self: start;
+    align-self: flex-start;
     min-width: 12rem;
   }
 
