@@ -185,9 +185,11 @@ class ExtraChargeSummary(BaseModel):
     target_kind: TargetKind
     target_label: str | None
     created_at: datetime
-    # Lines not cancelled, and of them those paid in full.
+    # Lines not cancelled that owe something, and of them those paid in full: "7 de 9
+    # pagaron". Lines let off at nothing (exentos) are `waived_lines`, in neither.
     lines: int
     paid_lines: int
+    waived_lines: int
     # What the lines not cancelled owe, and what they have been paid.
     due_clp: int
     collected_clp: int

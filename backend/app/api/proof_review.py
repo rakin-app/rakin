@@ -30,10 +30,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.attendance import recent_from
-from app.api.extra_charges import line_facts, locked_line_by_id, settled_line
+from app.api.entries import CURRENT_PERSON, ENTRY_COLUMNS
+from app.api.extra_charges import line_facts, settled_line
+from app.api.extra_lines import locked_line_by_id
 from app.api.ledger import (
-    CURRENT_PERSON,
-    ENTRY_COLUMNS,
     locked_period,
     period_facts,
     send_receipt,
@@ -220,7 +220,7 @@ async def _review_line(row: Any, store: BlobStore) -> ProofReview:
 
 
 async def _review(row: Any, store: BlobStore) -> ProofReview:
-    stored = await store.stat(row.proof_object_key)
+    url, content_type = await _proof_file(row, store)
     paid = min(row.paid_clp, row.amount_due_clp)
     return ProofReview(
         id=row.id,
@@ -231,8 +231,8 @@ async def _review(row: Any, store: BlobStore) -> ProofReview:
         method=row.method,
         claimed_at=row.claimed_at,
         claimed_by_name=row.claimed_by_name,
-        proof_url=None if stored is None else store.presign_download(row.proof_object_key),
-        proof_content_type=None if stored is None else stored.content_type,
+        proof_url=url,
+        proof_content_type=content_type,
         plan_name=row.plan_name,
         plan_kind=row.plan_kind,
         anchor_day=row.anchor_day,

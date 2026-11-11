@@ -5,22 +5,35 @@ validation, a payment the admin records, a refund. The money counts in the book,
 student page lists the lines, and no membership is touched. Coaches see none of it.
 """
 
+import asyncio
 import dataclasses
 import uuid
 from collections.abc import Iterator
 from datetime import timedelta
 from typing import Any
 
+import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.db_bootstrap import to_dsn
 from app.main import create_app
 from app.schemas.extra_charges import Target
 from app.schemas.proofs import ProofClaim
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
+from tests.ids import random_rut
+from tests.pg import (
+    Database,
+    in_gym,
+    migrate,
+    run,
+    seed_gym,
+    seeded_owner,
+    seeded_today,
+    throwaway_database,
+)
 from tests.test_guardians import add_person, bill, new_kid
 from tests.test_plans import add_staff
 from tests.test_proofs import RecordingMailer, upload
@@ -559,7 +572,7 @@ def test_an_override_and_a_resplit_when_someone_leaves_before_anyone_paid(
     assert (changed["amount_due_clp"], changed["overridden"], changed["status"]) == (
         0,
         True,
-        "paid",
+        "waived",
     )
 
     preview = ok(client.get(f"/api/extra-charges/{cid}/lines/{carlas}/cancel", headers=as_gym(sur)))
@@ -576,11 +589,13 @@ def test_an_override_and_a_resplit_when_someone_leaves_before_anyone_paid(
     assert {
         line["person"]["name"]: (line["amount_due_clp"], line["status"]) for line in after["people"]
     } == {
-        "Ana": (0, "paid"),
+        "Ana": (0, "waived"),
         "Bea": (45_000, "open"),
         "Carla": (30_000, "cancelled"),
     }
-    assert (after["lines"], after["due_clp"]) == (2, 45_000)
+    # Exenta, Ana is not counted among who pays: "0 de 1 pagaron".
+    assert (after["lines"], after["paid_lines"], after["waived_lines"]) == (1, 0, 1)
+    assert after["due_clp"] == 45_000
     # Cancelled: it takes no money.
     paid = client.post(
         f"/api/extra-charges/{cid}/lines/{carlas}/payments",
@@ -725,3 +740,249 @@ def test_someone_let_off_at_nothing_is_not_emailed(
     create(client, sur, draft([ana, bea], overrides=[{"person_id": bea, "amount_clp": 0}]))
 
     assert [email.to for email in mailer.sent] == ["ana@example.cl"]
+
+
+# --- review fixes -----------------------------------------------------------------
+
+
+def test_an_adjusted_line_with_no_money_cancels_and_resplits(
+    client: TestClient, sur: uuid.UUID
+) -> None:
+    ana, bea, carla = (add_person(client, sur, n) for n in ("Ana", "Bea", "Carla"))
+    charge = create(
+        client, sur, draft([ana, bea, carla], amount_mode="split", amount_clp=90_000, notify=False)
+    )
+    cid, carlas = charge["id"], line_of(charge, carla)["id"]
+    ok(
+        client.post(
+            f"/api/extra-charges/{cid}/lines/{carlas}/adjustments",
+            json={"amount_clp": 5_000, "note": "Trajo la bencina"},
+            headers=as_gym(sur),
+        ),
+        201,
+    )
+
+    preview = ok(client.get(f"/api/extra-charges/{cid}/lines/{carlas}/cancel", headers=as_gym(sur)))
+    assert preview["resplit_allowed"] is True
+    after = ok(
+        client.post(
+            f"/api/extra-charges/{cid}/lines/{carlas}/cancel",
+            json={"resplit": True},
+            headers=as_gym(sur),
+        )
+    )
+    assert line_of(after, carla)["status"] == "cancelled"
+    assert line_of(after, bea)["amount_due_clp"] == 45_000
+
+
+def test_a_refunded_payment_still_blocks_a_resplit(client: TestClient, sur: uuid.UUID) -> None:
+    ana, bea = add_person(client, sur, "Ana"), add_person(client, sur, "Bea")
+    charge = create(
+        client, sur, draft([ana, bea], amount_mode="split", amount_clp=20_000, notify=False)
+    )
+    cid, anas = charge["id"], line_of(charge, ana)["id"]
+    paid = ok(
+        client.post(
+            f"/api/extra-charges/{cid}/lines/{anas}/payments",
+            json={"amount_clp": 10_000, "method": "cash"},
+            headers=as_gym(sur),
+        ),
+        201,
+    )
+    ok(
+        client.post(
+            "/api/ledger/refunds",
+            json={"payment_id": paid["payment"]["id"], "amount_clp": 10_000, "method": "cash"},
+            headers=as_gym(sur),
+        ),
+        201,
+    )
+    # Refunded in full, the line holds no money and may be cancelled, but money moved
+    # through the cobro, so its total is not divided again.
+    preview = ok(client.get(f"/api/extra-charges/{cid}/lines/{anas}/cancel", headers=as_gym(sur)))
+    assert preview["resplit_allowed"] is False
+    ok(client.post(f"/api/extra-charges/{cid}/lines/{anas}/cancel", json={}, headers=as_gym(sur)))
+
+
+def test_a_resplit_breaks_a_tie_in_names_as_create_did(client: TestClient, sur: uuid.UUID) -> None:
+    first = add_person(client, sur, "Ana Soto")
+    second = ok(
+        client.post(
+            "/api/people",
+            json={"name": "Ana Soto", "email": "ana.soto.2@example.cl", "rut": random_rut()},
+            headers=as_gym(sur),
+        ),
+        201,
+    )["id"]
+    bea = add_person(client, sur, "Bea")
+    charge = create(
+        client,
+        sur,
+        draft([first, second, bea], amount_mode="split", amount_clp=100_001, notify=False),
+    )
+    # 100.001 among three: two get the extra peso, the Anas, by person id.
+    created = {line["person"]["id"]: line["amount_due_clp"] for line in charge["people"]}
+    assert created[bea] == 33_333
+    after = ok(
+        client.post(
+            f"/api/extra-charges/{charge['id']}/lines/{line_of(charge, bea)['id']}/cancel",
+            json={"resplit": True},
+            headers=as_gym(sur),
+        )
+    )
+    # 100.001 between the two: the extra peso goes to the lower person id.
+    lower = min(first, second)
+    shares = {line["person"]["id"]: line["amount_due_clp"] for line in after["people"]}
+    assert (shares[lower], shares[max(first, second)]) == (50_001, 50_000)
+
+
+def test_a_hand_picked_leaver_is_not_charged(client: TestClient, sur: uuid.UUID) -> None:
+    ana, bea = add_person(client, sur, "Ana"), add_person(client, sur, "Bea")
+    ok(client.post(f"/api/people/{bea}/leave", json={}, headers=as_gym(sur)))
+    response = client.post("/api/extra-charges", json=draft([ana, bea]), headers=as_gym(sur))
+    assert response.status_code == 422
+
+
+def test_notices_read_no_contact_per_line(
+    client: TestClient, sur: uuid.UUID, mailer: RecordingMailer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.api.extra_charges as module
+
+    async def no_lookup(*_: Any) -> None:
+        raise AssertionError("one contact query per line")
+
+    monkeypatch.setattr(module, "contact_for", no_lookup)
+    people = [add_person(client, sur, f"P{i}") for i in range(5)]
+    mailer.sent.clear()
+    charge = create(client, sur, draft(people))
+    assert len(mailer.sent) == 5
+    reminded = ok(client.post(f"/api/extra-charges/{charge['id']}/remind", headers=as_gym(sur)))
+    assert reminded == {"sent": 5, "without_email": 0}
+    line = charge["people"][0]["id"]
+    one = ok(
+        client.post(f"/api/extra-charges/{charge['id']}/lines/{line}/notify", headers=as_gym(sur))
+    )
+    assert one == {"sent": 1, "without_email": 0}
+
+
+def test_only_an_owner_or_admin_writes_groups_at_the_database(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    group = ok(
+        client.post("/api/groups", json={"name": "G", "person_ids": [ana]}, headers=as_gym(sur)),
+        201,
+    )
+    coach = add_staff(db, sur, "coach")
+    # Read, for rosters.
+    rows = run(db.api_url, in_gym(sur, "SELECT name FROM charge_group", person=coach))
+    assert [r["name"] for r in rows] == ["G"]
+    with pytest.raises(asyncpg.InsufficientPrivilegeError):
+        run(
+            db.api_url,
+            in_gym(
+                sur,
+                "INSERT INTO charge_group (gym_id, name) VALUES ($1, 'X')",
+                sur,
+                person=coach,
+            ),
+        )
+    with pytest.raises(asyncpg.InsufficientPrivilegeError):
+        run(
+            db.api_url,
+            in_gym(
+                sur,
+                "INSERT INTO charge_group_member (gym_id, group_id, person_id) VALUES ($1, $2, $3)",
+                sur,
+                uuid.UUID(group["id"]),
+                coach,
+                person=coach,
+            ),
+        )
+    for sql in (
+        "DELETE FROM charge_group_member RETURNING person_id",
+        "UPDATE charge_group SET name = 'Y' RETURNING id",
+        "DELETE FROM charge_group RETURNING id",
+    ):
+        assert run(db.api_url, in_gym(sur, sql, person=coach)) == [], sql
+    assert ok(client.get(f"/api/groups/{group['id']}", headers=as_gym(sur)))["name"] == "G"
+
+
+def test_the_ficha_answers_404_for_someone_not_in_the_gym(
+    client: TestClient, sur: uuid.UUID
+) -> None:
+    response = client.get(f"/api/people/{uuid.uuid4()}/extra-lines", headers=as_gym(sur))
+    assert response.status_code == 404
+
+
+def test_a_claim_on_a_cancelled_line_is_refused_at_the_database(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    charge = create(client, sur, draft([ana], notify=False))
+    line = line_of(charge, ana)["id"]
+    ok(
+        client.post(
+            f"/api/extra-charges/{charge['id']}/lines/{line}/cancel", json={}, headers=as_gym(sur)
+        )
+    )
+    with pytest.raises(asyncpg.CheckViolationError, match="is cancelled"):
+        run(db.api_url, in_gym(sur, claim_sql(sur, ana), uuid.UUID(line), person=uuid.UUID(ana)))
+
+
+def claim_sql(gym: uuid.UUID, person: str) -> str:
+    """A student's claim on the line `$1`, as `app.api.proofs` writes it."""
+    key = f"proofs/{gym}/{person}/{uuid.uuid4()}"
+    return (
+        "INSERT INTO ledger_entry (gym_id, extra_line_id, amount_clp, kind, status, method,"
+        " claimed_by, claimed_at, proof_object_key)"
+        f" VALUES ('{gym}', $1, 1000, 'payment', 'pending', 'transfer', '{person}', now(), '{key}')"
+    )
+
+
+def test_a_claim_waits_for_a_cancel_holding_the_cobro_and_is_refused(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    """The race: an admin cancels the line while the student's claim lands. The claim
+    waits on the cobro's lock and, once the cancel commits, is refused, so a cancelled
+    line never ends up with a proof waiting on it."""
+    ana = add_person(client, sur, "Ana")
+    charge = create(client, sur, draft([ana], notify=False))
+    line = uuid.UUID(line_of(charge, ana)["id"])
+    owner = seeded_owner(sur)
+
+    async def race() -> None:
+        admin = await asyncpg.connect(to_dsn(db.api_url))
+        student = await asyncpg.connect(to_dsn(db.api_url))
+        try:
+            cancel = admin.transaction()
+            await cancel.start()
+            await admin.execute("SELECT set_config('app.gym_id', $1, true)", str(sur))
+            await admin.execute("SELECT set_config('app.person_id', $1, true)", str(owner))
+            await admin.execute(
+                "SELECT FROM extra_charge WHERE id = $1 FOR UPDATE", uuid.UUID(charge["id"])
+            )
+            await admin.execute("UPDATE extra_line SET cancelled_at = now() WHERE id = $1", line)
+
+            async def claim() -> None:
+                async with student.transaction():
+                    await student.execute("SELECT set_config('app.gym_id', $1, true)", str(sur))
+                    await student.execute("SELECT set_config('app.person_id', $1, true)", ana)
+                    await student.execute(claim_sql(sur, ana), line)
+
+            claiming = asyncio.create_task(claim())
+            await asyncio.sleep(0.5)
+            assert not claiming.done(), "the claim did not wait for the cobro's lock"
+            await cancel.commit()
+            with pytest.raises(asyncpg.CheckViolationError, match="is cancelled"):
+                await claiming
+        finally:
+            await admin.close()
+            await student.close()
+
+    asyncio.run(race())
+    held = run(
+        db.admin_url,
+        lambda c: c.fetchval("SELECT count(*) FROM ledger_entry WHERE extra_line_id = $1", line),
+    )
+    assert held == 0

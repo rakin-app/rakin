@@ -7,7 +7,8 @@ lines always add up to the total (`split`). An admin may then override any perso
 amount (a scholarship, someone who pays less), which a later re-split keeps.
 
 A line settles as a billing period does (`app.domain.billing`): validated payments and
-adjustments less refunds. Its status is what the screens show (`line_status`). Nothing
+adjustments less refunds. Its status is what the screens show (`line_status`): a line
+at nothing is exento, not pagado. Nothing
 here touches a membership: an unpaid line never lapses a plan.
 """
 
@@ -49,6 +50,9 @@ class LineStatus(StrEnum):
     IN_REVIEW = "in_review"
     # Pagado.
     PAID = "paid"
+    # Exento: let off it at nothing, a scholarship. Owes nothing, paid nothing, and is
+    # not counted among who paid.
+    WAIVED = "waived"
     # Anulado.
     CANCELLED = "cancelled"
 
@@ -110,6 +114,8 @@ def line_status(
     """The line as the screens show it."""
     if cancelled:
         return LineStatus.CANCELLED
+    if amount_due_clp == 0:
+        return LineStatus.WAIVED
     if paid_clp >= amount_due_clp:
         return LineStatus.PAID
     if pending_clp > 0:

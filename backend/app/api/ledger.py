@@ -35,6 +35,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.entries import insert_entry
+from app.api.extra_lines import refund_line_payment
 from app.api.people import people_matching
 from app.contacts import Contact, contact_for
 from app.domain import billing
@@ -81,27 +83,6 @@ NO_MEMBERSHIP = HTTPException(status.HTTP_404_NOT_FOUND, "membership not found")
 # The member detail shows this many of a membership's latest entries: years of
 # monthly charges and payments.
 TIMELINE_LIMIT = 100
-
-ENTRY_COLUMNS = (
-    "id, membership_id, billing_period_id, amount_clp, kind, status, method,"
-    " claimed_by, claimed_at, validated_by, validated_at, proof_object_key, note, created_at,"
-    " refund_of, extra_line_id"
-)
-
-# Who is acting, as `app.tenancy` set it; the recording admin.
-CURRENT_PERSON = "current_setting('app.person_id')::uuid"
-
-# Validated by the admin who records it, at the same moment; `now()` is the
-# transaction's, so the payment and its credit carry one time.
-INSERT_ENTRY = text(
-    "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp, kind,"
-    " status, method, claimed_by, claimed_at, validated_by, validated_at, note, refund_of,"
-    " extra_line_id)"
-    " VALUES (current_setting('app.gym_id')::uuid, :membership_id, :billing_period_id,"
-    f" :amount_clp, :kind, :status, :method, {CURRENT_PERSON}, now(), {CURRENT_PERSON}, now(),"
-    f" :note, :refund_of, :extra_line_id) RETURNING {ENTRY_COLUMNS}"
-)
-
 
 # Taken before the period's lock, in that order wherever both are taken.
 LOCK_MEMBERSHIP = text("SELECT FROM membership WHERE id = :membership_id FOR UPDATE")
@@ -152,25 +133,6 @@ async def locked_period(
         closed=paid >= row.amount_due_clp,
     )
     return row, period
-
-
-async def insert_entry(session: AsyncSession, entry: LedgerEntry, **columns: Any) -> Entry:
-    result = await session.execute(
-        INSERT_ENTRY,
-        {
-            "amount_clp": entry.amount_clp,
-            "kind": entry.kind.value,
-            "status": entry.status.value,
-            "note": entry.note,
-            "method": None,
-            "refund_of": None,
-            "membership_id": None,
-            "billing_period_id": None,
-            "extra_line_id": None,
-            **columns,
-        },
-    )
-    return Entry.model_validate(dict(result.one()._mapping))
 
 
 @router.post("/payments", status_code=status.HTTP_201_CREATED)
@@ -276,9 +238,6 @@ async def record_refund(body: RefundRecord, session: LedgerSession) -> RecordedR
     if found is None:
         raise NO_PAYMENT
     if found.extra_line_id is not None:
-        # Imported here: the cobros module builds on this one.
-        from app.api.extra_charges import refund_line_payment
-
         return await refund_line_payment(session, body, found)
     # Locked as a payment locks them, so two refunds of one payment, or a refund and a
     # lapse, run one after the other.
@@ -654,13 +613,8 @@ BOOK_KPIS = text(
          WHERE month = :month) AS refunded_clp,
         (SELECT coalesce(sum(refunds), 0)::bigint FROM v_monthly_income
          WHERE month = :month) AS refunds,
-        (SELECT coalesce(sum(CASE WHEN e.kind = 'refund' THEN -e.amount_clp
-                                  ELSE e.amount_clp END), 0)::bigint
-         FROM ledger_entry e JOIN gym g ON g.id = e.gym_id
-         WHERE e.extra_line_id IS NOT NULL AND e.status = 'validated'
-           AND e.kind IN ('payment', 'refund')
-           AND date_trunc('month', e.validated_at AT TIME ZONE g.timezone)::date = :month)
-            AS collected_extra_clp,
+        (SELECT coalesce(sum(extra_income_clp), 0)::bigint FROM v_monthly_income
+         WHERE month = :month) AS collected_extra_clp,
         pending.amount AS pending_clp, pending.n AS pending_payments,
         overdue.amount AS overdue_clp, overdue.members AS overdue_members,
         overdue.avg_days AS overdue_avg_days,

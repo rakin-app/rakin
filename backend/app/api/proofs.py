@@ -25,8 +25,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.api.extra_charges import NO_LINE, ONE_LINE, open_lines
-from app.api.ledger import ENTRY_COLUMNS
+from app.api.entries import ENTRY_COLUMNS
+from app.api.extra_charges import ONE_LINE, open_lines
+from app.api.extra_lines import CANCELLED, NO_LINE
 from app.contacts import Contact, contact_for
 from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.ledger import EntryKind, EntryStatus
@@ -234,6 +235,9 @@ async def claim_payment(
             )
     except IntegrityError as error:
         constraint = getattr(getattr(error.orig, "__cause__", None), "constraint_name", None)
+        if constraint == "ledger_entry_line_open":
+            # Cancelled after it was read above, by an admin who held the cobro's lock.
+            raise CANCELLED from None
         if constraint != "ledger_entry_proof_object_key":
             raise
         raise HTTPException(status.HTTP_409_CONFLICT, "this proof is already claimed") from None

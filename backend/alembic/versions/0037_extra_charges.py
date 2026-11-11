@@ -18,6 +18,12 @@ both kinds.
 - A line's amount may change after it is written (an admin's override, a re-split) and
   the line may be cancelled (`cancelled_at`); neither is a ledger entry, since neither
   moves money. The ledger stays append-only (0002).
+- Every entry on a line takes the cobro's lock, shared, and is refused on a cancelled
+  line (`ledger_entry_line_open`). The API takes it exclusively before it cancels a
+  line or divides the total again, so a student's claim, which may not lock either row
+  itself, either lands first and is seen or comes after and is refused.
+- `v_monthly_income` (0022) gains `extra_income_clp`: what of the month's income the
+  lines brought in, net of their refunds, by the same expression.
 - Nothing about a line touches a membership: the lapse job and `v_overdue` read billing
   periods only, and `v_balance` now leaves line entries out, since it is per membership.
 
@@ -26,9 +32,9 @@ target: a snapshot the admin edits, not a live filter.
 
 RLS, as for the ledger (0006, 0010): for `rakin_app`, cobros and their lines are an
 owner's or admin's, and anyone may read their own lines and their dependents', and the
-cobros those lines are of, for the student page. A coach reads none. Groups are tenant
-rows like any other: a coach may read their names, and only an owner or admin changes
-them, which is the API's check. The owner role, which the seed, the jobs and
+cobros those lines are of, for the student page. A coach reads none. Anyone in the gym
+may read the groups, a coach their names for rosters; only an owner or admin writes
+them. The owner role, which the seed, the jobs and
 `forget_gym_person` run as, is scoped by the gym alone.
 
 `forget_refusal` keeps anyone with a cobro line as it keeps anyone with ledger entries,
@@ -151,6 +157,72 @@ REFUND_TARGET_AFTER = refund_target(
     " AND p.extra_line_id IS NOT DISTINCT FROM NEW.extra_line_id"
 )
 
+# Every entry on a line waits for the cobro's lock, shared, and is refused once the line
+# is cancelled. SECURITY DEFINER: a student's claim may not lock the cobro (FOR SHARE
+# needs its UPDATE policy), so the owner role, held to the gym in `app.gym_id`, takes
+# it. The line is read after the lock, by a statement of its own, so a cancel that
+# held the lock is seen once it commits.
+LINE_OPEN = f"""
+    CREATE FUNCTION ledger_entry_line_open() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path = pg_catalog, public
+    AS $$
+    BEGIN
+        PERFORM FROM extra_charge x
+        WHERE x.id = (SELECT l.extra_charge_id FROM extra_line l WHERE l.id = NEW.extra_line_id)
+          AND x.gym_id = {CURRENT_GYM}
+        FOR SHARE;
+        IF EXISTS (
+            SELECT FROM extra_line l
+            WHERE l.id = NEW.extra_line_id AND l.cancelled_at IS NOT NULL
+        ) THEN
+            RAISE EXCEPTION 'entry %: line % is cancelled', NEW.id, NEW.extra_line_id
+                USING ERRCODE = 'check_violation', CONSTRAINT = 'ledger_entry_line_open';
+        END IF;
+        RETURN NEW;
+    END
+    $$
+"""
+
+# 0022's `v_monthly_income`, and the same with what the cobro lines brought in.
+INCOME_OPTIONS = "WITH (security_invoker = true)"
+NET = "CASE WHEN e.kind = 'refund' THEN -e.amount_clp ELSE e.amount_clp END"
+INCOME_COLUMNS = f"""SELECT e.gym_id,
+       date_trunc('month', e.validated_at AT TIME ZONE g.timezone)::date AS month,
+       sum({NET})::bigint AS income_clp,
+       count(*) FILTER (WHERE e.kind = 'payment') AS payments,
+       coalesce(sum(e.amount_clp) FILTER (WHERE e.kind = 'refund'), 0)::bigint
+           AS refunds_clp,
+       count(*) FILTER (WHERE e.kind = 'refund') AS refunds"""
+INCOME_FROM = """
+FROM ledger_entry e
+JOIN gym g ON g.id = e.gym_id
+WHERE e.kind IN ('payment', 'refund') AND e.status = 'validated'
+GROUP BY e.gym_id, month
+"""
+INCOME_BEFORE = INCOME_COLUMNS + INCOME_FROM
+INCOME_AFTER = (
+    INCOME_COLUMNS
+    + f""",
+       coalesce(sum({NET}) FILTER (WHERE e.extra_line_id IS NOT NULL), 0)::bigint
+           AS extra_income_clp"""
+    + INCOME_FROM
+)
+INCOME_COMMENT_BEFORE = (
+    "Validated payments less validated refunds per gym and gym-local month, each by the"
+    " month it was validated in. The gym's income only for an owner or admin: RLS gives"
+    " anyone else the sum of the entries they may read."
+)
+INCOME_COMMENT_AFTER = (
+    INCOME_COMMENT_BEFORE + " extra_income_clp is the part of it on cobro extra lines."
+)
+
+
+def income_comment(comment: str) -> str:
+    quoted = comment.replace("'", "''")
+    return f"COMMENT ON VIEW v_monthly_income IS '{quoted}'"
+
+
 REFUSAL = "forget_refusal(uuid)"
 SIGNATURE = "forget_gym_person(uuid)"
 THEIRS = "SELECT id FROM membership WHERE gym_id = gym AND person_id = $1"
@@ -238,14 +310,23 @@ def forget_gym_person(groups: bool) -> str:
     """
 
 
-def _isolated(table: str, grants: str) -> None:
-    """A tenant table: the gym in `app.gym_id` for everyone."""
+def _admin_written(table: str, grants: str) -> None:
+    """A tenant table anyone in the gym reads and only an owner or admin writes: the
+    gym alone for the owner role, as `_money`."""
     op.execute(f"GRANT {grants} ON {table} TO {APP_ROLE}")
     op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
     op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
     op.execute(
-        f"CREATE POLICY {table}_isolation ON {table}"
+        f"CREATE POLICY {table}_isolation ON {table} TO CURRENT_USER"
         f" USING (gym_id = {CURRENT_GYM}) WITH CHECK (gym_id = {CURRENT_GYM})"
+    )
+    op.execute(
+        f"CREATE POLICY {table}_read ON {table} FOR SELECT TO {APP_ROLE}"
+        f" USING (gym_id = {CURRENT_GYM})"
+    )
+    op.execute(
+        f"CREATE POLICY {table}_by_role ON {table} TO {APP_ROLE}"
+        f" USING {LEDGER_ACCESS} WITH CHECK {LEDGER_ACCESS}"
     )
 
 
@@ -277,7 +358,7 @@ def upgrade() -> None:
         )
     """)
     op.execute("CREATE UNIQUE INDEX charge_group_name ON charge_group (gym_id, lower(name))")
-    _isolated("charge_group", "SELECT, INSERT, UPDATE, DELETE")
+    _admin_written("charge_group", "SELECT, INSERT, UPDATE, DELETE")
 
     op.execute("""
         CREATE TABLE charge_group_member (
@@ -290,7 +371,7 @@ def upgrade() -> None:
             FOREIGN KEY (gym_id, person_id) REFERENCES gym_person (gym_id, person_id)
         )
     """)
-    _isolated("charge_group_member", "SELECT, INSERT, DELETE")
+    _admin_written("charge_group_member", "SELECT, INSERT, DELETE")
 
     op.execute("""
         CREATE TABLE extra_charge (
@@ -365,6 +446,12 @@ def upgrade() -> None:
         " WHERE extra_line_id IS NOT NULL"
     )
     op.execute(REFUND_TARGET_AFTER)
+    op.execute(LINE_OPEN)
+    op.execute(
+        "CREATE TRIGGER ledger_entry_line_open BEFORE INSERT ON ledger_entry"
+        " FOR EACH ROW WHEN (NEW.extra_line_id IS NOT NULL)"
+        " EXECUTE FUNCTION ledger_entry_line_open()"
+    )
 
     op.execute("DROP POLICY ledger_entry_own ON ledger_entry")
     op.execute(
@@ -380,6 +467,8 @@ def upgrade() -> None:
         "CREATE OR REPLACE VIEW v_balance WITH (security_invoker = true) AS"
         + V_BALANCE.format(only_memberships=" AND e.membership_id IS NOT NULL")
     )
+    op.execute(f"CREATE OR REPLACE VIEW v_monthly_income {INCOME_OPTIONS} AS {INCOME_AFTER}")
+    op.execute(income_comment(INCOME_COMMENT_AFTER))
     op.execute(forget_refusal(extra_lines=True))
     op.execute(forget_gym_person(groups=True))
 
@@ -387,6 +476,11 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(forget_gym_person(groups=False))
     op.execute(forget_refusal(extra_lines=False))
+    # `CREATE OR REPLACE VIEW` cannot drop a column: 0022's view, recreated.
+    op.execute("DROP VIEW v_monthly_income")
+    op.execute(f"CREATE VIEW v_monthly_income {INCOME_OPTIONS} AS {INCOME_BEFORE}")
+    op.execute(f"GRANT SELECT ON v_monthly_income TO {APP_ROLE}")
+    op.execute(income_comment(INCOME_COMMENT_BEFORE))
     op.execute(
         "CREATE OR REPLACE VIEW v_balance WITH (security_invoker = true) AS"
         + V_BALANCE.format(only_memberships="")
@@ -401,6 +495,8 @@ def downgrade() -> None:
         f"CREATE POLICY ledger_entry_own ON ledger_entry FOR SELECT TO {APP_ROLE}"
         f" USING {OWN_BEFORE}"
     )
+    op.execute("DROP TRIGGER ledger_entry_line_open ON ledger_entry")
+    op.execute("DROP FUNCTION ledger_entry_line_open()")
     op.execute(REFUND_TARGET_BEFORE)
     op.execute("DROP INDEX ledger_entry_extra_line")
     op.execute("ALTER TABLE ledger_entry DROP CONSTRAINT ledger_entry_refund_of_line_fkey")

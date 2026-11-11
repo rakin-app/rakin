@@ -60,7 +60,7 @@ def test_an_override_replaces_ones_share_and_leaves_the_rest() -> None:
         (20_000, 5_000, 0, False, LineStatus.OPEN),
         (20_000, 0, 20_000, False, LineStatus.IN_REVIEW),
         (20_000, 20_000, 0, False, LineStatus.PAID),
-        (0, 0, 0, False, LineStatus.PAID),
+        (0, 0, 0, False, LineStatus.WAIVED),
         (20_000, 20_000, 0, True, LineStatus.CANCELLED),
     ],
 )

@@ -35,10 +35,22 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.ledger import CURRENT_PERSON, insert_entry
+from app.api.entries import CURRENT_PERSON, insert_entry
+from app.api.extra_lines import (
+    CANCELLED,
+    NO_LINE,
+    NOT_FOUND,
+    PAYMENT,
+    PENDING,
+    REFUND,
+    SETTLING,
+    VALIDATED,
+    line_after,
+    locked_line,
+)
 from app.contacts import Contact, contact_for, contact_query
 from app.domain import billing
-from app.domain.billing import SETTLING_KINDS, BillingPeriod, Settlement, settled_amount
+from app.domain.billing import Settlement, settled_amount
 from app.domain.errors import InvalidTransition
 from app.domain.extra_charges import (
     AmountMode,
@@ -77,12 +89,9 @@ from app.schemas.extra_charges import (
 from app.schemas.gym import Channels
 from app.schemas.ledger import (
     Entry,
-    Period,
     PersonRef,
     RecordedAdjustment,
     RecordedPayment,
-    RecordedRefund,
-    RefundRecord,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,19 +99,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/extra-charges", tags=["extra charges"])
 people_router = APIRouter(prefix="/api/people", tags=["extra charges"])
 
-NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "cobro extra not found")
-NO_LINE = HTTPException(status.HTTP_404_NOT_FOUND, "line not found")
 NOBODY = HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "the target names nobody")
-CANCELLED = HTTPException(status.HTTP_409_CONFLICT, "this line is cancelled")
-
-VALIDATED = f"'{EntryStatus.VALIDATED.value}'"
-PENDING = f"'{EntryStatus.PENDING.value}'"
-PAYMENT = f"'{EntryKind.PAYMENT.value}'"
-SETTLING = ", ".join(f"'{k.value}'" for k in sorted(SETTLING_KINDS))
+NO_PERSON = HTTPException(status.HTTP_404_NOT_FOUND, "person not found")
 
 # What the entries on the line `l` add up to: validated settlements, as a period's
 # (`app.api.ledger.locked_period`), payments that proofs claim and await review, and
-# the first of those proofs, for "Validar comprobante" to open.
+# the first of those proofs, for "Validar comprobante" to open. `kept` is the money the
+# gym holds for it, its validated payments less their refunds, which an adjustment is
+# not; `money_entries` counts the payments, validated or waiting, and the refunds, which
+# a re-split must not move the amounts under.
 LINE_SUMS = f"""
     LEFT JOIN LATERAL (
         SELECT (sum({settled_amount("e")}) FILTER (
@@ -112,8 +117,12 @@ LINE_SUMS = f"""
                (array_agg(e.id ORDER BY e.claimed_at, e.id) FILTER (
                     WHERE e.status = {PENDING} AND e.kind = {PAYMENT}
                       AND e.proof_object_key IS NOT NULL))[1] AS pending_id,
+               (sum({settled_amount("e")}) FILTER (
+                    WHERE e.status = {VALIDATED} AND e.kind IN ({PAYMENT}, {REFUND})))::bigint
+                   AS kept,
                count(*) FILTER (
-                    WHERE e.status <> 'rejected') AS live_entries
+                    WHERE (e.kind = {PAYMENT} AND e.status IN ({VALIDATED}, {PENDING}))
+                       OR (e.kind = {REFUND} AND e.status = {VALIDATED})) AS money_entries
         FROM ledger_entry e WHERE e.extra_line_id = l.id
     ) s ON true
 """
@@ -138,7 +147,7 @@ TARGETS = {
     """,
     TargetKind.PEOPLE: """
         SELECT gp.person_id, gp.name FROM gym_person gp
-        WHERE gp.person_id = ANY(CAST(:person_ids AS uuid[]))
+        WHERE gp.person_id = ANY(CAST(:person_ids AS uuid[])) AND gp.left_on IS NULL
     """,
 }
 
@@ -159,7 +168,7 @@ LABELS = {
 async def targeted(session: AsyncSession, draft: AmountDraft) -> tuple[list[Any], str | None]:
     """The people `draft` targets, each with whom to tell, and the target's label: the
     program's or group's name. A program or group not in this gym is a 404; someone
-    picked by hand who is not in it, a 422."""
+    picked by hand who is not in it, or has left it, a 422."""
     target = draft.target
     params: dict[str, Any] = {
         "program_id": target.program_id,
@@ -179,7 +188,7 @@ async def targeted(session: AsyncSession, draft: AmountDraft) -> tuple[list[Any]
     )
     if target.kind is TargetKind.PEOPLE and len(rows) != len(params["person_ids"]):
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "someone picked is not in this gym"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "someone picked is not in this gym or has left"
         )
     if not rows:
         raise NOBODY
@@ -259,36 +268,66 @@ def charge_notice(
     )
 
 
+def row_contact(row: Any) -> Contact | None:
+    """Whom to email about the line `row` (`LINES`), as `contact_for` answers it, from
+    the columns the row already carries; `None` with no email to send to."""
+    if not row.email:
+        return None
+    return Contact(
+        person_id=row.contact_id,
+        name=row.contact_name,
+        email=row.email,
+        phone=row.phone,
+        on_behalf_of=row.on_behalf_of,
+    )
+
+
+def row_status(row: Any) -> LineStatus:
+    return line_status(
+        amount_due_clp=row.amount_due_clp,
+        paid_clp=row.paid,
+        pending_clp=row.pending,
+        cancelled=row.cancelled_at is not None,
+    )
+
+
 async def notify(
     session: AsyncSession,
     charge: Any,
-    lines: list[Line],
+    rows: list[Any],
     notices: Notices,
     background: BackgroundTasks,
     *,
     reminder: bool,
 ) -> Reminded:
-    """Email each of `lines` its amount, after the response, which is after whatever
-    wrote them has committed."""
+    """Email each of the lines `rows` (`LINES`) its amount, or on a reminder what is left
+    of it, after the response, which is after whatever wrote them has committed."""
     gym = (await session.execute(GYM)).one()
     sent = without = 0
-    for line in lines:
-        contact = await contact_for(session, line.person.id)
-        if contact is None or not contact.email:
+    for row in rows:
+        contact = row_contact(row)
+        if contact is None:
             without += 1
             continue
+        owed = row.amount_due_clp - settled_paid(row.paid, row.amount_due_clp)
         notice = charge_notice(
             gym,
             charge,
             contact,
-            person_name=line.person.name,
-            amount_clp=line.outstanding_clp if reminder else line.amount_due_clp,
+            person_name=row.person_name,
+            amount_clp=owed if reminder else row.amount_due_clp,
             reminder=reminder,
         )
         # An address the gym typed wrong is a failed send in `message_log`.
         background.add_task(notices.send, notice)
         sent += 1
     return Reminded(sent=sent, without_email=without)
+
+
+async def open_rows(session: AsyncSession, charge_id: uuid.UUID) -> list[Any]:
+    """The cobro's lines still owed with no proof waiting: who a notice is for."""
+    rows = await session.execute(text(LINES + LINES_ORDER), {"id": charge_id, "line": None})
+    return [row for row in rows if row_status(row) is LineStatus.OPEN]
 
 
 # --- the preview and creating a cobro ---------------------------------------------
@@ -388,13 +427,12 @@ async def create(
             "overridden": [p in overridden for p in people],
         },
     )
-    charge = await read_charge(session, charge_id)
     if body.notify:
         facts = await charge_facts(session, charge_id)
         # Someone let off it, at nothing, is not told to pay nothing.
-        owing = [line for line in charge.people if line.status is LineStatus.OPEN]
+        owing = await open_rows(session, charge_id)
         await notify(session, facts, owing, notices, background, reminder=False)
-    return charge
+    return await read_charge(session, charge_id)
 
 
 # --- reading cobros ---------------------------------------------------------------
@@ -402,10 +440,13 @@ async def create(
 SUMMARY = f"""
     SELECT x.id, x.title, x.category, x.due_date, x.amount_mode, x.amount_clp, x.target_kind,
            x.target_label, x.created_at, x.description, x.message,
-           count(l.id) FILTER (WHERE l.cancelled_at IS NULL) AS lines,
+           count(l.id) FILTER (WHERE l.cancelled_at IS NULL AND l.amount_due_clp > 0) AS lines,
            count(l.id) FILTER (
-               WHERE l.cancelled_at IS NULL AND coalesce(s.paid, 0) >= l.amount_due_clp
+               WHERE l.cancelled_at IS NULL AND l.amount_due_clp > 0
+                 AND coalesce(s.paid, 0) >= l.amount_due_clp
            ) AS paid_lines,
+           count(l.id) FILTER (WHERE l.cancelled_at IS NULL AND l.amount_due_clp = 0)
+               AS waived_lines,
            coalesce(sum(l.amount_due_clp) FILTER (WHERE l.cancelled_at IS NULL), 0)::bigint
                AS due_clp,
            coalesce(sum(least(greatest(coalesce(s.paid, 0), 0), l.amount_due_clp))
@@ -421,9 +462,9 @@ ONE_SUMMARY = text(f"{SUMMARY} WHERE x.id = :id GROUP BY x.id")
 LINES = f"""
     SELECT l.id, l.person_id, gp.name AS person_name, l.amount_due_clp, l.overridden,
            l.cancelled_at, coalesce(s.paid, 0) AS paid, coalesce(s.pending, 0) AS pending,
-           s.pending_id, s.live_entries,
+           s.pending_id, coalesce(s.kept, 0) AS kept, s.money_entries,
            gl.guardian_person_id AS guardian_id, ggp.name AS guardian_name,
-           c.name AS contact_name, c.email, c.phone, c.on_behalf_of
+           c.person_id AS contact_id, c.name AS contact_name, c.email, c.phone, c.on_behalf_of
     FROM extra_line l
     JOIN gym_person gp ON gp.gym_id = l.gym_id AND gp.person_id = l.person_id
     LEFT JOIN guardian_link gl ON gl.gym_id = l.gym_id AND gl.dependent_person_id = l.person_id
@@ -431,12 +472,13 @@ LINES = f"""
         ON ggp.gym_id = gl.gym_id AND ggp.person_id = gl.guardian_person_id
     LEFT JOIN LATERAL ({contact_query("l.person_id")}) c ON true
     {LINE_SUMS}
-    WHERE l.extra_charge_id = :id
+    WHERE l.extra_charge_id = :id AND (CAST(:line AS uuid) IS NULL OR l.id = :line)
 """
 
 LINES_ORDER = " ORDER BY lower(gp.name), l.id"
 
-# The charge's validated payments with something left to give back, newest first.
+# The charge's validated payments with something left to give back, newest first;
+# one line's, with `:line`.
 REFUNDABLE = text(
     """
     SELECT p.id, p.extra_line_id, p.amount_clp, p.method, p.validated_at,
@@ -447,6 +489,7 @@ REFUNDABLE = text(
         SELECT sum(x.amount_clp)::bigint AS amount FROM ledger_entry x WHERE x.refund_of = p.id
     ) r ON true
     WHERE l.extra_charge_id = :id AND p.kind = 'payment' AND p.status = 'validated'
+      AND (CAST(:line AS uuid) IS NULL OR l.id = :line)
       AND p.amount_clp > coalesce(r.amount, 0)
     ORDER BY p.validated_at DESC, p.id
     """
@@ -466,12 +509,7 @@ async def list_charges(session: LedgerSession) -> list[ExtraChargeSummary]:
 
 def to_line(row: Any, gym: Any, charge: Any, refundable: list[RefundableLinePayment]) -> Line:
     paid = settled_paid(row.paid, row.amount_due_clp)
-    state = line_status(
-        amount_due_clp=row.amount_due_clp,
-        paid_clp=row.paid,
-        pending_clp=row.pending,
-        cancelled=row.cancelled_at is not None,
-    )
+    state = row_status(row)
     outstanding = row.amount_due_clp - paid
     return Line(
         id=row.id,
@@ -523,11 +561,11 @@ async def read_charge(session: AsyncSession, charge_id: uuid.UUID) -> ExtraCharg
         raise NOT_FOUND
     gym = (await session.execute(GYM)).one()
     refundable: dict[uuid.UUID, list[RefundableLinePayment]] = defaultdict(list)
-    for payment in await session.execute(REFUNDABLE, {"id": charge_id}):
+    for payment in await session.execute(REFUNDABLE, {"id": charge_id, "line": None}):
         refundable[payment.extra_line_id].append(
             RefundableLinePayment.model_validate(payment, from_attributes=True)
         )
-    lines = await session.execute(text(LINES + LINES_ORDER), {"id": charge_id})
+    lines = await session.execute(text(LINES + LINES_ORDER), {"id": charge_id, "line": None})
     return ExtraCharge(
         **summary(row).model_dump(),
         description=row.description,
@@ -544,82 +582,23 @@ async def get_charge(charge_id: uuid.UUID, session: LedgerSession) -> ExtraCharg
 
 # --- changing lines ---------------------------------------------------------------
 
-LOCK_CHARGE = text("SELECT amount_mode, amount_clp FROM extra_charge WHERE id = :id FOR UPDATE")
-LOCK_LINE = text(
-    "SELECT l.id, l.extra_charge_id, l.person_id, l.amount_due_clp, l.cancelled_at"
-    " FROM extra_line l WHERE l.id = :line AND l.extra_charge_id = :charge FOR UPDATE"
-)
-
-
-async def locked_line(
-    session: AsyncSession, charge_id: uuid.UUID, line_id: uuid.UUID
-) -> tuple[Any, Any, BillingPeriod]:
-    """The cobro and its line, locked until the request ends, and the line settled as a
-    period is. The cobro first, then the line, wherever both are taken: two payments on
-    one line settle one after the other, and a re-split waits for a payment and then
-    sees it."""
-    charge = (await session.execute(LOCK_CHARGE, {"id": charge_id})).one_or_none()
-    if charge is None:
-        raise NOT_FOUND
-    line = (await session.execute(LOCK_LINE, {"line": line_id, "charge": charge_id})).one_or_none()
-    if line is None:
-        raise NO_LINE
-    paid = await session.scalar(
-        text(
-            f"SELECT coalesce(sum({settled_amount('ledger_entry')}), 0)::bigint FROM ledger_entry"
-            f" WHERE extra_line_id = :id AND status = {VALIDATED} AND kind IN ({SETTLING})"
-        ),
-        {"id": line_id},
-    )
-    due = await session.scalar(
-        text("SELECT due_date FROM extra_charge WHERE id = :id"), {"id": charge_id}
-    )
-    period = BillingPeriod(
-        period_start=due,
-        period_end=due,
-        amount_due_clp=line.amount_due_clp,
-        due_date=due,
-        paid_clp=paid,
-        closed=paid >= line.amount_due_clp,
-    )
-    return charge, line, period
-
-
-async def locked_line_by_id(
-    session: AsyncSession, line_id: uuid.UUID
-) -> tuple[Any, Any, BillingPeriod]:
-    """`locked_line` for a line known by its id alone: a proof's or a payment's."""
-    charge_id = await session.scalar(
-        text("SELECT extra_charge_id FROM extra_line WHERE id = :id"), {"id": line_id}
-    )
-    if charge_id is None:
-        raise NO_LINE
-    return await locked_line(session, charge_id, line_id)
-
-
-def line_after(line_id: uuid.UUID, period: BillingPeriod) -> Period:
-    """The line as an entry just settled leaves it, in the shape a period's is given."""
-    return Period(
-        id=line_id,
-        amount_due_clp=period.amount_due_clp,
-        paid_clp=period.paid_clp,
-        outstanding_clp=period.outstanding_clp,
-        closed=period.closed,
-    )
-
 
 async def line_of(session: AsyncSession, charge_id: uuid.UUID, line_id: uuid.UUID) -> Line:
     gym = (await session.execute(GYM)).one()
     charge = await charge_facts(session, charge_id)
-    row = (
-        await session.execute(text(LINES + " AND l.id = :line"), {"id": charge_id, "line": line_id})
-    ).one()
+    row = await line_row(session, charge_id, line_id)
     refundable = [
         RefundableLinePayment.model_validate(p, from_attributes=True)
-        for p in await session.execute(REFUNDABLE, {"id": charge_id})
-        if p.extra_line_id == line_id
+        for p in await session.execute(REFUNDABLE, {"id": charge_id, "line": line_id})
     ]
     return to_line(row, gym, charge, refundable)
+
+
+async def line_row(session: AsyncSession, charge_id: uuid.UUID, line_id: uuid.UUID) -> Any:
+    row = (await session.execute(text(LINES), {"id": charge_id, "line": line_id})).one_or_none()
+    if row is None:
+        raise NO_LINE
+    return row
 
 
 @router.patch("/{charge_id}/lines/{line_id}")
@@ -645,20 +624,28 @@ async def resplit(
 ) -> dict[uuid.UUID, int] | None:
     """Each other line's amount once the total is divided again without `without`, the
     overrides kept: `None` when it cannot be, for a cobro that is not a split, one
-    someone has paid or claimed, or one with nobody left."""
+    someone has paid, claimed or been refunded on, or one with nobody left. An
+    adjustment moves no money and does not stand in the way. Run under the cobro's lock,
+    which every entry on its lines waits for (`app.api.extra_lines`)."""
     if AmountMode(charge.amount_mode) is not AmountMode.SPLIT:
         return None
-    rows = (await session.execute(text(LINES + LINES_ORDER), {"id": charge_id})).all()
-    if any(row.live_entries for row in rows):
+    rows = (await session.execute(text(LINES + LINES_ORDER), {"id": charge_id, "line": None})).all()
+    if any(row.money_entries for row in rows):
         return None
     left = [row for row in rows if row.cancelled_at is None and row.id != without]
     if not left:
         return None
     try:
-        divided = split(charge.amount_clp, [Person(row.id, row.person_name) for row in left])
+        # By person, as `create` divided it, so a tie in names breaks the same way.
+        divided = split(charge.amount_clp, [Person(row.person_id, row.person_name) for row in left])
     except ValueError:
         return None
-    return {row.id: row.amount_due_clp if row.overridden else divided[row.id] for row in left}
+    return {
+        row.id: row.amount_due_clp if row.overridden else divided[row.person_id] for row in left
+    }
+
+
+SHARE_CHARGE = text("SELECT amount_mode, amount_clp FROM extra_charge WHERE id = :id FOR SHARE")
 
 
 @router.get("/{charge_id}/lines/{line_id}/cancel")
@@ -666,14 +653,12 @@ async def cancel_preview(
     charge_id: uuid.UUID, line_id: uuid.UUID, session: LedgerSession
 ) -> CancelPreview:
     """What cancelling the line would leave: whether the total may be divided again
-    among the others, and how."""
-    charge = await charge_facts(session, charge_id)
-    found = await session.scalar(
-        text("SELECT id FROM extra_line WHERE id = :line AND extra_charge_id = :charge"),
-        {"line": line_id, "charge": charge_id},
-    )
-    if found is None:
-        raise NO_LINE
+    among the others, and how. It reads under the cobro's lock, shared, so no payment
+    or claim lands halfway through what it counts."""
+    charge = (await session.execute(SHARE_CHARGE, {"id": charge_id})).one_or_none()
+    if charge is None:
+        raise NOT_FOUND
+    await line_row(session, charge_id, line_id)
     divided = await resplit(session, charge, charge_id, line_id)
     return CancelPreview(resplit_allowed=divided is not None, amounts=divided or {})
 
@@ -682,26 +667,19 @@ async def cancel_preview(
 async def cancel_line(
     charge_id: uuid.UUID, line_id: uuid.UUID, body: LineCancel, session: LedgerSession
 ) -> ExtraCharge:
-    """Anular: the person no longer owes it. Only a line with no money on it, paid or
-    claimed; refund a payment first. With `resplit`, the total is divided again among
-    the lines left, while nobody has paid any."""
+    """Anular: the person no longer owes it. Only a line the gym holds no money for and
+    no proof waits on; refund a payment first. An adjustment is not money and does not
+    stand in the way. With `resplit`, the total is divided again among the lines left,
+    while nobody has paid any.
+
+    Under the cobro's lock, which a student's claim waits for too
+    (`ledger_entry_line_open`, 0037): a claim either lands before this reads the line
+    and is seen, or after it commits and is refused."""
     charge, line, _ = await locked_line(session, charge_id, line_id)
     if line.cancelled_at is not None:
         raise CANCELLED
-    # Nothing paid that is still kept, and no proof waiting: a payment refunded in full
-    # leaves the line as if it had none.
-    kept = await session.scalar(
-        text(
-            f"SELECT coalesce(sum({settled_amount('ledger_entry')}), 0)::bigint FROM ledger_entry"
-            f" WHERE extra_line_id = :id AND status = {VALIDATED}"
-        ),
-        {"id": line_id},
-    )
-    pending = await session.scalar(
-        text(f"SELECT count(*) FROM ledger_entry WHERE extra_line_id = :id AND status = {PENDING}"),
-        {"id": line_id},
-    )
-    if pending or kept:
+    row = await line_row(session, charge_id, line_id)
+    if row.pending or row.kept:
         raise HTTPException(status.HTTP_409_CONFLICT, "the line has money on it: refund it first")
     divided = None
     if body.resplit:
@@ -842,33 +820,6 @@ async def record_line_adjustment(
     return RecordedAdjustment(adjustment=adjustment, period=line_after(line_id, settlement.period))
 
 
-async def refund_line_payment(
-    session: AsyncSession, body: RefundRecord, found: Any
-) -> RecordedRefund:
-    """`POST /api/ledger/refunds` for a payment on a line: the line's locks, then as a
-    period's refund (`app.api.ledger.record_refund`)."""
-    _, _, period = await locked_line_by_id(session, found.extra_line_id)
-    refunded = await session.scalar(
-        text("SELECT coalesce(sum(amount_clp), 0)::bigint FROM ledger_entry WHERE refund_of = :id"),
-        {"id": body.payment_id},
-    )
-    payment = LedgerEntry(
-        kind=EntryKind.PAYMENT, amount_clp=found.amount_clp, status=EntryStatus(found.status)
-    )
-    try:
-        settlement = billing.refund(period, payment, refunded or 0, body.amount_clp, body.note)
-    except InvalidTransition as refused:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(refused)) from None
-    refund = await insert_entry(
-        session,
-        settlement.entry,
-        extra_line_id=found.extra_line_id,
-        method=body.method.value,
-        refund_of=body.payment_id,
-    )
-    return RecordedRefund(refund=refund, period=line_after(found.extra_line_id, settlement.period))
-
-
 # --- telling people again ---------------------------------------------------------
 
 
@@ -881,11 +832,11 @@ async def notify_line(
     background: BackgroundTasks,
 ) -> Reminded:
     """Reenviar aviso: email this one person their amount again."""
-    line = await line_of(session, charge_id, line_id)
-    if line.status is LineStatus.CANCELLED:
-        raise CANCELLED
     facts = await charge_facts(session, charge_id)
-    return await notify(session, facts, [line], notices, background, reminder=True)
+    row = await line_row(session, charge_id, line_id)
+    if row.cancelled_at is not None:
+        raise CANCELLED
+    return await notify(session, facts, [row], notices, background, reminder=True)
 
 
 @router.post("/{charge_id}/remind")
@@ -897,9 +848,8 @@ async def remind(
 ) -> Reminded:
     """Recordar a los pendientes: email everyone who still owes and has no proof
     waiting what is left of their amount."""
-    charge = await read_charge(session, charge_id)
-    owing = [line for line in charge.people if line.status is LineStatus.OPEN]
     facts = await charge_facts(session, charge_id)
+    owing = await open_rows(session, charge_id)
     return await notify(session, facts, owing, notices, background, reminder=True)
 
 
@@ -966,6 +916,11 @@ async def open_lines(session: AsyncSession, me: uuid.UUID) -> list[MyExtraLine]:
 @people_router.get("/{person_id}/extra-lines")
 async def person_lines(person_id: uuid.UUID, session: LedgerSession) -> list[MyExtraLine]:
     """The person's cobros extra still owed: "Cobros extra pendientes" on their ficha."""
+    known = await session.scalar(
+        text("SELECT EXISTS (SELECT FROM gym_person WHERE person_id = :id)"), {"id": person_id}
+    )
+    if not known:
+        raise NO_PERSON
     rows = await session.execute(
         text(PERSON_LINES + OWED + " AND l.person_id = :person" + PERSON_ORDER),
         {"person": person_id},
