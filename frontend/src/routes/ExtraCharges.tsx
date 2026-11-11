@@ -11,6 +11,7 @@ import {
   saveGroup,
   type ExtraChargeSummary,
 } from '../api/extraCharges'
+import { gradingSchemeQuery } from '../api/grading'
 import type { PersonRef } from '../api/ledger'
 import { myRoleQuery, readsLedger } from '../api/me'
 import { membersPath, membersQuery, plansQuery, programsQuery, type MemberRow } from '../api/people'
@@ -20,6 +21,7 @@ import { Field, Input, SearchInput, Select } from '../components/Field'
 import { ChevronLeftIcon } from '../components/icons'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
+import { hasRanks, RankFilter, rankFilters, type RankChoice } from '../components/RankFilter'
 import { shortDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
@@ -211,9 +213,15 @@ function Groups() {
 }
 
 /** Every member a filter finds, all pages: what "Agregar a las N personas" adds. */
-async function everyone(program: string, plan: string): Promise<PersonRef[]> {
+async function everyone(program: string, plan: string, rank: RankChoice | null): Promise<PersonRef[]> {
   const found: PersonRef[] = []
-  const filters = { q: '', status: [], plan: plan ? [plan] : [], program: program ? [program] : [] }
+  const filters = {
+    q: '',
+    status: [],
+    plan: plan ? [plan] : [],
+    program: program ? [program] : [],
+    ...rankFilters(rank),
+  }
   for (let offset = 0; ; ) {
     const page = await apiFetch<{ items: MemberRow[]; total: number }>(membersPath(filters, offset))
     found.push(...page.items.map((row) => ({ id: row.id, name: row.name })))
@@ -342,20 +350,25 @@ function GroupForm({
   )
 }
 
-/** Build a group from the member list's filters: a program, a plan, or both. */
+/** Build a group from the member list's filters: a program, a plan, a belt, or any of them together. */
 function FilterAdd({ onAdd }: { onAdd: (people: PersonRef[]) => void }) {
   const words = copy.groups
   const programs = useQuery(programsQuery)
   const plans = useQuery(plansQuery)
   const [program, setProgram] = useState('')
   const [plan, setPlan] = useState('')
+  // A gym that does not grade (#226) gets no belt filter.
+  const scheme = useQuery(gradingSchemeQuery())
+  const ranked = hasRanks(scheme.data) ? scheme.data : null
+  const [rank, setRank] = useState<RankChoice | null>(null)
+  const chosen = program !== '' || plan !== '' || rank !== null
   const found = useQuery({
-    queryKey: ['groups', 'filter', program, plan],
-    queryFn: () => everyone(program, plan),
-    enabled: program !== '' || plan !== '',
+    queryKey: ['groups', 'filter', program, plan, rank],
+    queryFn: () => everyone(program, plan, rank),
+    enabled: chosen,
   })
   return (
-    <fieldset className="extra__filters">
+    <fieldset className={ranked ? 'extra__filters extra__filters--ranks' : 'extra__filters'}>
       <legend className="extra__legend">{words.filters}</legend>
       <Field label={words.program}>
         {(props) => (
@@ -381,7 +394,14 @@ function FilterAdd({ onAdd }: { onAdd: (people: PersonRef[]) => void }) {
           </Select>
         )}
       </Field>
-      {(program || plan) && (
+      {ranked && (
+        <Field label={words.rank}>
+          {(props) => (
+            <RankFilter {...props} scheme={ranked} value={rank} onChange={setRank} anyLabel={words.any} />
+          )}
+        </Field>
+      )}
+      {chosen && (
         <Button disabled={!found.isSuccess || found.data.length === 0} onClick={() => found.data && onAdd(found.data)}>
           {found.isSuccess ? words.addAll(found.data.length) : words.loadingFilter}
         </Button>
