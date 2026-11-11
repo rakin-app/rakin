@@ -386,7 +386,8 @@ describe('Clases on a desktop', () => {
     for (const day of days) {
       expect(within(week).getByRole('heading', { name: weekdayDay(toDate(day)) })).toBeInTheDocument()
       const asked = day === today ? '/api/sessions' : `/api/sessions?date=${day}`
-      expect(calls.map((c) => c.path)).toContain(asked)
+      // Once the gym's timezone is in: a device in another zone has its own today until then.
+      await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain(asked))
     }
 
     // Today's class that has begun is picked to start with: two came, and two are regulars.
