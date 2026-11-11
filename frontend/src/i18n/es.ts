@@ -51,6 +51,8 @@ export const es = {
         : `Pediste varios links seguidos. Inténtalo de nuevo en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`}.`,
     invalid: 'Revisa el correo: no parece una dirección válida.',
     failed: 'No pudimos enviar el link. Revisa tu conexión e inténtalo de nuevo.',
+    // Why they are here, when the session ended rather than never began (#212).
+    expired: 'Tu sesión venció. Entra de nuevo para seguir.',
   },
   signOut: {
     label: 'Cerrar sesión',
@@ -1379,6 +1381,8 @@ export const es = {
         working: 'Guardando…',
         saved: 'Guardado.',
         failed: 'No pudimos guardar. Inténtalo de nuevo.',
+        // What was typed when the session expired, back after signing in again (#212).
+        restored: 'Recuperamos lo que habías escrito antes de que venciera tu sesión. Guárdalo para no perderlo.',
       },
       attendance: {
         title: 'Asistencia',

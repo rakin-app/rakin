@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from './api/queryClient'
@@ -205,7 +205,39 @@ describe('signing in', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/ingresar')
-    expect(router.state.location.search).toEqual({ redirect: '/admin/alumnos' })
+    expect(router.state.location.search).toEqual({ redirect: '/admin/alumnos', expired: true })
+    expect(screen.getByText(es.signIn.expired)).toBeInTheDocument()
+  })
+
+  it('says the session expired when a page is opened after it did (#212)', async () => {
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: null } } : { status: 404 }))
+    renderAt('/me')
+    await screen.findByRole('heading', { level: 1, name: es.me.home.title })
+    cleanup()
+
+    signedOut()
+    const router = renderAt('/me')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.search).toEqual({ redirect: '/me', expired: true })
+    expect(screen.getByText(es.signIn.expired)).toBeInTheDocument()
+  })
+
+  it('does not say a session expired to someone who signed out, or never signed in', async () => {
+    stubApi((path) =>
+      path === '/api/me/role' ? { status: 200, body: { role: null } } : path === '/api/auth/logout' ? { status: 204 } : { status: 404 },
+    )
+    renderAt('/me')
+    await userEvent.click(await screen.findByRole('button', { name: es.signOut.label }))
+    await screen.findByRole('heading', { level: 1, name: es.signIn.title })
+    cleanup()
+
+    signedOut()
+    const router = renderAt('/me')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.search).toEqual({ redirect: '/me' })
+    expect(screen.queryByText(es.signIn.expired)).not.toBeInTheDocument()
   })
 })
 
