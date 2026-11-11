@@ -50,7 +50,7 @@ import {
   type Step,
   type TimerBlock,
 } from './timerEngine'
-import { signal, soundState, switchSignal, unlockSound, useWakeLock, type SoundState } from './timerSignal'
+import { signal, switchSignal, unlockSound, useSoundState, useWakeLock, type SoundState } from './timerSignal'
 import './Classes.css'
 import './ClassTimer.css'
 
@@ -617,6 +617,7 @@ function Running({
   const navigate = useNavigate()
   const timeZone = useGymTimeZone()
   const wakeLock = useWakeLock(true)
+  const sound = useSoundState()
   // The run as last committed, for the tick and the buttons between renders.
   const latest = useRef(run)
   const warned = useRef<string | null>(null)
@@ -727,7 +728,7 @@ function Running({
           {words.end}
         </Button>
       </div>
-      <TimerNotes sessionId={session.id} noWakeLock={wakeLock === 'unsupported'} sound={soundState()} />
+      <TimerNotes sessionId={session.id} noWakeLock={wakeLock === 'unsupported'} sound={sound} />
       {unseenAt !== null && (
         <div className="timer__sheet" role="alertdialog" aria-label={words.unseen.title}>
           <p>{words.unseen.title}</p>

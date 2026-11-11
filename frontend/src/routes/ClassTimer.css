@@ -291,8 +291,9 @@
     grid-row: 2 / 4;
   }
 
+  /* "10:00" fits its column with room for the warning's pulse, which grows it 8%. */
   .timer__clock {
-    font-size: min(22vw, 46vh);
+    font-size: min(18vw, 46vh);
   }
 
   .timer__controls {

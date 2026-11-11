@@ -1,3 +1,4 @@
+import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startRun, type RunState, type TimerBlock } from './timerEngine'
 import { switchSignal, VIBRATION } from './timerSignal'
@@ -38,24 +39,45 @@ describe('the sounds', () => {
     vi.resetModules()
   })
 
-  // A Web Audio that records the tones asked of it.
-  function fakeAudio() {
+  // A Web Audio that records the contexts made, the blips and the tones asked of it.
+  function fakeAudio({ failFirst = false } = {}) {
     const tones: { frequency: number; type: string }[] = []
+    const contexts: FakeContext[] = []
+    let blips = 0
+    let fail = failFirst
     const node = () => ({ connect: (next: unknown) => next })
-    class FakeContext {
-      state = 'suspended'
+    class FakeContext extends EventTarget {
+      state: AudioContextState = 'suspended'
       currentTime = 0
       sampleRate = 44_100
       destination = {}
+      constructor() {
+        super()
+        if (fail) {
+          fail = false
+          throw new Error('NotAllowedError')
+        }
+        contexts.push(this)
+      }
+      to(state: AudioContextState) {
+        this.state = state
+        this.dispatchEvent(new Event('statechange'))
+      }
       resume() {
-        this.state = 'running'
+        this.to('running')
         return Promise.resolve()
       }
       createBuffer() {
         return {}
       }
       createBufferSource() {
-        return { ...node(), buffer: null, start() {} }
+        return {
+          ...node(),
+          buffer: null,
+          start() {
+            blips += 1
+          },
+        }
       }
       createGain() {
         return { ...node(), gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} } }
@@ -76,7 +98,7 @@ describe('the sounds', () => {
       }
     }
     vi.stubGlobal('AudioContext', FakeContext)
-    return tones
+    return { tones, contexts, blips: () => blips }
   }
 
   it('is locked until a tap, then on', async () => {
@@ -96,7 +118,7 @@ describe('the sounds', () => {
   })
 
   it('rings a bright double bell for a round, a long low tone for the rest, the chime for a block', async () => {
-    const tones = fakeAudio()
+    const { tones } = fakeAudio()
     const { signal, unlockSound } = await import('./timerSignal')
     unlockSound()
     const heard = (kind: Parameters<typeof signal>[0]) => {
@@ -108,5 +130,52 @@ describe('the sounds', () => {
     expect(heard('rest')).toEqual([330])
     expect(heard('block')).toEqual([660, 660, 990])
     expect(heard('warn')).toEqual([880])
+  })
+
+  it('unlocks once: a later tap on a running context makes nothing new', async () => {
+    const audio = fakeAudio()
+    const { unlockSound } = await import('./timerSignal')
+    unlockSound()
+    unlockSound()
+    unlockSound()
+    expect(audio.contexts).toHaveLength(1)
+    expect(audio.blips()).toBe(1)
+  })
+
+  it('resumes a context the phone suspended, and makes a new one for a closed one', async () => {
+    const audio = fakeAudio()
+    const { soundState, unlockSound } = await import('./timerSignal')
+    unlockSound()
+    audio.contexts[0]!.to('suspended')
+    expect(soundState()).toBe('locked')
+    unlockSound()
+    expect(soundState()).toBe('on')
+    expect(audio.contexts).toHaveLength(1)
+
+    audio.contexts[0]!.to('closed')
+    expect(soundState()).toBe('locked')
+    unlockSound()
+    expect(audio.contexts).toHaveLength(2)
+    expect(soundState()).toBe('on')
+  })
+
+  it('does not hold one failed attempt against the next', async () => {
+    fakeAudio({ failFirst: true })
+    const { soundState, unlockSound } = await import('./timerSignal')
+    unlockSound()
+    expect(soundState()).toBe('unsupported')
+    unlockSound()
+    expect(soundState()).toBe('on')
+  })
+
+  it('renders again when sound comes on or goes, with no tick to wait for', async () => {
+    const audio = fakeAudio()
+    const { unlockSound, useSoundState } = await import('./timerSignal')
+    const { result } = renderHook(() => useSoundState())
+    expect(result.current).toBe('locked')
+    act(() => unlockSound())
+    expect(result.current).toBe('on')
+    act(() => audio.contexts[0]!.to('suspended'))
+    expect(result.current).toBe('locked')
   })
 })
