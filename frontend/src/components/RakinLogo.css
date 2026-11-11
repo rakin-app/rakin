@@ -1,0 +1,61 @@
+/*
+ * Rakin's logo (#224, docs/brand/README.md). Sized by font-size: the wordmark is 1em
+ * and the symbol 1.22em high, the proportions of docs/brand/lockup.svg.
+ */
+.rakin-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34em;
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-display);
+  letter-spacing: var(--tracking-title);
+  line-height: 1;
+}
+
+.rakin-logo__symbol {
+  flex: none;
+  width: 1.22em;
+  height: 1.22em;
+}
+
+.rakin-logo__tile {
+  fill: var(--color-inverse);
+}
+
+.rakin-logo__mat {
+  fill: var(--color-inverse-text);
+}
+
+.rakin-logo__centre {
+  fill: var(--color-moss);
+}
+
+/* Part of the mark: on a dark surface the tile would sink into it without the ring. */
+.rakin-logo__ring {
+  fill: none;
+  stroke: var(--color-moss);
+  stroke-opacity: 0.6;
+  stroke-width: 2;
+}
+
+.rakin-logo__word {
+  color: var(--color-heading);
+}
+
+.rakin-logo--dark .rakin-logo__word {
+  color: var(--color-sidebar-text);
+}
+
+/* The period is the centre mat: a square, on the baseline. */
+.rakin-logo__square {
+  display: inline-block;
+  width: 0.21em;
+  height: 0.21em;
+  margin-left: 0.06em;
+  border-radius: 0.02em;
+  background: var(--color-focus);
+}
+
+.rakin-logo--dark .rakin-logo__square {
+  background: var(--color-moss);
+}

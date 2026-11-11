@@ -225,14 +225,14 @@ function CopyBank({ account }: { account: BankAccount }) {
   )
 }
 
-/** "Mi entrenamiento": the belt, once the gym has recorded one, and the classes attended. */
+/** "Mi entrenamiento": the rank, once the gym has recorded one, and the classes attended. */
 function Training({ page }: { page: MyPage }) {
   const words = copy.training
   return (
     <section className="training" aria-label={words.title}>
       {page.rank && (
         <div className="training__card">
-          <span className="training__eyebrow">{words.belt}</span>
+          <span className="training__eyebrow">{page.rank.belt ? words.belt : words.rank}</span>
           <RankBelt rank={page.rank} />
           <span className="training__figure">{rankLabel(page.rank)}</span>
           <span className="training__detail">{words.since(t.common.dayYear(page.rank.awarded_on))}</span>

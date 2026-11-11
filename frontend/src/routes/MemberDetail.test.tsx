@@ -1167,6 +1167,8 @@ describe('Ficha de alumno', () => {
     await money()
     expect(screen.getByText(copy.since('mar 2024'))).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: copy.grading.title })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.grading.award })).not.toBeInTheDocument()
+    expect(document.querySelector('.belt')).toBeNull()
   })
 })
 

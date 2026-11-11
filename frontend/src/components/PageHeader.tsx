@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react'
 import './PageHeader.css'
 
 type Props = {
   title: string
-  eyebrow?: string
+  /** Text, or the logo where a page opens with it (sign-in). */
+  eyebrow?: ReactNode
 }
 
 export function PageHeader({ title, eyebrow }: Props) {

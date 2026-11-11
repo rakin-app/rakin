@@ -37,7 +37,7 @@ function Loaded({ query, mine }: { query: { data?: PersonTime; isError: boolean 
 }
 
 /**
- * "Tiempo en el tatami" (#141): the classes a person attended and the time each block
+ * "Tiempo de entrenamiento" (#141): the classes a person attended and the time each block
  * kind ran in them, this month or all time, as the API totals them. Each kind is a bar
  * whose text carries the figure, so the bars themselves are only decoration. Open mats
  * are a line of their own: their time is sparring too, as the API counts it.
