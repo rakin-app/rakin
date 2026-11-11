@@ -30,6 +30,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from functools import cached_property
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -117,6 +118,11 @@ class Record:
     phone: str | None
     keyless: bool
     dependent: bool
+
+    @cached_property
+    def folded(self) -> str:
+        """The name folded once, not once per keyless row that compares against it."""
+        return fold(self.name)
 
 
 @dataclass(frozen=True)
@@ -262,15 +268,18 @@ class Writer:
         found = [
             Named(r.person_id, r.dob, r.phone)
             for r in (await self._people_by_name()).values()
-            if fold(r.name) == folded and not r.dependent and (r.keyless or not keyless)
+            if r.folded == folded and not r.dependent and (r.keyless or not keyless)
         ]
         return told_apart(found, dob, phone)
 
-    async def _in_gym(self, rut: str | None, email: str | None) -> uuid.UUID | None:
+    async def _in_gym(self, rut: str | None, email: str | None, field: Field) -> uuid.UUID | None:
         """Whoever this gym has under the RUT, or the email (`find_in_gym`): one with no
-        RUT, given one now, takes it."""
+        RUT, given one now, takes it. An email someone with another RUT has is refused
+        on `field`: one gym holds each once."""
         found = await find_in_gym(self.session, rut, email)
         if found is None:
+            if await email_holder(self.session, email) is not None:
+                raise RowRefused(field, "email_in_gym")
             return None
         if found.by == "email_in_gym" and rut is not None:
             await give_identity(self.session, found.person_id, rut, None)
@@ -345,7 +354,7 @@ class Writer:
                 found = await self._named(member.name, member.dob, member.phone)
             except AmbiguousName:
                 raise RowRefused(Field.NAME, "ambiguous_name") from None
-        elif (found := await self._in_gym(member.rut, member.email)) is None:
+        elif (found := await self._in_gym(member.rut, member.email, Field.EMAIL)) is None:
             # Someone an earlier sheet gave no RUT or email, given one now: it becomes
             # who they are. Unsure who, they are someone new: the RUT says so.
             try:
@@ -372,7 +381,9 @@ class Writer:
 
     async def _guardian(self, member: Member) -> tuple[uuid.UUID, Outcome]:
         if member.guardian_key is not None:
-            found = await self._in_gym(member.guardian_rut, member.guardian_email)
+            found = await self._in_gym(
+                member.guardian_rut, member.guardian_email, Field.GUARDIAN_EMAIL
+            )
         else:
             # Named only: whoever this gym has under that name, as their own row may be.
             assert member.guardian_name is not None

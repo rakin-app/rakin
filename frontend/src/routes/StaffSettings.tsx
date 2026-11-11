@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { myRoleQuery, type StaffRole } from '../api/me'
+import { duplicateOf } from '../api/people'
 import {
   changeStaffRole,
   INVITABLE_ROLES,
@@ -185,11 +186,15 @@ function InviteForm({
       await queryClient.invalidateQueries({ queryKey: staffQuery.queryKey })
     },
   })
+  // A 409 is someone already on the staff, or an email another person here has.
   const taken = save.error instanceof ApiError && save.error.status === 409
+  const emailTaken = duplicateOf(save.error)?.code === 'email_in_gym'
   const errors = validationErrors(save.error)
   const error = (field: keyof Drafts) =>
     field === 'email' && taken
-      ? copy.alreadyStaff
+      ? emailTaken
+        ? copy.emailTaken
+        : copy.alreadyStaff
       : field in errors
         ? refusal(errors[field]!, field, copy, drafts[field].trim() === '')
         : undefined

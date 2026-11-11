@@ -136,6 +136,23 @@ describe('Ajustes: Equipo', () => {
     )
   })
 
+  it('says so when the email is another person of the gym', async () => {
+    stubApi({
+      invite: { status: 409, body: { detail: { code: 'email_in_gym', person_id: 'c' } } },
+    })
+    renderAt('/admin/ajustes/equipo')
+
+    const region = await section()
+    await userEvent.click(within(region).getByRole('button', { name: copy.add }))
+    const invite = within(region).getByRole('form', { name: form.title })
+    await userEvent.click(within(invite).getByRole('button', { name: copy.submit }))
+
+    expect(await within(invite).findByRole('alert')).toHaveTextContent(copy.invalid)
+    expect(within(invite).getByLabelText(form.email)).toHaveAccessibleDescription(
+      `${form.emailHint} ${copy.emailTaken}`,
+    )
+  })
+
   it('maps a refused email to its field', async () => {
     stubApi({
       invite: { status: 422, body: { detail: [{ loc: ['body', 'email'], type: 'value_error', msg: 'x' }] } },

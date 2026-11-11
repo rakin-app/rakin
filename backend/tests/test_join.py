@@ -839,6 +839,23 @@ def test_approving_someone_already_here_keeps_their_record(
     assert queue(client, gym) == []
 
 
+def test_approving_refuses_an_email_someone_with_another_rut_has(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    client.post(
+        "/api/people",
+        json={"name": "Otra", "rut": new_rut(), "email": address},
+        headers=as_gym(gym),
+    )
+    request = one_request(client, gym, token_of(client, gym), adult(email=address))
+
+    refused = approve(client, gym, request)
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == {"code": "email_in_gym", "field": "email"}
+    assert len(queue(client, gym)) == 1
+
+
 def test_a_member_already_here_is_linked_and_never_given_a_second_plan(
     client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:

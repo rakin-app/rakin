@@ -846,3 +846,28 @@ def test_a_row_never_gives_someone_an_email_another_person_here_has(
     )["rows"]
     assert row["errors"] == [{"field": "email", "code": "email_in_gym"}]
     assert find(client, gym, "Ana Paz")["missing_rut"] is True
+
+
+@pg
+def test_a_new_row_or_guardian_never_takes_an_email_another_rut_has(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    client.post(
+        "/api/people",
+        json={"name": "Otra", "rut": random_rut(), "email": address},
+        headers=as_gym(gym),
+    )
+    count = people(db, gym)
+    keyed = {"name": 0, "rut": 1, "email": 2}
+    [row] = imported(
+        client, gym, sheet_with(["Ana Paz", random_rut(), address], mapping=keyed), dry_run=False
+    )["rows"]
+    assert row["errors"] == [{"field": "email", "code": "email_in_gym"}]
+    guarded = {"name": 0, "rut": 1, "guardian_name": 2, "guardian_rut": 3, "guardian_email": 4}
+    sheet = sheet_with(
+        ["Tomás Paz", random_rut(), "Marta Paz", random_rut(), address], mapping=guarded
+    )
+    [row] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert row["errors"] == [{"field": "guardian_email", "code": "email_in_gym"}]
+    assert people(db, gym) == count

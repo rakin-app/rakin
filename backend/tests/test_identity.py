@@ -97,16 +97,19 @@ def test_a_rut_known_elsewhere_answers_like_a_new_one(
     ).json()
 
     before = datetime.now(UTC)
-    typed = {"name": "Camila Rojas", "email": "camila@sur.cl", "phone": None, "dob": None}
-    fresh = create(client, sur, **typed, rut=new_rut())
-    attached = create(client, sur, **typed, rut=format_rut(known))
+    typed = {"name": "Camila Rojas", "phone": None, "dob": None}
+    fresh = create(client, sur, **typed, email="camila@sur.cl", rut=new_rut())
+    attached = create(client, sur, **typed, email="camila.r@sur.cl", rut=format_rut(known))
 
     # Same status, same shape, and only what sur typed: nothing of norte's record.
     assert attached.status_code == fresh.status_code == 201
     assert set(attached.json()) == set(fresh.json())
     shown = {**typed, "no_whatsapp": False, "missing_phone": True, "missing_rut": False}
-    assert entered(attached.json()) == {**shown, "rut": known}
-    assert {k: v for k, v in entered(fresh.json()).items() if k != "rut"} == shown
+    assert entered(attached.json()) == {**shown, "email": "camila.r@sur.cl", "rut": known}
+    assert {k: v for k, v in entered(fresh.json()).items() if k != "rut"} == {
+        **shown,
+        "email": "camila@sur.cl",
+    }
     for field in ("created_at", "updated_at"):
         assert datetime.fromisoformat(attached.json()[field]) >= before
 
@@ -197,15 +200,13 @@ def test_an_email_already_in_this_gym_names_that_person(client: TestClient, sur:
     assert again.json() == {"detail": {"code": "email_in_gym", "person_id": first["id"]}}
 
 
-def test_a_rut_holder_may_share_an_email_with_someone_here(
-    client: TestClient, sur: uuid.UUID
-) -> None:
-    # A family's one address: the RUT is who each of them is.
+def test_one_gym_holds_an_email_once_whatever_the_rut(client: TestClient, sur: uuid.UUID) -> None:
+    # Sign-in goes by the gym and the email (#146): two records with one would be ambiguous.
     email = new_email()
     first = create(client, sur, email=email, name="Mamá", rut=new_rut()).json()
     second = create(client, sur, email=email, name="Hija", rut=new_rut())
-    assert second.status_code == 201
-    assert second.json()["id"] != first["id"]
+    assert second.status_code == 409
+    assert second.json() == {"detail": {"code": "email_in_gym", "person_id": first["id"]}}
 
 
 def test_someone_needs_a_rut_or_an_email(client: TestClient, sur: uuid.UUID) -> None:
@@ -444,6 +445,57 @@ def test_a_record_under_a_shared_rut_moves_to_the_person_who_keeps_it() -> None:
         # And `join_gym` in norte finds them, as the one person they are.
         join = "SELECT person_id, joined FROM join_gym('7654321-6', NULL, 'x', NULL, NULL)"
         assert [tuple(r) for r in run(db.api_url, in_gym(norte, join))] == [(kept, False)]
+
+
+def test_of_two_records_under_a_shared_rut_in_one_gym_the_first_moves() -> None:
+    with throwaway_database(require_test_database_url()) as db:
+        migrate(db, "0035")
+        sur, norte = uuid.uuid4(), uuid.uuid4()
+        kept, first, second = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+        async def seed(conn: asyncpg.Connection) -> None:
+            await conn.execute(
+                "INSERT INTO gym (id, name, slug) VALUES ($1, 's', 's'), ($2, 'n', 'n')", sur, norte
+            )
+            # Three people one RUT: `kept` in sur, and norte added the same human twice.
+            await conn.executemany(
+                "INSERT INTO person (id, name, phone, rut, created_at) VALUES ($1, $2, $3, $4, $5)",
+                [
+                    (kept, "Ana", "+56911110001", "7654321-6", datetime(2025, 1, 1, tzinfo=UTC)),
+                    (first, "Ana", "+56911110002", "7654321-6", datetime(2025, 2, 1, tzinfo=UTC)),
+                    (second, "Ana", "+56911110003", "7654321-6", datetime(2025, 3, 1, tzinfo=UTC)),
+                ],
+            )
+            await conn.executemany(
+                "INSERT INTO gym_person (gym_id, person_id, name, rut, created_at)"
+                " VALUES ($1, $2, $3, '7654321-6', $4)",
+                [
+                    (sur, kept, "Ana", datetime(2025, 1, 1, tzinfo=UTC)),
+                    (norte, first, "Ana", datetime(2025, 2, 1, tzinfo=UTC)),
+                    (norte, second, "Ana bis", datetime(2025, 3, 1, tzinfo=UTC)),
+                ],
+            )
+
+        run(db.admin_url, seed)
+        migrate(db)
+
+        records = run(
+            db.admin_url,
+            lambda c: c.fetch(
+                "SELECT person_id, name, rut FROM gym_person WHERE gym_id = $1", norte
+            ),
+        )
+        # The earlier record moves to `kept`; the later stays its own and loses the RUT.
+        assert {r["person_id"]: (r["name"], r["rut"]) for r in records} == {
+            kept: ("Ana", "7654321-6"),
+            second: ("Ana bis", None),
+        }
+        ruts = run(db.admin_url, lambda c: c.fetch("SELECT id, rut FROM person"))
+        assert {r["id"]: r["rut"] for r in ruts} == {kept: "7654321-6", first: None, second: None}
+        missing = (
+            "SELECT person_id FROM gym_person WHERE gym_id = $1 AND rut IS NULL AND email IS NULL"
+        )
+        assert [r[0] for r in run(db.admin_url, lambda c: c.fetch(missing, norte))] == [second]
 
 
 @pytest.mark.parametrize(

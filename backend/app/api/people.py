@@ -307,6 +307,15 @@ async def refuse_rut_in_gym(
         raise in_gym_conflict(PersonConflict(code="rut_in_gym", person_id=holder))
 
 
+async def refuse_email_in_gym(
+    session: AsyncSession, email: str | None, *, person_id: uuid.UUID | None = None
+) -> None:
+    """Refuse an email someone else in this gym already has: sign-in goes by the gym
+    and the email (#146), so one gym holds each once."""
+    if (holder := await email_holder(session, email, person_id=person_id)) is not None:
+        raise in_gym_conflict(PersonConflict(code="email_in_gym", person_id=holder))
+
+
 @dataclass(frozen=True)
 class InGym:
     """Someone this gym already has, and what found them."""
@@ -327,7 +336,11 @@ EMAIL_KEY_IN_GYM = text("""
 async def find_in_gym(session: AsyncSession, rut: str | None, email: str | None) -> InGym | None:
     """Whoever in this gym `rut`, else `email`, says they are: the one lookup every way
     in shares (people, Nuevo alumno, invites, the import and the join link), so none
-    adds a second person for someone the gym has (#165). Only this gym's records."""
+    adds a second person for someone the gym has (#165). Only this gym's records.
+
+    None leaves the email free or someone else's: held by a record with another RUT.
+    Whoever then adds someone new refuses it (`email_holder`), so no gym has two
+    records with one email."""
     if (holder := await rut_holder(session, rut)) is not None:
         return InGym(holder, "rut_in_gym")
     if email is None:
@@ -404,6 +417,7 @@ async def add_to_gym(
     RUT, already someone's here."""
     if (found := await find_in_gym(session, rut, email)) is not None:
         raise in_gym_conflict(PersonConflict(code=found.by, person_id=found.person_id))
+    await refuse_email_in_gym(session, email)
     person_id, joined = await join_gym(
         session, name=name, rut=rut, email=email, phone=phone, no_whatsapp=no_whatsapp, dob=dob
     )
@@ -454,8 +468,7 @@ async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: Staff
         if after["rut"] is None and after["email"] is None and not record.dependent:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "a RUT or an email")
         await refuse_rut_in_gym(session, changes.get("rut"), person_id=person_id)
-        if holder := await email_holder(session, changes.get("email"), person_id=person_id):
-            raise in_gym_conflict(PersonConflict(code="email_in_gym", person_id=holder))
+        await refuse_email_in_gym(session, changes.get("email"), person_id=person_id)
     # A member's phone is cleared, or "No tiene WhatsApp" unticked, only with a phone in
     # its place. Editing anything else leaves a member already missing one as they were
     # ("Falta teléfono").

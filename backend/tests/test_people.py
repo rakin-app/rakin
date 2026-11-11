@@ -21,6 +21,7 @@ from app.main import create_app
 from app.schemas.people import PersonCreate, PersonUpdate
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_email
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 
 # --- input rules, no database -----------------------------------------------------
@@ -189,7 +190,9 @@ def test_a_rut_already_in_this_gym_names_that_person(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     rut = new_rut()
-    first = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": rut}).json()
+    first = create(
+        client, sur, **{**CAMILA, "phone": new_phone(), "email": random_email(), "rut": rut}
+    ).json()
 
     again = create(client, sur, rut=format_rut(rut), name="Someone else")
     assert again.status_code == 409
@@ -209,7 +212,7 @@ def test_a_rut_known_elsewhere_is_one_person_with_a_record_in_each_gym(
     ).json()
 
     before = datetime.now(UTC)
-    camila = {**CAMILA, "phone": new_phone(), "rut": known}
+    camila = {**CAMILA, "phone": new_phone(), "email": random_email(), "rut": known}
     attached = create(client, sur, **camila)
     assert attached.status_code == 201
     assert entered(attached.json()) == camila
@@ -275,7 +278,9 @@ def test_an_edit_stays_in_its_gym(
 
 @pg
 def test_an_edit_changes_only_the_fields_sent(client: TestClient, sur: uuid.UUID) -> None:
-    body = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": new_rut()}).json()
+    body = create(
+        client, sur, **{**CAMILA, "phone": new_phone(), "email": random_email(), "rut": new_rut()}
+    ).json()
     response = client.patch(f"/api/people/{body['id']}", json={"dob": None}, headers=as_gym(sur))
     assert entered(response.json()) == {**entered(body), "dob": None}
 
@@ -285,7 +290,9 @@ def test_an_edit_changes_only_the_fields_sent(client: TestClient, sur: uuid.UUID
 def test_an_invalid_edit_is_refused(
     client: TestClient, sur: uuid.UUID, edit: dict[str, Any]
 ) -> None:
-    body = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": new_rut()}).json()
+    body = create(
+        client, sur, **{**CAMILA, "phone": new_phone(), "email": random_email(), "rut": new_rut()}
+    ).json()
     response = client.patch(f"/api/people/{body['id']}", json=edit, headers=as_gym(sur))
     assert response.status_code == 422
     assert client.get(f"/api/people/{body['id']}", headers=as_gym(sur)).json() == body
@@ -419,8 +426,21 @@ def test_creating_with_a_rut_names_whoever_has_the_email_and_no_rut(
 
 
 @pg
+def test_creating_refuses_an_email_someone_with_another_rut_has(
+    client: TestClient, sur: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    known = create(client, sur, name="Ana", rut=new_rut(), email=address).json()["id"]
+    again = create(client, sur, name="Bea", rut=new_rut(), email=address.upper())
+    assert again.status_code == 409
+    assert again.json() == {"detail": {"code": "email_in_gym", "person_id": known}}
+
+
+@pg
 def test_an_edit_is_checked_before_anything_is_written(client: TestClient, sur: uuid.UUID) -> None:
-    body = create(client, sur, **{**CAMILA, "phone": new_phone(), "rut": new_rut()}).json()
+    body = create(
+        client, sur, **{**CAMILA, "phone": new_phone(), "email": random_email(), "rut": new_rut()}
+    ).json()
     other = create(client, sur, name="Otra", email=f"{uuid.uuid4().hex[:8]}@example.cl").json()
     url = f"/api/people/{body['id']}"
 

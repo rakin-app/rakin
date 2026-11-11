@@ -29,7 +29,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.people import find_in_gym, give_identity, join_gym
+from app.api.people import find_in_gym, give_identity, join_gym, refuse_email_in_gym
 from app.notices import STAFF_INVITE, Notice, Notices, get_notices
 from app.roles import AdminSession, Role, role_in_gym
 from app.schemas.staff import (
@@ -118,6 +118,7 @@ async def invite_staff(
         if found.by == "email_in_gym":
             await give_identity(session, person_id, body.rut, None)
     else:
+        await refuse_email_in_gym(session, body.email)
         person_id, joined = await join_gym(
             session, name=body.name, rut=body.rut, email=body.email, phone=body.phone
         )

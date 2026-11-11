@@ -190,7 +190,7 @@ export function deletionRefused(error: unknown): DeletionRefusal | null {
   return code === 'ledger' || code === 'staff' || code === 'guardian' ? code : null
 }
 
-/** Someone in the gym already has the RUT, or the email of someone with none: who, to
+/** Someone in the gym already has the RUT, or the email: who, to
  * open them instead. */
 export type Duplicate = { code: 'rut_in_gym' | 'email_in_gym'; person_id: string }
 

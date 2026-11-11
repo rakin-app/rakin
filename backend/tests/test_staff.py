@@ -58,7 +58,9 @@ def invite(
     by: uuid.UUID | None = None,
     **body: Any,
 ) -> Any:
-    sent = {"rut": random_rut(), "name": "Pedro", "email": "pedro@example.cl", "role": role}
+    # One email per name: a gym holds each email once.
+    name = body.get("name", "Pedro")
+    sent = {"rut": random_rut(), "name": name, "email": f"{name.lower()}@example.cl", "role": role}
     return client.post("/api/staff", json={**sent, **body}, headers=as_gym(gym, by))
 
 
@@ -396,3 +398,20 @@ def test_an_invite_with_a_rut_is_whoever_the_gym_has_under_its_email(
         db.admin_url, lambda c: c.fetch("SELECT rut FROM person WHERE id = $1", uuid.UUID(member))
     )
     assert rows[0]["rut"] == rut
+
+
+def test_an_invite_refuses_an_email_someone_with_another_rut_has(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    address = f"{uuid.uuid4().hex[:8]}@example.cl"
+    member = client.post(
+        "/api/people",
+        json={"name": "Ana", "rut": random_rut(), "email": address},
+        headers=as_gym(gym),
+    ).json()["id"]
+
+    response = invite(client, gym, rut=random_rut(), email=address, name="Otro")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "email_in_gym", "person_id": member}
+    assert ("Otro", "coach") not in staff_of(client, gym)

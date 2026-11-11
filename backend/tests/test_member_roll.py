@@ -177,6 +177,20 @@ def test_a_rut_or_email_already_here_is_refused_naming_who(
 
 
 @pg
+def test_a_new_guardian_with_another_persons_email_is_refused(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    address = f"marta.{uuid.uuid4().hex[:6]}@example.com"
+    marta = enrolled(client, gym, rut=new_rut(), email=address, name="Marta Vera")
+    ten = (seeded_today() - timedelta(days=365 * 10)).isoformat()
+    guardian = {"rut": new_rut(), "phone": new_phone(), "name": "Otra", "email": address}
+    refused = enrol(client, gym, phone=None, name="Tomás", dob=ten, guardian=guardian)
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == {"code": "email_in_gym", "person_id": marta["id"]}
+    assert count(db, gym, "SELECT count(*) FROM gym_person WHERE name IN ('Otra', 'Tomás')") == 0
+
+
+@pg
 def test_a_rut_already_here_is_refused_on_an_edit_too(client: TestClient, gym: uuid.UUID) -> None:
     rut = new_rut()
     first = enrolled(client, gym, rut=rut)

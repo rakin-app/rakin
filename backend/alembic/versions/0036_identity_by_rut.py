@@ -118,11 +118,13 @@ def _children() -> list[tuple[str, str]]:
 
 
 def _merge_shared_ruts() -> None:
-    """Two people one RUT: the first seen keeps it. Where the other is in a gym the
+    """Two people one RUT: the first seen keeps it. Where another is in a gym the
     first is not, that gym's record, and everything that names it, moves to the first,
-    so the gym's one RUT is one person. Where both are in a gym, the other's record
-    there loses the RUT, and with no email shows "Falta RUT". Actors in history (who
-    validated a payment, marked attendance) name a `person`, which stays."""
+    so the gym's one RUT is one person; with several others in that gym, the earliest
+    record moves. Where the first is in the gym already, or one record has moved there,
+    every other's record there loses the RUT, and with no email shows "Falta RUT".
+    Actors in history (who validated a payment, marked attendance) name a `person`,
+    which stays."""
     columns = [
         str(c)
         for (c,) in op.get_bind().exec_driver_sql(
@@ -156,11 +158,12 @@ def _merge_shared_ruts() -> None:
     op.execute("DELETE FROM shared_rut WHERE other = kept")
     op.execute("""
         CREATE TEMP TABLE moved ON COMMIT DROP AS
-        SELECT gp.gym_id, s.other, s.kept
+        SELECT DISTINCT ON (gp.gym_id, s.kept) gp.gym_id, s.other, s.kept
         FROM gym_person gp JOIN shared_rut s ON gp.person_id = s.other
         WHERE NOT EXISTS (
             SELECT FROM gym_person k WHERE k.gym_id = gp.gym_id AND k.person_id = s.kept
         )
+        ORDER BY gp.gym_id, s.kept, gp.created_at, gp.person_id
     """)
     copied = ", ".join("m.kept" if c == "person_id" else f"gp.{c}" for c in columns)
     op.execute(f"""

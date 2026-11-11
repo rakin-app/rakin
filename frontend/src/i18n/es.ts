@@ -299,7 +299,7 @@ export const es = {
       },
       duplicate: {
         rut_in_gym: 'Ese RUT ya es de un alumno del gimnasio.',
-        email_in_gym: 'Ese correo ya es de un alumno del gimnasio sin RUT.',
+        email_in_gym: 'Ese correo ya es de un alumno del gimnasio.',
         open: 'Abrir su ficha',
       },
       refused: {
@@ -478,7 +478,7 @@ export const es = {
         nameNeeded: 'Escribe el nombre.',
         refused: {
           rut_in_gym: 'Ese RUT ya es de otro alumno del gimnasio.',
-          email_in_gym: 'Ese correo ya es de otro alumno del gimnasio sin RUT.',
+          email_in_gym: 'Ese correo ya es de otro alumno del gimnasio.',
           open: 'Abrir su ficha',
           phone: 'Un alumno necesita un teléfono. Si no tiene WhatsApp, marca "No tiene WhatsApp".',
           identity: 'Deja el RUT o el correo: uno de los dos dice quién es.',
@@ -1093,6 +1093,7 @@ export const es = {
         invalid: 'Revisa los campos marcados.',
         failed: 'No pudimos enviar la invitación. Inténtalo de nuevo.',
         alreadyStaff: 'Esa persona ya está en el equipo.',
+        emailTaken: 'Ese correo ya es de otra persona del gimnasio.',
         range: {} as Record<string, string>,
         value: {
           phone: 'Escribe un teléfono válido, como +56 9 1234 5678.',

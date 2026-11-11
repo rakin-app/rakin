@@ -42,6 +42,7 @@ from app.api.people import (
     in_gym,
     join_gym,
     read_person,
+    refuse_email_in_gym,
 )
 from app.domain import membership as domain
 from app.domain.dates import add_months, gym_today, is_minor
@@ -126,6 +127,7 @@ async def _guardian(session: AsyncSession, body: Enrolment) -> uuid.UUID | None:
             await give_identity(session, guardian_id, guardian.rut, None)
     else:
         # New here: their record takes the phone and "No tiene WhatsApp" typed.
+        await refuse_email_in_gym(session, guardian.email)
         guardian_id, _ = await join_gym(session, **guardian.model_dump())
     if not await session.scalar(REACHABLE, {"id": guardian_id}):
         raise _unprocessable("the guardian needs a phone, or no_whatsapp")
