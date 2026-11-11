@@ -59,7 +59,9 @@
  *    rows. A list is a card of rows, its items opening in place.
  * 3. Its buttons, at the end of the form they act on: Cancelar, then the primary, at
  *    the end of the row from 1024px and across it on a phone. Gimnasio's and
- *    Graduación's Guardar stays in view on a desktop as the long form scrolls.
+ *    Graduación's Guardar stays in view on a desktop as the long form scrolls; those
+ *    two save the whole page and show only Guardar (Gimnasio's Cancelar is in Tema's
+ *    preview strip, for the theme being tried).
  *    A secondary action inside a card ("Agregar grado", "Nueva clase") is a secondary
  *    button at the card's start, as wide as its words from 1024px.
  */

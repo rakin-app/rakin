@@ -44,7 +44,10 @@ The boards draw no Ajustes, so the app sets its own pattern, and every section k
    its rows. A list is a card of rows; an item opens in place to edit.
 3. **Buttons.** At the end of the form they act on: Cancelar, then the primary, at the
    end of the row from 1024px and across it on a phone. Gimnasio's and Graduación's
-   Guardar stays in view on a desktop while the long form scrolls. A secondary action
+   Guardar stays in view on a desktop while the long form scrolls. Those two forms save
+   the whole page and show only Guardar: there is nothing to cancel back to but the page
+   as loaded, and Gimnasio's one Cancelar is in Tema's preview strip, for the theme
+   being tried. A secondary action
    inside a card ("Agregar grado", "Nueva clase") is a secondary button at the card's
    start, as wide as its words.
 
