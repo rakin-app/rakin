@@ -6,6 +6,8 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* Checkboxes, radios and ranges in the theme's dark shade, not the browser's blue. */
+  accent-color: var(--color-heading);
 }
 
 body {
@@ -15,6 +17,8 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.4;
+  /* Figures line up in a column: amounts, counts and dates. */
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -28,6 +32,7 @@ p {
 a {
   color: var(--color-accent);
   text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 a:hover {
@@ -41,6 +46,17 @@ textarea {
   font: inherit;
 }
 
+/* A control changes colour, and only colour, when it is hovered, pressed or chosen. */
+button,
+input,
+select,
+textarea,
+[role='button'] {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-out);
+}
+
 input,
 select,
 textarea {
@@ -48,7 +64,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -70,4 +86,47 @@ textarea {
   padding: var(--space-14) var(--space-5);
   color: var(--color-text-muted);
   text-align: center;
+}
+
+/* Motion (#199). A page's content rises into place once when the route changes
+   (`useRise` in src/motion.ts, on `.page-rise`); a message fades in (below). */
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--rise-distance) / 2));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* What `useRise` moves: by `top`, so it never becomes the containing block of a fixed
+   sheet inside it, as a transform would. */
+.page-rise {
+  position: relative;
+}
+
+/* A message that comes and goes ("Guardado", "Enviado", a failure) fades in where it
+   appears, rather than popping into the layout. */
+[role='status'],
+[role='alert'] {
+  animation: appear var(--duration-base) var(--ease-out) both;
+}
+
+/* Reduced motion keeps only the change in opacity: nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+  [role='status'],
+  [role='alert'] {
+    animation-name: fade-in;
+  }
 }

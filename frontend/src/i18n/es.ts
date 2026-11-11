@@ -885,6 +885,12 @@ export const es = {
         name: 'Nombre del gimnasio',
         slug: 'Dirección web',
         timezone: 'Zona horaria',
+        theme: 'Tema',
+        themeHint:
+          'Los colores de la app, la página del alumno, el formulario de inscripción y la entrada. El cronómetro sigue verde y rojo en todos.',
+        themes: { bosque: 'Bosque', oceano: 'Océano', volcan: 'Volcán' },
+        themeDefault: 'Por defecto',
+        themeSample: { collected: 'Cobrado', figure: '$2.115.000', paid: 'Pagado', overdue: 'Vencido', action: 'Registrar' },
         billing: 'Cobro',
         graceDays: 'Días de gracia',
         graceDaysHint: 'Días después del vencimiento de un pago antes de que el plan del alumno caduque.',

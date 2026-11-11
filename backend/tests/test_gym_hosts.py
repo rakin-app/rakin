@@ -129,7 +129,11 @@ def test_a_found_gym_is_kept_a_while_and_a_missing_one_is_asked_again() -> None:
         async def execute(self, _sql: Any, params: dict[str, str]) -> Any:
             asked.append(params["slug"])
             found = answers[params["slug"]]
-            row = None if found is None else type("Row", (), {"id": found.id, "name": found.name})
+            row = (
+                None
+                if found is None
+                else type("Row", (), {"id": found.id, "name": found.name, "theme": found.theme})
+            )
             return type("Result", (), {"one_or_none": lambda self: row})()
 
     lookup = GymLookup(lambda: Session, ttl=60, clock=lambda: now[0])  # type: ignore[arg-type, return-value]
@@ -144,6 +148,12 @@ def test_a_found_gym_is_kept_a_while_and_a_missing_one_is_asked_again() -> None:
 
     asyncio.run(go())
     assert asked == ["meta", "nada", "nada", "meta"]
+
+    # Forgotten, it is asked again at once, however long it had left.
+    lookup.forget("meta")
+    lookup.forget("nunca")
+    asyncio.run(lookup("meta"))
+    assert asked == ["meta", "nada", "nada", "meta", "meta"]
 
 
 def session_in(scope: uuid.UUID | None) -> Session:
@@ -506,11 +516,54 @@ def new_gym_slug(site: Site, gym_id: uuid.UUID) -> str:
 @pytest.mark.postgres
 def test_the_host_names_its_gym_for_the_sign_in_page(site: Site) -> None:
     with site.client(site.slug_a) as client:
-        assert client.get("/api/host").json() == {"gym": {"slug": site.slug_a, "name": site.slug_a}}
+        assert client.get("/api/host").json() == {
+            "gym": {"slug": site.slug_a, "name": site.slug_a, "theme": "bosque"}
+        }
     with site.client(None) as client:
         assert client.get("/api/host").json() == {"gym": None}
     with site.client(f"nadie-{uuid.uuid4().hex[:6]}") as client:
         assert client.get("/api/host").json() == {"gym": None}
+
+
+@pytest.mark.postgres
+def test_a_gyms_host_and_its_sign_in_pages_wear_its_theme(site: Site) -> None:
+    run(
+        site.db.admin_url,
+        lambda c: c.execute("UPDATE gym SET theme = 'volcan' WHERE id = $1", site.b),
+    )
+    email = address()
+    person_in(site, [site.a], email)
+
+    with site.client(site.slug_b) as client:
+        assert client.get("/api/host").json()["gym"]["theme"] == "volcan"
+        page = site.open(client, site.ask_link(client, email))
+        assert page.status_code == 403
+        assert '<html lang="es" data-theme="volcan">' in page.text
+    # The base host is no gym's: its pages wear the stylesheet's default.
+    with site.client(None) as client:
+        page = client.post("/api/auth/callback", data={"token": "x" * 43})
+        assert '<html lang="es">' in page.text
+
+
+@pytest.mark.postgres
+def test_a_theme_saved_in_ajustes_reaches_the_host_at_once(site: Site) -> None:
+    with site.client(site.slug_b) as client:
+        # Kept by the lookup now, for a minute.
+        assert client.get("/api/host").json()["gym"]["theme"] == "bosque"
+        response = client.patch(
+            "/api/gym/settings", json={"theme": "oceano"}, headers=as_gym(site.b)
+        )
+        assert response.status_code == 200, response.text
+        assert client.get("/api/host").json()["gym"]["theme"] == "oceano"
+
+
+@pytest.mark.postgres
+def test_the_database_refuses_a_theme_it_does_not_know(site: Site) -> None:
+    async def query(conn: asyncpg.Connection) -> None:
+        await conn.execute("UPDATE gym SET theme = 'neon' WHERE id = $1", site.a)
+
+    with pytest.raises(asyncpg.CheckViolationError):
+        run(site.db.admin_url, query)
 
 
 @pytest.mark.postgres

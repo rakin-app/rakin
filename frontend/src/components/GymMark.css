@@ -1,0 +1,17 @@
+/* A round mark the size of a line of the gym's name; #223 puts the logo inside it. */
+.gym-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  background: var(--color-moss);
+  border-radius: var(--radius-pill);
+  color: var(--color-moss-text);
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-display);
+  letter-spacing: var(--tracking-label);
+}

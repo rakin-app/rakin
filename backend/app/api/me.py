@@ -104,7 +104,7 @@ PAYMENTS = """
 # for them, a membership here or a dependent they pay for, so staff who also train
 # get a way to it (#214).
 WHO = """
-    SELECT g.name AS gym_name, gp.name, gp.email,
+    SELECT g.name AS gym_name, g.theme, gp.name, gp.email,
            (EXISTS (SELECT 1 FROM membership m WHERE m.gym_id = g.id AND m.person_id = :me)
             OR EXISTS (SELECT 1 FROM guardian_link l
                        WHERE l.gym_id = g.id AND l.guardian_person_id = :me)) AS student_page
@@ -143,6 +143,7 @@ async def my_role(
         email=who.email,
         gym_name=who.gym_name,
         student_page=who.student_page,
+        theme=who.theme,
     )
 
 

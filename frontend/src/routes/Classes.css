@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-14) var(--space-5) var(--space-3);
+  padding: var(--page-top) var(--space-5) var(--space-3);
 }
 
 .classes__heading {
@@ -33,7 +33,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   overflow-wrap: anywhere;
 }
 
@@ -228,7 +228,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-md);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
 }
 
 .attendance__row {

@@ -34,6 +34,7 @@ from pydantic import (
 
 from app.domain.membership import DEFAULT_GRACE_DAYS
 from app.schemas.people import Email, Name, Rut
+from app.schemas.theme import Theme
 
 # Overdue reminders go out on the due date, then every this many days (docs/technical.md).
 DEFAULT_REMINDER_EVERY_DAYS = 3
@@ -108,6 +109,9 @@ class GymSettings(BaseModel):
     # Where it is served, as the address bar shows it: `academia-sur.rakin.app` (#177).
     web_address: str
     timezone: str
+    # The colours the gym's pages wear (#199): a column, not a settings key, since the
+    # sign-in pages read it before anyone signs in.
+    theme: Theme
     grace_days: int
     reminder_every_days: int
     channels: Channels
@@ -116,13 +120,20 @@ class GymSettings(BaseModel):
 
     @classmethod
     def from_row(
-        cls, name: str, slug: str, web_address: str, timezone: str, settings: Mapping[str, Any]
+        cls,
+        name: str,
+        slug: str,
+        web_address: str,
+        timezone: str,
+        theme: Theme,
+        settings: Mapping[str, Any],
     ) -> "GymSettings":
         return cls(
             name=name,
             slug=slug,
             web_address=web_address,
             timezone=timezone,
+            theme=theme,
             grace_days=settings.get("grace_days", DEFAULT_GRACE_DAYS),
             reminder_every_days=settings.get("reminder_every_days", DEFAULT_REMINDER_EVERY_DAYS),
             channels=settings.get("channels", {}),
@@ -143,6 +154,7 @@ class GymSettingsUpdate(BaseModel):
 
     name: Name | None = None
     timezone: Timezone | None = None
+    theme: Theme | None = None
     grace_days: GraceDays | None = None
     reminder_every_days: ReminderEveryDays | None = None
     channels: Channels | None = None

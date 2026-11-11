@@ -139,6 +139,6 @@
 
 /* The hidden file input sits before its label, which shows as the button. */
 .import__file:focus-visible + .button {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }

@@ -25,7 +25,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-3xl);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   letter-spacing: var(--tracking-title);
 }
 
@@ -209,7 +209,7 @@
 .payments__kpi-amount {
   font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   line-height: 1;
 }
 

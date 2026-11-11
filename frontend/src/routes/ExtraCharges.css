@@ -25,7 +25,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   letter-spacing: var(--tracking-title);
   overflow-wrap: anywhere;
 }

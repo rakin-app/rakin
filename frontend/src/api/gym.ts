@@ -2,6 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 import type { BankAccount } from './me'
 import type { Privacy } from './privacy'
+import type { Theme } from '../theme'
 
 /** The bank's account types the API takes (backend `AccountType`). */
 export const ACCOUNT_TYPES = ['Cuenta Corriente', 'Cuenta Vista', 'Cuenta RUT', 'Cuenta de Ahorro'] as const
@@ -14,6 +15,8 @@ export type GymSettings = {
   // Where it is served, as the address bar shows it: `academia-sur.rakin.app`.
   web_address: string
   timezone: string
+  // The colours every screen of the gym wears (#199).
+  theme: Theme
   grace_days: number
   reminder_every_days: number
   channels: { whatsapp: boolean }
@@ -27,6 +30,7 @@ export type GymSettings = {
 export type GymSettingsUpdate = Partial<{
   name: string
   timezone: string
+  theme: Theme
   grace_days: number | string
   reminder_every_days: number | string
   channels: { whatsapp: boolean }

@@ -14,9 +14,9 @@ const apiTarget = process.env.RAKIN_API_URL ?? 'http://localhost:8000'
 // bundle to find Vite's fingerprinted fonts in: they load these copies, under names
 // that never change, from /fonts.
 const FIXED_FONTS = [
-  '@fontsource/inter/files/inter-latin-400-normal.woff2',
-  '@fontsource/inter/files/inter-latin-600-normal.woff2',
-  '@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2',
+  '@fontsource/figtree/files/figtree-latin-400-normal.woff2',
+  '@fontsource/figtree/files/figtree-latin-600-normal.woff2',
+  '@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-600-normal.woff2',
 ]
 
 function fixedFonts(): Plugin {
