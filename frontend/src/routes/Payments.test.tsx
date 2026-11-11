@@ -20,6 +20,7 @@ const entry = (fields: Partial<BookEntry> & Pick<BookEntry, 'id' | 'kind'>): Boo
   note: null,
   membership_id: 'm-diego',
   plan_name: 'Mensual adultos',
+  membership_status: 'active',
   person: { id: 'diego', name: 'Diego Morales' },
   guardian: null,
   period: {
@@ -267,7 +268,7 @@ describe('Pagos', () => {
       ['7 nov 09:05', 'Mateo OrtizApoderado: Camila Ortiz', 'Pago', 'Nov 2026', 'Efectivo', 'Validado · Martín', '$45.000'],
       ['6 nov 00:10', 'Andrés Molina', 'Cargo', 'Dic 2026 – May 2027', 'Prepago 6 meses', 'Abierto · vence 1 dic', '$240.000'],
       ['25 oct 00:10', 'Felipe Díaz', 'Cargo', 'Oct 2026', 'Mensual adultos', 'Vencido 9 d', '$45.000'],
-      ['4 nov 20:01', 'Paula Contreras', 'Ajuste', 'A favor', 'Pagó $50.000; quedan $5.000 a favor', 'Validado · Martín', '+$5.000'],
+      ['4 nov 20:01', 'Paula Contreras', 'Ajuste', 'A favor', 'Pagó $50.000; quedan $5.000 a favor', 'Validado · Martín', '$5.000'],
     ])
     expect(within(rows[0]!).getByRole('link', { name: 'Diego Morales' })).toHaveAttribute('href', '/admin/alumnos/diego')
     expect(within(rows[0]!).getByRole('link', { name: copy.status.pending })).toHaveAttribute(
@@ -277,7 +278,25 @@ describe('Pagos', () => {
     expect(screen.getByText(copy.showing(5, 5, 'noviembre'))).toBeInTheDocument()
   })
 
-  it('lists adjustments with their sign and refunds as money out', async () => {
+  it("says beside a charge when its member's plan lapsed or was cancelled", async () => {
+    // The debt outlives the plan (#207).
+    const charges = [
+      entry({ id: 'lapsed', kind: 'charge', membership_status: 'lapsed' }),
+      entry({ id: 'cancelled', kind: 'charge', membership_status: 'cancelled' }),
+      entry({ id: 'active', kind: 'charge' }),
+    ]
+    stubApi({ book: () => ({ ...BOOK, items: charges, total: 3 }) })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map((row) => cells(row)[4])).toEqual([
+      'Mensual adultos · Plan caducado',
+      'Mensual adultos · Dado de baja',
+      'Mensual adultos',
+    ])
+  })
+
+  it('lists a discount and a surcharge by what each does to what is owed, and refunds as money out', async () => {
     const corrections = [
       entry({
         id: 'refund',
@@ -290,14 +309,17 @@ describe('Pagos', () => {
         period: { ...BOOK.items[0]!.period!, outstanding_clp: 10000 },
       }),
       entry({ id: 'owed', kind: 'adjustment', amount_clp: -5000, note: 'matrícula', validated_by_name: 'Martín' }),
+      // A discount takes from what is owed (#210): not the sign of a payment.
+      entry({ id: 'favor', kind: 'adjustment', amount_clp: 5000, note: 'hermano', validated_by_name: 'Martín' }),
     ]
-    stubApi({ book: () => ({ ...BOOK, items: corrections, total: 2 }) })
+    stubApi({ book: () => ({ ...BOOK, items: corrections, total: 3 }) })
     renderAt('/admin/pagos')
 
     const rows = within(await table()).getAllByRole('row').slice(1)
     expect(rows.map(cells)).toEqual([
       ['8 nov 14:12', 'Diego Morales', 'Devolución', 'Nov 2026', 'Efectivo', 'Validado · Martín', '−$10.000'],
-      ['8 nov 14:12', 'Diego Morales', 'Ajuste', 'Nov 2026', 'matrícula', 'Validado · Martín', '−$5.000'],
+      ['8 nov 14:12', 'Diego Morales', 'Recargo', 'Nov 2026', 'matrícula', 'Validado · Martín', '+$5.000'],
+      ['8 nov 14:12', 'Diego Morales', 'Descuento', 'Nov 2026', 'hermano', 'Validado · Martín', '−$5.000'],
     ])
   })
 

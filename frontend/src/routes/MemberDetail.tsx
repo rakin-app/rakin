@@ -1164,7 +1164,7 @@ function AdjustmentForm({
       }),
     onSuccess: async (result: RecordedAdjustment) => {
       const rest = result.period.closed ? '' : copy.form.remainder(clp(result.period.outstanding_clp))
-      onDone(form.done(t.common.signedClp(signed)) + rest)
+      onDone(form.done(direction === 'favor', clp(value)) + rest)
       await queryClient.invalidateQueries({ queryKey: ['ledger'] })
     },
   })
@@ -1247,7 +1247,7 @@ function AdjustmentForm({
           {form.cancel}
         </Button>
         <Button type="submit" variant="primary" disabled={adjust.isPending}>
-          {adjust.isPending ? form.working : form.submit(t.common.signedClp(signed))}
+          {adjust.isPending ? form.working : form.submit(direction === 'favor', clp(value))}
         </Button>
       </div>
     </form>
@@ -1464,9 +1464,10 @@ function Entry({ entry, unpaid, paidClp }: { entry: TimelineEntry; unpaid: boole
   )
 }
 
-/** An adjustment with its sign, `+$5.000` or `−$5.000`; a refund, money out, `−$10.000`. */
+/** An adjustment by what it does to what is owed, a discount `−$5.000` and a surcharge
+ * `+$5.000`, and a carried credit as held; a refund, money out, `−$10.000`. */
 function entryAmount(entry: TimelineEntry): string {
-  if (entry.kind === 'adjustment') return t.common.signedClp(entry.amount_clp)
+  if (entry.kind === 'adjustment' && entry.period_start) return t.common.adjustmentClp(entry.amount_clp)
   if (entry.kind === 'refund') return t.common.signedClp(-entry.amount_clp)
   return clp(entry.amount_clp)
 }
@@ -1503,7 +1504,7 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
     }
     case 'adjustment':
       return {
-        title: entry.period_start ? words.adjustment(month) : words.credit,
+        title: entry.period_start ? words.adjustment(entry.amount_clp > 0, month) : words.credit,
         detail: join(entry.note, day),
         tone: entry.status === 'rejected' ? 'rejected' : entry.amount_clp < 0 ? 'owed' : 'muted',
       }

@@ -54,13 +54,20 @@ DEPENDENTS = f"""
     ORDER BY lower(gp.name), gp.person_id
 """
 
-# The payments on the person's memberships and their dependents'. Newest recorded first;
-# entries recorded at the same moment go by the period they pay, latest first.
-# Only a rejection's note is shown: it is written for the student, other notes are not.
+# The money on the person's memberships and their dependents': payments, and the
+# refunds and adjustments that change what they settle, so "Mis pagos" adds up to what
+# "Próximo pago" asks for (#210). Newest recorded first; entries recorded at the same
+# moment go by the period they pay, latest first. Only the notes written for the
+# student are shown: a rejection's, and a carried credit's ("Pagó $X, quedan $Y a
+# favor"); an admin's note on anything else is theirs.
 PAYMENTS = """
-    SELECT e.id, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
+    SELECT e.id, e.kind, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
            bp.period_start, x.title AS charge_title, e.claimed_at, e.validated_at,
-           CASE WHEN e.status = :rejected THEN e.note END AS note, e.created_at
+           CASE WHEN e.status = :rejected
+                  OR (e.kind = :adjustment AND e.billing_period_id IS NULL
+                      AND e.extra_line_id IS NULL)
+                THEN e.note END AS note,
+           e.created_at
     FROM ledger_entry e
     LEFT JOIN membership m ON m.id = e.membership_id
     LEFT JOIN extra_line l ON l.id = e.extra_line_id
@@ -68,7 +75,7 @@ PAYMENTS = """
     CROSS JOIN LATERAL (SELECT coalesce(m.person_id, l.person_id) AS person_id) w
     JOIN gym_person gp ON gp.gym_id = e.gym_id AND gp.person_id = w.person_id
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
-    WHERE e.kind = :payment
+    WHERE e.kind = ANY(CAST(:kinds AS text[]))
       AND (w.person_id = :me OR w.person_id IN (
           SELECT g.dependent_person_id FROM guardian_link g WHERE g.guardian_person_id = :me))
     ORDER BY e.created_at DESC, bp.period_start DESC NULLS LAST, e.id
@@ -84,6 +91,9 @@ WHO = """
     LEFT JOIN gym_person gp ON gp.gym_id = g.id AND gp.person_id = :me
     WHERE g.id = :gym
 """
+
+# What "Mis pagos" lists: everything but the charges, which "Próximo pago" stands for.
+MY_KINDS = (EntryKind.PAYMENT, EntryKind.REFUND, EntryKind.ADJUSTMENT)
 
 # How far back "Mis pagos" goes: a year of monthly payments.
 PAYMENTS_SHOWN = 12
@@ -187,7 +197,8 @@ async def my_page(
         text(PAYMENTS),
         {
             "me": tenant.person_id,
-            "payment": EntryKind.PAYMENT.value,
+            "kinds": [k.value for k in MY_KINDS],
+            "adjustment": EntryKind.ADJUSTMENT.value,
             "rejected": EntryStatus.REJECTED.value,
             "limit": PAYMENTS_SHOWN,
         },

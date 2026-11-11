@@ -72,7 +72,6 @@ SELECT * FROM (
     LEFT JOIN LATERAL (
         SELECT sum(o.outstanding_clp)::bigint AS owed FROM v_overdue o
         WHERE o.gym_id = a.gym_id AND o.person_id = a.person_id
-          AND o.membership_status = 'active'
     ) o ON true
     LEFT JOIN LATERAL ({contact_query("a.person_id")}) c ON true
     LEFT JOIN LATERAL (

@@ -235,11 +235,13 @@ class MembershipLedger(BaseModel):
 class BookFilter(StrEnum):
     """The ledger book's filters ("Libro de pagos", #39)."""
 
-    # Every entry made in the month.
+    # Every entry of the month: a charge by the month its period starts in (#206), any
+    # other entry by the day it was made.
     ALL = "all"
     # Payments waiting for review, of any month: the queue as it stands today.
     PENDING = "pending"
-    # The charges of active memberships' periods overdue today (`v_overdue`), of any month.
+    # The charges of periods overdue today (`v_overdue`), of any month, whatever the
+    # membership's status (#207).
     OVERDUE = "overdue"
     # The month's entries on dependents' memberships: the kids a guardian pays for.
     KIDS = "kids"
@@ -282,6 +284,9 @@ class BookEntry(BaseModel):
     # Null, with `plan_name`, for an entry on a cobro extra line, which `extra` names.
     membership_id: uuid.UUID | None
     plan_name: str | None
+    # The membership's status today (`lapsed` once its plan lapsed), so a debt left on a
+    # lapsed or cancelled plan reads as such (#207). Null for a cobro extra line.
+    membership_status: str | None = None
     # Whose membership or line it is, and who pays for them when they are a dependent.
     person: PersonRef
     guardian: PersonRef | None
@@ -313,7 +318,8 @@ class BookKpis(BaseModel):
     # Payments waiting for review, today.
     pending_clp: int
     pending_payments: int
-    # Outstanding on active memberships' overdue periods, today (`v_overdue`).
+    # Outstanding on overdue periods today (`v_overdue`), whatever the membership's
+    # status (#207).
     overdue_clp: int
     overdue_members: int
     # Per overdue member, the days since their oldest unpaid period fell due, averaged.
@@ -343,13 +349,15 @@ class LedgerBook(BaseModel):
 
 
 class OverduePeriod(BaseModel):
-    """A period of an Active membership past its due date and not paid in full (`v_overdue`)."""
+    """A period past its due date and not paid in full (`v_overdue`), of a membership in
+    any status: lapsing or cancelling a plan does not pay what it owes (#207)."""
 
     billing_period_id: uuid.UUID
     membership_id: uuid.UUID
     person_id: uuid.UUID
     person_name: str
     plan_name: str
+    membership_status: str
     period_start: date
     due_date: date
     outstanding_clp: int

@@ -176,7 +176,7 @@ describe('Asistencia', () => {
     expect(within(rows[1]!).getByRole('img', { name: copy.overdue })).toBeInTheDocument()
     expect(within(rows[0]!).queryByRole('img', { name: copy.overdue })).not.toBeInTheDocument()
     expect(rows[2]).toHaveTextContent('Pack 12 clases · quedan 4')
-    expect(rows[3]).toHaveTextContent('Mensual adultos · Vencido · 16 d sin venir')
+    expect(rows[3]).toHaveTextContent('Mensual adultos · Caducado · 16 d sin venir')
     expect(screen.getByText(copy.count(1, 4))).toBeInTheDocument()
     expect(screen.getByRole('button', { name: copy.save(1) })).toBeDisabled()
   })

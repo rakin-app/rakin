@@ -61,6 +61,9 @@ export type PaymentStatus = 'pending' | 'validated' | 'rejected'
 /** A payment on the person's memberships or a dependent's, as it was reviewed. */
 export type MyPayment = {
   id: string
+  // A refund gives a payment back; an adjustment is positive in the student's favour,
+  // negative owed on top, and with no period a credit carried from an overpayment (#210).
+  kind: 'payment' | 'refund' | 'adjustment'
   person_id: string
   person_name: string
   amount_clp: number
@@ -68,7 +71,7 @@ export type MyPayment = {
   period_start: string | null
   claimed_at: string | null
   validated_at: string | null
-  // A rejection's note, written for the student.
+  // A rejection's note, or a carried credit's: the notes written for the student.
   note: string | null
   created_at: string
 }

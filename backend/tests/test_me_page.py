@@ -217,3 +217,47 @@ def test_the_history_is_newest_first_and_bounded(
     assert starts == sorted(starts, reverse=True)
     assert starts[0] == str(seeded_today() - timedelta(days=30))
     assert str(seeded_today() - timedelta(days=30 * PAYMENTS_SHOWN)) in starts
+
+
+@pg
+def test_refunds_and_adjustments_are_listed_so_the_history_adds_up(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    # Two payments of 20.000 against 45.000, one given back, and a 5.000 discount
+    # (#210): the student reads every movement, and 45.000 - 40.000 + 20.000 - 5.000 is
+    # the 20.000 still owed.
+    ana = add_person(client, sur, "Ana")
+    membership = bill(db, sur, ana, [(-3, 45000, 0, 0)])
+    period = page(client, sur, ana)["next_payment"]["period"]["id"]
+    staff = as_gym(sur)
+
+    def post(path: str, body: dict[str, Any]) -> Any:
+        response = client.post(path, json=body, headers=staff)
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    ids = {"membership_id": membership, "billing_period_id": period}
+    first = post("/api/ledger/payments", {**ids, "amount_clp": 20000, "method": "transfer"})
+    post("/api/ledger/payments", {**ids, "amount_clp": 20000, "method": "transfer"})
+    post(
+        "/api/ledger/refunds",
+        {
+            "payment_id": first["payment"]["id"],
+            "amount_clp": 20000,
+            "method": "transfer",
+            "note": "pagó dos veces",
+        },
+    )
+    post("/api/ledger/adjustments", {**ids, "amount_clp": 5000, "note": "descuento hermano"})
+
+    mine = page(client, sur, ana)
+
+    assert [(p["kind"], p["amount_clp"]) for p in mine["payments"]] == [
+        ("adjustment", 5000),
+        ("refund", 20000),
+        ("payment", 20000),
+        ("payment", 20000),
+    ]
+    # An admin's note is theirs, as on a recorded payment.
+    assert {p["note"] for p in mine["payments"]} == {None}
+    assert mine["next_payment"]["period"]["outstanding_clp"] == 20000
