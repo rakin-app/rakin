@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.attendance import attended
+from app.api.extra_charges import open_lines
 from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
 from app.api.proofs import OPEN_PERIODS, payable_params, to_open_period
@@ -57,15 +58,18 @@ DEPENDENTS = f"""
 # entries recorded at the same moment go by the period they pay, latest first.
 # Only a rejection's note is shown: it is written for the student, other notes are not.
 PAYMENTS = """
-    SELECT e.id, m.person_id, gp.name AS person_name, e.amount_clp, e.status,
-           bp.period_start, e.claimed_at, e.validated_at,
+    SELECT e.id, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
+           bp.period_start, x.title AS charge_title, e.claimed_at, e.validated_at,
            CASE WHEN e.status = :rejected THEN e.note END AS note, e.created_at
     FROM ledger_entry e
-    JOIN membership m ON m.id = e.membership_id
-    JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.person_id
+    LEFT JOIN membership m ON m.id = e.membership_id
+    LEFT JOIN extra_line l ON l.id = e.extra_line_id
+    LEFT JOIN extra_charge x ON x.id = l.extra_charge_id
+    CROSS JOIN LATERAL (SELECT coalesce(m.person_id, l.person_id) AS person_id) w
+    JOIN gym_person gp ON gp.gym_id = e.gym_id AND gp.person_id = w.person_id
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     WHERE e.kind = :payment
-      AND (m.person_id = :me OR m.person_id IN (
+      AND (w.person_id = :me OR w.person_id IN (
           SELECT g.dependent_person_id FROM guardian_link g WHERE g.guardian_person_id = :me))
     ORDER BY e.created_at DESC, bp.period_start DESC NULLS LAST, e.id
     LIMIT :limit
@@ -186,4 +190,5 @@ async def my_page(
         rank=await current_rank(session, tenant.person_id, readable_scheme(gym.settings)),
         attendance=MyAttendance(this_month=this_month, total=total),
         payments=[MyPayment.model_validate(dict(row._mapping)) for row in payments],
+        extra_charges=await open_lines(session, tenant.person_id),
     )

@@ -9,8 +9,10 @@ from app.api import (
     block_kinds,
     class_types,
     custom_fields,
+    extra_charges,
     grades,
     grading,
+    groups,
     guardians,
     gym,
     health,
@@ -110,6 +112,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ledger.router)
     app.include_router(inactive.router)
     app.include_router(proof_review.router)
+    app.include_router(extra_charges.router)
+    app.include_router(extra_charges.people_router)
+    app.include_router(groups.router)
     app.include_router(unsubscribe.router)
     app.include_router(join.public)
     app.include_router(join.router)

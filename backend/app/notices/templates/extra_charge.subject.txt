@@ -1,0 +1,1 @@
+{% if reminder %}Recordatorio: {% endif %}{{ title }} en {{ gym }}: {{ amount_clp | clp }} hasta el {{ due_date | fecha }}

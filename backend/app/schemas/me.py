@@ -1,8 +1,8 @@
 """The student page ("Mi página", #65): what the signed-in person reads about themselves.
 
-One document for the page: the next payment and where to transfer it, and the payments
-already sent with how each was reviewed, the person's belt, and how many classes they
-have attended.
+One document for the page: the next payment and where to transfer it, the cobros extra
+still owed, and the payments already sent with how each was reviewed, the person's
+belt, and how many classes they have attended.
 """
 
 import uuid
@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.domain.ledger import EntryStatus
+from app.schemas.extra_charges import MyExtraLine
 from app.schemas.grades import Rank
 from app.schemas.gym import BankAccount
 from app.schemas.proofs import OpenPeriod
@@ -37,6 +38,8 @@ class MyPayment(BaseModel):
     status: EntryStatus
     # The period it pays, when it pays one.
     period_start: date | None
+    # The cobro extra it pays instead, when it pays one (#195).
+    charge_title: str | None = None
     # When the proof was sent, or the admin recorded it.
     claimed_at: datetime | None
     # When it was validated or rejected.
@@ -69,3 +72,6 @@ class MyPage(BaseModel):
     attendance: MyAttendance
     # Newest first, at most `PAYMENTS_SHOWN`.
     payments: list[MyPayment]
+    # The cobros extra still owed, theirs and their dependents', earliest due first
+    # (#195): beside the plan's, never part of `next_payment`.
+    extra_charges: list[MyExtraLine] = []

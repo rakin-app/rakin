@@ -1,0 +1,16 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+{% if reminder %}Te recordamos que sigue pendiente{% else %}{{ gym }} te envía un cobro{% endif %}: {{ title }}{% if dependent_name %}, de {{ dependent_name }}{% endif %}.
+{% if message %}
+
+{{ message }}
+{% endif %}
+
+{% if dependent_name %}A {{ dependent_name }} le corresponde{% else %}Te corresponde{% endif %} pagar {{ amount_clp | clp }}, hasta el {{ due_date | fecha }}.
+
+Para pagar, {% if bank_account %}transfiere a esta cuenta y sube el comprobante desde tu página.{% else %}transfiere y sube el comprobante desde tu página, donde están los datos de la cuenta.{% endif %}
+
+{% include "_bank_account.txt" %}
+{% endblock %}

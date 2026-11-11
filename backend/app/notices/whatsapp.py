@@ -8,6 +8,7 @@ They are short and plain text, as a WhatsApp message is, and greet by first name
 """
 
 INACTIVE_NUDGE = "inactive_nudge"
+EXTRA_CHARGE_REMINDER = "extra_charge_reminder"
 
 
 def first_name(name: str) -> str:
@@ -35,3 +36,17 @@ def inactive_nudge(
         else "todavía no viene a su primera clase"
     )
     return f"{hello}, echamos de menos a {kid} en {gym_name}: {gap}. ¿Todo bien? ¡Los esperamos!"
+
+
+def extra_charge_reminder(
+    *, to_name: str, about_name: str | None, gym_name: str, title: str, amount: str, due: str
+) -> str:
+    """A cobro extra's notice on WhatsApp (#195), for someone with no email to get it
+    by, or as a reminder; to their guardian (`about_name`) for a dependent. `amount` and
+    `due` come formatted."""
+    whose = f" de {first_name(about_name)}" if about_name else ""
+    return (
+        f"Hola {first_name(to_name)}, te escribimos de {gym_name} por el cobro {title}{whose}:"
+        f" {amount}, hasta el {due}. Puedes transferir y subir el comprobante en tu página."
+        " ¡Gracias!"
+    )
