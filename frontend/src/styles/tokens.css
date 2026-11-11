@@ -45,6 +45,13 @@
   --color-danger: #b42318;
   --color-danger-soft: #fee4e2;
 
+  /* The class timer (#187): a sparring round is green, its rest red, each read from across
+     the mat; the text on both is white, 4.5:1 or more, and so is --color-danger-soft. */
+  --color-timer-fight: #166534;
+  --color-timer-fight-text: #ffffff;
+  --color-timer-rest: #b91c1c;
+  --color-timer-rest-text: #ffffff;
+
   /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
