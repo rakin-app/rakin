@@ -135,7 +135,9 @@ WELCOME_CONTEXT = {
 
 def test_an_email_of_a_gym_with_a_logo_shows_it_round_named_for_the_gym() -> None:
     url = "https://academia-sur.rakin.app/api/logos/x/0123456789abcdef/128.png"
-    email = render(Notice(WELCOME, "ana@example.cl", PERSON, GYM, WELCOME_CONTEXT), logo_url=url)
+    email = render(
+        Notice(WELCOME, "ana@example.cl", PERSON, GYM, WELCOME_CONTEXT), gym_logo_url=url
+    )
     assert email.html is not None
     assert f'<img src="{url}" alt="Academia &lt;Sur&gt;"' in email.html
     assert "border-radius:50%" in email.html
@@ -145,7 +147,7 @@ def test_an_email_of_a_gym_with_a_logo_shows_it_round_named_for_the_gym() -> Non
 def test_an_email_of_a_gym_with_no_logo_has_no_image() -> None:
     email = render(Notice(WELCOME, "ana@example.cl", PERSON, GYM, WELCOME_CONTEXT))
     assert email.html is not None
-    assert "<img" not in email.html
+    assert "border-radius:50%" not in email.html
 
 
 # --- the API, against real Postgres -------------------------------------------------------

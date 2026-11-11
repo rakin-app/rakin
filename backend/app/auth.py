@@ -54,9 +54,27 @@ LANDINGS = frozenset({STUDENT_PAGE})
 PER_ADDRESS = (5, 15 * 60)
 PER_IP = (30, 15 * 60)
 
+# Rakin's logo (#224, docs/brand): the tatami symbol, drawn on docs/brand/build.py's
+# grid, and the wordmark in the display font, ending in the centre mat's square. In
+# the theme's colours, as the SPA's `RakinLogo` draws it.
+_MATS = ((4, 4, 16, 6), (22, 4, 6, 16), (12, 22, 16, 6), (4, 12, 6, 16))
+LOGO = (
+    '<span class="logo" role="img" aria-label="Rakin">'
+    '<svg class="logo__symbol" viewBox="0 0 32 32" aria-hidden="true">'
+    '<rect class="logo__tile" width="32" height="32" rx="7"/>'
+    '<rect class="logo__ring" x="1" y="1" width="30" height="30" rx="6"/>'
+    + "".join(
+        f'<rect class="logo__mat" x="{x}" y="{y}" width="{w}" height="{h}" rx="1"/>'
+        for x, y, w, h in _MATS
+    )
+    + '<rect class="logo__centre" x="12" y="12" width="8" height="8" rx="1"/></svg>'
+    '<span aria-hidden="true">rakin<span class="logo__square"></span></span></span>'
+)
+
 TEXTS = Texts(
     lang="es",
     name="Rakin",
+    logo=LOGO,
     title="Entrar a {name}",
     confirm="Toca el botón para entrar.",
     button="Entrar",
@@ -90,6 +108,7 @@ THEME_TOKENS = {
         "--color-inverse": "#153c25",
         "--color-inverse-raised": "#264c34",
         "--color-inverse-text": "#f5f6eb",
+        "--color-moss": "#a0c79b",
         "--color-focus": "#4e7f58",
     },
     "oceano": {
@@ -104,6 +123,7 @@ THEME_TOKENS = {
         "--color-inverse": "#15364f",
         "--color-inverse-raised": "#254560",
         "--color-inverse-text": "#edf6ff",
+        "--color-moss": "#85c5df",
         "--color-focus": "#47769d",
     },
     "volcan": {
@@ -118,6 +138,7 @@ THEME_TOKENS = {
         "--color-inverse": "#4d2527",
         "--color-inverse-raised": "#5e3536",
         "--color-inverse-text": "#fff1f1",
+        "--color-moss": "#e4ac93",
         "--color-focus": "#9b5e60",
     },
 }
@@ -179,6 +200,16 @@ STYLESHEET = (
     "border-radius:50%;object-fit:cover}"
     ".eyebrow{margin:0 0 var(--space-0-5);color:var(--color-text-muted);font-size:var(--text-xs);"
     "font-weight:600;letter-spacing:var(--tracking-eyebrow);text-transform:uppercase}"
+    ".eyebrow--logo{margin-bottom:var(--space-3);color:var(--color-heading);font-size:20px;"
+    "text-transform:none}"
+    ".logo{display:inline-flex;align-items:center;gap:.34em;font-family:var(--font-display);"
+    "font-weight:var(--font-weight-display);letter-spacing:var(--tracking-title);line-height:1}"
+    ".logo__symbol{width:1.22em;height:1.22em}"
+    ".logo__tile{fill:var(--color-inverse)}.logo__mat{fill:var(--color-inverse-text)}"
+    ".logo__centre{fill:var(--color-moss)}"
+    ".logo__ring{fill:none;stroke:var(--color-moss);stroke-opacity:.6;stroke-width:2}"
+    ".logo__square{display:inline-block;width:.21em;height:.21em;margin-left:.06em;"
+    "border-radius:.02em;background:var(--color-focus)}"
     "h1{margin:0;padding-bottom:var(--space-3);font-family:var(--font-display);"
     "font-size:var(--text-3xl);font-weight:var(--font-weight-display);"
     "letter-spacing:var(--tracking-title);color:var(--color-heading);"

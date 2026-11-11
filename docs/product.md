@@ -4,11 +4,11 @@
 
 ## Overview and positioning
 
-Rakin (rakin.app; Mapudungun rakin, to count) is an open-source, sport-agnostic membership and fee-tracking platform for small martial-arts gyms (under \~150 active students), launched first at the author's own BJJ academy. It replaces the spreadsheet plus WhatsApp group that most gyms run on today.
+Rakin (rakin.app; Mapudungun rakin, to count) is an open-source, sport-agnostic membership and fee-tracking platform for small sports academies and clubs (under \~150 active members): martial arts, football schools, swimming, climbing, dance, and any group that charges its members, a chess club included. Martial arts is the first use case, not the definition: it launched first at the author's own BJJ academy, and that is where the first gyms come from. It replaces the spreadsheet plus WhatsApp group that most of them run on today.
 
 The core loop is: member → plan → due date → reminder → bank transfer arrives → validated in the ledger → silence. The product never processes money in v1; it tracks, reminds and reconciles transfers the owner already receives.
 
-**It is:** a bookkeeping ledger for monthly fees, an attendance and class log for coaches, a thin student page (what do I owe, when, how to prove I paid), and a configurable grading / plan / custom-field layer so any martial art fits.
+**It is:** a bookkeeping ledger for monthly fees, an attendance and class log for coaches, a thin student page (what do I owe, when, how to prove I paid), and a configurable plan / custom-field layer so any sport fits. Grading (ranks, belts, stripes) and the class timer's sparring rounds are optional modules a gym turns on or ignores: a gym with no grading scheme sees no belts anywhere.
 
 **It is not:** a CRM with sales pipelines, a scheduling or booking product, a payment processor, a cross-gym pass marketplace, or a native mobile app. It is a web app (PWA) with email as the system of record and WhatsApp as the reminder channel.
 
@@ -21,7 +21,7 @@ Four personas, three of which may be the same human in a small gym. Each has one
 | --- | --- | --- | --- | --- |
 | Owner / admin | runs the gym, often also head coach | know who owes what today, validate transfers, send reminders | will not share finances with part-time coaches; does bookkeeping on a phone between classes | daily, 5 min; monthly, 30 min at closing |
 | Coach | teaches classes, may be a volunteer or paid per class | take attendance in under 5 s, log the session topic, see who is drifting | no budget, no obligation to enter data; anything slower than a WhatsApp list will not be used | per class |
-| Student (adult) | trains 2–4×/week, pays by transfer | know due date and amount, upload proof, see belt and attendance | will not install an app or remember a password; reads WhatsApp, rarely email | 1–2× per month |
+| Student (adult) | trains 2–4×/week, pays by transfer | know due date and amount, upload proof, see attendance and, where the gym grades, their rank | will not install an app or remember a password; reads WhatsApp, rarely email | 1–2× per month |
 | Guardian | parent paying for one or more kids, may also train | pay for N dependents at once, see each child's grade and attendance | one payer, several students, kids have no phones | 1–2× per month |
 
 Roles are per gym: the same person can be owner at gym A and student at gym B. Permissions follow the role, not the person.

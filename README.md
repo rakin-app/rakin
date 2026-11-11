@@ -2,7 +2,7 @@
 
 **[Español](README.es.md)** · English
 
-Rakin (*Mapudungun: to count*) is an open-source, sport-agnostic membership and fee-tracking platform for small martial-arts gyms. It replaces the spreadsheet plus WhatsApp group that most gyms run on.
+Rakin (*Mapudungun: to count*) is an open-source membership and fee-tracking platform for **small sports academies and clubs**: martial arts, football schools, swimming, climbing, dance, and any group that charges its members, a chess club included. Martial-arts gyms are where it started, not what it is for. It replaces the spreadsheet plus WhatsApp group that most of them run on.
 
 The core loop: **member → plan → due date → reminder → bank transfer arrives → validated in the ledger → silence.** Rakin never processes money in v1. It tracks, reminds and reconciles transfers the gym already receives.
 
@@ -13,7 +13,8 @@ The core loop: **member → plan → due date → reminder → bank transfer arr
 - An append-only **ledger** for monthly fees, credit packs, prepaid plans, drop-ins and trials
 - **Five-second attendance** for coaches, with a class log
 - A thin **student page** reached by magic link: what I owe, when, and how to prove I paid
-- Configurable **grading schemes, plans and custom fields** so BJJ, judo, Muay Thai or boxing all fit without sport-specific code
+- Configurable **plans and custom fields**, so any sport fits without sport-specific code
+- Optional modules a gym turns on or ignores: **grading** (ranks, belts and stripes, with presets for BJJ, judo / karate and Muay Thai) and the coach's **class timer** with sparring rounds. A gym with no grading scheme sees no belts anywhere
 
 It is not a CRM, a booking system, a payment processor or a native app. It is a PWA. Email is the system of record and WhatsApp is the reminder channel.
 

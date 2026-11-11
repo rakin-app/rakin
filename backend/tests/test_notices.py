@@ -144,6 +144,20 @@ def test_the_footer_names_the_gym_or_just_rakin() -> None:
     assert link.text.rstrip().endswith("--\nRakin")
 
 
+def test_the_footer_shows_rakins_logo_with_its_name_as_the_alt_text() -> None:
+    logo = f"{BASE_URL}/email-logo.png"
+    email = render(proof_notice(), logo_url=logo)
+
+    assert email.html is not None
+    assert f'Academia &lt;Sur&gt;, a través de <img src="{logo}" alt="Rakin"' in email.html
+    # Text has no image: it still names Rakin.
+    assert "Academia <Sur>, a través de Rakin" in email.text
+    link = render(
+        Notice(MAGIC_LINK, "a@example.cl", PERSON, None, {"name": "A", "url": "u"}), logo_url=logo
+    )
+    assert link.html is not None and f'<img src="{logo}" alt="Rakin"' in link.html
+
+
 def test_the_payload_keeps_the_values_but_not_the_redacted_ones() -> None:
     link = Notice(MAGIC_LINK, "a@example.cl", PERSON, None, {"name": "Ana", "url": "secret"})
     assert json.loads(payload(link)) == {"name": "Ana"}
@@ -415,6 +429,16 @@ def test_a_sent_notice_is_recorded_in_its_gym(db: Database, gym: uuid.UUID) -> N
     assert row["to_address"] == "ana@example.cl"
     assert row["error"] is None
     assert json.loads(row["payload"])["amount_clp"] == 45000
+
+
+@pg
+def test_a_sent_notice_shows_the_logo_from_the_base_host(db: Database, gym: uuid.UUID) -> None:
+    outbox = Outbox()
+
+    send(db, to_owner(gym), outbox)
+
+    [email] = outbox.sent
+    assert email.html is not None and f'<img src="{BASE_URL}/email-logo.png"' in email.html
 
 
 @pg

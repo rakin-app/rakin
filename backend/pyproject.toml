@@ -1,7 +1,7 @@
 [project]
 name = "rakin-api"
 version = "0.1.0"
-description = "Rakin API: membership and fee tracking for martial-arts gyms"
+description = "Rakin API: membership and fee tracking for sports academies and clubs"
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.20.1",

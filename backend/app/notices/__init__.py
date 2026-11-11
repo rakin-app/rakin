@@ -68,6 +68,10 @@ Sessionmaker = Callable[[], async_sessionmaker[AsyncSession]]
 STUDENT_PAGE = "/me"
 PAGE_LINK_TTL = timedelta(days=7)
 
+# Rakin's logo in the footer: a PNG, since mail clients show no SVG, built with the
+# rest by docs/brand/build.py and served from the SPA's public files.
+LOGO_PATH = "/email-logo.png"
+
 
 @dataclass(frozen=True)
 class Template:
@@ -154,16 +158,19 @@ def render(
     unsubscribe_url: str | None = None,
     page_url: str | None = None,
     logo_url: str | None = None,
+    gym_logo_url: str | None = None,
     env: Environment = ENVIRONMENT,
 ) -> Email:
-    """The message `notice` is, with its unsubscribe and sign-in links when it has them,
-    and the gym's logo over it when it has one."""
+    """The message `notice` is, with its unsubscribe and sign-in links when it has them.
+    `logo_url` is Rakin's logo for the footer; without it the footer names Rakin in text.
+    `gym_logo_url` is the gym's (#223), over the message; without it there is none."""
     name = notice.template.name
     context = {
         **notice.context,
         "unsubscribe_url": unsubscribe_url,
         "page_url": page_url,
         "logo_url": logo_url,
+        "gym_logo_url": gym_logo_url,
         "page_link_days": PAGE_LINK_TTL.days,
     }
     subject = " ".join(env.get_template(f"{name}.subject.txt").render(context).split())
@@ -211,6 +218,12 @@ class Notices:
         self._links = links
         self._env = env
 
+    @property
+    def logo_url(self) -> str:
+        """Rakin's logo for the emails' footer (#224), always on the base host: it is
+        Rakin's mark, not the gym's, and one address lets mail clients cache it."""
+        return f"{self._base_url}{LOGO_PATH}"
+
     def unsubscribe_url(
         self, gym_id: uuid.UUID, person_id: uuid.UUID, base_url: str | None = None
     ) -> str:
@@ -239,7 +252,7 @@ class Notices:
         unsubscribe_url = None
         extra = {"template": notice.template.name, "person_id": str(notice.person_id)}
         try:
-            base_url, logo_url = await self.gym_host(notice.gym_id)
+            base_url, gym_logo_url = await self.gym_host(notice.gym_id)
         # The database down, say: a link to the wrong host is no better than none.
         except Exception as exc:
             logger.exception("notice host not found", extra=extra)
@@ -271,7 +284,8 @@ class Notices:
                 notice,
                 unsubscribe_url=unsubscribe_url,
                 page_url=page_url,
-                logo_url=logo_url,
+                logo_url=self.logo_url,
+                gym_logo_url=gym_logo_url,
                 env=self._env,
             )
             await self._mailer.send(email)

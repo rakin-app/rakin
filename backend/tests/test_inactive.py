@@ -110,12 +110,19 @@ def came(client: TestClient, gym: uuid.UUID, membership: str, days_ago: int) -> 
     changed(client, gym, session_of(client, gym, free, day), mark=[membership])
 
 
-def member_since(db: Database, membership: str, days_ago: int) -> None:
+def member_since(
+    db: Database, membership: str, days_ago: int, *, in_rakin_since: int | None = None
+) -> None:
+    """`membership` started `days_ago` days ago, and was entered in Rakin then too, or
+    `in_rakin_since` days ago: an import, or a start typed in after the fact."""
+    entered = days_ago if in_rakin_since is None else in_rakin_since
     run(
         db.admin_url,
         lambda c: c.execute(
-            "UPDATE membership SET started_at = now() - make_interval(days => $1) WHERE id = $2",
+            "UPDATE membership SET started_at = now() - make_interval(days => $1),"
+            " created_at = now() - make_interval(days => $2) WHERE id = $3",
             days_ago,
+            entered,
             uuid.UUID(membership),
         ),
     )
@@ -197,6 +204,25 @@ def test_someone_who_never_came_counts_from_when_they_joined(
     # The seeded owner joined today too, and is not listed either.
     assert [(r["name"], r["last_attended_on"], r["days_absent"]) for r in rows] == [
         ("Paula Contreras", None, 20)
+    ]
+
+
+@pg
+def test_someone_who_never_came_counts_from_when_rakin_had_them_not_from_before(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # Imported, or entered late, with a start months back (#209): Rakin has none of
+    # their classes from before it knew of them.
+    pack = plan(client, gym, CREDITS)
+    isidora = join(client, gym, add_person(client, gym, "Isidora Contreras"), pack)
+    member_since(db, isidora, 119, in_rakin_since=20)
+    simon = join(client, gym, add_person(client, gym, "Simón Sanhueza"), pack)
+    member_since(db, simon, 119, in_rakin_since=0)
+
+    rows = listed(client, gym)
+
+    assert [(r["name"], r["last_attended_on"], r["days_absent"]) for r in rows] == [
+        ("Isidora Contreras", None, 20)
     ]
 
 

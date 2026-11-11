@@ -4,9 +4,9 @@
 
 ## Sport-agnostic design
 
-Three configuration surfaces absorb all sport variance; the rest of the system is identical for BJJ, judo, Muay Thai or boxing. All three live as JSON in `gym.settings` (definitions) and as rows (values).
+Three configuration surfaces absorb all sport variance; the rest of the system is identical for a BJJ academy, a football school, a swimming club or a chess club. All three live as JSON in `gym.settings` (definitions) and as rows (values).
 
-**Grading scheme** — an ordered list of ranks, each with optional sub-ranks, plus an optional separate kids ladder. Promotion events reference rank and sub-rank by key. A rank may carry its belt's colours (one, or two for a two-tone belt); such a rank is drawn as a belt, its stripes counted by the sub-rank's place after the first, and one without colours shows as its label.
+**Grading scheme** — optional: a gym with no ranks (the `none` preset, and what `app.gyms create` gives a new gym unless `--grading` names a preset) shows no belt, rank or "Registrar graduación" anywhere, the ficha, the class roster, `/me`, Hoy and the setup checklist alike. An ordered list of ranks, each with optional sub-ranks, plus an optional separate kids ladder. Promotion events reference rank and sub-rank by key. A rank may carry its belt's colours (one, or two for a two-tone belt); such a rank is drawn as a belt, its stripes counted by the sub-rank's place after the first, and one without colours shows as its label.
 
 | Sport | Ranks | Sub-ranks | Kids ladder | Goal metric |
 | --- | --- | --- | --- | --- |
@@ -26,6 +26,8 @@ Three configuration surfaces absorb all sport variance; the rest of the system i
 | trial | free\_classes or free\_days | zero charge; converts or lapses |
 
 **Custom fields** — per-gym definitions `{key, label, type, options?, sensitive?, visible_to}`; values stored per person per gym. Weight, competition record, insurance number, federation ID, emergency contact. `visible_to` (`owner`, `admin` or `staff`) is who among the staff sees the field, set by the owner only. Fields marked `sensitive` start as `owner`, are encrypted at rest and excluded from exports unless explicitly included (see Compliance).
+
+The class vocabulary is defaults a gym edits, not assumptions: block kinds (Calentamiento, Técnica, Drilling, Juegos, Sparring, Otro) are renamed, archived or added in Ajustes › Bloques, and "open mat" is a class-type kind a gym need not use. Sparring blocks, run in rounds by the coach's timer, are only there for a gym that marks a kind as sparring.
 
 Anything a gym asks for that doesn't fit these three surfaces is either a non-goal or a core feature for all sports, never a sport-specific branch.
 
@@ -135,7 +137,7 @@ Email is the system of record; WhatsApp is where the reminder gets read. Neither
 | Announcements | email + copy-to-WhatsApp text | admin sends | one message to a program or everyone |
 | Staff invite + first magic link | email | owner or admin invites an admin or coach | the role, and a 7-day link to the admin screens |
 | Join request approved | email | staff approve a join link request | with a plan, the welcome above; without one, `join_approved`: they are in, with no sign-in link until a plan is started |
-| Inactive nudge | wa.me from "A quién llamar" on Hoy | 14 / 30 days without attendance (or since joining, for someone who never came) | to the guardian for a dependent; logged in `message_log` as opened; automation is v2 |
+| Inactive nudge | wa.me from "A quién llamar" on Hoy | 14 / 30 days without attendance (or since joining, for someone who never came, counted from no earlier than the day Rakin had them, so an import does not list everyone) | to the guardian for a dependent; logged in `message_log` as opened; automation is v2 |
 
 **Email:** hosted Rakin sends from `@rakin.app` through [Resend](https://resend.com)'s SMTP relay (`smtp.resend.com`, user `resend`, the API key as password), with the same `SmtpMailer` self-hosters point at any SMTP server; no provider SDK. Resend rather than Amazon SES because it needs no AWS account just for mail and no sandbox approval before the first real send. Verified domain, DKIM, SPF, DMARC `p=quarantine` from day one; transactional only, no marketing content. Expected cost: cents per gym per month.
 

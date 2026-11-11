@@ -31,7 +31,8 @@ class InactiveMember(BaseModel):
     name: str
     # Their last class, gym-local; `None` if they have not come to one yet.
     last_attended_on: date | None
-    # Days since `last_attended_on`, or since their membership started if `None`.
+    # Days since `last_attended_on`, or if `None` since their membership started, or was
+    # entered in Rakin if that is later (an import).
     days_absent: int
     bucket: Bucket
     payment_status: PaymentStatus

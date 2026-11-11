@@ -18,6 +18,7 @@ from app.domain.dates import add_months
 from app.domain.ledger import EntryKind, EntryStatus
 from app.domain.membership import MembershipStatus, PlanKind
 from app.domain.rut import check_digit
+from app.domain.schedule import HORIZON_DAYS, horizon
 from app.seed.data import (
     BANK_ACCOUNT,
     CLASS_DAYS,
@@ -36,11 +37,10 @@ from app.seed.data import (
     PRIVACY,
     PROGRAMS,
     RANKS,
+    SLOTS,
     STAFF,
     TIMEZONE,
-    TURNOUT,
     VALIDATOR,
-    WEEK,
     Block,
     MemberSpec,
     Method,
@@ -94,8 +94,10 @@ class Seed:
     freezes: list[Row]
     # Each member's current rank (migration 0018).
     grade_events: list[Row]
-    # The adults' classes of the last weeks, who was at each (migrations 0020, 0023) and
-    # the blocks each ran (0028), of the kinds every gym is given.
+    # The adults' weekly schedule (migration 0035), the classes it made (0020): those of
+    # the last weeks, who was at each (0023) and the blocks each ran (0028), of the kinds
+    # every gym is given, and those from the seed date through the schedule's horizon.
+    schedule_slots: list[Row]
     sessions: list[Row]
     attendance: list[Row]
     session_blocks: list[Row]
@@ -115,6 +117,7 @@ class Seed:
         yield "billing_period", self.billing_periods
         yield "ledger_entry", self.ledger_entries
         yield "membership_freeze", self.freezes
+        yield "schedule_slot", self.schedule_slots
         yield "session", self.sessions
         yield "attendance", self.attendance
         yield "session_block", self.session_blocks
@@ -185,6 +188,9 @@ class _Builder:
         membership_id = seed_id("membership", spec.key)
         payer = seed_id("person", spec.guardian or spec.key)
         periods, paid_through, since = self._periods(spec, plan)
+        anchor_day = self.day(spec.due_in).day if plan.kind is PlanKind.MONTHLY else None
+        if spec.status is MembershipStatus.FROZEN:
+            periods, paid_through, anchor_day = self._frozen(periods, paid_through, anchor_day)
         self.people.append(
             _person(spec.key, spec.name, joined=since, kid=spec.is_kid, phone=spec.phone)
         )
@@ -200,7 +206,7 @@ class _Builder:
                 "person_id": seed_id("person", spec.key),
                 "plan_id": seed_id("plan", plan.key),
                 "status": spec.status.value,
-                "anchor_day": self.day(spec.due_in).day if plan.kind is PlanKind.MONTHLY else None,
+                "anchor_day": anchor_day,
                 "started_at": local(since),
                 "current_period_end": paid_through,
                 "credits_remaining": credits,
@@ -217,6 +223,20 @@ class _Builder:
         amount = discounted(plan.price_clp, spec.discount_pct)
         for index, period in enumerate(periods):
             self._period(spec, membership_id, payer, index, period, amount)
+
+    def _frozen(
+        self, periods: list[_Period], paid_through: date, anchor_day: int | None
+    ) -> tuple[list[_Period], date, int | None]:
+        """A frozen member's periods, paid-through date and anchor day, as
+        `app.domain.membership.freeze` left them: a frozen membership is not billed, so
+        no period starts once the freeze has, and the due date moved past the frozen
+        days. A period starting before the freeze stands, as `freeze` keeps it."""
+        start, end = (self.day(offset) for offset in FREEZE_DAYS)
+        kept = [p for p in periods if p.start < start]
+        billed_through = max(p.end for p in kept)
+        paid_through = max(paid_through, billed_through) + (end - start)
+        anchor = None if anchor_day is None else (paid_through + timedelta(days=1)).day
+        return kept, paid_through, anchor
 
     def _freeze(self, spec: MemberSpec, membership_id: uuid.UUID) -> None:
         start, end = (self.day(offset) for offset in FREEZE_DAYS)
@@ -426,9 +446,11 @@ def _block(session_id: uuid.UUID, position: int, block: Block, rng: random.Rando
 
 
 def _classes(as_of: date, memberships: list[Row]) -> dict[str, list[Row]]:
-    """The `WEEK` held over the `CLASS_DAYS` before `as_of`, run as `CLASS_PLANS`, with
-    a `TURNOUT` share of the adults on a monthly or prepaid plan marked at each, which
-    spends no credits."""
+    """The `SLOTS` of the schedule, held since `CLASS_DAYS` before `as_of` and run as
+    `CLASS_PLANS`, with a slot's `turnout` share of the adults on a monthly or prepaid
+    plan marked at each, which spends no credits; and the classes the schedule has made
+    from `as_of` through its horizon, as the nightly `schedule` job would have, none
+    marked yet."""
     adults = {
         seed_id("plan", p.key)
         for p in PLANS
@@ -441,43 +463,77 @@ def _classes(as_of: date, memberships: list[Row]) -> dict[str, list[Row]]:
     ]
     coach = seed_id("person", COACH)
     open_mats = {c.key for c in CLASS_TYPES if c.open_mat}
+    valid_from = as_of - timedelta(days=CLASS_DAYS)
+    # Written the evening before its first class, which made its classes through the
+    # horizon at once; the nightly run made each later one as it came into it.
+    written = local(valid_from - timedelta(days=1), 18)
+    _, last = horizon(as_of)
+    slots: list[Row] = []
     sessions: list[Row] = []
     attendance: list[Row] = []
     blocks: list[Row] = []
-    for offset in range(-CLASS_DAYS, 0):
-        day = as_of + timedelta(days=offset)
-        if day.isoweekday() not in WEEK:
-            continue
-        class_type, hour = WEEK[day.isoweekday()]
-        starts_at = local(day, hour)
-        session_id = seed_id("session", day.isoformat(), class_type)
-        sessions.append(
+    for slot in SLOTS:
+        slots.append(
             {
-                "id": session_id,
+                "id": seed_id("schedule_slot", slot.key),
                 "gym_id": GYM_ID,
-                "class_type_id": seed_id("class_type", class_type),
-                "starts_at": starts_at,
+                "class_type_id": seed_id("class_type", slot.class_type),
+                "weekdays": list(slot.weekdays),
+                "start_time": time(slot.hour),
+                "duration_minutes": slot.duration_minutes,
                 "coach_id": coach,
-                "created_at": starts_at,
-                "updated_at": starts_at,
+                "valid_from": valid_from,
+                "generated_until": last,
+                "created_at": written,
+                "updated_at": written,
             }
         )
-        rng = _rng("session", session_id)
-        plan = OPEN_MAT_PLAN if class_type in open_mats else CLASS_PLANS[len(sessions) % 2]
-        blocks += [_block(session_id, i, block, rng) for i, block in enumerate(plan)]
-        attendance += [
-            {
-                "gym_id": GYM_ID,
-                "session_id": session_id,
-                "membership_id": m["id"],
-                "marked_by": coach,
-                "marked_at": starts_at + timedelta(minutes=10),
-                "credits_consumed": 0,
-            }
-            for m in regulars
-            if m["started_at"] < starts_at and rng.random() < TURNOUT
-        ]
-    return {"sessions": sessions, "attendance": attendance, "session_blocks": blocks}
+    days = (valid_from + timedelta(days=n) for n in range((last - valid_from).days + 1))
+    for day in days:
+        for slot, slot_row in zip(SLOTS, slots, strict=True):
+            if day.isoweekday() not in slot.weekdays:
+                continue
+            starts_at = local(day, slot.hour)
+            made = max(written, local(day - timedelta(days=HORIZON_DAYS - 1), 0, 5))
+            session_id = seed_id("session", day.isoformat(), slot.key)
+            sessions.append(
+                {
+                    "id": session_id,
+                    "gym_id": GYM_ID,
+                    "class_type_id": slot_row["class_type_id"],
+                    "starts_at": starts_at,
+                    "duration_minutes": slot.duration_minutes,
+                    "coach_id": coach,
+                    "slot_id": slot_row["id"],
+                    "slot_date": day,
+                    "created_at": made,
+                    "updated_at": made,
+                }
+            )
+            if day >= as_of:
+                continue
+            rng = _rng("session", session_id)
+            alternate = CLASS_PLANS[len(sessions) % 2]
+            plan = OPEN_MAT_PLAN if slot.class_type in open_mats else alternate
+            blocks += [_block(session_id, i, block, rng) for i, block in enumerate(plan)]
+            attendance += [
+                {
+                    "gym_id": GYM_ID,
+                    "session_id": session_id,
+                    "membership_id": m["id"],
+                    "marked_by": coach,
+                    "marked_at": starts_at + timedelta(minutes=10),
+                    "credits_consumed": 0,
+                }
+                for m in regulars
+                if m["started_at"] < starts_at and rng.random() < slot.turnout
+            ]
+    return {
+        "schedule_slots": slots,
+        "sessions": sessions,
+        "attendance": attendance,
+        "session_blocks": blocks,
+    }
 
 
 def build(as_of: date) -> Seed:

@@ -7,6 +7,7 @@ import { hostQuery } from '../api/host'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
+import { RakinLogo } from '../components/RakinLogo'
 import { t } from '../i18n/es'
 import './SignIn.css'
 import { useSubmit } from '../api/submit'
@@ -39,7 +40,15 @@ export function SignIn() {
 
   return (
     <div className="signin">
-      <PageHeader eyebrow={t.app.name} title={gym ? copy.titleAt(gym.name) : copy.title} />
+      <PageHeader
+        eyebrow={
+          <>
+            <RakinLogo className="signin__logo" />
+            <span className="visually-hidden">{t.app.name}</span>
+          </>
+        }
+        title={gym ? copy.titleAt(gym.name) : copy.title}
+      />
       <div className="signin__card">
         {send.isSuccess ? (
           <>

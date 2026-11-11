@@ -57,6 +57,9 @@ class Texts:
 
     lang: str = "en"
     name: str = ""
+    # The application's logo, as trusted HTML: shown over the title in place of the
+    # site's name, which the title still says. Empty: the name is shown.
+    logo: str = ""
     title: str = "Sign in"
     confirm: str = "Tap the button to sign in."
     button: str = "Sign in"
@@ -69,8 +72,9 @@ class Texts:
 
 # The pages' look, unless the application brings its own: plain and unbranded, with no
 # variants. The markup an application's `stylesheet` styles: a `main` with an optional
-# `img.mark` (the site's logo) and `.eyebrow` (the site's name), an `h1`, and a `.card`
-# holding a paragraph and one `.button`, a `button` or a link, also marked
+# `.eyebrow` (the site's name, or `.eyebrow--logo` holding the application's logo), an
+# optional `img.mark` (the site's own logo), an `h1`, and a `.card` holding a paragraph
+# and one `.button`, a `button` or a link, also marked
 # `.button--primary` or `.button--secondary`.
 STYLESHEET = (
     "body{font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem;"
@@ -177,9 +181,12 @@ def build_router(
         here = site_of(request)
         name = here.name or texts.name
         heading = html.escape(title.format(name=name))
-        eyebrow = f'<p class="eyebrow">{html.escape(name)}</p>' if name else ""
+        if texts.logo:
+            eyebrow = f'<p class="eyebrow eyebrow--logo">{texts.logo}</p>'
+        else:
+            eyebrow = f'<p class="eyebrow">{html.escape(name)}</p>' if name else ""
         theme = f' data-theme="{html.escape(here.theme)}"' if here.theme else ""
-        # Beside the name, which says it: no alternative text of its own.
+        # Over the title, which names the site: no alternative text of its own.
         mark = (
             f'<img class="mark" src="{html.escape(here.logo)}" alt="" width="56" height="56">'
             if here.logo
@@ -190,7 +197,7 @@ def build_router(
             '<meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1">'
             f"<title>{heading}</title><style>{stylesheet}</style></head>"
-            f"<body><main>{mark}{eyebrow}<h1>{heading}</h1>"
+            f"<body><main>{eyebrow}{mark}<h1>{heading}</h1>"
             f'<div class="card">{body}</div></main></body></html>'
         )
         return HTMLResponse(document, status_code=status_code, headers=PAGE_HEADERS)
