@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import {
   blockKindsQuery,
@@ -16,6 +16,7 @@ import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, MoveButtons, refusal } from './settingsForm'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.blocks
 const form = copy.form
@@ -34,7 +35,7 @@ export function BlockKindSettings() {
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const reorder = useMutation({
+  const reorder = useSubmit({
     mutationFn: reorderBlockKinds,
     onSuccess: (answer) => queryClient.setQueryData(blockKindsQuery.queryKey, answer),
     // Most likely someone added or removed a kind meanwhile: show the list as it is.
@@ -150,7 +151,7 @@ function BlockKindForm({
     return out
   }
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: () => (kind ? updateBlockKind(kind.id, changes()) : createBlockKind({ name, is_sparring: sparring })),
     onSuccess: async (answer) => {
       onDone(kind ? copy.saved(answer.name) : copy.created(answer.name))
@@ -158,14 +159,14 @@ function BlockKindForm({
     },
   })
   // Deactivating and deleting are in the form, not on the row (#177): the row keeps its moves.
-  const toggle = useMutation({
+  const toggle = useSubmit({
     mutationFn: () => updateBlockKind(kind!.id, { archived: !kind!.archived }),
     onSuccess: async (answer) => {
       onDone(answer.archived ? copy.archivedDone(answer.name) : copy.restored(answer.name))
       await queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey })
     },
   })
-  const remove = useMutation({
+  const remove = useSubmit({
     mutationFn: () => deleteBlockKind(kind!.id),
     onSuccess: async () => {
       onDone(copy.deleted(kind!.name))
@@ -222,7 +223,7 @@ function BlockKindForm({
         <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={save.isPending}>
+        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
           {save.isPending ? form.working : form.submit}
         </Button>
       </div>

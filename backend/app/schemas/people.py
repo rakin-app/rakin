@@ -31,6 +31,7 @@ from app.domain.phone import normalize_phone
 from app.domain.rut import normalize_rut
 from app.roles import Role
 from app.schemas.memberships import MembershipStart
+from app.schemas.theme import Theme
 
 # Enough to catch a typo or a phone in the email box; delivery is the real check.
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -287,3 +288,5 @@ class MyRole(BaseModel):
     email: str | None
     gym_name: str
     student_page: bool
+    # The gym's theme (#199): every signed-in screen wears it, whoever reads it.
+    theme: Theme

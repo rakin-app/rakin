@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MyExtraLine } from '../api/extraCharges'
@@ -151,6 +151,26 @@ describe('Subir comprobante', () => {
     expect(writes[1]!.body).toBeInstanceOf(File)
     expect(writes[1]!.headers.get('Content-Type')).toBe('image/jpeg')
     expect(writes[2]!.body).toEqual({ billing_period_id: 'p-ana', amount_clp: 45000, proof_key: 'proofs/g/ana/k' })
+  })
+
+  it('sends one proof for a double tap on Enviar comprobante, each step keyed (#208)', async () => {
+    const calls = stubApi([ANA])
+    await openUpload()
+
+    await screen.findByRole('heading', { name: copy.title })
+    await userEvent.upload(screen.getByLabelText(copy.choose), photo())
+    const submit = screen.getByRole('button', { name: copy.submit })
+    fireEvent.click(submit)
+    fireEvent.click(submit)
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.sent)
+    const writes = calls.filter((c) => c.method !== 'GET')
+    expect(writes.map((c) => c.method)).toEqual(['POST', 'PUT', 'POST'])
+    const [upload, put, claim] = writes.map((c) => c.headers.get('Idempotency-Key'))
+    expect(upload).toMatch(/^[0-9a-f-]{36}:upload$/)
+    expect(claim).toBe(upload!.replace(/:upload$/, ':claim'))
+    // The storage's own request carries none: it is not the API.
+    expect(put).toBeNull()
   })
 
   it('pays a cobro extra from its own card, with the same upload', async () => {

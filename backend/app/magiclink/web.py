@@ -83,11 +83,13 @@ STYLESHEET = (
 class Site:
     """Where a request was made: the base URL its links point back to, and the scope a
     session signed in there must start in (None: whatever the directory says), with
-    its name for the pages to say."""
+    its name for the pages to say, and the theme they wear (`data-theme` on the page's
+    root, None for the stylesheet's own)."""
 
     base_url: str
     scope: str | None = None
     name: str = ""
+    theme: str | None = None
 
 
 class LinkRequest(BaseModel):
@@ -170,11 +172,13 @@ def build_router(
 
     def page(request: Request, title: str, body: str, status_code: int = 200) -> HTMLResponse:
         """A page of `body`, already HTML, under `title`, both after `{name}` is filled in."""
-        name = site_of(request).name or texts.name
+        here = site_of(request)
+        name = here.name or texts.name
         heading = html.escape(title.format(name=name))
         eyebrow = f'<p class="eyebrow">{html.escape(name)}</p>' if name else ""
+        theme = f' data-theme="{html.escape(here.theme)}"' if here.theme else ""
         document = (
-            f'<!doctype html><html lang="{html.escape(texts.lang)}"><head>'
+            f'<!doctype html><html lang="{html.escape(texts.lang)}"{theme}><head>'
             '<meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1">'
             f"<title>{heading}</title><style>{stylesheet}</style></head>"

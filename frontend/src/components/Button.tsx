@@ -40,9 +40,32 @@ export function buttonClass({
   )
 }
 
-type Props = ButtonStyle & Omit<ComponentProps<'button'>, 'className'>
+type Props = ButtonStyle &
+  Omit<ComponentProps<'button'>, 'className'> & {
+    /** Its request is on its way: disabled, and `aria-busy`, until it answers (#201). */
+    busy?: boolean
+  }
 
 /** The one button. `type` defaults to `button`: a submit says so. */
-export function Button({ variant, size, fullWidth, icon, inverse, className, type = 'button', ...rest }: Props) {
-  return <button type={type} className={buttonClass({ variant, size, fullWidth, icon, inverse, className })} {...rest} />
+export function Button({
+  variant,
+  size,
+  fullWidth,
+  icon,
+  inverse,
+  className,
+  type = 'button',
+  busy = false,
+  disabled,
+  ...rest
+}: Props) {
+  return (
+    <button
+      type={type}
+      className={buttonClass({ variant, size, fullWidth, icon, inverse, className })}
+      disabled={busy || disabled}
+      aria-busy={busy || undefined}
+      {...rest}
+    />
+  )
 }

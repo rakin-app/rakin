@@ -9,6 +9,7 @@ import { Chip, ChipGroup, SegmentedControl } from './Chip'
 import { Field, FieldError, Input, Select, Textarea } from './Field'
 import { Grid, PageContainer } from './Layout'
 import { STATUS_TONE, StatusPill } from './StatusPill'
+import { DEFAULT_THEME, THEMES, type Theme } from '../theme'
 
 describe('Button', () => {
   it('is a secondary 44px button by default, and never submits unless told', () => {
@@ -213,21 +214,76 @@ describe('tokens', () => {
     const [x, y] = [luminance(a), luminance(b)]
     return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
   }
-  const color = (name: string) => token(`color-${name}`) ?? ''
 
-  it.each([
+  /** A theme's colours (#199): `:root`'s, then the theme's own block over them. */
+  const colours = (theme: Theme) => {
+    const found: Record<string, string> = {}
+    for (const [, selector, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selectors = selector!.split(',').map((one) => one.trim())
+      if (!selectors.includes(':root') && !selectors.includes(`[data-theme='${theme}']`)) continue
+      for (const [, name, value] of body!.matchAll(/--color-([\w-]+):\s*([^;]+);/g)) found[name!] = value!.trim()
+    }
+    return found
+  }
+
+  // Text at 4.5:1 (WCAG 1.4.3); a control's edge and the focus ring at 3:1 (1.4.11).
+  const pairs: [string, string, number][] = [
+    ['text', 'bg', 4.5],
+    ['text', 'surface', 4.5],
+    ['text', 'surface-sunken', 4.5],
+    ['heading', 'bg', 4.5],
+    ['heading', 'surface', 4.5],
+    ['text-muted', 'bg', 4.5],
+    ['text-muted', 'surface', 4.5],
+    ['text-muted', 'surface-sunken', 4.5],
     ['text-subtle', 'bg', 4.5],
     ['text-subtle', 'surface', 4.5],
-    ['text-muted', 'surface-sunken', 4.5],
+    ['accent', 'bg', 4.5],
+    ['accent', 'surface', 4.5],
+    ['accent', 'accent-soft', 4.5],
+    ['inverse-text', 'inverse', 4.5],
+    ['inverse-text', 'inverse-raised', 4.5],
+    ['inverse-text-muted', 'inverse', 4.5],
+    ['accent-inverse-text', 'accent-inverse', 4.5],
+    ['moss-text', 'moss', 4.5],
+    ['moss-text', 'moss-hover', 4.5],
+    ['sidebar-text', 'sidebar', 4.5],
+    ['sidebar-text', 'sidebar-raised', 4.5],
+    ['sidebar-active-text', 'sidebar-active', 4.5],
+    ['success', 'surface', 4.5],
+    ['success-strong', 'success-soft', 4.5],
+    ['success-strong', 'success-pill', 4.5],
+    ['warning', 'bg', 4.5],
+    ['warning', 'surface', 4.5],
+    ['warning-strong', 'warning-soft', 4.5],
+    ['danger', 'bg', 4.5],
     ['danger', 'surface', 4.5],
     ['danger', 'danger-soft', 4.5],
-    ['border-input', 'surface', 3],
-    ['border-input', 'bg', 3],
     ['timer-fight-text', 'timer-fight', 4.5],
     ['timer-rest-text', 'timer-rest', 4.5],
     ['danger-soft', 'timer-fight', 4.5],
     ['danger-soft', 'timer-rest', 4.5],
-  ])('--color-%s on --color-%s is %s:1 or more', (fg, bg, min) => {
-    expect(contrast(color(fg), color(bg))).toBeGreaterThanOrEqual(min)
+    ['border-input', 'bg', 3],
+    ['border-input', 'surface', 3],
+    ['border-input', 'surface-sunken', 3],
+    ['focus', 'bg', 3],
+    ['focus', 'surface', 3],
+  ]
+
+  describe.each(THEMES)('in the %s theme', (theme) => {
+    const color = colours(theme)
+
+    it.each(pairs)('--color-%s on --color-%s is %s:1 or more', (fg, bg, min) => {
+      expect(contrast(color[fg]!, color[bg]!)).toBeGreaterThanOrEqual(min)
+    })
+
+    it('writes every colour the default does', () => {
+      expect(Object.keys(color).sort()).toEqual(Object.keys(colours(DEFAULT_THEME)).sort())
+    })
+  })
+
+  // A round reads the same in every gym (#187), and "Pagado" never looks like "Vencido".
+  it.each(['timer-fight', 'timer-rest', 'success'])('keeps --color-%s in every theme', (name) => {
+    expect(new Set(THEMES.map((theme) => colours(theme)[name])).size).toBe(1)
   })
 })

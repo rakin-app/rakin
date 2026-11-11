@@ -459,3 +459,17 @@ def test_rakin_auth_cannot_log_in_and_holds_only_what_the_lookups_read(db: Datab
     }
     may_create = "SELECT has_schema_privilege('rakin_auth', 'public', 'CREATE')"
     assert run(db.admin_url, lambda c: c.fetchval(may_create)) is False
+
+
+def test_rakin_auth_reads_of_a_gym_only_what_the_host_lookup_returns(db: Database) -> None:
+    # The theme (0039) beside the id, name and slug; never `settings`, which holds the
+    # gym's bank details.
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT column_name FROM information_schema.column_privileges"
+            " WHERE table_name = 'gym' AND grantee = 'rakin_auth'"
+            " AND privilege_type = 'SELECT'"
+        ),
+    )
+    assert sorted(r["column_name"] for r in rows) == ["id", "name", "slug", "theme"]

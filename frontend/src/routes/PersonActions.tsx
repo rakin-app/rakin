@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import type { StaffRole } from '../api/me'
@@ -10,6 +10,7 @@ import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import { useRefresh } from './PersonData'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.member
 
@@ -91,7 +92,7 @@ function LeaveForm({
   const [checked, setChecked] = useState(false)
   const onOk = on !== '' && on <= today
 
-  const leave = useMutation({
+  const leave = useSubmit({
     // Today is left to the server, which knows the gym's today.
     mutationFn: () => leaveGym(person.id, on < today ? on : undefined),
     onSuccess: async () => {
@@ -135,7 +136,7 @@ function LeaveForm({
         <Button disabled={leave.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="danger" disabled={leave.isPending}>
+        <Button type="submit" variant="danger" disabled={leave.isPending} busy={leave.isPending}>
           {leave.isPending ? form.working : form.submit}
         </Button>
       </div>
@@ -157,7 +158,7 @@ function ReturnForm({
   const refresh = useRefresh()
   const [plan, setPlan] = useState<PlanChoice>({ plan_id: '', started_on: '' })
 
-  const back = useMutation({
+  const back = useSubmit({
     mutationFn: () => returnToGym(person.id, membershipOf(plan, today)),
     onSuccess: async () => {
       onDone(form.done)
@@ -183,7 +184,7 @@ function ReturnForm({
         <Button disabled={back.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={back.isPending}>
+        <Button type="submit" variant="primary" disabled={back.isPending} busy={back.isPending}>
           {back.isPending ? form.working : form.submit}
         </Button>
       </div>
@@ -214,7 +215,7 @@ function RemoveForm({
   const deletion = useQuery({ ...deletionQuery(person.id), staleTime: 0 })
   const [typed, setTyped] = useState('')
 
-  const remove = useMutation({
+  const remove = useSubmit({
     mutationFn: () => deletePerson(person.id),
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ['people', 'detail', person.id] })
@@ -274,7 +275,7 @@ function RemoveForm({
         <Button
           type="submit"
           variant="danger"
-          disabled={remove.isPending || !sameName(typed, person.name)}
+          disabled={remove.isPending || !sameName(typed, person.name)} busy={remove.isPending}
         >
           {remove.isPending ? form.working : form.submit}
         </Button>

@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 import { ApiError, apiFetch } from '../api/client'
@@ -24,6 +24,7 @@ import { shortDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './ExtraCharges.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.extra
 const clp = t.common.clp
@@ -254,14 +255,14 @@ function GroupForm({
   const [nameNeeded, setNameNeeded] = useState(false)
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['groups'] })
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: () => saveGroup(groupId, name, members.map((m) => m.id)),
     onSuccess: async (group) => {
       await refresh()
       onClose(words.saved(group.name))
     },
   })
-  const remove = useMutation({
+  const remove = useSubmit({
     mutationFn: () => deleteGroup(groupId!),
     onSuccess: async () => {
       await refresh()
@@ -321,7 +322,7 @@ function GroupForm({
         </p>
       )}
       <div className="extra__form-actions">
-        <Button type="submit" variant="primary" disabled={save.isPending}>
+        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
           {save.isPending ? words.saving : words.save}
         </Button>
         <Button onClick={() => onClose()}>{words.cancel}</Button>

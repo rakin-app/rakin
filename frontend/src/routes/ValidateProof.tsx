@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
@@ -21,6 +21,7 @@ import { monthName, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './ValidateProof.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.review
 const clp = t.common.clp
@@ -125,7 +126,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
   const ids = { note: useId(), noteError: useId() }
 
   const settle = () => queryClient.invalidateQueries({ queryKey: ['ledger'] })
-  const validate = useMutation({
+  const validate = useSubmit({
     mutationFn: () => validateProof(review.id),
     onSuccess: async (result: Validated) => {
       const credit = result.credit ? copy.credit(clp(result.credit.amount_clp)) : ''
@@ -133,7 +134,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
       await settle()
     },
   })
-  const reject = useMutation({
+  const reject = useSubmit({
     mutationFn: (text: string) => rejectProof(review.id, text),
     onSuccess: async () => {
       const message = copy.rejected(review.claimed_by_name ?? review.person_name)

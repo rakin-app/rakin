@@ -54,7 +54,7 @@
 .training__figure {
   font-family: var(--font-display);
   font-size: var(--text-lg);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   line-height: 1.1;
 }
 
@@ -99,7 +99,7 @@
 .next__figure {
   font-family: var(--font-display);
   font-size: var(--text-5xl);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-display);
   line-height: 1;
 }
 

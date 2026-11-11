@@ -107,6 +107,6 @@
 
 /* The hidden file inputs sit before their labels, which show as the buttons. */
 .proof__file:focus-visible + .button {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }

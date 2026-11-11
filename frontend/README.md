@@ -35,10 +35,19 @@ npm run build      # outputs dist/
   `--text-input` (16px, or iOS Safari zooms on focus), every control is at least
   `--control-height` (44px), errors and destructive actions use `--color-danger`,
   and `--color-warning` means overdue and nothing else.
+- **Themes:** a gym wears Bosque, Océano or Volcán (#199), set as `data-theme` on
+  `<html>` by `src/theme.ts` and `App`'s `GymTheme`. Each theme writes the same
+  `--color-*` names in `tokens.css`, so a component never knows which it is in and
+  never names a colour itself. A new colour token goes in all three blocks, and
+  `components/controls.test.tsx` holds each to WCAG AA. Success and the timer's
+  fight and rest colours stay the same in every theme.
+- **Motion:** a control changes colour only (`--duration-fast`); a page rises in on
+  a route change (`useRise` in `src/motion.ts`); a `role="status"` or `"alert"`
+  message fades in. Under `prefers-reduced-motion` only opacity changes.
 - **Controls:** screens build on the shared components in `src/components/`, never
   a per-screen `*__button`, `*__input`, `*__chip` or `*__pill` class. A screen's CSS
   only places them (margins, grid, width).
-  - `Button`: `variant` primary (black; one per screen) / secondary / ghost /
+  - `Button`: `variant` primary (the theme's dark shade; one per screen) / secondary / ghost /
     danger (deletes, removes, refuses), `size` md (44) / lg (52), `fullWidth`,
     `icon` (square, needs an `aria-label`), `inverse` (on a dark surface). A `Link`
     or file-input `label` that looks like a button takes `buttonClass({ … })`.
@@ -47,8 +56,8 @@ npm run build      # outputs dist/
   - `Chip` in a `ChipGroup` for filters; `SegmentedControl` for a few views of
     one thing.
   - `StatusPill`: a status, never a control. Its `status` picks the tone from the
-    one shared mapping in `StatusPill.tsx`; blue is "por validar" only, orange is
-    overdue only, red is a refused payment.
+    one shared mapping in `StatusPill.tsx`; the accent is "por validar" only, orange
+    is overdue only, red is a refused payment.
   - `Card`, `SectionHeader`, `ListRow` / `listRowClass`, `EmptyState`.
   - `PageContainer`: a screen's header and body, up to `--content-wide` (1280px) and
     centred, with the breakpoint's side padding; a `PageHeader` inside it lines up

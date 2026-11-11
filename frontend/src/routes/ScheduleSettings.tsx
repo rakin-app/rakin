@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import {
   closeDay,
@@ -21,6 +21,7 @@ import { FieldError, Input, Select } from '../components/Field'
 import { shortDay, weekdayDay, toDate } from '../format'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed } from './settingsForm'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.schedule
 const form = copy.form
@@ -143,7 +144,7 @@ function SlotRow({ slot, today, onEdit }: { slot: ScheduleSlot; today: string; o
 function DeleteSlot({ slot, onDone }: { slot: ScheduleSlot; onDone: (message: string) => void }) {
   const queryClient = useQueryClient()
   const [asking, setAsking] = useState(false)
-  const remove = useMutation({
+  const remove = useSubmit({
     mutationFn: () => deleteSlot(slot.id),
     onSuccess: () => {
       refresh(queryClient)
@@ -241,7 +242,7 @@ function SlotForm({
     return out
   }
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: () =>
       slot ? updateSlot(slot.id, { ...changes(), from_date: from }) : createSlot({ ...fields(), valid_from: from }),
     onSuccess: (answer) => {
@@ -392,7 +393,7 @@ function SlotForm({
         <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={save.isPending}>
+        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
           {save.isPending ? form.working : form.submit}
         </Button>
       </div>
@@ -411,7 +412,7 @@ function ClosedDays({ today }: { today: string }) {
   const [label, setLabel] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
 
-  const close = useMutation({
+  const close = useSubmit({
     mutationFn: () => closeDay(day, label),
     onSuccess: (answer) => {
       refresh(queryClient)
@@ -420,7 +421,7 @@ function ClosedDays({ today }: { today: string }) {
       setNotice(words.closedDone(weekdayDay(toDate(answer.day))))
     },
   })
-  const reopen = useMutation({
+  const reopen = useSubmit({
     mutationFn: reopenDay,
     onSuccess: (_, reopened) => {
       refresh(queryClient)
@@ -478,7 +479,7 @@ function ClosedDays({ today }: { today: string }) {
           </p>
         )}
         <div className="settings__actions">
-          <Button type="submit" disabled={close.isPending || !day || day < today}>
+          <Button type="submit" disabled={close.isPending || !day || day < today} busy={close.isPending}>
             {close.isPending ? form.working : words.add}
           </Button>
         </div>

@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError, apiFetch } from './client'
+import { submissionKey } from './submit'
 import type { Rank } from './grading'
 import type { MembershipStatus } from './people'
 
@@ -86,11 +87,13 @@ export async function addTrialGuest(
   sessionId: string,
   guest: { name: string; who: string; phone: string; planId: string },
 ): Promise<{ roster: Roster } | { member: string }> {
+  const key = submissionKey()
   const personId = await addPerson(guest.name, guest.who, guest.phone)
   try {
     const roster = await apiFetch<Roster>(`/api/sessions/${encodeURIComponent(sessionId)}/trials`, {
       method: 'POST',
       body: JSON.stringify({ person_id: personId, plan_id: guest.planId }),
+      idempotencyKey: key && `${key}:trial`,
     })
     return { roster }
   } catch (error) {

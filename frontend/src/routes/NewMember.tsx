@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
@@ -16,6 +16,7 @@ import { PeopleSearch } from './FamilyPanel'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
 import './MemberDetail.css'
 import './NewMember.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.newMember
 
@@ -100,7 +101,7 @@ export function NewMember() {
   }
   const ready = !Object.values(problems).some(Boolean)
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: (body: Enrolment) => enrol(body),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ['people'] })
@@ -424,7 +425,7 @@ export function NewMember() {
           <Link to="/admin/alumnos" className={buttonClass({ className: 'new-member__cancel' })}>
             {copy.cancel}
           </Link>
-          <Button type="submit" variant="primary" disabled={save.isPending}>
+          <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
             {save.isPending ? copy.working : copy.submit}
           </Button>
         </div>

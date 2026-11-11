@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from app.schemas.theme import DEFAULT_THEME, Theme
 from app.settings import Settings
 
 # A DNS label: what 0030's CHECK holds every slug to.
@@ -126,13 +127,17 @@ class HostGym:
     id: uuid.UUID
     slug: str
     name: str
+    # The gym's theme (#199), for the pages shown before anyone signs in.
+    theme: Theme = DEFAULT_THEME
 
 
 async def gym_by_slug(session: AsyncSession, slug: str) -> HostGym | None:
     row = (
-        await session.execute(text("SELECT id, name FROM auth_gym_by_slug(:slug)"), {"slug": slug})
+        await session.execute(
+            text("SELECT id, name, theme FROM auth_gym_by_slug(:slug)"), {"slug": slug}
+        )
     ).one_or_none()
-    return None if row is None else HostGym(row.id, slug, row.name)
+    return None if row is None else HostGym(row.id, slug, row.name, row.theme)
 
 
 class GymLookup:
@@ -162,6 +167,12 @@ class GymLookup:
         else:
             self._found[slug] = (now + self._ttl, gym)
         return gym
+
+    def forget(self, slug: str) -> None:
+        """Drops what is kept for `slug`, so the next request reads it afresh: after a
+        change to what a host shows, such as the gym's theme. The API runs as one
+        process (backend/Dockerfile), so this is every copy there is."""
+        self._found.pop(slug, None)
 
 
 class HostMiddleware:

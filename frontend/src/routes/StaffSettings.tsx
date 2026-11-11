@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { myRoleQuery, type StaffRole } from '../api/me'
@@ -20,6 +20,7 @@ import { Input, Select } from '../components/Field'
 import { formatPhone } from '../format'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, refusal } from './settingsForm'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.staff
 
@@ -155,14 +156,14 @@ function StaffPanel({
   const [confirming, setConfirming] = useState(false)
   const refresh = () => queryClient.invalidateQueries({ queryKey: staffQuery.queryKey })
 
-  const change = useMutation({
+  const change = useSubmit({
     mutationFn: () => changeStaffRole(member.person_id, other),
     onSuccess: async (answer) => {
       onDone(copy.roleChanged(answer.name, copy.roles[answer.role]!))
       await refresh()
     },
   })
-  const revoke = useMutation({
+  const revoke = useSubmit({
     mutationFn: () => revokeStaff(member.person_id),
     onSuccess: async () => {
       setConfirming(false)
@@ -234,7 +235,7 @@ function InviteForm({
   const [drafts, setDrafts] = useState<Drafts>({ name: '', rut: '', email: '', phone: '', role: 'coach' })
   const set = (field: keyof Drafts, value: string) => setDrafts({ ...drafts, [field]: value })
 
-  const save = useMutation({
+  const save = useSubmit({
     // The optional ones only when typed: an empty RUT or phone is none, not an invalid one.
     mutationFn: () =>
       inviteStaff({
@@ -345,7 +346,7 @@ function InviteForm({
         <Button disabled={save.isPending} onClick={onCancel}>
           {copy.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={save.isPending}>
+        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
           {save.isPending ? copy.working : copy.submit}
         </Button>
       </div>
