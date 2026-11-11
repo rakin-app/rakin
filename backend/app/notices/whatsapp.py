@@ -12,6 +12,7 @@ from datetime import date
 from app.domain.money import format_clp
 
 INACTIVE_NUDGE = "inactive_nudge"
+EXTRA_CHARGE_REMINDER = "extra_charge_reminder"
 
 
 def first_name(name: str) -> str:
@@ -105,4 +106,18 @@ def proof_rejected_followup(
         f"Hola {first_name(to_name)}, en {gym_name} revisamos el comprobante de"
         f" {format_clp(amount_clp)}{of} por {plan_name} y no pudimos validarlo: {note}"
         " ¿Nos envías uno nuevo? ¡Gracias!"
+    )
+
+
+def extra_charge_reminder(
+    *, to_name: str, about_name: str | None, gym_name: str, title: str, amount: str, due: str
+) -> str:
+    """A cobro extra's notice on WhatsApp (#195), for someone with no email to get it
+    by, or as a reminder; to their guardian (`about_name`) for a dependent. `amount` and
+    `due` come formatted."""
+    whose = f" de {first_name(about_name)}" if about_name else ""
+    return (
+        f"Hola {first_name(to_name)}, te escribimos de {gym_name} por el cobro {title}{whose}:"
+        f" {amount}, hasta el {due}. Puedes transferir y subir el comprobante en tu página."
+        " ¡Gracias!"
     )

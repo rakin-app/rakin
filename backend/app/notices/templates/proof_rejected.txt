@@ -2,7 +2,7 @@
 {% block body %}
 Hola, {{ name }}:
 
-{{ gym }} revisó tu comprobante de {{ amount_clp | clp }}{% if dependent_name %} de {{ dependent_name }}{% endif %}, por el período del {{ period_start | fecha }} al {{ period_end | fecha }}, y no pudo validarlo.
+{{ gym }} revisó tu comprobante de {{ amount_clp | clp }}{% if dependent_name %} de {{ dependent_name }}{% endif %}, {% if charge_title is defined and charge_title %}por {{ charge_title }}{% else %}por el período del {{ period_start | fecha }} al {{ period_end | fecha }}{% endif %}, y no pudo validarlo.
 
 Nota: {{ note }}
 

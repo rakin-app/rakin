@@ -2,7 +2,7 @@
 {% block body %}
 Hola, {{ name }}:
 
-Recibimos tu comprobante de {{ amount_clp | clp }}{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }}, por el período del {{ period_start | fecha }} al {{ period_end | fecha }}.
+Recibimos tu comprobante de {{ amount_clp | clp }}{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }}, {% if charge_title is defined and charge_title %}por {{ charge_title }}{% else %}por el período del {{ period_start | fecha }} al {{ period_end | fecha }}{% endif %}.
 
 Lo revisaremos y te avisaremos cuando el pago quede validado.
 {% endblock %}

@@ -135,14 +135,19 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # tests/test_sessions.py `session` (0020),
     # tests/test_attendance.py `attendance` (0023),
     # tests/test_class_timer.py `block_kind` and `session_block` (0028),
-    # tests/test_join.py `join_link` and `join_request` (0031), and
-    # tests/test_schedule.py `schedule_slot` and `closed_day` (0035).
+    # tests/test_join.py `join_link` and `join_request` (0031),
+    # tests/test_schedule.py `schedule_slot` and `closed_day` (0035), and
+    # tests/test_extra_charges.py the cobros, their lines and groups (0037).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "auth_session",
         "block_kind",
+        "charge_group",
+        "charge_group_member",
         "class_type",
         "closed_day",
+        "extra_charge",
+        "extra_line",
         "grade_event",
         "guardian_link",
         "join_link",

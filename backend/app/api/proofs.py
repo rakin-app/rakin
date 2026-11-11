@@ -25,13 +25,16 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.api.ledger import ENTRY_COLUMNS
+from app.api.entries import ENTRY_COLUMNS
+from app.api.extra_charges import ONE_LINE, open_lines
+from app.api.extra_lines import CANCELLED, NO_LINE
 from app.contacts import Contact, contact_for
 from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.ledger import EntryKind, EntryStatus
 from app.integrations import Integrations, get_integrations
 from app.integrations.blobstore import ALLOWED_CONTENT_TYPES, MAX_UPLOAD_BYTES
 from app.notices import PROOF_RECEIVED, Notice, Notices, get_notices
+from app.schemas.extra_charges import MyExtraLine
 from app.schemas.ledger import Entry, Method
 from app.schemas.proofs import OpenPeriod, ProofClaim, ProofUpload, ProofUploadRequest
 from app.tenancy import Tenant, TenantSession, current_tenant
@@ -88,10 +91,11 @@ OPEN_PERIODS = (
 ONE_PERIOD = PAYABLE + " AND bp.id = :id"
 
 CLAIM = text(
-    "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp, kind,"
-    " status, method, claimed_by, claimed_at, proof_object_key)"
+    "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, extra_line_id,"
+    " amount_clp, kind, status, method, claimed_by, claimed_at, proof_object_key)"
     " VALUES (current_setting('app.gym_id')::uuid, :membership_id, :billing_period_id,"
-    " :amount_clp, :kind, :status, :method, current_setting('app.person_id')::uuid, now(),"
+    " :extra_line_id, :amount_clp, :kind, :status, :method,"
+    " current_setting('app.person_id')::uuid, now(),"
     f" :proof_key) RETURNING {ENTRY_COLUMNS}"
 )
 
@@ -135,6 +139,15 @@ async def open_periods(
     return [to_open_period(row) for row in rows]
 
 
+@router.get("/extra-lines")
+async def my_extra_lines(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
+) -> list[MyExtraLine]:
+    """The cobros extra the signed-in person can pay, theirs and their dependents',
+    earliest due first (#195)."""
+    return await open_lines(session, tenant.person_id)
+
+
 @router.post("/proofs", status_code=status.HTTP_201_CREATED)
 async def request_upload(
     body: ProofUploadRequest,
@@ -163,7 +176,8 @@ async def claim_payment(
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> Entry:
-    """Record a pending transfer for one period, backed by an uploaded proof."""
+    """Record a pending transfer for one period or cobro line, backed by an uploaded
+    proof."""
     if not is_own_proof(tenant, body.proof_key):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "not one of your uploads")
     stored = await integrations.blob_store.stat(body.proof_key)
@@ -176,13 +190,34 @@ async def claim_payment(
     ):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "proof not uploaded")
 
-    row = (
-        await session.execute(text(ONE_PERIOD), payable_params(tenant, id=body.billing_period_id))
-    ).one_or_none()
-    if row is None:
-        raise NOT_FOUND
-    if row.paid_clp >= row.amount_due_clp:
-        raise HTTPException(status.HTTP_409_CONFLICT, "billing period is already paid in full")
+    if body.extra_line_id is not None:
+        line = (
+            await session.execute(
+                text(ONE_LINE), {"me": tenant.person_id, "id": body.extra_line_id}
+            )
+        ).one_or_none()
+        if line is None:
+            raise NO_LINE
+        if line.paid >= line.amount_due_clp:
+            raise HTTPException(status.HTTP_409_CONFLICT, "the line is already paid in full")
+        claimed = {"membership_id": None, "billing_period_id": None, "extra_line_id": line.id}
+        about = line
+    else:
+        row = (
+            await session.execute(
+                text(ONE_PERIOD), payable_params(tenant, id=body.billing_period_id)
+            )
+        ).one_or_none()
+        if row is None:
+            raise NOT_FOUND
+        if row.paid_clp >= row.amount_due_clp:
+            raise HTTPException(status.HTTP_409_CONFLICT, "billing period is already paid in full")
+        claimed = {
+            "membership_id": row.membership_id,
+            "billing_period_id": row.id,
+            "extra_line_id": None,
+        }
+        about = row
 
     try:
         # A savepoint, so a refusal leaves the request's transaction usable for the 409.
@@ -190,8 +225,7 @@ async def claim_payment(
             result = await session.execute(
                 CLAIM,
                 {
-                    "membership_id": row.membership_id,
-                    "billing_period_id": row.id,
+                    **claimed,
                     "amount_clp": body.amount_clp,
                     "kind": EntryKind.PAYMENT.value,
                     "status": EntryStatus.PENDING.value,
@@ -201,27 +235,46 @@ async def claim_payment(
             )
     except IntegrityError as error:
         constraint = getattr(getattr(error.orig, "__cause__", None), "constraint_name", None)
+        if constraint == "ledger_entry_line_open":
+            # Cancelled after it was read above, by an admin who held the cobro's lock.
+            raise CANCELLED from None
         if constraint != "ledger_entry_proof_object_key":
             raise
         raise HTTPException(status.HTTP_409_CONFLICT, "this proof is already claimed") from None
     entry = Entry.model_validate(dict(result.one()._mapping))
 
-    contact = await contact_for(session, row.person_id)
+    contact = await contact_for(session, about.person_id)
     gym_name = await session.scalar(
         text("SELECT name FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
     if contact is None or not contact.email:
         logger.info("proof received: no email to send it to", extra={"entry_id": str(entry.id)})
         return entry
-    notice = proof_received(
-        contact,
-        gym_id=tenant.gym_id,
-        gym=str(gym_name),
-        amount_clp=entry.amount_clp,
-        period_start=row.period_start,
-        period_end=row.period_end,
-        dependent_name=row.person_name if contact.on_behalf_of else None,
-    )
+    dependent_name = about.person_name if contact.on_behalf_of else None
+    if body.extra_line_id is not None:
+        notice = Notice(
+            PROOF_RECEIVED,
+            to=contact.email,
+            person_id=contact.person_id,
+            gym_id=tenant.gym_id,
+            context={
+                "name": contact.name,
+                "gym": str(gym_name),
+                "amount_clp": entry.amount_clp,
+                "charge_title": about.title,
+                "dependent_name": dependent_name,
+            },
+        )
+    else:
+        notice = proof_received(
+            contact,
+            gym_id=tenant.gym_id,
+            gym=str(gym_name),
+            amount_clp=entry.amount_clp,
+            period_start=about.period_start,
+            period_end=about.period_end,
+            dependent_name=dependent_name,
+        )
     # After the response, which is after the entry has committed. An address the gym
     # typed wrong is a failed send in `message_log`, and must not cost the claim.
     background.add_task(notices.send, notice)

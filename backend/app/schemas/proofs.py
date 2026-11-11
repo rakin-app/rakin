@@ -8,10 +8,11 @@ store refuses any other. An admin then reviews it, validating or rejecting it (#
 
 import uuid
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
+from app.domain.extra_charges import Category
 from app.integrations.blobstore import MAX_UPLOAD_BYTES, validate_content_type
 from app.schemas.ledger import Amount, Method, Note
 
@@ -34,15 +35,23 @@ class ProofUpload(BaseModel):
 
 
 class ProofClaim(BaseModel):
-    """A pending transfer for one period, and the proof uploaded for it."""
+    """A pending transfer for one period, or one cobro extra line (#195), and the proof
+    uploaded for it."""
 
     model_config = ConfigDict(extra="forbid")
 
-    billing_period_id: uuid.UUID
+    billing_period_id: uuid.UUID | None = None
+    extra_line_id: uuid.UUID | None = None
     # Up to the price ceiling, and possibly more than is outstanding: what was paid
     # beyond it becomes a credit when an admin validates the claim (#36).
     amount_clp: Amount
     proof_key: Annotated[str, Field(max_length=512)]
+
+    @model_validator(mode="after")
+    def pays_one_thing(self) -> Self:
+        if (self.billing_period_id is None) == (self.extra_line_id is None):
+            raise ValueError("a claim pays a billing period or a cobro line, one of them")
+        return self
 
 
 class OpenPeriod(BaseModel):
@@ -87,12 +96,26 @@ class RecentPayment(BaseModel):
     paid_at: datetime
 
 
-class ProofReview(BaseModel):
-    """A pending proof, with what an admin needs to validate or reject it in one tap
-    ("Validar comprobante", #36)."""
+class ReviewLine(BaseModel):
+    """The cobro extra line a proof claims to pay (#195), as validated payments leave it."""
 
     id: uuid.UUID
-    membership_id: uuid.UUID
+    extra_charge_id: uuid.UUID
+    title: str
+    category: Category
+    due_date: date
+    amount_due_clp: int
+    paid_clp: int
+    outstanding_clp: int
+
+
+class ProofReview(BaseModel):
+    """A pending proof, with what an admin needs to validate or reject it in one tap
+    ("Validar comprobante", #36). It pays a membership's period, or a cobro extra line,
+    with no plan, period or prior balance (#195)."""
+
+    id: uuid.UUID
+    membership_id: uuid.UUID | None
     person_id: uuid.UUID
     person_name: str
     # What the claim says was paid, and when it was sent.
@@ -104,10 +127,11 @@ class ProofReview(BaseModel):
     # Where the browser GETs the proof, or None when the file is missing from storage.
     proof_url: str | None
     proof_content_type: str | None
-    plan_name: str
-    plan_kind: str
+    plan_name: str | None
+    plan_kind: str | None
     anchor_day: int | None
-    period: ReviewPeriod
+    period: ReviewPeriod | None
+    extra_line: ReviewLine | None = None
     # What the membership still owes on its other periods already due.
     prior_balance_clp: int
     # The membership's latest validated payments, newest first, at most three.

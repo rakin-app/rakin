@@ -2,7 +2,11 @@
 {% block title %}Pago validado{% endblock %}
 {% block body %}
 <p style="margin:0 0 16px;">Hola, {{ name }}:</p>
-<p style="margin:0 0 16px;">{{ gym }} validó tu pago de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %}, por el período del {{ period_start | fecha }} al {{ period_end | fecha }}.</p>
+<p style="margin:0 0 16px;">{{ gym }} validó tu pago de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %}, {% if charge_title is defined and charge_title %}por {{ charge_title }}{% else %}por el período del {{ period_start | fecha }} al {{ period_end | fecha }}{% endif %}.</p>
+{% if charge_title is defined and charge_title %}
+<p style="margin:0;">{% if period_outstanding_clp > 0 %}De este cobro quedan {{ period_outstanding_clp | clp }} por pagar.{% else %}Este cobro quedó pagado.{% endif %}</p>
+{% else %}
 <p style="margin:0 0 16px;">{% if period_outstanding_clp > 0 %}De este período quedan {{ period_outstanding_clp | clp }} por pagar.{% else %}Este período quedó pagado.{% endif %}</p>
 <p style="margin:0;">{% if balance_clp > 0 %}Saldo pendiente: <strong>{{ balance_clp | clp }}</strong>.{% elif balance_clp < 0 %}Saldo a favor: <strong>{{ -balance_clp | clp }}</strong>, que se descontará de tus próximos pagos.{% else %}Estás al día: no tienes saldo pendiente.{% endif %}</p>
+{% endif %}
 {% endblock %}

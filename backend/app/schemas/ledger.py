@@ -88,7 +88,8 @@ class RefundRecord(BaseModel):
 
 class Entry(BaseModel):
     id: uuid.UUID
-    membership_id: uuid.UUID
+    # The membership whose period it settles, or none for one on a cobro line (#195).
+    membership_id: uuid.UUID | None
     billing_period_id: uuid.UUID | None
     amount_clp: int
     kind: EntryKind
@@ -104,6 +105,8 @@ class Entry(BaseModel):
     created_at: datetime
     # The payment a refund gives back; null on every other kind.
     refund_of: uuid.UUID | None
+    # The cobro extra line it settles, instead of a membership's period (#195).
+    extra_line_id: uuid.UUID | None = None
 
 
 class Period(BaseModel):
@@ -258,6 +261,14 @@ class BookPeriod(BaseModel):
     days_overdue: int
 
 
+class BookExtra(BaseModel):
+    """The cobro extra an entry is on (#195), labelled by its category."""
+
+    id: uuid.UUID
+    title: str
+    category: str
+
+
 class BookEntry(BaseModel):
     id: uuid.UUID
     created_at: datetime
@@ -268,14 +279,16 @@ class BookEntry(BaseModel):
     note: str | None
     # The payment a refund gives back; null on every other kind.
     refund_of: uuid.UUID | None
-    membership_id: uuid.UUID
-    plan_name: str
-    # Whose membership it is, and who pays for them when they are a dependent.
+    # Null, with `plan_name`, for an entry on a cobro extra line, which `extra` names.
+    membership_id: uuid.UUID | None
+    plan_name: str | None
+    # Whose membership or line it is, and who pays for them when they are a dependent.
     person: PersonRef
     guardian: PersonRef | None
-    # Null for a credit carried to a later period.
+    # Null for a credit carried to a later period, and for a cobro extra's entry.
     period: BookPeriod | None
     validated_by_name: str | None
+    extra: BookExtra | None = None
 
 
 class BookFreeze(FreezeLine):
@@ -295,6 +308,8 @@ class BookKpis(BaseModel):
     # The month's validated refunds, which `collected_clp` is net of.
     refunded_clp: int
     refunds: int
+    # What of `collected_clp` the cobros extra brought in (#195), net of their refunds.
+    collected_extra_clp: int = 0
     # Payments waiting for review, today.
     pending_clp: int
     pending_payments: int
