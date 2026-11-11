@@ -223,6 +223,10 @@ describe('tokens', () => {
     ['danger', 'danger-soft', 4.5],
     ['border-input', 'surface', 3],
     ['border-input', 'bg', 3],
+    ['timer-fight-text', 'timer-fight', 4.5],
+    ['timer-rest-text', 'timer-rest', 4.5],
+    ['danger-soft', 'timer-fight', 4.5],
+    ['danger-soft', 'timer-rest', 4.5],
   ])('--color-%s on --color-%s is %s:1 or more', (fg, bg, min) => {
     expect(contrast(color(fg), color(bg))).toBeGreaterThanOrEqual(min)
   })
