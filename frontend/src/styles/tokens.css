@@ -97,4 +97,5 @@
   --sidebar-width: 240px;
   --content-max-width: 480px;
   --content-narrow: 640px; /* forms and single lists; tables run full width */
+  --content-wide: 1280px; /* a page's widest: the container that holds every screen */
 }

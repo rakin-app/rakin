@@ -7,6 +7,7 @@ import { Button, buttonClass } from './Button'
 import { EmptyState, ListRow, SectionHeader } from './Card'
 import { Chip, ChipGroup, SegmentedControl } from './Chip'
 import { Field, FieldError, Input, Select, Textarea } from './Field'
+import { Grid, PageContainer } from './Layout'
 import { STATUS_TONE, StatusPill } from './StatusPill'
 
 describe('Button', () => {
@@ -106,6 +107,33 @@ describe('Chip and SegmentedControl', () => {
     expect(screen.getByRole('button', { name: 'Siempre' })).toHaveAttribute('aria-pressed', 'false')
     await userEvent.click(screen.getByRole('button', { name: 'Siempre' }))
     expect(onChange).toHaveBeenCalledWith('all')
+  })
+})
+
+describe('Layout', () => {
+  it('wraps a screen in the page container', () => {
+    render(<PageContainer className="extra">x</PageContainer>)
+    expect(screen.getByText('x')).toHaveClass('page-container', 'extra')
+  })
+
+  it('lays out two columns unless asked for three', () => {
+    render(
+      <>
+        <Grid>two</Grid>
+        <Grid columns={3}>three</Grid>
+      </>,
+    )
+    expect(screen.getByText('two')).toHaveClass('grid', 'grid--2')
+    expect(screen.getByText('three')).toHaveClass('grid', 'grid--3')
+  })
+
+  it('stays one column below 1024px and caps the page at the wide width', () => {
+    const css = read('./Layout.css')
+    const [phone, wide] = css.split('@media (min-width: 1024px)')
+    expect(phone).toMatch(/\.grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/)
+    expect(phone).not.toMatch(/grid--[23] \{/)
+    expect(wide).toMatch(/\.grid--3 \{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/)
+    expect(css).toMatch(/max-width: var\(--content-wide\)/)
   })
 })
 
