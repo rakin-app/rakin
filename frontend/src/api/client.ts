@@ -5,7 +5,21 @@
  * Vite proxy in development), so requests take relative paths only and carry
  * the session cookie with `credentials: 'same-origin'`. There is no base URL to
  * configure and no CORS.
+ *
+ * A mutating request made by a form's submission (`useSubmit`) carries that
+ * submission's `Idempotency-Key`, so the server runs it once however often it arrives.
  */
+import { takeSubmissionKey } from './submit'
+
+const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+// The sign-in routes set cookies, which a replayed answer would not carry (`app.idempotency`).
+const UNKEYED_PREFIX = '/api/auth/'
+
+export type ApiInit = RequestInit & {
+  /** The key for a step a submission makes after an `await`: `<submissionKey()>:<step>`. */
+  idempotencyKey?: string
+}
+
 export class ApiError extends Error {
   readonly status: number
   readonly body: unknown
@@ -35,12 +49,17 @@ export function onUnauthorized(handler: UnauthorizedHandler): () => void {
   }
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function apiFetch<T>(path: string, { idempotencyKey, ...init }: ApiInit = {}): Promise<T> {
   if (!path.startsWith('/') || path.startsWith('//')) {
     throw new Error(`apiFetch takes a same-origin path starting with "/", got "${path}"`)
   }
 
   const headers = new Headers(init.headers)
+  if (MUTATING.has((init.method ?? 'GET').toUpperCase()) && !path.startsWith(UNKEYED_PREFIX)) {
+    // Read now, synchronously: after the first `await` the submission is no longer running.
+    const key = idempotencyKey ?? takeSubmissionKey()
+    if (key !== undefined) headers.set('Idempotency-Key', key)
+  }
   headers.set('Accept', 'application/json')
   if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')

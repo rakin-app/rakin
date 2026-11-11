@@ -1,7 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { apiFetch } from './client'
 import type { StaffRole } from './me'
+import { useSubmit } from './submit'
 
 export const SIGN_IN_PATH = '/ingresar'
 
@@ -58,7 +59,7 @@ export function landingFor(role: StaffRole | null): string {
 export function useSignOut() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  return useMutation({
+  return useSubmit({
     mutationFn: () => apiFetch<void>('/api/auth/logout', { method: 'POST' }),
     onSuccess: async () => {
       queryClient.clear()

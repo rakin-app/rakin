@@ -510,6 +510,14 @@ async def import_members(
     session: AdminSession,
 ) -> ImportReport:
     """Write the rows, or with `dry_run` (the default) only say what writing them would do."""
+    if not body.dry_run:
+        # One import at a time per gym, so a second waits and matches the first's people
+        # instead of creating them again: a person matched by name has no key to stop it
+        # (#203). Released when the transaction ends.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('rakin.import'), hashtext(:gym))"),
+            {"gym": str(tenant.gym_id)},
+        )
     timezone: str = await session.scalar(
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )

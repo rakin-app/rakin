@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
@@ -19,6 +19,7 @@ import { Button, buttonClass } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field, LoadFailed, refusal } from './settingsForm'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.joinLink
 
@@ -78,12 +79,12 @@ function JoinLinkSection({
     if (answer) queryClient.setQueryData(joinLinkQuery.queryKey, answer)
     else await queryClient.invalidateQueries({ queryKey: joinLinkQuery.queryKey })
   }
-  const generate = useMutation({
+  const generate = useSubmit({
     mutationFn: () => generateJoinLink(optionsOf(drafts)),
     onSuccess: answered(link ? copy.regenerated : null),
   })
-  const change = useMutation({ mutationFn: () => changeJoinLink(optionsOf(drafts)), onSuccess: answered(copy.saved) })
-  const revoke = useMutation({ mutationFn: revokeJoinLink, onSuccess: answered(copy.revoked) })
+  const change = useSubmit({ mutationFn: () => changeJoinLink(optionsOf(drafts)), onSuccess: answered(copy.saved) })
+  const revoke = useSubmit({ mutationFn: revokeJoinLink, onSuccess: answered(copy.revoked) })
   const pending = generate.isPending || change.isPending || revoke.isPending
   const failed = generate.error ?? change.error ?? revoke.error
   const errors = validationErrors(failed)
@@ -185,7 +186,7 @@ function JoinLinkSection({
           <Button
             type="submit"
             variant="primary"
-            disabled={pending || (needsPrivacy && !link)}
+            disabled={pending || (needsPrivacy && !link)} busy={pending}
           >
             {pending ? copy.working : link ? copy.save : copy.generate}
           </Button>

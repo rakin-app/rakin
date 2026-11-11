@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type ChangeEvent, type FormEvent } from 'react'
 import {
   isConflict,
@@ -13,6 +13,7 @@ import { Button, buttonClass } from '../components/Button'
 import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import './ProofUpload.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.me.proof
 
@@ -65,7 +66,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
   const [editing, setEditing] = useState(false)
   const ids = { amount: useId(), camera: useId(), choose: useId(), hint: useId() }
 
-  const send = useMutation({
+  const send = useSubmit({
     mutationFn: ({ file, amount }: { file: File; amount: number }) => submitProof(file, period.id, amount),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['me'] })
@@ -173,7 +174,7 @@ function ProofForm({ periods, onSent }: { periods: OpenPeriod[]; onSent: () => v
       <Button
         type="submit"
         variant="primary"
-        disabled={!file || problem !== null || !amountOk || send.isPending}
+        disabled={!file || problem !== null || !amountOk || send.isPending} busy={send.isPending}
       >
         {send.isPending ? copy.sending : copy.submit}
       </Button>

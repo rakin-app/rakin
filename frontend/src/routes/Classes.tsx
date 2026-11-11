@@ -1,4 +1,4 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { rosterQuery } from '../api/attendance'
@@ -22,6 +22,7 @@ import { clockTime, isoDay, shiftDay, shortDay, timeRange, toDate, weekdayDay } 
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './Classes.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.classes
 
@@ -308,7 +309,7 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
   const navigate = useNavigate()
   const selectId = useId()
   const [classTypeId, setClassTypeId] = useState(classTypes[0]!.id)
-  const start = useMutation({
+  const start = useSubmit({
     mutationFn: () => startSession({ class_type_id: classTypeId }),
     onSuccess: async (session) => {
       queryClient.setQueryData(['sessions', 'detail', session.id], session)
@@ -347,7 +348,7 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
           {copy.start.failed}
         </p>
       )}
-      <Button type="submit" variant="primary" disabled={start.isPending}>
+      <Button type="submit" variant="primary" disabled={start.isPending} busy={start.isPending}>
         {start.isPending ? copy.start.working : copy.start.submit}
       </Button>
     </form>

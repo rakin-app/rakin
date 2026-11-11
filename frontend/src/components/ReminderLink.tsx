@@ -1,8 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { logReminder, ordinal, type PaymentReminder } from '../api/reminders'
 import { t } from '../i18n/es'
 import { buttonClass } from './Button'
 import { WhatsAppIcon } from './icons'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.reminders
 
@@ -15,7 +16,7 @@ const copy = t.admin.reminders
 export function ReminderLink({ reminder, label }: { reminder: PaymentReminder; label?: string }) {
   const queryClient = useQueryClient()
   // The link opens WhatsApp itself; this only records that it was opened.
-  const log = useMutation({
+  const log = useSubmit({
     mutationFn: () => logReminder(reminder.billing_period_id),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['ledger', 'reminders'] }),
   })

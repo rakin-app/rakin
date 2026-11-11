@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { programsQuery, type Program } from '../api/people'
 import {
@@ -16,6 +16,7 @@ import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { EditRow, Field, integerOf, LoadFailed, refusal } from './settingsForm'
+import { useSubmit } from '../api/submit'
 
 const copy = t.admin.settings.plans
 const form = copy.form
@@ -171,7 +172,7 @@ function PlanForm({
 }) {
   const queryClient = useQueryClient()
   // Deactivating is here, not on the row (#177): the members already on it keep it.
-  const toggle = useMutation({
+  const toggle = useSubmit({
     mutationFn: () => updatePlan(plan!.id, { active: !plan!.active }),
     onSuccess: async (answer) => {
       onDone(answer.active ? copy.reactivated(answer.name) : copy.deactivated(answer.name))
@@ -193,7 +194,7 @@ function PlanForm({
   // An edit sends only what changed, so a field someone else edited meanwhile is left as they left it.
   const changed = (['name', 'program_id', ...params] as const).filter((k) => drafts[k] !== initial[k])
 
-  const save = useMutation({
+  const save = useSubmit({
     mutationFn: () =>
       plan ? updatePlan(plan.id, fields(changed)) : createPlan({ kind, ...fields(['name', 'program_id', ...params]) }),
     onSuccess: async (answer) => {
@@ -317,7 +318,7 @@ function PlanForm({
         <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}
         </Button>
-        <Button type="submit" variant="primary" disabled={save.isPending}>
+        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
           {save.isPending ? form.working : form.submit}
         </Button>
       </div>

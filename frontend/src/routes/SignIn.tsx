@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { rememberReturnPath, requestLink, retryAfterSeconds, SIGN_IN_PATH } from '../api/auth'
@@ -9,6 +9,7 @@ import { Input } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import './SignIn.css'
+import { useSubmit } from '../api/submit'
 
 const copy = t.signIn
 const route = getRouteApi(SIGN_IN_PATH)
@@ -24,7 +25,7 @@ export function SignIn() {
   const gym = useQuery(hostQuery()).data?.gym ?? null
   const [email, setEmail] = useState('')
   const emailId = useId()
-  const send = useMutation({
+  const send = useSubmit({
     mutationFn: (address: string) => requestLink(address),
     // Kept for when the link lands them on `/`, in whichever tab they open it.
     onSuccess: () => rememberReturnPath(redirect),
@@ -71,7 +72,7 @@ export function SignIn() {
                 {problem(send.error)}
               </p>
             )}
-            <Button type="submit" variant="primary" disabled={send.isPending}>
+            <Button type="submit" variant="primary" disabled={send.isPending} busy={send.isPending}>
               {send.isPending ? copy.sending : copy.submit}
             </Button>
           </form>
