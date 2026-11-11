@@ -12,7 +12,7 @@ import {
 import { managesGym, myRoleQuery } from '../api/me'
 import { plansQuery, type Plan } from '../api/plans'
 import { useGymTimeZone, useGymToday } from '../api/sessions'
-import { isoDay } from '../format'
+import { formatPhone, isoDay } from '../format'
 import { t } from '../i18n/es'
 import { Button } from './Button'
 import { Select } from './Field'
@@ -121,7 +121,7 @@ function RequestRow({
           {[request.rut && t.common.rut(request.rut), age === null ? null : copy.age(age)].filter(Boolean).join(' · ')}
         </span>
         <span className="join-requests__detail">
-          {[request.phone, request.email, request.no_whatsapp && !request.guardian ? copy.noWhatsapp : null]
+          {[request.phone && formatPhone(request.phone), request.email, request.no_whatsapp && !request.guardian ? copy.noWhatsapp : null]
             .filter(Boolean)
             .join(' · ')}
         </span>
@@ -129,7 +129,7 @@ function RequestRow({
           <span className="join-requests__detail">
             {[
               copy.guardian(request.guardian.name),
-              request.guardian.phone,
+              request.guardian.phone && formatPhone(request.guardian.phone),
               request.guardian.email,
               request.no_whatsapp ? copy.noWhatsapp : null,
             ]

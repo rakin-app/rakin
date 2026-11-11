@@ -120,24 +120,22 @@ function CoachToday() {
 function ClassRow({ session, timeZone }: { session: ClassSession; timeZone: string }) {
   const words = copy.classes
   const name = copy.unmarked.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)
-  const detail = [
-    session.coach_name,
-    session.cancelled_at !== null ? words.cancelled : words.present(session.present),
-  ].join(' · ')
+  const cancelled = session.cancelled_at !== null
+  const detail = [session.coach_name, cancelled ? words.cancelled : words.present(session.present)].join(' · ')
   return (
     <li>
       <Link
         to="/admin/clases/$sessionId"
         params={{ sessionId: session.id }}
         className="today__row today__row--link"
-        aria-label={words.takeLabel(name)}
+        aria-label={cancelled ? words.viewLabel(name) : words.takeLabel(name)}
       >
         <span className="today__row-text">
           <span className="today__name">{name}</span>
           <span className="today__detail">{detail}</span>
         </span>
         <span className={buttonClass()} aria-hidden="true">
-          {words.take}
+          {cancelled ? words.view : words.take}
         </span>
       </Link>
     </li>

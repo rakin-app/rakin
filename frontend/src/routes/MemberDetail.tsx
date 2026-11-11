@@ -373,9 +373,9 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
         (periods.length > 0 ? (
           <PaymentForm membership={membership} periods={periods} onCancel={() => setOpen(null)} onDone={finish} />
         ) : (
-          // Al día, with no period open yet: a payment needs one to go to.
+          // Al día, with no period open yet: a payment needs one to go to. Dado de baja, none will open.
           <p className="member__note" role="status">
-            {copy.nothingToRecord}
+            {membership.status === 'cancelled' ? copy.nothingToRecordLeft : copy.nothingToRecord}
           </p>
         ))}
       {open === 'adjustment' && known.length > 0 && (

@@ -480,6 +480,21 @@ describe('Hoy', () => {
     ).toHaveTextContent(copy.classes.present(0))
   })
 
+  it('offers no attendance on a cancelled class, only the class (#213)', async () => {
+    const cancelled = { ...TODAY.sessions[1]!, cancelled_at: '2026-11-10T12:00:00Z' }
+    stubApi({ role: 'coach', today: { body: { ...TODAY, sessions: [cancelled] } } })
+    renderToday()
+
+    const classes = await section(copy.classes.title)
+    const row = await within(classes).findByRole('link', {
+      name: copy.classes.viewLabel(copy.unmarked.row('19:30', 'Avanzado')),
+    })
+    expect(row).toHaveAttribute('href', '/admin/clases/s-night')
+    expect(row).toHaveTextContent(`Rodrigo Fuentes · ${copy.classes.cancelled}`)
+    expect(row).toHaveTextContent(copy.classes.view)
+    expect(row).not.toHaveTextContent(copy.classes.take)
+  })
+
   it('offers a coach Crear clase on a day with no classes, never a blank page', async () => {
     stubApi({ role: 'coach', today: { body: { ...TODAY, sessions: [] } } })
     renderToday()

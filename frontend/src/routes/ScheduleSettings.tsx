@@ -205,6 +205,8 @@ function SlotForm({
   // A new slot runs from; a change applies from.
   const [from, setFrom] = useState(slot && slot.valid_from > today ? slot.valid_from : today)
   const [until, setUntil] = useState(slot?.valid_to ?? '')
+  // A new slot starts with no day: say so once a day is unticked or the form is sent, not before (#213).
+  const [daysTouched, setDaysTouched] = useState(false)
 
   // The slot's own type and coach stay choosable though deactivated or gone from staff.
   const typeChoices =
@@ -255,11 +257,14 @@ function SlotForm({
   const noDays = weekdays.length === 0
   const endsTooSoon = until !== '' && until < from
 
-  const toggleDay = (day: number) =>
+  const toggleDay = (day: number) => {
+    setDaysTouched(true)
     setWeekdays((days) => (days.includes(day) ? days.filter((d) => d !== day) : [...days, day].sort()))
+  }
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
+    setDaysTouched(true)
     if (badDuration || noDays || endsTooSoon || !chosenType || !chosenCoach) return
     if (slot && Object.keys(changes()).length === 0) {
       onCancel()
@@ -305,7 +310,7 @@ function SlotForm({
             </label>
           ))}
         </div>
-        {noDays && <FieldError>{form.noDays}</FieldError>}
+        {noDays && daysTouched && <FieldError>{form.noDays}</FieldError>}
       </fieldset>
       <div className="schedule__pair">
         <Field label={form.time}>

@@ -158,9 +158,13 @@ describe('Ajustes: Horario', () => {
     const create = await screen.findByRole('form', { name: form.create })
     await within(create).findByRole('option', { name: 'Fundamentos' })
     await within(create).findByRole('option', { name: 'Rodrigo Fuentes' })
-    // No day yet: refused before anything is sent.
+    // No day yet, but nothing said until the form is sent or a day is unticked (#213).
+    expect(within(create).queryByText(form.noDays)).not.toBeInTheDocument()
+    await userEvent.click(within(create).getByRole('button', { name: form.submit }))
     expect(within(create).getByText(form.noDays)).toBeInTheDocument()
+    expect(writes(calls)).toEqual([])
     await userEvent.click(within(create).getByRole('checkbox', { name: 'Mar' }))
+    expect(within(create).queryByText(form.noDays)).not.toBeInTheDocument()
     await userEvent.click(within(create).getByRole('checkbox', { name: 'Jue' }))
     const time = within(create).getByLabelText(form.time)
     await userEvent.clear(time)

@@ -41,6 +41,8 @@ export const es = {
   },
   signIn: {
     title: 'Entrar a Rakin',
+    // The browser tab: `Entrar · Academia Sur`, as the admin screens name theirs (#213).
+    tab: 'Entrar',
     // On a gym's own address (meta.rakin.app): its name, Rakin above it.
     titleAt: (gym: string) => `Entrar a ${gym}`,
     intro: 'Escribe tu correo y te enviamos un link para entrar. No necesitas clave.',
@@ -167,6 +169,9 @@ export const es = {
         cancelled: 'cancelada',
         take: 'Tomar asistencia',
         takeLabel: (name: string) => `Tomar asistencia de ${name}`,
+        // A cancelled class takes no attendance; its page is still where it is reactivated (#213).
+        view: 'Ver clase',
+        viewLabel: (name: string) => `Ver ${name}`,
       },
       // A new gym's first day: what to set up, each step a link to where it is done.
       setup: {
@@ -502,9 +507,10 @@ export const es = {
       error: 'No pudimos cargar la ficha.',
       notFound: 'No encontramos a este alumno.',
       retry: 'Reintentar',
-      since: (month: string) => `desde ${month}`,
-      // `Azul · 2 grados · desde mar 2024`: the rank, and a member since.
-      rankSince: (rank: string, month: string) => `${rank} · desde ${month}`,
+      since: (month: string) => `Alumno desde ${month}`,
+      // `Azul · 2 grados · alumno desde mar 2024`: the rank, and a member since. Said
+      // whole, so it does not read as the belt's date, which Graduación has (#213).
+      rankSince: (rank: string, month: string) => `${rank} · alumno desde ${month}`,
       noPlan: 'Sin plan',
       paymentLabel: 'Estado de pago',
       dueDay: (plan: string, day: number) => `${plan} · vence el ${day}`,
@@ -517,6 +523,8 @@ export const es = {
       upToDate: 'Al día',
       upToDateNext: (day: string) => `Al día · vence el ${day}`,
       nothingToRecord: 'Está al día y no tiene un período abierto: el pago se registra cuando se genere el próximo cobro.',
+      // Dado de baja: no charge is coming, so none to wait for (#213).
+      nothingToRecordLeft: 'Su plan terminó y no debe nada: no hay pagos por registrar.',
       whatsapp: (name: string) => `WhatsApp a ${name}`,
       whatsappGuardian: (name: string) => `WhatsApp a ${name}, su apoderado`,
       ledgerError: 'No pudimos cargar los pagos.',
@@ -646,7 +654,7 @@ export const es = {
         submit: 'Confirmar congelación',
         cancel: 'Cancelar',
         working: 'Guardando…',
-        untilNeeded: 'Elige un día después del primero.',
+        untilNeeded: 'Elige el día en que vuelve (después de “Desde”).',
         reasonNeeded: 'Escribe el motivo.',
         done: (day: string) => `Membresía congelada. Vuelve el ${day}.`,
         booked: (from: string, to: string) => `Congelación programada del ${from} al ${to}.`,
@@ -1456,6 +1464,8 @@ export const es = {
         left: (n: number) => (n === 1 ? 'queda 1' : `quedan ${n}`),
         absent: (days: number) => `${days} d sin venir`,
         save: (n: number) => `Guardar asistencia (${n})`,
+        // Nothing left to save: what is marked is what is saved, a trial guest included (#213).
+        upToDate: (n: number) => (n === 1 ? '1 presente · guardado' : `${n} presentes · guardados`),
         working: 'Guardando…',
         done: 'Guardado ✓',
         saved: 'Asistencia guardada.',
@@ -1532,9 +1542,9 @@ export const es = {
             present > 0 && (present === 1 ? '1 asistencia' : `${present} asistencias`),
             timer && 'el registro del timer',
           ].filter(Boolean)
-          return gone.length === 0
-            ? '¿Eliminar esta clase? No tiene asistencia ni registro del timer.'
-            : `¿Eliminar esta clase? Se borran ${gone.join(' y ')}. No se puede deshacer.`
+          if (gone.length === 0) return '¿Eliminar esta clase? No tiene asistencia ni registro del timer.'
+          const verb = gone.length > 1 || present > 1 ? 'Se borran' : 'Se borra'
+          return `¿Eliminar esta clase? ${verb} ${gone.join(' y ')}. No se puede deshacer.`
         },
         credits: 'Si alguien pagó la clase con créditos, se le devuelven.',
         deleteYes: 'Sí, eliminar',
@@ -1976,10 +1986,12 @@ export const es = {
     month: 'Este mes',
     allTime: 'Siempre',
     classes: 'Clases',
-    sparring: 'Sparring',
+    // The sparring kinds and the open mats together, so not the breakdown's own Sparring line.
+    sparring: 'Sparring en total',
     byKind: 'Tiempo por bloque',
     openMat: (n: number, time: string) => `Open mat: ${n} · ${time}`,
-    openMatNote: 'Tu tiempo cuenta también como sparring.',
+    openMatNoteMine: 'Tu tiempo de open mat cuenta como sparring.',
+    openMatNoteTheirs: 'Su tiempo de open mat cuenta como sparring.',
     // Seconds as `4 h 30 min`, `2 h` or `45 min`; under half a minute, but some, `< 1 min`.
     duration: (seconds: number) => {
       const minutes = Math.round(seconds / 60)

@@ -7,6 +7,7 @@ import { Button } from '../components/Button'
 import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
+import { RAKIN, useDocumentTitle } from '../pageTitle'
 import './Privacy.css'
 
 const copy = t.privacy
@@ -27,6 +28,7 @@ export function validatePrivacySearch(search: Record<string, unknown>): { enlace
 export function Privacy() {
   const { enlace } = route.useSearch()
   const notice = useQuery(privacyNoticeQuery(enlace))
+  useDocumentTitle(copy.eyebrow, notice.data?.gym ?? RAKIN)
 
   if (notice.isPending) {
     return (

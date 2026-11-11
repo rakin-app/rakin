@@ -111,7 +111,20 @@ describe('MatTime', () => {
     const classesOnly = { ...MONTH, open_mats: 0, open_mat_seconds: 0 }
     render(<MatTime time={time(classesOnly, classesOnly)} mine />)
 
-    expect(within(card()).queryByText(copy.openMatNote)).not.toBeInTheDocument()
+    expect(within(card()).queryByText(copy.openMatNoteMine)).not.toBeInTheDocument()
+  })
+
+  it('speaks of the member on the ficha, and of you on the student page (#213)', () => {
+    const { unmount } = render(<MatTime time={time(MONTH, ALL_TIME)} mine />)
+    expect(within(card()).getByText(copy.openMatNoteMine)).toBeInTheDocument()
+    unmount()
+
+    render(<MatTime time={time(MONTH, ALL_TIME)} mine={false} />)
+    const region = card(false)
+    expect(within(region).getByText(copy.openMatNoteTheirs)).toBeInTheDocument()
+    expect(within(region).queryByText(/^Tu /)).not.toBeInTheDocument()
+    // The headline is the total, so it does not read as the breakdown's Sparring line again.
+    expect(figure(region, 'Sparring en total')).toBe('6 h')
   })
 
   it('keeps the bars out of the accessible text', () => {

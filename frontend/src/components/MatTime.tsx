@@ -77,12 +77,12 @@ export function MatTime({ time, mine }: { time: PersonTime; mine: boolean }) {
           onChange={setPeriod}
         />
       </div>
-      <Totals totals={totals} />
+      <Totals totals={totals} mine={mine} />
     </section>
   )
 }
 
-function Totals({ totals }: { totals: TimeTotals }) {
+function Totals({ totals, mine }: { totals: TimeTotals; mine: boolean }) {
   const longest = Math.max(...totals.by_kind.map((kind) => kind.seconds), 1)
   return (
     <>
@@ -119,7 +119,7 @@ function Totals({ totals }: { totals: TimeTotals }) {
           {totals.open_mats > 0 && (
             <p className="mat-time__open-mat">
               <span>{copy.openMat(totals.open_mats, copy.duration(totals.open_mat_seconds))}</span>
-              <span className="mat-time__note">{copy.openMatNote}</span>
+              <span className="mat-time__note">{mine ? copy.openMatNoteMine : copy.openMatNoteTheirs}</span>
             </p>
           )}
         </>

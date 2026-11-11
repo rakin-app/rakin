@@ -78,12 +78,15 @@ describe('Entrar', () => {
     stubLink(202)
     renderAt('/ingresar')
     expect(await screen.findByRole('heading', { name: copy.title })).toBeInTheDocument()
+    // The tab is named as the admin screens name theirs (#213).
+    expect(document.title).toBe('Entrar · Rakin')
     vi.unstubAllGlobals()
     cleanup()
 
     const sent = stubLink(202, {}, { slug: 'meta', name: 'Meta', theme: 'bosque', logo: null })
     renderAt('/ingresar')
     expect(await screen.findByRole('heading', { name: copy.titleAt('Meta') })).toBeInTheDocument()
+    expect(document.title).toBe('Entrar · Meta')
 
     await ask('ana@example.cl')
     expect(await screen.findByRole('status')).toHaveTextContent(copy.sent('ana@example.cl'))

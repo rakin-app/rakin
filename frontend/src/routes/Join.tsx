@@ -11,6 +11,7 @@ import { Grid, PageContainer } from '../components/Layout'
 import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
+import { RAKIN, useDocumentTitle } from '../pageTitle'
 import './Join.css'
 import { useSubmit } from '../api/submit'
 
@@ -70,6 +71,7 @@ function requiredFields(minor: boolean, noWhatsapp: boolean): (keyof Drafts)[] {
 export function Join() {
   const { token } = route.useParams()
   const form = useQuery(joinFormQuery(token))
+  useDocumentTitle(copy.eyebrow, form.data?.gym ?? RAKIN)
 
   if (form.isPending) {
     return (

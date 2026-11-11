@@ -137,8 +137,11 @@ describe('Solicitudes', () => {
       '/admin/alumnos/p9',
     )
     expect(within(ana).getByText(copy.ignoredEmail('ana@example.cl'))).toBeInTheDocument()
+    // Phones as every other screen shows them (#213).
+    expect(within(ana).getByText(/\+56 9 8765 4321/)).toBeInTheDocument()
     const juan = await row('Juan Pérez')
     expect(within(juan).getByText(/Apoderado: Marta Pérez/)).toHaveTextContent(copy.noWhatsapp)
+    expect(within(juan).getByText(/Apoderado: Marta Pérez/)).toHaveTextContent('+56 9 1234 5678')
     expect(within(juan).queryByText(/no se usará/)).not.toBeInTheDocument()
   })
 

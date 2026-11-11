@@ -320,7 +320,8 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
 
     expect(await screen.findByRole('heading', { name: 'Felipe Díaz' })).toBeInTheDocument()
-    expect(await screen.findByText(copy.rankSince('Azul · 2 grados', 'mar 2024'))).toBeInTheDocument()
+    // A member since, said whole: the belt's own date is in Graduación (#213).
+    expect(await screen.findByText('Azul · 2 grados · alumno desde mar 2024')).toBeInTheDocument()
     const card = await money()
     expect(within(card).getByText('Mensual adultos · vence el 30')).toBeInTheDocument()
     expect(await within(card).findByText(copy.overdue(9))).toBeInTheDocument()
@@ -402,6 +403,20 @@ describe('Ficha de alumno', () => {
       'Recargo octubrematrícula · 4 nov+$5.000',
       'Descuento octubrebeca · 3 nov−$3.000',
     ])
+  })
+
+  it('says a member dado de baja has no charge coming to record against (#213)', async () => {
+    stubApi({
+      person: { body: { ...FELIPE, left_on: '2026-10-01' } },
+      memberships: [{ ...MONTHLY, status: 'cancelled' }],
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0 },
+    })
+    renderAt(PATH)
+
+    const card = await money()
+    await userEvent.click(await within(card).findByRole('button', { name: copy.record }))
+    expect(within(card).getByText(copy.nothingToRecordLeft)).toBeInTheDocument()
+    expect(within(card).queryByText(copy.nothingToRecord)).not.toBeInTheDocument()
   })
 
   it('shows the status when nothing is late, and the next amount due', async () => {
