@@ -11,6 +11,7 @@ import { es } from '../i18n/es'
 import { clockTime } from '../format'
 import { createAppRouter } from '../router'
 import { savedRun, saveRun, startRun } from './timerEngine'
+import { VIBRATION } from './timerSignal'
 
 const copy = es.admin.timer
 const running = copy.running
@@ -464,6 +465,63 @@ describe('the running class', () => {
     const sent = (writes(api.calls)[0]!.body as { blocks: { id: string }[] }).blocks
     expect(sent).toHaveLength(1)
     expect(sent[0]!.id).not.toBe('old-1')
+  })
+})
+
+describe('fight and rest', () => {
+  const screenOf = () => screen.getByRole('timer').closest('.timer')!
+
+  it('is green with "LUCHA" in a round, red with "DESCANSO" in the rest, neutral elsewhere', async () => {
+    stubApi()
+    await startClass()
+    expect(screenOf()).not.toHaveClass('timer--fight')
+    expect(screenOf()).not.toHaveClass('timer--rest')
+    expect(screen.queryByText(running.fightMode)).not.toBeInTheDocument()
+
+    await watch(10 * 60_000)
+    expect(screenOf()).toHaveClass('timer--fight')
+    expect(screen.getByText(running.fightMode)).toBeInTheDocument()
+    expect(screen.getByText(running.round('Sparring', 1, 6))).toBeInTheDocument()
+
+    await watch(5 * 60_000)
+    expect(screenOf()).toHaveClass('timer--rest')
+    expect(screen.getByText(running.restMode)).toBeInTheDocument()
+    expect(screen.queryByText(running.fightMode)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: running.pause }))
+    expect(screenOf()).toHaveClass('timer--rest', 'timer--paused')
+    expect(screen.getByText(running.paused)).toBeInTheDocument()
+    expect(screen.getByText(running.restMode)).toBeInTheDocument()
+  })
+
+  it('frames the 10-second warning on the colour instead of changing it', async () => {
+    stubApi()
+    await startClass()
+    await watch(10 * 60_000 + 4 * 60_000 + 52_000)
+    expect(screenOf()).toHaveClass('timer--fight', 'timer--warning')
+  })
+
+  it('signals a block change, a round stopping for the rest, and a round starting, each its own way', async () => {
+    const vibrate = vi.fn()
+    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, { vibrate }))
+    stubApi()
+    await startClass()
+
+    await watch(10 * 60_000)
+    expect(vibrate).toHaveBeenLastCalledWith(VIBRATION.block)
+    await watch(5 * 60_000)
+    expect(vibrate).toHaveBeenLastCalledWith(VIBRATION.rest)
+    await watch(60_000)
+    expect(vibrate).toHaveBeenLastCalledWith(VIBRATION.fight)
+    expect(screen.getByText(running.round('Sparring', 2, 6))).toBeInTheDocument()
+    expect(vibrate.mock.calls.map(([pattern]) => pattern)).toEqual([VIBRATION.block, VIBRATION.rest, VIBRATION.fight])
+  })
+
+  it('says so when the phone has no sound', async () => {
+    // jsdom has no Web Audio.
+    stubApi()
+    await startClass()
+    expect(screen.getByText(running.noSound)).toBeInTheDocument()
   })
 })
 
