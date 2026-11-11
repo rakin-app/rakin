@@ -252,7 +252,11 @@ function Actions({ busy, error, onClose }: { busy: boolean; error: unknown; onCl
 function PayForm({ charge, line, onDone, onClose }: FormProps) {
   const [amount, setAmount] = useState(String(line.outstanding_clp))
   const [method, setMethod] = useState<Method>('transfer')
-  const pay = useSubmit({ mutationFn: () => payLine(charge.id, line.id, Number(amount), method), onSuccess: () => onDone() })
+  const pay = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => payLine(charge.id, line.id, Number(amount), method),
+    onSuccess: () => onDone(),
+  })
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (Number(amount) > 0) pay.mutate()
@@ -271,6 +275,7 @@ function PayForm({ charge, line, onDone, onClose }: FormProps) {
 function AmountForm({ charge, line, onDone, onClose }: FormProps) {
   const [amount, setAmount] = useState(String(line.amount_due_clp))
   const change = useSubmit({
+    offline: 'refuse',
     mutationFn: () => changeLineAmount(charge.id, line.id, Number(amount)),
     onSuccess: () => onDone(),
   })
@@ -296,6 +301,7 @@ function RefundForm({ line, onDone, onClose }: Omit<FormProps, 'charge'>) {
   const [amount, setAmount] = useState(String(payment.refundable_clp))
   const [method, setMethod] = useState<Method>('transfer')
   const refund = useSubmit({
+    offline: 'refuse',
     mutationFn: () => refundPayment(payment.id, Number(amount), method),
     onSuccess: () => onDone(),
   })
@@ -341,7 +347,11 @@ function CancelForm({ charge, line, onDone, onClose }: FormProps) {
     queryFn: () => cancelPreview(charge.id, line.id),
   })
   const [resplit, setResplit] = useState(false)
-  const cancel = useSubmit({ mutationFn: () => cancelLine(charge.id, line.id, resplit), onSuccess: () => onDone() })
+  const cancel = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => cancelLine(charge.id, line.id, resplit),
+    onSuccess: () => onDone(),
+  })
   const names = new Map(charge.people.map((l) => [l.id, l.person.name]))
   return (
     <form

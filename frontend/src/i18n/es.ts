@@ -2291,6 +2291,11 @@ export const es = {
     },
     today: 'hoy',
   },
+  // Any form, offline (#231): one that waits for the signal, and one that does not.
+  offline: {
+    waiting: 'Sin conexión: se guardará cuando vuelva la señal.',
+    refused: 'Sin conexión: no se guardó. Inténtalo de nuevo cuando vuelva la señal.',
+  },
   notFound: {
     title: 'Página no encontrada',
     body: 'La dirección que abriste no existe.',

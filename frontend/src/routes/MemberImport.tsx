@@ -56,6 +56,7 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
   const inputId = useId()
   const [tooLarge, setTooLarge] = useState(false)
   const read = useSubmit({
+    offline: 'refuse',
     mutationFn: (file: File) => uploadSheet(file),
     onSuccess: (sheet, file) => onRead(file.name, sheet),
   })
@@ -146,8 +147,9 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
     }
     return runImport({ rows: sheet.rows, mapping, plans: choices, dry_run: dryRun })
   }
-  const check = useSubmit({ mutationFn: () => request(true), onSuccess: setReport })
+  const check = useSubmit({ offline: 'refuse', mutationFn: () => request(true), onSuccess: setReport })
   const apply = useSubmit({
+    offline: 'refuse',
     mutationFn: () => request(false),
     onSuccess: (done) => {
       setReport(done)

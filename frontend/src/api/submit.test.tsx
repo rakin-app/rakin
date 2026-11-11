@@ -1,9 +1,9 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch } from './client'
-import { identify, newKey, submissionKey, useSubmit, withSubmission } from './submit'
+import { identify, newKey, OfflineError, submissionKey, useSubmit, withSubmission } from './submit'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
@@ -41,7 +41,15 @@ const post = (path: string) => apiFetch(path, { method: 'POST', body: '{}' })
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  onlineManager.setOnline(true)
 })
+
+/** The signal goes, or comes back, as the browser tells React Query. */
+function setOnline(online: boolean) {
+  act(() => {
+    onlineManager.setOnline(online)
+  })
+}
 
 describe('apiFetch and the submission key', () => {
   it('keys the mutating requests a submission makes, and only those', async () => {
@@ -170,5 +178,48 @@ describe('useSubmit', () => {
     expect(identify(a)).not.toBe(identify(b))
     expect(identify(form(a))).not.toBe(identify(form(b)))
     expect(identify(form(a))).toBe(identify(form(new File(['a'], 'alumnos.csv', { lastModified: 1 }))))
+  })
+})
+
+describe('useSubmit offline (#231)', () => {
+  it('waits for the signal, then sends once with its key, however often it was tapped', async () => {
+    const { sent } = stubFetch()
+    const { result } = renderHook(() => useSubmit({ mutationFn: () => post('/api/people') }), { wrapper })
+
+    setOnline(false)
+    let first: Promise<unknown> | undefined
+    act(() => {
+      first = result.current.mutateAsync()
+      result.current.mutate()
+    })
+    await waitFor(() => expect(result.current.isPaused).toBe(true))
+    act(() => result.current.mutate())
+    expect(sent).toHaveLength(0)
+    expect(result.current.isPending).toBe(true)
+
+    setOnline(true)
+    await act(() => first)
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.key).toMatch(UUID)
+  })
+
+  it("refuses at once with 'refuse', sending nothing, and sends once the signal is back", async () => {
+    const { sent } = stubFetch()
+    const { result } = renderHook(
+      () => useSubmit({ offline: 'refuse', mutationFn: () => post('/api/ledger/payments') }),
+      { wrapper },
+    )
+
+    setOnline(false)
+    await act(() => expect(result.current.mutateAsync()).rejects.toBeInstanceOf(OfflineError))
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(OfflineError))
+    expect(result.current.isPaused).toBe(false)
+    expect(sent).toHaveLength(0)
+
+    setOnline(true)
+    await act(() => result.current.mutateAsync())
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.key).toMatch(UUID)
   })
 })

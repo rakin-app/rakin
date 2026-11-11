@@ -93,6 +93,7 @@ function LeaveForm({
   const onOk = on !== '' && on <= today
 
   const leave = useSubmit({
+    offline: 'refuse',
     // Today is left to the server, which knows the gym's today.
     mutationFn: () => leaveGym(person.id, on < today ? on : undefined),
     onSuccess: async () => {
@@ -159,6 +160,7 @@ function ReturnForm({
   const [plan, setPlan] = useState<PlanChoice>({ plan_id: '', started_on: '' })
 
   const back = useSubmit({
+    offline: 'refuse',
     mutationFn: () => returnToGym(person.id, membershipOf(plan, today)),
     onSuccess: async () => {
       onDone(form.done)
@@ -216,6 +218,7 @@ function RemoveForm({
   const [typed, setTyped] = useState('')
 
   const remove = useSubmit({
+    offline: 'refuse',
     mutationFn: () => deletePerson(person.id),
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ['people', 'detail', person.id] })

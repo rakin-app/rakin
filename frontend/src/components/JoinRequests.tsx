@@ -91,6 +91,7 @@ function RequestRow({
     await queryClient.invalidateQueries({ queryKey: ['members'] })
   }
   const approve = useSubmit({
+    offline: 'refuse',
     mutationFn: () => approveJoinRequest(request.id, planId || null),
     onSuccess: async () => {
       onDone(copy.approved(name))

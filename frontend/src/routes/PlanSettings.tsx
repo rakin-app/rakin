@@ -173,6 +173,7 @@ function PlanForm({
   const queryClient = useQueryClient()
   // Deactivating is here, not on the row (#177): the members already on it keep it.
   const toggle = useSubmit({
+    offline: 'refuse',
     mutationFn: () => updatePlan(plan!.id, { active: !plan!.active }),
     onSuccess: async (answer) => {
       onDone(answer.active ? copy.reactivated(answer.name) : copy.deactivated(answer.name))
@@ -195,6 +196,7 @@ function PlanForm({
   const changed = (['name', 'program_id', ...params] as const).filter((k) => drafts[k] !== initial[k])
 
   const save = useSubmit({
+    offline: 'refuse',
     mutationFn: () =>
       plan ? updatePlan(plan.id, fields(changed)) : createPlan({ kind, ...fields(['name', 'program_id', ...params]) }),
     onSuccess: async (answer) => {
