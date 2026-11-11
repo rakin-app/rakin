@@ -447,6 +447,17 @@ describe('Pagos', () => {
     expect(document.body.textContent).not.toMatch(/asiento/i)
   })
 
+  it('keeps its table roles explicit, which the phone cards would otherwise lose in WebKit', async () => {
+    stubApi()
+    renderAt('/admin/pagos')
+
+    const book = await table()
+    expect(book).toHaveAttribute('role', 'table')
+    const rows = within(book).getAllByRole('row')
+    expect(rows.every((row) => row.getAttribute('role') === 'row')).toBe(true)
+    expect(within(rows[1]!).getAllByRole('cell').every((cell) => cell.getAttribute('role') === 'cell')).toBe(true)
+  })
+
   it('says so when there is nothing to show', async () => {
     stubApi({ book: () => ({ ...BOOK, items: [], total: 0 }) })
     renderAt('/admin/pagos')

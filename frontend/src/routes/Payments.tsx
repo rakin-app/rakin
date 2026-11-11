@@ -217,21 +217,24 @@ function Book() {
                 <p className="payments__note">{q.trim() ? copy.noMatch(q.trim()) : copy.empty}</p>
               ) : (
                 <div className="payments__scroll">
-                  <table className="payments__table">
-                    <thead>
-                      <tr>
-                        <th scope="col">{copy.columns.date}</th>
-                        <th scope="col">{copy.columns.student}</th>
-                        <th scope="col">{copy.columns.kind}</th>
-                        <th scope="col">{copy.columns.period}</th>
-                        <th scope="col">{copy.columns.detail}</th>
-                        <th scope="col">{copy.columns.status}</th>
-                        <th scope="col" className="payments__amount">
+                  {/* Explicit roles: below 960px the cards set `display` on the table, its groups and
+                      rows, and WebKit then drops their implicit roles, so VoiceOver would
+                      stop reading the column headers with each cell. */}
+                  <table className="payments__table" role="table">
+                    <thead role="rowgroup">
+                      <tr role="row">
+                        <th role="columnheader" scope="col">{copy.columns.date}</th>
+                        <th role="columnheader" scope="col">{copy.columns.student}</th>
+                        <th role="columnheader" scope="col">{copy.columns.kind}</th>
+                        <th role="columnheader" scope="col">{copy.columns.period}</th>
+                        <th role="columnheader" scope="col">{copy.columns.detail}</th>
+                        <th role="columnheader" scope="col">{copy.columns.status}</th>
+                        <th role="columnheader" scope="col" className="payments__amount">
                           {copy.columns.amount}
                         </th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody role="rowgroup">
                       {lines.map((line) =>
                         line.kind === 'entry' ? (
                           <Row key={line.entry.id} entry={line.entry} timeZone={latest.timezone} />
@@ -448,13 +451,13 @@ function Kpis({ kpis }: { kpis: BookKpis }) {
 function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
   const status = describeStatus(entry)
   return (
-    <tr className="payments__line">
-      <td className="payments__muted payments__date">{dayTime(entry.created_at, timeZone)}</td>
+    <tr className="payments__line" role="row">
+      <td role="cell" className="payments__muted payments__date">{dayTime(entry.created_at, timeZone)}</td>
       <Student person={entry.person} guardian={entry.guardian} />
-      <td className="payments__kind">{copy.kind[entry.kind]}</td>
-      <td className="payments__period">{periodLabel(entry)}</td>
-      <td className="payments__detail">{detailLabel(entry)}</td>
-      <td className="payments__status">
+      <td role="cell" className="payments__kind">{copy.kind[entry.kind]}</td>
+      <td role="cell" className="payments__period">{periodLabel(entry)}</td>
+      <td role="cell" className="payments__detail">{detailLabel(entry)}</td>
+      <td role="cell" className="payments__status">
         {status.review ? (
           <Link to="/admin/pagos/comprobantes" className="payments__to-review">
             <StatusPill status={status.status}>{status.label}</StatusPill>
@@ -463,7 +466,7 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
           <StatusPill status={status.status}>{status.label}</StatusPill>
         )}
       </td>
-      <td className={`payments__amount payments__amount--${entry.status}`}>
+      <td role="cell" className={`payments__amount payments__amount--${entry.status}`}>
         {bookAmount(entry)}
       </td>
     </tr>
@@ -480,7 +483,7 @@ function bookAmount(entry: BookEntry): string {
 
 function Student({ person, guardian }: { person: PersonRef; guardian: PersonRef | null }) {
   return (
-    <td className="payments__who">
+    <td role="cell" className="payments__who">
       <Link to="/admin/alumnos/$personId" params={{ personId: person.id }} className="payments__student">
         {person.name}
       </Link>
@@ -492,16 +495,16 @@ function Student({ person, guardian }: { person: PersonRef; guardian: PersonRef 
 /** A freeze starting or ending: the days it covers and why, with no amount. */
 function FreezeRow({ line }: { line: BookFreeze }) {
   return (
-    <tr className="payments__line payments__freeze">
-      <td className="payments__muted payments__date">{shortDay(line.day)}</td>
+    <tr className="payments__line payments__freeze" role="row">
+      <td role="cell" className="payments__muted payments__date">{shortDay(line.day)}</td>
       <Student person={line.person} guardian={line.guardian} />
-      <td className="payments__kind">{copy.kind.freeze}</td>
-      <td className="payments__period">{t.common.span(shortDay(line.from_date), shortDay(line.to_date))}</td>
-      <td className="payments__detail">{line.reason}</td>
-      <td className="payments__status">
+      <td role="cell" className="payments__kind">{copy.kind.freeze}</td>
+      <td role="cell" className="payments__period">{t.common.span(shortDay(line.from_date), shortDay(line.to_date))}</td>
+      <td role="cell" className="payments__detail">{line.reason}</td>
+      <td role="cell" className="payments__status">
         <StatusPill status="freeze">{line.edge === 'start' ? copy.status.freezeStart : copy.status.freezeEnd}</StatusPill>
       </td>
-      <td className="payments__amount payments__muted">{t.common.noAmount}</td>
+      <td role="cell" className="payments__amount payments__muted">{t.common.noAmount}</td>
     </tr>
   )
 }

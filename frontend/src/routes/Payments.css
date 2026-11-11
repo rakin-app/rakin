@@ -412,6 +412,9 @@
 
   .payments__line .payments__period::before,
   .payments__line .payments__detail::before {
+    /* Plain first: a browser without alt text for `content` (Safari < 17.4, Firefox < 128)
+       drops the second declaration and keeps the dot. */
+    content: '·';
     content: '·' / '';
     margin-inline: var(--space-1-5);
   }
