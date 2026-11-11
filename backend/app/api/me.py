@@ -77,9 +77,14 @@ PAYMENTS = """
 
 # Who is signed in, as this gym knows them, and the gym's name: what the admin shell
 # shows on every screen, a coach's included. Left-joined, so a session with no record
-# here still answers its role.
+# here still answers its role. `student_page`: whether the student page has anything
+# for them, a membership here or a dependent they pay for, so staff who also train
+# get a way to it (#214).
 WHO = """
-    SELECT g.name AS gym_name, gp.name, gp.email
+    SELECT g.name AS gym_name, gp.name, gp.email,
+           (EXISTS (SELECT 1 FROM membership m WHERE m.gym_id = g.id AND m.person_id = :me)
+            OR EXISTS (SELECT 1 FROM guardian_link l
+                       WHERE l.gym_id = g.id AND l.guardian_person_id = :me)) AS student_page
     FROM gym g
     LEFT JOIN gym_person gp ON gp.gym_id = g.id AND gp.person_id = :me
     WHERE g.id = :gym
@@ -110,6 +115,7 @@ async def my_role(
         name=who.name,
         email=who.email,
         gym_name=who.gym_name,
+        student_page=who.student_page,
     )
 
 

@@ -183,6 +183,13 @@ button.admin-nav__link {
     border-top: 1px solid var(--color-divider);
   }
 
+  /* "Mi página" then Cerrar sesión: one group, one rule above it. */
+  .admin-nav__end + .admin-nav__end {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
   .admin-nav__error {
     text-align: left;
   }

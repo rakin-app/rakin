@@ -209,6 +209,55 @@ describe('signing in', () => {
   })
 })
 
+describe('staff who also train (#214)', () => {
+  const asRole = (role: string | null, studentPage: boolean) =>
+    stubApi((path) =>
+      path === '/api/me/role'
+        ? { status: 200, body: { role, person_id: 'me', name: 'Felipe', email: null, gym_name: 'Academia Sur', student_page: studentPage } }
+        : { status: 404 },
+    )
+
+  it('lands them on /me when that is the page they asked for', async () => {
+    localStorage.setItem('rakin.returnTo', '/me')
+    asRole('coach', true)
+    const router = renderAt('/')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/me')
+  })
+
+  it('gives staff with a membership a "Mi página" link in the nav, and the student page a way back', async () => {
+    asRole('coach', true)
+    const router = renderAt('/admin')
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+
+    await userEvent.click(await within(nav).findByRole('link', { name: es.nav.myPage }))
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/me')
+
+    await userEvent.click(screen.getByRole('link', { name: es.me.toAdmin }))
+    expect(await screen.findByRole('navigation', { name: es.nav.label })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/admin')
+  })
+
+  it('shows no "Mi página" to staff without a membership', async () => {
+    asRole('owner', false)
+    renderAt('/admin')
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    await within(nav).findByRole('link', { name: es.nav.settings })
+
+    expect(within(nav).queryByRole('link', { name: es.nav.myPage })).not.toBeInTheDocument()
+  })
+
+  it('shows a member no way into the panel', async () => {
+    asRole(null, true)
+    renderAt('/me')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: es.me.toAdmin })).not.toBeInTheDocument()
+  })
+})
+
 describe('one trip to sign in', () => {
   // The handler's navigations to /ingresar, counted on `router.navigate`; `hold` keeps
   // the router where it is, as if the first navigation had not landed yet.

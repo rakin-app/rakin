@@ -29,6 +29,8 @@ export const es = {
     classes: 'Clases',
     payments: 'Pagos',
     settings: 'Ajustes',
+    // Their own student page, for staff who also train at the gym (#214).
+    myPage: 'Mi página',
     pendingBadge: (n: number) => (n === 1 ? '1 comprobante por revisar' : `${n} comprobantes por revisar`),
   },
   signIn: {
@@ -1751,6 +1753,8 @@ export const es = {
     error: 'No pudimos cargar el tiempo en el tatami.',
   },
   me: {
+    // From the student page back to the admin screens, for staff who also train (#214).
+    toAdmin: 'Ir al panel del gimnasio',
     home: {
       title: 'Mi página',
       hello: (firstName: string) => `Hola, ${firstName}`,

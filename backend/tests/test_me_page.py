@@ -217,3 +217,34 @@ def test_the_history_is_newest_first_and_bounded(
     assert starts == sorted(starts, reverse=True)
     assert starts[0] == str(seeded_today() - timedelta(days=30))
     assert str(seeded_today() - timedelta(days=30 * PAYMENTS_SHOWN)) in starts
+
+
+# --- who has a student page (#214) -------------------------------------------------
+
+
+def student_page(client: TestClient, gym: uuid.UUID, person: uuid.UUID) -> Any:
+    response = client.get("/api/me/role", headers=as_gym(gym, person))
+    assert response.status_code == 200, response.text
+    return response.json()["student_page"]
+
+
+@pg
+def test_staff_who_also_train_have_a_student_page(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    coach = add_staff(db, sur, "coach")
+    assert student_page(client, sur, coach) is False
+    bill(db, sur, str(coach), [])
+    assert student_page(client, sur, coach) is True
+
+
+@pg
+def test_members_and_guardians_have_a_student_page(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    member = add_person(client, sur, "Ana")
+    bill(db, sur, member, [])
+    assert student_page(client, sur, uuid.UUID(member)) is True
+    guardian = add_person(client, sur, "Carla")
+    new_kid(client, sur, guardian, "Simón")
+    assert student_page(client, sur, uuid.UUID(guardian)) is True
