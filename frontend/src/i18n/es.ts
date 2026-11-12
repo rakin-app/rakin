@@ -634,6 +634,9 @@ export const es = {
         },
         failed: 'No pudimos eliminarlo. Inténtalo de nuevo.',
       },
+      // What an earlier plan, lapsed say, still owes once a new one started (#249).
+      earlierDebt: 'Deuda anterior',
+      earlierDebtLine: (plan: string, pending: string) => `${plan} · ${pending}`,
       // A plan change saved, waiting for the first period not yet billed (#249).
       planChangeBooked: (plan: string, day: string) => `Pasa a ${plan} desde el ${day}`,
       assignPlan: 'Asignar plan',

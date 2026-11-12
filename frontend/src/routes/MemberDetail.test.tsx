@@ -1764,6 +1764,69 @@ describe('the plan from the ficha (#249)', () => {
     )
   })
 
+  it('keeps a lapsed plan\'s unpaid charge on the ficha once a new plan starts', async () => {
+    const lapsed: Membership = { ...MONTHLY, status: 'lapsed' }
+    let members = [lapsed]
+    stubApi({
+      memberships: members,
+      extra: (path, method, body) => {
+        if (path === '/api/plans') return { body: PLANS }
+        if (path === '/api/people/felipe/welcome') return { body: { to: null, guardian: null, last: null } }
+        if (path === '/api/memberships' && method === 'GET') return { body: members }
+        if (path === '/api/memberships' && method === 'POST') {
+          const { plan_id } = body as { plan_id: string }
+          const started: Membership = { ...MONTHLY, id: 'm-new', plan_id, plan_name: 'Semestral', plan_kind: 'prepaid', anchor_day: null }
+          members = [started, lapsed]
+          return { status: 201, body: started }
+        }
+        // The new plan owes nothing yet; the lapsed one keeps October (`LEDGER`).
+        if (path === '/api/ledger/memberships/m-new') {
+          return { body: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [], periods: [], refundable_payments: [] } }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    // Lapsed and owing: on its own card, nothing earlier to show apart.
+    expect(await within(await money()).findByText(copy.pendingMonth('octubre'))).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: copy.earlierDebt })).not.toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    const form = screen.getByRole('form', { name: assign.title })
+    await userEvent.selectOptions(await within(form).findByLabelText(assign.plan), 'plan-six')
+    await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
+
+    const debt = await screen.findByRole('region', { name: copy.earlierDebt })
+    expect(within(debt).getByText('$45.000')).toBeInTheDocument()
+    expect(within(debt).getByText(copy.earlierDebtLine('Mensual adultos', copy.pendingMonth('octubre')))).toBeInTheDocument()
+    expect(within(await money()).getByText(/^Semestral/)).toBeInTheDocument()
+  })
+
+  it('shows no "Deuda anterior" to a coach, or when the earlier plan owes nothing', async () => {
+    const earlier: Membership = { ...MONTHLY, id: 'm-old', status: 'cancelled' }
+    stubApi({
+      role: 'coach',
+      memberships: [MONTHLY, earlier],
+    })
+    renderAt(PATH)
+    await money()
+    expect(screen.queryByRole('region', { name: copy.earlierDebt })).not.toBeInTheDocument()
+  })
+
+  it('shows no "Deuda anterior" when the earlier plan owes nothing', async () => {
+    const earlier: Membership = { ...MONTHLY, id: 'm-old', status: 'cancelled' }
+    const calls = stubApi({
+      memberships: [MONTHLY, earlier],
+      extra: (path) =>
+        path === '/api/ledger/memberships/m-old' ? { body: { ...LEDGER, open_periods: [], owed_clp: 0 } } : undefined,
+    })
+    renderAt(PATH)
+    await money()
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/ledger/memberships/m-old')).toBe(true))
+    expect(screen.queryByRole('region', { name: copy.earlierDebt })).not.toBeInTheDocument()
+  })
+
   it('offers "Asignar plan" once the plan was cancelled', async () => {
     planless([{ ...MONTHLY, status: 'cancelled' }])
     renderAt(PATH)
