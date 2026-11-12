@@ -1596,6 +1596,53 @@ describe('the record and the ways out (#157)', () => {
     expect(await screen.findByRole('heading', { name: es.admin.students.title })).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual(['/api/people/felipe'])
   })
+
+  it('goes back to the list it was opened from after eliminar, filters kept (#250)', async () => {
+    stubApi({
+      extra: (path, method) => {
+        if (path === '/api/people/felipe/deletion') return { body: { refused: null } }
+        if (path === '/api/people/felipe' && method === 'DELETE') return { status: 204 }
+        if (path === '/api/people') return { body: { items: [], total: 0 } }
+        return undefined
+      },
+    })
+    const from = '/admin/alumnos?belt=blue&q=Feli'
+    const router = renderAt(from)
+    await waitFor(() => expect(router.state.location.href).toBe(from))
+    await router.navigate({ href: PATH })
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
+    const form = await screen.findByRole('form', { name: copy.removeForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.removeForm.confirm(FELIPE.name)), 'Felipe Díaz')
+    await userEvent.click(within(form).getByRole('button', { name: copy.removeForm.submit }))
+
+    await waitFor(() => expect(router.state.location.href).toBe(from))
+    // Back, not the list again on top of it: no page twice in the history.
+    expect(router.history.location.state.__TSR_index).toBe(0)
+    expect(router.history.length).toBe(2)
+  })
+
+  it('goes to Alumnos in the gone ficha\'s place after eliminar from elsewhere (#250)', async () => {
+    stubApi({
+      extra: (path, method) => {
+        if (path === '/api/people/felipe/deletion') return { body: { refused: null } }
+        if (path === '/api/people/felipe' && method === 'DELETE') return { status: 204 }
+        if (path === '/api/people') return { body: { items: [], total: 0 } }
+        return undefined
+      },
+    })
+    const router = renderAt('/admin')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin'))
+    await router.navigate({ href: PATH })
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
+    const form = await screen.findByRole('form', { name: copy.removeForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.removeForm.confirm(FELIPE.name)), 'Felipe Díaz')
+    await userEvent.click(within(form).getByRole('button', { name: copy.removeForm.submit }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos'))
+    expect(router.history.length).toBe(2)
+  })
 })
 
 describe('Acceso (#246)', () => {

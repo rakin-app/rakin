@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
+import { getRouteApi } from '@tanstack/react-router'
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { blockKindsQuery, type BlockKind } from '../api/blockKinds'
 import { ApiError } from '../api/client'
@@ -21,7 +21,7 @@ import {
 } from '../api/sessionBlocks'
 import { sessionQuery, useGymTimeZone, type ClassSession } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
-import { BackLink, useBack } from '../components/BackLink'
+import { BackLink, useLeaveTo } from '../components/BackLink'
 import { Input, Select } from '../components/Field'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, CloseIcon } from '../components/icons'
 import { clockTime } from '../format'
@@ -612,7 +612,7 @@ function Running({
   const [leaving, setLeaving] = useState(false)
   // When the class was last seen, if it went unseen too long and waits for the coach.
   const [unseenAt, setUnseenAt] = useState<number | null>(null)
-  const leave = useLeaveTimer(session.id)
+  const leave = useLeaveTo(`/admin/clases/${session.id}`)
   const timeZone = useGymTimeZone()
   const wakeLock = useWakeLock(true)
   const sound = useSoundState()
@@ -853,25 +853,11 @@ function useDelayed(on: boolean): boolean {
   return on && shown
 }
 
-/**
- * Out of the timer to its class: back to the class when it opened the timer, else in
- * the timer's place, so back from the class does not reopen it (#250).
- */
-function useLeaveTimer(sessionId: string) {
-  const path = `/admin/clases/${sessionId}`
-  const back = useBack(path, copy.back)
-  const navigate = useNavigate()
-  return () => {
-    if (back.previous?.pathname === path) back.go()
-    else void navigate({ to: '/admin/clases/$sessionId', params: { sessionId }, replace: true })
-  }
-}
-
 // --- after the class: what ran -------------------------------------------------------
 
 function Finished({ session, run }: { session: ClassSession; run: RunState }) {
   const words = copy.done
-  const leave = useLeaveTimer(session.id)
+  const leave = useLeaveTo(`/admin/clases/${session.id}`)
   return (
     <Shell sessionId={session.id} title={session.class_type_name}>
       <section className="classes__section" aria-labelledby="timer-done">

@@ -109,7 +109,7 @@ export function Settings() {
             {(back) => (
               <>
                 <ChevronLeftIcon />
-                {back.previous ? (back.place ?? t.common.back) : copy.back}
+                {back.previous ? (back.name ?? t.common.back) : copy.back}
               </>
             )}
           </BackLink>

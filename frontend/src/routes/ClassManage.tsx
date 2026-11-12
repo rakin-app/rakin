@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { sessionPlanQuery } from '../api/sessionBlocks'
@@ -15,6 +14,7 @@ import {
 } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { Button } from '../components/Button'
+import { useLeaveTo } from '../components/BackLink'
 import { Input, Select } from '../components/Field'
 import { clockTime, isoDay, zonedInstant } from '../format'
 import { t } from '../i18n/es'
@@ -288,7 +288,8 @@ type Asking = 'cancel' | 'delete' | null
 export function ClassActions({ session }: { session: ClassSession }) {
   const words = copy.manage
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
+  // To Clases, and not back to the gone class (#250).
+  const leave = useLeaveTo('/admin/clases')
   const plan = useQuery(sessionPlanQuery(session.id))
   const [asking, setAsking] = useState<Asking>(null)
 
@@ -310,8 +311,7 @@ export function ClassActions({ session }: { session: ClassSession }) {
       // Credits given back, classes and time on the mat changed for whoever was marked.
       void queryClient.invalidateQueries({ queryKey: ['attendance'] })
       void queryClient.invalidateQueries({ queryKey: ['time'] })
-      // In the gone class's place, so back does not return to it (#250).
-      await navigate({ to: '/admin/clases', replace: true })
+      leave()
     },
   })
   const failed = status.isError || remove.isError
