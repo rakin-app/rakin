@@ -461,6 +461,8 @@ def test_my_role_names_who_is_signed_in_and_the_gym(
         # The gym's theme, which a coach's screens wear too (#199).
         "theme": "bosque",
         "gym_logo": None,
+        # No activity grades in a new gym (#245).
+        "uses_grades": False,
     }
 
 

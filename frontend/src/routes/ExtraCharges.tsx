@@ -11,6 +11,7 @@ import {
   saveGroup,
   type ExtraChargeSummary,
 } from '../api/extraCharges'
+import { useGrades } from '../api/activities'
 import { gradingSchemeQuery } from '../api/grading'
 import type { PersonRef } from '../api/ledger'
 import { myRoleQuery, readsLedger } from '../api/me'
@@ -357,9 +358,11 @@ function FilterAdd({ onAdd }: { onAdd: (people: PersonRef[]) => void }) {
   const plans = useQuery(plansQuery)
   const [program, setProgram] = useState('')
   const [plan, setPlan] = useState('')
-  // A gym that does not grade (#226) gets no belt filter.
-  const scheme = useQuery(gradingSchemeQuery())
-  const ranked = hasRanks(scheme.data) ? scheme.data : null
+  // A gym that does not grade (#226), or none of whose activities does (#245), gets no
+  // belt filter.
+  const grades = useGrades()
+  const scheme = useQuery({ ...gradingSchemeQuery(), enabled: grades })
+  const ranked = grades && hasRanks(scheme.data) ? scheme.data : null
   const [rank, setRank] = useState<RankChoice | null>(null)
   const chosen = program !== '' || plan !== '' || rank !== null
   const found = useQuery({

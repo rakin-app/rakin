@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.activities import gym_uses_grades
 from app.api.attendance import attended
 from app.api.class_tags import month_of, tag_hours, tags_of_session, year_of
 from app.api.extra_charges import open_lines
@@ -180,7 +181,8 @@ async def my_role(
     """The signed-in person's staff role in this gym, or none for a member: what the
     admin screens show, such as the pending-proofs badge only to who reads the ledger,
     and who they are, such as the class timer to the session's coach, Ajustes → Cuenta
-    and the gym's name in the sidebar and the page titles."""
+    and the gym's name in the sidebar and the page titles; and whether the gym grades,
+    for the belts and ranks every screen shows only then (#245)."""
     who = (await session.execute(text(WHO), {"me": tenant.person_id, "gym": tenant.gym_id})).one()
     return MyRole(
         role=await role_in_gym(session, tenant),
@@ -191,6 +193,7 @@ async def my_role(
         student_page=who.student_page,
         theme=who.theme,
         gym_logo=logo_path(tenant.gym_id, who.logo_version),
+        uses_grades=await gym_uses_grades(session),
     )
 
 

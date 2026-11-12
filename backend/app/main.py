@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api import (
+    activities,
     attendance,
     blobs,
     block_kinds,
@@ -111,6 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(programs.router)
     app.include_router(class_types.router)
     app.include_router(class_tags.router)
+    app.include_router(activities.router)
     app.include_router(sessions.router)
     app.include_router(schedule.router)
     app.include_router(schedule.closed)

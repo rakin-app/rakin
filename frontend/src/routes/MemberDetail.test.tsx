@@ -179,6 +179,8 @@ type Stub = {
   refund?: Answer
   grading?: Grading
   scheme?: GradingScheme
+  // Whether an activity of the gym grades (#245); by default one does.
+  grades?: boolean
   award?: Answer
   // The freeze's answer; by default the membership comes back frozen until the day asked.
   freeze?: Answer
@@ -206,6 +208,7 @@ function stubApi({
   refund,
   grading = GRADING,
   scheme = SCHEME,
+  grades: graded = true,
   award,
   freeze,
   fields = [],
@@ -240,7 +243,7 @@ function stubApi({
     const path = url.pathname
     const answered = extra?.(path, method, calls.at(-1)?.body)
     if (answered) return answered
-    if (path === '/api/me/role') return { body: { role } }
+    if (path === '/api/me/role') return { body: { role, uses_grades: graded } }
     if (path === '/api/sessions') return { body: { date: '2026-11-10', timezone: timeZone, sessions: [] } }
     if (path === '/api/ledger/pending') return { body: { count: 0 } }
     if (path === '/api/people/felipe') return person ?? { body: FELIPE }
@@ -1105,6 +1108,18 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
 
     expect(await screen.findByText(copy.attendance.error)).toBeInTheDocument()
+  })
+
+  it('shows no rank, promotion or log while no activity of the gym grades (#245)', async () => {
+    const calls = stubApi({ grades: false })
+    renderAt(PATH)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Felipe Díaz' })).toBeInTheDocument()
+    await screen.findByRole('region', { name: copy.attendance.title })
+    expect(screen.queryByRole('region', { name: copy.grading.title })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.grading.award })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Azul/)).not.toBeInTheDocument()
+    expect(calls.some((c) => c.path.endsWith('/grades') || c.path === '/api/gym/grading-scheme')).toBe(false)
   })
 
   it('shows the rank since when, and the promotion log newest first', async () => {

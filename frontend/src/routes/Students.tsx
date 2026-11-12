@@ -1,6 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
+import { useGrades } from '../api/activities'
 import { gradingSchemeQuery } from '../api/grading'
 import { myRoleQuery, readsLedger } from '../api/me'
 import {
@@ -119,8 +120,10 @@ export function Students() {
   const plans = useQuery(plansQuery)
   // Likewise programs: a gym that has none yet gets no program filter.
   const programs = useQuery(programsQuery)
-  // A gym that does not grade (#226) gets no belt filter.
-  const scheme = useQuery(gradingSchemeQuery())
+  // A gym that does not grade (#226), or none of whose activities does (#245), gets no
+  // belt filter.
+  const grades = useGrades()
+  const scheme = useQuery({ ...gradingSchemeQuery(), enabled: grades })
   // Importing starts memberships, which only an owner or admin may.
   const role = useQuery(myRoleQuery())
 
@@ -257,7 +260,7 @@ export function Students() {
               </Select>
             </>
           )}
-          {hasRanks(scheme.data) && (
+          {grades && hasRanks(scheme.data) && (
             <>
               <label htmlFor={rankId} className="visually-hidden">
                 {copy.rankLabel}

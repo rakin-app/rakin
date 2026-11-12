@@ -182,6 +182,8 @@ type Stub = {
 }
 
 type Setup = {
+  // What the gym teaches (#245).
+  activities?: number
   bankAccount?: boolean
   plans?: number
   classTypes?: number
@@ -194,7 +196,10 @@ const classType = (i: number) => ({ id: `ct-${i}`, name: `Clase ${i}`, active: t
 const staffer = (i: number) => ({ person_id: `staff-${i}`, name: `Staff ${i}`, role: i === 0 ? 'owner' : 'coach' })
 
 function setupAnswer(path: string, setup: Setup): Answer | null {
-  const { bankAccount = false, plans = 0, classTypes = 0, members = 0, staff = 1 } = setup
+  const { activities = 0, bankAccount = false, plans = 0, classTypes = 0, members = 0, staff = 1 } = setup
+  if (path === '/api/activities') {
+    return { body: Array.from({ length: activities }, (_, i) => ({ id: `a-${i}`, name: `Actividad ${i}` })) }
+  }
   if (path === '/api/gym/settings')
     return { body: { name: 'Meta', bank_account: bankAccount ? { bank: 'Banco', number: '1' } : null } }
   if (path === '/api/plans') return { body: Array.from({ length: plans }, (_, i) => plan(i)) }
@@ -205,7 +210,7 @@ function setupAnswer(path: string, setup: Setup): Answer | null {
 }
 
 // With no setup given, the gym is set up, and the checklist does not show.
-const SET_UP: Setup = { bankAccount: true, plans: 1, classTypes: 1, members: 1, staff: 2 }
+const SET_UP: Setup = { activities: 1, bankAccount: true, plans: 1, classTypes: 1, members: 1, staff: 2 }
 
 function stubApi({
   role = 'owner',
@@ -708,9 +713,11 @@ describe('Configura tu academia', () => {
     renderToday()
 
     const setup = await checklist()
-    expect(within(setup).getByText(copy.setup.progress(0, 5))).toBeInTheDocument()
+    expect(within(setup).getByText(copy.setup.progress(0, 6))).toBeInTheDocument()
     const items = within(setup).getAllByRole('listitem')
+    // What the gym teaches first, before anything that could speak of belts (#245).
     expect(items.map((item) => item.querySelector('.today__name')?.firstChild?.textContent)).toEqual([
+      steps.activities.title,
       steps.gym.title,
       steps.plans.title,
       steps.classes.title,
@@ -718,6 +725,7 @@ describe('Configura tu academia', () => {
       steps.staff.title,
     ])
     const href = (name: string) => within(setup).getByRole('link', { name }).getAttribute('href')
+    expect(href(steps.activities.link)).toBe('/admin/ajustes/gimnasio#actividades')
     expect(href(steps.gym.link)).toBe('/admin/ajustes/gimnasio')
     expect(href(steps.plans.link)).toBe('/admin/ajustes/planes')
     expect(href(steps.classes.link)).toBe('/admin/ajustes/programas')
@@ -739,12 +747,13 @@ describe('Configura tu academia', () => {
   })
 
   it('ticks each step once it is done', async () => {
-    stubApi({ setup: { bankAccount: true, plans: 1, staff: 2 } })
+    stubApi({ setup: { activities: 2, bankAccount: true, plans: 1, staff: 2 } })
     renderToday()
 
     const setup = await checklist()
-    expect(within(setup).getByText(copy.setup.progress(3, 5))).toBeInTheDocument()
+    expect(within(setup).getByText(copy.setup.progress(4, 6))).toBeInTheDocument()
     const state = (title: string) => within(setup).getByText(title).textContent
+    expect(state(steps.activities.title)).toContain(copy.setup.state(true))
     expect(state(steps.gym.title)).toContain(copy.setup.state(true))
     expect(state(steps.plans.title)).toContain(copy.setup.state(true))
     expect(state(steps.classes.title)).toContain(copy.setup.state(false))
@@ -767,7 +776,7 @@ describe('Configura tu academia', () => {
     expect(screen.queryByRole('region', { name: copy.setup.title })).not.toBeInTheDocument()
     // The two answers that decide it were enough: nothing else was asked for it (Hoy's
     // payment form asks for the plans on its own).
-    expect(calls.some((c) => ['/api/gym/settings', '/api/staff'].includes(c.path))).toBe(false)
+    expect(calls.some((c) => ['/api/gym/settings', '/api/staff', '/api/activities'].includes(c.path))).toBe(false)
   })
 
   it('asks nothing for a gym this browser already knows is set up', async () => {

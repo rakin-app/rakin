@@ -10,6 +10,9 @@ A class type is a class or an open mat (`kind`, migration 0028), and `counts_as_
 says whether attending one counts towards a student's classes: by default a class does
 and an open mat does not.
 
+A class type may belong to one of the gym's activities (`activity_id`, #245), so a
+multisport gym's "Fundamentos" can be one activity's; with none it works the same.
+
 Any staff role may read them, coaches included, since the coach starts a session of
 one; only an owner or admin may create or change one. Members may not use it at all.
 """
@@ -17,6 +20,7 @@ one; only an owner or admin may create or change one. Members may not use it at 
 import uuid
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,12 +36,27 @@ NAME_TAKEN = HTTPException(
 )
 REFUSALS = {"class_type_name_key": NAME_TAKEN}
 
-# Each with its program's name. RLS keeps both tables to the current gym.
+# Each with its program's name and its activity's. RLS keeps the tables to the current gym.
 SELECT_CLASS_TYPE = """
     SELECT c.id, c.name, c.program_id, p.name AS program_name, c.credit_cost, c.kind,
-           c.counts_as_class, c.active, c.created_at
+           c.counts_as_class, c.active, c.activity_id, a.name AS activity_name, c.created_at
     FROM class_type c JOIN program p ON p.id = c.program_id
+    LEFT JOIN gym_activity a ON a.id = c.activity_id
 """
+
+
+async def require_activity(session: AsyncSession, activity_id: uuid.UUID | None) -> None:
+    """A 422 on `activity_id` unless it is none or one of this gym's activities."""
+    if activity_id is None:
+        return
+    found = await session.scalar(
+        text("SELECT id FROM gym_activity WHERE id = :id"), {"id": activity_id}
+    )
+    if found is not None:
+        return
+    raise RequestValidationError(
+        [{"type": "unknown_activity", "msg": "no such activity", "loc": ("body", "activity_id")}]
+    )
 
 
 async def _get(session: AsyncSession, class_type_id: uuid.UUID, *, lock: bool = False) -> ClassType:
@@ -55,12 +74,14 @@ async def _get(session: AsyncSession, class_type_id: uuid.UUID, *, lock: bool = 
 )
 async def create_class_type(body: ClassTypeCreate, session: AdminSession) -> ClassType:
     await require_program(session, body.program_id, "program_id")
+    await require_activity(session, body.activity_id)
     result = await execute_refusing(
         session,
         text(
-            "INSERT INTO class_type (gym_id, program_id, name, credit_cost, kind, counts_as_class)"
+            "INSERT INTO class_type"
+            " (gym_id, program_id, name, credit_cost, kind, counts_as_class, activity_id)"
             " VALUES (current_setting('app.gym_id')::uuid, :program_id, :name, :credit_cost,"
-            " :kind, :counts_as_class) RETURNING id"
+            " :kind, :counts_as_class, :activity_id) RETURNING id"
         ),
         {
             **body.model_dump(),
@@ -108,16 +129,26 @@ async def update_class_type(
     changes = body.model_dump(exclude_unset=True)
     if "program_id" in changes and changes["program_id"] != current.program_id:
         await require_program(session, changes["program_id"], "program_id")
+    if changes.get("activity_id", current.activity_id) != current.activity_id:
+        await require_activity(session, changes["activity_id"])
     if changes.get("kind", current.kind) != current.kind and "counts_as_class" not in changes:
         changes["counts_as_class"] = counts_by_default(changes["kind"])
-    fields = {"name", "program_id", "credit_cost", "kind", "counts_as_class", "active"}
+    fields = {
+        "name",
+        "program_id",
+        "credit_cost",
+        "kind",
+        "counts_as_class",
+        "active",
+        "activity_id",
+    }
     columns = {**current.model_dump(include=fields), **changes}
     await execute_refusing(
         session,
         text(
             "UPDATE class_type SET name = :name, program_id = :program_id,"
             " credit_cost = :credit_cost, kind = :kind, counts_as_class = :counts_as_class,"
-            " active = :active WHERE id = :id"
+            " active = :active, activity_id = :activity_id WHERE id = :id"
         ),
         {**columns, "id": class_type_id},
         REFUSALS,

@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
+import { activitiesQuery } from '../api/activities'
 import { ApiError } from '../api/client'
 import {
   GOAL_METRICS,
@@ -126,9 +128,24 @@ const isStale = (error: Error | null) =>
  * repairs it by re-applying a preset.
  */
 export function GradingSettings() {
-  const scheme = useQuery(gradingSchemeQuery())
-  const presets = useQuery(gradingPresetsQuery)
+  const activities = useQuery(activitiesQuery)
+  const graded = activities.data?.filter((a) => a.uses_grades) ?? []
+  const grades = graded.length > 0
+  const scheme = useQuery({ ...gradingSchemeQuery(), enabled: grades })
+  const presets = useQuery({ ...gradingPresetsQuery, enabled: grades })
 
+  if (activities.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (activities.isError) {
+    return (
+      <LoadFailed
+        error={activities.error}
+        message={copy.activitiesError}
+        retry={() => void activities.refetch()}
+      />
+    )
+  }
+  // No activity grades (#245): nothing here applies until one does.
+  if (!grades) return <GradingOff />
   if (scheme.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
   const stale = isStale(scheme.error)
   if (scheme.isError && !stale) {
@@ -136,6 +153,7 @@ export function GradingSettings() {
   }
   return (
     <GradingEditor
+      shared={graded.length > 1 ? graded.map((a) => a.name) : null}
       initial={scheme.data ?? EMPTY}
       stale={stale}
       presets={presets.data}
@@ -144,12 +162,30 @@ export function GradingSettings() {
   )
 }
 
+/** "Graduación" in a gym where no activity grades: where to turn it on. */
+function GradingOff() {
+  return (
+    <section className="settings__section" aria-label={copy.title}>
+      <SectionHead intro={t.admin.settings.descriptions.grading} />
+      <div className="settings__card">
+        <p className="settings__note">{copy.off}</p>
+        <Link to="/admin/ajustes/gimnasio" hash="actividades" className="settings__link">
+          {copy.turnOn}
+        </Link>
+      </div>
+    </section>
+  )
+}
+
 function GradingEditor({
+  shared,
   initial,
   stale,
   presets,
   presetsFailed,
 }: {
+  // The graded activities' names, when more than one shares the scheme.
+  shared: string[] | null
   initial: GradingScheme
   stale: boolean
   presets: GradingPreset[] | undefined
@@ -210,6 +246,11 @@ function GradingEditor({
   return (
     <section className="settings__section" aria-label={copy.title}>
       <SectionHead intro={t.admin.settings.descriptions.grading} />
+      {shared && (
+        <p className="settings__hint" role="note">
+          {copy.shared(shared)}
+        </p>
+      )}
       {repairing && (
         <p className="settings__error" role="alert">
           {copy.stale}

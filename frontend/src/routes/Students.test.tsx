@@ -65,6 +65,8 @@ function stubApi(
   role?: 'owner' | 'admin' | 'coach',
   // The gym's grading scheme; unanswered, as a gym that does not grade.
   scheme?: GradingScheme,
+  // Whether an activity of the gym grades (#245): by default, when it has a scheme.
+  grades = scheme !== undefined,
 ) {
   const asked: URLSearchParams[] = []
   vi.stubGlobal(
@@ -81,8 +83,8 @@ function stubApi(
         answer = programs
       } else if (url.pathname === '/api/gym/grading-scheme' && scheme) {
         answer = { body: scheme }
-      } else if (url.pathname === '/api/me/role' && role) {
-        answer = { body: { role, person_id: 'me' } }
+      } else if (url.pathname === '/api/me/role' && (role || grades)) {
+        answer = { body: { role: role ?? 'admin', person_id: 'me', uses_grades: grades } }
       } else {
         answer = { status: 404, body: { detail: 'Not Found' } }
       }
@@ -283,6 +285,14 @@ describe('Alumnos', () => {
 
     await screen.findByRole('combobox', { name: copy.planLabel })
     expect(screen.queryByRole('combobox', { name: copy.programLabel })).not.toBeInTheDocument()
+  })
+
+  it('offers no belt filter while no activity of the gym grades, whatever its scheme', async () => {
+    const asked = stubApi(() => page([CAMILA]), undefined, undefined, 'admin', BJJ, false)
+    renderAt('/admin/alumnos')
+    await list()
+    expect(screen.queryByRole('combobox', { name: copy.rankLabel })).not.toBeInTheDocument()
+    expect(asked).toHaveLength(1)
   })
 
   it('filters by belt, exactly or "o superior", adults and kids apart', async () => {

@@ -14,7 +14,7 @@ El ciclo: **alumno → plan → vencimiento → recordatorio → llega la transf
 - **Asistencia en cinco segundos** para los coaches, con registro del tema de la clase
 - **Página del alumno** con enlace mágico, sin clave: cuánto debo, cuándo vence y dónde subo el comprobante
 - **Planes y campos personalizados** configurables por academia, para cualquier deporte sin código propio de ninguno
-- Módulos opcionales que cada academia activa o ignora: **graduación** (grados y cinturones, con plantillas para BJJ, judo / karate y muay thai) y el **cronómetro** de clase del coach, con rondas de sparring. Una academia sin sistema de grados no ve cinturones en ninguna parte
+- Módulos opcionales que cada academia activa o ignora: **graduación** (grados y cinturones, con plantillas para BJJ, judo / karate y muay thai) y el **cronómetro** de clase del coach, con rondas de sparring. Cada academia dice qué actividades enseña, y los cinturones aparecen solo si una de ellas usa grados: una academia sin ninguna no ve cinturones en ninguna parte
 
 No es un CRM, ni un sistema de reservas, ni un procesador de pagos, ni una app nativa. Es una PWA. El correo es el registro oficial y WhatsApp es por donde llegan los recordatorios.
 

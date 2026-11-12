@@ -8,7 +8,7 @@ Rakin (rakin.app; Mapudungun rakin, to count) is an open-source, sport-agnostic 
 
 The core loop is: member → plan → due date → reminder → bank transfer arrives → validated in the ledger → silence. The product never processes money in v1; it tracks, reminds and reconciles transfers the owner already receives.
 
-**It is:** a bookkeeping ledger for monthly fees, an attendance and class log for coaches, a thin student page (what do I owe, when, how to prove I paid), and a configurable plan / custom-field layer so any sport fits. Grading (ranks, belts, stripes) and the class timer's sparring rounds are optional modules a gym turns on or ignores: a gym with no grading scheme sees no belts anywhere.
+**It is:** a bookkeeping ledger for monthly fees, an attendance and class log for coaches, a thin student page (what do I owe, when, how to prove I paid), and a configurable plan / custom-field layer so any sport fits. A gym says what it teaches, one activity or several (BJJ, ballet, piano, climbing); grading (ranks, belts, stripes) and the class timer's sparring rounds are optional modules a gym turns on or ignores: belts show only while one of its activities uses grades, and a gym with none, or no grading scheme, sees no belts anywhere.
 
 **It is not:** a CRM with sales pipelines, a scheduling or booking product, a payment processor, a cross-gym pass marketplace, or a native mobile app. It is a web app (PWA) with email as the system of record and WhatsApp as the reminder channel.
 
@@ -66,7 +66,9 @@ v1 is one gym (the pilot), v2 unlocks when five gyms are running it, v3 only whe
 | Classes | QR self check-in |  | ✓ |  |
 | Classes | curriculum cycles (4–8 week themes) |  | ✓ |  |
 | Classes | capacity and booking |  |  | ✓ |
-| Grading | per-gym grading scheme (ranks, sub-ranks, kids ladder); promotion log | ✓ |  |  |
+| Gym | activities the gym teaches (presets or its own), each saying whether it grades; class types optionally per activity | ✓ |  |  |
+| Grading | per-gym grading scheme (ranks, sub-ranks, kids ladder), shared by its graded activities; promotion log | ✓ |  |  |
+| Grading | a scheme and rank per activity, for a gym that grades in two disciplines |  | ✓ |  |
 | Grading | class-count / time-in-rank goals with "ready for promotion" flag |  | ✓ |  |
 | Retention | inactive 14 / 30 days list with one-tap WhatsApp | ✓ |  |  |
 | Retention | automatic absence / anniversary messages |  | ✓ |  |

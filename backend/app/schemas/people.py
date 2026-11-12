@@ -292,3 +292,6 @@ class MyRole(BaseModel):
     theme: Theme
     # Where the gym's logo's files are (`app.logos.logo_path`); None with no logo (#223).
     gym_logo: str | None = None
+    # Whether any of the gym's activities grades students (#245): every belt and rank
+    # on the gym's screens shows only then.
+    uses_grades: bool = False

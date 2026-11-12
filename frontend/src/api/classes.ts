@@ -31,6 +31,8 @@ export type ClassTypeFields = Partial<{
   credit_cost: number | string
   kind: ClassKind
   counts_as_class: boolean
+  // `null` takes it out of its activity.
+  activity_id: string | null
 }>
 
 export function createClassType(body: ClassTypeFields): Promise<ClassType> {

@@ -8,7 +8,9 @@
 The gym gets what the demo seed's has before anyone trains there (`app.seed.data`):
 its programs and the block kinds every gym is given (0028); a grading scheme only when
 `--grading` names a preset (`app.domain.grading`), since grading is a module a gym turns
-on, not every sport has one: by default it has no grades and shows no belts; and
+on, not every sport has one: by default it has no grades and shows no belts. With a
+preset it also gets one activity (0042), named as the preset is, that uses grades, so
+the belts show; with none, no activity, which its owner picks on first sign-in; and
 its owner, a staff row on the person with that RUT, found or created as the API adds
 anyone (`join_gym`, 0036), or with no RUT someone new keyed by the email. The phone is
 optional, a contact only. Its slug is its host, `<slug>.<BASE_DOMAIN>` (`app.hosts`).
@@ -40,8 +42,14 @@ from app.schemas.people import Email, Name, Phone, Rut
 from app.seed.data import PROGRAMS
 from app.settings import get_settings
 
-# A preset's key, as `--grading` takes it, to the scheme the gym starts with.
+# A preset's key, as `--grading` takes it, to the scheme the gym starts with, and the
+# graded activity it starts with: none for the preset with no ranks.
 SCHEMES = {preset["key"]: preset["scheme"] for preset in PRESETS}
+ACTIVITIES = {
+    preset["key"]: preset["label"]
+    for preset in PRESETS
+    if preset["scheme"]["ranks"] or preset["scheme"]["kids_ladder"]
+}
 
 
 class NewGym(BaseModel):
@@ -103,6 +111,12 @@ async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
             "INSERT INTO program (gym_id, name) VALUES ($1, $2)",
             [(gym_id, name) for name in PROGRAMS.values()],
         )
+        if gym.grading in ACTIVITIES:
+            await conn.execute(
+                "INSERT INTO gym_activity (gym_id, name, uses_grades) VALUES ($1, $2, true)",
+                gym_id,
+                ACTIVITIES[gym.grading],
+            )
         person_id = await conn.fetchval(
             "SELECT person_id FROM join_gym($1, $2, $3, $4, NULL)",
             gym.owner_rut,

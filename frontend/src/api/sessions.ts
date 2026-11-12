@@ -18,6 +18,9 @@ export type ClassType = {
   kind: ClassKind
   counts_as_class: boolean
   active: boolean
+  // The gym activity it belongs to (#245); none is fine.
+  activity_id: string | null
+  activity_name: string | null
   created_at: string
 }
 

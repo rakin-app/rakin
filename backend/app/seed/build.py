@@ -20,6 +20,7 @@ from app.domain.membership import MembershipStatus, PlanKind
 from app.domain.rut import check_digit
 from app.domain.schedule import HORIZON_DAYS, horizon
 from app.seed.data import (
+    ACTIVITY,
     BANK_ACCOUNT,
     CLASS_DAYS,
     CLASS_PLANS,
@@ -83,6 +84,8 @@ class Seed:
     # Who pays for each kid (migration 0010).
     guardian_links: list[Row]
     staff: list[Row]
+    # What it teaches (migration 0042): one activity, graded, with every class type.
+    activities: list[Row]
     # Programs and their class types (migration 0017).
     programs: list[Row]
     class_types: list[Row]
@@ -109,6 +112,7 @@ class Seed:
         yield "gym_person", self.gym_people
         yield "guardian_link", self.guardian_links
         yield "staff", self.staff
+        yield "gym_activity", self.activities
         yield "program", self.programs
         yield "class_type", self.class_types
         yield "plan", self.plans
@@ -594,6 +598,15 @@ def build(as_of: date) -> Seed:
             }
             for s in STAFF
         ],
+        activities=[
+            {
+                "id": seed_id("gym_activity", ACTIVITY),
+                "gym_id": GYM_ID,
+                "name": ACTIVITY,
+                "uses_grades": True,
+                "created_at": local(opened),
+            }
+        ],
         programs=[
             {
                 "id": seed_id("program", key),
@@ -609,6 +622,7 @@ def build(as_of: date) -> Seed:
                 "id": seed_id("class_type", c.key),
                 "gym_id": GYM_ID,
                 "program_id": seed_id("program", c.program),
+                "activity_id": seed_id("gym_activity", ACTIVITY),
                 "name": c.name,
                 "credit_cost": c.credit_cost,
                 "kind": "open_mat" if c.open_mat else "class",

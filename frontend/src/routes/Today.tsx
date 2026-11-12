@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
+import { activitiesQuery } from '../api/activities'
 import { classTypesQuery } from '../api/classes'
 import { ApiError } from '../api/client'
 import { gymSettingsQuery } from '../api/gym'
@@ -311,22 +312,25 @@ function SetupChecklist({ doneKey }: { doneKey: string }) {
   const gym = useQuery({ ...gymSettingsQuery(), staleTime: SETUP_STALE_MS, enabled: shows })
   const plans = useQuery({ ...plansQuery, staleTime: SETUP_STALE_MS, enabled: shows })
   const staff = useQuery({ ...staffQuery, staleTime: SETUP_STALE_MS, enabled: shows })
+  const activities = useQuery({ ...activitiesQuery, staleTime: SETUP_STALE_MS, enabled: shows })
 
   useEffect(() => {
     if (setUp) remember(doneKey)
   }, [setUp, doneKey])
 
   // A failed answer says so, with a retry, rather than leaving a new gym with no checklist.
-  const failed = [members, classTypes, gym, plans, staff].filter((q) => q.isError)
+  const failed = [members, classTypes, gym, plans, staff, activities].filter((q) => q.isError)
   if (failed.length > 0) {
     return <Failed message={copy.setup.error} retry={() => failed.forEach((q) => void q.refetch())} />
   }
   // Nothing until every answer is in: drawing it on a partial answer would show a set-up
   // gym unticked steps for a moment.
-  if (!shows || !gym.data || !plans.data || !staff.data) return null
+  if (!shows || !gym.data || !plans.data || !staff.data || !activities.data) return null
 
   const steps = copy.setup.steps
   const done = {
+    // First what the gym teaches (#245), which decides whether anything speaks of belts.
+    activities: activities.data.length > 0,
     gym: gym.data.bank_account !== null,
     plans: plans.data.some((p) => p.active),
     classes: hasClasses,
@@ -344,6 +348,11 @@ function SetupChecklist({ doneKey }: { doneKey: string }) {
         <span className="today__aside">{copy.setup.progress(count, Object.keys(done).length)}</span>
       </div>
       <ol className="today__steps">
+        <SetupStep done={done.activities} title={steps.activities.title} hint={steps.activities.hint}>
+          <Link to="/admin/ajustes/gimnasio" hash="actividades" className="today__link">
+            {steps.activities.link}
+          </Link>
+        </SetupStep>
         <SetupStep done={done.gym} title={steps.gym.title} hint={steps.gym.hint}>
           <Link to="/admin/ajustes/gimnasio" className="today__link">
             {steps.gym.link}

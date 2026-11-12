@@ -73,11 +73,14 @@ class ClassTypeCreate(BaseModel):
     kind: ClassKind = ClassKind.CLASS
     # `counts_by_default(kind)` unless sent.
     counts_as_class: bool | None = None
+    # The gym activity it belongs to (#245, migration 0042); none is fine.
+    activity_id: uuid.UUID | None = None
 
 
 class ClassTypeUpdate(BaseModel):
     """Only the fields sent change. A class type may move to another program. A new
-    `kind` without `counts_as_class` takes that kind's default."""
+    `kind` without `counts_as_class` takes that kind's default. `activity_id` alone
+    may be null: the class type then belongs to no activity."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -87,6 +90,7 @@ class ClassTypeUpdate(BaseModel):
     kind: ClassKind | None = None
     counts_as_class: bool | None = None
     active: bool | None = None
+    activity_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def _set(self) -> "ClassTypeUpdate":
@@ -103,4 +107,6 @@ class ClassType(BaseModel):
     kind: ClassKind
     counts_as_class: bool
     active: bool
+    activity_id: uuid.UUID | None
+    activity_name: str | None
     created_at: datetime

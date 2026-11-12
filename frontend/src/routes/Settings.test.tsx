@@ -2,6 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Activity } from '../api/activities'
 import type { GymSettings } from '../api/gym'
 import type { Program } from '../api/people'
 import type { Plan } from '../api/plans'
@@ -65,6 +66,18 @@ type Stub = {
   settings?: Answer
   saveSettings?: Answer
   savePlan?: Answer
+  // What the gym teaches (#245); by default BJJ, which grades.
+  activities?: Activity[]
+  // An answer to every change of an activity, in place of the stub's own.
+  changeActivity?: Answer
+}
+
+const BJJ: Activity = {
+  id: 'bjj',
+  name: 'BJJ',
+  uses_grades: true,
+  class_types: 2,
+  created_at: '2026-10-01T12:00:00Z',
 }
 
 const refused = (...errors: [string[], string][]): Answer => ({
@@ -72,9 +85,18 @@ const refused = (...errors: [string[], string][]): Answer => ({
   body: { detail: errors.map(([loc, type]) => ({ loc, type, msg: type })) },
 })
 
-function stubApi({ role = 'owner', studentPage = false, settings, saveSettings, savePlan }: Stub = {}) {
+function stubApi({
+  role = 'owner',
+  studentPage = false,
+  settings,
+  saveSettings,
+  savePlan,
+  activities = [BJJ],
+  changeActivity,
+}: Stub = {}) {
   const calls: Call[] = []
   let current = SETTINGS
+  let taught = activities
   let list: Plan[] = [MONTHLY, TRIAL, OLD_CREDITS]
   vi.stubGlobal(
     'fetch',
@@ -103,8 +125,27 @@ function stubApi({ role = 'owner', studentPage = false, settings, saveSettings, 
           gym_name: 'Academia Sur',
           student_page: studentPage,
           theme: current.theme,
+          uses_grades: taught.some((a) => a.uses_grades),
         },
       }
+    }
+    if (path === '/api/activities' && method === 'GET') return { body: taught }
+    if (path === '/api/activities' && method === 'POST') {
+      if (changeActivity) return changeActivity
+      const made = { id: `a-${taught.length}`, class_types: 0, created_at: '2026-11-12T12:00:00Z', ...body } as Activity
+      taught = [...taught, made].sort((a, b) => a.name.localeCompare(b.name))
+      return { status: 201, body: made }
+    }
+    const activity = taught.find((a) => path === `/api/activities/${a.id}`)
+    if (activity && changeActivity) return changeActivity
+    if (activity && method === 'PATCH') {
+      const changed = { ...activity, ...body } as Activity
+      taught = taught.map((a) => (a.id === activity.id ? changed : a))
+      return { body: changed }
+    }
+    if (activity && method === 'DELETE') {
+      taught = taught.filter((a) => a.id !== activity.id)
+      return { status: 204 }
     }
     if (path === '/api/auth/logout') return { status: 204 }
     if (path === '/api/gym/settings' && method === 'GET') return settings ?? { body: current }
@@ -402,6 +443,157 @@ describe('Ajustes: Gimnasio', () => {
     await userEvent.click(within(settings).getByRole('button', { name: gym.submit }))
 
     expect(await within(settings).findByRole('alert')).toHaveTextContent(gym.failed)
+  })
+})
+
+const activities = gym.activities
+
+describe('Ajustes: Gimnasio, actividades', () => {
+  // Once the gym's activities are in, and the way to add one under them.
+  const panel = async () => {
+    const group = await screen.findByRole('group', { name: activities.title })
+    await within(group).findByRole('combobox', { name: activities.add })
+    return group
+  }
+  const sectionLinks = async () =>
+    within(await screen.findByRole('navigation', { name: copy.sectionsLabel }))
+      .getAllByRole('link')
+      .map((l) => l.getAttribute('href'))
+
+  it('lists what the gym teaches, with whether each grades', async () => {
+    stubApi({ activities: [BJJ, { ...BJJ, id: 'ballet', name: 'Ballet', uses_grades: false, class_types: 0 }] })
+    renderAt('/admin/ajustes/gimnasio')
+
+    const list = within(await panel()).getAllByRole('listitem')
+    expect(list.map((item) => within(item).getByRole('checkbox', { name: activities.usesGrades }))).toHaveLength(2)
+    expect(list[0]).toHaveTextContent('BJJ')
+    expect(list[0]).toHaveTextContent(activities.classTypes(2))
+    expect(within(list[0]!).getByRole('checkbox')).toBeChecked()
+    expect(within(list[1]!).getByRole('checkbox')).not.toBeChecked()
+  })
+
+  it('says so when the gym has none yet', async () => {
+    stubApi({ activities: [] })
+    renderAt('/admin/ajustes/gimnasio')
+    expect(await within(await panel()).findByText(activities.none)).toBeInTheDocument()
+  })
+
+  it('adds a preset with its own "Usa grados", or another by name, saved on their own', async () => {
+    const calls = stubApi({ activities: [] })
+    renderAt('/admin/ajustes/gimnasio')
+    const group = await panel()
+
+    const adding = within(group).getByRole('group', { name: activities.add })
+    await userEvent.selectOptions(within(group).getByRole('combobox', { name: activities.add }), 'Judo')
+    expect(within(adding).getByRole('checkbox', { name: activities.usesGrades })).toBeChecked()
+    await userEvent.click(within(group).getByRole('button', { name: activities.addSubmit }))
+    expect(await within(group).findByText(activities.added('Judo'))).toBeInTheDocument()
+
+    await userEvent.selectOptions(within(group).getByRole('combobox', { name: activities.add }), 'Piano')
+    expect(within(adding).getByRole('checkbox', { name: activities.usesGrades })).not.toBeChecked()
+    await userEvent.click(within(group).getByRole('button', { name: activities.addSubmit }))
+    await within(group).findByText(activities.added('Piano'))
+
+    await userEvent.selectOptions(within(group).getByRole('combobox', { name: activities.add }), activities.other)
+    await userEvent.type(within(group).getByRole('textbox', { name: activities.name }), 'Parkour{Enter}')
+    await within(group).findByText(activities.added('Parkour'))
+
+    expect(calls.filter((c) => c.method === 'POST' && c.path === '/api/activities').map((c) => c.body)).toEqual([
+      { name: 'Judo', uses_grades: true },
+      { name: 'Piano', uses_grades: false },
+      { name: 'Parkour', uses_grades: false },
+    ])
+    // Enter added the activity; it did not save the Gimnasio form.
+    expect(calls.some((c) => c.method === 'PATCH' && c.path === '/api/gym/settings')).toBe(false)
+    // A preset added is offered no more.
+    const offered = within(within(group).getByRole('combobox', { name: activities.add })).getAllByRole('option')
+    expect(offered.map((o) => o.textContent)).not.toContain('Judo')
+  })
+
+  it('says a name is taken', async () => {
+    stubApi({ activities: [], changeActivity: { status: 409, body: { detail: 'taken' } } })
+    renderAt('/admin/ajustes/gimnasio')
+    const group = await panel()
+    await userEvent.selectOptions(within(group).getByRole('combobox', { name: activities.add }), activities.other)
+    await userEvent.type(within(group).getByRole('textbox', { name: activities.name }), 'bjj')
+    await userEvent.click(within(group).getByRole('button', { name: activities.addSubmit }))
+    expect(await within(group).findByText(activities.taken)).toBeInTheDocument()
+  })
+
+  it('turns grades on and off, renames and removes, and Graduación follows', async () => {
+    // On a desktop, where the sections are tabs over Gimnasio.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({ matches: true, media: query, addEventListener: () => {}, removeEventListener: () => {} })),
+    )
+    const calls = stubApi()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderAt('/admin/ajustes/gimnasio')
+    const group = await panel()
+
+    await userEvent.click(within(group).getByRole('checkbox', { name: activities.usesGrades }))
+    expect(await within(group).findByText(activities.gradesOff('BJJ'))).toBeInTheDocument()
+    await waitFor(async () => expect(await sectionLinks()).not.toContain('/admin/ajustes/graduacion'))
+
+    await userEvent.click(within(group).getByRole('checkbox', { name: activities.usesGrades }))
+    await within(group).findByText(activities.gradesOn('BJJ'))
+    await waitFor(async () => expect(await sectionLinks()).toContain('/admin/ajustes/graduacion'))
+
+    await userEvent.click(within(group).getByRole('button', { name: activities.rename }))
+    const name = within(group).getByRole('textbox', { name: activities.renameLabel('BJJ') })
+    await userEvent.clear(name)
+    await userEvent.type(name, 'Jiu-jitsu{Enter}')
+    await within(group).findByText(activities.renamed('Jiu-jitsu'))
+
+    await userEvent.click(within(group).getByRole('button', { name: activities.removeLabel('Jiu-jitsu') }))
+    await within(group).findByText(activities.removed('Jiu-jitsu'))
+    expect(window.confirm).toHaveBeenCalledWith(activities.removeConfirm('Jiu-jitsu', 2))
+    expect(within(group).getByText(activities.none)).toBeInTheDocument()
+
+    expect(calls.filter((c) => c.path === '/api/activities/bjj').map((c) => [c.method, c.body])).toEqual([
+      ['PATCH', { uses_grades: false }],
+      ['PATCH', { uses_grades: true }],
+      ['PATCH', { name: 'Jiu-jitsu' }],
+      ['DELETE', undefined],
+    ])
+    expect(calls.some((c) => c.method === 'PATCH' && c.path === '/api/gym/settings')).toBe(false)
+  })
+
+  it('keeps an activity when the removal is not confirmed', async () => {
+    const calls = stubApi()
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderAt('/admin/ajustes/gimnasio')
+    await userEvent.click(within(await panel()).getByRole('button', { name: activities.removeLabel('BJJ') }))
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
+  })
+
+  it('says so when a change fails', async () => {
+    stubApi({ changeActivity: { status: 500, body: {} } })
+    renderAt('/admin/ajustes/gimnasio')
+    const group = await panel()
+    await userEvent.click(within(group).getByRole('checkbox', { name: activities.usesGrades }))
+    expect(await within(group).findByText(activities.failed)).toBeInTheDocument()
+  })
+})
+
+describe('Ajustes: Graduación, with no activity that grades', () => {
+  it('is not among the sections, on a phone or a desktop', async () => {
+    stubApi({ activities: [{ ...BJJ, uses_grades: false }] })
+    renderAt('/admin/ajustes')
+    const sections = await screen.findByRole('navigation', { name: copy.sectionsLabel })
+    await waitFor(() => expect(within(sections).getAllByRole('link')).toHaveLength(10))
+    expect(within(sections).queryByRole('link', { name: new RegExp(copy.sections.grading) })).not.toBeInTheDocument()
+  })
+
+  it('says where to turn grades on, and asks nothing of the scheme', async () => {
+    const calls = stubApi({ activities: [] })
+    renderAt('/admin/ajustes/graduacion')
+    expect(await screen.findByText(copy.grading.off)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: copy.grading.turnOn })).toHaveAttribute(
+      'href',
+      '/admin/ajustes/gimnasio#actividades',
+    )
+    expect(calls.some((c) => c.path.startsWith('/api/gym/grading-scheme'))).toBe(false)
   })
 })
 

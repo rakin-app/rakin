@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
+import { activitiesQuery } from '../api/activities'
 import { classTypesQuery, createClassType, createProgram, updateClassType, updateProgram } from '../api/classes'
 import { ApiError } from '../api/client'
 import { programsQuery, type Program } from '../api/people'
@@ -273,9 +274,11 @@ function ProgramForm({
   )
 }
 
-/** A class type's line: an open mat says so, then what it costs a pack, and if it does not count. */
+/** A class type's line: its activity, if any; an open mat says so, then what it costs a
+ * pack, and if it does not count. */
 function classTypeSummary(classType: ClassType): string {
   return [
+    classType.activity_name,
     classType.kind === 'open_mat' && copy.openMat,
     copy.credits(classType.credit_cost),
     !classType.counts_as_class && copy.notCounted,
@@ -316,9 +319,18 @@ type ClassTypeDrafts = {
   credit_cost: string
   kind: ClassKind
   counts_as_class: boolean
+  // The activity's id; '' for none (#245).
+  activity_id: string
 }
 
-const CLASS_TYPE_FIELDS = ['name', 'program_id', 'credit_cost', 'kind', 'counts_as_class'] as const
+const CLASS_TYPE_FIELDS = ['name', 'program_id', 'credit_cost', 'kind', 'counts_as_class', 'activity_id'] as const
+
+/** A draft as sent: the credit cost as a number, and no activity as `null`. */
+function sent(key: keyof ClassTypeDrafts, drafts: ClassTypeDrafts): unknown {
+  if (key === 'credit_cost') return integerOf(drafts.credit_cost)
+  if (key === 'activity_id') return drafts.activity_id || null
+  return drafts[key]
+}
 
 function ClassTypeForm({
   classType,
@@ -347,13 +359,15 @@ function ClassTypeForm({
     credit_cost: String(classType?.credit_cost ?? 1),
     kind: classType?.kind ?? 'class',
     counts_as_class: classType?.counts_as_class ?? true,
+    activity_id: classType?.activity_id ?? '',
   }))
+  const activities = useQuery(activitiesQuery)
   const [drafts, setDrafts] = useState(initial)
   const set = (field: keyof ClassTypeDrafts, value: string | boolean) => setDrafts({ ...drafts, [field]: value })
 
   // An edit sends only what changed, so a field someone else edited meanwhile is left as they left it.
   const fields = (keys: readonly (keyof ClassTypeDrafts)[]) =>
-    Object.fromEntries(keys.map((key) => [key, key === 'credit_cost' ? integerOf(drafts[key]) : drafts[key]]))
+    Object.fromEntries(keys.map((key) => [key, sent(key, drafts)]))
   const changed = CLASS_TYPE_FIELDS.filter((k) => drafts[k] !== initial[k])
 
   const save = useSubmit({
@@ -444,6 +458,24 @@ function ClassTypeForm({
           </Select>
         )}
       </Field>
+      {/* Offered once the gym has activities, or the class type already has one. */}
+      {((activities.data?.length ?? 0) > 0 || initial.activity_id !== '') && (
+        <Field label={form.activity} hint={form.activityHint}>
+          {(props) => (
+            <Select {...props} value={drafts.activity_id} onChange={(e) => set('activity_id', e.target.value)}>
+              <option value="">{form.noActivity}</option>
+              {activities.data?.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+              {initial.activity_id !== '' && !activities.data?.some((a) => a.id === initial.activity_id) && (
+                <option value={initial.activity_id}>{classType?.activity_name}</option>
+              )}
+            </Select>
+          )}
+        </Field>
+      )}
       <div className="settings__field">
         <label className="settings__check">
           <input

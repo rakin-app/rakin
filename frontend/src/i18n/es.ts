@@ -181,6 +181,11 @@ export const es = {
         // After a step's title, for a screen reader: the tick says it to the eye.
         state: (done: boolean) => (done ? ' (listo)' : ' (pendiente)'),
         steps: {
+          activities: {
+            title: 'Qué enseña tu academia',
+            hint: 'Una o varias actividades, y si usan grados.',
+            link: 'Elegir actividades',
+          },
           gym: {
             title: 'Datos de la academia y cuenta bancaria',
             hint: 'Dónde te transfieren tus alumnos.',
@@ -940,6 +945,38 @@ export const es = {
         themePreview: (name: string, saved: string) => `Así se ve ${name}. Guarda para dejarlo, o cancela para volver a ${saved}.`,
         themeCancel: 'Cancelar',
         themeSample: { collected: 'Cobrado', figure: '$2.115.000', paid: 'Pagado', overdue: 'Vencido', action: 'Registrar' },
+        activities: {
+          title: 'Actividades',
+          hint: 'Lo que enseña tu academia: una o varias. Los grados (cinturones, niveles) aparecen en la app solo si una actividad los usa.',
+          none: 'Todavía no hay actividades.',
+          usesGrades: 'Usa grados (cinturones, niveles)',
+          classTypes: (n: number) => (n === 1 ? '1 tipo de clase' : `${n} tipos de clase`),
+          add: 'Agregar actividad',
+          pick: 'Elige…',
+          other: 'Otra',
+          name: 'Nombre de la actividad',
+          adding: 'Agregando…',
+          addSubmit: 'Agregar',
+          rename: 'Renombrar',
+          renameLabel: (name: string) => `Nuevo nombre para ${name}`,
+          save: 'Guardar nombre',
+          cancel: 'Cancelar',
+          remove: 'Quitar',
+          removeLabel: (name: string) => `Quitar ${name}`,
+          removeConfirm: (name: string, classTypes: number) =>
+            classTypes > 0
+              ? `¿Quitar ${name}? Sus tipos de clase quedan, sin actividad.`
+              : `¿Quitar ${name}?`,
+          added: (name: string) => `${name} agregada.`,
+          removed: (name: string) => `${name} quitada.`,
+          renamed: (name: string) => `Ahora se llama ${name}.`,
+          gradesOn: (name: string) => `${name} usa grados.`,
+          gradesOff: (name: string) => `${name} no usa grados.`,
+          taken: 'Ya hay una actividad con ese nombre.',
+          required: 'Escribe el nombre.',
+          failed: 'No pudimos guardar el cambio. Inténtalo de nuevo.',
+          error: 'No pudimos cargar las actividades.',
+        },
         logo: {
           title: 'Logo',
           hint: 'Se muestra en un círculo junto al nombre del gimnasio: en la app, la página del alumno, la entrada, la inscripción y los correos. PNG, JPEG o WebP, de hasta 5 MB.',
@@ -1113,7 +1150,10 @@ export const es = {
           kinds: { class: 'Clase', open_mat: 'Open mat' },
           kindHint: 'Un open mat son solo rounds de sparring, sin bloques de técnica.',
           countsAsClass: 'Cuenta como clase',
-          countsAsClassHint: 'Si asistir suma a las clases del alumno y a su meta de graduación.',
+          countsAsClassHint: 'Si asistir suma a las clases del alumno, y a su meta de graduación si la academia usa grados.',
+          activity: 'Actividad',
+          activityHint: 'Opcional: a qué actividad de la academia pertenece esta clase.',
+          noActivity: 'Ninguna',
         },
         cancel: 'Cancelar',
         submit: 'Guardar',
@@ -1370,6 +1410,13 @@ export const es = {
       grading: {
         title: 'Graduación',
         error: 'No pudimos cargar el esquema de graduación.',
+        // With no activity that grades (#245): the screen says where to turn it on.
+        off: 'Ninguna actividad de tu academia usa grados, así que los cinturones y niveles no aparecen en la app.',
+        turnOn: 'Activa «Usa grados» en una actividad',
+        activitiesError: 'No pudimos revisar las actividades de tu academia.',
+        // One scheme for every activity that grades, for now.
+        shared: (names: string[]) =>
+          `Este esquema es el mismo para ${names.slice(0, -1).join(', ')} y ${names.at(-1)}: cada alumno tiene un solo grado.`,
         stale: 'El esquema guardado ya no es válido. Vuelve a aplicar un preset para repararlo y guarda.',
         presetsError: 'No pudimos cargar los presets.',
         start: 'Punto de partida',

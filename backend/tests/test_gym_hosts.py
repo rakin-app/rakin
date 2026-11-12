@@ -290,7 +290,15 @@ def counts(db: Database, gym_id: uuid.UUID) -> dict[str, int]:
     async def query(conn: asyncpg.Connection) -> dict[str, int]:
         return {
             table: await conn.fetchval(f"SELECT count(*) FROM {table} WHERE gym_id = $1", gym_id)
-            for table in ("program", "block_kind", "staff", "gym_person", "membership", "plan")
+            for table in (
+                "program",
+                "block_kind",
+                "staff",
+                "gym_person",
+                "membership",
+                "plan",
+                "gym_activity",
+            )
         }
 
     return dict(run(db.admin_url, query))
@@ -305,7 +313,15 @@ def test_create_makes_an_empty_gym_with_its_owner(db: Database) -> None:
     assert created.created
     made = counts(db, created.gym_id)
     assert made.pop("block_kind") > 0
-    assert made == {"program": 3, "staff": 1, "gym_person": 1, "membership": 0, "plan": 0}
+    assert made == {
+        "program": 3,
+        "staff": 1,
+        "gym_person": 1,
+        "membership": 0,
+        "plan": 0,
+        # What it teaches is its owner's to pick (#245).
+        "gym_activity": 0,
+    }
 
     async def query(conn: asyncpg.Connection) -> Any:
         return await conn.fetchrow(
@@ -338,6 +354,14 @@ def test_create_with_a_grading_preset_starts_the_gym_on_it(db: Database) -> None
         return await conn.fetchval("SELECT settings FROM gym WHERE id = $1", created.gym_id)
 
     assert json.loads(run(db.admin_url, query))["grading"] == GRADING
+
+    async def activities(conn: asyncpg.Connection) -> Any:
+        return await conn.fetch(
+            "SELECT name, uses_grades FROM gym_activity WHERE gym_id = $1", created.gym_id
+        )
+
+    # An activity that grades, named as the preset is, so its belts show (#245).
+    assert [tuple(r) for r in run(db.admin_url, activities)] == [("Jiu-jitsu brasileño", True)]
 
 
 @pytest.mark.postgres
