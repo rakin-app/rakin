@@ -2,8 +2,13 @@
 {% block title %}Te damos la bienvenida a {{ gym }}{% endblock %}
 {% block body %}
 <p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+{% if plan_name %}
 <p style="margin:0 0 16px;">Te damos la bienvenida a {{ gym }}. {% if dependent_name %}La inscripción de {{ dependent_name }}{% else %}Tu inscripción{% endif %} en el plan <strong>{{ plan_name }}</strong> quedó lista.</p>
 <p style="margin:0 0 16px;">Cómo pagar: {% if bank_account %}transfiere a esta cuenta y sube el comprobante desde tu página.{% else %}transfiere y sube el comprobante desde tu página, donde están los datos de la cuenta.{% endif %}</p>
 {% include "_bank_account.html" %}
 <p style="margin:0;">Te enviaremos el detalle de cada pago 7 días antes de su vencimiento, y te avisaremos cuando recibamos tu comprobante y cuando el pago quede validado.</p>
+{% else %}
+<p style="margin:0 0 16px;">Te damos la bienvenida a {{ gym }}. {% if dependent_name %}{{ dependent_name }} ya está{% else %}Ya estás{% endif %} en su lista de alumnos.</p>
+<p style="margin:0;">En tu página verás {% if dependent_name %}sus clases y su avance{% else %}tus clases y tu avance{% endif %}. Para volver a entrar más adelante, pide un enlace nuevo con este correo.</p>
+{% endif %}
 {% endblock %}

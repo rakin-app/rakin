@@ -4,6 +4,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { customFieldsQuery } from '../api/customFields'
 import { familyConflict, type PersonRef } from '../api/family'
+import { personQuery } from '../api/member'
 import { duplicateOf, enrol, type Enrolment, type GuardianChoice } from '../api/people'
 import { useGymToday } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
@@ -67,7 +68,8 @@ type Guardian =
 /**
  * "Nuevo alumno" (#157): a member added by hand, as the import adds one. Their record,
  * a guardian when they are a minor, the gym's custom fields and, if picked, a plan from
- * a day, with the welcome if asked. Saved all at once; then their ficha opens.
+ * a day, and the welcome, ticked whenever there is an email to send it to (#246). Saved
+ * all at once; then their ficha opens, and says whether the welcome went.
  *
  * Someone is their RUT, or their email when they have none (#165); a kid with a guardian
  * may have neither. The phone is how the gym reaches them on WhatsApp: required, unless
@@ -86,7 +88,8 @@ export function NewMember() {
   const [guardian, setGuardian] = useState<Guardian>({ kind: 'none' })
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [plan, setPlan] = useState<PlanChoice>({ plan_id: '', started_on: '' })
-  const [welcome, setWelcome] = useState(false)
+  // Ticked by default (#246): whoever has an email gets their sign-in link.
+  const [welcome, setWelcome] = useState(true)
   const [checked, setChecked] = useState(false)
   const ids = {
     first: useId(),
@@ -104,11 +107,22 @@ export function NewMember() {
     gNoWhatsapp: useId(),
     gEmail: useId(),
     welcome: useId(),
+    welcomeHint: useId(),
     fields: useId(),
   }
 
   const minor = person.dob !== '' && isMinor(person.dob, today)
   const hasGuardian = guardian.kind !== 'none'
+  // The welcome goes to whoever the gym writes to: the guardian, when there is one.
+  const picked = guardian.kind === 'existing' ? guardian.picked : null
+  const pickedRecord = useQuery({ ...personQuery(picked?.id ?? ''), enabled: picked !== null })
+  const mailTo =
+    guardian.kind === 'none'
+      ? person.email.trim()
+      : guardian.kind === 'new'
+        ? guardian.email.trim()
+        : (pickedRecord.data?.email ?? '')
+  const canWelcome = mailTo !== ''
   const problems = {
     firstName: person.firstName.trim() === '',
     // Who they are; a guardian's dependent may have neither.
@@ -128,9 +142,14 @@ export function NewMember() {
   const save = useSubmit({
     offline: 'refuse',
     mutationFn: (body: Enrolment) => enrol(body),
-    onSuccess: async (created) => {
+    onSuccess: async (created, body) => {
       await queryClient.invalidateQueries({ queryKey: ['people'] })
-      void navigate({ to: '/admin/alumnos/$personId', params: { personId: created.id } })
+      // The welcome goes after the answer: the ficha waits for it to say how it went.
+      void navigate({
+        to: '/admin/alumnos/$personId',
+        params: { personId: created.id },
+        state: body.send_welcome ? { welcomeSince: Date.now() } : undefined,
+      })
     },
   })
 
@@ -165,7 +184,7 @@ export function NewMember() {
       guardian: chosen,
       fields: Object.keys(values).length > 0 ? values : undefined,
       membership,
-      send_welcome: membership !== undefined && welcome,
+      send_welcome: canWelcome && welcome,
     })
   }
 
@@ -434,13 +453,22 @@ export function NewMember() {
             <input
               id={ids.welcome}
               type="checkbox"
-              checked={welcome && plan.plan_id !== ''}
-              disabled={plan.plan_id === ''}
+              checked={welcome && canWelcome}
+              disabled={!canWelcome}
+              aria-describedby={ids.welcomeHint}
               onChange={(e) => setWelcome(e.target.checked)}
             />
             {copy.welcome}
           </label>
-          <p className="member__detail">{copy.welcomeHint}</p>
+          <p id={ids.welcomeHint} className="member__detail">
+            {!canWelcome
+              ? hasGuardian
+                ? copy.welcomeHint.noGuardianEmail
+                : copy.welcomeHint.noEmail
+              : plan.plan_id === ''
+                ? copy.welcomeHint.noPlan
+                : copy.welcomeHint.plan}
+          </p>
         </section>
 
         {save.error && (
