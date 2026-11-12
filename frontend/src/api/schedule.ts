@@ -1,4 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
+import type { TagOn } from './classTags'
 import { apiFetch } from './client'
 
 /** One class of the gym's weekly timetable (backend `Slot`). Weekdays are ISO: 1 is
@@ -17,6 +18,8 @@ export type ScheduleSlot = {
   coach_id: string
   coach_name: string
   topic: string | null
+  /** The tags each class it makes starts with (#243). */
+  tags: TagOn[]
   valid_from: string
   valid_to: string | null
   created_at: string
@@ -31,6 +34,7 @@ export type SlotFields = {
   duration_minutes: number
   coach_id: string
   topic?: string | null
+  tag_ids?: string[]
   valid_from?: string
   valid_to?: string | null
 }

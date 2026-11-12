@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState } from 'react'
+import { myClassesQuery, type PersonClasses } from '../api/classTags'
 import { rankLabel } from '../api/grading'
 import { myPageQuery, myselfQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
 import { RankBelt } from '../components/Belt'
@@ -9,6 +10,8 @@ import { Grid, PageContainer } from '../components/Layout'
 import { MyMatTime } from '../components/MatTime'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
+import { TagHoursNow } from '../components/TagHours'
+import { TagList } from '../components/Tags'
 import { t } from '../i18n/es'
 import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
@@ -18,8 +21,9 @@ const copy = t.me
 
 /**
  * "Mi página", the student page: what is due next and where to transfer it,
- * the proof upload, their belt and classes, their time on the mat, and the payments
- * already sent with how each was reviewed. From 1024px it is two columns: the payment
+ * the proof upload, their belt and classes, their time on the mat, what their classes
+ * were about and their hours per tag (theirs and each dependent's, #243), and the
+ * payments already sent with how each was reviewed. From 1024px it is two columns: the payment
  * and its upload, and beside them the rest.
  */
 export function MeHome() {
@@ -63,6 +67,7 @@ export function MeHome() {
           <div className="me-home__column">
             <Training page={page.data} />
             <MyMatTime />
+            <MyClasses mine={page.data.person_id} />
             <History page={page.data} />
           </div>
         </Grid>
@@ -255,6 +260,85 @@ function Training({ page }: { page: MyPage }) {
         <span className="training__detail">{words.total(page.attendance.total)}</span>
       </div>
     </section>
+  )
+}
+
+// How many classes a person's list shows before "Ver más".
+const CLASSES_FIRST = 5
+
+/**
+ * "Mis clases" (#243): each class attended, newest first, with its topic and tags, and
+ * the hours per tag this month and this year; a guardian reads each dependent's too.
+ * The coach's notes never reach this page: the API leaves them out.
+ */
+function MyClasses({ mine }: { mine: string }) {
+  const classes = useQuery(myClassesQuery())
+  if (classes.isError) {
+    return (
+      <p className="me-home__note" role="alert">
+        {copy.classes.error}
+      </p>
+    )
+  }
+  if (!classes.data) return <p className="me-home__note">{copy.classes.loading}</p>
+  return (
+    <>
+      {classes.data.people.map((person) => (
+        <PersonClassList
+          key={person.person_id}
+          person={person}
+          mine={person.person_id === mine}
+          timeZone={classes.data.timezone}
+        />
+      ))}
+    </>
+  )
+}
+
+function PersonClassList({ person, mine, timeZone }: { person: PersonClasses; mine: boolean; timeZone: string }) {
+  const words = copy.classes
+  const titleId = useId()
+  const [all, setAll] = useState(false)
+  const shown = all ? person.classes : person.classes.slice(0, CLASSES_FIRST)
+  return (
+    <>
+      <section className="history" aria-labelledby={titleId}>
+        <h2 id={titleId} className="history__title">
+          {mine ? words.title : words.theirs(person.name)}
+        </h2>
+        {person.classes.length === 0 ? (
+          <p className="me-home__note">{words.empty}</p>
+        ) : (
+          <ul className="history__list">
+            {shown.map((held) => (
+              <li key={held.session_id} className="history__row my-class">
+                <span className="history__what">
+                  <span className="history__detail">
+                    {words.when(t.common.shortDay(zonedDay(held.starts_at, timeZone)), held.class_type_name)}
+                  </span>
+                  <span className={held.topic ? 'history__month' : 'history__month my-class__no-topic'}>
+                    {held.topic ?? words.noTopic}
+                  </span>
+                  <TagList tags={held.tags} label={words.tags} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {!all && person.classes.length > CLASSES_FIRST && (
+          <Button variant="ghost" onClick={() => setAll(true)}>
+            {words.more(person.classes.length - CLASSES_FIRST)}
+          </Button>
+        )}
+      </section>
+      {person.classes.length > 0 && (
+        <TagHoursNow
+          title={mine ? words.hours : words.theirHours(person.name)}
+          month={person.this_month}
+          year={person.this_year}
+        />
+      )}
+    </>
   )
 }
 

@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
+import { classTagsQuery, pickableTags } from '../api/classTags'
 import {
   closeDay,
   closedDaysQuery,
@@ -18,6 +19,7 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { ListRow } from '../components/Card'
 import { FieldError, Input, Select } from '../components/Field'
+import { TagPicker } from '../components/Tags'
 import { shortDay, weekdayDay, toDate } from '../format'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, SectionHead } from './settingsForm'
@@ -130,7 +132,12 @@ function SlotRow({ slot, today, onEdit }: { slot: ScheduleSlot; today: string; o
         </>
       }
       detail={[
-        copy.detail(slot.program_name, slot.coach_name, slot.topic),
+        copy.detail(
+          slot.program_name,
+          slot.coach_name,
+          slot.topic,
+          slot.tags.map((tag) => tag.name),
+        ),
         copy.validity(
           slot.valid_from > today ? shortDay(slot.valid_from) : null,
           slot.valid_to ? shortDay(slot.valid_to) : null,
@@ -196,6 +203,7 @@ function SlotForm({
   const queryClient = useQueryClient()
   const classTypes = useQuery(activeClassTypesQuery())
   const staff = useQuery(staffQuery)
+  const gymTags = useQuery(classTagsQuery)
   const types = classTypes.data ?? []
   const people = staff.data ?? []
 
@@ -205,6 +213,8 @@ function SlotForm({
   const [duration, setDuration] = useState(String(slot?.duration_minutes ?? 60))
   const [coachId, setCoachId] = useState(slot?.coach_id ?? '')
   const [topic, setTopic] = useState(slot?.topic ?? '')
+  const [tagIds, setTagIds] = useState(() => slot?.tags.map((tag) => tag.id) ?? [])
+  const tags = pickableTags(gymTags.data ?? [], slot?.tags ?? [])
   // A new slot runs from; a change applies from.
   const [from, setFrom] = useState(slot && slot.valid_from > today ? slot.valid_from : today)
   const [until, setUntil] = useState(slot?.valid_to ?? '')
@@ -231,6 +241,7 @@ function SlotForm({
     duration_minutes: minutes,
     coach_id: chosenCoach,
     topic: topic.trim() || null,
+    tag_ids: tagIds,
     valid_to: until || null,
   })
   // A change sends what differs from the slot; the API ignores the rest anyway.
@@ -243,6 +254,7 @@ function SlotForm({
     if (all.duration_minutes !== slot!.duration_minutes) out.duration_minutes = all.duration_minutes
     if (all.coach_id !== slot!.coach_id) out.coach_id = all.coach_id
     if (all.topic !== slot!.topic) out.topic = all.topic
+    if ([...tagIds].sort().join() !== slot!.tags.map((tag) => tag.id).sort().join()) out.tag_ids = tagIds
     if (all.valid_to !== slot!.valid_to) out.valid_to = all.valid_to
     return out
   }
@@ -363,6 +375,13 @@ function SlotForm({
           />
         )}
       </Field>
+      {tags.length > 0 && (
+        <div className="settings__field">
+          <span className="settings__label">{form.tags}</span>
+          <TagPicker label={form.tags} tags={tags} selected={tagIds} onChange={setTagIds} disabled={save.isPending} />
+          <p className="settings__hint">{form.tagsHint}</p>
+        </div>
+      )}
       <div className="schedule__pair">
         <Field label={slot ? form.fromDate : form.validFrom} hint={slot ? form.fromHint : undefined}>
           {(props) => (
@@ -390,11 +409,13 @@ function SlotForm({
         <p className="settings__error" role="alert">
           {'class_type_id' in errors && errors['class_type_id'] === 'open_mat_plan'
             ? form.openMatPlan
-            : 'from_date' in errors
-              ? form.afterEnd
-              : Object.keys(errors).length > 0
-                ? form.invalid
-                : form.failed}
+            : errors['tag_ids'] === 'archived_tag'
+              ? form.archivedTag
+              : 'from_date' in errors
+                ? form.afterEnd
+                : Object.keys(errors).length > 0
+                  ? form.invalid
+                  : form.failed}
         </p>
       )}
       <div className="settings__actions">

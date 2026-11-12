@@ -2,7 +2,8 @@
 
 Any session in a gym may use it, staff or member, since it answers only about the
 person acting: their staff role, if any, a guardian's dependents (migration 0010), and
-the student page itself (#65), and their time on the mat (#141).
+the student page itself (#65), their time on the mat (#141), and the classes they and
+their dependents attended, with hours per tag (#243).
 """
 
 import uuid
@@ -14,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.attendance import attended
+from app.api.class_tags import month_of, tag_hours, tags_of_session, year_of
 from app.api.extra_charges import open_lines
 from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
@@ -27,7 +29,16 @@ from app.logos import logo_path
 from app.roles import role_in_gym
 from app.schemas.blocks import PersonTime
 from app.schemas.guardians import Balance, Dependent
-from app.schemas.me import MyAttendance, MyPage, MyPayment, NextPayment, NextPaymentStatus
+from app.schemas.me import (
+    MyAttendance,
+    MyClass,
+    MyClasses,
+    MyPage,
+    MyPayment,
+    NextPayment,
+    NextPaymentStatus,
+    PersonClasses,
+)
 from app.schemas.people import MyRole
 from app.tenancy import Tenant, TenantSession, current_tenant
 
@@ -123,6 +134,39 @@ MY_KINDS = (EntryKind.PAYMENT, EntryKind.REFUND, EntryKind.ADJUSTMENT)
 PAYMENTS_SHOWN = 12
 
 
+# Whose classes the student page shows: the person's own when they train here, then
+# their dependents', by name.
+TRAINEES = """
+    SELECT gp.person_id, gp.name FROM gym_person gp
+    WHERE gp.person_id = :me
+      AND EXISTS (SELECT FROM membership m WHERE m.person_id = gp.person_id)
+    UNION ALL
+    (SELECT gp.person_id, gp.name FROM guardian_link gl
+     JOIN gym_person gp ON gp.gym_id = gl.gym_id AND gp.person_id = gl.dependent_person_id
+     WHERE gl.guardian_person_id = :me
+     ORDER BY lower(gp.name), gp.person_id)
+"""
+
+# A person's latest classes attended, with what they were about. No `notes`: those are
+# the coach's, and never reach a student or a guardian.
+CLASSES = f"""
+    SELECT s.id AS session_id, s.starts_at, s.duration_minutes,
+           c.name AS class_type_name, p.name AS program_name, s.topic,
+           {tags_of_session("s")} AS tags
+    FROM session s
+    JOIN class_type c ON c.id = s.class_type_id
+    JOIN program p ON p.id = c.program_id
+    WHERE s.cancelled_at IS NULL
+      AND EXISTS (SELECT FROM attendance a JOIN membership m ON m.id = a.membership_id
+                  WHERE a.session_id = s.id AND m.person_id = :person)
+    ORDER BY s.starts_at DESC, s.id
+    LIMIT :limit
+"""
+
+# How many of a person's classes the student page lists.
+CLASSES_SHOWN = 30
+
+
 async def _today(session: AsyncSession, gym_id: uuid.UUID) -> date:
     """Today in the gym's timezone: a period due today is owed today."""
     zone = await session.scalar(text("SELECT timezone FROM gym WHERE id = :id"), {"id": gym_id})
@@ -184,6 +228,33 @@ async def my_time(
     """The signed-in person's time on the mat, as `GET /api/people/{id}/time` gives it:
     what the student page's "Tu tiempo de entrenamiento" shows."""
     return await person_time_of(session, tenant.gym_id, tenant.person_id)
+
+
+@router.get("/classes")
+async def my_classes(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
+) -> MyClasses:
+    """What the signed-in person's classes, and their dependents', were about, and the
+    hours per tag of them this month and this year."""
+    zone = str(
+        await session.scalar(text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id})
+    )
+    today = gym_today(zone)
+    people = []
+    for who in (await session.execute(text(TRAINEES), {"me": tenant.person_id})).all():
+        classes = await session.execute(
+            text(CLASSES), {"person": who.person_id, "limit": CLASSES_SHOWN}
+        )
+        people.append(
+            PersonClasses(
+                person_id=who.person_id,
+                name=who.name,
+                classes=[MyClass.model_validate(row, from_attributes=True) for row in classes],
+                this_month=await tag_hours(session, zone, *month_of(today), who.person_id),
+                this_year=await tag_hours(session, zone, *year_of(today), who.person_id),
+            )
+        )
+    return MyClasses(timezone=zone, people=people)
 
 
 @router.get("/page")

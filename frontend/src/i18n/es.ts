@@ -889,6 +889,7 @@ export const es = {
         staff: 'Equipo',
         joinLink: 'Inscripción',
         schedule: 'Horario',
+        tags: 'Etiquetas',
         account: 'Cuenta',
       },
       // Each section's line in the list Ajustes opens on, on a phone (#177).
@@ -897,6 +898,7 @@ export const es = {
         plans: 'Lo que vendes: mensualidades, packs y clases de prueba.',
         programs: 'Tus programas y sus tipos de clase.',
         schedule: 'Las clases de cada semana y los días cerrados.',
+        tags: 'Los focos que se repiten en las clases, y sus horas.',
         blocks: 'Las partes de una clase en el timer.',
         grading: 'Opcional: grados o cinturones, si tu academia los usa, y cuándo alguien está listo para graduarse.',
         fields: 'Datos extra en la ficha de cada alumno.',
@@ -1152,8 +1154,8 @@ export const es = {
         // ISO weekdays, Monday first.
         weekdays: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
         row: (days: string, time: string, classType: string) => `${days} ${time} · ${classType}`,
-        detail: (program: string, coach: string, topic: string | null) =>
-          [program, coach, topic].filter(Boolean).join(' · '),
+        detail: (program: string, coach: string, topic: string | null, tags: string[] = []) =>
+          [program, coach, topic, ...tags].filter(Boolean).join(' · '),
         validity: (from: string | null, to: string | null) =>
           from && to ? `Del ${from} al ${to}` : from ? `Desde el ${from}` : to ? `Hasta el ${to}` : 'Todas las semanas',
         created: (name: string) => `Clase fija de ${name} creada. Sus clases ya están en Clases.`,
@@ -1172,6 +1174,9 @@ export const es = {
           coach: 'Coach',
           topic: 'Tema (opcional)',
           topicHint: 'El tema con que parte cada clase; el coach lo puede cambiar.',
+          tags: 'Etiquetas (opcional)',
+          tagsHint: 'Las etiquetas con que parte cada clase; el coach las puede cambiar.',
+          archivedTag: 'Una de las etiquetas está archivada: quítala.',
           validFrom: 'Desde',
           fromDate: 'A partir de',
           fromHint: 'Las clases antes de esta fecha, y las ya hechas o con asistencia, no cambian.',
@@ -1245,6 +1250,39 @@ export const es = {
           working: 'Guardando…',
           invalid: 'Revisa los campos marcados.',
           failed: 'No pudimos guardar el bloque. Inténtalo de nuevo.',
+          range: {} as Record<string, string>,
+          value: {} as Record<string, string>,
+        },
+      },
+      tags: {
+        title: 'Etiquetas',
+        intro:
+          'Los focos que se repiten de una clase a otra, como Pasaje de guardia o Fuerza. El coach los marca en cada clase, y suman las horas de cada alumno y del gimnasio.',
+        error: 'No pudimos cargar las etiquetas.',
+        empty: 'Todavía no hay etiquetas.',
+        add: 'Nueva etiqueta',
+        // Archivar, not Desactivar: it stays on the classes that have it.
+        archive: 'Archivar',
+        restore: 'Reactivar',
+        archived: 'Archivada',
+        archiveHint: 'Una etiqueta archivada sigue en las clases que la tienen y suma sus horas, pero no se puede poner en clases nuevas.',
+        restoreHint: 'Reactivada, se puede poner otra vez en las clases.',
+        created: (name: string) => `Etiqueta ${name} creada.`,
+        saved: (name: string) => `Etiqueta ${name} guardada.`,
+        archivedDone: (name: string) => `Etiqueta ${name} archivada. Sigue en sus clases y en sus horas.`,
+        restored: (name: string) => `Etiqueta ${name} reactivada.`,
+        toggleFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
+        form: {
+          create: 'Nueva etiqueta',
+          edit: (name: string) => `Editar ${name}`,
+          name: 'Nombre',
+          nameHint: 'Ej.: Pasaje de guardia, Fuerza, Fuerza de dedos.',
+          taken: 'Ya hay una etiqueta con ese nombre.',
+          cancel: 'Cancelar',
+          submit: 'Guardar',
+          working: 'Guardando…',
+          invalid: 'Revisa los campos marcados.',
+          failed: 'No pudimos guardar la etiqueta. Inténtalo de nuevo.',
           range: {} as Record<string, string>,
           value: {} as Record<string, string>,
         },
@@ -1466,7 +1504,11 @@ export const es = {
         label: 'Tema y notas',
         topic: 'Tema de la clase',
         topicPlaceholder: 'Ej.: retención de guardia cerrada',
+        tags: 'Etiquetas',
+        // Where the gym's tags are made, for a class that has none to pick yet.
+        noTags: 'El gimnasio todavía no tiene etiquetas. El dueño o un admin las crea en Ajustes, Etiquetas.',
         notes: 'Notas',
+        notesHint: 'Solo las ve el equipo, nunca el alumno.',
         notesPlaceholder: 'Lo que conviene recordar de esta clase.',
         submit: 'Guardar',
         working: 'Guardando…',
@@ -2037,6 +2079,40 @@ export const es = {
     loading: 'Cargando el tiempo de entrenamiento…',
     error: 'No pudimos cargar el tiempo de entrenamiento.',
   },
+  // Hours per tag (#243): on the student page, the ficha and Clases.
+  tagHours: {
+    mine: 'Tus horas por etiqueta',
+    theirs: 'Horas por etiqueta',
+    gym: 'Horas por etiqueta',
+    gymNote: 'De las clases hechas, sin las canceladas.',
+    periods: 'Periodo',
+    month: 'Mes',
+    year: 'Año',
+    thisMonth: 'Este mes',
+    thisYear: 'Este año',
+    previous: (what: string) => `${what} anterior`,
+    next: (what: string) => `${what} siguiente`,
+    // `2026` or `noviembre 2026`.
+    stretch: (year: number, month: number | null) =>
+      month === null
+        ? String(year)
+        : `${new Intl.DateTimeFormat('es-CL', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, 1)))} ${year}`,
+    // Minutes as `12,5 h`, `1 h` or `45 min`.
+    hours: (minutes: number) =>
+      minutes < 60
+        ? `${minutes} min`
+        : `${(Math.round((minutes / 60) * 10) / 10).toLocaleString('es-CL')} h`,
+    classes: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
+    // `4,5 h · 3 clases`, built from the two above.
+    figure: (minutes: number, classes: number): string =>
+      `${es.tagHours.hours(minutes)} · ${es.tagHours.classes(classes)}`,
+    archived: 'archivada',
+    archivedSuffix: ' · archivada',
+    untagged: (hours: string) => `Sin etiqueta: ${hours}`,
+    empty: 'No hay clases con etiqueta en este periodo.',
+    loading: 'Cargando las horas…',
+    error: 'No pudimos cargar las horas por etiqueta.',
+  },
   me: {
     // From the student page back to the admin screens, for staff who also train (#214).
     toAdmin: 'Ir al panel del gimnasio',
@@ -2095,6 +2171,22 @@ export const es = {
       month: 'Este mes',
       classes: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
       total: (n: number) => `${n} en total`,
+    },
+    // What each class attended was about (#243); never the coach's notes.
+    classes: {
+      title: 'Mis clases',
+      // A dependent's, on a guardian's page.
+      theirs: (name: string) => `Clases de ${name}`,
+      empty: 'Todavía no hay clases con asistencia.',
+      noTopic: 'Sin tema',
+      when: (day: string, classType: string) => `${day} · ${classType}`,
+      tags: 'Etiquetas',
+      more: (n: number) => `Ver ${n} más`,
+      hours: 'Tus horas por etiqueta',
+      // A dependent's.
+      theirHours: (name: string) => `Horas por etiqueta de ${name}`,
+      error: 'No pudimos cargar tus clases.',
+      loading: 'Cargando tus clases…',
     },
     history: {
       title: 'Mis pagos',

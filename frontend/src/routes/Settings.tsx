@@ -11,6 +11,7 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { AccountSettings } from './AccountSettings'
 import { BlockKindSettings } from './BlockKindSettings'
+import { ClassTagSettings } from './ClassTagSettings'
 import { FieldSettings } from './FieldSettings'
 import { GradingSettings } from './GradingSettings'
 import { GymSettings } from './GymSettings'
@@ -44,6 +45,7 @@ export const SETTINGS_SECTIONS = [
     description: copy.descriptions.schedule,
     component: ScheduleSettings,
   },
+  { path: 'etiquetas', label: copy.sections.tags, description: copy.descriptions.tags, component: ClassTagSettings },
   { path: 'bloques', label: copy.sections.blocks, description: copy.descriptions.blocks, component: BlockKindSettings },
   {
     path: 'graduacion',

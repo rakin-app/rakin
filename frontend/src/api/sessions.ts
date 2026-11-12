@@ -1,5 +1,6 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import { isoDay } from '../format'
+import type { TagOn } from './classTags'
 import { apiFetch } from './client'
 
 /** A class, or an open mat: rounds of sparring only (backend `ClassKind`). */
@@ -45,6 +46,8 @@ export type ClassSession = {
    * null for a one-off class. */
   slot_id: string | null
   slot_date: string | null
+  /** The gym's tags it is about, by name (#243); an archived one may stay on it. */
+  tags: TagOn[]
 }
 
 /** A day's sessions in the gym's timezone, earliest first (backend `Day`). */
@@ -115,8 +118,8 @@ export function startSession(body: { class_type_id: string }): Promise<ClassSess
   return apiFetch<ClassSession>('/api/sessions', { method: 'POST', body: JSON.stringify(body) })
 }
 
-/** What may change of a class (backend `SessionUpdate`): its own coach the topic and
- * notes, an owner or admin all of it. An empty topic or notes clears it. For a class
+/** What may change of a class (backend `SessionUpdate`): its own coach the topic,
+ * notes and tags, an owner or admin all of it. An empty topic or notes clears it. For a class
  * of the schedule this is "solo esta clase". */
 export type SessionChanges = Partial<{
   topic: string
@@ -126,6 +129,8 @@ export type SessionChanges = Partial<{
   coach_id: string
   /** Null clears it. */
   duration_minutes: number | null
+  /** Its tags, whole; its coach may set them too. */
+  tag_ids: string[]
 }>
 
 const sessionPath = (id: string) => `/api/sessions/${encodeURIComponent(id)}`

@@ -7,6 +7,7 @@ from app.api import (
     attendance,
     blobs,
     block_kinds,
+    class_tags,
     class_types,
     custom_fields,
     extra_charges,
@@ -109,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(plans.router)
     app.include_router(programs.router)
     app.include_router(class_types.router)
+    app.include_router(class_tags.router)
     app.include_router(sessions.router)
     app.include_router(schedule.router)
     app.include_router(schedule.closed)

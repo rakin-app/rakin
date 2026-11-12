@@ -34,6 +34,7 @@ const SESSION: ClassSession = {
   duration_minutes: null,
   slot_id: null,
   slot_date: null,
+  tags: [],
 }
 
 const kind = (id: string, name: string, position: number, extra: Partial<BlockKind> = {}): BlockKind => ({

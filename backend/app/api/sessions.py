@@ -3,8 +3,9 @@
 A session is one class (migration 0020). The weekly schedule makes most of them ahead
 of time (`app.api.schedule`, #167); a coach may also start one ad hoc when the class
 begins, of one of the gym's active class types, and writes its topic and notes during
-or after class. The day's sessions are those whose `starts_at` falls on that calendar
-day in the gym's timezone, today by default. A session may carry how long it lasts.
+or after class, and the gym's tags it is about (#243). The day's sessions are those
+whose `starts_at` falls on that calendar day in the gym's timezone, today by default.
+A session may carry how long it lasts.
 
 A session starts now and is taught by the person starting it unless the body says
 otherwise. Its coach is one of the gym's staff when it is started or reassigned; one
@@ -19,7 +20,7 @@ Any staff role may read them and start one, coaches included, since they are who
 start a class and write what it covered; members may not use them at all. Changing
 one is narrower (#163): an owner or admin may move it, change its duration, its type
 or its coach,
-and its own coach may write its topic and notes. A type changed after the class
+and its own coach may write its topic and notes and set its tags. A type changed after the class
 re-applies the new type's `counts_as_class` and `kind`, since every count reads them
 off the type; its attendance stays.
 
@@ -45,6 +46,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.attendance import remove_attendance
+from app.api.class_tags import require_tags, set_tags, tags_of_session
 from app.domain.dates import gym_today, start_of_local_day
 from app.roles import ADMIN_ROLES, FORBIDDEN, AdminSession, StaffSession, role_in_gym
 from app.schemas.classes import ClassKind
@@ -63,15 +65,16 @@ HAS_ATTENDANCE = HTTPException(
 )
 
 # What a session's own coach may change; everything else is an owner's or admin's.
-COACH_FIELDS = frozenset({"topic", "notes"})
+COACH_FIELDS = frozenset({"topic", "notes", "tag_ids"})
 
-# Each with its class type, program and coach. RLS keeps every table to the current gym.
-SELECT_SESSION = """
+# Each with its class type, program, coach and tags. RLS keeps every table to the
+# current gym.
+SELECT_SESSION = f"""
     SELECT s.id, s.class_type_id, c.name AS class_type_name, c.program_id,
            p.name AS program_name, s.starts_at, s.coach_id, gp.name AS coach_name,
            s.duration_minutes, s.topic, s.notes, s.cancelled_at, s.created_at, s.updated_at,
            (SELECT count(*) FROM attendance a WHERE a.session_id = s.id) AS present,
-           s.slot_id, s.slot_date
+           s.slot_id, s.slot_date, {tags_of_session("s")} AS tags
     FROM session s
     JOIN class_type c ON c.id = s.class_type_id
     JOIN program p ON p.id = c.program_id
@@ -222,7 +225,12 @@ async def update_session(
     owner's or admin's, and those two the session's own coach's too, else a 403."""
     current = await _get(session, session_id, lock=True)
     sent = body.model_dump(exclude_unset=True)
-    changes = {k: v for k, v in sent.items() if v != getattr(current, k)}
+    tag_ids = [tag.id for tag in current.tags]
+    changes = {
+        k: v
+        for k, v in sent.items()
+        if (set(v) != set(tag_ids) if k == "tag_ids" else v != getattr(current, k))
+    }
     coaching = current.coach_id == tenant.person_id and changes.keys() <= COACH_FIELDS
     if changes and not coaching and await role_in_gym(session, tenant) not in ADMIN_ROLES:
         raise FORBIDDEN
@@ -235,6 +243,9 @@ async def update_session(
         )
         if kind == ClassKind.OPEN_MAT:
             await _require_plan_fits(session, session_id)
+    if "tag_ids" in changes:
+        await require_tags(session, changes["tag_ids"], tag_ids, "tag_ids")
+        await set_tags(session, "session_tag", "session_id", session_id, changes.pop("tag_ids"))
     fields = {"topic", "notes", "coach_id", "class_type_id", "starts_at", "duration_minutes"}
     columns = {**current.model_dump(include=fields), **changes}
     await session.execute(

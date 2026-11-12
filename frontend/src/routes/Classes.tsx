@@ -2,6 +2,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { rosterQuery } from '../api/attendance'
+import { gymTagHoursQuery } from '../api/classTags'
 import {
   activeClassTypesQuery,
   daySessionsQuery,
@@ -18,6 +19,7 @@ import { Select } from '../components/Field'
 import { ChevronRightIcon } from '../components/icons'
 import { Grid, PageContainer, useWide } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
+import { TagHoursCard } from '../components/TagHours'
 import { clockTime, isoDay, shiftDay, shortDay, timeRange, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
@@ -36,6 +38,9 @@ const copy = t.admin.classes
  * From 1024px the page has two columns (#178): "Crear clase" and the day on the left,
  * and on the right the week the day is in, with the class picked in it: who came, of
  * those who usually do. A phone keeps the one column, and never asks for the week.
+ *
+ * Under the day, "Horas por etiqueta" (#243): the gym's classes held in a month or a
+ * year, hours per tag.
  */
 export function Classes() {
   usePageTitle(copy.title)
@@ -84,6 +89,12 @@ export function Classes() {
                 </ul>
               )}
             </section>
+            <TagHoursCard
+              title={t.tagHours.gym}
+              note={t.tagHours.gymNote}
+              today={gymToday}
+              query={gymTagHoursQuery}
+            />
           </div>
           {wide && <Week day={shown} today={gymToday} timeZone={timeZone} />}
         </Grid>

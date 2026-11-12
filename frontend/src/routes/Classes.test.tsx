@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
 import type { RosterMember } from '../api/attendance'
+import type { ClassTag, TagHours } from '../api/classTags'
 import type { ClassSession, ClassType, SessionDay } from '../api/sessions'
 import { App } from '../App'
 import { isoDay, shiftDay, toDate, weekdayDay } from '../format'
@@ -49,6 +50,7 @@ const EVENING: ClassSession = {
   duration_minutes: null,
   slot_id: null,
   slot_date: null,
+  tags: [],
 }
 
 const MORNING: ClassSession = {
@@ -62,6 +64,21 @@ const MORNING: ClassSession = {
   topic: null,
   present: 0,
 }
+
+const tag = (id: string, name: string, archived = false): ClassTag => ({
+  id,
+  name,
+  archived,
+  created_at: '2026-11-01T12:00:00Z',
+})
+const TAGS = [tag('strength', 'Fuerza'), tag('guard', 'Pasaje de guardia'), tag('old', 'Yoga', true)]
+
+const hoursFor = (first: string, last: string, minutes: number): TagHours => ({
+  first_day: first,
+  last_day: last,
+  tags: minutes ? [{ tag_id: 'guard', name: 'Pasaje de guardia', archived: false, classes: 3, minutes }] : [],
+  untagged_minutes: 0,
+})
 
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
@@ -134,15 +151,18 @@ function stubApi({
       return { body: { session_id: rostered.id, present: roster.filter((m) => m.present).length, members: roster } }
     }
     if (path === '/api/plans') return { body: [] }
+    if (path === '/api/class-tags') return { body: TAGS }
+    if (path === '/api/class-tags/hours') return { body: hoursFor('2026-11-01', '2026-11-30', 270) }
     const found = day.sessions.find((s) => path === `/api/sessions/${s.id}`)
     if (found && method === 'GET') return { body: found }
     if (found && method === 'PATCH') {
       if (update) return update
-      const { topic, notes } = body as { topic: string; notes: string }
+      const { topic, notes, tag_ids } = body as { topic: string; notes: string; tag_ids: string[] }
       const updated = {
         ...found,
         topic: topic.trim() || null,
         notes: notes.trim() || null,
+        tags: TAGS.filter((each) => tag_ids.includes(each.id)),
         updated_at: '2026-11-09T23:30:00Z',
       }
       day = { ...day, sessions: day.sessions.map((s) => (s.id === found.id ? updated : s)) }
@@ -309,13 +329,45 @@ describe('Clase', () => {
       {
         method: 'PATCH',
         path: '/api/sessions/s-evening',
-        body: { topic: ' Pasaje de rodilla ', notes: 'Faltó calentamiento.' },
+        body: { topic: ' Pasaje de rodilla ', notes: 'Faltó calentamiento.', tag_ids: [] },
       },
     ])
 
     // "Guardado" until the next edit.
     await userEvent.type(topic, '!')
     expect(within(form).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('tags the class from the gym’s tags, an archived one only while it is on', async () => {
+    const calls = stubApi({ sessions: [{ ...EVENING, tags: [{ id: 'old', name: 'Yoga', archived: true }] }] })
+    renderAt('/admin/clases/s-evening')
+
+    const form = await screen.findByRole('form', { name: detail.form.label })
+    const picker = within(await within(form).findByRole('group', { name: detail.form.tags }))
+    expect(picker.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Fuerza',
+      'Pasaje de guardia',
+      `Yoga (${es.tagHours.archived})`,
+    ])
+    expect(picker.getByRole('button', { name: /^Yoga/ })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(picker.getByRole('button', { name: 'Pasaje de guardia' }))
+    await userEvent.click(picker.getByRole('button', { name: /^Yoga/ }))
+    await userEvent.click(within(form).getByRole('button', { name: detail.form.submit }))
+
+    expect(await within(form).findByRole('status')).toHaveTextContent(detail.form.saved)
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([
+      { topic: 'Guardia cerrada', notes: '', tag_ids: ['guard'] },
+    ])
+    // Taken off, an archived tag is gone from the choices.
+    expect(picker.queryByRole('button', { name: /^Yoga/ })).not.toBeInTheDocument()
+  })
+
+  it('shows another coach the class’s tags', async () => {
+    stubApi({ sessions: [{ ...EVENING, coach_id: 'other', tags: [TAGS[1]!] }] })
+    renderAt('/admin/clases/s-evening')
+
+    const view = await screen.findByRole('region', { name: detail.form.label })
+    expect(within(view).getByRole('list', { name: detail.form.tags })).toHaveTextContent('Pasaje de guardia')
   })
 
   it('says so when the topic cannot be saved', async () => {
@@ -411,5 +463,23 @@ describe('Clases on a desktop', () => {
     await screen.findByRole('region', { name: copy.today.title })
     expect(screen.queryByRole('region', { name: copy.week.title })).not.toBeInTheDocument()
     expect(calls.filter((c) => c.path.startsWith('/api/sessions?date='))).toEqual([])
+  })
+
+  it('totals the gym’s hours per tag for a month or a year', async () => {
+    const calls = stubApi()
+    renderAt('/admin/clases')
+
+    const card = within(await screen.findByRole('region', { name: es.tagHours.gym }))
+    expect(await card.findByText('4,5 h · 3 clases')).toBeInTheDocument()
+    const today = isoDay(new Date().toISOString(), 'America/Santiago')
+    const month = Number(today.slice(5, 7))
+    const year = Number(today.slice(0, 4))
+    expect(calls.some((c) => c.path === `/api/class-tags/hours?year=${year}&month=${month}`)).toBe(true)
+
+    await userEvent.click(card.getByRole('button', { name: es.tagHours.previous(es.tagHours.month) }))
+    const before = month === 1 ? `year=${year - 1}&month=12` : `year=${year}&month=${month - 1}`
+    expect(calls.some((c) => c.path === `/api/class-tags/hours?${before}`)).toBe(true)
+    await userEvent.click(card.getByRole('button', { name: es.tagHours.year }))
+    expect(card.getByText(String(month === 1 ? year - 1 : year))).toBeInTheDocument()
   })
 })

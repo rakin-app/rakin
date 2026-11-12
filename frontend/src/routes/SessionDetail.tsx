@@ -16,6 +16,7 @@ import {
   type Roster,
   type RosterMember,
 } from '../api/attendance'
+import { classTagsQuery, pickableTags } from '../api/classTags'
 import { ApiError } from '../api/client'
 import { useKeptDraft, useRestoredDraft } from '../api/drafts'
 import { rankLabel } from '../api/grading'
@@ -25,6 +26,7 @@ import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
 import { Input, SearchInput, Select, Textarea } from '../components/Field'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
+import { TagList, TagPicker } from '../components/Tags'
 import { clockTime, dayTime, isoDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
@@ -45,8 +47,8 @@ const MAX_NOTES = 4000
 
 /**
  * One class: what it is, when it started and who teaches it, "Asistencia" (the roster,
- * tapped name by name), and its topic and notes, written during or after class by its
- * coach. Once it has begun, "Registro del timer", what its blocks ran, which its coach
+ * tapped name by name), and its topic, tags and notes, written during or after class by
+ * its coach. The notes are staff's alone; a student reads the topic and tags (#243). Once it has begun, "Registro del timer", what its blocks ran, which its coach
  * or an owner or admin corrects after. An owner or admin also edits it ("Editar clase"),
  * cancels it or deletes it. A cancelled class takes no attendance and runs no timer.
  */
@@ -110,15 +112,21 @@ export function SessionDetail() {
   )
 }
 
-/** The topic and notes, for a coach who does not teach the class: theirs to read. */
+/** The topic, tags and notes, for a coach who does not teach the class: theirs to read. */
 function TopicView({ session }: { session: ClassSession }) {
-  if (!session.topic && !session.notes) return null
+  if (!session.topic && !session.notes && session.tags.length === 0) return null
   return (
     <section className="classes__card" aria-label={copy.form.label}>
       <span className="classes__label">{copy.form.topic}</span>
       <span className={session.topic ? 'classes__topic' : 'classes__topic classes__topic--none'}>
         {session.topic ?? t.admin.classes.today.noTopic}
       </span>
+      {session.tags.length > 0 && (
+        <>
+          <span className="classes__label">{copy.form.tags}</span>
+          <TagList tags={session.tags} label={copy.form.tags} />
+        </>
+      )}
       {session.notes && (
         <>
           <span className="classes__label">{copy.form.notes}</span>
@@ -184,20 +192,27 @@ function TopicForm({ session }: { session: ClassSession }) {
   const restored = useRestoredDraft(draftKey, useQuery(myselfQuery()).data?.person_id)
   const [topic, setTopic] = useState(restored?.topic ?? session.topic ?? '')
   const [notes, setNotes] = useState(restored?.notes ?? session.notes ?? '')
+  const [tagIds, setTagIds] = useState(() => session.tags.map((tag) => tag.id))
+  const gymTags = useQuery(classTagsQuery)
   const [saved, setSaved] = useState(false)
   const save = useSubmit({
-    mutationFn: () => updateSession(session.id, { topic, notes }),
+    mutationFn: () => updateSession(session.id, { topic, notes, tag_ids: tagIds }),
     onSuccess: (updated) => {
       // As stored: trimmed, and blank as none.
       setTopic(updated.topic ?? '')
       setNotes(updated.notes ?? '')
+      setTagIds(updated.tags.map((tag) => tag.id))
       setSaved(true)
       refreshSession(queryClient, updated)
     },
   })
+  const tagsChanged = [...tagIds].sort().join() !== session.tags.map((tag) => tag.id).sort().join()
   // "Guardado" until the next edit.
-  const changed = topic !== (session.topic ?? '') || notes !== (session.notes ?? '')
-  useKeptDraft(draftKey, changed ? { topic, notes } : null)
+  const changed = topic !== (session.topic ?? '') || notes !== (session.notes ?? '') || tagsChanged
+  // Only the text is kept across a sign-in: tags are a tap away.
+  useKeptDraft(draftKey, topic !== (session.topic ?? '') || notes !== (session.notes ?? '') ? { topic, notes } : null)
+  // The gym's tags it may take; while they load, the ones it has.
+  const tags = gymTags.data ? pickableTags(gymTags.data, session.tags) : session.tags
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -217,9 +232,16 @@ function TopicForm({ session }: { session: ClassSession }) {
         placeholder={copy.form.topicPlaceholder}
         onChange={(e) => setTopic(e.target.value)}
       />
+      <span className="classes__label">{copy.form.tags}</span>
+      {tags.length > 0 ? (
+        <TagPicker label={copy.form.tags} tags={tags} selected={tagIds} onChange={setTagIds} disabled={save.isPending} />
+      ) : (
+        gymTags.isSuccess && <p className="classes__note">{copy.form.noTags}</p>
+      )}
       <label htmlFor={notesId} className="classes__label">
         {copy.form.notes}
       </label>
+      <p className="classes__note">{copy.form.notesHint}</p>
       <Textarea
         id={notesId}
         value={notes}

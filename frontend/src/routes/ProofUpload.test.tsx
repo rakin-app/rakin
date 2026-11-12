@@ -81,6 +81,7 @@ function stubApi(
     }
     if (url.pathname === '/api/me/page') return { body: answers.page ?? pageFor(periods) }
     if (url.pathname === '/api/me/time') return { body: NO_TIME }
+    if (url.pathname === '/api/me/classes') return { body: { timezone: 'America/Santiago', people: [] } }
     if (url.pathname === '/api/me/proofs') {
       return { status: 201, body: { key: 'proofs/g/ana/k', url: UPLOAD_URL, headers: { 'Content-Type': 'image/jpeg' }, expires_in_seconds: 900 } }
     }

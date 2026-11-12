@@ -2,7 +2,8 @@
 
 One document for the page: the next payment and where to transfer it, the cobros extra
 still owed, and the payments already sent with how each was reviewed, the person's
-belt, and how many classes they have attended.
+belt, and how many classes they have attended. Beside it, the classes themselves
+(`MyClasses`, #243).
 """
 
 import uuid
@@ -12,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.domain.ledger import EntryKind, EntryStatus
+from app.schemas.class_tags import TagHours, TagOn
 from app.schemas.extra_charges import MyExtraLine
 from app.schemas.grades import Rank
 from app.schemas.gym import BankAccount
@@ -86,3 +88,34 @@ class MyPage(BaseModel):
     # The cobros extra still owed, theirs and their dependents', earliest due first
     # (#195): beside the plan's, never part of `next_payment`.
     extra_charges: list[MyExtraLine] = []
+
+
+class MyClass(BaseModel):
+    """A class attended, and what it was about (#243): its topic and tags. Never the
+    coach's notes, which are staff's alone: who struggled, an injury."""
+
+    session_id: uuid.UUID
+    starts_at: datetime
+    duration_minutes: int | None
+    class_type_name: str
+    program_name: str
+    topic: str | None
+    tags: list[TagOn]
+
+
+class PersonClasses(BaseModel):
+    """One person's classes: the latest `CLASSES_SHOWN` attended, newest first, and the
+    hours per tag of those this month and this year, on the gym's calendar."""
+
+    person_id: uuid.UUID
+    name: str
+    classes: list[MyClass]
+    this_month: TagHours
+    this_year: TagHours
+
+
+class MyClasses(BaseModel):
+    """The signed-in person's own classes, when they train here, then each dependent's."""
+
+    timezone: str
+    people: list[PersonClasses]

@@ -2,6 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { MyClasses, TagHours } from '../api/classTags'
 import type { PersonTime } from '../api/matTime'
 import type { BankAccount, MyPage, MyPayment } from '../api/me'
 import type { OpenPeriod } from '../api/proofs'
@@ -59,6 +60,15 @@ const NO_TIME: PersonTime = {
   all_time: { by_kind: [], sparring_seconds: 0, open_mat_seconds: 0, classes: 0, open_mats: 0 },
 }
 
+const NO_CLASSES: MyClasses = { timezone: 'America/Santiago', people: [] }
+
+const hoursOf = (tags: TagHours['tags'], untagged = 0): TagHours => ({
+  first_day: `${YEAR}-11-01`,
+  last_day: `${YEAR}-11-30`,
+  tags,
+  untagged_minutes: untagged,
+})
+
 function diego(over: Partial<MyPage> = {}): MyPage {
   return {
     gym_name: 'Academia Sur',
@@ -78,7 +88,7 @@ function diego(over: Partial<MyPage> = {}): MyPage {
   }
 }
 
-function stubPage(answer: MyPage | { status: number }, time: PersonTime = NO_TIME) {
+function stubPage(answer: MyPage | { status: number }, time: PersonTime = NO_TIME, classes: MyClasses = NO_CLASSES) {
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input) => {
@@ -90,6 +100,7 @@ function stubPage(answer: MyPage | { status: number }, time: PersonTime = NO_TIM
       if (url.pathname === '/api/me/periods') return Response.json([NOVEMBER])
       if (url.pathname === '/api/me/extra-lines') return Response.json([])
       if (url.pathname === '/api/me/time') return Response.json(time)
+      if (url.pathname === '/api/me/classes') return Response.json(classes)
       return Response.json({ detail: 'Not Found' }, { status: 404 })
     }),
   )
@@ -382,5 +393,64 @@ describe('Mi página', () => {
     await userEvent.click(screen.getByRole('button', { name: copy.home.retry }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Hola, Diego' })).toBeInTheDocument()
+  })
+
+  it("lists each class's topic and tags, theirs and a dependent's, with hours per tag", async () => {
+    const guard = { id: 'guard', name: 'Pasaje de guardia', archived: false }
+    const row = { tag_id: 'guard', name: 'Pasaje de guardia', archived: false, classes: 2, minutes: 150 }
+    stubPage(diego(), NO_TIME, {
+      timezone: 'America/Santiago',
+      people: [
+        {
+          person_id: 'diego',
+          name: 'Diego Morales',
+          classes: [
+            {
+              session_id: 's1',
+              starts_at: `${YEAR}-11-10T22:00:00Z`,
+              duration_minutes: 90,
+              class_type_name: 'Fundamentos',
+              program_name: 'Adultos',
+              topic: 'Pasaje torreando',
+              tags: [guard],
+            },
+            {
+              session_id: 's2',
+              starts_at: `${YEAR}-11-03T22:00:00Z`,
+              duration_minutes: 60,
+              class_type_name: 'Fundamentos',
+              program_name: 'Adultos',
+              topic: null,
+              tags: [],
+            },
+          ],
+          this_month: hoursOf([row], 60),
+          this_year: hoursOf([{ ...row, classes: 10, minutes: 750 }]),
+        },
+        {
+          person_id: 'juan',
+          name: 'Juan Morales',
+          classes: [],
+          this_month: hoursOf([]),
+          this_year: hoursOf([]),
+        },
+      ],
+    })
+    renderMe()
+
+    const mine = within(await screen.findByRole('region', { name: copy.classes.title }))
+    expect(mine.getByText('10 nov · Fundamentos')).toBeInTheDocument()
+    expect(mine.getByText('Pasaje torreando')).toBeInTheDocument()
+    expect(mine.getByRole('list', { name: copy.classes.tags })).toHaveTextContent('Pasaje de guardia')
+    expect(mine.getByText(copy.classes.noTopic)).toBeInTheDocument()
+
+    const hours = within(screen.getByRole('region', { name: copy.classes.hours }))
+    expect(hours.getByText('2,5 h · 2 clases')).toBeInTheDocument()
+    expect(hours.getByText(es.tagHours.untagged('1 h'))).toBeInTheDocument()
+    await userEvent.click(hours.getByRole('button', { name: es.tagHours.thisYear }))
+    expect(hours.getByText('12,5 h · 10 clases')).toBeInTheDocument()
+
+    const son = within(screen.getByRole('region', { name: copy.classes.theirs('Juan Morales') }))
+    expect(son.getByText(copy.classes.empty)).toBeInTheDocument()
   })
 })

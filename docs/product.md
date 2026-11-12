@@ -62,7 +62,7 @@ v1 is one gym (the pilot), v2 unlocks when five gyms are running it, v3 only whe
 | Membership | trial → conversion tracking | ✓ |  |  |
 | Membership | signed membership badge (QR, public verify page) | ✓ |  |  |
 | Classes | class types with program (adults, kids) and credit cost | ✓ |  |  |
-| Classes | session with coach, topic, notes; roster tap attendance | ✓ |  |  |
+| Classes | session with coach, topic, notes, gym-defined tags (hours per tag for students and staff); roster tap attendance | ✓ |  |  |
 | Classes | QR self check-in |  | ✓ |  |
 | Classes | curriculum cycles (4–8 week themes) |  | ✓ |  |
 | Classes | capacity and booking |  |  | ✓ |

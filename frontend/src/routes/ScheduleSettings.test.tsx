@@ -43,6 +43,7 @@ const slot = (id: string, extra: Partial<ScheduleSlot> = {}): ScheduleSlot => ({
   coach_id: 'coach',
   coach_name: 'Rodrigo Fuentes',
   topic: null,
+  tags: [],
   valid_from: '2026-01-05',
   valid_to: null,
   created_at: '2026-01-01T12:00:00Z',
@@ -50,7 +51,12 @@ const slot = (id: string, extra: Partial<ScheduleSlot> = {}): ScheduleSlot => ({
   ...extra,
 })
 
-const RUNNING = slot('running', { topic: 'Guardia' })
+const TAGS = [
+  { id: 'guard', name: 'Pasaje de guardia', archived: false, created_at: '2026-01-01T12:00:00Z' },
+  { id: 'strength', name: 'Fuerza', archived: false, created_at: '2026-01-01T12:00:00Z' },
+]
+
+const RUNNING = slot('running', { topic: 'Guardia', tags: [{ id: 'guard', name: 'Pasaje de guardia', archived: false }] })
 // Ended long ago: the timetable as it was, not shown.
 const ENDED = slot('ended', { weekdays: [2], valid_to: '2026-01-31' })
 
@@ -84,6 +90,7 @@ function stubApi({ save, closed = [] }: { save?: Answer; closed?: ClosedDay[] } 
     if (path === '/api/sessions') return { body: { date: today(), timezone: 'America/Santiago', sessions: [] } }
     if (path === '/api/class-types') return { body: [FUNDAMENTALS] }
     if (path === '/api/staff') return { body: STAFF }
+    if (path === '/api/class-tags') return { body: TAGS }
     if (path === '/api/schedule' && method === 'GET') return { body: slots }
     if (path === '/api/schedule' && method === 'POST') {
       if (save) return save
@@ -184,6 +191,7 @@ describe('Ajustes: Horario', () => {
           duration_minutes: 60,
           coach_id: 'coach',
           topic: null,
+          tag_ids: [],
           valid_to: null,
           valid_from: today(),
         },
@@ -208,6 +216,41 @@ describe('Ajustes: Horario', () => {
     expect(writes(calls)).toEqual([
       { method: 'PATCH', path: '/api/schedule/running', body: { weekdays: [1, 3], from_date: '2099-01-05' } },
     ])
+  })
+
+  it("changes a slot's default tags, sending only them", async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/horario')
+
+    expect(await slotRow()).toHaveTextContent('Pasaje de guardia')
+    await userEvent.click(await slotRow())
+    const edit = await screen.findByRole('form', { name: form.edit('Fundamentos') })
+    const picker = within(await within(edit).findByRole('group', { name: form.tags }))
+    expect(picker.getByRole('button', { name: 'Pasaje de guardia' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(picker.getByRole('button', { name: 'Fuerza' }))
+    await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.saved('Fundamentos'))
+    expect(writes(calls)).toEqual([
+      {
+        method: 'PATCH',
+        path: '/api/schedule/running',
+        body: { tag_ids: ['guard', 'strength'], from_date: today() },
+      },
+    ])
+  })
+
+  it('says so when a tag was archived meanwhile', async () => {
+    const detail = [{ type: 'archived_tag', loc: ['body', 'tag_ids'], msg: 'x' }]
+    stubApi({ save: { status: 422, body: { detail } } })
+    renderAt('/admin/ajustes/horario')
+
+    await userEvent.click(await slotRow())
+    const edit = await screen.findByRole('form', { name: form.edit('Fundamentos') })
+    const picker = within(await within(edit).findByRole('group', { name: form.tags }))
+    await userEvent.click(picker.getByRole('button', { name: 'Fuerza' }))
+    await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
+    expect(await within(edit).findByRole('alert')).toHaveTextContent(form.archivedTag)
   })
 
   it('says why a change after the slot ended is refused', async () => {

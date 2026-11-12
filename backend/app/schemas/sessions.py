@@ -5,7 +5,8 @@ the topic and notes the coach writes after it. A blank topic or notes is no topi
 notes: both are stored as null. A class that won't happen is cancelled (0033): it
 stays, with `cancelled_at`, and counts for nothing. A class lasts `duration_minutes`,
 or has no duration set (0035); one made by the weekly schedule carries its slot
-(`slot_id`) and the date it was made for (`slot_date`).
+(`slot_id`) and the date it was made for (`slot_date`). It may carry the gym's tags
+(0041).
 """
 
 import uuid
@@ -22,6 +23,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.schemas.class_tags import TagIds, TagOn
 from app.schemas.classes import never_null
 
 MAX_TOPIC = 200
@@ -65,9 +67,10 @@ class SessionUpdate(BaseModel):
 
     Moving a class, changing its duration, its type or its coach is an owner's or
     admin's; its own coach may change only its topic and notes (`app.api.sessions`).
-    `duration_minutes: null` clears the duration. For a class of the weekly schedule
-    this changes that one class ("solo esta clase"); the slot's own change is
-    `PATCH /api/schedule/{id}` ("esta y las siguientes")."""
+    `duration_minutes: null` clears the duration. `tag_ids` is the class's tags, whole:
+    `[]` takes them all off, and an archived tag may stay but not be added (#243). For
+    a class of the weekly schedule this changes that one class ("solo esta clase"); the
+    slot's own change is `PATCH /api/schedule/{id}` ("esta y las siguientes")."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -77,10 +80,11 @@ class SessionUpdate(BaseModel):
     class_type_id: uuid.UUID | None = None
     starts_at: AwareDatetime | None = None
     duration_minutes: Duration | None = None
+    tag_ids: TagIds | None = None
 
     @model_validator(mode="after")
     def _set(self) -> "SessionUpdate":
-        never_null(self, "coach_id", "class_type_id", "starts_at")
+        never_null(self, "coach_id", "class_type_id", "starts_at", "tag_ids")
         return self
 
 
@@ -107,6 +111,8 @@ class Session(BaseModel):
     # for; both null for a one-off class.
     slot_id: uuid.UUID | None
     slot_date: date | None
+    # The gym's tags it is about, by name (#243); an archived one stays on it.
+    tags: list[TagOn] = []
 
 
 class Day(BaseModel):

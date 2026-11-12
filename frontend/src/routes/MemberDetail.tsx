@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { personAttendanceQuery } from '../api/attendance'
+import { personTagHoursQuery, type Stretch } from '../api/classTags'
 import { familyQuery } from '../api/family'
 import { ApiError } from '../api/client'
 import {
@@ -52,6 +53,7 @@ import { Input, Select } from '../components/Field'
 import { ChevronLeftIcon, WhatsAppIcon } from '../components/icons'
 import { Grid, PageContainer } from '../components/Layout'
 import { MemberMatTime } from '../components/MatTime'
+import { TagHoursCard } from '../components/TagHours'
 import { ReminderLink } from '../components/ReminderLink'
 import { StatusPill } from '../components/StatusPill'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
@@ -153,6 +155,7 @@ export function MemberDetail() {
         <div className="member__column">
           <Attendance personId={personId} />
           <MemberMatTime personId={personId} />
+          <MemberTagHours personId={personId} />
           <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
           <section className="member__section" aria-label={t.admin.family.toggle}>
             <h2 className="member__section-title">{t.admin.family.toggle}</h2>
@@ -1669,4 +1672,15 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
     case 'refund':
       return { title: words.refund(month), detail: join(method, entry.note, day), tone: 'muted' }
   }
+}
+
+/** "Horas por etiqueta" (#243): the classes the member attended, hours per tag, for a month or a year. */
+function MemberTagHours({ personId }: { personId: string }) {
+  return (
+    <TagHoursCard
+      title={t.tagHours.theirs}
+      today={useGymToday()}
+      query={(stretch: Stretch) => personTagHoursQuery(personId, stretch)}
+    />
+  )
 }
