@@ -133,7 +133,8 @@ function Wizard() {
     mutationFn: () => createCharge(draft!),
     onSuccess: async (charge) => {
       await queryClient.invalidateQueries({ queryKey: ['extra'] })
-      void navigate({ to: '/admin/pagos/cobros/$chargeId', params: { chargeId: charge.id } })
+      // In the wizard's place: back from the cobro is not the wizard (#250).
+      void navigate({ to: '/admin/pagos/cobros/$chargeId', params: { chargeId: charge.id }, replace: true })
     },
   })
 

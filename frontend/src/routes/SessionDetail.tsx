@@ -25,6 +25,7 @@ import { managesGym, myselfQuery, runsSession } from '../api/me'
 import { sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
+import { BackLink } from '../components/BackLink'
 import { Input, SearchInput, Select, Textarea } from '../components/Field'
 import { CheckIcon, ChevronLeftIcon } from '../components/icons'
 import { TagList, TagPicker } from '../components/Tags'
@@ -152,9 +153,9 @@ function Shell({
   return (
     <div className="classes">
       <header className="classes__header">
-        <Link to="/admin/clases" className={buttonClass({ icon: true })} aria-label={copy.back}>
+        <BackLink to="/admin/clases" label={copy.back} className={buttonClass({ icon: true })}>
           <ChevronLeftIcon />
-        </Link>
+        </BackLink>
         {title && (
           <div className="classes__heading">
             {eyebrow && <span className="classes__eyebrow">{eyebrow}</span>}
@@ -516,9 +517,9 @@ function Attendance({ sessionId }: { sessionId: string }) {
         {done && (
           <div className="classes__done attendance__done">
             <p role="status">{words.saved}</p>
-            <Link to="/admin/clases" className="attendance__back">
-              {words.back}
-            </Link>
+            <BackLink to="/admin/clases" label={words.back} className="attendance__back">
+              {(back) => back.label}
+            </BackLink>
           </div>
         )}
         <Button

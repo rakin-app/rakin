@@ -35,18 +35,24 @@ export function changesPlan(membership: Membership): boolean {
  * never had one, or it lapsed or was cancelled. A plan and its first day, as "Nuevo
  * alumno" asks them, and the welcome, ticked when there is an email to send it to. For
  * the owner and admins; someone dado de baja comes back by "Reactivar" instead.
+ *
+ * `done` and `setDone` are the ficha's: once the plan starts this moves into its card,
+ * a new place in the tree, and a message of its own would go with the old one.
  */
 export function AssignPlan({
   person,
   membership,
   role,
+  done,
+  setDone,
 }: {
   person: Person
   membership: Membership | undefined
   role: StaffRole | null | undefined
+  done: string | null
+  setDone: (message: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [done, setDone] = useState<string | null>(null)
   const manages = role === 'owner' || role === 'admin'
   if (!manages || person.left_on) return null
   // Started: the plan card has it now, and here only what was done.

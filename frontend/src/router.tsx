@@ -32,6 +32,7 @@ import { SignIn } from './routes/SignIn'
 import { Settings, SETTINGS_SECTIONS, SettingsHome } from './routes/Settings'
 import { Students, validateStudentsSearch } from './routes/Students'
 import { Today } from './routes/Today'
+import { trackTrail } from './trail'
 import { ValidateProof } from './routes/ValidateProof'
 
 export type RouterContext = {
@@ -302,7 +303,11 @@ export function createAppRouter(context: RouterContext, history?: RouterHistory)
     defaultPendingComponent: Pending,
     // Loaders read through TanStack Query, which owns caching and staleness.
     defaultPreloadStaleTime: 0,
+    // Back, by the browser or a back link, finds a list where it was scrolled (#250).
+    scrollRestoration: true,
   })
+  // What a back link returns to: the pages this load has shown (#250).
+  trackTrail(router.history)
   // A session that ends mid-use (a 401 on any call) goes back to sign in, the same way
   // a signed-out visitor does, saying it expired; what it had loaded is forgotten.
   onUnauthorized(() => {

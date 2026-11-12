@@ -17,6 +17,7 @@ import type { PersonRef } from '../api/ledger'
 import { myRoleQuery, readsLedger } from '../api/me'
 import { membersPath, membersQuery, plansQuery, programsQuery, type MemberRow } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
+import { BackLink } from '../components/BackLink'
 import { Card, EmptyState, ListRowContent, listRowClass, SectionHeader } from '../components/Card'
 import { Field, Input, SearchInput, Select } from '../components/Field'
 import { ChevronLeftIcon } from '../components/icons'
@@ -79,13 +80,13 @@ export function SubHeader({
 }) {
   return (
     <header className="extra__header">
-      <Link
+      <BackLink
         to={back === 'pagos' ? '/admin/pagos' : '/admin/pagos/cobros'}
+        label={back === 'pagos' ? copy.back : copy.title}
         className={buttonClass({ icon: true })}
-        aria-label={back === 'pagos' ? copy.back : copy.title}
       >
         <ChevronLeftIcon />
-      </Link>
+      </BackLink>
       <div className="extra__heading">
         <h1 className="extra__title">{title}</h1>
         {subtitle && <p className="extra__subtitle">{subtitle}</p>}

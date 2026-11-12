@@ -141,6 +141,8 @@ describe('Nuevo alumno', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos/new'))
     // The ficha is told the welcome is on its way, to wait for it (#246).
     expect(router.state.location.state.welcomeSince).toEqual(expect.any(Number))
+    // In the form's place: back from the ficha does not reopen the filled-in form (#250).
+    expect(router.history.length).toBe(1)
     expect(enrolments(calls)).toEqual([
       {
         name: 'Camila Rojas',
