@@ -236,6 +236,22 @@ describe('Ajustes', () => {
     expect(router.state.location.pathname).toBe('/admin/ajustes')
   })
 
+  // Its visible text is a page's own name, never "Volver a"'s phrase for it (#250).
+  it.each([
+    ['another section', '/admin/ajustes/planes', copy.back, es.common.backTo(copy.back)],
+    ['Pagos', '/admin/pagos', es.common.places.payments, es.common.backTo(es.common.places.payments)],
+    ['a ficha', '/admin/alumnos/felipe', es.common.back, es.common.backTo(es.common.places.member)],
+  ])('on a phone, coming from %s, the way back says where it goes', async (_from, from, text, label) => {
+    stubApi({ role: 'admin' })
+    const router = renderAt(from)
+    await waitFor(() => expect(router.state.location.pathname).toBe(from))
+    await router.navigate({ href: '/admin/ajustes/cuenta' })
+
+    const back = await screen.findByRole('link', { name: label })
+    expect(back).toHaveTextContent(text)
+    expect(back).toHaveAttribute('href', from)
+  })
+
   it('opens on Gimnasio on a desktop, with a tab per section', async () => {
     vi.stubGlobal(
       'matchMedia',

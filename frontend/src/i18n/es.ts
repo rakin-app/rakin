@@ -2438,6 +2438,23 @@ export const es = {
   },
   common: {
     loading: 'Cargando…',
+    // A back link that returns to where you came from (#250): named by the page when it
+    // is one of these, else just "Volver".
+    back: 'Volver',
+    backTo: (place: string) => `Volver a ${place}`,
+    places: {
+      today: 'Hoy',
+      students: 'Alumnos',
+      member: 'la ficha',
+      classes: 'Clases',
+      session: 'la clase',
+      payments: 'Pagos',
+      proofs: 'los comprobantes',
+      extra: 'Cobros extra',
+      charge: 'el cobro',
+      settings: 'Ajustes',
+      me: 'Mi página',
+    },
     comingSoon: 'Esta sección todavía no está lista.',
     clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
     // An amount that says which way it goes: `+$5.000` or `−$5.000`.

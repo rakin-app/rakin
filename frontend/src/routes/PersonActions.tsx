@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import type { StaffRole } from '../api/me'
 import type { Person } from '../api/member'
 import { deletePerson, deletionQuery, deletionRefused, leaveGym, returnToGym } from '../api/people'
 import { useGymToday } from '../api/sessions'
 import { Button } from '../components/Button'
+import { useLeaveTo } from '../components/BackLink'
 import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import { useRefresh } from './PersonData'
@@ -211,7 +211,8 @@ function RemoveForm({
   onLeave: (() => void) | undefined
 }) {
   const form = copy.removeForm
-  const navigate = useNavigate()
+  // To Alumnos, and not back to the gone ficha (#250).
+  const leave = useLeaveTo('/admin/alumnos')
   const queryClient = useQueryClient()
   const id = useId()
   const deletion = useQuery({ ...deletionQuery(person.id), staleTime: 0 })
@@ -223,7 +224,7 @@ function RemoveForm({
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ['people', 'detail', person.id] })
       await queryClient.invalidateQueries({ queryKey: ['people'] })
-      void navigate({ to: '/admin/alumnos' })
+      leave()
     },
   })
   // Refused at the last moment, say a payment recorded meanwhile.

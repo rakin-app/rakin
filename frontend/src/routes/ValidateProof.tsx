@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import {
@@ -14,6 +13,7 @@ import {
 } from '../api/review'
 import { remindersQuery, type PaymentReminder } from '../api/reminders'
 import { Button, buttonClass } from '../components/Button'
+import { BackLink } from '../components/BackLink'
 import { Input } from '../components/Field'
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
 import { ReminderLink } from '../components/ReminderLink'
@@ -61,9 +61,9 @@ export function ValidateProof() {
   return (
     <div className="review">
       <header className="review__header">
-        <Link to="/admin" className={buttonClass({ icon: true })} aria-label={copy.back}>
+        <BackLink to="/admin" label={copy.back} className={buttonClass({ icon: true })}>
           <ChevronLeftIcon />
-        </Link>
+        </BackLink>
         <div className="review__heading">
           <span className="review__eyebrow">{item ? copy.position(at + 1, items.length) : copy.title}</span>
           <h1 className="review__title">{item ? item.person_name : copy.title}</h1>

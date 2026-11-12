@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getRouteApi, Link } from '@tanstack/react-router'
+import { getRouteApi } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useGrades } from '../api/activities'
 import { personAttendanceQuery } from '../api/attendance'
@@ -50,6 +50,7 @@ import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
+import { BackLink } from '../components/BackLink'
 import { Input, Select } from '../components/Field'
 import { ChevronLeftIcon, WhatsAppIcon } from '../components/icons'
 import { Grid, PageContainer } from '../components/Layout'
@@ -191,9 +192,9 @@ function Shell({
   return (
     <PageContainer className="member">
       <header className="member__header">
-        <Link to="/admin/alumnos" className={buttonClass({ icon: true })} aria-label={copy.back}>
+        <BackLink to="/admin/alumnos" label={copy.back} className={buttonClass({ icon: true })}>
           <ChevronLeftIcon />
-        </Link>
+        </BackLink>
         {title && (
           <div className="member__heading">
             <h1 className="member__title">{title}</h1>
