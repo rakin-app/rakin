@@ -310,7 +310,8 @@ export function ClassActions({ session }: { session: ClassSession }) {
       // Credits given back, classes and time on the mat changed for whoever was marked.
       void queryClient.invalidateQueries({ queryKey: ['attendance'] })
       void queryClient.invalidateQueries({ queryKey: ['time'] })
-      await navigate({ to: '/admin/clases' })
+      // In the gone class's place, so back does not return to it (#250).
+      await navigate({ to: '/admin/clases', replace: true })
     },
   })
   const failed = status.isError || remove.isError

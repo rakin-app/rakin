@@ -423,6 +423,42 @@ describe('the running class', () => {
     expect(await screen.findByRole('link', { name: es.admin.session.timer.resume })).toBeInTheDocument()
   })
 
+  it('leaves by going back to the class that opened the timer (#250)', async () => {
+    stubApi()
+    const queryClient = createQueryClient()
+    const history = createMemoryHistory({ initialEntries: ['/admin/clases/s1'] })
+    render(<App queryClient={queryClient} router={createAppRouter({ queryClient }, history)} />)
+    await userEvent.click(await screen.findByRole('link', { name: es.admin.session.timer.open }))
+    const editor = await screen.findByRole('form', { name: copy.editor.title })
+    await userEvent.click(within(editor).getByRole('button', { name: copy.editor.start }))
+    await screen.findByRole('timer', { name: running.countdown })
+
+    await userEvent.click(screen.getByRole('button', { name: copy.back }))
+    await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: running.leave.yes }))
+
+    expect(await screen.findByRole('link', { name: es.admin.session.timer.resume })).toBeInTheDocument()
+    // Back where it was, not a class on top of the timer that back would reopen.
+    expect(history.location.state.__TSR_index).toBe(0)
+    expect(history.length).toBe(2)
+  })
+
+  it('leaves a timer opened directly in its place (#250)', async () => {
+    stubApi()
+    const queryClient = createQueryClient()
+    const history = createMemoryHistory({ initialEntries: ['/admin/clases/s1/timer'] })
+    render(<App queryClient={queryClient} router={createAppRouter({ queryClient }, history)} />)
+    const editor = await screen.findByRole('form', { name: copy.editor.title })
+    await userEvent.click(within(editor).getByRole('button', { name: copy.editor.start }))
+    await screen.findByRole('timer', { name: running.countdown })
+
+    await userEvent.click(screen.getByRole('button', { name: copy.back }))
+    await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: running.leave.yes }))
+
+    expect(await screen.findByRole('link', { name: es.admin.session.timer.resume })).toBeInTheDocument()
+    expect(history.location.pathname).toBe('/admin/clases/s1')
+    expect(history.length).toBe(1)
+  })
+
   it('warns again at 10 s after "+1 min" given inside the warning', async () => {
     const vibrate = vi.fn()
     vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, { vibrate }))

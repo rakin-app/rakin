@@ -4,6 +4,7 @@ import { useEffect, useRef, type ComponentType } from 'react'
 import { useGrades } from '../api/activities'
 import { managesGym, myRoleQuery } from '../api/me'
 import { buttonClass } from '../components/Button'
+import { BackLink } from '../components/BackLink'
 import { ListRowContent, listRowClass } from '../components/Card'
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
 import { PageContainer, useDesktop } from '../components/Layout'
@@ -100,14 +101,18 @@ export function Settings() {
     <div className="settings">
       <PageContainer>
         {inSection && (
-          <Link
+          <BackLink
             to="/admin/ajustes"
-            aria-label={copy.backLabel}
+            label={copy.backLabel}
             className={buttonClass({ variant: 'ghost', className: 'settings__back' })}
           >
-            <ChevronLeftIcon />
-            {copy.back}
-          </Link>
+            {(back) => (
+              <>
+                <ChevronLeftIcon />
+                {back.previous ? (back.place ?? t.common.back) : copy.back}
+              </>
+            )}
+          </BackLink>
         )}
         <PageHeader title={inSection ? section.label : copy.title} />
         {managesGym(role.data) ? (

@@ -315,10 +315,12 @@ function stubApi({
   return calls
 }
 
-function renderAt(path: string) {
+function renderAt(path: string | string[]) {
   const queryClient = createQueryClient()
-  const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries: [path] }))
+  const initialEntries = typeof path === 'string' ? [path] : path
+  const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries }))
   render(<App queryClient={queryClient} router={router} />)
+  return router
 }
 
 const PATH = '/admin/alumnos/felipe'
@@ -1677,5 +1679,74 @@ describe('Acceso (#246)', () => {
     await money()
 
     expect(screen.queryByRole('region', { name: access.title })).not.toBeInTheDocument()
+  })
+})
+
+describe('Volver, to where the ficha was opened from (#250)', () => {
+  // Opened from each of these, as their links do: a new history entry on top.
+  it.each([
+    ['Hoy', '/admin', 'Volver a Hoy'],
+    ['Pagos with a filter', '/admin/pagos?filter=pending&q=Feli', 'Volver a Pagos'],
+    ['a class roster', '/admin/clases/s1', 'Volver a la clase'],
+    ['Alumnos with a belt filter', '/admin/alumnos?belt=blue&beltUp=true&q=Feli', 'Volver a Alumnos'],
+  ])('goes back to %s, its filters still there', async (_from, from, label) => {
+    stubApi()
+    const router = renderAt(from)
+    await waitFor(() => expect(router.state.location.href).toBe(from))
+    await router.navigate({ href: PATH })
+
+    expect(await screen.findByRole('heading', { name: 'Felipe Díaz' })).toBeInTheDocument()
+    const back = screen.getByRole('link', { name: label })
+    expect(back).toHaveAttribute('href', from)
+    await userEvent.click(back)
+
+    await waitFor(() => expect(router.state.location.href).toBe(from))
+    // Back in history, not a new entry: forward returns to the ficha.
+    expect(router.history.location.state.__TSR_index).toBe(0)
+    expect(router.history.length).toBe(2)
+  })
+
+  it('goes to Alumnos when the ficha was opened directly', async () => {
+    stubApi()
+    const router = renderAt(PATH)
+
+    const back = await screen.findByRole('link', { name: copy.back })
+    expect(back).toHaveAttribute('href', '/admin/alumnos')
+    await userEvent.click(back)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos'))
+    expect(router.history.length).toBe(2)
+  })
+
+  it('goes to Alumnos when what came before was not shown by the app', async () => {
+    // A page the browser had before this load: a reload, or another site.
+    stubApi()
+    const router = renderAt(['/admin/pagos', PATH])
+
+    await userEvent.click(await screen.findByRole('link', { name: copy.back }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos'))
+  })
+
+  it('goes to Alumnos after signing in, not back to the sign-in page', async () => {
+    stubApi()
+    const router = renderAt('/ingresar')
+    await screen.findByRole('heading', { level: 1 })
+    await router.navigate({ href: PATH })
+
+    const back = await screen.findByRole('link', { name: copy.back })
+    expect(back).toHaveAttribute('href', '/admin/alumnos')
+    await userEvent.click(back)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos'))
+  })
+
+  it('names nothing it does not know: just Volver', async () => {
+    stubApi()
+    const router = renderAt('/admin/alumnos/importar')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos/importar'))
+    await router.navigate({ href: PATH })
+
+    expect(await screen.findByRole('link', { name: es.common.back })).toHaveAttribute('href', '/admin/alumnos/importar')
   })
 })

@@ -223,7 +223,8 @@ function RemoveForm({
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ['people', 'detail', person.id] })
       await queryClient.invalidateQueries({ queryKey: ['people'] })
-      void navigate({ to: '/admin/alumnos' })
+      // In the gone ficha's place, so back does not return to it (#250).
+      void navigate({ to: '/admin/alumnos', replace: true })
     },
   })
   // Refused at the last moment, say a payment recorded meanwhile.

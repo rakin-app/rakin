@@ -148,6 +148,8 @@ export function NewMember() {
       void navigate({
         to: '/admin/alumnos/$personId',
         params: { personId: created.id },
+        // In the form's place: back from the ficha is not the filled-in form (#250).
+        replace: true,
         state: body.send_welcome ? { welcomeSince: Date.now() } : undefined,
       })
     },

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
+import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { blockKindsQuery, type BlockKind } from '../api/blockKinds'
 import { ApiError } from '../api/client'
@@ -21,6 +21,7 @@ import {
 } from '../api/sessionBlocks'
 import { sessionQuery, useGymTimeZone, type ClassSession } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
+import { BackLink, useBack } from '../components/BackLink'
 import { Input, Select } from '../components/Field'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, CloseIcon } from '../components/icons'
 import { clockTime } from '../format'
@@ -165,14 +166,9 @@ function Shell({ sessionId, title, children }: { sessionId: string; title?: stri
   return (
     <div className="classes">
       <header className="classes__header">
-        <Link
-          to="/admin/clases/$sessionId"
-          params={{ sessionId }}
-          className={buttonClass({ icon: true })}
-          aria-label={copy.back}
-        >
+        <BackLink to={`/admin/clases/${sessionId}`} label={copy.back} className={buttonClass({ icon: true })}>
           <ChevronLeftIcon />
-        </Link>
+        </BackLink>
         {title && (
           <div className="classes__heading">
             <h1 className="classes__title">{title}</h1>
@@ -616,7 +612,7 @@ function Running({
   const [leaving, setLeaving] = useState(false)
   // When the class was last seen, if it went unseen too long and waits for the coach.
   const [unseenAt, setUnseenAt] = useState<number | null>(null)
-  const navigate = useNavigate()
+  const leave = useLeaveTimer(session.id)
   const timeZone = useGymTimeZone()
   const wakeLock = useWakeLock(true)
   const sound = useSoundState()
@@ -767,7 +763,7 @@ function Running({
           <Button
             size="lg"
             inverse
-            onClick={() => void navigate({ to: '/admin/clases/$sessionId', params: { sessionId: session.id } })}
+            onClick={leave}
           >
             {words.leave.yes}
           </Button>
@@ -857,11 +853,25 @@ function useDelayed(on: boolean): boolean {
   return on && shown
 }
 
+/**
+ * Out of the timer to its class: back to the class when it opened the timer, else in
+ * the timer's place, so back from the class does not reopen it (#250).
+ */
+function useLeaveTimer(sessionId: string) {
+  const path = `/admin/clases/${sessionId}`
+  const back = useBack(path, copy.back)
+  const navigate = useNavigate()
+  return () => {
+    if (back.previous?.pathname === path) back.go()
+    else void navigate({ to: '/admin/clases/$sessionId', params: { sessionId }, replace: true })
+  }
+}
+
 // --- after the class: what ran -------------------------------------------------------
 
 function Finished({ session, run }: { session: ClassSession; run: RunState }) {
   const words = copy.done
-  const navigate = useNavigate()
+  const leave = useLeaveTimer(session.id)
   return (
     <Shell sessionId={session.id} title={session.class_type_name}>
       <section className="classes__section" aria-labelledby="timer-done">
@@ -889,7 +899,7 @@ function Finished({ session, run }: { session: ClassSession; run: RunState }) {
           variant="primary"
           onClick={() => {
             clearRun(session.id)
-            void navigate({ to: '/admin/clases/$sessionId', params: { sessionId: session.id } })
+            leave()
           }}
         >
           {words.back}
