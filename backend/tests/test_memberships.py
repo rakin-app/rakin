@@ -25,7 +25,7 @@ from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_guardians import add_person, new_kid
 from tests.test_proofs import RecordingMailer, sent_notices
 
@@ -365,6 +365,90 @@ def test_a_plan_change_refuses_a_deactivated_plan(client: TestClient, sur: uuid.
     assert change(client, sur, membership["id"], plan_id).status_code == 422
 
 
+def quote(client: TestClient, gym: uuid.UUID, membership: str, plan_id: str) -> Any:
+    return client.get(
+        f"/api/memberships/{membership}/plan-change",
+        params={"plan_id": plan_id},
+        headers=as_gym(gym),
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "discount", "period_end", "amount"),
+    [
+        ("prepaid", 0, "2027-06-14", 240_000),
+        # A plan billed on the 1st: its first period runs to the end of the month.
+        ("first", 0, "2026-12-31", 45_000),
+        ("signup", 10, "2027-01-14", 40_500),
+    ],
+)
+def test_a_plan_change_is_quoted_before_it_is_saved(
+    client: TestClient,
+    db: Database,
+    sur: uuid.UUID,
+    key: str,
+    discount: int,
+    period_end: str,
+    amount: int,
+) -> None:
+    membership = unbilled(client, db, sur, "signup", date.fromisoformat(NOV_15))
+    add_period(db, sur, membership["id"], NOV_15, "2026-12-14")
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE membership SET discount_pct = $2 WHERE id = $1",
+            uuid.UUID(membership["id"]),
+            discount,
+        ),
+    )
+    to = plan(client, sur, key)
+
+    response = quote(client, sur, membership["id"], to)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "starts_on": "2026-12-15",
+        "period_end": period_end,
+        "amount_due_clp": amount,
+    }
+    # Nothing saved; saving takes effect on the day quoted.
+    assert stored(db, membership["id"])["next_plan_id"] is None
+    saved = change(client, sur, membership["id"], to).json()
+    assert saved["next_plan"]["starts_on"] == "2026-12-15"
+
+
+def test_a_plan_change_quote_is_refused_as_the_change_would_be(
+    client: TestClient, sur: uuid.UUID
+) -> None:
+    membership = started(client, sur, "signup")
+    # The plan it is on: nothing to quote.
+    assert quote(client, sur, membership["id"], membership["plan_id"]).status_code == 409
+    assert quote(client, sur, membership["id"], plan(client, sur, "credits")).status_code == 422
+    unknown = quote(client, sur, membership["id"], str(uuid.uuid4()))
+    assert unknown.status_code == 422
+    cancel(client, sur, membership["id"])
+    assert quote(client, sur, membership["id"], plan(client, sur, "prepaid")).status_code == 409
+    assert quote(client, sur, str(uuid.uuid4()), plan(client, sur, "prepaid")).status_code == 404
+
+
+def test_a_frozen_membership_is_quoted_and_changes_plan(client: TestClient, sur: uuid.UUID) -> None:
+    # The API lets a frozen membership change plan (#249 follows it).
+    membership = started(client, sur, "signup")
+    frozen = client.post(
+        f"/api/memberships/{membership['id']}/freeze",
+        json={"to_date": add_months(seeded_today(), 1).isoformat(), "reason": "lesión"},
+        headers=as_gym(sur),
+    )
+    assert frozen.status_code == 200, frozen.text
+    assert frozen.json()["status"] == "frozen"
+    prepaid = plan(client, sur, "prepaid")
+    quoted = quote(client, sur, membership["id"], prepaid)
+    assert quoted.status_code == 200, quoted.text
+    saved = change(client, sur, membership["id"], prepaid)
+    assert saved.status_code == 200
+    assert saved.json()["next_plan"]["starts_on"] == quoted.json()["starts_on"]
+
+
 # --- cancelling ---------------------------------------------------------------------
 
 
@@ -441,10 +525,11 @@ def test_coaches_read_memberships_and_only_owner_or_admin_change_them(
     body = {"person_id": membership["person_id"], "plan_id": prepaid}
     codes = (
         client.post("/api/memberships", json=body, headers=headers).status_code,
+        client.get(f"{url}/plan-change", params={"plan_id": prepaid}, headers=headers).status_code,
         client.post(f"{url}/plan-change", json={"plan_id": prepaid}, headers=headers).status_code,
         client.post(f"{url}/cancel", json={"reason": "x"}, headers=headers).status_code,
     )
-    assert codes == ((201, 200, 200) if writes else (403, 403, 403))
+    assert codes == ((201, 200, 200, 200) if writes else (403, 403, 403, 403))
 
 
 # --- the table on its own (migration 0009) --------------------------------------------
@@ -592,3 +677,18 @@ def test_a_member_with_no_email_is_not_welcomed(
     assert start(client, sur, plan(client, sur, "signup")).status_code == 201
 
     assert mailer.sent == []
+
+
+def test_the_welcome_can_be_left_out(
+    client: TestClient, db: Database, mailer: RecordingMailer
+) -> None:
+    # "Asignar plan" on the ficha, with the welcome unticked (#249).
+    gym = seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    ana = add_person(client, gym, "Ana")
+    mailer.sent.clear()
+
+    response = start(client, gym, plan(client, gym, "signup"), ana, send_welcome=False)
+
+    assert response.status_code == 201, response.text
+    assert mailer.sent == []
+    assert sent_notices(db, gym) == []

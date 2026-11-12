@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useGrades } from '../api/activities'
@@ -65,6 +65,7 @@ import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
 import { PersonExtraLines } from './PersonExtraLines'
 import { PersonData } from './PersonData'
+import { AssignPlan, ChangePlanForm, changesPlan } from './PersonPlan'
 import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
 import { useSubmit } from '../api/submit'
@@ -78,7 +79,8 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * "Ficha de alumno": who the member is and their rank, the plan they are on and how it
  * stands, their graduación and family, and, for whoever reads the ledger, what they
  * owe, their ledger with its freezes, "Registrar pago", "Congelar" (#26), "Ajuste"
- * and "Devolver" (#38).
+ * and "Devolver" (#38), and "Cambiar plan"; with no plan running, "Asignar plan", and
+ * what an earlier plan still owes as "Deuda anterior" (#249).
  * A coach sees the member, their plan and rank, whether it is frozen, and promotes
  * them; never money.
  *
@@ -102,6 +104,8 @@ export function MemberDetail() {
   const graded = useGrades()
   const grades = useQuery({ ...gradesQuery(personId), enabled: graded })
   const role = useQuery(myRoleQuery())
+  // "Asignar plan"'s confirmation, kept here as the form moves into the new plan's card.
+  const [assigned, setAssigned] = useState<string | null>(null)
 
   if (person.isPending || memberships.isPending) {
     return (
@@ -152,9 +156,17 @@ export function MemberDetail() {
       <Grid className="member__columns">
         <div className="member__column">
           {membership ? (
-            <Standing membership={membership} money={money} />
+            <Standing
+              membership={membership}
+              money={money}
+              earlier={money ? <EarlierDebt memberships={memberships.data} shown={membership} /> : null}
+              assign={<AssignPlan person={person.data} membership={membership} role={role.data} done={assigned} setDone={setAssigned} />}
+            />
           ) : (
-            <p className="member__note">{copy.noPlan}</p>
+            <>
+              <p className="member__note">{copy.noPlan}</p>
+              <AssignPlan person={person.data} membership={membership} role={role.data} done={assigned} setDone={setAssigned} />
+            </>
           )}
           {money && <PersonExtraLines personId={personId} />}
         </div>
@@ -251,8 +263,20 @@ export function whatsappUrl(person: Pick<Person, 'phone' | 'no_whatsapp'>): stri
   return digits && !person.no_whatsapp ? `https://wa.me/${digits}` : null
 }
 
-/** The plan and how it stands; with `money`, what is owed, the actions and the ledger. */
-function Standing({ membership, money }: { membership: Membership; money: boolean }) {
+/** The plan and how it stands; with `money`, what is owed, the actions and the ledger.
+ * `assign` is "Asignar plan", which offers itself once this plan has ended, and
+ * `earlier` what other plans still owe, under the card (#249). */
+function Standing({
+  membership,
+  money,
+  earlier,
+  assign,
+}: {
+  membership: Membership
+  money: boolean
+  earlier: ReactNode
+  assign: ReactNode
+}) {
   const ledger = useQuery({ ...membershipLedgerQuery(membership.id), enabled: money })
   const data = money ? ledger.data : undefined
 
@@ -268,6 +292,11 @@ function Standing({ membership, money }: { membership: Membership; money: boolea
             {copy.freezeBooked(shortDay(membership.freeze.from_date), shortDay(membership.freeze.to_date))}
           </p>
         )}
+        {membership.next_plan && membership.status !== 'cancelled' && (
+          <p className="member__detail">
+            {copy.planChangeBooked(membership.next_plan.plan_name, shortDay(membership.next_plan.starts_on))}
+          </p>
+        )}
         {data && <Owed ledger={data} />}
         {money && ledger.isError && (
           <p className="member__error" role="alert">
@@ -275,9 +304,45 @@ function Standing({ membership, money }: { membership: Membership; money: boolea
           </p>
         )}
         {data && <Actions membership={membership} ledger={data} />}
+        {assign}
       </section>
+      {earlier}
       {data && <Ledger ledger={data} />}
     </>
+  )
+}
+
+/**
+ * "Deuda anterior": what the member's other memberships still owe, a lapsed plan's
+ * unpaid charges once "Asignar plan" started a new one (#249). The card shows one
+ * membership; the debt stays in view here, as #206 keeps it on Hoy and in Pagos.
+ */
+function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[]; shown: Membership }) {
+  const earlier = memberships.filter((m) => m.id !== shown.id)
+  const ledgers = useQueries({ queries: earlier.map((m) => membershipLedgerQuery(m.id)) })
+  const owing = earlier.flatMap((m, i) => {
+    const ledger = ledgers[i]?.data
+    return ledger && ledger.owed_clp > 0 ? [{ membership: m, ledger }] : []
+  })
+  if (owing.length === 0) return null
+  return (
+    <section className="member__card" aria-label={copy.earlierDebt}>
+      <span className="member__eyebrow">{copy.earlierDebt}</span>
+      {owing.map(({ membership, ledger }) => {
+        const due = ledger.open_periods.filter((p) => p.due)
+        return (
+          <div key={membership.id} className="member__owed">
+            <span className="member__amount">{clp(ledger.owed_clp)}</span>
+            <span className="member__detail">
+              {copy.earlierDebtLine(
+                membership.plan_name,
+                due.length > 1 ? copy.pendingPeriods(due.length) : copy.pendingMonth(monthName(due[0]!.period_start)),
+              )}
+            </span>
+          </div>
+        )
+      })}
+    </section>
   )
 }
 
@@ -320,7 +385,7 @@ function Owed({ ledger }: { ledger: MembershipLedger }) {
   )
 }
 
-type Open = 'payment' | 'adjustment' | 'refund' | 'freeze' | 'editFreeze' | 'endFreeze' | null
+type Open = 'payment' | 'adjustment' | 'refund' | 'freeze' | 'editFreeze' | 'endFreeze' | 'changePlan' | null
 
 /** The periods that still owe, oldest first, then the paid ones, newest first: an
  * adjustment in the member's favour goes to the first, one owed to either. */
@@ -381,6 +446,14 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
           </Button>
         </div>
       )}
+      {/* The plan itself, on a line of its own (#249): money, so the owner and admins only. */}
+      {changesPlan(membership) && (
+        <div className="member__actions">
+          <Button aria-expanded={open === 'changePlan'} onClick={() => toggle('changePlan')}>
+            {copy.changePlan}
+          </Button>
+        </div>
+      )}
       {done && (
         <p className="member__done" role="status">
           {done}
@@ -417,6 +490,9 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
       )}
       {open === 'endFreeze' && freeze && (
         <EndFreezeForm membershipId={membership.id} freeze={freeze} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'changePlan' && changesPlan(membership) && (
+        <ChangePlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
       )}
     </>
   )

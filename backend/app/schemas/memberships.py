@@ -49,6 +49,9 @@ class MembershipStart(BaseModel):
 
 class MembershipCreate(MembershipStart):
     person_id: uuid.UUID
+    # The welcome, when there is an email to send it to; "Asignar plan" on the ficha
+    # may leave it out (#249).
+    send_welcome: bool = True
 
 
 class HasLeftConflict(BaseModel):
@@ -68,6 +71,16 @@ class PlanChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     plan_id: uuid.UUID
+
+
+class PlanChangeQuote(BaseModel):
+    """What a change to a plan would do, before it is saved (#249): the day it takes
+    effect, the current plan running until then, and the first period it bills, from
+    that day until `period_end`, for `amount_due_clp` after the membership's discount."""
+
+    starts_on: date
+    period_end: date
+    amount_due_clp: int
 
 
 class Cancellation(BaseModel):

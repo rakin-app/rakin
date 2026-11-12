@@ -5,6 +5,8 @@ A membership starts on a calendar day in the gym's timezone, and its anchor day 
 `current_period_end` follow from its plan (`app.domain.membership.start`). A plan
 change waits for the next period: it is stored as pending, from the first day not yet
 paid for or billed, and billing applies it then (migration 0009). Proration is v2.
+`GET .../plan-change` quotes a change before it is saved: that day, and the first
+period the new plan bills from it (#249).
 A freeze (#26) runs from its first day until the day it ends, with a reason, and moves
 the due date past the frozen days as it starts: the paid-through date, the billing
 periods not yet started and a pending plan change all move by them, and the nightly
@@ -17,7 +19,8 @@ needs a reason; the database refuses any later change to a cancelled row.
 A membership starting is billed at once, what the nightly job would bill it tonight
 (`bill_now`), so a member who pays at the desk on their first day can be recorded
 then (#196). Starting one emails the member, or their guardian, a welcome: how to pay and how to
-upload a proof, with their first sign-in link to the student page. Nobody who has left
+upload a proof, with their first sign-in link to the student page; unless the request
+says `send_welcome: false` (#249). Nobody who has left
 the gym (dado de baja, #157) starts one, by any path: `insert_membership` refuses them
 until they are reactivated.
 
@@ -58,6 +61,7 @@ from app.schemas.memberships import (
     MembershipStart,
     PendingPlanChange,
     PlanChange,
+    PlanChangeQuote,
     for_coach,
 )
 from app.tenancy import Tenant, current_tenant
@@ -128,22 +132,21 @@ async def _get(session: AsyncSession, membership_id: uuid.UUID) -> Membership:
     return _membership(row)
 
 
+SELECT_STATE = (
+    "SELECT pl.kind, m.status, m.current_period_end, m.credits_remaining,"
+    " m.anchor_day, m.plan_id FROM membership m JOIN plan pl ON pl.id = m.plan_id"
+    " WHERE m.id = :id"
+)
+
+
 async def _locked(
-    session: AsyncSession, membership_id: uuid.UUID
+    session: AsyncSession, membership_id: uuid.UUID, *, lock: bool = True
 ) -> tuple[domain.Membership, uuid.UUID]:
     """The membership's state and plan, its row locked until the request's transaction
-    ends, so a concurrent change waits and then sees this one's result."""
-    row = (
-        await session.execute(
-            text(
-                "SELECT pl.kind, m.status, m.current_period_end, m.credits_remaining,"
-                " m.anchor_day, m.plan_id"
-                " FROM membership m JOIN plan pl ON pl.id = m.plan_id"
-                " WHERE m.id = :id FOR UPDATE OF m"
-            ),
-            {"id": membership_id},
-        )
-    ).one_or_none()
+    ends, so a concurrent change waits and then sees this one's result; read only,
+    with `lock=False`."""
+    sql = f"{SELECT_STATE} FOR UPDATE OF m" if lock else SELECT_STATE
+    row = (await session.execute(text(sql), {"id": membership_id})).one_or_none()
     if row is None:
         raise NOT_FOUND
     state = domain.Membership(
@@ -315,7 +318,7 @@ async def create_membership(
     if not known:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "person not found")
     created = await start_membership(session, tenant, body.person_id, body)
-    notice = await welcome_for(session, tenant, created)
+    notice = await welcome_for(session, tenant, created) if body.send_welcome else None
     if notice is not None:
         # After the response, which is after the membership has committed.
         background.add_task(notices.send, notice)
@@ -388,21 +391,65 @@ async def change_plan(
         return await _get(session, membership_id)
 
     terms = await _plan_terms(session, body.plan_id)
-    billed_through = await session.scalar(
-        text("SELECT max(period_end) FROM billing_period WHERE membership_id = :id"),
-        {"id": membership_id},
-    )
-    try:
-        starts_on = domain.plan_change_starts(current, terms.kind, billed_through=billed_through)
-    except InvalidTransition as error:
-        raise _conflict(error) from None
-    except (ValueError, OverflowError) as error:
-        raise _unprocessable(error) from None
+    starts_on = await _change_starts(session, membership_id, current, terms.kind)
     await session.execute(
         text("UPDATE membership SET next_plan_id = :plan, next_plan_from = :from WHERE id = :id"),
         {"plan": body.plan_id, "from": starts_on, "id": membership_id},
     )
     return await _get(session, membership_id)
+
+
+async def _change_starts(
+    session: AsyncSession, membership_id: uuid.UUID, current: domain.Membership, to: PlanKind
+) -> date:
+    """The day a change of `current` to a plan of kind `to` takes effect: a 409 for a
+    membership that cannot change plan, a 422 for a plan it cannot change to."""
+    billed_through = await session.scalar(
+        text("SELECT max(period_end) FROM billing_period WHERE membership_id = :id"),
+        {"id": membership_id},
+    )
+    try:
+        return domain.plan_change_starts(current, to, billed_through=billed_through)
+    except InvalidTransition as error:
+        raise _conflict(error) from None
+    except (ValueError, OverflowError) as error:
+        raise _unprocessable(error) from None
+
+
+@router.get("/{membership_id}/plan-change")
+async def plan_change_quote(
+    membership_id: uuid.UUID, plan_id: uuid.UUID, session: AdminSession
+) -> PlanChangeQuote:
+    """What `POST .../plan-change` to `plan_id` would do, saving nothing (#249): the day
+    it takes effect and the first period the new plan bills from it, as the nightly job
+    will bill it. Refused as that request would be, and for the plan it is on."""
+    current, current_plan = await _locked(session, membership_id, lock=False)
+    if current.status is MembershipStatus.CANCELLED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "a cancelled membership cannot change plan")
+    if plan_id == current_plan:
+        raise HTTPException(status.HTTP_409_CONFLICT, "the membership is on this plan")
+    terms = await _plan_terms(session, plan_id)
+    starts_on = await _change_starts(session, membership_id, current, terms.kind)
+    row = (
+        await session.execute(
+            text(
+                "SELECT pl.price_clp, pl.period_months, m.discount_pct"
+                " FROM plan pl, membership m WHERE pl.id = :plan AND m.id = :id"
+            ),
+            {"plan": plan_id, "id": membership_id},
+        )
+    ).one()
+    try:
+        first = billing.first_period_after_change(
+            billing.Plan(terms, row.price_clp, row.period_months), starts_on, row.discount_pct
+        )
+    except (ValueError, OverflowError) as error:
+        raise _unprocessable(error) from None
+    return PlanChangeQuote(
+        starts_on=first.period_start,
+        period_end=first.period_end,
+        amount_due_clp=first.amount_due_clp,
+    )
 
 
 # A freeze moves the billing periods from its first day on (migration 0027), and with

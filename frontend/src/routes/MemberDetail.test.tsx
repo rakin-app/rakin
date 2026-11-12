@@ -53,6 +53,7 @@ const MONTHLY: Membership = {
   started_on: '2024-03-30',
   current_period_end: '2026-10-29',
   credits_remaining: null,
+  next_plan: null,
   freeze: null,
 }
 
@@ -1726,6 +1727,286 @@ describe('Acceso (#246)', () => {
     await money()
 
     expect(screen.queryByRole('region', { name: access.title })).not.toBeInTheDocument()
+  })
+})
+
+describe('the plan from the ficha (#249)', () => {
+  const PLANS = [
+    { id: 'plan-adults', name: 'Mensual adultos', kind: 'monthly', price_clp: 45000, anchor: 'signup', active: true },
+    { id: 'plan-six', name: 'Semestral', kind: 'prepaid', price_clp: 240000, period_months: 6, active: true },
+    { id: 'plan-pack', name: 'Pack 12', kind: 'credits', price_clp: 45000, credits: 12, active: true },
+    { id: 'plan-old', name: 'Mensual 2025', kind: 'monthly', price_clp: 40000, anchor: 'signup', active: false },
+  ]
+  const QUOTE = { starts_on: '2026-11-30', period_end: '2027-05-29', amount_due_clp: 240000 }
+  const assign = copy.assignForm
+  const change = copy.changeForm
+
+  /** The API with no plan running: "Asignar plan" starts one, which the ficha then reads. */
+  function planless(start: Membership[] = [], to: string | null = 'felipe@example.com') {
+    let members = start
+    return stubApi({
+      memberships: start,
+      extra: (path, method, body) => {
+        if (path === '/api/plans') return { body: PLANS }
+        if (path === '/api/people/felipe/welcome') return { body: { to, guardian: null, last: null } }
+        if (path === '/api/memberships' && method === 'GET') return { body: members }
+        if (path === '/api/memberships' && method === 'POST') {
+          const { plan_id } = body as { plan_id: string }
+          members = [{ ...MONTHLY, plan_id, plan_name: PLANS.find((p) => p.id === plan_id)!.name }]
+          return { status: 201, body: members[0] }
+        }
+        return undefined
+      },
+    })
+  }
+
+  it('gives a planless member "Asignar plan", which starts them on it with the welcome', async () => {
+    const calls = planless()
+    renderAt(PATH)
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    const form = screen.getByRole('form', { name: assign.title })
+    // Only plans a member can be started on: active, no drop-in.
+    const select = await within(form).findByLabelText(assign.plan)
+    await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(4))
+    expect(within(select).queryByRole('option', { name: 'Mensual 2025' })).not.toBeInTheDocument()
+    await userEvent.selectOptions(select, 'plan-adults')
+    expect(await within(form).findByLabelText(assign.welcome)).toBeChecked()
+    // A double tap starts it once.
+    const submit = within(form).getByRole('button', { name: assign.submit })
+    fireEvent.click(submit)
+    fireEvent.click(submit)
+
+    expect(await screen.findByText(assign.done('Mensual adultos'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/memberships' && c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/memberships',
+        body: { person_id: 'felipe', plan_id: 'plan-adults', send_welcome: true },
+      },
+    ])
+    // The ficha reads the plan again, and offers no second one.
+    expect(within(await money()).getByText('Mensual adultos · vence el 30')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.assignPlan })).not.toBeInTheDocument()
+  })
+
+  it('keeps "Volver" to where the ficha was opened from after assigning a plan with the welcome (#250)', async () => {
+    planless()
+    const router = renderAt('/admin/pagos?filter=pending')
+    await waitFor(() => expect(router.state.location.href).toBe('/admin/pagos?filter=pending'))
+    await router.navigate({ href: PATH })
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    const form = screen.getByRole('form', { name: assign.title })
+    await userEvent.selectOptions(await within(form).findByLabelText(assign.plan), 'plan-adults')
+    await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
+    expect(await screen.findByText(assign.done('Mensual adultos'))).toBeInTheDocument()
+
+    expect(screen.getByRole('link', { name: 'Volver a Pagos' })).toHaveAttribute('href', '/admin/pagos?filter=pending')
+    expect(router.history.length).toBe(2)
+  })
+
+  it('asks for a plan, and sends no welcome without an email or when unticked', async () => {
+    const calls = planless([], null)
+    renderAt(PATH)
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    const form = screen.getByRole('form', { name: assign.title })
+    await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
+    expect(within(form).getByRole('alert')).toHaveTextContent(assign.planNeeded)
+    expect(await within(form).findByText(assign.noEmail)).toBeInTheDocument()
+    expect(within(form).getByLabelText(assign.welcome)).toBeDisabled()
+
+    await userEvent.selectOptions(await within(form).findByLabelText(assign.plan), 'plan-six')
+    await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.path === '/api/memberships' && c.method === 'POST')?.body).toEqual({
+        person_id: 'felipe',
+        plan_id: 'plan-six',
+        send_welcome: false,
+      }),
+    )
+  })
+
+  it('keeps a lapsed plan\'s unpaid charge on the ficha once a new plan starts', async () => {
+    const lapsed: Membership = { ...MONTHLY, status: 'lapsed' }
+    let members = [lapsed]
+    stubApi({
+      memberships: members,
+      extra: (path, method, body) => {
+        if (path === '/api/plans') return { body: PLANS }
+        if (path === '/api/people/felipe/welcome') return { body: { to: null, guardian: null, last: null } }
+        if (path === '/api/memberships' && method === 'GET') return { body: members }
+        if (path === '/api/memberships' && method === 'POST') {
+          const { plan_id } = body as { plan_id: string }
+          const started: Membership = { ...MONTHLY, id: 'm-new', plan_id, plan_name: 'Semestral', plan_kind: 'prepaid', anchor_day: null }
+          members = [started, lapsed]
+          return { status: 201, body: started }
+        }
+        // The new plan owes nothing yet; the lapsed one keeps October (`LEDGER`).
+        if (path === '/api/ledger/memberships/m-new') {
+          return { body: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [], periods: [], refundable_payments: [] } }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    // Lapsed and owing: on its own card, nothing earlier to show apart.
+    expect(await within(await money()).findByText(copy.pendingMonth('octubre'))).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: copy.earlierDebt })).not.toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    const form = screen.getByRole('form', { name: assign.title })
+    await userEvent.selectOptions(await within(form).findByLabelText(assign.plan), 'plan-six')
+    await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
+
+    const debt = await screen.findByRole('region', { name: copy.earlierDebt })
+    expect(within(debt).getByText('$45.000')).toBeInTheDocument()
+    expect(within(debt).getByText(copy.earlierDebtLine('Mensual adultos', copy.pendingMonth('octubre')))).toBeInTheDocument()
+    expect(within(await money()).getByText(/^Semestral/)).toBeInTheDocument()
+  })
+
+  it('shows no "Deuda anterior" to a coach, or when the earlier plan owes nothing', async () => {
+    const earlier: Membership = { ...MONTHLY, id: 'm-old', status: 'cancelled' }
+    stubApi({
+      role: 'coach',
+      memberships: [MONTHLY, earlier],
+    })
+    renderAt(PATH)
+    await money()
+    expect(screen.queryByRole('region', { name: copy.earlierDebt })).not.toBeInTheDocument()
+  })
+
+  it('shows no "Deuda anterior" when the earlier plan owes nothing', async () => {
+    const earlier: Membership = { ...MONTHLY, id: 'm-old', status: 'cancelled' }
+    const calls = stubApi({
+      memberships: [MONTHLY, earlier],
+      extra: (path) =>
+        path === '/api/ledger/memberships/m-old' ? { body: { ...LEDGER, open_periods: [], owed_clp: 0 } } : undefined,
+    })
+    renderAt(PATH)
+    await money()
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/ledger/memberships/m-old')).toBe(true))
+    expect(screen.queryByRole('region', { name: copy.earlierDebt })).not.toBeInTheDocument()
+  })
+
+  it('offers "Asignar plan" once the plan was cancelled', async () => {
+    planless([{ ...MONTHLY, status: 'cancelled' }])
+    renderAt(PATH)
+    expect(await screen.findByRole('button', { name: copy.assignPlan })).toBeInTheDocument()
+  })
+
+  it('gives a coach neither "Asignar plan" nor "Cambiar plan"', async () => {
+    stubApi({ role: 'coach', memberships: [] })
+    renderAt(PATH)
+    expect(await screen.findByText(copy.noPlan)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.assignPlan })).not.toBeInTheDocument()
+  })
+
+  it('gives a coach no "Cambiar plan" on an active member', async () => {
+    stubApi({ role: 'coach' })
+    renderAt(PATH)
+    await money()
+    expect(await screen.findByText('Mensual adultos · vence el 30')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.changePlan })).not.toBeInTheDocument()
+  })
+
+  /** An active member on "Mensual adultos"; the change answers `changed`, by default pending from the quote's day. */
+  function active(changed?: Answer, membership: Membership = MONTHLY) {
+    let members = [membership]
+    return stubApi({
+      memberships: members,
+      extra: (path, method, body) => {
+        if (path === '/api/plans') return { body: PLANS }
+        if (path === '/api/memberships' && method === 'GET') return { body: members }
+        if (path === '/api/memberships/m-felipe/plan-change' && method === 'GET') return { body: QUOTE }
+        if (path === '/api/memberships/m-felipe/plan-change' && method === 'POST') {
+          if (changed) return changed
+          const { plan_id } = body as { plan_id: string }
+          const name = PLANS.find((p) => p.id === plan_id)!.name
+          members = [{ ...membership, next_plan: { plan_id, plan_name: name, starts_on: QUOTE.starts_on } }]
+          return { body: members[0] }
+        }
+        return undefined
+      },
+    })
+  }
+
+  it('changes an active member to another plan, saying first what it does to this period and the next charge', async () => {
+    const calls = active()
+    renderAt(PATH)
+
+    expect(screen.queryByRole('button', { name: copy.assignPlan })).not.toBeInTheDocument()
+    await userEvent.click(await within(await money()).findByRole('button', { name: copy.changePlan }))
+    const form = screen.getByRole('form', { name: change.title })
+    const select = await within(form).findByLabelText(change.plan)
+    // Another monthly or prepaid plan: not the one it is on, a pack, or one deactivated.
+    await waitFor(() => expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([change.noPlan, 'Semestral']))
+    await userEvent.selectOptions(select, 'plan-six')
+
+    expect(await within(form).findByText(change.current('Mensual adultos', shortDay('2026-11-29')))).toBeInTheDocument()
+    expect(within(form).getByText(change.next('Semestral', shortDay('2026-11-30'), '$240.000', shortDay('2027-05-29')))).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/memberships/m-felipe/plan-change' && c.method === 'POST')).toEqual([])
+
+    const submit = within(form).getByRole('button', { name: change.submit })
+    fireEvent.click(submit)
+    fireEvent.click(submit)
+
+    expect(await screen.findByText(change.done('Semestral', shortDay('2026-11-30')))).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/memberships/m-felipe/plan-change' && c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/memberships/m-felipe/plan-change', body: { plan_id: 'plan-six' } },
+    ])
+    // The card says the change is coming.
+    expect(await within(await money()).findByText(copy.planChangeBooked('Semestral', shortDay('2026-11-30')))).toBeInTheDocument()
+  })
+
+  it('withdraws a pending change by staying on the plan it is on', async () => {
+    const pending = { ...MONTHLY, next_plan: { plan_id: 'plan-six', plan_name: 'Semestral', starts_on: '2026-11-30' } }
+    const calls = active({ body: MONTHLY }, pending)
+    renderAt(PATH)
+
+    await userEvent.click(await within(await money()).findByRole('button', { name: copy.changePlan }))
+    const form = screen.getByRole('form', { name: change.title })
+    await userEvent.selectOptions(await within(form).findByLabelText(change.plan), 'plan-adults')
+    expect(within(form).getByText(change.withdraw('Semestral', 'Mensual adultos'))).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: change.submit }))
+
+    expect(await screen.findByText(change.withdrawn)).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/memberships/m-felipe/plan-change').map((c) => [c.method, c.body])).toEqual([
+      ['POST', { plan_id: 'plan-adults' }],
+    ])
+  })
+
+  it('changes a frozen membership as the API allows, saying the freeze moves it', async () => {
+    active(undefined, FROZEN)
+    renderAt(PATH)
+
+    await userEvent.click(await within(await money()).findByRole('button', { name: copy.changePlan }))
+    const form = screen.getByRole('form', { name: change.title })
+    await userEvent.selectOptions(await within(form).findByLabelText(change.plan), 'plan-six')
+    expect(await within(form).findByText(change.frozen)).toBeInTheDocument()
+  })
+
+  it('says so when the API refuses the change', async () => {
+    active({ status: 409, body: { detail: 'a cancelled membership cannot change plan' } })
+    renderAt(PATH)
+
+    await userEvent.click(await within(await money()).findByRole('button', { name: copy.changePlan }))
+    const form = screen.getByRole('form', { name: change.title })
+    await userEvent.selectOptions(await within(form).findByLabelText(change.plan), 'plan-six')
+    await within(form).findByText(change.next('Semestral', shortDay('2026-11-30'), '$240.000', shortDay('2027-05-29')))
+    await userEvent.click(within(form).getByRole('button', { name: change.submit }))
+
+    expect(await within(form).findByRole('alert')).toHaveTextContent(change.refused.conflict)
+  })
+
+  it('offers no "Cambiar plan" on a pack', async () => {
+    active(undefined, { ...MONTHLY, plan_kind: 'credits', anchor_day: null, plan_name: 'Pack 12' })
+    renderAt(PATH)
+    await within(await money()).findByRole('button', { name: copy.record })
+    expect(screen.queryByRole('button', { name: copy.changePlan })).not.toBeInTheDocument()
   })
 })
 

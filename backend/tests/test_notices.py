@@ -462,7 +462,9 @@ def test_a_notice_carries_a_7_day_link_to_the_student_page(db: Database, gym: uu
         ),
     )
     assert link["used_at"] is None
-    assert timedelta(days=7) - timedelta(minutes=1) < link["ttl"] <= timedelta(days=7)
+    # `expires_at` is the API's clock, `created_at` the database's at its transaction's
+    # start: a minute either way, so a slow run or a drifting container clock passes.
+    assert abs(link["ttl"] - timedelta(days=7)) < timedelta(minutes=1)
     # Never written down: the record has the values, not the link.
     [row] = logged(db, gym)
     assert "token" not in row["payload"]
