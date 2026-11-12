@@ -73,7 +73,7 @@ class ClassTypeCreate(BaseModel):
     kind: ClassKind = ClassKind.CLASS
     # `counts_by_default(kind)` unless sent.
     counts_as_class: bool | None = None
-    # The gym activity it belongs to (#245, migration 0042); none is fine.
+    # The gym activity it belongs to (#245, migration 0043); none is fine.
     activity_id: uuid.UUID | None = None
 
 

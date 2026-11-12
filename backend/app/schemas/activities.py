@@ -1,4 +1,4 @@
-"""Gym activities (#245, migration 0042): what the gym teaches, and whether it grades.
+"""Gym activities (#245, migration 0043): what the gym teaches, and whether it grades.
 
 An activity is one discipline the gym teaches, "Ballet" or "Escalada", unique in the gym
 with case ignored. `uses_grades` is whether it grades students: belts and ranks show

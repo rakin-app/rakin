@@ -84,7 +84,7 @@ class Seed:
     # Who pays for each kid (migration 0010).
     guardian_links: list[Row]
     staff: list[Row]
-    # What it teaches (migration 0042): one activity, graded, with every class type.
+    # What it teaches (migration 0043): one activity, graded, with every class type.
     activities: list[Row]
     # Programs and their class types (migration 0017).
     programs: list[Row]

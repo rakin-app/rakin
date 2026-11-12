@@ -140,7 +140,7 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # tests/test_extra_charges.py the cobros, their lines and groups (0037),
     # tests/test_double_submit.py `idempotency_key` (0038),
     # tests/test_class_tags.py `class_tag` and the class and slot tags (0041), and
-    # tests/test_activities.py `gym_activity` (0042).
+    # tests/test_activities.py `gym_activity` (0043).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "auth_session",

@@ -9,7 +9,7 @@ The gym gets what the demo seed's has before anyone trains there (`app.seed.data
 its programs and the block kinds every gym is given (0028); a grading scheme only when
 `--grading` names a preset (`app.domain.grading`), since grading is a module a gym turns
 on, not every sport has one: by default it has no grades and shows no belts. With a
-preset it also gets one activity (0042), named as the preset is, that uses grades, so
+preset it also gets one activity (0043), named as the preset is, that uses grades, so
 the belts show; with none, no activity, which its owner picks on first sign-in; and
 its owner, a staff row on the person with that RUT, found or created as the API adds
 anyone (`join_gym`, 0036), or with no RUT someone new keyed by the email. The phone is

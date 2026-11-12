@@ -1,6 +1,6 @@
 """The current gym's activities: list, add, rename, grade or not, remove (#245).
 
-An activity is one discipline the gym teaches (migration 0042): "Ballet",
+An activity is one discipline the gym teaches (migration 0043): "Ballet",
 "Escalada", "Piano". A name is unique in the gym, case ignored: a second "ballet" is a 409. Its
 `uses_grades` decides whether the gym's screens show belts and ranks: they do while
 any activity has it on (`gym_uses_grades`, which `/api/me/role` answers). Removing an

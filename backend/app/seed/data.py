@@ -36,7 +36,7 @@ GRACE_DAYS = 10
 HISTORY_PERIODS = 6
 
 
-# What the gym teaches (migration 0042): one activity, graded, with every class type.
+# What the gym teaches (migration 0043): one activity, graded, with every class type.
 ACTIVITY = "BJJ"
 
 # The gym's programs (migration 0018), by key.

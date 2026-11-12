@@ -1,4 +1,4 @@
-"""Gym activities (#245, migration 0042).
+"""Gym activities (#245, migration 0043).
 
 An owner or admin keeps what the gym teaches, each activity with whether it grades;
 any staff role reads them. A class type may belong to one. `/api/me/role` says
@@ -274,7 +274,7 @@ def test_a_class_type_takes_no_other_gyms_activity(
 @pytest.fixture
 def old_db() -> Iterator[Database]:
     with throwaway_database(require_test_database_url()) as database:
-        migrate(database, "0041")
+        migrate(database, "0042")
         yield database
 
 
@@ -326,7 +326,7 @@ def test_the_migration_gives_a_gym_that_grades_a_graded_bjj(old_db: Database) ->
     store_grading(old_db, malformed, {"ranks": "rotas"})
     bare = seed_gym(old_db, "sin-grados")
 
-    migrate(old_db, "0042")
+    migrate(old_db, "0043")
 
     for gym in (schemed, kids_only, ranked):
         assert activities_of(old_db, gym) == [("BJJ", True)]
@@ -345,7 +345,7 @@ def test_the_migration_gives_a_gym_that_grades_a_graded_bjj(old_db: Database) ->
         "gym_activity": True,
     }
 
-    command.downgrade(old_db.alembic(), "0041")
+    command.downgrade(old_db.alembic(), "0042")
     gone = run(
         old_db.admin_url,
         lambda c: c.fetchval("SELECT to_regclass('gym_activity') IS NULL"),
