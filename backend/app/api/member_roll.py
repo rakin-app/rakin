@@ -3,10 +3,16 @@
 `POST /api/people/enrol` adds a member as the import would, all or nothing: their
 record, by RUT or email as anyone joins (`add_to_gym`, #165) or, for a dependent with
 neither, by name alone; the guardian a minor needs, someone already here or someone new
-by their RUT or email; the gym's custom fields; and the plan they start on, with the
-welcome if asked. A RUT someone in this gym already has, or the email of someone here
-when no RUT is given, is a 409 naming them, as for `POST /api/people`; a new guardian
-whose RUT or email is someone's here is that person.
+by their RUT or email; the gym's custom fields; the plan they start on, if any; and the
+welcome if asked, with or without a plan (#246). A RUT someone in this gym already
+has, or the email of someone here when no RUT is given, is a 409 naming them, as for
+`POST /api/people`; a new guardian whose RUT or email is someone's here is that person.
+
+`GET .../welcome` says where their welcome goes and whether the latest one was sent or
+failed, as `message_log` recorded it; `POST .../welcome` sends it again, now, and
+answers the same: "Enviar link para entrar" on the ficha, for someone added with no
+welcome, or imported (#246). It is about their plan, the one they are on and not yet
+cancelled, or with none that they are on the roster.
 
 `POST .../leave` is the normal way out (dado de baja): every membership they hold ends
 with the reason `dado de baja` (`app.domain.membership.leave`), so billing writes no
@@ -19,8 +25,8 @@ given one.
 gym's records of someone with no ledger entries here (`forget_gym_person`, 0032), and
 answers why not otherwise; `GET .../deletion` answers the same without deleting.
 
-Adding, leaving and returning are the owner's and admins': each starts or ends what a
-member is charged. Deleting is the owner's alone.
+Adding, leaving, returning and the welcome are the owner's and admins': each starts or
+ends what a member is charged, or speaks for the gym. Deleting is the owner's alone.
 """
 
 import uuid
@@ -33,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.custom_fields import field_cipher, write_person_fields
 from app.api.guardians import link
-from app.api.memberships import CALL_OFF_BOOKED, start_membership, welcome_for
+from app.api.memberships import CALL_OFF_BOOKED, start_membership, welcome_to
 from app.api.people import (
     NOT_FOUND,
     add_to_gym,
@@ -44,6 +50,7 @@ from app.api.people import (
     read_person,
     refuse_email_in_gym,
 )
+from app.contacts import contact_for
 from app.domain import membership as domain
 from app.domain.dates import add_months, gym_today, is_minor
 from app.domain.membership import MembershipStatus, PlanKind
@@ -61,6 +68,8 @@ from app.schemas.people import (
     Person,
     PersonInGym,
     Return,
+    WelcomeSent,
+    WelcomeState,
 )
 from app.tenancy import Tenant, current_tenant
 
@@ -90,6 +99,22 @@ END_MEMBERSHIP = text(
     "UPDATE membership SET status = :status, cancel_reason = :reason, cancelled_at = now(),"
     " next_plan_id = NULL, next_plan_from = NULL"
     " WHERE id = :id"
+)
+
+# The plan a welcome sent now is about: the one the ficha shows, if not cancelled.
+CURRENT_PLAN = text(
+    "SELECT pl.name FROM membership m JOIN plan pl ON pl.id = m.plan_id"
+    " WHERE m.person_id = :id AND m.status <> 'cancelled'"
+    " ORDER BY m.started_at DESC, m.created_at DESC LIMIT 1"
+)
+
+# The latest welcome about them, to `to`: a guardian's names the dependent in
+# `about_id`, and one from before it was recorded is about whom it was addressed to.
+LAST_WELCOME = text(
+    "SELECT status, sent_at, to_address FROM message_log"
+    " WHERE template = 'welcome' AND person_id = :to"
+    " AND coalesce(payload ->> 'about_id', CAST(person_id AS text)) = :about"
+    " ORDER BY sent_at DESC LIMIT 1"
 )
 
 SET_LEFT_ON = text(
@@ -176,11 +201,13 @@ async def enrol(
         raise HTTPException(status.HTTP_409_CONFLICT, FamilyConflict(code=code).model_dump())
     if body.fields:
         await write_person_fields(session, tenant, field_cipher(request), person_id, body.fields)
+    plan_name = None
     if body.membership is not None:
         created = await start_membership(session, tenant, person_id, body.membership)
-        if body.send_welcome and (notice := await welcome_for(session, tenant, created)):
-            # After the response, which is after the member has committed.
-            background.add_task(notices.send, notice)
+        plan_name = created.plan_name
+    if body.send_welcome and (notice := await welcome_to(session, tenant, person_id, plan_name)):
+        # After the response, which is after the member has committed.
+        background.add_task(notices.send, notice)
     return await read_person(session, person_id)
 
 
@@ -229,6 +256,50 @@ async def return_to_gym(
     if body.membership is not None:
         await start_membership(session, tenant, person_id, body.membership)
     return await read_person(session, person_id)
+
+
+async def _welcome_state(session: AsyncSession, person_id: uuid.UUID) -> WelcomeState:
+    contact = await contact_for(session, person_id)
+    if contact is None:
+        raise NOT_FOUND
+    last = (
+        await session.execute(LAST_WELCOME, {"to": contact.person_id, "about": str(person_id)})
+    ).one_or_none()
+    return WelcomeState(
+        to=contact.email,
+        guardian=contact.name if contact.on_behalf_of else None,
+        last=None
+        if last is None
+        else WelcomeSent(status=last.status, sent_at=last.sent_at, to=last.to_address),
+    )
+
+
+@router.get("/{person_id}/welcome")
+async def welcome_state(person_id: uuid.UUID, session: AdminSession) -> WelcomeState:
+    return await _welcome_state(session, person_id)
+
+
+@router.post("/{person_id}/welcome")
+async def send_welcome(
+    person_id: uuid.UUID,
+    tenant: CurrentTenant,
+    session: AdminSession,
+    notices: Annotated[Notices, Depends(get_notices)],
+) -> WelcomeState:
+    """Send their welcome now and answer how it went. Nothing here waits on this
+    transaction, so it goes before the answer, not after. A 422 `no_email` with no
+    address to send it to; a 409 for someone who has left."""
+    left_on = await session.scalar(LOCK_RECORD, {"id": person_id})
+    if left_on is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "has left the gym")
+    plan_name = await session.scalar(CURRENT_PLAN, {"id": person_id})
+    notice = await welcome_to(session, tenant, person_id, plan_name)
+    if notice is None:
+        if not await in_gym(session, person_id):
+            raise NOT_FOUND
+        raise _unprocessable("no_email")
+    await notices.send(notice)
+    return await _welcome_state(session, person_id)
 
 
 @router.get("/{person_id}/deletion")

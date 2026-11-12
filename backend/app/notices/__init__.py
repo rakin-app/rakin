@@ -95,8 +95,8 @@ PROOF_REJECTED = Template("proof_rejected")
 # A cobro extra (#195), as it is created and as a reminder of it.
 EXTRA_CHARGE = Template("extra_charge")
 STAFF_INVITE = Template("staff_invite", landing=None)
-# A join request approved with no plan (#154): no sign-in link, since signing in needs
-# a membership, which the welcome brings once a plan is set.
+# A join request approved with no plan (#154): no sign-in link. They can ask for one at
+# `/ingresar` (#246), and the welcome brings one once a plan is set.
 JOIN_APPROVED = Template("join_approved", page_link=False)
 
 

@@ -241,12 +241,26 @@ def test_a_person_gym_a_has_only_as_a_guardian(harness: Harness, gyms: Gyms) -> 
     assert_reaches_only_b(harness, gyms, person, attacker)
 
 
-def test_a_gym_b_email_nobody_else_belongs_to_reaches_no_gym(harness: Harness, gyms: Gyms) -> None:
-    """Gym B writes the email but gives them nothing there: no link goes at all."""
+def test_a_gym_b_email_on_its_roster_alone_reaches_gym_b_alone(
+    harness: Harness, gyms: Gyms
+) -> None:
+    """Gym B writes the email and gives them no plan there: being on its roster signs
+    them in to gym B (#246), and still never to gym A."""
     person, rut = victim(harness, gyms)
     attacker = address()
 
     harness.write("POST", "/api/people", gyms.b, rut=rut, name="X", email=attacker)
+
+    assert_reaches_only_b(harness, gyms, person, attacker)
+
+
+def test_a_gym_b_email_of_someone_who_left_it_reaches_no_gym(harness: Harness, gyms: Gyms) -> None:
+    """Gym B writes the email and they leave gym B with nothing there: no link at all."""
+    person, rut = victim(harness, gyms)
+    attacker = address()
+
+    harness.write("POST", "/api/people", gyms.b, rut=rut, name="X", email=attacker)
+    harness.write("POST", f"/api/people/{person}/leave", gyms.b)
 
     assert harness.sign_in(attacker) is None
     assert gyms_of(harness.db, person, attacker) == set()

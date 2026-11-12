@@ -63,6 +63,7 @@ import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
 import { PersonExtraLines } from './PersonExtraLines'
 import { PersonData } from './PersonData'
+import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
 import { useSubmit } from '../api/submit'
 
@@ -83,7 +84,8 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * their last promotion; their time on the mat by block kind (#141).
  *
  * Below them, "Datos": their record and the gym's custom fields the signed-in role may
- * see (#20), edited together; then "Dar de baja" or "Reactivar", and "Eliminar" (#157).
+ * see (#20), edited together; "Acceso", their sign-in link and how the welcome went
+ * (#246); then "Dar de baja" or "Reactivar", and "Eliminar" (#157).
  * On a desktop, the money and its ledger on the left and the rest on the right (#179).
  *
  * In the header, WhatsApp: for whoever reads the ledger, the reminder about what they
@@ -164,6 +166,7 @@ export function MemberDetail() {
             </div>
           </section>
           <PersonData person={person.data} />
+          <PersonWelcome person={person.data} role={role.data} />
           <PersonActions person={person.data} role={role.data} />
         </div>
       </Grid>

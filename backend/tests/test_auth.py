@@ -57,7 +57,8 @@ class People:
     ana: uuid.UUID  # Sur's record: Ana, Ana@Example.cl, a member
     shared: uuid.UUID  # a member of both; Sur has shared@example.cl, Norte another address
     both: uuid.UUID  # a member of both, and both have both@example.cl for them
-    orphan: uuid.UUID  # Sur has a record, orphan@example.cl, but no membership or staff row
+    planless: uuid.UUID  # on Sur's roster, planless@example.cl, with no plan or staff row (#246)
+    left: uuid.UUID  # Sur's record, left@example.cl, dado de baja with no plan
     legacy: uuid.UUID  # legacy@example.cl only on `person`, which sign-in does not read
 
 
@@ -97,7 +98,7 @@ async def add_person(
 @pytest.fixture(scope="module")
 def people(db: Database) -> People:
     sur, norte = seed_gym(db, "academia-sur"), seed_gym(db, "dojo-norte")
-    ana, shared, both, orphan, legacy = (uuid.uuid4() for _ in range(5))
+    ana, shared, both, planless, left, legacy = (uuid.uuid4() for _ in range(6))
 
     # As the superuser, which skips RLS, to write across both gyms at once.
     async def query(conn: asyncpg.Connection) -> None:
@@ -110,12 +111,16 @@ def people(db: Database) -> People:
         await add_person(
             conn, both, {sur: ("Both", "both@example.cl"), norte: ("Both", "Both@Example.cl")}
         )
-        await add_person(conn, orphan, {sur: ("Orphan", "orphan@example.cl")}, member=False)
+        await add_person(conn, planless, {sur: ("Planless", "planless@example.cl")}, member=False)
+        await add_person(conn, left, {sur: ("Left", "left@example.cl")}, member=False)
+        await conn.execute(
+            "UPDATE gym_person SET left_on = current_date WHERE person_id = $1", left
+        )
         await add_person(conn, legacy, {sur: ("Legacy", None)})
         await conn.execute("UPDATE person SET email = 'legacy@example.cl' WHERE id = $1", legacy)
 
     run(db.admin_url, query)
-    return People(sur, norte, ana, shared, both, orphan, legacy)
+    return People(sur, norte, ana, shared, both, planless, left, legacy)
 
 
 @dataclass
@@ -239,10 +244,18 @@ def test_an_email_one_gym_holds_signs_in_to_that_gym_alone(
     assert harness.client.get("/test/setting").json()["gym"] == str(getattr(people, gym))
 
 
-@pytest.mark.parametrize("address", ["orphan@example.cl", "legacy@example.cl"])
-def test_only_a_gyms_record_of_a_member_or_staff_gets_a_link(
-    harness: Harness, address: str
-) -> None:
+def test_a_student_on_the_roster_with_no_plan_signs_in(harness: Harness, people: People) -> None:
+    """No membership, staff row or dependent: on the roster is enough (#246)."""
+    harness.sign_in("planless@example.cl")
+
+    assert harness.client.get("/test/setting").json()["gym"] == str(people.sur)
+    assert harness.client.get("/api/me/page").status_code == 200
+
+
+@pytest.mark.parametrize("address", ["left@example.cl", "legacy@example.cl"])
+def test_only_someone_in_a_gym_gets_a_link(harness: Harness, address: str) -> None:
+    """Dado de baja with nothing left here, or an email only `person` holds: the same 202
+    as anyone, and no link."""
     response = harness.client.post("/api/auth/link", json={"email": address})
     assert response.status_code == 202
     assert harness.outbox.sent == []
@@ -348,14 +361,18 @@ def test_an_expired_link_or_session_is_not_found(db: Database, people: People) -
     with_store(db, check)
 
 
-@pytest.mark.parametrize("row", ["staff", "membership"])
+@pytest.mark.parametrize("row", ["staff", "membership", None])
 def test_leaving_the_gym_ends_the_session(
-    harness: Harness, db: Database, people: People, row: str
+    harness: Harness, db: Database, people: People, row: str | None
 ) -> None:
+    """Their staff row or membership gone, or none to begin with, and dado de baja: on
+    the roster no more, nor anything else here."""
     person, address = uuid.uuid4(), f"{uuid.uuid4().hex[:8]}@example.cl"
 
     async def join(conn: asyncpg.Connection) -> None:
-        await add_person(conn, person, {people.sur: ("Leaving", address)}, member=row != "staff")
+        await add_person(
+            conn, person, {people.sur: ("Leaving", address)}, member=row == "membership"
+        )
         if row == "staff":
             await conn.execute(
                 "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')",
@@ -367,8 +384,31 @@ def test_leaving_the_gym_ends_the_session(
     harness.sign_in(address)
     assert harness.client.get("/test/setting").json()["gym"] == str(people.sur)
 
-    run(db.admin_url, lambda c: c.execute(f"DELETE FROM {row} WHERE person_id = $1", person))
+    if row is not None:
+        run(db.admin_url, lambda c: c.execute(f"DELETE FROM {row} WHERE person_id = $1", person))
+    # Still on the roster, so still in: a coach no longer on staff trains here.
+    assert harness.client.get("/test/setting").status_code == 200
+    leave = "UPDATE gym_person SET left_on = current_date WHERE person_id = $1"
+    run(db.admin_url, lambda c: c.execute(leave, person))
 
+    assert harness.client.get("/test/setting").status_code == 401
+
+
+def test_a_forgotten_person_gets_no_link(harness: Harness, db: Database, people: People) -> None:
+    """`forget_gym_person` (0032) deletes the gym's record: nothing of them is left to
+    sign in to, and the answer is the same 202."""
+    person, address = uuid.uuid4(), f"{uuid.uuid4().hex[:8]}@example.cl"
+    records: dict[uuid.UUID, tuple[str, str | None]] = {people.sur: ("Forgotten", address)}
+    run(db.admin_url, lambda c: add_person(c, person, records, member=False))
+    harness.sign_in(address)
+    harness.outbox.sent.clear()
+
+    forgotten = run(db.api_url, in_gym(people.sur, "SELECT forget_gym_person($1)", person))
+    assert [r[0] for r in forgotten] == [None]
+
+    response = harness.client.post("/api/auth/link", json={"email": address})
+    assert response.status_code == 202
+    assert harness.outbox.sent == []
     assert harness.client.get("/test/setting").status_code == 401
 
 
@@ -398,8 +438,13 @@ def test_the_email_lookup_reads_across_gyms_but_not_beyond_people_in_one(
     assert run(db.api_url, in_gym(None, "SELECT id FROM person")) == []
     [ana] = run(db.api_url, in_gym(None, lookup, " ANA@example.CL"))
     assert dict(ana) == {"person_id": people.ana, "name": "Ana", "email": "Ana@Example.cl"}
-    assert run(db.api_url, in_gym(None, lookup, "orphan@example.cl")) == []
+    assert run(db.api_url, in_gym(None, lookup, "left@example.cl")) == []
+    [planless] = run(db.api_url, in_gym(None, lookup, "planless@example.cl"))
+    assert planless["person_id"] == people.planless
     gyms_of = "SELECT auth_gyms_of($1, $2)"
+    assert run(db.api_url, in_gym(None, gyms_of, people.left, "left@example.cl")) == []
+    gyms = run(db.api_url, in_gym(None, gyms_of, people.planless, "planless@example.cl"))
+    assert [r[0] for r in gyms] == [people.sur]
     gyms = run(db.api_url, in_gym(None, gyms_of, people.shared, " SHARED@example.cl"))
     assert {r[0] for r in gyms} == {people.sur}
     gyms = run(db.api_url, in_gym(None, gyms_of, people.both, "both@example.cl"))

@@ -141,12 +141,38 @@ export type Enrolment = {
   guardian?: GuardianChoice
   fields?: Record<string, FieldValue>
   membership?: MembershipStart
-  // The welcome a plan sends; off by default, like the import.
+  // The welcome, with their sign-in link: about the plan, or with none that they are in (#246).
   send_welcome?: boolean
 }
 
 export function enrol(body: Enrolment): Promise<Person> {
   return apiFetch<Person>('/api/people/enrol', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** Their sign-in link, on the ficha (#246): the address the welcome goes to, theirs or
+ * their guardian's (`guardian` names them then), and how the latest welcome went. */
+export type WelcomeState = {
+  to: string | null
+  guardian: string | null
+  last: { status: 'sent' | 'failed'; sent_at: string; to: string } | null
+}
+
+/** `waiting`: a welcome is on its way (one just asked for on "Nuevo alumno"), so it is
+ * read again each second until it is recorded, for up to `WELCOME_WAIT_MS`. */
+export const WELCOME_WAIT_MS = 15_000
+
+export function welcomeQuery(id: string, waitingSince: number | null = null) {
+  return queryOptions({
+    queryKey: ['people', 'welcome', id],
+    queryFn: () => apiFetch<WelcomeState>(`/api/people/${encodeURIComponent(id)}/welcome`),
+    refetchInterval: (query) =>
+      waitingSince !== null && !query.state.data?.last && Date.now() - waitingSince < WELCOME_WAIT_MS ? 1000 : false,
+  })
+}
+
+/** "Enviar link para entrar": the welcome, sent now; the answer says how it went. */
+export function sendWelcome(id: string): Promise<WelcomeState> {
+  return apiFetch<WelcomeState>(`/api/people/${encodeURIComponent(id)}/welcome`, { method: 'POST' })
 }
 
 /** Only the fields sent change; `null` clears an optional one. A member's phone is

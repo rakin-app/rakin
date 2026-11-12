@@ -513,8 +513,10 @@ def test_a_person_reads_only_their_own_and_their_dependents_ledger(
 def test_a_guardian_who_does_not_train_can_sign_in(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    # Added by phone: a `gym_person` record but no membership or staff row.
+    # Added by phone: a `gym_person` record but no membership or staff row, and dado de
+    # baja, so off the roster too (#246).
     parent = add_person(client, sur, "Apoderada")
+    client.post(f"/api/people/{parent}/leave", headers=as_gym(sur), json={})
     email = "apoderada@example.cl"
     lookup = "SELECT person_id FROM auth_people_by_email($1)"
     gyms = "SELECT auth_gyms_of($1, $2)"

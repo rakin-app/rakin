@@ -1,7 +1,8 @@
 """Rakin's side of magic-link sign-in (`app.magiclink`): people, Postgres and email.
 
 An address's links go to every person with that email who belongs to some gym, one
-link each. A sign-in reaches only the gyms whose own record of the person holds the
+link each: on its roster, or with a membership, a staff row or a dependent there
+(migration 0042). A sign-in reaches only the gyms whose own record of the person holds the
 address the link went to (migration 0029), never every gym the person is in: the email
 one gym writes signs nobody in to another. A session starts in that gym when there is
 exactly one; with several it starts in none until they pick (#16), and gym-scoped
