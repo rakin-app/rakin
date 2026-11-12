@@ -327,3 +327,10 @@ declare module '@tanstack/react-router' {
     router: ReturnType<typeof createAppRouter>
   }
 }
+
+declare module '@tanstack/history' {
+  interface HistoryState {
+    // "Nuevo alumno" asked for the welcome then: the ficha waits for it (#246).
+    welcomeSince?: number
+  }
+}

@@ -1595,3 +1595,87 @@ describe('the record and the ways out (#157)', () => {
     expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual(['/api/people/felipe'])
   })
 })
+
+describe('Acceso (#246)', () => {
+  const access = copy.access
+  const NEVER = { to: 'felipe@example.com', guardian: null, last: null }
+  const SENT = { ...NEVER, last: { status: 'sent', sent_at: '2026-11-12T15:00:00Z', to: 'felipe@example.com' } }
+
+  function welcomeApi(state: unknown, sent: unknown = SENT) {
+    return (path: string, method: string): Answer | undefined => {
+      if (path !== '/api/people/felipe/welcome') return undefined
+      return { body: method === 'POST' ? sent : state }
+    }
+  }
+
+  const section = () => screen.findByRole('region', { name: access.title })
+
+  it('says where the link goes, and sends it from the ficha', async () => {
+    const calls = stubApi({ extra: welcomeApi(NEVER) })
+    renderAt(PATH)
+    const s = await section()
+
+    expect(within(s).getByText(access.to('felipe@example.com'))).toBeInTheDocument()
+    expect(within(s).getByText(access.never)).toBeInTheDocument()
+    await userEvent.click(within(s).getByRole('button', { name: access.send }))
+
+    expect(await within(s).findByText(access.sent('12 de noviembre'))).toBeInTheDocument()
+    expect(within(s).getByRole('button', { name: access.resend })).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/people/felipe/welcome' && c.method === 'POST')).toHaveLength(1)
+  })
+
+  it("says when the welcome failed, and to whose guardian it goes", async () => {
+    const failed = {
+      to: 'marta@example.com',
+      guardian: 'Marta Díaz',
+      last: { status: 'failed', sent_at: '2026-11-12T15:00:00Z', to: 'marta@example.com' },
+    }
+    stubApi({ extra: welcomeApi(failed) })
+    renderAt(PATH)
+    const s = await section()
+
+    expect(within(s).getByText(access.toGuardian('Marta Díaz', 'marta@example.com'))).toBeInTheDocument()
+    expect(within(s).getByRole('alert')).toHaveTextContent(access.failed('12 de noviembre'))
+    expect(within(s).getByRole('button', { name: access.send })).toBeInTheDocument()
+  })
+
+  it('waits for the welcome "Nuevo alumno" just asked for, until it is recorded', async () => {
+    let reads = 0
+    stubApi({
+      extra: (path, method) => {
+        if (path !== '/api/people/felipe/welcome' || method !== 'GET') return undefined
+        reads += 1
+        return { body: reads === 1 ? NEVER : SENT }
+      },
+    })
+    const queryClient = createQueryClient()
+    const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries: ['/admin/alumnos'] }))
+    render(<App queryClient={queryClient} router={router} />)
+    await router.navigate({
+      to: '/admin/alumnos/$personId',
+      params: { personId: 'felipe' },
+      state: { welcomeSince: Date.now() },
+    })
+    const s = await section()
+
+    expect(within(s).getByText(access.waiting)).toBeInTheDocument()
+    expect(await within(s).findByText(access.sent('12 de noviembre'), {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+
+  it('offers nothing to send without an email', async () => {
+    stubApi({ extra: welcomeApi({ to: null, guardian: null, last: null }) })
+    renderAt(PATH)
+    const s = await section()
+
+    expect(within(s).getByText(access.noEmail)).toBeInTheDocument()
+    expect(within(s).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('is not there for a coach', async () => {
+    stubApi({ role: 'coach', extra: welcomeApi(NEVER) })
+    renderAt(PATH)
+    await money()
+
+    expect(screen.queryByRole('region', { name: access.title })).not.toBeInTheDocument()
+  })
+})

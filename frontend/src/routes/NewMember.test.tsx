@@ -127,21 +127,26 @@ describe('Nuevo alumno', () => {
     await userEvent.type(within(f).getByLabelText(copy.lastName), 'Rojas')
     await userEvent.type(within(f).getByLabelText(copy.phone), '9 8765 4321')
     await userEvent.type(within(f).getByLabelText(copy.rut), '7.654.321-6')
+    await userEvent.type(within(f).getByLabelText(copy.email), 'camila@example.com')
     await userEvent.selectOptions(await within(f).findByLabelText('Talla'), 'M')
     const plan = within(f).getByLabelText(copy.plan)
     // A drop-in is a single class and a deactivated plan takes no one new.
     expect(within(plan).queryByRole('option', { name: 'Clase suelta' })).not.toBeInTheDocument()
     expect(within(plan).queryByRole('option', { name: 'Plan 2024' })).not.toBeInTheDocument()
     await userEvent.selectOptions(plan, 'plan-adults')
-    await userEvent.click(within(f).getByRole('checkbox', { name: copy.welcome }))
+    expect(within(f).getByRole('checkbox', { name: copy.welcome })).toBeChecked()
+    expect(within(f).getByText(copy.welcomeHint.plan)).toBeInTheDocument()
     await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos/new'))
+    // The ficha is told the welcome is on its way, to wait for it (#246).
+    expect(router.state.location.state.welcomeSince).toEqual(expect.any(Number))
     expect(enrolments(calls)).toEqual([
       {
         name: 'Camila Rojas',
         phone: '9 8765 4321',
         rut: '7.654.321-6',
+        email: 'camila@example.com',
         fields: { talla: 'M' },
         membership: { plan_id: 'plan-adults' },
         send_welcome: true,
@@ -149,20 +154,70 @@ describe('Nuevo alumno', () => {
     ])
   })
 
-  it('keeps the welcome off without a plan', async () => {
+  it('ticks the welcome once there is an email, with no plan too (#246)', async () => {
     const calls = stubApi()
     renderAt('/admin/alumnos/nuevo')
     const f = await form()
 
-    expect(within(f).getByRole('checkbox', { name: copy.welcome })).toBeDisabled()
+    const box = within(f).getByRole('checkbox', { name: copy.welcome })
+    expect(box).toBeDisabled()
+    expect(box).not.toBeChecked()
+    expect(box).toHaveAccessibleDescription(copy.welcomeHint.noEmail)
     await userEvent.type(within(f).getByLabelText(copy.firstName), 'Camila')
     await userEvent.type(within(f).getByLabelText(copy.email), 'camila@example.com')
+    expect(box).toBeEnabled()
+    expect(box).toBeChecked()
+    expect(box).toHaveAccessibleDescription(copy.welcomeHint.noPlan)
     await userEvent.type(within(f).getByLabelText(copy.phone), '987654321')
     await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
 
     await waitFor(() =>
       expect(enrolments(calls)).toEqual([
-        { name: 'Camila', email: 'camila@example.com', phone: '987654321', send_welcome: false },
+        { name: 'Camila', email: 'camila@example.com', phone: '987654321', send_welcome: true },
+      ]),
+    )
+  })
+
+  it('sends no welcome when staff untick it', async () => {
+    const calls = stubApi()
+    const router = renderAt('/admin/alumnos/nuevo')
+    const f = await form()
+
+    await userEvent.type(within(f).getByLabelText(copy.firstName), 'Camila')
+    await userEvent.type(within(f).getByLabelText(copy.email), 'camila@example.com')
+    await userEvent.type(within(f).getByLabelText(copy.phone), '987654321')
+    await userEvent.click(within(f).getByRole('checkbox', { name: copy.welcome }))
+    await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos/new'))
+    expect(router.state.location.state.welcomeSince).toBeUndefined()
+    expect(enrolments(calls)).toEqual([
+      { name: 'Camila', email: 'camila@example.com', phone: '987654321', send_welcome: false },
+    ])
+  })
+
+  it("sends a minor's welcome to their guardian's email", async () => {
+    const calls = stubApi()
+    renderAt('/admin/alumnos/nuevo')
+    const f = await form()
+
+    await userEvent.type(within(f).getByLabelText(copy.firstName), 'Tomás')
+    await userEvent.click(within(f).getByRole('button', { name: copy.guardianNew }))
+    const box = within(f).getByRole('checkbox', { name: copy.welcome })
+    expect(box).toHaveAccessibleDescription(copy.welcomeHint.noGuardianEmail)
+    await userEvent.type(within(f).getByLabelText(copy.guardianName), 'Marta Vera')
+    await userEvent.type(within(f).getByLabelText(copy.guardianEmail), 'marta@example.com')
+    await userEvent.type(within(f).getByLabelText(copy.guardianPhone), '+56 9 1111 2222')
+    expect(box).toBeChecked()
+    await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
+
+    await waitFor(() =>
+      expect(enrolments(calls)).toEqual([
+        {
+          name: 'Tomás',
+          guardian: { name: 'Marta Vera', email: 'marta@example.com', phone: '+56 9 1111 2222' },
+          send_welcome: true,
+        },
       ]),
     )
   })

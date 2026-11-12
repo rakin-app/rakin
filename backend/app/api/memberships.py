@@ -264,9 +264,17 @@ async def bill_now(session: AsyncSession, membership_id: uuid.UUID, today: date)
 async def welcome_for(session: AsyncSession, tenant: Tenant, created: Membership) -> Notice | None:
     """The welcome to `created`, to the member or their guardian; `None` when there is no
     email to send it to."""
-    contact = await contact_for(session, created.person_id)
+    return await welcome_to(session, tenant, created.person_id, created.plan_name)
+
+
+async def welcome_to(
+    session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, plan_name: str | None
+) -> Notice | None:
+    """The welcome to `person_id`, or their guardian, on `plan_name`, or with none, that
+    they are on the gym's roster (#246); `None` when there is no email to send it to."""
+    contact = await contact_for(session, person_id)
     if contact is None or not contact.email:
-        logger.info("welcome: no email to send it to", extra={"membership_id": str(created.id)})
+        logger.info("welcome: no email to send it to", extra={"person_id": str(person_id)})
         return None
     gym = (
         await session.execute(
@@ -277,13 +285,13 @@ async def welcome_for(session: AsyncSession, tenant: Tenant, created: Membership
     dependent = None
     if contact.on_behalf_of:
         dependent = await session.scalar(
-            text("SELECT name FROM gym_person WHERE person_id = :id"), {"id": created.person_id}
+            text("SELECT name FROM gym_person WHERE person_id = :id"), {"id": person_id}
         )
     return welcome(
         contact,
         gym_id=tenant.gym_id,
         gym=gym.name,
-        plan_name=created.plan_name,
+        plan_name=plan_name,
         bank_account=gym.bank_account,
         dependent_name=dependent,
     )
@@ -319,11 +327,12 @@ def welcome(
     *,
     gym_id: uuid.UUID,
     gym: str,
-    plan_name: str,
+    plan_name: str | None,
     bank_account: dict[str, Any] | None,
     dependent_name: str | None,
 ) -> Notice:
-    """The welcome: the plan, how to pay it and where to upload the proof."""
+    """The welcome: the plan, how to pay it and where to upload the proof; with no plan,
+    that they are on the gym's roster, and the sign-in link alone."""
     assert contact.email is not None
     return Notice(
         WELCOME,
@@ -331,6 +340,8 @@ def welcome(
         person_id=contact.person_id,
         gym_id=gym_id,
         context={
+            # Whom it is about, the dependent for a guardian: what the ficha reads back.
+            "about_id": str(contact.on_behalf_of or contact.person_id),
             "name": contact.name,
             "gym": gym,
             "plan_name": plan_name,

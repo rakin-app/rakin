@@ -174,7 +174,9 @@ class Enrolment(BaseModel):
     one, since it is who they are (#165). An adult needs a phone, unless `no_whatsapp`;
     a minor's own is optional, since their guardian's is the one the gym uses.
     `fields` are written as `PATCH .../fields` writes them.
-    `send_welcome` emails the welcome a membership sends, and needs a plan.
+    `send_welcome` emails the welcome, with its sign-in link: about the plan, or with no
+    plan that they are on the gym's roster (#246). With no email to send it to, theirs
+    or their guardian's, nothing goes.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -195,9 +197,26 @@ class Enrolment(BaseModel):
         if self.guardian is None:
             require_identity(self.rut, self.email)
             require_phone(self.phone, self.no_whatsapp)
-        if self.send_welcome and self.membership is None:
-            raise ValueError("the welcome is about a plan: send_welcome needs a membership")
         return self
+
+
+class WelcomeSent(BaseModel):
+    """The latest welcome about someone, as `message_log` recorded it: `failed` with the
+    relay's refusal or an address no mail reaches."""
+
+    status: Literal["sent", "failed"]
+    sent_at: datetime
+    to: str
+
+
+class WelcomeState(BaseModel):
+    """Their sign-in link, on the ficha (#246): the address a welcome goes to, theirs or
+    their guardian's (`guardian` names them then), `None` with neither; and the latest
+    welcome sent about them, if any."""
+
+    to: str | None
+    guardian: str | None
+    last: WelcomeSent | None
 
 
 class Leaving(BaseModel):

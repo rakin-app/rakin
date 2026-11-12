@@ -12,12 +12,14 @@ import uuid
 from collections.abc import Iterator
 from datetime import timedelta
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
 from app.domain.rut import format_rut
+from app.integrations.mailer import Email, MailDeliveryError
 from app.jobs import billing
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
@@ -151,9 +153,60 @@ def test_the_welcome_is_sent_only_when_asked(
 
 
 @pg
-def test_the_welcome_needs_a_plan(client: TestClient, gym: uuid.UUID) -> None:
-    response = enrol(client, gym, phone=new_phone(), rut=new_rut(), name="Ana", send_welcome=True)
-    assert response.status_code == 422
+def test_the_welcome_with_no_plan_says_they_are_in_and_signs_them_in(
+    client: TestClient, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    """No plan, an email, the box ticked: the welcome says they are on the gym's list,
+    with no plan wording, and its link opens their student page (#246)."""
+    mailer.sent.clear()
+    body = enrolled(client, gym, name="Paula Ríos", email="sinplan@example.com", send_welcome=True)
+
+    [email] = mailer.sent
+    assert email.to == "sinplan@example.com"
+    assert "Ya estás en su lista de alumnos." in email.text
+    assert "plan" not in email.text.lower() and "pagar" not in email.text.lower()
+    assert email.html is not None and "plan" not in email.html.lower()
+
+    [url] = [w for w in email.text.split() if "/api/auth/callback?token=" in w]
+    token = parse_qs(urlsplit(url).query)["token"][0]
+    with TestClient(client.app, base_url="https://testserver") as browser:
+        signed_in = browser.post(
+            "/api/auth/callback", data={"token": token}, follow_redirects=False
+        )
+        assert signed_in.status_code == 303
+        page = browser.get("/api/me/page")
+        assert page.status_code == 200, page.text
+        assert (page.json()["person_id"], page.json()["next_payment"]) == (body["id"], None)
+
+
+@pg
+def test_the_welcome_with_no_plan_goes_to_a_dependents_guardian(
+    client: TestClient, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    ten = (seeded_today() - timedelta(days=365 * 10)).isoformat()
+    mailer.sent.clear()
+    enrolled(
+        client,
+        gym,
+        phone=None,
+        name="Tomás Vera",
+        dob=ten,
+        guardian={"phone": new_phone(), "name": "Marta Vera", "email": "marta.v@example.com"},
+        send_welcome=True,
+    )
+    [email] = mailer.sent
+    assert email.to == "marta.v@example.com"
+    assert "Hola, Marta Vera:" in email.text
+    assert "Tomás Vera ya está en su lista de alumnos." in email.text
+
+
+@pg
+def test_no_welcome_goes_without_an_email(
+    client: TestClient, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    mailer.sent.clear()
+    enrolled(client, gym, rut=new_rut(), name="Sin Correo", send_welcome=True)
+    assert mailer.sent == []
 
 
 @pg
@@ -619,6 +672,112 @@ def test_the_app_role_cannot_delete_records_itself(db: Database, gym: uuid.UUID)
         run(db.api_url, delete)
 
 
+# --- the welcome, from the ficha (#246) -------------------------------------------
+
+
+def welcome(client: TestClient, gym: uuid.UUID, person: str, **headers: str) -> Any:
+    return client.post(f"/api/people/{person}/welcome", headers={**as_gym(gym), **headers})
+
+
+@pg
+def test_the_ficha_sends_the_welcome_and_says_it_went(
+    client: TestClient, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    body = enrolled(client, gym, name="Importada", email="importada@example.com")
+    state = client.get(f"/api/people/{body['id']}/welcome", headers=as_gym(gym))
+    assert state.json() == {"to": "importada@example.com", "guardian": None, "last": None}
+
+    mailer.sent.clear()
+    sent = welcome(client, gym, body["id"])
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["last"]["status"] == "sent"
+    assert sent.json()["last"]["to"] == "importada@example.com"
+    [email] = mailer.sent
+    assert "Ya estás en su lista de alumnos." in email.text
+    later = client.get(f"/api/people/{body['id']}/welcome", headers=as_gym(gym))
+    assert later.json() == sent.json()
+
+
+@pg
+def test_the_ficha_welcome_is_about_the_plan_they_are_on(
+    client: TestClient, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    body = enrolled(
+        client, gym, email="conplan@example.com", membership={"plan_id": plan(client, gym)}
+    )
+    mailer.sent.clear()
+    assert welcome(client, gym, body["id"]).status_code == 200
+    [email] = mailer.sent
+    assert f"en el plan {PLANS['signup']['name']} quedó lista" in email.text
+
+
+@pg
+def test_a_double_tap_sends_the_welcome_once(
+    client: TestClient, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    body = enrolled(client, gym, email="doble@example.com")
+    mailer.sent.clear()
+    key = str(uuid.uuid4())
+    first = welcome(client, gym, body["id"], **{"Idempotency-Key": key})
+    second = welcome(client, gym, body["id"], **{"Idempotency-Key": key})
+    assert first.status_code == second.status_code == 200
+    assert second.headers["Idempotent-Replayed"] == "true"
+    assert second.json() == first.json()
+    assert len(mailer.sent) == 1
+
+
+@pg
+def test_the_ficha_says_when_the_welcome_failed(
+    client: TestClient, gym: uuid.UUID, mailer: RecordingMailer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = enrolled(client, gym, email="rebota@example.com")
+
+    async def refuse(email: Email) -> None:
+        raise MailDeliveryError("smtp: mailbox unavailable")
+
+    monkeypatch.setattr(mailer, "send", refuse)
+    failed = welcome(client, gym, body["id"])
+    assert failed.status_code == 200, failed.text
+    assert failed.json()["last"]["status"] == "failed"
+
+
+@pg
+def test_the_ficha_welcome_of_a_dependent_is_theirs_alone(
+    client: TestClient, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    """It goes to the guardian, and each of their kids' welcomes is told apart."""
+    guardian = {"phone": new_phone(), "name": "Mamá", "email": "mama@example.com"}
+    first = enrolled(client, gym, phone=None, name="Hijo Uno", guardian=guardian)
+    second = enrolled(client, gym, phone=None, name="Hijo Dos", guardian={"rut": None, **guardian})
+    mailer.sent.clear()
+    sent = welcome(client, gym, first["id"])
+    assert sent.json()["to"] == "mama@example.com"
+    assert sent.json()["guardian"] == "Mamá"
+    assert sent.json()["last"]["status"] == "sent"
+    [email] = mailer.sent
+    assert "Hijo Uno ya está en su lista de alumnos." in email.text
+    other = client.get(f"/api/people/{second['id']}/welcome", headers=as_gym(gym))
+    assert other.json()["last"] is None
+
+
+@pg
+def test_the_ficha_welcome_needs_an_email_and_someone_still_here(
+    client: TestClient, gym: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    mailer.sent.clear()
+    no_email = enrolled(client, gym, rut=new_rut(), name="Sin Correo")
+    state = client.get(f"/api/people/{no_email['id']}/welcome", headers=as_gym(gym))
+    assert state.json() == {"to": None, "guardian": None, "last": None}
+    refused = welcome(client, gym, no_email["id"])
+    assert (refused.status_code, refused.json()["detail"]) == (422, "no_email")
+
+    gone = enrolled(client, gym, email="sefue@example.com")
+    leave(client, gym, gone["id"])
+    assert welcome(client, gym, gone["id"]).status_code == 409
+    assert welcome(client, gym, str(uuid.uuid4())).status_code == 404
+    assert mailer.sent == []
+
+
 # --- who may --------------------------------------------------------------------
 
 
@@ -637,6 +796,9 @@ def test_coaches_may_do_none_of_it_and_admins_may_not_delete(
     assert (
         client.post(f"/api/people/{body['id']}/return", json={}, headers=headers).status_code == 403
     )
+    assert welcome(client, gym, body["id"], **as_gym(gym, coach)).status_code == 403
+    welcome_state = f"/api/people/{body['id']}/welcome"
+    assert client.get(welcome_state, headers=as_gym(gym, coach)).status_code == 403
     assert forget(client, gym, body["id"], coach).status_code == 403
     assert forget(client, gym, body["id"], admin).status_code == 403
     deletion = f"/api/people/{body['id']}/deletion"
