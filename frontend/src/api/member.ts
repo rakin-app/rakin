@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
-import type { MembershipStatus } from './people'
+import type { MembershipStart, MembershipStatus } from './people'
 
 /** This gym's record of a person (backend `Person`). */
 export type Person = {
@@ -47,9 +47,14 @@ export type Membership = {
   // Paid through, or the last day of a pack or trial.
   current_period_end: string | null
   credits_remaining: number | null
+  // A plan change waiting for the first period not yet billed (#249).
+  next_plan: PendingPlanChange | null
   // The freeze it is in, while frozen; the one booked ahead, while active.
   freeze: Freeze | null
 }
+
+/** A plan change saved, from `starts_on`, the first day not yet billed (backend `PendingPlanChange`). */
+export type PendingPlanChange = { plan_id: string; plan_name: string; starts_on: string }
 
 export type Method = 'cash' | 'transfer' | 'other'
 
@@ -254,6 +259,43 @@ export function editFreeze(membershipId: string, body: FreezeEdit): Promise<Memb
 /** End the freeze running today, the due date moved back by the days left; a booked one is called off. */
 export function endFreeze(membershipId: string): Promise<Membership> {
   return apiFetch<Membership>(`${freezePath(membershipId)}/end`, { method: 'POST' })
+}
+
+/** "Asignar plan" (#249): start the person on a plan, billed as it starts, with the welcome if asked. */
+export function startMembership(
+  personId: string,
+  start: MembershipStart,
+  sendWelcome: boolean,
+): Promise<Membership> {
+  return apiFetch<Membership>('/api/memberships', {
+    method: 'POST',
+    body: JSON.stringify({ person_id: personId, ...start, send_welcome: sendWelcome }),
+  })
+}
+
+/** What a change to a plan would do, before it is saved (backend `PlanChangeQuote`, #249):
+ * from `starts_on` on the new plan, its first period until `period_end` for `amount_due_clp`. */
+export type PlanChangeQuote = { starts_on: string; period_end: string; amount_due_clp: number }
+
+export function planChangeQuery(membershipId: string, planId: string) {
+  return queryOptions({
+    queryKey: ['memberships', 'plan-change', membershipId, planId],
+    queryFn: () =>
+      apiFetch<PlanChangeQuote>(
+        `/api/memberships/${encodeURIComponent(membershipId)}/plan-change?plan_id=${encodeURIComponent(planId)}`,
+      ),
+    // Read as the form shows it: what has been billed since decides the day.
+    staleTime: 0,
+    retry: false,
+  })
+}
+
+/** "Cambiar plan": to `planId` from the first period not yet billed; the plan it is on withdraws a pending change. */
+export function changePlan(membershipId: string, planId: string): Promise<Membership> {
+  return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/plan-change`, {
+    method: 'POST',
+    body: JSON.stringify({ plan_id: planId }),
+  })
 }
 
 /** The membership the detail shows, as the member list does: the latest one not

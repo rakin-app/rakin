@@ -64,6 +64,7 @@ import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
 import { PersonExtraLines } from './PersonExtraLines'
 import { PersonData } from './PersonData'
+import { AssignPlan, ChangePlanForm, changesPlan } from './PersonPlan'
 import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
 import { useSubmit } from '../api/submit'
@@ -77,7 +78,7 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * "Ficha de alumno": who the member is and their rank, the plan they are on and how it
  * stands, their graduación and family, and, for whoever reads the ledger, what they
  * owe, their ledger with its freezes, "Registrar pago", "Congelar" (#26), "Ajuste"
- * and "Devolver" (#38).
+ * and "Devolver" (#38), and "Cambiar plan"; with no plan running, "Asignar plan" (#249).
  * A coach sees the member, their plan and rank, whether it is frozen, and promotes
  * them; never money.
  *
@@ -151,9 +152,16 @@ export function MemberDetail() {
       <Grid className="member__columns">
         <div className="member__column">
           {membership ? (
-            <Standing membership={membership} money={money} />
+            <Standing
+              membership={membership}
+              money={money}
+              assign={<AssignPlan person={person.data} membership={membership} role={role.data} />}
+            />
           ) : (
-            <p className="member__note">{copy.noPlan}</p>
+            <>
+              <p className="member__note">{copy.noPlan}</p>
+              <AssignPlan person={person.data} membership={membership} role={role.data} />
+            </>
           )}
           {money && <PersonExtraLines personId={personId} />}
         </div>
@@ -250,8 +258,9 @@ export function whatsappUrl(person: Pick<Person, 'phone' | 'no_whatsapp'>): stri
   return digits && !person.no_whatsapp ? `https://wa.me/${digits}` : null
 }
 
-/** The plan and how it stands; with `money`, what is owed, the actions and the ledger. */
-function Standing({ membership, money }: { membership: Membership; money: boolean }) {
+/** The plan and how it stands; with `money`, what is owed, the actions and the ledger.
+ * `assign` is "Asignar plan", which offers itself once this plan has ended (#249). */
+function Standing({ membership, money, assign }: { membership: Membership; money: boolean; assign: ReactNode }) {
   const ledger = useQuery({ ...membershipLedgerQuery(membership.id), enabled: money })
   const data = money ? ledger.data : undefined
 
@@ -267,6 +276,11 @@ function Standing({ membership, money }: { membership: Membership; money: boolea
             {copy.freezeBooked(shortDay(membership.freeze.from_date), shortDay(membership.freeze.to_date))}
           </p>
         )}
+        {membership.next_plan && membership.status !== 'cancelled' && (
+          <p className="member__detail">
+            {copy.planChangeBooked(membership.next_plan.plan_name, shortDay(membership.next_plan.starts_on))}
+          </p>
+        )}
         {data && <Owed ledger={data} />}
         {money && ledger.isError && (
           <p className="member__error" role="alert">
@@ -274,6 +288,7 @@ function Standing({ membership, money }: { membership: Membership; money: boolea
           </p>
         )}
         {data && <Actions membership={membership} ledger={data} />}
+        {assign}
       </section>
       {data && <Ledger ledger={data} />}
     </>
@@ -319,7 +334,7 @@ function Owed({ ledger }: { ledger: MembershipLedger }) {
   )
 }
 
-type Open = 'payment' | 'adjustment' | 'refund' | 'freeze' | 'editFreeze' | 'endFreeze' | null
+type Open = 'payment' | 'adjustment' | 'refund' | 'freeze' | 'editFreeze' | 'endFreeze' | 'changePlan' | null
 
 /** The periods that still owe, oldest first, then the paid ones, newest first: an
  * adjustment in the member's favour goes to the first, one owed to either. */
@@ -380,6 +395,14 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
           </Button>
         </div>
       )}
+      {/* The plan itself, on a line of its own (#249): money, so the owner and admins only. */}
+      {changesPlan(membership) && (
+        <div className="member__actions">
+          <Button aria-expanded={open === 'changePlan'} onClick={() => toggle('changePlan')}>
+            {copy.changePlan}
+          </Button>
+        </div>
+      )}
       {done && (
         <p className="member__done" role="status">
           {done}
@@ -416,6 +439,9 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
       )}
       {open === 'endFreeze' && freeze && (
         <EndFreezeForm membershipId={membership.id} freeze={freeze} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'changePlan' && changesPlan(membership) && (
+        <ChangePlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
       )}
     </>
   )

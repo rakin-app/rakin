@@ -148,6 +148,7 @@ const DIEGO_MEMBERSHIP: Membership = {
   started_on: '2026-03-05',
   current_period_end: '2026-10-31',
   credits_remaining: null,
+  next_plan: null,
   freeze: null,
 }
 

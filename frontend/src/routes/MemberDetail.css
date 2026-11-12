@@ -118,6 +118,13 @@
   gap: var(--space-2);
 }
 
+/* "Cambiar plan"'s quote: what happens to this period, then the next charge (#249). */
+.member__quote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 /* Labels too long to share 390px: side by side where both fit whole, else stacked. */
 .member__actions--wrap {
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));

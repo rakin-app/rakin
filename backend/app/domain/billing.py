@@ -294,15 +294,28 @@ def _billing(billable: Billable, more: Callable[[date, int], bool]) -> Billing:
     periods: list[BillingPeriod] = []
     while start is not None and more(start, len(periods)):
         if pending is not None and pending_from is not None and start >= pending_from:
-            if pending.terms.kind not in memberships.RECURRING:
-                raise ValueError(f"a plan change moves to a monthly or prepaid plan, not {pending}")
-            plan, anchor_day = pending, memberships.anchor_day(pending.terms, pending_from)
+            plan, anchor_day = pending, changed_anchor(pending, pending_from)
             pending, changed = None, True
         end = _period_end(plan, start, anchor_day or fallback_anchor)
         amount = discounted(plan.price_clp, billable.discount_pct)
         periods.append(BillingPeriod(start, end, amount_due_clp=amount, due_date=start))
         start = end + timedelta(days=1) if plan.terms.kind not in SINGLE_CHARGE else None
     return Billing(tuple(periods), plan_changed=changed, plan=plan, anchor_day=anchor_day)
+
+
+def changed_anchor(plan: Plan, starts_on: date) -> int | None:
+    """The anchor day of a membership changing to `plan` from `starts_on`."""
+    if plan.terms.kind not in memberships.RECURRING:
+        raise ValueError(f"a plan change moves to a monthly or prepaid plan, not {plan}")
+    return memberships.anchor_day(plan.terms, starts_on)
+
+
+def first_period_after_change(plan: Plan, starts_on: date, discount_pct: int = 0) -> BillingPeriod:
+    """The first period a change to `plan` from `starts_on` bills, as the nightly job
+    will when it reaches that day: for the ficha to say so before it is saved (#249)."""
+    end = _period_end(plan, starts_on, changed_anchor(plan, starts_on))
+    amount = discounted(plan.price_clp, discount_pct)
+    return BillingPeriod(starts_on, end, amount_due_clp=amount, due_date=starts_on)
 
 
 def paid_through(periods: Iterable[tuple[date, date, int]]) -> date | None:
