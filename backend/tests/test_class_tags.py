@@ -355,6 +355,29 @@ def test_an_archived_slot_tag_goes_on_no_class_it_makes(
     assert error_type(change_slot(client, gym, other["id"], {"tag_ids": [gone]})) == "archived_tag"
 
 
+@pg
+def test_a_retag_reaches_classes_made_after_a_default_tag_was_archived(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    a, b, c = (tag(client, gym, name) for name in ("Pasaje de guardia", "Fuerza", "Raspadas"))
+    fundamentals = class_type(client, gym, program(client, gym, "Adultos"))
+    slot = add_slot(client, gym, fundamentals, weekdays=EVERY_DAY, tag_ids=[a, b])
+    # One class made while both were in use, the rest after B was archived.
+    first = first_made()
+    run(db.owner_url, in_gym(gym, "DELETE FROM session WHERE slot_date > $1", first))
+    ok(edit_tag(client, gym, b, {"archived": True}))
+    last = today() + timedelta(days=13)
+    run(db.owner_url, in_gym(gym, "SELECT schedule_sessions($1, $2, NULL, true)", today(), last))
+    made = slot_session_tags(db, gym)
+    assert made[first] == ["Fuerza", "Pasaje de guardia"]
+    assert all(tags == ["Pasaje de guardia"] for d, tags in made.items() if d != first)
+
+    ok(change_slot(client, gym, slot["id"], {"tag_ids": [c]}))
+
+    after = slot_session_tags(db, gym)
+    assert after and all(tags == ["Raspadas"] for tags in after.values())
+
+
 # --- what students read ------------------------------------------------------------
 
 

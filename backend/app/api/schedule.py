@@ -316,14 +316,19 @@ async def _retag(
 ) -> None:
     """Give the slot's new tags to its classes from `start` on that it may still change
     and that still carry its old ones, as the topic is; a class tagged on its own keeps
-    its tags. An archived tag goes on none, as the schedule makes none with it."""
+    its tags. An archived tag goes on none, as the schedule makes none with it.
+
+    "Its old ones" are what the schedule put on the class: every old tag for a class
+    made before one of them was archived, the old tags not archived for one made after.
+    So a class matches when its tags are within the old ones and hold every old one
+    still in use."""
     params = {"slot": slot_id, "start": start, "old": old, "new": new}
+    tags_of = "ARRAY(SELECT tag_id FROM session_tag WHERE session_id = session.id)"
     retagged = (
         f"SELECT id FROM session WHERE {UNTOUCHED} AND slot_date >= :start"
-        " AND ARRAY(SELECT tag_id FROM session_tag WHERE session_id = session.id)"
-        "  @> CAST(:old AS uuid[])"
-        " AND ARRAY(SELECT tag_id FROM session_tag WHERE session_id = session.id)"
-        "  <@ CAST(:old AS uuid[])"
+        f" AND {tags_of} <@ CAST(:old AS uuid[])"
+        f" AND {tags_of} @> ARRAY(SELECT id FROM class_tag"
+        "  WHERE id = ANY(CAST(:old AS uuid[])) AND NOT archived)"
     )
     ids = list((await session.execute(text(retagged), params)).scalars())
     if not ids:
