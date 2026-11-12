@@ -33,9 +33,9 @@ adult's is required, as a minor's guardian's is, unless the form ticks "No tiene
 WhatsApp", which the new record keeps. With a plan, a membership starts on it today
 and the welcome goes out with its sign-in link; that is owner and admin only, since a
 plan is money, so a coach approves with no plan and the member shows as "sin plan".
-Without one, `join_approved` tells them they are in. Either way the request is deleted: it was
-only ever a request. Rejecting deletes it too, and the nightly `join_requests` job
-deletes any left for 30 days (`app.jobs.join_requests`).
+Without one, `join_approved` tells them they are in, with their sign-in link (#254).
+Either way the request is deleted: it was only ever a request. Rejecting deletes it too,
+and the nightly `join_requests` job deletes any left for 30 days (`app.jobs.join_requests`).
 
 Someone already here is linked, not added again: they keep this gym's record of them,
 email included, as the importer leaves them, and the queue says when that leaves the

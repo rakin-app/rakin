@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import asyncpg
 import pytest
@@ -202,6 +203,26 @@ def record(db: Database, gym: uuid.UUID, person_id: str) -> dict[str, Any]:
     )
     [row] = rows
     return dict(row)
+
+
+def signs_in_as(client: TestClient, text: str) -> str:
+    """Whom the email's one sign-in link signs in, on the student page it lands on."""
+    [url] = [w for w in text.split() if "/api/auth/callback?token=" in w]
+    link = urlsplit(url)
+    assert parse_qs(link.query)["next"] == ["/me"]
+    token = parse_qs(link.query)["token"][0]
+    # On the gym's host, as the email links; the cookie by hand, so the module's client
+    # keeps none of it.
+    here = f"{link.scheme}://{link.netloc}"
+    signed_in = client.post(
+        f"{here}/api/auth/callback", data={"token": token}, follow_redirects=False
+    )
+    assert signed_in.status_code == 303, signed_in.text
+    client.cookies.clear()
+    cookie = signed_in.headers["set-cookie"].split(";")[0]
+    page = client.get(f"{here}/api/me/page", headers={"cookie": cookie})
+    assert page.status_code == 200, page.text
+    return str(page.json()["person_id"])
 
 
 def guardian_of(db: Database, gym: uuid.UUID, person_id: str) -> uuid.UUID | None:
@@ -859,7 +880,12 @@ def test_approving_adds_a_new_person_and_tells_them(
     assert email.to == body["email"]
     assert email.subject.endswith("aprobó tu inscripción")
     assert "Tu inscripción quedó aprobada." in email.text
-    assert "/api/auth/callback" not in email.text
+    assert "La academia te contará qué plan tomar" in email.text
+    assert "otro correo" not in email.text
+    assert email.html is not None and "otro correo" not in email.html
+    assert "Ir a mi página" in email.html
+    # Since #246 they can sign in with no plan, so the link comes now (#254).
+    assert signs_in_as(client, email.text) == answer["person_id"]
     assert sent_notices(db, gym)[-1] == ("join_approved", answer["person_id"], "sent")
 
 
@@ -963,6 +989,10 @@ def test_approving_a_minor_adds_them_with_their_guardian(
     assert email.to == "marta@example.cl"
     assert "Hola, Marta Pérez:" in email.text
     assert "La inscripción de Juan Pérez quedó aprobada." in email.text
+    assert "sus clases y su avance" in email.text
+    # The guardian's own link, which signs the guardian in (#165).
+    assert signs_in_as(client, email.text) == str(guardian)
+    assert sent_notices(db, gym)[-1] == ("join_approved", str(guardian), "sent")
 
 
 def test_a_minors_guardian_already_here_is_linked(

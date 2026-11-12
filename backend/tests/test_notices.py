@@ -217,6 +217,7 @@ def test_every_notice_but_the_sign_in_link_carries_a_page_link() -> None:
         "receipt",
         "proof_rejected",
         "staff_invite",
+        "join_approved",
     ]
 
 
