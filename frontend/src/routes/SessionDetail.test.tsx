@@ -117,7 +117,8 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
   )
 
   function route(path: string, method: string, body: unknown): Answer {
-    if (path === '/api/me/role') return { body: stub.me ?? { role: 'coach', person_id: 'coach' } }
+    // A gym one of whose activities grades (#245), unless `me` says otherwise.
+    if (path === '/api/me/role') return { body: stub.me ?? { role: 'coach', person_id: 'coach', uses_grades: true } }
     if (path === '/api/sessions' && method === 'GET') {
       return { body: { date: '2026-11-09', timezone: 'America/Santiago', sessions: [SESSION] } }
     }
@@ -272,6 +273,17 @@ describe('Asistencia', () => {
     expect(within(antonia!).getByRole('img', { name: 'Azul' })).toHaveClass('belt--compact')
     expect(antonia).toHaveTextContent('Antonia RojasMensual adultos')
     expect(antonia).toHaveAccessibleName(expect.stringContaining('Azul'))
+  })
+
+  it('shows no belt and no rank while no activity of the gym grades (#245)', async () => {
+    const rank = { ...ANTONIA.rank!, belt: { colors: ['#1f4fa3'], stripes: 0, max_stripes: 4 } }
+    stubApi({ members: [{ ...ANTONIA, rank }, PAULA], me: { role: 'coach', person_id: 'coach', uses_grades: false } })
+    renderClass()
+
+    const [antonia] = (await rosterList()).getAllByRole('button')
+    expect(antonia).toHaveTextContent(/^Antonia RojasMensual adultos/)
+    expect(antonia).not.toHaveAccessibleName(expect.stringContaining('Azul'))
+    expect(document.querySelector('.belt')).toBeNull()
   })
 
   it('shows no belt and no rank in a gym with no grades (#226)', async () => {

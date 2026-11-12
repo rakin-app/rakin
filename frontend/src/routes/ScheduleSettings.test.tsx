@@ -22,6 +22,8 @@ const FUNDAMENTALS: ClassType = {
   kind: 'class',
   counts_as_class: true,
   active: true,
+  activity_id: null,
+  activity_name: null,
   created_at: '2026-01-01T12:00:00Z',
 }
 

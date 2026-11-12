@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect, useRef, type ComponentType } from 'react'
+import { useGrades } from '../api/activities'
 import { managesGym, myRoleQuery } from '../api/me'
 import { buttonClass } from '../components/Button'
 import { ListRowContent, listRowClass } from '../components/Card'
@@ -66,6 +67,13 @@ export const SETTINGS_SECTIONS = [
 
 type Section = (typeof SETTINGS_SECTIONS)[number]
 
+/** The sections the gym is offered: Graduación only while an activity grades (#245).
+ * Its route stays, and says where to turn it on. */
+function useSections(): readonly Section[] {
+  const grades = useGrades()
+  return grades ? SETTINGS_SECTIONS : SETTINGS_SECTIONS.filter((section) => section.path !== 'graduacion')
+}
+
 /** The section `pathname` is on, if any: `/admin/ajustes/planes` is Planes. */
 function sectionOf(pathname: string): Section | undefined {
   const match = /^\/admin\/ajustes\/([^/]+)/.exec(pathname)
@@ -123,6 +131,7 @@ export function Settings() {
 
 /** The sections as tabs, on a desktop: a row that scrolls sideways if they do not fit, and keeps the open one in view. */
 function SectionTabs({ current }: { current: Section | undefined }) {
+  const sections = useSections()
   const nav = useRef<HTMLElement>(null)
   useEffect(() => {
     const active = nav.current?.querySelector<HTMLElement>('[aria-current="page"]')
@@ -137,7 +146,7 @@ function SectionTabs({ current }: { current: Section | undefined }) {
   }, [current])
   return (
     <nav ref={nav} className="settings__sections" aria-label={copy.sectionsLabel}>
-      {SETTINGS_SECTIONS.map((section) => (
+      {sections.map((section) => (
         <Link key={section.path} to={`/admin/ajustes/${section.path}`} className="settings__section-link">
           {section.label}
         </Link>
@@ -152,11 +161,12 @@ function SectionTabs({ current }: { current: Section | undefined }) {
  */
 export function SettingsHome() {
   const desktop = useDesktop()
+  const sections = useSections()
   if (desktop) return <Navigate to={`/admin/ajustes/${SETTINGS_SECTIONS[0].path}`} replace />
   return (
     <nav aria-label={copy.sectionsLabel}>
       <ul className="settings__card settings__card--rows settings__menu">
-        {SETTINGS_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <li key={section.path}>
             <Link to={`/admin/ajustes/${section.path}`} className={listRowClass(true)}>
               <ListRowContent title={section.label} detail={section.description} trailing={<ChevronRightIcon />} />

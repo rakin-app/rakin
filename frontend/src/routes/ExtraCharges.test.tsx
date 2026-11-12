@@ -210,6 +210,7 @@ describe('Cobros extra: a group by belt', () => {
   it('adds everyone "Azul o superior", with a program or without', async () => {
     const user = userEvent.setup()
     const calls = stubApi('owner', (path, method) => {
+      if (path === '/api/me/role') return { body: { role: 'owner', person_id: 'me', uses_grades: true } }
       if (path === '/api/gym/grading-scheme') return { body: scheme }
       if (path === '/api/people' && method === 'GET') {
         return { body: { items: [{ id: 'p-blue', name: 'Ana Azul', membership: null }], total: 1 } }
@@ -247,10 +248,25 @@ describe('Cobros extra: a group by belt', () => {
     ])
   })
 
+  it('offers no belt while no activity of the gym grades, whatever its scheme', async () => {
+    const user = userEvent.setup()
+    const calls = stubApi('owner', (path) => (path === '/api/gym/grading-scheme' ? { body: scheme } : undefined))
+    renderAt('/admin/pagos/cobros')
+
+    await user.click(await screen.findByRole('button', { name: copy.groups.create }))
+    await screen.findByLabelText(copy.groups.program)
+    expect(screen.queryByLabelText(copy.groups.rank)).not.toBeInTheDocument()
+    expect(calls.some((c) => c.path === '/api/gym/grading-scheme')).toBe(false)
+  })
+
   it('offers no belt while the gym does not grade', async () => {
     const user = userEvent.setup()
     stubApi('owner', (path) =>
-      path === '/api/gym/grading-scheme' ? { body: { ranks: [], kids_ladder: [], goal_metric: null } } : undefined,
+      path === '/api/me/role'
+        ? { body: { role: 'owner', person_id: 'me', uses_grades: true } }
+        : path === '/api/gym/grading-scheme'
+          ? { body: { ranks: [], kids_ladder: [], goal_metric: null } }
+          : undefined,
     )
     renderAt('/admin/pagos/cobros')
 

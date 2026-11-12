@@ -1,7 +1,8 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Activity } from '../api/activities'
 import type { Program } from '../api/people'
 import type { ClassType } from '../api/sessions'
 import { createQueryClient } from '../api/queryClient'
@@ -17,7 +18,17 @@ const ADULTS: Program = { id: 'adultos', name: 'Adultos', active: true }
 const KIDS: Program = { id: 'kids', name: 'Kids', active: true }
 const OLD: Program = { id: 'old', name: 'Competición', active: false }
 
-const at = { active: true, created_at: '2026-10-01T12:00:00Z', kind: 'class', counts_as_class: true } as const
+const at = {
+  active: true,
+  created_at: '2026-10-01T12:00:00Z',
+  kind: 'class',
+  counts_as_class: true,
+  activity_id: null,
+  activity_name: null,
+} as const
+const BJJ: Activity = { id: 'bjj', name: 'BJJ', uses_grades: true, class_types: 0, created_at: '2026-10-01T12:00:00Z' }
+const YOGA: Activity = { ...BJJ, id: 'yoga', name: 'Yoga', uses_grades: false }
+
 const FUNDAMENTOS: ClassType = {
   ...at,
   id: 'fund',
@@ -53,7 +64,8 @@ function stubApi({
   role = 'owner',
   saveProgram,
   saveClassType,
-}: { role?: string; saveProgram?: Answer; saveClassType?: Answer } = {}) {
+  activities = [],
+}: { role?: string; saveProgram?: Answer; saveClassType?: Answer; activities?: Activity[] } = {}) {
   const calls: Call[] = []
   let programs = [ADULTS, KIDS, OLD]
   let classTypes = [FUNDAMENTOS, OPEN_MAT, SPARRING]
@@ -75,6 +87,7 @@ function stubApi({
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
     if (path === '/api/me/role') return { body: { role } }
+    if (path === '/api/activities') return { body: activities }
     if (path === '/api/programs' && method === 'GET') return { body: programs }
     if (path === '/api/programs' && method === 'POST') {
       if (saveProgram) return saveProgram
@@ -105,6 +118,8 @@ function stubApi({
     if (classType && method === 'PATCH') {
       if (saveClassType) return saveClassType
       const updated = { ...classType, ...body }
+      // The activity's name, as the API joins it.
+      if ('activity_id' in body) updated.activity_name = activities.find((a) => a.id === body.activity_id)?.name ?? null
       classTypes = classTypes.map((c) => (c.id === classType.id ? updated : c))
       return { body: updated }
     }
@@ -284,7 +299,14 @@ describe('Ajustes: Programas y clases', () => {
       {
         method: 'POST',
         path: '/api/class-types',
-        body: { name: 'Kids 4-6', program_id: 'kids', credit_cost: 2, kind: 'class', counts_as_class: true },
+        body: {
+          name: 'Kids 4-6',
+          program_id: 'kids',
+          credit_cost: 2,
+          kind: 'class',
+          counts_as_class: true,
+          activity_id: null,
+        },
       },
     ])
   })
@@ -310,7 +332,47 @@ describe('Ajustes: Programas y clases', () => {
       credit_cost: 1,
       kind: 'open_mat',
       counts_as_class: false,
+      activity_id: null,
     })
+  })
+
+  it('offers no activity while the gym has none', async () => {
+    stubApi()
+    renderAt('/admin/ajustes/programas')
+    const adults = await programCard('Adultos')
+    await userEvent.click(within(adults).getByRole('button', { name: copy.addClassType }))
+    const create = within(adults).getByRole('form', { name: form.create('Adultos') })
+    expect(within(create).queryByLabelText(form.activity)).not.toBeInTheDocument()
+  })
+
+  it('puts a class type in an activity, or takes it out, and its row says which (#245)', async () => {
+    const calls = stubApi({ activities: [BJJ, YOGA] })
+    renderAt('/admin/ajustes/programas')
+
+    const adults = await programCard('Adultos')
+    await userEvent.click(within(adults).getByRole('button', { name: copy.addClassType }))
+    const create = within(adults).getByRole('form', { name: form.create('Adultos') })
+    const activity = await within(create).findByLabelText(form.activity)
+    expect(within(activity).getAllByRole('option').map((o) => o.textContent)).toEqual([form.noActivity, 'BJJ', 'Yoga'])
+    await userEvent.type(within(create).getByLabelText(form.name), 'Avanzado')
+    await userEvent.selectOptions(activity, 'BJJ')
+    await userEvent.click(within(create).getByRole('button', { name: copy.submit }))
+    await screen.findByRole('status')
+    expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ name: 'Avanzado', activity_id: 'bjj' })
+
+    await userEvent.click(rowButton(await programCard('Adultos'), 'Fundamentos'))
+    const edit = within(adults).getByRole('form', { name: form.edit('Fundamentos') })
+    await userEvent.selectOptions(within(edit).getByLabelText(form.activity), 'Yoga')
+    await userEvent.click(within(edit).getByRole('button', { name: copy.submit }))
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.classTypeSaved('Fundamentos'))
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ activity_id: 'yoga' }])
+    expect(rowButton(await programCard('Adultos'), 'Fundamentos')).toHaveTextContent('Yoga')
+
+    await userEvent.click(rowButton(await programCard('Adultos'), 'Fundamentos'))
+    const again = within(adults).getByRole('form', { name: form.edit('Fundamentos') })
+    await userEvent.selectOptions(within(again).getByLabelText(form.activity), form.noActivity)
+    await userEvent.click(within(again).getByRole('button', { name: copy.submit }))
+    await waitFor(() => expect(calls.filter((c) => c.method === 'PATCH').at(-1)?.body).toEqual({ activity_id: null }))
   })
 
   it('makes an open mat count as a class, sending only that', async () => {

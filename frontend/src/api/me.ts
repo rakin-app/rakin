@@ -20,6 +20,9 @@ export type MyRole = {
   theme: Theme
   // Where the gym's logo is (`logo.ts`); `null` with none (#223).
   gym_logo: string | null
+  // Whether one of the gym's activities grades (#245): belts and ranks show only then.
+  // `useGrades` in `activities.ts` reads it.
+  uses_grades?: boolean
 }
 
 /** The signed-in person's staff role in this gym; `null` for a member. */

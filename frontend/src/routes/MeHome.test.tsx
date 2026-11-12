@@ -88,7 +88,13 @@ function diego(over: Partial<MyPage> = {}): MyPage {
   }
 }
 
-function stubPage(answer: MyPage | { status: number }, time: PersonTime = NO_TIME, classes: MyClasses = NO_CLASSES) {
+function stubPage(
+  answer: MyPage | { status: number },
+  time: PersonTime = NO_TIME,
+  classes: MyClasses = NO_CLASSES,
+  // Whether an activity of the gym grades (#245); by default one does.
+  grades = true,
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input) => {
@@ -101,6 +107,9 @@ function stubPage(answer: MyPage | { status: number }, time: PersonTime = NO_TIM
       if (url.pathname === '/api/me/extra-lines') return Response.json([])
       if (url.pathname === '/api/me/time') return Response.json(time)
       if (url.pathname === '/api/me/classes') return Response.json(classes)
+      if (url.pathname === '/api/me/role') {
+        return Response.json({ role: null, person_id: 'diego', gym_name: 'Academia Sur', uses_grades: grades })
+      }
       return Response.json({ detail: 'Not Found' }, { status: 404 })
     }),
   )
@@ -219,11 +228,26 @@ describe('Mi página', () => {
     renderMe()
 
     const card = within(await screen.findByRole('region', { name: copy.training.title }))
-    expect(card.getByText(copy.training.rank)).toBeInTheDocument()
+    expect(await card.findByText(copy.training.rank)).toBeInTheDocument()
     expect(card.queryByText(copy.training.belt)).not.toBeInTheDocument()
     expect(card.getByText('Morada · 1 grado')).toBeInTheDocument()
     expect(card.getByText('desde 14 jun 2025')).toBeInTheDocument()
     expect(card.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('shows no rank while no activity of the gym grades (#245)', async () => {
+    const rank = { rank_key: 'purple', rank_label: 'Morada', sub_rank: '1', sub_rank_label: '1 grado', awarded_on: '2025-06-14' }
+    stubPage(diego({ rank }), NO_TIME, NO_CLASSES, false)
+    renderMe()
+
+    const card = within(await screen.findByRole('region', { name: copy.training.title }))
+    expect(card.getByText(copy.training.month)).toBeInTheDocument()
+    // Once the gym has said it does not grade, as well as before.
+    const asked = () => vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input), 'http://localhost').pathname)
+    await waitFor(() => expect(asked()).toContain('/api/me/role'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(card.queryByText('Morada · 1 grado')).not.toBeInTheDocument()
+    expect(card.queryByText(copy.training.rank)).not.toBeInTheDocument()
   })
 
   it('draws the belt when the gym colours it', async () => {
@@ -242,7 +266,7 @@ describe('Mi página', () => {
     renderMe()
 
     const card = within(await screen.findByRole('region', { name: copy.training.title }))
-    expect(card.getByText(copy.training.belt)).toBeInTheDocument()
+    expect(await card.findByText(copy.training.belt)).toBeInTheDocument()
     expect(card.getByRole('img', { name: 'Negra, 1 grado' })).toBeInTheDocument()
     expect(card.getByText('Negra · 1 grado')).toBeInTheDocument()
   })

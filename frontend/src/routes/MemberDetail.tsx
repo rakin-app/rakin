@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import { useGrades } from '../api/activities'
 import { personAttendanceQuery } from '../api/attendance'
 import { personTagHoursQuery, type Stretch } from '../api/classTags'
 import { familyQuery } from '../api/family'
@@ -96,7 +97,9 @@ export function MemberDetail() {
   const person = useQuery(personQuery(personId))
   usePageTitle(person.data?.name)
   const memberships = useQuery(membershipsQuery(personId))
-  const grades = useQuery(gradesQuery(personId))
+  // No rank by the name in a gym none of whose activities grades (#245).
+  const graded = useGrades()
+  const grades = useQuery({ ...gradesQuery(personId), enabled: graded })
   const role = useQuery(myRoleQuery())
 
   if (person.isPending || memberships.isPending) {
@@ -130,7 +133,7 @@ export function MemberDetail() {
   const membership = shownMembership(memberships.data)
   // Latest first, so the last is the earliest: a member since their first plan here.
   const since = monthYear(memberships.data.at(-1)?.started_on ?? person.data.created_at)
-  const rank = grades.data?.current
+  const rank = graded ? grades.data?.current : undefined
   const money = readsLedger(role.data)
 
   return (
@@ -989,10 +992,15 @@ function Attendance({ personId }: { personId: string }) {
 }
 
 /**
- * The member's rank, "Registrar graduación" and the promotion log. Hidden in a gym with
- * no ranks, unless the member has promotions from when it had them.
+ * The member's rank, "Registrar graduación" and the promotion log. Hidden in a gym none
+ * of whose activities grades (#245), and in one with no ranks unless the member has
+ * promotions from when it had them.
  */
 function Graduation({ personId, canAward }: { personId: string; canAward: boolean }) {
+  return useGrades() ? <GraduationSection personId={personId} canAward={canAward} /> : null
+}
+
+function GraduationSection({ personId, canAward }: { personId: string; canAward: boolean }) {
   const words = copy.grading
   const grades = useQuery(gradesQuery(personId))
   const scheme = useQuery(gradingSchemeQuery())

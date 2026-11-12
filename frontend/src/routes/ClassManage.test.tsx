@@ -21,6 +21,8 @@ const classType = (id: string, name: string, kind: ClassType['kind'] = 'class'):
   kind,
   counts_as_class: kind === 'class',
   active: true,
+  activity_id: null,
+  activity_name: null,
   created_at: '2026-11-01T12:00:00Z',
 })
 

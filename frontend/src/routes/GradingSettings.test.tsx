@@ -46,7 +46,21 @@ const PRESETS: GradingPreset[] = [
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 
-function stubApi({ scheme, save }: { scheme?: Answer; save?: Answer } = {}) {
+type Activity = { id: string; name: string; uses_grades: boolean; class_types: number; created_at: string }
+
+const activity = (name: string, usesGrades = true): Activity => ({
+  id: name.toLowerCase(),
+  name,
+  uses_grades: usesGrades,
+  class_types: 0,
+  created_at: '2026-10-01T12:00:00Z',
+})
+
+function stubApi({
+  scheme,
+  save,
+  activities = [activity('BJJ')],
+}: { scheme?: Answer; save?: Answer; activities?: Activity[] } = {}) {
   const calls: Call[] = []
   vi.stubGlobal(
     'fetch',
@@ -58,14 +72,16 @@ function stubApi({ scheme, save }: { scheme?: Answer; save?: Answer } = {}) {
       calls.push({ method, path: url.pathname, body })
       const answer: Answer =
         url.pathname === '/api/me/role'
-          ? { body: { role: 'admin' } }
-          : url.pathname === '/api/gym/grading-scheme/presets'
-            ? { body: PRESETS }
-            : url.pathname === '/api/gym/grading-scheme' && method === 'GET'
-              ? (scheme ?? { body: SCHEME })
-              : url.pathname === '/api/gym/grading-scheme' && method === 'PUT'
-                ? (save ?? { body })
-                : { status: 404, body: { detail: 'Not Found' } }
+          ? { body: { role: 'admin', uses_grades: activities.some((a) => a.uses_grades) } }
+          : url.pathname === '/api/activities'
+            ? { body: activities }
+            : url.pathname === '/api/gym/grading-scheme/presets'
+              ? { body: PRESETS }
+              : url.pathname === '/api/gym/grading-scheme' && method === 'GET'
+                ? (scheme ?? { body: SCHEME })
+                : url.pathname === '/api/gym/grading-scheme' && method === 'PUT'
+                  ? (save ?? { body })
+                  : { status: 404, body: { detail: 'Not Found' } }
       return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
         status: answer.status ?? 200,
         headers: { 'Content-Type': 'application/json' },
@@ -104,6 +120,19 @@ afterEach(() => {
 })
 
 describe('Ajustes: Graduación', () => {
+  it('says the scheme is shared when more than one activity grades', async () => {
+    stubApi({ activities: [activity('BJJ'), activity('Ballet', false), activity('Judo')] })
+    renderGrading()
+    expect(await screen.findByRole('note')).toHaveTextContent(copy.shared(['BJJ', 'Judo']))
+  })
+
+  it('says nothing of sharing with one activity that grades', async () => {
+    stubApi({ activities: [activity('BJJ'), activity('Ballet', false)] })
+    renderGrading()
+    await screen.findByRole('group', { name: copy.ladders.ranks })
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  })
+
   it('edits ranks, sub-ranks and targets, keeping the keys promotions name and giving new ones theirs', async () => {
     const calls = stubApi()
     renderGrading()

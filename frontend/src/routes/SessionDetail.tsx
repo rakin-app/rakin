@@ -19,6 +19,7 @@ import {
 import { classTagsQuery, pickableTags } from '../api/classTags'
 import { ApiError } from '../api/client'
 import { useKeptDraft, useRestoredDraft } from '../api/drafts'
+import { useGrades } from '../api/activities'
 import { rankLabel } from '../api/grading'
 import { managesGym, myselfQuery, runsSession } from '../api/me'
 import { sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
@@ -561,10 +562,12 @@ export function matcher(query: string): (member: RosterMember) => boolean {
 
 function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boolean; onToggle: () => void }) {
   const words = copy.attendance
+  // No rank at all in a gym none of whose activities grades (#245).
+  const rank = useGrades() ? member.rank : null
   // A drawn belt says the rank itself; a rank with no colours says it in words.
-  const belt = member.rank?.belt ? member.rank : null
+  const belt = rank?.belt ? rank : null
   const detail = [
-    member.rank && !belt && rankLabel(member.rank),
+    rank && !belt && rankLabel(rank),
     member.plan_name,
     member.credits_remaining !== null && words.left(member.credits_remaining),
     (member.status === 'lapsed' || member.status === 'frozen') && t.admin.students.status[member.status],

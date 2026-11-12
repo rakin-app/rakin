@@ -14,7 +14,7 @@ The core loop: **member → plan → due date → reminder → bank transfer arr
 - **Five-second attendance** for coaches, with a class log
 - A thin **student page** reached by magic link: what I owe, when, and how to prove I paid
 - Configurable **plans and custom fields**, so any sport fits without sport-specific code
-- Optional modules a gym turns on or ignores: **grading** (ranks, belts and stripes, with presets for BJJ, judo / karate and Muay Thai) and the coach's **class timer** with sparring rounds. A gym with no grading scheme sees no belts anywhere
+- Optional modules a gym turns on or ignores: **grading** (ranks, belts and stripes, with presets for BJJ, judo / karate and Muay Thai) and the coach's **class timer** with sparring rounds. A gym lists the activities it teaches, and belts show only while one of them uses grades: a gym with none sees no belts anywhere
 
 It is not a CRM, a booking system, a payment processor or a native app. It is a PWA. Email is the system of record and WhatsApp is the reminder channel.
 

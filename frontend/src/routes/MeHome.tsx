@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState } from 'react'
 import { myClassesQuery, type PersonClasses } from '../api/classTags'
+import { useGrades } from '../api/activities'
 import { rankLabel } from '../api/grading'
 import { myPageQuery, myselfQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
 import { RankBelt } from '../components/Belt'
@@ -241,12 +242,14 @@ function CopyBank({ account }: { account: BankAccount }) {
   )
 }
 
-/** "Mi entrenamiento": the rank, once the gym has recorded one, and the classes attended. */
+/** "Mi entrenamiento": the rank, once the gym has recorded one and while one of its
+ * activities grades (#245), and the classes attended. */
 function Training({ page }: { page: MyPage }) {
   const words = copy.training
+  const grades = useGrades()
   return (
     <section className="training" aria-label={words.title}>
-      {page.rank && (
+      {grades && page.rank && (
         <div className="training__card">
           <span className="training__eyebrow">{page.rank.belt ? words.belt : words.rank}</span>
           <RankBelt rank={page.rank} />
