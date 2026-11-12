@@ -2,7 +2,7 @@
 
 A slot is one class of the timetable: a class type on some weekdays (ISO, 1 is
 Monday), at a local start time, for `duration_minutes`, with a default coach and an
-optional default topic, valid from a date and, if set, until one. A closed day is a
+optional default topic and tags, valid from a date and, if set, until one. A closed day is a
 date, in the gym's timezone, with no classes.
 """
 
@@ -19,6 +19,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.schemas.class_tags import TagIds, TagOn
 from app.schemas.classes import never_null
 from app.schemas.sessions import Duration, Topic
 
@@ -62,6 +63,7 @@ class SlotCreate(BaseModel):
     duration_minutes: Duration
     coach_id: uuid.UUID
     topic: Topic = None
+    tag_ids: TagIds = []
     valid_from: date | None = None
     valid_to: date | None = None
 
@@ -88,6 +90,7 @@ class SlotUpdate(BaseModel):
     duration_minutes: Duration | None = None
     coach_id: uuid.UUID | None = None
     topic: Topic = None
+    tag_ids: TagIds | None = None
     valid_to: date | None = None
 
     @model_validator(mode="after")
@@ -100,6 +103,7 @@ class SlotUpdate(BaseModel):
             "start_time",
             "duration_minutes",
             "coach_id",
+            "tag_ids",
         )
         _valid_range(self.from_date, self.valid_to)
         return self
@@ -119,6 +123,8 @@ class Slot(BaseModel):
     coach_id: uuid.UUID
     coach_name: str
     topic: str | None
+    # The tags each class it makes starts with (#243).
+    tags: list[TagOn] = []
     valid_from: date
     valid_to: date | None
     created_at: datetime

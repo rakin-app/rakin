@@ -30,6 +30,7 @@ const SESSION: ClassSession = {
   duration_minutes: null,
   slot_id: null,
   slot_date: null,
+  tags: [],
 }
 
 const member = (id: string, name: string, over: Partial<RosterMember> = {}): RosterMember => ({

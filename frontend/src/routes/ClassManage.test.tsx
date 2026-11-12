@@ -46,6 +46,7 @@ const SESSION: ClassSession = {
   duration_minutes: null,
   slot_id: null,
   slot_date: null,
+  tags: [],
 }
 
 const kind = (id: string, name: string, is_sparring = false): BlockKind => ({

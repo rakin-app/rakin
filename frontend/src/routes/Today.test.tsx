@@ -146,6 +146,7 @@ const UNMARKED_CLASS: ClassSession = {
   duration_minutes: null,
   slot_id: null,
   slot_date: null,
+  tags: [],
 }
 
 // Tuesday the 10th: one class held, with 8 marked, and one at night yet to start.

@@ -163,6 +163,7 @@ describe('Ajustes', () => {
     [copy.sections.plans, '/admin/ajustes/planes'],
     [copy.sections.programs, '/admin/ajustes/programas'],
     [copy.sections.schedule, '/admin/ajustes/horario'],
+    [copy.sections.tags, '/admin/ajustes/etiquetas'],
     [copy.sections.blocks, '/admin/ajustes/bloques'],
     [copy.sections.grading, '/admin/ajustes/graduacion'],
     [copy.sections.fields, '/admin/ajustes/campos'],

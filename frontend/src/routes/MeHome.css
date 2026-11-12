@@ -276,3 +276,12 @@
   color: var(--color-text-muted);
   white-space: pre-line;
 }
+
+/* "Mis clases" (#243): a class's tags under its topic. */
+.my-class .tag-list {
+  margin-top: var(--space-0-5);
+}
+
+.my-class__no-topic {
+  color: var(--color-text-muted);
+}

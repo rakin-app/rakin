@@ -137,14 +137,16 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # tests/test_class_timer.py `block_kind` and `session_block` (0028),
     # tests/test_join.py `join_link` and `join_request` (0031),
     # tests/test_schedule.py `schedule_slot` and `closed_day` (0035),
-    # tests/test_extra_charges.py the cobros, their lines and groups (0037), and
-    # tests/test_double_submit.py `idempotency_key` (0038).
+    # tests/test_extra_charges.py the cobros, their lines and groups (0037),
+    # tests/test_double_submit.py `idempotency_key` (0038), and
+    # tests/test_class_tags.py `class_tag` and the class and slot tags (0041).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "auth_session",
         "block_kind",
         "charge_group",
         "charge_group_member",
+        "class_tag",
         "class_type",
         "closed_day",
         "extra_charge",
@@ -161,8 +163,10 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
         "plan_event",
         "program",
         "schedule_slot",
+        "schedule_slot_tag",
         "session",
         "session_block",
+        "session_tag",
     }
     for r in rows:
         assert (r["relrowsecurity"], r["relforcerowsecurity"]) == (True, True), r["relname"]

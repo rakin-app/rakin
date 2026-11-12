@@ -13,7 +13,7 @@ A change from after the slot's first date ends the slot the day before and start
 new one with the change, so the timetable before it still reads as it was. The
 classes from the date on that have not started and have no attendance are made to
 match: moved to the new time, with the new type, coach and duration, and the slot's
-topic where the class still had the old one; cancelled ones stay cancelled. Those on
+topic and tags where the class still had the old ones; cancelled ones stay cancelled. Those on
 a weekday the slot no longer runs, or after it ends, are deleted, and the dates it now
 runs that have no class get one. A class changed alone ("solo esta clase",
 `PATCH /api/sessions/{id}`) keeps its slot and date; a later change of its slot
@@ -47,6 +47,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.class_tags import require_tags, set_tags, tags_of_slot
 from app.api.sessions import (
     gym_timezone,
     require_class_type,
@@ -64,11 +65,11 @@ router = APIRouter(prefix="/api/schedule", tags=["classes"])
 
 NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "slot not found")
 
-SELECT_SLOT = """
+SELECT_SLOT = f"""
     SELECT s.id, s.class_type_id, c.name AS class_type_name, c.program_id,
            p.name AS program_name, c.active AS class_type_active, s.weekdays,
            s.start_time, s.duration_minutes, s.coach_id, gp.name AS coach_name, s.topic,
-           s.valid_from, s.valid_to, s.created_at, s.updated_at
+           {tags_of_slot("s")} AS tags, s.valid_from, s.valid_to, s.created_at, s.updated_at
     FROM schedule_slot s
     JOIN class_type c ON c.id = s.class_type_id
     JOIN program p ON p.id = c.program_id
@@ -152,6 +153,7 @@ async def create_slot(
     """A new slot, its classes made through the horizon at once."""
     await require_class_type(session, body.class_type_id)
     await require_coach(session, body.coach_id)
+    await require_tags(session, body.tag_ids, [], "tag_ids")
     zone = await gym_timezone(session, tenant)
     valid_from = body.valid_from or gym_today(zone)
     if body.valid_to is not None and body.valid_to < valid_from:
@@ -164,8 +166,9 @@ async def create_slot(
             " :start_time, :duration_minutes, :coach_id, :topic, :valid_from, :valid_to)"
             " RETURNING id"
         ),
-        {**body.model_dump(), "valid_from": valid_from},
+        {**body.model_dump(exclude={"tag_ids"}), "valid_from": valid_from},
     )
+    await set_tags(session, "schedule_slot_tag", "slot_id", slot_id, body.tag_ids)
     await _refill(session, zone, slot_id)
     return await _get(session, slot_id)
 
@@ -203,7 +206,12 @@ async def update_slot(
     zone = await gym_timezone(session, tenant)
     sent = body.model_dump(exclude_unset=True)
     start: date = sent.pop("from_date", None) or gym_today(zone)
-    changes = {k: v for k, v in sent.items() if v != getattr(current, k)}
+    old_tags = [tag.id for tag in current.tags]
+    changes = {
+        k: v
+        for k, v in sent.items()
+        if (set(v) != set(old_tags) if k == "tag_ids" else v != getattr(current, k))
+    }
     if not changes:
         return current
     if current.valid_to is not None and start > current.valid_to:
@@ -217,6 +225,10 @@ async def update_slot(
             await _require_plans_fit(session, slot_id, start)
     if "coach_id" in changes:
         await require_coach(session, changes["coach_id"])
+    retag = "tag_ids" in changes
+    new_tags: list[uuid.UUID] = changes.pop("tag_ids", old_tags)
+    if retag:
+        await require_tags(session, new_tags, old_tags, "tag_ids")
     values = {**current.model_dump(include=set(SLOT_FIELDS)), **changes}
     in_place = start <= current.valid_from
     if not in_place:
@@ -258,6 +270,8 @@ async def update_slot(
             ),
             {"id": slot_id, "target": target, "start": start},
         )
+    if retag or not in_place:
+        await set_tags(session, "schedule_slot_tag", "slot_id", target, new_tags)
 
     params = {"slot": target, "start": start}
     # Dates the slot no longer runs on lose their classes, ...
@@ -286,9 +300,46 @@ async def update_slot(
             "old_topic": current.topic,
         },
     )
+    if retag:
+        await _retag(session, target, start, old_tags, new_tags)
     # ... and the dates it now runs on get theirs.
     await _refill(session, zone, target)
     return await _get(session, target)
+
+
+async def _retag(
+    session: AsyncSession,
+    slot_id: uuid.UUID,
+    start: date,
+    old: list[uuid.UUID],
+    new: list[uuid.UUID],
+) -> None:
+    """Give the slot's new tags to its classes from `start` on that it may still change
+    and that still carry its old ones, as the topic is; a class tagged on its own keeps
+    its tags. An archived tag goes on none, as the schedule makes none with it."""
+    params = {"slot": slot_id, "start": start, "old": old, "new": new}
+    retagged = (
+        f"SELECT id FROM session WHERE {UNTOUCHED} AND slot_date >= :start"
+        " AND ARRAY(SELECT tag_id FROM session_tag WHERE session_id = session.id)"
+        "  @> CAST(:old AS uuid[])"
+        " AND ARRAY(SELECT tag_id FROM session_tag WHERE session_id = session.id)"
+        "  <@ CAST(:old AS uuid[])"
+    )
+    ids = list((await session.execute(text(retagged), params)).scalars())
+    if not ids:
+        return
+    await session.execute(
+        text("DELETE FROM session_tag WHERE session_id = ANY(:ids)"), {"ids": ids}
+    )
+    await session.execute(
+        text(
+            "INSERT INTO session_tag (gym_id, session_id, tag_id)"
+            " SELECT current_setting('app.gym_id')::uuid, s.id, t.id"
+            " FROM unnest(CAST(:ids AS uuid[])) AS s (id)"
+            " CROSS JOIN class_tag t WHERE t.id = ANY(:new) AND NOT t.archived"
+        ),
+        {"ids": ids, "new": new},
+    )
 
 
 @router.delete("/{slot_id}", status_code=status.HTTP_204_NO_CONTENT)
