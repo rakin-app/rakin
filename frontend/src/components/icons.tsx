@@ -112,6 +112,15 @@ export function CloseIcon() {
   )
 }
 
+// Safari's share button, as the hint to add Rakin to the home screen names it.
+export function ShareIcon() {
+  return (
+    <Icon width={18} height={18}>
+      <path d="M12 3v12M8 7l4-4 4 4M8 11H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2" />
+    </Icon>
+  )
+}
+
 export function MyPageIcon() {
   return (
     <Icon>

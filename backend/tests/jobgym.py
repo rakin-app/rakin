@@ -69,7 +69,10 @@ class Gym:
         anchor_day: int | None = None,
         current_period_end: date | None = None,
         discount_pct: int = 0,
+        created_on: date | None = None,
     ) -> uuid.UUID:
+        """A membership started on `started_on`, and created then too unless `created_on`
+        says another day: the lapse job gives a backdated one its grace from that day."""
         membership_id = uuid.uuid4()
         if PLANS[plan]["kind"] == "monthly" and anchor_day is None:
             anchor_day = 1 if PLANS[plan]["anchor"] == "first" else started_on.day
@@ -79,13 +82,14 @@ class Gym:
             else {}
         )
         columns = ", ".join(extra)
-        values = ", ".join(f"${i}" for i in range(10, len(extra) + 10))
+        values = ", ".join(f"${i}" for i in range(11, len(extra) + 11))
         self.sql(
             "INSERT INTO membership (id, gym_id, person_id, plan_id, status, anchor_day,"
-            " started_at, current_period_end, discount_pct"
+            " started_at, created_at, current_period_end, discount_pct"
             + (f", {columns}) " if extra else ") ")
             + "VALUES ($1, $2, $3, $4, $5, $6,"
-            " ($7::date::timestamp AT TIME ZONE 'America/Santiago'), $8, $9"
+            " ($7::date::timestamp AT TIME ZONE 'America/Santiago'),"
+            " (coalesce($10, $7)::date::timestamp AT TIME ZONE 'America/Santiago'), $8, $9"
             + (f", {values})" if extra else ")"),
             membership_id,
             self.id,
@@ -96,6 +100,7 @@ class Gym:
             started_on,
             current_period_end,
             discount_pct,
+            created_on,
             *extra.values(),
         )
         return membership_id

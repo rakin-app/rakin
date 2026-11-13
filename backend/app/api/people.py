@@ -34,7 +34,7 @@ from app.api.grading import stored_scheme
 from app.api.inactive import AWAY_IDS
 from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.ledger import EntryStatus
-from app.domain.membership import MembershipStatus
+from app.domain.membership import MembershipStatus, current_first
 from app.roles import SeesMoney, StaffSession
 from app.schemas.people import (
     PHONE_REQUIRED,
@@ -105,13 +105,13 @@ def _fold(sql: str) -> str:
     return f"lower(translate({sql}, 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNaeiouun'))"
 
 
-# The membership a list row shows for `gp`, a `gym_person` (`MembershipSummary`):
-# `m` and its plan `pl`.
-SHOWN_MEMBERSHIP = """
+# The membership a list row shows for `gp`, a `gym_person` (`MembershipSummary`): `m`,
+# their current one as the ficha picks it (`current_first`, #271), and its plan `pl`.
+SHOWN_MEMBERSHIP = f"""
     LEFT JOIN LATERAL (
-        SELECT id, status, plan_id FROM membership
-        WHERE gym_id = gp.gym_id AND person_id = gp.person_id
-        ORDER BY status = 'cancelled', started_at DESC, created_at DESC
+        SELECT cm.id, cm.status, cm.plan_id FROM membership cm
+        WHERE cm.gym_id = gp.gym_id AND cm.person_id = gp.person_id
+        ORDER BY {current_first("cm")}
         LIMIT 1
     ) m ON true
     LEFT JOIN plan pl ON pl.id = m.plan_id

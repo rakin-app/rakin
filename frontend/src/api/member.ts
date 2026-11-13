@@ -106,6 +106,8 @@ export type LedgerPeriod = {
   period_end: string
   // 0 once paid.
   outstanding_clp: number
+  // What a void of its charge took off (#256), 0 if none: a "Recargo" of as much puts it back (#271).
+  voided_clp: number
 }
 
 /** A validated payment with something left to give back (backend `RefundablePayment`). */
@@ -337,8 +339,31 @@ export function changePlan(membershipId: string, planId: string): Promise<Member
   })
 }
 
-/** The membership the detail shows, as the member list does: the latest one not
- * cancelled, else the latest. `memberships` comes latest first. */
+const LIVE: readonly MembershipStatus[] = ['trial', 'active', 'frozen']
+
+/** The membership the detail shows, as the member list does (#271): one the member is on
+ * now, else one not cancelled, else any; the latest created of them, as the API lists
+ * them (`current_first`), never down to their ids. */
 export function shownMembership(memberships: readonly Membership[]): Membership | undefined {
-  return memberships.find((m) => m.status !== 'cancelled') ?? memberships[0]
+  return (
+    memberships.find((m) => LIVE.includes(m.status)) ??
+    memberships.find((m) => m.status !== 'cancelled') ??
+    memberships[0]
+  )
+}
+
+/** What "Asignar plan" would start, before it is saved (backend `StartQuote`, #271): the
+ * day it starts, after `billed_through`, the last day a lapsed plan billed, when that moved
+ * it; and `debt_clp`, what the lapsed plans still owe. */
+export type StartQuote = { starts_on: string; billed_through: string | null; debt_clp: number }
+
+export function startQuery(personId: string, planId: string, startedOn: string) {
+  const params = new URLSearchParams({ person_id: personId, plan_id: planId, started_on: startedOn })
+  return queryOptions({
+    queryKey: ['memberships', 'start', personId, planId, startedOn],
+    queryFn: () => apiFetch<StartQuote>(`/api/memberships/start?${params}`),
+    // Read as the form shows it: what has been billed and paid since decides it.
+    staleTime: 0,
+    retry: false,
+  })
 }

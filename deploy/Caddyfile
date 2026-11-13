@@ -31,6 +31,10 @@
 		# every client-side route) is revalidated, so a deploy reaches the
 		# browser on its next load. `header` runs before `try_files`, so it
 		# matches the path the browser asked for.
+		#
+		# The service worker (sw.js, registerSW.js, workbox-*.js, #68) is in
+		# that rest, at the root: it must never move under /assets, where a
+		# year's cache would keep every browser on the old worker for good.
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
 		@pages not path /assets/*

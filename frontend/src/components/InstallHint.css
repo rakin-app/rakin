@@ -1,0 +1,38 @@
+/* Above the page, inside the shell's main column: it pushes the page down rather than
+   covering it, and goes for good once closed. */
+.install-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: var(--content-max-width);
+  margin: var(--space-4) var(--space-5) 0;
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.install-hint__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.install-hint__title {
+  margin: 0;
+  color: var(--color-heading);
+  font-weight: var(--font-weight-semibold);
+}
+
+.install-hint__body {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Safari's share button, in the line, as the person will see it in the toolbar. */
+.install-hint__share {
+  display: inline-flex;
+  vertical-align: -3px;
+  color: var(--color-text);
+}

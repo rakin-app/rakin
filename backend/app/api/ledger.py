@@ -666,11 +666,14 @@ TIMELINE = text(
 
 # Every period of the membership, newest first, with what it still owes settled as
 # `OPEN_PERIODS` settles it: what an adjustment may go to (#38). Not capped as the
-# timeline is, so a period older than its latest entries is still there.
+# timeline is, so a period older than its latest entries is still there. With what a
+# void took off it (#256), which a "Recargo" of as much puts back (#271).
 PERIODS = text(
     f"""
     SELECT bp.id, bp.period_start, bp.period_end,
-           greatest(bp.amount_due_clp - coalesce(paid.amount, 0), 0) AS outstanding_clp
+           greatest(bp.amount_due_clp - coalesce(paid.amount, 0), 0) AS outstanding_clp,
+           (SELECT coalesce(sum(v.amount_clp), 0) FROM ledger_entry v
+            WHERE v.billing_period_id = bp.id AND v.voids) AS voided_clp
     FROM billing_period bp
     LEFT JOIN LATERAL (
         SELECT sum({settled_amount("e")})::bigint AS amount FROM ledger_entry e
