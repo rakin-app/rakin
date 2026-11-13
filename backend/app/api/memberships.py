@@ -425,7 +425,13 @@ async def start_quote(
 ) -> StartQuote:
     """What `POST /api/memberships` would start, saving nothing (#271): the day the plan
     starts, after the last day a lapsed plan billed when that moves it, and what the
-    lapsed plans still owe, for "Asignar plan" to warn of before it saves."""
+    lapsed plans still owe, for "Asignar plan" to warn of before it saves. Someone not in
+    this gym is a 404."""
+    known = await session.scalar(
+        text("SELECT true FROM gym_person WHERE person_id = :id"), {"id": person_id}
+    )
+    if not known:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "person not found")
     terms = await _plan_terms(session, plan_id)
     today = await _gym_today(session, tenant)
     starts_on, billed_through = await _starts_on(session, person_id, terms, started_on or today)

@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.domain.dates import add_months
-from app.jobs import lapse
+from app.jobs import billing, lapse
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
@@ -52,6 +52,14 @@ def gym(db: Database) -> uuid.UUID:
 def ok(response: Any, code: int = 200) -> Any:
     assert response.status_code == code, response.text
     return response.json()
+
+
+def run_billing(db: Database, day: date) -> None:
+    async def go(conn: asyncpg.Connection) -> bool:
+        async with conn.transaction():
+            return await billing.generate_billing_periods(conn, day)
+
+    assert run(db.owner_url, go)
 
 
 def run_lapse(db: Database, day: date) -> None:
@@ -184,6 +192,39 @@ def test_a_quote_moves_nothing_without_a_lapsed_plan_or_for_a_pack(
     # A day past what the lapsed plan billed starts on that day.
     later = add_months(today.replace(day=1), 2)
     assert quote(client, gym, lapsed, plan_id, later)["starts_on"] == later.isoformat()
+
+
+def test_a_quote_for_someone_not_in_the_gym_is_a_404(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    plan_id = plan(client, gym, "first")
+    elsewhere = enrolled(client, seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}"), name="Luis Mora")
+    for person in (elsewhere["id"], str(uuid.uuid4())):
+        params = {"person_id": person, "plan_id": plan_id}
+        response = client.get("/api/memberships/start", params=params, headers=as_gym(gym))
+        assert response.status_code == 404, response.text
+
+
+def test_a_moved_start_bills_on_the_day_it_moved_to(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """A plan anchored on the signup day, asked from the 15th of the month the lapsed plan
+    billed, starts on the 1st after it, and bills on the 1st, not the 15th."""
+    person, _, _, period = lapsed_member(client, db, gym)
+    next_first = add_months(seeded_today().replace(day=1), 1)
+    signup = plan(client, gym, "signup")
+    asked = seeded_today().replace(day=15)
+    assert quote(client, gym, person, signup, asked)["starts_on"] == next_first.isoformat()
+    created = ok(start(client, gym, person, signup, asked), 201)
+    assert (created["started_on"], created["anchor_day"]) == (next_first.isoformat(), 1)
+    run_billing(db, next_first)
+    [first] = ledger(client, gym, created["id"])["periods"]
+    month_after = add_months(next_first, 1) - timedelta(days=1)
+    assert (first["period_start"], first["period_end"]) == (
+        next_first.isoformat(),
+        month_after.isoformat(),
+    )
+    assert period["period_end"] < first["period_start"]
 
 
 def test_the_current_plan_is_the_live_one_then_the_latest_created(
