@@ -19,7 +19,7 @@ from app.schemas.grading import PRESETS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
-from tests.pg import Database, migrate, run, seed_gym, throwaway_database
+from tests.pg import Database, migrate, run, seed_gym, seeded_today, throwaway_database
 
 pytestmark = pytest.mark.postgres
 
@@ -153,6 +153,7 @@ def test_everyone_by_name_with_the_membership_shown(
         "guardian": None,
         "dependents": 0,
         "left_on": None,
+        "owes": False,
     }
 
 
@@ -396,6 +397,84 @@ def test_another_gyms_members_are_not_listed(
     add_person(client, gym, "Pedro", phone=phone, rut="7.654.321-6")
     [row] = listing(client, gym, q=phone)["items"]
     assert (row["name"], row["membership"]) == ("Pedro", None)
+
+
+def open_period(db: Database, gym: uuid.UUID, membership: str, due: str) -> str:
+    """A month of 45.000 for `membership`, falling due on `due`, with its charge."""
+
+    async def query(conn: asyncpg.Connection) -> str:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym))
+            period = await conn.fetchval(
+                "INSERT INTO billing_period"
+                " (gym_id, membership_id, period_start, period_end, amount_due_clp, due_date)"
+                " VALUES ($1, $2, $3::date, $3::date + 29, 45000, $3::date) RETURNING id",
+                gym,
+                uuid.UUID(membership),
+                datetime.fromisoformat(due).date(),
+            )
+            await conn.execute(
+                "INSERT INTO ledger_entry"
+                " (gym_id, membership_id, billing_period_id, amount_clp, kind)"
+                " VALUES ($1, $2, $3, 45000, 'charge')",
+                gym,
+                uuid.UUID(membership),
+                period,
+            )
+            return str(period)
+
+    return str(run(db.owner_url, query))
+
+
+def pay(client: TestClient, gym: uuid.UUID, membership: str, period: str, amount: int) -> None:
+    body = {
+        "membership_id": membership,
+        "billing_period_id": period,
+        "amount_clp": amount,
+        "method": "cash",
+    }
+    response = client.post("/api/ledger/payments", json=body, headers=as_gym(gym))
+    assert response.status_code == 201, response.text
+
+
+def owing(client: TestClient, gym: uuid.UUID, **headers: Any) -> dict[str, bool]:
+    response = client.get("/api/people", headers=as_gym(gym, **headers))
+    assert response.status_code == 200, response.text
+    return {row["name"]: row["owes"] for row in response.json()["items"]}
+
+
+def test_owes_is_a_period_not_settled_due_or_not(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    plan = mensual(db, gym)
+    today = seeded_today()
+    late = join(db, gym, add_person(client, gym, "Ana"), plan, "lapsed")
+    open_period(db, gym, late, (today - timedelta(days=10)).isoformat())
+    soon = join(db, gym, add_person(client, gym, "Bruno"), plan, "active")
+    open_period(db, gym, soon, (today + timedelta(days=5)).isoformat())
+    part = join(db, gym, add_person(client, gym, "Carla"), plan, "active")
+    pay(client, gym, part, open_period(db, gym, part, today.isoformat()), 20_000)
+    paid = join(db, gym, add_person(client, gym, "Diego"), plan, "active")
+    pay(client, gym, paid, open_period(db, gym, paid, today.isoformat()), 45_000)
+    join(db, gym, add_person(client, gym, "Elisa"), plan, "active")  # no period yet
+    add_person(client, gym, "Fabián")  # no membership
+
+    rows = owing(client, gym)
+    assert {name: owes for name, owes in rows.items() if not name.startswith("owner")} == {
+        "Ana": True,
+        "Bruno": True,
+        "Carla": True,
+        "Diego": False,
+        "Elisa": False,
+        "Fabián": False,
+    }
+
+    # A coach never sees money: nobody owes on their list.
+    coach = uuid.UUID(add_person(client, gym, "Coach"))
+    as_owner(
+        db, gym, "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')", gym, coach
+    )
+    assert not any(owing(client, gym, person_id=coach).values())
 
 
 def test_coaches_may_list_and_members_may_not(

@@ -325,6 +325,10 @@ export const es = {
       // Away 14 days or more: Hoy's "A quién llamar", in full.
       away: 'Sin venir 14 d',
       noWhatsapp: 'Sin WhatsApp',
+      // On the row of someone who owes, overdue or due soon (#265): the ficha's
+      // "Registrar pago", opened under the row.
+      pay: 'Pagar',
+      payLabel: (name: string) => `Registrar pago de ${name}`,
     },
     newMember: {
       title: 'Nuevo alumno',

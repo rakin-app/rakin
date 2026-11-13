@@ -292,9 +292,38 @@
   inset: 0;
 }
 
-.students__plan-cell .button {
+.students__actions {
   position: relative;
   z-index: 1;
+  display: flex;
+  gap: var(--space-1);
+}
+
+.students__actions .button {
+  white-space: nowrap;
+}
+
+/* "Pagar"'s form (#265), opened under the row as the ficha opens it in its card: a well. */
+.students__payment {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.students__payment .member__form {
+  padding: var(--space-4);
+  background: var(--color-surface-sunken);
+  border: 0;
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+/* As the ficha says it. */
+.students__done {
+  margin: 0 var(--space-4) var(--space-4);
+  padding: var(--space-2-5) var(--space-3);
+  background: var(--color-success-soft);
+  border-radius: var(--radius-md);
+  color: var(--color-success-strong);
+  font-size: var(--text-sm);
 }
 
 .family__form > .button,
@@ -359,8 +388,17 @@
     justify-self: start;
   }
 
-  .students__plan-cell .button {
+  /* An owner's or admin's rows may have "Pagar" beside "Familia": room for both. */
+  .students__table--pays .students__row,
+  .students__table--pays .students__columns {
+    grid-template-columns:
+      minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(max-content, 0.8fr)
+      9.5rem;
+  }
+
+  .students__actions {
     grid-area: 1 / 6;
+    justify-content: flex-end;
   }
 
   /* What more there is to say follows the name on its line, wrapping only if it must. */

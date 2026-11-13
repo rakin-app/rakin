@@ -137,6 +137,7 @@ const DIEGO = {
   guardian: null,
   dependents: 0,
   left_on: null,
+  owes: true,
 } satisfies MemberPage['items'][number]
 
 const DIEGO_MEMBERSHIP: Membership = {
