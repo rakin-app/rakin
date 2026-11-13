@@ -937,9 +937,12 @@ describe('Ficha de alumno', () => {
 
     expect(await within(card).findByRole('status')).toHaveTextContent(words.sent('Felipe Díaz'))
     expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual(['/api/reminders/p-oct/email'])
+    // It stays on screen, disabled, saying why (#266).
+    expect(send).toBeDisabled()
+    expect(send).toHaveAccessibleDescription(words.sentToday)
   })
 
-  it('offers no email once one went out today', async () => {
+  it('keeps the email button disabled once one went out today, saying so', async () => {
     stubApi({
       reminders: [
         {
@@ -966,7 +969,42 @@ describe('Ficha de alumno', () => {
     const words = es.admin.reminders.email
 
     expect(await within(card).findByText(words.last(words.today))).toBeInTheDocument()
-    expect(within(card).queryByRole('button', { name: /Enviar recordatorio/ })).not.toBeInTheDocument()
+    const send = within(card).getByRole('button', { name: words.sendTo('Felipe Díaz') })
+    expect(send).toBeDisabled()
+    expect(send).toHaveAccessibleDescription(words.sentToday)
+    expect(within(card).getByText(words.sentToday)).toBeVisible()
+  })
+
+  it('keeps the email button disabled for a member with no email, saying so', async () => {
+    stubApi({
+      reminders: [
+        {
+          billing_period_id: 'p-oct',
+          membership_id: 'm-felipe',
+          person_id: 'felipe',
+          person_name: 'Felipe Díaz',
+          days_overdue: 9,
+          kind: 'payment_overdue',
+          rejection_note: null,
+          contact_name: 'Felipe Díaz',
+          whatsapp_url: null,
+          reminders_sent: 0,
+          reminded_at: null,
+          reminder_due: true,
+          can_email: false,
+          emailed_at: null,
+          emailed_today: false,
+        },
+      ],
+    })
+    renderAt(PATH)
+    const card = await money()
+    const words = es.admin.reminders.email
+
+    const send = await within(card).findByRole('button', { name: words.sendTo('Felipe Díaz') })
+    expect(send).toBeDisabled()
+    expect(send).toHaveAccessibleDescription(words.noEmail)
+    expect(within(card).getByText(words.noEmail)).toBeVisible()
   })
 
   it('has no reminder in the header when nothing is due', async () => {
