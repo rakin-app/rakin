@@ -6,6 +6,7 @@ import { managesGym, myRoleQuery, myselfQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
 import { useTimerSync } from '../api/sessionBlocks'
 import { GymMark } from '../components/GymMark'
+import { InstallHint } from '../components/InstallHint'
 import { RakinLogo } from '../components/RakinLogo'
 import { ClassesIcon, MyPageIcon, PaymentsIcon, SettingsIcon, SignOutIcon, StudentsIcon, TodayIcon } from '../components/icons'
 import { t } from '../i18n/es'
@@ -139,6 +140,7 @@ export function AdminLayout() {
         )}
       </nav>
       <main className="admin-main">
+        <InstallHint />
         <div ref={rise} className="page-rise">
           <Outlet />
         </div>

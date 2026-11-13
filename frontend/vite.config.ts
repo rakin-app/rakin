@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // The SPA and the API share one origin (docs/technical.md#architecture): in
 // production Caddy serves both, in development Vite proxies the API paths to
@@ -42,8 +43,45 @@ function fixedFonts(): Plugin {
   }
 }
 
+// The installed app (#68): a service worker that keeps the app shell (the HTML, the
+// bundle, its fonts), so a screen opens with no signal, as the Clase screen must (#44).
+// Nothing from the API is kept: /api/* and /healthz always go to the network, the
+// sign-in link's pages and cookies included, and a screen's data and a save made
+// offline stay React Query's and `localStorage`'s (#231).
+//
+// A page is asked of the network first, so a deploy is on screen at the next load:
+// the kept shell answers only when the network fails. Workbox allows no timeout on a
+// network-only route, and a route that times out to a cache per page would keep pages
+// naming bundles the next worker deletes. The new
+// worker takes over as soon as it is installed and drops the old shell, so no release
+// waits behind one. The manifest stays `public/site.webmanifest`.
+function installedApp() {
+  return VitePWA({
+    registerType: 'autoUpdate',
+    injectRegister: 'script',
+    manifest: false,
+    workbox: {
+      globPatterns: ['**/*.{js,css,html,woff2,svg,ico}'],
+      // The sign-in link's pages load these from the API's HTML, never offline.
+      globIgnores: ['fonts/**'],
+      navigateFallback: null,
+      cleanupOutdatedCaches: true,
+      // The tab the app was first opened in is covered too, not only from its next load.
+      clientsClaim: true,
+      runtimeCaching: [
+        {
+          urlPattern: ({ request, url }) =>
+            request.mode === 'navigate' && !url.pathname.startsWith('/api/') && url.pathname !== '/healthz',
+          handler: 'NetworkOnly',
+          options: { precacheFallback: { fallbackURL: 'index.html' } },
+        },
+      ],
+    },
+  })
+}
+
 export default defineConfig({
-  plugins: [react(), fixedFonts()],
+  plugins: [react(), fixedFonts(), installedApp()],
   // lightningcss, for `@custom-media`: the breakpoints live in `src/styles/media.css` alone.
   css: {
     transformer: 'lightningcss',

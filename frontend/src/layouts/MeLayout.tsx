@@ -3,6 +3,7 @@ import { Link, Outlet } from '@tanstack/react-router'
 import { useSignOut } from '../api/auth'
 import { myRoleQuery } from '../api/me'
 import { Button } from '../components/Button'
+import { InstallHint } from '../components/InstallHint'
 import { t } from '../i18n/es'
 import './MeLayout.css'
 
@@ -19,6 +20,7 @@ export function MeLayout() {
   return (
     <div className="me-shell">
       <main className="me-main">
+        <InstallHint />
         <Outlet />
       </main>
       <footer className="me-footer">

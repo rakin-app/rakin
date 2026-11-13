@@ -28,8 +28,8 @@
 	handle {
 		root * /srv
 		# Vite fingerprints everything under /assets. The rest (index.html, on
-		# every client-side route) is revalidated, so a deploy reaches the
-		# browser on its next load. `header` runs before `try_files`, so it
+		# every client-side route, and the service worker's sw.js) is
+		# revalidated, so a deploy reaches the browser on its next load. `header` runs before `try_files`, so it
 		# matches the path the browser asked for.
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
