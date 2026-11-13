@@ -693,7 +693,9 @@ describe('Recordatorios por WhatsApp', () => {
     )
 
     expect(await within(overdue).findByText(email.sent('Carla Díaz'))).toBeInTheDocument()
-    expect(within(overdue).queryByRole('button', { name: /Enviar recordatorio/ })).not.toBeInTheDocument()
+    const send = within(overdue).getByRole('button', { name: email.sendFor('Carla Díaz', 'Felipe Díaz') })
+    expect(send).toBeDisabled()
+    expect(send).toHaveAccessibleDescription(email.sentToday)
     expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual([
       '/api/reminders/p-Felipe%20D%C3%ADaz/email',
     ])

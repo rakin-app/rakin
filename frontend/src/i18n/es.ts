@@ -88,6 +88,9 @@ export const es = {
         sendFor: (contact: string, name: string) => `Enviar recordatorio por correo a ${contact}, por ${name}`,
         sent: (name: string) => `Recordatorio enviado a ${name}.`,
         last: (when: string) => `Último recordatorio: ${when}`,
+        // Beside the disabled button (#266): why it cannot send now.
+        sentToday: 'Ya se envió hoy',
+        noEmail: 'Sin correo',
         today: 'hoy',
         yesterday: 'ayer',
         daysAgo: (n: number) => `hace ${n} días`,
