@@ -28,6 +28,9 @@ export type MemberRow = {
   dependents: number
   // The day they left the gym (dado de baja); null while they are here.
   left_on: string | null
+  // The membership shown has a period not yet settled, overdue or due soon: the row's
+  // "Pagar" (#265). Always false for a coach, who never sees money.
+  owes: boolean
 }
 
 export type MemberPage = { items: MemberRow[]; total: number }

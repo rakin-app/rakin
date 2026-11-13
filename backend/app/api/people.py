@@ -32,8 +32,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.grading import stored_scheme
 from app.api.inactive import AWAY_IDS
+from app.domain.billing import SETTLING_KINDS, settled_amount
+from app.domain.ledger import EntryStatus
 from app.domain.membership import MembershipStatus
-from app.roles import StaffSession
+from app.roles import SeesMoney, StaffSession
 from app.schemas.people import (
     PHONE_REQUIRED,
     DuplicateCode,
@@ -134,6 +136,22 @@ MEMBERS = f"""
        OR NOT EXISTS (SELECT FROM staff s WHERE s.person_id = gp.person_id)
 """
 
+# Whether the shown membership of `page`, a `MEMBERS` row, has a period that
+# validated payments and credit leave short, due or not, settled as
+# `app.api.ledger.OPEN_PERIODS` settles it: the row's "Pagar" (#265). A period is
+# generated a week before it falls due (`GENERATE_AHEAD_DAYS`), so this is one overdue
+# or due soon.
+OWES = f"""
+    EXISTS (
+        SELECT FROM billing_period bp
+        WHERE bp.membership_id = page.membership_id AND bp.amount_due_clp > coalesce((
+            SELECT sum({settled_amount("e")}) FROM ledger_entry e
+            WHERE e.billing_period_id = bp.id AND e.status = :validated
+              AND e.kind = ANY(CAST(:settling AS text[]))
+        ), 0)
+    )
+"""
+
 # Everyone's current rank here: their latest promotion over every membership (as
 # `app.api.grades.CURRENT` reads one person's). RLS keeps both tables to the gym.
 CURRENT_RANKS = """
@@ -181,6 +199,7 @@ def people_matching(q: str) -> tuple[str, dict[str, Any]]:
 @router.get("")
 async def list_people(
     session: StaffSession,
+    money: SeesMoney,
     tenant: Annotated[Tenant, Depends(current_tenant)],
     q: Annotated[str, Query(max_length=100)] = "",
     # Repeatable, `?status=active&status=trial`. FastAPI copies the defaults per request.
@@ -203,7 +222,8 @@ async def list_people(
     with OR. `status`, `plan_id` and `program_id` match the membership each row shows:
     a member is in a program through their plan (migration 0016). `rank` and `rank_min`
     match the person's current rank; a `rank_min` the gym's scheme does not have is a
-    422 `unknown_rank`."""
+    422 `unknown_rank`. `owes` is said to an owner or admin only: a coach never sees
+    money, and reads `false`."""
     where: list[str] = []
     params: dict[str, Any] = {}
     if left == "no":
@@ -247,9 +267,19 @@ async def list_people(
         filtered += " WHERE " + " AND ".join(where)
 
     total = await session.scalar(text(f"SELECT count(*) FROM ({filtered}) f"), params)
+    owes = OWES if money else "false"
     rows = await session.execute(
-        text(f"{filtered} ORDER BY {_fold('name')}, id LIMIT :limit OFFSET :offset"),
-        {**params, "limit": limit, "offset": offset},
+        text(
+            f"SELECT *, {owes} AS owes FROM ({filtered}) page"
+            f" ORDER BY {_fold('name')}, id LIMIT :limit OFFSET :offset"
+        ),
+        {
+            **params,
+            "limit": limit,
+            "offset": offset,
+            "validated": EntryStatus.VALIDATED.value,
+            "settling": sorted(k.value for k in SETTLING_KINDS),
+        },
     )
     items = [
         MemberRow(
@@ -266,6 +296,7 @@ async def list_people(
             else PersonRef(id=row.guardian_id, name=row.guardian_name),
             dependents=row.dependents,
             left_on=row.left_on,
+            owes=row.owes,
         )
         for row in rows
     ]

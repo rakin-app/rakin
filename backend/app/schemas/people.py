@@ -301,6 +301,9 @@ class MemberRow(BaseModel):
     dependents: int
     # The day they left, on the "Dados de baja" list (migration 0032).
     left_on: date | None
+    # The shown membership has a period not yet settled, overdue or due soon: the row's
+    # "Pagar" (#265). Always `false` for a coach, who never sees money.
+    owes: bool
 
 
 class MemberPage(BaseModel):

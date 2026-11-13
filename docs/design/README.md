@@ -69,8 +69,9 @@ Guardar keeps it, and Cancelar or leaving Gimnasio puts the saved one back.
   place. In the ficha it opens inside the payment card, now as a sunken well; in Pagos
   it opens in its own card under the header, as before. A dialog would change how it
   opens and closes, which this redesign leaves alone.
-- **No "Registrar pago" in the shell or "Pagar" on every Alumnos row.** Both are new
-  ways in, not a new look; they wait for the owner's say.
+- **No "Registrar pago" in the shell.** Pagos already does it. The board's other
+  shortcut, "Pagar" on an Alumnos row, is in (#265), on the rows of who owes only:
+  an owner or admin records a payment there with the ficha's form, opened under the row.
 - **No counts on the filters.** The board's chips say "Vencidos 6"; the API does not
   count per filter, and the chips stay 44px tall, the app's touch target.
 - **Overdue stays orange.** The board's "Vencidos" figure is red; in the app orange

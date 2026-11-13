@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GradingScheme } from '../api/grading'
+import type { Membership, MembershipLedger } from '../api/member'
 import type { MemberPage, MemberRow, Plan, Program } from '../api/people'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
@@ -24,6 +25,7 @@ const CAMILA: MemberRow = {
   guardian: null,
   dependents: 0,
   left_on: null,
+  owes: false,
 }
 const DIEGO: MemberRow = {
   id: 'p2',
@@ -37,6 +39,7 @@ const DIEGO: MemberRow = {
   guardian: null,
   dependents: 0,
   left_on: null,
+  owes: false,
 }
 const PLANS: Plan[] = [
   { id: 'plan-adults', name: 'Mensual adultos', active: true },
@@ -67,14 +70,19 @@ function stubApi(
   scheme?: GradingScheme,
   // Whether an activity of the gym grades (#245): by default, when it has a scheme.
   grades = scheme !== undefined,
+  // Any other path it should answer: "Pagar"'s membership, ledger and payment.
+  other?: (url: URL, init?: RequestInit) => Answer | undefined,
 ) {
   const asked: URLSearchParams[] = []
   vi.stubGlobal(
     'fetch',
-    vi.fn<typeof fetch>(async (input) => {
+    vi.fn<typeof fetch>(async (input, init) => {
       const url = new URL(String(input), 'http://localhost')
       let answer: Answer
-      if (url.pathname === '/api/people') {
+      const answered = other?.(url, init)
+      if (answered) {
+        answer = answered
+      } else if (url.pathname === '/api/people') {
         asked.push(url.searchParams)
         answer = people(url.searchParams)
       } else if (url.pathname === '/api/plans') {
@@ -401,6 +409,122 @@ describe('Alumnos', () => {
     await userEvent.click(screen.getByRole('button', { name: copy.retry }))
 
     await list()
+  })
+})
+
+// "Pagar" (#265): Camila owes November.
+const OWING: MemberRow = { ...CAMILA, owes: true }
+const CAMILA_MEMBERSHIP: Membership = {
+  id: 'm1',
+  plan_id: 'plan-adults',
+  plan_name: 'Mensual adultos',
+  plan_kind: 'monthly',
+  status: 'active',
+  anchor_day: 5,
+  started_on: '2026-03-05',
+  current_period_end: '2026-10-31',
+  credits_remaining: null,
+  next_plan: null,
+  freeze: null,
+}
+const CAMILA_LEDGER: MembershipLedger = {
+  open_periods: [
+    {
+      id: 'bp-nov',
+      period_start: '2026-11-01',
+      period_end: '2026-11-30',
+      due_date: '2026-11-05',
+      amount_due_clp: 45000,
+      paid_clp: 0,
+      outstanding_clp: 45000,
+      due: true,
+      days_overdue: 4,
+    },
+  ],
+  owed_clp: 45000,
+  entries: [],
+  freezes: [],
+  periods: [],
+  refundable_payments: [],
+  paid_through: null,
+}
+
+describe('Alumnos: "Pagar"', () => {
+  const payLabel = (row: MemberRow) => copy.payLabel(row.name)
+
+  // The payments posted, each with its Idempotency-Key.
+  function stubPayments(people: () => MemberRow[], role: 'owner' | 'admin' | 'coach' = 'owner') {
+    const posted: { body: unknown; key: string | null }[] = []
+    const asked = stubApi(() => page(people()), undefined, undefined, role, undefined, false, (url, init) => {
+      if (url.pathname === '/api/memberships') return { body: [CAMILA_MEMBERSHIP] }
+      if (url.pathname === '/api/ledger/memberships/m1') return { body: CAMILA_LEDGER }
+      if (url.pathname === '/api/ledger/payments' && init?.method === 'POST') {
+        posted.push({ body: JSON.parse(String(init.body)), key: new Headers(init.headers).get('Idempotency-Key') })
+        return { status: 201, body: { credit: null, period: { outstanding_clp: 0, closed: true } } }
+      }
+      return undefined
+    })
+    return { asked, posted }
+  }
+
+  it('is on the rows of who owes, overdue or due soon, and on no other', async () => {
+    stubPayments(() => [OWING, DIEGO])
+    renderAt('/admin/alumnos')
+    const rows = within(await list()).getAllByRole('listitem')
+
+    expect(within(rows[0]!).getByRole('button', { name: payLabel(OWING) })).toHaveTextContent(copy.pay)
+    expect(within(rows[1]!).queryByRole('button', { name: payLabel(DIEGO) })).not.toBeInTheDocument()
+  })
+
+  it('is not on a coach\'s list', async () => {
+    stubPayments(() => [OWING], 'coach')
+    renderAt('/admin/alumnos')
+    await list()
+
+    expect(screen.queryByRole('button', { name: payLabel(OWING) })).not.toBeInTheDocument()
+  })
+
+  it("records the payment with the ficha's form, once, and refreshes the row", async () => {
+    let owes = true
+    const { asked, posted } = stubPayments(() => [{ ...CAMILA, owes }])
+    const router = renderAt('/admin/alumnos')
+    await list()
+    const before = asked.length
+
+    await userEvent.click(screen.getByRole('button', { name: payLabel(OWING) }))
+    // The row's link to the ficha is under the button, and does not follow.
+    expect(router.state.location.pathname).toBe('/admin/alumnos')
+    const form = await screen.findByRole('form', { name: es.admin.member.form.title })
+    expect(within(form).getByLabelText(es.admin.member.form.amount)).toHaveValue('45000')
+
+    owes = false
+    await userEvent.dblClick(within(form).getByRole('button', { name: es.admin.member.form.submit('$45.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(es.admin.member.form.recorded('$45.000'))
+    expect(posted).toHaveLength(1)
+    expect(posted[0]!.body).toEqual({ membership_id: 'm1', billing_period_id: 'bp-nov', amount_clp: 45000, method: 'cash' })
+    expect(posted[0]!.key).toBeTruthy()
+    expect(screen.queryByRole('form', { name: es.admin.member.form.title })).not.toBeInTheDocument()
+    // The list is read again, and Camila no longer owes.
+    await waitFor(() => expect(asked.length).toBeGreaterThan(before))
+    await waitFor(() => expect(screen.queryByRole('button', { name: payLabel(OWING) })).not.toBeInTheDocument())
+    expect(router.state.location.pathname).toBe('/admin/alumnos')
+  })
+
+  it('closes the form on "Cancelar" without paying', async () => {
+    const { posted } = stubPayments(() => [OWING])
+    renderAt('/admin/alumnos')
+    await list()
+
+    const pay = screen.getByRole('button', { name: payLabel(OWING) })
+    await userEvent.click(pay)
+    expect(pay).toHaveAttribute('aria-expanded', 'true')
+    const form = await screen.findByRole('form', { name: es.admin.member.form.title })
+    await userEvent.click(within(form).getByRole('button', { name: es.admin.member.form.cancel }))
+
+    expect(screen.queryByRole('form', { name: es.admin.member.form.title })).not.toBeInTheDocument()
+    expect(pay).toHaveAttribute('aria-expanded', 'false')
+    expect(posted).toEqual([])
   })
 })
 

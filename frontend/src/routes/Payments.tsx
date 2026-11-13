@@ -374,34 +374,9 @@ function pickDetail(row: MemberRow): string {
 
 function PayFor({ member, onBack, onDone }: { member: MemberRow; onBack: () => void; onDone: (message: string) => void }) {
   const words = copy.picker
+  // The same query `PaymentFor` reads, so one request: the plan's name for the header.
   const memberships = useQuery(membershipsQuery(member.id))
   const membership = memberships.data ? shownMembership(memberships.data) : undefined
-  const ledger = useQuery({ ...membershipLedgerQuery(membership?.id ?? ''), enabled: membership !== undefined })
-  const periods = ledger.data?.open_periods ?? []
-
-  let body
-  if (memberships.isError || ledger.isError) {
-    body = (
-      <p className="payments__error" role="alert">
-        {words.error}
-      </p>
-    )
-  } else if (memberships.isPending || (membership && ledger.isPending)) {
-    body = <p className="payments__hint">{words.loading}</p>
-  } else if (!membership) {
-    body = <p className="payments__hint">{words.noPlan}</p>
-  } else if (periods.length === 0) {
-    body = (
-      <PaymentAheadForm
-        membership={membership}
-        onCancel={onBack}
-        onDone={onDone}
-        nothing={<p className="payments__hint">{words.upToDate}</p>}
-      />
-    )
-  } else {
-    body = <PaymentForm membership={membership} periods={periods} onCancel={onBack} onDone={onDone} />
-  }
 
   return (
     <div className="payments__picker">
@@ -414,9 +389,51 @@ function PayFor({ member, onBack, onDone }: { member: MemberRow; onBack: () => v
           {words.change}
         </Button>
       </div>
-      {body}
+      <PaymentFor personId={member.id} onCancel={onBack} onDone={onDone} />
     </div>
   )
+}
+
+/** The member detail's payment form for the membership a person's detail shows: for an
+ *  open period, else paid ahead. The book's picker opens it, and an Alumnos row's
+ *  "Pagar" (#265). */
+export function PaymentFor({
+  personId,
+  onCancel,
+  onDone,
+}: {
+  personId: string
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const words = copy.picker
+  const memberships = useQuery(membershipsQuery(personId))
+  const membership = memberships.data ? shownMembership(memberships.data) : undefined
+  const ledger = useQuery({ ...membershipLedgerQuery(membership?.id ?? ''), enabled: membership !== undefined })
+  const periods = ledger.data?.open_periods ?? []
+
+  if (memberships.isError || ledger.isError) {
+    return (
+      <p className="payments__error" role="alert">
+        {words.error}
+      </p>
+    )
+  }
+  if (memberships.isPending || (membership && ledger.isPending)) {
+    return <p className="payments__hint">{words.loading}</p>
+  }
+  if (!membership) return <p className="payments__hint">{words.noPlan}</p>
+  if (periods.length === 0) {
+    return (
+      <PaymentAheadForm
+        membership={membership}
+        onCancel={onCancel}
+        onDone={onDone}
+        nothing={<p className="payments__hint">{words.upToDate}</p>}
+      />
+    )
+  }
+  return <PaymentForm membership={membership} periods={periods} onCancel={onCancel} onDone={onDone} />
 }
 
 /** The pages' entries, each once: offset pages of a list that grows at its head can

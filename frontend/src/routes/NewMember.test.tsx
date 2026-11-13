@@ -39,6 +39,7 @@ const MARTA: MemberRow = {
   guardian: null,
   dependents: 0,
   left_on: null,
+  owes: false,
 }
 
 const TALLA: FieldDefinition = {

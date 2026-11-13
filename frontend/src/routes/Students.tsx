@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 import { useGrades } from '../api/activities'
@@ -14,6 +14,7 @@ import {
 } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
 import { Chip, ChipGroup } from '../components/Chip'
+import { cx } from '../components/classNames'
 import { SearchInput, Select } from '../components/Field'
 import { JoinRequests } from '../components/JoinRequests'
 import { PageContainer } from '../components/Layout'
@@ -24,6 +25,7 @@ import { formatPhone, formatRut } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { FamilyPanel } from './FamilyPanel'
+import { PaymentFor } from './Payments'
 import './Students.css'
 
 const copy = t.admin.students
@@ -124,7 +126,7 @@ export function Students() {
   // belt filter.
   const grades = useGrades()
   const scheme = useQuery({ ...gradingSchemeQuery(), enabled: grades })
-  // Importing starts memberships, which only an owner or admin may.
+  // Importing starts memberships, and "Pagar" records money, which only an owner or admin may.
   const role = useQuery(myRoleQuery())
 
   const toggleStatus = (value: MembershipStatus) => {
@@ -298,7 +300,7 @@ export function Students() {
         ) : rows.length === 0 ? (
           <p className="students__note">{filtered ? copy.noMatches : copy.empty}</p>
         ) : (
-          <div className="students__table">
+          <div className={cx('students__table', readsLedger(role.data) && 'students__table--pays')}>
             {/* The columns' labels, over a desktop's one-line rows; the list is still a list. */}
             <div className="students__columns" aria-hidden="true">
               <span>{copy.columns.name}</span>
@@ -309,7 +311,7 @@ export function Students() {
             </div>
             <ul className="students__list" aria-label={copy.title}>
               {rows.map((row) => (
-                <MemberItem key={row.id} row={row} />
+                <MemberItem key={row.id} row={row} pays={readsLedger(role.data)} />
               ))}
             </ul>
           </div>
@@ -329,9 +331,23 @@ export function Students() {
   )
 }
 
-function MemberItem({ row }: { row: MemberRow }) {
-  const [open, setOpen] = useState(false)
+/** A member's row. `pays`: the signed-in owner or admin may record a payment, so a row
+ *  that owes has "Pagar", which opens the ficha's payment form under it (#265). */
+function MemberItem({ row, pays }: { row: MemberRow; pays: boolean }) {
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState<'family' | 'payment' | null>(null)
+  const [done, setDone] = useState<string | null>(null)
   const panelId = useId()
+  const toggle = (panel: 'family' | 'payment') => {
+    setDone(null)
+    setOpen(open === panel ? null : panel)
+  }
+  const paid = async (message: string) => {
+    setOpen(null)
+    setDone(message)
+    // The row's "Pagar" and status pill, as the payment left them.
+    await queryClient.invalidateQueries({ queryKey: ['people', 'list'] })
+  }
   const family = row.guardian
     ? copy.guardianOf(row.guardian.name)
     : row.dependents > 0
@@ -369,20 +385,43 @@ function MemberItem({ row }: { row: MemberRow }) {
           ) : (
             <StatusPill status="none">{copy.noPlan}</StatusPill>
           )}
-          <Button
-            variant="ghost"
-            aria-expanded={open}
-            aria-controls={panelId}
-            aria-label={t.admin.family.toggleLabel(row.name)}
-            onClick={() => setOpen(!open)}
-          >
-            {t.admin.family.toggle}
-          </Button>
+          {/* Above the row's link to the ficha, so a tap here opens what it says and nothing else. */}
+          <div className="students__actions">
+            {pays && row.owes && (
+              <Button
+                aria-expanded={open === 'payment'}
+                aria-controls={panelId}
+                aria-label={copy.payLabel(row.name)}
+                onClick={() => toggle('payment')}
+              >
+                {copy.pay}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              aria-expanded={open === 'family'}
+              aria-controls={panelId}
+              aria-label={t.admin.family.toggleLabel(row.name)}
+              onClick={() => toggle('family')}
+            >
+              {t.admin.family.toggle}
+            </Button>
+          </div>
         </div>
       </div>
+      {done && (
+        <p className="students__done" role="status">
+          {done}
+        </p>
+      )}
       {/* Always there, so `aria-controls` names an element; filled only when open. */}
-      <div id={panelId} hidden={!open}>
-        {open && <FamilyPanel person={row} />}
+      <div id={panelId} hidden={open === null}>
+        {open === 'family' && <FamilyPanel person={row} />}
+        {open === 'payment' && (
+          <div className="students__payment">
+            <PaymentFor personId={row.id} onCancel={() => setOpen(null)} onDone={(message) => void paid(message)} />
+          </div>
+        )}
       </div>
     </li>
   )
