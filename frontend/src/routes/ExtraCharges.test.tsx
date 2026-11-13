@@ -433,11 +433,15 @@ describe('Un cobro extra', () => {
     await user.click(within(ana).getByRole('button', { name: copy.detail.cancelLine }))
     await user.click(await within(ana).findByRole('checkbox', { name: copy.detail.resplit }))
     expect(within(ana).getByText(copy.detail.resplitAmount('Bea Soto', '$90.000'))).toBeInTheDocument()
+    // Not without a reason (#256).
+    await user.click(within(ana).getByRole('button', { name: copy.detail.cancelConfirm }))
+    expect(within(ana).getByText(copy.detail.cancelReasonNeeded)).toBeInTheDocument()
+    await user.type(within(ana).getByLabelText(copy.detail.cancelReason), 'se retiró')
     await user.click(within(ana).getByRole('button', { name: copy.detail.cancelConfirm }))
 
     await vi.waitFor(() =>
       expect(writes(calls)).toEqual([
-        { method: 'POST', path: '/api/extra-charges/x-final/lines/ana/cancel', body: { resplit: true } },
+        { method: 'POST', path: '/api/extra-charges/x-final/lines/ana/cancel', body: { resplit: true, reason: 'se retiró' } },
       ]),
     )
   })
@@ -456,6 +460,7 @@ describe('Un cobro extra', () => {
     const bea = (await screen.findByRole('link', { name: 'Bea Soto' })).closest('li')!
     await user.click(within(bea).getByRole('button', { name: copy.detail.cancelLine }))
     expect(await within(bea).findByText(copy.detail.noResplit)).toBeInTheDocument()
+    await user.type(within(bea).getByLabelText(copy.detail.cancelReason), 'se retiró')
     await user.click(within(bea).getByRole('button', { name: copy.detail.cancelConfirm }))
 
     expect(await within(bea).findByRole('alert')).toHaveTextContent(copy.detail.refused.money)

@@ -153,6 +153,10 @@ class MembershipForCoach(BaseModel):
     freeze: Freeze | None
     cancel_reason: str | None
     cancelled_at: datetime | None
+    # Voided as started by mistake (#256): cancelled as of its start, its unpaid
+    # charges voided. Null on every other membership.
+    voided_at: datetime | None = None
+    void_reason: str | None = None
     created_at: datetime
 
 

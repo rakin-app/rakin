@@ -5,6 +5,8 @@ new entry, never an edit of an old one.
 
 Amounts are positive and the kind says which way they go, except an adjustment's: its
 sign says which way it goes, positive in the member's favour and negative owed (#38).
+A void is an adjustment in the member's favour of whatever its period still owes, so
+that nothing is owed on it any more (#256).
 """
 
 from dataclasses import dataclass, replace
@@ -39,6 +41,8 @@ class LedgerEntry:
     amount_clp: int
     status: EntryStatus = EntryStatus.PENDING
     note: str | None = None
+    # An adjustment that voids what its period still owes, the reason in `note` (#256).
+    voids: bool = False
 
     def __post_init__(self) -> None:
         if self.kind is EntryKind.ADJUSTMENT:
@@ -46,6 +50,8 @@ class LedgerEntry:
                 raise ValueError("an adjustment's amount_clp is not zero; its sign says which way")
         elif self.amount_clp <= 0:
             raise ValueError("amount_clp must be positive; the kind says which way it goes")
+        if self.voids and (self.kind is not EntryKind.ADJUSTMENT or self.amount_clp <= 0):
+            raise ValueError("a void is an adjustment in the member's favour")
 
 
 def _move(entry: LedgerEntry, to: EntryStatus) -> None:

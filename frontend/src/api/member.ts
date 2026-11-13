@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { apiFetch } from './client'
+import { ApiError, apiFetch } from './client'
 import type { MembershipStart, MembershipStatus } from './people'
 
 /** This gym's record of a person (backend `Person`). */
@@ -51,6 +51,9 @@ export type Membership = {
   next_plan: PendingPlanChange | null
   // The freeze it is in, while frozen; the one booked ahead, while active.
   freeze: Freeze | null
+  // Voided as started by mistake (#256): cancelled as of its start, its unpaid charges voided.
+  voided_at?: string | null
+  void_reason?: string | null
 }
 
 /** A plan change saved, from `starts_on`, the first day not yet billed (backend `PendingPlanChange`). */
@@ -87,7 +90,14 @@ export type TimelineEntry = {
   validated_at: string | null
   // The payment a refund gives back; null on every other kind.
   refund_of: string | null
+  // An adjustment voiding its period's charge (#256), its reason in `note`.
+  voids?: boolean
+  // On a charge whose period was voided: why, by whom and when.
+  voided?: Voided | null
 }
+
+/** A charge's void (backend `Voided`, #256): "Anulado: <motivo>, por <quien>, <fecha>". */
+export type Voided = { reason: string; by_name: string | null; at: string }
 
 /** A billing period, open or paid: one an adjustment may go to (backend `LedgerPeriod`). */
 export type LedgerPeriod = {
@@ -231,6 +241,35 @@ export function recordPaymentAhead(body: PaymentAheadRecord): Promise<RecordedAh
 
 export function recordAdjustment(body: AdjustmentRecord): Promise<RecordedAdjustment> {
   return apiFetch<RecordedAdjustment>('/api/ledger/adjustments', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** Anular un cargo (#256): what the period still owes, voided with `reason`. */
+export type VoidRecord = { membership_id: string; billing_period_id: string; reason: string }
+
+export type VoidRefusal = 'paid' | 'pending' | 'nothing_owed'
+
+/** The period as the void leaves it: owing nothing. */
+export type RecordedVoid = { period: SettledPeriod }
+
+export function recordVoid(body: VoidRecord): Promise<RecordedVoid> {
+  return apiFetch<RecordedVoid>('/api/ledger/voids', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** Anular un plan started by mistake (#256): ended as of its start, every unpaid charge voided. */
+export function voidMembership(membershipId: string, reason: string): Promise<Membership> {
+  return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/void`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+}
+
+/** The 409's refusal of a void, and the payment it is about, for the form to say how to clear it. */
+export function voidRefused(error: unknown): { code: VoidRefusal; amount_clp: number | null } | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const detail = (error.body as { detail?: { code?: unknown; amount_clp?: unknown } } | undefined)?.detail
+  const code = detail?.code
+  if (code !== 'paid' && code !== 'pending' && code !== 'nothing_owed') return null
+  return { code, amount_clp: typeof detail?.amount_clp === 'number' ? detail.amount_clp : null }
 }
 
 export function recordRefund(body: RefundRecord): Promise<RecordedRefund> {

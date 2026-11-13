@@ -395,7 +395,7 @@ def test_leaving_the_gym_ends_the_session(
 
 
 def test_a_forgotten_person_gets_no_link(harness: Harness, db: Database, people: People) -> None:
-    """`forget_gym_person` (0032) deletes the gym's record: nothing of them is left to
+    """`forget_gym_person` (0032, 0044) deletes the gym's record: nothing of them is left to
     sign in to, and the answer is the same 202."""
     person, address = uuid.uuid4(), f"{uuid.uuid4().hex[:8]}@example.cl"
     records: dict[uuid.UUID, tuple[str, str | None]] = {people.sur: ("Forgotten", address)}
@@ -403,7 +403,7 @@ def test_a_forgotten_person_gets_no_link(harness: Harness, db: Database, people:
     harness.sign_in(address)
     harness.outbox.sent.clear()
 
-    forgotten = run(db.api_url, in_gym(people.sur, "SELECT forget_gym_person($1)", person))
+    forgotten = run(db.api_url, in_gym(people.sur, "SELECT forget_gym_person($1, 'error')", person))
     assert [r[0] for r in forgotten] == [None]
 
     response = harness.client.post("/api/auth/link", json={"email": address})

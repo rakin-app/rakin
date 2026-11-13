@@ -478,7 +478,8 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
           <StatusPill status={status.status}>{status.label}</StatusPill>
         )}
       </td>
-      <td role="cell" className={`payments__amount payments__amount--${entry.status}`}>
+      {/* A voided charge (#256) is struck through as a rejected payment is. */}
+      <td role="cell" className={`payments__amount payments__amount--${entry.voided ? 'rejected' : entry.status}`}>
         {bookAmount(entry)}
       </td>
     </tr>
@@ -494,6 +495,7 @@ function entryDate(entry: BookEntry, timeZone: string): string {
 
 /** `Descuento` or `Recargo` for an adjustment on a period (#210); any other kind as named. */
 function kindLabel(entry: BookEntry): string {
+  if (entry.voids) return copy.void
   if (entry.kind === 'adjustment' && entry.period) return copy.adjustment[entry.amount_clp > 0 ? 'favor' : 'owed']
   return copy.kind[entry.kind]
 }
@@ -560,6 +562,10 @@ function periodLabel(entry: BookEntry): string {
  *  became of the membership once it is no longer active (#207); for an adjustment, its
  *  note. */
 function detailLabel(entry: BookEntry): string {
+  if (entry.voided) {
+    const { reason, by_name, at } = entry.voided
+    return t.admin.member.ledger.voided(reason, by_name, shortDay(isoDay(at)))
+  }
   if (entry.kind === 'charge') {
     const plan = entry.plan_name ?? '—'
     const membership = entry.membership_status && copy.membership[entry.membership_status]
@@ -576,6 +582,7 @@ function detailLabel(entry: BookEntry): string {
 
 function describeStatus(entry: BookEntry): { label: string; status: Status; review?: boolean } {
   const words = copy.status
+  if (entry.voided) return { label: words.voided, status: 'cancelled' }
   if (entry.kind === 'charge' && entry.period) {
     const period = entry.period
     if (period.outstanding_clp === 0) return { label: words.paid, status: 'paid' }

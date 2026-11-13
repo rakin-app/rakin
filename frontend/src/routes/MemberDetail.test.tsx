@@ -642,6 +642,128 @@ describe('Ficha de alumno', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.adjustForm.refused.exceeds)
   })
 
+  it('voids a charge made by mistake, with its reason (#256)', async () => {
+    const calls = stubApi({
+      extra: (path, method) =>
+        path === '/api/ledger/voids' && method === 'POST'
+          ? { status: 201, body: { period: { outstanding_clp: 0, closed: true } } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.voidCharge }))
+    const form = screen.getByRole('form', { name: copy.voidForm.title })
+    // Only what still owes: September is paid.
+    expect(within(form).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      copy.voidForm.periodOption('octubre', '$45.000'),
+    ])
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidForm.submit('$45.000') }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent(copy.voidForm.reasonNeeded)
+    await userEvent.type(within(form).getByLabelText(copy.voidForm.reason), ' alumno de prueba ')
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidForm.submit('$45.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.voidForm.done('octubre', '$45.000'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/ledger/voids',
+        body: { membership_id: 'm-felipe', billing_period_id: 'p-oct', reason: 'alumno de prueba' },
+      },
+    ])
+  })
+
+  it('says to refund a payment first when a void is refused for it (#256)', async () => {
+    stubApi({
+      extra: (path, method) =>
+        path === '/api/ledger/voids' && method === 'POST'
+          ? { status: 409, body: { detail: { code: 'paid', message: 'x', amount_clp: 20000 } } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.voidCharge }))
+    await userEvent.type(screen.getByLabelText(copy.voidForm.reason), 'error')
+    await userEvent.click(screen.getByRole('button', { name: copy.voidForm.submit('$45.000') }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.voidRefused.paid('$20.000'))
+  })
+
+  it('voids a plan started by mistake (#256)', async () => {
+    const calls = stubApi({
+      extra: (path, method) =>
+        path === '/api/memberships/m-felipe/void' && method === 'POST'
+          ? { body: { ...MONTHLY, status: 'cancelled', voided_at: '2026-11-13T12:00:00Z', void_reason: 'prueba' } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.voidPlan }))
+    const form = screen.getByRole('form', { name: copy.voidPlanForm.title })
+    expect(within(form).getByText(copy.voidPlanForm.intro)).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.voidPlanForm.reason), 'prueba')
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidPlanForm.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.voidPlanForm.done)
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/memberships/m-felipe/void', body: { reason: 'prueba' } },
+    ])
+  })
+
+  it('shows a voided charge struck through with why, who and when, and the void beside it (#256)', async () => {
+    stubApi({
+      memberships: [{ ...MONTHLY, status: 'cancelled', voided_at: '2026-11-08T12:00:00Z', void_reason: 'prueba' }],
+      ledger: {
+        ...LEDGER,
+        open_periods: [],
+        owed_clp: 0,
+        entries: [
+          entry({
+            id: 'void-oct',
+            kind: 'adjustment',
+            voids: true,
+            billing_period_id: 'p-oct',
+            period_start: '2026-10-30',
+            note: 'alumno de prueba',
+            validated_by_name: 'Martín',
+            created_at: '2026-11-08T12:00:00Z',
+            validated_at: '2026-11-08T12:00:00Z',
+          }),
+          entry({
+            id: 'c-oct',
+            kind: 'charge',
+            billing_period_id: 'p-oct',
+            period_start: '2026-10-30',
+            voided: { reason: 'alumno de prueba', by_name: 'Martín', at: '2026-11-08T12:00:00Z' },
+          }),
+        ],
+        periods: [{ id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0 }],
+      },
+    })
+    renderAt(PATH)
+
+    const ledger = await screen.findByRole('region', { name: copy.ledger.title })
+    const voided = (await within(ledger).findByText(copy.ledger.voided('alumno de prueba', 'Martín', '8 nov'))).closest('li')!
+    expect(voided).toHaveClass('member__entry--voided')
+    expect(within(voided).getByText(copy.ledger.charge('octubre'))).toBeInTheDocument()
+    expect(within(ledger).getByText(copy.ledger.void('octubre'))).toBeInTheDocument()
+    const card = await money()
+    expect(within(card).getByText(copy.voidedBadge)).toBeInTheDocument()
+    // Nothing left to void.
+    expect(within(card).queryByRole('button', { name: copy.voidCharge })).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: copy.voidPlan })).not.toBeInTheDocument()
+  })
+
+  it('offers no void to a coach (#256)', async () => {
+    stubApi({ role: 'coach' })
+    renderAt(PATH)
+    expect(await screen.findByRole('heading', { name: FELIPE.name })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.voidCharge })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.voidPlan })).not.toBeInTheDocument()
+  })
+
   it('refunds part of a validated payment', async () => {
     const calls = stubApi()
     renderAt(PATH)
@@ -1562,14 +1684,15 @@ describe('the record and the ways out (#157)', () => {
     )
   })
 
-  it('eliminar explains a ledger keeps them, and offers dar de baja', async () => {
+  it('eliminar says what they owe and how to clear it, and offers dar de baja (#256)', async () => {
     stubApi({
-      extra: (path) => (path === '/api/people/felipe/deletion' ? { body: { refused: 'ledger' } } : undefined),
+      extra: (path) =>
+        path === '/api/people/felipe/deletion' ? { body: { refused: 'owes', amount_clp: 45000 } } : undefined,
     })
     renderAt(PATH)
 
     await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
-    expect(await screen.findByText(copy.removeForm.refused.ledger)).toBeInTheDocument()
+    expect(await screen.findByText(copy.removeForm.refused.owes('$45.000'))).toBeInTheDocument()
     const section = await actions()
     const offered = within(section).getAllByRole('button', { name: copy.leave })
     await userEvent.click(offered.at(-1)!)
@@ -1592,10 +1715,13 @@ describe('the record and the ways out (#157)', () => {
     const submit = within(form).getByRole('button', { name: copy.removeForm.submit })
     expect(submit).toBeDisabled()
     await userEvent.type(within(form).getByLabelText(copy.removeForm.confirm(FELIPE.name)), 'felipe  díaz')
+    await userEvent.type(within(form).getByLabelText(copy.removeForm.reason), 'era de prueba')
     await userEvent.click(submit)
 
     expect(await screen.findByRole('heading', { name: es.admin.students.title })).toBeInTheDocument()
-    expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual(['/api/people/felipe'])
+    expect(calls.filter((c) => c.method === 'DELETE')).toEqual([
+      { method: 'DELETE', path: '/api/people/felipe', body: { reason: 'era de prueba' } },
+    ])
   })
 
   it('goes back to the list it was opened from after eliminar, filters kept (#250)', async () => {
@@ -1615,6 +1741,7 @@ describe('the record and the ways out (#157)', () => {
     await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
     const form = await screen.findByRole('form', { name: copy.removeForm.title })
     await userEvent.type(within(form).getByLabelText(copy.removeForm.confirm(FELIPE.name)), 'Felipe Díaz')
+    await userEvent.type(within(form).getByLabelText(copy.removeForm.reason), 'era de prueba')
     await userEvent.click(within(form).getByRole('button', { name: copy.removeForm.submit }))
 
     await waitFor(() => expect(router.state.location.href).toBe(from))
@@ -1639,6 +1766,7 @@ describe('the record and the ways out (#157)', () => {
     await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
     const form = await screen.findByRole('form', { name: copy.removeForm.title })
     await userEvent.type(within(form).getByLabelText(copy.removeForm.confirm(FELIPE.name)), 'Felipe Díaz')
+    await userEvent.type(within(form).getByLabelText(copy.removeForm.reason), 'era de prueba')
     await userEvent.click(within(form).getByRole('button', { name: copy.removeForm.submit }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos'))

@@ -22,8 +22,11 @@ owe stays owed. `POST .../return` (reactivar) brings them back, on a plan again 
 given one.
 
 `DELETE /api/people/{id}` is for a mistake or a data-deletion request: it deletes this
-gym's records of someone with no ledger entries here (`forget_gym_person`, 0032), and
-answers why not otherwise; `GET .../deletion` answers the same without deleting.
+gym's records of someone (`forget_gym_person`, 0044), with a reason the gym's log keeps.
+Their ledger goes too once nothing in it holds money: a test student whose charges were
+voided is deleted, one the gym kept a payment of is not until it is refunded (#256).
+Otherwise it answers why not, and how much it is about; `GET .../deletion` answers the
+same without deleting.
 
 Adding, leaving, returning and the welcome are the owner's and admins': each starts or
 ends what a member is charged, or speaks for the gym. Deleting is the owner's alone.
@@ -52,6 +55,7 @@ from app.api.people import (
 )
 from app.contacts import contact_for
 from app.domain import membership as domain
+from app.domain.billing import settled_amount
 from app.domain.dates import add_months, gym_today, is_minor
 from app.domain.membership import MembershipStatus, PlanKind
 from app.notices import Notices, get_notices
@@ -64,6 +68,7 @@ from app.schemas.people import (
     ExistingGuardian,
     ForgetConflict,
     ForgetRefused,
+    Forgetting,
     Leaving,
     Person,
     PersonInGym,
@@ -302,14 +307,58 @@ async def send_welcome(
     return await _welcome_state(session, person_id)
 
 
+# Their memberships' and cobro lines' entries, for `forget_amount`.
+THEIR_ENTRIES = """
+    SELECT e.* FROM ledger_entry e
+    WHERE e.membership_id IN (SELECT id FROM membership WHERE person_id = :id)
+       OR e.extra_line_id IN (SELECT id FROM extra_line WHERE person_id = :id)
+"""
+SETTLED = f"""
+    SELECT coalesce(sum({settled_amount("s")}), 0) FROM ledger_entry s
+    WHERE s.status = 'validated' AND s.kind IN ('payment', 'adjustment', 'refund')
+"""
+
+# The amount a refusal is about (`forget_refusal`, 0044), as it counts it.
+FORGET_AMOUNTS = {
+    "payment": text(
+        "SELECT coalesce(sum(CASE WHEN e.kind = 'payment' THEN e.amount_clp"
+        f" ELSE -e.amount_clp END), 0)::bigint FROM ({THEIR_ENTRIES}) e"
+        " WHERE e.status = 'validated' AND e.kind IN ('payment', 'refund')"
+    ),
+    "owes": text(
+        f"""
+        SELECT (
+            SELECT coalesce(sum(greatest(bp.amount_due_clp - ({SETTLED}
+                AND s.billing_period_id = bp.id), 0)), 0)
+            FROM billing_period bp
+            JOIN membership m ON m.id = bp.membership_id WHERE m.person_id = :id
+        ) + (
+            SELECT coalesce(sum(greatest(l.amount_due_clp - ({SETTLED}
+                AND s.extra_line_id = l.id), 0)), 0)
+            FROM extra_line l WHERE l.person_id = :id AND l.cancelled_at IS NULL
+        )
+        """
+    ),
+}
+
+
+async def forget_amount(session: AsyncSession, person_id: uuid.UUID, code: str) -> int | None:
+    """What a refusal is about in pesos: the money kept, or what is owed."""
+    query = FORGET_AMOUNTS.get(code)
+    if query is None:
+        return None
+    return int(await session.scalar(query, {"id": person_id}) or 0)
+
+
 @router.get("/{person_id}/deletion")
 async def deletion(person_id: uuid.UUID, session: OwnerSession) -> Deletion:
     """Whether `DELETE` would delete them, and if not why: for the screen to say so
-    before it is asked."""
+    before it is asked, and what to clear first."""
     code = await session.scalar(text("SELECT forget_refusal(:id)"), {"id": person_id})
     if code == "not_found":
         raise NOT_FOUND
-    return Deletion(refused=code)
+    amount = None if code is None else await forget_amount(session, person_id, code)
+    return Deletion(refused=code, amount_clp=amount)
 
 
 @router.delete(
@@ -317,12 +366,19 @@ async def deletion(person_id: uuid.UUID, session: OwnerSession) -> Deletion:
     status_code=status.HTTP_204_NO_CONTENT,
     responses={status.HTTP_409_CONFLICT: {"model": ForgetRefused}},
 )
-async def forget(person_id: uuid.UUID, session: OwnerSession) -> Response:
-    """Eliminar: this gym's records of them, gone. Refused, writing nothing, while they
-    have ledger entries here, are staff, or answer for a dependent."""
-    code = await session.scalar(text("SELECT forget_gym_person(:id)"), {"id": person_id})
+async def forget(person_id: uuid.UUID, body: Forgetting, session: OwnerSession) -> Response:
+    """Eliminar: this gym's records of them, gone, their voided charges with them, and a
+    row in the gym's log saying who, when and why, with nothing about them. Refused,
+    writing nothing, while the gym holds money of theirs or a proof of theirs waits,
+    while they owe a charge not voided, or are staff, or answer for a dependent."""
+    code = await session.scalar(
+        text("SELECT forget_gym_person(:id, :reason)"), {"id": person_id, "reason": body.reason}
+    )
     if code == "not_found":
         raise NOT_FOUND
     if code is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, ForgetConflict(code=code).model_dump())
+        amount = await forget_amount(session, person_id, code)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, ForgetConflict(code=code, amount_clp=amount).model_dump()
+        )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

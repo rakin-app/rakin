@@ -77,6 +77,8 @@ export type Line = {
   pending_clp: number
   status: LineStatus
   cancelled_at: string | null
+  // Why it was cancelled (#256); null on a line cancelled before reasons were asked.
+  cancel_reason?: string | null
   has_email: boolean
   // A reminder on WhatsApp, on a line still owed, when the gym uses it.
   whatsapp_url: string | null
@@ -182,8 +184,12 @@ export function cancelPreview(charge: string, line: string): Promise<CancelPrevi
   return apiFetch<CancelPreview>(`${linePath(charge, line)}/cancel`)
 }
 
-export function cancelLine(charge: string, line: string, resplit: boolean): Promise<ExtraCharge> {
-  return apiFetch<ExtraCharge>(`${linePath(charge, line)}/cancel`, { method: 'POST', body: JSON.stringify({ resplit }) })
+/** Anular a line, with the reason it needs (#256). */
+export function cancelLine(charge: string, line: string, resplit: boolean, reason: string): Promise<ExtraCharge> {
+  return apiFetch<ExtraCharge>(`${linePath(charge, line)}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ resplit, reason }),
+  })
 }
 
 export function payLine(charge: string, line: string, amount: number, method: Method): Promise<unknown> {

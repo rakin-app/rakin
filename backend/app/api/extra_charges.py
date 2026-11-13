@@ -461,7 +461,8 @@ ONE_SUMMARY = text(f"{SUMMARY} WHERE x.id = :id GROUP BY x.id")
 
 LINES = f"""
     SELECT l.id, l.person_id, gp.name AS person_name, l.amount_due_clp, l.overridden,
-           l.cancelled_at, coalesce(s.paid, 0) AS paid, coalesce(s.pending, 0) AS pending,
+           l.cancelled_at, l.cancel_reason, coalesce(s.paid, 0) AS paid,
+           coalesce(s.pending, 0) AS pending,
            s.pending_id, coalesce(s.kept, 0) AS kept, s.money_entries,
            gl.guardian_person_id AS guardian_id, ggp.name AS guardian_name,
            c.person_id AS contact_id, c.name AS contact_name, c.email, c.phone, c.on_behalf_of
@@ -524,6 +525,7 @@ def to_line(row: Any, gym: Any, charge: Any, refundable: list[RefundableLinePaym
         pending_clp=row.pending,
         status=state,
         cancelled_at=row.cancelled_at,
+        cancel_reason=row.cancel_reason,
         has_email=bool(row.email),
         whatsapp_url=whatsapp(
             gym,
@@ -667,10 +669,10 @@ async def cancel_preview(
 async def cancel_line(
     charge_id: uuid.UUID, line_id: uuid.UUID, body: LineCancel, session: LedgerSession
 ) -> ExtraCharge:
-    """Anular: the person no longer owes it. Only a line the gym holds no money for and
-    no proof waits on; refund a payment first. An adjustment is not money and does not
-    stand in the way. With `resplit`, the total is divided again among the lines left,
-    while nobody has paid any.
+    """Anular: the person no longer owes it, for `reason` (#256). Only a line the gym
+    holds no money for and no proof waits on; refund a payment first. An adjustment is
+    not money and does not stand in the way. With `resplit`, the total is divided again
+    among the lines left, while nobody has paid any.
 
     Under the cobro's lock, which a student's claim waits for too
     (`ledger_entry_line_open`, 0037): a claim either lands before this reads the line
@@ -689,9 +691,9 @@ async def cancel_line(
     await session.execute(
         text(
             "UPDATE extra_line SET cancelled_at = now(),"
-            f" cancelled_by = {CURRENT_PERSON} WHERE id = :id"
+            f" cancelled_by = {CURRENT_PERSON}, cancel_reason = :reason WHERE id = :id"
         ),
-        {"id": line_id},
+        {"id": line_id, "reason": body.reason},
     )
     for other, amount in (divided or {}).items():
         await session.execute(
