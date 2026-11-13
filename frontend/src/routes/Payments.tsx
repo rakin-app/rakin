@@ -14,9 +14,11 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import { membershipLedgerQuery, membershipsQuery, shownMembership } from '../api/member'
 import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
+import { remindersQuery, type PaymentReminder } from '../api/reminders'
 import { Button, buttonClass } from '../components/Button'
 import { ListRowContent, listRowClass } from '../components/Card'
 import { Chip, ChipGroup } from '../components/Chip'
+import { EmailReminder } from '../components/EmailReminder'
 import { SearchInput } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -59,7 +61,8 @@ const route = getRouteApi('/admin/pagos')
  * and admin only; a coach is told so and nothing is asked of the API.
  *
  * Freezes are not ledger entries, but the book lists where each started and ended
- * among them (#26), as rows with no amount. Reminders are not listed. Adjustments and
+ * among them (#26), as rows with no amount. Reminders are not listed, but on the
+ * overdue list each charge still owed has "Enviar recordatorio" under its status (#260). Adjustments and
  * refunds are made on the member's detail (#38) and listed here with their sign.
  *
  * A search keeps a member's lines, and a guardian's dependents'; "Registrar pago" picks
@@ -91,6 +94,11 @@ function Book() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const filter = search.filter ?? 'all'
+  // "Enviar recordatorio" on the overdue list's rows (#260).
+  const reminders = useQuery({ ...remindersQuery(), enabled: filter === 'overdue' })
+  const reminderFor = new Map(
+    (filter === 'overdue' ? (reminders.data ?? []) : []).map((r) => [`${r.membership_id}:${r.due_date}`, r]),
+  )
   const q = search.q ?? ''
   const book = useInfiniteQuery({ ...ledgerBookQuery(search.month, filter, q), placeholderData: keepPreviousData })
   // The nav badge's count, so the link stands even while the book cannot load.
@@ -241,7 +249,16 @@ function Book() {
                     <tbody role="rowgroup">
                       {lines.map((line) =>
                         line.kind === 'entry' ? (
-                          <Row key={line.entry.id} entry={line.entry} timeZone={latest.timezone} />
+                          <Row
+                            key={line.entry.id}
+                            entry={line.entry}
+                            timeZone={latest.timezone}
+                            reminder={
+                              line.entry.period
+                                ? reminderFor.get(`${line.entry.membership_id}:${line.entry.period.due_date}`)
+                                : undefined
+                            }
+                          />
                         ) : (
                           <FreezeRow key={`${line.line.freeze_id}-${line.line.edge}`} line={line.line} />
                         ),
@@ -460,7 +477,15 @@ function Kpis({ kpis }: { kpis: BookKpis }) {
   )
 }
 
-function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
+function Row({
+  entry,
+  timeZone,
+  reminder,
+}: {
+  entry: BookEntry
+  timeZone: string
+  reminder: PaymentReminder | undefined
+}) {
   const status = describeStatus(entry)
   return (
     <tr className="payments__line" role="row">
@@ -477,6 +502,7 @@ function Row({ entry, timeZone }: { entry: BookEntry; timeZone: string }) {
         ) : (
           <StatusPill status={status.status}>{status.label}</StatusPill>
         )}
+        {reminder && entry.kind === 'charge' && <EmailReminder reminder={reminder} />}
       </td>
       <td role="cell" className={`payments__amount payments__amount--${entry.status}`}>
         {bookAmount(entry)}

@@ -1,0 +1,1 @@
+{% if days_overdue == 0 %}Hoy vence tu pago de {{ amount_clp | clp }} en {{ gym }}{% else %}Tu pago de {{ amount_clp | clp }} en {{ gym }} está atrasado{% endif %}

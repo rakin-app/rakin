@@ -46,6 +46,12 @@ class PaymentReminder(BaseModel):
     # Time for the next one: none sent yet, a rejection not followed up, or the gym's
     # `reminder_every_days` since the last.
     reminder_due: bool
+    # The overdue email (#260): whether "Enviar recordatorio" can send one (the period is
+    # due and whoever it goes to has an email), when the last went out, by hand or by
+    # the nightly job, and whether one already did today.
+    can_email: bool
+    emailed_at: datetime | None
+    emailed_today: bool
 
 
 class Reminded(BaseModel):
@@ -56,3 +62,11 @@ class Reminded(BaseModel):
     kind: ReminderKind
     # This one's number among the period's reminders: 1 for the first ("1.er aviso").
     ordinal: int
+
+
+class Emailed(BaseModel):
+    """`POST /api/reminders/{billing_period_id}/email`: the overdue email went out."""
+
+    sent_at: datetime
+    # Whom it went to: the guardian, for a dependent.
+    contact_name: str

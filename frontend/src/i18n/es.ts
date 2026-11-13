@@ -81,6 +81,22 @@ export const es = {
       rejected: (note: string) => `Comprobante rechazado: ${note}`,
       // After rejecting a proof: the follow-up by WhatsApp beside the email.
       followUp: (name: string) => `Avisar por WhatsApp a ${name}`,
+      // The overdue email (#260), sent now from the ficha, Hoy and Pagos.
+      email: {
+        send: 'Enviar recordatorio',
+        sendTo: (name: string) => `Enviar recordatorio por correo a ${name}`,
+        sendFor: (contact: string, name: string) => `Enviar recordatorio por correo a ${contact}, por ${name}`,
+        sent: (name: string) => `Recordatorio enviado a ${name}.`,
+        last: (when: string) => `Último recordatorio: ${when}`,
+        today: 'hoy',
+        yesterday: 'ayer',
+        daysAgo: (n: number) => `hace ${n} días`,
+        refused: {
+          emailed_today: 'Ya se envió un recordatorio hoy.',
+          no_email: 'No tiene correo para enviarlo.',
+        },
+        failed: 'No pudimos enviar el recordatorio. Inténtalo de nuevo.',
+      },
     },
     today: {
       title: 'Hoy',

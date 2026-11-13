@@ -615,3 +615,18 @@ def test_only_a_running_freeze_moves_or_ends() -> None:
         m.move_freeze_end(monthly(), NOV_24)
     with pytest.raises(InvalidTransition):
         m.end_freeze(monthly(), NOV_24)
+
+
+def test_overdue_emails_go_on_the_due_date_the_day_after_then_every_three_days() -> None:
+    days = [d for d in range(-3, 30) if m.is_overdue_email_day(d, 15)]
+
+    assert days == [0, 1, 4, 7, 10, 13]
+
+
+def test_overdue_emails_stop_with_the_grace() -> None:
+    assert [d for d in range(30) if m.is_overdue_email_day(d, 5)] == [0, 1, 4]
+    assert [d for d in range(30) if m.is_overdue_email_day(d, 0)] == [0]
+    # The last email goes on the last day of the grace, the day before the lapse.
+    assert m.is_overdue_email_day(13, 13)
+    due = NOV_30 + timedelta(days=1)
+    assert not m.is_due_to_lapse(monthly(), due + timedelta(days=13), 13)

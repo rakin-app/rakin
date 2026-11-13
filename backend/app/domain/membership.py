@@ -91,6 +91,20 @@ def grace_days(gym_settings: Mapping[str, object]) -> int:
     return value
 
 
+# The overdue email (#260): on the due date, the day after, then every this many days.
+OVERDUE_EMAIL_EVERY_DAYS = 3
+
+
+def is_overdue_email_day(days_overdue: int, grace: int) -> bool:
+    """Whether a period this many days past its due date is emailed today: on the due
+    date (0), the day after (1), then every `OVERDUE_EMAIL_EVERY_DAYS` (4, 7, 10, ...)
+    while the grace lasts, the last day before the membership lapses
+    (`app.domain.dates.is_past_grace`)."""
+    if not 0 <= days_overdue <= grace:
+        return False
+    return days_overdue <= 1 or (days_overdue - 1) % OVERDUE_EMAIL_EVERY_DAYS == 0
+
+
 def _move(membership: Membership, to: MembershipStatus) -> None:
     if to not in TRANSITIONS[membership.status]:
         raise InvalidTransition(f"membership: {membership.status} → {to}")

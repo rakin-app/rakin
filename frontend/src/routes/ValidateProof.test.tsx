@@ -258,6 +258,9 @@ describe('Validar comprobante', () => {
       reminders_sent: 0,
       reminded_at: null,
       reminder_due: true,
+      can_email: false,
+      emailed_at: null,
+      emailed_today: false,
     }
     const calls = stubApi([JUAN], { reminders: [followUp] })
     renderAt(PATH)
@@ -311,6 +314,9 @@ describe('Validar comprobante', () => {
       reminders_sent: 0,
       reminded_at: null,
       reminder_due: true,
+      can_email: false,
+      emailed_at: null,
+      emailed_today: false,
     }
     stubApi([rifa], { reminders: [stray] })
     renderAt(PATH)

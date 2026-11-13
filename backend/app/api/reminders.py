@@ -22,11 +22,19 @@ gym's WhatsApp channel off, or no phone to send to, there is no link. Hoy's over
 rows, its "Por avisar", the proof review after a rejection and the member's ficha read
 this list.
 
+Beside each overdue one, "Enviar recordatorio" (#260): `POST .../{billing_period_id}/email`
+sends the overdue email (`app.jobs.overdue`) now, to the member or their guardian, as
+the nightly job does on its own days. Each reminder says when the last of those went
+out (`emailed_at`), and whether one already did today: a period gets one a day, so a
+second is a 409. A double tap sends once, by the request's `Idempotency-Key` (#201).
+WhatsApp's count and cadence are WhatsApp's alone; the emails do not move them.
+
 Owner and admin only (`LedgerSession`): it is money.
 """
 
 import json
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -36,6 +44,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.contacts import contact_query
 from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.integrations.messenger import Message, wa_me_link
+from app.jobs.overdue import overdue_notice
+from app.notices import PAYMENT_OVERDUE, Notices, Outcome, get_notices
 from app.notices.whatsapp import (
     PAYMENT_REMINDERS,
     payment_due_today,
@@ -44,13 +54,25 @@ from app.notices.whatsapp import (
 )
 from app.roles import LedgerSession
 from app.schemas.gym import DEFAULT_REMINDER_EVERY_DAYS, Channels
-from app.schemas.reminders import PaymentReminder, Reminded, ReminderKind
+from app.schemas.reminders import Emailed, PaymentReminder, Reminded, ReminderKind
 from app.tenancy import Tenant, current_tenant
 
 router = APIRouter(prefix="/api/reminders", tags=["comms"])
 
 NOT_DUE = HTTPException(status.HTTP_404_NOT_FOUND, "no reminder due for this period")
 NO_WHATSAPP = HTTPException(status.HTTP_409_CONFLICT, "no WhatsApp to send it to")
+NOT_OVERDUE = HTTPException(status.HTTP_404_NOT_FOUND, "the period is not due yet")
+NO_EMAIL = HTTPException(
+    status.HTTP_409_CONFLICT, {"code": "no_email", "message": "No tiene correo."}
+)
+EMAILED_TODAY = HTTPException(
+    status.HTTP_409_CONFLICT,
+    {"code": "emailed_today", "message": "Ya se envió un recordatorio hoy."},
+)
+NOT_SENT = HTTPException(
+    status.HTTP_502_BAD_GATEWAY,
+    {"code": "not_sent", "message": "No se pudo enviar el correo."},
+)
 
 # Each period that may be reminded, with what it still owes settled as
 # `app.api.ledger.OPEN_PERIODS` settles it, its latest rejected proof, the reminders
@@ -58,15 +80,17 @@ NO_WHATSAPP = HTTPException(status.HTTP_409_CONFLICT, "no WhatsApp to send it to
 REMINDERS = f"""
 SELECT * FROM (
     SELECT bp.id AS billing_period_id, bp.membership_id, m.person_id,
-           gp.name AS person_name, pl.name AS plan_name, bp.period_start, bp.due_date,
+           gp.name AS person_name, pl.name AS plan_name, bp.period_start, bp.period_end,
+           bp.due_date,
            bp.amount_due_clp - coalesce(paid.amount, 0) AS outstanding_clp,
            t.today - bp.due_date AS days_overdue, t.today,
            rj.id AS rejected_id, rj.amount_clp AS rejected_clp, rj.note AS rejection_note,
            rj.validated_at AS rejected_at,
            sent.count AS reminders_sent, sent.last_at AS reminded_at,
            (sent.last_at AT TIME ZONE g.timezone)::date AS reminded_on,
-           c.person_id AS contact_id, c.name AS contact_name, c.phone, c.on_behalf_of,
-           g.name AS gym_name, g.settings
+           emailed.last_at AS emailed_at, emailed.today AS emailed_today,
+           c.person_id AS contact_id, c.name AS contact_name, c.phone, c.email,
+           c.on_behalf_of, g.id AS gym_id, g.name AS gym_name, g.settings
     FROM billing_period bp
     JOIN membership m ON m.id = bp.membership_id
     JOIN plan pl ON pl.id = m.plan_id
@@ -86,9 +110,16 @@ SELECT * FROM (
     ) rj ON true
     CROSS JOIN LATERAL (
         SELECT count(*) AS count, max(ml.sent_at) AS last_at FROM message_log ml
-        WHERE ml.template = ANY(CAST(:templates AS text[])) AND ml.status = 'sent'
-          AND ml.payload ->> 'billing_period_id' = bp.id::text
+        WHERE ml.channel = 'whatsapp' AND ml.template = ANY(CAST(:templates AS text[]))
+          AND ml.status = 'sent' AND ml.payload ->> 'billing_period_id' = bp.id::text
     ) sent
+    CROSS JOIN LATERAL (
+        SELECT max(ml.sent_at) AS last_at,
+               coalesce(bool_or(ml.payload ->> 'on' = t.today::text), false) AS today
+        FROM message_log ml
+        WHERE ml.channel = 'email' AND ml.template = :emailed AND ml.status = 'sent'
+          AND ml.payload ->> 'billing_period_id' = bp.id::text
+    ) emailed
     LEFT JOIN LATERAL ({contact_query("m.person_id")}) c ON true
     WHERE m.status = 'active'
       AND NOT EXISTS (
@@ -184,6 +215,9 @@ def reminder(row: Any) -> PaymentReminder:
         reminders_sent=row.reminders_sent,
         reminded_at=row.reminded_at,
         reminder_due=is_due(row, kind),
+        can_email=row.days_overdue >= 0 and bool(row.email),
+        emailed_at=row.emailed_at,
+        emailed_today=row.emailed_today,
     )
 
 
@@ -193,6 +227,7 @@ async def reminder_rows(
     params = {
         "settling": sorted(k.value for k in SETTLING_KINDS),
         "templates": list(PAYMENT_REMINDERS),
+        "emailed": PAYMENT_OVERDUE.name,
         "person": person,
         "period": period,
     }
@@ -249,3 +284,42 @@ async def remind(
     return Reminded(
         message_id=logged.message_id, sent_at=logged.sent_at, kind=kind, ordinal=ordinal
     )
+
+
+@router.post("/{billing_period_id}/email", status_code=status.HTTP_201_CREATED)
+async def email_reminder(
+    billing_period_id: uuid.UUID,
+    session: LedgerSession,
+    notices: Annotated[Notices, Depends(get_notices)],
+) -> Emailed:
+    """Send the overdue email about the period now, unless one went out today."""
+    rows = await reminder_rows(session, period=billing_period_id)
+    if not rows or rows[0].days_overdue < 0:
+        raise NOT_OVERDUE
+    row = rows[0]
+    if not row.email:
+        raise NO_EMAIL
+    if row.emailed_today:
+        raise EMAILED_TODAY
+    notice = overdue_notice(
+        to=row.email,
+        contact_id=row.contact_id,
+        contact_name=row.contact_name,
+        dependent_name=row.person_name if row.on_behalf_of is not None else None,
+        gym_id=row.gym_id,
+        gym_name=row.gym_name,
+        plan_name=row.plan_name,
+        billing_period_id=row.billing_period_id,
+        period_start=row.period_start,
+        period_end=row.period_end,
+        due_date=row.due_date,
+        amount_clp=row.outstanding_clp,
+        days_overdue=row.days_overdue,
+        bank_account=row.settings.get("bank_account"),
+        on=row.today,
+    )
+    # Sent before answering, so the answer can say whether it went: `Notices` records
+    # it on a connection of its own either way.
+    if await notices.send(notice) is not Outcome.SENT:
+        raise NOT_SENT
+    return Emailed(sent_at=datetime.now(UTC), contact_name=row.contact_name)

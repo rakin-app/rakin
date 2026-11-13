@@ -56,6 +56,7 @@ import { ChevronLeftIcon, WhatsAppIcon } from '../components/icons'
 import { Grid, PageContainer } from '../components/Layout'
 import { MemberMatTime } from '../components/MatTime'
 import { TagHoursCard } from '../components/TagHours'
+import { EmailReminder } from '../components/EmailReminder'
 import { ReminderLink } from '../components/ReminderLink'
 import { StatusPill } from '../components/StatusPill'
 import { isoDay, monthName, monthYear, shortDay } from '../format'
@@ -94,6 +95,8 @@ const route = getRouteApi('/admin/alumnos/$personId')
  *
  * In the header, WhatsApp: for whoever reads the ledger, the reminder about what they
  * owe, the longest overdue first, when there is one to send (#55); else a plain chat.
+ * On the money card, "Enviar recordatorio" emails it now, and says when the last one
+ * went out (#260).
  */
 export function MemberDetail() {
   const { personId } = route.useParams()
@@ -157,6 +160,7 @@ export function MemberDetail() {
         <div className="member__column">
           {membership ? (
             <Standing
+              personId={personId}
               membership={membership}
               money={money}
               earlier={money ? <EarlierDebt memberships={memberships.data} shown={membership} /> : null}
@@ -267,11 +271,13 @@ export function whatsappUrl(person: Pick<Person, 'phone' | 'no_whatsapp'>): stri
  * `assign` is "Asignar plan", which offers itself once this plan has ended, and
  * `earlier` what other plans still owe, under the card (#249). */
 function Standing({
+  personId,
   membership,
   money,
   earlier,
   assign,
 }: {
+  personId: string
   membership: Membership
   money: boolean
   earlier: ReactNode
@@ -279,6 +285,12 @@ function Standing({
 }) {
   const ledger = useQuery({ ...membershipLedgerQuery(membership.id), enabled: money })
   const data = money ? ledger.data : undefined
+  // The header's WhatsApp reads the same list. Longest overdue first: the email is about
+  // the oldest period this plan owes (#260).
+  const reminders = useQuery({ ...remindersQuery(personId), enabled: money })
+  const overdue = money
+    ? reminders.data?.find((r) => r.membership_id === membership.id && r.days_overdue >= 0)
+    : undefined
 
   return (
     <>
@@ -298,6 +310,7 @@ function Standing({
           </p>
         )}
         {data && <Owed ledger={data} />}
+        {data && overdue && <EmailReminder reminder={overdue} />}
         {money && ledger.isError && (
           <p className="member__error" role="alert">
             {copy.ledgerError}

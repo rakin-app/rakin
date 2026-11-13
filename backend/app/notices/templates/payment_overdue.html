@@ -1,0 +1,8 @@
+{% extends "_layout.html" %}
+{% block title %}{% if days_overdue == 0 %}Hoy vence tu pago en {{ gym }}{% else %}Tu pago en {{ gym }} está atrasado{% endif %}{% endblock %}
+{% block body %}
+<p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+<p style="margin:0 0 16px;">{% if days_overdue == 0 %}Hoy vence el pago de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }}{% else %}El pago de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }} venció el <strong>{{ due_date | fecha }}</strong> y lleva <strong>{{ days_overdue }} {{ "día" if days_overdue == 1 else "días" }} de atraso</strong>{% endif %}: plan {{ plan_name }}, período del {{ period_start | fecha }} al {{ period_end | fecha }}.</p>
+<p style="margin:0 0 16px;">¿Nos ayudas a ponerte al día? {% if bank_account %}Transfiere a esta cuenta y sube el comprobante desde tu página.{% else %}Transfiere y sube el comprobante desde tu página, donde están los datos de la cuenta.{% endif %} Si ya pagaste, solo sube el comprobante. ¡Gracias!</p>
+{% include "_bank_account.html" %}
+{% endblock %}

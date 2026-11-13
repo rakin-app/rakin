@@ -19,7 +19,8 @@ with a logo (#223) has it over the message, as a PNG on that host (`app.api.logo
 A non-essential notice (plan events, announcements) carries a one-click unsubscribe
 link, in its footer and as `List-Unsubscribe` with `List-Unsubscribe-Post` (RFC 8058),
 and is not sent, but recorded as `suppressed`, to someone who used it
-(`app.api.unsubscribe`). Essential ones (sign-in links, proofs, receipts) always go.
+(`app.api.unsubscribe`). Essential ones (sign-in links, statements and overdue
+reminders, proofs, receipts) always go: they are about money owed or the account.
 
 `send` never raises for a notice it could not send: it runs after the response, where
 there is no one left to tell, so the outcome goes to `message_log` and the log. That
@@ -89,6 +90,11 @@ class Template:
 MAGIC_LINK = Template("magic_link", redact=frozenset({"url"}), page_link=False)
 WELCOME = Template("welcome")
 STATEMENT = Template("statement")
+# A period past due (#260), from the nightly job or "Enviar recordatorio". Essential,
+# like the statement: it is about money owed, so an unsubscribe does not stop it. It
+# shares its name with the WhatsApp reminder (`app.notices.whatsapp`); `channel` tells
+# the two apart in `message_log`.
+PAYMENT_OVERDUE = Template("payment_overdue")
 PROOF_RECEIVED = Template("proof_received")
 RECEIPT = Template("receipt")
 PROOF_REJECTED = Template("proof_rejected")
