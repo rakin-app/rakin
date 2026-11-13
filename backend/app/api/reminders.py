@@ -26,7 +26,10 @@ Beside each overdue one, "Enviar recordatorio" (#260): `POST .../{billing_period
 sends the overdue email (`app.jobs.overdue`) now, to the member or their guardian, as
 the nightly job does on its own days. Each reminder says when the last of those went
 out (`emailed_at`), and whether one already did today: a period gets one a day, so a
-second is a 409. A double tap sends once, by the request's `Idempotency-Key` (#201).
+second is a 409. "Today" here is the job's: the date in `jobs_timezone`, which the
+nightly run keys its emails by, so the job and the button never both send one on a day
+a gym in another timezone would split differently. A double tap sends once, by the
+request's `Idempotency-Key` (#201).
 WhatsApp's count and cadence are WhatsApp's alone; the emails do not move them.
 
 Owner and admin only (`LedgerSession`): it is money.
@@ -34,15 +37,16 @@ Owner and admin only (`LedgerSession`): it is money.
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contacts import contact_query
 from app.domain.billing import SETTLING_KINDS, settled_amount
+from app.domain.dates import gym_today
 from app.integrations.messenger import Message, wa_me_link
 from app.jobs.overdue import overdue_notice
 from app.notices import PAYMENT_OVERDUE, Notices, Outcome, get_notices
@@ -115,7 +119,8 @@ SELECT * FROM (
     ) sent
     CROSS JOIN LATERAL (
         SELECT max(ml.sent_at) AS last_at,
-               coalesce(bool_or(ml.payload ->> 'on' = t.today::text), false) AS today
+               coalesce(bool_or(ml.payload ->> 'on' = CAST(:emailed_on AS date)::text), false)
+                   AS today
         FROM message_log ml
         WHERE ml.channel = 'email' AND ml.template = :emailed AND ml.status = 'sent'
           AND ml.payload ->> 'billing_period_id' = bp.id::text
@@ -221,13 +226,29 @@ def reminder(row: Any) -> PaymentReminder:
     )
 
 
+def email_day(request: Request) -> date:
+    """The day an overdue email goes out for: the nightly job's, in `jobs_timezone`
+    (`app.jobs.daily.today`)."""
+    return gym_today(request.app.state.settings.jobs_timezone)
+
+
+EmailDay = Annotated[date, Depends(email_day)]
+
+
 async def reminder_rows(
-    session: AsyncSession, *, person: uuid.UUID | None = None, period: uuid.UUID | None = None
+    session: AsyncSession,
+    *,
+    emailed_on: date | None = None,
+    person: uuid.UUID | None = None,
+    period: uuid.UUID | None = None,
 ) -> list[Any]:
+    # `emailed_on`: the day `emailed_today` asks about (`email_day`); with none, it is
+    # false.
     params = {
         "settling": sorted(k.value for k in SETTLING_KINDS),
         "templates": list(PAYMENT_REMINDERS),
         "emailed": PAYMENT_OVERDUE.name,
+        "emailed_on": emailed_on,
         "person": person,
         "period": period,
     }
@@ -236,11 +257,12 @@ async def reminder_rows(
 
 @router.get("")
 async def reminders(
-    session: LedgerSession, person_id: uuid.UUID | None = None
+    session: LedgerSession, emailed_on: EmailDay, person_id: uuid.UUID | None = None
 ) -> list[PaymentReminder]:
     """The periods to remind about, longest overdue first; with `person_id`, only that
     member's (the ficha's)."""
-    return [reminder(row) for row in await reminder_rows(session, person=person_id)]
+    rows = await reminder_rows(session, emailed_on=emailed_on, person=person_id)
+    return [reminder(row) for row in rows]
 
 
 @router.post("/{billing_period_id}", status_code=status.HTTP_201_CREATED)
@@ -291,10 +313,11 @@ async def email_reminder(
     billing_period_id: uuid.UUID,
     session: LedgerSession,
     notices: Annotated[Notices, Depends(get_notices)],
+    on: EmailDay,
 ) -> Emailed:
     """Send the overdue email about the period now, unless one went out today."""
-    rows = await reminder_rows(session, period=billing_period_id)
-    if not rows or rows[0].days_overdue < 0:
+    rows = await reminder_rows(session, emailed_on=on, period=billing_period_id)
+    if not rows or (on - rows[0].due_date).days < 0:
         raise NOT_OVERDUE
     row = rows[0]
     if not row.email:
@@ -314,9 +337,9 @@ async def email_reminder(
         period_end=row.period_end,
         due_date=row.due_date,
         amount_clp=row.outstanding_clp,
-        days_overdue=row.days_overdue,
+        days_overdue=(on - row.due_date).days,
         bank_account=row.settings.get("bank_account"),
-        on=row.today,
+        on=on,
     )
     # Sent before answering, so the answer can say whether it went: `Notices` records
     # it on a connection of its own either way.

@@ -400,6 +400,39 @@ def test_the_button_sends_the_email_now_and_says_when(
 
 
 @pg
+def test_the_button_keys_its_day_as_the_job_does(db: Database, mailer: RecordingMailer) -> None:
+    # A gym a day or more ahead of the jobs' timezone: the button's "today" is still the
+    # job's, so the two never both send one on what is the same night's run.
+    jobs_tz, gym_tz = "Etc/GMT+12", "Etc/GMT-14"
+    app = create_app(
+        make_settings(
+            database_url=db.api_url, public_base_url="http://testserver", jobs_timezone=jobs_tz
+        )
+    )
+    app.state.integrations = dataclasses.replace(app.state.integrations, mailer=mailer)
+    app.add_middleware(FakeAuth)
+    gym = seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    run(
+        db.admin_url, lambda c: c.execute("UPDATE gym SET timezone = $2 WHERE id = $1", gym, gym_tz)
+    )
+    with TestClient(app) as client:
+        rosa = add_person(client, gym, "Rosa Lejos")
+        bill(db, gym, rosa, [(-5, 30000, 0, 0)])
+        period = reminder_of(client, gym, rosa)["billing_period_id"]
+
+        assert send(client, gym, period).status_code == 201
+
+        assert reminder_of(client, gym, rosa)["emailed_today"]
+    jobs_today = seeded_today(jobs_tz)
+    assert jobs_today != seeded_today(gym_tz)
+    [log] = email_rows(db, gym)
+    assert json.loads(log["payload"])["on"] == str(jobs_today)
+    due = seeded_today() - timedelta(days=5)
+    [email] = to_of(mailer, "rosa.lejos@example.cl")
+    assert f"lleva {(jobs_today - due).days} días de atraso" in email.text
+
+
+@pg
 def test_once_a_day_and_a_double_tap_sends_once(
     client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:

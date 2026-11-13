@@ -17,9 +17,10 @@ them. The email is essential, like the statement: it is about money owed, so an
 unsubscribe does not stop it (`app.notices.PAYMENT_OVERDUE`).
 
 A period is emailed at most once a day. Each email's `message_log` payload carries the
-day it went out for (`on`), the run date here and the gym's today for one sent by hand
-from "Enviar recordatorio" (`app.api.reminders`), and a period already emailed `on` the
-run date is skipped. One that failed is not tried again until its next day.
+day it went out for (`on`): the run date, which is the date in `jobs_timezone`, both here
+and for one sent by hand from "Enviar recordatorio" (`app.api.reminders.email_day`), so
+the two agree on what "today" is whatever the gym's own timezone. A period already
+emailed `on` the run date is skipped. One that failed is not tried again until its next day.
 
 It runs after `lapse`, so a membership lapsed today is no longer Active, and after
 `statements`. As there, each gym's periods are read in its savepoint and sent once
@@ -51,7 +52,7 @@ NAME = "overdue"
 SELECT_SETTINGS = "SELECT settings::text FROM gym"
 
 # The periods due between `$2` and `$1`, the run date, that are still owed and were
-# not emailed for the run date yet. RLS holds every table to the gym.
+# not emailed (template `$4`) for the run date yet. RLS holds every table to the gym.
 SELECT_OVERDUE = f"""
 SELECT bp.id, bp.period_start, bp.period_end, bp.due_date,
        bp.amount_due_clp - coalesce(paid.amount, 0) AS outstanding_clp,
@@ -77,7 +78,7 @@ WHERE bp.due_date BETWEEN $2 AND $1
   )
   AND NOT EXISTS (
       SELECT FROM message_log l
-      WHERE l.channel = 'email' AND l.template = 'payment_overdue' AND l.status = 'sent'
+      WHERE l.channel = 'email' AND l.template = $4 AND l.status = 'sent'
         AND l.payload ->> 'billing_period_id' = bp.id::text
         AND l.payload ->> 'on' = $1::date::text
   )
@@ -139,6 +140,7 @@ async def due_overdue(conn: asyncpg.Connection, day: date) -> list[Notice]:
         day,
         day - timedelta(days=grace),
         sorted(k.value for k in SETTLING_KINDS),
+        PAYMENT_OVERDUE.name,
     )
     notices = []
     for row in rows:
