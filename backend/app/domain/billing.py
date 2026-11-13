@@ -18,7 +18,8 @@ period, so the period stays open.
 An admin corrects a period with an adjustment on it (`adjust`): one in the member's
 favour counts towards it as a payment does, one against them is owed on top of its
 amount due. A refund gives back part or all of a payment (`refund`) and no longer
-counts towards the payment's period, which may open again (#38).
+counts towards the payment's period, which may open again (#38). A charge made by
+mistake is voided (`void`): an adjustment of all the period still owes (#256).
 """
 
 from collections.abc import Callable, Iterable
@@ -132,6 +133,25 @@ def adjust(period: BillingPeriod, amount_clp: int, note: str) -> Settlement:
         kind=EntryKind.ADJUSTMENT, amount_clp=amount_clp, status=EntryStatus.VALIDATED, note=note
     )
     return _resettled(period, entry, amount_clp)
+
+
+def void(period: BillingPeriod, reason: str) -> Settlement:
+    """Void what `period` still owes, for a charge made by mistake (#256): an adjustment
+    in the member's favour of all of it, validated as the admin makes it, with `reason`
+    for its note. Nothing is owed on the period afterwards. The caller refuses a period
+    with money on it first; the money is real, and is refunded before."""
+    if not reason.strip():
+        raise ValueError("a void needs a reason")
+    if period.outstanding_clp == 0:
+        raise InvalidTransition("the period owes nothing to void")
+    entry = LedgerEntry(
+        kind=EntryKind.ADJUSTMENT,
+        amount_clp=period.outstanding_clp,
+        status=EntryStatus.VALIDATED,
+        note=reason.strip(),
+        voids=True,
+    )
+    return _resettled(period, entry, entry.amount_clp)
 
 
 def refund(

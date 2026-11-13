@@ -237,21 +237,36 @@ class Return(BaseModel):
 
 
 # Why `DELETE /api/people/{id}` keeps someone (migration 0032).
-ForgetCode = Literal["ledger", "staff", "guardian"]
+# Why someone cannot be deleted (#256): `payment`, the gym kept money of theirs, refunded
+# first; `pending`, a proof of theirs waits for review, rejected first; `owes`, a charge
+# of theirs is still owed, voided first; `staff`, they are on the gym's staff or coached
+# here; `guardian`, they answer for a dependent here.
+ForgetCode = Literal["payment", "pending", "owes", "staff", "guardian"]
 
 
 class ForgetConflict(BaseModel):
     code: ForgetCode
+    # The money it is about, on `payment` (what the gym kept) and `owes` (what is owed).
+    amount_clp: int | None = None
 
 
 class Deletion(BaseModel):
     """Whether they can be deleted: `refused` says why not, null when they can."""
 
     refused: ForgetCode | None
+    amount_clp: int | None = None
+
+
+class Forgetting(BaseModel):
+    """`DELETE /api/people/{id}`: why, for the gym's log (`audit_event`, #256)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 
 
 class ForgetRefused(BaseModel):
-    """409 body: accounting keeps their ledger, they are staff, or they answer for a
+    """409 body: money of theirs still stands, they are staff, or they answer for a
     dependent."""
 
     detail: ForgetConflict

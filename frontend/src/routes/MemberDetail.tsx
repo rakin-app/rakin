@@ -29,7 +29,10 @@ import {
   recordPayment,
   recordPaymentAhead,
   recordRefund,
+  recordVoid,
   shownMembership,
+  voidMembership,
+  voidRefused,
   type Freeze,
   type FreezeLine,
   type LedgerPeriod,
@@ -292,6 +295,9 @@ function Standing({
             {copy.freezeBooked(shortDay(membership.freeze.from_date), shortDay(membership.freeze.to_date))}
           </p>
         )}
+        {membership.voided_at && membership.void_reason && (
+          <p className="member__detail">{copy.voidedBanner(membership.void_reason, shortDay(isoDay(membership.voided_at)))}</p>
+        )}
         {membership.next_plan && membership.status !== 'cancelled' && (
           <p className="member__detail">
             {copy.planChangeBooked(membership.next_plan.plan_name, shortDay(membership.next_plan.starts_on))}
@@ -355,6 +361,7 @@ function planLine(membership: Membership): string {
 /** `Congelado · vuelve el 24 nov` while frozen; `Vencido 9 d` while the oldest open period
  * is past due; else the membership's status. A freeze booked ahead is a line of its own. */
 function Badge({ membership, ledger }: { membership: Membership; ledger: MembershipLedger | undefined }) {
+  if (membership.voided_at) return <StatusPill status="cancelled">{copy.voidedBadge}</StatusPill>
   if (membership.freeze?.started) {
     return <StatusPill status="frozen">{copy.frozenUntil(shortDay(membership.freeze.to_date))}</StatusPill>
   }
@@ -385,7 +392,17 @@ function Owed({ ledger }: { ledger: MembershipLedger }) {
   )
 }
 
-type Open = 'payment' | 'adjustment' | 'refund' | 'freeze' | 'editFreeze' | 'endFreeze' | 'changePlan' | null
+type Open =
+  | 'payment'
+  | 'adjustment'
+  | 'refund'
+  | 'freeze'
+  | 'editFreeze'
+  | 'endFreeze'
+  | 'changePlan'
+  | 'voidCharge'
+  | 'voidPlan'
+  | null
 
 /** The periods that still owe, oldest first, then the paid ones, newest first: an
  * adjustment in the member's favour goes to the first, one owed to either. */
@@ -398,6 +415,8 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
   const periods = ledger.open_periods
   const known = adjustable(ledger)
   const payments = ledger.refundable_payments
+  // Oldest first, as a payment settles them: every period that still owes.
+  const voidable = known.filter((p) => p.outstanding_clp > 0)
   const freeze = membership.freeze
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -454,6 +473,21 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
           </Button>
         </div>
       )}
+      {/* Fixing a mistake (#256): a charge, or the whole plan, voided with a reason. */}
+      {(voidable.length > 0 || !membership.voided_at) && (
+        <div className="member__actions">
+          {voidable.length > 0 && (
+            <Button aria-expanded={open === 'voidCharge'} onClick={() => toggle('voidCharge')}>
+              {copy.voidCharge}
+            </Button>
+          )}
+          {!membership.voided_at && (
+            <Button variant="danger" aria-expanded={open === 'voidPlan'} onClick={() => toggle('voidPlan')}>
+              {copy.voidPlan}
+            </Button>
+          )}
+        </div>
+      )}
       {done && (
         <p className="member__done" role="status">
           {done}
@@ -494,7 +528,180 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
       {open === 'changePlan' && changesPlan(membership) && (
         <ChangePlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
       )}
+      {open === 'voidCharge' && voidable.length > 0 && (
+        <VoidChargeForm membership={membership} periods={voidable} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'voidPlan' && !membership.voided_at && (
+        <VoidPlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
     </>
+  )
+}
+
+/** What a refused void says, and how to clear it (#256). */
+function voidRefusal(error: Error): string {
+  const refused = voidRefused(error)
+  if (!refused) return copy.voidRefused.failed
+  if (refused.code === 'paid') return copy.voidRefused.paid(clp(refused.amount_clp ?? 0))
+  return copy.voidRefused[refused.code]
+}
+
+/** "Anular cargo" (#256): a charge made by mistake, owed nowhere once voided. */
+function VoidChargeForm({
+  membership,
+  periods,
+  onCancel,
+  onDone,
+}: {
+  membership: Membership
+  periods: LedgerPeriod[]
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.voidForm
+  const ids = { period: useId(), reason: useId() }
+  const [periodId, setPeriodId] = useState(periods[0]?.id ?? '')
+  const period = periods.find((p) => p.id === periodId) ?? periods[0]
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const reasonOk = reason.trim() !== ''
+
+  const voided = useSubmit({
+    offline: 'refuse',
+    mutationFn: () =>
+      recordVoid({ membership_id: membership.id, billing_period_id: period!.id, reason: reason.trim() }),
+    onSuccess: async () => {
+      onDone(form.done(monthName(period!.period_start), clp(period!.outstanding_clp)))
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (reasonOk && period) voided.mutate()
+  }
+
+  return (
+    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">{form.intro}</p>
+      <label htmlFor={ids.period} className="member__label">
+        {form.period}
+      </label>
+      <Select id={ids.period} value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
+        {periods.map((p) => (
+          <option key={p.id} value={p.id}>
+            {form.periodOption(monthName(p.period_start), clp(p.outstanding_clp))}
+          </option>
+        ))}
+      </Select>
+
+      <label htmlFor={ids.reason} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={ids.reason}
+        type="text"
+        maxLength={500}
+        value={reason}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {checked && !reasonOk && (
+        <p className="member__error" role="alert">
+          {form.reasonNeeded}
+        </p>
+      )}
+      {voided.error && (
+        <p className="member__error" role="alert">
+          {voidRefusal(voided.error)}
+        </p>
+      )}
+
+      <div className="member__form-actions">
+        <Button disabled={voided.isPending} onClick={onCancel}>
+          {form.cancel}
+        </Button>
+        <Button type="submit" variant="danger" disabled={voided.isPending} busy={voided.isPending}>
+          {voided.isPending ? form.working : form.submit(clp(period?.outstanding_clp ?? 0))}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/** "Anular plan" (#256): a plan assigned by mistake ends as of its start, its unpaid
+ * charges voided with one reason, and it bills no more. Not "Dar de baja", which keeps
+ * what a real plan owed. */
+function VoidPlanForm({
+  membership,
+  onCancel,
+  onDone,
+}: {
+  membership: Membership
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.voidPlanForm
+  const id = useId()
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const reasonOk = reason.trim() !== ''
+
+  const voided = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => voidMembership(membership.id, reason.trim()),
+    onSuccess: async () => {
+      onDone(form.done)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['ledger'] }),
+        queryClient.invalidateQueries({ queryKey: ['people'] }),
+        queryClient.invalidateQueries({ queryKey: ['memberships'] }),
+      ])
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (reasonOk) voided.mutate()
+  }
+
+  return (
+    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">{form.intro}</p>
+      <label htmlFor={id} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={id}
+        type="text"
+        maxLength={500}
+        value={reason}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {checked && !reasonOk && (
+        <p className="member__error" role="alert">
+          {form.reasonNeeded}
+        </p>
+      )}
+      {voided.error && (
+        <p className="member__error" role="alert">
+          {voidRefusal(voided.error)}
+        </p>
+      )}
+      <div className="member__form-actions">
+        <Button disabled={voided.isPending} onClick={onCancel}>
+          {form.cancel}
+        </Button>
+        <Button type="submit" variant="danger" disabled={voided.isPending} busy={voided.isPending}>
+          {voided.isPending ? form.working : form.submit}
+        </Button>
+      </div>
+    </form>
   )
 }
 
@@ -1701,8 +1908,10 @@ function FreezeEntry({ line }: { line: FreezeLine }) {
 
 function Entry({ entry, unpaid, paidClp }: { entry: TimelineEntry; unpaid: boolean; paidClp: number }) {
   const { title, detail, tone } = describeEntry(entry, unpaid, paidClp)
+  // A voided charge stays, struck through and labelled, not hidden (#256).
+  const struck = entry.voided ? ' member__entry--voided' : ''
   return (
-    <li className={`member__entry member__entry--${tone}`}>
+    <li className={`member__entry member__entry--${tone}${struck}`}>
       <span className="member__dot" aria-hidden="true" />
       <div className="member__entry-text">
         <span className="member__entry-title">{title}</span>
@@ -1733,6 +1942,10 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
 
   switch (entry.kind) {
     case 'charge':
+      if (entry.voided) {
+        const { reason, by_name, at } = entry.voided
+        return { title: words.charge(month), detail: words.voided(reason, by_name, shortDay(at)), tone: 'muted' }
+      }
       return {
         title: words.charge(month),
         detail: join(
@@ -1752,6 +1965,10 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
       return { title: words.payment(month), detail: join(method, review, day), tone }
     }
     case 'adjustment':
+      if (entry.voids) {
+        const by = entry.validated_by_name && words.validatedBy(entry.validated_by_name)
+        return { title: words.void(month), detail: join(entry.note, by, day), tone: 'muted' }
+      }
       return {
         title: entry.period_start ? words.adjustment(entry.amount_clp > 0, month) : words.credit,
         detail: join(entry.note, day),

@@ -620,17 +620,23 @@ export const es = {
       removeForm: {
         title: 'Eliminar',
         intro:
-          'Borra todo lo que el gimnasio tiene de esta persona: su ficha, planes, asistencia y grados. No se puede deshacer. Es para un error al agregarlo o si pide que borren sus datos.',
+          'Borra todo lo que el gimnasio tiene de esta persona: su ficha, planes, cargos anulados, asistencia y grados. No se puede deshacer. Es para un error al agregarlo o si pide que borren sus datos. El registro del gimnasio guarda quién lo eliminó, cuándo y por qué, sin sus datos.',
         confirm: (name: string) => `Para confirmar, escribe su nombre: ${name}`,
         submit: 'Eliminar para siempre',
         cancel: 'Cancelar',
         working: 'Eliminando…',
         checking: 'Revisando…',
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe por qué se elimina: queda en el registro del gimnasio.',
+        // What blocks deleting, and how to clear it (#256).
         refused: {
-          ledger:
-            'Tiene pagos o cobros registrados, y la contabilidad debe conservarlos: no se puede eliminar. Puedes darlo de baja.',
-          staff: 'Es parte del equipo del gimnasio, o ha dado clases: no se puede eliminar.',
-          guardian: 'Es apoderado de otros alumnos: desvincúlalos en Familia antes de eliminarlo.',
+          payment: (amount: string) =>
+            `Tiene un pago de ${amount}: devuélvelo primero. El dinero recibido no se borra; si fue real, puedes darlo de baja.`,
+          pending: () => 'Tiene un comprobante por validar: recházalo primero.',
+          owes: (amount: string) =>
+            `Debe ${amount}: anula sus cargos primero («Anular plan» o «Anular cargo»), o dale de baja si la deuda es real.`,
+          staff: () => 'Es parte del equipo del gimnasio, o ha dado clases: no se puede eliminar.',
+          guardian: () => 'Es apoderado de otros alumnos: desvincúlalos en Familia antes de eliminarlo.',
         },
         failed: 'No pudimos eliminarlo. Inténtalo de nuevo.',
       },
@@ -690,6 +696,41 @@ export const es = {
       callOffFreeze: 'Anular congelación',
       adjust: 'Ajuste',
       refund: 'Devolver',
+      // Fixing a mistake (#256): a charge, or a whole plan, voided with a reason.
+      voidCharge: 'Anular cargo',
+      voidPlan: 'Anular plan',
+      voidedBadge: 'Anulado',
+      voidedBanner: (reason: string, day: string) => `Plan anulado el ${day}: ${reason}`,
+      voidForm: {
+        title: 'Anular cargo',
+        intro: 'Para un cargo hecho por error: deja de deberse en todas partes. Queda en el libro, tachado y con el motivo.',
+        period: 'Cargo',
+        periodOption: (month: string, amount: string) => `${month} · ${amount}`,
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe por qué se anula.',
+        submit: (amount: string) => `Anular cargo de ${amount}`,
+        cancel: 'Cancelar',
+        working: 'Anulando…',
+        done: (month: string, amount: string) => `Cargo de ${month} anulado: ${amount}.`,
+      },
+      voidPlanForm: {
+        title: 'Anular plan',
+        intro:
+          'Para un plan asignado por error: termina desde su inicio, se anulan todos sus cargos sin pagar y no se cobra más. Distinto de dar de baja, que termina un plan real y mantiene lo que se debe.',
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe por qué se anula.',
+        submit: 'Anular plan',
+        cancel: 'Cancelar',
+        working: 'Anulando…',
+        done: 'Plan anulado. Sus cargos sin pagar ya no se deben.',
+      },
+      // Why a void was refused, and how to clear it (#256).
+      voidRefused: {
+        paid: (amount: string) => `Tiene un pago de ${amount}: devuélvelo primero con «Devolver».`,
+        pending: 'Tiene un comprobante por validar: recházalo primero.',
+        nothing_owed: 'Ese cargo ya no se debe: nada que anular.',
+        failed: 'No pudimos anularlo. Inténtalo de nuevo.',
+      },
       adjustForm: {
         title: 'Ajuste',
         direction: 'Tipo de ajuste',
@@ -893,6 +934,10 @@ export const es = {
         freezeStart: 'Congelación',
         freezeEnd: 'Fin de congelación',
         returns: (day: string) => `vuelve el ${day}`,
+        // A voided charge, struck through, and the void beside it (#256).
+        voided: (reason: string, by: string | null, day: string) =>
+          `Anulado: ${reason}${by ? `, por ${by}` : ''}, ${day}`,
+        void: (month: string) => `Anulación ${month}`,
         all: (n: number) => `Ver todo el libro (${n})`,
         fewer: 'Ver menos',
       },
@@ -1893,6 +1938,8 @@ export const es = {
         status: 'Estado',
         amount: 'Monto',
       },
+      // An adjustment voiding a charge (#256).
+      void: 'Anulación',
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
       // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.
       adjustment: { favor: 'Descuento', owed: 'Recargo' },
@@ -1905,6 +1952,7 @@ export const es = {
         validated: 'Validado',
         validatedBy: (name: string) => `Validado · ${name}`,
         rejected: 'Rechazado',
+        voided: 'Anulado',
         paid: 'Pagado',
         open: (day: string) => `Abierto · vence ${day}`,
         overdue: (days: number) => `Vencido ${days} d`,
@@ -2096,6 +2144,10 @@ export const es = {
         close: 'Cerrar',
         cancelChecking: 'Revisando…',
         cancelConfirm: 'Sí, anular',
+        cancelReason: 'Motivo',
+        cancelReasonNeeded: 'Escribe por qué se anula.',
+        // A cancelled line, with why (#256).
+        cancelledBecause: (reason: string) => `Anulado: ${reason}`,
         resplit: 'Volver a dividir el total entre los que quedan',
         resplitAmount: (name: string, amount: string) => `${name}: ${amount}`,
         noResplit: 'El total no se vuelve a dividir: alguien ya pagó, o no es un total a dividir.',

@@ -12,7 +12,8 @@ each freeze started, and one where it ended, once it has.
 The owner's dashboard ("Hoy", #58) reads the gym's overdue periods.
 
 An admin adjusts what a period owes, with a note saying why, and refunds part or all of
-a validated payment (#38).
+a validated payment (#38). A charge made by mistake is voided with a reason (#256): its
+period owes nothing afterwards, and the charge reads as voided, struck through.
 """
 
 import uuid
@@ -88,6 +89,35 @@ class RefundRecord(BaseModel):
     note: Note | None = None
 
 
+class VoidRecord(BaseModel):
+    """Void a period's charge made by mistake: nothing is owed on it afterwards (#256)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    membership_id: uuid.UUID
+    billing_period_id: uuid.UUID
+    # Mandatory: why the charge was a mistake. The ledger reads it beside the charge.
+    reason: Note
+
+
+class VoidRefusal(StrEnum):
+    """Why a period cannot be voided, for the ficha to say how to clear it."""
+
+    # A validated payment counts towards it: refund it first (`amount_clp` of it).
+    PAID = "paid"
+    # A proof waits for review on it: reject it first.
+    PENDING = "pending"
+    # Voided already, or settled with nothing left to void.
+    NOTHING_OWED = "nothing_owed"
+
+
+class VoidConflict(BaseModel):
+    code: VoidRefusal
+    message: str
+    # What of it the gym holds, on `paid`.
+    amount_clp: int | None = None
+
+
 class Entry(BaseModel):
     id: uuid.UUID
     # The membership whose period it settles, or none for one on a cobro line (#195).
@@ -109,6 +139,8 @@ class Entry(BaseModel):
     refund_of: uuid.UUID | None
     # The cobro extra line it settles, instead of a membership's period (#195).
     extra_line_id: uuid.UUID | None = None
+    # An adjustment voiding what its period owed, the reason in `note` (#256).
+    voids: bool = False
 
 
 class Period(BaseModel):
@@ -124,6 +156,12 @@ class RecordedPayment(BaseModel):
     # The overpayment, as a validated adjustment to apply to a later period.
     credit: Entry | None
     # The period as the payment leaves it.
+    period: Period
+
+
+class RecordedVoid(BaseModel):
+    void: Entry
+    # The period as the void leaves it: owing nothing.
     period: Period
 
 
@@ -159,6 +197,14 @@ class OpenPeriod(BaseModel):
     days_overdue: int
 
 
+class Voided(BaseModel):
+    """A charge's void (#256): "Anulado: <motivo>, por <quien>, <fecha>"."""
+
+    reason: str
+    by_name: str | None
+    at: datetime
+
+
 class TimelineEntry(BaseModel):
     id: uuid.UUID
     kind: EntryKind
@@ -176,6 +222,10 @@ class TimelineEntry(BaseModel):
     validated_at: datetime | None
     # The payment a refund gives back; null on every other kind.
     refund_of: uuid.UUID | None
+    # An adjustment voiding its period's charge (#256), its reason in `note`.
+    voids: bool = False
+    # On a charge whose period was voided: why, by whom and when.
+    voided: Voided | None = None
 
 
 class FreezeEdge(StrEnum):
@@ -341,6 +391,9 @@ class BookEntry(BaseModel):
     period: BookPeriod | None
     validated_by_name: str | None
     extra: BookExtra | None = None
+    # As on the member detail's `TimelineEntry` (#256).
+    voids: bool = False
+    voided: Voided | None = None
 
 
 class BookFreeze(FreezeLine):

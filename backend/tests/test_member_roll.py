@@ -580,8 +580,16 @@ def test_reactivating_brings_them_back_on_a_plan_if_given(
 # --- deleting --------------------------------------------------------------------
 
 
-def forget(client: TestClient, gym: uuid.UUID, person: str, by: uuid.UUID | None = None) -> Any:
-    return client.delete(f"/api/people/{person}", headers=as_gym(gym, by))
+def forget(
+    client: TestClient,
+    gym: uuid.UUID,
+    person: str,
+    by: uuid.UUID | None = None,
+    reason: str = "agregado por error",
+) -> Any:
+    return client.request(
+        "DELETE", f"/api/people/{person}", json={"reason": reason}, headers=as_gym(gym, by)
+    )
 
 
 @pg
@@ -607,7 +615,12 @@ def test_deleting_someone_with_no_ledger_takes_every_record_here(
     person = uuid.UUID(kid["id"])
 
     asked = client.get(f"/api/people/{kid['id']}/deletion", headers=as_gym(gym))
-    assert asked.json() == {"refused": None}
+    assert asked.json() == {"refused": None, "amount_clp": None}
+    # Why is for the gym's log, and is not optional.
+    for reason in ("", "   "):
+        assert forget(client, gym, kid["id"], reason=reason).status_code == 422
+    no_body = client.delete(f"/api/people/{kid['id']}", headers=as_gym(gym))
+    assert no_body.status_code == 422
     assert forget(client, gym, kid["id"]).status_code == 204
     assert client.get(f"/api/people/{kid['id']}", headers=as_gym(gym)).status_code == 404
     for table, column in [
@@ -621,24 +634,26 @@ def test_deleting_someone_with_no_ledger_takes_every_record_here(
 
 
 @pg
-def test_deleting_is_refused_with_a_ledger_or_staff_or_dependents(
+def test_deleting_is_refused_with_a_charge_owed_or_staff_or_dependents(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    paying = enrolled(client, gym, membership={"plan_id": plan(client, gym)})
-    # Enrolling on a plan billed its first period: a charge is in the ledger.
-    response = forget(client, gym, paying["id"])
+    owing = enrolled(client, gym, membership={"plan_id": plan(client, gym)})
+    # Enrolling on a plan billed its first period: a charge is owed, not yet voided.
+    response = forget(client, gym, owing["id"])
     assert response.status_code == 409
-    assert response.json()["detail"] == {"code": "ledger"}
-    asked = client.get(f"/api/people/{paying['id']}/deletion", headers=as_gym(gym))
-    assert asked.json() == {"refused": "ledger"}
-    assert client.get(f"/api/people/{paying['id']}", headers=as_gym(gym)).status_code == 200
+    assert response.json()["detail"] == {"code": "owes", "amount_clp": 45_000}
+    asked = client.get(f"/api/people/{owing['id']}/deletion", headers=as_gym(gym))
+    assert asked.json() == {"refused": "owes", "amount_clp": 45_000}
+    assert client.get(f"/api/people/{owing['id']}", headers=as_gym(gym)).status_code == 200
 
     coach = add_staff(db, gym, "coach")
-    assert forget(client, gym, str(coach)).json()["detail"] == {"code": "staff"}
+    staff = forget(client, gym, str(coach)).json()["detail"]
+    assert staff == {"code": "staff", "amount_clp": None}
 
     marta = enrolled(client, gym, name="Marta")
     enrolled(client, gym, phone=None, name="Tomás", guardian={"person_id": marta["id"]})
-    assert forget(client, gym, marta["id"]).json()["detail"] == {"code": "guardian"}
+    guardian = forget(client, gym, marta["id"]).json()["detail"]
+    assert guardian == {"code": "guardian", "amount_clp": None}
 
 
 @pg

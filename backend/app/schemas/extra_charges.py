@@ -167,6 +167,8 @@ class Line(BaseModel):
     pending_clp: int
     status: LineStatus
     cancelled_at: datetime | None
+    # Why it was cancelled ("Anular", #256); null on a line cancelled before reasons.
+    cancel_reason: str | None = None
     has_email: bool
     # A reminder on WhatsApp, for a line still owed, when the gym uses it.
     whatsapp_url: str | None
@@ -210,6 +212,8 @@ class LineAmountChange(BaseModel):
 class LineCancel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # Mandatory: why the person no longer owes it (#256).
+    reason: Note
     # Divide the total again among the lines left: a split nobody has paid yet.
     resplit: bool = False
 

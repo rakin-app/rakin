@@ -206,25 +206,36 @@ export function returnToGym(id: string, membership?: MembershipStart): Promise<P
   })
 }
 
-/** Why the owner cannot delete someone: their ledger, their staff role, or a dependent. */
-export type DeletionRefusal = 'ledger' | 'staff' | 'guardian'
+/** Why the owner cannot delete someone (#256), each with how to clear it: money the gym
+ * kept of theirs, a proof waiting, a charge still owed, their staff role, or a dependent. */
+export const DELETION_REFUSALS = ['payment', 'pending', 'owes', 'staff', 'guardian'] as const
+export type DeletionRefusal = (typeof DELETION_REFUSALS)[number]
+
+/** Whether they can be deleted; `amount_clp` is the money a `payment` or `owes` is about. */
+export type Deletion = { refused: DeletionRefusal | null; amount_clp?: number | null }
 
 export function deletionQuery(id: string) {
   return queryOptions({
     queryKey: ['people', 'deletion', id],
-    queryFn: () => apiFetch<{ refused: DeletionRefusal | null }>(`/api/people/${encodeURIComponent(id)}/deletion`),
+    queryFn: () => apiFetch<Deletion>(`/api/people/${encodeURIComponent(id)}/deletion`),
   })
 }
 
-export function deletePerson(id: string): Promise<void> {
-  return apiFetch<void>(`/api/people/${encodeURIComponent(id)}`, { method: 'DELETE' })
+/** Eliminar, with the reason the gym's log keeps. */
+export function deletePerson(id: string, reason: string): Promise<void> {
+  return apiFetch<void>(`/api/people/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ reason }),
+  })
 }
 
 /** The 409's refusal, when the API kept someone `deletePerson` was asked to delete. */
-export function deletionRefused(error: unknown): DeletionRefusal | null {
+export function deletionRefused(error: unknown): Deletion | null {
   if (!(error instanceof ApiError) || error.status !== 409) return null
-  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
-  return code === 'ledger' || code === 'staff' || code === 'guardian' ? code : null
+  const detail = (error.body as { detail?: { code?: unknown; amount_clp?: unknown } } | undefined)?.detail
+  const code = DELETION_REFUSALS.find((c) => c === detail?.code)
+  if (!code) return null
+  return { refused: code, amount_clp: typeof detail?.amount_clp === 'number' ? detail.amount_clp : null }
 }
 
 /** Someone in the gym already has the RUT, or the email: who, to

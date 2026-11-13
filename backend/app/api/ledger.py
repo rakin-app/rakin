@@ -73,9 +73,14 @@ from app.schemas.ledger import (
     RecordedAhead,
     RecordedPayment,
     RecordedRefund,
+    RecordedVoid,
     RefundablePayment,
     RefundRecord,
     TimelineEntry,
+    VoidConflict,
+    Voided,
+    VoidRecord,
+    VoidRefusal,
 )
 from app.schemas.proofs import PendingCount
 
@@ -338,6 +343,66 @@ async def record_adjustment(body: AdjustmentRecord, session: LedgerSession) -> R
     return RecordedAdjustment(adjustment=adjustment, period=period_after(row.id, settlement.period))
 
 
+# What the gym holds on a period, the money validated payments less their refunds, and
+# whether a proof waits on it: either stands in the way of voiding it.
+MONEY_ON_PERIOD = text(
+    "SELECT coalesce(sum(CASE WHEN kind = 'payment' AND status = 'validated' THEN amount_clp"
+    " WHEN kind = 'refund' THEN -amount_clp ELSE 0 END), 0)::bigint AS kept_clp,"
+    " bool_or(kind = 'payment' AND status = 'pending') AS pending"
+    " FROM ledger_entry WHERE billing_period_id = :id"
+)
+
+
+def void_refused(code: VoidRefusal, message: str, amount_clp: int | None = None) -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        VoidConflict(code=code, message=message, amount_clp=amount_clp).model_dump(),
+    )
+
+
+async def period_money(session: AsyncSession, period_id: uuid.UUID) -> HTTPException | None:
+    """Why the period cannot be voided for the money on it, or `None`: a payment the
+    gym kept is refunded first, a proof waiting is rejected first."""
+    money = (await session.execute(MONEY_ON_PERIOD, {"id": period_id})).one()
+    if money.kept_clp > 0:
+        return void_refused(
+            VoidRefusal.PAID, "the period has a payment: refund it first", money.kept_clp
+        )
+    if money.pending:
+        return void_refused(VoidRefusal.PENDING, "a proof waits on the period: reject it first")
+    return None
+
+
+async def void_period(
+    session: AsyncSession, membership_id: uuid.UUID, period_id: uuid.UUID, reason: str
+) -> RecordedVoid:
+    """Void what the period still owes (`billing.void`), under its locks; a 409 saying
+    why not while it has money on it, or owes nothing."""
+    row, period = await locked_period(session, period_id, membership_id)
+    refused = await period_money(session, row.id)
+    if refused is not None:
+        raise refused
+    try:
+        settlement = billing.void(period, reason)
+    except InvalidTransition:
+        raise void_refused(VoidRefusal.NOTHING_OWED, "the period owes nothing") from None
+    entry = await insert_entry(
+        session, settlement.entry, membership_id=membership_id, billing_period_id=row.id
+    )
+    return RecordedVoid(void=entry, period=period_after(row.id, settlement.period))
+
+
+@router.post(
+    "/voids",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_409_CONFLICT: {"model": VoidConflict}},
+)
+async def record_void(body: VoidRecord, session: LedgerSession) -> RecordedVoid:
+    """Anular un cargo (#256): a charge made by mistake is no longer owed, anywhere. The
+    ledger keeps it, struck through with the reason, and the void beside it."""
+    return await void_period(session, body.membership_id, body.billing_period_id, body.reason)
+
+
 NO_PAYMENT = HTTPException(status.HTTP_404_NOT_FOUND, "payment not found")
 
 PAYMENT = text(
@@ -559,14 +624,39 @@ OPEN_PERIODS = text(
     """
 )
 
+# The void of a charge's period (#256), for `e`, a `ledger_entry`: why, by whom, when.
+VOIDED_JOIN = """
+    LEFT JOIN LATERAL (
+        SELECT v.note, v.created_at, vb.name FROM ledger_entry v
+        LEFT JOIN gym_person vb ON vb.gym_id = v.gym_id AND vb.person_id = v.validated_by
+        WHERE e.kind = 'charge' AND v.billing_period_id = e.billing_period_id AND v.voids
+    ) vd ON true
+"""
+VOIDED_COLUMNS = "vd.note AS void_reason, vd.name AS void_by_name, vd.created_at AS voided_at"
+
+
+def voided(row: Any) -> Voided | None:
+    if row.voided_at is None:
+        return None
+    return Voided(reason=row.void_reason, by_name=row.void_by_name, at=row.voided_at)
+
+
+def timeline_entry(row: Any) -> TimelineEntry:
+    fields = dict(row._mapping)
+    for column in ("void_reason", "void_by_name", "voided_at"):
+        fields.pop(column)
+    return TimelineEntry(**fields, voided=voided(row))
+
+
 TIMELINE = text(
-    """
+    f"""
     SELECT e.id, e.kind, e.status, e.amount_clp, e.method, e.billing_period_id,
            bp.period_start, e.note, e.created_at, vp.name AS validated_by_name,
-           e.validated_at, e.refund_of
+           e.validated_at, e.refund_of, e.voids, {VOIDED_COLUMNS}
     FROM ledger_entry e
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
+    {VOIDED_JOIN}
     WHERE e.membership_id = :id
     ORDER BY e.created_at DESC, e.id DESC
     LIMIT :limit
@@ -648,7 +738,7 @@ async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) ->
     return MembershipLedger(
         open_periods=open_periods,
         owed_clp=sum(p.outstanding_clp for p in open_periods if p.due),
-        entries=[TimelineEntry.model_validate(row, from_attributes=True) for row in entries],
+        entries=[timeline_entry(row) for row in entries],
         freezes=[
             FreezeLine.model_validate(row, from_attributes=True)
             for row in await session.execute(MEMBERSHIP_FREEZES, {"id": membership_id})
@@ -725,7 +815,7 @@ BOOK_ROWS = f"""
                AS outstanding_clp,
            CASE WHEN coalesce(paid.amount, 0) < bp.amount_due_clp
                 THEN greatest(t.today - bp.due_date, 0) ELSE 0 END AS days_overdue,
-           vp.name AS validated_by_name
+           vp.name AS validated_by_name, e.voids, {VOIDED_COLUMNS}
     FROM ledger_entry e
     CROSS JOIN ({GYM_CLOCK}) t
     LEFT JOIN membership em ON em.id = e.membership_id
@@ -746,6 +836,7 @@ BOOK_ROWS = f"""
           AND s.kind = ANY(CAST(:settling AS text[]))
     ) paid ON bp.id IS NOT NULL
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
+    {VOIDED_JOIN}
 """
 
 IN_MONTH = f"{BOOK_DAY} >= :month AND {BOOK_DAY} < (:month + interval '1 month')::date"
@@ -793,7 +884,7 @@ EXPECTED_STATUSES = ("active", "lapsed")
 # Expected ("Esperado") is what is owed for the month: the periods falling due in it of
 # active and lapsed memberships, since a lapsed member still owes what was billed. A
 # cancelled membership's periods are not expected, and neither are a trial's or a
-# frozen one's.
+# frozen one's, nor a period whose charge was voided (#256).
 BOOK_KPIS = text(
     """
     SELECT
@@ -813,7 +904,10 @@ BOOK_KPIS = text(
         (SELECT coalesce(sum(bp.amount_due_clp), 0)::bigint FROM billing_period bp
          JOIN membership m ON m.id = bp.membership_id
          WHERE m.status = ANY(CAST(:expected_statuses AS text[]))
-           AND bp.due_date >= :month AND bp.due_date < (:month + interval '1 month')::date)
+           AND bp.due_date >= :month AND bp.due_date < (:month + interval '1 month')::date
+           AND NOT EXISTS (
+               SELECT FROM ledger_entry v WHERE v.billing_period_id = bp.id AND v.voids
+           ))
             AS expected_clp,
         (SELECT count(*) FROM membership WHERE status = 'active') AS active_memberships,
         (SELECT count(*) FROM membership WHERE status = 'frozen') AS frozen_memberships
@@ -957,6 +1051,8 @@ def book_entry(row: Any) -> BookEntry:
         else BookExtra(
             id=row.extra_charge_id, title=row.charge_title, category=row.charge_category
         ),
+        voids=row.voids,
+        voided=voided(row),
     )
 
 

@@ -15,7 +15,7 @@ from app.schemas.ledger import Entry
 ENTRY_COLUMNS = (
     "id, membership_id, billing_period_id, amount_clp, kind, status, method,"
     " claimed_by, claimed_at, validated_by, validated_at, proof_object_key, note, created_at,"
-    " refund_of, extra_line_id"
+    " refund_of, extra_line_id, voids"
 )
 
 # Who is acting, as `app.tenancy` set it; the recording admin.
@@ -26,10 +26,10 @@ CURRENT_PERSON = "current_setting('app.person_id')::uuid"
 INSERT_ENTRY = text(
     "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp, kind,"
     " status, method, claimed_by, claimed_at, validated_by, validated_at, note, refund_of,"
-    " extra_line_id)"
+    " extra_line_id, voids)"
     " VALUES (current_setting('app.gym_id')::uuid, :membership_id, :billing_period_id,"
     f" :amount_clp, :kind, :status, :method, {CURRENT_PERSON}, now(), {CURRENT_PERSON}, now(),"
-    f" :note, :refund_of, :extra_line_id) RETURNING {ENTRY_COLUMNS}"
+    f" :note, :refund_of, :extra_line_id, :voids) RETURNING {ENTRY_COLUMNS}"
 )
 
 
@@ -42,6 +42,7 @@ async def insert_entry(session: AsyncSession, entry: LedgerEntry, **columns: Any
             "kind": entry.kind.value,
             "status": entry.status.value,
             "note": entry.note,
+            "voids": entry.voids,
             "method": None,
             "refund_of": None,
             "membership_id": None,

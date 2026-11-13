@@ -207,7 +207,7 @@ function RemoveForm({
 }: {
   person: Person
   onCancel: () => void
-  // Offered when accounting keeps them, and they have not left yet.
+  // Offered when money stands in the way, and they have not left yet.
   onLeave: (() => void) | undefined
 }) {
   const form = copy.removeForm
@@ -215,12 +215,16 @@ function RemoveForm({
   const leave = useLeaveTo('/admin/alumnos')
   const queryClient = useQueryClient()
   const id = useId()
+  const reasonId = useId()
   const deletion = useQuery({ ...deletionQuery(person.id), staleTime: 0 })
   const [typed, setTyped] = useState('')
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const reasonOk = reason.trim() !== ''
 
   const remove = useSubmit({
     offline: 'refuse',
-    mutationFn: () => deletePerson(person.id),
+    mutationFn: () => deletePerson(person.id, reason.trim()),
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ['people', 'detail', person.id] })
       await queryClient.invalidateQueries({ queryKey: ['people'] })
@@ -228,19 +232,20 @@ function RemoveForm({
     },
   })
   // Refused at the last moment, say a payment recorded meanwhile.
-  const refused = deletion.data?.refused ?? deletionRefused(remove.error)
+  const refusal = deletion.data?.refused ? deletion.data : deletionRefused(remove.error)
+  const refused = refusal?.refused
 
   if (deletion.isPending) return <p className="member__note">{form.checking}</p>
 
   if (refused) {
     return (
       <div className="member__form" role="alert">
-        <p className="member__detail">{form.refused[refused]}</p>
+        <p className="member__detail">{form.refused[refused](t.common.clp(refusal?.amount_clp ?? 0))}</p>
         <div className="member__form-actions">
           <Button onClick={onCancel}>
             {form.cancel}
           </Button>
-          {refused === 'ledger' && onLeave && (
+          {(refused === 'payment' || refused === 'owes') && onLeave && (
             <Button variant="danger" onClick={onLeave}>
               {copy.leave}
             </Button>
@@ -252,12 +257,28 @@ function RemoveForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (sameName(typed, person.name)) remove.mutate()
+    setChecked(true)
+    if (sameName(typed, person.name) && reasonOk) remove.mutate()
   }
 
   return (
     <form className="member__form" aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
+      <label htmlFor={reasonId} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={reasonId}
+        maxLength={500}
+        value={reason}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {checked && !reasonOk && (
+        <p className="member__error" role="alert">
+          {form.reasonNeeded}
+        </p>
+      )}
       <label htmlFor={id} className="member__label">
         {form.confirm(person.name)}
       </label>

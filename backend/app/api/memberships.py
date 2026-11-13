@@ -14,7 +14,9 @@ periods not yet started and a pending plan change all move by them, and the nigh
 is booked, and the job starts it then (#115). A freeze running can end early or end on
 another day, and the due date moves again by the days it no longer lasts or gains; one
 booked can change its end, or be called off. Cancelling is terminal and
-needs a reason; the database refuses any later change to a cancelled row.
+needs a reason; the database refuses any later change to a cancelled row but its void.
+Voiding (#256) is for a plan started by mistake: it ends as of its start and its
+unpaid charges are voided (`app.api.ledger.void_period`), a cancelled one's too.
 
 A membership starting is billed at once, what the nightly job would bill it tonight
 (`bill_now`), so a member who pays at the desk on their first day can be recorded
@@ -38,6 +40,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.entries import CURRENT_PERSON
+from app.api.ledger import period_money, void_period
 from app.contacts import Contact, contact_for
 from app.db import driver_connection
 from app.domain import billing
@@ -48,6 +52,7 @@ from app.domain.membership import MAX_FREEZE_DAYS, MembershipStatus, PlanKind, P
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
 from app.roles import AdminSession, SeesMoney, StaffSession
+from app.schemas.ledger import VoidConflict
 from app.schemas.memberships import (
     Cancellation,
     Freeze,
@@ -78,7 +83,7 @@ SELECT_MEMBERSHIP = """
            m.status, m.anchor_day, (m.started_at AT TIME ZONE g.timezone)::date AS started_on,
            m.current_period_end, m.credits_remaining, m.discount_pct,
            m.next_plan_id, np.name AS next_plan_name, m.next_plan_from,
-           m.cancel_reason, m.cancelled_at, m.created_at,
+           m.cancel_reason, m.cancelled_at, m.voided_at, m.void_reason, m.created_at,
            fz.id AS freeze_id, fz.from_date AS freeze_from, fz.to_date AS freeze_to,
            fz.reason AS freeze_reason, fz.started AS freeze_started
     FROM membership m
@@ -693,4 +698,83 @@ async def cancel_membership(
         ),
         {"status": cancelled.status.value, "reason": cancelled.cancel_reason, "id": membership_id},
     )
+    return await _get(session, membership_id)
+
+
+# Every period of the membership that still owes, oldest first: what a void voids.
+OWING_PERIODS = text(
+    f"""
+    SELECT bp.id FROM billing_period bp
+    WHERE bp.membership_id = :id AND bp.amount_due_clp > (
+        SELECT coalesce(sum({billing.settled_amount("e")}), 0) FROM ledger_entry e
+        WHERE e.billing_period_id = bp.id AND e.status = 'validated'
+          AND e.kind IN ('payment', 'adjustment', 'refund')
+    )
+    ORDER BY bp.period_start, bp.id
+    """
+)
+
+LOCK_FOR_VOID = text("SELECT status, voided_at FROM membership WHERE id = :id FOR UPDATE")
+
+# Ended as of its start, as if it had never run; a running freeze ends today.
+VOID_LIVE = text(
+    "UPDATE membership SET status = 'cancelled', cancel_reason = :reason,"
+    " cancelled_at = started_at, next_plan_id = NULL, next_plan_from = NULL,"
+    f" voided_at = now(), voided_by = {CURRENT_PERSON}, void_reason = :reason"
+    " WHERE id = :id"
+)
+
+# A cancelled membership keeps how it ended; it is only marked voided (0044).
+VOID_CANCELLED = text(
+    f"UPDATE membership SET voided_at = now(), voided_by = {CURRENT_PERSON},"
+    " void_reason = :reason WHERE id = :id"
+)
+
+END_RUNNING_FREEZE = text(
+    "UPDATE membership_freeze SET to_date = greatest(from_date, :today)"
+    " WHERE membership_id = :id AND started AND to_date > :today"
+)
+
+ALREADY_VOIDED = HTTPException(status.HTTP_409_CONFLICT, "the membership is voided already")
+
+
+@router.post(
+    "/{membership_id}/void",
+    responses={status.HTTP_409_CONFLICT: {"model": VoidConflict}},
+)
+async def void_membership(
+    membership_id: uuid.UUID,
+    body: Cancellation,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: AdminSession,
+) -> Membership:
+    """Anular un plan started by mistake (#256): it ends as of its start, every unpaid
+    charge on it is voided with `reason`, and it bills no more. Unlike cancelling, which
+    ends a real plan from a day and keeps what was owed. Refused, writing nothing, while
+    any of its periods has money on it (`period_money`); a cancelled one may still be
+    voided, keeping how it ended."""
+    found = (await session.execute(LOCK_FOR_VOID, {"id": membership_id})).one_or_none()
+    if found is None:
+        raise NOT_FOUND
+    if found.voided_at is not None:
+        raise ALREADY_VOIDED
+    periods = [row.id for row in await session.execute(OWING_PERIODS, {"id": membership_id})]
+    every_period = await session.execute(
+        text("SELECT id FROM billing_period WHERE membership_id = :id ORDER BY period_start, id"),
+        {"id": membership_id},
+    )
+    for row in every_period.all():
+        refused = await period_money(session, row.id)
+        if refused is not None:
+            raise refused
+    for period_id in periods:
+        await void_period(session, membership_id, period_id, body.reason)
+    params = {"id": membership_id, "reason": body.reason}
+    if found.status == MembershipStatus.CANCELLED.value:
+        await session.execute(VOID_CANCELLED, params)
+    else:
+        await session.execute(CALL_OFF_BOOKED, {"id": membership_id})
+        today = await _gym_today(session, tenant)
+        await session.execute(END_RUNNING_FREEZE, {"id": membership_id, "today": today})
+        await session.execute(VOID_LIVE, params)
     return await _get(session, membership_id)

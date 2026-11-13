@@ -324,6 +324,12 @@
   text-decoration: line-through;
 }
 
+/* A voided charge (#256): struck through, its reason below it, still in the ledger. */
+.member__entry--voided .member__entry-title,
+.member__entry--voided .member__entry-amount {
+  text-decoration: line-through;
+}
+
 @media (--desktop) {
   .member__header {
     padding-top: var(--space-7);

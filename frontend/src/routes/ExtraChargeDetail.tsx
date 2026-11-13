@@ -166,6 +166,7 @@ function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; on
           {line.overridden ? ` · ${words.overridden}` : null}
         </span>
       </div>
+      {!live && line.cancel_reason && <p className="extra__hint">{words.cancelledBecause(line.cancel_reason)}</p>}
       {live && (
         <div className="extra__line-actions" role="group" aria-label={words.actions(line.person.name)}>
           {line.status === 'in_review' && (
@@ -347,9 +348,12 @@ function CancelForm({ charge, line, onDone, onClose }: FormProps) {
     queryFn: () => cancelPreview(charge.id, line.id),
   })
   const [resplit, setResplit] = useState(false)
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const reasonOk = reason.trim() !== ''
   const cancel = useSubmit({
     offline: 'refuse',
-    mutationFn: () => cancelLine(charge.id, line.id, resplit),
+    mutationFn: () => cancelLine(charge.id, line.id, resplit, reason.trim()),
     onSuccess: () => onDone(),
   })
   const names = new Map(charge.people.map((l) => [l.id, l.person.name]))
@@ -358,9 +362,13 @@ function CancelForm({ charge, line, onDone, onClose }: FormProps) {
       className="extra__panel"
       onSubmit={(event) => {
         event.preventDefault()
-        cancel.mutate()
+        setChecked(true)
+        if (reasonOk) cancel.mutate()
       }}
     >
+      <Field label={words.cancelReason} error={checked && !reasonOk ? words.cancelReasonNeeded : undefined}>
+        {(props) => <Input {...props} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />}
+      </Field>
       {preview.isPending ? (
         <p className="extra__note">{words.cancelChecking}</p>
       ) : preview.data?.resplit_allowed ? (

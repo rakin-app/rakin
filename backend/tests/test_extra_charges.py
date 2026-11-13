@@ -38,6 +38,10 @@ from tests.test_guardians import add_person, bill, new_kid
 from tests.test_plans import add_staff
 from tests.test_proofs import RecordingMailer, upload
 
+# "Anular" on a line, and "Eliminar" on a person, each with the reason it needs (#256).
+CANCEL = {"reason": "se retiró"}
+FORGET = {"reason": "agregada por error"}
+
 # --- input rules, no database -----------------------------------------------------
 
 
@@ -582,7 +586,7 @@ def test_an_override_and_a_resplit_when_someone_leaves_before_anyone_paid(
     after = ok(
         client.post(
             f"/api/extra-charges/{cid}/lines/{carlas}/cancel",
-            json={"resplit": True},
+            json={"resplit": True, "reason": "se retiró"},
             headers=as_gym(sur),
         )
     )
@@ -626,14 +630,18 @@ def test_no_resplit_once_someone_paid_and_no_cancel_with_money_on_the_line(
     assert preview == {"resplit_allowed": False, "amounts": {}}
     refused = client.post(
         f"/api/extra-charges/{cid}/lines/{carlas}/cancel",
-        json={"resplit": True},
+        json={"resplit": True, "reason": "se retiró"},
         headers=as_gym(sur),
     )
     assert refused.status_code == 409
-    ok(client.post(f"/api/extra-charges/{cid}/lines/{carlas}/cancel", json={}, headers=as_gym(sur)))
+    ok(
+        client.post(
+            f"/api/extra-charges/{cid}/lines/{carlas}/cancel", json=CANCEL, headers=as_gym(sur)
+        )
+    )
     with_money = client.post(
         f"/api/extra-charges/{cid}/lines/{line_of(charge, ana)['id']}/cancel",
-        json={},
+        json=CANCEL,
         headers=as_gym(sur),
     )
     assert with_money.status_code == 409
@@ -714,11 +722,45 @@ def test_a_member_reads_their_own_lines_and_their_dependents_only(
     assert response.status_code == 404
 
 
-def test_a_person_with_a_line_is_kept_by_forget(client: TestClient, sur: uuid.UUID) -> None:
+def test_a_person_owing_a_line_is_kept_by_forget_until_it_is_cancelled(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
     ana = add_person(client, sur, "Ana")
-    create(client, sur, draft([ana], notify=False))
+    charge = create(client, sur, draft([ana], notify=False))
+    line = line_of(charge, ana)
     refusal = ok(client.get(f"/api/people/{ana}/deletion", headers=as_gym(sur)))
-    assert refusal == {"refused": "ledger"}
+    assert refusal == {"refused": "owes", "amount_clp": line["amount_due_clp"]}
+
+    # Anular, with a reason the cobro shows; then nothing stands in the way.
+    after = ok(
+        client.post(
+            f"/api/extra-charges/{charge['id']}/lines/{line['id']}/cancel",
+            json={"reason": "  la agregué por error "},
+            headers=as_gym(sur),
+        )
+    )
+    assert line_of(after, ana)["cancel_reason"] == "la agregué por error"
+    assert ok(client.get(f"/api/people/{ana}/deletion", headers=as_gym(sur))) == {
+        "refused": None,
+        "amount_clp": None,
+    }
+    gone = client.request("DELETE", f"/api/people/{ana}", json=FORGET, headers=as_gym(sur))
+    assert gone.status_code == 204, gone.text
+    lines = run(
+        db.admin_url,
+        lambda c: c.fetchval(
+            "SELECT count(*) FROM extra_line WHERE person_id = $1", uuid.UUID(ana)
+        ),
+    )
+    assert lines == 0
+
+
+def test_a_line_is_cancelled_only_with_a_reason(client: TestClient, sur: uuid.UUID) -> None:
+    ana = add_person(client, sur, "Ana")
+    charge = create(client, sur, draft([ana], notify=False))
+    path = f"/api/extra-charges/{charge['id']}/lines/{line_of(charge, ana)['id']}/cancel"
+    for body in ({}, {"reason": "  "}, {"resplit": True}):
+        assert client.post(path, json=body, headers=as_gym(sur)).status_code == 422
 
 
 def test_forget_takes_someone_out_of_every_group(client: TestClient, sur: uuid.UUID) -> None:
@@ -727,7 +769,8 @@ def test_forget_takes_someone_out_of_every_group(client: TestClient, sur: uuid.U
         client.post("/api/groups", json={"name": "G", "person_ids": [ana]}, headers=as_gym(sur)),
         201,
     )
-    assert client.delete(f"/api/people/{ana}", headers=as_gym(sur)).status_code == 204
+    gone = client.request("DELETE", f"/api/people/{ana}", json=FORGET, headers=as_gym(sur))
+    assert gone.status_code == 204
     assert ok(client.get(f"/api/groups/{group['id']}", headers=as_gym(sur)))["members"] == []
 
 
@@ -767,7 +810,7 @@ def test_an_adjusted_line_with_no_money_cancels_and_resplits(
     after = ok(
         client.post(
             f"/api/extra-charges/{cid}/lines/{carlas}/cancel",
-            json={"resplit": True},
+            json={"resplit": True, "reason": "se retiró"},
             headers=as_gym(sur),
         )
     )
@@ -801,7 +844,11 @@ def test_a_refunded_payment_still_blocks_a_resplit(client: TestClient, sur: uuid
     # through the cobro, so its total is not divided again.
     preview = ok(client.get(f"/api/extra-charges/{cid}/lines/{anas}/cancel", headers=as_gym(sur)))
     assert preview["resplit_allowed"] is False
-    ok(client.post(f"/api/extra-charges/{cid}/lines/{anas}/cancel", json={}, headers=as_gym(sur)))
+    ok(
+        client.post(
+            f"/api/extra-charges/{cid}/lines/{anas}/cancel", json=CANCEL, headers=as_gym(sur)
+        )
+    )
 
 
 def test_a_resplit_breaks_a_tie_in_names_as_create_did(client: TestClient, sur: uuid.UUID) -> None:
@@ -826,7 +873,7 @@ def test_a_resplit_breaks_a_tie_in_names_as_create_did(client: TestClient, sur: 
     after = ok(
         client.post(
             f"/api/extra-charges/{charge['id']}/lines/{line_of(charge, bea)['id']}/cancel",
-            json={"resplit": True},
+            json={"resplit": True, "reason": "se retiró"},
             headers=as_gym(sur),
         )
     )
@@ -923,7 +970,9 @@ def test_a_claim_on_a_cancelled_line_is_refused_at_the_database(
     line = line_of(charge, ana)["id"]
     ok(
         client.post(
-            f"/api/extra-charges/{charge['id']}/lines/{line}/cancel", json={}, headers=as_gym(sur)
+            f"/api/extra-charges/{charge['id']}/lines/{line}/cancel",
+            json=CANCEL,
+            headers=as_gym(sur),
         )
     )
     with pytest.raises(asyncpg.CheckViolationError, match="is cancelled"):
