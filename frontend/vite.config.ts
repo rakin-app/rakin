@@ -52,9 +52,9 @@ function fixedFonts(): Plugin {
 // A page is asked of the network first, so a deploy is on screen at the next load:
 // the kept shell answers only when the network fails. Workbox allows no timeout on a
 // network-only route, and a route that times out to a cache per page would keep pages
-// naming bundles the next worker deletes. The new
-// worker takes over as soon as it is installed and drops the old shell, so no release
-// waits behind one. The manifest stays `public/site.webmanifest`.
+// naming bundles the next worker deletes. The new worker takes over as soon as it is
+// installed and drops the old shell, so no release waits behind one. The manifest
+// stays `public/site.webmanifest`.
 function installedApp() {
   return VitePWA({
     registerType: 'autoUpdate',
@@ -65,11 +65,16 @@ function installedApp() {
       // The sign-in link's pages load these from the API's HTML, never offline.
       globIgnores: ['fonts/**'],
       navigateFallback: null,
+      // Else the precache answers `/` with its `index.html` before the route below sees
+      // it, and `/` is where the installed app opens (the manifest's `start_url`).
+      directoryIndex: null,
       cleanupOutdatedCaches: true,
       // The tab the app was first opened in is covered too, not only from its next load.
       clientsClaim: true,
       runtimeCaching: [
         {
+          // The API's paths, as Caddy's `@api` matcher has them in `Caddyfile` and
+          // `deploy/Caddyfile`: a path added there is added here too.
           urlPattern: ({ request, url }) =>
             request.mode === 'navigate' && !url.pathname.startsWith('/api/') && url.pathname !== '/healthz',
           handler: 'NetworkOnly',
