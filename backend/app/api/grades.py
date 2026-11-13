@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.grading import stored_scheme
 from app.api.people import NOT_FOUND, in_gym
 from app.domain.dates import gym_today
+from app.domain.membership import current_first
 from app.roles import StaffSession
 from app.schemas.grades import GradeAward, GradeEvent, Grading, Rank
 from app.schemas.grading import GradingScheme
@@ -55,10 +56,10 @@ CURRENT = """
 
 # A promotion attaches to the membership the ficha shows (`SHOWN_MEMBERSHIP`), but
 # never a cancelled one.
-AWARDED_MEMBERSHIP = """
-    SELECT id FROM membership
-    WHERE person_id = :person AND status <> 'cancelled'
-    ORDER BY started_at DESC, created_at DESC
+AWARDED_MEMBERSHIP = f"""
+    SELECT m.id FROM membership m
+    WHERE m.person_id = :person AND m.status <> 'cancelled'
+    ORDER BY {current_first("m")}
     LIMIT 1
 """
 

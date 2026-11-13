@@ -142,8 +142,9 @@ export function MemberDetail() {
   }
 
   const membership = shownMembership(memberships.data)
-  // Latest first, so the last is the earliest: a member since their first plan here.
-  const since = monthYear(memberships.data.at(-1)?.started_on ?? person.data.created_at)
+  // A member since their first plan here: the current one comes first, not the earliest.
+  const firstStart = memberships.data.map((m) => m.started_on).sort()[0]
+  const since = monthYear(firstStart ?? person.data.created_at)
   const rank = graded ? grades.data?.current : undefined
   const money = readsLedger(role.data)
 
@@ -165,6 +166,7 @@ export function MemberDetail() {
             <Standing
               personId={personId}
               membership={membership}
+              memberships={memberships.data}
               money={money}
               earlier={money ? <EarlierDebt memberships={memberships.data} shown={membership} /> : null}
               assign={<AssignPlan person={person.data} membership={membership} role={role.data} done={assigned} setDone={setAssigned} />}
@@ -276,17 +278,20 @@ export function whatsappUrl(person: Pick<Person, 'phone' | 'no_whatsapp'>): stri
 function Standing({
   personId,
   membership,
+  memberships,
   money,
   earlier,
   assign,
 }: {
   personId: string
   membership: Membership
+  memberships: readonly Membership[]
   money: boolean
   earlier: ReactNode
   assign: ReactNode
 }) {
   const ledger = useQuery({ ...membershipLedgerQuery(membership.id), enabled: money })
+  const others = useOtherLedgers(memberships, membership, money)
   const data = money ? ledger.data : undefined
   // The header's WhatsApp reads the same list. Longest overdue first: the email is about
   // the oldest period this plan owes (#260).
@@ -322,7 +327,7 @@ function Standing({
             {copy.ledgerError}
           </p>
         )}
-        {data && <Actions membership={membership} ledger={data} />}
+        {data && <Actions membership={membership} ledger={data} others={others} />}
         {assign}
       </section>
       {earlier}
@@ -337,12 +342,7 @@ function Standing({
  * membership; the debt stays in view here, as #206 keeps it on Hoy and in Pagos.
  */
 function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[]; shown: Membership }) {
-  const earlier = memberships.filter((m) => m.id !== shown.id)
-  const ledgers = useQueries({ queries: earlier.map((m) => membershipLedgerQuery(m.id)) })
-  const owing = earlier.flatMap((m, i) => {
-    const ledger = ledgers[i]?.data
-    return ledger && ledger.owed_clp > 0 ? [{ membership: m, ledger }] : []
-  })
+  const owing = useOtherLedgers(memberships, shown, true).filter(({ ledger }) => ledger.owed_clp > 0)
   if (owing.length === 0) return null
   return (
     <section className="member__card" aria-label={copy.earlierDebt}>
@@ -363,6 +363,35 @@ function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[
       })}
     </section>
   )
+}
+
+type Held = { membership: Membership; ledger: MembershipLedger }
+
+/** The ledgers of the member's memberships other than `shown`, those loaded so far. */
+function useOtherLedgers(memberships: readonly Membership[], shown: Membership, enabled: boolean): Held[] {
+  const others = memberships.filter((m) => m.id !== shown.id)
+  const ledgers = useQueries({ queries: others.map((m) => ({ ...membershipLedgerQuery(m.id), enabled })) })
+  return others.flatMap((m, i) => {
+    const ledger = ledgers[i]?.data
+    return ledger ? [{ membership: m, ledger }] : []
+  })
+}
+
+/** A period of one of the member's plans: what "Anular cargo" and "Ajuste" go to. */
+type Charge = { membership: Membership; period: LedgerPeriod }
+
+/** `line`, "noviembre · $25.000", with its plan and status ahead when `plans` (#271):
+ * "Mensual · Caducado · noviembre · $25.000". */
+function chargeLabel(charge: Charge, line: string, plans: boolean): string {
+  if (!plans) return line
+  const { plan_name, status } = charge.membership
+  return `${plan_name} · ${t.admin.students.status[status]} · ${line}`
+}
+
+/** Whether any of `charges` is another plan's than the card's, `shown`: then each says
+ * which plan it is, under a card about another (#271). */
+function ofPlans(charges: readonly Charge[], shown: Membership): boolean {
+  return charges.some((c) => c.membership.id !== shown.id)
 }
 
 function planLine(membership: Membership): string {
@@ -424,12 +453,22 @@ function adjustable(ledger: MembershipLedger): LedgerPeriod[] {
   return [...owing, ...ledger.periods.filter((p) => p.outstanding_clp === 0)]
 }
 
-function Actions({ membership, ledger }: { membership: Membership; ledger: MembershipLedger }) {
+function Actions({ membership, ledger, others }: { membership: Membership; ledger: MembershipLedger; others: Held[] }) {
   const periods = ledger.open_periods
-  const known = adjustable(ledger)
+  const of = (m: Membership) => (period: LedgerPeriod): Charge => ({ membership: m, period })
+  // This plan's periods, and another plan's charge voided, which a "Recargo" puts back (#271).
+  const known = [
+    ...adjustable(ledger).map(of(membership)),
+    ...others.flatMap((o) => o.ledger.periods.filter((p) => p.voided_clp > 0).map(of(o.membership))),
+  ]
   const payments = ledger.refundable_payments
-  // Oldest first, as a payment settles them: every period that still owes.
-  const voidable = known.filter((p) => p.outstanding_clp > 0)
+  // Oldest first, as a payment settles them: every period that still owes, on each of the
+  // member's plans, a lapsed one's too (#271).
+  const voidable = [{ membership, ledger }, ...others].flatMap((o) =>
+    adjustable(o.ledger)
+      .filter((p) => p.outstanding_clp > 0)
+      .map(of(o.membership)),
+  )
   const freeze = membership.freeze
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -524,7 +563,7 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
           />
         ))}
       {open === 'adjustment' && known.length > 0 && (
-        <AdjustmentForm membership={membership} periods={known} onCancel={() => setOpen(null)} onDone={finish} />
+        <AdjustmentForm charges={known} plans={ofPlans(known, membership)} onCancel={() => setOpen(null)} onDone={finish} />
       )}
       {open === 'refund' && payments.length > 0 && (
         <RefundForm payments={payments} onCancel={() => setOpen(null)} onDone={finish} />
@@ -542,7 +581,7 @@ function Actions({ membership, ledger }: { membership: Membership; ledger: Membe
         <ChangePlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
       )}
       {open === 'voidCharge' && voidable.length > 0 && (
-        <VoidChargeForm membership={membership} periods={voidable} onCancel={() => setOpen(null)} onDone={finish} />
+        <VoidChargeForm charges={voidable} plans={ofPlans(voidable, membership)} onCancel={() => setOpen(null)} onDone={finish} />
       )}
       {open === 'voidPlan' && !membership.voided_at && (
         <VoidPlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
@@ -561,21 +600,22 @@ function voidRefusal(error: Error): string {
 
 /** "Anular cargo" (#256): a charge made by mistake, owed nowhere once voided. */
 function VoidChargeForm({
-  membership,
-  periods,
+  charges,
+  plans,
   onCancel,
   onDone,
 }: {
-  membership: Membership
-  periods: LedgerPeriod[]
+  charges: Charge[]
+  plans: boolean
   onCancel: () => void
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
   const form = copy.voidForm
   const ids = { period: useId(), reason: useId() }
-  const [periodId, setPeriodId] = useState(periods[0]?.id ?? '')
-  const period = periods.find((p) => p.id === periodId) ?? periods[0]
+  const [periodId, setPeriodId] = useState(charges[0]?.period.id ?? '')
+  const charge = charges.find((c) => c.period.id === periodId) ?? charges[0]
+  const period = charge?.period
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
   const reasonOk = reason.trim() !== ''
@@ -583,7 +623,7 @@ function VoidChargeForm({
   const voided = useSubmit({
     offline: 'refuse',
     mutationFn: () =>
-      recordVoid({ membership_id: membership.id, billing_period_id: period!.id, reason: reason.trim() }),
+      recordVoid({ membership_id: charge!.membership.id, billing_period_id: period!.id, reason: reason.trim() }),
     onSuccess: async () => {
       onDone(form.done(monthName(period!.period_start), clp(period!.outstanding_clp)))
       await queryClient.invalidateQueries({ queryKey: ['ledger'] })
@@ -603,9 +643,9 @@ function VoidChargeForm({
         {form.period}
       </label>
       <Select id={ids.period} value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
-        {periods.map((p) => (
-          <option key={p.id} value={p.id}>
-            {form.periodOption(monthName(p.period_start), clp(p.outstanding_clp))}
+        {charges.map((c) => (
+          <option key={c.period.id} value={c.period.id}>
+            {chargeLabel(c, form.periodOption(monthName(c.period.period_start), clp(c.period.outstanding_clp)), plans)}
           </option>
         ))}
       </Select>
@@ -1595,25 +1635,26 @@ type Direction = 'favor' | 'owed'
 const DIRECTIONS: readonly Direction[] = ['favor', 'owed']
 
 function AdjustmentForm({
-  membership,
-  periods,
+  charges,
+  plans,
   onCancel,
   onDone,
 }: {
-  membership: Membership
-  periods: LedgerPeriod[]
+  charges: Charge[]
+  plans: boolean
   onCancel: () => void
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
   const form = copy.adjustForm
   const ids = { direction: useId(), period: useId(), amount: useId(), note: useId() }
-  const owing = periods.filter((p) => p.outstanding_clp > 0)
+  const owing = charges.filter((c) => c.period.outstanding_clp > 0)
   const [direction, setDirection] = useState<Direction>(owing.length > 0 ? 'favor' : 'owed')
   // In the member's favour, only a period that still owes: no more than that settles.
-  const choices = direction === 'favor' ? owing : periods
-  const [periodId, setPeriodId] = useState(choices[0]?.id ?? '')
-  const period = choices.find((p) => p.id === periodId) ?? choices[0]
+  const choices = direction === 'favor' ? owing : charges
+  const [periodId, setPeriodId] = useState(choices[0]?.period.id ?? '')
+  const charge = choices.find((c) => c.period.id === periodId) ?? choices[0]
+  const period = charge?.period
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [checked, setChecked] = useState(false)
@@ -1625,7 +1666,7 @@ function AdjustmentForm({
     offline: 'refuse',
     mutationFn: () =>
       recordAdjustment({
-        membership_id: membership.id,
+        membership_id: charge!.membership.id,
         billing_period_id: period!.id,
         amount_clp: signed,
         note: note.trim(),
@@ -1664,12 +1705,24 @@ function AdjustmentForm({
         {form.period}
       </label>
       <Select id={ids.period} value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
-        {choices.map((p) => (
-          <option key={p.id} value={p.id}>
-            {form.periodOption(monthName(p.period_start), clp(p.outstanding_clp))}
+        {choices.map((c) => (
+          <option key={c.period.id} value={c.period.id}>
+            {chargeLabel(
+              c,
+              form.periodOption(
+                monthName(c.period.period_start),
+                clp(c.period.outstanding_clp),
+                c.period.voided_clp > 0 ? clp(c.period.voided_clp) : null,
+              ),
+              plans,
+            )}
           </option>
         ))}
       </Select>
+      {/* A charge voided by mistake (#271): a "Recargo" of what the void took off puts it back. */}
+      {direction === 'owed' && period && period.voided_clp > 0 && (
+        <p className="member__detail">{form.restoreHint(clp(period.voided_clp))}</p>
+      )}
 
       <label htmlFor={ids.amount} className="member__label">
         {form.amount}

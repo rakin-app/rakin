@@ -159,7 +159,12 @@ function OwnerToday() {
     <>
       <Setup />
       <div className="today__counters" aria-label={copy.countersLabel} role="group">
-        <Counter href="#vencidos" value={overdue.data?.periods.length} label={copy.overdue.title} tone="warning" />
+        <Counter
+          href="#vencidos"
+          value={overdue.data && byMember(overdue.data.periods).length}
+          label={copy.overdue.title}
+          tone="warning"
+        />
         <Counter href="#validar" value={proofs.data?.length} label={copy.proofs.title} tone="accent" />
         <Counter
           href="#sin-asistencia"
@@ -533,6 +538,19 @@ function remindedDetail(reminder: PaymentReminder | undefined): string | null {
   return t.admin.reminders.sent(ordinal(reminder.reminders_sent), ago(reminder.reminded_at, new Date()))
 }
 
+/** The periods grouped by member (#271), in the order the API lists them, so each member
+ * comes where their longest overdue period does: one row per member, however many of
+ * their plans owe. */
+export function byMember(periods: readonly OverduePeriod[]): OverduePeriod[][] {
+  const members = new Map<string, OverduePeriod[]>()
+  for (const period of periods) {
+    const owed = members.get(period.person_id)
+    if (owed) owed.push(period)
+    else members.set(period.person_id, [period])
+  }
+  return [...members.values()]
+}
+
 function OverdueList({
   periods,
   reminderFor,
@@ -542,7 +560,8 @@ function OverdueList({
 }) {
   const [all, setAll] = useState(false)
   const [done, setDone] = useState<string | null>(null)
-  const shown = all ? periods : periods.slice(0, OVERDUE_SHOWN)
+  const members = byMember(periods)
+  const shown = all ? members : members.slice(0, OVERDUE_SHOWN)
   return (
     <>
       {done && (
@@ -551,18 +570,13 @@ function OverdueList({
         </p>
       )}
       <ul className="today__list">
-        {shown.map((period) => (
-          <OverdueRow
-            key={period.billing_period_id}
-            period={period}
-            reminder={reminderFor.get(period.billing_period_id)}
-            onDone={setDone}
-          />
+        {shown.map((owed) => (
+          <OverdueRow key={owed[0]!.person_id} periods={owed} reminderFor={reminderFor} onDone={setDone} />
         ))}
       </ul>
-      {!all && periods.length > OVERDUE_SHOWN && (
+      {!all && members.length > OVERDUE_SHOWN && (
         <Button variant="ghost" onClick={() => setAll(true)}>
-          {copy.overdue.showAll(periods.length)}
+          {copy.overdue.showAll(members.length)}
         </Button>
       )}
     </>
@@ -597,28 +611,80 @@ function RemindRow({ reminder }: { reminder: PaymentReminder }) {
   )
 }
 
+/** A member's row: their one overdue period, or with several, the total and each period
+ * under it, a lapsed plan's beside the active one's, each with its own "Pagó" (#271). */
 function OverdueRow({
+  periods,
+  reminderFor,
+  onDone,
+}: {
+  periods: OverduePeriod[]
+  reminderFor: Map<string, PaymentReminder>
+  onDone: (message: string) => void
+}) {
+  const [first] = periods
+  if (periods.length === 1) {
+    return (
+      <li className="today__row today__row--overdue">
+        <OverdueLine period={first!} reminder={reminderFor.get(first!.billing_period_id)} named onDone={onDone} />
+      </li>
+    )
+  }
+  const total = periods.reduce((sum, p) => sum + p.outstanding_clp, 0)
+  return (
+    <li className="today__row today__row--overdue">
+      <Link
+        to="/admin/alumnos/$personId"
+        params={{ personId: first!.person_id }}
+        className="today__row-text today__row-text--link"
+      >
+        <span className="today__name">{first!.person_name}</span>
+        <span className="today__detail today__detail--warning">
+          {copy.overdue.periods(periods.length, clp(total))}
+        </span>
+      </Link>
+      {periods.map((period) => (
+        <OverdueLine
+          key={period.billing_period_id}
+          period={period}
+          reminder={reminderFor.get(period.billing_period_id)}
+          named={false}
+          onDone={onDone}
+        />
+      ))}
+    </li>
+  )
+}
+
+/** One overdue period: what it owes, its reminders and "Pagó"; `named` leads with whose. */
+function OverdueLine({
   period,
   reminder,
+  named,
   onDone,
 }: {
   period: OverduePeriod
   reminder: PaymentReminder | undefined
+  named: boolean
   onDone: (message: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const amount = clp(period.outstanding_clp)
   const reminded = remindedDetail(reminder)
+  // Under the member's name, each "Pagó" says which period it is.
+  const label = copy.overdue.paidLabel(
+    named ? period.person_name : copy.overdue.periodOf(period.person_name, period.plan_name, monthName(period.period_start)),
+  )
   return (
-    <li className="today__row today__row--overdue">
+    <>
       <div className="today__row-line">
         <Link
           to="/admin/alumnos/$personId"
           params={{ personId: period.person_id }}
           className="today__row-text today__row-text--link"
         >
-          <span className="today__name">{period.person_name}</span>
-          <span className="today__detail today__detail--warning">
+          {named && <span className="today__name">{period.person_name}</span>}
+          <span className={named ? 'today__detail today__detail--warning' : 'today__detail'}>
             {[
               copy.overdue.detail(period.days_overdue, amount, period.plan_name),
               copy.overdue.membership[period.membership_status],
@@ -630,10 +696,7 @@ function OverdueRow({
         </Link>
         {!open && reminder && <ReminderLink reminder={reminder} />}
         {!open && (
-          <Button
-            aria-label={copy.overdue.paidLabel(period.person_name)}
-            onClick={() => setOpen(true)}
-          >
+          <Button aria-label={label} onClick={() => setOpen(true)}>
             {copy.overdue.paid}
           </Button>
         )}
@@ -643,6 +706,7 @@ function OverdueRow({
       {open && (
         <PaidForm
           period={period}
+          label={label}
           onCancel={() => setOpen(false)}
           onDone={() => {
             setOpen(false)
@@ -650,12 +714,22 @@ function OverdueRow({
           }}
         />
       )}
-    </li>
+    </>
   )
 }
 
 /** "Pagó": the period's outstanding amount, received by the method chosen. */
-function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCancel: () => void; onDone: () => void }) {
+function PaidForm({
+  period,
+  label,
+  onCancel,
+  onDone,
+}: {
+  period: OverduePeriod
+  label: string
+  onCancel: () => void
+  onDone: () => void
+}) {
   const queryClient = useQueryClient()
   const methodId = useId()
   const [method, setMethod] = useState<Method>('cash')
@@ -680,7 +754,7 @@ function PaidForm({ period, onCancel, onDone }: { period: OverduePeriod; onCance
   }
 
   return (
-    <form className="today__form" aria-label={copy.overdue.paidLabel(period.person_name)} onSubmit={submit}>
+    <form className="today__form" aria-label={label} onSubmit={submit}>
       <label htmlFor={methodId} className="today__label">
         {copy.overdue.method}
       </label>

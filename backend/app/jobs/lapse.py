@@ -10,7 +10,10 @@ transaction, for the plan-event emails to send.
   default). Unpaid means its validated payments and credit adjustments do not cover
   its amount due, as `app.domain.billing` settles it. The ledger is what says whether
   the member paid, so the job reads it, not `current_period_end`: the membership is
-  treated as paid through the day before that period falls due.
+  treated as paid through the day before that period falls due. A membership created
+  with a start already past due (a backdated "Asignar plan") is not due before the day
+  it was created, in the gym's timezone: the owner has the whole grace from then to
+  record the payment, so it lapses on `max(due_date, created_on) + grace` (#271).
 - A credits pack or a trial lapses with no grace, the day after its last day
   (`current_period_end`) or at zero credits left.
 - A drop-in is a single attendance and never lapses; a Frozen membership waits for
@@ -76,9 +79,11 @@ SELECT m.id, m.status, pl.kind, m.current_period_end, m.credits_remaining,
           AND b.amount_due_clp > (
               SELECT coalesce(sum({settled_amount("e")}), 0) FROM ledger_entry e
               WHERE e.billing_period_id = b.id AND e.status = $3
-                AND e.kind = ANY($4::text[]))) AS unpaid_due
+                AND e.kind = ANY($4::text[]))) AS unpaid_due,
+       (m.created_at AT TIME ZONE g.timezone)::date AS created_on
 FROM membership m
 JOIN plan pl ON pl.id = m.plan_id
+JOIN gym g ON g.id = m.gym_id
 WHERE m.id = ANY($1::uuid[]) AND m.status IN ('active', 'trial')
 ORDER BY m.id
 """
@@ -94,12 +99,13 @@ ON CONFLICT (membership_id, kind, occurred_on) DO NOTHING
 
 def _membership(row: asyncpg.Record) -> Membership:
     """The membership as the domain sees it; a recurring one paid through the day
-    before its oldest unpaid period, or with nothing owed if it has none."""
+    before its oldest unpaid period falls due, or the day before it was created if that
+    is later, or with nothing owed if it has none."""
     kind = PlanKind(row["kind"])
     end = row["current_period_end"]
     if kind in RECURRING:
         unpaid = row["unpaid_due"]
-        end = None if unpaid is None else unpaid - timedelta(days=1)
+        end = None if unpaid is None else max(unpaid, row["created_on"]) - timedelta(days=1)
     return Membership(kind, MembershipStatus(row["status"]), end, row["credits_remaining"])
 
 

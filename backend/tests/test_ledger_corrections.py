@@ -399,6 +399,7 @@ def test_the_ledger_offers_every_period_and_refundable_payment_however_old(
         "period_start": periods[0]["period_start"],
         "period_end": periods[0]["period_end"],
         "outstanding_clp": 45_000,
+        "voided_clp": 0,
     }
     [first] = [p for p in periods if p["id"] == old["billing_period_id"]]
     assert first["outstanding_clp"] == 0

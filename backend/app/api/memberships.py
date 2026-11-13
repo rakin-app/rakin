@@ -20,7 +20,11 @@ unpaid charges are voided (`app.api.ledger.void_period`), a cancelled one's too.
 
 A membership starting is billed at once, what the nightly job would bill it tonight
 (`bill_now`), so a member who pays at the desk on their first day can be recorded
-then (#196). Starting one emails the member, or their guardian, a welcome: how to pay and how to
+then (#196). A recurring plan assigned to someone whose plan lapsed with days billed past
+the day asked for starts the day after the last of them instead: those days are billed
+once, on the lapsed plan, and what it owes stays its own ("Deuda anterior"). `GET
+.../start` quotes that day and the debt before the form saves (#271).
+Starting one emails the member, or their guardian, a welcome: how to pay and how to
 upload a proof, with their first sign-in link to the student page; unless the request
 says `send_welcome: false` (#249). Nobody who has left
 the gym (dado de baja, #157) starts one, by any path: `insert_membership` refuses them
@@ -33,7 +37,7 @@ freeze or cancel one, since that sets what a member is charged. Members may not 
 import logging
 import uuid
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -48,7 +52,13 @@ from app.domain import billing
 from app.domain import membership as domain
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.errors import InvalidTransition
-from app.domain.membership import MAX_FREEZE_DAYS, MembershipStatus, PlanKind, PlanTerms
+from app.domain.membership import (
+    MAX_FREEZE_DAYS,
+    RECURRING,
+    MembershipStatus,
+    PlanKind,
+    PlanTerms,
+)
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
 from app.roles import AdminSession, SeesMoney, StaffSession
@@ -67,6 +77,7 @@ from app.schemas.memberships import (
     PendingPlanChange,
     PlanChange,
     PlanChangeQuote,
+    StartQuote,
     for_coach,
 )
 from app.tenancy import Tenant, current_tenant
@@ -227,16 +238,44 @@ async def insert_membership(
     return membership_id
 
 
+# The last day the person's lapsed plans have billed, their voided charges aside: a plan
+# assigned again starts after it, so no day is billed twice (#271).
+LAPSED_BILLED_THROUGH = text(
+    """
+    SELECT max(bp.period_end) FROM billing_period bp
+    JOIN membership m ON m.id = bp.membership_id
+    WHERE m.person_id = :person AND m.status = 'lapsed' AND m.voided_at IS NULL
+      AND NOT EXISTS (
+          SELECT FROM ledger_entry v WHERE v.billing_period_id = bp.id AND v.voids
+      )
+    """
+)
+
+
+async def _starts_on(
+    session: AsyncSession, person_id: uuid.UUID, terms: PlanTerms, asked: date
+) -> tuple[date, date | None]:
+    """The day a plan on `terms` asked to start on `asked` starts, and the last day the
+    person's lapsed plans billed when that moved it: a recurring one starts after it."""
+    billed_through: date | None = await session.scalar(LAPSED_BILLED_THROUGH, {"person": person_id})
+    if terms.kind not in RECURRING or billed_through is None or billed_through < asked:
+        return asked, None
+    return billed_through + timedelta(days=1), billed_through
+
+
 async def start_membership(
     session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, body: MembershipStart
 ) -> Membership:
     """Start `person_id`, someone in this gym, on `body`'s plan from its day, today in
-    the gym's timezone when it has none; a 422 for a plan this gym cannot start."""
+    the gym's timezone when it has none, or after what a lapsed plan of theirs billed
+    (`_starts_on`); a 422 for a plan this gym cannot start."""
     terms = await _plan_terms(session, body.plan_id)
     timezone = await session.scalar(
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
-    started_on = body.started_on or gym_today(timezone)
+    started_on, _ = await _starts_on(
+        session, person_id, terms, body.started_on or gym_today(timezone)
+    )
     try:
         started = domain.start(terms, started_on)
     except (ValueError, OverflowError) as error:
@@ -359,13 +398,55 @@ def welcome(
     )
 
 
+# What the person's lapsed plans owe on periods due by `:today`: "Deuda anterior".
+LAPSED_DEBT = text(
+    f"""
+    SELECT coalesce(sum(bp.amount_due_clp - coalesce(paid.amount, 0)), 0)::bigint
+    FROM billing_period bp
+    JOIN membership m ON m.id = bp.membership_id
+    LEFT JOIN LATERAL (
+        SELECT sum({billing.settled_amount("e")}) AS amount FROM ledger_entry e
+        WHERE e.billing_period_id = bp.id AND e.status = 'validated'
+          AND e.kind IN ('payment', 'adjustment', 'refund')
+    ) paid ON true
+    WHERE m.person_id = :person AND m.status = 'lapsed' AND m.voided_at IS NULL
+      AND bp.due_date <= :today AND bp.amount_due_clp > coalesce(paid.amount, 0)
+    """
+)
+
+
+@router.get("/start")
+async def start_quote(
+    person_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: AdminSession,
+    started_on: date | None = None,
+) -> StartQuote:
+    """What `POST /api/memberships` would start, saving nothing (#271): the day the plan
+    starts, after the last day a lapsed plan billed when that moves it, and what the
+    lapsed plans still owe, for "Asignar plan" to warn of before it saves. Someone not in
+    this gym is a 404."""
+    known = await session.scalar(
+        text("SELECT true FROM gym_person WHERE person_id = :id"), {"id": person_id}
+    )
+    if not known:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "person not found")
+    terms = await _plan_terms(session, plan_id)
+    today = await _gym_today(session, tenant)
+    starts_on, billed_through = await _starts_on(session, person_id, terms, started_on or today)
+    debt = await session.scalar(LAPSED_DEBT, {"person": person_id, "today": today})
+    return StartQuote(starts_on=starts_on, billed_through=billed_through, debt_clp=debt or 0)
+
+
 @router.get("")
 async def list_memberships(
     person_id: uuid.UUID, session: StaffSession, money: SeesMoney
 ) -> list[Membership] | list[MembershipForCoach]:
-    """A person's memberships in this gym, latest first; a coach's without discounts."""
+    """A person's memberships in this gym, their current one first (`current_first`,
+    #271), then the latest created; a coach's without discounts."""
     result = await session.execute(
-        text(f"{SELECT_MEMBERSHIP} WHERE m.person_id = :id ORDER BY m.started_at DESC, m.id"),
+        text(f"{SELECT_MEMBERSHIP} WHERE m.person_id = :id ORDER BY {domain.current_first('m')}"),
         {"id": person_id},
     )
     memberships = [_membership(row) for row in result]

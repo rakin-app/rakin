@@ -254,6 +254,9 @@ class LedgerPeriod(BaseModel):
     period_end: date
     # What validated payments and adjustments, less refunds, leave owed; 0 once paid.
     outstanding_clp: int
+    # What a void of its charge took off (#256), 0 if none: an owner who voided it by
+    # mistake puts it back with a "Recargo" of as much on the period (#271).
+    voided_clp: int = 0
 
 
 class RefundablePayment(BaseModel):

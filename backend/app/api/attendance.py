@@ -124,7 +124,8 @@ FROM (
        OR (m.status IN {ON_ROSTER}
            AND (pl.program_id IS NULL OR pl.program_id = :program))
     ORDER BY m.person_id, a.membership_id IS NOT NULL DESC,
-             array_position(ARRAY{list(ON_ROSTER)}, m.status), m.started_at DESC
+             array_position(ARRAY{list(ON_ROSTER)}, m.status), m.created_at DESC,
+             m.started_at DESC
 ) roster
 ORDER BY lower(name), person_id
 """

@@ -51,6 +51,22 @@ TRANSITIONS: dict[MembershipStatus, frozenset[MembershipStatus]] = {
 }
 
 
+# The statuses of a membership the member is on now.
+LIVE = (S.TRIAL, S.ACTIVE, S.FROZEN)
+
+
+def current_first(alias: str) -> str:
+    """SQL `ORDER BY` terms that put a person's current membership first, of
+    `membership` rows `alias` (#271): one they are on now, else one not cancelled, the
+    latest created among them, then the latest started. Never by id, so two started on
+    one day are not ordered by chance."""
+    live = ", ".join(f"'{status.value}'" for status in LIVE)
+    return (
+        f"{alias}.status IN ({live}) DESC, {alias}.status = 'cancelled',"
+        f" {alias}.created_at DESC, {alias}.started_at DESC"
+    )
+
+
 @dataclass(frozen=True)
 class Membership:
     plan_kind: PlanKind
