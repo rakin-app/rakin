@@ -202,6 +202,48 @@ def test_the_admin_may_approve_other_dates(
     )
 
 
+def test_a_long_note_still_fits_the_freeze_it_becomes(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    now = today(db, sur)
+    ana = add_person(client, sur, "Ana")
+    started = membership(client, sur, ana, now - 3 * DAY)
+    request = asked(client, sur, ana, started, now=now, reason="viaje", note="x" * 500)
+
+    approved = approve(client, sur, request["id"])
+
+    assert approved.status_code == 200, approved.text
+    reason = approved.json()["freeze"]["reason"]
+    assert len(reason) == 500
+    assert reason.startswith("Viaje: xxx")
+
+
+def test_a_request_whose_first_day_passed_is_approved_from_today_only(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    now = today(db, sur)
+    ana = add_person(client, sur, "Ana")
+    started = membership(client, sur, ana, now - 10 * DAY)
+    request = asked(client, sur, ana, started, now=now)
+
+    # It waited two days unanswered.
+    async def query(conn: asyncpg.Connection) -> None:
+        await conn.execute(
+            "UPDATE freeze_request SET from_date = from_date - 2 WHERE id = $1",
+            uuid.UUID(request["id"]),
+        )
+
+    run(db.admin_url, query)
+
+    # On the dates asked, it would start in the past, which no freeze does.
+    assert approve(client, sur, request["id"]).status_code == 422
+    assert [r["id"] for r in waiting(client, sur).json()] == [request["id"]]
+    # From today, as Aprobar offers it, it freezes.
+    approved = approve(client, sur, request["id"], from_date=now)
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["freeze"]["from_date"] == now.isoformat()
+
+
 def test_an_approval_is_refused_as_the_freeze_would_be(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:

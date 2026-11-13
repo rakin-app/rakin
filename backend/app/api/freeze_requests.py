@@ -81,6 +81,9 @@ ASKS_FOR = """
 # How long the student page shows an answer for.
 DECIDED_SHOWN_DAYS = 30
 
+# The longest reason a freeze takes: `Reason` in `schemas/memberships.py`.
+FREEZE_REASON_MAX = 500
+
 # The owner and admins, each with the email they are told at.
 ADMINS = """
     SELECT gp.person_id, gp.name, gp.email FROM staff s
@@ -122,11 +125,12 @@ def _unprocessable(message: str) -> HTTPException:
 
 
 def freeze_reason(request: FreezeRequest) -> str:
-    """What the freeze it becomes says: the reason, and what they wrote."""
+    """What the freeze it becomes says: the reason, and what they wrote, cut to fit the
+    freeze's 500 characters (a note may take all 500 itself)."""
     if request.reason == "otro" and request.note:
         return request.note
     label = REASON_LABELS[request.reason]
-    return f"{label}: {request.note}" if request.note else label
+    return f"{label}: {request.note}"[:FREEZE_REASON_MAX] if request.note else label
 
 
 @mine.post(
