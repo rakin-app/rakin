@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   addMinute,
   advance,
+  countdown,
   endClass,
   leftUnseen,
   pause,
@@ -14,6 +15,8 @@ import {
   skip,
   startRun,
   touch,
+  type CountdownMark,
+  type RunState,
   type TimerBlock,
 } from './timerEngine'
 
@@ -180,6 +183,82 @@ describe('the timer engine', () => {
       round_seconds: 300,
       rest_seconds: 60,
     })
+  })
+})
+
+describe('the countdown', () => {
+  // The timer's tick, every 250 ms from `from` to `to`: the run advanced, and each beep
+  // with the phase it beeped in and the time it had left.
+  function ticks(start: RunState, from: number, to: number, mark: CountdownMark | null = null) {
+    const beeps: { second: number; resting: boolean; round: number; leftMs: number }[] = []
+    let state = start
+    for (let at = from; at <= to; at += 250) {
+      state = advance(state, at).state
+      const step = countdown(state, at, mark)
+      mark = step.mark
+      if (step.beep !== null) {
+        beeps.push({ second: step.beep, resting: state.resting, round: state.round, leftMs: remainingMs(state, at) })
+      }
+    }
+    return { beeps, state, mark }
+  }
+
+  it('beeps at exactly 3, 2 and 1 seconds left of a round and of a rest, once each', () => {
+    const run = startRun([sparring('sp', 2, 60, 30)], T0)
+    const { beeps } = ticks(run, T0, T0 + 150 * S)
+    expect(beeps).toEqual([
+      { second: 3, resting: false, round: 1, leftMs: 3 * S },
+      { second: 2, resting: false, round: 1, leftMs: 2 * S },
+      { second: 1, resting: false, round: 1, leftMs: 1 * S },
+      { second: 3, resting: true, round: 1, leftMs: 3 * S },
+      { second: 2, resting: true, round: 1, leftMs: 2 * S },
+      { second: 1, resting: true, round: 1, leftMs: 1 * S },
+      { second: 3, resting: false, round: 2, leftMs: 3 * S },
+      { second: 2, resting: false, round: 2, leftMs: 2 * S },
+      { second: 1, resting: false, round: 2, leftMs: 1 * S },
+    ])
+  })
+
+  it('beeps nothing in a phase shorter than 4 seconds, and nothing for a block that is not sparring', () => {
+    expect(ticks(startRun([sparring('sp', 3, 3, 2)], T0), T0, T0 + 30 * S).beeps).toEqual([])
+    expect(ticks(startRun([block('a', 60)], T0), T0, T0 + 90 * S).beeps).toEqual([])
+    // Four seconds is enough for all three.
+    expect(ticks(startRun([sparring('sp', 1, 4, 0)], T0), T0, T0 + 10 * S).beeps.map((b) => b.second)).toEqual([3, 2, 1])
+  })
+
+  it('holds the countdown through a pause, and beeps the next second only once it runs again and reaches it', () => {
+    const run = startRun([sparring('sp', 1, 60, 0)], T0)
+    const before = ticks(run, T0, T0 + 57.5 * S)
+    expect(before.beeps.map((b) => b.second)).toEqual([3])
+    const paused = pause(before.state, T0 + 57.5 * S).state
+    // Paused a minute, the clock moves and the time left does not.
+    const held = ticks(paused, T0 + 57.75 * S, T0 + 117.5 * S, before.mark)
+    expect(held.beeps).toEqual([])
+    // Resumed, the time left goes on from 2.5 s: nothing on resuming, then 2 and 1.
+    const resumed = resume(held.state, T0 + 117.5 * S)
+    const after = ticks(resumed, T0 + 117.5 * S, T0 + 121 * S, held.mark)
+    expect(after.beeps).toEqual([
+      { second: 2, resting: false, round: 1, leftMs: 2 * S },
+      { second: 1, resting: false, round: 1, leftMs: 1 * S },
+    ])
+  })
+
+  it('beeps nothing on a first look in the last seconds, and counts again after "+1 min"', () => {
+    const run = startRun([sparring('sp', 1, 60, 0)], T0)
+    // A reload with 2.5 s left: no mark yet, so no beep until the next second.
+    expect(ticks(run, T0 + 57.5 * S, T0 + 60 * S).beeps.map((b) => b.second)).toEqual([2, 1])
+    const counted = ticks(run, T0, T0 + 58.5 * S)
+    const longer = addMinute(counted.state, T0 + 58.5 * S).state
+    expect(ticks(longer, T0 + 58.5 * S, T0 + 120 * S, counted.mark).beeps.map((b) => b.second)).toEqual([3, 2, 1])
+  })
+
+  it('does not beep a second the phone slept through', () => {
+    const run = startRun([sparring('sp', 1, 60, 0)], T0)
+    const { mark } = ticks(run, T0, T0 + 50 * S)
+    // Locked at 10 s left, looked at again with 1.5 s left: 3 and 2 are gone.
+    expect(countdown(run, T0 + 58.5 * S, mark).beep).toBeNull()
+    // A tick a little late still beeps the second it just reached.
+    expect(countdown(run, T0 + 58.2 * S, mark).beep).toBe(2)
   })
 })
 

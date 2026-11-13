@@ -226,6 +226,17 @@ describe('the blocks before the class', () => {
     expect(within(editor).getByText(copy.editor.total(copy.minutes(2400)))).toBeInTheDocument()
   })
 
+  it.each([
+    ['an iPhone', { audioSession: { type: 'auto' }, maxTouchPoints: 5 }, true],
+    ['an Android phone', { maxTouchPoints: 5 }, false],
+  ])('says before the class whether the silent switch mutes the timer: %s', async (_what, props, shown) => {
+    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, props))
+    stubApi()
+    renderAt('/admin/clases/s1/timer')
+    await screen.findByRole('form', { name: copy.editor.title })
+    expect(screen.queryByText(copy.silentSwitch) !== null).toBe(shown)
+  })
+
   it('adds, reorders and removes blocks, and refuses a block without its minutes', async () => {
     const api = stubApi({ suggested: [] })
     renderAt('/admin/clases/s1/timer')
@@ -552,6 +563,26 @@ describe('fight and rest', () => {
     expect(vibrate).toHaveBeenLastCalledWith(VIBRATION.fight)
     expect(screen.getByText(running.round('Sparring', 2, 6))).toBeInTheDocument()
     expect(vibrate.mock.calls.map(([pattern]) => pattern)).toEqual([VIBRATION.block, VIBRATION.rest, VIBRATION.fight])
+  })
+
+  it('counts down the last 3 seconds of a round and of a rest with a short beep each', async () => {
+    const vibrate = vi.fn()
+    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, { vibrate }))
+    stubApi()
+    await startClass()
+    await watch(10 * 60_000 + 4 * 60_000 + 56_000)
+    vibrate.mockClear()
+    // From 4 s left, a second at a time: 3, 2 and 1 left, and the round's end.
+    for (let i = 0; i < 4; i += 1) {
+      later(1000)
+      await act(() => new Promise((resolve) => setTimeout(resolve, 300)))
+    }
+    expect(vibrate.mock.calls.map(([pattern]) => pattern)).toEqual([
+      VIBRATION.count,
+      VIBRATION.count,
+      VIBRATION.count,
+      VIBRATION.rest,
+    ])
   })
 
   it('says so when the phone has no sound', async () => {

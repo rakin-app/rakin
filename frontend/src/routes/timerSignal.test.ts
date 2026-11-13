@@ -130,6 +130,27 @@ describe('the sounds', () => {
     expect(heard('rest')).toEqual([330])
     expect(heard('block')).toEqual([660, 660, 990])
     expect(heard('warn')).toEqual([880])
+    expect(heard('count')).toEqual([1000])
+  })
+
+  it('beeps over the music on an iPhone: a mixable audio session, not playback', async () => {
+    fakeAudio()
+    const audioSession = { type: 'auto' }
+    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, { audioSession }))
+    const { AUDIO_SESSION_TYPE, unlockSound } = await import('./timerSignal')
+    unlockSound()
+    expect(AUDIO_SESSION_TYPE).toBe('transient')
+    expect(audioSession.type).toBe('transient')
+  })
+
+  it.each([
+    ['an iPhone', { audioSession: { type: 'auto' }, maxTouchPoints: 5 }, true],
+    ["a Mac's Safari", { audioSession: { type: 'auto' }, maxTouchPoints: 0 }, false],
+    ['an Android phone', { maxTouchPoints: 5 }, false],
+  ])('knows whether the silent switch mutes the timer: %s', async (_what, props, silenced) => {
+    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, props))
+    const { silencedBySwitch } = await import('./timerSignal')
+    expect(silencedBySwitch()).toBe(silenced)
   })
 
   it('unlocks once: a later tap on a running context makes nothing new', async () => {

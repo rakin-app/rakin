@@ -31,10 +31,12 @@ import {
   addMinute,
   advance,
   clearRun,
+  countdown,
   currentBlock,
   endClass,
   leftUnseen,
   pause,
+  phaseKey,
   phaseMs,
   plannedBlock,
   plannedSeconds,
@@ -48,11 +50,12 @@ import {
   touch,
   upcomingBlocks,
   type BlockResult,
+  type CountdownMark,
   type RunState,
   type Step,
   type TimerBlock,
 } from './timerEngine'
-import { signal, switchSignal, unlockSound, useSoundState, useWakeLock, type SoundState } from './timerSignal'
+import { signal, silencedBySwitch, switchSignal, unlockSound, useSoundState, useWakeLock, type SoundState } from './timerSignal'
 import './Classes.css'
 import './ClassTimer.css'
 
@@ -335,6 +338,7 @@ function Prepare({
         submit={copy.editor.start}
         onSubmit={(blocks) => onStart(blocks, openMat)}
       />
+      {silencedBySwitch() && <p className="classes__note">{copy.silentSwitch}</p>}
     </Shell>
   )
 }
@@ -592,9 +596,6 @@ function nextLabel(run: RunState, block: TimerBlock): string {
   return next ? words.next(summary(next)) : words.last
 }
 
-// A phase, to warn of its end once; "+1 min" makes it another end, warned of again.
-const phaseKey = (run: RunState) => `${run.index}:${run.round}:${run.resting}:${run.extraMs}`
-
 function Running({
   session,
   run,
@@ -619,6 +620,7 @@ function Running({
   // The run as last committed, for the tick and the buttons between renders.
   const latest = useRef(run)
   const warned = useRef<string | null>(null)
+  const counted = useRef<CountdownMark | null>(null)
   useEffect(() => {
     latest.current = run
   }, [run])
@@ -659,6 +661,9 @@ function Running({
           signal('warn')
         }
       }
+      const count = countdown(state, at, counted.current)
+      counted.current = count.mark
+      if (count.beep !== null) signal('count')
       setNow(at)
     }
     tick()
