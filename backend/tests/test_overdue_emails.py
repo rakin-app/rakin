@@ -58,6 +58,7 @@ def notice(days_overdue: int, **context: Any) -> Notice:
             "bank_account": BANK,
             "dependent_name": None,
             "on": DUE + timedelta(days=days_overdue),
+            "signature": "Recordatorio automático · Academia Sur",
             **context,
         },
     )
@@ -78,7 +79,11 @@ def test_the_email_says_how_much_for_which_period_and_how_late() -> None:
     assert "Transfiere a esta cuenta y sube el comprobante desde tu página." in email.text
     assert "Número: 12345678" in email.text
     assert "Tu página: https://sur.rakin.test/ingresar" in email.text
+    # Signed as the WhatsApp reminders are, over the footer.
+    footer = "--\nRecordatorio automático · Academia Sur\nAcademia Sur, a través de Rakin"
+    assert footer in email.text
     assert email.html is not None
+    assert "Recordatorio automático · Academia Sur<br>" in email.html
     assert "<strong>4 días de atraso</strong>" in email.html
     # Essential: about money owed, so no unsubscribe.
     assert PAYMENT_OVERDUE.essential
@@ -228,6 +233,7 @@ def test_the_email_asks_for_what_is_still_owed(jobgym: Gym) -> None:
     assert "El pago de $30.000 en" in email.text
     assert "lleva 4 días de atraso" in email.text
     assert "Número: 12345678" in email.text
+    assert f"Recordatorio automático · {jobgym.id}" in email.text
     [url] = [line for line in email.text.splitlines() if line.startswith("Tu página: ")]
     assert "/api/auth/callback?token=" in url and url.endswith("&next=%2Fme")
     [(on, _, sent)] = emailed(jobgym)

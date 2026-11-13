@@ -28,6 +28,7 @@
 {% else %}
 {% set rakin = "Rakin" %}
 {% endif %}
+{% block signature %}{% endblock %}
 {% if gym is defined %}{{ gym }}, a través de {{ rakin }}{% else %}{{ rakin }}{% endif %}
 {% if unsubscribe_url %}
 <br><a href="{{ unsubscribe_url }}" style="color:#71717a;">Dejar de recibir estos avisos</a>

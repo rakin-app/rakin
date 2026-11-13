@@ -1,5 +1,6 @@
 {% extends "_layout.html" %}
 {% block title %}{% if days_overdue == 0 %}Hoy vence tu pago en {{ gym }}{% else %}Tu pago en {{ gym }} está atrasado{% endif %}{% endblock %}
+{% block signature %}{{ signature }}<br>{% endblock %}
 {% block body %}
 <p style="margin:0 0 16px;">Hola, {{ name }}:</p>
 <p style="margin:0 0 16px;">{% if days_overdue == 0 %}Hoy vence el pago de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }}{% else %}El pago de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }} venció el <strong>{{ due_date | fecha }}</strong> y lleva <strong>{{ days_overdue }} {{ "día" if days_overdue == 1 else "días" }} de atraso</strong>{% endif %}: plan {{ plan_name }}, período del {{ period_start | fecha }} al {{ period_end | fecha }}.</p>

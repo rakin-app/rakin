@@ -7,8 +7,9 @@ the day after, then every 3 days while the gym's grace lasts (`grace_days`). Wit
 grace of 15 that is days 0, 1, 4, 7, 10 and 13; the lapse job lapses the membership
 once the grace is past, and the lapse sends its own plan-event email. The email says
 what is owed, for which period, how many days late, the gym's bank details and a link
-to the student page to upload the proof. It goes to the member, or to their guardian
-(`app.contacts`).
+to the student page to upload the proof, and is signed `Recordatorio automático · <gym>`
+in its footer, as the WhatsApp reminders are. It goes to the member, or to their
+guardian (`app.contacts`).
 
 Nothing goes to a period that is paid, whose membership is cancelled, frozen or lapsed,
 or with a proof waiting for review: the member says they paid, and the review answers
@@ -40,6 +41,7 @@ from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.jobs.gyms import each_gym
 from app.jobs.runner import Job
 from app.notices import PAYMENT_OVERDUE, Notice, Notices
+from app.notices.whatsapp import signature
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +125,8 @@ def overdue_notice(
             "bank_account": bank_account,
             "dependent_name": dependent_name,
             "on": on,
+            # Over the footer, as on the WhatsApp reminders.
+            "signature": signature(gym_name),
         },
     )
 

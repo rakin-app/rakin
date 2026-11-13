@@ -17,7 +17,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.notices.whatsapp import payment_due_today, payment_overdue, proof_rejected_followup
+from app.notices.whatsapp import (
+    extra_charge_reminder,
+    payment_due_today,
+    payment_overdue,
+    proof_rejected_followup,
+)
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
@@ -38,6 +43,7 @@ def test_the_due_today_reminder_says_what_and_how_much() -> None:
     assert text == (
         "Hola Ignacio, te recordamos que hoy vence tu pago de Mensual en Academia Sur:"
         " $45.000. Si ya pagaste, envíanos el comprobante. ¡Gracias!"
+        "\n\nRecordatorio automático · Academia Sur"
     )
 
 
@@ -54,6 +60,7 @@ def test_the_overdue_reminder_says_since_when() -> None:
         "Hola Ana, el pago de Tomás de Kids en Academia Sur venció el 05-11-2026 y quedan"
         " $30.000 por pagar. ¿Nos ayudas a ponerte al día? Si ya pagaste, envíanos el"
         " comprobante. ¡Gracias!"
+        "\n\nRecordatorio automático · Academia Sur"
     )
 
 
@@ -69,7 +76,20 @@ def test_the_rejection_follow_up_carries_the_note() -> None:
     assert text == (
         "Hola Ignacio, en Academia Sur revisamos el comprobante de $40.000 por Mensual y"
         " no pudimos validarlo: falta $5.000. ¿Nos envías uno nuevo? ¡Gracias!"
+        "\n\nRecordatorio automático · Academia Sur"
     )
+
+
+def test_a_cobro_extras_reminder_is_signed_too() -> None:
+    text = extra_charge_reminder(
+        to_name="Ignacio Vera",
+        about_name=None,
+        gym_name="Academia Sur",
+        title="Rifa",
+        amount="$5.000",
+        due="30-11-2026",
+    )
+    assert text.endswith("¡Gracias!\n\nRecordatorio automático · Academia Sur")
 
 
 # --- against real Postgres --------------------------------------------------------
