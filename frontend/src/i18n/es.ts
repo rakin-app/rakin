@@ -1773,6 +1773,8 @@ export const es = {
       error: 'No pudimos cargar el timer.',
       retry: 'Reintentar',
       notAllowed: 'Solo el coach de la clase, el dueño o un admin pueden usar el timer.',
+      // An iPhone mutes the timer on silent, so it can beep over the music (#258).
+      silentSwitch: 'Con el iPhone en silencio, el timer no suena.',
       editor: {
         title: 'Bloques de la clase',
         hint: 'Parte de la última clase de este tipo. Cambia lo que quieras antes de empezar.',

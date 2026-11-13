@@ -2,8 +2,9 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { RunState } from './timerEngine'
 
 /**
- * What the timer does besides its numbers: a beep and a buzz at the 10-second warning and
- * at each switch, and the screen kept on while it runs. Each switch sounds its own way, so
+ * What the timer does besides its numbers: a beep and a buzz at the 10-second warning, on
+ * each of the last 3 seconds of a round or a rest, and at each switch, and the screen kept
+ * on while it runs. Each switch sounds its own way, so
  * the mat hears whether to fight or to stop without looking: a bell to start a round, a
  * long low tone to stop for the rest, and a chime when one block gives way to the next.
  *
@@ -16,12 +17,14 @@ let audio: AudioContext | null = null
 // Set when this browser has no Web Audio, or refused to make one on the last attempt.
 let unsupported = false
 
-/** `warn`: ten seconds left. `fight`: a round starts. `rest`: a round stops for the rest.
- * `block`: a block ran out, and the next starts. */
-export type Signal = 'warn' | 'fight' | 'rest' | 'block'
+/** `warn`: ten seconds left. `count`: 3, 2 or 1 second left of a round or a rest. `fight`:
+ * a round starts. `rest`: a round stops for the rest. `block`: a block ran out, and the
+ * next starts. */
+export type Signal = 'warn' | 'count' | 'fight' | 'rest' | 'block'
 
 export const VIBRATION: Record<Signal, number | number[]> = {
   warn: 200,
+  count: 60,
   fight: [150, 100, 150],
   rest: [1000],
   block: [400, 150, 400, 150, 600],
@@ -32,6 +35,28 @@ export const VIBRATION: Record<Signal, number | number[]> = {
 export function switchSignal(before: RunState, after: RunState): Signal {
   if (after.index !== before.index || after.endedAt !== null) return 'block'
   return after.resting ? 'rest' : 'fight'
+}
+
+/**
+ * The kind of sound the timer is to the phone (Safari 17+'s Audio Session API; other
+ * browsers have none, and Chrome on Android plays Web Audio over other apps' music as it
+ * is). `transient` mixes with the music playing in another app, where `playback` stopped
+ * it: the spec lets a browser duck the music for each beep, and WebKit plays it as it
+ * plays `ambient`, in iOS's ambient category, over the music as it is. The cost is the
+ * ringer switch, which mutes that category: only `playback` sounds on silent, and it never
+ * mixes, so no type does both. `ambient` would be no better, so the set-up says so instead
+ * (`silencedBySwitch`) rather than letting a silenced iPhone fail quietly.
+ */
+export const AUDIO_SESSION_TYPE = 'transient'
+
+type AudioSession = { type: string }
+const audioSession = (): AudioSession | undefined =>
+  typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { audioSession?: AudioSession }).audioSession
+
+/** Whether this phone's silent switch mutes the timer: an iPhone or iPad, which has the
+ * Audio Session API and a touch screen (a Mac's Safari has the one, not the other). */
+export function silencedBySwitch(): boolean {
+  return audioSession() !== undefined && navigator.maxTouchPoints > 0
 }
 
 /** Allow sound, inside a tap. The first tap makes the context and plays a silent blip in
@@ -52,9 +77,9 @@ export function unlockSound(): void {
     audio.addEventListener('statechange', notify)
     setUnsupported(false)
     try {
-      // Safari 17+: play through the ringer switch, as a timer must.
-      const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
-      if (session) session.type = 'playback'
+      // Safari 17+: beep over the music rather than stop it.
+      const session = audioSession()
+      if (session) session.type = AUDIO_SESSION_TYPE
       const silent = audio.createBufferSource()
       silent.buffer = audio.createBuffer(1, 1, audio.sampleRate)
       silent.connect(audio.destination)
@@ -99,13 +124,13 @@ export function useSoundState(): SoundState {
   return useSyncExternalStore(subscribe, soundState, () => 'on')
 }
 
-function beep(frequency: number, seconds: number, at: number, type: OscillatorType = 'sine'): void {
+function beep(frequency: number, seconds: number, at: number, type: OscillatorType = 'sine', volume = 0.4): void {
   if (!audio) return
   const tone = audio.createOscillator()
   const gain = audio.createGain()
   tone.type = type
   tone.frequency.value = frequency
-  gain.gain.setValueAtTime(0.4, audio.currentTime + at)
+  gain.gain.setValueAtTime(volume, audio.currentTime + at)
   gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + at + seconds)
   tone.connect(gain).connect(audio.destination)
   tone.start(audio.currentTime + at)
@@ -116,6 +141,9 @@ export function signal(kind: Signal): void {
   try {
     if (kind === 'warn') {
       beep(880, 0.15, 0)
+    } else if (kind === 'count') {
+      // A tick, shorter and quieter than any switch, so the switch after it stands out.
+      beep(1000, 0.08, 0, 'sine', 0.25)
     } else if (kind === 'fight') {
       // A bell: two bright strikes, each with a ringing overtone.
       for (const at of [0, 0.3]) {

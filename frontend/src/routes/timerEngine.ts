@@ -215,6 +215,40 @@ export function resume(state: RunState, now: number): RunState {
   return { ...state, phaseStart: state.phaseStart + (now - state.pausedAt), pausedAt: null, lastSeen: now }
 }
 
+/** A phase, to signal its end once; "+1 min" makes it another end, signalled again. */
+export const phaseKey = (state: RunState) => `${state.index}:${state.round}:${state.resting}:${state.extraMs}`
+
+/** The seconds counted down, one beep each, before a round or a rest of sparring ends. */
+export const COUNTDOWN_SECONDS = 3
+
+// How late a countdown second may be beeped: later, and it would sound halfway to the next.
+const COUNTDOWN_LATE_MS = 500
+
+/** Where the countdown was last looked at: the phase and the time it had left. */
+export type CountdownMark = { phase: string; leftMs: number }
+
+/**
+ * The countdown second (3, 2 or 1) that the phase crossed since `mark`, the last look,
+ * and the mark for the next one. A second is beeped as the time left reaches it, and once:
+ * not for a phase of a non-sparring block, nor one of fewer than 4 seconds, where 3 would
+ * sound with the switch before it. A paused run has its time left held, so a pause in the
+ * countdown beeps the next second only once it runs again and reaches it. A first look at
+ * a phase, a reload in the last seconds or a "+1 min", beeps nothing; nor a second reached
+ * half a second ago or more (a phone that was locked).
+ */
+export function countdown(state: RunState, now: number, mark: CountdownMark | null): { beep: number | null; mark: CountdownMark | null } {
+  const block = currentBlock(state)
+  if (!block) return { beep: null, mark: null }
+  const next = { phase: phaseKey(state), leftMs: remainingMs(state, now) }
+  if (!block.sparring || phaseMs(state) < (COUNTDOWN_SECONDS + 1) * 1000 || mark?.phase !== next.phase) {
+    return { beep: null, mark: next }
+  }
+  // The latest second reached: the smallest at or above the time left.
+  const second = Math.max(1, Math.ceil(next.leftMs / 1000))
+  const crossed = second <= COUNTDOWN_SECONDS && mark.leftMs > second * 1000 && second * 1000 - next.leftMs < COUNTDOWN_LATE_MS
+  return { beep: crossed ? second : null, mark: next }
+}
+
 /** "+1 min" to the phase running. */
 export function addMinute(state: RunState, now: number): Step {
   const step = advance(state, now)
