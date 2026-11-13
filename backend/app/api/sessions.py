@@ -5,7 +5,9 @@ of time (`app.api.schedule`, #167); a coach may also start one ad hoc when the c
 begins, of one of the gym's active class types, and writes its topic and notes during
 or after class, and the gym's tags it is about (#243). The day's sessions are those
 whose `starts_at` falls on that calendar day in the gym's timezone, today by default.
-A session may carry how long it lasts.
+A session lasts `duration_minutes`. One started here without a duration gets its class
+type's default (#257): its schedule slot's, else the gym's last class of that type's,
+else `DEFAULT_DURATION`; "Crear clase" prefills it from `GET /api/sessions/duration`.
 
 A session starts now and is taught by the person starting it unless the body says
 otherwise. Its coach is one of the gym's staff when it is started or reassigned; one
@@ -50,13 +52,23 @@ from app.api.class_tags import require_tags, set_tags, tags_of_session
 from app.domain.dates import gym_today, start_of_local_day
 from app.roles import ADMIN_ROLES, FORBIDDEN, AdminSession, StaffSession, role_in_gym
 from app.schemas.classes import ClassKind
-from app.schemas.sessions import Day, Session, SessionCreate, SessionUpdate, Unmarked
+from app.schemas.sessions import (
+    Day,
+    DefaultDuration,
+    Session,
+    SessionCreate,
+    SessionUpdate,
+    Unmarked,
+)
 from app.tenancy import Tenant, current_tenant
 
 router = APIRouter(prefix="/api/sessions", tags=["classes"])
 
 # The dashboard looks this many gym days back, today included, for classes nobody marked.
 UNMARKED_DAYS = 7
+
+# A class's minutes when neither its type's slot nor an earlier class of it says.
+DEFAULT_DURATION = 60
 
 NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
 # Cancelling a class someone was marked at: delete it instead, or unmark them first.
@@ -111,6 +123,25 @@ async def gym_timezone(session: AsyncSession, tenant: Tenant) -> str:
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
     return zone
+
+
+async def default_duration(session: AsyncSession, class_type_id: uuid.UUID, today: date) -> int:
+    """How long a new class of `class_type_id` lasts unless told: the duration of its
+    schedule slot in effect today, else of its next one to come, else of the gym's last
+    class of it that has one, else `DEFAULT_DURATION`."""
+    minutes: int | None = await session.scalar(
+        text(
+            "SELECT coalesce("
+            " (SELECT duration_minutes FROM schedule_slot"
+            "  WHERE class_type_id = :type AND (valid_to IS NULL OR valid_to >= :today)"
+            "  ORDER BY valid_from <= :today DESC, valid_from, created_at, id LIMIT 1),"
+            " (SELECT duration_minutes FROM session"
+            "  WHERE class_type_id = :type AND duration_minutes IS NOT NULL"
+            "  ORDER BY starts_at DESC, created_at DESC LIMIT 1))"
+        ),
+        {"type": class_type_id, "today": today},
+    )
+    return minutes or DEFAULT_DURATION
 
 
 async def _get(session: AsyncSession, session_id: uuid.UUID, *, lock: bool = False) -> Session:
@@ -168,6 +199,18 @@ async def unmarked_sessions(
     return Unmarked(since=since, timezone=zone, sessions=sessions)
 
 
+@router.get("/duration")
+async def class_type_duration(
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: StaffSession,
+    class_type_id: uuid.UUID,
+) -> DefaultDuration:
+    """`?class_type_id=`: how long a new class of that type lasts unless told."""
+    zone = await gym_timezone(session, tenant)
+    minutes = await default_duration(session, class_type_id, gym_today(zone))
+    return DefaultDuration(class_type_id=class_type_id, duration_minutes=minutes)
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def start_session(
     body: SessionCreate,
@@ -177,6 +220,10 @@ async def start_session(
     await require_class_type(session, body.class_type_id)
     coach_id = body.coach_id or tenant.person_id
     await require_coach(session, coach_id)
+    duration = body.duration_minutes
+    if duration is None:
+        zone = await gym_timezone(session, tenant)
+        duration = await default_duration(session, body.class_type_id, gym_today(zone))
     result = await session.execute(
         text(
             "INSERT INTO session"
@@ -185,7 +232,7 @@ async def start_session(
             " coalesce(:starts_at, now()), :duration_minutes, :coach_id, :topic, :notes)"
             " RETURNING id"
         ),
-        {**body.model_dump(), "coach_id": coach_id},
+        {**body.model_dump(), "coach_id": coach_id, "duration_minutes": duration},
     )
     return await _get(session, result.scalar_one())
 

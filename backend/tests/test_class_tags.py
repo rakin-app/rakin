@@ -497,6 +497,12 @@ def test_the_gym_s_hours_count_held_classes_and_never_cancelled_ones(
     cancelled = start(client, gym, fundamentals, local(march + timedelta(days=1)), minutes=60)
     april = start(client, gym, fundamentals, local(date(2025, 4, 2)), minutes=60)
     no_duration = start(client, gym, fundamentals, local(march), minutes=None)
+    # A class is never started without one any more (#257); one from before has none.
+    ok(
+        client.patch(
+            f"/api/sessions/{no_duration}", json={"duration_minutes": None}, headers=as_gym(gym)
+        )
+    )
     for session in (held, cancelled, april, no_duration):
         ok(set_tags(client, gym, session, [guard]))
     ok(client.post(f"/api/sessions/{cancelled}/cancel", headers=as_gym(gym)))
@@ -516,6 +522,12 @@ def test_the_gym_s_hours_count_held_classes_and_never_cancelled_ones(
         }
     ]
     assert (month["first_day"], month["last_day"]) == ("2025-03-01", "2025-03-31")
+    # The class with no duration counts as a class but adds no minutes, and says so.
+    assert month["no_duration_classes"] == 1
+    assert [(c["session_id"], c["class_type_name"]) for c in month["no_duration"]] == [
+        (no_duration, "Fundamentos")
+    ]
+    assert gym_hours(year=2025, month=4)["no_duration_classes"] == 0
     assert hours(gym_hours(year=2025)) == {"Pasaje de guardia": 150}
     assert gym_hours()["first_day"] == today().replace(day=1).isoformat()
     refused = client.get("/api/class-tags/hours", params={"month": 3}, headers=as_gym(gym))

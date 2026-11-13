@@ -6,6 +6,7 @@ import { gymTagHoursQuery } from '../api/classTags'
 import {
   activeClassTypesQuery,
   daySessionsQuery,
+  defaultDurationQuery,
   startSession,
   todaySessionsQuery,
   useGymTimeZone,
@@ -15,7 +16,7 @@ import {
 } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
 import { Card, ListRowContent, listRowClass, SectionHeader } from '../components/Card'
-import { Select } from '../components/Field'
+import { Input, Select } from '../components/Field'
 import { ChevronRightIcon } from '../components/icons'
 import { Grid, PageContainer, useWide } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -293,7 +294,8 @@ function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: st
   )
 }
 
-/** "Crear clase": a class of the type chosen, now, taught by whoever creates it. */
+/** "Crear clase": a class of the type chosen, now, taught by whoever creates it, for the
+ * minutes given, prefilled with the type's default (#257). */
 function StartSession() {
   const classTypes = useQuery(activeClassTypesQuery())
 
@@ -319,9 +321,19 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const selectId = useId()
+  const durationId = useId()
   const [classTypeId, setClassTypeId] = useState(classTypes[0]!.id)
+  // What was typed for the type chosen; another type starts again from its default.
+  const [typed, setTyped] = useState<{ classTypeId: string; value: string } | null>(null)
+  const fallback = useQuery(defaultDurationQuery(classTypeId))
+  const duration =
+    typed?.classTypeId === classTypeId ? typed.value : (fallback.data?.duration_minutes.toString() ?? '')
+  const minutes = duration.trim() === '' ? null : Number(duration)
+  const badDuration = minutes !== null && !(Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440)
   const start = useSubmit({
-    mutationFn: () => startSession({ class_type_id: classTypeId }),
+    // Left empty, the class still gets the type's default.
+    mutationFn: () =>
+      startSession({ class_type_id: classTypeId, ...(minutes === null ? {} : { duration_minutes: minutes }) }),
     onSuccess: async (session) => {
       queryClient.setQueryData(['sessions', 'detail', session.id], session)
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
@@ -331,6 +343,7 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
+    if (badDuration) return
     start.mutate()
   }
 
@@ -354,12 +367,30 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
           </optgroup>
         ))}
       </Select>
+      <label htmlFor={durationId} className="classes__label">
+        {copy.start.duration}
+      </label>
+      <Input
+        id={durationId}
+        type="number"
+        inputMode="numeric"
+        min={1}
+        max={1440}
+        aria-invalid={badDuration}
+        value={duration}
+        onChange={(e) => setTyped({ classTypeId, value: e.target.value })}
+      />
+      {badDuration && (
+        <p className="classes__error" role="alert">
+          {copy.start.badDuration}
+        </p>
+      )}
       {start.isError && (
         <p className="classes__error" role="alert">
           {copy.start.failed}
         </p>
       )}
-      <Button type="submit" variant="primary" disabled={start.isPending} busy={start.isPending}>
+      <Button type="submit" variant="primary" disabled={start.isPending || badDuration} busy={start.isPending}>
         {start.isPending ? copy.start.working : copy.start.submit}
       </Button>
     </form>

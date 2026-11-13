@@ -116,8 +116,21 @@ export function sessionQuery(id: string) {
   })
 }
 
-/** Start a class of `class_type_id` now, taught by whoever starts it. */
-export function startSession(body: { class_type_id: string }): Promise<ClassSession> {
+/** How long a new class of `classTypeId` lasts unless told (#257): its schedule slot's,
+ * else the gym's last class of the type's, else 60. */
+export function defaultDurationQuery(classTypeId: string) {
+  return queryOptions({
+    queryKey: ['sessions', 'duration', classTypeId],
+    queryFn: () =>
+      apiFetch<{ class_type_id: string; duration_minutes: number }>(
+        `/api/sessions/duration?class_type_id=${encodeURIComponent(classTypeId)}`,
+      ),
+  })
+}
+
+/** Start a class of `class_type_id` now, taught by whoever starts it, lasting
+ * `duration_minutes` (without it, the type's default). */
+export function startSession(body: { class_type_id: string; duration_minutes?: number }): Promise<ClassSession> {
   return apiFetch<ClassSession>('/api/sessions', { method: 'POST', body: JSON.stringify(body) })
 }
 

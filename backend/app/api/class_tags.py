@@ -11,7 +11,8 @@ Hours per tag are a class's duration added to every tag it carries, over a gym m
 or year: for the gym (`GET /api/class-tags/hours`), the classes held, that is begun
 and not cancelled; for a person (`GET /api/people/{id}/tag-hours`, and the student
 page's `GET /api/me/classes`), the classes they attended. A cancelled class counts
-nowhere.
+nowhere. A class with no duration set adds no minutes; each stretch says how many it
+counted and lists the latest, so their tags' hours are never silently short (#257).
 """
 
 import uuid
@@ -28,7 +29,14 @@ from app.api.people import in_gym
 from app.api.programs import execute_refusing
 from app.domain.dates import gym_today, start_of_local_day
 from app.roles import AdminSession, StaffSession
-from app.schemas.class_tags import ClassTag, ClassTagCreate, ClassTagUpdate, TagHours, TagHoursRow
+from app.schemas.class_tags import (
+    ClassTag,
+    ClassTagCreate,
+    ClassTagUpdate,
+    NoDuration,
+    TagHours,
+    TagHoursRow,
+)
 from app.tenancy import Tenant, current_tenant
 
 router = APIRouter(tags=["classes"])
@@ -191,6 +199,21 @@ BY_TAG = """
     ORDER BY minutes DESC, lower(t.name), t.id
 """
 
+NO_DURATION = """
+    WITH counted AS ({counted})
+    SELECT s.id AS session_id, s.starts_at, ct.name AS class_type_name,
+           count(*) OVER () AS total
+    FROM counted c
+    JOIN session s ON s.id = c.id
+    JOIN class_type ct ON ct.id = s.class_type_id
+    WHERE s.duration_minutes IS NULL
+    ORDER BY s.starts_at DESC, s.id
+    LIMIT :listed
+"""
+
+# The most classes with no duration a stretch lists; it counts them all.
+NO_DURATION_LISTED = 20
+
 UNTAGGED = """
     WITH counted AS ({counted})
     SELECT coalesce(sum(c.minutes), 0)::integer FROM counted c
@@ -223,14 +246,18 @@ async def tag_hours(
         "start": start_of_local_day(first, zone),
         "end": start_of_local_day(last + timedelta(days=1), zone),
         "person": person_id,
+        "listed": NO_DURATION_LISTED,
     }
     rows = await session.execute(text(BY_TAG.format(counted=counted)), params)
     untagged: int = await session.scalar(text(UNTAGGED.format(counted=counted)), params)
+    undurated = (await session.execute(text(NO_DURATION.format(counted=counted)), params)).all()
     return TagHours(
         first_day=first,
         last_day=last,
         tags=[TagHoursRow.model_validate(row, from_attributes=True) for row in rows],
         untagged_minutes=untagged,
+        no_duration_classes=undurated[0].total if undurated else 0,
+        no_duration=[NoDuration.model_validate(row, from_attributes=True) for row in undurated],
     )
 
 

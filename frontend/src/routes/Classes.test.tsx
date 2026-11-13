@@ -80,6 +80,8 @@ const hoursFor = (first: string, last: string, minutes: number): TagHours => ({
   last_day: last,
   tags: minutes ? [{ tag_id: 'guard', name: 'Pasaje de guardia', archived: false, classes: 3, minutes }] : [],
   untagged_minutes: 0,
+  no_duration_classes: 0,
+  no_duration: [],
 })
 
 type Call = { method: string; path: string; body: unknown }
@@ -94,6 +96,9 @@ type Stub = {
   week?: ClassSession[]
   // Who is on each class's roster.
   roster?: RosterMember[]
+  // Each class type's default duration; 60 for any other.
+  durations?: Record<string, number>
+  hours?: TagHours
 }
 
 function stubApi({
@@ -104,6 +109,8 @@ function stubApi({
   update,
   week,
   roster = [],
+  durations = {},
+  hours = hoursFor('2026-11-01', '2026-11-30', 270),
 }: Stub = {}) {
   const calls: Call[] = []
   let day: SessionDay = { date: '2026-11-09', timezone: 'America/Santiago', sessions }
@@ -115,7 +122,7 @@ function stubApi({
       const raw = init?.body
       const body: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
       calls.push({ method, path: `${url.pathname}${url.search}`, body })
-      const answer = route(url.pathname, method, body, url.searchParams.get('date'))
+      const answer = route(url.pathname, method, body, url.searchParams.get('date'), url.searchParams)
       return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
         status: answer.status ?? 200,
         headers: { 'Content-Type': 'application/json' },
@@ -123,7 +130,7 @@ function stubApi({
     }),
   )
 
-  function route(path: string, method: string, body: unknown, date: string | null): Answer {
+  function route(path: string, method: string, body: unknown, date: string | null, query: URLSearchParams): Answer {
     // The class's own coach, unless told otherwise.
     if (path === '/api/me/role') return { body: { role, person_id: 'coach' } }
     if (path === '/api/class-types') return { body: classTypes }
@@ -132,11 +139,17 @@ function stubApi({
       return { body: { ...day, date: on, sessions: week.filter((s) => isoDay(s.starts_at, 'America/Santiago') === on) } }
     }
     if (path === '/api/sessions' && method === 'GET') return { body: day }
+    if (path === '/api/sessions/duration') {
+      const id = query.get('class_type_id')!
+      return { body: { class_type_id: id, duration_minutes: durations[id] ?? 60 } }
+    }
     if (path === '/api/sessions' && method === 'POST') {
       if (start) return start
-      const type = classTypes.find((c) => c.id === (body as { class_type_id: string }).class_type_id)!
+      const sent = body as { class_type_id: string; duration_minutes?: number }
+      const type = classTypes.find((c) => c.id === sent.class_type_id)!
       const created: ClassSession = {
         ...EVENING,
+        duration_minutes: sent.duration_minutes ?? 60,
         id: 's-new',
         class_type_id: type.id,
         class_type_name: type.name,
@@ -154,7 +167,7 @@ function stubApi({
     }
     if (path === '/api/plans') return { body: [] }
     if (path === '/api/class-tags') return { body: TAGS }
-    if (path === '/api/class-tags/hours') return { body: hoursFor('2026-11-01', '2026-11-30', 270) }
+    if (path === '/api/class-tags/hours') return { body: hours }
     const found = day.sessions.find((s) => path === `/api/sessions/${s.id}`)
     if (found && method === 'GET') return { body: found }
     if (found && method === 'PATCH') {
@@ -276,7 +289,30 @@ describe('Clases', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Avanzado' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/admin/clases/s-new')
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
-      { method: 'POST', path: '/api/sessions', body: { class_type_id: 'avanzado' } },
+      { method: 'POST', path: '/api/sessions', body: { class_type_id: 'avanzado', duration_minutes: 60 } },
+    ])
+  })
+
+  it("prefills the class's duration with its type's, and keeps one typed", async () => {
+    const calls = stubApi({ durations: { fundamentos: 90, kids: 45 } })
+    renderAt('/admin/clases')
+
+    const form = await screen.findByRole('form', { name: copy.start.title })
+    const duration = within(form).getByLabelText(copy.start.duration)
+    await vi.waitFor(() => expect(duration).toHaveValue(90))
+    await userEvent.selectOptions(within(form).getByLabelText(copy.start.classType), 'Kids 8 a 12')
+    await vi.waitFor(() => expect(duration).toHaveValue(45))
+    await userEvent.clear(duration)
+    await userEvent.type(duration, '2000')
+    expect(within(form).getByRole('alert')).toHaveTextContent(copy.start.badDuration)
+    expect(within(form).getByRole('button', { name: copy.start.submit })).toBeDisabled()
+    await userEvent.clear(duration)
+    await userEvent.type(duration, '50')
+    await userEvent.click(within(form).getByRole('button', { name: copy.start.submit }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Kids 8 a 12' })).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/sessions', body: { class_type_id: 'kids', duration_minutes: 50 } },
     ])
   })
 
@@ -483,5 +519,23 @@ describe('Clases on a desktop', () => {
     expect(calls.some((c) => c.path === `/api/class-tags/hours?${before}`)).toBe(true)
     await userEvent.click(card.getByRole('button', { name: es.tagHours.year }))
     expect(card.getByText(String(month === 1 ? year - 1 : year))).toBeInTheDocument()
+    expect(card.queryByText(es.tagHours.noDuration(1))).not.toBeInTheDocument()
+  })
+
+  it('says which classes have no duration and add no hours, each leading to its page', async () => {
+    stubApi({
+      hours: {
+        ...hoursFor('2026-11-01', '2026-11-30', 0),
+        tags: [{ tag_id: 'guard', name: 'Guardia', archived: false, classes: 1, minutes: 0 }],
+        no_duration_classes: 1,
+        no_duration: [{ session_id: EVENING.id, starts_at: EVENING.starts_at, class_type_name: 'Fundamentos' }],
+      },
+    })
+    const router = renderAt('/admin/clases')
+
+    const card = within(await screen.findByRole('region', { name: es.tagHours.gym }))
+    expect(await card.findByText('1 clase sin duración, no suma horas')).toBeInTheDocument()
+    await userEvent.click(card.getByRole('link', { name: '9 nov · Fundamentos' }))
+    expect(router.state.location.pathname).toBe('/admin/clases/s-evening')
   })
 })
