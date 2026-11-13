@@ -16,12 +16,14 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from alembic import command
+from app.api.sessions import DEFAULT_DURATION
 from app.main import create_app
 from app.schemas.sessions import MAX_NOTES, MAX_TOPIC, SessionCreate, SessionUpdate
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_plans import add_staff
+from tests.test_schedule import add_slot
 
 SANTIAGO = ZoneInfo("America/Santiago")
 CLASS_TYPE = str(uuid.uuid4())
@@ -170,6 +172,43 @@ def test_a_coach_starts_a_session_now_and_sees_it_today(
     assert today["sessions"] == [session]
     read = client.get(f"/api/sessions/{session['id']}", headers=as_gym(gym, coach))
     assert read.json() == session
+
+
+def default_duration(client: TestClient, gym: uuid.UUID, class_type_id: str) -> int:
+    response = client.get(
+        "/api/sessions/duration", params={"class_type_id": class_type_id}, headers=as_gym(gym)
+    )
+    assert response.status_code == 200, response.text
+    minutes: int = response.json()["duration_minutes"]
+    return minutes
+
+
+@pg
+def test_a_class_started_without_a_duration_gets_its_types_default(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    """#257: its schedule slot's, else the gym's last class of the type's, else 60."""
+    fundamentals = class_type(client, gym)["id"]
+    competition = class_type(client, gym, "Competición")["id"]
+    assert default_duration(client, gym, fundamentals) == DEFAULT_DURATION
+    assert started(client, gym, {"class_type_id": fundamentals})["duration_minutes"] == 60
+
+    started(client, gym, {"class_type_id": fundamentals, "duration_minutes": 75})
+    assert default_duration(client, gym, fundamentals) == 75
+    assert started(client, gym, {"class_type_id": fundamentals})["duration_minutes"] == 75
+
+    today = datetime.now(SANTIAGO).date()
+    ended = {"valid_from": (today - timedelta(days=30)).isoformat()}
+    ended["valid_to"] = (today - timedelta(days=1)).isoformat()
+    add_slot(client, gym, fundamentals, duration_minutes=45, **ended)
+    assert default_duration(client, gym, fundamentals) == 75  # a slot that ended is not it
+    add_slot(client, gym, fundamentals, duration_minutes=90, valid_from=today.isoformat())
+    assert default_duration(client, gym, fundamentals) == 90
+    assert started(client, gym, {"class_type_id": fundamentals})["duration_minutes"] == 90
+    # Told one, it keeps it; another type has its own.
+    told = {"class_type_id": fundamentals, "duration_minutes": 30}
+    assert started(client, gym, told)["duration_minutes"] == 30
+    assert default_duration(client, gym, competition) == DEFAULT_DURATION
 
 
 @pg

@@ -67,6 +67,8 @@ const hoursOf = (tags: TagHours['tags'], untagged = 0): TagHours => ({
   last_day: `${YEAR}-11-30`,
   tags,
   untagged_minutes: untagged,
+  no_duration_classes: 0,
+  no_duration: [],
 })
 
 function diego(over: Partial<MyPage> = {}): MyPage {

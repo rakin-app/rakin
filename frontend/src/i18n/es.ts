@@ -904,6 +904,8 @@ export const es = {
       start: {
         title: 'Crear clase',
         classType: 'Tipo de clase',
+        duration: 'Duración (min)',
+        badDuration: 'La duración va de 1 a 1440 minutos.',
         submit: 'Crear clase',
         working: 'Creando…',
         noClassTypes: 'Todavía no hay tipos de clase. El dueño o un admin del gimnasio los configura.',
@@ -2227,6 +2229,10 @@ export const es = {
     archived: 'archivada',
     archivedSuffix: ' · archivada',
     untagged: (hours: string) => `Sin etiqueta: ${hours}`,
+    // Classes counted with no duration set add no minutes anywhere (#257).
+    noDuration: (n: number) =>
+      n === 1 ? '1 clase sin duración, no suma horas' : `${n} clases sin duración, no suman horas`,
+    noDurationLink: (day: string, classType: string) => `${day} · ${classType}`,
     empty: 'No hay clases con etiqueta en este periodo.',
     loading: 'Cargando las horas…',
     error: 'No pudimos cargar las horas por etiqueta.',

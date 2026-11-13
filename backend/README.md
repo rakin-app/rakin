@@ -320,7 +320,8 @@ One `session` row per class (migration `0020`, [spec](../docs/technical.md#domai
 | Method | Path | Does |
 | --- | --- | --- |
 | `GET` | `/api/sessions` | `{"date", "timezone", "sessions": […]}`: the sessions starting on `?date=` (an ISO day; default today), a calendar day in the gym's timezone, earliest first |
-| `POST` | `/api/sessions` | start one: `class_type_id`, and optionally `starts_at` (with its offset; default now), `duration_minutes`, `coach_id` (default the person acting), `topic`, `notes`; 201 with the session |
+| `POST` | `/api/sessions` | start one: `class_type_id`, and optionally `starts_at` (with its offset; default now), `duration_minutes` (default the class type's, as below), `coach_id` (default the person acting), `topic`, `notes`; 201 with the session |
+| `GET` | `/api/sessions/duration` | `{"class_type_id", "duration_minutes"}`: how long a new class of `?class_type_id=` lasts unless told: its schedule slot's in effect today, else its next one's, else the gym's last class of the type that has one, else 60. "Crear clase" prefills its duration with it |
 | `GET` | `/api/sessions/unmarked` | `{"since", "timezone", "sessions": […]}`: the sessions already started since `since`, six days before today in the gym's timezone, that no one is marked at, latest first; owner and admin only, for the dashboard's "Sin asistencia" |
 | `GET` | `/api/sessions/{id}` | one session; 404 for another gym's |
 | `PATCH` | `/api/sessions/{id}` | change `topic`, `notes` or `coach_id`; only what is sent changes |

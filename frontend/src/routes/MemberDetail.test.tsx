@@ -282,7 +282,7 @@ function stubApi({
     if (path === '/api/people/felipe/attendance') return attendance
     if (path === '/api/people/felipe/time') return time
     if (path === '/api/people/felipe/tag-hours') {
-      return { body: { first_day: '2026-11-01', last_day: '2026-11-30', tags: [], untagged_minutes: 0 } }
+      return { body: { first_day: '2026-11-01', last_day: '2026-11-30', tags: [], untagged_minutes: 0, no_duration_classes: 0, no_duration: [] } }
     }
     if (path === '/api/people/felipe/grades' && method === 'GET') return { body: grades }
     if (path === '/api/people/felipe/grades' && method === 'POST') {

@@ -50,7 +50,8 @@ Duration = Annotated[int, Field(ge=1, le=MAX_DURATION)]
 
 
 class SessionCreate(BaseModel):
-    """Start a class: now, by the person acting, unless told otherwise."""
+    """Start a class: now, by the person acting, for its class type's default duration,
+    unless told otherwise (`app.api.sessions.default_duration`)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -113,6 +114,13 @@ class Session(BaseModel):
     slot_date: date | None
     # The gym's tags it is about, by name (#243); an archived one stays on it.
     tags: list[TagOn] = []
+
+
+class DefaultDuration(BaseModel):
+    """How long a new class of `class_type_id` lasts unless told (#257)."""
+
+    class_type_id: uuid.UUID
+    duration_minutes: int
 
 
 class Day(BaseModel):

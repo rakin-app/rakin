@@ -43,13 +43,20 @@ export type TagHoursRow = {
   minutes: number
 }
 
+/** A class counted with no duration set, so it adds no minutes (backend `NoDuration`). */
+export type NoDuration = { session_id: string; starts_at: string; class_type_name: string }
+
 /** Hours per tag from `first_day` to `last_day` on the gym's calendar, most first
- * (backend `TagHours`). A class adds its whole duration to every tag it carries. */
+ * (backend `TagHours`). A class adds its whole duration to every tag it carries; one
+ * with none adds nothing, and `no_duration_classes` counts them, `no_duration` the
+ * latest (#257). */
 export type TagHours = {
   first_day: string
   last_day: string
   tags: TagHoursRow[]
   untagged_minutes: number
+  no_duration_classes: number
+  no_duration: NoDuration[]
 }
 
 /** A gym month, `month` from 1, or with `month` null the whole year. */

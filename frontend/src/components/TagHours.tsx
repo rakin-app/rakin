@@ -1,6 +1,9 @@
 import { useQuery, type QueryKey, type UseQueryOptions } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import type { Stretch, TagHours as Hours } from '../api/classTags'
+import { useGymTimeZone } from '../api/sessions'
+import { isoDay, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { Button } from './Button'
 import { SegmentedControl } from './Chip'
@@ -77,7 +80,10 @@ export function TagHoursCard<Key extends QueryKey>({
           {copy.error}
         </p>
       ) : hours.data ? (
-        <TagHoursRows hours={hours.data} />
+        <>
+          <TagHoursRows hours={hours.data} />
+          <NoDuration hours={hours.data} linked />
+        </>
       ) : (
         <p className="tag-hours__note">{copy.loading}</p>
       )}
@@ -107,7 +113,36 @@ export function TagHoursNow({ title, month, year }: { title: string; month: Hour
         />
       </div>
       <TagHoursRows hours={period === 'month' ? month : year} />
+      <NoDuration hours={period === 'month' ? month : year} />
     </section>
+  )
+}
+
+/** The classes counted that have no duration, so add no minutes (#257): how many, and
+ * on staff's cards each of the latest, to go set its duration. */
+function NoDuration({ hours, linked = false }: { hours: Hours; linked?: boolean }) {
+  if (hours.no_duration_classes === 0) return null
+  return (
+    <div className="tag-hours__missing">
+      <p className="tag-hours__note">{copy.noDuration(hours.no_duration_classes)}</p>
+      {linked && <NoDurationLinks hours={hours} />}
+    </div>
+  )
+}
+
+/** Staff's only: the gym's timezone is read off its day of classes. */
+function NoDurationLinks({ hours }: { hours: Hours }) {
+  const timeZone = useGymTimeZone()
+  return (
+    <ul className="tag-hours__missing-list">
+      {hours.no_duration.map((each) => (
+        <li key={each.session_id}>
+          <Link to="/admin/clases/$sessionId" params={{ sessionId: each.session_id }}>
+            {copy.noDurationLink(shortDay(isoDay(each.starts_at, timeZone)), each.class_type_name)}
+          </Link>
+        </li>
+      ))}
+    </ul>
   )
 }
 

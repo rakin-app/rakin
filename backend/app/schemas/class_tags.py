@@ -73,11 +73,23 @@ class TagHoursRow(BaseModel):
     minutes: int
 
 
+class NoDuration(BaseModel):
+    """A class counted that has no duration set, so adds no minutes (#257)."""
+
+    session_id: uuid.UUID
+    starts_at: datetime
+    class_type_name: str
+
+
 class TagHours(BaseModel):
     """Hours per tag from `first_day` to `last_day`, both included, on the gym's
-    calendar: most minutes first. `untagged_minutes` is the classes with no tag."""
+    calendar: most minutes first. `untagged_minutes` is the classes with no tag.
+    `no_duration_classes` is how many classes counted have no duration, so add no
+    minutes anywhere; `no_duration` the latest of them, to go set one."""
 
     first_day: date
     last_day: date
     tags: list[TagHoursRow]
     untagged_minutes: int
+    no_duration_classes: int = 0
+    no_duration: list[NoDuration] = []

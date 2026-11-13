@@ -103,3 +103,20 @@
   color: var(--color-danger);
   font-size: var(--text-sm);
 }
+
+/* "1 clase sin duración, no suma horas" (#257), and a link to each to set it. */
+.tag-hours__missing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.tag-hours__missing-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  list-style: none;
+}
