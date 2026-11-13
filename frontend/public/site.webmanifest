@@ -3,6 +3,7 @@
   "short_name": "Rakin",
   "description": "Membresías y pagos para academias",
   "lang": "es",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

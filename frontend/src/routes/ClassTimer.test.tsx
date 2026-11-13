@@ -156,6 +156,13 @@ async function watch(ms: number) {
   }
 }
 
+// A navigator with `props` over jsdom's own. Its getters need a real Navigator for `this`,
+// so the ones the shell reads (the install hint's `userAgent`) are copied over.
+function stubNavigator(props: object) {
+  const own = Object.create(navigator, { userAgent: { value: navigator.userAgent } }) as Navigator
+  vi.stubGlobal('navigator', Object.assign(own, props))
+}
+
 function renderAt(path: string) {
   const queryClient = createQueryClient()
   const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries: [path] }))
@@ -230,7 +237,7 @@ describe('the blocks before the class', () => {
     ['an iPhone', { audioSession: { type: 'auto' }, maxTouchPoints: 5 }, true],
     ['an Android phone', { maxTouchPoints: 5 }, false],
   ])('says before the class whether the silent switch mutes the timer: %s', async (_what, props, shown) => {
-    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, props))
+    stubNavigator(props)
     stubApi()
     renderAt('/admin/clases/s1/timer')
     await screen.findByRole('form', { name: copy.editor.title })
@@ -472,7 +479,7 @@ describe('the running class', () => {
 
   it('warns again at 10 s after "+1 min" given inside the warning', async () => {
     const vibrate = vi.fn()
-    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, { vibrate }))
+    stubNavigator({ vibrate })
     stubApi()
     await startClass()
     await watch(9 * 60_000 + 52_000)
@@ -551,7 +558,7 @@ describe('fight and rest', () => {
 
   it('signals a block change, a round stopping for the rest, and a round starting, each its own way', async () => {
     const vibrate = vi.fn()
-    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, { vibrate }))
+    stubNavigator({ vibrate })
     stubApi()
     await startClass()
 
@@ -567,7 +574,7 @@ describe('fight and rest', () => {
 
   it('counts down the last 3 seconds of a round and of a rest with a short beep each', async () => {
     const vibrate = vi.fn()
-    vi.stubGlobal('navigator', Object.assign(Object.create(navigator) as Navigator, { vibrate }))
+    stubNavigator({ vibrate })
     stubApi()
     await startClass()
     await watch(10 * 60_000 + 4 * 60_000 + 56_000)

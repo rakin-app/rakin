@@ -2626,6 +2626,14 @@ export const es = {
     waiting: 'Sin conexión: se guardará cuando vuelva la señal.',
     refused: 'Sin conexión: no se guardó. Inténtalo de nuevo cuando vuelva la señal.',
   },
+  // iOS Safari, outside the installed app (#68): Compartir, then "Agregar a inicio".
+  installHint: {
+    label: 'Agregar a inicio',
+    title: 'Agrega Rakin a tu pantalla de inicio',
+    before: 'Toca Compartir ',
+    after: ' y luego «Agregar a inicio». Se abre como una app.',
+    close: 'Cerrar',
+  },
   notFound: {
     title: 'Página no encontrada',
     body: 'La dirección que abriste no existe.',
