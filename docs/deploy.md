@@ -94,7 +94,7 @@ git tag -s v0.1.0 -m v0.1.0 && git push origin v0.1.0
 1. tags `rakin-api:sha-<commit>` and `rakin-web:sha-<commit>` as `v0.1.0` (no rebuild: what ran in CI is what ships), waiting for `images.yml` if the tag beat it;
 2. copies that tag's `docker-compose.yml`, `deploy.sh`, `smoke.sh` and `restore.sh` to `/srv/rakin`;
 3. runs `./deploy.sh v0.1.0` there: `docker compose pull`, then `docker compose run --rm migrate` (`python -m app.db_bootstrap && alembic upgrade head`), and only once that succeeds `docker compose up -d --wait`. A failed migration leaves the running release untouched;
-4. runs `deploy/smoke.sh https://staging.rakin.app`.
+4. runs `deploy/smoke.sh https://staging.rakin.app`. On a first deploy Caddy may still be waiting for its Let's Encrypt certificate, so while `/healthz` fails to connect, handshake or answer in time, the smoke test waits up to 90 s (`SMOKE_TLS_WAIT`) before checking. An HTTP failure such as a 503 is never waited for.
 
 `deploy.sh` records the live tag as `RAKIN_TAG` in `.env`, so `docker compose ps`, `logs`, `exec` and so on in `/srv/rakin` target the live release, and appends each run to `/srv/rakin/releases.log`.
 
