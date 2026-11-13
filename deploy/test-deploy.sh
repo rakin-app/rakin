@@ -77,4 +77,41 @@ check "a first deploy is logged with no previous tag" last_release_is "$(printf 
 FAIL_ON="image prune" check "a failed image prune does not fail the deploy" run v2
 check "a failed image prune still records the release" tag_in_env v2
 
+# smoke.sh, against a fake `curl` that fails the handshake (exit 35) for its
+# first $TLS_FAILS calls, then serves a healthy stack, with /healthz
+# answering $HEALTHZ with $HEALTHZ_BODY.
+mkdir "$dir/bin"
+cat >"$dir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+n=$(($(cat "$(dirname "$0")/n" 2>/dev/null || echo 0) + 1))
+echo "$n" >"$(dirname "$0")/n"
+[ "$n" -gt "${TLS_FAILS:-0}" ] || { echo "curl: (35) TLS connect error" >&2; exit 35; }
+out=/dev/null fmt= url=
+while [ $# -gt 0 ]; do
+  case $1 in -o) out=$2; shift ;; -w) fmt=$2; shift ;; -*) ;; *) url=$1 ;; esac
+  shift
+done
+case $url in
+  */healthz) code=${HEALTHZ:-200}; body=${HEALTHZ_BODY:-'{"database":"ok"}'} ;;
+  */api/*) code=401; body= ;;
+  */assets/*) code=200; body= ;;
+  *) code=200; body='<div id="root"></div><script src="/assets/index.js"></script>' ;;
+esac
+printf '%s' "$body" >"$out"
+[[ $fmt == *content_type* ]] && printf '%s text/javascript' "$code" || printf '%s' "$code"
+SH
+chmod +x "$dir/bin/curl"
+smoke() { rm -f "$dir/bin/n"; PATH="$dir/bin:$PATH" SMOKE_RETRY_SECONDS=0 "$src/smoke.sh" https://stage.test >"$dir/out" 2>&1; }
+refused_smoke() { ! smoke; }
+
+check "smoke passes a healthy stack" smoke
+check "a healthy stack is not waited for" not_said "waiting for TLS"
+TLS_FAILS=3 check "smoke waits for a certificate that arrives" smoke
+check "the wait is announced once" [ "$(grep -c 'waiting for TLS on https://stage.test' "$dir/out")" = 1 ]
+HEALTHZ=503 check "a 503 still fails smoke" refused_smoke
+check "a 503 is not waited for" not_said "waiting for TLS"
+HEALTHZ_BODY='{"database":"down"}' check "a wrong /healthz body still fails smoke" refused_smoke
+check "a wrong body is not waited for" not_said "waiting for TLS"
+TLS_FAILS=1000 SMOKE_TLS_WAIT=0 check "smoke gives up on a certificate that never arrives" refused_smoke
+
 exit "$fails"

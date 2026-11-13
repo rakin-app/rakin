@@ -29,6 +29,25 @@ expect() { # expect <description> <path> <status> [<body substring>]
 	fi
 }
 
+# On a first deploy Caddy is up before Let's Encrypt has issued its
+# certificate, and the handshake fails (curl exit 35) for a few seconds. So
+# while /healthz fails to connect or to handshake (7, 35) or times out (28),
+# wait up to SMOKE_TLS_WAIT seconds. Any HTTP answer, a 503 included, ends the
+# wait at once: the checks below judge it.
+wait_for_tls() {
+	local deadline=$((SECONDS + ${SMOKE_TLS_WAIT:-90})) rc waited=
+	while :; do
+		rc=0
+		curl -sS --max-time 15 -o /dev/null "$base/healthz" 2>/dev/null || rc=$?
+		case $rc in 7 | 28 | 35) ;; *) return 0 ;; esac
+		[ "$SECONDS" -lt "$deadline" ] || return 0
+		[ -n "$waited" ] || echo "waiting for TLS on $base (curl exit $rc) ..."
+		waited=1
+		sleep "${SMOKE_RETRY_SECONDS:-3}"
+	done
+}
+wait_for_tls
+
 expect "healthz: the api answers and reaches Postgres" /healthz 200 '"database":"ok"'
 expect "the SPA is served" / 200 '<div id="root">'
 expect "a client-side route gets the SPA" /alumnos 200 '<div id="root">'
