@@ -23,6 +23,9 @@ from app.db import create_engine, create_sessionmaker
 from app.integrations.mailer import Email, MailDeliveryError
 from app.main import create_app
 from app.notices import (
+    FREEZE_APPROVED,
+    FREEZE_REJECTED,
+    FREEZE_REQUESTED,
     JOIN_APPROVED,
     MAGIC_LINK,
     PROOF_RECEIVED,
@@ -79,6 +82,9 @@ TEMPLATES = [
     PROOF_REJECTED,
     STAFF_INVITE,
     JOIN_APPROVED,
+    FREEZE_REQUESTED,
+    FREEZE_APPROVED,
+    FREEZE_REJECTED,
 ]
 
 
@@ -218,6 +224,8 @@ def test_every_notice_but_the_sign_in_link_carries_a_page_link() -> None:
         "proof_rejected",
         "staff_invite",
         "join_approved",
+        "freeze_approved",
+        "freeze_rejected",
     ]
 
 

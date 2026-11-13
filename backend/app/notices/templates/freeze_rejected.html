@@ -1,0 +1,10 @@
+{% extends "_layout.html" %}
+{% block title %}{{ gym }} no aprobó tu congelamiento{% endblock %}
+{% block body %}
+<p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+<p style="margin:0 0 16px;">{{ gym }} no aprobó congelar {% if dependent_name %}el plan de {{ dependent_name }}{% else %}tu plan{% endif %} del {{ from_date | fecha }} al {{ to_date | fecha }}.</p>
+{% if note %}
+<p style="margin:0 0 16px;padding:12px 16px;background:#fafafa;border-left:3px solid #d4d4d8;white-space:pre-line;">{{ note }}</p>
+{% endif %}
+<p style="margin:0;">El plan sigue activo. Si tienes dudas, habla con la academia.</p>
+{% endblock %}

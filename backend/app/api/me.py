@@ -3,7 +3,8 @@
 Any session in a gym may use it, staff or member, since it answers only about the
 person acting: their staff role, if any, a guardian's dependents (migration 0010), and
 the student page itself (#65), their time on the mat (#141), and the classes they and
-their dependents attended, with hours per tag (#243).
+their dependents attended, with hours per tag (#243). Asking for a freeze is
+`app.api.freeze_requests` (#270).
 """
 
 import uuid
@@ -18,6 +19,7 @@ from app.api.activities import gym_uses_grades
 from app.api.attendance import attended
 from app.api.class_tags import month_of, tag_hours, tags_of_session, year_of
 from app.api.extra_charges import open_lines
+from app.api.freeze_requests import my_plans
 from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
 from app.api.proofs import OPEN_PERIODS, PAYABLE, payable_params, to_open_period
@@ -265,7 +267,7 @@ async def my_page(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
 ) -> MyPage:
     """The student page: what is due next and where to pay it, what was paid, the
-    person's rank and their classes."""
+    person's rank and their classes, and their running plans with any freeze request."""
     gym = (
         await session.execute(
             text(
@@ -325,6 +327,7 @@ async def my_page(
         attendance=MyAttendance(this_month=this_month, total=total),
         payments=[MyPayment.model_validate(dict(row._mapping)) for row in payments],
         extra_charges=await open_lines(session, tenant.person_id),
+        plans=await my_plans(session, tenant),
     )
 
 

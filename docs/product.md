@@ -59,6 +59,7 @@ v1 is one gym (the pilot), v2 unlocks when five gyms are running it, v3 only whe
 | Ledger | card / Mercado Pago checkout as plugin |  | ✓ |  |
 | Ledger | monthly CSV/XLSX export for the accountant | ✓ |  |  |
 | Membership | freeze / pause with automatic due-date shift and reason | ✓ |  |  |
+| Membership | student asks for a freeze from their page (injury, travel); owner or admin approves or rejects | ✓ |  |  |
 | Membership | trial → conversion tracking | ✓ |  |  |
 | Membership | signed membership badge (QR, public verify page) | ✓ |  |  |
 | Classes | class types with program (adults, kids) and credit cost | ✓ |  |  |

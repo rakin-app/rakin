@@ -5,6 +5,7 @@ import { useGrades } from '../api/activities'
 import { personAttendanceQuery } from '../api/attendance'
 import { personTagHoursQuery, type Stretch } from '../api/classTags'
 import { familyQuery } from '../api/family'
+import { freezeRequestsQuery } from '../api/freezeRequests'
 import { ApiError } from '../api/client'
 import {
   awardGrade,
@@ -60,9 +61,10 @@ import { Grid, PageContainer } from '../components/Layout'
 import { MemberMatTime } from '../components/MatTime'
 import { TagHoursCard } from '../components/TagHours'
 import { EmailReminder } from '../components/EmailReminder'
+import { FreezeRequestRow } from '../components/FreezeRequests'
 import { ReminderLink } from '../components/ReminderLink'
 import { StatusPill } from '../components/StatusPill'
-import { isoDay, monthName, monthYear, shortDay } from '../format'
+import { addDays, isoDay, monthName, monthYear, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { FamilyPanel } from './FamilyPanel'
@@ -84,7 +86,8 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * stands, their graduación and family, and, for whoever reads the ledger, what they
  * owe, their ledger with its freezes, "Registrar pago", "Congelar" (#26), "Ajuste"
  * and "Devolver" (#38), and "Cambiar plan"; with no plan running, "Asignar plan", and
- * what an earlier plan still owes as "Deuda anterior" (#249).
+ * what an earlier plan still owes as "Deuda anterior" (#249). A freeze the member asked
+ * for from their page waits on the plan card, with "Aprobar" and "Rechazar" (#270).
  * A coach sees the member, their plan and rank, whether it is frozen, and promotes
  * them; never money.
  *
@@ -307,6 +310,7 @@ function Standing({
             {copy.freezeBooked(shortDay(membership.freeze.from_date), shortDay(membership.freeze.to_date))}
           </p>
         )}
+        {money && <PlanFreezeRequest membershipId={membership.id} />}
         {membership.voided_at && membership.void_reason && (
           <p className="member__detail">{copy.voidedBanner(membership.void_reason, shortDay(isoDay(membership.voided_at)))}</p>
         )}
@@ -328,6 +332,28 @@ function Standing({
       {earlier}
       {data && <Ledger ledger={data} />}
     </>
+  )
+}
+
+/** The freeze the member asked for from their page (#270), waiting on this plan, with the
+ * same "Aprobar" and "Rechazar" as on Hoy; then what was done. */
+function PlanFreezeRequest({ membershipId }: { membershipId: string }) {
+  const requests = useQuery(freezeRequestsQuery)
+  const [done, setDone] = useState<string | null>(null)
+  const request = requests.data?.find((r) => r.membership_id === membershipId)
+  if (!request) {
+    return (
+      done && (
+        <p className="member__done" role="status">
+          {done}
+        </p>
+      )
+    )
+  }
+  return (
+    <div className="member__freeze-request">
+      <FreezeRequestRow request={request} onDone={setDone} />
+    </div>
   )
 }
 
@@ -716,13 +742,6 @@ function VoidPlanForm({
       </div>
     </form>
   )
-}
-
-// The day `days` after `day`, both as `2026-11-10`.
-function addDays(day: string, days: number): string {
-  const next = new Date(`${day}T00:00:00Z`)
-  next.setUTCDate(next.getUTCDate() + days)
-  return next.toISOString().slice(0, 10)
 }
 
 /** A change to a freeze: the membership and its ledger are read again after it. */

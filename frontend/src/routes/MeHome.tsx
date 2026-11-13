@@ -16,6 +16,7 @@ import { TagList } from '../components/Tags'
 import { t } from '../i18n/es'
 import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
+import { MyPlans } from './MyPlans'
 import { ProofUpload } from './ProofUpload'
 
 const copy = t.me
@@ -23,8 +24,8 @@ const copy = t.me
 /**
  * "Mi página", the student page: what is due next and where to transfer it,
  * the proof upload, their belt and classes, their time on the mat, what their classes
- * were about and their hours per tag (theirs and each dependent's, #243), and the
- * payments already sent with how each was reviewed. From 1024px it is two columns: the payment
+ * were about and their hours per tag (theirs and each dependent's, #243), their plans
+ * with "Pedir congelamiento" (#270), and the payments already sent with how each was reviewed. From 1024px it is two columns: the payment
  * and its upload, and beside them the rest.
  */
 export function MeHome() {
@@ -64,6 +65,7 @@ export function MeHome() {
           <div className="me-home__column">
             <NextPayment page={page.data} />
             <ExtraCharges page={page.data} />
+            <MyPlans page={page.data} />
           </div>
           <div className="me-home__column">
             <Training page={page.data} />

@@ -277,14 +277,14 @@ export function recordRefund(body: RefundRecord): Promise<RecordedRefund> {
 }
 
 // `from_date` is today when omitted; a later day books the freeze ahead.
-export type FreezeRequest = { from_date?: string; to_date: string; reason: string }
+export type FreezeCreate = { from_date?: string; to_date: string; reason: string }
 
 function freezePath(membershipId: string): string {
   return `/api/memberships/${encodeURIComponent(membershipId)}/freeze`
 }
 
 /** Freeze from `from_date` until `to_date`: the due date moves past the frozen days as it starts. */
-export function freezeMembership(membershipId: string, body: FreezeRequest): Promise<Membership> {
+export function freezeMembership(membershipId: string, body: FreezeCreate): Promise<Membership> {
   return apiFetch<Membership>(freezePath(membershipId), { method: 'POST', body: JSON.stringify(body) })
 }
 

@@ -18,6 +18,7 @@ import { Button, buttonClass } from '../components/Button'
 import { EmptyState } from '../components/Card'
 import { Select } from '../components/Field'
 import { WhatsAppIcon } from '../components/icons'
+import { FreezeRequests } from '../components/FreezeRequests'
 import { JoinRequests } from '../components/JoinRequests'
 import { Grid, PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -49,7 +50,8 @@ const OVERDUE_SHOWN = 3
  *
  * Money, so for whoever reads the ledger only. A coach's Hoy is today's classes, each a
  * tap from its attendance, and the join link's requests a coach can act on (#178). The
- * join link's requests come first for an owner or admin (#154).
+ * join link's requests come first for an owner or admin (#154), then the freezes students
+ * asked for from their page (#270).
  *
  * Each overdue row has its WhatsApp reminder beside "Pagó", saying which one it is
  * ("2.º aviso") and standing out when the gym's cadence says the next is due; "Por
@@ -171,6 +173,7 @@ function OwnerToday() {
       </div>
       <Grid className="today__grid">
         <JoinRequests />
+        <FreezeRequests />
         <section id="validar" className="today__section" aria-labelledby="validar-title">
           <SectionHead
             id="validar-title"

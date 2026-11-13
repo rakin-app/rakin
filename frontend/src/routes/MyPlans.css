@@ -1,0 +1,105 @@
+/* "Mi plan" (#270): each running plan as a card, its freeze and "Pedir congelamiento". */
+.my-plans {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.my-plans__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.my-plans__row,
+.my-plans__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.my-plans__row {
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.my-plans__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.my-plans__name {
+  min-width: 0;
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.my-plans__detail,
+.my-plans__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.my-plans__note {
+  white-space: pre-line;
+}
+
+.my-plans__request {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: var(--space-3);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.my-plans__request--rejected {
+  border-color: var(--color-danger-soft);
+}
+
+.my-plans__state {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* The two dates side by side where they fit, one under the other at 390px. */
+.my-plans__dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.my-plans__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.my-plans__label {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.my-plans__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+.my-plans__actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: var(--space-2);
+}

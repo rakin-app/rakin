@@ -4,6 +4,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
+import type { FreezeRequest } from '../api/freezeRequests'
 import type { InactiveMember } from '../api/inactive'
 import type { PaymentReminder } from '../api/reminders'
 import type { ProofReview } from '../api/review'
@@ -182,6 +183,8 @@ type Stub = {
   setup?: Setup
   // The checklist's member count fails.
   setupFails?: boolean
+  // The freezes students asked for (#270).
+  freezeRequests?: FreezeRequest[]
 }
 
 type Setup = {
@@ -227,8 +230,10 @@ function stubApi({
   setup,
   setupFails = false,
   roleFails = false,
+  freezeRequests = [],
 }: Stub = {}) {
   const calls: Call[] = []
+  let asked = freezeRequests
   let current = overdue
   let away = inactive
   let toRemind = reminders
@@ -279,6 +284,14 @@ function stubApi({
     if (path === '/api/sessions/unmarked') return unmarked ?? { body: UNMARKED }
     if (path === '/api/sessions') return today ?? { body: TODAY }
     if (path === '/api/join-requests') return { body: { items: [], total: 0 } }
+    if (path === '/api/freeze-requests') return role === 'coach' ? { status: 403, body: {} } : { body: asked }
+    const answered = /^\/api\/freeze-requests\/(.+)\/(approve|reject)$/.exec(path)
+    if (answered && method === 'POST') {
+      const request = asked.find((r) => r.id === decodeURIComponent(answered[1]!))!
+      asked = asked.filter((r) => r !== request)
+      if (answered[2] === 'reject') return { body: { ...request, status: 'rejected' } }
+      return { body: { id: request.membership_id, freeze: { to_date: request.to_date, started: true } } }
+    }
     const nudged = /^\/api\/inactive\/(.+)\/nudge$/.exec(path)
     if (nudged && method === 'POST') {
       const sentAt = new Date().toISOString()
@@ -832,5 +845,87 @@ describe('Configura tu academia', () => {
     await section(copy.classes.title)
     expect(screen.queryByRole('region', { name: copy.setup.title })).not.toBeInTheDocument()
     expect(calls.some((c) => c.path === '/api/staff' || c.path === '/api/gym/settings')).toBe(false)
+  })
+})
+
+const ASKED: FreezeRequest = {
+  id: 'fr-1',
+  membership_id: 'm-sofia',
+  person_id: 'sofia',
+  person_name: 'Sofía Reyes',
+  requested_by: 'sofia',
+  requested_by_name: 'Sofía Reyes',
+  plan_name: 'Mensual adultos',
+  from_date: '2099-11-20',
+  to_date: '2099-12-04',
+  reason: 'lesion',
+  note: 'Esguince',
+  status: 'pending',
+  decision_note: null,
+  decided_at: null,
+  created_at: '2026-11-13T12:00:00Z',
+}
+
+describe('Hoy: freeze requests (#270)', () => {
+  const freezes = es.admin.freezeRequests
+
+  it('lists each with its dates and reason, linking to the ficha', async () => {
+    stubApi({ freezeRequests: [ASKED] })
+    renderToday()
+
+    const asked = await section(freezes.title(1))
+    expect(within(asked).getByRole('link', { name: 'Sofía Reyes' })).toHaveAttribute('href', '/admin/alumnos/sofia')
+    expect(within(asked).getByText(`Mensual adultos · ${freezes.dates('20 nov', '4 dic')}`)).toBeInTheDocument()
+    expect(within(asked).getByText('Lesión · Esguince')).toBeInTheDocument()
+  })
+
+  it('approves on the dates asked, or others the admin picks', async () => {
+    const calls = stubApi({ freezeRequests: [ASKED] })
+    renderToday()
+    const asked = await section(freezes.title(1))
+
+    await userEvent.click(within(asked).getByRole('button', { name: freezes.approveLabel('Sofía Reyes') }))
+    const form = within(asked).getByRole('form', { name: freezes.approveLabel('Sofía Reyes') })
+    expect(within(form).getByLabelText(freezes.until)).toHaveValue('2099-12-04')
+    await userEvent.clear(within(form).getByLabelText(freezes.until))
+    await userEvent.type(within(form).getByLabelText(freezes.until), '2099-12-11')
+    await userEvent.click(within(form).getByRole('button', { name: freezes.confirmApprove }))
+
+    expect(await within(asked).findByRole('status')).toHaveTextContent(freezes.approved('Sofía Reyes', '4 dic'))
+    expect(calls.find((c) => c.path === '/api/freeze-requests/fr-1/approve')?.body).toEqual({ to_date: '2099-12-11' })
+    expect(within(asked).queryByRole('listitem')).not.toBeInTheDocument()
+  })
+
+  it('rejects with a note for the student', async () => {
+    const calls = stubApi({ freezeRequests: [ASKED] })
+    renderToday()
+    const asked = await section(freezes.title(1))
+
+    await userEvent.click(within(asked).getByRole('button', { name: freezes.rejectLabel('Sofía Reyes') }))
+    const form = within(asked).getByRole('form', { name: freezes.rejectLabel('Sofía Reyes') })
+    await userEvent.type(within(form).getByLabelText(freezes.note), 'Conversemos primero')
+    await userEvent.click(within(form).getByRole('button', { name: freezes.confirmReject }))
+
+    expect(await within(asked).findByRole('status')).toHaveTextContent(freezes.rejected('Sofía Reyes'))
+    expect(calls.find((c) => c.path === '/api/freeze-requests/fr-1/reject')?.body).toEqual({
+      note: 'Conversemos primero',
+    })
+  })
+
+  it('shows nothing while none wait', async () => {
+    stubApi()
+    renderToday()
+
+    await section(copy.proofs.title)
+    expect(screen.queryByRole('region', { name: /congelamiento/ })).not.toBeInTheDocument()
+  })
+
+  it('is not asked for on a coach\'s Hoy', async () => {
+    const calls = stubApi({ role: 'coach', freezeRequests: [ASKED] })
+    renderToday()
+
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByRole('region', { name: /congelamiento/ })).not.toBeInTheDocument()
+    expect(calls.some((c) => c.path === '/api/freeze-requests')).toBe(false)
   })
 })

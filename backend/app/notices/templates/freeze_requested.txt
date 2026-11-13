@@ -1,0 +1,10 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+{% if requester_name != member_name %}{{ requester_name }} pide congelar el plan {{ plan_name }} de {{ member_name }}{% else %}{{ member_name }} pide congelar su plan {{ plan_name }}{% endif %} desde el {{ from_date | fecha }}; vuelve el {{ to_date | fecha }}.
+
+Motivo: {{ reason }}{% if note %} · {{ note }}{% endif %}
+
+Apruébala o recházala en su ficha: {{ app_url }}/admin/alumnos/{{ member_id }}
+{% endblock %}
