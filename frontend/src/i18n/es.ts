@@ -129,8 +129,11 @@ export const es = {
           `Venció hace ${days === 1 ? '1 día' : `${days} días`} · ${amount} · ${plan}`,
         // A debt outlives its plan (#207): the row says what became of the membership.
         membership: { lapsed: 'plan caducado', cancelled: 'dado de baja', frozen: 'congelado' } as Statuses,
+        // A member owing on several periods, of one plan or more: one row, the total (#271).
+        periods: (n: number, amount: string) => `${n} cobros vencidos · ${amount}`,
         paid: 'Pagó',
         paidLabel: (name: string) => `Registrar el pago de ${name}`,
+        periodOf: (name: string, plan: string, month: string) => `${name}, ${plan} de ${month}`,
         method: 'Medio de pago',
         submit: (amount: string) => `Registrar ${amount}`,
         cancel: 'Cancelar',
@@ -683,6 +686,10 @@ export const es = {
         cancel: 'Cancelar',
         working: 'Guardando…',
         done: (plan: string) => `Plan asignado: ${plan}.`,
+        // Said before saving, when a lapsed plan still owes or has billed past the day asked (#271).
+        debt: (amount: string) => `Debe ${amount} de un plan anterior. Queda como deuda anterior: se cobra aparte del nuevo plan.`,
+        moved: (billed: string, starts: string) =>
+          `El plan anterior ya cobró hasta el ${billed}: el nuevo empieza el ${starts}, para no cobrar dos veces los mismos días.`,
         failed: 'No pudimos asignar el plan. Inténtalo de nuevo.',
       },
       changePlan: 'Cambiar plan',
@@ -759,7 +766,11 @@ export const es = {
         direction: 'Tipo de ajuste',
         directions: { favor: 'Descuento: resta de lo que debe', owed: 'Recargo: suma a lo que debe' },
         period: 'Período',
-        periodOption: (month: string, amount: string) => `${month} · ${amount} por pagar`,
+        // A charge voided says so, and how much (#271).
+        periodOption: (month: string, amount: string, voided: string | null) =>
+          voided ? `${month} · ${amount} por pagar · anulado ${voided}` : `${month} · ${amount} por pagar`,
+        // Putting back a charge voided by mistake (#271).
+        restoreHint: (amount: string) => `Este cargo se anuló. Si fue por error, un recargo de ${amount} lo vuelve a cobrar.`,
         amount: 'Monto (CLP)',
         note: 'Motivo',
         // No sign on the button: the word says which way it goes (#210).

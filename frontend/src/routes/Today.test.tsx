@@ -376,6 +376,44 @@ describe('Hoy', () => {
     expect(within(overdue).getByText('Venció hace 20 días · $45.000 · Mensual adultos · dado de baja')).toBeInTheDocument()
   })
 
+  it('lists a member owing on a lapsed plan and an active one once, with the total and both periods', async () => {
+    // Staging (#271): the lapsed plan's November and the new plan's, one member.
+    const rosa = late('Rosa Vidal', 12, 25000)
+    stubApi({
+      overdue: {
+        total_clp: 95000,
+        periods: [
+          { ...rosa, billing_period_id: 'p-old', membership_id: 'm-old', membership_status: 'lapsed' },
+          late('Felipe Díaz', 9),
+          { ...rosa, billing_period_id: 'p-new', membership_id: 'm-new', days_overdue: 2, plan_name: 'Mensual' },
+        ],
+      },
+    })
+    renderToday()
+
+    const counters = await screen.findByRole('group', { name: copy.countersLabel })
+    expect(await within(counters).findByRole('link', { name: `2 ${copy.overdue.title}` })).toBeInTheDocument()
+    const overdue = await section(copy.overdue.title)
+    const rows = await within(overdue).findAllByRole('listitem')
+    expect(rows).toHaveLength(2)
+    const [row] = rows
+    expect(within(row!).getAllByText('Rosa Vidal')).toHaveLength(1)
+    expect(within(row!).getByText(copy.overdue.periods(2, '$50.000'))).toBeInTheDocument()
+    expect(within(row!).getByText('Venció hace 12 días · $25.000 · Mensual adultos · plan caducado')).toBeInTheDocument()
+    expect(within(row!).getByText('Venció hace 2 días · $25.000 · Mensual')).toBeInTheDocument()
+    // Each period is paid on its own, and says which it is.
+    expect(
+      within(row!).getByRole('button', {
+        name: copy.overdue.paidLabel(copy.overdue.periodOf('Rosa Vidal', 'Mensual adultos', 'octubre')),
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(row!).getByRole('button', {
+        name: copy.overdue.paidLabel(copy.overdue.periodOf('Rosa Vidal', 'Mensual', 'octubre')),
+      }),
+    ).toBeInTheDocument()
+  })
+
   it('shows three overdue until asked for all', async () => {
     stubApi({ overdue: { total_clp: 180000, periods: [...OVERDUE.periods, late('Ana Rojas', 1)] } })
     renderToday()

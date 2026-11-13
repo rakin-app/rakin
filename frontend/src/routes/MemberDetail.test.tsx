@@ -118,8 +118,8 @@ const LEDGER: MembershipLedger = {
   ],
   freezes: [],
   periods: [
-    { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 45000 },
-    { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0 },
+    { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 45000, voided_clp: 0 },
+    { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0 },
   ],
   refundable_payments: [
     {
@@ -590,7 +590,7 @@ describe('Ficha de alumno', () => {
 
   it('adjusts a paid period against the member, owed on top', async () => {
     // An old period, long out of the timeline: the ledger still offers it.
-    const paid = { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0 }
+    const paid = { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0 }
     const calls = stubApi({
       ledger: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [], periods: [paid] },
       adjustment: { status: 201, body: { period: { outstanding_clp: 5000, closed: false } } },
@@ -604,7 +604,7 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByLabelText(copy.adjustForm.direction)).toHaveValue('owed')
     expect(within(form).getByRole('option', { name: copy.adjustForm.directions.favor })).toBeDisabled()
     expect(within(form).getByLabelText(copy.adjustForm.period)).toHaveTextContent(
-      copy.adjustForm.periodOption('septiembre', '$0'),
+      copy.adjustForm.periodOption('septiembre', '$0', null),
     )
     await userEvent.type(within(form).getByLabelText(copy.adjustForm.amount), '5000')
     await userEvent.type(within(form).getByLabelText(copy.adjustForm.note), 'matrícula')
@@ -690,6 +690,111 @@ describe('Ficha de alumno', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.voidRefused.paid('$20.000'))
   })
 
+  // Staging (#271): a lapsed plan and the one assigned after it, started the same day.
+  const LAPSED: Membership = { ...MONTHLY, id: 'm-old', plan_name: 'Mensual antiguo', status: 'lapsed' }
+  const NOVEMBER = { ...OCTOBER, id: 'p-old', period_start: '2026-11-01', period_end: '2026-11-30', outstanding_clp: 25000 }
+  const LAPSED_LEDGER: MembershipLedger = {
+    ...LEDGER,
+    open_periods: [NOVEMBER],
+    owed_clp: 25000,
+    entries: [],
+    periods: [{ id: 'p-old', period_start: '2026-11-01', period_end: '2026-11-30', outstanding_clp: 25000, voided_clp: 0 }],
+    refundable_payments: [],
+  }
+
+  it('shows the active plan as current, though a lapsed one comes first (#271)', async () => {
+    stubApi({
+      memberships: [LAPSED, MONTHLY],
+      extra: (path) => (path === '/api/ledger/memberships/m-old' ? { body: LAPSED_LEDGER } : undefined),
+    })
+    renderAt(PATH)
+
+    expect(await within(await money()).findByText('Mensual adultos · vence el 30')).toBeInTheDocument()
+    const debt = await screen.findByRole('region', { name: copy.earlierDebt })
+    expect(within(debt).getByText(copy.earlierDebtLine('Mensual antiguo', copy.pendingMonth('noviembre')))).toBeInTheDocument()
+  })
+
+  it("voids a lapsed plan's charge from the ficha, each charge saying its plan (#271)", async () => {
+    const calls = stubApi({
+      memberships: [MONTHLY, LAPSED],
+      extra: (path, method) => {
+        if (path === '/api/ledger/memberships/m-old') return { body: LAPSED_LEDGER }
+        if (path === '/api/ledger/voids' && method === 'POST') {
+          return { status: 201, body: { period: { outstanding_clp: 0, closed: true } } }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+    const card = await money()
+    await screen.findByRole('region', { name: copy.earlierDebt })
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.voidCharge }))
+    const form = screen.getByRole('form', { name: copy.voidForm.title })
+    expect(within(form).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      `Mensual adultos · Activo · ${copy.voidForm.periodOption('octubre', '$45.000')}`,
+      `Mensual antiguo · Caducado · ${copy.voidForm.periodOption('noviembre', '$25.000')}`,
+    ])
+    await userEvent.selectOptions(within(form).getByLabelText(copy.voidForm.period), 'p-old')
+    await userEvent.type(within(form).getByLabelText(copy.voidForm.reason), 'duplicado')
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidForm.submit('$25.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.voidForm.done('noviembre', '$25.000'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/ledger/voids',
+        body: { membership_id: 'm-old', billing_period_id: 'p-old', reason: 'duplicado' },
+      },
+    ])
+  })
+
+  it("names the lapsed plan on its charge, though it is the only one to void (#271)", async () => {
+    stubApi({
+      memberships: [MONTHLY, LAPSED],
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [] },
+      extra: (path) => (path === '/api/ledger/memberships/m-old' ? { body: LAPSED_LEDGER } : undefined),
+    })
+    renderAt(PATH)
+    const card = await money()
+    await screen.findByRole('region', { name: copy.earlierDebt })
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.voidCharge }))
+    const form = screen.getByRole('form', { name: copy.voidForm.title })
+    expect(within(form).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      `Mensual antiguo · Caducado · ${copy.voidForm.periodOption('noviembre', '$25.000')}`,
+    ])
+  })
+
+  it('offers a "Recargo" to put back a charge voided by mistake (#271)', async () => {
+    const voided = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000 }
+    const calls = stubApi({
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [voided] },
+      adjustment: { status: 201, body: { period: { outstanding_clp: 45000, closed: false } } },
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
+    const form = screen.getByRole('form', { name: copy.adjustForm.title })
+    expect(within(form).getByLabelText(copy.adjustForm.direction)).toHaveValue('owed')
+    expect(within(form).getByLabelText(copy.adjustForm.period)).toHaveTextContent(
+      copy.adjustForm.periodOption('octubre', '$0', '$45.000'),
+    )
+    expect(within(form).getByText(copy.adjustForm.restoreHint('$45.000'))).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.adjustForm.amount), '45000')
+    await userEvent.type(within(form).getByLabelText(copy.adjustForm.note), 'anulado por error')
+    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit(false, '$45.000') }))
+
+    await screen.findByRole('status')
+    expect(calls.filter((c) => c.method === 'POST')[0]?.body).toEqual({
+      membership_id: 'm-felipe',
+      billing_period_id: 'p-oct',
+      amount_clp: -45000,
+      note: 'anulado por error',
+    })
+  })
+
   it('voids a plan started by mistake (#256)', async () => {
     const calls = stubApi({
       extra: (path, method) =>
@@ -739,7 +844,7 @@ describe('Ficha de alumno', () => {
             voided: { reason: 'alumno de prueba', by_name: 'Martín', at: '2026-11-08T12:00:00Z' },
           }),
         ],
-        periods: [{ id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0 }],
+        periods: [{ id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 0 }],
       },
     })
     renderAt(PATH)
@@ -1986,6 +2091,15 @@ describe('the plan from the ficha (#249)', () => {
       extra: (path, method, body) => {
         if (path === '/api/plans') return { body: PLANS }
         if (path === '/api/people/felipe/welcome') return { body: { to, guardian: null, last: null } }
+        // A lapsed plan still owing October, billed through Nov 29: the new one starts after it (#271).
+        if (path === '/api/memberships/start') {
+          const lapsed = members.some((m) => m.status === 'lapsed')
+          return {
+            body: lapsed
+              ? { starts_on: '2026-11-30', billed_through: '2026-11-29', debt_clp: 45000 }
+              : { starts_on: '2026-11-10', billed_through: null, debt_clp: 0 },
+          }
+        }
         if (path === '/api/memberships' && method === 'GET') return { body: members }
         if (path === '/api/memberships' && method === 'POST') {
           const { plan_id } = body as { plan_id: string }
@@ -2064,6 +2178,20 @@ describe('the plan from the ficha (#249)', () => {
         send_welcome: false,
       }),
     )
+  })
+
+  it('warns of a lapsed plan\'s debt, and of the day the new plan starts after it, before saving (#271)', async () => {
+    const calls = planless([{ ...MONTHLY, status: 'lapsed' }])
+    renderAt(PATH)
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    const form = screen.getByRole('form', { name: assign.title })
+    expect(within(form).queryByText(assign.debt('$45.000'))).not.toBeInTheDocument()
+    await userEvent.selectOptions(await within(form).findByLabelText(assign.plan), 'plan-adults')
+
+    expect(await within(form).findByText(assign.debt('$45.000'))).toBeInTheDocument()
+    expect(within(form).getByText(assign.moved(shortDay('2026-11-29'), shortDay('2026-11-30')))).toBeInTheDocument()
+    expect(calls.some((c) => c.path === '/api/memberships/start')).toBe(true)
   })
 
   it('keeps a lapsed plan\'s unpaid charge on the ficha once a new plan starts', async () => {

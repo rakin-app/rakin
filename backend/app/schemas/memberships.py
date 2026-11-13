@@ -83,6 +83,17 @@ class PlanChangeQuote(BaseModel):
     amount_due_clp: int
 
 
+class StartQuote(BaseModel):
+    """What starting a plan would do, before it is saved (#271): the day it starts, and
+    `billed_through`, the last day a lapsed plan of the person billed, when the start
+    moved past it so no day is billed twice; `debt_clp`, what the lapsed plans still
+    owe on periods due by today ("Deuda anterior")."""
+
+    starts_on: date
+    billed_through: date | None
+    debt_clp: int
+
+
 class Cancellation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

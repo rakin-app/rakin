@@ -126,7 +126,9 @@ Rules the diagram does not show:
 - A member who leaves (dado de baja) has every membership cancelled with the reason `dado de baja`, a trial or a frozen one too; what they owe stays owed, nothing starts them on a plan again until they are reactivated, and reactivating them starts a new membership if they need one.
 - The nightly job starts the freezes booked for the day and ends the freezes due (Frozen → Active on to\_date), generates billing periods 7 days ahead (a membership starting, or a member paying months ahead, is billed by the request instead, and the job bills on after it), flips Active → Lapsed after grace, and expires credits. It is idempotent per date via `job_run`.
 - A freeze starts the day it is recorded, or is booked for a later day and starts then, and moves the due date past the frozen days as it starts, so a frozen member always reads the day they next pay. Ended early or given a new end, the due date moves again by the days it no longer lasts or gains. What was owed before the freeze is still owed.
-- A period due on day D is in grace through D + grace days and lapses the membership on the day after, if validated payments still leave it short. Each lapse writes a `lapsed` plan event.
+- A period due on day D is in grace through D + grace days and lapses the membership on the day after, if validated payments still leave it short. Each lapse writes a `lapsed` plan event. A membership created after D (a start backdated past its due date) is not due before the day it was created, so it lapses after `max(D, created on) + grace` (#271).
+- A recurring plan assigned to someone whose plan lapsed starts the day after the last day that plan billed, when the day asked for falls inside it: those days are billed once, on the lapsed plan, and what it owes stays its own ("Deuda anterior"). "Asignar plan" says so before saving (`GET /api/memberships/start`, #271).
+- A person's current membership, wherever one is picked (ficha, Alumnos, the welcome, a promotion), is one they are on now (trial, active or frozen), else one not cancelled, the latest created first (`current_first`, #271).
 
 ## Communications
 

@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import type { StaffRole } from '../api/me'
-import { changePlan, planChangeQuery, startMembership, type Membership, type Person } from '../api/member'
+import { changePlan, planChangeQuery, startMembership, startQuery, type Membership, type Person } from '../api/member'
 import { welcomeQuery } from '../api/people'
 import { plansQuery } from '../api/plans'
 import { useGymToday } from '../api/sessions'
@@ -16,6 +16,7 @@ import { useRefresh } from './PersonData'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
 
 const copy = t.admin.member
+const clp = t.common.clp
 
 // The kinds that change plan, to each other: a pack or a trial ends instead (`plan_change_starts`).
 const RECURRING = new Set(['monthly', 'prepaid'])
@@ -122,6 +123,11 @@ function AssignForm({
   const access = useQuery(welcomeQuery(person.id))
   const canWelcome = Boolean(access.data?.to)
   const plans = useQuery(plansQuery)
+  // What a lapsed plan still owes, and the day the plan starts after what it billed (#271).
+  const quote = useQuery({
+    ...startQuery(person.id, plan.plan_id, plan.started_on || today),
+    enabled: plan.plan_id !== '',
+  })
 
   const start = useSubmit({
     offline: 'refuse',
@@ -153,6 +159,16 @@ function AssignForm({
     <form className="member__form" aria-label={form.title} onSubmit={submit} noValidate>
       <p className="member__detail">{form.intro}</p>
       <PlanStart choice={plan} today={today} labels={form} onChange={setPlan} />
+      {plan.plan_id && quote.data && (quote.data.debt_clp > 0 || quote.data.billed_through) && (
+        <div className="member__warning" role="status">
+          {quote.data.debt_clp > 0 && <p className="member__warning-line">{form.debt(clp(quote.data.debt_clp))}</p>}
+          {quote.data.billed_through && (
+            <p className="member__warning-line">
+              {form.moved(shortDay(quote.data.billed_through), shortDay(quote.data.starts_on))}
+            </p>
+          )}
+        </div>
+      )}
       {missing && (
         <p className="member__error" role="alert">
           {form.planNeeded}

@@ -119,6 +119,22 @@ def test_an_unpaid_monthly_membership_lapses_after_the_grace(gym: Gym) -> None:
     assert events(gym, member) == [("lapsed", LAPSES_ON)]
 
 
+def test_a_plan_created_after_its_due_date_has_its_grace_from_then(gym: Gym) -> None:
+    """A plan backdated to Nov 1 on Nov 13 lapses on `max(due, created) + grace` (#271):
+    not the night it was created, but the night after its grace from Nov 13."""
+    created_on = date(2026, 11, 13)
+    member = gym.member("signup", NOV_1, created_on=created_on)
+    period(gym, member, NOV_1)
+
+    run_lapse(gym.db, created_on)
+    run_lapse(gym.db, date(2026, 11, 18))
+    assert status(gym, member) == "active"
+
+    run_lapse(gym.db, date(2026, 11, 19))
+    assert status(gym, member) == "lapsed"
+    assert events(gym, member) == [("lapsed", date(2026, 11, 19))]
+
+
 def test_a_paid_period_does_not_lapse(gym: Gym) -> None:
     member, period_id = monthly_due_nov_1(gym)
     entry(gym, member, period_id, 45_000)

@@ -57,7 +57,7 @@ from app.contacts import contact_for
 from app.domain import membership as domain
 from app.domain.billing import settled_amount
 from app.domain.dates import add_months, gym_today, is_minor
-from app.domain.membership import MembershipStatus, PlanKind
+from app.domain.membership import MembershipStatus, PlanKind, current_first
 from app.notices import Notices, get_notices
 from app.roles import AdminSession, OwnerSession
 from app.schemas.guardians import FamilyConflict, FamilyRefused
@@ -110,7 +110,7 @@ END_MEMBERSHIP = text(
 CURRENT_PLAN = text(
     "SELECT pl.name FROM membership m JOIN plan pl ON pl.id = m.plan_id"
     " WHERE m.person_id = :id AND m.status <> 'cancelled'"
-    " ORDER BY m.started_at DESC, m.created_at DESC LIMIT 1"
+    f" ORDER BY {current_first('m')} LIMIT 1"
 )
 
 # The latest welcome about them, to `to`: a guardian's names the dependent in
