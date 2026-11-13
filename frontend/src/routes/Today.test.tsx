@@ -88,6 +88,9 @@ const remind = (name: string, extra: Partial<PaymentReminder> = {}): PaymentRemi
   reminders_sent: 0,
   reminded_at: null,
   reminder_due: true,
+  can_email: false,
+  emailed_at: null,
+  emailed_today: false,
   ...extra,
 })
 
@@ -254,6 +257,14 @@ function stubApi({
     if (path === '/api/ledger/overdue') return { body: current }
     if (path === '/api/inactive') return { body: away }
     if (path === '/api/reminders') return { body: toRemind }
+    const emailed = /^\/api\/reminders\/(.+)\/email$/.exec(path)
+    if (emailed && method === 'POST') {
+      const sentAt = new Date().toISOString()
+      const id = decodeURIComponent(emailed[1]!)
+      const row = toRemind.find((r) => r.billing_period_id === id)!
+      toRemind = toRemind.map((r) => (r === row ? { ...r, emailed_at: sentAt, emailed_today: true } : r))
+      return { status: 201, body: { sent_at: sentAt, contact_name: row.contact_name } }
+    }
     const reminded = /^\/api\/reminders\/(.+)$/.exec(path)
     if (reminded && method === 'POST') {
       const sentAt = new Date().toISOString()
@@ -664,6 +675,28 @@ describe('Recordatorios por WhatsApp', () => {
     expect(await within(overdue).findByRole('link', { name: words.write('Felipe Díaz', '2.º') })).toHaveClass(
       'button--ghost',
     )
+  })
+
+  it('emails the overdue reminder from the row, to the guardian for a dependent, once', async () => {
+    const calls = stubApi({
+      reminders: [
+        remind('Felipe Díaz', { can_email: true, contact_name: 'Carla Díaz' }),
+        ...REMINDERS.filter((r) => r.person_name !== 'Felipe Díaz'),
+      ],
+    })
+    renderToday()
+    const overdue = await section(copy.overdue.title)
+    const email = words.email
+
+    await userEvent.click(
+      await within(overdue).findByRole('button', { name: email.sendFor('Carla Díaz', 'Felipe Díaz') }),
+    )
+
+    expect(await within(overdue).findByText(email.sent('Carla Díaz'))).toBeInTheDocument()
+    expect(within(overdue).queryByRole('button', { name: /Enviar recordatorio/ })).not.toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual([
+      '/api/reminders/p-Felipe%20D%C3%ADaz/email',
+    ])
   })
 
   it('lists what is due today and the rejected proofs to follow up, to the guardian for a dependent', async () => {

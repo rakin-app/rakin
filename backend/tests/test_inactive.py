@@ -47,6 +47,7 @@ def test_the_nudge_greets_by_first_name_and_says_how_long() -> None:
     assert text == (
         "Hola Ignacio, te echamos de menos en Academia Sur: hace 16 días que no vienes"
         " a entrenar. ¿Todo bien? ¡Te esperamos!"
+        "\n\nRecordatorio automático · Academia Sur"
     )
 
 
@@ -61,6 +62,7 @@ def test_a_nudge_about_a_dependent_is_to_the_guardian_about_them() -> None:
     assert text == (
         "Hola Ana, echamos de menos a Tomás en Academia Sur: todavía no viene a su"
         " primera clase. ¿Todo bien? ¡Los esperamos!"
+        "\n\nRecordatorio automático · Academia Sur"
     )
 
 

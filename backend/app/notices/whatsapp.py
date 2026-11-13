@@ -4,7 +4,10 @@ v1 sends none itself: each is prefilled in a `wa.me` link (`app.integrations.mes
 that the admin opens from one of their lists, and recorded in `message_log` as they
 open it (migration 0024). Each template has a name, the row's `template`.
 
-They are short and plain text, as a WhatsApp message is, and greet by first name.
+They are short and plain text, as a WhatsApp message is, and greet by first name. Each
+ends, after a blank line, with `Recordatorio automático · <gym>` (`signed`), so it reads
+as the academy's reminder and not a personal message, although it goes from a staff
+member's phone.
 """
 
 from datetime import date
@@ -17,6 +20,16 @@ EXTRA_CHARGE_REMINDER = "extra_charge_reminder"
 
 def first_name(name: str) -> str:
     return name.split()[0] if name.split() else name
+
+
+def signature(gym_name: str) -> str:
+    """The line every reminder ends with, WhatsApp's and the overdue email's (#260)."""
+    return f"Recordatorio automático · {gym_name}"
+
+
+def signed(text: str, gym_name: str) -> str:
+    """`text`, with the gym's `signature` under it after a blank line."""
+    return f"{text}\n\n{signature(gym_name)}"
 
 
 def inactive_nudge(
@@ -32,14 +45,20 @@ def inactive_nudge(
             if attended
             else "todavía no vienes a tu primera clase"
         )
-        return f"{hello}, te echamos de menos en {gym_name}: {gap}. ¿Todo bien? ¡Te esperamos!"
+        return signed(
+            f"{hello}, te echamos de menos en {gym_name}: {gap}. ¿Todo bien? ¡Te esperamos!",
+            gym_name,
+        )
     kid = first_name(about_name)
     gap = (
         f"hace {days_absent} días que no viene a entrenar"
         if attended
         else "todavía no viene a su primera clase"
     )
-    return f"{hello}, echamos de menos a {kid} en {gym_name}: {gap}. ¿Todo bien? ¡Los esperamos!"
+    return signed(
+        f"{hello}, echamos de menos a {kid} en {gym_name}: {gap}. ¿Todo bien? ¡Los esperamos!",
+        gym_name,
+    )
 
 
 # The payment reminders (#55): on the due date, then every `reminder_every_days` while
@@ -63,10 +82,13 @@ def payment_due_today(
     *, to_name: str, about_name: str | None, gym_name: str, plan_name: str, outstanding_clp: int
 ) -> str:
     """The reminder on the due date, to them or to their guardian (`about_name`)."""
-    return (
-        f"Hola {first_name(to_name)}, te recordamos que hoy vence {_whose(about_name)}"
-        f" de {plan_name} en {gym_name}: {format_clp(outstanding_clp)}. Si ya pagaste,"
-        " envíanos el comprobante. ¡Gracias!"
+    return signed(
+        (
+            f"Hola {first_name(to_name)}, te recordamos que hoy vence {_whose(about_name)}"
+            f" de {plan_name} en {gym_name}: {format_clp(outstanding_clp)}. Si ya pagaste,"
+            " envíanos el comprobante. ¡Gracias!"
+        ),
+        gym_name,
     )
 
 
@@ -81,10 +103,13 @@ def payment_overdue(
 ) -> str:
     """The reminder while a period is past due, every few days until it is paid."""
     whose = _whose(about_name)
-    return (
-        f"Hola {first_name(to_name)}, {whose} de {plan_name} en {gym_name} venció el"
-        f" {_fecha(due_date)} y quedan {format_clp(outstanding_clp)} por pagar."
-        " ¿Nos ayudas a ponerte al día? Si ya pagaste, envíanos el comprobante. ¡Gracias!"
+    return signed(
+        (
+            f"Hola {first_name(to_name)}, {whose} de {plan_name} en {gym_name} venció el"
+            f" {_fecha(due_date)} y quedan {format_clp(outstanding_clp)} por pagar."
+            " ¿Nos ayudas a ponerte al día? Si ya pagaste, envíanos el comprobante. ¡Gracias!"
+        ),
+        gym_name,
     )
 
 
@@ -102,10 +127,13 @@ def proof_rejected_followup(
     note = note.strip()
     if not note.endswith((".", "!", "?")):
         note += "."
-    return (
-        f"Hola {first_name(to_name)}, en {gym_name} revisamos el comprobante de"
-        f" {format_clp(amount_clp)}{of} por {plan_name} y no pudimos validarlo: {note}"
-        " ¿Nos envías uno nuevo? ¡Gracias!"
+    return signed(
+        (
+            f"Hola {first_name(to_name)}, en {gym_name} revisamos el comprobante de"
+            f" {format_clp(amount_clp)}{of} por {plan_name} y no pudimos validarlo: {note}"
+            " ¿Nos envías uno nuevo? ¡Gracias!"
+        ),
+        gym_name,
     )
 
 
@@ -116,8 +144,11 @@ def extra_charge_reminder(
     by, or as a reminder; to their guardian (`about_name`) for a dependent. `amount` and
     `due` come formatted."""
     whose = f" de {first_name(about_name)}" if about_name else ""
-    return (
-        f"Hola {first_name(to_name)}, te escribimos de {gym_name} por el cobro {title}{whose}:"
-        f" {amount}, hasta el {due}. Puedes transferir y subir el comprobante en tu página."
-        " ¡Gracias!"
+    return signed(
+        (
+            f"Hola {first_name(to_name)}, te escribimos de {gym_name} por el cobro {title}{whose}:"
+            f" {amount}, hasta el {due}. Puedes transferir y subir el comprobante en tu página."
+            " ¡Gracias!"
+        ),
+        gym_name,
     )

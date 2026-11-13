@@ -8,6 +8,7 @@ Este enlace te deja entrar sin contraseña. Sirve una sola vez y vence en {{ pag
 {% endif %}
 
 --
+{% block signature %}{% endblock %}
 {% if gym is defined %}
 {{ gym }}, a través de Rakin
 {% else %}

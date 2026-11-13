@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BookEntry, BookFreeze, LedgerBook } from '../api/ledger'
 import type { Membership, MembershipLedger, OpenPeriod } from '../api/member'
 import type { MemberPage } from '../api/people'
+import type { PaymentReminder } from '../api/reminders'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -182,6 +183,8 @@ type Stub = {
   ledger?: MembershipLedger
   // Proofs waiting for review.
   pending?: number
+  // The reminders' list, for "Enviar recordatorio" on the overdue list (#260).
+  reminders?: PaymentReminder[]
 }
 
 function stubApi({
@@ -191,6 +194,7 @@ function stubApi({
   memberships = [DIEGO_MEMBERSHIP],
   ledger = DIEGO_LEDGER,
   pending = 3,
+  reminders = [],
 }: Stub = {}) {
   const asked: URLSearchParams[] = []
   vi.stubGlobal(
@@ -206,6 +210,12 @@ function stubApi({
         body = book(url.searchParams)
       } else if (url.pathname === '/api/people') body = people(url.searchParams)
       else if (url.pathname === '/api/memberships') body = memberships
+      else if (url.pathname === '/api/reminders') body = reminders
+      else if (url.pathname.endsWith('/email') && init?.method === 'POST') {
+        emailed.push(url.pathname)
+        status = 201
+        body = { sent_at: new Date().toISOString(), contact_name: 'Felipe Díaz' }
+      }
       else if (url.pathname === `/api/ledger/memberships/${DIEGO_MEMBERSHIP.id}`) body = ledger
       // Nothing to pay ahead: the member is on a plan that cannot (#196).
       else if (url.pathname === `/api/ledger/memberships/${DIEGO_MEMBERSHIP.id}/ahead`) body = { periods: [] }
@@ -227,8 +237,9 @@ function renderAt(path: string) {
   return router
 }
 
-// What "Registrar pago" posted.
+// What "Registrar pago" posted, and the overdue emails sent.
 let payments: unknown[] = []
+let emailed: string[] = []
 
 const table = () => screen.findByRole('table')
 const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map((cell) => cell.textContent)
@@ -236,6 +247,7 @@ const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map((cell) 
 afterEach(() => {
   vi.unstubAllGlobals()
   payments = []
+  emailed = []
 })
 
 describe('Pagos', () => {
@@ -411,6 +423,42 @@ describe('Pagos', () => {
     expect(within(chips).getByRole('button', { name: copy.filters.overdue })).toHaveAttribute('aria-pressed', 'true')
     // Overdue is today's, not the month's.
     expect(await screen.findByText(copy.showing(5, 5, null))).toBeInTheDocument()
+  })
+
+  it('emails the overdue reminder from a row of the overdue list', async () => {
+    stubApi({
+      reminders: [
+        {
+          billing_period_id: 'p-late',
+          membership_id: 'm-diego',
+          person_id: 'felipe',
+          person_name: 'Felipe Díaz',
+          plan_name: 'Mensual adultos',
+          period_start: '2026-10-31',
+          due_date: '2026-10-31',
+          outstanding_clp: 45000,
+          days_overdue: 9,
+          kind: 'payment_overdue',
+          rejection_note: null,
+          contact_name: 'Felipe Díaz',
+          whatsapp_url: null,
+          reminders_sent: 0,
+          reminded_at: null,
+          reminder_due: true,
+          can_email: true,
+          emailed_at: null,
+          emailed_today: false,
+        },
+      ],
+    })
+    renderAt('/admin/pagos?filter=overdue')
+    await table()
+    const words = es.admin.reminders.email
+
+    await userEvent.click(await screen.findByRole('button', { name: words.sendTo('Felipe Díaz') }))
+
+    expect(await screen.findByText(words.sent('Felipe Díaz'))).toBeInTheDocument()
+    expect(emailed).toEqual(['/api/reminders/p-late/email'])
   })
 
   it('shows another month from the period selector', async () => {

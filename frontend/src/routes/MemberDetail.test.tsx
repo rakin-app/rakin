@@ -877,6 +877,9 @@ describe('Ficha de alumno', () => {
           reminders_sent: 1,
           reminded_at: '2026-11-01T12:00:00Z',
           reminder_due: true,
+          can_email: false,
+          emailed_at: null,
+          emailed_today: false,
         },
       ],
     })
@@ -896,6 +899,74 @@ describe('Ficha de alumno', () => {
     await vi.waitFor(() =>
       expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual(['/api/reminders/p-oct']),
     )
+  })
+
+  it('emails the overdue reminder from the money card, and says when the last one went', async () => {
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000).toISOString()
+    const overdue = {
+      billing_period_id: 'p-oct',
+      membership_id: 'm-felipe',
+      person_id: 'felipe',
+      person_name: 'Felipe Díaz',
+      days_overdue: 9,
+      kind: 'payment_overdue',
+      rejection_note: null,
+      contact_name: 'Felipe Díaz',
+      whatsapp_url: null,
+      reminders_sent: 0,
+      reminded_at: null,
+      reminder_due: true,
+      can_email: true,
+      emailed_at: twoDaysAgo,
+      emailed_today: false,
+    }
+    const calls = stubApi({
+      reminders: [overdue],
+      extra: (path, method) =>
+        path === '/api/reminders/p-oct/email' && method === 'POST'
+          ? { status: 201, body: { sent_at: new Date().toISOString(), contact_name: 'Felipe Díaz' } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const card = await money()
+    const words = es.admin.reminders.email
+
+    expect(await within(card).findByText(words.last('hace 2 días'))).toBeInTheDocument()
+    const send = within(card).getByRole('button', { name: words.sendTo('Felipe Díaz') })
+    await userEvent.dblClick(send)
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(words.sent('Felipe Díaz'))
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual(['/api/reminders/p-oct/email'])
+  })
+
+  it('offers no email once one went out today', async () => {
+    stubApi({
+      reminders: [
+        {
+          billing_period_id: 'p-oct',
+          membership_id: 'm-felipe',
+          person_id: 'felipe',
+          person_name: 'Felipe Díaz',
+          days_overdue: 9,
+          kind: 'payment_overdue',
+          rejection_note: null,
+          contact_name: 'Felipe Díaz',
+          whatsapp_url: null,
+          reminders_sent: 0,
+          reminded_at: null,
+          reminder_due: true,
+          can_email: true,
+          emailed_at: new Date().toISOString(),
+          emailed_today: true,
+        },
+      ],
+    })
+    renderAt(PATH)
+    const card = await money()
+    const words = es.admin.reminders.email
+
+    expect(await within(card).findByText(words.last(words.today))).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: /Enviar recordatorio/ })).not.toBeInTheDocument()
   })
 
   it('has no reminder in the header when nothing is due', async () => {

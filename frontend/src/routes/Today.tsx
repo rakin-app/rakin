@@ -21,6 +21,7 @@ import { WhatsAppIcon } from '../components/icons'
 import { JoinRequests } from '../components/JoinRequests'
 import { Grid, PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
+import { EmailReminder } from '../components/EmailReminder'
 import { ReminderLink } from '../components/ReminderLink'
 import { dayTime, monthName, shortDay, timeRange, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
@@ -53,7 +54,7 @@ const OVERDUE_SHOWN = 3
  * Each overdue row has its WhatsApp reminder beside "Pagó", saying which one it is
  * ("2.º aviso") and standing out when the gym's cadence says the next is due; "Por
  * avisar" has the periods due today and the rejected proofs to follow up, when there
- * are any (#55).
+ * are any (#55). Under each overdue row, "Enviar recordatorio" emails it now (#260).
  *
  * A phone stacks it all; from 1024px the counters run across the top and the lists sit
  * in a grid of two.
@@ -637,6 +638,8 @@ function OverdueRow({
           </Button>
         )}
       </div>
+      {/* On a line of its own: beside WhatsApp and "Pagó" it would not fit at 390px. */}
+      {!open && reminder && <EmailReminder reminder={reminder} />}
       {open && (
         <PaidForm
           period={period}

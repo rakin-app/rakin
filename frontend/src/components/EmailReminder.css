@@ -1,0 +1,18 @@
+/* "Enviar recordatorio" and when the last one went out, wrapping under each other where
+   a row is too narrow for both (390px). */
+.email-reminder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+.email-reminder__note {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.email-reminder__error {
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}

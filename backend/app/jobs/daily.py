@@ -21,7 +21,7 @@ from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.domain.dates import gym_today
 from app.integrations import build_mailer
-from app.jobs import billing, freezes, join_requests, lapse, schedule, statements
+from app.jobs import billing, freezes, join_requests, lapse, overdue, schedule, statements
 from app.jobs.runner import Job, Outcome, Report, run_due
 from app.logging import configure_logging
 from app.notices import Notices
@@ -41,8 +41,9 @@ JOBS: tuple[Job, ...] = (
 
 
 def jobs(notices: Notices) -> tuple[Job, ...]:
-    """Every nightly job: `JOBS`, then the statements for the periods billing wrote."""
-    return (*JOBS, statements.job(notices))
+    """Every nightly job: `JOBS`, then the statements for the periods billing wrote and
+    the overdue emails for the periods still owed."""
+    return (*JOBS, statements.job(notices), overdue.job(notices))
 
 
 @contextlib.asynccontextmanager
