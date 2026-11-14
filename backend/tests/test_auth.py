@@ -357,6 +357,30 @@ def test_the_code_is_never_logged(harness: Harness, people: People, db: Database
     assert all(r["code_hash"] is None or code.encode() not in r["code_hash"] for r in hashed)
 
 
+def test_no_code_goes_to_a_suppressed_address(
+    harness: Harness, people: People, db: Database
+) -> None:
+    """The sign-in email, code and all, goes through the bounce suppression (#288)."""
+    person, address = uuid.uuid4(), f"{uuid.uuid4().hex[:8]}@example.cl"
+    records: dict[uuid.UUID, tuple[str, str | None]] = {people.sur: ("Rebota", address)}
+    run(db.admin_url, lambda c: add_person(c, person, records))
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "INSERT INTO mail_suppression (address, reason) VALUES ($1, 'bounce')", address
+        ),
+    )
+
+    assert harness.client.post("/api/auth/link", json={"email": address}).status_code == 202
+
+    assert harness.outbox.sent == []
+    [row] = run(
+        db.admin_url,
+        lambda c: c.fetch("SELECT template, status FROM message_log WHERE person_id = $1", person),
+    )
+    assert (row["template"], row["status"]) == ("magic_link", "suppressed")
+
+
 def test_a_code_works_until_its_misses_run_out(db: Database, people: People) -> None:
     link, code, now = hash_token(uuid.uuid4().hex), hash_token("code"), datetime.now(UTC)
     expires_at = now + timedelta(minutes=15)

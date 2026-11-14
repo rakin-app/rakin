@@ -279,7 +279,7 @@ class PeopleDirectory:
 
 class PostgresStore:
     """`auth_link` and `auth_session`, keyed by token hash (0005), and a link's code
-    (0046).
+    (0047).
 
     A session is read and ended before any gym is set, so through the lookups 0005
     defines rather than the RLS-scoped table.

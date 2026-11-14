@@ -13,8 +13,8 @@ and the two keep separate cookies; so the email carries a code to type instead.
 
 `rakin_app` already reads and updates `auth_link`, columns included.
 
-Revision ID: 0046
-Revises: 0045
+Revision ID: 0047
+Revises: 0046
 Create Date: 2026-11-13
 
 """
@@ -23,8 +23,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0046"
-down_revision: str | Sequence[str] | None = "0045"
+revision: str = "0047"
+down_revision: str | Sequence[str] | None = "0046"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
