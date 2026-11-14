@@ -23,7 +23,12 @@ A non-essential notice (plan events, announcements) carries a one-click unsubscr
 link, in its footer and as `List-Unsubscribe` with `List-Unsubscribe-Post` (RFC 8058),
 and is not sent, but recorded as `suppressed`, to someone who used it
 (`app.api.unsubscribe`). Essential ones (sign-in links, statements and overdue
-reminders, proofs, receipts) always go: they are about money owed or the account.
+reminders, proofs, receipts) go despite an unsubscribe: they are about money owed or
+the account.
+
+No notice at all goes to an address Resend reported as hard-bounced or as a spam
+complaint (`mail_suppression`, migration 0046, from `app.api.webhooks`): it is recorded
+as `suppressed` instead, whichever gym it is from.
 
 `send` never raises for a notice it could not send: it runs after the response, where
 there is no one left to tell, so the outcome goes to `message_log` and the log. That
@@ -39,6 +44,7 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Any
 
@@ -129,6 +135,11 @@ class Notice:
     def __post_init__(self) -> None:
         if not self.template.essential and self.gym_id is None:
             raise ValueError("a non-essential notice is some gym's, to unsubscribe from")
+
+
+def mail_address(to: str) -> str:
+    """The address in `to` as `mail_suppression` keys it: lower case, no outer spaces."""
+    return parseaddr(to)[1].strip().lower()
 
 
 class Outcome(enum.StrEnum):
@@ -277,8 +288,8 @@ class Notices:
         return base_url, None if path is None else f"{base_url}{path}/{EMAIL_VARIANT}"
 
     async def send(self, notice: Notice) -> Outcome:
-        """Send `notice` unless its addressee unsubscribed from it, and record what
-        happened in `message_log`."""
+        """Send `notice` unless its addressee unsubscribed from it or its address is
+        suppressed, and record what happened in `message_log`."""
         unsubscribe_url = None
         extra = {"template": notice.template.name, "person_id": str(notice.person_id)}
         try:
@@ -288,6 +299,17 @@ class Notices:
             logger.exception("notice host not found", extra=extra)
             await self._record(notice, Outcome.FAILED, error=_error(exc))
             return Outcome.FAILED
+        try:
+            suppressed = await self._suppressed(notice.to)
+        # The database down, say: the address is most likely fine, so it goes, as it
+        # did before anything was suppressed.
+        except Exception:
+            logger.exception("notice suppression not checked", extra=extra)
+            suppressed = False
+        if suppressed:
+            logger.info("notice suppressed", extra=extra)
+            await self._record(notice, Outcome.SUPPRESSED)
+            return Outcome.SUPPRESSED
         if not notice.template.essential:
             assert notice.gym_id is not None
             if await self._unsubscribed(notice.gym_id, notice.person_id):
@@ -364,6 +386,14 @@ class Notices:
             found = await session.scalar(
                 text("SELECT 1 FROM mail_unsubscribe WHERE gym_id = :g AND person_id = :p"),
                 {"g": gym_id, "p": person_id},
+            )
+        return found is not None
+
+    async def _suppressed(self, to: str) -> bool:
+        async with self._in_gym(None) as session:
+            found = await session.scalar(
+                text("SELECT 1 FROM mail_suppression WHERE address = :a"),
+                {"a": mail_address(to)},
             )
         return found is not None
 

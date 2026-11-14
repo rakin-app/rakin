@@ -29,7 +29,8 @@ from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_databas
 # An unsubscribe link's token names its gym (`tests/test_notices.py`), and so does a
 # join link's (`tests/test_join.py`). A gym's privacy notice is anyone's to read
 # (`tests/test_privacy.py`). So is its logo, which email clients fetch with no session
-# at all (`tests/test_gym_logo.py`).
+# at all (`tests/test_gym_logo.py`). Resend's webhook is signed instead, and acts on
+# addresses, which belong to no gym (`tests/test_resend_webhook.py`).
 PUBLIC_PATHS = {
     "/healthz",
     "/api/blobs/{key}",
@@ -38,6 +39,7 @@ PUBLIC_PATHS = {
     "/api/auth/callback",
     "/api/auth/logout",
     "/api/mail/unsubscribe/{token}",
+    "/api/webhooks/resend",
     "/api/join/{token}",
     "/api/host",
     "/api/privacy",

@@ -46,6 +46,9 @@ x-backend: &backend
     SMTP_USERNAME: ${SMTP_USERNAME:?resend}
     SMTP_PASSWORD: ${SMTP_PASSWORD:?a Resend API key with sending access}
     SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10.0}
+    # The signing secret of Resend's webhook to /api/webhooks/resend (bounces and
+    # complaints); empty turns it off, so a host without one still deploys.
+    RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
     MESSENGER: ${MESSENGER:-wame}
     PAYMENT_RAIL: ${PAYMENT_RAIL:-none}
     BANK_FEED: ${BANK_FEED:-none}

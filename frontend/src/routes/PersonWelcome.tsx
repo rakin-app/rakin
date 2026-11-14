@@ -15,7 +15,8 @@ const copy = t.admin.member.access
  * whether the latest welcome was sent or failed, and "Enviar link para entrar", which
  * sends it again now, for someone added without it or imported. For the owner and
  * admins, and for someone still in the gym. Fresh from "Nuevo alumno" with the welcome
- * ticked, it waits a few seconds for it to be recorded.
+ * ticked, it waits a few seconds for it to be recorded. An address no mail goes to
+ * (#104) says why instead, with nothing to send: a new address in Datos is the fix.
  */
 export function PersonWelcome({ person, role }: { person: Person; role: StaffRole | null | undefined }) {
   const manages = role === 'owner' || role === 'admin'
@@ -28,7 +29,7 @@ export function PersonWelcome({ person, role }: { person: Person; role: StaffRol
   })
 
   if (!manages || person.left_on || !state.data) return null
-  const { to, guardian, last } = state.data
+  const { to, guardian, last, suppressed } = state.data
   // Still read again each second, as `welcomeQuery` does: by when it was last read.
   const waiting = last === null && welcomeSince !== null && state.dataUpdatedAt - welcomeSince < WELCOME_WAIT_MS
   const day = last && t.common.longDay(isoDay(last.sent_at))
@@ -42,9 +43,22 @@ export function PersonWelcome({ person, role }: { person: Person; role: StaffRol
         ) : (
           <>
             <p className="member__detail">{guardian ? copy.toGuardian(guardian, to) : copy.to(to)}</p>
-            {last?.status === 'failed' ? (
+            {suppressed ? (
+              <div className="member__error" role="alert">
+                <p>
+                  {(suppressed.reason === 'bounce' ? copy.bounced : copy.complained)(
+                    t.common.longDay(isoDay(suppressed.since)),
+                  )}
+                </p>
+                {suppressed.reason === 'bounce' && suppressed.detail && <p>{copy.bounceDetail(suppressed.detail)}</p>}
+              </div>
+            ) : last?.status === 'failed' ? (
               <p className="member__error" role="alert">
                 {copy.failed(day!)}
+              </p>
+            ) : last?.status === 'suppressed' ? (
+              <p className="member__note" role="status">
+                {copy.suppressedLast(day!)}
               </p>
             ) : (
               <p className={last ? 'member__done' : 'member__note'} role="status">
@@ -56,11 +70,13 @@ export function PersonWelcome({ person, role }: { person: Person; role: StaffRol
                 {copy.error}
               </p>
             )}
-            <div className="member__actions">
-              <Button onClick={() => send.mutate()} disabled={send.isPending} busy={send.isPending}>
-                {send.isPending ? copy.working : last?.status === 'sent' ? copy.resend : copy.send}
-              </Button>
-            </div>
+            {!suppressed && (
+              <div className="member__actions">
+                <Button onClick={() => send.mutate()} disabled={send.isPending} busy={send.isPending}>
+                  {send.isPending ? copy.working : last?.status === 'sent' ? copy.resend : copy.send}
+                </Button>
+              </div>
+            )}
           </>
         )}
       </div>

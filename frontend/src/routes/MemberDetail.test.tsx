@@ -2063,6 +2063,44 @@ describe('Acceso (#246)', () => {
     expect(within(s).queryByRole('button')).not.toBeInTheDocument()
   })
 
+  it('says why no mail goes to a bounced address, and offers nothing to send (#104)', async () => {
+    const bounced = {
+      ...SENT,
+      suppressed: { reason: 'bounce', detail: '550 5.1.1 User unknown', since: '2026-11-12T15:00:00Z' },
+    }
+    stubApi({ extra: welcomeApi(bounced) })
+    renderAt(PATH)
+    const s = await section()
+
+    const alert = within(s).getByRole('alert')
+    expect(alert).toHaveTextContent(access.bounced('12 de noviembre'))
+    expect(alert).toHaveTextContent(access.bounceDetail('550 5.1.1 User unknown'))
+    expect(within(s).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('says when the address complained of spam (#104)', async () => {
+    const complained = {
+      ...NEVER,
+      suppressed: { reason: 'complaint', detail: null, since: '2026-11-12T15:00:00Z' },
+    }
+    stubApi({ extra: welcomeApi(complained) })
+    renderAt(PATH)
+    const s = await section()
+
+    expect(within(s).getByRole('alert')).toHaveTextContent(access.complained('12 de noviembre'))
+    expect(within(s).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('says a welcome to a since-corrected address was not sent (#104)', async () => {
+    const corrected = { ...NEVER, last: { ...SENT.last, status: 'suppressed' }, suppressed: null }
+    stubApi({ extra: welcomeApi(corrected) })
+    renderAt(PATH)
+    const s = await section()
+
+    expect(within(s).getByText(access.suppressedLast('12 de noviembre'))).toBeInTheDocument()
+    expect(within(s).getByRole('button', { name: access.send })).toBeInTheDocument()
+  })
+
   it('is not there for a coach', async () => {
     stubApi({ role: 'coach', extra: welcomeApi(NEVER) })
     renderAt(PATH)

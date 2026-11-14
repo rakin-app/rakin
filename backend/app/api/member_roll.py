@@ -58,7 +58,7 @@ from app.domain import membership as domain
 from app.domain.billing import settled_amount
 from app.domain.dates import add_months, gym_today, is_minor
 from app.domain.membership import MembershipStatus, PlanKind, current_first
-from app.notices import Notices, get_notices
+from app.notices import Notices, get_notices, mail_address
 from app.roles import AdminSession, OwnerSession
 from app.schemas.guardians import FamilyConflict, FamilyRefused
 from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
@@ -73,6 +73,7 @@ from app.schemas.people import (
     Person,
     PersonInGym,
     Return,
+    Suppression,
     WelcomeSent,
     WelcomeState,
 )
@@ -120,6 +121,10 @@ LAST_WELCOME = text(
     " WHERE template = 'welcome' AND person_id = :to"
     " AND coalesce(payload ->> 'about_id', CAST(person_id AS text)) = :about"
     " ORDER BY sent_at DESC LIMIT 1"
+)
+
+SUPPRESSION = text(
+    "SELECT reason, detail, created_at FROM mail_suppression WHERE address = :address"
 )
 
 SET_LEFT_ON = text(
@@ -270,12 +275,22 @@ async def _welcome_state(session: AsyncSession, person_id: uuid.UUID) -> Welcome
     last = (
         await session.execute(LAST_WELCOME, {"to": contact.person_id, "about": str(person_id)})
     ).one_or_none()
+    suppressed = None
+    if contact.email is not None:
+        suppressed = (
+            await session.execute(SUPPRESSION, {"address": mail_address(contact.email)})
+        ).one_or_none()
     return WelcomeState(
         to=contact.email,
         guardian=contact.name if contact.on_behalf_of else None,
         last=None
         if last is None
         else WelcomeSent(status=last.status, sent_at=last.sent_at, to=last.to_address),
+        suppressed=None
+        if suppressed is None
+        else Suppression(
+            reason=suppressed.reason, detail=suppressed.detail, since=suppressed.created_at
+        ),
     )
 
 

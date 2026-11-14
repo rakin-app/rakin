@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_timeout_seconds: float = Field(default=10.0, gt=0)
+    # Resend's webhook signing secret (`whsec_…`), for its bounces and complaints
+    # (`app.api.webhooks`). Empty turns the webhook off.
+    resend_webhook_secret: str = ""
 
     messenger: Literal["wame"] = "wame"
 
@@ -94,6 +97,16 @@ class Settings(BaseSettings):
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError):
             raise ValueError(f"unknown timezone {value!r}") from None
+        return value
+
+    @field_validator("resend_webhook_secret")
+    @classmethod
+    def _svix_secret(cls, value: str) -> str:
+        value = value.strip()
+        if value:
+            from app.integrations.svix import signing_key
+
+            signing_key(value)
         return value
 
     @field_validator("base_domain")

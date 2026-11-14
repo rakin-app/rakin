@@ -91,6 +91,13 @@ Guardar keeps it, and Cancelar or leaving Gimnasio puts the saved one back.
 - **Hex, not oklch.** The file writes oklch; `tokens.css` holds the same colours in
   hex, as the sign-in link's server-rendered pages (`backend/app/auth.py`) copy them.
 
+## Billing corrections (#272)
+
+[billing-corrections.md](billing-corrections.md) designs how the owner and admins fix any
+charge, payment or plan of a student from the ficha: one "Corregir" per line of the
+Libro, every fix a new ledger entry with an audit row, and what stays forbidden. Its
+build tickets are #277 to #286.
+
 ## Contrast (WCAG 2.1 AA)
 
 `frontend/src/components/controls.test.tsx` checks every pair in every theme.
