@@ -284,7 +284,14 @@ class Notices:
             logger.exception("notice host not found", extra=extra)
             await self._record(notice, Outcome.FAILED, error=_error(exc))
             return Outcome.FAILED
-        if await self._suppressed(notice.to):
+        try:
+            suppressed = await self._suppressed(notice.to)
+        # The database down, say: the address is most likely fine, so it goes, as it
+        # did before anything was suppressed.
+        except Exception:
+            logger.exception("notice suppression not checked", extra=extra)
+            suppressed = False
+        if suppressed:
             logger.info("notice suppressed", extra=extra)
             await self._record(notice, Outcome.SUPPRESSED)
             return Outcome.SUPPRESSED

@@ -4,6 +4,7 @@ writes, the mail that then never goes, and the ficha that says why.
 The signature and the events need nothing; the suppression runs against real Postgres.
 """
 
+import asyncio
 import base64
 import dataclasses
 import json
@@ -21,6 +22,7 @@ from alembic import command
 from app.api.webhooks import RESEND_PATH, recipients, suppressions
 from app.integrations.svix import SignatureError, sign, signing_key, verify
 from app.main import create_app
+from app.notices import MAGIC_LINK, Notice, Notices, Outcome
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import UNREACHABLE_DB, make_settings, require_test_database_url
 from tests.pg import Database, migrate, run, seed_gym, throwaway_database
@@ -166,6 +168,26 @@ def test_the_recipients_are_keyed_as_the_table_holds_them() -> None:
 )
 def test_nothing_else_does(event: Any) -> None:
     assert suppressions(event) is None
+
+
+# --- the mailer, with no database -----------------------------------------------
+
+
+def test_a_suppression_that_cannot_be_checked_does_not_stop_the_notice(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`send` never raises: with the database down the sign-in link still goes."""
+
+    def no_database() -> Any:
+        raise OSError("connection refused")
+
+    mailer = RecordingMailer()
+    notices = Notices(mailer, no_database, base_url="https://rakin.test", secret_key="x" * 16)
+    notice = Notice(MAGIC_LINK, "ana@example.com", uuid.uuid4(), None, {"url": "u", "name": "Ana"})
+
+    assert asyncio.run(notices.send(notice)) is Outcome.SENT
+    assert [email.to for email in mailer.sent] == ["ana@example.com"]
+    assert "notice suppression not checked" in caplog.messages
 
 
 # --- the endpoint, with no database ---------------------------------------------
