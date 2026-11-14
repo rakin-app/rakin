@@ -57,6 +57,7 @@ sed \
 	-e 's|^SITE_ADDRESS=.*|SITE_ADDRESS=:80|' \
 	-e 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=http://localhost|' \
 	-e 's|^SENTRY_DSN=.*|SENTRY_DSN=|' \
+	-e 's|^RESEND_WEBHOOK_SECRET=.*|RESEND_WEBHOOK_SECRET=whsec_dGVzdC1vbmx5IHNpZ25pbmcgc2VjcmV0|' \
 	-e 's|^# COMPOSE_PROFILES=backup$|COMPOSE_PROFILES=backup|' \
 	-e 's|^S3_ENDPOINT_URL=.*|S3_ENDPOINT_URL=http://s3.invalid|' \
 	-e 's|^S3_PUBLIC_ENDPOINT_URL=.*|S3_PUBLIC_ENDPOINT_URL=http://s3.invalid|' \

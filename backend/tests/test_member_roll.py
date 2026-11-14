@@ -700,7 +700,12 @@ def test_the_ficha_sends_the_welcome_and_says_it_went(
 ) -> None:
     body = enrolled(client, gym, name="Importada", email="importada@example.com")
     state = client.get(f"/api/people/{body['id']}/welcome", headers=as_gym(gym))
-    assert state.json() == {"to": "importada@example.com", "guardian": None, "last": None}
+    assert state.json() == {
+        "to": "importada@example.com",
+        "guardian": None,
+        "last": None,
+        "suppressed": None,
+    }
 
     mailer.sent.clear()
     sent = welcome(client, gym, body["id"])
@@ -782,7 +787,7 @@ def test_the_ficha_welcome_needs_an_email_and_someone_still_here(
     mailer.sent.clear()
     no_email = enrolled(client, gym, rut=new_rut(), name="Sin Correo")
     state = client.get(f"/api/people/{no_email['id']}/welcome", headers=as_gym(gym))
-    assert state.json() == {"to": None, "guardian": None, "last": None}
+    assert state.json() == {"to": None, "guardian": None, "last": None, "suppressed": None}
     refused = welcome(client, gym, no_email["id"])
     assert (refused.status_code, refused.json()["detail"]) == (422, "no_email")
 

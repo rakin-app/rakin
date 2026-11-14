@@ -153,11 +153,14 @@ export function enrol(body: Enrolment): Promise<Person> {
 }
 
 /** Their sign-in link, on the ficha (#246): the address the welcome goes to, theirs or
- * their guardian's (`guardian` names them then), and how the latest welcome went. */
+ * their guardian's (`guardian` names them then), and how the latest welcome went; and
+ * `suppressed` when that address hard-bounced or complained of spam, so no mail goes
+ * to it (#104). */
 export type WelcomeState = {
   to: string | null
   guardian: string | null
-  last: { status: 'sent' | 'failed'; sent_at: string; to: string } | null
+  last: { status: 'sent' | 'failed' | 'suppressed'; sent_at: string; to: string } | null
+  suppressed?: { reason: 'bounce' | 'complaint'; detail: string | null; since: string } | null
 }
 
 /** `waiting`: a welcome is on its way (one just asked for on "Nuevo alumno"), so it is
