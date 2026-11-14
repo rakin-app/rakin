@@ -4,6 +4,12 @@ A link token is `<nonce>.<expiry>.<signature>`: the HMAC lets a forged, mangled 
 expired link be refused without touching the store, and the store keeps only its
 SHA-256, so a leaked table holds no usable link. A session token is plain randomness:
 it is checked against the store on every request anyway.
+
+A sign-in code is six digits, typed instead of opening the link it came with. Six
+digits hash to a table anyone can build, so the store keeps an HMAC of the code with
+the address and site it was issued for: a leaked table without the secret key holds
+no usable code, and a code typed at another address or on another site hashes to
+something else.
 """
 
 import base64
@@ -15,6 +21,7 @@ from datetime import UTC, datetime
 from app.security import constant_time_equals
 
 NONCE_BYTES = 32
+CODE_DIGITS = 6
 
 
 def hash_token(token: str) -> bytes:
@@ -24,6 +31,28 @@ def hash_token(token: str) -> bytes:
 
 def new_session_token() -> str:
     return secrets.token_urlsafe(NONCE_BYTES)
+
+
+def new_code() -> str:
+    return f"{secrets.randbelow(10**CODE_DIGITS):0{CODE_DIGITS}d}"
+
+
+def normalize_code(typed: str) -> str | None:
+    """The digits of a code as typed ("123 456", "123-456"), or None if they are not
+    six."""
+    digits = "".join(c for c in typed if c in "0123456789")
+    return digits if len(digits) == CODE_DIGITS else None
+
+
+class CodeHasher:
+    def __init__(self, secret_key: str) -> None:
+        self._key = hashlib.sha256(b"magiclink-code\0" + secret_key.encode()).digest()
+
+    def hash(self, code: str, address: str, site: str) -> bytes:
+        """What the store keeps for `code`, sent to `address` for the site at origin
+        `site`."""
+        message = "\0".join((site, address, code)).encode()
+        return hmac.new(self._key, message, hashlib.sha256).digest()
 
 
 class LinkSigner:

@@ -19,6 +19,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from app.magiclink import (
     COOKIE_NAME,
     DEV_COOKIE_NAME,
+    CodeLink,
     Link,
     MagicLinks,
     MemoryRateLimiter,
@@ -76,11 +77,42 @@ class Directory:
 class Store:
     links: dict[bytes, tuple[Pending, datetime, bool]] = field(default_factory=dict)
     sessions: dict[bytes, tuple[Session, bool]] = field(default_factory=dict)
+    # A link's working code: its hash, and the misses counted against it.
+    codes: dict[bytes, tuple[bytes, int]] = field(default_factory=dict)
 
     async def add_link(
-        self, token_hash: bytes, subject: str, address: str, expires_at: datetime
+        self,
+        token_hash: bytes,
+        subject: str,
+        address: str,
+        expires_at: datetime,
+        code_hash: bytes | None = None,
     ) -> None:
         self.links[token_hash] = (Pending(subject, address), expires_at, False)
+        if code_hash is not None:
+            for link in [h for h in self.codes if self._at(h, address, subject)]:
+                del self.codes[link]
+            self.codes[token_hash] = (code_hash, 0)
+
+    def _at(self, token_hash: bytes, address: str, subject: str | None = None) -> bool:
+        pending = self.links[token_hash][0]
+        return pending.address.lower() == address.lower() and subject in (None, pending.subject)
+
+    async def code_link(self, code_hash: bytes) -> CodeLink | None:
+        for token_hash, (hashed, _) in self.codes.items():
+            pending, expires_at, used = self.links[token_hash]
+            if hashed == code_hash and not used:
+                return CodeLink(token_hash, pending.subject, pending.address, expires_at)
+        return None
+
+    async def miss_code(self, address: str, now: datetime, tries: int) -> None:
+        for token_hash, (hashed, misses) in list(self.codes.items()):
+            _, expires_at, used = self.links[token_hash]
+            if self._at(token_hash, address) and not used and now < expires_at:
+                if misses + 1 >= tries:
+                    del self.codes[token_hash]
+                else:
+                    self.codes[token_hash] = (hashed, misses + 1)
 
     async def pending_link(self, token_hash: bytes, now: datetime) -> Pending | None:
         pending, expires_at, used = self.links.get(token_hash, (Pending("", ""), now, True))
@@ -119,6 +151,9 @@ class Outbox:
         [url] = [link.url for link in self.sent if link.recipient == recipient]
         return url
 
+    def forget(self) -> None:
+        self.sent.clear()
+
 
 @dataclass
 class Harness:
@@ -133,8 +168,21 @@ class Harness:
         response = self.client.post(f"{PREFIX}/link", json={"email": email}, headers={IP: ip})
         return int(response.status_code)
 
+    def code_for(self, recipient: Recipient) -> str:
+        [code] = [link.code for link in self.outbox.sent if link.recipient == recipient]
+        assert code is not None
+        return code
+
+    def type_code(self, email: str, code: str, ip: str = "203.0.113.1", **headers: str) -> Any:
+        return self.client.post(
+            f"{PREFIX}/code", json={"email": email, "code": code}, headers={IP: ip, **headers}
+        )
+
     def sign_in(self, recipient: Recipient) -> Any:
         assert self.request_link(recipient.address) == 202
+        return self.sign_in_with_link_sent(recipient)
+
+    def sign_in_with_link_sent(self, recipient: Recipient) -> Any:
         token = token_of(self.outbox.url_for(recipient))
         return self.client.post(f"{PREFIX}/callback", data={"token": token})
 
@@ -209,6 +257,9 @@ def make_harness(
         sender=outbox,
         per_address=MemoryRateLimiter(limit=3, window_seconds=900),
         per_ip=MemoryRateLimiter(limit=5, window_seconds=900),
+        # Above `CODE_TRIES`, so a code's own limit shows apart from the address's.
+        code_per_address=MemoryRateLimiter(limit=8, window_seconds=900),
+        code_per_ip=MemoryRateLimiter(limit=12, window_seconds=900),
         clock=clock,
     )
     app = make_app(links, base_url, cookie_name, site, **options)
@@ -657,3 +708,197 @@ def test_a_link_may_point_at_another_sites_origin(harness: Harness) -> None:
     assert harness.links.callback_on("http://sur.localhost:8080/") == (
         f"http://sur.localhost:8080{PREFIX}/callback"
     )
+
+
+# --- signing in with a code -------------------------------------------------------
+
+
+def wrong(code: str) -> str:
+    """A code that is not `code`."""
+    return f"{(int(code) + 1) % 10**6:06d}"
+
+
+def test_a_link_asked_for_comes_with_a_six_digit_code(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    code = harness.code_for(ANA)
+    assert len(code) == 6 and code.isdigit()
+    # Only a keyed hash of it is stored, never the digits.
+    [(hashed, misses)] = harness.store.codes.values()
+    assert misses == 0
+    assert code.encode() not in hashed and len(hashed) == 32
+
+
+def test_a_code_signs_in_as_the_link_does(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+
+    response = harness.type_code("Ana@Example.cl ", harness.code_for(ANA))
+
+    assert response.status_code == 200
+    assert response.json() == {"next": "/"}
+    cookie = response.headers["set-cookie"]
+    assert cookie.startswith(f"{COOKIE_NAME}=")
+    assert "HttpOnly" in cookie and "Secure" in cookie and "SameSite=lax" in cookie
+    assert "Max-Age=2592000" in cookie
+    [(session, _)] = harness.store.sessions.values()
+    assert session == Session(
+        "ana", "ana@example.cl", "gym-of-ana", harness.clock.now + timedelta(days=30)
+    )
+    assert harness.client.get("/whoami").json() == {"subject": "ana"}
+
+
+@pytest.mark.parametrize("spelling", ["{}", "{} {}", " {}-{} "])
+def test_a_code_may_be_typed_with_spaces(harness: Harness, spelling: str) -> None:
+    harness.request_link(ANA.address)
+    code = harness.code_for(ANA)
+    typed = spelling.format(code) if spelling == "{}" else spelling.format(code[:3], code[3:])
+    assert harness.type_code(ANA.address, typed).status_code == 200
+
+
+def test_a_code_spends_its_link(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    token = token_of(harness.outbox.url_for(ANA))
+
+    assert harness.type_code(ANA.address, harness.code_for(ANA)).status_code == 200
+
+    assert harness.client.post(f"{PREFIX}/callback", data={"token": token}).status_code == 400
+
+
+def test_a_link_spends_its_code(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    code = harness.code_for(ANA)
+
+    assert harness.sign_in_with_link_sent(ANA).status_code == 303
+
+    response = harness.type_code(ANA.address, code)
+    assert response.status_code == 400
+    assert response.json() == {"detail": "invalid"}
+
+
+def test_a_code_works_once(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    code = harness.code_for(ANA)
+    assert harness.type_code(ANA.address, code).status_code == 200
+    assert harness.type_code(ANA.address, code).status_code == 400
+
+
+def test_a_code_expires_with_its_link(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    code = harness.code_for(ANA)
+    harness.clock.now += timedelta(minutes=15)
+
+    response = harness.type_code(ANA.address, code)
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "expired"}
+    assert harness.store.sessions == {}
+
+
+def test_a_wrong_code_and_an_unknown_address_answer_the_same(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    code = harness.code_for(ANA)
+
+    answers = [
+        harness.type_code(ANA.address, wrong(code)),
+        harness.type_code("nadie@example.cl", code),
+        harness.type_code(ANA.address, "12345"),
+    ]
+
+    assert {(r.status_code, r.text) for r in answers} == {(400, '{"detail":"invalid"}')}
+    assert all("set-cookie" not in r.headers for r in answers)
+
+
+def test_five_wrong_codes_spend_it_and_the_link_still_works(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    code = harness.code_for(ANA)
+
+    for _ in range(4):
+        assert harness.type_code(ANA.address, wrong(code)).status_code == 400
+    # Four misses leave it working.
+    assert harness.store.codes
+    assert harness.type_code("ANA@example.cl", wrong(code)).status_code == 400
+
+    assert harness.type_code(ANA.address, code).json() == {"detail": "invalid"}
+    assert harness.store.sessions == {}
+    assert harness.sign_in_with_link_sent(ANA).status_code == 303
+
+
+def test_a_new_request_replaces_the_earlier_code(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    first = harness.code_for(ANA)
+    harness.outbox.forget()
+    harness.request_link(ANA.address)
+    second = harness.code_for(ANA)
+
+    if first != second:  # one in a million they are the same
+        assert harness.type_code(ANA.address, first).status_code == 400
+    assert harness.type_code(ANA.address, second).status_code == 200
+
+
+def test_each_account_at_a_shared_address_gets_its_own_code(harness: Harness) -> None:
+    harness.request_link(CAMILA.address)
+
+    assert harness.type_code(CAMILA.address, harness.code_for(MATEO)).status_code == 200
+    assert harness.type_code(CAMILA.address, harness.code_for(CAMILA)).status_code == 200
+    assert {s.subject for s, _ in harness.store.sessions.values()} == {"camila", "mateo"}
+
+
+def test_codes_typed_are_limited_per_address_and_per_ip(harness: Harness) -> None:
+    statuses = [harness.type_code("Nadie@example.cl", "000000") for _ in range(9)]
+    assert [r.status_code for r in statuses] == [400] * 8 + [429]
+    assert int(statuses[-1].headers["retry-after"]) == 900
+
+    by_ip = [harness.type_code(f"n{i}@example.cl", "000000", ip="198.51.100.9") for i in range(13)]
+    assert [r.status_code for r in by_ip] == [400] * 12 + [429]
+
+
+def test_codes_typed_do_not_cost_links(harness: Harness) -> None:
+    for _ in range(8):
+        harness.type_code(ANA.address, "000000")
+    assert harness.request_link(ANA.address) == 202
+
+
+def test_a_code_posted_from_another_site_is_refused(harness: Harness) -> None:
+    harness.request_link(ANA.address)
+    code = harness.code_for(ANA)
+
+    assert harness.type_code(ANA.address, code, origin="https://evil.example").status_code == 403
+    assert harness.type_code(ANA.address, code, origin=BASE_URL).status_code == 200
+
+
+def test_a_code_works_only_on_the_site_it_was_asked_for_on(tenant: Harness) -> None:
+    tenant.request_link(ANA.address)
+    code = tenant.code_for(ANA)
+    with TestClient(tenant.client.app, base_url=BASE_URL) as base:
+        response = base.post(f"{PREFIX}/code", json={"email": ANA.address, "code": code})
+        assert response.status_code == 400
+        assert response.json() == {"detail": "invalid"}
+
+    response = tenant.type_code(ANA.address, code)
+
+    assert response.status_code == 200
+    [(session, _)] = tenant.store.sessions.values()
+    assert session.scope == "gym-of-ana"
+
+
+def test_a_code_for_an_account_the_site_cannot_reach_says_so_and_spends_nothing(
+    tenant: Harness,
+) -> None:
+    tenant.request_link(CAMILA.address)
+    code = tenant.code_for(CAMILA)
+
+    for _ in range(2):  # still unspent the second time
+        response = tenant.type_code(CAMILA.address, code)
+        assert response.status_code == 403
+        assert response.json() == {"detail": "unreachable"}
+    assert tenant.store.sessions == {}
+    assert COOKIE_NAME not in tenant.client.cookies
+
+
+def test_a_link_issued_unasked_has_no_code_unless_asked(harness: Harness) -> None:
+    plain = asyncio.run(harness.links.issue(ANA))
+    coded = asyncio.run(harness.links.issue(ANA, code=True, ttl=timedelta(days=7)))
+
+    assert plain.code is None
+    assert coded.code is not None
+    harness.clock.now += timedelta(days=6)
+    assert harness.type_code(ANA.address, coded.code).status_code == 200

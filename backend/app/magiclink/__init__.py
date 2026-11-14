@@ -1,4 +1,5 @@
-"""Magic-link sign-in for FastAPI: email a link, open it, get a session cookie.
+"""Magic-link sign-in for FastAPI: email a link, open it (or type the code that came
+with it), get a session cookie.
 
 A link is a signed token that expires in 15 minutes, or later if issued so, and works
 once; only its hash is stored. It may name a page to land on, from the router's list.
@@ -13,6 +14,8 @@ the protocols in `service`; `app.auth` is Rakin's.
 
 from app.magiclink.ratelimit import MemoryRateLimiter, RateLimiter
 from app.magiclink.service import (
+    CodeExpired,
+    CodeLink,
     Directory,
     Link,
     MagicLinks,
@@ -38,6 +41,8 @@ from app.magiclink.web import (
 __all__ = [
     "COOKIE_NAME",
     "DEV_COOKIE_NAME",
+    "CodeExpired",
+    "CodeLink",
     "Directory",
     "Link",
     "MagicLinks",

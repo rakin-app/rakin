@@ -6,5 +6,12 @@ Para entrar a Rakin, abre este enlace:
 
 {{ url }}
 
+{% if code is defined and code %}
+{% set sign_in_code = code %}
+{% include "_code.txt" %}
+
+El enlace y el código vencen en 15 minutos y sirven una sola vez: usar uno gasta el otro. Si no lo pediste, ignora este correo.
+{% else %}
 Vence en 15 minutos y sirve una sola vez. Si no lo pediste, ignora este correo.
+{% endif %}
 {% endblock %}

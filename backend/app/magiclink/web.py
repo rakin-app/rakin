@@ -1,4 +1,5 @@
-"""The HTTP side: request a link, open it, end the session; and the cookie middleware.
+"""The HTTP side: request a link, open it or type its code, end the session; and the
+cookie middleware.
 
 Opening a link is two steps. The `GET` the email links to only shows a page with a
 button, and the button's `POST` spends the link. Mail scanners fetch every link in a
@@ -14,6 +15,9 @@ An application serving several sites (a tenant per host) passes `site`, which sa
 for each request where its links point and what a session started from it must start
 in (`Site`). A link opened on a site whose scope its account may not reach says so,
 and signs nobody in.
+
+A code is typed into the application's own sign-in screen, which posts it as JSON and
+gets the same cookie the link's button would have set, with where to go next.
 """
 
 import html
@@ -30,7 +34,7 @@ from starlette.datastructures import Headers
 from starlette.requests import cookie_parser
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.magiclink.service import MagicLinks, RateLimited, Session, Unreachable
+from app.magiclink.service import CodeExpired, MagicLinks, RateLimited, Session, Unreachable
 
 # `__Host-`: browsers accept it only Secure, on Path=/ and with no Domain.
 COOKIE_NAME = "__Host-session"
@@ -109,6 +113,15 @@ class LinkRequest(BaseModel):
         if not (at and local and domain) or any(c.isspace() for c in value):
             raise ValueError("not an email address")
         return value
+
+
+class CodeRequest(LinkRequest):
+    # As typed: "123 456" is fine, the digits are what count.
+    code: Annotated[str, Field(max_length=32)]
+
+
+class SignedIn(BaseModel):
+    next: str  # where the link would have landed
 
 
 def origin_of(url: str) -> str:
@@ -218,6 +231,27 @@ def build_router(
             status.HTTP_403_FORBIDDEN,
         )
 
+    def start_session(response: Response, session_token: str) -> None:
+        response.set_cookie(
+            cookie_name,
+            session_token,
+            max_age=int(links.session_ttl.total_seconds()),
+            path="/",
+            secure=secure,
+            httponly=True,
+            samesite="lax",
+        )
+
+    def client_ip(request: Request) -> str:
+        return request.client.host if request.client else "unknown"
+
+    def too_many(exc: RateLimited) -> HTTPException:
+        return HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "too many requests; try again later",
+            headers={"Retry-After": str(math.ceil(exc.retry_after))},
+        )
+
     def invalid(request: Request) -> HTMLResponse:
         return page(
             request,
@@ -239,15 +273,10 @@ def build_router(
 
         The answer is the same whether or not anyone is at the address.
         """
-        ip = request.client.host if request.client else "unknown"
         try:
-            links.admit(body.email, ip)
+            links.admit(body.email, client_ip(request))
         except RateLimited as exc:
-            raise HTTPException(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                "too many requests; try again later",
-                headers={"Retry-After": str(math.ceil(exc.retry_after))},
-            ) from exc
+            raise too_many(exc) from exc
         # Looking the address up, storing and sending all wait until after the
         # response, so a known address takes no longer to answer than an unknown one.
         background.add_task(links.send_links, body.email, base_url=site_of(request).base_url)
@@ -290,16 +319,44 @@ def build_router(
             return invalid(request)
         destination = landing(form.get("next", [""])[0])
         response = RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
-        response.set_cookie(
-            cookie_name,
-            session_token,
-            max_age=int(links.session_ttl.total_seconds()),
-            path="/",
-            secure=secure,
-            httponly=True,
-            samesite="lax",
-        )
+        start_session(response, session_token)
         return response
+
+    @router.post(
+        "/code",
+        responses={
+            400: {"description": "`invalid`: no such code at this address; `expired`"},
+            403: {"description": "`unreachable`: the address has no access to this site"},
+            429: {"description": "Too many codes typed at this address or from this IP"},
+        },
+    )
+    async def redeem_code(body: CodeRequest, request: Request, response: Response) -> SignedIn:
+        """Spend the code a link came with and start a session, as opening the link does.
+
+        A wrong code and an address with no account answer the same. A right code
+        that has expired says so, as does one for an account that may not sign in on
+        this site.
+        """
+        here = site_of(request)
+        sent_from = request.headers.get("origin")
+        if sent_from is not None and sent_from != origin_of(here.base_url):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
+        try:
+            links.admit_code(body.email, client_ip(request))
+        except RateLimited as exc:
+            raise too_many(exc) from exc
+        try:
+            session_token = await links.redeem_code(
+                body.email, body.code, base_url=here.base_url, within=here.scope
+            )
+        except CodeExpired as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "expired") from exc
+        except Unreachable as exc:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "unreachable") from exc
+        if session_token is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid")
+        start_session(response, session_token)
+        return SignedIn(next=after_login)
 
     @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
     async def logout(request: Request) -> Response:

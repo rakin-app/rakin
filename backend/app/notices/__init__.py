@@ -11,6 +11,9 @@ Every notice about someone's membership carries a sign-in link to the student pa
 (`page_link`): issued as it is sent, single use like any other, but good for
 `PAGE_LINK_TTL` rather than 15 minutes, since a statement is read days before it is
 due. It goes in under the message as `page_url`, which is never part of the payload.
+A welcome (`page_code`) also carries the link's six-digit code, `page_code`, for the
+app installed on an iPhone, which never opens a link from mail (#276); so does the
+sign-in link's own email, as `code`.
 
 A gym's notices link to its own host (`app.hosts`), its sign-in and unsubscribe links
 both: `meta.rakin.app` for Meta's. A notice of no gym links to the base host. A gym
@@ -55,7 +58,7 @@ from app.domain.money import format_clp
 from app.hosts import Hosts
 from app.integrations.mailer import Email, MailDeliveryError, Mailer, check_recipient
 from app.logos import EMAIL_VARIANT, logo_path
-from app.magiclink import MagicLinks, Recipient
+from app.magiclink import Link, MagicLinks, Recipient
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
 
 logger = logging.getLogger(__name__)
@@ -85,10 +88,13 @@ class Template:
     # `landing` says (`None` is the app's own start, the admin screens for staff).
     page_link: bool = True
     landing: str | None = STUDENT_PAGE
+    # The sign-in link comes with a code to type instead (#276): in the messages that
+    # start someone off, not in every statement, since each code replaces the last.
+    page_code: bool = False
 
 
-MAGIC_LINK = Template("magic_link", redact=frozenset({"url"}), page_link=False)
-WELCOME = Template("welcome")
+MAGIC_LINK = Template("magic_link", redact=frozenset({"url", "code"}), page_link=False)
+WELCOME = Template("welcome", page_code=True)
 STATEMENT = Template("statement")
 # A period past due (#260), from the nightly job or "Enviar recordatorio". Essential,
 # like the statement: it is about money owed, so an unsubscribe does not stop it. It
@@ -103,7 +109,7 @@ EXTRA_CHARGE = Template("extra_charge")
 STAFF_INVITE = Template("staff_invite", landing=None)
 # A join request approved with no plan (#154), with the sign-in link a member with no
 # plan can use since #246 (#254).
-JOIN_APPROVED = Template("join_approved")
+JOIN_APPROVED = Template("join_approved", page_code=True)
 # A freeze request (#270): to the owner and admins as it arrives, linking to the
 # member's ficha on the gym's host (`app_url`) rather than signing them in; and its
 # answer to the member or their guardian.
@@ -135,6 +141,11 @@ def _fecha(value: date) -> str:
     return f"{value:%d-%m-%Y}"
 
 
+def _code(value: str) -> str:
+    """A sign-in code as the email shows it: "123 456"."""
+    return f"{value[:3]} {value[3:]}"
+
+
 def _defined[T, R](filter_: Callable[[T], R]) -> Callable[[T], R]:
     """`filter_`, failing like any other missing value when given one."""
 
@@ -158,6 +169,7 @@ def environment(directory: Path = TEMPLATES_DIR) -> Environment:
     )
     env.filters["clp"] = _defined(format_clp)
     env.filters["fecha"] = _defined(_fecha)
+    env.filters["code"] = _defined(_code)
     return env
 
 
@@ -169,12 +181,14 @@ def render(
     *,
     unsubscribe_url: str | None = None,
     page_url: str | None = None,
+    page_code: str | None = None,
     logo_url: str | None = None,
     gym_logo_url: str | None = None,
     app_url: str | None = None,
     env: Environment = ENVIRONMENT,
 ) -> Email:
-    """The message `notice` is, with its unsubscribe and sign-in links when it has them.
+    """The message `notice` is, with its unsubscribe and sign-in links when it has them,
+    and the sign-in link's code, `page_code`, when it has one.
     `logo_url` is Rakin's logo for the footer; without it the footer names Rakin in text.
     `gym_logo_url` is the gym's (#223), over the message; without it there is none.
     `app_url` is where the gym's app is, for a link into it that signs nobody in."""
@@ -183,6 +197,7 @@ def render(
         **notice.context,
         "unsubscribe_url": unsubscribe_url,
         "page_url": page_url,
+        "page_code": page_code,
         "logo_url": logo_url,
         "gym_logo_url": gym_logo_url,
         "app_url": app_url,
@@ -279,12 +294,13 @@ class Notices:
                 await self._record(notice, Outcome.SUPPRESSED)
                 return Outcome.SUPPRESSED
             unsubscribe_url = self.unsubscribe_url(notice.gym_id, notice.person_id, base_url)
-        page_url = None
+        page_url = page_code = None
         if notice.template.page_link:
             try:
                 # No link for an address no mail reaches: it would never be delivered.
                 check_recipient(notice.to)
-                page_url = await self._page_url(notice, base_url)
+                link = await self._page_link(notice, base_url)
+                page_url, page_code = link.url, link.code
             except ValueError as exc:
                 logger.warning("notice not sent", extra=extra, exc_info=True)
                 await self._record(notice, Outcome.FAILED, error=_error(exc))
@@ -299,6 +315,7 @@ class Notices:
                 notice,
                 unsubscribe_url=unsubscribe_url,
                 page_url=page_url,
+                page_code=page_code,
                 logo_url=self.logo_url,
                 gym_logo_url=gym_logo_url,
                 app_url=base_url,
@@ -318,17 +335,20 @@ class Notices:
         await self._record(notice, Outcome.SENT)
         return Outcome.SENT
 
-    async def _page_url(self, notice: Notice, base_url: str) -> str:
+    async def _page_link(self, notice: Notice, base_url: str) -> Link:
         if self._links is None:
             raise RuntimeError(f"no sign-in links to send {notice.template.name} with")
         # The name is for a sender to greet with; this link goes inside the notice.
         recipient = Recipient(
             str(notice.person_id), notice.to, str(notice.context.get("name") or "")
         )
-        link = await self._links.issue(
-            recipient, ttl=PAGE_LINK_TTL, landing=notice.template.landing, base_url=base_url
+        return await self._links.issue(
+            recipient,
+            ttl=PAGE_LINK_TTL,
+            landing=notice.template.landing,
+            base_url=base_url,
+            code=notice.template.page_code,
         )
-        return link.url
 
     @asynccontextmanager
     async def _in_gym(self, gym_id: uuid.UUID | None) -> AsyncIterator[AsyncSession]:

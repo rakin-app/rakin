@@ -3,7 +3,13 @@
 {% block page_link %}
 
 Tu página: {{ page_url }}
+{% if page_code %}
+{% set sign_in_code = page_code %}
+{% include "_code.txt" %}
+El enlace y el código te dejan entrar sin contraseña. Sirven una sola vez, y usar uno gasta el otro; vencen en {{ page_link_days }} días.
+{% else %}
 Este enlace te deja entrar sin contraseña. Sirve una sola vez y vence en {{ page_link_days }} días.
+{% endif %}
 {% endblock %}
 {% endif %}
 

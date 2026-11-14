@@ -51,7 +51,25 @@ export const es = {
     sending: 'Enviando…',
     // The same whatever the address: it never says whether an account exists.
     sent: (email: string) =>
-      `Si el correo ${email} está registrado, te llegará un link para entrar. Vence en 15 minutos y sirve una sola vez. Si no llega en un par de minutos, revisa spam o promociones.`,
+      `Si el correo ${email} está registrado, te llegará un link y un código para entrar. Vencen en 15 minutos y sirven una sola vez. Si no llega en un par de minutos, revisa spam o promociones.`,
+    // The code that comes with the link (#276): the app on an iPhone's home screen never
+    // opens a link from mail, so it is typed here instead.
+    sentTitle: 'Te enviamos un link y un código',
+    codeLabel: 'Código del correo',
+    codeHint: 'Escríbelo aquí para entrar en esta ventana, o toca el link del correo.',
+    codeSubmit: 'Entrar',
+    codeChecking: 'Entrando…',
+    codeInvalid: 'Ese código no es el del correo. Revísalo e inténtalo de nuevo.',
+    codeExpired: 'Ese código venció. Pide otro y usa el más reciente.',
+    codeTooMany: (minutes: number | null) =>
+      minutes === null
+        ? 'Demasiados intentos. Inténtalo de nuevo en unos minutos o toca el link del correo.'
+        : `Demasiados intentos. Inténtalo de nuevo en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`} o toca el link del correo.`,
+    codeUnreachable: (gym: string) =>
+      `Este correo no tiene acceso a ${gym}. Si entrenas ahí, pídele al gimnasio que lo registre.`,
+    codeFailed: 'No pudimos entrar. Revisa tu conexión e inténtalo de nuevo.',
+    resend: 'Enviar otro',
+    resent: 'Te enviamos otro link y otro código. Usa el más reciente.',
     another: 'Usar otro correo',
     tooMany: (minutes: number | null) =>
       minutes === null

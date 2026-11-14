@@ -258,6 +258,45 @@ def test_the_staff_invite_has_its_own_sign_in_link() -> None:
     assert STAFF_INVITE.landing is None
 
 
+def test_only_the_messages_that_start_someone_off_carry_a_code() -> None:
+    """Each code replaces the last (#276): a statement must not undo a welcome's."""
+    assert [t.name for t in TEMPLATES if t.page_code] == ["welcome", "join_approved"]
+
+
+@pytest.mark.parametrize(
+    "notice",
+    [
+        Notice(WELCOME, "ana@example.cl", PERSON, GYM, WELCOMED),
+        Notice(JOIN_APPROVED, "ana@example.cl", PERSON, GYM, WELCOMED),
+        # The sign-in link's own email has them in its values, not under the message.
+        Notice(MAGIC_LINK, "ana@example.cl", PERSON, None, {"name": "Ana", "url": PAGE_URL}),
+    ],
+)
+def test_a_sign_in_code_goes_under_the_button(notice: Notice) -> None:
+    if notice.template.page_link:
+        email = render(notice, page_url=PAGE_URL, page_code="042917")
+    else:
+        email = render(replace(notice, context={**notice.context, "code": "042917"}))
+
+    assert "O escribe este código: 042 917\n" in email.text
+    assert email.text.index(PAGE_URL) < email.text.index("042 917")
+    assert "usar uno gasta el otro" in email.text
+    assert email.html is not None
+    assert "o escribe este código:" in email.html
+    assert "user-select:all;" in email.html and ">042 917</p>" in email.html
+
+
+def test_without_a_code_the_email_offers_none() -> None:
+    for email in (
+        render(Notice(WELCOME, "ana@example.cl", PERSON, GYM, WELCOMED), page_url=PAGE_URL),
+        render(
+            Notice(MAGIC_LINK, "ana@example.cl", PERSON, None, {"name": "Ana", "url": PAGE_URL})
+        ),
+    ):
+        assert "código" not in email.text
+        assert email.html is not None and "código" not in email.html
+
+
 def test_without_a_page_link_there_is_no_button() -> None:
     email = render(proof_notice())
     assert "Tu página" not in email.text
@@ -441,6 +480,32 @@ def test_a_sent_notice_is_recorded_in_its_gym(db: Database, gym: uuid.UUID) -> N
 
 
 @pg
+@pytest.mark.parametrize(("template", "coded"), [(WELCOME, True), (PROOF_RECEIVED, False)])
+def test_a_welcome_issues_its_link_with_a_code(
+    db: Database, gym: uuid.UUID, template: Template, coded: bool
+) -> None:
+    outbox = Outbox()
+    context = WELCOMED if template is WELCOME else PROOF
+
+    notice = Notice(template, "ana@example.cl", seeded_owner(gym), gym, context)
+
+    assert send(db, notice, outbox) is Outcome.SENT
+
+    [email] = outbox.sent
+    codes = re.findall(r"código: (\d{3} \d{3})", email.text)
+    [link] = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT code_hash FROM auth_link WHERE person_id = $1 ORDER BY created_at DESC LIMIT 1",
+            seeded_owner(gym),
+        ),
+    )
+    assert (len(codes), link["code_hash"] is not None) == ((1, True) if coded else (0, False))
+    [row] = logged(db, gym)[-1:]
+    assert all(code.replace(" ", "") not in row["payload"] for code in codes)
+
+
+@pg
 def test_a_sent_notice_shows_the_logo_from_the_base_host(db: Database, gym: uuid.UUID) -> None:
     outbox = Outbox()
 
@@ -488,7 +553,7 @@ class Issued:
 
     async def issue(self, recipient: Any, **_: Any) -> Any:
         self.recipients.append(recipient)
-        return type("Link", (), {"url": PAGE_URL})()
+        return type("Link", (), {"url": PAGE_URL, "code": None})()
 
 
 def test_a_notice_without_a_name_is_not_issued_a_link_for_none() -> None:
@@ -502,7 +567,7 @@ def test_a_notice_without_a_name_is_not_issued_a_link_for_none() -> None:
     )
     notice = replace(proof_notice(), context={k: v for k, v in PROOF.items() if k != "name"})
 
-    assert asyncio.run(notices._page_url(notice, BASE_URL)) == PAGE_URL
+    assert asyncio.run(notices._page_link(notice, BASE_URL)).url == PAGE_URL
 
     [recipient] = issued.recipients
     assert recipient.name == ""

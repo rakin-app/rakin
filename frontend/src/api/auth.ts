@@ -12,6 +12,23 @@ export function requestLink(email: string): Promise<void> {
   return apiFetch<void>('/api/auth/link', { method: 'POST', body: JSON.stringify({ email }) })
 }
 
+/** Where the app goes once a code has signed in: where the link would have landed. */
+export type SignedIn = { next: string }
+
+/**
+ * Signs in with the code a link came with (#276), for the app on an iPhone's home
+ * screen, which never opens a link from mail. A wrong code and an unknown address are
+ * both a 400 `invalid`; an expired one a 400 `expired`.
+ */
+export function redeemCode(email: string, code: string): Promise<SignedIn> {
+  return apiFetch<SignedIn>('/api/auth/code', { method: 'POST', body: JSON.stringify({ email, code }) })
+}
+
+/** The digits of a code as typed or pasted ("123 456"), six at most. */
+export function codeDigits(typed: string): string {
+  return typed.replace(/\D/g, '').slice(0, 6)
+}
+
 /** Seconds to wait before asking again, from a 429's `Retry-After`; `null` when it gives none. */
 export function retryAfterSeconds(headers: Headers): number | null {
   const seconds = Number(headers.get('Retry-After'))
