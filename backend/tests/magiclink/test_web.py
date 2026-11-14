@@ -87,11 +87,13 @@ class Store:
         address: str,
         expires_at: datetime,
         code_hash: bytes | None = None,
+        replace_codes: bool = False,
     ) -> None:
         self.links[token_hash] = (Pending(subject, address), expires_at, False)
-        if code_hash is not None:
+        if replace_codes:
             for link in [h for h in self.codes if self._at(h, address, subject)]:
                 del self.codes[link]
+        if code_hash is not None:
             self.codes[token_hash] = (code_hash, 0)
 
     def _at(self, token_hash: bytes, address: str, subject: str | None = None) -> bool:
@@ -902,3 +904,25 @@ def test_a_link_issued_unasked_has_no_code_unless_asked(harness: Harness) -> Non
     assert coded.code is not None
     harness.clock.now += timedelta(days=6)
     assert harness.type_code(ANA.address, coded.code).status_code == 200
+
+
+def test_a_code_sent_unasked_leaves_the_one_asked_for_working(harness: Harness) -> None:
+    """A welcome that lands while they type the code they asked for undoes nothing."""
+    harness.request_link(ANA.address)
+    asked = harness.code_for(ANA)
+    welcome = asyncio.run(harness.links.issue(ANA, code=True, ttl=timedelta(days=7)))
+    assert welcome.code is not None
+
+    assert harness.type_code(ANA.address, asked).status_code == 200
+    if welcome.code != asked:  # one in a million they are the same
+        assert harness.type_code(ANA.address, welcome.code).status_code == 200
+
+
+def test_asking_again_ends_a_code_sent_unasked(harness: Harness) -> None:
+    welcome = asyncio.run(harness.links.issue(ANA, code=True, ttl=timedelta(days=7)))
+    assert welcome.code is not None
+    harness.request_link(ANA.address)
+
+    if welcome.code != harness.code_for(ANA):
+        assert harness.type_code(ANA.address, welcome.code).status_code == 400
+    assert harness.type_code(ANA.address, harness.code_for(ANA)).status_code == 200

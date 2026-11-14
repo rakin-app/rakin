@@ -17,9 +17,11 @@ there, or not at all (`Unreachable`).
 A link may come with a six-digit code (`issue(code=True)`), for whoever cannot open the
 link in the window they asked from: an app installed to an iPhone's home screen, which
 mail and WhatsApp never open links in. The code is bound to the link's address and
-site, expires with it and is spent with it, either way round. A code is good for the
-latest link that carried one to its account at its address, and for `CODE_TRIES` wrong
-codes typed at that address; then it is spent too, and the link still works.
+site, expires with it and is spent with it, either way round. Asking for links again
+(`send_links`) ends every earlier code of the account's at the address; a code sent
+unasked, in a welcome, ends none, so it never undoes the one just asked for. A code is
+good for `CODE_TRIES` wrong codes typed at its address; then it is spent too, and the
+link still works.
 """
 
 import logging
@@ -108,9 +110,10 @@ class Store(Protocol):
         address: str,
         expires_at: datetime,
         code_hash: bytes | None = None,
+        replace_codes: bool = False,
     ) -> None:
-        """Store a link, and with `code_hash` its code, in place of any earlier code of
-        `subject`'s at `address` (case ignored): those no longer work."""
+        """Store a link, and with `code_hash` its code. With `replace_codes`, every
+        earlier code of `subject`'s at `address` (case ignored) stops working."""
         ...
 
     async def code_link(self, code_hash: bytes) -> CodeLink | None:
@@ -231,7 +234,7 @@ class MagicLinks:
             # One failure must not cost the others theirs (a parent and child share an
             # address). The log names the account, never the link.
             try:
-                link = await self.issue(recipient, base_url=base_url, code=True)
+                link = await self.issue(recipient, base_url=base_url, code=True, replace_codes=True)
                 await self.sender.send(link)
             except Exception:
                 logger.exception("magic link not sent", extra={"subject": recipient.subject})
@@ -247,6 +250,7 @@ class MagicLinks:
         landing: str | None = None,
         base_url: str | None = None,
         code: bool = False,
+        replace_codes: bool = False,
     ) -> Link:
         """A new single-use link for `recipient`, stored and ready to send.
 
@@ -258,7 +262,8 @@ class MagicLinks:
         application serves.
 
         With `code`, it comes with a code that signs in as it does, on that site only,
-        until it expires; any earlier code for `recipient` stops working.
+        until it expires. With `replace_codes` as well, as when they ask again, any
+        earlier code for `recipient` stops working; else the earlier ones keep working.
         """
         expires_at = self._clock() + (self.link_ttl if ttl is None else ttl)
         token = self._signer.issue(expires_at)
@@ -272,7 +277,12 @@ class MagicLinks:
             )
         )
         await self.store.add_link(
-            hash_token(token), recipient.subject, recipient.address, expires_at, code_hash
+            hash_token(token),
+            recipient.subject,
+            recipient.address,
+            expires_at,
+            code_hash,
+            replace_codes=replace_codes and code_hash is not None,
         )
         query = {"token": token} if landing is None else {"token": token, "next": landing}
         return Link(recipient, f"{callback}?{urlencode(query)}", expires_at, sign_in_code)

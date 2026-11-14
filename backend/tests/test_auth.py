@@ -377,22 +377,27 @@ def test_a_code_works_until_its_misses_run_out(db: Database, people: People) -> 
     with_store(db, check)
 
 
-def test_a_new_code_replaces_the_persons_earlier_one_at_that_address(
+def test_a_code_asked_for_replaces_the_persons_earlier_ones_at_that_address(
     db: Database, people: People
 ) -> None:
     now = datetime.now(UTC)
     later = now + timedelta(minutes=15)
-    first, second, other = (hash_token(uuid.uuid4().hex) for _ in range(3))
-    codes = [hash_token(f"code-{n}") for n in range(3)]
+    first, unasked, second, other = (hash_token(uuid.uuid4().hex) for _ in range(4))
+    codes = [hash_token(f"code-{uuid.uuid4().hex}") for _ in range(4)]
+    both = str(people.both)
 
     async def check(store: PostgresStore) -> None:
-        await store.add_link(first, str(people.both), "both@example.cl", later, codes[0])
+        await store.add_link(first, both, "both@example.cl", later, codes[0], replace_codes=True)
+        # One sent unasked, in a welcome, leaves the asked-for one working.
+        await store.add_link(unasked, both, "both@example.cl", later, codes[1])
+        assert await store.code_link(codes[0]) is not None
         # Someone else at the address keeps theirs, as a parent and child each do.
-        await store.add_link(other, str(people.shared), "Both@Example.cl", later, codes[2])
-        await store.add_link(second, str(people.both), "Both@Example.cl", later, codes[1])
+        await store.add_link(other, str(people.shared), "Both@Example.cl", later, codes[3])
+        await store.add_link(second, both, "Both@Example.cl", later, codes[2], replace_codes=True)
         assert await store.code_link(codes[0]) is None
-        assert await store.code_link(codes[1]) is not None
+        assert await store.code_link(codes[1]) is None
         assert await store.code_link(codes[2]) is not None
+        assert await store.code_link(codes[3]) is not None
         # The earlier link still works; only its code does not.
         assert await store.pending_link(first, now) is not None
 

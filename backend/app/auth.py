@@ -303,6 +303,7 @@ class PostgresStore:
         address: str,
         expires_at: datetime,
         code_hash: bytes | None = None,
+        replace_codes: bool = False,
     ) -> None:
         params = {
             "h": token_hash,
@@ -312,7 +313,7 @@ class PostgresStore:
             "c": code_hash,
         }
         async with self._sessionmaker()() as session, session.begin():
-            if code_hash is not None:
+            if replace_codes:
                 await session.execute(
                     text(
                         "UPDATE auth_link SET code_hash = NULL WHERE person_id = :p"
