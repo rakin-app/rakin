@@ -611,6 +611,13 @@ export const es = {
         waiting: 'Enviando la bienvenida…',
         sent: (day: string) => `Bienvenida enviada el ${day}.`,
         failed: (day: string) => `No se pudo enviar la bienvenida el ${day}. Revisa el correo y vuelve a intentarlo.`,
+        // An address Resend reported (#104): no mail goes to it, from any gym.
+        bounced: (day: string) =>
+          `Los correos a esta dirección rebotan desde el ${day}, así que ya no le enviamos ninguno. Corrígela en Datos.`,
+        complained: (day: string) =>
+          `El ${day} marcó uno de nuestros correos como spam, así que ya no le enviamos ninguno a esta dirección.`,
+        bounceDetail: (detail: string) => `Su servidor respondió: ${detail}`,
+        suppressedLast: (day: string) => `La bienvenida del ${day} no se envió: esa dirección no recibía correos.`,
         send: 'Enviar link para entrar',
         resend: 'Reenviar link para entrar',
         working: 'Enviando…',

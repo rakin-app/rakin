@@ -72,6 +72,9 @@ def test_secrets_have_no_default() -> None:
         (op, arg) for name, op, arg in interpolations() if name == "BACKUP_S3_SECRET_ACCESS_KEY"
     }
     assert backup == {(":-", "")}
+    # Opt-in too, so a host that has not set up Resend's webhook still deploys.
+    webhook = {(op, arg) for name, op, arg in interpolations() if name == "RESEND_WEBHOOK_SECRET"}
+    assert webhook == {(":-", "")}
 
 
 def test_backups_are_opt_in() -> None:

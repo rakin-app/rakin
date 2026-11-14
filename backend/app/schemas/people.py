@@ -202,21 +202,31 @@ class Enrolment(BaseModel):
 
 class WelcomeSent(BaseModel):
     """The latest welcome about someone, as `message_log` recorded it: `failed` with the
-    relay's refusal or an address no mail reaches."""
+    relay's refusal or an address no mail reaches, `suppressed` when its address was."""
 
-    status: Literal["sent", "failed"]
+    status: Literal["sent", "failed", "suppressed"]
     sent_at: datetime
     to: str
 
 
+class Suppression(BaseModel):
+    """Why no mail goes to an address (#104): Resend reported a hard `bounce` (with what
+    the receiving server said, if anything) or a spam `complaint`, on `since`."""
+
+    reason: Literal["bounce", "complaint"]
+    detail: str | None
+    since: datetime
+
+
 class WelcomeState(BaseModel):
     """Their sign-in link, on the ficha (#246): the address a welcome goes to, theirs or
-    their guardian's (`guardian` names them then), `None` with neither; and the latest
-    welcome sent about them, if any."""
+    their guardian's (`guardian` names them then), `None` with neither; the latest
+    welcome sent about them, if any; and, when no mail goes to that address, why."""
 
     to: str | None
     guardian: str | None
     last: WelcomeSent | None
+    suppressed: Suppression | None = None
 
 
 class Leaving(BaseModel):

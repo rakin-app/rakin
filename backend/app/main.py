@@ -40,6 +40,7 @@ from app.api import (
     sessions,
     staff,
     unsubscribe,
+    webhooks,
 )
 from app.auth import (
     LANDINGS,
@@ -136,6 +137,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(extra_charges.people_router)
     app.include_router(groups.router)
     app.include_router(unsubscribe.router)
+    app.include_router(webhooks.router)
     app.include_router(join.public)
     app.include_router(join.router)
     app.include_router(privacy.router)
