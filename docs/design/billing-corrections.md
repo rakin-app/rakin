@@ -145,9 +145,17 @@ today (Ajuste, Anular cargo); the UI below shows a corrected line with its fix u
 arithmetic. Two columns say what a correction is:
 
 - `ledger_entry.purpose` (text, nullable): why an adjustment or refund was written, when
-  it is a correction. `void` replaces the `voids` boolean (migrated: `voids` becomes
-  `purpose = 'void'`, and stays readable as a generated column for one release, or is
-  dropped with its readers in the same PR).
+  it is a correction. `void` replaces the `voids` boolean: #278 migrates every
+  `voids` row to `purpose = 'void'` and **drops the column in the same PR**, with all
+  its readers. Nothing outside this repo reads it, so a generated column kept for one
+  release would only be one more thing to remove later. The readers, in SQL: the
+  `ledger_entry_void` check and the `ledger_entry_one_void` index (0044), and
+  `forget_gym_person`'s `voided_clp` sum (0044), which the migration recreates. In the
+  app: `VOIDED_JOIN`, `TIMELINE`, `PERIODS`, `BOOK_ROWS` and `BOOK_KPIS` in
+  `app.api.ledger`; the lapsed plans' last billed day in `app.api.memberships`;
+  `app.api.entries`; and `LedgerEntry.voids` in `app.domain.ledger`. The API keeps a
+  `voids` field in its responses, read as `purpose = 'void'`, so the frontend does
+  not change.
 - `ledger_entry.corrects` (uuid, nullable, references `ledger_entry`): the entry this
   one undoes or moves. A check keeps it to the purposes that need it.
 
@@ -191,7 +199,25 @@ What each needs beyond the row:
   It differs from a void only in the reports: the charge was real, so "Esperado" keeps
   it, and the book's KPIs add "Condonado" for the month.
 
-`forget_refusal` and `forget_gym_person` (0044) need only the new purposes in their
+**Entries that sit on no billing period.** Three kinds of money are not one
+membership's period, and each primitive says what it does with them:
+
+- **A payment on a cobro extra line** (`extra_line_id`, 0037). `mistake` applies, with
+  the line in place of the period, as a refund of a line payment does
+  (`refund_line_payment`). `move` is refused for it in #280: moving money between a
+  plan and a cobro would mix the two in the book, and no case has asked for it yet. A
+  line's own mistakes are already fixed by changing its amount or cancelling it.
+- **A payment ahead** (#196). Each month paid ahead is a period of its own, with its own
+  payment (`record_payment_ahead`), so `move` and `mistake` apply to each as to any
+  period's payment.
+- **Carried credit**, the period-less adjustment an overpayment leaves (`settled`). It
+  is never corrected on its own: C4 refuses it. It follows the payment that made it.
+  Moving or undoing an overpaid payment takes the whole payment, and reverts its credit
+  (`revert`, `corrects` the credit) in the same transaction. A partial `move` or
+  `mistake` of an overpaid payment is refused. The moved-in payment carries fresh credit
+  through `billing.apply` if its new period needs less.
+
+`forget_refusal` and `forget_gym_person` (0044) also need the new purposes in their
 sums: a moved-out and a mistaken payment count as given back, so a person whose only
 payment was recorded by mistake can still be deleted.
 
@@ -215,10 +241,17 @@ Each writes an `audit_event` row in the same transaction (below).
   and `billed_through`). Separately, a payment that settles the last unpaid period of a
   lapsed plan offers "Reactivar plan" in its success message; it does not reactivate
   on its own, because a member who paid an old debt may have left.
-- **Undo a cancel (C11)**: `cancelled → active`, or `lapsed` if a period past due plus grace is unpaid (it would lapse again that night),
-  clearing `cancel_reason` and `cancelled_at`. The 0009 trigger lets it through only for
-  a membership not voided, and only when an `audit_event` row for it is written in the
-  same transaction (the API writes it first, the trigger checks for it). Refused when the
+- **Undo a cancel (C11)**: `cancelled → active`, or `lapsed` if a period past due
+  plus grace is unpaid (it would lapse again that night). The status before the cancel
+  is not stored anywhere (cancelling overwrites `status`), so this rule decides it. It
+  clears `cancel_reason` and `cancelled_at`. The 0009 trigger lets it through only for
+  a membership not voided, changing `status`, `cancel_reason` and `cancelled_at` and
+  nothing else, and only when the API has first written the matching audit row in the
+  same transaction. That row is the one with `action = 'cancel_undone'`,
+  `detail->>'membership_id' = OLD.id::text`, `detail->'status'->>'after' = NEW.status`,
+  `actor_id` = `app.person_id` and `at = now()`. `now()` is the transaction's start, so
+  a row from another transaction cannot match. No other audit row opens the gate, a
+  due-date change included. Refused when the
   person has started another plan since, which would leave them with two live ones; the
   form says so and offers to move the payments instead. It bills from when as C10 does.
   A freeze booked ahead that the cancel called off stays called off.
@@ -477,8 +510,9 @@ any order after #279, except #285, which follows #284.
    `amount_due_clp`.
 8. **#284 Reactivar plan caducado.** `lapsed → active`, billing from the last period or
    from today; "Reactivar plan" offered after a payment settles a lapsed plan.
-9. **#285 Deshacer baja.** `cancelled → ` its status before, through the 0009 trigger
-   with an audit row; refused beside another live plan.
+9. **#285 Deshacer baja.** `cancelled → active`, or `lapsed` if a period past grace is
+   unpaid, through the 0009 trigger, gated on its `cancel_undone` audit row; refused
+   beside another live plan.
 10. **#286 "Pagado hasta…" shortcut.** Payments or discount adjustments per period up to
     a date, for a member who paid before the gym used Rakin. Lowest priority: payments
     ahead (#196) cover most of it.
