@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from app.domain.ledger import EntryKind, EntryStatus
 from app.schemas.class_tags import TagHours, TagOn
 from app.schemas.extra_charges import MyExtraLine
+from app.schemas.freeze_requests import MyPlan
 from app.schemas.grades import Rank
 from app.schemas.gym import BankAccount
 from app.schemas.proofs import OpenPeriod
@@ -88,6 +89,8 @@ class MyPage(BaseModel):
     # The cobros extra still owed, theirs and their dependents', earliest due first
     # (#195): beside the plan's, never part of `next_payment`.
     extra_charges: list[MyExtraLine] = []
+    # Their running memberships and their dependents', for "Pedir congelamiento" (#270).
+    plans: list[MyPlan] = []
 
 
 class MyClass(BaseModel):

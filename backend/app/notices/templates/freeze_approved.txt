@@ -1,0 +1,8 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+{{ gym }} aprobó congelar {% if dependent_name %}el plan de {{ dependent_name }}{% else %}tu plan{% endif %} desde el {{ from_date | fecha }}. Vuelve el {{ to_date | fecha }}.
+
+Esos días no se cobran: el próximo pago se corre lo mismo.
+{% endblock %}

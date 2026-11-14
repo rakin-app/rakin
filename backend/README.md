@@ -313,6 +313,20 @@ A freeze (#26) is a side trip from Active: only an active membership freezes (a 
 
 A freeze can change after it is written (#115, migration `0027`); `rakin_app` may update its `to_date` and `reason`, never its first day. Ended early (`POST …/freeze/end`), the membership is Active again today and the due date moves back by the days the freeze no longer lasts: `current_period_end`, the billing periods it moved (those starting on or after its first day), `anchor_day` and `next_plan_from`, all by the same days. Its `to_date` becomes today, and an `unfrozen` `plan_event` records who ended it (`created_by`, null on the job's) and when (`created_at`). Plan events are one per membership, kind and day, deliberately: a freeze ended, frozen again and ended again the same day keeps the first `unfrozen` event, so the member is told once and `created_by` names whoever ended it first. One ended on its first day froze no day: its `to_date` is its `from_date`, it lists no ledger lines, and the membership may freeze again that day. A freeze whose end has passed but that the job has not yet ended ends where it was. A new end (`PATCH …/freeze`) moves the same dates by the days gained or lost. A freeze from a later day is booked: the membership stays Active, nothing moves, and the row waits with `started` false until the `freezes` job starts it on `from_date`, moving the dates then. A booked freeze can change its end or reason, or be called off (`POST …/freeze/end`, which sets its `to_date` to its `from_date`); cancelling the membership calls it off too, and so does the job when the membership is no longer Active on its first day. While one is booked the membership takes no other freeze. A membership read carries a booked freeze as `freeze` while Active.
 
+## Freeze requests
+
+A student asks for a freeze from their page, and the owner or an admin answers it (#270, migration `0045`). Approving freezes the membership through `app.api.memberships.freeze`, the code behind `POST /api/memberships/{id}/freeze`, so the due date moves exactly as an admin's freeze moves it, and the approval is refused as that freeze would be.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `POST` | `/api/me/freeze-requests` | `{"membership_id", "from_date", "to_date", "reason", "note"?}`: ask for a freeze of their own membership, or a dependent's as their guardian (anyone else's is a 404). `reason` is `lesion`, `viaje`, `salud` or `otro`, which needs a `note` (1 to 500 characters). `from_date` today at the earliest; dates as a freeze's. 409 `{"code": …}`: `has_freeze` (frozen, or one booked), `not_active`, `has_pending`. 201; each owner and admin with an email gets `freeze_requested`, linking to the member's ficha |
+| `DELETE` | `/api/me/freeze-requests/{id}` | withdraw one still waiting; only whoever asked. 204 |
+| `GET` | `/api/freeze-requests` | the requests waiting, oldest first; owner and admin |
+| `POST` | `/api/freeze-requests/{id}/approve` | `{"from_date"?, "to_date"?}`: freeze on the dates asked, or these; answers the membership. `freeze_approved` to the member, or their guardian |
+| `POST` | `/api/freeze-requests/{id}/reject` | `{"note"?}`: no, with a note for the member, in `freeze_rejected` |
+
+A membership has one request waiting at most. A request answered, or withdrawn, stays as a record (`status`, `decided_by`, `decided_at`); none is deleted, but with its membership when a person is forgotten. `GET /api/me/page` carries each running plan of theirs and their dependents' in `plans`, with its freeze, its request waiting and the last one answered in 30 days.
+
 ## Sessions API
 
 One `session` row per class (migration `0020`, [spec](../docs/technical.md#domain-model)). The weekly schedule (below) makes most of them ahead of time; a coach may also start one when the class begins, and writes its topic and notes during or after it. A session may carry `duration_minutes` (1 to 1440, `0035`), and one made by the schedule its `slot_id` and `slot_date`, the gym-local date it was made for, which it keeps when it is moved on its own.

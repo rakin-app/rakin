@@ -12,6 +12,7 @@ from app.api import (
     class_types,
     custom_fields,
     extra_charges,
+    freeze_requests,
     grades,
     grading,
     groups,
@@ -120,6 +121,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(block_kinds.router)
     app.include_router(session_blocks.router)
     app.include_router(memberships.router)
+    app.include_router(freeze_requests.mine)
+    app.include_router(freeze_requests.router)
     app.include_router(member_import.router)
     app.include_router(gym.router)
     app.include_router(staff.router)

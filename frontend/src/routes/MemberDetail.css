@@ -376,3 +376,10 @@
   font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);
 }
+
+/* A freeze the member asked for (#270), set apart inside the plan card. */
+.member__freeze-request {
+  padding: var(--space-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-lg);
+}

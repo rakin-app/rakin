@@ -113,7 +113,7 @@ SELECT_PLAN = """
 """
 
 
-def _membership(row: Any) -> Membership:
+def membership_of(row: Any) -> Membership:
     fields = dict(row._mapping)
     next_plan_id = fields.pop("next_plan_id")
     next_plan_name = fields.pop("next_plan_name")
@@ -145,7 +145,7 @@ async def _get(session: AsyncSession, membership_id: uuid.UUID) -> Membership:
     row = (await session.execute(text(sql), {"id": membership_id})).one_or_none()
     if row is None:
         raise NOT_FOUND
-    return _membership(row)
+    return membership_of(row)
 
 
 SELECT_STATE = (
@@ -449,7 +449,7 @@ async def list_memberships(
         text(f"{SELECT_MEMBERSHIP} WHERE m.person_id = :id ORDER BY {domain.current_first('m')}"),
         {"id": person_id},
     )
-    memberships = [_membership(row) for row in result]
+    memberships = [membership_of(row) for row in result]
     return memberships if money else [for_coach(m) for m in memberships]
 
 
@@ -642,6 +642,14 @@ async def freeze_membership(
     starts at once, with a `frozen` plan event for the plan-event emails; one from a
     later day is booked, and the `freezes` job starts it on that day. A membership with
     a freeze booked takes no other until it has run."""
+    return await freeze(session, tenant, membership_id, body)
+
+
+async def freeze(
+    session: AsyncSession, tenant: Tenant, membership_id: uuid.UUID, body: FreezeCreate
+) -> Membership:
+    """`freeze_membership`'s work, for a request that freezes a membership another way:
+    a freeze request approved (#270). Refusals are the endpoint's, as HTTP errors."""
     current, _ = await _locked(session, membership_id)
     today = await _gym_today(session, tenant)
     from_date = body.from_date or today

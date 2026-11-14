@@ -2,6 +2,8 @@ import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 import type { Rank } from './grading'
 import type { MyExtraLine } from './extraCharges'
+import type { FreezeRequest } from './freezeRequests'
+import type { Freeze } from './member'
 import type { OpenPeriod } from './proofs'
 import type { Theme } from '../theme'
 
@@ -107,6 +109,22 @@ export type MyPage = {
   payments: MyPayment[]
   // Cobros extra still owed, theirs and their dependents', earliest due first (#195).
   extra_charges?: MyExtraLine[]
+  // Their running plans and their dependents', with any freeze request (#270).
+  plans?: MyPlan[]
+}
+
+/** A running plan on the student page, for "Pedir congelamiento" (backend `MyPlan`). */
+export type MyPlan = {
+  membership_id: string
+  person_id: string
+  person_name: string
+  plan_name: string
+  status: 'active' | 'frozen'
+  // Running, or booked ahead.
+  freeze: Freeze | null
+  pending_request: FreezeRequest | null
+  // The last one answered, in the last 30 days.
+  last_decided: FreezeRequest | null
 }
 
 export function myPageQuery() {

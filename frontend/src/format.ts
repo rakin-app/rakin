@@ -40,6 +40,13 @@ export function isoDay(iso: string, timeZone?: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date(iso))
 }
 
+/** The day `days` after `day`, both as `2026-11-10`. */
+export function addDays(day: string, days: number): string {
+  const next = new Date(`${day}T00:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + days)
+  return next.toISOString().slice(0, 10)
+}
+
 /** `dom 8 nov`. */
 export function weekdayDay(date: Date): string {
   return date.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')

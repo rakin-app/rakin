@@ -104,6 +104,12 @@ STAFF_INVITE = Template("staff_invite", landing=None)
 # A join request approved with no plan (#154), with the sign-in link a member with no
 # plan can use since #246 (#254).
 JOIN_APPROVED = Template("join_approved")
+# A freeze request (#270): to the owner and admins as it arrives, linking to the
+# member's ficha on the gym's host (`app_url`) rather than signing them in; and its
+# answer to the member or their guardian.
+FREEZE_REQUESTED = Template("freeze_requested", page_link=False)
+FREEZE_APPROVED = Template("freeze_approved")
+FREEZE_REJECTED = Template("freeze_rejected")
 
 
 @dataclass(frozen=True)
@@ -165,11 +171,13 @@ def render(
     page_url: str | None = None,
     logo_url: str | None = None,
     gym_logo_url: str | None = None,
+    app_url: str | None = None,
     env: Environment = ENVIRONMENT,
 ) -> Email:
     """The message `notice` is, with its unsubscribe and sign-in links when it has them.
     `logo_url` is Rakin's logo for the footer; without it the footer names Rakin in text.
-    `gym_logo_url` is the gym's (#223), over the message; without it there is none."""
+    `gym_logo_url` is the gym's (#223), over the message; without it there is none.
+    `app_url` is where the gym's app is, for a link into it that signs nobody in."""
     name = notice.template.name
     context = {
         **notice.context,
@@ -177,6 +185,7 @@ def render(
         "page_url": page_url,
         "logo_url": logo_url,
         "gym_logo_url": gym_logo_url,
+        "app_url": app_url,
         "page_link_days": PAGE_LINK_TTL.days,
     }
     subject = " ".join(env.get_template(f"{name}.subject.txt").render(context).split())
@@ -292,6 +301,7 @@ class Notices:
                 page_url=page_url,
                 logo_url=self.logo_url,
                 gym_logo_url=gym_logo_url,
+                app_url=base_url,
                 env=self._env,
             )
             await self._mailer.send(email)

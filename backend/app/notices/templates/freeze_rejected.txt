@@ -1,0 +1,12 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+{{ gym }} no aprobó congelar {% if dependent_name %}el plan de {{ dependent_name }}{% else %}tu plan{% endif %} del {{ from_date | fecha }} al {{ to_date | fecha }}.
+{% if note %}
+
+Nota: {{ note }}
+{% endif %}
+
+El plan sigue activo. Si tienes dudas, habla con la academia.
+{% endblock %}

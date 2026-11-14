@@ -2443,3 +2443,59 @@ describe('Volver, to where the ficha was opened from (#250)', () => {
     expect(await screen.findByRole('link', { name: es.common.back })).toHaveAttribute('href', '/admin/alumnos/importar')
   })
 })
+
+describe('a freeze the member asked for (#270)', () => {
+  const freezes = es.admin.freezeRequests
+  const asked = {
+    id: 'fr-1',
+    membership_id: 'm-felipe',
+    person_id: 'felipe',
+    person_name: 'Felipe Díaz',
+    requested_by: 'felipe',
+    requested_by_name: 'Felipe Díaz',
+    plan_name: 'Mensual adultos',
+    from_date: '2099-11-20',
+    to_date: '2099-12-04',
+    reason: 'viaje',
+    note: null,
+    status: 'pending',
+    decision_note: null,
+    decided_at: null,
+    created_at: '2026-11-13T12:00:00Z',
+  }
+
+  it('waits on the plan card, and approving freezes the plan', async () => {
+    let waiting = [asked]
+    const calls = stubApi({
+      extra: (path, method) => {
+        if (path === '/api/freeze-requests') return { body: waiting }
+        if (path === '/api/freeze-requests/fr-1/approve' && method === 'POST') {
+          waiting = []
+          return { body: { ...MONTHLY, status: 'frozen', freeze: { id: 'f1', from_date: '2099-11-20', to_date: '2099-12-04', reason: 'Viaje', started: false } } }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+    const card = within(await money())
+
+    expect(await card.findByText(freezes.onCard)).toBeInTheDocument()
+    expect(card.getByText(freezes.dates('20 nov', '4 dic'))).toBeInTheDocument()
+    expect(card.getByText('Viaje')).toBeInTheDocument()
+    await userEvent.click(card.getByRole('button', { name: freezes.approveLabel('Felipe Díaz') }))
+    await userEvent.click(card.getByRole('button', { name: freezes.confirmApprove }))
+
+    expect(await card.findByText(freezes.approved('Felipe Díaz', '4 dic'))).toBeInTheDocument()
+    expect(calls.find((c) => c.path === '/api/freeze-requests/fr-1/approve')?.body).toEqual({})
+    expect(card.queryByText(freezes.onCard)).not.toBeInTheDocument()
+  })
+
+  it('is not asked for by a coach', async () => {
+    const calls = stubApi({ role: 'coach', extra: (path) => (path === '/api/freeze-requests' ? { body: [asked] } : undefined) })
+    renderAt(PATH)
+
+    await screen.findByRole('heading', { level: 1, name: 'Felipe Díaz' })
+    expect(screen.queryByText(freezes.onCard)).not.toBeInTheDocument()
+    expect(calls.some((c) => c.path === '/api/freeze-requests')).toBe(false)
+  })
+})

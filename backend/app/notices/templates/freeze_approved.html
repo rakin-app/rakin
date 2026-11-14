@@ -1,0 +1,7 @@
+{% extends "_layout.html" %}
+{% block title %}{{ gym }} aprobó tu congelamiento{% endblock %}
+{% block body %}
+<p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+<p style="margin:0 0 16px;">{{ gym }} aprobó congelar {% if dependent_name %}el plan de {{ dependent_name }}{% else %}tu plan{% endif %} desde el <strong>{{ from_date | fecha }}</strong>. Vuelve el <strong>{{ to_date | fecha }}</strong>.</p>
+<p style="margin:0;">Esos días no se cobran: el próximo pago se corre lo mismo.</p>
+{% endblock %}
