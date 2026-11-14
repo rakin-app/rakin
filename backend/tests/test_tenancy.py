@@ -35,6 +35,7 @@ PUBLIC_PATHS = {
     "/healthz",
     "/api/blobs/{key}",
     "/api/auth/link",
+    "/api/auth/code",
     "/api/auth/callback",
     "/api/auth/logout",
     "/api/mail/unsubscribe/{token}",

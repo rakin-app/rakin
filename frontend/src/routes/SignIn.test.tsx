@@ -152,3 +152,119 @@ describe('Entrar', () => {
     expect(localStorage.getItem('rakin.returnTo')).toBeNull()
   })
 })
+
+type Answer = { status: number; body?: unknown; headers?: Record<string, string> }
+
+// `/api/auth/link` answers 202, `/api/auth/code` each of `codes` in turn, and once in,
+// `/api/me/role` says they are a member; everything else is unreachable.
+function stubCode(...codes: Answer[]) {
+  const sent: Sent[] = []
+  const json = { 'Content-Type': 'application/json' }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input, init) => {
+      const path = new URL(String(input), 'http://localhost').pathname
+      if (path === '/api/host') return new Response(JSON.stringify({ gym: null }), { headers: json })
+      sent.push({ path, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      if (path === '/api/auth/link') return new Response(null, { status: 202 })
+      if (path === '/api/auth/code') {
+        const { status, body, headers } = codes.shift() ?? { status: 503 }
+        return new Response(JSON.stringify(body ?? {}), { status, headers: { ...json, ...headers } })
+      }
+      if (path === '/api/me/role') {
+        const me = { role: null, person_id: 'p', name: 'Ana', email: null, gym_name: 'Sur', student_page: true }
+        return new Response(JSON.stringify(me), { headers: json })
+      }
+      return new Response('{}', { status: 503, headers: json })
+    }),
+  )
+  return sent
+}
+
+async function typeCode(code: string) {
+  const input = await screen.findByLabelText(copy.codeLabel)
+  await userEvent.clear(input)
+  await userEvent.type(input, code)
+  await userEvent.click(screen.getByRole('button', { name: copy.codeSubmit }))
+}
+
+describe('Entrar with the code (#276)', () => {
+  it('offers a one-time-code input once the link is sent', async () => {
+    stubCode()
+    renderAt('/ingresar')
+    await ask('ana@example.cl')
+
+    expect(await screen.findByRole('heading', { name: copy.sentTitle })).toBeInTheDocument()
+    const input = screen.getByLabelText(copy.codeLabel)
+    expect(input).toHaveAttribute('inputmode', 'numeric')
+    expect(input).toHaveAttribute('autocomplete', 'one-time-code')
+    expect(input).toHaveAccessibleDescription(copy.codeHint)
+    expect(screen.getByRole('button', { name: copy.codeSubmit })).toBeDisabled()
+  })
+
+  it('signs in with the code as the email shows it, and goes where the link would have', async () => {
+    const sent = stubCode({ status: 200, body: { next: '/' } })
+    const router = renderAt('/ingresar')
+    await ask('ana@example.cl')
+
+    const input = await screen.findByLabelText(copy.codeLabel)
+    await userEvent.click(input)
+    await userEvent.paste('042 917')
+    expect(input).toHaveValue('042917')
+    await userEvent.click(screen.getByRole('button', { name: copy.codeSubmit }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+    expect(sent.find((s) => s.path === '/api/auth/code')).toEqual({
+      path: '/api/auth/code',
+      body: { email: 'ana@example.cl', code: '042917' },
+    })
+  })
+
+  it('says a wrong code is wrong, and takes another', async () => {
+    stubCode({ status: 400, body: { detail: 'invalid' } }, { status: 200, body: { next: '/' } })
+    const router = renderAt('/ingresar')
+    await ask('ana@example.cl')
+
+    await typeCode('111111')
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.codeInvalid)
+    expect(screen.queryByRole('button', { name: copy.resend })).not.toBeInTheDocument()
+
+    await typeCode('042917')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+  })
+
+  it('offers another link and code when the code has expired', async () => {
+    const sent = stubCode({ status: 400, body: { detail: 'expired' } })
+    renderAt('/ingresar')
+    await ask('ana@example.cl')
+
+    await typeCode('042917')
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.codeExpired)
+    await userEvent.click(screen.getByRole('button', { name: copy.resend }))
+
+    expect(await screen.findByText(copy.resent)).toBeInTheDocument()
+    expect(screen.getByLabelText(copy.codeLabel)).toHaveValue('')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(sent.filter((s) => s.path === '/api/auth/link')).toHaveLength(2)
+  })
+
+  it('says when there were too many tries, from Retry-After', async () => {
+    stubCode({ status: 429, headers: { 'Retry-After': '600' } })
+    renderAt('/ingresar')
+    await ask('ana@example.cl')
+
+    await typeCode('042917')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.codeTooMany(10))
+  })
+
+  it("says so when the address has no access to this gym's site", async () => {
+    stubCode({ status: 403, body: { detail: 'unreachable' } })
+    renderAt('/ingresar')
+    await ask('ana@example.cl')
+
+    await typeCode('042917')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.codeUnreachable('Rakin'))
+  })
+})

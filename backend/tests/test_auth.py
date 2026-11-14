@@ -6,6 +6,7 @@ is `tests/magiclink`.
 """
 
 import asyncio
+import re
 import uuid
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
@@ -48,6 +49,13 @@ class Outbox:
         [email] = [e for e in self.sent if e.to.lower() == address.lower()]
         [url] = [w for w in email.text.split() if w.startswith(BASE_URL)]
         return url
+
+    def code_to(self, address: str) -> str:
+        """The code in the email to `address`, as it shows it: "123 456"."""
+        [email] = [e for e in self.sent if e.to.lower() == address.lower()]
+        [code] = re.findall(r"código: (\d{3} \d{3})", email.text)
+        assert email.html is not None and code in email.html
+        return str(code)
 
 
 @dataclass(frozen=True)
@@ -292,6 +300,151 @@ def test_logging_out_ends_the_session(harness: Harness, db: Database) -> None:
     assert session_row(db, token)["ended_at"] is not None
     harness.client.cookies.set(COOKIE_NAME, token)
     assert harness.client.get("/test/setting").status_code == 401
+
+
+# --- codes (#276) -----------------------------------------------------------------
+
+
+def test_the_code_in_the_email_signs_in_to_the_persons_gym(
+    harness: Harness, people: People, db: Database
+) -> None:
+    harness.client.post("/api/auth/link", json={"email": "ana@example.cl"})
+    code = harness.outbox.code_to("ana@example.cl")
+
+    response = harness.client.post("/api/auth/code", json={"email": "ANA@example.cl", "code": code})
+
+    assert response.status_code == 200
+    assert response.json() == {"next": "/"}
+    assert harness.client.get("/test/setting").json()["gym"] == str(people.sur)
+    row = session_row(db, str(harness.client.cookies[COOKIE_NAME]))
+    assert (row["person_id"], row["email"]) == (people.ana, "Ana@Example.cl")
+
+
+def test_the_code_and_the_link_are_spent_together(harness: Harness) -> None:
+    def ask() -> tuple[str, str]:
+        harness.outbox.sent.clear()
+        harness.client.post("/api/auth/link", json={"email": "ana@example.cl"})
+        url = harness.outbox.link_to("ana@example.cl")
+        return parse_qs(urlsplit(url).query)["token"][0], harness.outbox.code_to("ana@example.cl")
+
+    def type_code(code: str) -> int:
+        body = {"email": "ana@example.cl", "code": code}
+        return int(harness.client.post("/api/auth/code", json=body).status_code)
+
+    token, code = ask()
+    assert type_code(code) == 200
+    assert harness.client.post("/api/auth/callback", data={"token": token}).status_code == 400
+
+    token, code = ask()
+    assert harness.client.post("/api/auth/callback", data={"token": token}).status_code == 303
+    assert type_code(code) == 400
+
+
+def test_the_code_is_never_logged(harness: Harness, people: People, db: Database) -> None:
+    harness.client.post("/api/auth/link", json={"email": "ana@example.cl"})
+    code = harness.outbox.code_to("ana@example.cl").replace(" ", "")
+
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT payload FROM message_log WHERE person_id = $1 ORDER BY sent_at DESC LIMIT 1",
+            people.ana,
+        ),
+    )
+    [row] = rows
+    assert "code" not in row["payload"] and code not in row["payload"]
+    hashed = run(db.admin_url, lambda c: c.fetch("SELECT code_hash FROM auth_link"))
+    assert all(r["code_hash"] is None or code.encode() not in r["code_hash"] for r in hashed)
+
+
+def test_no_code_goes_to_a_suppressed_address(
+    harness: Harness, people: People, db: Database
+) -> None:
+    """The sign-in email, code and all, goes through the bounce suppression (#288)."""
+    person, address = uuid.uuid4(), f"{uuid.uuid4().hex[:8]}@example.cl"
+    records: dict[uuid.UUID, tuple[str, str | None]] = {people.sur: ("Rebota", address)}
+    run(db.admin_url, lambda c: add_person(c, person, records))
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "INSERT INTO mail_suppression (address, reason) VALUES ($1, 'bounce')", address
+        ),
+    )
+
+    assert harness.client.post("/api/auth/link", json={"email": address}).status_code == 202
+
+    assert harness.outbox.sent == []
+    [row] = run(
+        db.admin_url,
+        lambda c: c.fetch("SELECT template, status FROM message_log WHERE person_id = $1", person),
+    )
+    assert (row["template"], row["status"]) == ("magic_link", "suppressed")
+
+
+def test_a_code_works_until_its_misses_run_out(db: Database, people: People) -> None:
+    link, code, now = hash_token(uuid.uuid4().hex), hash_token("code"), datetime.now(UTC)
+    expires_at = now + timedelta(minutes=15)
+
+    async def check(store: PostgresStore) -> None:
+        await store.add_link(link, str(people.ana), ANA, expires_at, code)
+        found = await store.code_link(code)
+        assert found is not None
+        assert (found.token_hash, found.subject, found.address) == (link, str(people.ana), ANA)
+        for _ in range(4):
+            await store.miss_code("ana@example.cl", now, 5)
+        assert await store.code_link(code) is not None
+        await store.miss_code("ANA@EXAMPLE.CL", now, 5)
+        assert await store.code_link(code) is None
+        # The link itself still works.
+        assert await store.pending_link(link, now) == Pending(str(people.ana), ANA)
+
+    with_store(db, check)
+
+
+def test_a_code_asked_for_replaces_the_persons_earlier_ones_at_that_address(
+    db: Database, people: People
+) -> None:
+    now = datetime.now(UTC)
+    later = now + timedelta(minutes=15)
+    first, unasked, second, other = (hash_token(uuid.uuid4().hex) for _ in range(4))
+    codes = [hash_token(f"code-{uuid.uuid4().hex}") for _ in range(4)]
+    both = str(people.both)
+
+    async def check(store: PostgresStore) -> None:
+        await store.add_link(first, both, "both@example.cl", later, codes[0], replace_codes=True)
+        # One sent unasked, in a welcome, leaves the asked-for one working.
+        await store.add_link(unasked, both, "both@example.cl", later, codes[1])
+        assert await store.code_link(codes[0]) is not None
+        # Someone else at the address keeps theirs, as a parent and child each do.
+        await store.add_link(other, str(people.shared), "Both@Example.cl", later, codes[3])
+        await store.add_link(second, both, "Both@Example.cl", later, codes[2], replace_codes=True)
+        assert await store.code_link(codes[0]) is None
+        assert await store.code_link(codes[1]) is None
+        assert await store.code_link(codes[2]) is not None
+        assert await store.code_link(codes[3]) is not None
+        # The earlier link still works; only its code does not.
+        assert await store.pending_link(first, now) is not None
+
+    with_store(db, check)
+
+
+def test_a_spent_or_expired_code_counts_no_misses(db: Database, people: People) -> None:
+    now = datetime.now(UTC)
+    link, code = hash_token(uuid.uuid4().hex), hash_token(uuid.uuid4().hex)
+    session = Session(str(people.ana), ANA, str(people.sur), now + timedelta(days=30))
+
+    async def check(store: PostgresStore) -> None:
+        await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15), code)
+        found = await store.code_link(code)
+        assert found is not None and found.expires_at == now + timedelta(minutes=15)
+        assert await store.redeem_link(link, now, hash_token(uuid.uuid4().hex), session)
+        assert await store.code_link(code) is None
+
+    with_store(db, check)
+    select = "SELECT code_misses FROM auth_link WHERE token_hash = $1"
+    with_store(db, lambda store: store.miss_code(ANA, now, 5))
+    [row] = run(db.admin_url, lambda c: c.fetch(select, link))
+    assert row["code_misses"] == 0
 
 
 # --- the store --------------------------------------------------------------------

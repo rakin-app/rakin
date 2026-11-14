@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.hosts import Hosts, host_gym
 from app.integrations.mailer import Mailer
 from app.magiclink import (
+    CodeLink,
     Link,
     MagicLinks,
     MemoryRateLimiter,
@@ -54,6 +55,10 @@ LANDINGS = frozenset({STUDENT_PAGE})
 # asking; thirty per IP leaves room for a gym's shared wifi.
 PER_ADDRESS = (5, 15 * 60)
 PER_IP = (30, 15 * 60)
+# Codes typed (#276), apart from links asked for: five per address, as many as one
+# code takes before it is spent; sixty per IP, for a gym's shared wifi.
+CODE_PER_ADDRESS = (5, 15 * 60)
+CODE_PER_IP = (60, 15 * 60)
 
 # Rakin's logo (#224, docs/brand): the tatami symbol, drawn on docs/brand/build.py's
 # grid, and the wordmark in the display font, ending in the centre mat's square. In
@@ -273,7 +278,8 @@ class PeopleDirectory:
 
 
 class PostgresStore:
-    """`auth_link` and `auth_session`, keyed by token hash (0005).
+    """`auth_link` and `auth_session`, keyed by token hash (0005), and a link's code
+    (0047).
 
     A session is read and ended before any gym is set, so through the lookups 0005
     defines rather than the RLS-scoped table.
@@ -291,12 +297,56 @@ class PostgresStore:
             return (await session.execute(text(sql), params)).one_or_none()
 
     async def add_link(
-        self, token_hash: bytes, subject: str, address: str, expires_at: datetime
+        self,
+        token_hash: bytes,
+        subject: str,
+        address: str,
+        expires_at: datetime,
+        code_hash: bytes | None = None,
+        replace_codes: bool = False,
     ) -> None:
+        params = {
+            "h": token_hash,
+            "p": uuid.UUID(subject),
+            "a": address,
+            "e": expires_at,
+            "c": code_hash,
+        }
+        async with self._sessionmaker()() as session, session.begin():
+            if replace_codes:
+                await session.execute(
+                    text(
+                        "UPDATE auth_link SET code_hash = NULL WHERE person_id = :p"
+                        " AND lower(email) = lower(:a) AND code_hash IS NOT NULL"
+                    ),
+                    params,
+                )
+            await session.execute(
+                text(
+                    "INSERT INTO auth_link (token_hash, person_id, email, expires_at, code_hash)"
+                    " VALUES (:h, :p, :a, :e, :c)"
+                ),
+                params,
+            )
+
+    async def code_link(self, code_hash: bytes) -> CodeLink | None:
+        row = await self._fetch(
+            "SELECT token_hash, person_id, email, expires_at FROM auth_link"
+            " WHERE code_hash = :c AND used_at IS NULL AND email IS NOT NULL"
+            " ORDER BY created_at DESC LIMIT 1",
+            {"c": code_hash},
+        )
+        if row is None:
+            return None
+        return CodeLink(bytes(row.token_hash), str(row.person_id), row.email, row.expires_at)
+
+    async def miss_code(self, address: str, now: datetime, tries: int) -> None:
         await self._execute(
-            "INSERT INTO auth_link (token_hash, person_id, email, expires_at)"
-            " VALUES (:h, :p, :a, :e)",
-            {"h": token_hash, "p": uuid.UUID(subject), "a": address, "e": expires_at},
+            "UPDATE auth_link SET code_misses = code_misses + 1,"
+            " code_hash = CASE WHEN code_misses + 1 >= :tries THEN NULL ELSE code_hash END"
+            " WHERE lower(email) = lower(:a) AND code_hash IS NOT NULL"
+            " AND used_at IS NULL AND expires_at > :now",
+            {"a": address, "now": now, "tries": tries},
         )
 
     async def pending_link(self, token_hash: bytes, now: datetime) -> Pending | None:
@@ -360,8 +410,8 @@ class PostgresStore:
 
 
 class MailSender:
-    """Sends each link as the `magic_link` notice. It belongs to no gym, and its URL
-    is never written to `message_log`."""
+    """Sends each link, with its code, as the `magic_link` notice. It belongs to no gym,
+    and neither its URL nor its code is written to `message_log`."""
 
     def __init__(self, notices: Notices) -> None:
         self._notices = notices
@@ -374,7 +424,7 @@ class MailSender:
                 to=recipient.address,
                 person_id=uuid.UUID(recipient.subject),
                 gym_id=None,
-                context={"name": recipient.name, "url": link.url},
+                context={"name": recipient.name, "url": link.url, "code": link.code},
             )
         )
 
@@ -432,4 +482,8 @@ def build_magic_links(settings: Settings, mailer: Mailer, sessionmaker: Sessionm
         ),
         per_address=MemoryRateLimiter(limit=PER_ADDRESS[0], window_seconds=PER_ADDRESS[1]),
         per_ip=MemoryRateLimiter(limit=PER_IP[0], window_seconds=PER_IP[1]),
+        code_per_address=MemoryRateLimiter(
+            limit=CODE_PER_ADDRESS[0], window_seconds=CODE_PER_ADDRESS[1]
+        ),
+        code_per_ip=MemoryRateLimiter(limit=CODE_PER_IP[0], window_seconds=CODE_PER_IP[1]),
     )

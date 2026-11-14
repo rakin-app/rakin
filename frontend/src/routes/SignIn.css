@@ -56,3 +56,27 @@
   font-size: var(--text-sm);
 }
 
+.signin__sent-title {
+  margin: 0 0 var(--space-1);
+  color: var(--color-heading);
+  font-size: var(--text-lg);
+}
+
+.signin__sent {
+  margin: 0;
+}
+
+/* The code as the email shows it: large, its digits spaced. At least 16px, so iOS
+   Safari does not zoom in on focus. */
+.signin__code {
+  font-size: var(--text-xl);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3em;
+  text-align: center;
+}
+
+.signin__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}

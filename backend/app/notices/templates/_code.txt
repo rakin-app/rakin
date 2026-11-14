@@ -1,0 +1,2 @@
+{# The sign-in link's code (#276); `sign_in_code` is its six digits. #}
+O escribe este código: {{ sign_in_code | code }}

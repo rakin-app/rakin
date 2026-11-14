@@ -4,5 +4,11 @@
 <p style="margin:0 0 16px;">Hola, {{ name }}:</p>
 <p style="margin:0 0 24px;">Para entrar a Rakin, toca el botón:</p>
 <p style="margin:0 0 24px;"><a href="{{ url }}" style="display:inline-block;padding:12px 24px;background:#18181b;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">Entrar a Rakin</a></p>
+{% if code is defined and code %}
+{% set sign_in_code = code %}
+{% include "_code.html" %}
+<p style="margin:0;color:#52525b;font-size:14px;">El botón y el código vencen en 15 minutos y sirven una sola vez: usar uno gasta el otro. Si no lo pediste, ignora este correo.</p>
+{% else %}
 <p style="margin:0;color:#52525b;font-size:14px;">Vence en 15 minutos y sirve una sola vez. Si no lo pediste, ignora este correo.</p>
+{% endif %}
 {% endblock %}

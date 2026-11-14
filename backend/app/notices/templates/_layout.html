@@ -17,7 +17,13 @@
 {% if page_url %}
 {% block page_link %}
 <p style="margin:24px 0 8px;"><a href="{{ page_url }}" style="display:inline-block;padding:12px 24px;background:#18181b;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">Ir a mi página</a></p>
+{% if page_code %}
+{% set sign_in_code = page_code %}
+{% include "_code.html" %}
+<p style="margin:0;color:#52525b;font-size:14px;">El botón y el código te dejan entrar sin contraseña. Sirven una sola vez, y usar uno gasta el otro; vencen en {{ page_link_days }} días.</p>
+{% else %}
 <p style="margin:0;color:#52525b;font-size:14px;">El botón te deja entrar sin contraseña. Sirve una sola vez y vence en {{ page_link_days }} días.</p>
+{% endif %}
 {% endblock %}
 {% endif %}
 </td></tr>
