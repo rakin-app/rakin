@@ -36,7 +36,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.corrections import balance, record_correction
-from app.api.entries import insert_entry
+from app.api.entries import insert_entry, standing_void
 from app.api.extra_lines import refund_line_payment
 from app.api.people import people_matching
 from app.contacts import Contact, contact_for
@@ -44,7 +44,7 @@ from app.db import driver_connection
 from app.domain import billing
 from app.domain.billing import SETTLING_KINDS, Billing, BillingPeriod, Settlement, settled_amount
 from app.domain.errors import InvalidTransition
-from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
+from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry, Purpose
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import RECEIPT, Notice, Notices, get_notices
 from app.roles import LedgerSession
@@ -75,9 +75,14 @@ from app.schemas.ledger import (
     RecordedAhead,
     RecordedPayment,
     RecordedRefund,
+    RecordedRestore,
     RecordedVoid,
     RefundablePayment,
     RefundRecord,
+    RestoreConflict,
+    Restored,
+    RestoreRecord,
+    RestoreRefusal,
     TimelineEntry,
     VoidConflict,
     Voided,
@@ -443,6 +448,77 @@ async def record_void(body: VoidRecord, session: LedgerSession) -> RecordedVoid:
     return await void_period(session, body.membership_id, body.billing_period_id, body.reason)
 
 
+NO_ENTRY = HTTPException(status.HTTP_404_NOT_FOUND, "ledger entry not found")
+
+# The entry a restore names, and the period it is on.
+VOID_ENTRY = text(
+    "SELECT membership_id, billing_period_id, amount_clp, purpose FROM ledger_entry"
+    " WHERE id = :id AND billing_period_id IS NOT NULL"
+)
+
+# Read under the period's locks: whether the void was restored already, and whether
+# its plan was voided since.
+RESTORE_STATE = text(
+    "SELECT EXISTS (SELECT FROM ledger_entry WHERE corrects = :id AND purpose = 'restore')"
+    " AS restored, m.voided_at IS NOT NULL AS plan_voided"
+    " FROM membership m WHERE m.id = :membership_id"
+)
+
+
+def restore_refused(code: RestoreRefusal, message: str) -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT, RestoreConflict(code=code, message=message).model_dump()
+    )
+
+
+@router.post(
+    "/restores",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_409_CONFLICT: {"model": RestoreConflict}},
+)
+async def record_restore(body: RestoreRecord, session: LedgerSession) -> RecordedRestore:
+    """Restaurar un cargo (#278): a charge voided by mistake is owed again, as if the void
+    had not happened. An adjustment of minus the void's amount on its period, naming it in
+    `corrects`; the ledger keeps both. Once restored, the charge no longer reads voided,
+    counts in "Esperado", and may be voided again. A void is restored once, and never one
+    of a plan's voids (#256): a plan voided by mistake is assigned again."""
+    found = (await session.execute(VOID_ENTRY, {"id": body.void_id})).one_or_none()
+    if found is None:
+        raise NO_ENTRY
+    if found.purpose != Purpose.VOID:
+        raise restore_refused(RestoreRefusal.NOT_A_VOID, "the entry is not a void")
+    row, period = await locked_period(session, found.billing_period_id, found.membership_id)
+    state = (
+        await session.execute(
+            RESTORE_STATE, {"id": body.void_id, "membership_id": found.membership_id}
+        )
+    ).one()
+    if state.restored:
+        raise restore_refused(RestoreRefusal.RESTORED, "the void was restored already")
+    if state.plan_voided:
+        raise restore_refused(RestoreRefusal.PLAN_VOIDED, "the plan was voided: assign it again")
+    settlement = billing.restore(period, found.amount_clp, body.reason)
+    before = await figures(session, found.membership_id, period)
+    entry = await insert_entry(
+        session,
+        settlement.entry,
+        membership_id=found.membership_id,
+        billing_period_id=row.id,
+        corrects=body.void_id,
+    )
+    await record_correction(
+        session,
+        membership_id=found.membership_id,
+        billing_period_id=row.id,
+        entry_ids=[entry.id],
+        purpose=Purpose.RESTORE.value,
+        reason=entry.note,
+        before=before,
+        after=await figures(session, found.membership_id, settlement.period),
+    )
+    return RecordedRestore(restore=entry, period=period_after(row.id, settlement.period))
+
+
 NO_PAYMENT = HTTPException(status.HTTP_404_NOT_FOUND, "payment not found")
 
 PAYMENT = text(
@@ -658,15 +734,36 @@ OPEN_PERIODS = text(
     """
 )
 
-# The void of a charge's period (#256), for `e`, a `ledger_entry`: why, by whom, when.
-VOIDED_JOIN = """
+# The void of a charge's period still standing (#256, #278), for `e`, a `ledger_entry`:
+# why, by whom, when; and the latest void restored on it, with its restore.
+VOIDED_JOIN = f"""
     LEFT JOIN LATERAL (
         SELECT v.note, v.created_at, vb.name FROM ledger_entry v
         LEFT JOIN gym_person vb ON vb.gym_id = v.gym_id AND vb.person_id = v.validated_by
-        WHERE e.kind = 'charge' AND v.billing_period_id = e.billing_period_id AND v.voids
+        WHERE e.kind = 'charge' AND v.billing_period_id = e.billing_period_id
+          AND {standing_void("v")}
     ) vd ON true
+    LEFT JOIN LATERAL (
+        SELECT r.note, r.created_at, rb.name, v.note AS void_note,
+               v.created_at AS void_at, vb.name AS void_name
+        FROM ledger_entry r
+        JOIN ledger_entry v ON v.id = r.corrects
+        LEFT JOIN gym_person rb ON rb.gym_id = r.gym_id AND rb.person_id = r.validated_by
+        LEFT JOIN gym_person vb ON vb.gym_id = v.gym_id AND vb.person_id = v.validated_by
+        WHERE e.kind = 'charge' AND r.billing_period_id = e.billing_period_id
+          AND r.purpose = 'restore'
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT 1
+    ) rs ON true
 """
-VOIDED_COLUMNS = "vd.note AS void_reason, vd.name AS void_by_name, vd.created_at AS voided_at"
+VOIDED_COLUMNS = (
+    "vd.note AS void_reason, vd.name AS void_by_name, vd.created_at AS voided_at,"
+    " rs.note AS restore_reason, rs.name AS restore_by_name, rs.created_at AS restored_at,"
+    " rs.void_note AS restored_void_reason, rs.void_name AS restored_void_by_name,"
+    " rs.void_at AS restored_void_at"
+)
+# The entry's own purpose, and whether it is a void, as the API has said since #256.
+PURPOSE_COLUMNS = "e.purpose, coalesce(e.purpose = 'void', false) AS voids"
 
 
 def voided(row: Any) -> Voided | None:
@@ -675,18 +772,33 @@ def voided(row: Any) -> Voided | None:
     return Voided(reason=row.void_reason, by_name=row.void_by_name, at=row.voided_at)
 
 
+def restored(row: Any) -> Restored | None:
+    if row.restored_at is None:
+        return None
+    return Restored(
+        reason=row.restore_reason,
+        by_name=row.restore_by_name,
+        at=row.restored_at,
+        void=Voided(
+            reason=row.restored_void_reason,
+            by_name=row.restored_void_by_name,
+            at=row.restored_void_at,
+        ),
+    )
+
+
 def timeline_entry(row: Any) -> TimelineEntry:
     fields = dict(row._mapping)
-    for column in ("void_reason", "void_by_name", "voided_at"):
-        fields.pop(column)
-    return TimelineEntry(**fields, voided=voided(row))
+    for column in VOIDED_COLUMNS.split(","):
+        fields.pop(column.split(" AS ")[1].strip())
+    return TimelineEntry(**fields, voided=voided(row), restored=restored(row))
 
 
 TIMELINE = text(
     f"""
     SELECT e.id, e.kind, e.status, e.amount_clp, e.method, e.billing_period_id,
            bp.period_start, e.note, e.created_at, vp.name AS validated_by_name,
-           e.validated_at, e.refund_of, e.voids, {VOIDED_COLUMNS}
+           e.validated_at, e.refund_of, {PURPOSE_COLUMNS}, {VOIDED_COLUMNS}
     FROM ledger_entry e
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
@@ -700,15 +812,19 @@ TIMELINE = text(
 
 # Every period of the membership, newest first, with what it still owes settled as
 # `OPEN_PERIODS` settles it: what an adjustment may go to (#38). Not capped as the
-# timeline is, so a period older than its latest entries is still there. With what a
-# void took off it (#256), which a "Recargo" of as much puts back (#271).
+# timeline is, so a period older than its latest entries is still there. With its void
+# still standing (#256), if any, and what it took off, which "Restaurar cargo" puts
+# back (#278).
 PERIODS = text(
     f"""
     SELECT bp.id, bp.period_start, bp.period_end,
            greatest(bp.amount_due_clp - coalesce(paid.amount, 0), 0) AS outstanding_clp,
-           (SELECT coalesce(sum(v.amount_clp), 0) FROM ledger_entry v
-            WHERE v.billing_period_id = bp.id AND v.voids) AS voided_clp
+           coalesce(vd.amount_clp, 0) AS voided_clp, vd.id AS void_id
     FROM billing_period bp
+    LEFT JOIN LATERAL (
+        SELECT v.id, v.amount_clp FROM ledger_entry v
+        WHERE v.billing_period_id = bp.id AND {standing_void("v")}
+    ) vd ON true
     LEFT JOIN LATERAL (
         SELECT sum({settled_amount("e")})::bigint AS amount FROM ledger_entry e
         WHERE e.billing_period_id = bp.id AND e.status = :validated
@@ -855,7 +971,7 @@ def book_rows(columns: str = "") -> str:
                AS outstanding_clp,
            CASE WHEN coalesce(paid.amount, 0) < bp.amount_due_clp
                 THEN greatest(t.today - bp.due_date, 0) ELSE 0 END AS days_overdue,
-           vp.name AS validated_by_name, e.voids, {VOIDED_COLUMNS}
+           vp.name AS validated_by_name, {PURPOSE_COLUMNS}, {VOIDED_COLUMNS}
     FROM ledger_entry e
     CROSS JOIN ({GYM_CLOCK}) t
     LEFT JOIN membership em ON em.id = e.membership_id
@@ -927,9 +1043,9 @@ EXPECTED_STATUSES = ("active", "lapsed")
 # Expected ("Esperado") is what is owed for the month: the periods falling due in it of
 # active and lapsed memberships, since a lapsed member still owes what was billed. A
 # cancelled membership's periods are not expected, and neither are a trial's or a
-# frozen one's, nor a period whose charge was voided (#256).
+# frozen one's, nor a period whose charge was voided (#256) and not restored (#278).
 BOOK_KPIS = text(
-    """
+    f"""
     SELECT
         (SELECT coalesce(sum(income_clp), 0)::bigint FROM v_monthly_income
          WHERE month = :month) AS collected_clp,
@@ -949,7 +1065,8 @@ BOOK_KPIS = text(
          WHERE m.status = ANY(CAST(:expected_statuses AS text[]))
            AND bp.due_date >= :month AND bp.due_date < (:month + interval '1 month')::date
            AND NOT EXISTS (
-               SELECT FROM ledger_entry v WHERE v.billing_period_id = bp.id AND v.voids
+               SELECT FROM ledger_entry v WHERE v.billing_period_id = bp.id
+                 AND {standing_void("v")}
            ))
             AS expected_clp,
         (SELECT count(*) FROM membership WHERE status = 'active') AS active_memberships,
@@ -1094,8 +1211,10 @@ def book_entry(row: Any) -> BookEntry:
         else BookExtra(
             id=row.extra_charge_id, title=row.charge_title, category=row.charge_category
         ),
+        purpose=row.purpose,
         voids=row.voids,
         voided=voided(row),
+        restored=restored(row),
     )
 
 

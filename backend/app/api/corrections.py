@@ -3,9 +3,9 @@
 Each correction writes an `audit_event` row (migration 0048) in its own transaction:
 who made it (`app.person_id`), when, the reason, whose billing it changed, what it
 touched, and the period and the membership's balance before and after it, read under
-the correction's locks (`app.api.ledger.locked_period`). A void and an adjustment write
-one each (`app.api.ledger`); a plan voided by mistake writes one per period it voids,
-each marked `plan_void` (`app.api.memberships`).
+the correction's locks (`app.api.ledger.locked_period`). A void, a restore and an
+adjustment write one each (`app.api.ledger`); a plan voided by mistake writes one per
+period it voids, each marked `plan_void` (`app.api.memberships`).
 
 `GET /api/ledger/people/{id}/corrections` reads a person's rows, newest first, for the
 ficha's "Correcciones". Owner and admin only (`LedgerSession`); RLS holds a coach to it

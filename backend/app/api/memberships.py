@@ -44,7 +44,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.entries import CURRENT_PERSON
+from app.api.entries import CURRENT_PERSON, standing_void
 from app.api.ledger import period_money, void_period
 from app.contacts import Contact, contact_for
 from app.db import driver_connection
@@ -238,15 +238,17 @@ async def insert_membership(
     return membership_id
 
 
-# The last day the person's lapsed plans have billed, their voided charges aside: a plan
-# assigned again starts after it, so no day is billed twice (#271).
+# The last day the person's lapsed plans have billed, their voided charges aside (a
+# restored one is billed, #278): a plan assigned again starts after it, so no day is
+# billed twice (#271).
 LAPSED_BILLED_THROUGH = text(
-    """
+    f"""
     SELECT max(bp.period_end) FROM billing_period bp
     JOIN membership m ON m.id = bp.membership_id
     WHERE m.person_id = :person AND m.status = 'lapsed' AND m.voided_at IS NULL
       AND NOT EXISTS (
-          SELECT FROM ledger_entry v WHERE v.billing_period_id = bp.id AND v.voids
+          SELECT FROM ledger_entry v WHERE v.billing_period_id = bp.id
+            AND {standing_void("v")}
       )
     """
 )

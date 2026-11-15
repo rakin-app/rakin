@@ -6,7 +6,8 @@ new entry, never an edit of an old one.
 Amounts are positive and the kind says which way they go, except an adjustment's: its
 sign says which way it goes, positive in the member's favour and negative owed (#38).
 A void is an adjustment in the member's favour of whatever its period still owes, so
-that nothing is owed on it any more (#256).
+that nothing is owed on it any more (#256). A restore puts a void's amount back on its
+period, as if the void had not happened (#278).
 """
 
 from dataclasses import dataclass, replace
@@ -28,6 +29,18 @@ class EntryStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class Purpose(StrEnum):
+    """What a correcting entry is for (#278, docs/design/billing-corrections.md): each
+    held to its kind and sign by the database (`ledger_entry_purpose`, migration 0049)."""
+
+    VOID = "void"
+    RESTORE = "restore"
+    REVERT = "revert"
+    WRITE_OFF = "write_off"
+    MOVE = "move"
+    MISTAKE = "mistake"
+
+
 TRANSITIONS: dict[EntryStatus, frozenset[EntryStatus]] = {
     EntryStatus.PENDING: frozenset({EntryStatus.VALIDATED, EntryStatus.REJECTED}),
     EntryStatus.VALIDATED: frozenset(),
@@ -41,8 +54,9 @@ class LedgerEntry:
     amount_clp: int
     status: EntryStatus = EntryStatus.PENDING
     note: str | None = None
-    # An adjustment that voids what its period still owes, the reason in `note` (#256).
-    voids: bool = False
+    # Why a correction was written, its reason in `note`: a void of what its period
+    # still owes (#256), a restore of a void (#278); `None` for any other entry.
+    purpose: Purpose | None = None
 
     def __post_init__(self) -> None:
         if self.kind is EntryKind.ADJUSTMENT:
@@ -50,8 +64,14 @@ class LedgerEntry:
                 raise ValueError("an adjustment's amount_clp is not zero; its sign says which way")
         elif self.amount_clp <= 0:
             raise ValueError("amount_clp must be positive; the kind says which way it goes")
-        if self.voids and (self.kind is not EntryKind.ADJUSTMENT or self.amount_clp <= 0):
+        if self.purpose is Purpose.VOID and (
+            self.kind is not EntryKind.ADJUSTMENT or self.amount_clp <= 0
+        ):
             raise ValueError("a void is an adjustment in the member's favour")
+        if self.purpose is Purpose.RESTORE and (
+            self.kind is not EntryKind.ADJUSTMENT or self.amount_clp >= 0
+        ):
+            raise ValueError("a restore is an adjustment owed by the member")
 
 
 def _move(entry: LedgerEntry, to: EntryStatus) -> None:

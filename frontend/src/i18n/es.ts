@@ -779,6 +779,8 @@ export const es = {
       refund: 'Devolver',
       // Fixing a mistake (#256): a charge, or a whole plan, voided with a reason.
       voidCharge: 'Anular cargo',
+      // A charge voided by mistake, owed again (#278).
+      restoreCharge: 'Restaurar cargo',
       voidPlan: 'Anular plan',
       voidedBadge: 'Anulado',
       voidedBanner: (reason: string, day: string) => `Plan anulado el ${day}: ${reason}`,
@@ -793,6 +795,27 @@ export const es = {
         cancel: 'Cancelar',
         working: 'Anulando…',
         done: (month: string, amount: string) => `Cargo de ${month} anulado: ${amount}.`,
+      },
+      restoreForm: {
+        title: 'Restaurar cargo',
+        intro: 'Para un cargo anulado por error: vuelve a deberse, como si no se hubiera anulado. Quedan en el libro la anulación y la restauración.',
+        period: 'Cargo anulado',
+        periodOption: (month: string, amount: string) => `${month} · anulado ${amount}`,
+        // What the period owes, before → after.
+        owed: (month: string, before: string, after: string) => `Debe en ${month}: ${before} → ${after}`,
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe por qué se restaura.',
+        submit: 'Restaurar cargo',
+        cancel: 'Cancelar',
+        working: 'Restaurando…',
+        done: (month: string, amount: string) => `Cargo de ${month} restaurado: vuelve a deberse ${amount}.`,
+      },
+      // Why a restore was refused (#278).
+      restoreRefused: {
+        not_a_void: 'Ese movimiento no es una anulación.',
+        restored: 'Ese cargo ya se restauró.',
+        plan_voided: 'El plan se anuló completo: para volver a cobrarlo, asígnalo de nuevo.',
+        failed: 'No pudimos restaurarlo. Inténtalo de nuevo.',
       },
       voidPlanForm: {
         title: 'Anular plan',
@@ -820,8 +843,6 @@ export const es = {
         // A charge voided says so, and how much (#271).
         periodOption: (month: string, amount: string, voided: string | null) =>
           voided ? `${month} · ${amount} por pagar · anulado ${voided}` : `${month} · ${amount} por pagar`,
-        // Putting back a charge voided by mistake (#271).
-        restoreHint: (amount: string) => `Este cargo se anuló. Si fue por error, un recargo de ${amount} lo vuelve a cobrar.`,
         amount: 'Monto (CLP)',
         note: 'Motivo',
         // No sign on the button: the word says which way it goes (#210).
@@ -1023,6 +1044,10 @@ export const es = {
         voided: (reason: string, by: string | null, day: string) =>
           `Anulado: ${reason}${by ? `, por ${by}` : ''}, ${day}`,
         void: (month: string) => `Anulación ${month}`,
+        // A void restored (#278): the charge is owed again.
+        restored: (reason: string, by: string | null, day: string) =>
+          `Restaurado: ${reason}${by ? `, por ${by}` : ''}, ${day}`,
+        restore: (month: string) => `Restauración ${month}`,
         all: (n: number) => `Ver todo el libro (${n})`,
         fewer: 'Ver menos',
       },
@@ -1032,6 +1057,7 @@ export const es = {
         error: 'No pudimos cargar las correcciones.',
         void: (month: string) => `Anuló cargo ${month}`,
         planVoid: (month: string) => `Anuló plan · cargo ${month}`,
+        restore: (month: string) => `Restauró cargo ${month}`,
         // An adjustment by which way it went, as the Libro names it.
         adjustment: (favor: boolean, month: string) => `${favor ? 'Descuento' : 'Recargo'} ${month}`,
         dueDate: 'Cambió el vencimiento',
@@ -2048,8 +2074,9 @@ export const es = {
         status: 'Estado',
         amount: 'Monto',
       },
-      // An adjustment voiding a charge (#256).
+      // An adjustment voiding a charge (#256), and one restoring it (#278).
       void: 'Anulación',
+      restore: 'Restauración',
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
       // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.
       adjustment: { favor: 'Descuento', owed: 'Recargo' },
