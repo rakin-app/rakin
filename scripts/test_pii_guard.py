@@ -146,6 +146,19 @@ class FullNameVersusWord(unittest.TestCase):
         self.assertIn("line 1", err.getvalue())
         self.assertNotIn("Roc", err.getvalue())
 
+    def test_surname_first_entry_matches_both_orders(self):
+        names = g.Denylist.parse("Quezada Rojas, Bastián\n")
+        self.assertEqual(kinds("Bastián Quezada Rojas", names), ["denylist name"])
+        self.assertEqual(kinds("QUEZADA ROJAS BASTIAN", names), ["denylist name"])
+        self.assertEqual(kinds("Bastián Quezada", names), [])
+
+    def test_short_number_entry_warns_and_is_ignored(self):
+        err = io.StringIO()
+        with redirect_stderr(err):
+            numbers = g.Denylist.parse("1.234.567\n")
+        self.assertFalse(numbers)
+        self.assertIn("line 1 is under 8 digits", err.getvalue())
+
     def test_listed_email_and_numbers(self):
         self.assertEqual(kinds("from XIMENA.real@gmail.com", NAMES), ["email", "denylist email"])
         self.assertEqual(kinds("rut 21333444-k", NAMES), ["denylist number"])
@@ -193,11 +206,36 @@ class Diff(unittest.TestCase):
 
 
 class CommitMessage(unittest.TestCase):
-    def test_trailers_and_comments_are_skipped(self):
-        msg = "Fix: thing\n\nSigned-off-by: Dev <dev@gmail.com>\n# from 973124501\n"
+    def msg(self, text: str, denylist: str = ""):
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
-            f.write(msg)
-        self.assertEqual(run("commit-msg", f.name).returncode, 0)
+            f.write(text)
+        return run("commit-msg", f.name, env={"PII_DENYLIST": denylist} if denylist else None)
+
+    def test_metadata_lines_skip_the_patterns(self):
+        text = (
+            "Fix: thing\n\nSigned-off-by: Dev <dev@gmail.com>\n"
+            "Co-Authored-By: Claude <noreply@anthropic.com>\n# Author: Dev <dev@gmail.com>\n"
+        )
+        self.assertEqual(self.msg(text).returncode, 0)
+
+    def test_hash_lines_are_scanned(self):
+        # `git commit -m` / `-F` keep `#` lines, so a markdown heading is public.
+        result = self.msg("Fix: thing\n\n# Bastián Quezada\n", "Bastián Quezada\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("commit message:3:3: denylist name", result.stderr)
+        self.assertEqual(self.msg(f"Fix\n\n# rut {VALID_RUT}\n").returncode, 1)
+
+    def test_scissors_tail_is_skipped(self):
+        text = f"Fix\n# ------------------------ >8 ------------------------\n+{VALID_RUT}\n"
+        self.assertEqual(self.msg(text).returncode, 0)
+
+    def test_trailers_still_get_the_denylist(self):
+        result = self.msg(
+            "Fix\n\nReported-by: Bastián Quezada <b@gmail.com>\n", "Bastián Quezada\n"
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("denylist name", result.stderr)
+        self.assertNotIn(": email", result.stderr)
 
     def test_body_is_scanned(self):
         with tempfile.NamedTemporaryFile("w", delete=False) as f:
@@ -279,6 +317,40 @@ class ClaudeHook(unittest.TestCase):
     def test_heredoc_body_in_the_command(self):
         command = "gh pr create --body-file - <<'BODY'\n## Summary\nFor bastian quezada.\nBODY"
         self.assertEqual(self.hook(command, "/").returncode, 2)
+
+    def test_body_read_through_cat_is_scanned(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "b.md").write_text("Bastián Quezada\n")
+            for command in [
+                'gh issue create --body "$(cat b.md)"',
+                'gh pr comment 1 -b "$(<b.md)"',
+            ]:
+                with self.subTest(command=command):
+                    self.assertEqual(self.hook(command, d).returncode, 2)
+
+    def test_unresolvable_body_file_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            for command in [
+                "gh issue create --body-file $PII_TEST_UNSET_VAR/b.md",
+                "gh issue create --body-file $(mktemp)",
+                "gh issue create --body-file missing.md",
+            ]:
+                with self.subTest(command=command):
+                    result = self.hook(command, d)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("unreadable body file", result.stderr)
+
+    def test_variables_in_body_file_paths_are_expanded(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "b.md").write_text("Bastián Quezada\n")
+            payload = {
+                "tool_name": "Bash",
+                "tool_input": {"command": "gh issue create --body-file $BODY_DIR/b.md"},
+            }
+            env = {"PII_DENYLIST": "Bastián Quezada\n", "BODY_DIR": d}
+            result = run("claude-hook", stdin=json.dumps(payload), env=env)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("denylist name", result.stderr)
 
     def test_clean_and_unrelated_calls_pass(self):
         with tempfile.TemporaryDirectory() as d:

@@ -16,7 +16,7 @@ Every check runs one script, [`scripts/pii_guard.py`](../scripts/pii_guard.py). 
 
 The textbook values the code's docstrings quote (`12.345.678-5`, `76.123.456-0`, `7.654.321-6`, `9 1234 5678`, `9 8765 4321`, …) and the demo gym's phones (`9 6123 45xx`) are on `EXAMPLE_VALUES` / `EXAMPLE_PREFIXES` and pass.
 
-**The denylist.** These are the real people: names, emails, RUTs and phones exported from staging. Matching ignores case and accents (`Ñuñoa` is `nunoa`), and a name also matches inside an identifier or address (`ximena_nunez`, `ximena.nunez@…`). A name of two or more words matches only as that whole sequence, so a list entry "Ximena Ñúñez" never fires on a lone "Ximena". A single-word entry is ignored, with a warning that gives its line number, unless the list writes it `word: <it>`. A RUT or phone matches in any format.
+**The denylist.** These are the real people: names, emails, RUTs and phones exported from staging. Matching ignores case and accents (`Ñuñoa` is `nunoa`), and a name also matches inside an identifier or address (`ximena_nunez`, `ximena.nunez@…`). A name of two or more words matches only as that whole sequence, so a list entry "Ximena Ñúñez" never fires on a lone "Ximena". A single-word entry is ignored, with a warning that gives its line number, unless the list writes it `word: <it>`. Words must be in the same order, so a name written surname first (`Ñúñez Peñaloza, Ximena`) matches both orders, but `Ximena Ñúñez Peñaloza` matches only that one. The staging export writes names as they are stored; add a `Surnames, Given names` line for anyone the gym's sheets list surname first. A RUT or phone matches in any format, and needs at least 8 digits: a shorter entry is ignored with a warning, since it would fire inside unrelated numbers.
 
 ## Where the list lives
 
@@ -36,6 +36,7 @@ nombre.apellido@gmail.com   # pii-ok: an invented example
 12.345.678-5
 +56 9 1234 5678
 word: Apellidoraro
+Apellido Materno, Nombre
 ```
 
 ### Refreshing it from staging
@@ -64,8 +65,8 @@ Add any other place a real person turns up, such as a staff member's address or 
 | Where | What it scans | Set up by |
 |-------|---------------|-----------|
 | `pre-commit` hook | The lines the commit adds | `make hooks` |
-| `commit-msg` hook | The commit message, except `#` comments and `…-by:` trailers, which repeat the commit's own author | `make hooks` |
-| Claude Code `PreToolUse` hook on `Bash` | Any `gh issue\|pr\|api\|release` call: the command text, a heredoc body included, and every file it names with `--body-file`, `-F`, `--input`, `--notes-file` or `-F field=@file`. A hit blocks the call and gives the reason. | [`.claude/settings.json`](../.claude/settings.json), inherited by every worktree |
+| `commit-msg` hook | The whole commit message, `#` lines included: `git commit -m` and `-F` keep them, and the hook cannot tell which kind of commit ran. Only the `>8` scissors tail is skipped. `…-by:` trailers and the editor template's `# Author:` / `# Date:` lines skip the patterns, since they repeat the commit's own author, but they still get the denylist. | `make hooks` |
+| Claude Code `PreToolUse` hook on `Bash` | Any `gh issue\|pr\|api\|release` call: the command text, a heredoc body included, and every file it names with `--body-file`, `-F`, `--input`, `--notes-file` or `-F field=@file`, or reads into an argument with `$(cat file)`, `$(<file)` or backticks. `$VAR` and `~` in a path are expanded. A file the hook cannot read (an unset variable, a `$(…)` path, a file the same command writes first) blocks the call too, so write the body to a literal path in a separate step. A hit blocks the call and gives the reason. | [`.claude/settings.json`](../.claude/settings.json), inherited by every worktree |
 | CI `pii / pr` job | The PR's diff (added lines), title and body. It re-runs when the title or body is edited. | [`.github/workflows/pii.yml`](../.github/workflows/pii.yml) |
 | CI `pii / daily` job | Issues, PRs, comments and review comments created or edited in the last day. A hit fails the run, so the owner gets GitHub's email. It opens nothing public. | same |
 

@@ -99,7 +99,13 @@ EXAMPLE_VALUES = frozenset(
 EXAMPLE_PREFIXES = ("9612345",)
 
 MARK = "pii-ok"
-TRAILER = re.compile(r"^[A-Za-z][A-Za-z-]*-by:\s", re.IGNORECASE)
+# Commit-message lines that repeat the commit's own metadata: `Signed-off-by:`
+# and friends, and the `# Author:` / `# Date:` lines of git's editor template.
+# The patterns skip them, so a committer's address passes; the denylist does not.
+METADATA = re.compile(
+    r"^(?:[A-Za-z][A-Za-z-]*-by:|#\s*(?:Author|Date|Committer):)\s", re.IGNORECASE
+)
+SCISSORS = re.compile(r"^# -+ >8 -+", re.MULTILINE)
 
 SEP = r"[ \t.\-]*"
 RUT = re.compile(r"(?<![\w.])(\d{1,2}\.\d{3}\.\d{3}|\d{7,8})-([\dkK])(?![\w])")
@@ -154,7 +160,9 @@ class Denylist:
 
         A name of two or more words matches only as that whole sequence. A
         single word is ignored unless written `word: <it>`, since a lone common
-        first name would fire everywhere.
+        first name would fire everywhere. `Surnames, Given names` matches in both
+        orders. A RUT or phone needs at least 8 digits, since a shorter one would
+        fire inside unrelated numbers.
         """
         phrases, words, emails, numbers = set(), set(), set(), set()
         for n, raw in enumerate(text.splitlines(), 1):
@@ -166,11 +174,20 @@ class Denylist:
             elif "@" in line:
                 emails.add(fold(line))
             elif sum(c.isdigit() for c in line) >= 7:
-                numbers.add(canonical_number(line))
+                canon = canonical_number(line)
+                if len(canon) >= 8:
+                    numbers.add(canon)
+                else:
+                    print(
+                        f"pii-guard: denylist line {n} is under 8 digits, ignored", file=sys.stderr
+                    )
             else:
-                tokens = tuple(WORD.findall(fold(line)))
+                last, comma, first = line.partition(",")
+                tokens = tuple(WORD.findall(fold(f"{first} {last}" if comma else line)))
                 if len(tokens) >= 2:
                     phrases.add(tokens)
+                    if comma:
+                        phrases.add(tuple(WORD.findall(fold(f"{last} {first}"))))
                 elif tokens:
                     print(
                         f"pii-guard: denylist line {n} is a single word, ignored"
@@ -258,13 +275,13 @@ def scan_line(line: str, denylist: Denylist, patterns: bool = True) -> Iterator[
 
 
 def scan_text(
-    where: str, text: str, denylist: Denylist, *, first_line: int = 1, skip_trailers: bool = False
+    where: str, text: str, denylist: Denylist, *, first_line: int = 1, metadata: bool = False
 ) -> list[Hit]:
-    patterns = not is_fixture(where)
+    """Scan each line; with `metadata`, `METADATA` lines get the denylist only."""
+    fixture = is_fixture(where)
     hits = []
     for n, line in enumerate(text.splitlines(), first_line):
-        if skip_trailers and TRAILER.match(line):
-            continue
+        patterns = not fixture and not (metadata and METADATA.match(line))
         hits.extend(Hit(where, n, col, kind) for col, kind in scan_line(line, denylist, patterns))
     return hits
 
@@ -332,12 +349,17 @@ FILE_FLAG = re.compile(r"(?:--body-file|--notes-file|--input|-F)(?:=|\s+)(\"[^\"
 FIELD_FILE = re.compile(
     r"(?:-F|--field|-f|--raw-field)(?:=|\s+)[\"']?[\w.\[\]-]+=@(\"[^\"]*\"|'[^']*'|[^\s\"']+)"
 )
+# `--body "$(cat b.md)"`, `$(<b.md)` and the backtick form: a file read into an argument.
+CAT_FILE = re.compile(r"(?:\$\(|`)\s*(?:cat\s+|<\s*)(\"[^\"]*\"|'[^']*'|[^\s)`\"']+)\s*(?:\)|`)")
+UNREADABLE = "unreadable body file, not scanned: write it to a literal path first"
 
 
 def gh_files(command: str) -> list[str]:
     """The files a gh command reads its body from (`-` and fields excluded)."""
     found = []
     for m in FIELD_FILE.finditer(command):
+        found.append(m.group(1))
+    for m in CAT_FILE.finditer(command):
         found.append(m.group(1))
     for m in FILE_FLAG.finditer(command):
         value = m.group(1)
@@ -364,11 +386,14 @@ def claude_hook(denylist: Denylist, payload: dict) -> list[Hit]:
     hits = scan_text("command", command, denylist)
     cwd = Path(payload.get("cwd") or os.getcwd())
     for name in gh_files(command):
-        path = (cwd / Path(name).expanduser()).resolve()
-        if path.is_file():
-            hits.extend(
-                scan_text(name, path.read_text(encoding="utf-8", errors="replace"), denylist)
-            )
+        # Fail closed: a file the hook cannot find (an unexpanded `$VAR`, a `$(…)`
+        # path, one the command itself writes first) would go out unscanned.
+        expanded = os.path.expandvars(os.path.expanduser(name))
+        path = (cwd / expanded).resolve()
+        if "$" in expanded or "`" in expanded or not path.is_file():
+            hits.append(Hit(name, 0, 0, UNREADABLE))
+            continue
+        hits.extend(scan_text(name, path.read_text(encoding="utf-8", errors="replace"), denylist))
     return hits
 
 
@@ -434,9 +459,11 @@ def main(argv: list[str] | None = None) -> int:
         return report(scan_diff(git("diff", "--cached", *DIFF_ARGS), denylist))
     if args.cmd == "commit-msg":
         text = read_input(args.file)
-        text = re.split(r"^# -+ >8 -+", text, maxsplit=1, flags=re.MULTILINE)[0]
-        lines = "\n".join("" if line.startswith("#") else line for line in text.splitlines())
-        return report(scan_text("commit message", lines, denylist, skip_trailers=True))
+        # `#` lines are scanned: `git commit -m` and `-F` keep them (cleanup is
+        # `whitespace` without an editor), and the hook cannot tell which ran.
+        # Only the scissors tail is certain to go.
+        text = SCISSORS.split(text, maxsplit=1)[0]
+        return report(scan_text("commit message", text, denylist, metadata=True))
     if args.cmd == "tree":
         return report(scan_tree(denylist))
     if args.cmd == "claude-hook":
