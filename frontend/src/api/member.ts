@@ -319,6 +319,62 @@ export function voidMembership(membershipId: string, reason: string): Promise<Me
   })
 }
 
+/** "Reactivar plan" (#284): bill after the last period billed, catching up the months
+ * since the lapse, or from today, the days between never billed. */
+export type BillFrom = 'last' | 'today'
+
+export type QuotedPeriod = { period_start: string; period_end: string; due_date: string; amount_due_clp: number }
+
+/** What a reactivation bills at once (backend `ReactivationBill`): from `bills_from`, these
+ * periods, oldest first, for `total_clp`. */
+export type ReactivationBill = { bills_from: string; periods: QuotedPeriod[]; total_clp: number }
+
+export type ReactivationQuote = Record<BillFrom, ReactivationBill>
+
+export type ReactivationRefusal = 'not_lapsed' | 'not_recurring' | 'unpaid' | 'live_plan'
+
+/** The refusal of a reactivation (backend `ReactivationConflict`), with what it is about. */
+export type ReactivationRefused = {
+  code: ReactivationRefusal
+  amount_clp: number | null
+  period_start: string | null
+  plan_name: string | null
+}
+
+export function reactivationQuery(membershipId: string) {
+  return queryOptions({
+    queryKey: ['memberships', 'reactivate', membershipId],
+    queryFn: () => apiFetch<ReactivationQuote>(`/api/memberships/${encodeURIComponent(membershipId)}/reactivate`),
+    // Read as the form shows it: what has been paid since decides it. Dropped once the
+    // form closes, so reopening it never shows the last quote while the new one loads.
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  })
+}
+
+export function reactivateMembership(membershipId: string, reason: string, billFrom: BillFrom): Promise<Membership> {
+  return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/reactivate`, {
+    method: 'POST',
+    body: JSON.stringify({ reason, bill_from: billFrom }),
+  })
+}
+
+/** The 409's refusal of a reactivation, for the form to say what to do first. */
+export function reactivationRefused(error: unknown): ReactivationRefused | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const detail = (error.body as { detail?: Record<string, unknown> } | undefined)?.detail
+  const code = detail?.code
+  if (code !== 'not_lapsed' && code !== 'not_recurring' && code !== 'unpaid' && code !== 'live_plan') return null
+  const text = (value: unknown) => (typeof value === 'string' ? value : null)
+  return {
+    code,
+    amount_clp: typeof detail?.amount_clp === 'number' ? detail.amount_clp : null,
+    period_start: text(detail?.period_start),
+    plan_name: text(detail?.plan_name),
+  }
+}
+
 /** The 409's refusal of a void, and the payment it is about, for the form to say how to clear it. */
 export function voidRefused(error: unknown): { code: VoidRefusal; amount_clp: number | null } | null {
   if (!(error instanceof ApiError) || error.status !== 409) return null

@@ -273,7 +273,7 @@ def _period_end(plan: Plan, start: date, anchor_day: int | None) -> date:
     raise ValueError(f"a {kind} plan is not billed")
 
 
-def _first_unbilled(billable: Billable) -> date | None:
+def first_unbilled(billable: Billable) -> date | None:
     """The first day the membership has not been billed for, or `None` if it never
     will be again: a single charge already made."""
     if billable.plan.terms.kind in SINGLE_CHARGE:
@@ -325,7 +325,7 @@ def _billing(billable: Billable, more: Callable[[date, int], bool]) -> Billing:
     unchanged = Billing((), plan_changed=False, plan=plan, anchor_day=anchor_day)
     if billable.status is not MembershipStatus.ACTIVE or plan.terms.kind is PlanKind.TRIAL:
         return unchanged
-    start = _first_unbilled(billable)
+    start = first_unbilled(billable)
     pending, pending_from = billable.next_plan, billable.next_plan_from
     changed = False
     # A monthly row from before anchor days were stored bills on the day it resumes.

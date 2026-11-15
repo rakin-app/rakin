@@ -27,6 +27,9 @@ import {
   membershipLedgerQuery,
   membershipsQuery,
   personQuery,
+  reactivateMembership,
+  reactivationQuery,
+  reactivationRefused,
   recordAdjustment,
   recordPayment,
   recordPaymentAhead,
@@ -37,6 +40,7 @@ import {
   restoreRefused,
   voidMembership,
   voidRefused,
+  type BillFrom,
   type Correction,
   type Freeze,
   type FreezeLine,
@@ -476,6 +480,7 @@ type Open =
   | 'voidCharge'
   | 'restoreCharge'
   | 'voidPlan'
+  | 'reactivate'
   | null
 
 /** The periods that still owe, oldest first, then the paid ones, newest first: an
@@ -505,13 +510,22 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
   const freeze = membership.freeze
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
+  // A payment settled the last debt of this lapsed plan: "Reactivar plan" is offered (#284).
+  const [offer, setOffer] = useState(false)
+  // A lapsed pack or trial ends: it can only be refused, so it is not offered.
+  const reactivates =
+    membership.status === 'lapsed' &&
+    !membership.voided_at &&
+    (membership.plan_kind === 'monthly' || membership.plan_kind === 'prepaid')
   const toggle = (form: Open) => {
     setDone(null)
+    setOffer(false)
     setOpen(open === form ? null : form)
   }
-  const finish = (message: string) => {
+  const finish = (message: string, settledLapsed = false) => {
     setOpen(null)
     setDone(message)
+    setOffer(settledLapsed)
   }
   return (
     <>
@@ -564,6 +578,14 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
           </Button>
         </div>
       )}
+      {/* A lapsed plan brought back by hand (#284), never by a payment on its own. */}
+      {reactivates && (
+        <div className="member__actions">
+          <Button aria-expanded={open === 'reactivate'} onClick={() => toggle('reactivate')}>
+            {copy.reactivatePlan}
+          </Button>
+        </div>
+      )}
       {/* Fixing a mistake (#256): a charge, or the whole plan, voided with a reason. */}
       {(voidable.length > 0 || !membership.voided_at) && (
         <div className="member__actions">
@@ -580,9 +602,17 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
         </div>
       )}
       {done && (
-        <p className="member__done" role="status">
-          {done}
-        </p>
+        <div className="member__done" role="status">
+          <p className="member__done-text">{done}</p>
+          {offer && reactivates && (
+            <>
+              <p className="member__done-text">{copy.reactivateOffer}</p>
+              <Button className="member__done-action" onClick={() => toggle('reactivate')}>
+                {copy.reactivatePlan}
+              </Button>
+            </>
+          )}
+        </div>
       )}
       {open === 'payment' &&
         (periods.length > 0 ? (
@@ -632,6 +662,9 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
       )}
       {open === 'voidPlan' && !membership.voided_at && (
         <VoidPlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'reactivate' && reactivates && (
+        <ReactivateForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
       )}
     </>
   )
@@ -894,6 +927,169 @@ function VoidPlanForm({
         </Button>
         <Button type="submit" variant="danger" disabled={voided.isPending} busy={voided.isPending}>
           {voided.isPending ? form.working : form.submit}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/** What a refused reactivation says, and what to do first (#284). */
+function reactivateRefusal(error: Error): string {
+  const words = copy.reactivateRefused
+  const refused = reactivationRefused(error)
+  if (!refused) return words.failed
+  if (refused.code === 'unpaid') {
+    const month = refused.period_start ? monthName(refused.period_start) : ''
+    return words.unpaid(clp(refused.amount_clp ?? 0), month)
+  }
+  if (refused.code === 'live_plan') return words.live_plan(refused.plan_name ?? '')
+  return words[refused.code]
+}
+
+const BILL_FROM: readonly BillFrom[] = ['last', 'today']
+
+/** "Reactivar plan" (#284): a lapsed plan Active again, with a reason, billing from where
+ * it left off (the months since the lapse, at once) or from today. A second step lists
+ * what it bills before it saves. Refused, with what to do first, while a period past grace
+ * is unpaid or beside another live plan. */
+function ReactivateForm({
+  membership,
+  onCancel,
+  onDone,
+}: {
+  membership: Membership
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.reactivateForm
+  const id = useId()
+  const quote = useQuery(reactivationQuery(membership.id))
+  const [billFrom, setBillFrom] = useState<BillFrom>('last')
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const reasonOk = reason.trim() !== ''
+  const bill = quote.data?.[billFrom]
+
+  const reactivated = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => reactivateMembership(membership.id, reason.trim(), billFrom),
+    onSuccess: async () => {
+      const total = bill?.total_clp ?? 0
+      onDone(total > 0 ? form.done(clp(total)) : form.doneNothing)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['ledger'] }),
+        queryClient.invalidateQueries({ queryKey: ['people'] }),
+        queryClient.invalidateQueries({ queryKey: ['memberships'] }),
+      ])
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (!reasonOk || !bill) return
+    if (confirming) reactivated.mutate()
+    else setConfirming(true)
+  }
+
+  if (!quote.data) {
+    return (
+      <div className="member__form" role="group" aria-label={form.title}>
+        {quote.isError ? (
+          <p className="member__error" role="alert">
+            {reactivateRefusal(quote.error)}
+          </p>
+        ) : (
+          <p className="member__detail" role="status">
+            {form.loading}
+          </p>
+        )}
+        <div className="member__form-actions">
+          <Button onClick={onCancel}>{form.cancel}</Button>
+        </div>
+      </div>
+    )
+  }
+
+  const { last, today } = quote.data
+  // Billed past yesterday already, there is no gap to skip: one way to bill, no choice.
+  const choice = today.bills_from !== last.bills_from
+  const hints: Record<BillFrom, string> = {
+    last: form.lastHint(last.periods.length, monthName(last.bills_from), clp(last.total_clp)),
+    today: form.todayHint(shortDay(today.bills_from), clp(today.total_clp)),
+  }
+
+  if (confirming && bill) {
+    return (
+      <form className="member__form" aria-label={form.title} onSubmit={submit}>
+        <p className="member__label">{form.confirmTitle}</p>
+        {bill.periods.length > 0 ? (
+          <ul className="member__bill">
+            {bill.periods.map((p) => (
+              <li key={p.period_start}>{form.period(monthName(p.period_start), clp(p.amount_due_clp))}</li>
+            ))}
+            <li className="member__bill-total">{form.total(clp(bill.total_clp))}</li>
+          </ul>
+        ) : (
+          <p className="member__detail">{form.nothing}</p>
+        )}
+        {reactivated.error && (
+          <p className="member__error" role="alert">
+            {reactivateRefusal(reactivated.error)}
+          </p>
+        )}
+        <div className="member__form-actions">
+          <Button disabled={reactivated.isPending} onClick={() => setConfirming(false)}>
+            {form.back}
+          </Button>
+          <Button type="submit" variant="primary" disabled={reactivated.isPending} busy={reactivated.isPending}>
+            {reactivated.isPending ? form.working : form.submit}
+          </Button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">{form.intro}</p>
+      {!choice && <p className="member__detail">{hints.last}</p>}
+      {choice && (
+        <fieldset className="member__choices">
+          <legend className="member__label">{form.billFrom}</legend>
+          {BILL_FROM.map((value) => (
+            <label key={value} className="member__choice">
+              <input type="radio" name={`${id}-bill-from`} checked={billFrom === value} onChange={() => setBillFrom(value)} />
+              <span>
+                <span className="member__choice-title">{form[value]}</span>
+                <span className="member__detail">{hints[value]}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+      <label htmlFor={id} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={id}
+        type="text"
+        maxLength={500}
+        value={reason}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {checked && !reasonOk && (
+        <p className="member__error" role="alert">
+          {form.reasonNeeded}
+        </p>
+      )}
+      <div className="member__form-actions">
+        <Button onClick={onCancel}>{form.cancel}</Button>
+        <Button type="submit" variant="primary">
+          {form.next}
         </Button>
       </div>
     </form>
@@ -1186,7 +1382,8 @@ export function PaymentForm({
   membership: Membership
   periods: OpenPeriod[]
   onCancel: () => void
-  onDone: (message: string) => void
+  // `settledLapsed`: the payment settled the last period a lapsed plan owed (#284).
+  onDone: (message: string, settledLapsed?: boolean) => void
 }) {
   const queryClient = useQueryClient()
   const form = copy.form
@@ -1212,7 +1409,8 @@ export function PaymentForm({
     onSuccess: async (result: RecordedPayment) => {
       const credit = result.credit ? form.credit(clp(result.credit.amount_clp)) : ''
       const rest = result.period.closed ? '' : form.remainder(clp(result.period.outstanding_clp))
-      onDone(form.recorded(clp(value)) + credit + rest)
+      const last = result.period.closed && periods.every((p) => p.id === period.id)
+      onDone(form.recorded(clp(value)) + credit + rest, membership.status === 'lapsed' && last)
       await queryClient.invalidateQueries({ queryKey: ['ledger'] })
     },
   })

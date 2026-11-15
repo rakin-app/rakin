@@ -10,6 +10,7 @@ before it starts (#115).
 
 import uuid
 from datetime import UTC, date, datetime
+from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator, model_validator
@@ -98,6 +99,66 @@ class Cancellation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: Reason
+
+
+class Reactivation(BaseModel):
+    """ "Reactivar plan" (#284): a lapsed plan Active again, with why, billing on after
+    its last period (`last`, catching up the periods since the lapse) or from today."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Reason
+    bill_from: Literal["last", "today"] = "last"
+
+
+class QuotedPeriod(BaseModel):
+    period_start: date
+    period_end: date
+    due_date: date
+    amount_due_clp: int
+
+
+class ReactivationBill(BaseModel):
+    """What a reactivation bills at once: from `bills_from`, these periods, oldest
+    first, as the nightly job would bill them tonight, for `total_clp`."""
+
+    bills_from: date
+    periods: list[QuotedPeriod]
+    total_clp: int
+
+
+class ReactivationQuote(BaseModel):
+    """What `POST .../reactivate` would bill with each `bill_from`, saving nothing."""
+
+    last: ReactivationBill
+    today: ReactivationBill
+
+
+class ReactivationRefusal(StrEnum):
+    """Why a plan cannot be reactivated, for the ficha to say what to do first."""
+
+    # Only a lapsed plan is reactivated.
+    NOT_LAPSED = "not_lapsed"
+    # A pack or a trial ends: the member starts a new one.
+    NOT_RECURRING = "not_recurring"
+    # A period past due plus grace is unpaid: the nightly job would lapse it again.
+    UNPAID = "unpaid"
+    # The person is on another plan (Trial, Active or Frozen).
+    LIVE_PLAN = "live_plan"
+
+
+class ReactivationConflict(BaseModel):
+    code: ReactivationRefusal
+    message: str
+    # On `unpaid`: the oldest such period's, and what the plan owes past grace.
+    period_start: date | None = None
+    amount_clp: int | None = None
+    # On `live_plan`: the other plan's name.
+    plan_name: str | None = None
+
+
+class ReactivationRefused(BaseModel):
+    detail: ReactivationConflict
 
 
 class FreezeCreate(BaseModel):

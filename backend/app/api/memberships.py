@@ -44,6 +44,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.corrections import record_audit
 from app.api.entries import CURRENT_PERSON, standing_void
 from app.api.ledger import period_money, void_period
 from app.contacts import Contact, contact_for
@@ -52,6 +53,7 @@ from app.domain import billing
 from app.domain import membership as domain
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.errors import InvalidTransition
+from app.domain.ledger import EntryStatus
 from app.domain.membership import (
     MAX_FREEZE_DAYS,
     RECURRING,
@@ -59,6 +61,7 @@ from app.domain.membership import (
     PlanKind,
     PlanTerms,
 )
+from app.jobs import lapse
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
 from app.roles import AdminSession, SeesMoney, StaffSession
@@ -77,6 +80,13 @@ from app.schemas.memberships import (
     PendingPlanChange,
     PlanChange,
     PlanChangeQuote,
+    QuotedPeriod,
+    Reactivation,
+    ReactivationBill,
+    ReactivationConflict,
+    ReactivationQuote,
+    ReactivationRefusal,
+    ReactivationRefused,
     StartQuote,
     for_coach,
 )
@@ -868,4 +878,229 @@ async def void_membership(
         today = await _gym_today(session, tenant)
         await session.execute(END_RUNNING_FREEZE, {"id": membership_id, "today": today})
         await session.execute(VOID_LIVE, params)
+    return await _get(session, membership_id)
+
+
+# "Reactivar plan" (#284): a lapsed plan Active again, by hand. Never on a payment of its
+# own: a member paying an old debt may have left the gym.
+
+# The membership as the nightly `lapse` job reads it, as of `:day`, with its plan's
+# anchor, whose it is and its gym's grace.
+REACTIVATION_STATE = text(
+    f"""
+    SELECT m.status, pl.kind, pl.anchor, m.current_period_end, m.credits_remaining,
+           m.person_id, g.settings,
+           {lapse.unpaid_due(":day", ":validated", "CAST(:kinds AS text[])")},
+           {lapse.NOT_DUE_BEFORE}
+    FROM membership m JOIN plan pl ON pl.id = m.plan_id JOIN gym g ON g.id = m.gym_id
+    WHERE m.id = :id
+    """
+)
+
+# Locked as `insert_membership` reads it `FOR SHARE`: a plan started for the person and
+# a reactivation take turns, so they are never left with two live plans.
+LOCK_PERSON = text("SELECT true FROM gym_person WHERE person_id = :id FOR UPDATE")
+
+LIVE_PLAN = text(
+    "SELECT pl.name FROM membership m JOIN plan pl ON pl.id = m.plan_id"
+    " WHERE m.person_id = :person AND m.id <> :id"
+    f" AND m.status IN ({', '.join(repr(s.value) for s in domain.LIVE)})"
+    f" ORDER BY {domain.current_first('m')} LIMIT 1"
+)
+
+# What the membership owes on its periods due by `:today`, and the oldest of them.
+OWED_DUE = text(
+    f"""
+    SELECT min(bp.period_start) AS period_start,
+           coalesce(sum(bp.amount_due_clp - coalesce(paid.amount, 0)), 0)::bigint AS owed
+    FROM billing_period bp
+    LEFT JOIN LATERAL (
+        SELECT sum({billing.settled_amount("e")}) AS amount FROM ledger_entry e
+        WHERE e.billing_period_id = bp.id AND e.status = 'validated'
+          AND e.kind IN ('payment', 'adjustment', 'refund')
+    ) paid ON true
+    WHERE bp.membership_id = :id AND bp.due_date <= :today
+      AND bp.amount_due_clp > coalesce(paid.amount, 0)
+    """
+)
+
+REACTIVATE = text(
+    "UPDATE membership SET status = :status, current_period_end = :end, anchor_day = :anchor,"
+    " reactivated_at = now() WHERE id = :id"
+)
+
+MEMBERSHIP_REACTIVATED = "membership_reactivated"
+
+
+def _refused(code: ReactivationRefusal, message: str, **detail: Any) -> HTTPException:
+    conflict = ReactivationConflict(code=code, message=message, **detail)
+    return HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
+
+
+async def _reactivatable(
+    session: AsyncSession, tenant: Tenant, membership_id: uuid.UUID, *, lock: bool
+) -> tuple[domain.Membership, PlanTerms, date]:
+    """The lapsed membership to reactivate, its plan's terms and today, locked with its
+    person with `lock`; a 409 saying what to do first when it cannot be. Refused while a
+    period past due plus grace is unpaid: the nightly job, which may run tonight or past
+    midnight, would lapse it again, so tomorrow is the day it is judged on."""
+    current, _ = await _locked(session, membership_id, lock=lock)
+    today = await _gym_today(session, tenant)
+    tomorrow = today + timedelta(days=1)
+    row = (
+        await session.execute(
+            REACTIVATION_STATE,
+            {
+                "id": membership_id,
+                "day": tomorrow,
+                "validated": EntryStatus.VALIDATED.value,
+                "kinds": [k.value for k in billing.SETTLING_KINDS],
+            },
+        )
+    ).one()
+    if lock:
+        await session.execute(LOCK_PERSON, {"id": row.person_id})
+    if current.status is not MembershipStatus.LAPSED:
+        raise _refused(ReactivationRefusal.NOT_LAPSED, "only a lapsed plan is reactivated")
+    if current.plan_kind not in RECURRING:
+        raise _refused(
+            ReactivationRefusal.NOT_RECURRING, "a pack or a trial is not reactivated: start one"
+        )
+    other = await session.scalar(LIVE_PLAN, {"person": row.person_id, "id": membership_id})
+    if other is not None:
+        raise _refused(
+            ReactivationRefusal.LIVE_PLAN, "the person is on another plan", plan_name=other
+        )
+    # As the job will read it once Active.
+    judged = lapse.lapsable({**row._mapping, "status": MembershipStatus.ACTIVE.value})
+    if domain.is_due_to_lapse(judged, tomorrow, domain.grace_days(row.settings)):
+        # Past grace tomorrow means due by today, even with no grace: what it owes then.
+        owed = (await session.execute(OWED_DUE, {"id": membership_id, "today": today})).one()
+        raise _refused(
+            ReactivationRefusal.UNPAID,
+            "a period past due and grace is unpaid: record its payment, move its due date,"
+            " or void or write it off first",
+            period_start=owed.period_start,
+            amount_clp=owed.owed,
+        )
+    return current, PlanTerms(current.plan_kind, row.anchor), today
+
+
+async def _reactivation_bill(
+    session: AsyncSession, membership_id: uuid.UUID, reactivated: domain.Membership, today: date
+) -> tuple[date, billing.Billing]:
+    """The first day `reactivated` bills from, and what it owes by `today` plus the
+    job's lead time, as `bill_now` would bill it: every period since then, one per
+    cycle, with a pending plan change applied when one reaches it."""
+    billable = await billable_membership(await driver_connection(session), membership_id)
+    if billable is None:  # locked, or read, just now
+        raise NOT_FOUND
+    billable = replace(
+        billable,
+        status=reactivated.status,
+        current_period_end=reactivated.current_period_end,
+        anchor_day=reactivated.anchor_day,
+    )
+    bills_from = billing.first_unbilled(billable)
+    assert bills_from is not None  # a recurring plan bills on
+    return bills_from, billing.due_periods(billable, today)
+
+
+async def _reactivation(
+    session: AsyncSession,
+    membership_id: uuid.UUID,
+    current: domain.Membership,
+    terms: PlanTerms,
+    today: date,
+    bill_from: str,
+) -> tuple[domain.Membership, date, billing.Billing]:
+    """`current` reactivated billing from `bill_from`, the first day it bills from and
+    what it owes. From today only when there is a gap to skip: a plan that billed past
+    yesterday already bills on from where it left off, its anchor day kept, so a period
+    is never cut short to today's day of the month."""
+    reactivated = domain.reactivate(current, today=today, terms=terms, from_today=False)
+    bills_from, owed = await _reactivation_bill(session, membership_id, reactivated, today)
+    if bill_from == "today" and bills_from < today:
+        reactivated = domain.reactivate(current, today=today, terms=terms, from_today=True)
+        bills_from, owed = await _reactivation_bill(session, membership_id, reactivated, today)
+    return reactivated, bills_from, owed
+
+
+def _bill(bills_from: date, owed: billing.Billing) -> ReactivationBill:
+    periods = [
+        QuotedPeriod(
+            period_start=p.period_start,
+            period_end=p.period_end,
+            due_date=p.due_date,
+            amount_due_clp=p.amount_due_clp,
+        )
+        for p in owed.periods
+    ]
+    total = sum(p.amount_due_clp for p in periods)
+    return ReactivationBill(bills_from=bills_from, periods=periods, total_clp=total)
+
+
+@router.get(
+    "/{membership_id}/reactivate",
+    responses={status.HTTP_409_CONFLICT: {"model": ReactivationRefused}},
+)
+async def reactivation_quote(
+    membership_id: uuid.UUID,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: AdminSession,
+) -> ReactivationQuote:
+    """What `POST .../reactivate` would bill with each `bill_from`, saving nothing: the
+    periods and their total, for "Reactivar plan" to list before it saves. Refused as
+    that request would be."""
+    current, terms, today = await _reactivatable(session, tenant, membership_id, lock=False)
+    bills = {}
+    for bill_from in ("last", "today"):
+        _, bills_from, owed = await _reactivation(
+            session, membership_id, current, terms, today, bill_from
+        )
+        bills[bill_from] = _bill(bills_from, owed)
+    return ReactivationQuote(last=bills["last"], today=bills["today"])
+
+
+@router.post(
+    "/{membership_id}/reactivate",
+    responses={status.HTTP_409_CONFLICT: {"model": ReactivationRefused}},
+)
+async def reactivate_membership(
+    membership_id: uuid.UUID,
+    body: Reactivation,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: AdminSession,
+) -> Membership:
+    """ "Reactivar plan" (#284): a lapsed plan Active again, with `reason`, billed at once
+    from `bill_from`: after its last period (`last`), catching up the periods since the
+    lapse, or from today, the days between never billed. The nightly job then gives it
+    its grace from today (migration 0050). Recorded as a `membership_reactivated`
+    correction, with its status before and after and from when it bills. Refused, writing
+    nothing, beside another live plan of the person, and while a period past due plus
+    grace is unpaid (`_reactivatable`)."""
+    current, terms, today = await _reactivatable(session, tenant, membership_id, lock=True)
+    reactivated, bills_from, owed = await _reactivation(
+        session, membership_id, current, terms, today, body.bill_from
+    )
+    await session.execute(
+        REACTIVATE,
+        {
+            "id": membership_id,
+            "status": reactivated.status.value,
+            "end": reactivated.current_period_end,
+            "anchor": reactivated.anchor_day,
+        },
+    )
+    written = await write_billing(await driver_connection(session), membership_id, owed)
+    await record_audit(
+        session,
+        action=MEMBERSHIP_REACTIVATED,
+        membership_id=membership_id,
+        reason=body.reason,
+        status={"before": current.status.value, "after": reactivated.status.value},
+        bill_from=body.bill_from,
+        bills_from=bills_from.isoformat(),
+        billing_period_ids=[str(period_id) for period_id, _ in written],
+    )
     return await _get(session, membership_id)

@@ -2698,3 +2698,223 @@ describe('a freeze the member asked for (#270)', () => {
     expect(calls.some((c) => c.path === '/api/freeze-requests')).toBe(false)
   })
 })
+
+describe('Reactivar plan caducado (#284)', () => {
+  const LAPSED: Membership = { ...MONTHLY, status: 'lapsed' }
+  const QUOTE = {
+    last: {
+      bills_from: '2026-09-30',
+      periods: [
+        { period_start: '2026-09-30', period_end: '2026-10-29', due_date: '2026-09-30', amount_due_clp: 45000 },
+        { period_start: '2026-10-30', period_end: '2026-11-29', due_date: '2026-10-30', amount_due_clp: 45000 },
+      ],
+      total_clp: 90000,
+    },
+    today: {
+      bills_from: '2026-11-10',
+      periods: [{ period_start: '2026-11-10', period_end: '2026-12-09', due_date: '2026-11-10', amount_due_clp: 45000 }],
+      total_clp: 45000,
+    },
+  }
+  const form = copy.reactivateForm
+
+  function stubReactivation(quote: { status?: number; body: unknown } = { body: QUOTE }, ledger = LEDGER) {
+    return stubApi({
+      memberships: [LAPSED],
+      ledger,
+      extra: (path, method) => {
+        if (path !== '/api/memberships/m-felipe/reactivate') return undefined
+        return method === 'POST' ? { body: { ...MONTHLY, status: 'active' } } : quote
+      },
+    })
+  }
+
+  it('reactivates a lapsed plan from where it left off, listing what it bills before it saves', async () => {
+    const calls = stubReactivation()
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    const opened = screen.getByRole('form', { name: form.title })
+    const last = await within(opened).findByRole('radio', { name: new RegExp(form.last) })
+    expect(last).toBeChecked()
+    expect(within(opened).getByText(form.lastHint(2, 'septiembre', '$90.000'))).toBeInTheDocument()
+    expect(within(opened).getByText(form.todayHint('10 nov', '$45.000'))).toBeInTheDocument()
+
+    // A reason first.
+    await userEvent.click(within(opened).getByRole('button', { name: form.next }))
+    expect(within(opened).getByText(form.reasonNeeded)).toBeInTheDocument()
+    await userEvent.type(within(opened).getByLabelText(form.reason), 'volvió')
+    await userEvent.click(within(opened).getByRole('button', { name: form.next }))
+
+    // The second step lists what it bills; nothing is saved yet.
+    const confirm = screen.getByRole('form', { name: form.title })
+    expect(within(confirm).getByText(form.period('septiembre', '$45.000'))).toBeInTheDocument()
+    expect(within(confirm).getByText(form.period('octubre', '$45.000'))).toBeInTheDocument()
+    expect(within(confirm).getByText(form.total('$90.000'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(confirm).getByRole('button', { name: form.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(form.done('$90.000'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/memberships/m-felipe/reactivate', body: { reason: 'volvió', bill_from: 'last' } },
+    ])
+  })
+
+  it('reactivates from today, and goes back to change it', async () => {
+    const calls = stubReactivation()
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    const opened = screen.getByRole('form', { name: form.title })
+    await userEvent.type(await within(opened).findByLabelText(form.reason), 'volvió')
+    await userEvent.click(within(opened).getByRole('button', { name: form.next }))
+    await userEvent.click(within(opened).getByRole('button', { name: form.back }))
+    await userEvent.click(within(opened).getByRole('radio', { name: new RegExp(form.today) }))
+    await userEvent.click(within(opened).getByRole('button', { name: form.next }))
+    expect(within(opened).getByText(form.period('noviembre', '$45.000'))).toBeInTheDocument()
+    await userEvent.click(within(opened).getByRole('button', { name: form.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(form.done('$45.000'))
+    expect(calls.filter((c) => c.method === 'POST')[0]?.body).toEqual({ reason: 'volvió', bill_from: 'today' })
+  })
+
+  it('says what to do first while a period past grace is unpaid', async () => {
+    stubReactivation({
+      status: 409,
+      body: { detail: { code: 'unpaid', message: 'unpaid', amount_clp: 45000, period_start: '2026-10-30' } },
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    const group = screen.getByRole('group', { name: form.title })
+    expect(await within(group).findByRole('alert')).toHaveTextContent(copy.reactivateRefused.unpaid('$45.000', 'octubre'))
+    expect(within(group).queryByLabelText(form.reason)).not.toBeInTheDocument()
+  })
+
+  it('says so beside another live plan', async () => {
+    stubReactivation({
+      status: 409,
+      body: { detail: { code: 'live_plan', message: 'live', plan_name: 'Mensual niños' } },
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.reactivateRefused.live_plan('Mensual niños'))
+  })
+
+  it('is offered on a lapsed plan only', async () => {
+    stubApi()
+    renderAt(PATH)
+    const card = await money()
+    expect(await within(card).findByRole('button', { name: copy.record })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: copy.reactivatePlan })).not.toBeInTheDocument()
+  })
+
+  it('is offered, not done, once a payment settles the last debt of a lapsed plan', async () => {
+    const calls = stubReactivation()
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.record }))
+    const payment = screen.getByRole('form', { name: copy.form.title })
+    await userEvent.click(within(payment).getByRole('button', { name: copy.form.submit('$45.000') }))
+
+    const done = await screen.findByRole('status')
+    expect(done).toHaveTextContent(copy.form.recorded('$45.000'))
+    expect(done).toHaveTextContent(copy.reactivateOffer)
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual(['/api/ledger/payments'])
+    await userEvent.click(within(done).getByRole('button', { name: copy.reactivatePlan }))
+    expect(await screen.findByRole('form', { name: form.title })).toBeInTheDocument()
+  })
+
+  it('offers nothing after a payment that leaves a period of the lapsed plan owing', async () => {
+    const NOVEMBER: OpenPeriod = { ...OCTOBER, id: 'p-nov', period_start: '2026-11-30', due_date: '2026-11-30' }
+    stubReactivation({ body: QUOTE }, { ...LEDGER, open_periods: [OCTOBER, NOVEMBER], owed_clp: 90000 })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.record }))
+    const payment = screen.getByRole('form', { name: copy.form.title })
+    await userEvent.click(within(payment).getByRole('button', { name: copy.form.submit('$45.000') }))
+
+    const done = await screen.findByRole('status')
+    expect(done).toHaveTextContent(copy.form.recorded('$45.000'))
+    expect(done).not.toHaveTextContent(copy.reactivateOffer)
+  })
+})
+
+describe('Reactivar plan with no gap to skip (#284)', () => {
+  it('offers no choice when from today bills as from where it left off', async () => {
+    const same = {
+      bills_from: '2026-11-30',
+      periods: [{ period_start: '2026-11-30', period_end: '2026-12-29', due_date: '2026-11-30', amount_due_clp: 45000 }],
+      total_clp: 45000,
+    }
+    stubApi({
+      memberships: [{ ...MONTHLY, status: 'lapsed' }],
+      extra: (path) => (path === '/api/memberships/m-felipe/reactivate' ? { body: { last: same, today: same } } : undefined),
+    })
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    const form = screen.getByRole('form', { name: copy.reactivateForm.title })
+    expect(await within(form).findByText(copy.reactivateForm.lastHint(1, 'noviembre', '$45.000'))).toBeInTheDocument()
+    expect(within(form).queryByRole('radio')).not.toBeInTheDocument()
+  })
+})
+
+describe('Reactivar plan, not on a pack (#284)', () => {
+  it('is not offered on a lapsed pack or trial, which can only be refused', async () => {
+    stubApi({ memberships: [{ ...MONTHLY, plan_kind: 'credits', anchor_day: null, status: 'lapsed' }] })
+    renderAt(PATH)
+    const card = await money()
+    expect(await within(card).findByRole('button', { name: copy.record })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: copy.reactivatePlan })).not.toBeInTheDocument()
+  })
+
+  it('reads the quote again on reopen, never showing the last one', async () => {
+    let total = 45000
+    stubApi({
+      memberships: [{ ...MONTHLY, status: 'lapsed' }],
+      extra: (path) => {
+        if (path !== '/api/memberships/m-felipe/reactivate') return undefined
+        const bill = {
+          bills_from: '2026-11-30',
+          periods: [{ period_start: '2026-11-30', period_end: '2026-12-29', due_date: '2026-11-30', amount_due_clp: total }],
+          total_clp: total,
+        }
+        return { body: { last: bill, today: bill } }
+      },
+    })
+    renderAt(PATH)
+    const card = await money()
+    const button = await within(card).findByRole('button', { name: copy.reactivatePlan })
+
+    await userEvent.click(button)
+    expect(await screen.findByText(copy.reactivateForm.lastHint(1, 'noviembre', '$45.000'))).toBeInTheDocument()
+    await userEvent.click(button)
+    total = 40000
+    // The new quote is held until the form has shown what it shows meanwhile.
+    let release = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    const answer = globalThis.fetch
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input, init) => {
+        if (String(input).includes('/reactivate')) await held
+        return answer(input, init)
+      }),
+    )
+    await userEvent.click(button)
+    // Loading, not the last quote, while the new one is read.
+    expect(screen.getByText(copy.reactivateForm.loading)).toBeInTheDocument()
+    expect(screen.queryByText(copy.reactivateForm.lastHint(1, 'noviembre', '$45.000'))).not.toBeInTheDocument()
+    release()
+    expect(await screen.findByText(copy.reactivateForm.lastHint(1, 'noviembre', '$40.000'))).toBeInTheDocument()
+  })
+})
