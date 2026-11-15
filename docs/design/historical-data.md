@@ -228,9 +228,11 @@ people share (`ambiguous_name`, as now): the fix is a RUT in the row.
   the second run is how they get filled.
 - **Pagos**: a row is the payment already here when the person, `paid_on`, `amount_clp`
   and `covers_month` match an existing history payment (`existing`, written nothing).
-  Two such rows in one sheet: the second is `repeated` unless its "Mes que paga" differs.
-  There is no unique index: by hand, two equal payments on one day are allowed (the form
-  warns).
+  Two rows in one sheet with the same person, `paid_on`, `amount_clp` and
+  `covers_month`: the second is `repeated`. So two real, equal payments on one day for
+  one month collapse into one on import; the sheet tells them apart with a different
+  "Mes que paga", else the second is typed by hand. There is no unique index: by hand,
+  two equal payments are allowed (the form warns).
 - **Grados**: the grade already here when person, rank, sub-rank and `awarded_on` match.
 
 ### New checks
@@ -242,7 +244,10 @@ people share (`ambiguous_name`, as now): the fix is a RUT in the row.
 | `invalid_amount` | Pagos | not a whole number of pesos above zero (`$25.000`, `25000` and `25.000` all read as 25000) |
 | `unknown_rank` | Grados | no rank of the gym's scheme by that label, and the admin did not choose one |
 | `left_before_start` | Alumnos | "Fecha de baja" before "Alumno desde" |
-| `has_left` | Alumnos | (exists) a row with a "Fecha de baja" and a plan: the person is imported as a former student and the plan is `ignored` |
+| `has_left` | Alumnos | (exists, unchanged) a row with a plan names someone this gym already has dado de baja (`Writer._membership`) |
+
+A row with a "Fecha de baja" and a plan is **not** refused: the person is imported as a
+former student and the plan is `ignored`, as any field the import does not apply.
 
 Rank labels are matched as plans are (`PlanFinder`): folded label, else the admin's
 choice for that value on the mapping step ("Café" → Marrón). A sub-rank is a label of
@@ -331,7 +336,9 @@ it is seen and where more is added.
 - **A line of the card** opens "Eliminar" with a reason, for a typo. Editing is deleting
   and typing again; no edit form.
 - **Dar de baja** gains "Motivo" (optional, with chips: Precio, Horario, Se cambió,
-  Lesión, Otro, which fill the text), and its date may go back 60 years.
+  Lesión, Otro, which fill the text), and its date may go back 60 years: #294 changes
+  the five-year check in `POST /api/people/{id}/leave` (`member_roll.leave`) and its
+  message to `HISTORY_WINDOW_YEARS`.
 - **Agregar exalumno**: in Alumnos, "Nuevo alumno" gains a choice at the top: *Entrena
   aquí* (today's form) or *Ya no entrena aquí*. The second asks name, RUT or email,
   phone (optional: nobody will write to them), Alumno desde, Fecha de baja and Motivo,
@@ -480,7 +487,11 @@ import is undone once.
   nothing in `app.notices` is sent to someone with `left_on`.
 - **Deleting a former student works**, and deletes all their history:
   `forget_gym_person` gains the history payments, the person-level grades and the
-  history audit rows, and counts them in `person_deleted`. A former student whose only
+  person's `history_set` and `history_removed` rows, and counts them in
+  `person_deleted`. `audit_event` stays append-only to `rakin_app`, as #277 has it:
+  only that definer function deletes a row, and the `person_deleted` row, which names
+  nobody, is the only trace left. An import's `history_imported` and `import_undone`
+  rows carry no `person_id` and stay. A former student whose only
   money is history holds nothing in the ledger, so nothing refuses: `forget_refusal`'s
   `payment`, `pending` and `owes` read only the ledger and the periods.
 - **Retention.** History is kept while the person is: the gym keeps its own student
@@ -525,7 +536,7 @@ field has a screen before a sheet can fill it.
    plan; the class total adds `prior_classes`; "Fecha de inicio y clases" on the ficha;
    `history_set` audit rows.
 2. **#294 Former students: why they left, and Agregar exalumno.** `left_reason`; Dar de baja
-   asks Motivo and takes 60 years; "Ya no entrena aquí" in Nuevo alumno; owner and admin
+   asks Motivo and takes 60 years (the `member_roll` check); "Ya no entrena aquí" in Nuevo alumno; owner and admin
    only; the notices test; the privacy notice's sentence.
 3. **#295 Historial de pagos.** `history_payment`; the Historial card; "Pagos anteriores",
    twelve months in one form; the boundary with the plan and the pointer to #286;
@@ -546,4 +557,5 @@ field has a screen before a sheet can fill it.
 8. **#300 Deshacer importación.** The undo of an import's history, owner only, with a reason,
    through a definer function; Importar's recent imports list.
 
-The pilot's load (§8) is ops#4's, once #297 and #298 ship (#300 before the real import is safer).
+The pilot's load (§8) is ops#4's, once #297, #298 and #299 ship, and #300 before the
+real import, so a wrong load can be undone.
