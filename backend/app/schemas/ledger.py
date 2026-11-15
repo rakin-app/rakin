@@ -197,6 +197,47 @@ class OpenPeriod(BaseModel):
     days_overdue: int
 
 
+class Figures(BaseModel):
+    """A period and its membership's balance, as a correction found or left them (#277)."""
+
+    outstanding_clp: int
+    balance_clp: int
+
+
+class CorrectionAction(StrEnum):
+    """What an audit row of a correction records (migration 0048)."""
+
+    LEDGER_CORRECTED = "ledger_corrected"
+    DUE_DATE_CHANGED = "due_date_changed"
+    MEMBERSHIP_REACTIVATED = "membership_reactivated"
+    CANCEL_UNDONE = "cancel_undone"
+
+
+class Correction(BaseModel):
+    """One line of the ficha's "Correcciones" (#277): what, the period, before → after,
+    the reason, who, when."""
+
+    id: uuid.UUID
+    at: datetime
+    action: CorrectionAction
+    # The entry's: `None` for a plain adjustment, `void` for a void.
+    purpose: str | None
+    # One of the voids of a plan voided by mistake (#256).
+    plan_void: bool
+    reason: str | None
+    actor_name: str | None
+    period_start: date | None
+    plan_name: str | None
+    before: Figures | None
+    after: Figures | None
+
+
+class Corrections(BaseModel):
+    # Every correction of the person; `items` the latest of them, newest first.
+    total: int
+    items: list[Correction]
+
+
 class Voided(BaseModel):
     """A charge's void (#256): "Anulado: <motivo>, por <quien>, <fecha>"."""
 

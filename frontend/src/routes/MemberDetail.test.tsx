@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FieldValue, PersonField } from '../api/customFields'
 import type { GradeEvent, Grading, GradingScheme } from '../api/grading'
-import type { Membership, MembershipLedger, OpenPeriod, Person, TimelineEntry } from '../api/member'
+import type { Correction, Membership, MembershipLedger, OpenPeriod, Person, TimelineEntry } from '../api/member'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { isoDay, shortDay } from '../format'
@@ -135,6 +135,20 @@ const LEDGER: MembershipLedger = {
   paid_through: null,
 }
 
+const correction = (fields: Partial<Correction> & Pick<Correction, 'id'>): Correction => ({
+  at: '2026-11-02T12:00:00Z',
+  action: 'ledger_corrected',
+  purpose: 'void',
+  plan_void: false,
+  reason: 'duplicado',
+  actor_name: 'Ana',
+  period_start: '2026-10-30',
+  plan_name: 'Mensual adultos',
+  before: { outstanding_clp: 45000, balance_clp: 90000 },
+  after: { outstanding_clp: 0, balance_clp: 45000 },
+  ...fields,
+})
+
 const stripes = [0, 1, 2, 3, 4].map((n) => ({ key: String(n), label: n === 0 ? 'Sin grados' : n === 1 ? '1 grado' : `${n} grados` }))
 
 const SCHEME: GradingScheme = {
@@ -193,6 +207,8 @@ type Stub = {
   timeZone?: string
   // The member's WhatsApp payment reminders (#55); none by default.
   reminders?: unknown[]
+  // The person's corrections (#277); none by default.
+  corrections?: Correction[]
   // Answers anything else first: the record's own actions (#157).
   extra?: (path: string, method: string, body: unknown) => Answer | undefined
 }
@@ -218,6 +234,7 @@ function stubApi({
   time = { body: FELIPE_TIME },
   timeZone = 'America/Santiago',
   reminders = [],
+  corrections = [],
   extra,
 }: Stub = {}) {
   const calls: Call[] = []
@@ -272,6 +289,7 @@ function stubApi({
       return { body: ended }
     }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
+    if (path === '/api/ledger/people/felipe/corrections') return { body: { total: corrections.length, items: corrections } }
     if (path === '/api/ledger/memberships/m-felipe/ahead') return ahead ?? { body: { periods: [] } }
     if (path === '/api/ledger/payments/ahead' && method === 'POST') {
       return aheadPayment ?? { status: 201, body: { paid_through: '2027-02-28' } }
@@ -965,6 +983,7 @@ describe('Ficha de alumno', () => {
     expect(screen.queryByRole('button', { name: copy.record })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: copy.ledger.title })).not.toBeInTheDocument()
     expect(calls.some((c) => c.path.startsWith('/api/ledger/memberships'))).toBe(false)
+    expect(calls.some((c) => c.path.endsWith('/corrections'))).toBe(false)
     expect(calls.some((c) => c.path.startsWith('/api/reminders'))).toBe(false)
   })
 
@@ -1349,6 +1368,52 @@ describe('Ficha de alumno', () => {
     const ledger = await screen.findByRole('region', { name: copy.ledger.title })
     expect(within(ledger).getAllByRole('listitem')).toHaveLength(4)
     expect(within(ledger).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('lists the corrections under the Libro: what, period, before → after, reason, who, when (#277)', async () => {
+    stubApi({
+      corrections: [
+        correction({ id: 'void' }),
+        correction({
+          id: 'discount',
+          purpose: null,
+          reason: 'hermano',
+          actor_name: 'Martín',
+          at: '2026-10-25T12:00:00Z',
+          before: { outstanding_clp: 45000, balance_clp: 95000 },
+          after: { outstanding_clp: 40000, balance_clp: 90000 },
+        }),
+        correction({
+          id: 'surcharge',
+          purpose: null,
+          reason: 'clase extra',
+          at: '2026-10-24T12:00:00Z',
+          before: { outstanding_clp: 40000, balance_clp: 90000 },
+          after: { outstanding_clp: 45000, balance_clp: 95000 },
+        }),
+        correction({ id: 'plan', plan_void: true, period_start: '2026-09-30', at: '2026-10-20T12:00:00Z' }),
+      ],
+    })
+    renderAt(PATH)
+
+    const fixes = await screen.findByRole('region', { name: copy.corrections.title })
+    const rows = within(fixes).getAllByRole('listitem')
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Anuló cargo octubreduplicado · Mensual adultos · por Ana · 2 novSaldo $90.000 → $45.000$45.000 → $0',
+      'Descuento octubrehermano · Mensual adultos · por Martín · 25 octSaldo $95.000 → $90.000$45.000 → $40.000',
+      'Recargo octubreclase extra · Mensual adultos · por Ana · 24 octSaldo $90.000 → $95.000$40.000 → $45.000',
+    ])
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.corrections.all(4) }))
+    expect(within(fixes).getAllByRole('listitem')[3]).toHaveTextContent('Anuló plan · cargo septiembre')
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.corrections.fewer }))
+    expect(within(fixes).getAllByRole('listitem')).toHaveLength(3)
+  })
+
+  it('has no Correcciones before a first fix (#277)', async () => {
+    stubApi()
+    renderAt(PATH)
+    await screen.findByRole('region', { name: copy.ledger.title })
+    expect(screen.queryByRole('region', { name: copy.corrections.title })).not.toBeInTheDocument()
   })
 
   it('has a WhatsApp button to the member in the header', async () => {

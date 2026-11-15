@@ -35,6 +35,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.corrections import balance, record_correction
 from app.api.entries import insert_entry
 from app.api.extra_lines import refund_line_payment
 from app.api.people import people_matching
@@ -58,6 +59,7 @@ from app.schemas.ledger import (
     BookKpis,
     BookPeriod,
     Entry,
+    Figures,
     FreezeLine,
     LedgerBook,
     LedgerPeriod,
@@ -315,6 +317,16 @@ async def settled(
     )
 
 
+async def figures(
+    session: AsyncSession, membership_id: uuid.UUID, period: BillingPeriod
+) -> Figures:
+    """What `period` still owes and the membership's balance as the ledger now has it:
+    before a correction's entry is written, or after."""
+    return Figures(
+        outstanding_clp=period.outstanding_clp, balance_clp=await balance(session, membership_id)
+    )
+
+
 def period_after(period_id: uuid.UUID, period: BillingPeriod) -> Period:
     """The period as an entry just settled leaves it."""
     return Period(
@@ -337,8 +349,19 @@ async def record_adjustment(body: AdjustmentRecord, session: LedgerSession) -> R
         raise HTTPException(
             status.HTTP_409_CONFLICT, "the adjustment exceeds what the period owes"
         ) from None
+    before = await figures(session, body.membership_id, period)
     adjustment = await insert_entry(
         session, settlement.entry, membership_id=body.membership_id, billing_period_id=row.id
+    )
+    await record_correction(
+        session,
+        membership_id=body.membership_id,
+        billing_period_id=row.id,
+        entry_ids=[adjustment.id],
+        purpose=None,
+        reason=adjustment.note,
+        before=before,
+        after=await figures(session, body.membership_id, settlement.period),
     )
     return RecordedAdjustment(adjustment=adjustment, period=period_after(row.id, settlement.period))
 
@@ -374,10 +397,15 @@ async def period_money(session: AsyncSession, period_id: uuid.UUID) -> HTTPExcep
 
 
 async def void_period(
-    session: AsyncSession, membership_id: uuid.UUID, period_id: uuid.UUID, reason: str
+    session: AsyncSession,
+    membership_id: uuid.UUID,
+    period_id: uuid.UUID,
+    reason: str,
+    plan_void: bool = False,
 ) -> RecordedVoid:
-    """Void what the period still owes (`billing.void`), under its locks; a 409 saying
-    why not while it has money on it, or owes nothing."""
+    """Void what the period still owes (`billing.void`), under its locks, and record the
+    correction, as one of a plan's voids with `plan_void`; a 409 saying why not while it
+    has money on it, or owes nothing."""
     row, period = await locked_period(session, period_id, membership_id)
     refused = await period_money(session, row.id)
     if refused is not None:
@@ -386,8 +414,20 @@ async def void_period(
         settlement = billing.void(period, reason)
     except InvalidTransition:
         raise void_refused(VoidRefusal.NOTHING_OWED, "the period owes nothing") from None
+    before = await figures(session, membership_id, period)
     entry = await insert_entry(
         session, settlement.entry, membership_id=membership_id, billing_period_id=row.id
+    )
+    await record_correction(
+        session,
+        membership_id=membership_id,
+        billing_period_id=row.id,
+        entry_ids=[entry.id],
+        purpose="void",
+        reason=entry.note,
+        before=before,
+        after=await figures(session, membership_id, settlement.period),
+        **({"plan_void": True} if plan_void else {}),
     )
     return RecordedVoid(void=entry, period=period_after(row.id, settlement.period))
 
@@ -489,11 +529,6 @@ PERIOD_FACTS = text(
     " JOIN gym g ON g.id = m.gym_id WHERE bp.id = :id"
 )
 
-# The membership's running balance (`v_balance`, 0014): owed if positive, credit if not.
-BALANCE = text(
-    "SELECT coalesce(sum(balance_clp), 0)::bigint FROM v_balance WHERE membership_id = :id"
-)
-
 
 async def period_facts(session: AsyncSession, period_id: uuid.UUID) -> tuple[Any, Contact | None]:
     """The period a notice is about, and whom to send it to: `None` if no one."""
@@ -534,7 +569,7 @@ async def send_receipt_for(
     """Email one receipt for `payments` of one membership, oldest period first: their
     total, from the first one's period to the end of `last_period_id`'s."""
     first = payments[0]
-    assert first.billing_period_id is not None
+    assert first.billing_period_id is not None and first.membership_id is not None
     facts, contact = await period_facts(session, first.billing_period_id)
     if contact is None:
         logger.info("receipt: no email to send it to", extra={"entry_id": str(first.id)})
@@ -542,7 +577,6 @@ async def send_receipt_for(
     last = facts if last_period_id == first.billing_period_id else None
     if last is None:
         last, _ = await period_facts(session, last_period_id)
-    balance = await session.scalar(BALANCE, {"id": first.membership_id})
     notice = receipt(
         contact,
         gym_id=facts.gym_id,
@@ -551,7 +585,7 @@ async def send_receipt_for(
         period_start=facts.period_start,
         period_end=last.period_end,
         period_outstanding_clp=period_outstanding_clp,
-        balance_clp=int(balance or 0),
+        balance_clp=await balance(session, first.membership_id),
         dependent_name=facts.person_name if contact.on_behalf_of else None,
     )
     # An address the gym typed wrong is a failed send in `message_log`, and must not

@@ -20,6 +20,7 @@ import {
 } from '../api/grading'
 import {
   aheadQuery,
+  correctionsQuery,
   editFreeze,
   endFreeze,
   freezeMembership,
@@ -34,6 +35,7 @@ import {
   shownMembership,
   voidMembership,
   voidRefused,
+  type Correction,
   type Freeze,
   type FreezeLine,
   type LedgerPeriod,
@@ -336,6 +338,7 @@ function Standing({
       </section>
       {earlier}
       {data && <Ledger ledger={data} />}
+      {data && <Corrections personId={personId} />}
     </>
   )
 }
@@ -1970,6 +1973,84 @@ function Ledger({ ledger }: { ledger: MembershipLedger }) {
       )}
     </section>
   )
+}
+
+const CORRECTIONS_SHOWN = 3
+
+/** "Correcciones" (#277): every fix to the person's billing, newest first, the latest
+ * three with "Ver todas (N)". Owner and admin only, as the Libro above it; none until a
+ * first fix. */
+function Corrections({ personId }: { personId: string }) {
+  const [all, setAll] = useState(false)
+  const corrections = useQuery(correctionsQuery(personId))
+  const words = copy.corrections
+  if (corrections.isError) {
+    return (
+      <p className="member__error" role="alert">
+        {words.error}
+      </p>
+    )
+  }
+  const items = corrections.data?.items ?? []
+  if (items.length === 0) return null
+  const total = corrections.data?.total ?? items.length
+  const shown = all ? items : items.slice(0, CORRECTIONS_SHOWN)
+  return (
+    <section className="member__section" aria-label={words.title}>
+      <h2 className="member__section-title">{words.title}</h2>
+      <ul className="member__ledger">
+        {shown.map((c) => (
+          <CorrectionLine key={c.id} correction={c} />
+        ))}
+      </ul>
+      {total > CORRECTIONS_SHOWN && (
+        <Button variant="ghost" className="member__more" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? words.fewer : words.all(total)}
+        </Button>
+      )}
+    </section>
+  )
+}
+
+/** `Anuló cargo noviembre` · `$45.000 → $0` · `duplicado · Mensual · por Ana · 2 nov`. */
+function CorrectionLine({ correction: c }: { correction: Correction }) {
+  const words = copy.corrections
+  const { before, after } = c
+  const detail = [c.reason, c.plan_name, c.actor_name ? words.by(c.actor_name) : null, shortDay(c.at)]
+  return (
+    <li className="member__entry member__entry--correction">
+      <span className="member__dot" aria-hidden="true" />
+      <div className="member__entry-text">
+        <span className="member__entry-title">{correctionTitle(c)}</span>
+        <span className="member__detail">{detail.filter(Boolean).join(' · ')}</span>
+        {before && after && (
+          <span className="member__detail">{words.balance(clp(before.balance_clp), clp(after.balance_clp))}</span>
+        )}
+      </div>
+      {before && after && (
+        <span className="member__entry-amount">
+          {words.owed(clp(before.outstanding_clp), clp(after.outstanding_clp))}
+        </span>
+      )}
+    </li>
+  )
+}
+
+function correctionTitle(c: Correction): string {
+  const words = copy.corrections
+  const month = c.period_start ? monthName(c.period_start) : ''
+  switch (c.action) {
+    case 'due_date_changed':
+      return words.dueDate
+    case 'membership_reactivated':
+      return words.reactivated
+    case 'cancel_undone':
+      return words.cancelUndone
+    case 'ledger_corrected':
+      if (c.purpose === 'void') return (c.plan_void ? words.planVoid : words.void)(month)
+      // In the member's favour when it left the period owing less.
+      return words.adjustment((c.after?.outstanding_clp ?? 0) < (c.before?.outstanding_clp ?? 0), month)
+  }
 }
 
 /** `Congelación` · `Lesión · vuelve el 24 nov · 10 nov`, with no amount. */
