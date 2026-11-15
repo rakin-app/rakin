@@ -406,16 +406,25 @@ instant with neither, which is section 7's concurrency test.
 4. **Confirmado** once the titular has confirmed (or no confirmation was needed). At
    that moment every seat already accepted is written; each seat accepted later is
    written when it is accepted. Either way with E = max(D, today), so a handover
-   confirmed after *D* takes effect at once, seat by seat.
+   confirmed after *D* takes effect at once, seat by seat. In the same transaction,
+   every seat not yet written whose outgoing appointment ends on or before *D* has that
+   end cleared (open), written as `appointment_extended`, so the outgoing holder
+   carries on ("prorrogado") with no job and no lapse; when the seat is written later,
+   the open end becomes E as for any seat.
 5. **Vigente** from *D*, once every seat is written or closed. The acta de traspaso is
    snapshotted then (when the last seat is written, or at *D* if all were written
    earlier). The nightly job only does the housekeeping of section 3: it removes the
    `staff` rows of people whose last appointment has ended and ends their sessions
    (0005).
-6. **Cancelling** a confirmed handover is possible only before *D*: it deletes the
-   written seats' future incoming appointments (they never started) and reopens the
-   outgoing ones (`ends_on` back to what it was), in one transaction, audited. From
-   *D* on, a mistake is corrected by another cambio de mando.
+6. **Cancelling** a confirmed handover is possible only before *D*, in one
+   transaction: it deletes the written seats' future incoming appointments (they never
+   started, so there is nothing for the history to show); it **ends today** (never
+   deletes) the early-access read-only appointments, which have already granted access,
+   each written as `appointment_ended` with the `handover_id`; and it gives every
+   outgoing appointment back the end it had before the handover, the confirmation's
+   extensions included, each written as `appointment_corrected` with before and after.
+   Then `handover_cancelled`. From *D* on, a mistake is corrected by another cambio de
+   mando.
 
 **No gap, no overlap, unless the gym chooses.**
 
@@ -437,13 +446,13 @@ instant with neither, which is section 7's concurrency test.
 
 **When a side does not answer.**
 
-- **An incoming person never accepts.** A seat that is not written changes nothing:
-  its outgoing appointment keeps whatever end it had. If that end is open, the outgoing
-  holder simply carries on; if it is on or before *D*, the cambio de mando extends it
-  to open when *D* arrives unwritten (audited as `appointment_extended`), so the seat
-  is never left empty by a missing acceptance. Equipo shows the seat as "prorrogado",
-  in orange, until the person accepts (and the seat is written, flipping at once) or
-  the starter names someone else. Written seats go ahead on *D* regardless.
+- **An incoming person never accepts.** A seat that is not written changes nothing
+  at *D*: its outgoing appointment already has an open end, either because it had one
+  or because the confirmation extended it (step 4), so the seat is never left empty by
+  a missing acceptance and nothing has to run at *D*. Equipo shows the seat as
+  "prorrogado", in orange, until the person accepts (and the seat is written, flipping
+  at once) or the starter names someone else. Written seats go ahead on *D*
+  regardless.
 - **The outgoing side has gone** (resigned and unreachable, refuses to start it). The
   titular starts the cambio de mando directly; nobody outgoing has to do anything,
   since the outgoing side never confirms. If it is the outgoing presidente who should
