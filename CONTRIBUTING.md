@@ -18,7 +18,7 @@ Thanks for your interest. Rakin is small and opinionated. Please read the [produ
 2. Branch from `main`, keep PRs focused, and link the issue (`Closes #123`).
 3. CI runs migrations and tests against a real Postgres. It must be green.
 4. User-facing strings go in the Spanish i18n file, never inline.
-5. Run `make hooks` once per clone. Never put a real person's name, RUT, phone or email in a commit, PR, issue or comment; use invented values. See the [privacy guard](docs/privacy-guard.md).
+5. Run `make hooks` once per clone. Never put a real person's name, RUT, phone or email in a commit, PR, issue or comment; use invented values. Write paths relative to the repo, never an absolute path on your machine. See the [privacy guard](docs/privacy-guard.md).
 
 ## Developer Certificate of Origin
 

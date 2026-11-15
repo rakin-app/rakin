@@ -1,6 +1,6 @@
 # Privacy guard
 
-The repo, its issues, PRs and the project board are public. The pilot gym's real members live on staging. The privacy guard ([#302](https://github.com/rakin-app/rakin/issues/302)) is a set of checks that stop a real person's name, RUT, phone or email from reaching GitHub through a commit, a PR or issue body, or a comment. They apply to humans and agents alike.
+The repo, its issues, PRs and the project board are public. The pilot gym's real members live on staging. The privacy guard ([#302](https://github.com/rakin-app/rakin/issues/302)) is a set of checks that stop a real person's name, RUT, phone or email from reaching GitHub through a commit, a PR or issue body, or a comment. Since [#324](https://github.com/rakin-app/rakin/issues/324) it also stops the second kind of leak: an absolute path on the owner's machine, and the names of the owner's private work. They apply to humans and agents alike.
 
 Every check runs one script, [`scripts/pii_guard.py`](../scripts/pii_guard.py). It uses only the standard library, so `python3 -I scripts/pii_guard.py …` or `uv run scripts/pii_guard.py …` runs it with no setup. A hit prints where it is and what kind of data it is (`docs/a.md:12:5: rut`), **never the value**, so a CI log or a refusal can't leak the data it caught.
 
@@ -13,19 +13,33 @@ Every check runs one script, [`scripts/pii_guard.py`](../scripts/pii_guard.py). 
 | `rut` | A RUT with a **valid** check digit: `15.234.871-1`, `15234871-1`, `…-K` | A wrong check digit; a RUT inside a longer number <!-- pii-ok: invented --> |
 | `phone` | A Chilean mobile: `+56 9 xxxx xxxx`, `+569xxxxxxxx`, `56 9 …`, `0056 9 …`, `9 xxxx xxxx`, `9xxxxxxxx`, `(9) xxxx-xxxx` | Landlines, other countries |
 | `email` | An address whose domain is not on `EMAIL_DOMAINS` | `example.com` / `.org` / `.net` / `.cl`, `*.test`, `*.example`, `*.invalid`, `rakin.app`, `rakin.test`, GitHub's noreply addresses, and their subdomains |
+| `local-path` | An absolute path on a machine: `/Volumes/…`, `/Users/<name>…`, `/home/<name>…`, `C:\Users\…` (or `C:/Users/…`), and `~/` followed by a folder | Repo-relative paths (`scripts/pii_guard.py`), server paths such as `/srv/rakin`, placeholders that don't start with a name (`/Users/<name>`), and the home folders on `HOME_PATHS_OK`: `~/.config/rakin/` and `~/.task-force/`, where this guard and task-force keep their state, and the standard `~/.ssh/`, `~/.local/bin/` and `~/.kiro/`. Each must be the whole leading folder: one that only starts with the same letters, or climbs out with `..`, is caught |
 
 The textbook values the code's docstrings quote (`12.345.678-5`, `76.123.456-0`, `7.654.321-6`, `9 1234 5678`, `9 8765 4321`, …) and the demo gym's phones (`9 6123 45xx`) are on `EXAMPLE_VALUES` / `EXAMPLE_PREFIXES` and pass.
 
 **The denylist.** These are the real people: names, emails, RUTs and phones exported from staging. Matching ignores case and accents (`Ñuñoa` is `nunoa`), and a name also matches inside an identifier or address (`ximena_nunez`, `ximena.nunez@…`). A name of two or more words matches only as that whole sequence, so a list entry "Ximena Ñúñez" never fires on a lone "Ximena". A single-word entry is ignored, with a warning that gives its line number, unless the list writes it `word: <it>`. Words must be in the same order, so a name written surname first (`Ñúñez Peñaloza, Ximena`) matches both orders, but `Ximena Ñúñez Peñaloza` matches only that one. The staging export writes names as they are stored; add a `Surnames, Given names` line for anyone the gym's sheets list surname first. A RUT or phone matches in any format, and needs at least 8 digits: a shorter entry is ignored with a warning, since it would fire inside unrelated numbers.
 
-## Where the list lives
+**The private terms** (kind `private-term`). These are the owner's private work: private project and repo names, internal ticket prefixes, client names. A term matches as a whole word in any case and with or without accents, so a list entry `Borealis` catches `borealis`, `BOREALIS-12` and `borealis_utils`, but not `aborealis` or `borealisx`. A term of several words matches that sequence with any separator between them (`Proyecto Tundra`, `proyecto-tundra`). A term under three letters is ignored with a warning that gives its line number. (`Borealis` and `Tundra` are invented examples.)
+
+## Where the lists live
 
 **Never in the repo**, not even hashed: a list of names is easy to brute-force from its hashes.
 
-- **Locally**: `~/.config/rakin/pii-denylist.txt`, mode `600`, or the file named by `PII_DENYLIST_FILE`.
-- **CI**: the repository secret `PII_DENYLIST`, holding the same content. The script reads the variable's content directly.
+| List | Locally | In CI |
+|------|---------|-------|
+| Denylist | `~/.config/rakin/pii-denylist.txt`, mode `600`, or the file named by `PII_DENYLIST_FILE` | The repository secret `PII_DENYLIST` |
+| Private terms | `~/.config/rakin/private-terms.txt`, mode `600`, or the file named by `PRIVATE_TERMS_FILE` | The repository secret `PRIVATE_TERMS` |
 
-Without a list, the patterns still run. CI says `PII_DENYLIST is not set` in a notice, and so does a fork's PR, which gets no secrets.
+Each secret holds the same content as its file, and the script reads the variable's content directly. `--denylist FILE` and `--terms FILE` name a file by hand; `--no-denylist` skips both lists.
+
+Without a list, the patterns still run. CI says `PII_DENYLIST is not set` or `PRIVATE_TERMS is not set` in a notice, and so does a fork's PR, which gets no secrets.
+
+**The PM keeps the private-terms list.** Add a term when a new private project, repo, client or ticket prefix comes up in the work, one per line, `#` for comments, then refresh the secret:
+
+```sh
+chmod 600 ~/.config/rakin/private-terms.txt
+gh secret set PRIVATE_TERMS --repo rakin-app/rakin <~/.config/rakin/private-terms.txt
+```
 
 The format is one entry per line, with `#` starting a comment:
 
@@ -66,7 +80,7 @@ Add any other place a real person turns up, such as a staff member's address or 
 |-------|---------------|-----------|
 | `pre-commit` hook | The lines the commit adds | `make hooks` |
 | `commit-msg` hook | The whole commit message, `#` lines included: `git commit -m` and `-F` keep them, and the hook cannot tell which kind of commit ran. Only the `>8` scissors tail is skipped. `…-by:` trailers and the editor template's `# Author:` / `# Date:` lines skip the patterns, since they repeat the commit's own author, but they still get the denylist. | `make hooks` |
-| Claude Code `PreToolUse` hook on `Bash` | Any `gh issue\|pr\|api\|release` call: the command text, a heredoc body included, and every file it names with `--body-file`, `-F`, `--input`, `--notes-file` or `-F field=@file`, or reads into an argument with `$(cat file)`, `$(<file)` or backticks. `$VAR` and `~` in a path are expanded. A file the hook cannot read (an unset variable, a `$(…)` path, a file the same command writes first) blocks the call too, so write the body to a literal path in a separate step. A hit blocks the call and gives the reason. | [`.claude/settings.json`](../.claude/settings.json), inherited by every worktree |
+| Claude Code `PreToolUse` hook on `Bash` | Any `gh issue\|pr\|api\|release` call: the command text, a heredoc body included, and every file it names with `--body-file`, `-F`, `--input`, `--notes-file` or `-F field=@file`, or reads into an argument with `$(cat file)`, `$(<file)` or backticks. `$VAR` and `~` in a path are expanded. A file the hook cannot read (an unset variable, a `$(…)` path, a file the same command writes first) blocks the call too, so write the body to a literal path in a separate step. The paths the command only reads, its body files and `cd` targets, stay on the machine and are not checked as `local-path`. A hit blocks the call and gives the reason. | [`.claude/settings.json`](../.claude/settings.json), inherited by every worktree |
 | CI `pii / pr` job | The PR's diff (added lines), title and body. It re-runs when the title or body is edited. | [`.github/workflows/pii.yml`](../.github/workflows/pii.yml) |
 | CI `pii / daily` job | Issues, PRs, comments and review comments created or edited in the last day. A hit fails the run, so the owner gets GitHub's email. It opens nothing public. | same |
 
@@ -90,7 +104,7 @@ Tests and the demo gym need RUTs and phones that look real. Mark them; don't hid
 - **One line**: put `pii-ok` anywhere on it, usually in a comment (`# pii-ok: invented`).
 - **A whole file**: files under `FIXTURE_PATHS` in the script are exempt: `backend/tests/`, `backend/app/seed/`, `frontend/src/**/*.test.ts(x)`, the lock files, and the guard's own tests.
 
-Both skip the **patterns only**. Nothing skips the denylist, since every entry on it is a real person. If a denylisted name is also a fixture's invented name, rename the fixture.
+Both skip the **patterns only**, `local-path` included: a doc line that shows a server's home folder takes a `pii-ok` too. Nothing skips the denylist or the private terms, since every entry on them is a real person or the owner's real work. If a listed name is also a fixture's invented name, rename the fixture.
 
 ## On a hit
 
@@ -100,4 +114,4 @@ Edit the text and try again. If the value already reached GitHub:
 - **A pushed commit**: rewrite history with [`git filter-repo`](https://github.com/newren/git-filter-repo) (`--replace-text`, with the value on the left-hand side of the rules file), then force-push every affected branch. `main` refuses force-pushes, so an owner lifts the protection for the push and restores it afterwards. Old SHAs stay reachable from PR refs and forks until GitHub garbage-collects them, so open a request with [GitHub Support](https://support.github.com/) to remove cached views and PR refs. See [Removing sensitive data from a repository](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
 - **The daily job failed**: its log names the issue or comment and the line. Edit it as above.
 
-In every case, tell the owner. Under Ley 21.719, a gym's members' data reaching the public is the gym's to know about.
+In every case, tell the owner. Under Ley 21.719, a gym's members' data reaching the public is the gym's to know about. For a `local-path` hit, write the path relative to the repo, or describe the place (a folder outside the repo); for a `private-term` hit, leave the reference out.

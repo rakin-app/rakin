@@ -279,7 +279,7 @@ template maps with no changes.
 | Nombre | Martina | required |
 | Apellido | Soto Pérez | |
 | RUT | 12.345.678-5 | finds them; one of RUT or Correo is best |
-| Correo | martina@ejemplo.cl | |
+| Correo | martina@example.cl | |
 | Teléfono | +56 9 1234 5678 | |
 | Fecha de nacimiento | 14-03-2010 | |
 | Apoderado | Paula Pérez | for a minor |
@@ -512,7 +512,7 @@ anonymised, and the first run is a dry run on a local stack. History extends it:
 1. **Before**: #277 and the first history tickets are deployed; Meta's plans and grading
    scheme are set in Ajustes, so the Plan and Grado columns match.
 2. **Fill the template** with the owner, outside any repository checkout (a folder
-   in `~/Documents`, never the worktree). Most of Meta's payment record is a grid by
+   in the owner's documents, never the worktree). Most of Meta's payment record is a grid by
    month; copy it into the Pagos tab's rows with the instructions tab's recipe.
 3. **Dry run locally** (`docker compose up`, plans and ranks typed as in prod): upload,
    read every refusal. Report counts and codes on ops#4, never names.

@@ -1,14 +1,16 @@
 name: pii
 
-# The PII guard (#302, docs/privacy-guard.md): a real member's name, RUT, phone or
-# email must not reach this public repo. The `pr` job scans each PR's diff, title
+# The PII guard (#302, #324, docs/privacy-guard.md): a real member's name, RUT,
+# phone or email, an absolute path on the owner's machine, or the name of the
+# owner's private work must not reach this public repo. The `pr` job scans each PR's diff, title
 # and body, and re-runs when the title or body is edited. The `daily` job scans
 # the issues, PRs and comments touched in the last day and fails its own run, so
 # the owner gets the email; it opens nothing public.
 #
-# Both read the real names from the `PII_DENYLIST` secret. Without it (a fork's
-# PR, or before it is set) the patterns still run and a notice says the list was
-# skipped. Output names where and what kind, never the value.
+# Both read the real names from the `PII_DENYLIST` secret and the private terms
+# from `PRIVATE_TERMS`. Without them (a fork's PR, or before they are set) the
+# patterns still run and a notice says which list was skipped. Output names where
+# and what kind, never the value.
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
@@ -35,12 +37,14 @@ jobs:
       - name: Scan the diff, title and body
         env:
           PII_DENYLIST: ${{ secrets.PII_DENYLIST }}
+          PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           [ -n "$PII_DENYLIST" ] || echo "::notice::PII_DENYLIST is not set: patterns only, no name list."
+          [ -n "$PRIVATE_TERMS" ] || echo "::notice::PRIVATE_TERMS is not set: no private-terms list."
           printf '%s\n' "$PR_TITLE" >"$RUNNER_TEMP/pr-title"
           printf '%s\n' "$PR_BODY" >"$RUNNER_TEMP/pr-body"
           status=0
@@ -61,9 +65,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PII_DENYLIST: ${{ secrets.PII_DENYLIST }}
+          PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
           REPO: ${{ github.repository }}
         run: |
           [ -n "$PII_DENYLIST" ] || echo "::notice::PII_DENYLIST is not set: patterns only, no name list."
+          [ -n "$PRIVATE_TERMS" ] || echo "::notice::PRIVATE_TERMS is not set: no private-terms list."
           # `since` is "updated since", so an edit is scanned as well; 26h overlaps the runs.
           since=$(date -u -d '26 hours ago' +%Y-%m-%dT%H:%M:%SZ)
           records="$RUNNER_TEMP/records.jsonl"

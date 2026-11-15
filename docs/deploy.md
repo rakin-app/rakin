@@ -42,8 +42,8 @@ ufw --force enable
 # guard the key accordingly), owns /srv/rakin.
 adduser --disabled-password --gecos "" deploy
 usermod -aG docker deploy
-install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
-# paste the deploy key's public half into /home/deploy/.ssh/authorized_keys (mode 600, owner deploy)
+install -d -m 700 -o deploy -g deploy /home/deploy/.ssh   # pii-ok: the server's deploy user
+# paste the deploy key's public half into /home/deploy/.ssh/authorized_keys (mode 600, owner deploy; pii-ok: on the server)
 install -d -m 750 -o deploy -g deploy /srv/rakin
 
 # No password logins, no root over SSH.
@@ -219,13 +219,13 @@ On the host, stop everything that writes:
 
 ```sh
 cd /srv/rakin && docker compose stop caddy api jobs backup
-install -d -m 700 ~/restore   # the decrypted dump: only you can read it, and it goes at the end
+install -d -m 700 $HOME/restore   # the decrypted dump: only you can read it, and it goes at the end
 ```
 
 From your laptop, decrypt the backup into it, the key over SSH as for `restore.sh`:
 
 ```sh
-ssh deploy@<host> 'cd /srv/rakin && docker compose run --rm -T -v ~/restore:/restore backup sh -c \
+ssh deploy@<host> 'cd /srv/rakin && docker compose run --rm -T -v $HOME/restore:/restore backup sh -c \
   "python -m app.backup fetch rakin/production/20261110T060000Z.dump.age /restore/b.age && age -d -i - -o /restore/b.dump /restore/b.age"' \
   <rakin-backup.key
 ```
@@ -236,12 +236,12 @@ Then on the host, replace the database with it:
 cd /srv/rakin
 docker compose exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
 docker compose --profile migrate run --rm migrate python -m app.db_bootstrap   # the roles and the owner, as on a new host
-docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --exit-on-error' <~/restore/b.dump
-rm -rf ~/restore
+docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --exit-on-error' <$HOME/restore/b.dump
+rm -rf $HOME/restore
 docker compose up -d --wait
 ./smoke.sh https://<host>
 ```
 
-The dump carries the schema at its release's migration. If the running release is newer, run `docker compose --profile migrate run --rm migrate` before `up`. The restored database needs the same `FIELD_ENCRYPTION_KEY` it was written under, or the sensitive custom fields stay unreadable. The key only passes through the host's memory; the decrypted dump in `~/restore` does land on its disk, which is why it goes as soon as the restore is done.
+The dump carries the schema at its release's migration. If the running release is newer, run `docker compose --profile migrate run --rm migrate` before `up`. The restored database needs the same `FIELD_ENCRYPTION_KEY` it was written under, or the sensitive custom fields stay unreadable. The key only passes through the host's memory; the decrypted dump in `$HOME/restore` does land on its disk, which is why it goes as soon as the restore is done.
 
 Point-in-time recovery (WAL archiving) is not set up; a nightly dump loses up to a day. See the [design](technical.md#infrastructure-and-operations).
