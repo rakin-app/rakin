@@ -838,11 +838,14 @@ BOOK_MONTHS = text(
     """
 )
 
-# The ledger as the book lists it: each entry with whose membership it is, the
-# guardian who pays for them, and its period settled as `OPEN_PERIODS` settles it. An
-# entry on a cobro extra line (#195) has no membership: `m` is whoever's line it is.
-BOOK_ROWS = f"""
-    SELECT e.id, e.created_at, e.kind, e.status, e.amount_clp, e.method, e.note,
+
+def book_rows(columns: str = "") -> str:
+    """The ledger as the book lists it: each entry with whose membership it is, the
+    guardian who pays for them, and its period settled as `OPEN_PERIODS` settles it,
+    with `columns` besides, for the accountant's export (#40). An entry on a cobro
+    extra line (#195) has no membership: `m` is whoever's line it is."""
+    return f"""
+    SELECT {columns}e.id, e.created_at, e.kind, e.status, e.amount_clp, e.method, e.note,
            e.refund_of, e.membership_id, pl.name AS plan_name, em.status AS membership_status,
            m.person_id, mp.name AS person_name,
            x.id AS extra_charge_id, x.title AS charge_title, x.category AS charge_category,
@@ -875,6 +878,9 @@ BOOK_ROWS = f"""
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
     {VOIDED_JOIN}
 """
+
+
+BOOK_ROWS = book_rows()
 
 IN_MONTH = f"{BOOK_DAY} >= :month AND {BOOK_DAY} < (:month + interval '1 month')::date"
 

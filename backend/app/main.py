@@ -24,6 +24,7 @@ from app.api import (
     inactive,
     join,
     ledger,
+    ledger_export,
     logos,
     me,
     member_import,
@@ -132,6 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(grades.router)
     app.include_router(ledger.router)
     app.include_router(corrections.router)
+    app.include_router(ledger_export.router)
     app.include_router(inactive.router)
     app.include_router(reminders.router)
     app.include_router(proof_review.router)

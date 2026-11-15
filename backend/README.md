@@ -224,6 +224,18 @@ Every settlement in the app counts a period's validated payments and adjustments
 
 `kpis`: `collected_clp` and `collected_payments`, the month's row of `v_monthly_income`, net of refunds, with `refunded_clp` and `refunds` beside it ("Cobrado $X · Devuelto $Y"); `expected_clp`, what is owed for the month: the periods falling due in it of `active` and `lapsed` memberships, since a lapsed member still owes what was billed (`cancelled`, `trial` and `frozen` ones are left out); and as the gym stands today, whichever month is shown: `pending_clp` and `pending_payments`, the claims waiting for review; `overdue_clp` and `overdue_members`, outstanding on the `v_overdue` periods of memberships in any status (a lapsed, frozen or cancelled plan still owes what it owed, #207) and the people owing it, and `overdue_avg_days`, per such person the days since their oldest unpaid period fell due, averaged; `active_memberships` and `frozen_memberships`.
 
+### The accountant's export
+
+"Exportar CSV" and "Exportar Excel" on Pagos download the month shown for the gym's accountant (#40). Export only: no SII boleta is issued. Owner and admin only (`LedgerSession`); a coach gets a 403, and RLS keeps it to the gym.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/ledger/export` | `month`: any day of the month, the current one in the gym's timezone by default. `format`: `csv` (default) or `xlsx`. A file, `pagos-YYYY-MM.csv` or `.xlsx`, as an attachment |
+
+One row per ledger entry of the month, by the day it counts on in the gym's timezone: a charge by its period's start, as the book files it (#206); a validated payment or refund by the day it was validated, as `v_monthly_income` counts it, so the export's paid less refunded is the book's `collected_clp` (a validated one with no `validated_at` falls back to the day it was made, so it is never lost from every file); anything else by the day it was made. The Pagos list files a payment by the day it was made, so a proof claimed in October and validated in November is October's on screen and November's in the file: the file says so in a line after its totals. Columns, in Spanish: Fecha, Alumno, RUT, Plan o cobro, Período, Tipo (Cargo, Pago, Ajuste, Devolución, or Anulación for a void, #256, always its own row), Método, Monto (CLP), Estado, Ref. bancaria (`bank_tx_ref`), Nota, then one per custom field the caller sees that is neither sensitive nor archived. A cobro extra's entry (#195) reads as its category and title ("Rifa: Rifa de otoño") with no period. Proofs still waiting are listed on their own, after the rest. Totals count validated entries only: charged, paid (and of it, cobros extra), adjusted (signed, voids apart), voided, refunded, paid less refunded, and what the month's charges still owe today. No email or phone is exported.
+
+The CSV is UTF-8 with a BOM and `;` between fields, which Excel in a Spanish locale opens with a double click; dates dd-mm-yyyy and CLP as plain integers, with the pending proofs and the totals each under a title row after the entries. The XLSX has three sheets (Movimientos, Por validar, Totales) with dates and integers typed as such. Text a person typed that starts like a formula (`=`, `+`, `-`, `@`) is quoted in the CSV and written as a string in the XLSX, so a spreadsheet never runs it (`app/ledger_export.py`).
+
 ### Overdue
 
 The owner's dashboard ("Hoy", #58) lists what is overdue. Owner and admin only (`LedgerSession`).

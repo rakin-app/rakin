@@ -2019,6 +2019,9 @@ export const es = {
       error: 'No pudimos cargar los pagos.',
       retry: 'Reintentar',
       month: 'Período',
+      // The month's ledger for the accountant (#40).
+      exportCsv: 'Exportar CSV',
+      exportXlsx: 'Exportar Excel',
       kpisLabel: 'Resumen del mes',
       kpis: {
         collected: 'Cobrado',
