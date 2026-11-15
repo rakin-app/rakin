@@ -814,12 +814,14 @@ TIMELINE = text(
 # `OPEN_PERIODS` settles it: what an adjustment may go to (#38). Not capped as the
 # timeline is, so a period older than its latest entries is still there. With its void
 # still standing (#256), if any, and what it took off, which "Restaurar cargo" puts
-# back (#278).
+# back (#278); and what it charges once its adjustments are taken off, which "Cambiar
+# monto" changes (#279).
 PERIODS = text(
     f"""
     SELECT bp.id, bp.period_start, bp.period_end,
            greatest(bp.amount_due_clp - coalesce(paid.amount, 0), 0) AS outstanding_clp,
-           coalesce(vd.amount_clp, 0) AS voided_clp, vd.id AS void_id
+           coalesce(vd.amount_clp, 0) AS voided_clp, vd.id AS void_id,
+           bp.amount_due_clp - coalesce(adjusted.amount, 0) AS charged_clp
     FROM billing_period bp
     LEFT JOIN LATERAL (
         SELECT v.id, v.amount_clp FROM ledger_entry v
@@ -830,6 +832,10 @@ PERIODS = text(
         WHERE e.billing_period_id = bp.id AND e.status = :validated
           AND e.kind = ANY(CAST(:settling AS text[]))
     ) paid ON true
+    LEFT JOIN LATERAL (
+        SELECT sum(a.amount_clp)::bigint AS amount FROM ledger_entry a
+        WHERE a.billing_period_id = bp.id AND a.status = :validated AND a.kind = 'adjustment'
+    ) adjusted ON true
     WHERE bp.membership_id = :id
     ORDER BY bp.period_start DESC, bp.id
     """
@@ -904,6 +910,7 @@ async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) ->
         paid_through=billing.paid_through(
             (p.period_start, p.period_end, p.outstanding_clp) for p in every_period
         ),
+        balance_clp=await balance(session, membership_id),
     )
 
 

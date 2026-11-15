@@ -338,6 +338,24 @@ describe('Nuevo cobro extra', () => {
   })
 })
 
+describe('Nuevo cobro extra, from a ficha (#279)', () => {
+  it('starts with the person "Cobro extra" was pressed for picked', async () => {
+    const user = userEvent.setup()
+    stubApi('owner', (path) =>
+      path === '/api/people/p-luis' ? { body: { id: 'p-luis', name: 'Luis Mora' } } : undefined,
+    )
+    renderAt('/admin/pagos/cobros/nuevo?person=p-luis')
+    const words = copy.wizard
+
+    await user.type(await screen.findByLabelText(words.titleLabel), 'Matrícula')
+    await user.type(screen.getByLabelText(words.dueLabel), '2026-11-30')
+    await user.click(screen.getByRole('button', { name: words.next }))
+
+    expect(screen.getByRole('radio', { name: words.target.people })).toBeChecked()
+    expect(screen.getByRole('button', { name: copy.groups.remove('Luis Mora') })).toBeInTheDocument()
+  })
+})
+
 describe('Nuevo cobro extra, while the preview catches up', () => {
   it('neither advances nor confirms on a preview for an older draft', async () => {
     const user = userEvent.setup()

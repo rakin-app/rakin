@@ -120,6 +120,9 @@ export type LedgerPeriod = {
   // void, which "Restaurar cargo" restores (#278).
   voided_clp: number
   void_id: string | null
+  // What it charges, its adjustments taken off but not its payments: what "Cambiar
+  // monto" changes (#279).
+  charged_clp: number
 }
 
 /** A validated payment with something left to give back (backend `RefundablePayment`). */
@@ -161,6 +164,8 @@ export type MembershipLedger = {
   // The last day its periods are paid through, none owing before it: "Pagado hasta".
   // Null with no period yet, or with the first one still owing.
   paid_through: string | null
+  // Its running balance, owed if positive: the "Saldo" each fix shows before → after (#279).
+  balance_clp: number
 }
 
 /** A period paying ahead would bill, not written yet (backend `AheadPeriod`, #196). */
