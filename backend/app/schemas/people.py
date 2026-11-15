@@ -118,6 +118,9 @@ class Person(BaseModel):
     dob: date | None
     # The day they left this gym (dado de baja); null while they are here.
     left_on: date | None
+    # Why they left, as the gym wrote it (#294). It may be health data ("lesión"), so a
+    # coach's read leaves it out: null for them, whatever it holds.
+    left_reason: str | None = None
     # History from before Rakin (#293): the day they first trained here, and how many
     # classes they had. Read by the ficha only, never by billing.
     member_since: date | None
@@ -234,18 +237,59 @@ class WelcomeState(BaseModel):
     suppressed: Suppression | None = None
 
 
+def _said(value: str | None) -> str | None:
+    """A reason left blank is no reason."""
+    return value or None
+
+
+# Why someone left (#294): free text the chips fill ("Precio", "Lesión"), and no more
+# than a line. Blank is not said.
+LeftReason = Annotated[
+    str | None,
+    StringConstraints(strip_whitespace=True, max_length=200),
+    AfterValidator(_said),
+]
+
+
 class Leaving(BaseModel):
     """Dar de baja: the day they left, today in the gym's timezone when omitted, and
-    never later."""
+    never later nor more than `HISTORY_WINDOW_YEARS` back; and why, if the gym says."""
 
     model_config = ConfigDict(extra="forbid")
 
     left_on: date | None = None
+    left_reason: LeftReason = None
 
 
 # How far back history may go: a typo guard, not a rule (a founder's first students).
 # Billing's own dates keep their five years (`STARTED_ON_WINDOW_YEARS`).
 HISTORY_WINDOW_YEARS = 60
+
+
+class FormerStudent(BaseModel):
+    """ "Agregar exalumno" (#294): someone who trained here before Rakin and has left.
+    Who they are, by RUT or email; a phone if the gym has one, though nobody will write
+    to them; the day they started, if known, and the day they left, with why. No plan
+    and no welcome. The API checks both days against the gym's today and
+    `HISTORY_WINDOW_YEARS`, and that they started before they left."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Name
+    rut: Rut | None = None
+    email: Email | None = None
+    phone: Phone | None = None
+    member_since: date | None = None
+    left_on: date
+    left_reason: LeftReason = None
+
+    @model_validator(mode="after")
+    def _identified(self) -> "FormerStudent":
+        require_identity(self.rut, self.email)
+        if self.member_since is not None and self.member_since > self.left_on:
+            raise ValueError("member_since is left_on at the latest")
+        return self
+
 
 # Classes before Rakin: a lifetime of daily training, and then some.
 MAX_PRIOR_CLASSES = 20_000

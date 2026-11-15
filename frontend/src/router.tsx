@@ -338,5 +338,7 @@ declare module '@tanstack/history' {
   interface HistoryState {
     // "Nuevo alumno" asked for the welcome then: the ficha waits for it (#246).
     welcomeSince?: number
+    // "Agregar exalumno" just added them: the ficha offers "Agregar historial" (#294).
+    offerHistory?: boolean
   }
 }

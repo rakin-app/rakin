@@ -58,10 +58,11 @@ NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "person not found")
 
 def missing_phone(record: str) -> str:
     """Whether the `gym_person` row `record` is a member the gym cannot reach (#165): no
-    phone, "No tiene WhatsApp" unticked, and neither staff, who need none, nor a
-    dependent, whose guardian's phone is the one used. "Falta teléfono"."""
+    phone, "No tiene WhatsApp" unticked, still here (nobody writes to a former student,
+    #294), and neither staff, who need none, nor a dependent, whose guardian's phone is
+    the one used. "Falta teléfono"."""
     return f"""(
-        {record}.phone IS NULL AND NOT {record}.no_whatsapp
+        {record}.phone IS NULL AND NOT {record}.no_whatsapp AND {record}.left_on IS NULL
         AND NOT EXISTS (
             SELECT FROM staff s
             WHERE s.gym_id = {record}.gym_id AND s.person_id = {record}.person_id
@@ -94,8 +95,8 @@ def missing_rut(record: str) -> str:
 SELECT_PERSON = f"""
     SELECT gp.person_id AS id, gp.phone, gp.no_whatsapp, {missing_phone("gp")} AS missing_phone,
            {missing_rut("gp")} AS missing_rut,
-           gp.name, gp.email, gp.rut, gp.dob, gp.left_on, gp.member_since, gp.prior_classes,
-           gp.created_at, gp.updated_at
+           gp.name, gp.email, gp.rut, gp.dob, gp.left_on, gp.left_reason, gp.member_since,
+           gp.prior_classes, gp.created_at, gp.updated_at
     FROM gym_person gp
     WHERE gp.person_id = :id
 """
@@ -329,11 +330,16 @@ async def in_gym(session: AsyncSession, person_id: uuid.UUID) -> bool:
     return bool(found)
 
 
-async def read_person(session: AsyncSession, person_id: uuid.UUID) -> Person:
+async def read_person(
+    session: AsyncSession, person_id: uuid.UUID, *, sees_reason: bool = False
+) -> Person:
+    """This gym's record of them. Why they left only with `sees_reason`, for the owner
+    and admins: it may be health data (#294)."""
     row = (await session.execute(text(SELECT_PERSON), {"id": person_id})).one_or_none()
     if row is None:
         raise NOT_FOUND
-    return Person.model_validate(row, from_attributes=True)
+    person = Person.model_validate(row, from_attributes=True)
+    return person if sees_reason else person.model_copy(update={"left_reason": None})
 
 
 def in_gym_conflict(conflict: PersonConflict) -> HTTPException:
@@ -513,8 +519,8 @@ async def create_person(body: PersonCreate, session: StaffSession) -> Person:
 
 
 @router.get("/{person_id}")
-async def get_person(person_id: uuid.UUID, session: StaffSession) -> Person:
-    return await read_person(session, person_id)
+async def get_person(person_id: uuid.UUID, session: StaffSession, money: SeesMoney) -> Person:
+    return await read_person(session, person_id, sees_reason=money)
 
 
 # This gym's record as an edit would leave it, to check before anything is written.
@@ -532,7 +538,9 @@ EDITED = text("""
     "/{person_id}",
     responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}},
 )
-async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: StaffSession) -> Person:
+async def update_person(
+    person_id: uuid.UUID, body: PersonUpdate, session: StaffSession, money: SeesMoney
+) -> Person:
     """Checked first, written second: a refusal writes nothing."""
     changes = body.model_dump(exclude_unset=True)
     record = (await session.execute(EDITED, {"id": person_id})).one_or_none()
@@ -560,4 +568,4 @@ async def update_person(person_id: uuid.UUID, body: PersonUpdate, session: Staff
         )
     if changes.get("rut") is not None:
         await claim_rut(session, person_id, changes["rut"])
-    return await read_person(session, person_id)
+    return await read_person(session, person_id, sees_reason=money)

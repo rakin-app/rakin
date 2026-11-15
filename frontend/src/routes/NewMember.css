@@ -5,6 +5,11 @@
   padding: 0 var(--space-5) var(--space-6);
 }
 
+/* "Entrena aquí / Ya no entrena aquí" (#294), above either form. */
+.new-member__kind {
+  padding: 0 var(--space-5) var(--space-3);
+}
+
 /* A label above its input, as `.member__form` spaces them. */
 .new-member__field {
   display: flex;

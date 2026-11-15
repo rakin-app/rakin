@@ -8,6 +8,8 @@ import { Button } from '../components/Button'
 import { useLeaveTo } from '../components/BackLink'
 import { Input } from '../components/Field'
 import { t } from '../i18n/es'
+import { LeftReasonField } from './LeftReason'
+import { HISTORY_WINDOW_YEARS, yearsBefore } from './PersonHistory'
 import { useRefresh } from './PersonData'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
 import { useSubmit } from '../api/submit'
@@ -89,13 +91,17 @@ function LeaveForm({
   // Today until a day is picked: the gym's timezone may arrive after the form opens.
   const [picked, setPicked] = useState<string | null>(null)
   const on = picked ?? today
+  const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
-  const onOk = on !== '' && on <= today
+  // As far back as history goes (#294), not a plan's five years.
+  const earliest = today ? yearsBefore(today, HISTORY_WINDOW_YEARS) : ''
+  const onOk = on !== '' && on <= today && on >= earliest
 
   const leave = useSubmit({
     offline: 'refuse',
     // Today is left to the server, which knows the gym's today.
-    mutationFn: () => leaveGym(person.id, on < today ? on : undefined),
+    mutationFn: () =>
+      leaveGym(person.id, { left_on: on < today ? on : undefined, left_reason: reason.trim() || undefined }),
     onSuccess: async () => {
       // The banner says it; nothing more to add.
       onDone(null)
@@ -110,7 +116,7 @@ function LeaveForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className="member__form" aria-label={form.title} onSubmit={submit} noValidate>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.on}
@@ -118,6 +124,7 @@ function LeaveForm({
       <Input
         id={id}
         type="date"
+        min={earliest || undefined}
         max={today}
         value={on}
         aria-invalid={checked && !onOk}
@@ -128,6 +135,7 @@ function LeaveForm({
           {form.onNeeded}
         </p>
       )}
+      <LeftReasonField value={reason} onChange={setReason} />
       {leave.error && (
         <p className="member__error" role="alert">
           {form.failed}

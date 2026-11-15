@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { useLocation } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import type { Person } from '../api/member'
 import { setHistory } from '../api/people'
@@ -10,8 +11,9 @@ import { t } from '../i18n/es'
 
 const copy = t.admin.member.history
 
-// How far back "Alumno desde" may go (backend `HISTORY_WINDOW_YEARS`): a typo guard.
-const HISTORY_WINDOW_YEARS = 60
+// How far back a day of someone's history may go (backend `HISTORY_WINDOW_YEARS`): a
+// typo guard. "Alumno desde", and the day they left (#294).
+export const HISTORY_WINDOW_YEARS = 60
 // Backend `MAX_PRIOR_CLASSES`.
 const MAX_PRIOR_CLASSES = 20_000
 
@@ -22,10 +24,12 @@ type Open = 'menu' | 'start' | null
  * never in it. For now the day they first trained here and their classes before Rakin,
  * added with "Agregar historial" › "Fecha de inicio y clases"; the payments and grades
  * of later tickets join this card (docs/design/historical-data.md, section 4). Owner
- * and admin only: the ficha draws it with the Libro.
+ * and admin only: the ficha draws it with the Libro. Just after "Agregar exalumno" its
+ * choices are open, offered (#294).
  */
 export function PersonHistory({ person }: { person: Person }) {
-  const [open, setOpen] = useState<Open>(null)
+  const offered = useLocation({ select: (location) => location.state.offerHistory === true })
+  const [open, setOpen] = useState<Open>(offered ? 'menu' : null)
   const [done, setDone] = useState<string | null>(null)
   const lines = [
     person.member_since ? copy.memberSince(t.common.dayYear(person.member_since)) : null,
@@ -87,7 +91,7 @@ export function PersonHistory({ person }: { person: Person }) {
 }
 
 /** The `YYYY-MM-DD` `years` before `iso`. */
-function yearsBefore(iso: string, years: number): string {
+export function yearsBefore(iso: string, years: number): string {
   return `${String(Number(iso.slice(0, 4)) - years).padStart(4, '0')}${iso.slice(4)}`
 }
 

@@ -204,12 +204,31 @@ export function setHistory(id: string, body: PersonHistory): Promise<Person> {
   return apiFetch<Person>(`/api/people/${encodeURIComponent(id)}/history`, { method: 'PUT', body: JSON.stringify(body) })
 }
 
-/** Dar de baja from `left_on`, today when omitted: every membership ends and nothing more is billed. */
-export function leaveGym(id: string, leftOn?: string): Promise<Person> {
+/** Dar de baja from `left_on`, today when omitted, and why if said (#294): every
+ * membership ends and nothing more is billed. */
+export type Leaving = { left_on?: string; left_reason?: string }
+
+export function leaveGym(id: string, body: Leaving = {}): Promise<Person> {
   return apiFetch<Person>(`/api/people/${encodeURIComponent(id)}/leave`, {
     method: 'POST',
-    body: JSON.stringify(leftOn ? { left_on: leftOn } : {}),
+    body: JSON.stringify(body),
   })
+}
+
+/** "Agregar exalumno" (#294, backend `FormerStudent`): someone who already left, with no
+ * plan and no welcome. A RUT or email someone here has is a 409, as for `enrol`. */
+export type FormerStudent = {
+  name: string
+  rut?: string
+  email?: string
+  phone?: string
+  member_since?: string
+  left_on: string
+  left_reason?: string
+}
+
+export function addFormerStudent(body: FormerStudent): Promise<Person> {
+  return apiFetch<Person>('/api/people/former', { method: 'POST', body: JSON.stringify(body) })
 }
 
 /** Reactivar, on `membership`'s plan if given. */
