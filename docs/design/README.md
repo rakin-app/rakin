@@ -106,6 +106,14 @@ and a count of earlier classes. It is kept as historial beside billing, which ne
 reads it, and entered on the ficha or from a three-tab spreadsheet through the existing
 importer. Its build tickets are #293 to #300.
 
+## Expenses and club officers (#307)
+
+[expenses-and-officers.md](expenses-and-officers.md) designs the gym's own expenses
+(rent, power, fees, pay) in their own tables beside billing, a Finanzas page with money
+in, money out and the result, and the titles and permissions that decide who sees them:
+today's owner, admin and coach become titles, and a club adds Presidente, Tesorero and
+Secretario with terms and a history. Its build tickets are #308 to #318.
+
 ## Contrast (WCAG 2.1 AA)
 
 `frontend/src/components/controls.test.tsx` checks every pair in every theme.
