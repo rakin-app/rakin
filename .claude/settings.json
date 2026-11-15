@@ -68,6 +68,15 @@
             "command": "radio awaiting"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"$CLAUDE_PROJECT_DIR/scripts/pii_guard.py\" claude-hook"
+          }
+        ]
       }
     ],
     "PostToolUse": [
