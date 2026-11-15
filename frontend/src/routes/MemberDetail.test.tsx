@@ -2783,3 +2783,54 @@ describe('Reactivar plan with no gap to skip (#284)', () => {
     expect(within(form).queryByRole('radio')).not.toBeInTheDocument()
   })
 })
+
+describe('Reactivar plan, not on a pack (#284)', () => {
+  it('is not offered on a lapsed pack or trial, which can only be refused', async () => {
+    stubApi({ memberships: [{ ...MONTHLY, plan_kind: 'credits', anchor_day: null, status: 'lapsed' }] })
+    renderAt(PATH)
+    const card = await money()
+    expect(await within(card).findByRole('button', { name: copy.record })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: copy.reactivatePlan })).not.toBeInTheDocument()
+  })
+
+  it('reads the quote again on reopen, never showing the last one', async () => {
+    let total = 45000
+    stubApi({
+      memberships: [{ ...MONTHLY, status: 'lapsed' }],
+      extra: (path) => {
+        if (path !== '/api/memberships/m-felipe/reactivate') return undefined
+        const bill = {
+          bills_from: '2026-11-30',
+          periods: [{ period_start: '2026-11-30', period_end: '2026-12-29', due_date: '2026-11-30', amount_due_clp: total }],
+          total_clp: total,
+        }
+        return { body: { last: bill, today: bill } }
+      },
+    })
+    renderAt(PATH)
+    const card = await money()
+    const button = await within(card).findByRole('button', { name: copy.reactivatePlan })
+
+    await userEvent.click(button)
+    expect(await screen.findByText(copy.reactivateForm.lastHint(1, 'noviembre', '$45.000'))).toBeInTheDocument()
+    await userEvent.click(button)
+    total = 40000
+    // The new quote is held until the form has shown what it shows meanwhile.
+    let release = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    const answer = globalThis.fetch
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input, init) => {
+        if (String(input).includes('/reactivate')) await held
+        return answer(input, init)
+      }),
+    )
+    await userEvent.click(button)
+    // Loading, not the last quote, while the new one is read.
+    expect(screen.getByText(copy.reactivateForm.loading)).toBeInTheDocument()
+    expect(screen.queryByText(copy.reactivateForm.lastHint(1, 'noviembre', '$45.000'))).not.toBeInTheDocument()
+    release()
+    expect(await screen.findByText(copy.reactivateForm.lastHint(1, 'noviembre', '$40.000'))).toBeInTheDocument()
+  })
+})

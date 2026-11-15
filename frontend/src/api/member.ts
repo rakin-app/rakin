@@ -321,8 +321,10 @@ export function reactivationQuery(membershipId: string) {
   return queryOptions({
     queryKey: ['memberships', 'reactivate', membershipId],
     queryFn: () => apiFetch<ReactivationQuote>(`/api/memberships/${encodeURIComponent(membershipId)}/reactivate`),
-    // Read as the form shows it: what has been paid since decides it.
+    // Read as the form shows it: what has been paid since decides it. Dropped once the
+    // form closes, so reopening it never shows the last quote while the new one loads.
     staleTime: 0,
+    gcTime: 0,
     retry: false,
   })
 }

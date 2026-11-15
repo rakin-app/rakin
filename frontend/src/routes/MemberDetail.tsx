@@ -508,7 +508,11 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
   const [done, setDone] = useState<string | null>(null)
   // A payment settled the last debt of this lapsed plan: "Reactivar plan" is offered (#284).
   const [offer, setOffer] = useState(false)
-  const reactivates = membership.status === 'lapsed' && !membership.voided_at
+  // A lapsed pack or trial ends: it can only be refused, so it is not offered.
+  const reactivates =
+    membership.status === 'lapsed' &&
+    !membership.voided_at &&
+    (membership.plan_kind === 'monthly' || membership.plan_kind === 'prepaid')
   const toggle = (form: Open) => {
     setDone(null)
     setOffer(false)

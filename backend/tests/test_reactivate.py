@@ -367,3 +367,44 @@ def test_from_today_with_no_gap_bills_on_from_where_it_left_off(
         1,
         (seeded_today().replace(day=1) - timedelta(days=1)).isoformat(),
     )
+
+
+def test_with_no_grace_the_refusal_names_the_period_and_what_it_owes(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """With `grace_days = 0` a period due today lapses the plan tonight, and one due
+    tomorrow does not yet: the refusal fires only on a period due by today, which is what
+    it reports."""
+    run(
+        db.owner_url,
+        in_gym(gym, """UPDATE gym SET settings = settings || '{"grace_days": 0}'"""),
+    )
+    today = seeded_today()
+    _, membership, _ = lapsed_plan(client, db, gym)
+
+    def unpaid_period(on: date) -> None:
+        run(
+            db.owner_url,
+            in_gym(
+                gym,
+                "WITH bp AS (INSERT INTO billing_period (gym_id, membership_id, period_start,"
+                " period_end, amount_due_clp, due_date) VALUES"
+                " (current_setting('app.gym_id')::uuid, $1, $2, $2, $3, $2) RETURNING id)"
+                " INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
+                " kind, status, validated_at) SELECT current_setting('app.gym_id')::uuid, $1,"
+                " bp.id, $3, 'charge', 'validated', now() FROM bp",
+                uuid.UUID(membership),
+                on,
+                PRICE,
+            ),
+        )
+
+    unpaid_period(today + timedelta(days=1))
+    ok(quote(client, gym, membership))
+    unpaid_period(today)
+    refused = refusal(quote(client, gym, membership))
+    assert (refused["code"], refused["period_start"], refused["amount_clp"]) == (
+        "unpaid",
+        today.isoformat(),
+        PRICE,
+    )

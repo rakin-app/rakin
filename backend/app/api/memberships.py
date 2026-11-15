@@ -972,6 +972,7 @@ async def _reactivatable(
     # As the job will read it once Active.
     judged = lapse.lapsable({**row._mapping, "status": MembershipStatus.ACTIVE.value})
     if domain.is_due_to_lapse(judged, tomorrow, domain.grace_days(row.settings)):
+        # Past grace tomorrow means due by today, even with no grace: what it owes then.
         owed = (await session.execute(OWED_DUE, {"id": membership_id, "today": today})).one()
         raise _refused(
             ReactivationRefusal.UNPAID,
