@@ -338,7 +338,7 @@ function Standing({
       </section>
       {earlier}
       {data && <Ledger ledger={data} />}
-      {data && <Corrections personId={personId} />}
+      {money && <Corrections personId={personId} />}
     </>
   )
 }

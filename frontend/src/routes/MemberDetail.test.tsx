@@ -1409,6 +1409,18 @@ describe('Ficha de alumno', () => {
     expect(within(fixes).getAllByRole('listitem')).toHaveLength(3)
   })
 
+  it('lists the corrections though the plan\'s ledger fails to load (#277)', async () => {
+    stubApi({
+      corrections: [correction({ id: 'void' })],
+      extra: (path) => (path === '/api/ledger/memberships/m-felipe' ? { status: 500, body: {} } : undefined),
+    })
+    renderAt(PATH)
+
+    const fixes = await screen.findByRole('region', { name: copy.corrections.title })
+    expect(within(fixes).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.queryByRole('region', { name: copy.ledger.title })).not.toBeInTheDocument()
+  })
+
   it('has no Correcciones before a first fix (#277)', async () => {
     stubApi()
     renderAt(PATH)

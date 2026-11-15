@@ -59,8 +59,9 @@ async def record_correction(
     **detail: Any,
 ) -> None:
     """Record a correction of the membership's period that wrote `entry_ids`: `purpose`
-    as the entry's (`None` for a plain adjustment, `void` for a void)."""
-    await session.execute(
+    as the entry's (`None` for a plain adjustment, `void` for a void). Raises, failing
+    the correction with it, if no row was written: the record is complete or nothing is."""
+    result = await session.execute(
         INSERT_CORRECTION,
         {
             "action": LEDGER_CORRECTED,
@@ -79,6 +80,8 @@ async def record_correction(
             ),
         },
     )
+    if result.rowcount != 1:  # type: ignore[attr-defined]
+        raise RuntimeError(f"no audit row for the correction of membership {membership_id}")
 
 
 # A person's corrections, newest first, with who made each and the period it touched.
@@ -98,7 +101,8 @@ CORRECTIONS = text(
     """
 )
 
-# Years of fixes are a few dozen rows; past this, "Ver todas" shows the latest.
+# Years of fixes are a few dozen rows; past this, "Ver todas (N)" counts every one but
+# shows the latest this many.
 CORRECTIONS_LIMIT = 200
 
 

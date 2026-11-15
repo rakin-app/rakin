@@ -8,6 +8,7 @@ someone else or in another gym. Nothing changes or deletes a row, except deletin
 person, which takes their corrections along and counts them.
 """
 
+import asyncio
 import json
 import uuid
 from collections.abc import Iterator
@@ -16,9 +17,13 @@ from typing import Any
 import asyncpg
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from alembic import command
+from app.api.corrections import record_correction
 from app.main import create_app
+from app.schemas.ledger import Figures
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
@@ -318,3 +323,36 @@ def test_upgrade_and_downgrade_0048() -> None:
         kept = run(scratch.admin_url, lambda c: c.fetch("SELECT action FROM audit_event"))
         assert [r["action"] for r in kept] == ["person_deleted"]
         migrate(scratch)
+
+
+@pg
+def test_a_correction_with_no_audit_row_fails_loudly(db: Database, gym: uuid.UUID) -> None:
+    """A membership the insert cannot see (here, none at all) writes no row: that raises,
+    and fails the correction's transaction, rather than committing a fix with no record."""
+
+    async def go() -> None:
+        engine = create_async_engine(db.api_url)
+        try:
+            async with engine.connect() as conn, conn.begin():
+                session = AsyncSession(bind=conn)
+                for key, value in (("app.gym_id", gym), ("app.person_id", seeded_owner(gym))):
+                    await session.execute(
+                        text("SELECT set_config(:key, :value, true)"),
+                        {"key": key, "value": str(value)},
+                    )
+                figures = Figures(outstanding_clp=0, balance_clp=0)
+                await record_correction(
+                    session,
+                    membership_id=uuid.uuid4(),
+                    billing_period_id=uuid.uuid4(),
+                    entry_ids=[],
+                    purpose="void",
+                    reason="x",
+                    before=figures,
+                    after=figures,
+                )
+        finally:
+            await engine.dispose()
+
+    with pytest.raises(RuntimeError, match="no audit row"):
+        asyncio.run(go())
