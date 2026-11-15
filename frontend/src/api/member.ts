@@ -90,14 +90,24 @@ export type TimelineEntry = {
   validated_at: string | null
   // The payment a refund gives back; null on every other kind.
   refund_of: string | null
+  // Why a correction was written (#278): `void`, `restore`, …; null on other entries.
+  purpose?: Purpose | null
   // An adjustment voiding its period's charge (#256), its reason in `note`.
   voids?: boolean
-  // On a charge whose period was voided: why, by whom and when.
+  // On a charge whose period's void stands: why, by whom and when.
   voided?: Voided | null
+  // On a charge whose period had a void restored, the latest (#278).
+  restored?: Restored | null
 }
+
+/** What a correcting entry is for (backend `Purpose`, #278). */
+export type Purpose = 'void' | 'restore' | 'revert' | 'write_off' | 'move' | 'mistake'
 
 /** A charge's void (backend `Voided`, #256): "Anulado: <motivo>, por <quien>, <fecha>". */
 export type Voided = { reason: string; by_name: string | null; at: string }
+
+/** A charge's void, restored (backend `Restored`, #278): "Anulado: … · Restaurado: …". */
+export type Restored = Voided & { void: Voided }
 
 /** A billing period, open or paid: one an adjustment may go to (backend `LedgerPeriod`). */
 export type LedgerPeriod = {
@@ -106,8 +116,10 @@ export type LedgerPeriod = {
   period_end: string
   // 0 once paid.
   outstanding_clp: number
-  // What a void of its charge took off (#256), 0 if none: a "Recargo" of as much puts it back (#271).
+  // What the void of its charge took off (#256), 0 if none or once restored, and that
+  // void, which "Restaurar cargo" restores (#278).
   voided_clp: number
+  void_id: string | null
 }
 
 /** A validated payment with something left to give back (backend `RefundablePayment`). */
@@ -227,7 +239,7 @@ export type Correction = {
   id: string
   at: string
   action: 'ledger_corrected' | 'due_date_changed' | 'membership_reactivated' | 'cancel_undone'
-  // The entry's: null for a plain adjustment, `void` for a void.
+  // The entry's: null for a plain adjustment, `void` for a void, `restore` (#278).
   purpose: string | null
   // One of the voids of a plan voided by mistake (#256).
   plan_void: boolean
@@ -287,6 +299,18 @@ export function recordVoid(body: VoidRecord): Promise<RecordedVoid> {
   return apiFetch<RecordedVoid>('/api/ledger/voids', { method: 'POST', body: JSON.stringify(body) })
 }
 
+/** Restaurar un cargo (#278): a charge voided by mistake, owed again. */
+export type RestoreRecord = { void_id: string; reason: string }
+
+export type RestoreRefusal = 'not_a_void' | 'restored' | 'plan_voided'
+
+/** The period as the restore leaves it: owing the void's amount again. */
+export type RecordedRestore = { period: SettledPeriod }
+
+export function recordRestore(body: RestoreRecord): Promise<RecordedRestore> {
+  return apiFetch<RecordedRestore>('/api/ledger/restores', { method: 'POST', body: JSON.stringify(body) })
+}
+
 /** Anular un plan started by mistake (#256): ended as of its start, every unpaid charge voided. */
 export function voidMembership(membershipId: string, reason: string): Promise<Membership> {
   return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/void`, {
@@ -302,6 +326,13 @@ export function voidRefused(error: unknown): { code: VoidRefusal; amount_clp: nu
   const code = detail?.code
   if (code !== 'paid' && code !== 'pending' && code !== 'nothing_owed') return null
   return { code, amount_clp: typeof detail?.amount_clp === 'number' ? detail.amount_clp : null }
+}
+
+/** The 409's refusal of a restore, for the form to say why. */
+export function restoreRefused(error: unknown): RestoreRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
+  return code === 'not_a_void' || code === 'restored' || code === 'plan_voided' ? code : null
 }
 
 export function recordRefund(body: RefundRecord): Promise<RecordedRefund> {

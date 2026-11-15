@@ -30,7 +30,7 @@ from app.domain import ledger
 from app.domain import membership as memberships
 from app.domain.dates import add_months
 from app.domain.errors import InvalidTransition
-from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
+from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry, Purpose
 from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
 from app.domain.money import format_clp
 
@@ -149,7 +149,26 @@ def void(period: BillingPeriod, reason: str) -> Settlement:
         amount_clp=period.outstanding_clp,
         status=EntryStatus.VALIDATED,
         note=reason.strip(),
-        voids=True,
+        purpose=Purpose.VOID,
+    )
+    return _resettled(period, entry, entry.amount_clp)
+
+
+def restore(period: BillingPeriod, voided_clp: int, reason: str) -> Settlement:
+    """Put back on `period` the `voided_clp` a void took off it, for a charge voided by
+    mistake (#278): an adjustment owed by the member of as much, validated as the admin
+    makes it, with `reason` for its note. The period owes it again, as if the void had
+    not happened. The caller names the void it restores, and refuses one restored."""
+    if not reason.strip():
+        raise ValueError("a restore needs a reason")
+    if voided_clp <= 0:
+        raise ValueError("a void takes a positive amount off its period")
+    entry = LedgerEntry(
+        kind=EntryKind.ADJUSTMENT,
+        amount_clp=-voided_clp,
+        status=EntryStatus.VALIDATED,
+        note=reason.strip(),
+        purpose=Purpose.RESTORE,
     )
     return _resettled(period, entry, entry.amount_clp)
 

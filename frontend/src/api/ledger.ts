@@ -1,7 +1,7 @@
 import { infiniteQueryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 import type { Category } from './extraCharges'
-import type { FreezeLine, Method, TimelineEntry, Voided } from './member'
+import type { FreezeLine, Method, Purpose, Restored, TimelineEntry, Voided } from './member'
 import type { MembershipStatus } from './people'
 
 export const BOOK_FILTERS = ['all', 'pending', 'overdue', 'kids'] as const
@@ -44,9 +44,11 @@ export type BookEntry = {
   period: BookPeriod | null
   validated_by_name: string | null
   extra?: { id: string; title: string; category: Category } | null
-  // A void of its period's charge, and a charge voided (#256), as the ficha has them.
+  // A void of its period's charge, and a charge voided (#256) or restored (#278), as the ficha has them.
+  purpose?: Purpose | null
   voids?: boolean
   voided?: Voided | null
+  restored?: Restored | null
 }
 
 /** A freeze line in the book (backend `BookFreeze`): no money, listed among the entries. */

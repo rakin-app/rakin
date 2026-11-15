@@ -44,7 +44,8 @@ IMMUTABLE: dict[str, object] = {
     "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
     "refund_of": uuid.uuid4(),
     "extra_line_id": uuid.uuid4(),
-    "voids": True,
+    "purpose": "void",
+    "corrects": uuid.uuid4(),
 }
 
 APPEND_ONLY = "append-only"

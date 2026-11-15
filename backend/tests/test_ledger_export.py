@@ -179,7 +179,7 @@ def seed_month(client: TestClient, db: Database, gym: uuid.UUID) -> dict[str, st
         "adjustment",
         45_000,
         at(date(2020, 3, 3)),
-        voids=True,
+        purpose="void",
         note="cobrado por error",
     )
 
