@@ -112,6 +112,7 @@ def test_a_rut_known_elsewhere_answers_like_a_new_one(
         # A history is this gym's, never another's (#293).
         "member_since": None,
         "prior_classes": 0,
+        "left_reason": None,
     }
     assert entered(attached.json()) == {**shown, "email": "camila.r@sur.cl", "rut": known}
     assert {k: v for k, v in entered(fresh.json()).items() if k != "rut"} == {

@@ -23,7 +23,7 @@ export type Privacy = Omit<PrivacyNotice, 'gym' | 'gym_logo' | 'updated_on' | 'h
 
 // The day the notice's text (`t.privacy`) last changed; the notice is as new as this
 // or the gym's details, whichever is later. Change it with the text.
-export const TEMPLATE_UPDATED_ON = '2026-11-11'
+export const TEMPLATE_UPDATED_ON = '2026-11-15'
 
 /** The notice's "last updated": its text's date or the gym's details', the later. */
 export function lastUpdated(notice: PrivacyNotice): string {

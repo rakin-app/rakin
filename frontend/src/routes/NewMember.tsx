@@ -8,12 +8,14 @@ import { personQuery } from '../api/member'
 import { duplicateOf, enrol, type Enrolment, type GuardianChoice } from '../api/people'
 import { useGymToday } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
+import { SegmentedControl } from '../components/Chip'
 import { Input } from '../components/Field'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { FieldInput, valueOf } from './CustomFieldsPanel'
 import { PeopleSearch } from './FamilyPanel'
+import { NewFormerStudent } from './NewFormerStudent'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
 import './MemberDetail.css'
 import './NewMember.css'
@@ -60,6 +62,12 @@ export function refusals(error: unknown): Refusals {
 // they have no WhatsApp, is the API's check too.
 type Picked = PersonRef & { reachable: boolean }
 
+type Kind = 'current' | 'former'
+const KINDS: readonly { value: Kind; label: string }[] = [
+  { value: 'current', label: copy.kind.current },
+  { value: 'former', label: copy.kind.former },
+]
+
 type Guardian =
   | { kind: 'none' }
   | { kind: 'existing'; picked: Picked | null }
@@ -74,9 +82,13 @@ type Guardian =
  * Someone is their RUT, or their email when they have none (#165); a kid with a guardian
  * may have neither. The phone is how the gym reaches them on WhatsApp: required, unless
  * "No tiene WhatsApp" is ticked. With a guardian, it is the guardian's that is required.
+ *
+ * At the top, "Entrena aquí" is this form and "Ya no entrena aquí" is "Agregar
+ * exalumno" (`NewFormerStudent`, #294).
  */
 export function NewMember() {
   usePageTitle(copy.title)
+  const [kind, setKind] = useState<Kind>('current')
   const today = useGymToday()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -196,9 +208,26 @@ export function NewMember() {
   const refused = refusals(save.error)
   const marked = Object.keys(refused.person).length + Object.keys(refused.guardian).length > 0
 
-  return (
+  const header = (
     <>
       <PageHeader title={copy.title} eyebrow={copy.eyebrow} />
+      <div className="new-member__kind">
+        <SegmentedControl label={copy.kindLabel} options={KINDS} value={kind} onChange={setKind} />
+      </div>
+    </>
+  )
+  if (kind === 'former') {
+    return (
+      <>
+        {header}
+        <NewFormerStudent />
+      </>
+    )
+  }
+
+  return (
+    <>
+      {header}
       <form className="new-member" aria-label={copy.title} onSubmit={submit} noValidate>
         <div className="member__form">
           <label htmlFor={ids.first} className="member__label">
@@ -507,7 +536,7 @@ export function NewMember() {
   )
 }
 
-function Needed({ text }: { text: string }) {
+export function Needed({ text }: { text: string }) {
   return (
     <p className="member__error" role="alert">
       {text}

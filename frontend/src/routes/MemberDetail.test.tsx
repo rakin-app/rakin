@@ -2230,6 +2230,57 @@ describe('the record and the ways out (#157)', () => {
     expect(within(await actions()).getByRole('button', { name: copy.reactivate })).toBeInTheDocument()
   })
 
+  it('dar de baja sends the reason a chip fills, and the banner says it (#294)', async () => {
+    let left: Person = FELIPE
+    const calls = stubApi({
+      extra: (path, method, body) => {
+        if (path === '/api/people/felipe/leave' && method === 'POST') {
+          left = { ...FELIPE, left_on: '2026-11-10', left_reason: (body as { left_reason?: string }).left_reason }
+          return { body: left }
+        }
+        if (path === '/api/people/felipe' && method === 'GET') return { body: left }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.leave }))
+    const form = screen.getByRole('form', { name: copy.leaveForm.title })
+    const chips = within(form).getByRole('group', { name: copy.leftReason.chipsLabel })
+    expect(within(chips).getAllByRole('button').map((b) => b.textContent)).toEqual(copy.leftReason.chips)
+    await userEvent.click(within(chips).getByRole('button', { name: 'Precio' }))
+    await userEvent.click(within(chips).getByRole('button', { name: 'Lesión' }))
+    expect(within(chips).getByRole('button', { name: 'Lesión' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(chips).getByRole('button', { name: 'Precio' })).toHaveAttribute('aria-pressed', 'false')
+    // Pressed again, it empties what it filled.
+    await userEvent.click(within(chips).getByRole('button', { name: 'Lesión' }))
+    expect(within(form).getByLabelText(copy.leftReason.label)).toHaveValue('')
+    await userEvent.click(within(chips).getByRole('button', { name: 'Lesión' }))
+    await userEvent.click(within(form).getByRole('button', { name: copy.leaveForm.submit }))
+
+    const banner = await screen.findByText(copy.leftBanner('10-11-2026'), { exact: false })
+    expect(banner).toHaveTextContent(copy.leftBannerReason('Lesión'))
+    expect(calls.filter((c) => c.path === '/api/people/felipe/leave')).toEqual([
+      { method: 'POST', path: '/api/people/felipe/leave', body: { left_reason: 'Lesión' } },
+    ])
+  })
+
+  it('dar de baja takes a day from years ago, not from more than 60 (#294)', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.leave }))
+    const form = screen.getByRole('form', { name: copy.leaveForm.title })
+    const day = within(form).getByLabelText(copy.leaveForm.on)
+    // Sixty years before the gym's today, to the day.
+    const min = day.getAttribute('min') ?? ''
+    expect(min).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    fireEvent.change(day, { target: { value: `${Number(min.slice(0, 4)) - 1}${min.slice(4)}` } })
+    await userEvent.click(within(form).getByRole('button', { name: copy.leaveForm.submit }))
+    expect(within(form).getByRole('alert')).toHaveTextContent(copy.leaveForm.onNeeded)
+    expect(calls.some((c) => c.path === '/api/people/felipe/leave')).toBe(false)
+  })
+
   it('reactivar can start them on a plan again', async () => {
     const calls = stubApi({
       extra: (path, method) => {
@@ -3195,5 +3246,15 @@ describe('Historial: alumno desde y clases antes de Rakin (#293)', () => {
     await screen.findByRole('region', { name: copy.attendance.title })
     expect(screen.queryByRole('region', { name: copy.history.title })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: copy.history.add })).not.toBeInTheDocument()
+  })
+
+  it('offers its choices just after "Agregar exalumno" (#294)', async () => {
+    stubApi()
+    const router = renderAt('/admin/alumnos')
+    await router.navigate({ to: '/admin/alumnos/$personId', params: { personId: 'felipe' }, state: { offerHistory: true } })
+
+    const card = await history()
+    expect(within(card).getByRole('button', { name: copy.history.add })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(card).getByRole('button', { name: copy.history.start })).toBeInTheDocument()
   })
 })

@@ -380,6 +380,27 @@ export const es = {
     newMember: {
       title: 'Nuevo alumno',
       eyebrow: 'Alumnos',
+      // At the top of the form (#294): today's form, or "Agregar exalumno".
+      kindLabel: '¿Entrena aquí?',
+      kind: { current: 'Entrena aquí', former: 'Ya no entrena aquí' },
+      // "Ya no entrena aquí": someone who trained here before Rakin and already left.
+      former: {
+        intro:
+          'Para tener en Rakin a quien ya dejó de entrenar: queda en "Dados de baja", sin plan, y Rakin nunca le escribe. Después puedes agregar su historial en su ficha.',
+        phone: 'Teléfono (opcional)',
+        phoneHint: 'Nadie le va a escribir: solo queda en su ficha.',
+        since: 'Alumno desde (opcional)',
+        leftOn: 'Fecha de baja',
+        submit: 'Guardar exalumno',
+        needed: {
+          leftOn: 'Elige un día de hoy hacia atrás, de los últimos 60 años.',
+          since: 'Elige un día de los últimos 60 años, no después de la fecha de baja.',
+        },
+        refused: {
+          invalid: 'Revisa los datos: el teléfono, el RUT, el correo o una fecha no son válidos.',
+          failed: 'No pudimos guardar al exalumno. Inténtalo de nuevo.',
+        },
+      },
       firstName: 'Nombre',
       lastName: 'Apellido',
       phone: 'Teléfono (WhatsApp)',
@@ -692,6 +713,15 @@ export const es = {
       },
       leave: 'Dar de baja',
       leftBanner: (day: string) => `Dado de baja desde el ${day}. Su historial sigue aquí.`,
+      // Under the banner, for the owner and admins only (#294).
+      leftBannerReason: (reason: string) => `Motivo: ${reason}`,
+      // "Motivo" (#294), on Dar de baja and "Agregar exalumno": the chips fill the text.
+      leftReason: {
+        label: 'Motivo (opcional)',
+        chipsLabel: 'Motivos',
+        chips: ['Precio', 'Horario', 'Se cambió', 'Lesión', 'Otro'],
+        hint: 'Solo lo ven tú y los administradores. Sin detalles: si es una lesión, basta con "Lesión".',
+      },
       leaveForm: {
         title: 'Dar de baja',
         intro:
@@ -700,7 +730,7 @@ export const es = {
         submit: 'Dar de baja',
         cancel: 'Cancelar',
         working: 'Guardando…',
-        onNeeded: 'Elige un día de hoy hacia atrás.',
+        onNeeded: 'Elige un día de hoy hacia atrás, de los últimos 60 años.',
         failed: 'No pudimos darlo de baja. Inténtalo de nuevo.',
       },
       reactivate: 'Reactivar',
@@ -2783,7 +2813,7 @@ export const es = {
       'Algunos de estos proveedores pueden guardar los datos fuera de Chile, con medidas de seguridad adecuadas.',
     retentionTitle: '¿Cuánto tiempo los guardamos?',
     retention:
-      'Los registros contables, como tus pagos, se guardan por el plazo que exige la ley. El resto de tus datos se elimina cuando dejas la academia o cuando lo pides.',
+      'Los registros contables, como tus pagos, se guardan por el plazo que exige la ley. Si dejas de entrenar, guardamos tu historial (inicio, pagos y grados) hasta que pidas que lo borremos. El resto de tus datos se elimina cuando lo pides.',
     rightsTitle: 'Tus derechos',
     rights:
       'Puedes pedir acceso a tus datos, rectificarlos, eliminarlos, oponerte a su tratamiento o recibirlos en un formato que puedas llevar a otro servicio (portabilidad).',

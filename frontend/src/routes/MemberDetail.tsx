@@ -174,6 +174,13 @@ export function MemberDetail() {
       {person.data.left_on && (
         <p className="member__error" role="status">
           {copy.leftBanner(t.common.day(person.data.left_on))}
+          {/* Only the owner and admins are ever sent it (#294). */}
+          {person.data.left_reason && (
+            <>
+              <br />
+              {copy.leftBannerReason(person.data.left_reason)}
+            </>
+          )}
         </p>
       )}
       {/* On a desktop the money on the left, everything else beside it. */}

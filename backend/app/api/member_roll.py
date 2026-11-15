@@ -18,8 +18,16 @@ cancelled, or with none that they are on the roster.
 with the reason `dado de baja` (`app.domain.membership.leave`), so billing writes no
 new period and the roster, the inactive list and "Hoy" no longer count them, and the
 member list leaves them out by `gym_person.left_on` (migration 0032). Whatever they
-owe stays owed. `POST .../return` (reactivar) brings them back, on a plan again if
-given one.
+owe stays owed. The day may be as far back as history goes (`HISTORY_WINDOW_YEARS`),
+and the gym may say why (`left_reason`, 0052), which a `history_set` row records.
+`POST .../return` (reactivar) brings them back, on a plan again if given one, and
+clears the reason they had left with.
+
+`POST /api/people/former` is "Agregar exalumno" (#294): someone who trained here
+before Rakin and already left, added with the day they left, the day they started and
+why. No plan and no welcome: Rakin never writes to a former student
+(docs/design/historical-data.md, section 7). Their dates and reason write one
+`history_set` row.
 
 `DELETE /api/people/{id}` is for a mistake or a data-deletion request: it deletes this
 gym's records of someone (`forget_gym_person`, 0044), with a reason the gym's log keeps.
@@ -42,6 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.custom_fields import field_cipher, write_person_fields
 from app.api.guardians import link
+from app.api.history import changes, record_history_set, refuse_outside_history
 from app.api.memberships import CALL_OFF_BOOKED, start_membership, welcome_to
 from app.api.people import (
     NOT_FOUND,
@@ -56,12 +65,11 @@ from app.api.people import (
 from app.contacts import contact_for
 from app.domain import membership as domain
 from app.domain.billing import settled_amount
-from app.domain.dates import add_months, gym_today, is_minor
+from app.domain.dates import gym_today, is_minor
 from app.domain.membership import MembershipStatus, PlanKind, current_first
 from app.notices import Notices, get_notices, mail_address
 from app.roles import AdminSession, OwnerSession
 from app.schemas.guardians import FamilyConflict, FamilyRefused
-from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
 from app.schemas.people import (
     Deletion,
     Enrolment,
@@ -69,6 +77,7 @@ from app.schemas.people import (
     ForgetConflict,
     ForgetRefused,
     Forgetting,
+    FormerStudent,
     Leaving,
     Person,
     PersonInGym,
@@ -87,6 +96,7 @@ REACHABLE = text("SELECT phone IS NOT NULL OR no_whatsapp FROM gym_person WHERE 
 
 # Their record, locked so a leave and a return take turns. RLS keeps it to the gym.
 LOCK_RECORD = text("SELECT left_on FROM gym_person WHERE person_id = :id FOR UPDATE")
+LOCK_LEFT = text("SELECT left_on, left_reason FROM gym_person WHERE person_id = :id FOR UPDATE")
 
 # Every membership they hold that has not ended, locked, in id order as every
 # request takes them.
@@ -127,8 +137,14 @@ SUPPRESSION = text(
     "SELECT reason, detail, created_at FROM mail_suppression WHERE address = :address"
 )
 
-SET_LEFT_ON = text(
-    "UPDATE gym_person SET left_on = :left_on, updated_at = now() WHERE person_id = :id"
+SET_LEFT = text(
+    "UPDATE gym_person SET left_on = :left_on, left_reason = :left_reason, updated_at = now()"
+    " WHERE person_id = :id"
+)
+
+SET_FORMER = text(
+    "UPDATE gym_person SET left_on = :left_on, left_reason = :left_reason,"
+    " member_since = :member_since, updated_at = now() WHERE person_id = :id"
 )
 
 
@@ -218,26 +234,24 @@ async def enrol(
     if body.send_welcome and (notice := await welcome_to(session, tenant, person_id, plan_name)):
         # After the response, which is after the member has committed.
         background.add_task(notices.send, notice)
-    return await read_person(session, person_id)
+    return await read_person(session, person_id, sees_reason=True)
 
 
 @router.post("/{person_id}/leave")
 async def leave(
     person_id: uuid.UUID, body: Leaving, tenant: CurrentTenant, session: AdminSession
 ) -> Person:
-    """Dar de baja from `left_on`: every membership they hold ends now, so nothing more
-    is billed, and what is owed stays owed. A 409 if they have already left."""
-    record = (await session.execute(LOCK_RECORD, {"id": person_id})).one_or_none()
+    """Dar de baja from `left_on`, and why if said: every membership they hold ends now,
+    so nothing more is billed, and what is owed stays owed. A 409 if they have already
+    left."""
+    record = (await session.execute(LOCK_LEFT, {"id": person_id})).one_or_none()
     if record is None:
         raise NOT_FOUND
     if record.left_on is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "already left the gym")
     today = await _today(session, tenant)
     left_on = body.left_on or today
-    if left_on > today:
-        raise _unprocessable("a member leaves today at the latest")
-    if left_on < add_months(today, -12 * STARTED_ON_WINDOW_YEARS):
-        raise _unprocessable(f"left_on must be within {STARTED_ON_WINDOW_YEARS} years of today")
+    refuse_outside_history("left_on", left_on, today)
 
     for row in (await session.execute(LOCK_LIVE, {"id": person_id})).all():
         ended = domain.leave(domain.Membership(PlanKind(row.kind), MembershipStatus(row.status)))
@@ -247,8 +261,13 @@ async def leave(
             END_MEMBERSHIP,
             {"id": row.id, "status": ended.status.value, "reason": ended.cancel_reason},
         )
-    await session.execute(SET_LEFT_ON, {"id": person_id, "left_on": left_on})
-    return await read_person(session, person_id)
+    await session.execute(
+        SET_LEFT, {"id": person_id, "left_on": left_on, "left_reason": body.left_reason}
+    )
+    await record_history_set(
+        session, person_id, changes(record._asdict(), {"left_reason": body.left_reason})
+    )
+    return await read_person(session, person_id, sees_reason=True)
 
 
 @router.post("/{person_id}/return")
@@ -256,16 +275,41 @@ async def return_to_gym(
     person_id: uuid.UUID, body: Return, tenant: CurrentTenant, session: AdminSession
 ) -> Person:
     """Reactivar: back on the member list, and on `body.membership`'s plan if given.
-    No welcome: they know the gym. A 409 if they have not left."""
-    record = (await session.execute(LOCK_RECORD, {"id": person_id})).one_or_none()
+    Why they had left goes, recorded as it went. No welcome: they know the gym. A 409
+    if they have not left."""
+    record = (await session.execute(LOCK_LEFT, {"id": person_id})).one_or_none()
     if record is None:
         raise NOT_FOUND
     if record.left_on is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "has not left the gym")
-    await session.execute(SET_LEFT_ON, {"id": person_id, "left_on": None})
+    await session.execute(SET_LEFT, {"id": person_id, "left_on": None, "left_reason": None})
+    await record_history_set(session, person_id, changes(record._asdict(), {"left_reason": None}))
     if body.membership is not None:
         await start_membership(session, tenant, person_id, body.membership)
-    return await read_person(session, person_id)
+    return await read_person(session, person_id, sees_reason=True)
+
+
+@router.post(
+    "/former",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}},
+)
+async def add_former_student(
+    body: FormerStudent, tenant: CurrentTenant, session: AdminSession
+) -> Person:
+    """Agregar exalumno: their record, already left, with no membership and no welcome.
+    A RUT or email someone here already has is a 409 naming them, as for anyone."""
+    today = await _today(session, tenant)
+    refuse_outside_history("left_on", body.left_on, today)
+    if body.member_since is not None:
+        refuse_outside_history("member_since", body.member_since, today)
+    person_id = await add_to_gym(
+        session, name=body.name, rut=body.rut, email=body.email, phone=body.phone
+    )
+    history = body.model_dump(include={"member_since", "left_on", "left_reason"})
+    await session.execute(SET_FORMER, {**history, "id": person_id})
+    await record_history_set(session, person_id, changes({}, history))
+    return await read_person(session, person_id, sees_reason=True)
 
 
 async def _welcome_state(session: AsyncSession, person_id: uuid.UUID) -> WelcomeState:

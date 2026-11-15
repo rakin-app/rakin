@@ -16,6 +16,7 @@ holds the app role to as well (0051).
 
 import json
 import uuid
+from collections.abc import Mapping
 from datetime import date
 from typing import Annotated, Any
 
@@ -57,8 +58,48 @@ async def _today(session: AsyncSession, tenant: Tenant) -> date:
     return gym_today(timezone)
 
 
+def refuse_outside_history(field: str, day: date, today: date) -> None:
+    """A 422 for a day of someone's history after the gym's today, or more than
+    `HISTORY_WINDOW_YEARS` before it: a typo, not a rule."""
+    if day > today:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"{field} is today at the latest"
+        )
+    if day < add_months(today, -12 * HISTORY_WINDOW_YEARS):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"{field} must be within {HISTORY_WINDOW_YEARS} years of today",
+        )
+
+
 def _shown(value: Any) -> Any:
     return value.isoformat() if isinstance(value, date) else value
+
+
+def changes(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, Any]:
+    """Each field of `after` that differs from `before`, with both, as a `history_set`
+    row's `detail` holds them."""
+    return {
+        field: {"before": _shown(before.get(field)), "after": _shown(value)}
+        for field, value in after.items()
+        if before.get(field) != value
+    }
+
+
+async def record_history_set(
+    session: AsyncSession, person_id: uuid.UUID, changed: Mapping[str, Any]
+) -> None:
+    """The `history_set` row for `changed` (`changes`), in the write's transaction: the
+    write and its record are both kept or neither is. Nothing changed, nothing recorded.
+    Also why someone left and a former student's dates (#294)."""
+    if not changed:
+        return
+    result = await session.execute(
+        INSERT_HISTORY_SET,
+        {"person": person_id, "action": HISTORY_SET, "detail": json.dumps(changed)},
+    )
+    if result.rowcount != 1:  # type: ignore[attr-defined]
+        raise RuntimeError(f"no audit row for the history of person {person_id}")
 
 
 @router.put("/{person_id}/history")
@@ -74,28 +115,10 @@ async def set_history(
     if record is None:
         raise NOT_FOUND
     if body.member_since is not None:
-        today = await _today(session, tenant)
-        if body.member_since > today:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT, "member_since is today at the latest"
-            )
-        if body.member_since < add_months(today, -12 * HISTORY_WINDOW_YEARS):
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
-                f"member_since must be within {HISTORY_WINDOW_YEARS} years of today",
-            )
+        refuse_outside_history("member_since", body.member_since, await _today(session, tenant))
     after = body.model_dump()
-    changed = {
-        field: {"before": _shown(getattr(record, field)), "after": _shown(value)}
-        for field, value in after.items()
-        if getattr(record, field) != value
-    }
+    changed = changes(record._asdict(), after)
     if changed:
         await session.execute(SET_HISTORY, {**after, "id": person_id})
-        result = await session.execute(
-            INSERT_HISTORY_SET,
-            {"person": person_id, "action": HISTORY_SET, "detail": json.dumps(changed)},
-        )
-        if result.rowcount != 1:  # type: ignore[attr-defined]
-            raise RuntimeError(f"no audit row for the history of person {person_id}")
-    return await read_person(session, person_id)
+        await record_history_set(session, person_id, changed)
+    return await read_person(session, person_id, sees_reason=True)

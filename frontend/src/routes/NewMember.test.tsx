@@ -57,7 +57,7 @@ const TALLA: FieldDefinition = {
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 
-function stubApi(enrolled: Answer = { status: 201, body: CREATED }) {
+function stubApi(enrolled: Answer = { status: 201, body: CREATED }, former: Answer = { status: 201, body: CREATED }) {
   const calls: Call[] = []
   vi.stubGlobal(
     'fetch',
@@ -90,6 +90,7 @@ function stubApi(enrolled: Answer = { status: 201, body: CREATED }) {
     }
     if (path === '/api/people' && method === 'GET') return { body: { items: [MARTA], total: 1 } }
     if (path === '/api/people/enrol' && method === 'POST') return enrolled
+    if (path === '/api/people/former' && method === 'POST') return former
     if (path === '/api/people/new') return { body: CREATED }
     return { status: 404, body: { detail: 'Not Found' } }
   }
@@ -106,6 +107,8 @@ function renderAt(path: string) {
 
 const form = () => screen.findByRole('form', { name: copy.title })
 const enrolments = (calls: Call[]) => calls.filter((c) => c.path === '/api/people/enrol').map((c) => c.body)
+const formers = (calls: Call[]) => calls.filter((c) => c.path === '/api/people/former').map((c) => c.body)
+const reasonCopy = es.admin.member.leftReason
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -377,5 +380,81 @@ describe('Nuevo alumno', () => {
       'href',
       '/admin/alumnos/camila',
     )
+  })
+})
+
+describe('Agregar exalumno (#294)', () => {
+  const formerForm = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: copy.kind.former }))
+    return screen.getByRole('form', { name: copy.kind.former })
+  }
+
+  it('adds someone who already left, with no plan and no welcome, and offers their history', async () => {
+    const calls = stubApi()
+    const router = renderAt('/admin/alumnos/nuevo')
+    expect(await screen.findByRole('button', { name: copy.kind.current })).toHaveAttribute('aria-pressed', 'true')
+    const f = await formerForm()
+    expect(screen.queryByRole('form', { name: copy.title })).not.toBeInTheDocument()
+    // Nobody will write to them: no plan, no welcome, and the phone is optional.
+    expect(within(f).queryByLabelText(copy.plan)).not.toBeInTheDocument()
+    expect(within(f).queryByRole('checkbox', { name: copy.welcome })).not.toBeInTheDocument()
+
+    await userEvent.type(within(f).getByLabelText(copy.firstName), 'Ex')
+    await userEvent.type(within(f).getByLabelText(copy.lastName), 'Alumna')
+    await userEvent.type(within(f).getByLabelText(copy.rut), '7.654.321-6')
+    await userEvent.type(within(f).getByLabelText(copy.former.since), '2017-03-05')
+    await userEvent.type(within(f).getByLabelText(copy.former.leftOn), '2022-06-30')
+    const chips = within(f).getByRole('group', { name: reasonCopy.chipsLabel })
+    await userEvent.click(within(chips).getByRole('button', { name: 'Se cambió' }))
+    expect(within(f).getByLabelText(reasonCopy.label)).toHaveValue('Se cambió')
+    expect(within(f).getByLabelText(reasonCopy.label)).toHaveAccessibleDescription(reasonCopy.hint)
+    await userEvent.click(within(f).getByRole('button', { name: copy.former.submit }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/alumnos/new'))
+    expect(router.state.location.state.offerHistory).toBe(true)
+    expect(router.history.length).toBe(1)
+    expect(formers(calls)).toEqual([
+      {
+        name: 'Ex Alumna',
+        rut: '7.654.321-6',
+        member_since: '2017-03-05',
+        left_on: '2022-06-30',
+        left_reason: 'Se cambió',
+      },
+    ])
+    expect(enrolments(calls)).toEqual([])
+  })
+
+  it('needs who they are and the day they left, and a start no later than it', async () => {
+    const calls = stubApi()
+    renderAt('/admin/alumnos/nuevo')
+    const f = await formerForm()
+
+    await userEvent.type(within(f).getByLabelText(copy.former.since), '2022-07-01')
+    await userEvent.click(within(f).getByRole('button', { name: copy.former.submit }))
+    expect(within(f).getByText(copy.needed.firstName)).toBeInTheDocument()
+    expect(within(f).getByText(copy.needed.identity)).toBeInTheDocument()
+    expect(within(f).getByText(copy.former.needed.leftOn)).toBeInTheDocument()
+
+    await userEvent.type(within(f).getByLabelText(copy.firstName), 'Ex')
+    await userEvent.type(within(f).getByLabelText(copy.email), 'ex@example.com')
+    await userEvent.type(within(f).getByLabelText(copy.former.leftOn), '2022-06-30')
+    await userEvent.click(within(f).getByRole('button', { name: copy.former.submit }))
+    expect(within(f).getByText(copy.former.needed.since)).toBeInTheDocument()
+    expect(formers(calls)).toEqual([])
+  })
+
+  it('names who already has the RUT', async () => {
+    stubApi(undefined, { status: 409, body: { detail: { code: 'rut_in_gym', person_id: 'camila' } } })
+    renderAt('/admin/alumnos/nuevo')
+    const f = await formerForm()
+
+    await userEvent.type(within(f).getByLabelText(copy.firstName), 'Ex')
+    await userEvent.type(within(f).getByLabelText(copy.rut), '7.654.321-6')
+    await userEvent.type(within(f).getByLabelText(copy.former.leftOn), '2022-06-30')
+    await userEvent.click(within(f).getByRole('button', { name: copy.former.submit }))
+
+    const alert = await within(f).findByText(copy.duplicate.rut_in_gym, { exact: false })
+    expect(within(alert).getByRole('link', { name: copy.duplicate.open })).toHaveAttribute('href', '/admin/alumnos/camila')
   })
 })

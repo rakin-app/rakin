@@ -19,6 +19,9 @@ export type Person = {
   dob: string | null
   // The day they left the gym (dado de baja); null while they are here.
   left_on: string | null
+  // Why they left (#294), as the gym wrote it. Owner and admin only: a coach always
+  // reads null, since it may be health data ("lesión").
+  left_reason?: string | null
   // History from before Rakin (#293): the day they first trained here, and how many
   // classes they had. Shown on the ficha, never read by billing.
   member_since: string | null
