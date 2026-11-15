@@ -10,7 +10,8 @@ entries only.
 
 The CSV is what Excel opens in a Spanish locale with a double click: UTF-8 with a BOM,
 `;` between fields, dates as dd-mm-yyyy, CLP as plain integers, the pending proofs and
-the totals each under a title row after the entries. The XLSX has a sheet for each,
+the totals each under a title row after the entries, and a line saying how each entry is
+dated after them. The XLSX has a sheet for each,
 with real dates and integers in their cells.
 
 Every text a person typed (a name, a note, a custom field) goes out as text: one that
@@ -65,6 +66,11 @@ CATEGORIES = {
 
 PENDING_TITLE = "Comprobantes por validar (no cuentan en los totales)"
 TOTALS_TITLE = "Totales del mes (solo lo validado)"
+# How the export dates a payment, which the Pagos list dates by the day it was made.
+FILED_BY = (
+    "Fecha: un cargo, el inicio de su período; un pago o devolución validado, el día en"
+    " que se validó (como Cobrado en Pagos); lo demás, el día en que se registró."
+)
 
 CSV_MEDIA_TYPE = "text/csv; charset=utf-8"
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -228,6 +234,8 @@ def to_csv(export: MonthExport) -> bytes:
     writer.writerow([])
     writer.writerow([TOTALS_TITLE])
     writer.writerows([label, str(amount)] for label, amount in total_lines(export.totals))
+    writer.writerow([])
+    writer.writerow([FILED_BY])
     return ("﻿" + out.getvalue()).encode("utf-8")
 
 
@@ -271,7 +279,9 @@ def to_xlsx(export: MonthExport) -> bytes:
     entries.title = "Movimientos"
     sheet(entries, headers, (cells(row) for row in export.entries))
     sheet(book.create_sheet("Por validar"), headers, (cells(row) for row in export.pending))
-    sheet(book.create_sheet("Totales"), ("Concepto", "Monto (CLP)"), total_lines(export.totals))
+    totals = book.create_sheet("Totales")
+    sheet(totals, ("Concepto", "Monto (CLP)"), total_lines(export.totals))
+    put(totals, totals.max_row + 2, 1, FILED_BY)
     out = io.BytesIO()
     book.save(out)
     return out.getvalue()

@@ -287,11 +287,13 @@ def sections(rows: list[list[str]]) -> tuple[list[list[str]], list[list[str]], d
     blank = [i for i, r in enumerate(rows) if not r]
     entries = rows[: blank[0]]
     pending: list[list[str]] = []
-    if len(blank) == 2:
+    if len(blank) == 3:
         assert rows[blank[0] + 1] == [ledger_export.PENDING_TITLE]
         pending = rows[blank[0] + 2 : blank[1]]
-    assert rows[blank[-1] + 1] == [ledger_export.TOTALS_TITLE]
-    totals = {label: int(amount) for label, amount in rows[blank[-1] + 2 :]}
+    # The totals, then how each entry is dated, each after a blank line.
+    assert rows[blank[-2] + 1] == [ledger_export.TOTALS_TITLE]
+    totals = {label: int(amount) for label, amount in rows[blank[-2] + 2 : blank[-1]]}
+    assert rows[blank[-1] + 1 :] == [[ledger_export.FILED_BY]]
     return entries, pending, totals
 
 
@@ -370,8 +372,10 @@ def test_the_xlsx_has_a_sheet_each_with_dates_and_integers_typed(
 
     pending = [[c.value for c in r] for r in book["Por validar"].iter_rows(min_row=2)]
     assert [(r[1], r[7], r[8]) for r in pending] == [("Carla Díaz", 20_000, "Por validar")]
-    totals = {r[0].value: r[1].value for r in book["Totales"].iter_rows(min_row=2)}
+    lines = [(r[0].value, r[1].value) for r in book["Totales"].iter_rows(min_row=2)]
+    totals = dict(lines[: lines.index((None, None))])
     assert totals["Cobrado neto (pagado menos devuelto)"] == 40_000
+    assert lines[-1] == (ledger_export.FILED_BY, None)
 
 
 @pg
@@ -414,6 +418,33 @@ def test_no_email_phone_or_sensitive_field_is_exported(
     entries, _, _ = sections(csv_rows(client, sur))
     assert entries[0][11:] == ["Talla de polera"]
     assert {r[1]: r[11] for r in entries[1:]}["Ana Rojas"] == "M"
+
+
+@pg
+def test_a_validated_payment_with_no_validation_time_is_filed_by_the_day_it_was_made(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    people = seed_month(client, db, sur)
+    ana = membership(db, sur, people["ana"])
+    period = march(db, sur, ana, 30_000, 13)
+    insert(
+        db,
+        sur,
+        "ledger_entry",
+        membership_id=ana,
+        billing_period_id=period,
+        kind="payment",
+        amount_clp=12_000,
+        status="validated",
+        method="cash",
+        created_at=at(date(2020, 3, 18)),
+        validated_at=None,
+    )
+    entries, _, totals = sections(csv_rows(client, sur))
+    assert ("18-03-2020", "Ana Rojas", "Pago", "12000", "Validado") in [
+        (r[0], r[1], r[5], r[7], r[8]) for r in entries[1:]
+    ]
+    assert totals["Total pagado"] == 50_000 + 12_000
 
 
 @pg

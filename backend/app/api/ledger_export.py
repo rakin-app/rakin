@@ -35,10 +35,13 @@ from app.tenancy import Tenant, current_tenant
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 
 # The day the export files an entry under, for `e`, `t` and `bp`, as the module says.
+# Nothing holds a validated entry to a `validated_at`; one without it, which
+# `v_monthly_income` leaves out, falls back to the day it was made rather than being
+# lost from every month's file.
 EXPORT_DAY = f"""CASE
     WHEN e.kind = 'charge' AND bp.id IS NOT NULL THEN bp.period_start
     WHEN e.kind IN ('payment', 'refund') AND e.status = 'validated'
-        THEN (e.validated_at AT TIME ZONE t.timezone)::date
+        THEN (coalesce(e.validated_at, e.created_at) AT TIME ZONE t.timezone)::date
     ELSE {ENTRY_DAY} END"""
 
 EXPORT_ROWS = text(
