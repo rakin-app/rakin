@@ -1,9 +1,10 @@
 """Membership state machine: trial, active, frozen, lapsed, cancelled.
 
-A membership moves right as time passes and returns to Active only when a
-payment is validated. A freeze is a side trip that shifts the due date by the
-frozen days (`freeze`). Cancelled is terminal, and carries the reason it was
-cancelled for.
+A membership moves right as time passes. A trial converts to Active on a validated
+payment; a lapsed one returns to Active only by hand, "Reactivar plan" (`reactivate`,
+#284). No payment brings it back on its own: a member paying an old debt may have left
+the gym. A freeze is a side trip that shifts the due date by the frozen days
+(`freeze`). Cancelled is terminal, and carries the reason it was cancelled for.
 
 A plan change waits for the next period: the periods already billed keep the plan
 they were billed on, and the new one applies from the first period not yet billed
@@ -357,7 +358,9 @@ def record_payment(
     paid_through: date,
     credits: int | None = None,
 ) -> Membership:
-    """A validated payment: Trial converts, Lapsed comes back, Active extends.
+    """A validated payment: Trial converts, Active extends. A lapsed membership the
+    domain also brings back here; the app does not, a lapsed plan is reactivated by hand
+    (`reactivate`).
 
     `credits` refills a pack: a credits plan needs it, since a pack at zero would
     lapse again at once. Elsewhere, omit it to keep the current balance. An
@@ -383,6 +386,29 @@ def record_payment(
         status=S.ACTIVE,
         current_period_end=paid_through,
         credits_remaining=membership.credits_remaining if credits is None else credits,
+    )
+
+
+def reactivate(
+    membership: Membership, *, today: date, terms: PlanTerms, from_today: bool
+) -> Membership:
+    """A lapsed monthly or prepaid membership Active again by hand (#284). It bills on
+    after its last period billed, catching up the periods since the lapse; or,
+    `from_today`, from `today`, the days between never billed: paid through yesterday,
+    and a monthly plan's anchor day `today`'s, as a start would set it (the 1st on a
+    `first` anchor). A pack or a trial ends, and the member starts a new one. The caller
+    refuses a membership the nightly job would lapse again."""
+    if membership.status is not S.LAPSED:
+        raise InvalidTransition(f"a {membership.status} membership is not reactivated")
+    if membership.plan_kind not in RECURRING:
+        raise ValueError(f"a {membership.plan_kind} membership is not reactivated")
+    if not from_today:
+        return replace(membership, status=S.ACTIVE)
+    return replace(
+        membership,
+        status=S.ACTIVE,
+        current_period_end=today - timedelta(days=1),
+        anchor_day=anchor_day(terms, today),
     )
 
 

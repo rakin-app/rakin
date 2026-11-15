@@ -392,3 +392,67 @@
 .member__entry--correction .member__entry-amount {
   white-space: nowrap;
 }
+
+/* "Reactivar plan"'s choice of from when it bills, each with what it bills (#284). */
+.member__choices {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* A legend is laid out apart from the grid: no pull towards what follows, as a label has. */
+.member__choices .member__label {
+  padding: 0;
+  margin-bottom: var(--space-3);
+}
+
+.member__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 44px;
+}
+
+.member__choice input {
+  margin-top: 3px;
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.member__choice > span {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.member__choice-title {
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Its confirmation: the periods it bills, and their total. */
+.member__bill {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.member__bill-total {
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* A success that offers what comes next: "¿Volvió?" and "Reactivar plan". */
+.member__done-text {
+  margin: 0;
+}
+
+.member__done-action {
+  margin-top: var(--space-2);
+}

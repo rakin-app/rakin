@@ -13,7 +13,9 @@ transaction, for the plan-event emails to send.
   treated as paid through the day before that period falls due. A membership created
   with a start already past due (a backdated "Asignar plan") is not due before the day
   it was created, in the gym's timezone: the owner has the whole grace from then to
-  record the payment, so it lapses on `max(due_date, created_on) + grace` (#271).
+  record the payment, so it lapses on `max(due_date, created_on) + grace` (#271). A
+  lapsed plan reactivated by hand (#284) is not due before the day it was reactivated
+  either: its periods since the lapse are billed then, already past due.
 - A credits pack or a trial lapses with no grace, the day after its last day
   (`current_period_end`) or at zero credits left.
 - A drop-in is a single attendance and never lapses; a Frozen membership waits for
@@ -36,7 +38,9 @@ one run date for every gym, the runner's, in `JOBS_TIMEZONE`, as for billing.
 
 import json
 import logging
+from collections.abc import Mapping
 from datetime import date, timedelta
+from typing import Any
 
 import asyncpg
 
@@ -66,6 +70,25 @@ ORDER BY m.id
 FOR UPDATE OF m
 """
 
+
+def unpaid_due(day: str, status: str, kinds: str) -> str:
+    """The `unpaid_due` column of membership `m`, in SQL: the due date of its oldest
+    period due by `day` that its entries of `kinds` in `status` leave short. The
+    arguments are the query's placeholders."""
+    return f"""(SELECT min(b.due_date) FROM billing_period b
+        WHERE b.membership_id = m.id AND b.due_date <= {day}
+          AND b.amount_due_clp > (
+              SELECT coalesce(sum({settled_amount("e")}), 0) FROM ledger_entry e
+              WHERE e.billing_period_id = b.id AND e.status = {status}
+                AND e.kind = ANY({kinds}))) AS unpaid_due"""
+
+
+# The days membership `m` is not due before, in its gym `g`'s timezone: the day it was
+# created (#271), and the day it was last reactivated (#284), null if never.
+NOT_DUE_BEFORE = """(m.created_at AT TIME ZONE g.timezone)::date AS created_on,
+       (m.reactivated_at AT TIME ZONE g.timezone)::date AS reactivated_on"""
+
+
 # Read after the lock, in a statement of its own: in READ COMMITTED each statement takes
 # a fresh snapshot, so this one sees every payment that committed while the lock above
 # waited for it. A `FOR UPDATE` query re-checks only its locked rows once it gets them,
@@ -74,13 +97,8 @@ FOR UPDATE OF m
 # settling entries leave short.
 SELECT_LAPSABLE = f"""
 SELECT m.id, m.status, pl.kind, m.current_period_end, m.credits_remaining,
-       (SELECT min(b.due_date) FROM billing_period b
-        WHERE b.membership_id = m.id AND b.due_date <= $2
-          AND b.amount_due_clp > (
-              SELECT coalesce(sum({settled_amount("e")}), 0) FROM ledger_entry e
-              WHERE e.billing_period_id = b.id AND e.status = $3
-                AND e.kind = ANY($4::text[]))) AS unpaid_due,
-       (m.created_at AT TIME ZONE g.timezone)::date AS created_on
+       {unpaid_due("$2", "$3", "$4::text[]")},
+       {NOT_DUE_BEFORE}
 FROM membership m
 JOIN plan pl ON pl.id = m.plan_id
 JOIN gym g ON g.id = m.gym_id
@@ -97,15 +115,17 @@ ON CONFLICT (membership_id, kind, occurred_on) DO NOTHING
 """
 
 
-def _membership(row: asyncpg.Record) -> Membership:
-    """The membership as the domain sees it; a recurring one paid through the day
-    before its oldest unpaid period falls due, or the day before it was created if that
-    is later, or with nothing owed if it has none."""
+def lapsable(row: Mapping[str, Any]) -> Membership:
+    """The membership as the domain sees it, from a row with `SELECT_LAPSABLE`'s
+    columns; a recurring one paid through the day before its oldest unpaid period falls
+    due, or the day before it was created or reactivated if that is later, or with
+    nothing owed if it has none."""
     kind = PlanKind(row["kind"])
     end = row["current_period_end"]
     if kind in RECURRING:
         unpaid = row["unpaid_due"]
-        end = None if unpaid is None else max(unpaid, row["created_on"]) - timedelta(days=1)
+        days = [d for d in (unpaid, row["created_on"], row["reactivated_on"]) if d is not None]
+        end = None if unpaid is None else max(days) - timedelta(days=1)
     return Membership(kind, MembershipStatus(row["status"]), end, row["credits_remaining"])
 
 
@@ -124,7 +144,7 @@ async def lapse_gym(conn: asyncpg.Connection, day: date) -> int:
     lapsed = 0
     for row in rows:
         try:
-            membership = _membership(row)
+            membership = lapsable(row)
             if not memberships.is_due_to_lapse(membership, day, grace):
                 continue
             after = memberships.lapse(membership, day, grace)

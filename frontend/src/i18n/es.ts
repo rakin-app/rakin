@@ -812,6 +812,47 @@ export const es = {
         nothing_owed: 'Ese cargo ya no se debe: nada que anular.',
         failed: 'No pudimos anularlo. Inténtalo de nuevo.',
       },
+      // "Reactivar plan" (#284): a lapsed plan Active again, billing from where it left off or from today.
+      reactivatePlan: 'Reactivar plan',
+      reactivateForm: {
+        title: 'Reactivar plan',
+        intro:
+          'El plan vuelve a quedar activo. Pagar lo que debía no lo reactiva solo: puede que el alumno se haya ido.',
+        loading: 'Calculando lo que se cobra…',
+        billFrom: '¿Desde cuándo se cobra?',
+        last: 'Desde donde quedó',
+        lastHint: (count: number, month: string, total: string) =>
+          count === 0
+            ? 'No hay cuotas pendientes desde que caducó.'
+            : `Cobra ${count === 1 ? 'la cuota' : `${count} cuotas`} desde ${month}: ${total}.`,
+        today: 'Desde hoy',
+        todayHint: (day: string, total: string) => `No cobra los meses sin plan. Cobra desde el ${day}: ${total}.`,
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe por qué se reactiva.',
+        next: 'Continuar',
+        cancel: 'Cancelar',
+        // The second step: what it bills, before it is saved.
+        confirmTitle: 'Al reactivar se cobra',
+        nothing: 'Nada por ahora: la próxima cuota llega en su fecha.',
+        period: (month: string, amount: string) => `${month} · ${amount}`,
+        total: (amount: string) => `Total ${amount}`,
+        back: 'Volver',
+        submit: 'Reactivar plan',
+        working: 'Reactivando…',
+        done: (total: string) => `Plan reactivado. Se cobraron ${total}.`,
+        doneNothing: 'Plan reactivado.',
+      },
+      // Why a reactivation was refused, and what to do first.
+      reactivateRefused: {
+        not_lapsed: 'Este plan no está caducado.',
+        not_recurring: 'Un pack o una prueba no se reactiva: asígnale uno nuevo.',
+        unpaid: (amount: string, month: string) =>
+          `Debe ${amount} desde ${month}, ya fuera del plazo de gracia: caducaría de nuevo esta noche. Registra el pago o anula ese cargo primero.`,
+        live_plan: (plan: string) => `Ya tiene otro plan vigente (${plan}): no puede tener dos a la vez.`,
+        failed: 'No pudimos reactivarlo. Inténtalo de nuevo.',
+      },
+      // After a payment settles the last debt of a lapsed plan: offered, never done on its own.
+      reactivateOffer: '¿Volvió? El plan sigue caducado hasta que lo reactives.',
       adjustForm: {
         title: 'Ajuste',
         direction: 'Tipo de ajuste',

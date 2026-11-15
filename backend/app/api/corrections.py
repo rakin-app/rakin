@@ -5,7 +5,8 @@ who made it (`app.person_id`), when, the reason, whose billing it changed, what 
 touched, and the period and the membership's balance before and after it, read under
 the correction's locks (`app.api.ledger.locked_period`). A void and an adjustment write
 one each (`app.api.ledger`); a plan voided by mistake writes one per period it voids,
-each marked `plan_void` (`app.api.memberships`).
+each marked `plan_void`, and a lapsed plan reactivated one with its status before and
+after (`app.api.memberships`).
 
 `GET /api/ledger/people/{id}/corrections` reads a person's rows, newest first, for the
 ficha's "Correcciones". Owner and admin only (`LedgerSession`); RLS holds a coach to it
@@ -61,23 +62,38 @@ async def record_correction(
     """Record a correction of the membership's period that wrote `entry_ids`: `purpose`
     as the entry's (`None` for a plain adjustment, `void` for a void). Raises, failing
     the correction with it, if no row was written: the record is complete or nothing is."""
+    await record_audit(
+        session,
+        action=LEDGER_CORRECTED,
+        membership_id=membership_id,
+        reason=reason,
+        purpose=purpose,
+        billing_period_id=str(billing_period_id),
+        entry_ids=[str(e) for e in entry_ids],
+        before=before.model_dump(),
+        after=after.model_dump(),
+        **detail,
+    )
+
+
+async def record_audit(
+    session: AsyncSession,
+    *,
+    action: str,
+    membership_id: uuid.UUID,
+    reason: str | None,
+    **detail: Any,
+) -> None:
+    """Record `action`, a correction of the membership, with `detail` beside its id: a
+    row change records the field it changed, before and after (section 3 of the design).
+    Raises if no row was written, failing the correction with it."""
     result = await session.execute(
         INSERT_CORRECTION,
         {
-            "action": LEDGER_CORRECTED,
+            "action": action,
             "reason": reason,
             "membership_id": membership_id,
-            "detail": json.dumps(
-                {
-                    "purpose": purpose,
-                    "membership_id": str(membership_id),
-                    "billing_period_id": str(billing_period_id),
-                    "entry_ids": [str(e) for e in entry_ids],
-                    "before": before.model_dump(),
-                    "after": after.model_dump(),
-                    **detail,
-                }
-            ),
+            "detail": json.dumps({"membership_id": str(membership_id), **detail}),
         },
     )
     if result.rowcount != 1:  # type: ignore[attr-defined]
