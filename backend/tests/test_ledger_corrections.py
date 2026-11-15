@@ -245,6 +245,24 @@ def test_an_adjustment_against_the_member_is_owed_on_top_and_opens_a_paid_period
 
 
 @pg
+def test_the_ledger_says_what_each_period_charges_and_the_balance(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    # What "Cambiar monto" changes and the "Saldo" each fix shows (#279): adjustments
+    # change what a period charges, payments and refunds only what it owes.
+    period = charged(db, sur)
+    pay(client, sur, period, 20_000)
+    for amount, note in ((5_000, "beca"), (-2_000, "matrícula")):
+        response = adjust(client, sur, {**period, "amount_clp": amount, "note": note})
+        assert response.status_code == 201, response.text
+
+    read = ledger(client, sur, period)
+    [row] = [p for p in read["periods"] if p["id"] == period["billing_period_id"]]
+    assert (row["charged_clp"], row["outstanding_clp"]) == (42_000, 22_000)
+    assert read["balance_clp"] == balance(db, period) == 22_000
+
+
+@pg
 def test_an_adjustment_against_the_member_can_exceed_the_amount_due(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
@@ -401,6 +419,7 @@ def test_the_ledger_offers_every_period_and_refundable_payment_however_old(
         "outstanding_clp": 45_000,
         "voided_clp": 0,
         "void_id": None,
+        "charged_clp": 45_000,
     }
     [first] = [p for p in periods if p["id"] == old["billing_period_id"]]
     assert first["outstanding_clp"] == 0

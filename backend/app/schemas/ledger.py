@@ -350,6 +350,9 @@ class LedgerPeriod(BaseModel):
     # void, which "Restaurar cargo" restores (#278).
     voided_clp: int = 0
     void_id: uuid.UUID | None = None
+    # What it charges, its validated adjustments taken off but not its payments: what
+    # "Cambiar monto" changes (#279).
+    charged_clp: int = 0
 
 
 class RefundablePayment(BaseModel):
@@ -384,6 +387,9 @@ class MembershipLedger(BaseModel):
     # The last day its periods are paid through, every one before it settled: "Pagado
     # hasta" (#196). `None` with no period yet, or with the first still owing.
     paid_through: date | None = None
+    # Its running balance (`v_balance`), owed if positive: the "Saldo" each fix on the
+    # ficha shows before and after (#279), as its correction records it (#277).
+    balance_clp: int = 0
 
 
 class AheadPeriod(BaseModel):

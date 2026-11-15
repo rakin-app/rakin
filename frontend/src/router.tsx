@@ -16,7 +16,7 @@ import { t } from './i18n/es'
 import { MeLayout } from './layouts/MeLayout'
 import { Classes } from './routes/Classes'
 import { ExtraChargeDetail } from './routes/ExtraChargeDetail'
-import { ExtraChargeNew } from './routes/ExtraChargeNew'
+import { ExtraChargeNew, validateExtraChargeNewSearch } from './routes/ExtraChargeNew'
 import { ExtraCharges } from './routes/ExtraCharges'
 import { ClassTimer } from './routes/ClassTimer'
 import { Join } from './routes/Join'
@@ -227,6 +227,7 @@ const adminExtraChargeNewRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'pagos/cobros/nuevo',
   component: ExtraChargeNew,
+  validateSearch: validateExtraChargeNewSearch,
 })
 
 const adminExtraChargeRoute = createRoute({

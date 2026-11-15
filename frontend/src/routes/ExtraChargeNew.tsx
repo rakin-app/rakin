@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import {
@@ -17,6 +17,7 @@ import {
 } from '../api/extraCharges'
 import type { PersonRef } from '../api/ledger'
 import { myRoleQuery, readsLedger } from '../api/me'
+import { personQuery } from '../api/member'
 import { programsQuery } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
 import { Card, SectionHeader } from '../components/Card'
@@ -41,6 +42,15 @@ const PREVIEW_DEBOUNCE_MS = 300
 
 type Choice = { kind: TargetKind; program_id: string; group_id: string; people: PersonRef[] }
 
+/** `?person=<id>`: the one person "Cobro extra" on their ficha opened the wizard for (#279). */
+export type ExtraChargeNewSearch = { person?: string }
+
+export function validateExtraChargeNewSearch(search: Record<string, unknown>): ExtraChargeNewSearch {
+  return typeof search.person === 'string' && search.person ? { person: search.person } : {}
+}
+
+const route = getRouteApi('/admin/pagos/cobros/nuevo')
+
 function targetOf(choice: Choice): Target | null {
   if (choice.kind === 'active') return { kind: 'active' }
   if (choice.kind === 'program') return choice.program_id ? { kind: 'program', program_id: choice.program_id } : null
@@ -61,9 +71,11 @@ function useDebounced<T>(value: T, ms: number): T {
  * "Nuevo cobro extra" (#195): the details, whom it is for, how much with each person's
  * amount previewed live (a split's share and remainder, and any amount set by hand),
  * the message, and a last look that lists who has no email, with a WhatsApp link each.
+ * Opened from a ficha's "Corregir plan" › "Cobro extra", for that person (#279).
  */
 export function ExtraChargeNew() {
   usePageTitle(words.title)
+  const { person } = route.useSearch()
   const role = useQuery(myRoleQuery())
   if (!readsLedger(role.data)) {
     return (
@@ -73,10 +85,17 @@ export function ExtraChargeNew() {
       </PageContainer>
     )
   }
-  return <Wizard />
+  return person ? <ForPerson personId={person} /> : <Wizard />
 }
 
-function Wizard() {
+/** The wizard for one person, picked once their name is read; with none found, for whoever is picked. */
+function ForPerson({ personId }: { personId: string }) {
+  const person = useQuery(personQuery(personId))
+  if (person.isPending) return null
+  return <Wizard person={person.data && { id: person.data.id, name: person.data.name }} />
+}
+
+function Wizard({ person }: { person?: PersonRef }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [step, setStep] = useState(0)
@@ -85,7 +104,12 @@ function Wizard() {
   const [category, setCategory] = useState<Category>('rifa')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate] = useState('')
-  const [choice, setChoice] = useState<Choice>({ kind: 'active', program_id: '', group_id: '', people: [] })
+  const [choice, setChoice] = useState<Choice>({
+    kind: person ? 'people' : 'active',
+    program_id: '',
+    group_id: '',
+    people: person ? [person] : [],
+  })
   const [mode, setMode] = useState<AmountMode>('fixed')
   const [amount, setAmount] = useState('')
   const [overrides, setOverrides] = useState<Record<string, number>>({})

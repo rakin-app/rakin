@@ -338,6 +338,102 @@
   text-decoration: line-through;
 }
 
+/* A line with something to fix (#279): the whole row a button, "›" at its end, that
+   opens its fixes under it. */
+.member__entry--fixable {
+  display: block;
+  padding: 0;
+}
+
+.member__entry-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--control-height);
+  padding: var(--space-3) var(--space-3-5);
+  background: none;
+  border: 0;
+  border-radius: inherit;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.member__entry-button:hover {
+  background: var(--color-surface-sunken);
+}
+
+.member__entry-chevron {
+  display: flex;
+  flex: none;
+  margin-left: calc(-1 * var(--space-1));
+  color: var(--color-text-subtle);
+  transition: rotate 0.15s ease;
+}
+
+.member__entry-button[aria-expanded='true'] .member__entry-chevron {
+  rotate: 90deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .member__entry-chevron {
+    transition: none;
+  }
+}
+
+/* A line's fixes, or the plan's, in place under it: the fixes that apply as chips, then
+   the chosen one's form, sunken as the plan card's forms are. */
+.member__fix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0 var(--space-3) var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-lg);
+}
+
+.member__fix-title {
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+/* Wrapped, never scrolled sideways: at 390px "Cambiar monto" and "Anular cargo" fit on
+   one line, and a third goes under them. */
+.member__fix-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* "Cobro extra" is a link to Cobros' wizard, drawn as the chip beside it. */
+.member__fix-choices .chip {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.member__fix .member__form {
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.member__fix-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+/* Another plan's charges, in "Deuda anterior" (#279): the card is their frame. */
+.member__card .member__ledger {
+  background: none;
+  border-radius: var(--radius-lg);
+}
+
 /* A voided charge (#256): struck through, its reason below it, still in the ledger. */
 .member__entry--voided .member__entry-title,
 .member__entry--voided .member__entry-amount {

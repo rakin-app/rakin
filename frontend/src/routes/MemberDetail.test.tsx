@@ -118,8 +118,8 @@ const LEDGER: MembershipLedger = {
   ],
   freezes: [],
   periods: [
-    { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 45000, voided_clp: 0, void_id: null },
-    { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null },
+    { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 45000, voided_clp: 0, void_id: null, charged_clp: 45000 },
+    { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null, charged_clp: 45000 },
   ],
   refundable_payments: [
     {
@@ -133,6 +133,7 @@ const LEDGER: MembershipLedger = {
     },
   ],
   paid_through: null,
+  balance_clp: 45000,
 }
 
 const correction = (fields: Partial<Correction> & Pick<Correction, 'id'>): Correction => ({
@@ -344,6 +345,14 @@ function renderAt(path: string | string[]) {
 
 const PATH = '/admin/alumnos/felipe'
 const money = () => screen.findByRole('region', { name: copy.paymentLabel })
+const libro = () => screen.findByRole('region', { name: copy.ledger.title })
+
+/** Opens the fixes of the Libro line whose button reads `line` (#279), named `title`. */
+async function fixLine(line: RegExp, title: string) {
+  const ledger = await libro()
+  await userEvent.click(await within(ledger).findByRole('button', { name: line }))
+  return within(ledger).getByRole('group', { name: title })
+}
 
 afterEach(() => {
   vi.useRealTimers()
@@ -549,7 +558,7 @@ describe('Ficha de alumno', () => {
     },
   )
 
-  it('offers only what can be done: no adjustment, refund or freeze with nothing to do it on', async () => {
+  it('offers only what can be done: no refund, freeze or fix with nothing to do it on', async () => {
     stubApi({
       memberships: [{ ...MONTHLY, status: 'lapsed' }],
       ledger: { ...LEDGER, periods: [], refundable_payments: [] },
@@ -558,10 +567,11 @@ describe('Ficha de alumno', () => {
     const card = await money()
 
     expect(await within(card).findByRole('button', { name: copy.record })).toBeEnabled()
-    expect(within(card).queryByRole('button', { name: copy.adjust })).not.toBeInTheDocument()
     expect(within(card).queryByRole('button', { name: copy.refund })).not.toBeInTheDocument()
     expect(within(card).queryByRole('button', { name: copy.freeze })).not.toBeInTheDocument()
     expect(within(card).queryAllByRole('button').filter((b) => b.hasAttribute('disabled'))).toEqual([])
+    // No line has a fix: the charge's period is not one to correct, no payment has anything to give back.
+    expect(within(await libro()).queryAllByRole('button')).toEqual([])
   })
 
   it('says what a partial payment leaves to pay', async () => {
@@ -580,22 +590,71 @@ describe('Ficha de alumno', () => {
     )
   })
 
-  it('adjusts a period in the member\'s favour, with its reason', async () => {
+  it('keeps the fixes off the plan card: under the Libro lines and "Corregir plan" (#279)', async () => {
+    stubApi()
+    renderAt(PATH)
+    const card = await money()
+
+    expect(await within(card).findByRole('button', { name: copy.record })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: copy.refund })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: copy.freeze })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: copy.changePlan })).toBeInTheDocument()
+    for (const gone of ['Ajuste', copy.fix.voidCharge, copy.fix.restoreCharge, copy.voidPlan]) {
+      expect(within(card).queryByRole('button', { name: gone })).not.toBeInTheDocument()
+    }
+    // Only the lines with a fix are buttons: the charge owing and the payment with
+    // something to give back, not the claim waiting for review nor the credit.
+    const ledger = await libro()
+    expect(within(ledger).getAllByRole('button').map((b) => b.getAttribute('aria-expanded'))).toEqual(['false', 'false'])
+    expect(within(ledger).getByRole('button', { name: /^Cargo octubre/ })).toBeInTheDocument()
+    expect(within(ledger).getByRole('button', { name: /^Pago septiembre/ })).toBeInTheDocument()
+  })
+
+  it('offers a charge that still owes "Cambiar monto" and "Anular cargo", opened under it (#279)', async () => {
+    stubApi()
+    renderAt(PATH)
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+
+    const chips = within(fixes).getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed'))
+    expect(chips.map((b) => b.textContent)).toEqual([
+      copy.fix.changeAmount,
+      copy.fix.voidCharge,
+    ])
+    expect(within(fixes).getByRole('button', { name: copy.fix.changeAmount })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(fixes).getByRole('form', { name: copy.amountForm.title })).toBeInTheDocument()
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidCharge }))
+    expect(within(fixes).getByRole('form', { name: copy.voidForm.title })).toBeInTheDocument()
+
+    // One line open at a time, closed by its button.
+    const ledger = await libro()
+    await userEvent.click(within(ledger).getByRole('button', { name: /^Pago septiembre/ }))
+    expect(within(ledger).queryByRole('group', { name: copy.fix.charge('octubre', null) })).not.toBeInTheDocument()
+    expect(within(ledger).getByRole('group', { name: copy.fix.payment('septiembre') })).toBeInTheDocument()
+    await userEvent.click(within(ledger).getByRole('button', { name: /^Pago septiembre/ }))
+    expect(within(ledger).queryByRole('group')).not.toBeInTheDocument()
+  })
+
+  it('lowers a charge: the difference in the member\'s favour, with its reason (#279)', async () => {
     const calls = stubApi({
       adjustment: { status: 201, body: { period: { outstanding_clp: 40000, closed: false } } },
     })
     renderAt(PATH)
-    const card = await money()
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    const form = within(fixes).getByRole('form', { name: copy.amountForm.title })
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
-    const form = screen.getByRole('form', { name: copy.adjustForm.title })
-    expect(within(form).getByLabelText(copy.adjustForm.direction)).toHaveValue('favor')
-    await userEvent.type(within(form).getByLabelText(copy.adjustForm.amount), '5000')
-    await userEvent.type(within(form).getByLabelText(copy.adjustForm.note), ' descuento hermano ')
-    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit(true, '$5.000') }))
+    expect(within(form).getByText(copy.amountForm.current('$45.000'))).toBeInTheDocument()
+    const amount = within(form).getByLabelText(copy.amountForm.amount)
+    expect(amount).toHaveValue('45000')
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '40000')
+    // What it does, as it is typed.
+    expect(within(form).getByText(copy.fix.owed('octubre', '$45.000', '$40.000'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.fix.balance('$45.000', '$40.000'))).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.amountForm.reason), ' descuento hermano ')
+    await userEvent.click(within(form).getByRole('button', { name: copy.amountForm.submit('$40.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      copy.adjustForm.done(true, '$5.000') + copy.form.remainder('$40.000'),
+      copy.amountForm.done('octubre', '$45.000', '$40.000') + copy.form.remainder('$40.000'),
     )
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       {
@@ -606,61 +665,97 @@ describe('Ficha de alumno', () => {
     ])
   })
 
-  it('adjusts a paid period against the member, owed on top', async () => {
-    // An old period, long out of the timeline: the ledger still offers it.
-    const paid = { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null }
+  it('raises a paid charge: the difference owed on top (#279)', async () => {
+    const paid = { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null, charged_clp: 45000 }
     const calls = stubApi({
-      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [], periods: [paid] },
+      ledger: {
+        ...LEDGER,
+        open_periods: [],
+        owed_clp: 0,
+        balance_clp: 0,
+        entries: [entry({ id: 'c-sep', kind: 'charge', billing_period_id: 'p-sep', period_start: '2026-09-30' })],
+        periods: [paid],
+        refundable_payments: [],
+      },
       adjustment: { status: 201, body: { period: { outstanding_clp: 5000, closed: false } } },
     })
     renderAt(PATH)
-    const card = await money()
+    const fixes = await fixLine(/^Cargo septiembre/, copy.fix.charge('septiembre', null))
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
-    const form = screen.getByRole('form', { name: copy.adjustForm.title })
-    // Nothing is owed, so nothing can be taken off.
-    expect(within(form).getByLabelText(copy.adjustForm.direction)).toHaveValue('owed')
-    expect(within(form).getByRole('option', { name: copy.adjustForm.directions.favor })).toBeDisabled()
-    expect(within(form).getByLabelText(copy.adjustForm.period)).toHaveTextContent(
-      copy.adjustForm.periodOption('septiembre', '$0', null),
+    // Nothing owed, nothing to void: only its amount changes.
+    expect(within(fixes).queryByRole('button', { name: copy.fix.voidCharge })).not.toBeInTheDocument()
+    const amount = within(fixes).getByLabelText(copy.amountForm.amount)
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '50000')
+    expect(within(fixes).getByText(copy.fix.owed('septiembre', '$0', '$5.000'))).toBeInTheDocument()
+    expect(within(fixes).getByText(copy.fix.balance('$0', '$5.000'))).toBeInTheDocument()
+    await userEvent.type(within(fixes).getByLabelText(copy.amountForm.reason), 'matrícula')
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.submit('$50.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      copy.amountForm.done('septiembre', '$45.000', '$50.000') + copy.form.remainder('$5.000'),
     )
-    await userEvent.type(within(form).getByLabelText(copy.adjustForm.amount), '5000')
-    await userEvent.type(within(form).getByLabelText(copy.adjustForm.note), 'matrícula')
-    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit(false, '$5.000') }))
-
-    expect(await screen.findByRole('status')).toHaveTextContent(copy.adjustForm.done(false, '$5.000'))
     expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([
       { membership_id: 'm-felipe', billing_period_id: 'p-sep', amount_clp: -5000, note: 'matrícula' },
     ])
   })
 
-  it('asks for an amount and a reason before adjusting', async () => {
+  it('asks for a new amount and a reason before changing it', async () => {
     const calls = stubApi()
     renderAt(PATH)
-    const card = await money()
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
-    await userEvent.click(screen.getByRole('button', { name: copy.adjustForm.submit(true, '$0') }))
-
-    const alerts = await screen.findAllByRole('alert')
-    expect(alerts.map((a) => a.textContent)).toEqual([copy.adjustForm.amountNeeded, copy.adjustForm.noteNeeded])
+    // The amount it already is.
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.submit('$45.000') }))
+    expect((await within(fixes).findAllByRole('alert')).map((a) => a.textContent)).toEqual([
+      copy.amountForm.sameAmount,
+      copy.amountForm.reasonNeeded,
+    ])
+    await userEvent.clear(within(fixes).getByLabelText(copy.amountForm.amount))
+    expect(within(fixes).getAllByRole('alert').map((a) => a.textContent)).toEqual([
+      copy.amountForm.amountNeeded,
+      copy.amountForm.reasonNeeded,
+    ])
     expect(calls.filter((c) => c.method === 'POST')).toEqual([])
   })
 
-  it('says so when an adjustment in the member\'s favour exceeds what is owed', async () => {
-    stubApi({ adjustment: { status: 409, body: { detail: 'the adjustment exceeds what the period owes' } } })
+  it('refuses a charge lower than what came in already, saying to give it back first (#279)', async () => {
+    const calls = stubApi({
+      ledger: {
+        ...LEDGER,
+        balance_clp: 25000,
+        periods: [{ ...LEDGER.periods[0]!, outstanding_clp: 25000 }, LEDGER.periods[1]!],
+      },
+    })
     renderAt(PATH)
-    const card = await money()
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
-    await userEvent.type(screen.getByLabelText(copy.adjustForm.amount), '50000')
-    await userEvent.type(screen.getByLabelText(copy.adjustForm.note), 'beca')
-    await userEvent.click(screen.getByRole('button', { name: copy.adjustForm.submit(true, '$50.000') }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(copy.adjustForm.refused.exceeds)
+    const amount = within(fixes).getByLabelText(copy.amountForm.amount)
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '10000')
+    expect(within(fixes).getByRole('alert')).toHaveTextContent(copy.amountForm.paidMore('$20.000'))
+    // Nothing below zero is shown.
+    expect(within(fixes).getByText(copy.fix.owed('octubre', '$25.000', '$0'))).toBeInTheDocument()
+    await userEvent.type(within(fixes).getByLabelText(copy.amountForm.reason), 'beca')
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.submit('$10.000') }))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
   })
 
-  it('voids a charge made by mistake, with its reason (#256)', async () => {
+  it('says so when the API refuses the change as more than is owed', async () => {
+    stubApi({ adjustment: { status: 409, body: { detail: 'the adjustment exceeds what the period owes' } } })
+    renderAt(PATH)
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+
+    const amount = within(fixes).getByLabelText(copy.amountForm.amount)
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '0')
+    await userEvent.type(within(fixes).getByLabelText(copy.amountForm.reason), 'beca')
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.submit('$0') }))
+
+    expect(await within(fixes).findByRole('alert')).toHaveTextContent(copy.amountForm.refused.exceeds)
+  })
+
+  it('voids a charge made by mistake from its line, with its reason (#256)', async () => {
     const calls = stubApi({
       extra: (path, method) =>
         path === '/api/ledger/voids' && method === 'POST'
@@ -668,14 +763,12 @@ describe('Ficha de alumno', () => {
           : undefined,
     })
     renderAt(PATH)
-    const card = await money()
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.voidCharge }))
-    const form = screen.getByRole('form', { name: copy.voidForm.title })
-    // Only what still owes: September is paid.
-    expect(within(form).getAllByRole('option').map((o) => o.textContent)).toEqual([
-      copy.voidForm.periodOption('octubre', '$45.000'),
-    ])
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidCharge }))
+    const form = within(fixes).getByRole('form', { name: copy.voidForm.title })
+    expect(within(form).getByText(copy.fix.owed('octubre', '$45.000', '$0'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.fix.balance('$45.000', '$0'))).toBeInTheDocument()
     await userEvent.click(within(form).getByRole('button', { name: copy.voidForm.submit('$45.000') }))
     expect(await within(form).findByRole('alert')).toHaveTextContent(copy.voidForm.reasonNeeded)
     await userEvent.type(within(form).getByLabelText(copy.voidForm.reason), ' alumno de prueba ')
@@ -699,13 +792,13 @@ describe('Ficha de alumno', () => {
           : undefined,
     })
     renderAt(PATH)
-    const card = await money()
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.voidCharge }))
-    await userEvent.type(screen.getByLabelText(copy.voidForm.reason), 'error')
-    await userEvent.click(screen.getByRole('button', { name: copy.voidForm.submit('$45.000') }))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidCharge }))
+    await userEvent.type(within(fixes).getByLabelText(copy.voidForm.reason), 'error')
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.voidForm.submit('$45.000') }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(copy.voidRefused.paid('$20.000'))
+    expect(await within(fixes).findByRole('alert')).toHaveTextContent(copy.voidRefused.paid('$20.000'))
   })
 
   // Staging (#271): a lapsed plan and the one assigned after it, started the same day.
@@ -715,8 +808,9 @@ describe('Ficha de alumno', () => {
     ...LEDGER,
     open_periods: [NOVEMBER],
     owed_clp: 25000,
+    balance_clp: 25000,
     entries: [],
-    periods: [{ id: 'p-old', period_start: '2026-11-01', period_end: '2026-11-30', outstanding_clp: 25000, voided_clp: 0, void_id: null }],
+    periods: [{ id: 'p-old', period_start: '2026-11-01', period_end: '2026-11-30', outstanding_clp: 25000, voided_clp: 0, void_id: null, charged_clp: 25000 }],
     refundable_payments: [],
   }
 
@@ -732,9 +826,11 @@ describe('Ficha de alumno', () => {
     expect(within(debt).getByText(copy.earlierDebtLine('Mensual antiguo', copy.pendingMonth('noviembre')))).toBeInTheDocument()
   })
 
-  it("voids a lapsed plan's charge from the ficha, each charge saying its plan (#271)", async () => {
+  it("voids a lapsed plan's charge from its line under Deuda anterior, which names its plan (#271)", async () => {
     const calls = stubApi({
       memberships: [MONTHLY, LAPSED],
+      // Nothing to void on the plan shown: the lapsed plan's charge is still there.
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [] },
       extra: (path, method) => {
         if (path === '/api/ledger/memberships/m-old') return { body: LAPSED_LEDGER }
         if (path === '/api/ledger/voids' && method === 'POST') {
@@ -744,20 +840,18 @@ describe('Ficha de alumno', () => {
       },
     })
     renderAt(PATH)
-    const card = await money()
-    await screen.findByRole('region', { name: copy.earlierDebt })
+    const debt = await screen.findByRole('region', { name: copy.earlierDebt })
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.voidCharge }))
-    const form = screen.getByRole('form', { name: copy.voidForm.title })
-    expect(within(form).getAllByRole('option').map((o) => o.textContent)).toEqual([
-      `Mensual adultos · Activo · ${copy.voidForm.periodOption('octubre', '$45.000')}`,
-      `Mensual antiguo · Caducado · ${copy.voidForm.periodOption('noviembre', '$25.000')}`,
-    ])
-    await userEvent.selectOptions(within(form).getByLabelText(copy.voidForm.period), 'p-old')
-    await userEvent.type(within(form).getByLabelText(copy.voidForm.reason), 'duplicado')
-    await userEvent.click(within(form).getByRole('button', { name: copy.voidForm.submit('$25.000') }))
+    const line = await within(debt).findByRole('button', { name: /^Cargo noviembre/ })
+    expect(line).toHaveTextContent(`Mensual antiguo · Caducado · ${copy.ledger.unpaid}`)
+    await userEvent.click(line)
+    const fixes = within(debt).getByRole('group', { name: copy.fix.charge('noviembre', 'Mensual antiguo · Caducado') })
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidCharge }))
+    expect(within(fixes).getByText(copy.fix.balance('$25.000', '$0'))).toBeInTheDocument()
+    await userEvent.type(within(fixes).getByLabelText(copy.voidForm.reason), 'duplicado')
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.voidForm.submit('$25.000') }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent(copy.voidForm.done('noviembre', '$25.000'))
+    expect(await within(debt).findByRole('status')).toHaveTextContent(copy.voidForm.done('noviembre', '$25.000'))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       {
         method: 'POST',
@@ -767,29 +861,75 @@ describe('Ficha de alumno', () => {
     ])
   })
 
-  it("names the lapsed plan on its charge, though it is the only one to void (#271)", async () => {
-    stubApi({
-      memberships: [MONTHLY, LAPSED],
-      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [] },
-      extra: (path) => (path === '/api/ledger/memberships/m-old' ? { body: LAPSED_LEDGER } : undefined),
+  const VOIDED_OCT = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000, void_id: 'v-oct', charged_clp: 0 }
+  const VOIDED_ENTRIES = [
+    entry({
+      id: 'void-oct',
+      kind: 'adjustment',
+      voids: true,
+      purpose: 'void',
+      billing_period_id: 'p-oct',
+      period_start: '2026-10-30',
+      note: 'duplicado',
+      created_at: '2026-11-02T12:00:00Z',
+    }),
+    entry({
+      id: 'c-oct',
+      kind: 'charge',
+      billing_period_id: 'p-oct',
+      period_start: '2026-10-30',
+      voided: { reason: 'duplicado', by_name: 'Ana', at: '2026-11-02T12:00:00Z' },
+    }),
+  ]
+  const VOIDED_LEDGER: MembershipLedger = {
+    ...LEDGER,
+    open_periods: [],
+    owed_clp: 0,
+    balance_clp: 0,
+    entries: VOIDED_ENTRIES,
+    periods: [VOIDED_OCT],
+    refundable_payments: [],
+  }
+
+  it('restores a charge voided by mistake from its line, saying what it owes again (#278)', async () => {
+    const calls = stubApi({
+      ledger: VOIDED_LEDGER,
+      extra: (path, method) =>
+        path === '/api/ledger/restores' && method === 'POST'
+          ? { status: 201, body: { period: { outstanding_clp: 45000, closed: false } } }
+          : undefined,
     })
     renderAt(PATH)
-    const card = await money()
-    await screen.findByRole('region', { name: copy.earlierDebt })
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.voidCharge }))
-    const form = screen.getByRole('form', { name: copy.voidForm.title })
-    expect(within(form).getAllByRole('option').map((o) => o.textContent)).toEqual([
-      `Mensual antiguo · Caducado · ${copy.voidForm.periodOption('noviembre', '$25.000')}`,
+    // Voided, it can only be restored.
+    expect(within(fixes).getByRole('button', { name: copy.fix.restoreCharge, pressed: true })).toBeInTheDocument()
+    expect(within(fixes).queryByRole('button', { name: copy.fix.changeAmount })).not.toBeInTheDocument()
+    const form = within(fixes).getByRole('form', { name: copy.restoreForm.title })
+    expect(within(form).getByText(copy.fix.owed('octubre', '$0', '$45.000'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.fix.balance('$0', '$45.000'))).toBeInTheDocument()
+    // A reason is required.
+    await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.submit }))
+    expect(within(form).getByText(copy.restoreForm.reasonNeeded)).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.restoreForm.reason), 'se anuló el cargo equivocado')
+    await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.restoreForm.done('octubre', '$45.000'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/ledger/restores', body: { void_id: 'v-oct', reason: 'se anuló el cargo equivocado' } },
     ])
   })
 
-  it('restores a charge voided by mistake, on this plan or a lapsed one (#278)', async () => {
-    const voided = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000, void_id: 'v-oct' }
-    const lapsed = { ...LAPSED_LEDGER, periods: [{ ...LAPSED_LEDGER.periods[0]!, outstanding_clp: 0, voided_clp: 25000, void_id: 'v-old' }] }
+  it("restores a lapsed plan's voided charge from its line under Otros planes (#278)", async () => {
+    const lapsed: MembershipLedger = {
+      ...LAPSED_LEDGER,
+      open_periods: [],
+      owed_clp: 0,
+      balance_clp: 0,
+      periods: [{ ...LAPSED_LEDGER.periods[0]!, outstanding_clp: 0, voided_clp: 25000, void_id: 'v-old', charged_clp: 0 }],
+    }
     const calls = stubApi({
       memberships: [MONTHLY, LAPSED],
-      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [voided] },
       extra: (path, method) => {
         if (path === '/api/ledger/memberships/m-old') return { body: lapsed }
         if (path === '/api/ledger/restores' && method === 'POST') {
@@ -799,60 +939,50 @@ describe('Ficha de alumno', () => {
       },
     })
     renderAt(PATH)
-    const card = await money()
-    await screen.findByRole('region', { name: copy.earlierDebt })
+    // Nothing owed there, so not "Deuda anterior".
+    const others = await screen.findByRole('region', { name: copy.fix.otherPlans })
+    expect(screen.queryByRole('region', { name: copy.earlierDebt })).not.toBeInTheDocument()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.restoreCharge }))
-    const form = screen.getByRole('form', { name: copy.restoreForm.title })
-    expect(within(form).getAllByRole('option').map((o) => o.textContent)).toEqual([
-      `Mensual adultos · Activo · ${copy.restoreForm.periodOption('octubre', '$45.000')}`,
-      `Mensual antiguo · Caducado · ${copy.restoreForm.periodOption('noviembre', '$25.000')}`,
-    ])
-    expect(within(form).getByText(copy.restoreForm.owed('octubre', '$0', '$45.000'))).toBeInTheDocument()
-    await userEvent.selectOptions(within(form).getByLabelText(copy.restoreForm.period), 'p-old')
-    // A reason is required.
-    await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.submit }))
-    expect(within(form).getByText(copy.restoreForm.reasonNeeded)).toBeInTheDocument()
-    await userEvent.type(within(form).getByLabelText(copy.restoreForm.reason), 'se anuló el cargo equivocado')
-    await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.submit }))
+    const line = within(others).getByRole('button', { name: /^Cargo noviembre/ })
+    expect(line).toHaveTextContent(`Mensual antiguo · Caducado · ${copy.fix.voided('$25.000')}`)
+    await userEvent.click(line)
+    const fixes = within(others).getByRole('group', { name: copy.fix.charge('noviembre', 'Mensual antiguo · Caducado') })
+    expect(within(fixes).getByText(copy.fix.owed('noviembre', '$0', '$25.000'))).toBeInTheDocument()
+    await userEvent.type(within(fixes).getByLabelText(copy.restoreForm.reason), 'se anuló el cargo equivocado')
+    await userEvent.click(within(within(fixes).getByRole('form')).getByRole('button', { name: copy.restoreForm.submit }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent(copy.restoreForm.done('noviembre', '$25.000'))
+    expect(await within(others).findByRole('status')).toHaveTextContent(copy.restoreForm.done('noviembre', '$25.000'))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       { method: 'POST', path: '/api/ledger/restores', body: { void_id: 'v-old', reason: 'se anuló el cargo equivocado' } },
     ])
   })
 
   it('says why a restore was refused (#278)', async () => {
-    const voided = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000, void_id: 'v-oct' }
     stubApi({
-      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [voided] },
+      ledger: VOIDED_LEDGER,
       extra: (path, method) =>
         path === '/api/ledger/restores' && method === 'POST'
           ? { status: 409, body: { detail: { code: 'restored', message: 'the void was restored already' } } }
           : undefined,
     })
     renderAt(PATH)
-    const card = await money()
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.restoreCharge }))
-    const form = screen.getByRole('form', { name: copy.restoreForm.title })
-    await userEvent.type(within(form).getByLabelText(copy.restoreForm.reason), 'error')
-    await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.submit }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(copy.restoreRefused.restored)
+    await userEvent.type(within(fixes).getByLabelText(copy.restoreForm.reason), 'error')
+    await userEvent.click(within(within(fixes).getByRole('form')).getByRole('button', { name: copy.restoreForm.submit }))
+    expect(await within(fixes).findByRole('alert')).toHaveTextContent(copy.restoreRefused.restored)
   })
 
-  it('offers no restore with no void standing, nor on a plan voided by mistake (#278)', async () => {
-    const voided = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000, void_id: 'v-oct' }
+  it('offers no fix on the charges of a plan voided by mistake (#278)', async () => {
     stubApi({
       memberships: [{ ...MONTHLY, status: 'cancelled', voided_at: '2026-11-08T12:00:00Z', void_reason: 'prueba' }],
-      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [voided] },
+      ledger: VOIDED_LEDGER,
     })
     renderAt(PATH)
-    const card = await money()
-    await within(card).findByText(copy.voidedBadge)
-    expect(within(card).queryByRole('button', { name: copy.restoreCharge })).not.toBeInTheDocument()
-    // The Ajuste form no longer offers a Recargo to put it back.
-    expect(within(card).queryByText(/un recargo de/)).not.toBeInTheDocument()
+    await within(await money()).findByText(copy.voidedBadge)
+    const ledger = await libro()
+    expect(within(ledger).getByText(copy.ledger.charge('octubre'))).toBeInTheDocument()
+    expect(within(ledger).queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('reads a restored charge as owed, saying it was voided and restored (#278)', async () => {
@@ -897,7 +1027,7 @@ describe('Ficha de alumno', () => {
     expect(within(ledger).getByText(copy.ledger.restore('octubre'))).toBeInTheDocument()
   })
 
-  it('voids a plan started by mistake (#256)', async () => {
+  it('voids a plan started by mistake, under "Corregir plan" (#256, #279)', async () => {
     const calls = stubApi({
       extra: (path, method) =>
         path === '/api/memberships/m-felipe/void' && method === 'POST'
@@ -907,9 +1037,15 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.voidPlan }))
-    const form = screen.getByRole('form', { name: copy.voidPlanForm.title })
+    const fix = await within(card).findByRole('button', { name: copy.fix.plan })
+    await userEvent.click(fix)
+    expect(fix).toHaveAttribute('aria-expanded', 'true')
+    const choices = within(card).getByRole('group', { name: copy.fix.plan })
+    await userEvent.click(within(choices).getByRole('button', { name: copy.voidPlan }))
+    const form = within(card).getByRole('form', { name: copy.voidPlanForm.title })
     expect(within(form).getByText(copy.voidPlanForm.intro)).toBeInTheDocument()
+    // Its unpaid October goes.
+    expect(within(form).getByText(copy.fix.balance('$45.000', '$0'))).toBeInTheDocument()
     await userEvent.type(within(form).getByLabelText(copy.voidPlanForm.reason), 'prueba')
     await userEvent.click(within(form).getByRole('button', { name: copy.voidPlanForm.submit }))
 
@@ -917,6 +1053,22 @@ describe('Ficha de alumno', () => {
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       { method: 'POST', path: '/api/memberships/m-felipe/void', body: { reason: 'prueba' } },
     ])
+  })
+
+  it('opens Cobros\' wizard for the member from "Corregir plan" › "Cobro extra" (#279)', async () => {
+    stubApi()
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.fix.plan }))
+    const choices = within(card).getByRole('group', { name: copy.fix.plan })
+    expect(within(choices).getByRole('link', { name: copy.fix.extraCharge })).toHaveAttribute(
+      'href',
+      '/admin/pagos/cobros/nuevo?person=felipe',
+    )
+    // Closed again by the same button.
+    await userEvent.click(within(card).getByRole('button', { name: copy.fix.plan }))
+    expect(within(card).queryByRole('group', { name: copy.fix.plan })).not.toBeInTheDocument()
   })
 
   it('shows a voided charge struck through with why, who and when, and the void beside it (#256)', async () => {
@@ -946,7 +1098,7 @@ describe('Ficha de alumno', () => {
             voided: { reason: 'alumno de prueba', by_name: 'Martín', at: '2026-11-08T12:00:00Z' },
           }),
         ],
-        periods: [{ id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 0, void_id: null }],
+        periods: [{ id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 0, void_id: null, charged_clp: 45000 }],
       },
     })
     renderAt(PATH)
@@ -958,16 +1110,20 @@ describe('Ficha de alumno', () => {
     expect(within(ledger).getByText(copy.ledger.void('octubre'))).toBeInTheDocument()
     const card = await money()
     expect(within(card).getByText(copy.voidedBadge)).toBeInTheDocument()
-    // Nothing left to void.
-    expect(within(card).queryByRole('button', { name: copy.voidCharge })).not.toBeInTheDocument()
-    expect(within(card).queryByRole('button', { name: copy.voidPlan })).not.toBeInTheDocument()
+    // Nothing left to void: no line to fix, and "Corregir plan" offers only a cobro extra.
+    expect(within(ledger).queryByRole('button')).not.toBeInTheDocument()
+    await userEvent.click(within(card).getByRole('button', { name: copy.fix.plan }))
+    const choices = within(card).getByRole('group', { name: copy.fix.plan })
+    expect(within(choices).queryByRole('button', { name: copy.voidPlan })).not.toBeInTheDocument()
+    expect(within(choices).getByRole('link', { name: copy.fix.extraCharge })).toBeInTheDocument()
   })
 
-  it('offers no void to a coach (#256)', async () => {
+  it('shows a coach no Libro and nothing to fix (#256, #279)', async () => {
     stubApi({ role: 'coach' })
     renderAt(PATH)
     expect(await screen.findByRole('heading', { name: FELIPE.name })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: copy.voidCharge })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: copy.ledger.title })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.fix.plan })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: copy.voidPlan })).not.toBeInTheDocument()
   })
 
@@ -998,6 +1154,30 @@ describe('Ficha de alumno', () => {
         method: 'POST',
         path: '/api/ledger/refunds',
         body: { payment_id: 'pay-sep', amount_clp: 15000, method: 'transfer', note: 'se lesionó' },
+      },
+    ])
+  })
+
+  it('refunds a payment from its Libro line, saying what it opens again (#279)', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+
+    expect(within(fixes).getByRole('button', { name: copy.fix.refund })).toHaveAttribute('aria-pressed', 'true')
+    const form = within(fixes).getByRole('form', { name: copy.refundForm.title })
+    const amount = within(form).getByLabelText(copy.refundForm.amount)
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '15000')
+    expect(within(form).getByText(copy.fix.owed('septiembre', '$0', '$15.000'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.fix.balance('$45.000', '$60.000'))).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: copy.refundForm.submit('$15.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.refundForm.done('$15.000'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/ledger/refunds',
+        body: { payment_id: 'pay-sep', amount_clp: 15000, method: 'transfer' },
       },
     ])
   })
@@ -1451,7 +1631,7 @@ describe('Ficha de alumno', () => {
 
     const ledger = await screen.findByRole('region', { name: copy.ledger.title })
     expect(within(ledger).getAllByRole('listitem')).toHaveLength(4)
-    expect(within(ledger).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(ledger).queryByRole('button', { name: /^Ver todo el libro/ })).not.toBeInTheDocument()
   })
 
   it('lists the corrections under the Libro: what, period, before → after, reason, who, when (#277)', async () => {
@@ -2427,7 +2607,7 @@ describe('the plan from the ficha (#249)', () => {
     await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
 
     const debt = await screen.findByRole('region', { name: copy.earlierDebt })
-    expect(within(debt).getByText('$45.000')).toBeInTheDocument()
+    expect(within(debt).getByText('$45.000', { selector: '.member__amount' })).toBeInTheDocument()
     expect(within(debt).getByText(copy.earlierDebtLine('Mensual adultos', copy.pendingMonth('octubre')))).toBeInTheDocument()
     expect(within(await money()).getByText(/^Semestral/)).toBeInTheDocument()
   })

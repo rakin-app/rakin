@@ -447,6 +447,7 @@ const CAMILA_LEDGER: MembershipLedger = {
   periods: [],
   refundable_payments: [],
   paid_through: null,
+  balance_clp: 0,
 }
 
 describe('Alumnos: "Pagar"', () => {

@@ -1,6 +1,6 @@
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getRouteApi } from '@tanstack/react-router'
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import { getRouteApi, Link } from '@tanstack/react-router'
+import { useId, useState, type FormEvent, type ReactElement, type ReactNode } from 'react'
 import { useGrades } from '../api/activities'
 import { personAttendanceQuery } from '../api/attendance'
 import { personTagHoursQuery, type Stretch } from '../api/classTags'
@@ -62,9 +62,10 @@ import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
+import { Chip } from '../components/Chip'
 import { BackLink } from '../components/BackLink'
 import { Input, Select } from '../components/Field'
-import { ChevronLeftIcon, WhatsAppIcon } from '../components/icons'
+import { ChevronLeftIcon, ChevronRightIcon, WhatsAppIcon } from '../components/icons'
 import { Grid, PageContainer } from '../components/Layout'
 import { MemberMatTime } from '../components/MatTime'
 import { TagHoursCard } from '../components/TagHours'
@@ -92,8 +93,9 @@ const route = getRouteApi('/admin/alumnos/$personId')
 /**
  * "Ficha de alumno": who the member is and their rank, the plan they are on and how it
  * stands, their graduación and family, and, for whoever reads the ledger, what they
- * owe, their ledger with its freezes, "Registrar pago", "Congelar" (#26), "Ajuste"
- * and "Devolver" (#38), and "Cambiar plan"; with no plan running, "Asignar plan", and
+ * owe, their ledger with its freezes, "Registrar pago", "Congelar" (#26), "Devolver"
+ * (#38), "Cambiar plan" and "Corregir plan"; each Libro line with something to fix opens
+ * its fixes under it (#279); with no plan running, "Asignar plan", and
  * what an earlier plan still owes as "Deuda anterior" (#249). A freeze the member asked
  * for from their page waits on the plan card, with "Aprobar" and "Rechazar" (#270).
  * A coach sees the member, their plan and rank, whether it is frozen, and promotes
@@ -177,7 +179,6 @@ export function MemberDetail() {
             <Standing
               personId={personId}
               membership={membership}
-              memberships={memberships.data}
               money={money}
               earlier={money ? <EarlierDebt memberships={memberships.data} shown={membership} /> : null}
               assign={<AssignPlan person={person.data} membership={membership} role={role.data} done={assigned} setDone={setAssigned} />}
@@ -289,20 +290,17 @@ export function whatsappUrl(person: Pick<Person, 'phone' | 'no_whatsapp'>): stri
 function Standing({
   personId,
   membership,
-  memberships,
   money,
   earlier,
   assign,
 }: {
   personId: string
   membership: Membership
-  memberships: readonly Membership[]
   money: boolean
   earlier: ReactNode
   assign: ReactNode
 }) {
   const ledger = useQuery({ ...membershipLedgerQuery(membership.id), enabled: money })
-  const others = useOtherLedgers(memberships, membership, money)
   const data = money ? ledger.data : undefined
   // The header's WhatsApp reads the same list. Longest overdue first: the email is about
   // the oldest period this plan owes (#260).
@@ -339,11 +337,11 @@ function Standing({
             {copy.ledgerError}
           </p>
         )}
-        {data && <Actions membership={membership} ledger={data} others={others} />}
+        {data && <Actions personId={personId} membership={membership} ledger={data} />}
         {assign}
       </section>
       {earlier}
-      {data && <Ledger ledger={data} />}
+      {data && <Ledger membership={membership} ledger={data} />}
       {money && <Corrections personId={personId} />}
     </>
   )
@@ -374,14 +372,31 @@ function PlanFreezeRequest({ membershipId }: { membershipId: string }) {
 /**
  * "Deuda anterior": what the member's other memberships still owe, a lapsed plan's
  * unpaid charges once "Asignar plan" started a new one (#249). The card shows one
- * membership; the debt stays in view here, as #206 keeps it on Hoy and in Pagos.
+ * membership; the debt stays in view here, as #206 keeps it on Hoy and in Pagos. Under
+ * it, each of those plans' charges that owes or was voided, labelled with its plan
+ * (#271), opens its fixes as a Libro line does (#279); "Otros planes" when only a void
+ * is left to restore.
  */
 function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[]; shown: Membership }) {
-  const owing = useOtherLedgers(memberships, shown, true).filter(({ ledger }) => ledger.owed_clp > 0)
-  if (owing.length === 0) return null
+  const [fixing, setFixing] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+  const others = useOtherLedgers(memberships, shown, true)
+  const owing = others.filter(({ ledger }) => ledger.owed_clp > 0)
+  const charges = others.flatMap(({ membership, ledger }) =>
+    ledger.periods
+      .filter((period) => period.outstanding_clp > 0 || period.void_id)
+      .map((period) => ({ membership, period, balance: ledger.balance_clp }))
+      .filter((charge) => chargeFixes(charge).length > 0),
+  )
+  if (owing.length === 0 && charges.length === 0 && !done) return null
+  const title = owing.length > 0 ? copy.earlierDebt : copy.fix.otherPlans
+  const finish = (message: string) => {
+    setFixing(null)
+    setDone(message)
+  }
   return (
-    <section className="member__card" aria-label={copy.earlierDebt}>
-      <span className="member__eyebrow">{copy.earlierDebt}</span>
+    <section className="member__card" aria-label={title}>
+      <span className="member__eyebrow">{title}</span>
       {owing.map(({ membership, ledger }) => {
         const due = ledger.open_periods.filter((p) => p.due)
         return (
@@ -396,6 +411,45 @@ function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[
           </div>
         )
       })}
+      {done && (
+        <p className="member__done" role="status">
+          {done}
+        </p>
+      )}
+      {charges.length > 0 && (
+        <ul className="member__ledger" aria-label={title}>
+          {charges.map((charge) => {
+            const { period } = charge
+            const [first, ...rest] = chargeFixes(charge)
+            const voided = period.void_id !== null
+            return (
+              <Line
+                key={period.id}
+                className={`member__entry member__entry--${voided ? 'muted member__entry--voided' : 'owed'}`}
+                title={copy.ledger.charge(monthName(period.period_start))}
+                detail={`${planOf(charge.membership)} · ${voided ? copy.fix.voided(clp(period.voided_clp)) : copy.ledger.unpaid}`}
+                amount={clp(voided ? period.voided_clp : period.outstanding_clp)}
+                fix={{
+                  open: fixing === period.id,
+                  toggle: () => {
+                    setDone(null)
+                    setFixing(fixing === period.id ? null : period.id)
+                  },
+                  panel: first && (
+                    <ChargeFixes
+                      charge={charge}
+                      fixes={[first, ...rest]}
+                      plans
+                      onCancel={() => setFixing(null)}
+                      onDone={finish}
+                    />
+                  ),
+                }}
+              />
+            )
+          })}
+        </ul>
+      )}
     </section>
   )
 }
@@ -412,21 +466,24 @@ function useOtherLedgers(memberships: readonly Membership[], shown: Membership, 
   })
 }
 
-/** A period of one of the member's plans: what "Anular cargo" and "Ajuste" go to. */
-type Charge = { membership: Membership; period: LedgerPeriod }
+/** A period of one of the member's plans, with that plan's balance: what a charge
+ * line's fixes go to (#279). */
+type Charge = { membership: Membership; period: LedgerPeriod; balance: number }
 
-/** `line`, "noviembre · $25.000", with its plan and status ahead when `plans` (#271):
- * "Mensual · Caducado · noviembre · $25.000". */
-function chargeLabel(charge: Charge, line: string, plans: boolean): string {
-  if (!plans) return line
-  const { plan_name, status } = charge.membership
-  return `${plan_name} · ${t.admin.students.status[status]} · ${line}`
+type ChargeFix = 'changeAmount' | 'voidCharge' | 'restoreCharge'
+
+/** What can be done to `charge`, as a Libro line offers it (#279): a charge voided stands
+ * restored, one owing is voided, and any is changed. Nothing on a plan voided by mistake,
+ * which is assigned again. */
+function chargeFixes({ membership, period }: Charge): ChargeFix[] {
+  if (membership.voided_at) return []
+  if (period.void_id) return ['restoreCharge']
+  return period.outstanding_clp > 0 ? ['changeAmount', 'voidCharge'] : ['changeAmount']
 }
 
-/** Whether any of `charges` is another plan's than the card's, `shown`: then each says
- * which plan it is, under a card about another (#271). */
-function ofPlans(charges: readonly Charge[], shown: Membership): boolean {
-  return charges.some((c) => c.membership.id !== shown.id)
+/** "Mensual · Caducado": which plan another plan's charge is on, as #271 labels it. */
+function planOf(membership: Membership): string {
+  return `${membership.plan_name} · ${t.admin.students.status[membership.status]}`
 }
 
 function planLine(membership: Membership): string {
@@ -471,42 +528,24 @@ function Owed({ ledger }: { ledger: MembershipLedger }) {
 
 type Open =
   | 'payment'
-  | 'adjustment'
   | 'refund'
   | 'freeze'
   | 'editFreeze'
   | 'endFreeze'
   | 'changePlan'
-  | 'voidCharge'
-  | 'restoreCharge'
+  | 'fixPlan'
   | 'voidPlan'
   | 'reactivate'
   | null
 
-/** The periods that still owe, oldest first, then the paid ones, newest first: an
- * adjustment in the member's favour goes to the first, one owed to either. */
-function adjustable(ledger: MembershipLedger): LedgerPeriod[] {
-  const owing = ledger.periods.filter((p) => p.outstanding_clp > 0).reverse()
-  return [...owing, ...ledger.periods.filter((p) => p.outstanding_clp === 0)]
+/** What the plan's periods still owe: what "Anular plan" voids. */
+function unpaid(ledger: MembershipLedger): number {
+  return ledger.periods.reduce((sum, p) => sum + p.outstanding_clp, 0)
 }
 
-function Actions({ membership, ledger, others }: { membership: Membership; ledger: MembershipLedger; others: Held[] }) {
+function Actions({ personId, membership, ledger }: { personId: string; membership: Membership; ledger: MembershipLedger }) {
   const periods = ledger.open_periods
-  const of = (m: Membership) => (period: LedgerPeriod): Charge => ({ membership: m, period })
-  const known = adjustable(ledger).map(of(membership))
-  // A charge voided by mistake, on this plan or another of the member's (#271), comes back
-  // with "Restaurar cargo" (#278); never one of a plan voided by mistake, which is assigned again.
-  const restorable = [{ membership, ledger }, ...others]
-    .filter((o) => !o.membership.voided_at)
-    .flatMap((o) => o.ledger.periods.filter((p) => p.void_id).map(of(o.membership)))
   const payments = ledger.refundable_payments
-  // Oldest first, as a payment settles them: every period that still owes, on each of the
-  // member's plans, a lapsed one's too (#271).
-  const voidable = [{ membership, ledger }, ...others].flatMap((o) =>
-    adjustable(o.ledger)
-      .filter((p) => p.outstanding_clp > 0)
-      .map(of(o.membership)),
-  )
   const freeze = membership.freeze
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -517,6 +556,8 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
     membership.status === 'lapsed' &&
     !membership.voided_at &&
     (membership.plan_kind === 'monthly' || membership.plan_kind === 'prepaid')
+  // "Corregir plan" stays open while one of its fixes is.
+  const fixingPlan = open === 'fixPlan' || open === 'voidPlan'
   const toggle = (form: Open) => {
     setDone(null)
     setOffer(false)
@@ -533,20 +574,10 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
       <Button variant="primary" fullWidth aria-expanded={open === 'payment'} onClick={() => toggle('payment')}>
         {copy.record}
       </Button>
-      {/* What cannot be done here is not offered, rather than greyed out with no reason. */}
-      {(known.length > 0 || restorable.length > 0 || payments.length > 0 || (!freeze && membership.status === 'active')) && (
+      {/* What cannot be done here is not offered, rather than greyed out with no reason. A
+          charge's fixes are on its Libro line (#279); a refund is there and here. */}
+      {(payments.length > 0 || (!freeze && membership.status === 'active')) && (
         <div className="member__actions member__actions--wrap">
-          {known.length > 0 && (
-            <Button aria-expanded={open === 'adjustment'} onClick={() => toggle('adjustment')}>
-              {copy.adjust}
-            </Button>
-          )}
-          {/* In the Ajuste area for now; "One Corregir per Libro line" moves it under the charge. */}
-          {restorable.length > 0 && (
-            <Button aria-expanded={open === 'restoreCharge'} onClick={() => toggle('restoreCharge')}>
-              {copy.restoreCharge}
-            </Button>
-          )}
           {payments.length > 0 && (
             <Button aria-expanded={open === 'refund'} onClick={() => toggle('refund')}>
               {copy.refund}
@@ -586,19 +617,22 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
           </Button>
         </div>
       )}
-      {/* Fixing a mistake (#256): a charge, or the whole plan, voided with a reason. */}
-      {(voidable.length > 0 || !membership.voided_at) && (
-        <div className="member__actions">
-          {voidable.length > 0 && (
-            <Button aria-expanded={open === 'voidCharge'} onClick={() => toggle('voidCharge')}>
-              {copy.voidCharge}
-            </Button>
-          )}
+      {/* Fixing the plan as a whole (#279): voided with a reason (#256), or a cobro extra. */}
+      <div className="member__actions">
+        <Button aria-expanded={fixingPlan} onClick={() => toggle(fixingPlan ? open : 'fixPlan')}>
+          {copy.fix.plan}
+        </Button>
+      </div>
+      {fixingPlan && (
+        <div className="member__fix-choices" role="group" aria-label={copy.fix.plan}>
           {!membership.voided_at && (
-            <Button variant="danger" aria-expanded={open === 'voidPlan'} onClick={() => toggle('voidPlan')}>
+            <Chip pressed={open === 'voidPlan'} onClick={() => setOpen(open === 'voidPlan' ? 'fixPlan' : 'voidPlan')}>
               {copy.voidPlan}
-            </Button>
+            </Chip>
           )}
+          <Link to="/admin/pagos/cobros/nuevo" search={{ person: personId }} className="chip">
+            {copy.fix.extraCharge}
+          </Link>
         </div>
       )}
       {done && (
@@ -631,19 +665,8 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
             }
           />
         ))}
-      {open === 'adjustment' && known.length > 0 && (
-        <AdjustmentForm charges={known} plans={ofPlans(known, membership)} onCancel={() => setOpen(null)} onDone={finish} />
-      )}
-      {open === 'restoreCharge' && restorable.length > 0 && (
-        <RestoreChargeForm
-          charges={restorable}
-          plans={ofPlans(restorable, membership)}
-          onCancel={() => setOpen(null)}
-          onDone={finish}
-        />
-      )}
       {open === 'refund' && payments.length > 0 && (
-        <RefundForm payments={payments} onCancel={() => setOpen(null)} onDone={finish} />
+        <RefundForm payments={payments} ledger={ledger} onCancel={() => setOpen(null)} onDone={finish} />
       )}
       {open === 'freeze' && membership.status === 'active' && !freeze && (
         <FreezeForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
@@ -657,16 +680,91 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
       {open === 'changePlan' && changesPlan(membership) && (
         <ChangePlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
       )}
-      {open === 'voidCharge' && voidable.length > 0 && (
-        <VoidChargeForm charges={voidable} plans={ofPlans(voidable, membership)} onCancel={() => setOpen(null)} onDone={finish} />
-      )}
       {open === 'voidPlan' && !membership.voided_at && (
-        <VoidPlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
+        <VoidPlanForm
+          membership={membership}
+          balance={ledger.balance_clp}
+          owed={unpaid(ledger)}
+          onCancel={() => setOpen('fixPlan')}
+          onDone={finish}
+        />
       )}
       {open === 'reactivate' && reactivates && (
         <ReactivateForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
       )}
     </>
+  )
+}
+
+/** A line's fixes, opened in place under it (#279): one chip per fix that applies to it,
+ * then the chosen one's form, the first to begin with. */
+function Fixes<F extends string>({
+  title,
+  fixes,
+  label,
+  children,
+}: {
+  title: string
+  fixes: readonly [F, ...F[]]
+  label: (fix: F) => string
+  children: (fix: F) => ReactNode
+}) {
+  const [picked, setPicked] = useState<F>(fixes[0])
+  const fix = fixes.includes(picked) ? picked : fixes[0]
+  return (
+    <div className="member__fix" role="group" aria-label={title}>
+      <span className="member__fix-title">{title}</span>
+      <div className="member__fix-choices">
+        {fixes.map((f) => (
+          <Chip key={f} pressed={f === fix} onClick={() => setPicked(f)}>
+            {label(f)}
+          </Chip>
+        ))}
+      </div>
+      {children(fix)}
+    </div>
+  )
+}
+
+/** What a fix does as the admin types (#279): the period's debt and the plan's balance,
+ * before → after. With no period, the balance alone. */
+function FixPreview({ month, owed, balance }: { month?: string; owed?: [number, number]; balance: [number, number] }) {
+  return (
+    <div className="member__fix-preview">
+      {month && owed && <span className="member__detail">{copy.fix.owed(month, clp(owed[0]), clp(owed[1]))}</span>}
+      <span className="member__detail">{copy.fix.balance(clp(balance[0]), clp(balance[1]))}</span>
+    </div>
+  )
+}
+
+/** A charge line's fixes (#279): "Cambiar monto", "Anular cargo" or "Restaurar cargo",
+ * whichever apply; `plans` names the plan, for another plan's charge (#271). */
+function ChargeFixes({
+  charge,
+  fixes,
+  plans,
+  onCancel,
+  onDone,
+}: {
+  charge: Charge
+  fixes: readonly [ChargeFix, ...ChargeFix[]]
+  plans: boolean
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const month = monthName(charge.period.period_start)
+  return (
+    <Fixes title={copy.fix.charge(month, plans ? planOf(charge.membership) : null)} fixes={fixes} label={(f) => copy.fix[f]}>
+      {(fix) =>
+        fix === 'changeAmount' ? (
+          <ChangeAmountForm charge={charge} onCancel={onCancel} onDone={onDone} />
+        ) : fix === 'voidCharge' ? (
+          <VoidChargeForm charge={charge} onCancel={onCancel} onDone={onDone} />
+        ) : (
+          <RestoreChargeForm charge={charge} onCancel={onCancel} onDone={onDone} />
+        )
+      }
+    </Fixes>
   )
 }
 
@@ -685,31 +783,28 @@ function restoreRefusal(error: Error): string {
 
 /** "Restaurar cargo" (#278): a charge voided by mistake is owed again, as if never voided. */
 function RestoreChargeForm({
-  charges,
-  plans,
+  charge,
   onCancel,
   onDone,
 }: {
-  charges: Charge[]
-  plans: boolean
+  charge: Charge
   onCancel: () => void
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
   const form = copy.restoreForm
-  const ids = { period: useId(), reason: useId() }
-  const [periodId, setPeriodId] = useState(charges[0]?.period.id ?? '')
-  const charge = charges.find((c) => c.period.id === periodId) ?? charges[0]
-  const period = charge?.period
+  const id = useId()
+  const { period, balance } = charge
+  const month = monthName(period.period_start)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
   const reasonOk = reason.trim() !== ''
 
   const restored = useSubmit({
     offline: 'refuse',
-    mutationFn: () => recordRestore({ void_id: period!.void_id!, reason: reason.trim() }),
+    mutationFn: () => recordRestore({ void_id: period.void_id!, reason: reason.trim() }),
     onSuccess: async () => {
-      onDone(form.done(monthName(period!.period_start), clp(period!.voided_clp)))
+      onDone(form.done(month, clp(period.voided_clp)))
       await queryClient.invalidateQueries({ queryKey: ['ledger'] })
     },
   })
@@ -717,33 +812,17 @@ function RestoreChargeForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (reasonOk && period?.void_id) restored.mutate()
+    if (reasonOk && period.void_id) restored.mutate()
   }
 
   return (
     <form className="member__form" aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
-      <label htmlFor={ids.period} className="member__label">
-        {form.period}
-      </label>
-      <Select id={ids.period} value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
-        {charges.map((c) => (
-          <option key={c.period.id} value={c.period.id}>
-            {chargeLabel(c, form.periodOption(monthName(c.period.period_start), clp(c.period.voided_clp)), plans)}
-          </option>
-        ))}
-      </Select>
-      {period && (
-        <p className="member__detail">
-          {form.owed(monthName(period.period_start), clp(period.outstanding_clp), clp(period.outstanding_clp + period.voided_clp))}
-        </p>
-      )}
-
-      <label htmlFor={ids.reason} className="member__label">
+      <label htmlFor={id} className="member__label">
         {form.reason}
       </label>
       <Input
-        id={ids.reason}
+        id={id}
         type="text"
         maxLength={500}
         value={reason}
@@ -755,6 +834,11 @@ function RestoreChargeForm({
           {form.reasonNeeded}
         </p>
       )}
+      <FixPreview
+        month={month}
+        owed={[period.outstanding_clp, period.outstanding_clp + period.voided_clp]}
+        balance={[balance, balance + period.voided_clp]}
+      />
       {restored.error && (
         <p className="member__error" role="alert">
           {restoreRefusal(restored.error)}
@@ -775,32 +859,28 @@ function RestoreChargeForm({
 
 /** "Anular cargo" (#256): a charge made by mistake, owed nowhere once voided. */
 function VoidChargeForm({
-  charges,
-  plans,
+  charge,
   onCancel,
   onDone,
 }: {
-  charges: Charge[]
-  plans: boolean
+  charge: Charge
   onCancel: () => void
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
   const form = copy.voidForm
-  const ids = { period: useId(), reason: useId() }
-  const [periodId, setPeriodId] = useState(charges[0]?.period.id ?? '')
-  const charge = charges.find((c) => c.period.id === periodId) ?? charges[0]
-  const period = charge?.period
+  const id = useId()
+  const { membership, period, balance } = charge
+  const month = monthName(period.period_start)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
   const reasonOk = reason.trim() !== ''
 
   const voided = useSubmit({
     offline: 'refuse',
-    mutationFn: () =>
-      recordVoid({ membership_id: charge!.membership.id, billing_period_id: period!.id, reason: reason.trim() }),
+    mutationFn: () => recordVoid({ membership_id: membership.id, billing_period_id: period.id, reason: reason.trim() }),
     onSuccess: async () => {
-      onDone(form.done(monthName(period!.period_start), clp(period!.outstanding_clp)))
+      onDone(form.done(month, clp(period.outstanding_clp)))
       await queryClient.invalidateQueries({ queryKey: ['ledger'] })
     },
   })
@@ -808,28 +888,17 @@ function VoidChargeForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (reasonOk && period) voided.mutate()
+    if (reasonOk) voided.mutate()
   }
 
   return (
     <form className="member__form" aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
-      <label htmlFor={ids.period} className="member__label">
-        {form.period}
-      </label>
-      <Select id={ids.period} value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
-        {charges.map((c) => (
-          <option key={c.period.id} value={c.period.id}>
-            {chargeLabel(c, form.periodOption(monthName(c.period.period_start), clp(c.period.outstanding_clp)), plans)}
-          </option>
-        ))}
-      </Select>
-
-      <label htmlFor={ids.reason} className="member__label">
+      <label htmlFor={id} className="member__label">
         {form.reason}
       </label>
       <Input
-        id={ids.reason}
+        id={id}
         type="text"
         maxLength={500}
         value={reason}
@@ -841,6 +910,7 @@ function VoidChargeForm({
           {form.reasonNeeded}
         </p>
       )}
+      <FixPreview month={month} owed={[period.outstanding_clp, 0]} balance={[balance, balance - period.outstanding_clp]} />
       {voided.error && (
         <p className="member__error" role="alert">
           {voidRefusal(voided.error)}
@@ -852,7 +922,7 @@ function VoidChargeForm({
           {form.cancel}
         </Button>
         <Button type="submit" variant="danger" disabled={voided.isPending} busy={voided.isPending}>
-          {voided.isPending ? form.working : form.submit(clp(period?.outstanding_clp ?? 0))}
+          {voided.isPending ? form.working : form.submit(clp(period.outstanding_clp))}
         </Button>
       </div>
     </form>
@@ -864,10 +934,15 @@ function VoidChargeForm({
  * what a real plan owed. */
 function VoidPlanForm({
   membership,
+  balance,
+  owed,
   onCancel,
   onDone,
 }: {
   membership: Membership
+  // The plan's balance, and what its periods still owe, which the void takes off.
+  balance: number
+  owed: number
   onCancel: () => void
   onDone: (message: string) => void
 }) {
@@ -916,6 +991,7 @@ function VoidPlanForm({
           {form.reasonNeeded}
         </p>
       )}
+      <FixPreview balance={[balance, balance - owed]} />
       {voided.error && (
         <p className="member__error" role="alert">
           {voidRefusal(voided.error)}
@@ -1964,49 +2040,49 @@ function refusal(error: Error): string {
   return typeof code === 'string' && code in refused ? refused[code as keyof typeof refused] : refused.failed
 }
 
-type Direction = 'favor' | 'owed'
-const DIRECTIONS: readonly Direction[] = ['favor', 'owed']
-
-function AdjustmentForm({
-  charges,
-  plans,
+/** "Cambiar monto" (#279): what the charge comes to now, the difference written as an
+ * adjustment with its reason, in the member's favour when lower. No lower than what has
+ * come in already: that is given back first. */
+function ChangeAmountForm({
+  charge,
   onCancel,
   onDone,
 }: {
-  charges: Charge[]
-  plans: boolean
+  charge: Charge
   onCancel: () => void
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
-  const form = copy.adjustForm
-  const ids = { direction: useId(), period: useId(), amount: useId(), note: useId() }
-  const owing = charges.filter((c) => c.period.outstanding_clp > 0)
-  const [direction, setDirection] = useState<Direction>(owing.length > 0 ? 'favor' : 'owed')
-  // In the member's favour, only a period that still owes: no more than that settles.
-  const choices = direction === 'favor' ? owing : charges
-  const [periodId, setPeriodId] = useState(choices[0]?.period.id ?? '')
-  const charge = choices.find((c) => c.period.id === periodId) ?? choices[0]
-  const period = charge?.period
-  const [amount, setAmount] = useState('')
-  const [note, setNote] = useState('')
+  const form = copy.amountForm
+  const ids = { amount: useId(), reason: useId() }
+  const { membership, period, balance } = charge
+  const month = monthName(period.period_start)
+  const current = period.charged_clp
+  const [amount, setAmount] = useState(String(current))
+  const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
-  const value = Number(amount.replace(/\D/g, ''))
-  const signed = direction === 'favor' ? value : -value
-  const noteOk = note.trim() !== ''
+  const digits = amount.replace(/\D/g, '')
+  const value = Number(digits)
+  // Owed on top when higher, taken off when lower.
+  const change = value - current
+  const owedAfter = period.outstanding_clp + change
+  const paid = current - period.outstanding_clp
+  const amountOk = digits !== '' && change !== 0 && owedAfter >= 0
+  const reasonOk = reason.trim() !== ''
 
   const adjust = useSubmit({
     offline: 'refuse',
     mutationFn: () =>
       recordAdjustment({
-        membership_id: charge!.membership.id,
-        billing_period_id: period!.id,
-        amount_clp: signed,
-        note: note.trim(),
+        membership_id: membership.id,
+        billing_period_id: period.id,
+        // Signed as an adjustment is: positive in the member's favour.
+        amount_clp: -change,
+        note: reason.trim(),
       }),
     onSuccess: async (result: RecordedAdjustment) => {
       const rest = result.period.closed ? '' : copy.form.remainder(clp(result.period.outstanding_clp))
-      onDone(form.done(direction === 'favor', clp(value)) + rest)
+      onDone(form.done(month, clp(current), clp(value)) + rest)
       await queryClient.invalidateQueries({ queryKey: ['ledger'] })
     },
   })
@@ -2014,45 +2090,15 @@ function AdjustmentForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (value && noteOk && period) adjust.mutate()
+    if (amountOk && reasonOk) adjust.mutate()
   }
+
+  const amountError =
+    digits === '' ? (checked ? form.amountNeeded : null) : owedAfter < 0 ? form.paidMore(clp(paid)) : change === 0 && checked ? form.sameAmount : null
 
   return (
     <form className="member__form" aria-label={form.title} onSubmit={submit}>
-      <label htmlFor={ids.direction} className="member__label">
-        {form.direction}
-      </label>
-      <Select
-        id={ids.direction}
-        value={direction}
-        onChange={(e) => setDirection(e.target.value as Direction)}
-      >
-        {DIRECTIONS.map((d) => (
-          <option key={d} value={d} disabled={d === 'favor' && owing.length === 0}>
-            {form.directions[d]}
-          </option>
-        ))}
-      </Select>
-
-      <label htmlFor={ids.period} className="member__label">
-        {form.period}
-      </label>
-      <Select id={ids.period} value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
-        {choices.map((c) => (
-          <option key={c.period.id} value={c.period.id}>
-            {chargeLabel(
-              c,
-              form.periodOption(
-                monthName(c.period.period_start),
-                clp(c.period.outstanding_clp),
-                c.period.voided_clp > 0 ? clp(c.period.voided_clp) : null,
-              ),
-              plans,
-            )}
-          </option>
-        ))}
-      </Select>
-
+      <p className="member__detail">{form.current(clp(current))}</p>
       <label htmlFor={ids.amount} className="member__label">
         {form.amount}
       </label>
@@ -2060,31 +2106,36 @@ function AdjustmentForm({
         id={ids.amount}
         inputMode="numeric"
         value={amount}
-        aria-invalid={checked && !value}
+        aria-invalid={amountError !== null}
         onChange={(e) => setAmount(e.target.value)}
       />
-      {checked && !value && (
+      {amountError && (
         <p className="member__error" role="alert">
-          {form.amountNeeded}
+          {amountError}
         </p>
       )}
 
-      <label htmlFor={ids.note} className="member__label">
-        {form.note}
+      <label htmlFor={ids.reason} className="member__label">
+        {form.reason}
       </label>
       <Input
-        id={ids.note}
+        id={ids.reason}
         type="text"
         maxLength={500}
-        value={note}
-        aria-invalid={checked && !noteOk}
-        onChange={(e) => setNote(e.target.value)}
+        value={reason}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
       />
-      {checked && !noteOk && (
+      {checked && !reasonOk && (
         <p className="member__error" role="alert">
-          {form.noteNeeded}
+          {form.reasonNeeded}
         </p>
       )}
+      <FixPreview
+        month={month}
+        owed={[period.outstanding_clp, Math.max(owedAfter, 0)]}
+        balance={[balance, owedAfter < 0 ? balance : balance + change]}
+      />
 
       {adjust.error && (
         <p className="member__error" role="alert">
@@ -2097,19 +2148,23 @@ function AdjustmentForm({
           {form.cancel}
         </Button>
         <Button type="submit" variant="primary" disabled={adjust.isPending} busy={adjust.isPending}>
-          {adjust.isPending ? form.working : form.submit(direction === 'favor', clp(value))}
+          {adjust.isPending ? form.working : form.submit(clp(value))}
         </Button>
       </div>
     </form>
   )
 }
 
+/** "Devolver", from the plan card, or "Reembolsar" from a payment's Libro line (#279). */
 function RefundForm({
   payments,
+  ledger,
   onCancel,
   onDone,
 }: {
   payments: RefundablePayment[]
+  // The plan's: its periods, for what each payment's owes, and its balance.
+  ledger: MembershipLedger
   onCancel: () => void
   onDone: (message: string) => void
 }) {
@@ -2123,6 +2178,8 @@ function RefundForm({
   const [note, setNote] = useState('')
   const [amountNeeded, setAmountNeeded] = useState(false)
   const value = Number(amount.replace(/\D/g, ''))
+  // A refund opens its payment's period again for what it gives back.
+  const owed = ledger.periods.find((p) => p.id === payment.billing_period_id)?.outstanding_clp ?? 0
 
   const refund = useSubmit({
     offline: 'refuse',
@@ -2211,6 +2268,11 @@ function RefundForm({
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
+      <FixPreview
+        month={monthName(payment.period_start)}
+        owed={[owed, owed + value]}
+        balance={[ledger.balance_clp, ledger.balance_clp + value]}
+      />
 
       {refund.error && (
         <p className="member__error" role="alert">
@@ -2247,30 +2309,79 @@ function timeline(ledger: MembershipLedger): Line[] {
 // The ledger shows its latest lines; the rest open in place.
 const LEDGER_SHOWN = 4
 
-function Ledger({ ledger }: { ledger: MembershipLedger }) {
+/** The Libro: each line with something to fix a button that opens its fixes under it
+ * (#279), one line at a time. */
+function Ledger({ membership, ledger }: { membership: Membership; ledger: MembershipLedger }) {
   const [all, setAll] = useState(false)
+  const [fixing, setFixing] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
   const open = new Map(ledger.open_periods.map((p) => [p.id, p.paid_clp]))
+  const periods = new Map(ledger.periods.map((p) => [p.id, p]))
+  const refundable = new Map(ledger.refundable_payments.map((p) => [p.id, p]))
   const lines = timeline(ledger)
   const shown = all ? lines : lines.slice(0, LEDGER_SHOWN)
+  const finish = (message: string) => {
+    setFixing(null)
+    setDone(message)
+  }
+  const cancel = () => setFixing(null)
+
+  /** The line's fixes, if it has any: a charge's, or a payment's refund. */
+  const fixesOf = (entry: TimelineEntry): ReactElement | null => {
+    if (entry.kind === 'charge') {
+      const period = entry.billing_period_id === null ? undefined : periods.get(entry.billing_period_id)
+      if (!period) return null
+      const charge = { membership, period, balance: ledger.balance_clp }
+      const [first, ...rest] = chargeFixes(charge)
+      if (!first) return null
+      return <ChargeFixes charge={charge} fixes={[first, ...rest]} plans={false} onCancel={cancel} onDone={finish} />
+    }
+    const payment = entry.kind === 'payment' ? refundable.get(entry.id) : undefined
+    if (!payment) return null
+    return (
+      <Fixes title={copy.fix.payment(monthName(payment.period_start))} fixes={['refund']} label={() => copy.fix.refund}>
+        {() => <RefundForm payments={[payment]} ledger={ledger} onCancel={cancel} onDone={finish} />}
+      </Fixes>
+    )
+  }
+
   return (
     <section className="member__section" aria-label={copy.ledger.title}>
       <h2 className="member__section-title">{copy.ledger.title}</h2>
+      {done && (
+        <p className="member__done" role="status">
+          {done}
+        </p>
+      )}
       {lines.length === 0 ? (
         <p className="member__note">{copy.ledger.empty}</p>
       ) : (
         <ul className="member__ledger">
-          {shown.map((line) =>
-            line.kind === 'entry' ? (
+          {shown.map((line) => {
+            if (line.kind === 'freeze') {
+              return <FreezeEntry key={`${line.line.freeze_id}-${line.line.edge}`} line={line.line} />
+            }
+            const { entry } = line
+            const fixes = fixesOf(entry)
+            return (
               <Entry
-                key={line.entry.id}
-                entry={line.entry}
-                unpaid={line.entry.billing_period_id !== null && open.has(line.entry.billing_period_id)}
-                paidClp={line.entry.billing_period_id === null ? 0 : (open.get(line.entry.billing_period_id) ?? 0)}
+                key={entry.id}
+                entry={entry}
+                unpaid={entry.billing_period_id !== null && open.has(entry.billing_period_id)}
+                paidClp={entry.billing_period_id === null ? 0 : (open.get(entry.billing_period_id) ?? 0)}
+                fix={
+                  fixes && {
+                    open: fixing === entry.id,
+                    toggle: () => {
+                      setDone(null)
+                      setFixing(fixing === entry.id ? null : entry.id)
+                    },
+                    panel: fixes,
+                  }
+                }
               />
-            ) : (
-              <FreezeEntry key={`${line.line.freeze_id}-${line.line.edge}`} line={line.line} />
-            ),
-          )}
+            )
+          })}
         </ul>
       )}
       {lines.length > LEDGER_SHOWN && (
@@ -2279,6 +2390,48 @@ function Ledger({ ledger }: { ledger: MembershipLedger }) {
         </Button>
       )}
     </section>
+  )
+}
+
+/** A line that opens its fixes in place: whether it is open, and what it opens. */
+type LineFix = { open: boolean; toggle: () => void; panel: ReactNode }
+
+/** A Libro line: a dot in its tone, what it is, its detail and amount. With `fix`, a
+ * button with "›" that opens its fixes under it (#279); with none, nothing to press. */
+function Line({
+  className,
+  title,
+  detail,
+  amount,
+  fix,
+}: {
+  className: string
+  title: string
+  detail: string
+  amount: string
+  fix?: LineFix | null
+}) {
+  const content = (
+    <>
+      <span className="member__dot" aria-hidden="true" />
+      <span className="member__entry-text">
+        <span className="member__entry-title">{title}</span>
+        <span className="member__detail">{detail}</span>
+      </span>
+      <span className="member__entry-amount">{amount}</span>
+    </>
+  )
+  if (!fix) return <li className={className}>{content}</li>
+  return (
+    <li className={`${className} member__entry--fixable`}>
+      <button type="button" className="member__entry-button" aria-expanded={fix.open} onClick={fix.toggle}>
+        {content}
+        <span className="member__entry-chevron" aria-hidden="true">
+          <ChevronRightIcon />
+        </span>
+      </button>
+      {fix.open && fix.panel}
+    </li>
   )
 }
 
@@ -2380,19 +2533,28 @@ function FreezeEntry({ line }: { line: FreezeLine }) {
   )
 }
 
-function Entry({ entry, unpaid, paidClp }: { entry: TimelineEntry; unpaid: boolean; paidClp: number }) {
+function Entry({
+  entry,
+  unpaid,
+  paidClp,
+  fix,
+}: {
+  entry: TimelineEntry
+  unpaid: boolean
+  paidClp: number
+  fix?: LineFix | null
+}) {
   const { title, detail, tone } = describeEntry(entry, unpaid, paidClp)
   // A voided charge stays, struck through and labelled, not hidden (#256).
   const struck = entry.voided ? ' member__entry--voided' : ''
   return (
-    <li className={`member__entry member__entry--${tone}${struck}`}>
-      <span className="member__dot" aria-hidden="true" />
-      <div className="member__entry-text">
-        <span className="member__entry-title">{title}</span>
-        <span className="member__detail">{detail}</span>
-      </div>
-      <span className="member__entry-amount">{entryAmount(entry)}</span>
-    </li>
+    <Line
+      className={`member__entry member__entry--${tone}${struck}`}
+      title={title}
+      detail={detail}
+      amount={entryAmount(entry)}
+      fix={fix}
+    />
   )
 }
 

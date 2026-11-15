@@ -775,20 +775,32 @@ export const es = {
       editFreeze: 'Editar congelación',
       endFreeze: 'Terminar congelación',
       callOffFreeze: 'Anular congelación',
-      adjust: 'Ajuste',
       refund: 'Devolver',
-      // Fixing a mistake (#256): a charge, or a whole plan, voided with a reason.
-      voidCharge: 'Anular cargo',
-      // A charge voided by mistake, owed again (#278).
-      restoreCharge: 'Restaurar cargo',
+      // Fixing a mistake (#256): the whole plan voided with a reason, under "Corregir plan" (#279).
       voidPlan: 'Anular plan',
+      // One "Corregir" per Libro line, offering only that line's fixes, and "Corregir plan" (#279).
+      fix: {
+        charge: (month: string, plan: string | null) => `Corregir cargo ${month}${plan ? ` · ${plan}` : ''}`,
+        payment: (month: string) => `Corregir pago ${month}`,
+        changeAmount: 'Cambiar monto',
+        voidCharge: 'Anular cargo',
+        // A charge voided by mistake, owed again (#278).
+        restoreCharge: 'Restaurar cargo',
+        refund: 'Reembolsar',
+        plan: 'Corregir plan',
+        extraCharge: 'Cobro extra',
+        // What the fix does as it is typed: the period's debt and the plan's balance.
+        owed: (month: string, before: string, after: string) => `Debe en ${month}: ${before} → ${after}`,
+        balance: (before: string, after: string) => `Saldo: ${before} → ${after}`,
+        // Another plan's charge, under "Deuda anterior": its plan, and whether it is owed or voided.
+        otherPlans: 'Otros planes',
+        voided: (amount: string) => `anulado ${amount}`,
+      },
       voidedBadge: 'Anulado',
       voidedBanner: (reason: string, day: string) => `Plan anulado el ${day}: ${reason}`,
       voidForm: {
         title: 'Anular cargo',
         intro: 'Para un cargo hecho por error: deja de deberse en todas partes. Queda en el libro, tachado y con el motivo.',
-        period: 'Cargo',
-        periodOption: (month: string, amount: string) => `${month} · ${amount}`,
         reason: 'Motivo',
         reasonNeeded: 'Escribe por qué se anula.',
         submit: (amount: string) => `Anular cargo de ${amount}`,
@@ -799,10 +811,6 @@ export const es = {
       restoreForm: {
         title: 'Restaurar cargo',
         intro: 'Para un cargo anulado por error: vuelve a deberse, como si no se hubiera anulado. Quedan en el libro la anulación y la restauración.',
-        period: 'Cargo anulado',
-        periodOption: (month: string, amount: string) => `${month} · anulado ${amount}`,
-        // What the period owes, before → after.
-        owed: (month: string, before: string, after: string) => `Debe en ${month}: ${before} → ${after}`,
         reason: 'Motivo',
         reasonNeeded: 'Escribe por qué se restaura.',
         submit: 'Restaurar cargo',
@@ -876,26 +884,24 @@ export const es = {
       },
       // After a payment settles the last debt of a lapsed plan: offered, never done on its own.
       reactivateOffer: '¿Volvió? El plan sigue caducado hasta que lo reactives.',
-      adjustForm: {
-        title: 'Ajuste',
-        direction: 'Tipo de ajuste',
-        directions: { favor: 'Descuento: resta de lo que debe', owed: 'Recargo: suma a lo que debe' },
-        period: 'Período',
-        // A charge voided says so, and how much (#271).
-        periodOption: (month: string, amount: string, voided: string | null) =>
-          voided ? `${month} · ${amount} por pagar · anulado ${voided}` : `${month} · ${amount} por pagar`,
-        amount: 'Monto (CLP)',
-        note: 'Motivo',
-        // No sign on the button: the word says which way it goes (#210).
-        submit: (favor: boolean, amount: string) => `Registrar ${favor ? 'descuento' : 'recargo'} de ${amount}`,
+      // "Cambiar monto" (#279): the charge's new amount, the difference written as an adjustment.
+      amountForm: {
+        title: 'Cambiar monto',
+        current: (amount: string) => `Monto actual: ${amount}`,
+        amount: 'Monto nuevo (CLP)',
+        reason: 'Motivo',
+        submit: (amount: string) => `Cambiar a ${amount}`,
         cancel: 'Cancelar',
         working: 'Guardando…',
-        amountNeeded: 'Escribe el monto del ajuste.',
-        noteNeeded: 'Escribe el motivo del ajuste.',
-        done: (favor: boolean, amount: string) => `${favor ? 'Descuento' : 'Recargo'} registrado: ${amount}.`,
+        amountNeeded: 'Escribe el monto nuevo.',
+        sameAmount: 'Es el monto actual: escribe otro.',
+        // Lower than what came in already: the rest is given back first.
+        paidMore: (paid: string) => `Ya se pagaron ${paid}: para cobrar menos, devuelve primero lo que sobra con «Devolver».`,
+        reasonNeeded: 'Escribe por qué cambia el monto.',
+        done: (month: string, before: string, after: string) => `Monto de ${month} cambiado: ${before} → ${after}.`,
         refused: {
-          exceeds: 'Un ajuste a favor no puede superar lo que queda por pagar del período.',
-          failed: 'No pudimos registrar el ajuste. Inténtalo de nuevo.',
+          exceeds: 'Ya se pagó más que eso: devuelve primero lo que sobra con «Devolver».',
+          failed: 'No pudimos cambiar el monto. Inténtalo de nuevo.',
         },
       },
       refundForm: {
