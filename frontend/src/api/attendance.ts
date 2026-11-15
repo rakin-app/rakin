@@ -41,7 +41,9 @@ export type AttendanceChange = { mark: string[]; unmark: string[] }
 /** A person's classes here (backend `PersonAttendance`). */
 export type PersonAttendance = {
   last_30_days: number
+  // `before_rakin` included: the classes they had before the gym's Rakin (#293).
   total: number
+  before_rakin: number
   // Since their current rank's day; null until they have a rank.
   since_promotion: number | null
 }

@@ -94,7 +94,8 @@ def missing_rut(record: str) -> str:
 SELECT_PERSON = f"""
     SELECT gp.person_id AS id, gp.phone, gp.no_whatsapp, {missing_phone("gp")} AS missing_phone,
            {missing_rut("gp")} AS missing_rut,
-           gp.name, gp.email, gp.rut, gp.dob, gp.left_on, gp.created_at, gp.updated_at
+           gp.name, gp.email, gp.rut, gp.dob, gp.left_on, gp.member_since, gp.prior_classes,
+           gp.created_at, gp.updated_at
     FROM gym_person gp
     WHERE gp.person_id = :id
 """

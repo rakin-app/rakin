@@ -664,7 +664,12 @@ def test_a_persons_classes_in_30_days_in_all_and_since_their_rank(
     pack = join(client, gym, felipe, plan(client, gym, CREDITS))
     monthly = bill(db, gym, felipe, [])
     today = seeded_today()
-    assert counts(client, gym, felipe) == {"last_30_days": 0, "total": 0, "since_promotion": None}
+    assert counts(client, gym, felipe) == {
+        "last_30_days": 0,
+        "total": 0,
+        "before_rakin": 0,
+        "since_promotion": None,
+    }
 
     for days_ago, membership in ((40, pack), (30, pack), (29, monthly), (10, pack), (0, monthly)):
         changed(
@@ -687,6 +692,7 @@ def test_a_persons_classes_in_30_days_in_all_and_since_their_rank(
     assert counts(client, gym, felipe, coach) == {
         "last_30_days": 3,
         "total": 5,
+        "before_rakin": 0,
         "since_promotion": 1,
     }
     assert client.get(f"/api/people/{SOMEONE}/attendance", headers=as_gym(gym)).status_code == 404

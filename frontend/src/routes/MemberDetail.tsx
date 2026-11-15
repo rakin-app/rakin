@@ -79,6 +79,7 @@ import { usePageTitle } from '../pageTitle'
 import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
 import { PersonExtraLines } from './PersonExtraLines'
+import { PersonHistory } from './PersonHistory'
 import { PersonData } from './PersonData'
 import { AssignPlan, ChangePlanForm, changesPlan } from './PersonPlan'
 import { PersonWelcome } from './PersonWelcome'
@@ -155,8 +156,11 @@ export function MemberDetail() {
   }
 
   const membership = shownMembership(memberships.data)
-  // A member since their first plan here: the current one comes first, not the earliest.
-  const firstStart = memberships.data.map((m) => m.started_on).sort()[0]
+  // A member since the day they first trained here (#293) or their first plan here,
+  // whichever is earlier: the current plan comes first in the list, not the earliest.
+  const firstStart = [person.data.member_since, ...memberships.data.map((m) => m.started_on)]
+    .filter((day): day is string => day !== null)
+    .sort()[0]
   const since = monthYear(firstStart ?? person.data.created_at)
   const rank = graded ? grades.data?.current : undefined
   const money = readsLedger(role.data)
@@ -190,6 +194,7 @@ export function MemberDetail() {
             </>
           )}
           {money && <PersonExtraLines personId={personId} />}
+          {money && <PersonHistory person={person.data} />}
         </div>
         <div className="member__column">
           <Attendance personId={personId} />
@@ -1725,13 +1730,13 @@ function Attendance({ personId }: { personId: string }) {
       </p>
     )
   }
-  const { last_30_days: recent, total } = attendance.data
+  const { last_30_days: recent, total, before_rakin: before } = attendance.data
   return (
     <section className="member__card" aria-label={words.title}>
       <span className="member__eyebrow">{words.title}</span>
       <div className="member__rank">
         <span className="member__rank-label">{recent}</span>
-        <span className="member__detail">{words.detail(recent, total)}</span>
+        <span className="member__detail">{words.detail(recent, total, before)}</span>
       </div>
     </section>
   )

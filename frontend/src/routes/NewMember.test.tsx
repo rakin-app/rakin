@@ -24,6 +24,8 @@ const CREATED: Person = {
   rut: null,
   dob: null,
   left_on: null,
+  member_since: null,
+  prior_classes: 0,
   created_at: '2026-11-10T12:00:00Z',
 }
 

@@ -40,6 +40,8 @@ const FELIPE: Person = {
   rut: null,
   dob: null,
   left_on: null,
+  member_since: null,
+  prior_classes: 0,
   created_at: '2025-01-10T12:00:00Z',
 }
 
@@ -3108,5 +3110,90 @@ describe('Reactivar plan, not on a pack (#284)', () => {
     expect(screen.queryByText(copy.reactivateForm.lastHint(1, 'noviembre', '$45.000'))).not.toBeInTheDocument()
     release()
     expect(await screen.findByText(copy.reactivateForm.lastHint(1, 'noviembre', '$40.000'))).toBeInTheDocument()
+  })
+})
+
+describe('Historial: alumno desde y clases antes de Rakin (#293)', () => {
+  const history = () => screen.findByRole('region', { name: copy.history.title })
+
+  it('reads alumno desde from the day they first trained here, when earlier than their first plan', async () => {
+    stubApi({ person: { body: { ...FELIPE, member_since: '2019-03-05' } }, grading: { current: null, events: [] } })
+    renderAt(PATH)
+
+    expect(await screen.findByText(copy.since('mar 2019'))).toBeInTheDocument()
+  })
+
+  it('keeps the first plan when it is earlier, and the record’s day with neither', async () => {
+    stubApi({ person: { body: { ...FELIPE, member_since: '2025-06-01' } }, grading: { current: null, events: [] } })
+    renderAt(PATH)
+    expect(await screen.findByText(copy.since('mar 2024'))).toBeInTheDocument()
+  })
+
+  it('adds the classes before Rakin to the total, and says how many', async () => {
+    stubApi({ attendance: { body: { last_30_days: 9, total: 504, before_rakin: 320, since_promotion: 62 } } })
+    renderAt(PATH)
+
+    const card = await screen.findByRole('region', { name: copy.attendance.title })
+    expect(within(card).getByText('clases en 30 días · 504 clases (320 antes de Rakin)')).toBeInTheDocument()
+  })
+
+  it('writes the start and the classes from the ficha, in place', async () => {
+    let saved: Person = FELIPE
+    const calls = stubApi({
+      person: undefined,
+      extra: (path, method, body) => {
+        if (path === '/api/people/felipe/history' && method === 'PUT') {
+          saved = { ...FELIPE, ...(body as Partial<Person>) }
+          return { body: saved }
+        }
+        if (path === '/api/people/felipe' && method === 'GET') return { body: saved }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    const card = await history()
+    expect(within(card).getByText(copy.history.empty)).toBeInTheDocument()
+    await userEvent.click(within(card).getByRole('button', { name: copy.history.add }))
+    await userEvent.click(within(card).getByRole('button', { name: copy.history.start }))
+    const form = within(card).getByRole('form', { name: copy.history.form.title })
+    fireEvent.change(within(form).getByLabelText(copy.history.form.since), { target: { value: '2019-03-05' } })
+    const classes = within(form).getByLabelText(copy.history.form.classes)
+    await userEvent.clear(classes)
+    await userEvent.type(classes, '320')
+    await userEvent.click(within(form).getByRole('button', { name: copy.history.form.submit }))
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(copy.history.saved)
+    expect(calls.find((c) => c.path === '/api/people/felipe/history')?.body).toEqual({
+      member_since: '2019-03-05',
+      prior_classes: 320,
+    })
+    expect(await within(card).findByText(copy.history.memberSince('5 mar 2019'))).toBeInTheDocument()
+    expect(within(card).getByText(copy.history.priorClasses(320))).toBeInTheDocument()
+    expect(await screen.findByText(/alumno desde mar 2019/)).toBeInTheDocument()
+  })
+
+  it('refuses a negative count before sending it', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+
+    const card = await history()
+    await userEvent.click(within(card).getByRole('button', { name: copy.history.add }))
+    await userEvent.click(within(card).getByRole('button', { name: copy.history.start }))
+    const form = within(card).getByRole('form', { name: copy.history.form.title })
+    fireEvent.change(within(form).getByLabelText(copy.history.form.classes), { target: { value: '-3' } })
+    await userEvent.click(within(form).getByRole('button', { name: copy.history.form.submit }))
+
+    expect(within(form).getByRole('alert')).toHaveTextContent(copy.history.form.classesNeeded)
+    expect(calls.some((c) => c.path === '/api/people/felipe/history')).toBe(false)
+  })
+
+  it('is not on a coach’s ficha', async () => {
+    stubApi({ role: 'coach' })
+    renderAt(PATH)
+
+    await screen.findByRole('region', { name: copy.attendance.title })
+    expect(screen.queryByRole('region', { name: copy.history.title })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.history.add })).not.toBeInTheDocument()
   })
 })

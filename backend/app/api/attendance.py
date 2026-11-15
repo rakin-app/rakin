@@ -439,4 +439,11 @@ async def person_attendance(
         recent=recent_from(today, zone),
         since=None if promoted is None else start_of_local_day(promoted + timedelta(days=1), zone),
     )
-    return PersonAttendance(last_30_days=recent, total=total, since_promotion=since)
+    # Classes before Rakin count in the total alone: not in the last 30 days, and not
+    # since a promotion Rakin recorded (#293).
+    prior: int = await session.scalar(
+        text("SELECT prior_classes FROM gym_person WHERE person_id = :id"), {"id": person_id}
+    )
+    return PersonAttendance(
+        last_30_days=recent, total=total + prior, before_rakin=prior, since_promotion=since
+    )
