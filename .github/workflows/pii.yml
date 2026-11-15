@@ -1,0 +1,80 @@
+name: pii
+
+# The PII guard (#302, docs/privacy-guard.md): a real member's name, RUT, phone or
+# email must not reach this public repo. The `pr` job scans each PR's diff, title
+# and body, and re-runs when the title or body is edited. The `daily` job scans
+# the issues, PRs and comments touched in the last day and fails its own run, so
+# the owner gets the email; it opens nothing public.
+#
+# Both read the real names from the `PII_DENYLIST` secret. Without it (a fork's
+# PR, or before it is set) the patterns still run and a notice says the list was
+# skipped. Output names where and what kind, never the value.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  schedule:
+    - cron: '17 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pii-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Scan the diff, title and body
+        env:
+          PII_DENYLIST: ${{ secrets.PII_DENYLIST }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          [ -n "$PII_DENYLIST" ] || echo "::notice::PII_DENYLIST is not set: patterns only, no name list."
+          printf '%s\n' "$PR_TITLE" >"$RUNNER_TEMP/pr-title"
+          printf '%s\n' "$PR_BODY" >"$RUNNER_TEMP/pr-body"
+          status=0
+          python3 -I scripts/pii_guard.py diff --range "$BASE...$HEAD" || status=1
+          cd "$RUNNER_TEMP" && python3 -I "$GITHUB_WORKSPACE/scripts/pii_guard.py" scan pr-title pr-body || status=1
+          exit "$status"
+
+  daily:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Scan issues, PRs and comments from the last day
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PII_DENYLIST: ${{ secrets.PII_DENYLIST }}
+          REPO: ${{ github.repository }}
+        run: |
+          [ -n "$PII_DENYLIST" ] || echo "::notice::PII_DENYLIST is not set: patterns only, no name list."
+          # `since` is "updated since", so an edit is scanned as well; 26h overlaps the runs.
+          since=$(date -u -d '26 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          records="$RUNNER_TEMP/records.jsonl"
+          gh api --paginate "repos/$REPO/issues?state=all&since=$since&per_page=100" \
+            --jq '.[] | {label: "#\(.number) title", text: .title}, {label: "#\(.number) body", text: (.body // "")} | tojson' \
+            >"$records"
+          gh api --paginate "repos/$REPO/issues/comments?since=$since&per_page=100" \
+            --jq '.[] | {label: "#\(.issue_url | split("/") | last) comment \(.id)", text: (.body // "")} | tojson' \
+            >>"$records"
+          gh api --paginate "repos/$REPO/pulls/comments?since=$since&per_page=100" \
+            --jq '.[] | {label: "#\(.pull_request_url | split("/") | last) review comment \(.id)", text: (.body // "")} | tojson' \
+            >>"$records"
+          echo "Scanning $(wc -l <"$records") records since $since."
+          python3 -I scripts/pii_guard.py scan --jsonl "$records"
