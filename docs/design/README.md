@@ -110,9 +110,11 @@ importer. Its build tickets are #293 to #300.
 
 [expenses-and-officers.md](expenses-and-officers.md) designs the gym's own expenses
 (rent, power, fees, pay) in their own tables beside billing, a Finanzas page with money
-in, money out and the result, and the titles and permissions that decide who sees them:
-today's owner, admin and coach become titles, and a club adds Presidente, Tesorero and
-Secretario with terms and a history. Its build tickets are #308 to #318.
+in, money out and the result, and who sees them: roles each gym defines from a fixed
+list of permissions (with Academia and Club federado presets), a titular who always
+holds everything, a staged and accepted cambio de mando with an acta de traspaso, and
+the transfer of the account itself. Its build tickets are #308 to #318 and #320 to
+#322.
 
 ## Contrast (WCAG 2.1 AA)
 

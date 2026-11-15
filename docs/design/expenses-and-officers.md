@@ -2,9 +2,10 @@
 
 Spike, November 2026. No product code: this doc decides what a gym's expense is, where
 it is kept so billing never reads it, how money in and money out sit side by side, and,
-because who may see expenses depends on it, how today's three roles become titles
-(presidente, tesorero, secretario) and permissions. The build tickets at the end carry
-it out, in order: permissions first, then expenses.
+because who may see expenses depends on it, how a gym defines its own roles (titles
+and the permissions each carries), how a board hands over to the next one, and how the
+account itself changes hands. The build tickets at the end carry it out, in order:
+permissions first, then the handover, then expenses.
 
 ## For the owner, in short
 
@@ -23,20 +24,37 @@ it out, in order: permissions first, then expenses.
   accountant's export gains a Gastos sheet and a Resumen.
 - **A trip paid for the group** is an expense linked to the cobro extra that recovers
   it, so you see what it cost, what came back and the difference.
-- **Titles and permissions are separate.** A title is what someone is called
-  (Presidente, Tesorera, Coach). Each title carries a set of permissions: see money
-  in, record payments, see expenses, record expenses, manage students, manage the team,
-  take attendance, set up the gym. A person can hold several titles and can do what
-  any of them allows. You, the owner, can always do everything.
-- **Nothing changes for an academy.** Your admins and coaches become the titles
-  "Administrador" and "Coach" with exactly what they can do today. Expenses start
-  visible to you alone (they include what you pay your coaches); tick "Ver gastos" on
-  a title to share them.
-- **A club adds its board in one step**: "Agregar cargos de club" adds Presidente,
-  Tesorero, Secretario, Director and Delegado with sensible permissions you can change.
-  Each appointment has a term (from, to). When the board changes, end the old terms and
-  start the new ones; who held what and when stays in the history.
-- **Students can see the board.** Titles you mark as public show on the student page,
+- **Your gym defines its roles.** A role (cargo) is a name you choose (Presidente,
+  Tesorera, Coach, Encargada de cobranza) and a set of permissions you tick from
+  Rakin's list: see money in, record payments, see expenses, record expenses, manage
+  students, take attendance, set up the gym, manage the team. A person can hold several
+  roles and can do what any of them allows.
+- **Presets are a starting point, not the rules.** When you set up, pick "Academia"
+  (Administrador, Coach) or "Club federado" (Presidente, Tesorero, Secretario, Director,
+  Delegado, Coach), then rename, change or delete any of them, or start from nothing.
+- **You can never lock yourself out.** Whoever holds the account (the person who set
+  Rakin up for the gym and pays for it, the *titular*) always has every permission.
+  Nothing in Equipo can take it away, and there is always exactly one titular.
+- **Nothing changes for a gym that exists today.** Its admins and coaches become the
+  roles "Administrador" and "Coach" with exactly what they can do now. Expenses start
+  visible to the titular alone (they include what you pay your coaches); tick "Ver
+  gastos" on a role to share them.
+- **Cambio de mando is one step, not twenty edits.** When a board's term ends, start a
+  cambio de mando: who takes each seat, from which day. The incoming people accept; on
+  that day the new board gets its access and the old one loses it, with no day where
+  nobody can manage the gym and, unless you choose otherwise, no day where both boards
+  handle the money. If the outgoing side has vanished, the titular can push it through,
+  with a reason, and it is recorded.
+- **The new board starts informed.** On day one it gets an *acta de traspaso*: money
+  in and out during the last term, what is owed, proofs waiting, open cobros extra,
+  recent corrections and the gastos fijos. The outgoing board keeps a record of its
+  term, in figures, with nothing personal about any member.
+- **Handing the account over** (the titular leaves, the club changes treasurer for
+  good) is its own, stricter flow: the incoming titular must accept and sign in again,
+  and the change waits a few days so the outgoing one can stop a mistake.
+- **Everything is on the record**: every role created or changed, every appointment,
+  every cambio de mando and every override, in the gym's audit log.
+- **Students can see the board.** Roles you mark as public show on the student page,
   with a contact only if that officer chooses to share one.
 
 ## What exists today
@@ -51,7 +69,8 @@ it out, in order: permissions first, then expenses.
   `ledger_export.py`).
 - **Staff API** (`app.api.staff`): invite (through `join_gym`), change role, revoke
   (deletes the `staff` row; 0005 ends the person's session here). Owner and admin manage
-  staff, an admin only coaches; the owner's row is not changed here.
+  staff, an admin only coaches; the owner's row is not changed here, so a gym always
+  keeps its owner. There is no way to hand the owner's row to someone else.
 - **RLS by role name.** Every policy that keys off a role repeats
   `s.role IN ('owner', 'admin')` as a subselect on `staff`: `ledger_entry_by_role`
   (0006), `session_delete_by_role` (0033), `charge_group`, `charge_group_member`,
@@ -73,23 +92,63 @@ it out, in order: permissions first, then expenses.
   `proofs/<gym_id>/<person_id>/`.
 - **Audit**: `audit_event` (0044, 0048), readable by owner and admin, insert-only for
   `rakin_app` under a policy per action (`docs/design/billing-corrections.md`).
+- **Sign-in**: an emailed link or a sign-in code (0047), per gym; a fresh code is the
+  only proof Rakin has that the person at the keyboard holds the address.
 - **Jobs**: `app.jobs.daily` runs per gym each night (billing, lapse, overdue).
 
-## Part one: titles and permissions
+## Lessons from an earlier design
+
+The owner has solved board positions, permissions per position and terms of office
+before, in another product. What carried over, in this doc's terms:
+
+- **Never gate on a title's name.** A check that says "the presidente may" breaks the
+  day a gym renames the role or gives two people the seat. Every check here reads a
+  permission; the name is only shown.
+- **Each permission is its own thing.** Two permissions that hold the same people today
+  are still two codes, never one defined as the other, so narrowing one later does not
+  silently narrow the other. A test pins them apart.
+- **A term is a row, never a column.** A "term ends on" field on the person is
+  overwritten by the next term and takes the history with it. Each appointment is its
+  own row; a re-election is a new row; a typo is corrected on the row, with before and
+  after in the audit log, and never changes who held it or which seat.
+- **The row remembers the seat as it was.** A role renamed or deleted later must not
+  rewrite who was "Tesorera" in 2025, so an appointment keeps the role's name at the
+  time beside the link to it.
+- **Terms are half-open.** An appointment's end day is the first day without it, so the
+  successor's term starts on that same day: no gap and no overlap, re-elections
+  included.
+- **Overlap is checked under a lock per person.** "Does this person already hold this
+  seat then?" is a read followed by a write; two requests at once both pass the read.
+  A transaction-scoped advisory lock on the person serialises them, which is cheaper
+  than an exclusion constraint for a handful of writes a year.
+- **Changing a seat's permissions is a permission change**, and is audited as one,
+  with the permissions before and after.
+- **Whoever proposes a change does not confirm it.** The person who starts a handover
+  cannot accept a seat for someone else; acceptance is the incoming person's own act,
+  signed in as themselves.
+- **What members see is its own, minimal answer.** The board shown to students is a
+  separate response with a fixed list of fields, tested for leaking anyone's email,
+  RUT or id, not the staff list with fields removed.
+- **A seat with no term on record is shown, not hidden**, marked "sin fecha", and a
+  term about to end warns the people who must renew it, well before it does.
+
+## Part one: roles, permissions and the cambio de mando
 
 ### 1. The model (question 6)
 
-Three ideas, kept apart:
+Four ideas, kept apart:
 
 | Idea | What it is | Where |
 |---|---|---|
+| **Titular** | The person who holds the account: set Rakin up for the gym, pays for it, always holds everything. Exactly one per gym | `staff.account_holder` |
 | **On the team** | The person is staff here: sees the roster and the schedule, signs in to the admin screens | `staff` row (as today) |
-| **Title** (cargo) | What they are called and shown as: Presidente, Tesorera, Coach. Editable per gym | `gym_title` |
-| **Permission** | What a title lets them do. A fixed list Rakin defines | `gym_title.permissions` |
+| **Role** (cargo) | What they are called and what they may do: a name and a set of permissions. **Defined by the gym** | `gym_title` |
+| **Appointment** (mandato) | A person holding a role from one day to another | `staff_title` |
 
-A person holds **zero or more titles**, each for a **term**; their permissions are the
-**union** of the titles they hold today. The **owner** is a flag on their `staff` row,
-not a title: they hold every permission, always, and nothing in Equipo can take it away.
+A person holds **zero or more appointments**; their permissions are the **union** of
+the roles they hold today. Roles belong to the gym: the titular (and whoever they let)
+creates them, names them, ticks their permissions, marks them public, archives them.
+Rakin defines only the **list of permissions** and the presets (section 2).
 
 The permissions. The issue lists seven; an eighth, "set up the gym", is what
 `ADMIN_ROLES` covers today (plans, prices, schedule, settings, bank details), and
@@ -102,152 +161,309 @@ keeps what a coach does today (footnote ¹ below).
 | `money_write` | Registrar pagos | Record and validate payments, corrections, cobros extra, start, change, freeze or cancel a student's plan. Implies `money_read` | `LEDGER_ROLES` writes |
 | `expenses_read` | Ver gastos | Gastos, Finanzas, the export's Gastos sheet | new |
 | `expenses_write` | Registrar gastos | Record, correct and void expenses; gastos fijos; categories. Implies `expenses_read` | new |
-| `members_manage` | Gestionar alumnos | Add and edit people and their data, join requests, groups, Dar de baja | coach adds, admin the rest |
-| `attendance` | Tomar asistencia | Run a class: attendance, notes, the timer, on any session | coach (own sessions) |
-| `gym_setup` | Configurar gimnasio | Plans and prices, programs, schedule, custom fields, grading, theme, bank details | `ADMIN_ROLES` |
-| `team_manage` | Gestionar equipo | Invite, give and end titles, edit titles (under the rule in section 4) | owner; admin for coaches |
+| `members_manage` | Gestionar alumnos | Add and edit people and their data, join requests, groups, Dar de baja. Implies `members_add` | admin |
+| `members_add` | Agregar alumnos | Add a student without a plan, as a coach can today | coach |
+| `attendance` | Tomar asistencia | Run a class: attendance, notes, the timer, on a session they coach | coach (own sessions) |
+| `gym_setup` | Configurar gimnasio | Plans and prices, programs, schedule, custom fields, grading, theme, bank details; run any session | `ADMIN_ROLES` |
+| `team_manage` | Gestionar equipo | Invite, appoint and end appointments, create and edit roles, start a cambio de mando (under section 4's rule) | owner; admin for coaches |
 
-Two rules keep the list honest:
+Rules that keep the list honest:
 
-- **Implication is stored, not inferred at read time.** A title with `money_write`
+- **Implication is stored, not inferred at read time.** A role with `money_write`
   always has `money_read` too: the API adds it on save and a CHECK refuses one without
   it. So every check is one membership test, at the API and in SQL.
-- **Owner-only stays owner-only.** Deleting a student for good (`OwnerSession`), and the
-  owner's own row, are not a permission any title can hold.
+- **Each code is its own literal** (the lesson above). `money_read` and `expenses_read`
+  hold the same people in a new gym and are never written as one another.
+- **Titular-only stays titular-only.** Deleting a student for good (`OwnerSession`
+  today), transferring the account (section 6) and overriding a stalled cambio de mando
+  (section 5) are not permissions any role can hold.
 
 **Being on the team without permissions** is allowed: a club's Director may be listed
 only to be shown to students. They still read the roster and the schedule, as a coach
-does today. A title meant only for display, held by someone who is not otherwise staff,
-is the same: holding any title makes them staff.
+does today.
 
-### 2. Defaults (question 7)
+### 2. Presets, and today's three roles (question 7)
 
-Every gym gets two titles in the migration, built from its roles:
+A preset is a list of roles a gym can add in one step, then change at will. Nothing
+in the code reads a preset's name or knows which preset a role came from except to
+show "de la plantilla Club federado" in Cargos. Applying a preset twice adds nothing
+twice (by name); applying a second preset adds its roles beside the first's.
 
-| Title | Permissions | Public on the student page |
+**Academia** (what every existing gym gets in the migration):
+
+| Role | Permissions | Public on the student page |
 |---|---|---|
-| Dueño (the flag, not a title) | everything | yes |
-| **Administrador** | `money_read`, `money_write`, `members_manage`, `attendance`, `gym_setup`, `team_manage` | no |
-| **Coach** | `attendance`, `members_add` (footnote ¹) | yes |
+| **Administrador** | `money_read`, `money_write`, `members_manage`, `members_add`, `attendance`, `gym_setup`, `team_manage` | no |
+| **Coach** | `attendance`, `members_add` ¹ | yes |
 
-"Agregar cargos de club" in Equipo adds five more, each editable or removable:
+**Club federado**:
 
-| Title | Permissions | Why |
+| Role | Permissions | Why |
 |---|---|---|
 | **Presidente** | `money_read`, `expenses_read`, `team_manage` | Sees everything and answers for it; changes nothing in money unless also Tesorero |
 | **Tesorero** | `money_read`, `money_write`, `expenses_read`, `expenses_write` | Runs the money in and out |
-| **Secretario** | `members_manage` | The roster, the minutes, the members; no money |
+| **Secretario** | `members_manage`, `members_add` | The roster and the members; no money |
 | **Director** | none | A board seat, shown to members |
 | **Delegado** | `attendance` | Takes a team to a competition, marks who came |
+| **Coach** | `attendance`, `members_add` | As in Academia |
 
-The permission matrix, with the owner:
+The matrix, with the titular:
 
-| | Ver ingresos | Registrar pagos | Ver gastos | Registrar gastos | Gestionar alumnos | Tomar asistencia | Configurar gimnasio | Gestionar equipo |
-|---|---|---|---|---|---|---|---|---|
-| Dueño | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Administrador | ✓ | ✓ | – | – | ✓ | ✓ | ✓ | ✓ |
-| Coach | – | – | – | – | ✓¹ | ✓ | – | – |
-| Presidente | ✓ | – | ✓ | – | – | – | – | ✓ |
-| Tesorero | ✓ | ✓ | ✓ | ✓ | – | – | – | – |
-| Secretario | – | – | – | – | ✓ | – | – | – |
-| Director | – | – | – | – | – | – | – | – |
-| Delegado | – | – | – | – | – | ✓ | – | – |
+| | Ver ingresos | Registrar pagos | Ver gastos | Registrar gastos | Gestionar alumnos | Agregar alumnos | Tomar asistencia | Configurar gimnasio | Gestionar equipo |
+|---|---|---|---|---|---|---|---|---|---|
+| Titular | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Administrador | ✓ | ✓ | – | – | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Coach | – | – | – | – | – | ✓ | ✓ | – | – |
+| Presidente | ✓ | – | ✓ | – | – | – | – | – | ✓ |
+| Tesorero | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
+| Secretario | – | – | – | – | ✓ | ✓ | – | – | – |
+| Director | – | – | – | – | – | – | – | – | – |
+| Delegado | – | – | – | – | – | – | ✓ | – | – |
 
 ¹ Today a coach can add a student without a plan and nothing else of what
-`members_manage` covers. Giving the Coach title the whole of `members_manage` would
-widen what coaches can do, so the migration does not: the Coach title gets `attendance`
-only, plus `members_add`, a ninth code that is the narrow "add a student" a coach has
-today and is shown in Ajustes as "Agregar alumnos". `members_manage` implies it. Ticket
-3 confirms the exact set by walking the 63 `StaffSession` endpoints; if a coach does
-less than this, the title gets less.
+`members_manage` covers, so the Coach role gets `members_add` and not the whole of
+it. #310 confirms the set by walking the 63 `StaffSession` endpoints; if a coach
+does less, the role gets less.
+
+A new gym picks a preset (or none) in its first-run setup; an existing one finds
+"Agregar plantilla" in Cargos.
 
 **How today's three roles map without a gym noticing:**
 
-- `owner` → `staff.owner = true`. No title.
-- `admin` → the Administrador title, term from the `staff` row's `created_at`, open.
-- `coach` → the Coach title, the same.
+- `owner` → `staff.account_holder = true`. No appointment: the titular holds
+  everything by the flag.
+- `admin` → an open appointment to Administrador, from the `staff` row's `created_at`.
+- `coach` → the same, to Coach.
 
-Every endpoint answers as before for each of the three (ticket 1's equivalence test).
-Expenses are new, so no one loses anything by them starting owner-only; an academy
+Every endpoint answers as before for each of the three (#308's equivalence test).
+Expenses are new, so no one loses anything by them starting titular-only; an academy
 whose admin runs the money ticks "Ver gastos" on Administrador. The reason not to
 grant it by default: Sueldos y honorarios is what the gym pays its staff, and an admin
 reading every coach's pay the day the feature ships is the surprise to avoid.
 
 A coach "runs their own session" today and an admin any session. With `attendance`
 the rule stays: a holder of `attendance` runs a session they coach; one with
-`gym_setup` too runs any, as admins do now. A Delegado with `attendance` alone marks
-the sessions they are put on as coach.
+`gym_setup` too runs any.
 
 ### 3. Where it is stored
 
 ```sql
 staff                       -- as today, one row per person and gym: "on the team"
-  + owner boolean NOT NULL DEFAULT false
-    -- UNIQUE (gym_id) WHERE owner: one owner per gym
-  role                      -- kept, then dropped in ticket 6
+  + account_holder boolean NOT NULL DEFAULT false
+    -- UNIQUE (gym_id) WHERE account_holder, DEFERRABLE: one titular, swapped in one
+    -- transaction (section 6); a constraint trigger refuses a gym with none at commit
+  role                      -- kept, then dropped in #313
 
-gym_title
+gym_title                   -- a role, defined by the gym
   id uuid PK, gym_id
-  name text                 -- "Tesorera", unique per gym (lower)
-  permissions text[]        -- CHECK ⊆ the known list; money_write ⇒ money_read, etc.
+  name text                 -- "Tesorera", unique per gym (lower) among unarchived
+  permissions text[]        -- CHECK ⊆ the known list, implications included
   public boolean            -- shown on the student page
-  preset text NULL          -- 'admin' | 'coach' | 'presidente' | … : where it came from
+  preset text NULL          -- which preset added it; shown only
   sort int, archived_at timestamptz NULL
 
-staff_title                 -- an appointment: who held which title, from when to when
+staff_title                 -- an appointment (mandato)
   id uuid PK, gym_id, person_id, title_id
+  title_name text           -- the role's name when appointed: history reads this
   starts_on date NOT NULL
-  ends_on date NULL         -- the last day; NULL is open
-  public_contact text NULL  -- 'email' | 'phone' | NULL: what members may see (section 7)
+  ends_on date NULL         -- the first day without it; NULL is open
+  public_contact text NULL  -- 'email' | 'phone' | NULL (section 9)
+  handover_id uuid NULL     -- the cambio de mando that started or ended it
   created_by, created_at, ended_by NULL, ended_at NULL
-  CHECK (ends_on IS NULL OR ends_on >= starts_on)
+  CHECK (ends_on IS NULL OR ends_on > starts_on)
 ```
 
-An appointment is **current** when `starts_on <= today <= coalesce(ends_on, today)`,
-"today" in the gym's timezone (`gym.timezone`, as `v_monthly_income` uses). A
-`staff_title` row is never deleted while the person is in the gym: ending one sets
-`ends_on`. Forgetting a person (`forget_gym_person`) deletes theirs, as it does every
-other record of them.
+An appointment is **current** when `starts_on <= today < coalesce(ends_on, infinity)`,
+"today" in the gym's timezone (`gym.timezone`, as `v_monthly_income` uses). Writes to
+one person's appointments take `pg_advisory_xact_lock` on the gym and person, then
+refuse a second appointment to the same role that overlaps (409). Nothing deletes an
+appointment while the person is in the gym: ending one sets `ends_on`, and a
+correction (dates, contact) is an update with an audit row; the holder and the role
+are never changed on a row. Forgetting a person (`forget_gym_person`) deletes theirs,
+as it does every other record of them.
+
+A role with appointments, current or past, is **archived**, never deleted: it leaves
+Cargos and every picker, and its history still reads. Editing a role's permissions
+applies to its current holders at once, and writes `title_changed` with the before and
+after.
 
 **The staff row follows the appointments.** Today revoking deletes the `staff` row and
-0005 ends the session. Now: ending a person's last current appointment (by hand, or
-`ends_on` passing) deletes the `staff` row unless they are the owner, and the nightly
-job (`app.jobs.daily`) does it for terms that ran out, so 0005's session end still
-fires. A future appointment (a new board from 1 March) creates the row on its
-`starts_on`, by the same job, so the incoming tesorero is not staff early.
+0005 ends the session. Now: ending a person's last current appointment (by hand, a
+cambio de mando, or `ends_on` arriving) deletes the `staff` row unless they are the
+titular, and the nightly job (`app.jobs.daily`) does it for terms that ran out, so
+0005's session end still fires. A future appointment creates the row on its
+`starts_on`, by the same job (and by the cambio de mando at its moment, section 5), so
+an incoming tesorero is not staff early.
 
-### 4. Who manages it (question 9)
+### 4. Who manages it, and what can never break (question 9)
 
-The owner, and anyone holding `team_manage`, under one rule that reproduces today's
-"an admin manages coaches only" and extends to any title:
+The titular, and anyone holding `team_manage`, under one rule that reproduces today's
+"an admin manages coaches only" and extends to any role:
 
-> You may give, end or change an appointment only for a person whose permissions are
-> **strictly fewer** than yours, and only with a title whose permissions are
-> **strictly fewer** than yours. Editing a title's permissions needs the same of the
-> title, before and after.
+> You may appoint, end or correct an appointment only for a person whose permissions
+> are **strictly fewer** than yours, and only to a role whose permissions are
+> **strictly fewer** than yours. Creating or editing a role needs the same of the role,
+> before and after.
 
-- The owner holds everything plus the flag, so no one but the owner touches the owner,
-  and the owner touches everyone.
+- The titular holds everything plus the flag, so no one but the titular touches the
+  titular, and the titular touches everyone.
 - An Administrador (no expenses) cannot touch another Administrador (equal) or a
   Tesorero (who holds expenses), and can appoint and end Coaches, as today.
 - A Presidente (`money_read`, `expenses_read`, `team_manage`) can appoint a Secretario
-  or a Delegado, not a Tesorero (who records money the Presidente does not). For a
-  Presidente to appoint the next Tesorero, the owner gives Presidente the money
-  permissions too, or does it.
+  or a Delegado directly, not a Tesorero. A whole board is changed through a cambio de
+  mando, which the Presidente may start and the titular confirms (section 5).
 - Nobody grants a permission they lack.
 
-**A board that changes each year.** The new board is entered as appointments with
-their `starts_on`; the outgoing ones get `ends_on` the day before. Equipo's "Cambio de
-directiva" does both in one form: pick each board title, the incoming person and the
-date. Nothing is lost: the history card lists every appointment, newest first, as
-"Tesorera · M. Pérez · mar 2025 – feb 2026".
+**Invariants**, each a test:
 
-**Who owns a club.** The owner is whoever opened the gym in Rakin, often the head
-coach or the first presidente. Handing the ownership over (a presidente leaving) is
-not in this design: it is rare, it is the one change that must not be undone by
-mistake, and today it is a support request. It is noted as out of scope, not filed.
+1. **There is always exactly one titular**, and the titular always holds every
+   permission. The flag is not an appointment: no end date, no role edit, no cambio de
+   mando touches it. Only section 6 moves it, in one transaction.
+2. **So someone can always manage roles**: the titular. No role edit, archive or
+   appointment end can leave a gym where nobody holds `team_manage`, because the titular
+   always does.
+3. **The titular cannot lock themselves out**: their own row refuses an end date,
+   their flag refuses a clear, and leaving the team or being forgotten is refused while
+   they hold it ("Traspasa la cuenta primero").
+4. **No silent widening**: a role edit that adds a permission to people already holding
+   it is shown before saving ("3 personas podrán ver gastos") and audited.
 
-### 5. Enforcement (question 8)
+**Terms that run out.** Sixty days before an appointment's `ends_on`, and again on the
+day, the nightly job tells the titular and the `team_manage` holders, once each, with
+"Iniciar cambio de mando". An appointment already followed by another of the same
+person to the same role is a renewal and is silent.
+
+### 5. The cambio de mando (question 9)
+
+A board's term ends, by election, resignation or a handover between owners. Doing it as
+twenty edits leaves days where the old tesorero has gone and the new one has not
+arrived, or where both are recording payments. So it is one object, staged, accepted
+and then effective at one moment.
+
+**What it holds.** A `handover` (gym, effective day *D*, started by, reason, status) and
+its **seats**: for each role it changes, who leaves (the current appointment it ends)
+and who arrives (a person, already in the gym or invited by email, and an optional end
+of their term). A seat may only end (a role left vacant) or only start (a new role).
+Seats not in it are untouched: the coaches carry on.
+
+**Its life:**
+
+```
+borrador ──propose──▶ propuesto ──(every incoming accepts, and the titular
+   │                     │          confirms if needed)──▶ confirmado ──D──▶ vigente
+   └──cancel─────────────┴──cancel──▶ cancelado
+                         └──titular override (reason)──▶ confirmado
+```
+
+1. **Borrador.** Started by the titular or a `team_manage` holder (often the outgoing
+   presidente). They fill the seats and *D*. Nothing changes yet.
+2. **Propuesto.** Each incoming person gets an email and, signed in as themselves, sees
+   their seat, its permissions and *D*, and accepts or declines. Acceptance is theirs
+   alone: the starter cannot accept for them. Someone invited new accepts by signing in
+   from the invite.
+3. **The titular's confirmation** is needed when the starter is not the titular and
+   any seat grants a permission the starter lacks, or ends someone whose permissions are
+   not strictly fewer than the starter's (section 4's rule, applied to the whole
+   change at once). The titular sees the whole handover, seat by seat.
+4. **Confirmado** once every incoming seat is accepted and any confirmation is given.
+   If *D* is in the past by then, it takes effect at once.
+5. **Vigente at the start of *D*** (the gym's timezone), in one transaction run by the
+   nightly job, or by the confirmation when *D* has passed: the outgoing appointments
+   get `ends_on = D`, the incoming start on *D*, `staff` rows appear and go, sessions
+   of people no longer on the team end (0005). Half-open terms mean there is no day
+   with neither board and no day with both.
+
+**No gap, no overlap, unless the gym chooses.**
+
+- **Nobody can manage the gym** never happens: the titular holds everything throughout.
+- **Both boards with money** never happens by default: outgoing access ends at the
+  moment incoming access starts.
+- **The gym may choose an acompañamiento**: the outgoing seats keep *read-only* access
+  (`money_read`, `expenses_read`, nothing else) for up to 30 days after *D*, to answer
+  the new board's questions. Never a write permission, and stated in the handover as
+  agreed. It is stored as a second, read-only appointment with its own end, so the rest
+  of the model is unchanged.
+- **The incoming board may see before *D***: the same, the other way round, read-only,
+  from confirmation to *D*, if the gym ticks it. Off by default.
+
+**When a side does not answer.**
+
+- **An incoming person never accepts.** At *D*, unaccepted seats do not take effect;
+  for those seats the outgoing appointment carries on ("prorrogado") until the person
+  accepts or the starter replaces them, and Equipo shows it in orange. Accepted seats go
+  ahead on *D*. No seat is ever left without its holder by a missing acceptance.
+- **The outgoing side has gone** (resigned and unreachable, refuses to start it). The
+  titular starts the cambio de mando directly; nobody outgoing has to do anything,
+  since the outgoing side never confirms. If it is the outgoing presidente who should
+  have started it, the titular states why in the reason.
+- **Someone must stop now** (a tesorero removed for cause). The titular may end any
+  appointment today with a reason, outside a handover. That is the override: always the
+  titular, always with a reason, always audited, and the person is told by email.
+- **A stalled handover**: the titular may force a seat through without its incoming
+  acceptance only to leave it *vacant*, never to put a person in a seat they did not
+  accept.
+
+**What the outgoing board keeps.** From *D* (or the acompañamiento's end) no staff
+access, unless they hold another role. They keep, in their own Mi cuenta, **Mi gestión**:
+their appointments, and the acta de traspaso's figures only (below), as of *D*. No
+member's name, RUT, contact or balance. A member who trains keeps their own student
+page as any member does.
+
+**What the incoming board gets on day one: the acta de traspaso.** Generated when the
+handover takes effect, stored as a snapshot (`handover.packet`, JSON) so both sides
+read the same thing later, and shown in Equipo › Cambios de mando. Each part shows only
+to whoever holds the permission it needs:
+
+| Part | What | Needs |
+|---|---|---|
+| Equipo | Who holds each role from *D*, who left, vacant seats | on the team |
+| Alumnos | Active, frozen, left during the term (counts) | on the team |
+| Ingresos | Cobrado per month of the outgoing term; Esperado this month | `money_read` |
+| Lo que se debe | Total owed, students overdue (count and list), proofs waiting | `money_read` |
+| Cobros extra | Open ones: billed, collected, pending | `money_read` |
+| Correcciones | The last 90 days of corrections (#277) | `money_read` |
+| Gastos | Per month and category during the term; the gastos fijos | `expenses_read` |
+
+The outgoing board's Mi gestión holds the same counts and totals and none of the lists.
+A part whose feature is not built yet (Gastos before ticket #316) is simply absent.
+
+**Audit.** Every step writes an `audit_event`: `handover_started`, `handover_proposed`,
+`handover_seat_accepted`, `handover_seat_declined`, `handover_confirmed`,
+`handover_effective`, `handover_cancelled`, `handover_overridden` (with the reason),
+and the appointments' own `appointment_started`, `appointment_ended` and
+`appointment_corrected`, each with the `handover_id`. With `title_created` and
+`title_changed`, the log answers "who could see the money on 3 March, and who decided
+it".
+
+### 6. Transferring the account (the titular)
+
+The most sensitive change: the titular holds everything, cannot be overridden, and is
+who Rakin deals with about the gym's subscription. So it has its own flow, never part
+of a cambio de mando:
+
+1. **The titular starts it** in Equipo › Cuenta: the incoming person (on the team,
+   with an email that signs in to this gym), and what the outgoing titular keeps
+   afterwards: nothing, or chosen roles. A reason.
+2. **The incoming person accepts**, signed in, and confirms with a fresh sign-in code
+   sent to their email, so a session left open on a shared computer is not enough.
+3. **Seven days' wait.** Both are emailed at once and each day the change is pending;
+   either may cancel. The outgoing titular's email carries a link to cancel without
+   signing in, valid until the change takes effect.
+4. **It takes effect in one transaction**: the flag moves (the deferrable unique index
+   lets the swap commit with one titular), the outgoing titular's chosen roles become
+   appointments from that day, and `account_holder_transferred` is written with both
+   people and the reason. The subscription's billing contact moves with it.
+
+**If the titular is unreachable** (has died, left the club and does not answer, refuses
+a decision the club took), nobody in the gym can move the flag, by design: an in-app
+override would be a way to take a gym. It goes to Rakin's support, with the club's own
+record of the decision (its acta naming the new titular) and the requester signed in to
+the gym; support emails the titular's address with seven days to object, then moves the
+flag with a reason naming the request, audited as `account_holder_transferred` with
+`by_support`. This doc designs the record and the step; the support procedure itself is
+the ops runbook's.
+
+### 7. Enforcement (question 8)
 
 **API.** `app.roles` becomes `app.permissions`:
 
@@ -259,21 +475,21 @@ class Permission(StrEnum):
     ATTENDANCE = "attendance"; GYM_SETUP = "gym_setup"; TEAM_MANAGE = "team_manage"
 
 async def permissions_in_gym(session, tenant) -> frozenset[Permission] | None
-    # None: not on the team. The owner: every permission.
+    # None: not on the team. The titular: every permission.
 
 def requires(*needed: Permission)   # any staff when empty; else holds all of `needed`
 ```
 
-One query per request, as `role_in_gym` is today: the `staff` row, the owner flag and
-the union of current appointments' permissions. The session aliases keep their names
-and move underneath, so ticket 1 changes no endpoint:
+One query per request, as `role_in_gym` is today: the `staff` row, the titular flag
+and the union of current appointments' permissions. The session aliases keep their
+names and move underneath, so #308 changes no endpoint:
 
 | Today | Becomes |
 |---|---|
 | `StaffSession` | `requires()`: on the team |
-| `LedgerSession` | `requires(MONEY_READ)` for GETs, `requires(MONEY_WRITE)` for writes (ticket 3 splits them; ticket 1 maps it to `MONEY_WRITE`, which every admin holds) |
+| `LedgerSession` | `requires(MONEY_READ)` for GETs, `requires(MONEY_WRITE)` for writes (#310 splits them; #308 maps it to `MONEY_WRITE`, which every admin holds) |
 | `AdminSession` | `requires(GYM_SETUP)` |
-| `OwnerSession` | the owner flag |
+| `OwnerSession` | the titular flag (`AccountHolderSession`) |
 | `SeesMoney` | `MONEY_READ in permissions` |
 
 **The database.** One function, used by every policy instead of a role list:
@@ -283,7 +499,7 @@ CREATE FUNCTION app_can(p text) RETURNS boolean STABLE LANGUAGE sql AS $$
   SELECT EXISTS (
     SELECT FROM staff s
     WHERE s.gym_id = current_gym() AND s.person_id = current_person()
-      AND (s.owner OR EXISTS (
+      AND (s.account_holder OR EXISTS (
         SELECT FROM staff_title st JOIN gym_title t ON t.id = st.title_id
         WHERE st.gym_id = s.gym_id AND st.person_id = s.person_id
           AND p = ANY (t.permissions) AND <current in the gym's timezone>)))
@@ -291,8 +507,8 @@ $$;
 ```
 
 It runs as the invoker, under the same RLS as the subselects it replaces (`staff` and
-the two new tables are themselves gym-isolated). Each role-keyed policy is rewritten,
-and split into read and write where today one `ALL` policy serves both:
+the new tables are themselves gym-isolated). Each role-keyed policy is rewritten, and
+split into read and write where today one `ALL` policy serves both:
 
 | Policy (migration) | Read | Write |
 |---|---|---|
@@ -300,22 +516,26 @@ and split into read and write where today one `ALL` policy serves both:
 | `extra_charge`, `extra_line` (0037) | `money_read` | `money_write` |
 | `charge_group`, `charge_group_member` (0037) | gym (as now) | `money_write` |
 | `session_delete_by_role` (0033) | — | `gym_setup` |
-| `audit_event_read` (0044) | `money_read`, or `expenses_read` for expense actions | — |
+| `audit_event_read` (0044) | `money_read`, or `expenses_read` for expense actions, or `team_manage` for team and handover actions | — |
 | correction insert (0048) | — | `money_write` |
+| `gym_title`, `staff_title`, `handover` (new) | on the team | `team_manage` (the strictly-fewer rule is the API's) |
 | expense tables (new, part two) | `expenses_read` | `expenses_write` |
 
 The students' own policies (their entries, their dependents', their proof claims)
-are about the person acting, not a role, and stay as they are.
+are about the person acting, not a role, and stay as they are. The titular flag is
+written only by a definer function, `transfer_account_holder`, which `rakin_app` may
+execute and which checks the accepted, waited-out transfer itself.
 
 **The migration path**, so no step changes what anyone can do:
 
-1. Tables, the owner flag, the two titles per gym from today's roles; the API reads
-   permissions; `staff.role` is still written by the staff API alongside the
-   appointments, so the old policies still hold (ticket 1).
-2. `app_can` and the policies rewritten (ticket 2). From here the database no longer
+1. Tables, the titular flag, the Academia roles per gym from today's roles; the API
+   reads permissions; `staff.role` is still written by the staff API alongside the
+   appointments, so the old policies still hold (#308).
+2. `app_can` and the policies rewritten (#309). From here the database no longer
    reads `staff.role`.
-3. Endpoints by permission, and Equipo (tickets 3 and 4).
-4. `staff.role` dropped once nothing reads it, `Role` removed (ticket 6).
+3. Endpoints by permission, then Equipo, the cambio de mando and the account
+   transfer (#310, #311, #320, #321).
+4. `staff.role` dropped once nothing reads it, `Role` removed (#313).
 
 **Tests that each permission holds at the database.**
 
@@ -323,17 +543,22 @@ are about the person acting, not a role, and stay as they are.
   table and each of read and write, a person holding only that permission succeeds, a
   person holding every permission but that one gets no rows or a policy error, and a
   person whose appointment ended yesterday gets nothing. Run as `rakin_app` against the
-  real database, as `test_ledger_by_role` does today.
+  real database, as the ledger's role tests do today.
 - A drift test: no row of `pg_policies` mentions `role` in its `qual` or `with_check`
-  (after ticket 2), and every table with a `_by_role` or `_by_permission` policy is in
-  the parametrised list, so a new money table cannot ship without its case.
-- Ticket 1's equivalence test: for owner, admin and coach fixtures, every route in the
+  (after #309), and every table with a by-permission policy is in the parametrised
+  list, so a new money table cannot ship without its case.
+- A literal test: each `Permission` is used by name, no permission set is defined as
+  another, and no code compares a role's name (`gym_title.name`) in a condition.
+- #308's equivalence test: for owner, admin and coach fixtures, every route in the
   app answers the same status before and after (`app.routes`, parametrised).
+- The invariants of section 4, and a cambio de mando at *D* with concurrent requests:
+  no instant where a query sees both boards with `money_write`, or neither.
 
-### 6. The UI (question 10)
+### 8. The UI (question 10)
 
-**Ajustes › Equipo**, in the Ajustes layout (#241): a head with "Invitar", then three
-cards: **Personas**, **Cargos** and **Historial**.
+**Ajustes › Equipo**, in the Ajustes layout (#241): a head with "Invitar", then the
+cards **Personas**, **Cargos**, **Cambios de mando** and **Historial**, and, for the
+titular only, **Cuenta**.
 
 At 390:
 
@@ -347,16 +572,20 @@ At 390:
 │ Personas                     │
 │ ┌──────────────────────────┐ │
 │ │ Ana Rojas                │ │
-│ │ (Dueña)                  │ │
+│ │ (Titular de la cuenta)   │ │
 │ ├──────────────────────────┤ │
 │ │ Pablo Soto            ›  │ │
 │ │ (Presidente) (Coach)     │ │
-│ │ hasta feb 2026           │ │
+│ │ hasta mar 2026           │ │
 │ ├──────────────────────────┤ │
 │ │ Marta Díaz            ›  │ │
-│ │ (Tesorera)               │ │
+│ │ (Tesorera) prorrogado    │ │
 │ └──────────────────────────┘ │
-│ [Cambio de directiva]        │
+├──────────────────────────────┤
+│ Cambios de mando             │
+│ Directiva 2026 · 1 mar       │
+│ 3 de 4 aceptados          ›  │
+│ [Iniciar cambio de mando]    │
 ├──────────────────────────────┤
 │ Cargos                       │
 │ Presidente  Ver ingresos,  › │
@@ -364,18 +593,18 @@ At 390:
 │ Tesorero    Ingresos y     › │
 │             gastos           │
 │ [Nuevo cargo]                │
-│ [Agregar cargos de club]     │
+│ [Agregar plantilla]          │
 ├──────────────────────────────┤
 │ Historial                  ▾ │
 └──────────────────────────────┘
 ```
 
-A person opens in place: their appointments, each a title, a "Desde" and an optional
-"Hasta", "Terminar cargo" (sets Hasta to yesterday after a confirm) and "Agregar cargo";
-below, read-only, "Puede:" and the union of permissions in words. Shown only to whoever
-may change them (section 4); others see the row without the chevron.
+A person opens in place: their appointments, each a role, a "Desde" and an optional
+"Hasta", "Terminar cargo" (after a confirm) and "Agregar cargo"; below, read-only,
+"Puede:" and the union of permissions in words. Shown only to whoever may change them
+(section 4); others see the row without the chevron.
 
-At 1280, Personas is a table and a title opens beside it:
+At 1280, Personas is a table and a role opens beside it:
 
 ```
 ┌ Sidebar ┬──────────────────────────────────────────────────────────────────┐
@@ -384,47 +613,69 @@ At 1280, Personas is a table and a title opens beside it:
 │         ├──────────────────────────────────────────────────────────────────┤
 │         │ Personas                                                          │
 │         │ Nombre        Cargos                     Período          Puede   │
-│         │ Ana Rojas     Dueña                      —                Todo    │
-│         │ Pablo Soto    Presidente · Coach         mar 25 – feb 26  6 de 9 ›│
-│         │ Marta Díaz    Tesorera                   mar 25 – feb 26  4 de 9 ›│
-│         │ [Cambio de directiva]                                             │
+│         │ Ana Rojas     Titular de la cuenta       —                Todo    │
+│         │ Pablo Soto    Presidente · Coach         mar 25 – mar 26  6 de 9 ›│
+│         │ Marta Díaz    Tesorera (prorrogado)      mar 25 – …       4 de 9 ›│
+│         ├──────────────────────────────────────────────────────────────────┤
+│         │ Cambios de mando                        [Iniciar cambio de mando] │
+│         │ Directiva 2026   desde 1 mar 2026   3 de 4 aceptados   Propuesto ›│
 │         ├──────────────────────────────────────────────────────────────────┤
 │         │ Cargos                                                            │
 │         │ Cargo       Ingresos  Pagos  Gastos  Reg.gastos  Alumnos  Asist… │
 │         │ Presidente     ✓        –      ✓        –          –        –    │
 │         │ Tesorero       ✓        ✓      ✓        ✓          –        –    │
-│         │ [Nuevo cargo]   [Agregar cargos de club]                          │
+│         │ [Nuevo cargo]   [Agregar plantilla]                               │
 │         ├──────────────────────────────────────────────────────────────────┤
 │         │ Historial                                                       ▾ │
 └─────────┴──────────────────────────────────────────────────────────────────┘
 ```
 
-A title opens to its name, "Visible para los alumnos", and one checkbox per
-permission with its line of help ("Ver gastos: incluye sueldos y honorarios"). A
-checkbox the editor may not grant is disabled with the reason.
+A role opens to its name, "Visible para los alumnos", and one checkbox per permission
+with its line of help ("Ver gastos: incluye sueldos y honorarios"). A checkbox the
+editor may not grant is disabled with the reason. Saving a change that widens what
+current holders can do says so first.
+
+**Iniciar cambio de mando**, one form: a name ("Directiva 2026"), *D*, the reason; then
+one row per seat, pre-filled with every role that has a current holder: "Sale" (the
+current holder, or "nadie"), "Entra" (a person, or "Invitar…"), "Hasta" (optional).
+Below, the two choices, "Acompañamiento de la directiva saliente (solo lectura, hasta
+30 días)" and "La directiva entrante ve antes del cambio (solo lectura)", both off.
+"Proponer" sends the emails. The handover then opens to its seats with each one's
+state (aceptado, pendiente, rechazado) and, for the titular, "Confirmar". On *D* it
+opens to the acta de traspaso.
+
+**The incoming person's view**: an email and a page, "Te proponen como Tesorera desde
+el 1 de marzo", the permissions in words, "Aceptar" or "Rechazar".
+
+**Cuenta** (titular only): "Traspasar la cuenta", the flow of section 6, and its
+pending state with the days left and "Cancelar".
 
 **Invitar** asks what it asks today (RUT, name, email, phone) and, instead of the role
-radio, one or more titles (checkboxes, at least one), "Desde" (today) and an optional
-"Hasta". The invite email names the titles ("te invitó como Tesorera").
+radio, one or more roles (checkboxes, at least one), "Desde" (today) and an optional
+"Hasta". The invite email names the roles ("te invitó como Tesorera").
 
 **What a member sees.** On the student page, a card "Directiva y equipo" lists the
-current holders of public titles: name, titles, and the contact they chose to share
+current holders of public roles: name, roles, and the contact they chose to share
 (`staff_title.public_contact`: email, phone or nothing; nothing by default). Only
-current appointments; never permissions; never ended ones. A gym with no public titles
-shows no card.
+current appointments; a public role with nobody in it says "sin designar"; never
+permissions; never ended ones. A gym with no public roles shows no card.
 
-### 7. Privacy
+### 9. Privacy
 
-- A title being public shows the officer's name and title only. A phone or email shows
-  only if the officer turns it on for that appointment, in their own Mi cuenta or when
-  appointed; the owner cannot publish someone else's phone.
-- The Historial card is staff-only and shown to `team_manage` holders.
-- The privacy notice gains one sentence: the gym may show its officers' names and
-  titles to its members.
+- A public role shows the officer's name and role only. A phone or email shows only if
+  the officer turns it on for that appointment, in their own Mi cuenta or when
+  accepting it; nobody can publish someone else's phone.
+- The board's answer to members is its own schema with a fixed field set, and a test
+  searches its bytes for every officer's email, RUT and id.
+- The outgoing board's Mi gestión and the acta's figures carry no member's name, RUT,
+  contact or balance; only the incoming board's money parts list who owes.
+- The Historial and Cambios de mando cards are for `team_manage` holders.
+- The privacy notice gains one sentence: the gym may show its officers' names and roles
+  to its members.
 
 ## Part two: expenses
 
-### 8. What an expense is (question 1)
+### 10. What an expense is (question 1)
 
 | Field | Required | Notes |
 |---|---|---|
@@ -435,8 +686,8 @@ shows no card.
 | Método | no | Transferencia, efectivo, tarjeta, otro (the ledger's methods plus tarjeta) |
 | Nota | no | |
 | Comprobante | no | A photo or PDF, through the blob store, under `receipts/<gym_id>/` |
-| Gasto fijo | no | The template it came from (section 9) |
-| Cobro extra | no | The cobro that recovers it (section 12) |
+| Gasto fijo | no | The template it came from (section 11) |
+| Cobro extra | no | The cobro that recovers it (section 14) |
 
 **Categories** (`expense_category`, per gym), seeded on the gym's first visit to
 Gastos, or in the migration for gyms that exist: Arriendo, Luz, Agua, Gas, Internet y
@@ -451,7 +702,7 @@ claims the key as the proof claim does (the key must be under that prefix and th
 object must exist). Downloads are presigned by an endpoint that requires
 `expenses_read`, so the key itself opens nothing.
 
-### 9. Recurring costs (question 2)
+### 11. Recurring costs (question 2)
 
 **A template that pre-fills the month, confirmed by a person. No automatic entries.**
 
@@ -482,7 +733,7 @@ expense someone confirmed from one a job invented. The card makes the monthly ta
 tap and leaves the record true. If owners later ask for it anyway, a template can gain
 "registrar solo" for fixed amounts; nothing here prevents it.
 
-### 10. Where it lives (question 3)
+### 12. Where it lives (question 3)
 
 Its own tables, never in the ledger:
 
@@ -511,13 +762,13 @@ expense_skip (gym_id, recurring_id, month)   -- "No este mes"
   expense stays in the list, struck through, and out of every total. Nothing deletes an
   expense; `rakin_app` has no DELETE grant on it.
 - **Audit visibility**: `audit_event_read` today lets owner and admin read every row.
-  Expense rows must not reach an Administrador without `expenses_read`, so ticket 2's
-  rewrite splits the policy by action, as section 5's table says.
+  Expense rows must not reach an Administrador without `expenses_read`, so #309's
+  rewrite splits the policy by action, as section 7's table says.
 - **Forgetting a person** does not touch expenses: they name a payee in text, not a
   person. An expense's `created_by` is kept (the gym's record of who typed it), as
   `ledger_entry.recorded_by` is.
 
-### 11. The view (question 4)
+### 13. The view (question 4)
 
 A new page **Finanzas** in the shell, beside Pagos, for anyone with `expenses_read`.
 Gastos (the list and the form) is its second tab.
@@ -556,7 +807,7 @@ Salidas     Arriendo                $650.000
   table.
 - Someone with `money_read` only gets today's file, unchanged.
 
-### 12. Money that is not the gym's (question 5)
+### 14. Money that is not the gym's (question 5)
 
 A trip, a seminar, a group's gear: the gym pays and the members pay it back through a
 Cobro extra (#195, whose category `gasto_compartido` exists for this).
@@ -578,51 +829,67 @@ it cost is exactly what the owner wants to see, not hidden.
 
 ## Out of scope
 
-- Transferring a gym's ownership (section 4).
 - Budgets, forecasts, bank reconciliation, invoices (facturas) and tax (IVA). Rakin
   records what was paid; the accountant does the rest.
 - Per-category privacy (hiding Sueldos y honorarios from a Tesorero). `expenses_read`
-  is all or nothing; if a club asks, a category can gain "solo el dueño" later.
+  is all or nothing; if a club asks, a category can gain "solo el titular" later.
+- A limit on how long a term may last. Some clubs' statutes cap a board's term; Rakin
+  does not know which, so an end date is optional and never capped. A gym that wants
+  the reminder sets the end.
+- A register of every past board since the club's founding, for people who are no
+  longer in the gym. History starts with the appointments Rakin records.
 - Officers across gyms (one federation, several clubs).
+- Rakin's own subscription billing; section 6 only says its contact moves with the
+  titular.
 
 ## Build tickets
 
-In order. Each is one PR. The permissions come first; expenses need
-`expenses_read` and `expenses_write` to exist, and the tables of part two are created
-with `app_can` policies from the start.
+In order. Each is one PR. The permissions come first; the cambio de mando and the
+account transfer need Equipo's roles; expenses need `expenses_read` and
+`expenses_write` to exist, and the tables of part two are created with `app_can`
+policies from the start.
 
-1. **#308 Permisos detrás de los roles.** `gym_title`, `staff_title`, `staff.owner`;
-   the migration that turns each gym's roles into Administrador and Coach appointments;
-   `app.permissions` (`Permission`, `permissions_in_gym`, `requires`); the session
-   aliases redefined over permissions; `GET /api/me/role` adds `permissions`;
-   `readsLedger` and `managesGym` and the inline role tests read them; the staff API
-   keeps writing `staff.role` in step. The equivalence test over every route. No
-   visible change.
+1. **#308 Permisos detrás de los roles.** `gym_title`, `staff_title` (with
+   `title_name` and half-open terms), `staff.account_holder`; the migration that turns
+   each gym's roles into the Academia preset's appointments; `app.permissions`
+   (`Permission`, `permissions_in_gym`, `requires`); the session aliases redefined over
+   permissions; `GET /api/me/role` adds `permissions`; the frontend's role tests read
+   them; the staff API keeps writing `staff.role` in step. The equivalence and literal
+   tests. No visible change.
 2. **#309 RLS por permiso.** `app_can`; every role-keyed policy rewritten and split read
-   and write (section 5's table), `audit_event_read` split by action; the parametrised
+   and write (section 7's table), `audit_event_read` split by action; the parametrised
    RLS test and the drift test.
 3. **#310 Endpoints por permiso.** Walk the `StaffSession`, `LedgerSession` and
    `role_in_gym` call sites: GETs to `money_read`, writes to `money_write`, members to
    `members_manage` or `members_add`, classes to `attendance`; the staff API's
    strictly-fewer rule with `team_manage`. Tests per area.
-4. **#311 Equipo: cargos, períodos e historial.** Personas, Cargos and Historial in
-   Ajustes › Equipo (390 and 1280); several titles per person with terms; Invitar with
-   titles; "Agregar cargos de club"; "Cambio de directiva"; the nightly job that adds
-   and removes `staff` rows as terms start and end.
-5. **#312 Directiva en la página del alumno.** Public titles, `public_contact` chosen by
-   the officer, the card on the student page, the privacy notice's sentence.
-6. **#313 Retirar `staff.role`.** Drop the column and `Role` once nothing reads them;
+4. **#311 Equipo: roles defined by the gym.** Cargos (create, permissions, public,
+   archive, presets), first-run preset choice, Personas with appointments and
+   corrections, Historial, Invitar with roles, the nightly staff-row job, the
+   invariants of section 4, and their audit rows.
+5. **#320 Cambio de mando.** `handover` and its seats; propose, accept, confirm, take
+   effect at *D*; the acompañamiento and early-access options; the titular's overrides;
+   term alerts; the audit rows; the concurrency test at *D*.
+6. **#321 Traspasar la cuenta.** Equipo › Cuenta; acceptance with a fresh sign-in code;
+   seven days cancellable; `transfer_account_holder`; the support path.
+7. **#312 Directiva en la página del alumno.** Public roles, `public_contact` chosen by
+   the officer, the card on the student page with its own schema, the privacy notice's
+   sentence.
+8. **#313 Retirar `staff.role`.** Drop the column and `Role` once nothing reads them;
    the drift test extended to the code.
-7. **#314 Gastos.** `expense`, `expense_category` with the defaults; record, edit with
+9. **#314 Gastos.** `expense`, `expense_category` with the defaults; record, edit with
    audit, void with a reason; the receipt upload; the Gastos list by month; the test
    that billing is untouched.
-8. **#315 Gastos fijos.** `expense_recurring`, `expense_skip`; the "por registrar" card;
-   one-tap fixed, pre-filled estimated, "Registrar los fijos", "No este mes".
-9. **#316 Finanzas: el mes y el año.** The page, Entradas from `v_monthly_income`,
-   Salidas by category, Resultado, the year view; Salidas only without `money_read`.
-10. **#317 Exportación con gastos.** The Gastos and Resumen sheets, the CSV download,
+10. **#315 Gastos fijos.** `expense_recurring`, `expense_skip`; the "por registrar"
+    card; one-tap fixed, pre-filled estimated, "Registrar los fijos", "No este mes".
+11. **#316 Finanzas: el mes y el año.** The page, Entradas from `v_monthly_income`,
+    Salidas by category, Resultado, the year view; Salidas only without `money_read`.
+12. **#317 Exportación con gastos.** The Gastos and Resumen sheets, the CSV download,
     gated on `expenses_read`.
-11. **#318 Gastos recuperados con cobros extra.** `expense.extra_charge_id`, the picker
+13. **#318 Gastos recuperados con cobros extra.** `expense.extra_charge_id`, the picker
     in the form, the cobro's "Gastos asociados" line, Finanzas' recovered line.
+14. **#322 Acta de traspaso.** The snapshot written when a cambio de mando takes
+    effect, its parts by permission, and the outgoing officers' Mi gestión.
 
-Tickets 7 onward need only 1 and 2; 3 to 6 can go in parallel with them.
+Tickets 9 onward need only #308 and #309, so expenses can go in parallel with #310 to
+#313; #322 needs #320 and #316.
