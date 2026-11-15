@@ -1073,7 +1073,7 @@ async def reactivate_membership(
     """ "Reactivar plan" (#284): a lapsed plan Active again, with `reason`, billed at once
     from `bill_from`: after its last period (`last`), catching up the periods since the
     lapse, or from today, the days between never billed. The nightly job then gives it
-    its grace from today (migration 0049). Recorded as a `membership_reactivated`
+    its grace from today (migration 0050). Recorded as a `membership_reactivated`
     correction, with its status before and after and from when it bills. Refused, writing
     nothing, beside another live plan of the person, and while a period past due plus
     grace is unpaid (`_reactivatable`)."""

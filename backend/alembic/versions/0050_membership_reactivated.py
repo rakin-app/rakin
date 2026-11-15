@@ -11,8 +11,8 @@ giving the owner the whole grace from then to record the payment.
 Null on a membership never reactivated. The reactivation itself is recorded in
 `audit_event` (`membership_reactivated`, 0048), with who, why and from when it bills.
 
-Revision ID: 0049
-Revises: 0048
+Revision ID: 0050
+Revises: 0049
 Create Date: 2026-11-15
 
 """
@@ -21,8 +21,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0049"
-down_revision: str | Sequence[str] | None = "0048"
+revision: str = "0050"
+down_revision: str | Sequence[str] | None = "0049"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
