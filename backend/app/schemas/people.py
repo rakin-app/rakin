@@ -21,6 +21,7 @@ from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
+    Field,
     PastDate,
     StringConstraints,
     model_validator,
@@ -117,6 +118,10 @@ class Person(BaseModel):
     dob: date | None
     # The day they left this gym (dado de baja); null while they are here.
     left_on: date | None
+    # History from before Rakin (#293): the day they first trained here, and how many
+    # classes they had. Read by the ficha only, never by billing.
+    member_since: date | None
+    prior_classes: int
     # When this gym added them, not when the identity was first seen.
     created_at: datetime
     updated_at: datetime
@@ -236,6 +241,25 @@ class Leaving(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     left_on: date | None = None
+
+
+# How far back history may go: a typo guard, not a rule (a founder's first students).
+# Billing's own dates keep their five years (`STARTED_ON_WINDOW_YEARS`).
+HISTORY_WINDOW_YEARS = 60
+
+# Classes before Rakin: a lifetime of daily training, and then some.
+MAX_PRIOR_CLASSES = 20_000
+
+
+class PersonHistory(BaseModel):
+    """ "Fecha de inicio y clases" (#293): the day they first trained here, null when not
+    known, and how many classes they had before Rakin. The API checks the date against
+    the gym's today and `HISTORY_WINDOW_YEARS`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    member_since: date | None
+    prior_classes: Annotated[int, Field(ge=0, le=MAX_PRIOR_CLASSES)]
 
 
 class Return(BaseModel):

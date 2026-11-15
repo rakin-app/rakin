@@ -92,7 +92,9 @@ class PersonAttendance(BaseModel):
 
     # Today and the 29 days before it.
     last_30_days: int
+    # `before_rakin` included: the classes they had before the gym's Rakin (#293).
     total: int
+    before_rakin: int
     # Since the day of their current rank, not counting classes on that day; `None`
     # until they have a rank.
     since_promotion: int | None

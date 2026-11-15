@@ -13,6 +13,7 @@ import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { TagHoursNow } from '../components/TagHours'
 import { TagList } from '../components/Tags'
+import { monthYear } from '../format'
 import { t } from '../i18n/es'
 import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
@@ -263,6 +264,7 @@ function Training({ page }: { page: MyPage }) {
         <span className="training__eyebrow">{words.month}</span>
         <span className="training__figure">{words.classes(page.attendance.this_month)}</span>
         <span className="training__detail">{words.total(page.attendance.total)}</span>
+        <span className="training__detail">{words.memberSince(monthYear(page.member_since))}</span>
       </div>
     </section>
   )

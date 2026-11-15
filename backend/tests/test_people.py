@@ -145,6 +145,8 @@ def entered(body: dict[str, Any]) -> dict[str, Any]:
     shown = (
         "id",
         "left_on",
+        "member_since",
+        "prior_classes",
         "created_at",
         "updated_at",
         "no_whatsapp",

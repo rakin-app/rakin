@@ -19,6 +19,10 @@ export type Person = {
   dob: string | null
   // The day they left the gym (dado de baja); null while they are here.
   left_on: string | null
+  // History from before Rakin (#293): the day they first trained here, and how many
+  // classes they had. Shown on the ficha, never read by billing.
+  member_since: string | null
+  prior_classes: number
   created_at: string
 }
 

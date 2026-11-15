@@ -97,6 +97,9 @@ export type MyPage = {
   timezone: string
   person_id: string
   name: string
+  // "Alumno desde": the earliest of the day they first trained here (#293) and their
+  // first plan's start, else the day the gym added them.
+  member_since: string
   next_payment: { period: OpenPeriod; status: NextPaymentStatus } | null
   // With nothing owed, the day they are paid through (#196); null when no period is paid yet.
   paid_through?: string | null

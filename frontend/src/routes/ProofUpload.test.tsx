@@ -108,6 +108,7 @@ function pageFor(periods: OpenPeriod[]): MyPage {
     timezone: 'America/Santiago',
     person_id: 'ana',
     name: 'Ana Rojas',
+    member_since: '2024-03-30',
     next_payment: first ? { period: first, status: first.pending_clp > 0 ? 'in_review' : 'due' } : null,
     bank_account: null,
     rank: null,

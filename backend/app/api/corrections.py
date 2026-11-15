@@ -110,7 +110,8 @@ CORRECTIONS = text(
     LEFT JOIN billing_period bp ON bp.id = (a.detail->>'billing_period_id')::uuid
     LEFT JOIN membership m ON m.id = (a.detail->>'membership_id')::uuid
     LEFT JOIN plan p ON p.id = m.plan_id
-    WHERE a.person_id = :person
+    -- History typed on the ficha is not a correction of their billing (#293).
+    WHERE a.person_id = :person AND a.action <> 'history_set'
     -- A plan's voids share their transaction's time: the latest period first.
     ORDER BY a.at DESC, bp.period_start DESC NULLS LAST, a.id DESC
     LIMIT :limit

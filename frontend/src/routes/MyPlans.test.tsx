@@ -47,6 +47,7 @@ function page(plans: MyPlan[]): MyPage {
     timezone: 'America/Santiago',
     person_id: 'diego',
     name: 'Diego Morales',
+    member_since: '2024-03-30',
     next_payment: null,
     bank_account: null,
     rank: null,

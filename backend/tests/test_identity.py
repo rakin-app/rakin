@@ -104,7 +104,15 @@ def test_a_rut_known_elsewhere_answers_like_a_new_one(
     # Same status, same shape, and only what sur typed: nothing of norte's record.
     assert attached.status_code == fresh.status_code == 201
     assert set(attached.json()) == set(fresh.json())
-    shown = {**typed, "no_whatsapp": False, "missing_phone": True, "missing_rut": False}
+    shown = {
+        **typed,
+        "no_whatsapp": False,
+        "missing_phone": True,
+        "missing_rut": False,
+        # A history is this gym's, never another's (#293).
+        "member_since": None,
+        "prior_classes": 0,
+    }
     assert entered(attached.json()) == {**shown, "email": "camila.r@sur.cl", "rut": known}
     assert {k: v for k, v in entered(fresh.json()).items() if k != "rut"} == {
         **shown,

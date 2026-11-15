@@ -667,6 +667,29 @@ export const es = {
       missingPhone: 'Falta teléfono: agrégalo en Editar datos, o marca "No tiene WhatsApp".',
       noWhatsapp: 'Sin WhatsApp: no le llegan recordatorios por WhatsApp.',
       missingRut: 'Falta RUT: agrega su RUT (o su correo) en Editar datos para que no se confunda con otra persona del mismo nombre.',
+      // "Historial" (#293): what the gym knew before Rakin, never billed.
+      history: {
+        title: 'Historial',
+        empty: 'Nada anterior a Rakin todavía.',
+        memberSince: (day: string) => `Alumno desde ${day}`,
+        priorClasses: (n: number) => (n === 1 ? '1 clase antes de Rakin' : `${n} clases antes de Rakin`),
+        add: 'Agregar historial',
+        start: 'Fecha de inicio y clases',
+        saved: 'Historial guardado.',
+        form: {
+          title: 'Fecha de inicio y clases',
+          intro:
+            'Desde cuándo entrena aquí y cuántas clases tuvo antes de Rakin. Solo se muestra en su ficha: no cambia su plan ni lo que se le cobra.',
+          since: 'Alumno desde (opcional)',
+          classes: 'Clases antes de Rakin',
+          sinceNeeded: 'Elige un día de hoy hacia atrás, de los últimos 60 años.',
+          classesNeeded: 'Escribe un número entero, 0 o más.',
+          submit: 'Guardar',
+          cancel: 'Cancelar',
+          working: 'Guardando…',
+          failed: 'No pudimos guardar el historial. Inténtalo de nuevo.',
+        },
+      },
       leave: 'Dar de baja',
       leftBanner: (day: string) => `Dado de baja desde el ${day}. Su historial sigue aquí.`,
       leaveForm: {
@@ -1027,8 +1050,12 @@ export const es = {
       },
       attendance: {
         title: 'Asistencia',
-        detail: (recent: number, total: number) =>
-          `${recent === 1 ? 'clase' : 'clases'} en 30 días · ${total} en total`,
+        // With classes before Rakin, the total says how many of it they are (#293):
+        // "clases en 30 días · 340 clases (320 antes de Rakin)".
+        detail: (recent: number, total: number, before = 0) =>
+          `${recent === 1 ? 'clase' : 'clases'} en 30 días · ${
+            before > 0 ? `${total} ${total === 1 ? 'clase' : 'clases'} (${before} antes de Rakin)` : `${total} en total`
+          }`,
         error: 'No pudimos cargar la asistencia.',
       },
       grading: {
@@ -2568,6 +2595,7 @@ export const es = {
       month: 'Este mes',
       classes: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
       total: (n: number) => `${n} en total`,
+      memberSince: (month: string) => `Alumno desde ${month}`,
     },
     // What each class attended was about (#243); never the coach's notes.
     classes: {

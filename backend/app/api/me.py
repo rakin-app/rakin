@@ -262,6 +262,20 @@ async def my_classes(
     return MyClasses(timezone=zone, people=people)
 
 
+# Their name, and "Alumno desde": the earliest of the day they first trained here
+# (#293) and their first plan's start, else the day the gym added them.
+MY_RECORD = text("""
+    SELECT gp.name, coalesce(
+        least(gp.member_since, (
+            SELECT (min(m.started_at) AT TIME ZONE :zone)::date FROM membership m
+            WHERE m.gym_id = gp.gym_id AND m.person_id = gp.person_id
+        )),
+        (gp.created_at AT TIME ZONE :zone)::date
+    ) AS member_since
+    FROM gym_person gp WHERE gp.person_id = :me
+""")
+
+
 @router.get("/page")
 async def my_page(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
@@ -278,9 +292,9 @@ async def my_page(
             {"id": tenant.gym_id},
         )
     ).one()
-    name = await session.scalar(
-        text("SELECT name FROM gym_person WHERE person_id = :me"), {"me": tenant.person_id}
-    )
+    record = (
+        await session.execute(MY_RECORD, {"me": tenant.person_id, "zone": str(gym.timezone)})
+    ).one_or_none()
     today = gym_today(str(gym.timezone))
 
     first = (await session.execute(text(OPEN_PERIODS), payable_params(tenant))).first()
@@ -319,7 +333,8 @@ async def my_page(
         gym_name=gym.name,
         timezone=gym.timezone,
         person_id=tenant.person_id,
-        name=name or "",
+        name=record.name if record else "",
+        member_since=record.member_since if record else today,
         next_payment=next_payment,
         paid_through=paid_through,
         bank_account=gym.bank_account,

@@ -77,6 +77,7 @@ function diego(over: Partial<MyPage> = {}): MyPage {
     timezone: 'America/Santiago',
     person_id: 'diego',
     name: 'Diego Morales',
+    member_since: '2024-03-30',
     next_payment: { period: NOVEMBER, status: 'in_review' },
     bank_account: BANK,
     rank: null,
@@ -235,6 +236,14 @@ describe('Mi página', () => {
     expect(card.getByText('Morada · 1 grado')).toBeInTheDocument()
     expect(card.getByText('desde 14 jun 2025')).toBeInTheDocument()
     expect(card.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('says since when they train here (#293)', async () => {
+    stubPage(diego({ member_since: '2019-03-05' }))
+    renderMe()
+
+    const card = within(await screen.findByRole('region', { name: copy.training.title }))
+    expect(await card.findByText(copy.training.memberSince('mar 2019'))).toBeInTheDocument()
   })
 
   it('shows no rank while no activity of the gym grades (#245)', async () => {

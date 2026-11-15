@@ -196,6 +196,14 @@ export function updatePerson(id: string, body: PersonEdit): Promise<Person> {
   return apiFetch<Person>(`/api/people/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
 
+/** "Fecha de inicio y clases" (#293): the day they first trained here, null when not
+ * known, and their classes before Rakin. Owner and admin only. */
+export type PersonHistory = { member_since: string | null; prior_classes: number }
+
+export function setHistory(id: string, body: PersonHistory): Promise<Person> {
+  return apiFetch<Person>(`/api/people/${encodeURIComponent(id)}/history`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
 /** Dar de baja from `left_on`, today when omitted: every membership ends and nothing more is billed. */
 export function leaveGym(id: string, leftOn?: string): Promise<Person> {
   return apiFetch<Person>(`/api/people/${encodeURIComponent(id)}/leave`, {

@@ -72,6 +72,9 @@ class MyPage(BaseModel):
     # Who is signed in, to tell their own payments from a dependent's.
     person_id: uuid.UUID
     name: str
+    # "Alumno desde": the earliest of the day they first trained here (#293) and
+    # their first plan's start, else the day the gym added them.
+    member_since: date
     # The earliest open period, theirs or a dependent's; `None` when nothing is owed.
     next_payment: NextPayment | None
     # With nothing owed, the day they are paid through: "Pagado hasta" (#196). The
