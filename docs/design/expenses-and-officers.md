@@ -250,8 +250,10 @@ the rule stays: a holder of `attendance` runs a session they coach; one with
 ```sql
 staff                       -- as today, one row per person and gym: "on the team"
   + account_holder boolean NOT NULL DEFAULT false
-    -- UNIQUE (gym_id) WHERE account_holder, DEFERRABLE: one titular, swapped in one
-    -- transaction (section 6); a constraint trigger refuses a gym with none at commit
+    -- a partial unique index on (gym_id) WHERE account_holder: never two titulars.
+    -- A swap clears the old flag before setting the new one, in one transaction
+    -- (section 6), and a DEFERRABLE INITIALLY DEFERRED constraint trigger refuses a
+    -- gym with none at commit
   role                      -- kept, then dropped in #313
 
 gym_title                   -- a role, defined by the gym
@@ -260,6 +262,8 @@ gym_title                   -- a role, defined by the gym
   permissions text[]        -- CHECK ⊆ the known list, implications included
   public boolean            -- shown on the student page
   preset text NULL          -- which preset added it; shown only
+  system text NULL          -- 'read_only_handover' for the one role Rakin keeps
+                            -- itself (section 5); NULL for every role the gym made
   sort int, archived_at timestamptz NULL
 
 staff_title                 -- an appointment (mandato)
@@ -287,13 +291,23 @@ Cargos and every picker, and its history still reads. Editing a role's permissio
 applies to its current holders at once, and writes `title_changed` with the before and
 after.
 
-**The staff row follows the appointments.** Today revoking deletes the `staff` row and
-0005 ends the session. Now: ending a person's last current appointment (by hand, a
-cambio de mando, or `ends_on` arriving) deletes the `staff` row unless they are the
-titular, and the nightly job (`app.jobs.daily`) does it for terms that ran out, so
-0005's session end still fires. A future appointment creates the row on its
-`starts_on`, by the same job (and by the cambio de mando at its moment, section 5), so
-an incoming tesorero is not staff early.
+**Access comes from the dates, never from a job.** A person is **on the team** when
+they have a `staff` row *and* are the titular or hold a current appointment;
+`permissions_in_gym` and `app_can` (section 7) both test the dates at query time, in
+the gym's timezone. So an appointment written today with `starts_on` next month grants
+nothing until that day's first second, and one whose `ends_on` is today has already
+stopped, whatever has or has not run.
+
+**The staff row follows the appointments**, as housekeeping. Writing a person's first
+appointment, current or future, creates their `staff` row in the same transaction, so
+there is nothing left to do when the appointment starts. Today revoking deletes the
+`staff` row and 0005 ends the session. Now: ending a person's last appointment by hand
+deletes the row at once unless they are the titular, and for terms that end on their
+date the nightly job (`app.jobs.daily`) deletes it afterwards, so 0005's session end
+still fires. Their requests are refused from the start of the day either way, because
+the check reads the dates; the job only tidies up and ends the session. A future
+appointment's row makes the incoming person visible to the gym (0003) before their
+term, which it already is for anyone the gym invited.
 
 ### 4. Who manages it, and what can never break (question 9)
 
@@ -305,14 +319,24 @@ The titular, and anyone holding `team_manage`, under one rule that reproduces to
 > **strictly fewer** than yours. Creating or editing a role needs the same of the role,
 > before and after.
 
+"Strictly fewer" means a **proper subset**: every permission they (or the role) hold,
+you hold too, and you hold at least one more. It is never a count. A role with two
+permissions you lack is not "fewer" because yours has three.
+
 - The titular holds everything plus the flag, so no one but the titular touches the
   titular, and the titular touches everyone.
 - An Administrador (no expenses) cannot touch another Administrador (equal) or a
   Tesorero (who holds expenses), and can appoint and end Coaches, as today.
-- A Presidente (`money_read`, `expenses_read`, `team_manage`) can appoint a Secretario
-  or a Delegado directly, not a Tesorero. A whole board is changed through a cambio de
-  mando, which the Presidente may start and the titular confirms (section 5).
-- Nobody grants a permission they lack.
+- A Presidente of the Club federado preset (`money_read`, `expenses_read`,
+  `team_manage`) can appoint directly **only a Director** (no permissions, a subset of
+  anything). A Secretario (`members_manage`), a Delegado (`attendance`) and a Tesorero
+  (`money_write`, `expenses_write`) each hold something the Presidente lacks. That is
+  deliberate: the Presidente oversees and does not run the roster or the money. The
+  board is changed through a cambio de mando, which the Presidente may start and the
+  titular confirms (section 5). A gym that wants its Presidente to appoint Secretarios
+  and Delegados directly ticks `members_manage` and `attendance` on Presidente.
+- Nobody grants a permission they lack: it follows from the subset rule, and is tested
+  on its own.
 
 **Invariants**, each a test:
 
@@ -349,11 +373,23 @@ Seats not in it are untouched: the coaches carry on.
 **Its life:**
 
 ```
-borrador ──propose──▶ propuesto ──(every incoming accepts, and the titular
-   │                     │          confirms if needed)──▶ confirmado ──D──▶ vigente
-   └──cancel─────────────┴──cancel──▶ cancelado
-                         └──titular override (reason)──▶ confirmado
+borrador ──propose──▶ propuesto ──(titular confirms, if needed)──▶ confirmado ──D──▶ vigente
+   │                     │                                            │
+   └──cancel─────────────┴──cancel──▶ cancelado ◀──cancel (before D)──┘
+
+each seat:  pendiente ──accepted (and handover confirmed)──▶ escrito
+                      └─declined / titular leaves it vacant──▶ cerrado
 ```
+
+The dates do the switching; nothing waits for a job. A seat is **escrito** (written)
+the moment it is ready: its incoming person has accepted and the handover needs no
+further confirmation. In that one transaction, under the per-person locks, the
+outgoing appointment gets `ends_on = E` and the incoming appointment is inserted with
+`starts_on = E` (and the incoming `staff` row with it), where **E = max(D, today)** in
+the gym's timezone. Because access is computed from the dates (section 3), a seat
+written before *D* flips at the first second of *D* with no job involved, and a seat
+written on or after *D* flips at once. There is no instant with both holders and no
+instant with neither, which is section 7's concurrency test.
 
 1. **Borrador.** Started by the titular or a `team_manage` holder (often the outgoing
    presidente). They fill the seats and *D*. Nothing changes yet.
@@ -362,16 +398,24 @@ borrador ──propose──▶ propuesto ──(every incoming accepts, and the
    alone: the starter cannot accept for them. Someone invited new accepts by signing in
    from the invite.
 3. **The titular's confirmation** is needed when the starter is not the titular and
-   any seat grants a permission the starter lacks, or ends someone whose permissions are
-   not strictly fewer than the starter's (section 4's rule, applied to the whole
-   change at once). The titular sees the whole handover, seat by seat.
-4. **Confirmado** once every incoming seat is accepted and any confirmation is given.
-   If *D* is in the past by then, it takes effect at once.
-5. **Vigente at the start of *D*** (the gym's timezone), in one transaction run by the
-   nightly job, or by the confirmation when *D* has passed: the outgoing appointments
-   get `ends_on = D`, the incoming start on *D*, `staff` rows appear and go, sessions
-   of people no longer on the team end (0005). Half-open terms mean there is no day
-   with neither board and no day with both.
+   any seat's role is not a proper subset of the starter's permissions, or any seat
+   ends someone whose permissions are not a proper subset of the starter's (section
+   4's rule, seat by seat). With the Club federado preset, a Presidente's handover
+   naming a Secretario, Tesorero or Delegado therefore waits for the titular. The
+   titular sees the whole handover, seat by seat.
+4. **Confirmado** once the titular has confirmed (or no confirmation was needed). At
+   that moment every seat already accepted is written; each seat accepted later is
+   written when it is accepted. Either way with E = max(D, today), so a handover
+   confirmed after *D* takes effect at once, seat by seat.
+5. **Vigente** from *D*, once every seat is written or closed. The acta de traspaso is
+   snapshotted then (when the last seat is written, or at *D* if all were written
+   earlier). The nightly job only does the housekeeping of section 3: it removes the
+   `staff` rows of people whose last appointment has ended and ends their sessions
+   (0005).
+6. **Cancelling** a confirmed handover is possible only before *D*: it deletes the
+   written seats' future incoming appointments (they never started) and reopens the
+   outgoing ones (`ends_on` back to what it was), in one transaction, audited. From
+   *D* on, a mistake is corrected by another cambio de mando.
 
 **No gap, no overlap, unless the gym chooses.**
 
@@ -381,17 +425,25 @@ borrador ──propose──▶ propuesto ──(every incoming accepts, and the
 - **The gym may choose an acompañamiento**: the outgoing seats keep *read-only* access
   (`money_read`, `expenses_read`, nothing else) for up to 30 days after *D*, to answer
   the new board's questions. Never a write permission, and stated in the handover as
-  agreed. It is stored as a second, read-only appointment with its own end, so the rest
-  of the model is unchanged.
-- **The incoming board may see before *D***: the same, the other way round, read-only,
-  from confirmation to *D*, if the gym ticks it. Off by default.
+  agreed. It is stored as a second appointment, written with the seat, from *D* to its
+  end, to the gym's **system role** "Acompañamiento (solo lectura)" (`gym_title.system
+  = 'read_only_handover'`, permissions `money_read` and `expenses_read`, not public).
+  Rakin creates that role on first use and keeps it: it is hidden from Cargos and every
+  picker, no one can edit, archive or appoint to it by hand, and only a cambio de mando
+  writes appointments to it. Its appointments keep the seat in `title_name`
+  ("Tesorero (acompañamiento)"), so the history says what it was.
+- **The incoming board may see before *D***: the same role, the other way round, from
+  the moment the seat is written to *D*, if the gym ticks it. Off by default.
 
 **When a side does not answer.**
 
-- **An incoming person never accepts.** At *D*, unaccepted seats do not take effect;
-  for those seats the outgoing appointment carries on ("prorrogado") until the person
-  accepts or the starter replaces them, and Equipo shows it in orange. Accepted seats go
-  ahead on *D*. No seat is ever left without its holder by a missing acceptance.
+- **An incoming person never accepts.** A seat that is not written changes nothing:
+  its outgoing appointment keeps whatever end it had. If that end is open, the outgoing
+  holder simply carries on; if it is on or before *D*, the cambio de mando extends it
+  to open when *D* arrives unwritten (audited as `appointment_extended`), so the seat
+  is never left empty by a missing acceptance. Equipo shows the seat as "prorrogado",
+  in orange, until the person accepts (and the seat is written, flipping at once) or
+  the starter names someone else. Written seats go ahead on *D* regardless.
 - **The outgoing side has gone** (resigned and unreachable, refuses to start it). The
   titular starts the cambio de mando directly; nobody outgoing has to do anything,
   since the outgoing side never confirms. If it is the outgoing presidente who should
@@ -430,8 +482,8 @@ A part whose feature is not built yet (Gastos before ticket #316) is simply abse
 **Audit.** Every step writes an `audit_event`: `handover_started`, `handover_proposed`,
 `handover_seat_accepted`, `handover_seat_declined`, `handover_confirmed`,
 `handover_effective`, `handover_cancelled`, `handover_overridden` (with the reason),
-and the appointments' own `appointment_started`, `appointment_ended` and
-`appointment_corrected`, each with the `handover_id`. With `title_created` and
+and the appointments' own `appointment_started`, `appointment_ended`,
+`appointment_extended` and `appointment_corrected`, each with the `handover_id`. With `title_created` and
 `title_changed`, the log answers "who could see the money on 3 March, and who decided
 it".
 
@@ -449,8 +501,9 @@ of a cambio de mando:
 3. **Seven days' wait.** Both are emailed at once and each day the change is pending;
    either may cancel. The outgoing titular's email carries a link to cancel without
    signing in, valid until the change takes effect.
-4. **It takes effect in one transaction**: the flag moves (the deferrable unique index
-   lets the swap commit with one titular), the outgoing titular's chosen roles become
+4. **It takes effect in one transaction**: the old flag is cleared, then the new one
+   set (the partial unique index never sees two, and the deferred trigger never sees
+   none at commit), the outgoing titular's chosen roles become
    appointments from that day, and `account_holder_transferred` is written with both
    people and the reason. The subscription's billing contact moves with it.
 
@@ -507,7 +560,10 @@ $$;
 ```
 
 It runs as the invoker, under the same RLS as the subselects it replaces (`staff` and
-the new tables are themselves gym-isolated). Each role-keyed policy is rewritten, and
+the new tables are themselves gym-isolated). Its argument is a constant, so a policy
+calls it as `(SELECT app_can('money_read'))`: Postgres then evaluates it once per
+query as an initplan rather than once per row. #309 checks the plan on `ledger_entry`,
+the largest table, with `EXPLAIN` in a test. Each role-keyed policy is rewritten, and
 split into read and write where today one `ALL` policy serves both:
 
 | Policy (migration) | Read | Write |
@@ -518,7 +574,7 @@ split into read and write where today one `ALL` policy serves both:
 | `session_delete_by_role` (0033) | — | `gym_setup` |
 | `audit_event_read` (0044) | `money_read`, or `expenses_read` for expense actions, or `team_manage` for team and handover actions | — |
 | correction insert (0048) | — | `money_write` |
-| `gym_title`, `staff_title`, `handover` (new) | on the team | `team_manage` (the strictly-fewer rule is the API's) |
+| `gym_title`, `staff_title`, `handover` (new) | on the team | `team_manage` (the proper-subset rule is the API's); a system role only through a cambio de mando |
 | expense tables (new, part two) | `expenses_read` | `expenses_write` |
 
 The students' own policies (their entries, their dependents', their proof claims)
@@ -614,7 +670,7 @@ At 1280, Personas is a table and a role opens beside it:
 │         │ Personas                                                          │
 │         │ Nombre        Cargos                     Período          Puede   │
 │         │ Ana Rojas     Titular de la cuenta       —                Todo    │
-│         │ Pablo Soto    Presidente · Coach         mar 25 – mar 26  6 de 9 ›│
+│         │ Pablo Soto    Presidente · Coach         mar 25 – mar 26  5 de 9 ›│
 │         │ Marta Díaz    Tesorera (prorrogado)      mar 25 – …       4 de 9 ›│
 │         ├──────────────────────────────────────────────────────────────────┤
 │         │ Cambios de mando                        [Iniciar cambio de mando] │
@@ -862,14 +918,16 @@ policies from the start.
 3. **#310 Endpoints por permiso.** Walk the `StaffSession`, `LedgerSession` and
    `role_in_gym` call sites: GETs to `money_read`, writes to `money_write`, members to
    `members_manage` or `members_add`, classes to `attendance`; the staff API's
-   strictly-fewer rule with `team_manage`. Tests per area.
+   proper-subset rule with `team_manage`. Tests per area.
 4. **#311 Equipo: roles defined by the gym.** Cargos (create, permissions, public,
    archive, presets), first-run preset choice, Personas with appointments and
-   corrections, Historial, Invitar with roles, the nightly staff-row job, the
-   invariants of section 4, and their audit rows.
-5. **#320 Cambio de mando.** `handover` and its seats; propose, accept, confirm, take
-   effect at *D*; the acompañamiento and early-access options; the titular's overrides;
-   term alerts; the audit rows; the concurrency test at *D*.
+   corrections, Historial, Invitar with roles, the `staff` row written with the first
+   appointment, the invariants of section 4, and their audit rows.
+5. **#320 Cambio de mando.** `handover` and its seats; propose, accept, confirm; each
+   seat written with future-dated ends and starts the moment it is ready, so the dates
+   flip access at *D* with no job; prorrogado seats; cancel before *D*; the
+   acompañamiento's system role; the titular's overrides; term alerts; the audit rows;
+   the concurrency test across *D*.
 6. **#321 Traspasar la cuenta.** Equipo › Cuenta; acceptance with a fresh sign-in code;
    seven days cancellable; `transfer_account_holder`; the support path.
 7. **#312 Directiva en la página del alumno.** Public roles, `public_contact` chosen by
