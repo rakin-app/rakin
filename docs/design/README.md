@@ -98,6 +98,14 @@ charge, payment or plan of a student from the ficha: one "Corregir" per line of 
 Libro, every fix a new ledger entry with an audit row, and what stays forbidden. Its
 build tickets are #277 to #286.
 
+## Historical data (#292)
+
+[historical-data.md](historical-data.md) designs how a gym's past comes in: when each
+student started, former students and why they left, payments before Rakin, past belts
+and a count of earlier classes. It is kept as historial beside billing, which never
+reads it, and entered on the ficha or from a three-tab spreadsheet through the existing
+importer. Its build tickets are #293 to #300.
+
 ## Contrast (WCAG 2.1 AA)
 
 `frontend/src/components/controls.test.tsx` checks every pair in every theme.
