@@ -3,6 +3,7 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 import {
   BOOK_FILTERS,
+  exportPath,
   ledgerBookQuery,
   type BookEntry,
   type BookFilter,
@@ -64,6 +65,8 @@ const route = getRouteApi('/admin/pagos')
  * among them (#26), as rows with no amount. Reminders are not listed, but on the
  * overdue list each charge still owed has "Enviar recordatorio" under its status (#260). Adjustments and
  * refunds are made on the member's detail (#38) and listed here with their sign.
+ *
+ * "Exportar CSV" and "Exportar Excel" download the month shown for the accountant (#40).
  *
  * A search keeps a member's lines, and a guardian's dependents'; "Registrar pago" picks
  * a member and opens the member detail's payment form for them (#107).
@@ -150,6 +153,16 @@ function Book() {
                 ))}
               </select>
             </label>
+          )}
+          {latest && (
+            <>
+              <a href={exportPath(latest.month, 'csv')} download className={buttonClass({ variant: 'ghost' })}>
+                {copy.exportCsv}
+              </a>
+              <a href={exportPath(latest.month, 'xlsx')} download className={buttonClass({ variant: 'ghost' })}>
+                {copy.exportXlsx}
+              </a>
+            </>
           )}
           <Link to="/admin/pagos/cobros" className={buttonClass({ variant: 'ghost' })}>
             {copy.extra}

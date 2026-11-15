@@ -103,6 +103,11 @@ export function bookPath(month: string | undefined, filter: BookFilter, q: strin
   return `/api/ledger/book?${params}`
 }
 
+/** The accountant's export of a month (#40): a file the browser downloads, not JSON. */
+export function exportPath(month: string, format: 'csv' | 'xlsx'): string {
+  return `/api/ledger/export?${new URLSearchParams({ month, format })}`
+}
+
 // One query per month, filter and search; "Cargar más" fetches the next page into it.
 export function ledgerBookQuery(month: string | undefined, filter: BookFilter, q = '') {
   return infiniteQueryOptions({

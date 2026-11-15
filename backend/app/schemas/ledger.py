@@ -347,6 +347,13 @@ class BookFilter(StrEnum):
     KIDS = "kids"
 
 
+class ExportFormat(StrEnum):
+    """What the accountant's export of a month is written as (#40)."""
+
+    CSV = "csv"
+    XLSX = "xlsx"
+
+
 class PersonRef(BaseModel):
     id: uuid.UUID
     name: str
