@@ -475,6 +475,21 @@ describe('Pagos', () => {
     expect(await screen.findByText(copy.showing(5, 5, 'octubre'))).toBeInTheDocument()
   })
 
+  it('exports the month shown as CSV and Excel for the accountant', async () => {
+    stubApi({ book: (params) => ({ ...BOOK, month: params.get('month') ?? BOOK.month }) })
+    renderAt('/admin/pagos')
+    await table()
+
+    const csv = () => screen.getByRole('link', { name: copy.exportCsv })
+    const xlsx = () => screen.getByRole('link', { name: copy.exportXlsx })
+    expect(csv()).toHaveAttribute('href', '/api/ledger/export?month=2026-11-01&format=csv')
+    expect(csv()).toHaveAttribute('download')
+    expect(xlsx()).toHaveAttribute('href', '/api/ledger/export?month=2026-11-01&format=xlsx')
+
+    await userEvent.selectOptions(screen.getByLabelText(copy.month), '2026-10-01')
+    await waitFor(() => expect(csv()).toHaveAttribute('href', '/api/ledger/export?month=2026-10-01&format=csv'))
+  })
+
   it('loads the next page with "Cargar más", counting by the latest page', async () => {
     const next = entry({ id: 'older', kind: 'payment', created_at: '2026-11-01T12:00:00Z' })
     const asked = stubApi({
