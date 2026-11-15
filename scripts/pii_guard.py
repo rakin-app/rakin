@@ -119,10 +119,12 @@ PHONE = re.compile(rf"(?<![\w+])(?:(?:\+|00)?56{SEP})?\(?9\)?{SEP}\d{{4}}{SEP}\d
 EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@([A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,})")
 # An absolute path on a machine: a mounted volume, a home directory on macOS,
 # Linux or Windows, or `~/` and a folder. A placeholder (`/Users/<name>`,
-# `/Volumes/…`) does not start with a name character, so it passes.
+# `/Volumes/…`) does not start with a name character, so it passes. On Linux the
+# path needs a folder under the user's (`/home/<name>/…`), so a one-segment web
+# route such as `/home/clases` is not taken for one.
 NAME = r"[\w.-]"
 LOCAL_PATH = re.compile(
-    rf"(?<![\w.~-])/(?:Volumes|Users|home)/{NAME}"
+    rf"(?<![\w.~-])/(?:Volumes/|Users/|home/{NAME}+/){NAME}"
     rf"|(?<![\w])[A-Za-z]:(?:\\{{1,2}}|/)Users(?:\\{{1,2}}|/){NAME}"
 )
 HOME_PATH = re.compile(r"(?<![\w~/$.-])~/([\w.-][^\s'\"`()<>|;:,*]*)")
@@ -451,19 +453,40 @@ def gh_files(command: str) -> list[str]:
     return [path for path, _ in gh_file_args(command)]
 
 
+def quote_states(command: str) -> list[str]:
+    """The shell quote open before each character: `""`, `"'"` or `'"'`."""
+    states, quote, escaped = [], "", False
+    for c in command:
+        states.append(quote)
+        if escaped:
+            escaped = False
+        elif c == "\\" and quote != "'":
+            escaped = True
+        elif quote and c == quote:
+            quote = ""
+        elif not quote and c in "'\"":
+            quote = c
+    return states
+
+
 def published_text(command: str) -> str:
     """The command with the paths it only reads blanked out: its body files and
     `cd` targets. Those stay on the machine, so a local path there is fine;
-    blanking keeps every other column where it was. Only the command line before
-    a heredoc's body is blanked: the body is what gets posted."""
+    blanking keeps every other column where it was.
+
+    Only shell words are blanked, never text that gets posted: nothing inside a
+    heredoc's body, and nothing inside a quoted argument (`--body "…cd /x…"`),
+    except a `$(cat file)` in double quotes, which the shell runs."""
     heredoc = HEREDOC.search(command)
     body = command.find("\n", heredoc.end()) if heredoc else -1
     limit = body if body >= 0 else len(command)
-    spans = [span for _, span in gh_file_args(command)]
-    spans += [m.span(1) for m in CD_DIR.finditer(command)]
+    states = quote_states(command[:limit])
+    spans = [(m.span(1), "'") for m in CAT_FILE.finditer(command)]
+    spans += [(span, "'\"") for _, span in gh_file_args(command)]
+    spans += [(m.span(1), "'\"") for m in CD_DIR.finditer(command)]
     chars = list(command)
-    for start, end in spans:
-        if end <= limit:
+    for (start, end), quoted in spans:
+        if end <= limit and (not states[start] or states[start] not in quoted):
             chars[start:end] = " " * (end - start)
     return "".join(chars)
 

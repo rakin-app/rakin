@@ -176,6 +176,7 @@ class LocalPath(unittest.TestCase):
             "see /Volumes/Disk/gits/app/notes.md",
             "at /Users/alguien/code/x",
             "in /home/alguien/.bashrc",
+            "cd /home/alguien/x",
             "file:///Users/alguien/x.html",
             r"C:\Users\alguien\Desktop",
             r"C:\\Users\\alguien",
@@ -196,6 +197,7 @@ class LocalPath(unittest.TestCase):
             "`/Users/<name>/…`, `/Volumes/…`, `/home/<name>`, `C:\\Users\\…`",
             "~/ alone, and ~ by itself",
             "/srv/rakin and /tmp/x",
+            'navigate("/home/clases")',
         ]:
             with self.subTest(text=text):
                 self.assertEqual(kinds(text), [])
@@ -448,6 +450,10 @@ class ClaudeHook(unittest.TestCase):
             "gh issue comment 5 --body-file - <<'B'\nfirst cd /Volumes/Disk/x\nB",
             "gh issue comment 5 --body-file - <<'B'\ncd /Users/alguien/x\nB",
             "gh issue comment 5 --body 'logs at /Users/alguien/x'",
+            'gh issue comment 5 --body "see:\ncd /Users/alguien/work\nok"',
+            "gh issue comment 5 --body 'see:\n  cd /Volumes/Disk/x && make\n'",
+            'gh issue comment 5 --body "use --body-file /Users/alguien/b.md"',
+            "gh issue comment 5 --body '$(cat /Users/alguien/b.md)'",
         ]:
             with self.subTest(command=command):
                 self.assertEqual(self.hook(command, "/").returncode, 2)
