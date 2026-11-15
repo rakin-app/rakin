@@ -552,6 +552,7 @@ function entryDate(entry: BookEntry, timeZone: string): string {
 /** `Descuento` or `Recargo` for an adjustment on a period (#210); any other kind as named. */
 function kindLabel(entry: BookEntry): string {
   if (entry.voids) return copy.void
+  if (entry.purpose === 'restore') return copy.restore
   if (entry.kind === 'adjustment' && entry.period) return copy.adjustment[entry.amount_clp > 0 ? 'favor' : 'owed']
   return copy.kind[entry.kind]
 }

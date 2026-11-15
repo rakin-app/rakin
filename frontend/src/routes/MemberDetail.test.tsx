@@ -118,8 +118,8 @@ const LEDGER: MembershipLedger = {
   ],
   freezes: [],
   periods: [
-    { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 45000, voided_clp: 0 },
-    { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0 },
+    { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 45000, voided_clp: 0, void_id: null },
+    { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null },
   ],
   refundable_payments: [
     {
@@ -608,7 +608,7 @@ describe('Ficha de alumno', () => {
 
   it('adjusts a paid period against the member, owed on top', async () => {
     // An old period, long out of the timeline: the ledger still offers it.
-    const paid = { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0 }
+    const paid = { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null }
     const calls = stubApi({
       ledger: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [], periods: [paid] },
       adjustment: { status: 201, body: { period: { outstanding_clp: 5000, closed: false } } },
@@ -716,7 +716,7 @@ describe('Ficha de alumno', () => {
     open_periods: [NOVEMBER],
     owed_clp: 25000,
     entries: [],
-    periods: [{ id: 'p-old', period_start: '2026-11-01', period_end: '2026-11-30', outstanding_clp: 25000, voided_clp: 0 }],
+    periods: [{ id: 'p-old', period_start: '2026-11-01', period_end: '2026-11-30', outstanding_clp: 25000, voided_clp: 0, void_id: null }],
     refundable_payments: [],
   }
 
@@ -784,33 +784,117 @@ describe('Ficha de alumno', () => {
     ])
   })
 
-  it('offers a "Recargo" to put back a charge voided by mistake (#271)', async () => {
-    const voided = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000 }
+  it('restores a charge voided by mistake, on this plan or a lapsed one (#278)', async () => {
+    const voided = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000, void_id: 'v-oct' }
+    const lapsed = { ...LAPSED_LEDGER, periods: [{ ...LAPSED_LEDGER.periods[0]!, outstanding_clp: 0, voided_clp: 25000, void_id: 'v-old' }] }
     const calls = stubApi({
+      memberships: [MONTHLY, LAPSED],
       ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [voided] },
-      adjustment: { status: 201, body: { period: { outstanding_clp: 45000, closed: false } } },
+      extra: (path, method) => {
+        if (path === '/api/ledger/memberships/m-old') return { body: lapsed }
+        if (path === '/api/ledger/restores' && method === 'POST') {
+          return { status: 201, body: { period: { outstanding_clp: 25000, closed: false } } }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+    const card = await money()
+    await screen.findByRole('region', { name: copy.earlierDebt })
+
+    await userEvent.click(await within(card).findByRole('button', { name: copy.restoreCharge }))
+    const form = screen.getByRole('form', { name: copy.restoreForm.title })
+    expect(within(form).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      `Mensual adultos · Activo · ${copy.restoreForm.periodOption('octubre', '$45.000')}`,
+      `Mensual antiguo · Caducado · ${copy.restoreForm.periodOption('noviembre', '$25.000')}`,
+    ])
+    expect(within(form).getByText(copy.restoreForm.owed('octubre', '$0', '$45.000'))).toBeInTheDocument()
+    await userEvent.selectOptions(within(form).getByLabelText(copy.restoreForm.period), 'p-old')
+    // A reason is required.
+    await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.submit }))
+    expect(within(form).getByText(copy.restoreForm.reasonNeeded)).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.restoreForm.reason), 'se anuló el cargo equivocado')
+    await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.restoreForm.done('noviembre', '$25.000'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/ledger/restores', body: { void_id: 'v-old', reason: 'se anuló el cargo equivocado' } },
+    ])
+  })
+
+  it('says why a restore was refused (#278)', async () => {
+    const voided = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000, void_id: 'v-oct' }
+    stubApi({
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [voided] },
+      extra: (path, method) =>
+        path === '/api/ledger/restores' && method === 'POST'
+          ? { status: 409, body: { detail: { code: 'restored', message: 'the void was restored already' } } }
+          : undefined,
     })
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.adjust }))
-    const form = screen.getByRole('form', { name: copy.adjustForm.title })
-    expect(within(form).getByLabelText(copy.adjustForm.direction)).toHaveValue('owed')
-    expect(within(form).getByLabelText(copy.adjustForm.period)).toHaveTextContent(
-      copy.adjustForm.periodOption('octubre', '$0', '$45.000'),
-    )
-    expect(within(form).getByText(copy.adjustForm.restoreHint('$45.000'))).toBeInTheDocument()
-    await userEvent.type(within(form).getByLabelText(copy.adjustForm.amount), '45000')
-    await userEvent.type(within(form).getByLabelText(copy.adjustForm.note), 'anulado por error')
-    await userEvent.click(within(form).getByRole('button', { name: copy.adjustForm.submit(false, '$45.000') }))
+    await userEvent.click(await within(card).findByRole('button', { name: copy.restoreCharge }))
+    const form = screen.getByRole('form', { name: copy.restoreForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.restoreForm.reason), 'error')
+    await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.submit }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.restoreRefused.restored)
+  })
 
-    await screen.findByRole('status')
-    expect(calls.filter((c) => c.method === 'POST')[0]?.body).toEqual({
-      membership_id: 'm-felipe',
-      billing_period_id: 'p-oct',
-      amount_clp: -45000,
-      note: 'anulado por error',
+  it('offers no restore with no void standing, nor on a plan voided by mistake (#278)', async () => {
+    const voided = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000, void_id: 'v-oct' }
+    stubApi({
+      memberships: [{ ...MONTHLY, status: 'cancelled', voided_at: '2026-11-08T12:00:00Z', void_reason: 'prueba' }],
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, periods: [voided] },
     })
+    renderAt(PATH)
+    const card = await money()
+    await within(card).findByText(copy.voidedBadge)
+    expect(within(card).queryByRole('button', { name: copy.restoreCharge })).not.toBeInTheDocument()
+    // The Ajuste form no longer offers a Recargo to put it back.
+    expect(within(card).queryByText(/un recargo de/)).not.toBeInTheDocument()
+  })
+
+  it('reads a restored charge as owed, saying it was voided and restored (#278)', async () => {
+    stubApi({
+      ledger: {
+        ...LEDGER,
+        entries: [
+          entry({
+            id: 'restore-oct',
+            kind: 'adjustment',
+            amount_clp: -45000,
+            purpose: 'restore',
+            billing_period_id: 'p-oct',
+            period_start: '2026-10-30',
+            note: 'se anuló el cargo equivocado',
+            validated_by_name: 'Martín',
+            created_at: '2026-11-13T12:00:00Z',
+            validated_at: '2026-11-13T12:00:00Z',
+          }),
+          entry({
+            id: 'c-oct',
+            kind: 'charge',
+            billing_period_id: 'p-oct',
+            period_start: '2026-10-30',
+            restored: {
+              reason: 'se anuló el cargo equivocado',
+              by_name: 'Martín',
+              at: '2026-11-13T12:00:00Z',
+              void: { reason: 'duplicado', by_name: 'Ana', at: '2026-11-02T12:00:00Z' },
+            },
+          }),
+        ],
+      },
+    })
+    renderAt(PATH)
+
+    const ledger = await screen.findByRole('region', { name: copy.ledger.title })
+    const charge = within(ledger).getByText(copy.ledger.charge('octubre')).closest('li')!
+    expect(charge).not.toHaveClass('member__entry--voided')
+    expect(charge).toHaveTextContent(copy.ledger.voided('duplicado', 'Ana', '2 nov'))
+    expect(charge).toHaveTextContent(copy.ledger.restored('se anuló el cargo equivocado', 'Martín', '13 nov'))
+    expect(within(ledger).getByText(copy.ledger.restore('octubre'))).toBeInTheDocument()
   })
 
   it('voids a plan started by mistake (#256)', async () => {
@@ -862,7 +946,7 @@ describe('Ficha de alumno', () => {
             voided: { reason: 'alumno de prueba', by_name: 'Martín', at: '2026-11-08T12:00:00Z' },
           }),
         ],
-        periods: [{ id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 0 }],
+        periods: [{ id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 0, void_id: null }],
       },
     })
     renderAt(PATH)

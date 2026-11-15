@@ -56,7 +56,7 @@ def test_a_void_settles_all_the_period_still_owes() -> None:
         paid_clp=5_000,
     )
     settlement = domain.void(period, "  cobrado por error ")
-    assert (settlement.entry.amount_clp, settlement.entry.voids) == (40_000, True)
+    assert (settlement.entry.amount_clp, settlement.entry.purpose) == (40_000, "void")
     assert settlement.entry.note == "cobrado por error"
     assert (settlement.period.outstanding_clp, settlement.period.closed) == (0, True)
     with pytest.raises(InvalidTransition):

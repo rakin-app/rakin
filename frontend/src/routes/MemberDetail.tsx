@@ -34,8 +34,10 @@ import {
   recordPayment,
   recordPaymentAhead,
   recordRefund,
+  recordRestore,
   recordVoid,
   shownMembership,
+  restoreRefused,
   voidMembership,
   voidRefused,
   type BillFrom,
@@ -476,6 +478,7 @@ type Open =
   | 'endFreeze'
   | 'changePlan'
   | 'voidCharge'
+  | 'restoreCharge'
   | 'voidPlan'
   | 'reactivate'
   | null
@@ -490,11 +493,12 @@ function adjustable(ledger: MembershipLedger): LedgerPeriod[] {
 function Actions({ membership, ledger, others }: { membership: Membership; ledger: MembershipLedger; others: Held[] }) {
   const periods = ledger.open_periods
   const of = (m: Membership) => (period: LedgerPeriod): Charge => ({ membership: m, period })
-  // This plan's periods, and another plan's charge voided, which a "Recargo" puts back (#271).
-  const known = [
-    ...adjustable(ledger).map(of(membership)),
-    ...others.flatMap((o) => o.ledger.periods.filter((p) => p.voided_clp > 0).map(of(o.membership))),
-  ]
+  const known = adjustable(ledger).map(of(membership))
+  // A charge voided by mistake, on this plan or another of the member's (#271), comes back
+  // with "Restaurar cargo" (#278); never one of a plan voided by mistake, which is assigned again.
+  const restorable = [{ membership, ledger }, ...others]
+    .filter((o) => !o.membership.voided_at)
+    .flatMap((o) => o.ledger.periods.filter((p) => p.void_id).map(of(o.membership)))
   const payments = ledger.refundable_payments
   // Oldest first, as a payment settles them: every period that still owes, on each of the
   // member's plans, a lapsed one's too (#271).
@@ -530,11 +534,17 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
         {copy.record}
       </Button>
       {/* What cannot be done here is not offered, rather than greyed out with no reason. */}
-      {(known.length > 0 || payments.length > 0 || (!freeze && membership.status === 'active')) && (
-        <div className="member__actions">
+      {(known.length > 0 || restorable.length > 0 || payments.length > 0 || (!freeze && membership.status === 'active')) && (
+        <div className="member__actions member__actions--wrap">
           {known.length > 0 && (
             <Button aria-expanded={open === 'adjustment'} onClick={() => toggle('adjustment')}>
               {copy.adjust}
+            </Button>
+          )}
+          {/* In the Ajuste area for now; "One Corregir per Libro line" moves it under the charge. */}
+          {restorable.length > 0 && (
+            <Button aria-expanded={open === 'restoreCharge'} onClick={() => toggle('restoreCharge')}>
+              {copy.restoreCharge}
             </Button>
           )}
           {payments.length > 0 && (
@@ -624,6 +634,14 @@ function Actions({ membership, ledger, others }: { membership: Membership; ledge
       {open === 'adjustment' && known.length > 0 && (
         <AdjustmentForm charges={known} plans={ofPlans(known, membership)} onCancel={() => setOpen(null)} onDone={finish} />
       )}
+      {open === 'restoreCharge' && restorable.length > 0 && (
+        <RestoreChargeForm
+          charges={restorable}
+          plans={ofPlans(restorable, membership)}
+          onCancel={() => setOpen(null)}
+          onDone={finish}
+        />
+      )}
       {open === 'refund' && payments.length > 0 && (
         <RefundForm payments={payments} onCancel={() => setOpen(null)} onDone={finish} />
       )}
@@ -658,6 +676,101 @@ function voidRefusal(error: Error): string {
   if (!refused) return copy.voidRefused.failed
   if (refused.code === 'paid') return copy.voidRefused.paid(clp(refused.amount_clp ?? 0))
   return copy.voidRefused[refused.code]
+}
+
+/** What a refused restore says (#278). */
+function restoreRefusal(error: Error): string {
+  return copy.restoreRefused[restoreRefused(error) ?? 'failed']
+}
+
+/** "Restaurar cargo" (#278): a charge voided by mistake is owed again, as if never voided. */
+function RestoreChargeForm({
+  charges,
+  plans,
+  onCancel,
+  onDone,
+}: {
+  charges: Charge[]
+  plans: boolean
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.restoreForm
+  const ids = { period: useId(), reason: useId() }
+  const [periodId, setPeriodId] = useState(charges[0]?.period.id ?? '')
+  const charge = charges.find((c) => c.period.id === periodId) ?? charges[0]
+  const period = charge?.period
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const reasonOk = reason.trim() !== ''
+
+  const restored = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => recordRestore({ void_id: period!.void_id!, reason: reason.trim() }),
+    onSuccess: async () => {
+      onDone(form.done(monthName(period!.period_start), clp(period!.voided_clp)))
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (reasonOk && period?.void_id) restored.mutate()
+  }
+
+  return (
+    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">{form.intro}</p>
+      <label htmlFor={ids.period} className="member__label">
+        {form.period}
+      </label>
+      <Select id={ids.period} value={period?.id ?? ''} onChange={(e) => setPeriodId(e.target.value)}>
+        {charges.map((c) => (
+          <option key={c.period.id} value={c.period.id}>
+            {chargeLabel(c, form.periodOption(monthName(c.period.period_start), clp(c.period.voided_clp)), plans)}
+          </option>
+        ))}
+      </Select>
+      {period && (
+        <p className="member__detail">
+          {form.owed(monthName(period.period_start), clp(period.outstanding_clp), clp(period.outstanding_clp + period.voided_clp))}
+        </p>
+      )}
+
+      <label htmlFor={ids.reason} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={ids.reason}
+        type="text"
+        maxLength={500}
+        value={reason}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {checked && !reasonOk && (
+        <p className="member__error" role="alert">
+          {form.reasonNeeded}
+        </p>
+      )}
+      {restored.error && (
+        <p className="member__error" role="alert">
+          {restoreRefusal(restored.error)}
+        </p>
+      )}
+
+      <div className="member__form-actions">
+        <Button disabled={restored.isPending} onClick={onCancel}>
+          {form.cancel}
+        </Button>
+        <Button type="submit" variant="primary" disabled={restored.isPending} busy={restored.isPending}>
+          {restored.isPending ? form.working : form.submit}
+        </Button>
+      </div>
+    </form>
+  )
 }
 
 /** "Anular cargo" (#256): a charge made by mistake, owed nowhere once voided. */
@@ -1939,10 +2052,6 @@ function AdjustmentForm({
           </option>
         ))}
       </Select>
-      {/* A charge voided by mistake (#271): a "Recargo" of what the void took off puts it back. */}
-      {direction === 'owed' && period && period.voided_clp > 0 && (
-        <p className="member__detail">{form.restoreHint(clp(period.voided_clp))}</p>
-      )}
 
       <label htmlFor={ids.amount} className="member__label">
         {form.amount}
@@ -2246,6 +2355,7 @@ function correctionTitle(c: Correction): string {
       return words.cancelUndone
     case 'ledger_corrected':
       if (c.purpose === 'void') return (c.plan_void ? words.planVoid : words.void)(month)
+      if (c.purpose === 'restore') return words.restore(month)
       // In the member's favour when it left the period owing less.
       return words.adjustment((c.after?.outstanding_clp ?? 0) < (c.before?.outstanding_clp ?? 0), month)
   }
@@ -2313,7 +2423,13 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
       return {
         title: words.charge(month),
         detail: join(
-          words.generated(shortDay(entry.created_at)),
+          // Voided and restored (#278): owed again, and says what happened to it.
+          entry.restored
+            ? join(
+                words.voided(entry.restored.void.reason, entry.restored.void.by_name, shortDay(entry.restored.void.at)),
+                words.restored(entry.restored.reason, entry.restored.by_name, shortDay(entry.restored.at)),
+              )
+            : words.generated(shortDay(entry.created_at)),
           unpaid ? (paidClp > 0 ? words.partlyPaid(clp(paidClp)) : words.unpaid) : null,
         ),
         tone: unpaid ? 'owed' : 'muted',
@@ -2329,9 +2445,10 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
       return { title: words.payment(month), detail: join(method, review, day), tone }
     }
     case 'adjustment':
-      if (entry.voids) {
+      if (entry.voids || entry.purpose === 'restore') {
         const by = entry.validated_by_name && words.validatedBy(entry.validated_by_name)
-        return { title: words.void(month), detail: join(entry.note, by, day), tone: 'muted' }
+        const title = entry.voids ? words.void(month) : words.restore(month)
+        return { title, detail: join(entry.note, by, day), tone: 'muted' }
       }
       return {
         title: entry.period_start ? words.adjustment(entry.amount_clp > 0, month) : words.credit,

@@ -24,7 +24,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.domain.billing import MAX_PAID_AHEAD
-from app.domain.ledger import EntryKind, EntryStatus
+from app.domain.ledger import EntryKind, EntryStatus, Purpose
 from app.domain.membership import MembershipStatus
 from app.schemas.plans import MAX_PRICE_CLP
 
@@ -118,6 +118,33 @@ class VoidConflict(BaseModel):
     amount_clp: int | None = None
 
 
+class RestoreRecord(BaseModel):
+    """Restaurar un cargo voided by mistake (#278): it is owed again, as if never voided."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The void to restore.
+    void_id: uuid.UUID
+    # Mandatory: why the void was a mistake. The ledger reads it beside the charge.
+    reason: Note
+
+
+class RestoreRefusal(StrEnum):
+    """Why a void cannot be restored, for the ficha to say so."""
+
+    # The entry is not a void.
+    NOT_A_VOID = "not_a_void"
+    # Restored already: a void is restored once.
+    RESTORED = "restored"
+    # One of a plan's voids (#256): a plan voided by mistake is assigned again.
+    PLAN_VOIDED = "plan_voided"
+
+
+class RestoreConflict(BaseModel):
+    code: RestoreRefusal
+    message: str
+
+
 class Entry(BaseModel):
     id: uuid.UUID
     # The membership whose period it settles, or none for one on a cobro line (#195).
@@ -139,7 +166,11 @@ class Entry(BaseModel):
     refund_of: uuid.UUID | None
     # The cobro extra line it settles, instead of a membership's period (#195).
     extra_line_id: uuid.UUID | None = None
-    # An adjustment voiding what its period owed, the reason in `note` (#256).
+    # Why a correction was written, its reason in `note` (#278), and the entry it
+    # corrects: a restore names its void.
+    purpose: Purpose | None = None
+    corrects: uuid.UUID | None = None
+    # An adjustment voiding what its period owed (#256): `purpose` is `void`.
     voids: bool = False
 
 
@@ -162,6 +193,12 @@ class RecordedPayment(BaseModel):
 class RecordedVoid(BaseModel):
     void: Entry
     # The period as the void leaves it: owing nothing.
+    period: Period
+
+
+class RecordedRestore(BaseModel):
+    restore: Entry
+    # The period as the restore leaves it: owing the void's amount again.
     period: Period
 
 
@@ -220,7 +257,7 @@ class Correction(BaseModel):
     id: uuid.UUID
     at: datetime
     action: CorrectionAction
-    # The entry's: `None` for a plain adjustment, `void` for a void.
+    # The entry's: `None` for a plain adjustment, `void` for a void, `restore` (#278).
     purpose: str | None
     # One of the voids of a plan voided by mistake (#256).
     plan_void: bool
@@ -246,6 +283,16 @@ class Voided(BaseModel):
     at: datetime
 
 
+class Restored(BaseModel):
+    """A charge's void, restored (#278): "Anulado: … · Restaurado: <motivo>, por <quien>,
+    <fecha>". The charge is owed again."""
+
+    reason: str
+    by_name: str | None
+    at: datetime
+    void: Voided
+
+
 class TimelineEntry(BaseModel):
     id: uuid.UUID
     kind: EntryKind
@@ -263,10 +310,14 @@ class TimelineEntry(BaseModel):
     validated_at: datetime | None
     # The payment a refund gives back; null on every other kind.
     refund_of: uuid.UUID | None
+    # Why a correction was written (#278): `void`, `restore`, …; null on other entries.
+    purpose: Purpose | None = None
     # An adjustment voiding its period's charge (#256), its reason in `note`.
     voids: bool = False
-    # On a charge whose period was voided: why, by whom and when.
+    # On a charge whose period's void stands: why, by whom and when.
     voided: Voided | None = None
+    # On a charge whose period had a void restored, the latest (#278).
+    restored: Restored | None = None
 
 
 class FreezeEdge(StrEnum):
@@ -295,9 +346,10 @@ class LedgerPeriod(BaseModel):
     period_end: date
     # What validated payments and adjustments, less refunds, leave owed; 0 once paid.
     outstanding_clp: int
-    # What a void of its charge took off (#256), 0 if none: an owner who voided it by
-    # mistake puts it back with a "Recargo" of as much on the period (#271).
+    # What the void of its charge took off (#256), 0 if none or once restored, and that
+    # void, which "Restaurar cargo" restores (#278).
     voided_clp: int = 0
+    void_id: uuid.UUID | None = None
 
 
 class RefundablePayment(BaseModel):
@@ -442,9 +494,11 @@ class BookEntry(BaseModel):
     period: BookPeriod | None
     validated_by_name: str | None
     extra: BookExtra | None = None
-    # As on the member detail's `TimelineEntry` (#256).
+    # As on the member detail's `TimelineEntry` (#256, #278).
+    purpose: Purpose | None = None
     voids: bool = False
     voided: Voided | None = None
+    restored: Restored | None = None
 
 
 class BookFreeze(FreezeLine):
