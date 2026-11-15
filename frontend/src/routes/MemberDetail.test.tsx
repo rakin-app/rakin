@@ -1182,6 +1182,18 @@ describe('Ficha de alumno', () => {
     ])
   })
 
+  it('shows a refund over what the payment has left as no more than that (#279)', async () => {
+    stubApi()
+    renderAt(PATH)
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+
+    const amount = within(fixes).getByLabelText(copy.refundForm.amount)
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '60000')
+    expect(within(fixes).getByText(copy.fix.owed('septiembre', '$0', '$45.000'))).toBeInTheDocument()
+    expect(within(fixes).getByText(copy.fix.balance('$45.000', '$90.000'))).toBeInTheDocument()
+  })
+
   it('says so when the payment has less left to give back', async () => {
     stubApi({ refund: { status: 409, body: { detail: 'a refund exceeds what is left of its payment' } } })
     renderAt(PATH)

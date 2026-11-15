@@ -2066,6 +2066,8 @@ function ChangeAmountForm({
   // Owed on top when higher, taken off when lower.
   const change = value - current
   const owedAfter = period.outstanding_clp + change
+  // What came in against it. Exact while it owes; a period overpaid past its charge has
+  // `outstanding_clp` clamped at 0, so this reads only up to `current` there.
   const paid = current - period.outstanding_clp
   const amountOk = digits !== '' && change !== 0 && owedAfter >= 0
   const reasonOk = reason.trim() !== ''
@@ -2178,8 +2180,10 @@ function RefundForm({
   const [note, setNote] = useState('')
   const [amountNeeded, setAmountNeeded] = useState(false)
   const value = Number(amount.replace(/\D/g, ''))
-  // A refund opens its payment's period again for what it gives back.
+  // A refund opens its payment's period again for what it gives back: no more than the
+  // payment has left, which is all the server takes.
   const owed = ledger.periods.find((p) => p.id === payment.billing_period_id)?.outstanding_clp ?? 0
+  const back = Math.min(value, payment.refundable_clp)
 
   const refund = useSubmit({
     offline: 'refuse',
@@ -2270,8 +2274,8 @@ function RefundForm({
       />
       <FixPreview
         month={monthName(payment.period_start)}
-        owed={[owed, owed + value]}
-        balance={[ledger.balance_clp, ledger.balance_clp + value]}
+        owed={[owed, owed + back]}
+        balance={[ledger.balance_clp, ledger.balance_clp + back]}
       />
 
       {refund.error && (
