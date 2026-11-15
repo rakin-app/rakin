@@ -1,7 +1,8 @@
 """Tests for pii_guard.py: `python3 -m unittest discover -s scripts`.
 
-Every RUT, phone and name here is invented. The file is under the script's
-`FIXTURE_PATHS`, so its own diff passes the guard.
+Every RUT, phone, name, path and private term here is invented. The file is
+under the script's `FIXTURE_PATHS`, so its own diff passes the guard. The real
+lists are kept out: every run points them at a missing file.
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pii_guard as g
 
 SCRIPT = Path(__file__).resolve().parent / "pii_guard.py"
+LISTS = ("PII_DENYLIST", "PRIVATE_TERMS")
+NO_LISTS = {"PII_DENYLIST_FILE": "/nonexistent", "PRIVATE_TERMS_FILE": "/nonexistent"}
 NONE = g.Denylist()
 with redirect_stderr(io.StringIO()):
     NAMES = g.Denylist.parse(
@@ -48,8 +51,8 @@ def kinds(text: str, denylist: g.Denylist = NONE, where: str = "notes.md") -> li
 
 
 def run(*args: str, stdin: str = "", env: dict | None = None, cwd: str | None = None):
-    full_env = {k: v for k, v in os.environ.items() if not k.startswith("PII_DENYLIST")}
-    full_env["PII_DENYLIST_FILE"] = "/nonexistent"
+    full_env = {k: v for k, v in os.environ.items() if not k.startswith(LISTS)}
+    full_env.update(NO_LISTS)
     full_env.update(env or {})
     return subprocess.run(
         [sys.executable, "-I", str(SCRIPT), *args],
@@ -167,6 +170,106 @@ class FullNameVersusWord(unittest.TestCase):
         )
 
 
+class LocalPath(unittest.TestCase):
+    def test_each_absolute_form_is_caught(self):
+        for text in [
+            "see /Volumes/Disk/gits/app/notes.md",
+            "at /Users/alguien/code/x",
+            "in /home/alguien/.bashrc",
+            "cd /home/alguien/x",
+            "file:///Users/alguien/x.html",
+            r"C:\Users\alguien\Desktop",
+            r"C:\\Users\\alguien",
+            "D:/Users/alguien/x",
+            "under ~/Documents/planilla.xlsx",
+            "cd ~/gits/otro-proyecto",
+            "`~/.claude/projects/x`",
+            "~/.config/otra-cosa/x",
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(kinds(text), ["local-path"])
+
+    def test_relative_paths_and_placeholders_pass(self):
+        for text in [
+            "edit scripts/pii_guard.py and docs/privacy-guard.md",
+            "frontend/src/home/Users/x.tsx",
+            "https://github.com/o/r/blob/main/home/Users/x",
+            "`/Users/<name>/…`, `/Volumes/…`, `/home/<name>`, `C:\\Users\\…`",
+            "~/ alone, and ~ by itself",
+            "/srv/rakin and /tmp/x",
+            'navigate("/home/clases")',
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(kinds(text), [])
+
+    def test_documented_home_locations_pass(self):
+        for text in [
+            "`~/.config/rakin/pii-denylist.txt`",
+            "~/.config/rakin/private-terms.txt",
+            "ls ~/.task-force/radio/sessions/",
+            "defaults to ~/.task-force.",
+            "install -d -m 700 ~/.ssh",
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(kinds(text), [])
+
+    def test_a_documented_prefix_is_a_whole_segment(self):
+        self.assertEqual(kinds("~/.task-forcex/y"), ["local-path"])
+        self.assertEqual(kinds("~/.config/rakinx"), ["local-path"])
+        self.assertEqual(kinds("~/.task-force/../Documents"), ["local-path"])
+
+    def test_pii_ok_marks_a_path(self):
+        self.assertEqual(kinds("/home/deploy/.ssh  # pii-ok: the server's user"), [])
+
+
+class PrivateTerms(unittest.TestCase):
+    TERMS = g.Denylist(terms=g.Denylist.parse_terms("Borealis\nProyecto Tundra\nACM\n# a note\n"))
+
+    def test_whole_word_in_any_case_or_accent(self):
+        for text in [
+            "the borealis repo",
+            "BOREALIS-12 is a ticket",
+            "Boreális",
+            "borealis_utils",
+            "proyecto  tundra",
+            "Proyecto-Tundra",
+            "ACM-41",
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(kinds(text, self.TERMS), ["private-term"])
+
+    def test_not_inside_another_word(self):
+        for text in ["borealisx", "aborealis", "tundra alone", "acme", "proyecto"]:
+            with self.subTest(text=text):
+                self.assertEqual(kinds(text, self.TERMS), [])
+
+    def test_pii_ok_and_fixtures_do_not_skip_terms(self):
+        self.assertEqual(kinds("borealis # pii-ok", self.TERMS), ["private-term"])
+        self.assertEqual(kinds("borealis", self.TERMS, "backend/tests/x.py"), ["private-term"])
+
+    def test_short_term_warns_without_its_value(self):
+        err = io.StringIO()
+        with redirect_stderr(err):
+            terms = g.Denylist.parse_terms("zq\nfine\n")
+        self.assertEqual(terms, (("fine",),))
+        self.assertIn("line 1", err.getvalue())
+        self.assertNotIn("zq", err.getvalue())
+
+    def test_values_are_never_printed(self):
+        text = "Proyecto Tundra in /Users/alguien/gits/borealis\n"
+        env = {"PRIVATE_TERMS": "Borealis\nProyecto Tundra\n"}
+        result = run("scan", "--name", "body", stdin=text, env=env)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("body:1:1: private-term", result.stderr)
+        self.assertIn("local-path", result.stderr)
+        for secret in ("Tundra", "tundra", "borealis", "Borealis", "alguien", "/Users"):
+            self.assertNotIn(secret, result.stdout + result.stderr)
+
+    def test_no_denylist_skips_terms(self):
+        result = run("--no-denylist", "scan", stdin="borealis\n", env={"PRIVATE_TERMS": "borealis"})
+        self.assertEqual(result.returncode, 0)
+
+
 class Mark(unittest.TestCase):
     def test_pii_ok_skips_patterns(self):
         self.assertEqual(kinds(f"{VALID_RUT}  # pii-ok: invented"), [])
@@ -279,19 +382,81 @@ class DenylistSource(unittest.TestCase):
             f.write("Bastián Quezada\n")
         with mock.patch.dict(os.environ, {"PII_DENYLIST": "Ximena Ñúñez Peñaloza"}, clear=False):
             self.assertEqual(g.Denylist.load().source, "$PII_DENYLIST")
-        env = {k: v for k, v in os.environ.items() if k != "PII_DENYLIST"}
-        env["PII_DENYLIST_FILE"] = f.name
+        env = {k: v for k, v in os.environ.items() if not k.startswith(LISTS)}
+        env.update(NO_LISTS, PII_DENYLIST_FILE=f.name)
         with mock.patch.dict(os.environ, env, clear=True):
             self.assertEqual(g.Denylist.load().source, f.name)
         env["PII_DENYLIST_FILE"] = "/nonexistent"
         with mock.patch.dict(os.environ, env, clear=True):
             self.assertFalse(g.Denylist.load())
 
+    def test_private_terms_env_content_then_file(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith(LISTS)}
+        env.update(NO_LISTS, PRIVATE_TERMS="Proyecto Borealis\n")
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(g.Denylist.load().terms, (("proyecto", "borealis"),))
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write("tundra\n")
+        del env["PRIVATE_TERMS"]
+        env["PRIVATE_TERMS_FILE"] = f.name
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(g.Denylist.load().terms, (("tundra",),))
+
 
 class ClaudeHook(unittest.TestCase):
     def hook(self, command: str, cwd: str, denylist: str = "Bastián Quezada\n"):
         payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}
-        return run("claude-hook", stdin=json.dumps(payload), env={"PII_DENYLIST": denylist})
+        env = {"PII_DENYLIST": denylist, "PRIVATE_TERMS": "Borealis\n"}
+        return run("claude-hook", stdin=json.dumps(payload), env=env)
+
+    def test_comment_naming_a_private_term_or_a_path_is_blocked(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "c.md").write_text("Same as in the borealis repo.\n")
+            result = self.hook("gh issue comment 5 --body-file c.md", d)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("c.md:1:16: private-term", result.stderr)
+            Path(d, "c.md").write_text("Logs in /Volumes/Disk/gits/x.\n")
+            result = self.hook("gh issue comment 5 --body-file c.md", d)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("c.md:1:9: local-path", result.stderr)
+        for command in [
+            "gh issue comment 5 --body 'see ~/Documents/x'",
+            "gh issue comment 5 --body-file - <<'B'\nfrom Borealis\nB",
+        ]:
+            with self.subTest(command=command):
+                self.assertEqual(self.hook(command, "/").returncode, 2)
+
+    def test_paths_the_command_only_reads_pass(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "b.md").write_text("All fine.\n")
+            for command in [
+                f"gh pr create --body-file {d}/b.md",
+                f"cd {d} && gh issue comment 5 -F b.md",
+                f'cd "{d}"; gh issue create --body "$(cat {d}/b.md)"',
+            ]:
+                with self.subTest(command=command):
+                    result = self.hook(command, d)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+        text = "cd /Volumes/Disk/x && gh pr create --body-file /Users/alguien/b.md --title ok"
+        published = g.published_text(text)
+        self.assertNotIn("/Users", published)
+        self.assertNotIn("/Volumes", published)
+        self.assertIn("--title ok", published)
+        self.assertEqual(len(published), len(text))
+        self.assertEqual(kinds(published), [])
+
+    def test_paths_inside_a_posted_body_are_still_caught(self):
+        for command in [
+            "gh issue comment 5 --body-file - <<'B'\nfirst cd /Volumes/Disk/x\nB",
+            "gh issue comment 5 --body-file - <<'B'\ncd /Users/alguien/x\nB",
+            "gh issue comment 5 --body 'logs at /Users/alguien/x'",
+            'gh issue comment 5 --body "see:\ncd /Users/alguien/work\nok"',
+            "gh issue comment 5 --body 'see:\n  cd /Volumes/Disk/x && make\n'",
+            'gh issue comment 5 --body "use --body-file /Users/alguien/b.md"',
+            "gh issue comment 5 --body '$(cat /Users/alguien/b.md)'",
+        ]:
+            with self.subTest(command=command):
+                self.assertEqual(self.hook(command, "/").returncode, 2)
 
     def test_body_file_with_a_denylisted_name_is_blocked(self):
         with tempfile.TemporaryDirectory() as d:
@@ -381,7 +546,8 @@ class GitHooks(unittest.TestCase):
         prior = hooks / "commit-msg"
         prior.write_text('#!/bin/sh\necho prior >> "$(git rev-parse --git-dir)/chained"\n')
         prior.chmod(0o755)
-        self.env = {**os.environ, "PII_DENYLIST": "Bastián Quezada\n"}
+        self.env = {**os.environ, **NO_LISTS, "PII_DENYLIST": "Bastián Quezada\n"}
+        self.env.pop("PRIVATE_TERMS", None)
         subprocess.run(
             ["bash", "scripts/install-hooks.sh"], cwd=self.repo, check=True, capture_output=True
         )

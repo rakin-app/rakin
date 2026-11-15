@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Find real people's data in text before it reaches GitHub (#302).
+"""Find real people's data and private references in text before it reaches GitHub.
 
 The repo, its issues and the project board are public, and the pilot gym's real
-members live on staging. This scans text for two things:
+members live on staging. This scans text for three things:
 
 * **Patterns**, which need no list: a Chilean RUT with a valid check digit, a
-  Chilean mobile number, and an email whose domain is not on `EMAIL_DOMAINS`.
+  Chilean mobile number, an email whose domain is not on `EMAIL_DOMAINS` (#302),
+  and an absolute path on someone's machine (`/Volumes/…`, `/Users/<name>`,
+  `/home/<name>`, `C:\\Users\\…`, `~/<folder>` outside `HOME_PATHS_OK`) (#324).
 * **The denylist**: the real names, emails, RUTs and phones the PM exports from
   staging. It never enters the repo. It is read from `--denylist`, else the
   `PII_DENYLIST` variable (its content, as CI's secret is), else the file named
   by `PII_DENYLIST_FILE`, else `~/.config/rakin/pii-denylist.txt`.
+* **The private terms**: the owner's private project and repo names, internal
+  ticket prefixes and client names, matched as whole words (#324). Kept outside
+  the repo like the denylist: `--terms`, else `PRIVATE_TERMS` (content), else
+  `PRIVATE_TERMS_FILE`, else `~/.config/rakin/private-terms.txt`.
 
 A hit prints `<where>:<line>:<col>: <kind>` and never the matched text, so a CI
 log or a hook's refusal cannot leak what it found. Exit status: 0 clean, 1 a
@@ -26,7 +32,7 @@ Usage:
 
 Invented values are marked, not hidden: a line containing `pii-ok` skips the
 pattern checks, and so does a file under `FIXTURE_PATHS`. Neither skips the
-denylist, which only ever holds real people.
+denylist or the private terms, which only ever hold real things.
 
 Stdlib only: run it with `python3 -I` or `uv run`. See docs/privacy-guard.md.
 """
@@ -43,7 +49,7 @@ import subprocess
 import sys
 import unicodedata
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 # Domains that only ever hold invented addresses, each with its subdomains.
@@ -111,10 +117,26 @@ SEP = r"[ \t.\-]*"
 RUT = re.compile(r"(?<![\w.])(\d{1,2}\.\d{3}\.\d{3}|\d{7,8})-([\dkK])(?![\w])")
 PHONE = re.compile(rf"(?<![\w+])(?:(?:\+|00)?56{SEP})?\(?9\)?{SEP}\d{{4}}{SEP}\d{{4}}(?![\w])")
 EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@([A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,})")
+# An absolute path on a machine: a mounted volume, a home directory on macOS,
+# Linux or Windows, or `~/` and a folder. A placeholder (`/Users/<name>`,
+# `/Volumes/…`) does not start with a name character, so it passes. On Linux the
+# path needs a folder under the user's (`/home/<name>/…`), so a one-segment web
+# route such as `/home/clases` is not taken for one.
+NAME = r"[\w.-]"
+LOCAL_PATH = re.compile(
+    rf"(?<![\w.~-])/(?:Volumes/|Users/|home/{NAME}+/){NAME}"
+    rf"|(?<![\w])[A-Za-z]:(?:\\{{1,2}}|/)Users(?:\\{{1,2}}|/){NAME}"
+)
+HOME_PATH = re.compile(r"(?<![\w~/$.-])~/([\w.-][^\s'\"`()<>|;:,*]*)")
+# Home folders that name nothing private: the guard's own lists, task-force's
+# state, and the standard tool folders CI and the docs use. Each matches as a
+# whole leading segment.
+HOME_PATHS_OK = (".config/rakin", ".task-force", ".ssh", ".local/bin", ".kiro")
 NUMBER = re.compile(r"\+?\(?\d+(?:[ \t.\-()]{1,2}\d+)*(?:-[kK])?")
 WORD = re.compile(r"[a-z0-9]+")
 
 DEFAULT_DENYLIST = Path("~/.config/rakin/pii-denylist.txt")
+DEFAULT_TERMS = Path("~/.config/rakin/private-terms.txt")
 
 
 def fold(text: str) -> str:
@@ -150,9 +172,11 @@ class Denylist:
     emails: frozenset[str] = frozenset()
     numbers: frozenset[str] = frozenset()
     source: str = ""
+    # The private terms (#324): each a tuple of folded words, matched whole.
+    terms: tuple[tuple[str, ...], ...] = field(default=(), repr=False)
 
     def __bool__(self) -> bool:
-        return bool(self.phrases or self.words or self.emails or self.numbers)
+        return bool(self.phrases or self.words or self.emails or self.numbers or self.terms)
 
     @classmethod
     def parse(cls, text: str, source: str = "") -> Denylist:
@@ -198,18 +222,46 @@ class Denylist:
             tuple(sorted(phrases)), frozenset(words), frozenset(emails), frozenset(numbers), source
         )
 
+    @staticmethod
+    def parse_terms(text: str) -> tuple[tuple[str, ...], ...]:
+        """One term per line; `#` starts a comment. Under 3 letters is ignored."""
+        terms = set()
+        for n, raw in enumerate(text.splitlines(), 1):
+            tokens = tuple(WORD.findall(fold(raw.split("#", 1)[0])))
+            if sum(map(len, tokens)) >= 3:
+                terms.add(tokens)
+            elif tokens:
+                print(
+                    f"pii-guard: private terms line {n} is under 3 letters, ignored",
+                    file=sys.stderr,
+                )
+        return tuple(sorted(terms))
+
     @classmethod
-    def load(cls, path: str | None = None) -> Denylist:
-        if path:
-            return cls.parse(Path(path).expanduser().read_text(encoding="utf-8"), path)
-        content = os.environ.get("PII_DENYLIST")
-        if content:
-            return cls.parse(content, "$PII_DENYLIST")
-        named = os.environ.get("PII_DENYLIST_FILE")
-        candidate = Path(named).expanduser() if named else DEFAULT_DENYLIST.expanduser()
-        if candidate.is_file():
-            return cls.parse(candidate.read_text(encoding="utf-8"), str(candidate))
-        return cls()
+    def load(cls, path: str | None = None, terms_path: str | None = None) -> Denylist:
+        denylist = cls()
+        text = read_list(path, "PII_DENYLIST", DEFAULT_DENYLIST)
+        if text:
+            denylist = cls.parse(*text)
+        terms = read_list(terms_path, "PRIVATE_TERMS", DEFAULT_TERMS)
+        if terms:
+            denylist = replace(denylist, terms=cls.parse_terms(terms[0]))
+        return denylist
+
+
+def read_list(path: str | None, var: str, default: Path) -> tuple[str, str] | None:
+    """`(content, source)` from `path`, else `$VAR` (the content), else the file
+    `$VAR_FILE` names, else `default`; None when there is none."""
+    if path:
+        return Path(path).expanduser().read_text(encoding="utf-8"), path
+    content = os.environ.get(var)
+    if content:
+        return content, f"${var}"
+    named = os.environ.get(f"{var}_FILE")
+    candidate = Path(named).expanduser() if named else default.expanduser()
+    if candidate.is_file():
+        return candidate.read_text(encoding="utf-8"), str(candidate)
+    return None
 
 
 @dataclass(frozen=True)
@@ -237,9 +289,21 @@ def is_example(match: str) -> bool:
     return canon in EXAMPLE_VALUES or canon.startswith(EXAMPLE_PREFIXES)
 
 
+def home_path_allowed(path: str) -> bool:
+    path = path.rstrip(".")
+    if ".." in path.split("/"):
+        return False
+    return any(path == ok or path.startswith(ok + "/") for ok in HOME_PATHS_OK)
+
+
 def scan_line(line: str, denylist: Denylist, patterns: bool = True) -> Iterator[tuple[int, str]]:
     """Yield `(column, kind)` for each match on one line."""
     if patterns and MARK not in line:
+        for m in LOCAL_PATH.finditer(line):
+            yield m.start() + 1, "local-path"
+        for m in HOME_PATH.finditer(line):
+            if not home_path_allowed(m.group(1)):
+                yield m.start() + 1, "local-path"
         for m in RUT.finditer(line):
             if rut_is_valid(m.group(1), m.group(2)) and not is_example(m.group(0)):
                 yield m.start() + 1, "rut"
@@ -261,15 +325,19 @@ def scan_line(line: str, denylist: Denylist, patterns: bool = True) -> Iterator[
             canon = canonical_number(m.group(0))
             if any(entry in canon for entry in denylist.numbers):
                 yield m.start() + 1, "denylist number"
-    if denylist.phrases or denylist.words:
+    if denylist.phrases or denylist.words or denylist.terms:
         spans = [(m.group(0), m.start()) for m in WORD.finditer(folded)]
         tokens = [t for t, _ in spans]
+        width = max(map(len, denylist.terms + denylist.phrases), default=1)
         for i, (token, at) in enumerate(spans):
+            window = tuple(tokens[i : i + width])
+            if any(window[: len(term)] == term for term in denylist.terms):
+                yield at + 1, "private-term"
             if token in denylist.words:
                 yield at + 1, "denylist name"
                 continue
             for phrase in denylist.phrases:
-                if tuple(tokens[i : i + len(phrase)]) == phrase:
+                if window[: len(phrase)] == phrase:
                     yield at + 1, "denylist name"
                     break
 
@@ -351,30 +419,76 @@ FIELD_FILE = re.compile(
 )
 # `--body "$(cat b.md)"`, `$(<b.md)` and the backtick form: a file read into an argument.
 CAT_FILE = re.compile(r"(?:\$\(|`)\s*(?:cat\s+|<\s*)(\"[^\"]*\"|'[^']*'|[^\s)`\"']+)\s*(?:\)|`)")
+# `cd <dir>` at the start of a command: where it runs, which never reaches GitHub.
+CD_DIR = re.compile(r"(?:^|[;&|(\n])\s*cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|)]+)")
+HEREDOC = re.compile(r"<<-?\s*['\"]?\w+")
 UNREADABLE = "unreadable body file, not scanned: write it to a literal path first"
 
 
-def gh_files(command: str) -> list[str]:
-    """The files a gh command reads its body from (`-` and fields excluded)."""
+def gh_file_args(command: str) -> list[tuple[str, tuple[int, int]]]:
+    """Each file a gh command reads its body from (`-` and fields excluded),
+    with the span of its path in the command."""
     found = []
     for m in FIELD_FILE.finditer(command):
-        found.append(m.group(1))
+        found.append((m.group(1), m.span(1)))
     for m in CAT_FILE.finditer(command):
-        found.append(m.group(1))
+        found.append((m.group(1), m.span(1)))
     for m in FILE_FLAG.finditer(command):
         value = m.group(1)
         if "=" in value.strip("\"'") and not value.startswith(('"', "'", "/", ".", "~")):
             continue  # `-F key=value` is a field, handled above when it is `=@file`
-        found.append(value)
+        found.append((value, m.span(1)))
     paths = []
-    for value in found:
+    for value, span in found:
         try:
             value = shlex.split(value)[0]
         except (ValueError, IndexError):
             value = value.strip("\"'")
         if value and value != "-":
-            paths.append(value)
+            paths.append((value, span))
     return paths
+
+
+def gh_files(command: str) -> list[str]:
+    return [path for path, _ in gh_file_args(command)]
+
+
+def quote_states(command: str) -> list[str]:
+    """The shell quote open before each character: `""`, `"'"` or `'"'`."""
+    states, quote, escaped = [], "", False
+    for c in command:
+        states.append(quote)
+        if escaped:
+            escaped = False
+        elif c == "\\" and quote != "'":
+            escaped = True
+        elif quote and c == quote:
+            quote = ""
+        elif not quote and c in "'\"":
+            quote = c
+    return states
+
+
+def published_text(command: str) -> str:
+    """The command with the paths it only reads blanked out: its body files and
+    `cd` targets. Those stay on the machine, so a local path there is fine;
+    blanking keeps every other column where it was.
+
+    Only shell words are blanked, never text that gets posted: nothing inside a
+    heredoc's body, and nothing inside a quoted argument (`--body "…cd /x…"`),
+    except a `$(cat file)` in double quotes, which the shell runs."""
+    heredoc = HEREDOC.search(command)
+    body = command.find("\n", heredoc.end()) if heredoc else -1
+    limit = body if body >= 0 else len(command)
+    states = quote_states(command[:limit])
+    spans = [(m.span(1), "'") for m in CAT_FILE.finditer(command)]
+    spans += [(span, "'\"") for _, span in gh_file_args(command)]
+    spans += [(m.span(1), "'\"") for m in CD_DIR.finditer(command)]
+    chars = list(command)
+    for (start, end), quoted in spans:
+        if end <= limit and (not states[start] or states[start] not in quoted):
+            chars[start:end] = " " * (end - start)
+    return "".join(chars)
 
 
 def claude_hook(denylist: Denylist, payload: dict) -> list[Hit]:
@@ -383,7 +497,7 @@ def claude_hook(denylist: Denylist, payload: dict) -> list[Hit]:
     command = str((payload.get("tool_input") or {}).get("command") or "")
     if not GH_CALL.search(command):
         return []
-    hits = scan_text("command", command, denylist)
+    hits = scan_text("command", published_text(command), denylist)
     cwd = Path(payload.get("cwd") or os.getcwd())
     for name in gh_files(command):
         # Fail closed: a file the hook cannot find (an unexpanded `$VAR`, a `$(…)`
@@ -401,15 +515,18 @@ def report(hits: list[Hit], *, out=sys.stderr) -> int:
     if not hits:
         return 0
     seen = set()
-    print("pii-guard: possible personal data found (values are never printed):", file=out)
+    print(
+        "pii-guard: possible personal or private data found (values are never printed):", file=out
+    )
     for hit in hits:
         if str(hit) not in seen:
             seen.add(str(hit))
             print(f"  {hit}", file=out)
     print(
-        "\n  Replace it with an invented value. A deliberate fixture line takes a"
-        f" `{MARK}` comment;\n  a denylist hit is a real person and has no override."
-        " See docs/privacy-guard.md.",
+        "\n  Replace it with an invented value, and a local path with a repo-relative one."
+        f" A deliberate\n  fixture line takes a `{MARK}` comment. A denylist hit is a real"
+        " person and a private-term\n  hit is the owner's private work: neither has an"
+        " override. See docs/privacy-guard.md.",
         file=out,
     )
     return 1
@@ -420,7 +537,10 @@ def main(argv: list[str] | None = None) -> int:
         prog="pii_guard.py", description=(__doc__ or "").split("\n\n")[0]
     )
     parser.add_argument("--denylist", help="denylist file (default: see module doc)")
-    parser.add_argument("--no-denylist", action="store_true", help="patterns only")
+    parser.add_argument("--terms", help="private terms file (default: see module doc)")
+    parser.add_argument(
+        "--no-denylist", action="store_true", help="patterns only: no denylist, no private terms"
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_scan = sub.add_parser("scan")
     p_scan.add_argument("--name", default="stdin", help="label for stdin in the output")
@@ -436,7 +556,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("claude-hook")
     args = parser.parse_args(argv)
 
-    denylist = Denylist() if args.no_denylist else Denylist.load(args.denylist)
+    denylist = Denylist() if args.no_denylist else Denylist.load(args.denylist, args.terms)
 
     if args.cmd == "scan":
         hits = []
