@@ -857,7 +857,7 @@ async def void_membership(
         if refused is not None:
             raise refused
     for period_id in periods:
-        await void_period(session, membership_id, period_id, body.reason)
+        await void_period(session, membership_id, period_id, body.reason, plan_void=True)
     params = {"id": membership_id, "reason": body.reason}
     if found.status == MembershipStatus.CANCELLED.value:
         await session.execute(VOID_CANCELLED, params)

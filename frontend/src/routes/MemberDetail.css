@@ -383,3 +383,12 @@
   background: var(--color-surface-sunken);
   border-radius: var(--radius-lg);
 }
+
+/* A correction (#277): no money of its own, the period's before → after in its place. */
+.member__entry--correction {
+  --tone: var(--color-text-subtle);
+}
+
+.member__entry--correction .member__entry-amount {
+  white-space: nowrap;
+}

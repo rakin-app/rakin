@@ -10,6 +10,7 @@ from app.api import (
     block_kinds,
     class_tags,
     class_types,
+    corrections,
     custom_fields,
     extra_charges,
     freeze_requests,
@@ -131,6 +132,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(grading.router)
     app.include_router(grades.router)
     app.include_router(ledger.router)
+    app.include_router(corrections.router)
     app.include_router(ledger_export.router)
     app.include_router(inactive.router)
     app.include_router(reminders.router)

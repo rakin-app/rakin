@@ -1026,6 +1026,24 @@ export const es = {
         all: (n: number) => `Ver todo el libro (${n})`,
         fewer: 'Ver menos',
       },
+      // Every fix to the person's billing, with who, why, and before and after (#277).
+      corrections: {
+        title: 'Correcciones',
+        error: 'No pudimos cargar las correcciones.',
+        void: (month: string) => `Anuló cargo ${month}`,
+        planVoid: (month: string) => `Anuló plan · cargo ${month}`,
+        // An adjustment by which way it went, as the Libro names it.
+        adjustment: (favor: boolean, month: string) => `${favor ? 'Descuento' : 'Recargo'} ${month}`,
+        dueDate: 'Cambió el vencimiento',
+        reactivated: 'Reactivó el plan',
+        cancelUndone: 'Deshizo la baja',
+        // What the period owed, before → after.
+        owed: (before: string, after: string) => `${before} → ${after}`,
+        balance: (before: string, after: string) => `Saldo ${before} → ${after}`,
+        by: (name: string) => `por ${name}`,
+        all: (n: number) => `Ver todas (${n})`,
+        fewer: 'Ver menos',
+      },
     },
     classes: {
       title: 'Clases',

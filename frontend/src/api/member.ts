@@ -219,6 +219,36 @@ export function membershipsQuery(personId: string) {
   })
 }
 
+/** A period and its membership's balance, as a correction found or left them (#277). */
+export type Figures = { outstanding_clp: number; balance_clp: number }
+
+/** One correction of a person's billing (backend `Correction`): the ficha's "Correcciones". */
+export type Correction = {
+  id: string
+  at: string
+  action: 'ledger_corrected' | 'due_date_changed' | 'membership_reactivated' | 'cancel_undone'
+  // The entry's: null for a plain adjustment, `void` for a void.
+  purpose: string | null
+  // One of the voids of a plan voided by mistake (#256).
+  plan_void: boolean
+  reason: string | null
+  actor_name: string | null
+  period_start: string | null
+  plan_name: string | null
+  before: Figures | null
+  after: Figures | null
+}
+
+export type Corrections = { total: number; items: Correction[] }
+
+// Under `ledger`, so every correction's invalidation reads it again.
+export function correctionsQuery(personId: string) {
+  return queryOptions({
+    queryKey: ['ledger', 'corrections', personId],
+    queryFn: () => apiFetch<Corrections>(`/api/ledger/people/${encodeURIComponent(personId)}/corrections`),
+  })
+}
+
 export function membershipLedgerQuery(membershipId: string) {
   return queryOptions({
     queryKey: ['ledger', 'membership', membershipId],
