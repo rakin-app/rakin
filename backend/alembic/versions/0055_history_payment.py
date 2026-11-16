@@ -55,8 +55,8 @@ LEDGER_ACCESS = (
 
 REMOVED = "history_removed"
 
-# 0054's `forget_gym_person` (0051's, grades by person): its corrections leave out every history action, and
-# beside its `history_set` it counts the removals and the payments.
+# 0054's `forget_gym_person` (0051's, grades by person): its corrections leave out every
+# history action, and beside its `history_set` it counts the removals and the payments.
 COUNT_BEFORE = (
     "                AND action <> 'history_set'\n"
     "            ),\n"
