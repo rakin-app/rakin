@@ -87,7 +87,18 @@ def errors(**values: str) -> list[RowError]:
         ("Fecha de nacimiento", F.DOB),
         ("Próximo pago", F.DUE_ON),
         ("Vencimiento", F.DUE_ON),
-        ("Fecha de ingreso", F.STARTED_ON),
+        # When the student joined, not the plan's start (#297).
+        ("Fecha de ingreso", F.MEMBER_SINCE),
+        ("Ingreso", F.MEMBER_SINCE),
+        ("Alta", F.MEMBER_SINCE),
+        ("Alumno desde", F.MEMBER_SINCE),
+        ("Inicio del plan", F.STARTED_ON),
+        ("Fecha de baja", F.LEFT_ON),
+        ("Egreso", F.LEFT_ON),
+        ("Motivo de baja", F.LEFT_REASON),
+        ("Motivo", F.LEFT_REASON),
+        ("Clases antes de Rakin", F.PRIOR_CLASSES),
+        ("Clases", F.PRIOR_CLASSES),
         ("Plan", F.PLAN),
         ("Nombre apoderado", F.GUARDIAN_NAME),
         ("Teléfono del apoderado", F.GUARDIAN_PHONE),
@@ -376,3 +387,55 @@ def test_clearing_one_value_leaves_the_others_matched_by_name() -> None:
     plans = PlanFinder([MENSUAL, KIDS], {"beca": None})
     assert plans.cleared("Beca") and not plans.cleared("Mensual")
     assert plans.find("Mensual") == MENSUAL
+
+
+# --- history from before Rakin (#297) ---------------------------------------------
+
+HISTORY = {F.NAME: 0, F.MEMBER_SINCE: 1, F.LEFT_ON: 2, F.LEFT_REASON: 3, F.PRIOR_CLASSES: 4}
+
+
+def history(*values: str, mapping: dict[Field, int] = HISTORY) -> Member:
+    [member] = read_members([(2, ["Ana", *values])], mapping, PLANS, TODAY)
+    return member
+
+
+def test_the_history_columns_are_read() -> None:
+    member = history("05/03/2019", "2022-06-30", "  Se  cambió de ciudad ", "1.200")
+    assert member.errors == []
+    assert (member.member_since, member.left_on) == (date(2019, 3, 5), date(2022, 6, 30))
+    assert (member.left_reason, member.prior_classes) == ("Se cambió de ciudad", 1200)
+    assert member.has_history
+
+
+def test_a_history_date_goes_back_60_years_and_never_past_today() -> None:
+    # Billing's dates keep their five years; history's go back sixty.
+    assert history("01/01/1970").member_since == date(1970, 1, 1)
+    assert history("01/01/1966").errors == [RowError(F.MEMBER_SINCE, "invalid_date")]
+    assert history("", "10/11/2026").errors == [RowError(F.LEFT_ON, "invalid_date")]
+    assert history("", "09/11/2026").left_on == TODAY
+
+
+def test_leaving_before_starting_is_refused() -> None:
+    assert history("05/03/2019", "01/01/2018").errors == [RowError(F.LEFT_ON, "left_before_start")]
+
+
+@pytest.mark.parametrize("value", ["muchas", "-3", "12,5", "20001"])
+def test_classes_before_rakin_are_a_whole_number(value: str) -> None:
+    assert history("", "", "", value).errors == [RowError(F.PRIOR_CLASSES, "invalid_number")]
+
+
+def test_a_reason_longer_than_the_ficha_takes_is_refused() -> None:
+    assert history("", "01/01/2020", "x" * 201).errors == [RowError(F.LEFT_REASON, "too_long")]
+
+
+def test_a_former_students_plan_and_its_dates_are_not_read() -> None:
+    mapping = {**HISTORY, F.PLAN: 5, F.DUE_ON: 6}
+    # A monthly plan with no due date would be refused: a former student has none.
+    member = history("05/03/2019", "30/06/2022", "", "", "Mensual", "", mapping=mapping)
+    assert (member.errors, member.plan, member.unapplied) == ([], None, [F.PLAN])
+    member = history("", "30/06/2022", "", "", "Mensual", "01/12/2026", mapping=mapping)
+    assert member.unapplied == [F.PLAN, F.DUE_ON]
+
+
+def test_a_row_with_no_history_has_none() -> None:
+    assert not history("", "", "", "").has_history

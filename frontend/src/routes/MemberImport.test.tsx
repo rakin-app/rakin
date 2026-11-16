@@ -18,6 +18,7 @@ const SHEET: Sheet = {
     { number: 4, cells: ['Isidora Lagos', '2 2345 6789', 'Mensual', '05/12/2026', ''] },
   ],
   mapping: { name: 0, phone: 1, plan: 2, due_on: 3 },
+  file: { name: 'alumnos.csv', sha256: 'a'.repeat(64) },
 }
 
 const PLANS = [
@@ -36,7 +37,12 @@ const ok = (row: number, name: string): RowResult => ({
   ignored: [],
   missing_phone: false,
   missing_identity: false,
+  history: false,
+  former: false,
 })
+
+// More rows for a test's report: a former student's, say.
+let extraRows: RowResult[] = []
 
 function reportFor(body: ImportRequest): ImportReport {
   const rows: RowResult[] = [
@@ -46,25 +52,32 @@ function reportFor(body: ImportRequest): ImportReport {
       ? ok(3, 'Benjamín Fuentes')
       : { ...ok(3, 'Benjamín Fuentes'), person: null, membership: null, errors: [{ field: 'plan', code: 'unknown_plan' }] },
     { ...ok(4, 'Isidora Lagos'), person: null, membership: null, errors: [{ field: 'phone', code: 'invalid_phone' }] },
+    ...extraRows,
   ]
   const imported = rows.filter((r) => r.errors.length === 0).length
   return {
     dry_run: body.dry_run,
+    import_id: null,
     summary: {
-      rows: 3,
+      rows: rows.length,
       imported,
-      refused: 3 - imported,
+      refused: rows.length - imported,
       people_created: imported,
       links_created: 0,
       memberships_created: imported,
       missing_phone: 1,
       missing_identity: 0,
+      history_set: rows.filter((r) => r.history).length,
+      former_created: rows.filter((r) => r.former && r.person === 'created').length,
     },
     rows,
   }
 }
 
 type Sent = ImportRequest[]
+
+// The names the sheets were uploaded with.
+let uploadedAs: (string | null)[] = []
 
 function stubApi({ role = 'owner', refuse }: { role?: string; refuse?: string } = {}): Sent {
   const sent: Sent = []
@@ -79,6 +92,7 @@ function stubApi({ role = 'owner', refuse }: { role?: string; refuse?: string } 
       if (url.pathname === '/api/people') return json({ items: [], total: 0 })
       if (url.pathname === '/api/import/sheet') {
         expect(init?.body).toBeInstanceOf(File)
+        uploadedAs.push(url.searchParams.get('name'))
         return refuse ? json({ detail: { code: refuse } }, 422) : json(SHEET)
       }
       if (url.pathname === '/api/import/members') {
@@ -105,6 +119,8 @@ async function chooseFile() {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  extraRows = []
+  uploadedAs = []
 })
 
 describe('Importar alumnos', () => {
@@ -144,8 +160,10 @@ describe('Importar alumnos', () => {
       within(errors).getByText(copy.fieldError(copy.fields.phone, copy.error.invalid_phone)),
     ).toBeInTheDocument()
     expect(sent).toEqual([
-      { rows: SHEET.rows, mapping: SHEET.mapping, plans: { mensual: 'mensual' }, dry_run: true },
+      { rows: SHEET.rows, mapping: SHEET.mapping, plans: { mensual: 'mensual' }, dry_run: true, file: SHEET.file },
     ])
+    // The file's name goes up with it, and its hash comes back for the import's record.
+    expect(uploadedAs).toEqual(['alumnos.csv'])
     // Imported anyway: a warning, not an error.
     const missing = screen.getByRole('list', { name: copy.missingPhoneTitle(1) })
     expect(within(missing).getByText(copy.rowLabel(2, 'Camila Ortiz'))).toBeInTheDocument()
@@ -156,6 +174,56 @@ describe('Importar alumnos', () => {
     expect(await screen.findByText(copy.doneSummary('alumnos.csv', 1, 2))).toBeInTheDocument()
     expect(sent[1]?.dry_run).toBe(false)
     expect(screen.getByRole('link', { name: copy.toStudents })).toHaveAttribute('href', '/admin/alumnos')
+  })
+
+  it('offers the template to download', async () => {
+    stubApi()
+    renderAt('/admin/alumnos/importar')
+
+    const template = await screen.findByRole('link', { name: copy.template })
+    expect(template).toHaveAttribute('href', '/api/import/template.xlsx')
+    expect(template).toHaveAttribute('download')
+  })
+
+  it('names the history columns in Spanish', async () => {
+    stubApi()
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+
+    const notas = await screen.findByLabelText('Notas')
+    for (const label of ['Alumno desde', 'Fecha de baja', 'Motivo de baja', 'Clases antes de Rakin']) {
+      expect(within(notas).getByRole('option', { name: label })).toBeInTheDocument()
+    }
+  })
+
+  it('reports a former student imported with no plan, and the history it filled', async () => {
+    extraRows = [
+      { ...ok(5, 'Joaquín Vera'), membership: null, ignored: ['plan'], history: true, former: true },
+      { ...ok(6, 'Ana Paz'), person: 'existing', membership: null, ignored: ['left_on'], history: false },
+      {
+        ...ok(7, 'Ema Paz'),
+        person: null,
+        membership: null,
+        errors: [{ field: 'left_on', code: 'left_before_start' }],
+      },
+    ]
+    stubApi()
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+    await userEvent.click(await screen.findByRole('button', { name: copy.check }))
+
+    expect(await screen.findByText(copy.history(1, 1))).toBeInTheDocument()
+    const former = screen.getByRole('list', { name: copy.formerTitle(1) })
+    expect(within(former).getByText(copy.rowLabel(5, 'Joaquín Vera'))).toBeInTheDocument()
+    expect(within(former).getByText(copy.formerKept([copy.fields.plan]))).toBeInTheDocument()
+    // Someone already here keeps their record, and is never given a baja.
+    const kept = screen.getByRole('list', { name: copy.keptTitle })
+    expect(within(kept).queryByText(copy.rowLabel(5, 'Joaquín Vera'))).toBeNull()
+    expect(within(kept).getByText(copy.kept([copy.fields.left_on]))).toBeInTheDocument()
+    const errors = screen.getByRole('list', { name: copy.errorsTitle })
+    expect(
+      within(errors).getByText(copy.fieldError(copy.fields.left_on, copy.error.left_before_start)),
+    ).toBeInTheDocument()
   })
 
   it('imports once for a double tap on Importar (#203)', async () => {
