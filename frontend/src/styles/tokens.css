@@ -14,12 +14,13 @@
  * - border, divider, border-strong: a card's edge, a rule between rows, a dashed edge.
  * - border-input: an input's, select's or chip's edge, 3:1 or more on the surfaces.
  * - text, text-muted, text-subtle: body text, secondary lines, the faintest that is
- *   still 4.5:1 on the page.
+ *   still 4.5:1 on the page and in a well (surface-sunken).
  * - heading: page titles and figures, the brand's dark shade.
  * - inverse*: the brand's dark fills, a primary button and the "Próximo pago" card.
  * - accent*: links, the selected tab, "por validar" and "en revisión".
  * - moss*: the brand's light fill, a secondary call to action ("Registrar pago").
- * - focus: the focus ring.
+ * - focus: the focus ring. focus-on-inverse: the same ring on a dark fill (a dark
+ *   button, the sidebar, the hero card), 3:1 or more on each.
  * - sidebar*: the dark shell, the desktop sidebar and the phone's top bar.
  * - success, warning, danger: paid or present; overdue, and only that; errors,
  *   refusals and buttons that delete. Success stays green in every theme, so a paid
@@ -36,7 +37,7 @@
   --color-border-input: #818a7a;
   --color-text: #102719;
   --color-text-muted: #57685a;
-  --color-text-subtle: #627064;
+  --color-text-subtle: #5e6c60;
   --color-heading: #153c25;
   --color-inverse: #153c25;
   --color-inverse-raised: #264c34;
@@ -52,6 +53,7 @@
   --color-moss-text: #092917;
   --color-moss-hover: #8eb889;
   --color-focus: #4e7f58;
+  --color-focus-on-inverse: #a0c79b;
   --color-sidebar: #0f2e1b;
   --color-sidebar-raised: #1b3e29;
   --color-sidebar-border: #264531;
@@ -81,7 +83,7 @@
   --color-border-input: #7a8895;
   --color-text: #102334;
   --color-text-muted: #556574;
-  --color-text-subtle: #606e7a;
+  --color-text-subtle: #5e6c78;
   --color-heading: #15364f;
   --color-inverse: #15364f;
   --color-inverse-raised: #254560;
@@ -97,6 +99,7 @@
   --color-moss-text: #092438;
   --color-moss-hover: #71b6d1;
   --color-focus: #47769d;
+  --color-focus-on-inverse: #85c5df;
   --color-sidebar: #0e293d;
   --color-sidebar-raised: #1b3850;
   --color-sidebar-border: #264056;
@@ -142,6 +145,7 @@
   --color-moss-text: #361718;
   --color-moss-hover: #d69b81;
   --color-focus: #9b5e60;
+  --color-focus-on-inverse: #e4ac93;
   --color-sidebar: #3b1c1d;
   --color-sidebar-raised: #4e292b;
   --color-sidebar-border: #543233;
@@ -191,6 +195,8 @@
   --text-3xl: 30px; /* page titles */
   --text-4xl: 32px; /* stat tiles */
   --text-5xl: 36px; /* amount due, the hero figure */
+  --text-timer-round: 72px; /* the class timer's round, read from across the mat, at most */
+  --text-timer-phase: 44px; /* its phase ("Lucha", "Descanso"), at most */
   --tracking-eyebrow: 0.06em;
   --tracking-label: 0.04em;
   --tracking-title: -0.02em;
@@ -212,11 +218,9 @@
   --space-14: 56px;
 
   /* Radii: controls 10, cards 20, pills round. */
-  --radius-sm: 8px;
   --radius-md: 10px; /* buttons, inputs, chips */
   --radius-lg: 14px; /* tiles and wells inside a card */
   --radius-xl: 20px; /* cards */
-  --radius-2xl: 24px; /* the hero card, dialogs */
   --radius-pill: 999px;
 
   /* Motion: a page rises into place once; a control only changes colour, never
@@ -226,6 +230,17 @@
   --duration-base: 250ms; /* a confirmation or a checklist item appearing */
   --duration-slow: 500ms; /* a page rising in on a route change */
   --rise-distance: 8px;
+
+  /* Stacking, lowest first. A raised row action over its row's link; a bar that sticks
+     while the page scrolls under it; a menu that opens over the page; the bottom tab bar
+     and sidebar; a screen laid over everything (the class timer, a zoomed proof); and a
+     notice above even that. Layers inside one overlay count up from `--z-overlay`. */
+  --z-base: 1;
+  --z-sticky: 2;
+  --z-popover: 5;
+  --z-nav: 10;
+  --z-overlay: 20;
+  --z-toast: 30;
 
   /* Space above a page's title on a phone: the screen's top, or less under a bar. */
   --page-top: var(--space-14);

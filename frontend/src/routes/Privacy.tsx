@@ -8,6 +8,7 @@ import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import { RAKIN, useDocumentTitle } from '../pageTitle'
+import { Card } from '../components/Card'
 import './Privacy.css'
 import { Loading } from '../components/Loading'
 
@@ -80,7 +81,7 @@ function Shell({
         eyebrow={gym ? copy.eyebrow : RAKIN}
         title={title ?? copy.heading}
       />
-      <div className="privacy__card">{children}</div>
+      <Card as="div" className="privacy__card">{children}</Card>
     </main>
   )
 }

@@ -15,10 +15,14 @@ type Props = {
  * resumes by itself when the signal is back.
  */
 export function Loading({ className, role, children }: Props) {
-  const online = useOnline()
   return (
     <p className={className} role={role}>
-      {online ? children : t.offline.reading}
+      <LoadingText>{children}</LoadingText>
     </p>
   )
+}
+
+/** The same words, for a component that draws its own line (`EmptyState`). */
+export function LoadingText({ children }: { children: ReactNode }) {
+  return useOnline() ? children : t.offline.reading
 }

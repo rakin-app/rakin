@@ -91,6 +91,43 @@ Guardar keeps it, and Cancelar or leaving Gimnasio puts the saved one back.
 - **Hex, not oklch.** The file writes oklch; `tokens.css` holds the same colours in
   hex, as the sign-in link's server-rendered pages (`backend/app/auth.py`) copy them.
 
+### Deviations in size and shape (#361)
+
+Measured against the file in UX QA run 1 (#341), so the next run measures against what
+the app means to be, not against the file:
+
+- **Controls are 44px tall, not 36px.** Every button, input, chip and checkbox row is
+  `--control-height` (44px), a screen's main action on a phone `--control-height-lg`
+  (52px): the touch target. A link on a line of its own is 44px tall too (`tap-link`);
+  one inside a sentence or a table row keeps its line and reaches 44px with its target
+  alone.
+- **The radius scale is named one step apart.** The file's lg 12 / xl 16 / card 20 is,
+  as built, `--radius-md` 10 (controls, banners, status pills), `--radius-lg` 14 (tiles
+  and wells inside a card) and `--radius-xl` 20 (cards), with `--radius-pill` for chips.
+  There is no 8 or 24 any more.
+- **Status pills are radius 10, not round.** The file's text calls them fully round;
+  the app's "Pagado" and "Vencido" pills keep `--radius-md`, as the boards draw them.
+  Filter chips are round.
+- **Stat figures are 32px** (`--text-4xl`), between the file's 30 and 36; the one hero
+  figure, the amount due on the student's dark card, is 36 (`--text-5xl`).
+- **The focus ring turns light on dark surfaces.** `--color-focus` is under 3:1 on the
+  dark fills, so a dark button, the sidebar and the phone's top bar, and the hero card
+  set it to `--color-focus-on-inverse`, the theme's moss shade.
+- **The installed app stays Rakin-green.** `index.html`'s `theme-color` and
+  `site.webmanifest` are one static file per deploy, read before any gym is known, and
+  an install outlives the gym it was made from (a coach may work at two). The mark and
+  the icons are Rakin's, so the splash screen is too, in every theme; inside the app
+  every screen wears the gym's.
+
+### One component per pattern (#361)
+
+A card is `Card` (or `cardClass()` on a form or a link), its title `SectionHeader` or
+`SectionTitle`, a page's title `PageTitle` (in `PageHeader` or a header of its own), a
+message `Banner`, an unstyled list `PlainList`, a checkbox row `CheckRow`, and the bars of
+"Tiempo de entrenamiento" and "Horas por etiqueta" `BarList`. Stacking is `--z-*`.
+`frontend/src/styles/tokens.test.ts` fails when a stylesheet draws one of them again,
+or writes a z-index, 44px or 999px of its own.
+
 ## Billing corrections (#272)
 
 [billing-corrections.md](billing-corrections.md) designs how the owner and admins fix any
@@ -127,7 +164,7 @@ board tickets linked.
 
 ## Contrast (WCAG 2.1 AA)
 
-`frontend/src/components/controls.test.tsx` checks every pair in every theme.
+`frontend/src/styles/tokens.test.ts` checks every pair in every theme.
 Some of them:
 
 | Pair | Needs | Bosque | Océano | Volcán |
@@ -135,7 +172,8 @@ Some of them:
 | Body text on the page (`--color-text` on `--color-bg`) | 4.5:1 | 14.8 | 15.0 | 15.1 |
 | Titles (`--color-heading` on `--color-bg`) | 4.5:1 | 11.5 | 11.7 | 12.1 |
 | Secondary text on a well (`--color-text-muted` on `--color-surface-sunken`) | 4.5:1 | 5.1 | 5.1 | 5.1 |
-| Faintest text (`--color-text-subtle` on `--color-bg`) | 4.5:1 | 4.9 | 4.9 | 5.0 |
+| Faintest text (`--color-text-subtle` on `--color-bg`) | 4.5:1 | 5.2 | 5.0 | 5.0 |
+| Faintest text in a well (`--color-text-subtle` on `--color-surface-sunken`) | 4.5:1 | 4.7 | 4.6 | 4.6 |
 | "Por validar" pill (`--color-accent` on `--color-accent-soft`) | 4.5:1 | 5.9 | 6.1 | 6.4 |
 | Primary button (`--color-inverse-text` on `--color-inverse`) | 4.5:1 | 11.3 | 11.5 | 11.9 |
 | Secondary text on the dark card (`--color-inverse-text-muted` on `--color-inverse`) | 4.5:1 | 8.1 | 8.2 | 8.5 |
@@ -147,3 +185,5 @@ Some of them:
 | "Vencido" / refused pill (`--color-danger` on `--color-danger-soft`) | 4.5:1 | 4.8 | 4.8 | 4.8 |
 | An input's edge (`--color-border-input` on `--color-surface`) | 3:1 | 3.5 | 3.6 | 3.6 |
 | Focus ring (`--color-focus` on `--color-bg`) | 3:1 | 4.4 | 4.5 | 4.7 |
+| Focus ring on a dark fill (`--color-focus-on-inverse` on `--color-inverse`) | 3:1 | 6.5 | 6.6 | 6.6 |
+| Focus ring in the sidebar (`--color-focus-on-inverse` on `--color-sidebar-raised`) | 3:1 | 6.3 | 6.4 | 6.3 |

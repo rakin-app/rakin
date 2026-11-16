@@ -2,7 +2,7 @@ import { createMemoryHistory, createRootRoute, createRoute, createRouter, Link, 
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { milliseconds, useRise } from './motion'
+import { milliseconds, scrollBehavior, useRise } from './motion'
 
 function Shell() {
   const rise = useRise<HTMLDivElement>()
@@ -58,5 +58,27 @@ describe('milliseconds', () => {
     ['fast', 42],
   ])('reads %j as %d', (token, expected) => {
     expect(milliseconds(token, 42)).toBe(expected)
+  })
+})
+
+describe('scrollBehavior', () => {
+  // jsdom has no matchMedia: each test gives the window one.
+  const prefers = (reduce: boolean) =>
+    Object.defineProperty(window, 'matchMedia', {
+      value: (query: string) => ({ matches: reduce && query.includes('reduce'), media: query }) as MediaQueryList,
+      configurable: true,
+    })
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'matchMedia')
+  })
+
+  it('scrolls smoothly by default', () => {
+    prefers(false)
+    expect(scrollBehavior()).toBe('smooth')
+  })
+
+  it('jumps at once under prefers-reduced-motion: reduce', () => {
+    prefers(true)
+    expect(scrollBehavior()).toBe('auto')
   })
 })

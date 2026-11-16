@@ -23,6 +23,7 @@ import './MemberDetail.css'
 import './NewMember.css'
 import { useSubmit } from '../api/submit'
 import { validationErrors } from '../api/validation'
+import { Banner, Card, CheckRow, SectionTitle } from '../components/Card'
 
 const copy = t.admin.newMember
 
@@ -245,7 +246,7 @@ export function NewMember() {
     <>
       {header}
       <form ref={formRef} className="new-member" aria-label={copy.title} onSubmit={submit} noValidate>
-        <div className="member__form">
+        <Card as="div" className="member__form">
           <label htmlFor={ids.first} className="member__label">
             {copy.firstName}
           </label>
@@ -328,7 +329,7 @@ export function NewMember() {
             {hasGuardian ? copy.phoneHintMinor : copy.phoneHint}
           </p>
           {!hasGuardian && (
-            <label htmlFor={ids.noWhatsapp} className="new-member__check">
+            <CheckRow htmlFor={ids.noWhatsapp}>
               <input
                 id={ids.noWhatsapp}
                 type="checkbox"
@@ -336,7 +337,7 @@ export function NewMember() {
                 onChange={(e) => setNoWhatsapp(e.target.checked)}
               />
               {copy.noWhatsapp}
-            </label>
+            </CheckRow>
           )}
           {checked && problems.phone ? (
             <Needed id={err.phone} text={copy.needed.phone} />
@@ -357,10 +358,10 @@ export function NewMember() {
             onChange={set('dob')}
           />
           {refused.person.dob && <Needed id={err.dob} text={refused.person.dob} />}
-        </div>
+        </Card>
 
-        <section className="member__form" aria-label={copy.guardianTitle}>
-          <h2 className="member__section-title">{copy.guardianTitle}</h2>
+        <Card className="member__form" aria-label={copy.guardianTitle}>
+          <SectionTitle>{copy.guardianTitle}</SectionTitle>
           <p className="member__detail">{minor ? copy.guardianMinor : copy.guardianOptional}</p>
           {checked && problems.guardian && <Needed text={copy.needed.guardian} />}
           {guardian.kind === 'none' ? (
@@ -473,7 +474,7 @@ export function NewMember() {
                     }
                     onChange={(e) => setGuardian({ ...guardian, phone: e.target.value })}
                   />
-                  <label htmlFor={ids.gNoWhatsapp} className="new-member__check">
+                  <CheckRow htmlFor={ids.gNoWhatsapp}>
                     <input
                       id={ids.gNoWhatsapp}
                       type="checkbox"
@@ -481,7 +482,7 @@ export function NewMember() {
                       onChange={(e) => setGuardian({ ...guardian, noWhatsapp: e.target.checked })}
                     />
                     {copy.noWhatsapp}
-                  </label>
+                  </CheckRow>
                   {checked && problems.guardianPhone ? (
                     <Needed id={err.gPhone} text={copy.needed.guardianPhone} />
                   ) : (
@@ -494,11 +495,11 @@ export function NewMember() {
               </Button>
             </>
           )}
-        </section>
+        </Card>
 
         {fields.length > 0 && (
-          <section className="member__form" aria-label={copy.fieldsTitle}>
-            <h2 className="member__section-title">{copy.fieldsTitle}</h2>
+          <Card className="member__form" aria-label={copy.fieldsTitle}>
+            <SectionTitle>{copy.fieldsTitle}</SectionTitle>
             {fields.map((field) => {
               const id = `${ids.fields}-${field.key}`
               return (
@@ -516,13 +517,13 @@ export function NewMember() {
                 </div>
               )
             })}
-          </section>
+          </Card>
         )}
 
-        <section className="member__form" aria-label={copy.planTitle}>
-          <h2 className="member__section-title">{copy.planTitle}</h2>
+        <Card className="member__form" aria-label={copy.planTitle}>
+          <SectionTitle>{copy.planTitle}</SectionTitle>
           <PlanStart choice={plan} today={today} labels={copy} onChange={setPlan} />
-          <label htmlFor={ids.welcome} className="new-member__check">
+          <CheckRow htmlFor={ids.welcome}>
             <input
               id={ids.welcome}
               type="checkbox"
@@ -532,7 +533,7 @@ export function NewMember() {
               onChange={(e) => setWelcome(e.target.checked)}
             />
             {copy.welcome}
-          </label>
+          </CheckRow>
           <p id={ids.welcomeHint} className="member__detail">
             {!canWelcome
               ? hasGuardian
@@ -542,10 +543,10 @@ export function NewMember() {
                 ? copy.welcomeHint.noPlan
                 : copy.welcomeHint.plan}
           </p>
-        </section>
+        </Card>
 
         {save.error && (
-          <div className="member__error" role="alert">
+          <Banner tone="error" as="div">
             {duplicate ? (
               <>
                 {copy.duplicate[duplicate.code]}{' '}
@@ -562,7 +563,7 @@ export function NewMember() {
             ) : (
               copy.refused.failed
             )}
-          </div>
+          </Banner>
         )}
 
         <div className="member__form-actions">
@@ -580,8 +581,8 @@ export function NewMember() {
 
 export function Needed({ id, text }: { id?: string; text: string }) {
   return (
-    <p id={id} className="member__error" role="alert">
+    <Banner id={id} tone="error">
       {text}
-    </p>
+    </Banner>
   )
 }

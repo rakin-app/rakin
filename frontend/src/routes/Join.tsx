@@ -16,6 +16,7 @@ import { RAKIN, useDocumentTitle } from '../pageTitle'
 import './Join.css'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
+import { Card, CheckRow, SectionTitle } from '../components/Card'
 
 const copy = t.join
 const route = getRouteApi('/unirse/$token')
@@ -128,7 +129,7 @@ function Shell({
           eyebrow={copy.eyebrow}
           title={title ?? t.app.name}
         />
-        <div className="join__card">{children}</div>
+        <Card as="div" className="join__card">{children}</Card>
       </PageContainer>
     </main>
   )
@@ -267,7 +268,7 @@ function JoinFormBody({
       </Grid>
       {minor && (
         <fieldset className="join__guardian">
-          <legend className="join__legend">{copy.guardianTitle}</legend>
+          <SectionTitle as="legend" className="join__legend">{copy.guardianTitle}</SectionTitle>
           <p className="join__intro">{copy.guardianIntro}</p>
           <TextField label={copy.guardianName} error={error('guardian_name')} value={drafts.guardian_name} autoComplete="off" onChange={(v) => set('guardian_name', v)} />
           <Grid className="join__row">
@@ -290,7 +291,7 @@ function JoinFormBody({
           <input type="text" name="website" tabIndex={-1} autoComplete="off" value={drafts.website} onChange={(e) => set('website', e.target.value)} />
         </label>
       </div>
-      <label className="join__consent">
+      <CheckRow start className="join__consent">
         <input
           type="checkbox"
           checked={consent}
@@ -310,7 +311,7 @@ function JoinFormBody({
           </a>
           {copy.consentAfter}
         </span>
-      </label>
+      </CheckRow>
       {consentInvalid && (
         <FieldError id={consentErrorId}>{copy.refused.consent}</FieldError>
       )}
@@ -330,10 +331,10 @@ function JoinFormBody({
 /** "No tiene WhatsApp": the rare person the gym cannot message, who may leave the phone out. */
 function NoWhatsapp({ label, checked, onChange }: { label: string; checked: boolean; onChange: (on: boolean) => void }) {
   return (
-    <label className="join__consent">
+    <CheckRow start className="join__consent">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span>{label}</span>
-    </label>
+    </CheckRow>
   )
 }
 

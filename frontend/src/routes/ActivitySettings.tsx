@@ -16,6 +16,7 @@ import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field } from './settingsForm'
 import { Loading } from '../components/Loading'
+import { Banner, cardClass, CheckRow, PlainList, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.gym.activities
 
@@ -62,25 +63,25 @@ export function ActivitySettings() {
   const [notice, setNotice] = useState<string | null>(null)
 
   return (
-    <fieldset className="settings__card" id="actividades">
-      <legend className="settings__legend">{copy.title}</legend>
+    <fieldset className={cardClass({}, 'settings__card')} id="actividades">
+      <SectionTitle as="legend" className="settings__legend">{copy.title}</SectionTitle>
       <p className="settings__hint">{copy.hint}</p>
       {activities.isPending ? (
         <Loading className="settings__note">{t.admin.settings.loading}</Loading>
       ) : activities.isError ? (
         <div className="settings__preview">
-          <p className="settings__error" role="alert">
+          <Banner tone="error">
             {copy.error}
-          </p>
+          </Banner>
           <Button onClick={() => void activities.refetch()}>{t.admin.settings.retry}</Button>
         </div>
       ) : (
         <ActivityList activities={activities.data} onDone={setNotice} />
       )}
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
     </fieldset>
   )
@@ -116,7 +117,7 @@ function ActivityList({ activities, onDone }: { activities: Activity[]; onDone: 
       {activities.length === 0 ? (
         <p className="settings__note">{copy.none}</p>
       ) : (
-        <ul className="activities">
+        <PlainList className="activities">
           {activities.map((activity) => (
             <li key={activity.id} className="activities__item">
               {renaming === activity.id ? (
@@ -138,7 +139,7 @@ function ActivityList({ activities, onDone }: { activities: Activity[]; onDone: 
                       <span className="activities__detail">{copy.classTypes(activity.class_types)}</span>
                     )}
                   </span>
-                  <label className="settings__check activities__grades">
+                  <CheckRow className="activities__grades">
                     <input
                       type="checkbox"
                       checked={pending?.kind === 'grades' && busy(activity) ? pending.usesGrades : activity.uses_grades}
@@ -146,7 +147,7 @@ function ActivityList({ activities, onDone }: { activities: Activity[]; onDone: 
                       onChange={(e) => change.mutate({ kind: 'grades', activity, usesGrades: e.target.checked })}
                     />
                     <span>{copy.usesGrades}</span>
-                  </label>
+                  </CheckRow>
                   <span className="activities__actions">
                     <Button
                       disabled={busy(activity)}
@@ -176,12 +177,12 @@ function ActivityList({ activities, onDone }: { activities: Activity[]; onDone: 
               )}
             </li>
           ))}
-        </ul>
+        </PlainList>
       )}
       {change.isError && change.variables?.kind !== 'rename' && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {copy.failed}
-        </p>
+        </Banner>
       )}
       <AddActivity activities={activities} onDone={onDone} />
     </>
@@ -222,9 +223,9 @@ function RenameForm({
         )}
       </Field>
       {error && !fieldError && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {copy.failed}
-        </p>
+        </Banner>
       )}
       <span className="activities__actions">
         <Button disabled={busy} onClick={onCancel}>
@@ -312,7 +313,7 @@ function AddActivity({ activities, onDone }: { activities: Activity[]; onDone: (
       )}
       {choice !== '' && (
         <>
-          <label className="settings__check" htmlFor={gradesId}>
+          <CheckRow  htmlFor={gradesId}>
             <input
               id={gradesId}
               type="checkbox"
@@ -320,12 +321,12 @@ function AddActivity({ activities, onDone }: { activities: Activity[]; onDone: (
               onChange={(e) => setUsesGrades(e.target.checked)}
             />
             <span>{copy.usesGrades}</span>
-          </label>
+          </CheckRow>
           {/* A name taken shows under the name written; a preset's, here. */}
           {add.isError && !(other && nameError) && (
-            <p className="settings__error" role="alert">
+            <Banner tone="error">
               {nameError ?? copy.failed}
-            </p>
+            </Banner>
           )}
           <span className="activities__actions">
             <Button

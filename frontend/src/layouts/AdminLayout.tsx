@@ -12,6 +12,7 @@ import { ClassesIcon, MyPageIcon, PaymentsIcon, SettingsIcon, SignOutIcon, Stude
 import { t } from '../i18n/es'
 import { useRise } from '../motion'
 import { useGymName } from '../pageTitle'
+import { PlainList } from '../components/Card'
 import './AdminLayout.css'
 
 type NavItem = {
@@ -93,7 +94,7 @@ export function AdminLayout() {
             </span>
           )}
         </div>
-        <ul className="admin-nav__list">
+        <PlainList className="admin-nav__list">
           {navItems.map((item) => (
             <li key={item.to}>
               <Link to={item.to} activeOptions={{ exact: item.exact ?? false }} className="admin-nav__link">
@@ -136,7 +137,7 @@ export function AdminLayout() {
               <span>{t.signOut.label}</span>
             </button>
           </li>
-        </ul>
+        </PlainList>
         {signOut.isError && (
           <p className="admin-nav__error" role="alert">
             {t.signOut.failed}

@@ -5,8 +5,9 @@ import type { Stretch, TagHours as Hours } from '../api/classTags'
 import { useGymTimeZone } from '../api/sessions'
 import { isoDay, shortDay } from '../format'
 import { t } from '../i18n/es'
+import { BarError, BarList, BarNote } from './BarList'
 import { Button } from './Button'
-import { Section } from './Card'
+import { Card, PlainList, Section, SectionHeader } from './Card'
 import { SegmentedControl } from './Chip'
 import { ChevronLeftIcon, ChevronRightIcon } from './icons'
 import './TagHours.css'
@@ -86,38 +87,31 @@ export function TagHoursCard<Key extends QueryKey>({
         </Button>
       </div>
       {hours.isError ? (
-        <p className="tag-hours__error" role="alert">
-          {copy.error}
-        </p>
+        <BarError>{copy.error}</BarError>
       ) : hours.data ? (
         <>
           <TagHoursRows hours={hours.data} />
           <NoDuration hours={hours.data} linked />
         </>
       ) : (
-        <Loading className="tag-hours__note">{copy.loading}</Loading>
+        <Loading className="bar-note">{copy.loading}</Loading>
       )}
-      {note && <p className="tag-hours__note">{note}</p>}
+      {note && <BarNote>{note}</BarNote>}
     </>
   )
 
   if (headed) {
     return (
       <Section id={titleId} title={title} trailing={control}>
-        <div className="tag-hours">{body}</div>
+        <Card as="div">{body}</Card>
       </Section>
     )
   }
   return (
-    <section className="tag-hours" aria-labelledby={titleId}>
-      <div className="tag-hours__head">
-        <h2 id={titleId} className="tag-hours__title">
-          {title}
-        </h2>
-        {control}
-      </div>
+    <Card aria-labelledby={titleId}>
+      <SectionHeader id={titleId} title={title} trailing={control} />
       {body}
-    </section>
+    </Card>
   )
 }
 
@@ -126,12 +120,12 @@ export function TagHoursNow({ title, month, year }: { title: string; month: Hour
   const titleId = useId()
   const [period, setPeriod] = useState<Period>('month')
   return (
-    <section className="tag-hours" aria-labelledby={titleId}>
-      <div className="tag-hours__head">
-        <h2 id={titleId} className="tag-hours__title">
-          {title}
-        </h2>
-        <SegmentedControl
+    <Card aria-labelledby={titleId}>
+      <SectionHeader
+        id={titleId}
+        title={title}
+        trailing={
+          <SegmentedControl
           label={copy.periods}
           options={[
             { value: 'month', label: copy.thisMonth },
@@ -139,11 +133,12 @@ export function TagHoursNow({ title, month, year }: { title: string; month: Hour
           ]}
           value={period}
           onChange={setPeriod}
-        />
-      </div>
+          />
+        }
+      />
       <TagHoursRows hours={period === 'month' ? month : year} />
       <NoDuration hours={period === 'month' ? month : year} />
-    </section>
+    </Card>
   )
 }
 
@@ -153,7 +148,7 @@ function NoDuration({ hours, linked = false }: { hours: Hours; linked?: boolean 
   if (hours.no_duration_classes === 0) return null
   return (
     <div className="tag-hours__missing">
-      <p className="tag-hours__note">{copy.noDuration(hours.no_duration_classes)}</p>
+      <BarNote>{copy.noDuration(hours.no_duration_classes)}</BarNote>
       {linked && <NoDurationLinks hours={hours} />}
     </div>
   )
@@ -163,7 +158,7 @@ function NoDuration({ hours, linked = false }: { hours: Hours; linked?: boolean 
 function NoDurationLinks({ hours }: { hours: Hours }) {
   const timeZone = useGymTimeZone()
   return (
-    <ul className="tag-hours__missing-list">
+    <PlainList className="tag-hours__missing-list">
       {hours.no_duration.map((each) => (
         <li key={each.session_id}>
           <Link to="/admin/clases/$sessionId" params={{ sessionId: each.session_id }}>
@@ -171,40 +166,30 @@ function NoDurationLinks({ hours }: { hours: Hours }) {
           </Link>
         </li>
       ))}
-    </ul>
+    </PlainList>
   )
 }
 
 /** Each tag as a bar whose text carries the figure, most hours first. */
 function TagHoursRows({ hours }: { hours: Hours }) {
-  if (hours.tags.length === 0) return <p className="tag-hours__note">{copy.empty}</p>
-  const most = Math.max(...hours.tags.map((row) => row.minutes), 1)
+  if (hours.tags.length === 0) return <BarNote>{copy.empty}</BarNote>
   return (
     <>
-      <ul className="tag-hours__rows">
-        {hours.tags.map((row) => (
-          <li key={row.tag_id} className="tag-hours__row">
-            <span className="tag-hours__line">
-              <span>
-                {row.name}
-                {row.archived && <span className="tag-hours__note">{copy.archivedSuffix}</span>}
-              </span>
-              <span className="tag-hours__figure">
-                {copy.figure(row.minutes, row.classes)}
-              </span>
-            </span>
-            <span className="tag-hours__bar" aria-hidden="true">
-              <span
-                className={row.archived ? 'tag-hours__fill tag-hours__fill--archived' : 'tag-hours__fill'}
-                style={{ width: `${(row.minutes / most) * 100}%` }}
-              />
-            </span>
-          </li>
-        ))}
-      </ul>
-      {hours.untagged_minutes > 0 && (
-        <p className="tag-hours__note">{copy.untagged(copy.hours(hours.untagged_minutes))}</p>
-      )}
+      <BarList
+        bars={hours.tags.map((row) => ({
+          key: row.tag_id,
+          label: (
+            <>
+              {row.name}
+              {row.archived && <span className="bar-note">{copy.archivedSuffix}</span>}
+            </>
+          ),
+          figure: copy.figure(row.minutes, row.classes),
+          value: row.minutes,
+          muted: row.archived,
+        }))}
+      />
+      {hours.untagged_minutes > 0 && <BarNote>{copy.untagged(copy.hours(hours.untagged_minutes))}</BarNote>}
     </>
   )
 }

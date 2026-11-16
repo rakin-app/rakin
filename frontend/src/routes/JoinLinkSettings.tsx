@@ -21,6 +21,7 @@ import { t } from '../i18n/es'
 import { Field, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
+import { Banner, Card, cardClass } from '../components/Card'
 
 const copy = t.admin.settings.joinLink
 
@@ -112,20 +113,20 @@ function JoinLinkSection({
     <section className="settings__section" aria-label={copy.title}>
       <SectionHead intro={copy.intro} />
       {needsPrivacy && (
-        <div className="settings__card settings__plan-text" role="alert">
+        <Card as="div" className="settings__card settings__plan-text" role="alert">
           <p className="settings__detail">{copy.needsPrivacy}</p>
           <Link to="/admin/ajustes/gimnasio" hash="privacidad" className={buttonClass()}>
             {copy.needsPrivacyLink}
           </Link>
-        </div>
+        </Card>
       )}
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
       {link ? (
-        <div className="settings__card settings__plan-text">
+        <Card as="div" className="settings__card settings__plan-text">
           <Field label={copy.linkLabel}>
             {(props) => <Input {...props} type="url" readOnly value={link.url} />}
           </Field>
@@ -147,11 +148,11 @@ function JoinLinkSection({
               {copy.share}
             </a>
           </div>
-        </div>
+        </Card>
       ) : (
         <p className="settings__note">{copy.none}</p>
       )}
-      <form className="settings__card settings__form" aria-label={copy.title} onSubmit={submit} noValidate>
+      <form className={cardClass({}, 'settings__card settings__form')} aria-label={copy.title} onSubmit={submit} noValidate>
         <Field label={copy.program} hint={copy.programHint} error={error('program_id')}>
           {(props) => (
             <Select
@@ -179,9 +180,9 @@ function JoinLinkSection({
           )}
         </Field>
         {failed && !needsPrivacy && (
-          <p className="settings__error" role="alert">
+          <Banner tone="error">
             {Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
-          </p>
+          </Banner>
         )}
         <div className="settings__actions">
           <Button
@@ -195,7 +196,7 @@ function JoinLinkSection({
       </form>
       {link &&
         (confirming ? (
-          <div className="settings__card settings__plan-text" role="group" aria-label={copy[confirming]}>
+          <Card as="div" className="settings__card settings__plan-text" role="group" aria-label={copy[confirming]}>
             <p className="settings__detail">
               {confirming === 'regenerate' ? copy.confirmRegenerate : copy.confirmRevoke}
             </p>
@@ -211,7 +212,7 @@ function JoinLinkSection({
                 {copy.confirm}
               </Button>
             </div>
-          </div>
+          </Card>
         ) : (
           <div className="settings__actions">
             <Button

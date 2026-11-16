@@ -13,6 +13,7 @@ import { HISTORY_WINDOW_YEARS, yearsBefore } from './historyWindow'
 import { useRefresh } from './PersonData'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
 import { useSubmit } from '../api/submit'
+import { Banner, Card, cardClass } from '../components/Card'
 
 const copy = t.admin.member
 
@@ -58,9 +59,9 @@ export function PersonActions({ person, role }: { person: Person; role: StaffRol
         )}
       </div>
       {done && (
-        <p className="member__done" role="status">
+        <Banner tone="done">
           {done}
-        </p>
+        </Banner>
       )}
       {open === 'leave' && <LeaveForm person={person} onCancel={() => setOpen(null)} onDone={finish} />}
       {open === 'return' && <ReturnForm person={person} onCancel={() => setOpen(null)} onDone={finish} />}
@@ -116,7 +117,7 @@ function LeaveForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit} noValidate>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit} noValidate>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.on}
@@ -131,15 +132,15 @@ function LeaveForm({
         onChange={(e) => setPicked(e.target.value)}
       />
       {checked && !onOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.onNeeded}
-        </p>
+        </Banner>
       )}
       <LeftReasonField value={reason} onChange={setReason} />
       {leave.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.failed}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button disabled={leave.isPending} onClick={onCancel}>
@@ -182,13 +183,13 @@ function ReturnForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <PlanStart choice={plan} today={today} labels={form} onChange={setPlan} />
       {back.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.failed}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button disabled={back.isPending} onClick={onCancel}>
@@ -247,7 +248,7 @@ function RemoveForm({
 
   if (refused) {
     return (
-      <div className="member__form" role="alert">
+      <Card as="div" className="member__form" role="alert">
         <p className="member__detail">{form.refused[refused](t.common.clp(refusal?.amount_clp ?? 0))}</p>
         <div className="member__form-actions">
           <Button onClick={onCancel}>
@@ -259,7 +260,7 @@ function RemoveForm({
             </Button>
           )}
         </div>
-      </div>
+      </Card>
     )
   }
 
@@ -270,7 +271,7 @@ function RemoveForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={reasonId} className="member__label">
         {form.reason}
@@ -283,9 +284,9 @@ function RemoveForm({
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.reasonNeeded}
-        </p>
+        </Banner>
       )}
       <label htmlFor={id} className="member__label">
         {form.confirm(person.name)}
@@ -297,9 +298,9 @@ function RemoveForm({
         onChange={(e) => setTyped(e.target.value)}
       />
       {(deletion.isError || remove.error) && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.failed}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button disabled={remove.isPending} onClick={onCancel}>

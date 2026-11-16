@@ -29,17 +29,6 @@
   text-transform: uppercase;
 }
 
-.classes__title {
-  margin: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-3xl);
-  font-weight: var(--font-weight-display);
-  letter-spacing: var(--tracking-title);
-  line-height: 1.1;
-  overflow-wrap: anywhere;
-}
-
 .classes__body {
   display: flex;
   flex-direction: column;
@@ -85,16 +74,6 @@
   gap: var(--space-2);
 }
 
-/* "Hoy", "Crear clase": a display heading, as every section in v3 (#199). */
-.classes__section-title {
-  margin: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-display);
-  letter-spacing: var(--tracking-title);
-}
-
 .classes__aside,
 .classes__note,
 .classes__detail {
@@ -114,17 +93,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-.classes__card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-}
-
 .classes__form {
   display: flex;
   flex-direction: column;
@@ -138,12 +106,7 @@
 }
 
 .classes__list {
-  display: flex;
-  flex-direction: column;
   gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
 .classes__row {
@@ -219,35 +182,6 @@
   color: var(--color-warning-strong);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);
-}
-
-.classes__error,
-.classes__done,
-.classes__restored {
-  margin: 0;
-  padding: var(--space-2-5) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-}
-
-.classes__error {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-}
-
-.classes__error p {
-  margin: 0 0 var(--space-2);
-}
-
-.classes__done {
-  background: var(--color-success-soft);
-  color: var(--color-success-strong);
-}
-
-/* Text given back after signing in again (#212): not saved yet. */
-.classes__restored {
-  background: var(--color-warning-soft);
-  color: var(--color-warning-strong);
 }
 
 /* "Asistencia": rows a thumb can hit, a check that fills when present. */
@@ -335,14 +269,10 @@
 }
 
 .attendance__done {
-  display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-}
-
-.attendance__done p {
-  margin: 0;
 }
 
 .attendance__back {
@@ -361,17 +291,6 @@
 .classes__row--cancelled .classes__name {
   color: var(--color-text-muted);
   text-decoration: line-through;
-}
-
-.class-cancelled {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-
-.class-cancelled p {
-  margin: 0;
 }
 
 .class-notes {
@@ -461,12 +380,7 @@
 
 /* "Semana": a day under each heading, its classes rows of one card, today's marked. */
 .week {
-  display: flex;
-  flex-direction: column;
   gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
 .week__day {
@@ -489,14 +403,7 @@
 }
 
 .week__list {
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-  list-style: none;
+  display: block;
 }
 
 .week__list > li + li {
@@ -510,19 +417,17 @@
 
 .week__present {
   display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
   gap: var(--space-1-5) var(--space-3);
-  margin: 0;
-  padding: 0;
   font-size: var(--text-sm);
-  list-style: none;
 }
 
 /* The roster's search stays at the top of the screen while the names scroll under it. */
 .attendance__search {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: var(--z-sticky);
   margin-inline: calc(-1 * var(--space-5));
   padding: var(--space-2) var(--space-5);
   background: var(--color-bg);

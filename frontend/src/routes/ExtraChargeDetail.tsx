@@ -17,7 +17,7 @@ import {
 import { myRoleQuery, readsLedger } from '../api/me'
 import type { Method } from '../api/member'
 import { Button, buttonClass } from '../components/Button'
-import { Card, SectionHeader } from '../components/Card'
+import { Banner, Card, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { MoreMenu, moreItemClass } from '../components/MoreMenu'
 import { Field, Input, Select } from '../components/Field'
 import { PageContainer } from '../components/Layout'
@@ -103,9 +103,9 @@ function Detail({ charge }: { charge: ExtraCharge }) {
         {charge.description && <p className="extra__message">{charge.description}</p>}
       </Card>
       {done && (
-        <p className="extra__done" role="status">
+        <Banner tone="done">
           {done}
-        </p>
+        </Banner>
       )}
       {remind.isError && (
         <p className="extra__error" role="alert">
@@ -114,11 +114,11 @@ function Detail({ charge }: { charge: ExtraCharge }) {
       )}
       <Card aria-labelledby="extra-people">
         <SectionHeader id="extra-people" title={words.peopleLabel} trailing={String(charge.people.length)} />
-        <ul className="extra__lines">
+        <PlainList className="extra__lines">
           {charge.people.map((line) => (
             <LineRow key={line.id} charge={charge} line={line} onDone={setDone} />
           ))}
-        </ul>
+        </PlainList>
       </Card>
     </PageContainer>
   )
@@ -397,18 +397,18 @@ function CancelForm({ charge, line, onDone, onClose }: FormProps) {
         <p className="extra__note">{words.cancelChecking}</p>
       ) : preview.data?.resplit_allowed ? (
         <>
-          <label className="extra__check">
+          <CheckRow start>
             <input type="checkbox" checked={resplit} onChange={(e) => setResplit(e.target.checked)} />
             <span>{words.resplit}</span>
-          </label>
+          </CheckRow>
           {resplit && (
-            <ul className="extra__preview-list">
+            <PlainList className="extra__preview-list">
               {Object.entries(preview.data.amounts).map(([id, amount]) => (
                 <li key={id} className="extra__hint">
                   {words.resplitAmount(names.get(id) ?? '', clp(amount))}
                 </li>
               ))}
-            </ul>
+            </PlainList>
           )}
         </>
       ) : (

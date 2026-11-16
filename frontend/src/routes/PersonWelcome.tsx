@@ -6,7 +6,7 @@ import { sendWelcome, welcomeQuery, WELCOME_WAIT_MS } from '../api/people'
 import { useSubmit } from '../api/submit'
 import { Button } from '../components/Button'
 import { isoDay } from '../format'
-import { SectionHeader } from '../components/Card'
+import { Banner, Card, SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 
 const copy = t.admin.member.access
@@ -38,25 +38,25 @@ export function PersonWelcome({ person, role }: { person: Person; role: StaffRol
   return (
     <section className="member__section" aria-label={copy.title}>
       <SectionHeader title={copy.title} />
-      <div className="member__card">
+      <Card as="div" className="member__card">
         {to === null ? (
           <p className="member__detail">{copy.noEmail}</p>
         ) : (
           <>
             <p className="member__detail">{guardian ? copy.toGuardian(guardian, to) : copy.to(to)}</p>
             {suppressed ? (
-              <div className="member__error" role="alert">
+              <Banner tone="error" as="div">
                 <p>
                   {(suppressed.reason === 'bounce' ? copy.bounced : copy.complained)(
                     t.common.longDay(isoDay(suppressed.since)),
                   )}
                 </p>
                 {suppressed.reason === 'bounce' && suppressed.detail && <p>{copy.bounceDetail(suppressed.detail)}</p>}
-              </div>
+              </Banner>
             ) : last?.status === 'failed' ? (
-              <p className="member__error" role="alert">
+              <Banner tone="error">
                 {copy.failed(day!)}
-              </p>
+              </Banner>
             ) : last?.status === 'suppressed' ? (
               <p className="member__note" role="status">
                 {copy.suppressedLast(day!)}
@@ -67,9 +67,9 @@ export function PersonWelcome({ person, role }: { person: Person; role: StaffRol
               </p>
             )}
             {send.isError && (
-              <p className="member__error" role="alert">
+              <Banner tone="error">
                 {copy.error}
-              </p>
+              </Banner>
             )}
             {!suppressed && (
               <div className="member__actions">
@@ -80,7 +80,7 @@ export function PersonWelcome({ person, role }: { person: Person; role: StaffRol
             )}
           </>
         )}
-      </div>
+      </Card>
     </section>
   )
 }

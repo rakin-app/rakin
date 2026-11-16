@@ -3,7 +3,8 @@ import { useId, useState } from 'react'
 import { hasTime, myTimeQuery, personTimeQuery, type PersonTime, type TimeTotals } from '../api/matTime'
 import type { ReactNode } from 'react'
 import { t } from '../i18n/es'
-import { Section } from './Card'
+import { BarError, BarList, BarNote } from './BarList'
+import { Card, Section, SectionHeader } from './Card'
 import { SegmentedControl } from './Chip'
 import './MatTime.css'
 import { Loading } from './Loading'
@@ -32,18 +33,14 @@ function Loaded({
   headed?: boolean
 }) {
   if (query.isError) {
-    return (
-      <p className="mat-time__error" role="alert">
-        {copy.error}
-      </p>
-    )
+    return <BarError>{copy.error}</BarError>
   }
   if (query.data) return <MatTime time={query.data} mine={mine} headed={headed} />
   // While it loads, the card holds its place, so what is below it does not jump.
   return (
-    <section className="mat-time mat-time--loading" aria-busy="true" aria-label={mine ? copy.mine : copy.theirs}>
-      <Loading className="mat-time__note">{copy.loading}</Loading>
-    </section>
+    <Card className="mat-time--loading" aria-busy="true" aria-label={mine ? copy.mine : copy.theirs}>
+      <Loading className="bar-note">{copy.loading}</Loading>
+    </Card>
   )
 }
 
@@ -64,7 +61,7 @@ export function MatTime({ time, mine, headed = false }: { time: PersonTime; mine
   if (!hasTime(time.all_time)) {
     return (
       <Frame titleId={titleId} title={title} headed={headed}>
-        <p className="mat-time__note">{mine ? copy.emptyMine : copy.emptyTheirs}</p>
+        <BarNote>{mine ? copy.emptyMine : copy.emptyTheirs}</BarNote>
       </Frame>
     )
   }
@@ -109,25 +106,19 @@ function Frame({
   if (headed) {
     return (
       <Section id={titleId} title={title} trailing={control}>
-        <div className="mat-time">{children}</div>
+        <Card as="div">{children}</Card>
       </Section>
     )
   }
   return (
-    <section className="mat-time" aria-labelledby={titleId}>
-      <div className="mat-time__head">
-        <h2 id={titleId} className="mat-time__title">
-          {title}
-        </h2>
-        {control}
-      </div>
+    <Card aria-labelledby={titleId}>
+      <SectionHeader id={titleId} title={title} trailing={control} />
       {children}
-    </section>
+    </Card>
   )
 }
 
 function Totals({ totals, mine }: { totals: TimeTotals; mine: boolean }) {
-  const longest = Math.max(...totals.by_kind.map((kind) => kind.seconds), 1)
   return (
     <>
       <dl className="mat-time__figures">
@@ -143,32 +134,26 @@ function Totals({ totals, mine }: { totals: TimeTotals; mine: boolean }) {
       {hasTime(totals) ? (
         <>
           {totals.by_kind.length > 0 && (
-            <ul className="mat-time__kinds" aria-label={copy.byKind}>
-              {totals.by_kind.map((kind) => (
-                <li key={kind.block_kind_id} className="mat-time__kind">
-                  <span className="mat-time__kind-row">
-                    <span>{kind.name}</span>
-                    <span className="mat-time__kind-time">{copy.duration(kind.seconds)}</span>
-                  </span>
-                  <span className="mat-time__bar" aria-hidden="true">
-                    <span
-                      className={kind.is_sparring ? 'mat-time__fill mat-time__fill--sparring' : 'mat-time__fill'}
-                      style={{ width: `${(kind.seconds / longest) * 100}%` }}
-                    />
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <BarList
+              label={copy.byKind}
+              bars={totals.by_kind.map((kind) => ({
+                key: kind.block_kind_id,
+                label: kind.name,
+                figure: copy.duration(kind.seconds),
+                value: kind.seconds,
+                muted: !kind.is_sparring,
+              }))}
+            />
           )}
           {totals.open_mats > 0 && (
             <p className="mat-time__open-mat">
               <span>{copy.openMat(totals.open_mats, copy.duration(totals.open_mat_seconds))}</span>
-              <span className="mat-time__note">{mine ? copy.openMatNoteMine : copy.openMatNoteTheirs}</span>
+              <span className="bar-note">{mine ? copy.openMatNoteMine : copy.openMatNoteTheirs}</span>
             </p>
           )}
         </>
       ) : (
-        <p className="mat-time__note">{copy.emptyMonth}</p>
+        <BarNote>{copy.emptyMonth}</BarNote>
       )}
     </>
   )

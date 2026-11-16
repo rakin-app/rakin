@@ -16,6 +16,7 @@ import { t } from '../i18n/es'
 import './ProofUpload.css'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
+import { Banner, Card, SectionHeader } from '../components/Card'
 
 const copy = t.me.proof
 
@@ -65,10 +66,8 @@ export function ProofUpload({ initial }: { initial?: string } = {}) {
   ]
 
   return (
-    <section className="proof" aria-labelledby="proof-title">
-      <h2 id="proof-title" className="proof__title">
-        {copy.title}
-      </h2>
+    <Card className="proof" aria-labelledby="proof-title">
+      <SectionHeader id="proof-title" title={copy.title} />
       {sent ? (
         <div className="proof__sent" role="status">
           <p>{copy.sent}</p>
@@ -81,7 +80,7 @@ export function ProofUpload({ initial }: { initial?: string } = {}) {
       ) : (
         <ProofForm payables={payables} initial={initial} onSent={() => setSent(true)} />
       )}
-    </section>
+    </Card>
   )
 }
 
@@ -197,9 +196,9 @@ function ProofForm({ payables, initial, onSent }: { payables: Payable[]; initial
       </p>
 
       {(problem || send.error || (amount !== '' && !amountOk)) && (
-        <p className="proof__error" role="alert">
+        <Banner tone="error">
           {problem ? copy.problem[problem] : send.error ? refusal(send.error) : copy.problem.amount}
-        </p>
+        </Banner>
       )}
 
       <Button

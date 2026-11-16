@@ -15,11 +15,11 @@ import {
   type ClassType,
 } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
-import { Card, ListRowContent, listRowClass, SectionHeader } from '../components/Card'
+import { Banner, Card, listRowClass, ListRowContent, PlainList, SectionHeader, SectionTitle } from '../components/Card'
 import { Input, Select } from '../components/Field'
 import { ChevronRightIcon } from '../components/icons'
 import { Grid, PageContainer, useWide } from '../components/Layout'
-import { PageHeader } from '../components/PageHeader'
+import { PageHeader, PageTitle } from '../components/PageHeader'
 import { TagHoursCard } from '../components/TagHours'
 import { clockTime, isoDay, shiftDay, shortDay, timeRange, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
@@ -71,9 +71,9 @@ export function Classes() {
             <StartSession />
             <section className="classes__section" aria-labelledby="classes-day">
               <div className="classes__section-head">
-                <h2 id="classes-day" className="classes__section-title">
+                <SectionTitle id="classes-day">
                   {isToday ? copy.today.title : weekdayDay(toDate(shown))}
-                </h2>
+                </SectionTitle>
                 {day.data && day.data.sessions.length > 0 && (
                   <span className="classes__aside">{copy.today.count(day.data.sessions.length)}</span>
                 )}
@@ -90,11 +90,11 @@ export function Classes() {
               ) : day.data.sessions.length === 0 ? (
                 <p className="classes__note">{isToday ? copy.today.empty : copy.days.empty}</p>
               ) : (
-                <ul className="classes__list">
+                <PlainList className="classes__list">
                   {day.data.sessions.map((session) => (
                     <SessionRow key={session.id} session={session} timeZone={day.data.timezone} />
                   ))}
-                </ul>
+                </PlainList>
               )}
             </section>
             <TagHoursCard
@@ -148,12 +148,12 @@ function Week({ day, today, timeZone }: { day: string; today: string; timeZone: 
       )}
       <section className="classes__section" aria-labelledby="classes-week">
         <div className="classes__section-head">
-          <h2 id="classes-week" className="classes__section-title">
+          <SectionTitle id="classes-week">
             {words.title}
-          </h2>
+          </SectionTitle>
           <span className="classes__aside">{words.range(shortDay(monday), shortDay(shiftDay(monday, 6)))}</span>
         </div>
-        <ol className="week">
+        <PlainList ordered className="week">
           {days.map((d, i) => {
             const answer = answers[i]!
             const headingId = `week-${d}`
@@ -169,7 +169,7 @@ function Week({ day, today, timeZone }: { day: string; today: string; timeZone: 
                 ) : answer.data.sessions.length === 0 ? (
                   <p className="classes__note">{words.empty}</p>
                 ) : (
-                  <ul className="week__list" aria-labelledby={headingId}>
+                  <Card as="ul" flush className="week__list" aria-labelledby={headingId}>
                     {answer.data.sessions.map((session) => (
                       <li key={session.id}>
                         <button
@@ -186,12 +186,12 @@ function Week({ day, today, timeZone }: { day: string; today: string; timeZone: 
                         </button>
                       </li>
                     ))}
-                  </ul>
+                  </Card>
                 )}
               </li>
             )
           })}
-        </ol>
+        </PlainList>
       </section>
     </div>
   )
@@ -221,7 +221,9 @@ function Picked({ session, timeZone }: { session: ClassSession; timeZone: string
     <Card aria-label={words.picked}>
       <SectionHeader title={weekdayDay(toDate(isoDay(session.starts_at, timeZone)))} trailing={session.program_name} />
       <div className="classes__row-text">
-        <span className="classes__title">{name}</span>
+        <PageTitle as="span" tight>
+          {name}
+        </PageTitle>
         <span className="classes__detail">{session.coach_name}</span>
         <span className={session.topic ? 'classes__topic' : 'classes__topic classes__topic--none'}>
           {session.topic ?? copy.today.noTopic}
@@ -239,11 +241,11 @@ function Picked({ session, timeZone }: { session: ClassSession; timeZone: string
         <>
           <p className="attendance__count">{words.present(present.length, regulars)}</p>
           {present.length > 0 && (
-            <ul className="week__present" aria-label={words.presentLabel}>
+            <PlainList className="week__present" aria-label={words.presentLabel}>
               {present.map((member) => (
                 <li key={member.membership_id}>{member.name}</li>
               ))}
-            </ul>
+            </PlainList>
           )}
         </>
       )}
@@ -296,11 +298,11 @@ function NowCard({ sessions, timeZone }: { sessions: readonly ClassSession[]; ti
   const { session, on } = found
   const name = copy.today.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)
   return (
-    <section className="classes__card classes__now" aria-labelledby="classes-now">
+    <Card className="classes__now" aria-labelledby="classes-now">
       <span className="classes__eyebrow">{on ? words.on : words.next}</span>
-      <h2 id="classes-now" className="classes__section-title">
+      <SectionTitle id="classes-now">
         {name}
-      </h2>
+      </SectionTitle>
       <span className="classes__detail">{copy.today.detail(session.program_name, session.coach_name)}</span>
       <div className="classes__now-actions">
         <Link
@@ -313,18 +315,18 @@ function NowCard({ sessions, timeZone }: { sessions: readonly ClassSession[]; ti
         </Link>
         <TimerLink session={session} />
       </div>
-    </section>
+    </Card>
   )
 }
 
 function Failed({ message, retry }: { message: string; retry: () => void }) {
   return (
-    <div className="classes__error" role="alert">
+    <Banner tone="error" as="div">
       <p>{message}</p>
       <Button onClick={retry}>
         {copy.retry}
       </Button>
-    </div>
+    </Banner>
   )
 }
 
@@ -377,17 +379,17 @@ function StartSession() {
     )
   }
   return (
-    <section id={formId} className="classes__card" aria-labelledby="classes-start">
+    <Card id={formId} aria-labelledby="classes-start">
       <div className="classes__section-head">
-        <h2 id="classes-start" className="classes__section-title">
+        <SectionTitle id="classes-start">
           {copy.start.title}
-        </h2>
+        </SectionTitle>
         <Button variant="ghost" aria-expanded={true} aria-controls={formId} onClick={() => setOpen(false)}>
           {copy.start.close}
         </Button>
       </div>
       <StartBody />
-    </section>
+    </Card>
   )
 }
 
@@ -468,14 +470,14 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
         onChange={(e) => setTyped({ classTypeId, value: e.target.value })}
       />
       {badDuration && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {copy.start.badDuration}
-        </p>
+        </Banner>
       )}
       {start.isError && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {copy.start.failed}
-        </p>
+        </Banner>
       )}
       <Button type="submit" variant="primary" disabled={start.isPending || badDuration} busy={start.isPending}>
         {start.isPending ? copy.start.working : copy.start.submit}

@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { useSignOut } from '../api/auth'
 import { myselfQuery } from '../api/me'
 import { Button } from '../components/Button'
-import { ListRow, ListRowContent, listRowClass } from '../components/Card'
+import { Banner, Card, ListRow, listRowClass, ListRowContent } from '../components/Card'
 import { ChevronRightIcon, SignOutIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { SectionHead } from './settingsForm'
@@ -22,7 +22,7 @@ export function AccountSettings() {
   return (
     <section className="settings__section" aria-label={copy.title}>
       <SectionHead intro={t.admin.settings.descriptions.account} />
-      <div className="settings__card settings__card--rows">
+      <Card as="div" flush className="settings__card settings__card--rows">
         <ListRow title={copy.name} trailing={me.data?.name ?? copy.none} />
         <ListRow title={copy.email} trailing={me.data?.email ?? copy.none} />
         {me.data?.student_page && (
@@ -30,11 +30,11 @@ export function AccountSettings() {
             <ListRowContent title={t.nav.myPage} trailing={<ChevronRightIcon />} />
           </Link>
         )}
-      </div>
+      </Card>
       {signOut.isError && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {t.signOut.failed}
-        </p>
+        </Banner>
       )}
       <div className="settings__actions">
         <Button disabled={signOut.isPending} onClick={() => signOut.mutate()}>

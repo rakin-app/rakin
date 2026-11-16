@@ -3,11 +3,20 @@
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
+  margin: 0;
   padding: var(--space-5);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card);
+  list-style: none;
+}
+
+/* Rows that run to the card's edge: a list or a table. */
+.card--flush {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .section {
@@ -22,7 +31,8 @@
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--space-3);
+  /* A trailing control that wraps sits close under the title. */
+  gap: var(--space-2) var(--space-3);
 }
 
 .section-header__title {
@@ -101,4 +111,78 @@
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--text-md);
+}
+
+/* A message in a tinted box (`Banner`). */
+.banner {
+  margin: 0;
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+/* One that holds more than a line: its paragraphs and a button, stacked. */
+.banner--stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.banner--stack p {
+  margin: 0;
+}
+
+.banner--error {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.banner--done {
+  background: var(--color-success-soft);
+  color: var(--color-success-strong);
+}
+
+.banner--warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-strong);
+}
+
+.banner--info {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.plain-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A checkbox or radio and its words: the whole row is the target, 44px or more. */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.check-row input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+
+.check-row--start {
+  align-items: flex-start;
+  padding-block: var(--space-1);
+}
+
+.check-row--start input {
+  margin-top: 1px;
 }

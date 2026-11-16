@@ -22,7 +22,7 @@ import { Button } from '../components/Button'
 import { Input, Select, Textarea } from '../components/Field'
 import { ChevronRightIcon, CloseIcon } from '../components/icons'
 import { shortDay } from '../format'
-import { SectionHeader } from '../components/Card'
+import { Banner, Card, cardClass, PlainList, SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 import { GradeForm } from './GradeForm'
 import './PersonHistory.css'
@@ -60,7 +60,7 @@ export function PersonHistory({ person }: { person: Person }) {
   return (
     <section className="member__section" aria-labelledby="member-history">
       <SectionHeader id="member-history" title={copy.title} />
-      <div className="member__card member__history">
+      <Card as="div" className="member__card member__history">
         {lines.length > 0 ? (
           lines.map((line) => (
             <span key={line} className="member__detail">
@@ -72,9 +72,9 @@ export function PersonHistory({ person }: { person: Person }) {
         )}
         <HistoryYears personId={person.id} onRemoved={() => setDone(copy.remove.done)} />
         {done && (
-          <p className="member__done" role="status">
+          <Banner tone="done">
             {done}
-          </p>
+          </Banner>
         )}
         {open === 'grade' && scheme ? (
           <GradeForm
@@ -128,7 +128,7 @@ export function PersonHistory({ person }: { person: Person }) {
             )}
           </>
         )}
-      </div>
+      </Card>
     </section>
   )
 }
@@ -173,7 +173,7 @@ function StartForm({ person, onCancel, onDone }: { person: Person; onCancel: () 
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit} noValidate>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit} noValidate>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={sinceId} className="member__label">
         {form.since}
@@ -188,9 +188,9 @@ function StartForm({ person, onCancel, onDone }: { person: Person; onCancel: () 
         onChange={(e) => setSince(e.target.value)}
       />
       {checked && !sinceOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.sinceNeeded}
-        </p>
+        </Banner>
       )}
       <label htmlFor={classesId} className="member__label">
         {form.classes}
@@ -207,14 +207,14 @@ function StartForm({ person, onCancel, onDone }: { person: Person; onCancel: () 
         onChange={(e) => setClasses(e.target.value)}
       />
       {checked && !classesOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.classesNeeded}
-        </p>
+        </Banner>
       )}
       {save.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.failed}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button disabled={save.isPending} onClick={onCancel}>
@@ -245,9 +245,9 @@ function HistoryYears({ personId, onRemoved }: { personId: string; onRemoved: ()
   const [openYears, setOpenYears] = useState<ReadonlySet<number>>(new Set())
   if (payments.isError) {
     return (
-      <p className="member__error" role="alert">
+      <Banner tone="error">
         {copy.paymentsError}
-      </p>
+      </Banner>
     )
   }
   const years = payments.data?.years ?? []
@@ -260,7 +260,7 @@ function HistoryYears({ personId, onRemoved }: { personId: string; onRemoved: ()
   }
   return (
     <>
-      <ul className="member__ledger past-pay__years" aria-label={copy.payments}>
+      <Card as="ul" flush className="member__ledger past-pay__years" aria-label={copy.payments}>
         {shown.map((y) => {
           const open = openYears.has(y.year)
           return (
@@ -278,16 +278,16 @@ function HistoryYears({ personId, onRemoved }: { personId: string; onRemoved: ()
                 <span className="member__entry-amount">{t.common.clp(y.total_clp)}</span>
               </button>
               {open && (
-                <ul className="member__ledger past-pay__payments">
+                <Card as="ul" flush className="member__ledger past-pay__payments">
                   {y.payments.map((p) => (
                     <PaymentLine key={p.id} personId={personId} payment={p} onRemoved={onRemoved} />
                   ))}
-                </ul>
+                </Card>
               )}
             </li>
           )
         })}
-      </ul>
+      </Card>
       {years.length > YEARS_SHOWN && (
         <Button variant="ghost" className="member__more" aria-expanded={all} onClick={() => setAll(!all)}>
           {all ? copy.fewer : copy.earlier(years.length - YEARS_SHOWN)}
@@ -382,7 +382,7 @@ function RemoveForm({
   }
   const title = words.title(`${paymentTitle(payment)} · ${t.common.clp(payment.amount_clp)}`)
   return (
-    <form className="member__form" aria-label={title} onSubmit={submit} noValidate>
+    <form className={cardClass({}, 'member__form')} aria-label={title} onSubmit={submit} noValidate>
       <span className="member__fix-title">{title}</span>
       <p className="member__detail">{words.intro}</p>
       <label htmlFor={reasonId} className="member__label">
@@ -396,14 +396,14 @@ function RemoveForm({
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {words.reasonNeeded}
-        </p>
+        </Banner>
       )}
       {remove.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {words.failed}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button disabled={remove.isPending} onClick={onCancel}>
@@ -561,7 +561,7 @@ function PaymentsForm({
   }
 
   return (
-    <form className="member__form past-pay__form" aria-label={form.title} onSubmit={submit} noValidate>
+    <form className={cardClass({}, 'member__form past-pay__form')} aria-label={form.title} onSubmit={submit} noValidate>
       <span className="member__fix-title">{form.title}</span>
       <p className="member__detail">{form.intro}</p>
       <div className="past-pay__form-body">
@@ -655,7 +655,7 @@ function PaymentsForm({
         <div className="past-pay__list">
           {inPlan.length > 0 && <p className="member__note">{form.inPlan(copy.line.month(inPlan[0]!))}</p>}
           {rows.length > 0 && (
-            <ul className="past-pay__months" aria-label={form.months}>
+            <PlainList className="past-pay__months" aria-label={form.months}>
               {rows.map((r, i) => {
                 const label = form.month(r.month)
                 const duplicate = sameAs(existing, payments[i]!)
@@ -706,39 +706,39 @@ function PaymentsForm({
                   </li>
                 )
               })}
-            </ul>
+            </PlainList>
           )}
           {rangeOk && <p className="member__entry-title">{form.total(rows.length, t.common.clp(total))}</p>}
           {duplicates.length > 0 && (
-            <div className="member__warning" role="status">
-              <p className="member__warning-line">{form.duplicates(duplicates.length)}</p>
-            </div>
+            <Banner tone="warning" as="div" className="member__warning">
+              <p>{form.duplicates(duplicates.length)}</p>
+            </Banner>
           )}
           {checked && rangeOk && rows.length === 0 && (
-            <p className="member__error" role="alert">
+            <Banner tone="error">
               {form.noneLeft}
-            </p>
+            </Banner>
           )}
           {checked && tooMany && (
-            <p className="member__error" role="alert">
+            <Banner tone="error">
               {form.tooMany(MAX_PAYMENTS_AT_ONCE)}
-            </p>
+            </Banner>
           )}
           {checked && rows.length > 0 && !rowsOk && (
-            <p className="member__error" role="alert">
+            <Banner tone="error">
               {rows.some((r) => !amountOk(r.amount)) ? form.amountNeeded : form.dayNeeded}
-            </p>
+            </Banner>
           )}
         </div>
       </div>
       {save.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {refusedFrom
             ? form.coversPlan(t.common.dayYear(refusedFrom))
             : outsideHistory(save.error)
               ? form.outsideWindow
               : form.failed}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button disabled={save.isPending} onClick={onCancel}>

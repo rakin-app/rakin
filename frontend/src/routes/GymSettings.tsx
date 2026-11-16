@@ -20,6 +20,7 @@ import { LogoSettings } from './LogoSettings'
 import { Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
+import { Banner, cardClass, CheckRow, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.gym
 
@@ -171,8 +172,8 @@ function GymForm({ settings }: { settings: Settings }) {
 
   return (
     <form ref={formRef} className="settings__form settings__form--panels" aria-label={copy.formLabel} onSubmit={submit} noValidate>
-      <fieldset className="settings__card">
-        <legend className="settings__legend">{copy.profile}</legend>
+      <fieldset className={cardClass({}, 'settings__card')}>
+        <SectionTitle as="legend" className="settings__legend">{copy.profile}</SectionTitle>
         <Field label={copy.name} error={errorOf('name', drafts.name)}>
           {(props) => (
             <Input
@@ -208,8 +209,8 @@ function GymForm({ settings }: { settings: Settings }) {
 
       <LogoSettings settings={settings} />
 
-      <fieldset className="settings__card">
-        <legend className="settings__legend">{copy.theme}</legend>
+      <fieldset className={cardClass({}, 'settings__card')}>
+        <SectionTitle as="legend" className="settings__legend">{copy.theme}</SectionTitle>
         <p className="settings__hint">{copy.themeHint}</p>
         <div className="theme-picker">
           {THEMES.map((theme) => (
@@ -234,8 +235,8 @@ function GymForm({ settings }: { settings: Settings }) {
         )}
       </fieldset>
 
-      <fieldset className="settings__card">
-        <legend className="settings__legend">{copy.billing}</legend>
+      <fieldset className={cardClass({}, 'settings__card')}>
+        <SectionTitle as="legend" className="settings__legend">{copy.billing}</SectionTitle>
         <Field label={copy.graceDays} hint={copy.graceDaysHint} error={errorOf('grace_days', drafts.grace_days)}>
           {(props) => (
             <Input
@@ -264,21 +265,21 @@ function GymForm({ settings }: { settings: Settings }) {
         </Field>
       </fieldset>
 
-      <fieldset className="settings__card">
-        <legend className="settings__legend">{copy.channels}</legend>
+      <fieldset className={cardClass({}, 'settings__card')}>
+        <SectionTitle as="legend" className="settings__legend">{copy.channels}</SectionTitle>
         <p className="settings__hint">{copy.email}</p>
-        <label className="settings__check">
+        <CheckRow>
           <input
             type="checkbox"
             checked={drafts.whatsapp}
             onChange={(e) => setDrafts({ ...drafts, whatsapp: e.target.checked })}
           />
           <span>{copy.whatsapp}</span>
-        </label>
+        </CheckRow>
       </fieldset>
 
-      <fieldset className="settings__card">
-        <legend className="settings__legend">{copy.bank}</legend>
+      <fieldset className={cardClass({}, 'settings__card')}>
+        <SectionTitle as="legend" className="settings__legend">{copy.bank}</SectionTitle>
         <p className="settings__hint">{copy.bankHint}</p>
         <Field label={copy.bankName} error={bankError('bank')}>
           {(props) => (
@@ -353,8 +354,8 @@ function GymForm({ settings }: { settings: Settings }) {
         </Field>
       </fieldset>
 
-      <fieldset className="settings__card" id="privacidad">
-        <legend className="settings__legend">{copy.privacy}</legend>
+      <fieldset className={cardClass({}, 'settings__card')} id="privacidad">
+        <SectionTitle as="legend" className="settings__legend">{copy.privacy}</SectionTitle>
         <p className="settings__hint">{copy.privacyHint}</p>
         <Field label={copy.privacyLegalName} error={privacyError('legal_name')}>
           {(props) => (
@@ -402,21 +403,21 @@ function GymForm({ settings }: { settings: Settings }) {
           )}
         </Field>
         {settings.privacy && (
-          <Link to="/privacidad" target="_blank" className="settings__link">
+          <Link to="/privacidad" target="_blank" className="tap-link settings__link">
             {copy.privacyView}
           </Link>
         )}
       </fieldset>
 
       {save.error && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
-        </p>
+        </Banner>
       )}
       {saved && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {copy.saved}
-        </p>
+        </Banner>
       )}
       <div className="settings__actions settings__actions--sticky">
         <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>

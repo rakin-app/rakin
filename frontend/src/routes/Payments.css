@@ -21,15 +21,6 @@
   gap: var(--space-1);
 }
 
-.payments__title {
-  margin: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-3xl);
-  font-weight: var(--font-weight-display);
-  letter-spacing: var(--tracking-title);
-}
-
 .payments__subtitle {
   max-width: var(--content-narrow);
   color: var(--color-text-muted);
@@ -61,7 +52,7 @@
   padding: 0 var(--space-3);
   background: var(--color-surface);
   border: 1px solid var(--color-border-input);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
 }
@@ -81,17 +72,6 @@
   max-width: var(--content-narrow);
 }
 
-.payments__picker {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-}
-
 /* Once picked, the form is the member detail's own card, inside this one. */
 .payments__picker .member__form {
   padding: 0;
@@ -104,11 +84,6 @@
 }
 
 .payments__picks {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
@@ -156,25 +131,6 @@
   font-size: var(--text-sm);
 }
 
-/* As the member detail says them. */
-.payments__error,
-.payments__done {
-  margin: 0;
-  padding: var(--space-2-5) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-}
-
-.payments__error {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-}
-
-.payments__done {
-  background: var(--color-success-soft);
-  color: var(--color-success-strong);
-}
-
 .payments__search {
   padding: var(--space-3) var(--space-4) 0;
 }
@@ -201,15 +157,8 @@
 }
 
 .payments__kpi {
-  display: flex;
-  flex-direction: column;
   gap: var(--space-1);
-  min-width: 0;
   padding: var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
 }
 
 .payments__kpi-label {
@@ -253,14 +202,6 @@
 .payments__kpi-detail {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
-}
-
-.payments__table-card {
-  overflow: hidden;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
 }
 
 .payments__filters {

@@ -4,7 +4,7 @@ import { useEffect, useRef, type ComponentType } from 'react'
 import { useGrades } from '../api/activities'
 import { managesGym, myRoleQuery } from '../api/me'
 import { BackLink } from '../components/BackLink'
-import { ListRowContent, listRowClass } from '../components/Card'
+import { Card, listRowClass, ListRowContent } from '../components/Card'
 import { ChevronRightIcon } from '../components/icons'
 import { PageContainer, useDesktop } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -158,7 +158,7 @@ export function SettingsHome() {
   if (desktop) return <Navigate to={`/admin/ajustes/${SETTINGS_SECTIONS[0].path}`} replace />
   return (
     <nav aria-label={copy.sectionsLabel}>
-      <ul className="settings__card settings__card--rows settings__menu">
+      <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
         {sections.map((section) => (
           <li key={section.path}>
             <Link to={`/admin/ajustes/${section.path}`} className={listRowClass(true)}>
@@ -166,7 +166,7 @@ export function SettingsHome() {
             </Link>
           </li>
         ))}
-      </ul>
+      </Card>
     </nav>
   )
 }

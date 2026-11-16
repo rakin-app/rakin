@@ -15,7 +15,7 @@ import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
 import { remindersQuery, ordinal, type PaymentReminder } from '../api/reminders'
 import { overdueQuery, type OverduePeriod } from '../api/today'
 import { Button, buttonClass } from '../components/Button'
-import { EmptyState } from '../components/Card'
+import { Banner, Card, cardClass, EmptyState, PlainList, SectionTitle } from '../components/Card'
 import { Select } from '../components/Field'
 import { WhatsAppIcon } from '../components/icons'
 import { FreezeRequests } from '../components/FreezeRequests'
@@ -91,7 +91,7 @@ function CoachToday() {
   const day = useQuery(todaySessionsQuery())
   return (
     <>
-      <section className="today__section" aria-labelledby="clases-hoy-title">
+      <Card className="today__section" aria-labelledby="clases-hoy-title">
         <SectionHead
           id="clases-hoy-title"
           title={words.title}
@@ -112,13 +112,13 @@ function CoachToday() {
             {words.empty}
           </EmptyState>
         ) : (
-          <ul className="today__list">
+          <PlainList className="today__list">
             {day.data.sessions.map((session) => (
               <ClassRow key={session.id} session={session} timeZone={day.data.timezone} />
             ))}
-          </ul>
+          </PlainList>
         )}
-      </section>
+      </Card>
       <JoinRequests />
     </>
   )
@@ -200,7 +200,7 @@ function OwnerToday() {
       <Grid className="today__grid">
         <JoinRequests />
         <FreezeRequests />
-        <section id="validar" className="today__section" aria-labelledby="validar-title">
+        <Card id="validar" className="today__section" aria-labelledby="validar-title">
           <SectionHead
             id="validar-title"
             title={copy.proofs.title}
@@ -213,14 +213,14 @@ function OwnerToday() {
           ) : proofs.data.length === 0 ? (
             <p className="today__note">{copy.proofs.empty}</p>
           ) : (
-            <ul className="today__list">
+            <PlainList className="today__list">
               {proofs.data.map((proof) => (
                 <ProofRow key={proof.id} proof={proof} />
               ))}
-            </ul>
+            </PlainList>
           )}
-        </section>
-        <section id="vencidos" className="today__section" aria-labelledby="vencidos-title">
+        </Card>
+        <Card id="vencidos" className="today__section" aria-labelledby="vencidos-title">
           <SectionHead
             id="vencidos-title"
             title={copy.overdue.title}
@@ -235,18 +235,18 @@ function OwnerToday() {
           ) : (
             <OverdueList periods={overdue.data.periods} reminderFor={reminderFor} />
           )}
-        </section>
+        </Card>
         {toRemind.length > 0 && (
-          <section id="por-avisar" className="today__section" aria-labelledby="por-avisar-title">
+          <Card id="por-avisar" className="today__section" aria-labelledby="por-avisar-title">
             <SectionHead id="por-avisar-title" title={copy.remind.title} aside={copy.remind.count(toRemind.length)} />
-            <ul className="today__list">
+            <PlainList className="today__list">
               {toRemind.map((reminder) => (
                 <RemindRow key={reminder.billing_period_id} reminder={reminder} />
               ))}
-            </ul>
-          </section>
+            </PlainList>
+          </Card>
         )}
-        <section id="inactivos" className="today__section" aria-labelledby="inactivos-title">
+        <Card id="inactivos" className="today__section" aria-labelledby="inactivos-title">
           <SectionHead
             id="inactivos-title"
             title={copy.inactive.title}
@@ -261,8 +261,8 @@ function OwnerToday() {
           ) : (
             <InactiveList members={inactive.data} />
           )}
-        </section>
-        <section id="sin-asistencia" className="today__section" aria-labelledby="sin-asistencia-title">
+        </Card>
+        <Card id="sin-asistencia" className="today__section" aria-labelledby="sin-asistencia-title">
           <SectionHead
             id="sin-asistencia-title"
             title={copy.unmarked.title}
@@ -279,13 +279,13 @@ function OwnerToday() {
           ) : unmarked.data.sessions.length === 0 ? (
             <p className="today__note">{copy.unmarked.empty}</p>
           ) : (
-            <ul className="today__list">
+            <PlainList className="today__list">
               {unmarked.data.sessions.map((session) => (
                 <UnmarkedRow key={session.id} session={session} timeZone={unmarked.data.timezone} />
               ))}
-            </ul>
+            </PlainList>
           )}
-        </section>
+        </Card>
       </Grid>
     </>
   )
@@ -377,52 +377,52 @@ function SetupChecklist({ doneKey }: { doneKey: string | null }) {
   }
   const count = Object.values(done).filter(Boolean).length
   return (
-    <section className="today__setup" aria-labelledby="setup-title">
+    <Card aria-labelledby="setup-title">
       <div className="today__section-head">
-        <h2 id="setup-title" className="today__setup-title">
+        <SectionTitle id="setup-title">
           {copy.setup.title}
-        </h2>
+        </SectionTitle>
         <span className="today__aside">{copy.setup.progress(count, Object.keys(done).length)}</span>
       </div>
-      <ol className="today__steps">
+      <PlainList ordered className="today__steps">
         <SetupStep done={done.activities} title={steps.activities.title} hint={steps.activities.hint}>
-          <Link to="/admin/ajustes/gimnasio" hash="actividades" className="today__link">
+          <Link to="/admin/ajustes/gimnasio" hash="actividades" className="tap-link today__link">
             {steps.activities.link}
           </Link>
         </SetupStep>
         <SetupStep done={done.gym} title={steps.gym.title} hint={steps.gym.hint}>
-          <Link to="/admin/ajustes/gimnasio" className="today__link">
+          <Link to="/admin/ajustes/gimnasio" className="tap-link today__link">
             {steps.gym.link}
           </Link>
         </SetupStep>
         <SetupStep done={done.plans} title={steps.plans.title} hint={steps.plans.hint}>
-          <Link to="/admin/ajustes/planes" className="today__link">
+          <Link to="/admin/ajustes/planes" className="tap-link today__link">
             {steps.plans.link}
           </Link>
         </SetupStep>
         <SetupStep done={done.classes} title={steps.classes.title} hint={steps.classes.hint}>
-          <Link to="/admin/ajustes/programas" className="today__link">
+          <Link to="/admin/ajustes/programas" className="tap-link today__link">
             {steps.classes.link}
           </Link>
         </SetupStep>
         <SetupStep done={done.members} title={steps.members.title} hint={steps.members.hint}>
-          <Link to="/admin/alumnos/nuevo" className="today__link">
+          <Link to="/admin/alumnos/nuevo" className="tap-link today__link">
             {steps.members.manual}
           </Link>
-          <Link to="/admin/alumnos/importar" className="today__link">
+          <Link to="/admin/alumnos/importar" className="tap-link today__link">
             {steps.members.import}
           </Link>
-          <Link to="/admin/ajustes/inscripcion" className="today__link">
+          <Link to="/admin/ajustes/inscripcion" className="tap-link today__link">
             {steps.members.joinLink}
           </Link>
         </SetupStep>
         <SetupStep done={done.staff} title={steps.staff.title} hint={steps.staff.hint}>
-          <Link to="/admin/ajustes/equipo" className="today__link">
+          <Link to="/admin/ajustes/equipo" className="tap-link today__link">
             {steps.staff.link}
           </Link>
         </SetupStep>
-      </ol>
-    </section>
+      </PlainList>
+    </Card>
   )
 }
 
@@ -467,7 +467,7 @@ function Counter({
 }) {
   return (
     // The figure and its label are two spans, which a name would otherwise run together.
-    <a href={href} className="today__counter" aria-label={value === undefined ? label : `${value} ${label}`}>
+    <a href={href} className={cardClass({}, 'today__counter')} aria-label={value === undefined ? label : `${value} ${label}`}>
       {/* Zero is nothing to worry about: never in the warning colour (#358). */}
       <span className={`today__counter-value today__counter-value--${value === 0 ? 'muted' : tone}`}>
         {value ?? '–'}
@@ -480,9 +480,9 @@ function Counter({
 function SectionHead({ id, title, aside }: { id: string; title: string; aside: string | null }) {
   return (
     <div className="today__section-head">
-      <h2 id={id} className="today__section-title">
+      <SectionTitle id={id}>
         {title}
-      </h2>
+      </SectionTitle>
       {aside && <span className="today__aside">{aside}</span>}
     </div>
   )
@@ -490,12 +490,12 @@ function SectionHead({ id, title, aside }: { id: string; title: string; aside: s
 
 function Failed({ message, retry }: { message: string; retry: () => void }) {
   return (
-    <div className="today__error" role="alert">
+    <Banner tone="error" as="div">
       <p>{message}</p>
       <Button onClick={retry}>
         {copy.retry}
       </Button>
-    </div>
+    </Banner>
   )
 }
 
@@ -599,15 +599,15 @@ function OverdueList({
   return (
     <>
       {done && (
-        <p className="today__done" role="status">
+        <Banner tone="done">
           {done}
-        </p>
+        </Banner>
       )}
-      <ul className="today__list">
+      <PlainList className="today__list">
         {shown.map((owed) => (
           <OverdueRow key={owed[0]!.person_id} periods={owed} reminderFor={reminderFor} onDone={setDone} />
         ))}
-      </ul>
+      </PlainList>
       {!all && members.length > OVERDUE_SHOWN && (
         <Button variant="ghost" onClick={() => setAll(true)}>
           {copy.overdue.showAll(members.length)}
@@ -802,11 +802,11 @@ function PaidForm({
         ))}
       </Select>
       {record.error && (
-        <p className="today__error" role="alert">
+        <Banner tone="error">
           {record.error instanceof ApiError && record.error.status === 409
             ? copy.overdue.refused.paid
             : copy.overdue.refused.failed}
-        </p>
+        </Banner>
       )}
       <div className="today__form-actions">
         <Button disabled={record.isPending} onClick={onCancel}>
@@ -827,11 +827,11 @@ const INACTIVE_SHOWN = 5
 function InactiveList({ members }: { members: InactiveMember[] }) {
   return (
     <>
-      <ul className="today__list">
+      <PlainList className="today__list">
         {members.slice(0, INACTIVE_SHOWN).map((member) => (
           <InactiveRow key={member.person_id} member={member} />
         ))}
-      </ul>
+      </PlainList>
       {members.length > INACTIVE_SHOWN && (
         <Link to="/admin/alumnos" search={{ away: true }} className={buttonClass({ variant: 'ghost' })}>
           {copy.inactive.showAll(members.length)}

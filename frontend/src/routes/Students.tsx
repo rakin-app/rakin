@@ -25,8 +25,9 @@ import { formatPhone, formatRut } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { PaymentFor } from './Payments'
+import { Banner, Card, EmptyState, PlainList } from '../components/Card'
 import './Students.css'
-import { Loading } from '../components/Loading'
+import { LoadingText } from '../components/Loading'
 
 const copy = t.admin.students
 
@@ -318,18 +319,23 @@ export function Students() {
         </div>
 
         {members.isPending ? (
-          <Loading className="students__note">{copy.loading}</Loading>
+          <Card flush>
+            <EmptyState>
+              <LoadingText>{copy.loading}</LoadingText>
+            </EmptyState>
+          </Card>
         ) : members.isError && rows.length === 0 ? (
-          <div className="students__note" role="alert">
-            <p>{copy.error}</p>
-            <Button onClick={() => void members.refetch()}>
-              {copy.retry}
-            </Button>
-          </div>
+          <Card flush role="alert">
+            <EmptyState action={<Button onClick={() => void members.refetch()}>{copy.retry}</Button>}>
+              {copy.error}
+            </EmptyState>
+          </Card>
         ) : rows.length === 0 ? (
-          <p className="students__note">{filtered ? copy.noMatches : copy.empty}</p>
+          <Card flush>
+            <EmptyState>{filtered ? copy.noMatches : copy.empty}</EmptyState>
+          </Card>
         ) : (
-          <div className={cx('students__table', readsLedger(role.data) && 'students__table--pays')}>
+          <Card as="div" flush className={cx(readsLedger(role.data) && 'students__table--pays')}>
             {/* The columns' labels, over a desktop's one-line rows; the list is still a list. */}
             <div className="students__columns" aria-hidden="true">
               <span>{copy.columns.name}</span>
@@ -338,12 +344,12 @@ export function Students() {
               <span>{copy.columns.plan}</span>
               <span>{copy.columns.status}</span>
             </div>
-            <ul className="students__list" aria-label={copy.title}>
+            <PlainList className="students__list" aria-label={copy.title}>
               {rows.map((row) => (
                 <MemberItem key={row.id} row={row} pays={readsLedger(role.data)} />
               ))}
-            </ul>
-          </div>
+            </PlainList>
+          </Card>
         )}
 
         {members.hasNextPage && (
@@ -426,9 +432,9 @@ function MemberItem({ row, pays }: { row: MemberRow; pays: boolean }) {
         </div>
       </div>
       {done && (
-        <p className="students__done" role="status">
+        <Banner tone="done" className="students__done">
           {done}
-        </p>
+        </Banner>
       )}
       {/* Always there, so `aria-controls` names an element; filled only when open. */}
       <div id={panelId} hidden={!open}>

@@ -20,7 +20,7 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import { personQuery } from '../api/member'
 import { programsQuery } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
-import { Card, SectionHeader } from '../components/Card'
+import { Card, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { Field, Input, Select, Textarea } from '../components/Field'
 import { useFocusFirstInvalid } from '../components/focusInvalid'
 import { PageContainer } from '../components/Layout'
@@ -201,13 +201,13 @@ function Wizard({ person }: { person?: PersonRef }) {
   return (
     <PageContainer className="extra">
       <SubHeader title={words.title} back="cobros" />
-      <ol className="extra__steps" aria-label={words.title}>
+      <PlainList ordered className="extra__steps" aria-label={words.title}>
         {words.steps.map((name, i) => (
           <li key={name} className="extra__step" aria-current={i === step ? 'step' : undefined}>
             {name}
           </li>
         ))}
-      </ol>
+      </PlainList>
       <form ref={formRef} className="extra__wizard" onSubmit={next} noValidate>
         <Card aria-labelledby="extra-step">
           <SectionHeader id="extra-step" title={words.stepOf(step + 1, words.steps.length, words.steps[step]!)} />
@@ -272,13 +272,13 @@ function Wizard({ person }: { person?: PersonRef }) {
               <Field label={words.messageLabel} hint={words.messageHint}>
                 {(props) => <Textarea {...props} value={message} maxLength={2000} onChange={(e) => setMessage(e.target.value)} />}
               </Field>
-              <label className="extra__check">
+              <CheckRow start>
                 <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
                 <span>
                   {words.notify}
                   <span className="extra__hint">{words.notifyHint}</span>
                 </span>
-              </label>
+              </CheckRow>
             </>
           )}
           {step === 4 && preview.data && (
@@ -349,10 +349,10 @@ function TargetStep({ choice, onChange, tried }: { choice: Choice; onChange: (c:
       <fieldset className="extra__choices">
         <legend className="extra__legend">{words.targetLabel}</legend>
         {TARGETS.map((kind) => (
-          <label key={kind} className="extra__choice">
+          <CheckRow start key={kind}>
             <input type="radio" name="target" checked={choice.kind === kind} onChange={() => onChange({ kind })} />
             <span>{words.target[kind]}</span>
-          </label>
+          </CheckRow>
         ))}
       </fieldset>
       {choice.kind === 'program' && (
@@ -394,7 +394,7 @@ function TargetStep({ choice, onChange, tried }: { choice: Choice; onChange: (c:
             onPick={(person) => onChange({ people: [...choice.people, person] })}
           />
           {choice.people.length > 0 ? (
-            <ul className="extra__chosen">
+            <PlainList className="extra__chosen">
               {choice.people.map((person) => (
                 <li key={person.id} className="extra__chosen-item">
                   <span>{person.name}</span>
@@ -407,7 +407,7 @@ function TargetStep({ choice, onChange, tried }: { choice: Choice; onChange: (c:
                   </Button>
                 </li>
               ))}
-            </ul>
+            </PlainList>
           ) : (
             tried && (
               <p className="extra__error" role="alert">
@@ -451,10 +451,10 @@ function AmountStep({
       <fieldset className="extra__choices">
         <legend className="extra__legend">{words.modeLabel}</legend>
         {MODES.map((value) => (
-          <label key={value} className="extra__choice">
+          <CheckRow start key={value}>
             <input type="radio" name="mode" checked={mode === value} onChange={() => onMode(value)} />
             <span>{words.mode[value]}</span>
-          </label>
+          </CheckRow>
         ))}
       </fieldset>
       <Field label={words.amountLabel[mode]} error={error ?? undefined}>
@@ -467,7 +467,7 @@ function AmountStep({
             <p className="extra__hint">{words.split(clp(preview.share_clp), preview.lines.length)}</p>
           )}
           {preview.remainder_clp > 0 && <p className="extra__hint">{words.remainder(preview.remainder_clp)}</p>}
-          <ul className="extra__preview-list">
+          <PlainList className="extra__preview-list">
             {preview.lines.map((line) => (
               <li key={line.person.id} className="extra__preview-row">
                 <span className="extra__preview-name">
@@ -492,7 +492,7 @@ function AmountStep({
                 )}
               </li>
             ))}
-          </ul>
+          </PlainList>
         </section>
       )}
       {!preview && loading && <p className="extra__note">{words.previewLoading}</p>}
@@ -586,7 +586,7 @@ function Confirm({
       {without.length > 0 && (
         <>
           <p className="extra__hint">{words.noEmail(without.length)}</p>
-          <ul className="extra__chosen">
+          <PlainList className="extra__chosen">
             {without.map((line) => (
               <li key={line.person.id} className="extra__chosen-item">
                 <span>{words.personAmount(line.person.name, clp(line.amount_clp))}</span>
@@ -599,7 +599,7 @@ function Confirm({
                 )}
               </li>
             ))}
-          </ul>
+          </PlainList>
         </>
       )}
     </>

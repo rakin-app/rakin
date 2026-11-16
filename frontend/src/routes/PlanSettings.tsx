@@ -18,6 +18,7 @@ import { t } from '../i18n/es'
 import { EditRow, Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
+import { Banner, Card, cardClass, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.plans
 const form = copy.form
@@ -126,15 +127,15 @@ export function PlanSettings() {
         }
       />
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
       {editing === 'new' && <PlanForm programs={programList} onCancel={() => setEditing(null)} onDone={done} />}
       {plans.data.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
-        <ul className="settings__card settings__card--rows settings__menu">
+        <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
           {plans.data.map((plan) => {
             const program = programList.find((p) => p.id === plan.program_id)
             return editing === plan.id ? (
@@ -158,7 +159,7 @@ export function PlanSettings() {
               />
             )
           })}
-        </ul>
+        </Card>
       )}
     </section>
   )
@@ -229,8 +230,8 @@ function PlanForm({
   }
 
   return (
-    <form className="settings__card settings__form" aria-label={plan ? form.edit(plan.name) : form.create} onSubmit={submit} noValidate>
-      <h2 className="settings__legend">{plan ? form.edit(plan.name) : form.create}</h2>
+    <form className={cardClass({}, 'settings__card settings__form')} aria-label={plan ? form.edit(plan.name) : form.create} onSubmit={submit} noValidate>
+      <SectionTitle className="settings__legend">{plan ? form.edit(plan.name) : form.create}</SectionTitle>
       <Field label={form.kind}>
         {(props) => (
           <Select
@@ -313,13 +314,13 @@ function PlanForm({
       ))}
 
       {save.error && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {'' in errors && kind === 'trial'
             ? form.trialLimit
             : Object.keys(errors).length > 0
               ? form.invalid
               : form.failed}
-        </p>
+        </Banner>
       )}
       <div className="settings__actions">
         <Button disabled={save.isPending} onClick={onCancel}>
@@ -332,9 +333,9 @@ function PlanForm({
       {plan && (
         <div className="settings__danger">
           {toggle.isError && (
-            <p className="settings__error" role="alert">
+            <Banner tone="error">
               {copy.toggleFailed}
-            </p>
+            </Banner>
           )}
           <Button
             variant={plan.active ? 'danger' : 'secondary'}

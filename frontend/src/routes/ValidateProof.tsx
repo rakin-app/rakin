@@ -23,6 +23,8 @@ import { usePageTitle } from '../pageTitle'
 import './ValidateProof.css'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
+import { Banner, Card } from '../components/Card'
+import { PageTitle } from '../components/PageHeader'
 
 const copy = t.admin.review
 const clp = t.common.clp
@@ -65,7 +67,7 @@ export function ValidateProof() {
         <BackLink to="/admin" label={copy.back} />
         <div className="review__heading">
           <span className="review__eyebrow">{item ? copy.position(at + 1, items.length) : copy.title}</span>
-          <h1 className="review__title">{item ? item.person_name : copy.title}</h1>
+          <PageTitle tight>{item ? item.person_name : copy.title}</PageTitle>
         </div>
         {items.length > 1 && (
           <div className="review__pager">
@@ -96,12 +98,12 @@ export function ValidateProof() {
       </header>
 
       {done && (
-        <div className="review__done" role="status">
+        <Banner tone="done" as="div" className="review__done">
           <p>{done.message}</p>
           {done.followUp && (
             <ReminderLink reminder={done.followUp} label={t.admin.reminders.followUp(done.followUp.contact_name)} />
           )}
-        </div>
+        </Banner>
       )}
 
       {item ? (
@@ -203,7 +205,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
 
         <Proof review={review} />
 
-        <dl className="review__details">
+        <Card as="dl" className="review__details">
           {line ? (
             // A cobro extra has no plan, prior balance or history of its own (#195).
             <div>
@@ -238,7 +240,7 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
             <dt>{copy.attendance}</dt>
             <dd>{copy.attendanceCount(review.attendance_30d)}</dd>
           </div>
-        </dl>
+        </Card>
 
         <label htmlFor={ids.note} className="review__label">
           {copy.noteLabel}
@@ -255,14 +257,14 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
           onChange={(e) => setNote(e.target.value)}
         />
         {noteNeeded && !note.trim() && (
-          <p id={ids.noteError} className="review__error" role="alert">
+          <Banner tone="error" id={ids.noteError}>
             {copy.noteNeeded}
-          </p>
+          </Banner>
         )}
         {error && (
-          <p className="review__error" role="alert">
+          <Banner tone="error">
             {refusal(error)}
-          </p>
+          </Banner>
         )}
       </div>
 

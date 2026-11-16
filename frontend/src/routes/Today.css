@@ -45,14 +45,8 @@
 
 /* A stat tile (v3, #199): the label over the figure, as the board's "Activos 64". */
 .today__counter {
-  display: flex;
-  flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
   color: var(--color-text);
   text-decoration: none;
 }
@@ -99,20 +93,13 @@
 
 /* Each list is a card, its rows split by rules (v3's "Deben"). */
 .today__section {
-  display: flex;
-  flex-direction: column;
   gap: var(--space-2);
-  min-width: 0;
   padding: var(--space-4) var(--space-5) var(--space-2);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
 }
 
 /* A section with nothing in it yet: its note, with the card's own bottom padding. */
 .today__section > .today__note,
-.today__section > .today__error,
+.today__section > .banner,
 .today__section > .empty-state {
   margin-bottom: var(--space-3);
 }
@@ -126,23 +113,6 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
-}
-
-.today__section-title {
-  margin: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-display);
-  letter-spacing: var(--tracking-title);
-}
-
-.today__list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
 .today__list > li + li {
@@ -243,28 +213,6 @@
   gap: var(--space-2);
 }
 
-.today__error,
-.today__done {
-  margin: 0;
-  padding: var(--space-2-5) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-}
-
-.today__error {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-}
-
-.today__error p {
-  margin: 0 0 var(--space-2);
-}
-
-.today__done {
-  background: var(--color-success-soft);
-  color: var(--color-success-strong);
-}
-
 .today__counter-value--muted {
   color: var(--color-text);
 }
@@ -273,34 +221,6 @@
   color: var(--color-accent);
   font-weight: var(--font-weight-semibold);
   text-decoration: none;
-}
-
-/* "Configura tu academia": a new gym's first steps. */
-.today__setup {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-}
-
-.today__setup-title {
-  margin: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-display);
-}
-
-.today__steps {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
 .today__step {
@@ -345,13 +265,6 @@
   flex-wrap: wrap;
   column-gap: var(--space-4);
   font-size: var(--text-sm);
-}
-
-/* Each step's link is a whole 44px target, not just its line of text. */
-.today__step-links .today__link {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--control-height);
 }
 
 @media (--desktop) {

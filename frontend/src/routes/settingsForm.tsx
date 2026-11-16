@@ -7,7 +7,7 @@
 import type { ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { Button } from '../components/Button'
-import { ListRowContent, listRowClass } from '../components/Card'
+import { Banner, listRowClass, ListRowContent } from '../components/Card'
 import { cx } from '../components/classNames'
 import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from '../components/icons'
 import { t } from '../i18n/es'
@@ -36,12 +36,12 @@ export function SectionHead({ intro, action }: { intro: ReactNode; action?: Reac
 export function LoadFailed({ error, message, retry }: { error: Error; message: string; retry: () => void }) {
   if (error instanceof ApiError && error.status === 403) return <AdminsOnly />
   return (
-    <div className="settings__error" role="alert">
+    <Banner tone="error" as="div">
       <p>{message}</p>
       <Button onClick={retry}>
         {copy.retry}
       </Button>
-    </div>
+    </Banner>
   )
 }
 

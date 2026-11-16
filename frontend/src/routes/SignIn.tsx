@@ -20,6 +20,7 @@ import { t } from '../i18n/es'
 import { RAKIN, useDocumentTitle } from '../pageTitle'
 import './SignIn.css'
 import { useSubmit } from '../api/submit'
+import { Banner, Card } from '../components/Card'
 
 const copy = t.signIn
 const route = getRouteApi(SIGN_IN_PATH)
@@ -98,7 +99,7 @@ export function SignIn() {
         }
         title={gym ? copy.titleAt(gym.name) : copy.title}
       />
-      <div className="signin__card">
+      <Card as="div" className="signin__card">
         {send.isSuccess || (resent && send.isPending) ? (
           <>
             <div role="status">
@@ -150,9 +151,9 @@ export function SignIn() {
         ) : (
           <form className="signin__form" onSubmit={submit}>
             {expired && (
-              <p className="signin__expired" role="status">
+              <Banner tone="warning">
                 {copy.expired}
-              </p>
+              </Banner>
             )}
             <p className="signin__intro">{copy.intro}</p>
             <label htmlFor={emailId} className="signin__label">
@@ -181,7 +182,7 @@ export function SignIn() {
             </Button>
           </form>
         )}
-      </div>
+      </Card>
     </main>
   )
 }

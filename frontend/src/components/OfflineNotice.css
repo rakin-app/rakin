@@ -1,7 +1,7 @@
 .offline-notice {
   position: fixed;
   inset: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-4) auto;
-  z-index: 20;
+  z-index: var(--z-toast);
   display: flex;
   justify-content: center;
   pointer-events: none;

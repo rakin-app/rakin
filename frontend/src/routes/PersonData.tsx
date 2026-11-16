@@ -14,7 +14,7 @@ import { duplicateOf, updatePerson, type PersonEdit } from '../api/people'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { formatPhone, formatRut } from '../format'
-import { SectionHeader } from '../components/Card'
+import { Banner, Card, cardClass, CheckRow, SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 import { FieldInput, valueOf } from './CustomFieldsPanel'
 import { useSubmit } from '../api/submit'
@@ -38,14 +38,14 @@ export function PersonData({ person }: { person: Person }) {
     <section className="member__section" aria-label={words.title}>
       <SectionHeader title={words.title} />
       {person.missing_phone && (
-        <p className="member__error" role="status">
+        <Banner tone="error" role="status">
           {copy.missingPhone}
-        </p>
+        </Banner>
       )}
       {person.missing_rut && (
-        <p className="member__error" role="status">
+        <Banner tone="error" role="status">
           {copy.missingRut}
-        </p>
+        </Banner>
       )}
       {editing ? (
         <DataForm
@@ -58,7 +58,7 @@ export function PersonData({ person }: { person: Person }) {
           }}
         />
       ) : (
-        <div className="member__card">
+        <Card as="div" className="member__card">
           <dl className="member__fields">
             <Datum label={words.phone} value={person.phone && formatPhone(person.phone)} />
             <Datum label={words.email} value={person.email} />
@@ -76,9 +76,9 @@ export function PersonData({ person }: { person: Person }) {
             </p>
           )}
           {saved && (
-            <p className="member__done" role="status">
+            <Banner tone="done">
               {words.saved}
-            </p>
+            </Banner>
           )}
           <div className="member__actions">
             <Button
@@ -92,7 +92,7 @@ export function PersonData({ person }: { person: Person }) {
               {copy.editPerson}
             </Button>
           </div>
-        </div>
+        </Card>
       )}
     </section>
   )
@@ -211,7 +211,7 @@ function DataForm({
   const duplicate = duplicateOf(save.error)
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={(e) => void submit(e)} noValidate>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={(e) => void submit(e)} noValidate>
       <div className="member__form-grid">
         <div className="member__form-field member__form-field--wide">
           <label htmlFor={ids.name} className="member__label">
@@ -225,9 +225,9 @@ function DataForm({
             onChange={set('name')}
           />
           {checked && !nameOk && (
-            <p className="member__error" role="alert">
+            <Banner tone="error">
               {form.nameNeeded}
-            </p>
+            </Banner>
           )}
         </div>
         <div className="member__form-field">
@@ -235,7 +235,7 @@ function DataForm({
             {form.phone}
           </label>
           <Input id={ids.phone} type="tel" inputMode="tel" value={draft.phone} onChange={set('phone')} />
-          <label htmlFor={ids.noWhatsapp} className="new-member__check">
+          <CheckRow htmlFor={ids.noWhatsapp}>
             <input
               id={ids.noWhatsapp}
               type="checkbox"
@@ -243,7 +243,7 @@ function DataForm({
               onChange={(e) => setNoWhatsapp(e.target.checked)}
             />
             {form.noWhatsapp}
-          </label>
+          </CheckRow>
         </div>
         <div className="member__form-field">
           <label htmlFor={ids.email} className="member__label">
@@ -283,7 +283,7 @@ function DataForm({
       </div>
 
       {save.error && (
-        <div className="member__error" role="alert">
+        <Banner tone="error" as="div">
           {duplicate ? (
             <>
               {form.refused[duplicate.code]}{' '}
@@ -300,12 +300,12 @@ function DataForm({
           ) : (
             form.refused.failed
           )}
-        </div>
+        </Banner>
       )}
       {saveFields.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {refused.size > 0 ? words.refused.invalid : words.refused.failed}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">

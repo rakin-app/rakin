@@ -14,6 +14,7 @@ import { shortDay } from '../format'
 import { t } from '../i18n/es'
 import { useRefresh } from './PersonData'
 import { membershipOf, PlanStart, type PlanChoice } from './PlanStart'
+import { Banner, Card, cardClass, CheckRow } from '../components/Card'
 
 const copy = t.admin.member
 const clp = t.common.clp
@@ -81,9 +82,9 @@ export function AssignPlan({
         </div>
       )}
       {done && (
-        <p className="member__done" role="status">
+        <Banner tone="done">
           {done}
-        </p>
+        </Banner>
       )}
       {open && (
         <AssignForm
@@ -154,25 +155,25 @@ export function AssignForm({
 
   const missing = checked && !plan.plan_id
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit} noValidate>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit} noValidate>
       <p className="member__detail">{form.intro}</p>
       <PlanStart choice={plan} today={today} labels={form} onChange={setPlan} />
       {plan.plan_id && quote.data && (quote.data.debt_clp > 0 || quote.data.billed_through) && (
-        <div className="member__warning" role="status">
-          {quote.data.debt_clp > 0 && <p className="member__warning-line">{form.debt(clp(quote.data.debt_clp))}</p>}
+        <Banner tone="warning" as="div" className="member__warning">
+          {quote.data.debt_clp > 0 && <p>{form.debt(clp(quote.data.debt_clp))}</p>}
           {quote.data.billed_through && (
-            <p className="member__warning-line">
+            <p>
               {form.moved(shortDay(quote.data.billed_through), shortDay(quote.data.starts_on))}
             </p>
           )}
-        </div>
+        </Banner>
       )}
       {missing && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.planNeeded}
-        </p>
+        </Banner>
       )}
-      <label htmlFor={ids.welcome} className="new-member__check">
+      <CheckRow htmlFor={ids.welcome}>
         <input
           id={ids.welcome}
           type="checkbox"
@@ -182,16 +183,16 @@ export function AssignForm({
           onChange={(e) => setWelcome(e.target.checked)}
         />
         {form.welcome}
-      </label>
+      </CheckRow>
       {!access.isPending && (
         <p id={ids.hint} className="member__detail">
           {canWelcome ? form.welcomeHint : form.noEmail}
         </p>
       )}
       {start.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.failed}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button disabled={start.isPending} onClick={onCancel}>
@@ -276,17 +277,17 @@ export function ChangePlanForm({
 
   if (plans.isSuccess && offered.length === 0 && !pending) {
     return (
-      <div className="member__form" role="status">
+      <Card as="div" className="member__form" role="status">
         <p className="member__detail">{form.none}</p>
         <div className="member__form-actions">
           <Button onClick={onCancel}>{form.cancel}</Button>
         </div>
-      </div>
+      </Card>
     )
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit} noValidate>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit} noValidate>
       <label htmlFor={id} className="member__label">
         {form.plan}
       </label>
@@ -300,9 +301,9 @@ export function ChangePlanForm({
         ))}
       </Select>
       {checked && !planId && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.planNeeded}
-        </p>
+        </Banner>
       )}
       {withdraws && pending && (
         <p className="member__detail" role="status">
@@ -327,9 +328,9 @@ export function ChangePlanForm({
         </div>
       )}
       {(quote.error || save.error) && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {changeRefusal(save.error ?? quote.error)}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button disabled={save.isPending} onClick={onCancel}>

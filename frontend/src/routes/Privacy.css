@@ -6,15 +6,8 @@
 }
 
 .privacy__card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
   margin: var(--space-3) var(--space-5) 0;
   padding: var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
 }
 
 .privacy__text {
