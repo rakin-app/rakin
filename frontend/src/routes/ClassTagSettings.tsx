@@ -8,6 +8,7 @@ import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, refusal, SectionHead } from './settingsForm'
+import { Banner, Card, cardClass, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.tags
 const form = copy.form
@@ -51,15 +52,15 @@ export function ClassTagSettings() {
         }
       />
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
       {editing === 'new' && <ClassTagForm onCancel={() => setEditing(null)} onDone={done} />}
       {tags.data.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
-        <ul className="settings__card settings__card--rows settings__menu">
+        <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
           {tags.data.map((tag) =>
             editing === tag.id ? (
               <li key={tag.id}>
@@ -79,7 +80,7 @@ export function ClassTagSettings() {
               />
             ),
           )}
-        </ul>
+        </Card>
       )}
     </section>
   )
@@ -132,17 +133,17 @@ function ClassTagForm({
 
   const label = tag ? form.edit(tag.name) : form.create
   return (
-    <form className="settings__card settings__form" aria-label={label} onSubmit={submit} noValidate>
-      <h2 className="settings__legend">{label}</h2>
+    <form className={cardClass({}, 'settings__card settings__form')} aria-label={label} onSubmit={submit} noValidate>
+      <SectionTitle className="settings__legend">{label}</SectionTitle>
       <Field label={form.name} hint={form.nameHint} error={nameError}>
         {(props) => (
           <Input {...props} type="text" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
         )}
       </Field>
       {save.error && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {taken || Object.keys(errors).length > 0 ? form.invalid : form.failed}
-        </p>
+        </Banner>
       )}
       <div className="settings__actions">
         <Button disabled={save.isPending} onClick={onCancel}>
@@ -155,9 +156,9 @@ function ClassTagForm({
       {tag && (
         <div className="settings__danger">
           {toggle.isError && (
-            <p className="settings__error" role="alert">
+            <Banner tone="error">
               {copy.toggleFailed}
-            </p>
+            </Banner>
           )}
           <p className="settings__hint">{tag.archived ? copy.restoreHint : copy.archiveHint}</p>
           <Button

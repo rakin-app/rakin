@@ -51,14 +51,6 @@
   min-width: 0;
 }
 
-.past-pay__months {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
 /* A month on two lines: its name, amount and ✕, then the day it was paid and how. The
    amount keeps the room "$100.000" needs at 390. */
 .past-pay__month {

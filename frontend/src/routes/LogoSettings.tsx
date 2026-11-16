@@ -10,6 +10,7 @@ import { GymMark } from '../components/GymMark'
 import { LogoCropper } from '../components/LogoCropper'
 import { t } from '../i18n/es'
 import { LOGO_TYPES, MAX_LOGO_BYTES } from '../logo'
+import { Banner, cardClass, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.gym.logo
 
@@ -97,8 +98,8 @@ export function LogoSettings({ settings }: { settings: GymSettings }) {
   const busy = save.isPending || remove.isPending
 
   return (
-    <fieldset className="settings__card">
-      <legend className="settings__legend">{copy.title}</legend>
+    <fieldset className={cardClass({}, 'settings__card')}>
+      <SectionTitle as="legend" className="settings__legend">{copy.title}</SectionTitle>
       <p className="settings__hint">{copy.hint}</p>
       {picked ? (
         <>
@@ -147,19 +148,19 @@ export function LogoSettings({ settings }: { settings: GymSettings }) {
         </div>
       )}
       {refused && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {copy.refused[refused]}
-        </p>
+        </Banner>
       )}
       {remove.isError && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {copy.removeFailed}
-        </p>
+        </Banner>
       )}
       {done && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {done === 'saved' ? copy.saved : copy.removed}
-        </p>
+        </Banner>
       )}
     </fieldset>
   )

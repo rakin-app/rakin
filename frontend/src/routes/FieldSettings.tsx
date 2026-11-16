@@ -19,6 +19,7 @@ import { Input, Select, Textarea } from '../components/Field'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, MoveButtons, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Banner, Card, cardClass, CheckRow, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.fields
 const form = copy.form
@@ -99,20 +100,20 @@ export function FieldSettings() {
         }
       />
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
       {editing === 'new' && <FieldForm owner={owner} onCancel={() => setEditing(null)} onDone={done} />}
       {reorder.isError && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {copy.reorderFailed}
-        </p>
+        </Banner>
       )}
       {list.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
-        <ul className="settings__card settings__card--rows settings__menu">
+        <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
           {list.map((field, index) =>
             editing === field.key ? (
               <li key={field.key}>
@@ -144,7 +145,7 @@ export function FieldSettings() {
               />
             ),
           )}
-        </ul>
+        </Card>
       )}
     </section>
   )
@@ -249,8 +250,8 @@ function FieldForm({
   }
 
   return (
-    <form className="settings__card settings__form" aria-label={field ? form.edit(field.label) : form.create} onSubmit={submit} noValidate>
-      <h2 className="settings__legend">{field ? form.edit(field.label) : form.create}</h2>
+    <form className={cardClass({}, 'settings__card settings__form')} aria-label={field ? form.edit(field.label) : form.create} onSubmit={submit} noValidate>
+      <SectionTitle className="settings__legend">{field ? form.edit(field.label) : form.create}</SectionTitle>
       <Field label={form.label} error={labelError}>
         {(props) => (
           <Input
@@ -297,7 +298,7 @@ function FieldForm({
       {owner && (
         <>
           <div className="settings__field">
-            <label className="settings__check">
+            <CheckRow>
               <input
                 type="checkbox"
                 checked={drafts.sensitive}
@@ -311,7 +312,7 @@ function FieldForm({
                 }
               />
               {form.sensitive}
-            </label>
+            </CheckRow>
             <p className="settings__hint">{form.sensitiveHint}</p>
           </div>
           <Field label={form.visibleTo}>
@@ -333,9 +334,9 @@ function FieldForm({
       )}
 
       {save.error && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {inUse ? form.inUse(inUse) : Object.keys(errors).length > 0 ? form.invalid : form.failed}
-        </p>
+        </Banner>
       )}
       <div className="settings__actions">
         <Button disabled={save.isPending} onClick={onCancel}>
@@ -348,9 +349,9 @@ function FieldForm({
       {field && (
         <div className="settings__danger">
           {toggle.isError && (
-            <p className="settings__error" role="alert">
+            <Banner tone="error">
               {copy.toggleFailed}
-            </p>
+            </Banner>
           )}
           <Button
             variant={field.archived ? 'secondary' : 'danger'}

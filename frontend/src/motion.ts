@@ -26,7 +26,7 @@ export function useRise<T extends HTMLElement>() {
     const element = ref.current
     if (!element || typeof element.animate !== 'function') return
     const styles = getComputedStyle(element)
-    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    const still = reducedMotion()
     const distance = styles.getPropertyValue('--rise-distance').trim() || '8px'
     const animation = element.animate(
       still
@@ -44,6 +44,16 @@ export function useRise<T extends HTMLElement>() {
   }, [pathname])
 
   return ref
+}
+
+/** Whether the reader asked for less motion: nothing moves, only opacity changes. */
+export function reducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+}
+
+/** How a scroll the app makes moves: smoothly, or at once under reduced motion. */
+export function scrollBehavior(): ScrollBehavior {
+  return reducedMotion() ? 'auto' : 'smooth'
 }
 
 /** A `--duration-*` token in milliseconds: `500ms` or `0.5s`, else `fallback`. */

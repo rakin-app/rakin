@@ -19,6 +19,7 @@ import { Input, Select } from '../components/Field'
 import { clockTime, isoDay, zonedInstant } from '../format'
 import { t } from '../i18n/es'
 import { useSubmit } from '../api/submit'
+import { Banner, Card, cardClass, SectionTitle } from '../components/Card'
 
 const copy = t.admin.session
 
@@ -53,9 +54,9 @@ export function ClassEdit({ session, timeZone }: { session: ClassSession; timeZo
     return (
       <>
         {saved && (
-          <p className="classes__done" role="status">
+          <Banner tone="done">
             {words.saved}
-          </p>
+          </Banner>
         )}
         <Button
           onClick={() => {
@@ -171,7 +172,7 @@ function EditForm({
   }
 
   return (
-    <form className="classes__card classes__form" aria-label={words.label} onSubmit={submit}>
+    <form className={cardClass({}, 'classes__form')} aria-label={words.label} onSubmit={submit}>
       {session.slot_id !== null && (
         <fieldset className="class-edit__scope">
           <legend className="classes__label">{words.scope.label}</legend>
@@ -231,9 +232,9 @@ function EditForm({
         </div>
       </div>
       {badDuration && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {words.badDuration}
-        </p>
+        </Banner>
       )}
       <label htmlFor={ids.type} className="classes__label">
         {words.classType}
@@ -261,9 +262,9 @@ function EditForm({
       </Select>
       <p className="classes__note">{words.hint}</p>
       {save.isError && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {refusedFor(save.error, 'open_mat_plan') ? words.openMatPlan : words.failed}
-        </p>
+        </Banner>
       )}
       <Button
         type="submit"
@@ -324,11 +325,11 @@ export function ClassActions({ session }: { session: ClassSession }) {
 
   return (
     <section className="classes__section" aria-labelledby="class-actions">
-      <h2 id="class-actions" className="classes__section-title">
+      <SectionTitle id="class-actions">
         {words.title}
-      </h2>
+      </SectionTitle>
       {asking === 'cancel' ? (
-        <div className="classes__card class-actions__confirm" role="group" aria-label={words.cancel}>
+        <Card as="div" className="class-actions__confirm" role="group" aria-label={words.cancel}>
           {session.present > 0 ? (
             <p className="classes__note">{words.hasAttendance}</p>
           ) : (
@@ -346,9 +347,9 @@ export function ClassActions({ session }: { session: ClassSession }) {
           <Button onClick={() => ask(null)}>
             {words.back}
           </Button>
-        </div>
+        </Card>
       ) : asking === 'delete' ? (
-        <div className="classes__card class-actions__confirm" role="group" aria-label={words.delete}>
+        <Card as="div" className="class-actions__confirm" role="group" aria-label={words.delete}>
           <p className="classes__note">{words.deleteConfirm(session.present, (plan.data?.blocks.length ?? 0) > 0)}</p>
           {session.present > 0 && <p className="classes__note">{words.credits}</p>}
           <Button
@@ -361,7 +362,7 @@ export function ClassActions({ session }: { session: ClassSession }) {
           <Button onClick={() => ask(null)}>
             {words.back}
           </Button>
-        </div>
+        </Card>
       ) : (
         <div className="class-actions__buttons">
           {session.cancelled_at ? (
@@ -385,9 +386,9 @@ export function ClassActions({ session }: { session: ClassSession }) {
         </div>
       )}
       {failed && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {words.failed}
-        </p>
+        </Banner>
       )}
     </section>
   )

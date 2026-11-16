@@ -68,6 +68,31 @@ textarea {
   outline-offset: 2px;
 }
 
+/* A link on a line of its own (a setup step's, the footer's): a 44px target, though it
+   reads as text. */
+.tap-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+}
+
+/* A link inside a sentence or a row (a table's name, "Descarga la plantilla"): its
+   target reaches 44px tall around its line, and the line keeps its height. */
+.tap-link--inline {
+  display: inline;
+  position: relative;
+  min-height: 0;
+}
+
+.tap-link--inline::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: max(100%, var(--control-height));
+  translate: 0 -50%;
+}
+
 /* Read by screen readers, not shown: labels for controls whose purpose is visible. */
 .visually-hidden {
   position: absolute;

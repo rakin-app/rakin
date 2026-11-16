@@ -24,7 +24,7 @@
   position: absolute;
   inset-inline-end: 0;
   top: calc(100% + var(--space-1));
-  z-index: 5;
+  z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
   min-width: 220px;
@@ -45,7 +45,7 @@
   padding: 0 var(--space-3);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   color: var(--color-text);
   font: inherit;
   font-size: var(--text-md);

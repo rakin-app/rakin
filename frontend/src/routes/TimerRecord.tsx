@@ -24,6 +24,7 @@ import { CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { savedRun } from './timerEngine'
 import { useSubmit } from '../api/submit'
+import { Banner, cardClass, PlainList, SectionTitle } from '../components/Card'
 
 const copy = t.admin.session.record
 const timerCopy = t.admin.timer
@@ -156,9 +157,9 @@ export function TimerRecord({ session }: { session: ClassSession }) {
 
   return (
     <section className="classes__section" aria-labelledby="timer-record">
-      <h2 id="timer-record" className="classes__section-title">
+      <SectionTitle id="timer-record">
         {copy.title}
-      </h2>
+      </SectionTitle>
       {editing ? (
         <RecordEditor
           plan={plan.data}
@@ -173,19 +174,19 @@ export function TimerRecord({ session }: { session: ClassSession }) {
           {blocks.length === 0 ? (
             <p className="classes__note">{copy.empty}</p>
           ) : (
-            <ul className="classes__list" aria-label={copy.title}>
+            <PlainList className="classes__list" aria-label={copy.title}>
               {blocks.map((block) => (
                 <li key={block.id} className="classes__row timer-done__row">
                   <span className="classes__name">{block.block_kind_name}</span>
                   <span className="classes__detail">{ran(block)}</span>
                 </li>
               ))}
-            </ul>
+            </PlainList>
           )}
           {saved && (
-            <p className="classes__done" role="status">
+            <Banner tone="done">
               {copy.saved}
-            </p>
+            </Banner>
           )}
           {busy ? (
             <p className="classes__note">{busy}</p>
@@ -270,11 +271,11 @@ function RecordEditor({
     <form className="timer-editor" aria-label={copy.label} onSubmit={submit}>
       <p className="classes__note">{copy.hint}</p>
       {choices.length === 0 && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {copy.noKinds}
-        </p>
+        </Banner>
       )}
-      <ol className="timer-editor__list">
+      <PlainList ordered className="timer-editor__list">
         {drafts.map((draft, index) => (
           <li key={draft.id}>
             <RecordCard
@@ -290,7 +291,7 @@ function RecordEditor({
             />
           </li>
         ))}
-      </ol>
+      </PlainList>
       {full && <p className="classes__note">{copy.tooMany(MAX_BLOCKS)}</p>}
       {canAdd && (
         <Button fullWidth onClick={() => setDrafts((all) => [...all, newDraft(openMat ? choices[0] : firstKind)])}>
@@ -298,14 +299,14 @@ function RecordEditor({
         </Button>
       )}
       {checked && !valid && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {copy.invalid}
-        </p>
+        </Banner>
       )}
       {save.isError && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {copy.failed}
-        </p>
+        </Banner>
       )}
       <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
         {save.isPending ? copy.working : copy.submit}
@@ -354,12 +355,12 @@ function RecordCard({
     </div>
   )
   return (
-    <fieldset className="classes__card timer-editor__card">
+    <fieldset className={cardClass({}, 'timer-editor__card')}>
       <legend className="visually-hidden">{copy.block(n)}</legend>
       <div className="timer-editor__head">
-        <span className="classes__section-title" aria-hidden="true">
+        <SectionTitle as="span" aria-hidden="true">
           {copy.block(n)}
-        </span>
+        </SectionTitle>
         {removable && (
           <span className="timer-editor__actions">
             <Button icon aria-label={copy.remove(n)} onClick={onRemove}>

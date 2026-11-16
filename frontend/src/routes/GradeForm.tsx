@@ -9,6 +9,7 @@ import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { HISTORY_WINDOW_YEARS, yearsBefore } from './historyWindow'
+import { Banner, cardClass } from '../components/Card'
 
 const copy = t.admin.member.grading.form
 
@@ -85,7 +86,7 @@ export function GradeForm({
   }
 
   return (
-    <form className="member__form member__form--inset" aria-label={history ? copy.historyTitle : copy.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form member__form--inset')} aria-label={history ? copy.historyTitle : copy.title} onSubmit={submit}>
       {history && <p className="member__detail">{copy.historyIntro}</p>}
       <label htmlFor={ids.rank} className="member__label">
         {copy.rank}
@@ -147,9 +148,9 @@ export function GradeForm({
       <Input id={ids.note} type="text" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
 
       {award.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {refusal(award.error)}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">

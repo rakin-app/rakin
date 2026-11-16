@@ -17,7 +17,7 @@ import { activeClassTypesQuery, useGymToday } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
-import { ListRow } from '../components/Card'
+import { Banner, Card, cardClass, CheckRow, ListRow, SectionTitle } from '../components/Card'
 import { FieldError, Input, Select } from '../components/Field'
 import { TagPicker } from '../components/Tags'
 import { shortDay, weekdayDay, toDate } from '../format'
@@ -94,15 +94,15 @@ export function ScheduleSettings() {
           }
         />
         {notice && (
-          <p className="settings__done" role="status">
+          <Banner tone="done">
             {notice}
-          </p>
+          </Banner>
         )}
         {editing === 'new' && <SlotForm today={today} onCancel={() => setEditing(null)} onDone={done} />}
         {current.length === 0 ? (
           <p className="settings__note">{copy.empty}</p>
         ) : (
-          <ul className="settings__card settings__card--rows settings__menu">
+          <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
             {current.map((slot) =>
               editing === slot.id ? (
                 <li key={slot.id}>
@@ -112,7 +112,7 @@ export function ScheduleSettings() {
                 <SlotRow key={slot.id} slot={slot} today={today} onEdit={() => open(slot.id)} />
               ),
             )}
-          </ul>
+          </Card>
         )}
       </section>
       <ClosedDays today={today} />
@@ -167,9 +167,9 @@ function DeleteSlot({ slot, onDone }: { slot: ScheduleSlot; onDone: (message: st
         <div className="settings__plan-text" role="group" aria-label={copy.delete}>
           <p className="settings__detail">{copy.deleteConfirm}</p>
           {remove.isError && (
-            <p className="settings__error" role="alert">
+            <Banner tone="error">
               {copy.deleteFailed}
-            </p>
+            </Banner>
           )}
           <div className="settings__actions">
             <Button disabled={remove.isPending} onClick={() => setAsking(false)}>
@@ -291,19 +291,19 @@ function SlotForm({
   const label = slot ? form.edit(slot.class_type_name) : form.create
   if (classTypes.isSuccess && types.length === 0 && !slot) {
     return (
-      <div className="settings__card settings__form">
+      <Card as="div" className="settings__card settings__form">
         <p className="settings__note">{form.noClassTypes}</p>
         <div className="settings__actions">
           <Button onClick={onCancel}>
             {form.cancel}
           </Button>
         </div>
-      </div>
+      </Card>
     )
   }
   return (
-    <form className="settings__card settings__form" aria-label={label} onSubmit={submit} noValidate>
-      <h2 className="settings__legend">{label}</h2>
+    <form className={cardClass({}, 'settings__card settings__form')} aria-label={label} onSubmit={submit} noValidate>
+      <SectionTitle className="settings__legend">{label}</SectionTitle>
       <Field label={form.classType}>
         {(props) => (
           <Select {...props} value={chosenType} onChange={(e) => setClassTypeId(e.target.value)}>
@@ -319,10 +319,10 @@ function SlotForm({
         <legend className="settings__label">{form.weekdays}</legend>
         <div className="schedule__day-list">
           {WEEKDAYS.map((day) => (
-            <label key={day} className="settings__check schedule__day">
+            <CheckRow key={day} className="schedule__day">
               <input type="checkbox" checked={weekdays.includes(day)} onChange={() => toggleDay(day)} />
               {copy.weekdays[day - 1]}
-            </label>
+            </CheckRow>
           ))}
         </div>
         {noDays && daysTouched && <FieldError>{form.noDays}</FieldError>}
@@ -406,7 +406,7 @@ function SlotForm({
         </Field>
       </div>
       {save.error && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {'class_type_id' in errors && errors['class_type_id'] === 'open_mat_plan'
             ? form.openMatPlan
             : errors['tag_ids'] === 'archived_tag'
@@ -416,7 +416,7 @@ function SlotForm({
                 : Object.keys(errors).length > 0
                   ? form.invalid
                   : form.failed}
-        </p>
+        </Banner>
       )}
       <div className="settings__actions">
         <Button disabled={save.isPending} onClick={onCancel}>
@@ -468,14 +468,14 @@ function ClosedDays({ today }: { today: string }) {
   return (
     <section className="settings__section" aria-labelledby="closed-days">
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
-      <form className="settings__card settings__form" aria-label={words.add} onSubmit={submit} noValidate>
-        <h2 id="closed-days" className="settings__legend">
+      <form className={cardClass({}, 'settings__card settings__form')} aria-label={words.add} onSubmit={submit} noValidate>
+        <SectionTitle id="closed-days" className="settings__legend">
           {words.title}
-        </h2>
+        </SectionTitle>
         <p className="settings__hint">{words.intro}</p>
         <div className="schedule__pair">
           <Field label={words.day} error={day && day < today ? words.past : undefined}>
@@ -503,9 +503,9 @@ function ClosedDays({ today }: { today: string }) {
           </Field>
         </div>
         {close.isError && (
-          <p className="settings__error" role="alert">
+          <Banner tone="error">
             {words.failed}
-          </p>
+          </Banner>
         )}
         <div className="settings__actions">
           <Button type="submit" disabled={close.isPending || !day || day < today} busy={close.isPending}>
@@ -520,7 +520,7 @@ function ClosedDays({ today }: { today: string }) {
       ) : days.data.length === 0 ? (
         <p className="settings__note">{words.empty}</p>
       ) : (
-        <ul className="settings__card settings__card--rows settings__menu">
+        <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
           {days.data.map((closed) => (
             <li key={closed.day}>
               <ListRow
@@ -540,12 +540,12 @@ function ClosedDays({ today }: { today: string }) {
               />
             </li>
           ))}
-        </ul>
+        </Card>
       )}
       {reopen.isError && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {words.failed}
-        </p>
+        </Banner>
       )}
     </section>
   )

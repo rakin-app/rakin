@@ -15,12 +15,7 @@
 }
 
 .timer-editor__list {
-  display: flex;
-  flex-direction: column;
   gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
 .timer-editor__card {
@@ -63,7 +58,7 @@
 .timer {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -171,7 +166,7 @@
 .timer__mode {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(var(--text-3xl), 12vmin, 72px);
+  font-size: clamp(var(--text-3xl), 12vmin, var(--text-timer-round));
   font-weight: var(--font-weight-display);
   letter-spacing: var(--tracking-label);
   line-height: 1;
@@ -180,7 +175,7 @@
 .timer__phase {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(var(--text-xl), 7vmin, 44px);
+  font-size: clamp(var(--text-xl), 7vmin, var(--text-timer-phase));
   font-weight: var(--font-weight-display);
   overflow-wrap: anywhere;
 }
@@ -232,7 +227,7 @@
 .timer__sheet {
   position: fixed;
   inset: auto 0 0;
-  z-index: 21;
+  z-index: calc(var(--z-overlay) + 1);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -253,7 +248,7 @@
 .timer__overlay {
   position: fixed;
   inset: 0;
-  z-index: 22;
+  z-index: calc(var(--z-overlay) + 2);
   overflow-y: auto;
   padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-5) var(--space-6);
   background: var(--color-bg);

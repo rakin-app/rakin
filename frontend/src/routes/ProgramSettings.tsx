@@ -7,7 +7,7 @@ import { programsQuery, type Program } from '../api/people'
 import { CLASS_KINDS, type ClassKind, type ClassType } from '../api/sessions'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
-import { ListRowContent, listRowClass } from '../components/Card'
+import { Banner, Card, cardClass, CheckRow, listRowClass, ListRowContent, PlainList, SectionTitle } from '../components/Card'
 import { Input, Select } from '../components/Field'
 import { ChevronRightIcon } from '../components/icons'
 import { t } from '../i18n/es'
@@ -30,9 +30,9 @@ function FormAlert({ error }: { error: Error | null }) {
   if (!error) return null
   const refused = (error instanceof ApiError && error.status === 409) || Object.keys(validationErrors(error)).length > 0
   return (
-    <p className="settings__error" role="alert">
+    <Banner tone="error">
       {refused ? copy.invalid : copy.failed}
-    </p>
+    </Banner>
   )
 }
 
@@ -96,19 +96,21 @@ export function ProgramSettings() {
         }
       />
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
       {isOpen('program', 'new') && <ProgramForm onCancel={close} onDone={done} />}
       {programs.data.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
-        <ul className="settings__list">
+        <PlainList className="settings__list">
           {programs.data.map((program) => {
             const types = classTypes.data.filter((c) => c.program_id === program.id)
             return (
-              <li
+              <Card
+                as="li"
+                flush
                 key={program.id}
                 className={
                   program.active
@@ -140,7 +142,7 @@ export function ProgramSettings() {
                 {types.length === 0 ? (
                   <p className="settings__detail settings__row-note">{copy.noClassTypes}</p>
                 ) : (
-                  <ul className="settings__menu settings__subrows" aria-label={copy.classTypesLabel(program.name)}>
+                  <PlainList className="settings__menu settings__subrows" aria-label={copy.classTypesLabel(program.name)}>
                     {types.map((classType) =>
                       isOpen('classType', classType.id) ? (
                         <li key={classType.id}>
@@ -167,7 +169,7 @@ export function ProgramSettings() {
                         />
                       ),
                     )}
-                  </ul>
+                  </PlainList>
                 )}
                 {editing?.kind === 'classType' && editing.id === 'new' && editing.programId === program.id ? (
                   <ClassTypeForm programId={program.id} programs={programs.data} onCancel={close} onDone={done} />
@@ -181,10 +183,10 @@ export function ProgramSettings() {
                     </div>
                   )
                 )}
-              </li>
+              </Card>
             )
           })}
-        </ul>
+        </PlainList>
       )}
     </section>
   )
@@ -247,8 +249,8 @@ function ProgramForm({
   }
 
   return (
-    <form className="settings__card settings__form" aria-label={label} onSubmit={submit} noValidate>
-      <h2 className="settings__legend">{label}</h2>
+    <form className={cardClass({}, 'settings__card settings__form')} aria-label={label} onSubmit={submit} noValidate>
+      <SectionTitle className="settings__legend">{label}</SectionTitle>
       <Field label={copy.programForm.name} error={errorOf(save.error, 'name', name, copy.programTaken)}>
         {(props) => (
           <Input
@@ -302,9 +304,9 @@ function ToggleActive({
   return (
     <div className="settings__danger">
       {failed && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {copy.toggleFailed}
-        </p>
+        </Banner>
       )}
       <Button variant={active ? 'danger' : 'secondary'} disabled={pending} onClick={onToggle}>
         {active ? copy.deactivate : copy.reactivate}
@@ -400,8 +402,8 @@ function ClassTypeForm({
   }
 
   return (
-    <form className="settings__card settings__form" aria-label={label} onSubmit={submit} noValidate>
-      <h3 className="settings__legend">{label}</h3>
+    <form className={cardClass({}, 'settings__card settings__form')} aria-label={label} onSubmit={submit} noValidate>
+      <SectionTitle as="h3" className="settings__legend">{label}</SectionTitle>
       <Field label={form.name} error={error('name')}>
         {(props) => (
           <Input
@@ -477,14 +479,14 @@ function ClassTypeForm({
         </Field>
       )}
       <div className="settings__field">
-        <label className="settings__check">
+        <CheckRow>
           <input
             type="checkbox"
             checked={drafts.counts_as_class}
             onChange={(e) => set('counts_as_class', e.target.checked)}
           />
           {form.countsAsClass}
-        </label>
+        </CheckRow>
         <p className="settings__hint">{form.countsAsClassHint}</p>
       </div>
       <FormAlert error={save.error} />

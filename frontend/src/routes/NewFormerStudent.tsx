@@ -11,6 +11,7 @@ import { t } from '../i18n/es'
 import { LeftReasonField } from './LeftReason'
 import { MOBILE, Needed, refusals } from './NewMember'
 import { HISTORY_WINDOW_YEARS, yearsBefore } from './historyWindow'
+import { Banner, Card } from '../components/Card'
 
 const copy = t.admin.newMember
 const form = copy.former
@@ -92,7 +93,7 @@ export function NewFormerStudent() {
 
   return (
     <form className="new-member" aria-label={copy.kind.former} onSubmit={submit} noValidate>
-      <div className="member__form">
+      <Card as="div" className="member__form">
         <p className="member__detail">{form.intro}</p>
 
         <label htmlFor={ids.first} className="member__label">
@@ -194,10 +195,10 @@ export function NewFormerStudent() {
         {checked && problems.leftOn && <Needed text={form.needed.leftOn} />}
 
         <LeftReasonField value={reason} onChange={setReason} />
-      </div>
+      </Card>
 
       {save.error && (
-        <div className="member__error" role="alert">
+        <Banner tone="error" as="div">
           {duplicate ? (
             <>
               {copy.duplicate[duplicate.code]}{' '}
@@ -212,7 +213,7 @@ export function NewFormerStudent() {
           ) : (
             form.refused.failed
           )}
-        </div>
+        </Banner>
       )}
 
       <div className="member__form-actions">

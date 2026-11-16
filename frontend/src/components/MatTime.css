@@ -1,35 +1,8 @@
-/* "Tiempo de entrenamiento": the student page's and the ficha's card. */
-.mat-time {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-}
-
+/* "Tiempo de entrenamiento": the student page's and the ficha's card. Its bars are
+   `BarList`'s. */
 .mat-time--loading {
   justify-content: center;
   min-height: 12rem;
-}
-
-.mat-time__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.mat-time__title {
-  margin: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-display);
-  letter-spacing: var(--tracking-title);
 }
 
 .mat-time__figures {
@@ -58,54 +31,6 @@
   line-height: 1.1;
 }
 
-.mat-time__kinds {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2-5);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.mat-time__kind {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--text-sm);
-}
-
-.mat-time__kind-row {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.mat-time__kind-time {
-  flex: none;
-  font-weight: var(--font-weight-semibold);
-  font-variant-numeric: tabular-nums;
-}
-
-.mat-time__bar {
-  display: block;
-  height: 8px;
-  overflow: hidden;
-  background: var(--color-surface-sunken);
-  border-radius: var(--radius-pill);
-}
-
-.mat-time__fill {
-  display: block;
-  height: 100%;
-  min-width: 4px;
-  background: var(--color-text-subtle);
-  border-radius: inherit;
-}
-
-.mat-time__fill--sparring {
-  background: var(--color-accent);
-}
-
 .mat-time__open-mat {
   display: flex;
   flex-direction: column;
@@ -115,17 +40,4 @@
   font-size: var(--text-sm);
   font-weight: var(--font-weight-semibold);
   border-top: 1px solid var(--color-divider);
-}
-
-.mat-time__note {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
-  font-weight: normal;
-}
-
-.mat-time__error {
-  margin: 0;
-  color: var(--color-danger);
-  font-size: var(--text-sm);
 }

@@ -75,7 +75,12 @@
   background: var(--color-danger-soft);
 }
 
-/* On a dark surface the primary turns white and the outlines light. */
+/* On a dark surface the primary turns white and the outlines light, and so does the
+   focus ring, which is drawn on the dark around it. */
+.button--inverse {
+  --color-focus: var(--color-focus-on-inverse);
+}
+
 .button--inverse.button--primary {
   background: var(--color-inverse-text);
   border-color: var(--color-inverse-text);

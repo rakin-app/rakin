@@ -27,16 +27,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-.review__title {
-  margin: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-3xl);
-  font-weight: var(--font-weight-display);
-  letter-spacing: var(--tracking-title);
-  line-height: 1.1;
-}
-
 .review__pager {
   display: flex;
   gap: var(--space-2);
@@ -159,15 +149,8 @@
 }
 
 .review__details {
-  display: flex;
-  flex-direction: column;
   gap: var(--space-2-5);
-  margin: 0;
   padding: var(--space-4) var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
   font-size: var(--text-md);
 }
 
@@ -194,21 +177,12 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.review__error {
-  margin: 0;
-  padding: var(--space-2-5) var(--space-3);
-  background: var(--color-danger-soft);
-  border-radius: var(--radius-md);
-  color: var(--color-danger);
-  font-size: var(--text-sm);
-}
-
 /* Rechazar and Confirmar stay under the thumb on every proof, above the bottom nav
    (AdminLayout.css) on a phone, as the roster's "Guardar asistencia" does. */
 .review__actions {
   position: sticky;
   bottom: calc(var(--space-6) + var(--nav-height) + env(safe-area-inset-bottom));
-  z-index: 1;
+  z-index: var(--z-sticky);
   display: grid;
   grid-template-columns: 1fr 2fr;
   gap: var(--space-2-5);
@@ -217,33 +191,25 @@
   border-top: 1px solid var(--color-border);
 }
 
-.review__note,
-.review__done {
+.review__note {
   margin: 0 var(--space-5);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
+/* A done `Banner`: what was confirmed, and the reminder to send beside it. */
 .review__done {
-  display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2-5) var(--space-3);
-  background: var(--color-success-soft);
-  border-radius: var(--radius-md);
-  color: var(--color-success-strong);
-}
-
-.review__done p {
-  margin: 0;
+  margin: 0 var(--space-5);
 }
 
 .review__zoom {
   position: fixed;
   inset: 0;
-  z-index: 10;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -130,7 +130,7 @@ describe('MatTime', () => {
   it('keeps the bars out of the accessible text', () => {
     const { container } = render(<MatTime time={time(MONTH, ALL_TIME)} mine />)
 
-    const bars = container.querySelectorAll('.mat-time__bar')
+    const bars = container.querySelectorAll('.bar-list__bar')
     expect(bars).toHaveLength(2)
     bars.forEach((bar) => expect(bar).toHaveAttribute('aria-hidden', 'true'))
   })

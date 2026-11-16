@@ -16,7 +16,7 @@ import {
 import { validationErrors } from '../api/validation'
 import { Belt } from '../components/Belt'
 import { Button } from '../components/Button'
-import { ListRowContent, listRowClass } from '../components/Card'
+import { Banner, Card, cardClass, listRowClass, ListRowContent, PlainList, SectionTitle } from '../components/Card'
 import { Input, Select } from '../components/Field'
 import { ChevronDownIcon, CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
@@ -167,12 +167,12 @@ function GradingOff() {
   return (
     <section className="settings__section" aria-label={copy.title}>
       <SectionHead intro={t.admin.settings.descriptions.grading} />
-      <div className="settings__card">
+      <Card as="div" className="settings__card">
         <p className="settings__note">{copy.off}</p>
-        <Link to="/admin/ajustes/gimnasio" hash="actividades" className="settings__link">
+        <Link to="/admin/ajustes/gimnasio" hash="actividades" className="tap-link settings__link">
           {copy.turnOn}
         </Link>
-      </div>
+      </Card>
     </section>
   )
 }
@@ -252,21 +252,21 @@ function GradingEditor({
         </p>
       )}
       {repairing && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {copy.stale}
-        </p>
+        </Banner>
       )}
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
       {/* Closed unless the stored scheme needs one (#177): a preset is a starting point, not a daily edit. */}
-      <details className="settings__card settings__start" open={repairing || undefined} aria-label={copy.start}>
-        <summary className="settings__legend">
+      <details className={cardClass({}, 'settings__card settings__start')} open={repairing || undefined} aria-label={copy.start}>
+        <SectionTitle as="summary" className="settings__legend">
           {copy.start}
           <ChevronDownIcon />
-        </summary>
+        </SectionTitle>
         {presetsFailed ? (
           <p className="settings__detail">{copy.presetsError}</p>
         ) : (
@@ -295,7 +295,7 @@ function GradingEditor({
       </details>
 
       <form className="settings__form" aria-label={copy.title} onSubmit={submit} noValidate>
-        <div className="settings__card">
+        <Card as="div" className="settings__card">
           <Field label={copy.goalMetric} hint={copy.goalMetricHint}>
             {(props) => (
               <Select
@@ -317,7 +317,7 @@ function GradingEditor({
               </Select>
             )}
           </Field>
-        </div>
+        </Card>
 
         {LADDERS.map((ladder) => (
           <LadderEditor
@@ -334,9 +334,9 @@ function GradingEditor({
         ))}
 
         {save.error && (
-          <p className="settings__error" role="alert">
+          <Banner tone="error">
             {'' in errors ? copy.schemeInvalid : Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
-          </p>
+          </Banner>
         )}
         <div className="settings__actions settings__actions--sticky">
           <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
@@ -383,13 +383,13 @@ function LadderEditor({
 }) {
   const title = copy.ladders[ladder]
   return (
-    <div className="settings__card" role="group" aria-label={title}>
-      <h2 className="settings__legend">{title}</h2>
+    <Card as="div" className="settings__card" role="group" aria-label={title}>
+      <SectionTitle className="settings__legend">{title}</SectionTitle>
       <p className="settings__hint">{copy.laddersHint[ladder]}</p>
       {ranks.length === 0 ? (
         <p className="settings__detail">{copy.emptyLadder}</p>
       ) : (
-        <ol className="settings__menu settings__ladder">
+        <PlainList ordered className="settings__menu settings__ladder">
           {ranks.map((rank, index) => (
             <RankEditor
               key={rank.id}
@@ -411,7 +411,7 @@ function LadderEditor({
               }}
             />
           ))}
-        </ol>
+        </PlainList>
       )}
       <Button
         onClick={() => {
@@ -423,7 +423,7 @@ function LadderEditor({
       >
         {copy.addRank}
       </Button>
-    </div>
+    </Card>
   )
 }
 
@@ -541,7 +541,7 @@ function RankEditor({
               onToggle={(e) => setSubOpen(e.currentTarget.open)}
             >
               <summary>{copy.subRanks(rank.sub_ranks.length)}</summary>
-              <ol className="settings__list">
+              <PlainList ordered className="settings__list">
                 {rank.sub_ranks.map((sub, index) => {
                   const subPath = `${path}.sub_ranks.${index}`
                   return (
@@ -598,7 +598,7 @@ function RankEditor({
                     </li>
                   )
                 })}
-              </ol>
+              </PlainList>
               <Button onClick={() => setSubRanks([...rank.sub_ranks, blank()])}>
                 {copy.addSubRank}
               </Button>

@@ -13,6 +13,7 @@ import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { shortDay } from '../format'
 import { t } from '../i18n/es'
+import { Banner, PlainList } from '../components/Card'
 
 const copy = t.admin.import
 
@@ -40,7 +41,7 @@ export function RecentImports() {
           {copy.undoDone}
         </p>
       )}
-      <ul className="import__recent" aria-label={copy.recentTitle}>
+      <PlainList className="import__recent" aria-label={copy.recentTitle}>
         {recent.data.map((item) => (
           <li key={item.id} className="import__recent-row">
             <ImportLine item={item} />
@@ -67,7 +68,7 @@ export function RecentImports() {
             )}
           </li>
         ))}
-      </ul>
+      </PlainList>
     </section>
   )
 }
@@ -145,14 +146,14 @@ function UndoForm({ item, onCancel, onDone }: { item: RecentImport; onCancel: ()
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="import__error" role="alert">
+        <Banner tone="error">
           {form.reasonNeeded}
-        </p>
+        </Banner>
       )}
       {(counts.isError || undo.error) && (
-        <p className="import__error" role="alert">
+        <Banner tone="error">
           {undoneMeanwhile ? form.alreadyUndone : form.failed}
-        </p>
+        </Banner>
       )}
       <div className="import__actions">
         <Button disabled={undo.isPending} onClick={onCancel}>

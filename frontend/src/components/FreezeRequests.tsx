@@ -14,6 +14,7 @@ import { addDays, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { Button } from './Button'
 import { Input, Textarea } from './Field'
+import { Card, SectionHeader } from './Card'
 // The same card as the join requests', a queue beside it on Hoy.
 import './JoinRequests.css'
 import './FreezeRequests.css'
@@ -35,22 +36,20 @@ export function FreezeRequests() {
   if (!requests.data || (requests.data.length === 0 && notice === null)) return null
   return (
     <section className="join-requests" aria-labelledby={titleId}>
-      <h2 id={titleId} className="join-requests__title">
-        {copy.title(requests.data.length)}
-      </h2>
+      <SectionHeader id={titleId} title={copy.title(requests.data.length)} />
       {notice && (
         <p className="join-requests__done" role="status">
           {notice}
         </p>
       )}
       {requests.data.length > 0 && (
-        <ul className="join-requests__list">
+        <Card as="ul" flush className="join-requests__list">
           {requests.data.map((request) => (
             <li key={request.id} className="join-requests__row" aria-label={request.person_name}>
               <FreezeRequestRow request={request} onDone={setNotice} linked />
             </li>
           ))}
-        </ul>
+        </Card>
       )}
     </section>
   )

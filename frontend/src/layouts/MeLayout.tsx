@@ -30,14 +30,14 @@ export function MeLayout() {
           </p>
         )}
         {staff && (
-          <Link to="/admin" className="me-footer__link">
+          <Link to="/admin" className="tap-link me-footer__link">
             {t.me.toAdmin}
           </Link>
         )}
         <Button disabled={signOut.isPending} onClick={() => signOut.mutate()}>
           {signOut.isPending ? t.signOut.working : t.signOut.label}
         </Button>
-        <Link to="/privacidad" className="me-footer__link">
+        <Link to="/privacidad" className="tap-link me-footer__link">
           {t.privacy.link}
         </Link>
       </footer>

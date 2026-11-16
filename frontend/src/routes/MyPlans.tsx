@@ -14,6 +14,7 @@ import { Input, Select } from '../components/Field'
 import { StatusPill } from '../components/StatusPill'
 import { addDays, isoDay } from '../format'
 import { t } from '../i18n/es'
+import { Card, PlainList, Section } from '../components/Card'
 import './MyPlans.css'
 
 const copy = t.me.plans
@@ -31,16 +32,13 @@ export function MyPlans({ page }: { page: MyPage }) {
   if (plans.length === 0) return null
   const today = isoDay(new Date().toISOString(), page.timezone)
   return (
-    <section className="my-plans" aria-labelledby={titleId}>
-      <h2 id={titleId} className="history__title">
-        {copy.title}
-      </h2>
-      <ul className="my-plans__list">
+    <Section id={titleId} title={copy.title}>
+      <PlainList className="my-plans__list">
         {plans.map((plan) => (
           <PlanRow key={plan.membership_id} plan={plan} me={page.person_id} today={today} />
         ))}
-      </ul>
-    </section>
+      </PlainList>
+    </Section>
   )
 }
 
@@ -58,7 +56,7 @@ function PlanRow({ plan, me, today }: { plan: MyPlan; me: string; today: string 
   const asks = plan.status === 'active' && !freeze && !pending
 
   return (
-    <li className="my-plans__row" aria-label={plan.plan_name}>
+    <Card as="li" aria-label={plan.plan_name}>
       <div className="my-plans__top">
         <span className="my-plans__name">
           {plan.person_id === me ? plan.plan_name : `${plan.plan_name} · ${copy.theirs(plan.person_name)}`}
@@ -112,7 +110,7 @@ function PlanRow({ plan, me, today }: { plan: MyPlan; me: string; today: string 
         </Button>
       )}
       {asks && asking && <AskForm plan={plan} today={today} onDone={() => setAsking(false)} />}
-    </li>
+    </Card>
   )
 }
 

@@ -37,6 +37,7 @@ import { usePageTitle } from '../pageTitle'
 import './MemberImport.css'
 import { RecentImports } from './RecentImports'
 import { useSubmit } from '../api/submit'
+import { Banner, PlainList } from '../components/Card'
 
 const copy = t.admin.import
 
@@ -98,7 +99,7 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
       <p className="import__note">{copy.intro}</p>
       <p className="import__note">
         {copy.templateHint}{' '}
-        <a href={TEMPLATE_PATH} download className="import__template">
+        <a href={TEMPLATE_PATH} download className="tap-link tap-link--inline import__template">
           {copy.template}
         </a>
       </p>
@@ -132,9 +133,9 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
         </p>
       )}
       {problem && (
-        <p className="import__error" role="alert">
+        <Banner tone="error">
           {problem}
-        </p>
+        </Banner>
       )}
     </section>
   )
@@ -372,9 +373,9 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
             {!pagosReady && <p className="import__note">{copy.paymentsRequired}</p>}
             {!gradosReady && <p className="import__note">{copy.gradesRequired}</p>}
             {check.isError && (
-              <p className="import__error" role="alert">
+              <Banner tone="error">
                 {copy.failed}
-              </p>
+              </Banner>
             )}
             <Button
               variant="primary"
@@ -414,7 +415,7 @@ function ColumnMapping<F extends string>({
         {title}
       </h2>
       <p className="import__note">{copy.mappingHint}</p>
-      <ul className="import__columns">
+      <PlainList className="import__columns">
         {headers.map((header, column) => {
           const sample = rows.find((row) => row.cells[column])?.cells[column]
           const label = header || copy.unnamedColumn(column + 1)
@@ -440,7 +441,7 @@ function ColumnMapping<F extends string>({
             </li>
           )
         })}
-      </ul>
+      </PlainList>
     </section>
   )
 }
@@ -463,7 +464,7 @@ function PlanChoices({
         {copy.plansTitle}
       </h2>
       <p className="import__note">{copy.plansHint}</p>
-      <ul className="import__columns">
+      <PlainList className="import__columns">
         {values.map((value, index) => {
           const id = `${baseId}-${index}`
           return (
@@ -489,7 +490,7 @@ function PlanChoices({
             </li>
           )
         })}
-      </ul>
+      </PlainList>
     </section>
   )
 }
@@ -513,7 +514,7 @@ function RankChoices({
         {copy.ranksTitle}
       </h2>
       <p className="import__note">{ranks.length === 0 ? copy.noRanks : copy.ranksHint}</p>
-      <ul className="import__columns">
+      <PlainList className="import__columns">
         {values.map((value, index) => {
           const id = `${baseId}-${index}`
           return (
@@ -532,7 +533,7 @@ function RankChoices({
             </li>
           )
         })}
-      </ul>
+      </PlainList>
     </section>
   )
 }
@@ -589,9 +590,9 @@ function Review({
         </p>
         <Counts report={report} />
         {failed && (
-          <p className="import__error" role="alert">
+          <Banner tone="error">
             {copy.applyFailed}
-          </p>
+          </Banner>
         )}
         <div className="import__actions">
           <Button onClick={onBack} disabled={applying}>
@@ -660,7 +661,7 @@ function PaymentRows({ report }: { report: PaymentReport }) {
       {refused.length > 0 && (
         <>
           <p className="import__note">{copy.paymentsErrorsHint}</p>
-          <ul className="import__errors" aria-label={copy.paymentsErrorsTitle}>
+          <PlainList className="import__errors" aria-label={copy.paymentsErrorsTitle}>
             {refused.map((row) => (
               <li key={row.row} className="import__error-row">
                 <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
@@ -671,7 +672,7 @@ function PaymentRows({ report }: { report: PaymentReport }) {
                 ))}
               </li>
             ))}
-          </ul>
+          </PlainList>
         </>
       )}
     </section>
@@ -692,7 +693,7 @@ function GradeRows({ report }: { report: GradeReport }) {
       {refused.length > 0 && (
         <>
           <p className="import__note">{copy.gradesErrorsHint}</p>
-          <ul className="import__errors" aria-label={copy.gradesErrorsTitle}>
+          <PlainList className="import__errors" aria-label={copy.gradesErrorsTitle}>
             {refused.map((row) => (
               <li key={row.row} className="import__error-row">
                 <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
@@ -703,7 +704,7 @@ function GradeRows({ report }: { report: GradeReport }) {
                 ))}
               </li>
             ))}
-          </ul>
+          </PlainList>
         </>
       )}
     </section>
@@ -749,13 +750,13 @@ function Warned({
         {title(rows.length)}
       </h2>
       <p className="import__note">{hint}</p>
-      <ul className="import__errors" aria-label={title(rows.length)}>
+      <PlainList className="import__errors" aria-label={title(rows.length)}>
         {rows.map((row) => (
           <li key={row.row} className="import__error-row">
             <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
           </li>
         ))}
-      </ul>
+      </PlainList>
     </section>
   )
 }
@@ -772,7 +773,7 @@ function FormerRows({ rows }: { rows: RowResult[] }) {
         {copy.formerTitle(former.length)}
       </h2>
       <p className="import__note">{copy.formerHint}</p>
-      <ul className="import__errors" aria-label={copy.formerTitle(former.length)}>
+      <PlainList className="import__errors" aria-label={copy.formerTitle(former.length)}>
         {former.map((row) => (
           <li key={row.row} className="import__error-row">
             <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
@@ -783,7 +784,7 @@ function FormerRows({ rows }: { rows: RowResult[] }) {
             )}
           </li>
         ))}
-      </ul>
+      </PlainList>
     </section>
   )
 }
@@ -798,14 +799,14 @@ function KeptRows({ rows }: { rows: RowResult[] }) {
         {copy.keptTitle}
       </h2>
       <p className="import__note">{copy.keptHint}</p>
-      <ul className="import__errors" aria-label={copy.keptTitle}>
+      <PlainList className="import__errors" aria-label={copy.keptTitle}>
         {kept.map((row) => (
           <li key={row.row} className="import__error-row">
             <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
             <span className="import__kept-what">{copy.kept(row.ignored.map((field) => copy.fields[field]))}</span>
           </li>
         ))}
-      </ul>
+      </PlainList>
     </section>
   )
 }
@@ -819,7 +820,7 @@ function RefusedRows({ rows }: { rows: RowResult[] }) {
         {copy.errorsTitle}
       </h2>
       <p className="import__note">{copy.errorsHint}</p>
-      <ul className="import__errors" aria-label={copy.errorsTitle}>
+      <PlainList className="import__errors" aria-label={copy.errorsTitle}>
         {refused.map((row) => (
           <li key={row.row} className="import__error-row">
             <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
@@ -832,7 +833,7 @@ function RefusedRows({ rows }: { rows: RowResult[] }) {
             ))}
           </li>
         ))}
-      </ul>
+      </PlainList>
     </section>
   )
 }

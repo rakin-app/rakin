@@ -19,6 +19,8 @@ import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
 import { MyPlans } from './MyPlans'
 import { ProofUpload } from './ProofUpload'
+import { Card, PlainList, Section } from '../components/Card'
+import { scrollBehavior } from '../motion'
 
 const copy = t.me
 
@@ -88,7 +90,7 @@ function NextPayment({ page }: { page: MyPage }) {
   const next = page.next_payment
 
   useEffect(() => {
-    if (uploading) uploadRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    if (uploading) uploadRef.current?.scrollIntoView?.({ behavior: scrollBehavior(), block: 'start' })
   }, [uploading])
 
   if (next === null) {
@@ -154,15 +156,12 @@ function ExtraCharges({ page }: { page: MyPage }) {
   if (lines.length === 0) return null
   const today = zonedDay(new Date().toISOString(), page.timezone)
   return (
-    <section className="extra-mine" aria-labelledby="extra-mine-title">
-      <h2 id="extra-mine-title" className="history__title">
-        {words.title}
-      </h2>
-      <ul className="extra-mine__list">
+    <Section id="extra-mine-title" title={words.title} className="extra-mine">
+      <PlainList className="extra-mine__list">
         {lines.map((line) => {
           const status = line.status === 'in_review' ? 'in_review' : line.due_date < today ? 'overdue' : 'open'
           return (
-            <li key={line.id} className="extra-mine__row">
+            <Card as="li" key={line.id} className="extra-mine__row">
               <div className="extra-mine__top">
                 <span className="extra-mine__title">{line.title}</span>
                 <StatusPill status={status}>{words.status[status]}</StatusPill>
@@ -180,11 +179,11 @@ function ExtraCharges({ page }: { page: MyPage }) {
                 {copy.next.upload}
               </Button>
               {uploading === line.id && <ProofUpload initial={line.id} />}
-            </li>
+            </Card>
           )
         })}
-      </ul>
-    </section>
+      </PlainList>
+    </Section>
   )
 }
 
@@ -253,19 +252,19 @@ function Training({ page }: { page: MyPage }) {
   return (
     <section className="training" aria-label={words.title}>
       {grades && page.rank && (
-        <div className="training__card">
+        <Card as="div" className="training__card">
           <span className="training__eyebrow">{page.rank.belt ? words.belt : words.rank}</span>
           <RankBelt rank={page.rank} />
           <span className="training__figure">{rankLabel(page.rank)}</span>
           <span className="training__detail">{words.since(t.common.dayYear(page.rank.awarded_on))}</span>
-        </div>
+        </Card>
       )}
-      <div className="training__card">
+      <Card as="div" className="training__card">
         <span className="training__eyebrow">{words.month}</span>
         <span className="training__figure">{words.classes(page.attendance.this_month)}</span>
         <span className="training__detail">{words.total(page.attendance.total)}</span>
         <span className="training__detail">{words.memberSince(monthYear(page.member_since))}</span>
-      </div>
+      </Card>
     </section>
   )
 }
@@ -309,14 +308,11 @@ function PersonClassList({ person, mine, timeZone }: { person: PersonClasses; mi
   const shown = all ? person.classes : person.classes.slice(0, CLASSES_FIRST)
   return (
     <>
-      <section className="history" aria-labelledby={titleId}>
-        <h2 id={titleId} className="history__title">
-          {mine ? words.title : words.theirs(person.name)}
-        </h2>
+      <Section id={titleId} title={mine ? words.title : words.theirs(person.name)}>
         {person.classes.length === 0 ? (
           <p className="me-home__note">{words.empty}</p>
         ) : (
-          <ul className="history__list">
+          <Card as="ul" flush>
             {shown.map((held) => (
               <li key={held.session_id} className="history__row my-class">
                 <span className="history__what">
@@ -330,14 +326,14 @@ function PersonClassList({ person, mine, timeZone }: { person: PersonClasses; mi
                 </span>
               </li>
             ))}
-          </ul>
+          </Card>
         )}
         {!all && person.classes.length > CLASSES_FIRST && (
           <Button variant="ghost" onClick={() => setAll(true)}>
             {words.more(person.classes.length - CLASSES_FIRST)}
           </Button>
         )}
-      </section>
+      </Section>
       {person.classes.length > 0 && (
         <TagHoursNow
           title={mine ? words.hours : words.theirHours(person.name)}
@@ -352,14 +348,11 @@ function PersonClassList({ person, mine, timeZone }: { person: PersonClasses; mi
 function History({ page }: { page: MyPage }) {
   const year = zonedDay(new Date().toISOString(), page.timezone).slice(0, 4)
   return (
-    <section className="history" aria-labelledby="history-title">
-      <h2 id="history-title" className="history__title">
-        {copy.history.title}
-      </h2>
+    <Section id="history-title" title={copy.history.title}>
       {page.payments.length === 0 ? (
         <p className="me-home__note">{copy.history.empty}</p>
       ) : (
-        <ul className="history__list">
+        <Card as="ul" flush>
           {page.payments.map((payment) => (
             <li key={payment.id} className={`history__row history__row--${payment.status}`}>
               <span className="history__dot" aria-hidden="true" />
@@ -377,9 +370,9 @@ function History({ page }: { page: MyPage }) {
               </span>
             </li>
           ))}
-        </ul>
+        </Card>
       )}
-    </section>
+    </Section>
   )
 }
 
