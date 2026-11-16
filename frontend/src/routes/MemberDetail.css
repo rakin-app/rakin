@@ -553,6 +553,11 @@
   margin-top: var(--space-2);
 }
 
+/* The plan card's first row of actions, while the ledger they are chosen by loads. */
+.member__actions-placeholder {
+  height: var(--control-height);
+}
+
 /* "Más acciones", under the plan card's two actions: what else can be done (#360). */
 .member__more-actions {
   align-self: flex-start;

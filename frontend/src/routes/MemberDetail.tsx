@@ -363,9 +363,12 @@ function Standing({
             ledger={data}
             assign={assignsPlan(assign.person, membership, assign.role) ? assign : undefined}
           />
-        ) : (
+        ) : ledger.isError ? (
           // With no ledger to choose by, "Asignar plan" on its own.
-          ledger.isError && <AssignPlan membership={membership} {...assign} />
+          <AssignPlan membership={membership} {...assign} />
+        ) : (
+          // While the ledger loads, the actions' first row holds its place, so they do not pop in.
+          money && <div className="member__actions-placeholder" aria-hidden="true" />
         )}
         {/* One place whether the new plan's ledger is in yet or not. */}
         {isLive(membership) && assign.done && (
@@ -647,6 +650,12 @@ function Actions({
     setOpen(open === form ? null : form)
   }
   const choose = (action: Action) => toggle(action === 'fixPlan' && fixingPlan ? open : action)
+  // Closing "Más acciones" closes the form opened from it, which would be left without its button.
+  const fromMenu = rest.some(opens)
+  const collapse = () => {
+    if (more && fromMenu) setOpen(null)
+    setMore(!more)
+  }
   const finish = (message: string, settledLapsed = false) => {
     setOpen(null)
     setMore(false)
@@ -666,7 +675,7 @@ function Actions({
         )}
       </div>
       {rest.length > 0 && (
-        <Button variant="ghost" className="member__more-actions" aria-expanded={more} onClick={() => setMore(!more)}>
+        <Button variant="ghost" className="member__more-actions" aria-expanded={more} onClick={collapse}>
           {copy.moreActions}
         </Button>
       )}

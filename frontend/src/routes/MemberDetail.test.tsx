@@ -3631,6 +3631,21 @@ describe('one main action on the plan card (#360)', () => {
       copy.fix.plan,
     ])
   })
+  it('closes a form opened from "Más acciones" when it collapses, and keeps one opened beside it', async () => {
+    stubApi()
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await planAction(card, copy.refund))
+    expect(screen.getByRole('form', { name: copy.refundForm.title })).toBeInTheDocument()
+    await userEvent.click(within(card).getByRole('button', { name: copy.moreActions }))
+    expect(screen.queryByRole('form', { name: copy.refundForm.title })).not.toBeInTheDocument()
+
+    await userEvent.click(within(card).getByRole('button', { name: copy.freeze }))
+    await userEvent.click(within(card).getByRole('button', { name: copy.moreActions }))
+    await userEvent.click(within(card).getByRole('button', { name: copy.moreActions }))
+    expect(screen.getByRole('form', { name: copy.freezeForm.title })).toBeInTheDocument()
+  })
 })
 
 describe('every ficha section headed the same way (#360)', () => {
