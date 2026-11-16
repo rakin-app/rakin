@@ -123,6 +123,9 @@ def send(
         "plans": plans or {},
         "dry_run": dry_run,
     }
+    if "file" in sheet:
+        # As `POST /api/import/sheet` answered it, for the import's record (#297).
+        body["file"] = sheet["file"]
     return client.post("/api/import/members", json=body, headers=headers or as_gym(gym))
 
 
@@ -266,6 +269,9 @@ def test_a_dry_run_reports_each_rows_errors_and_writes_nothing(
         # Every contact has a phone; Diego and Agustín have no RUT and no email.
         "missing_phone": 0,
         "missing_identity": 2,
+        # The pilot's sheet has no history columns.
+        "history_set": 0,
+        "former_created": 0,
     }
     assert [r["row"] for r in report["rows"]] == [2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15]
     assert people(db, gym) == before
@@ -542,7 +548,8 @@ DEMO_REFUSED = {
     34: [{"field": "name", "code": "required"}],
     35: [{"field": "phone", "code": "invalid_phone"}],
     36: [{"field": "plan", "code": "unknown_plan"}],
-    37: [{"field": "due_on", "code": "due_before_start"}],
+    # "Fecha de ingreso" is when they started training here (#297): not after today.
+    37: [{"field": "member_since", "code": "invalid_date"}],
     38: [{"field": "rut", "code": "repeated"}],
 }
 
@@ -581,6 +588,9 @@ def test_the_demo_sheet_dry_runs_against_the_seeded_gym(
         "missing_phone": 0,
         # Gonzalo Painemal and Isidora Contreras: found again by name.
         "missing_identity": 2,
+        # Every imported row with a "Fecha de ingreso", now their Alumno desde (#297).
+        "history_set": 27,
+        "former_created": 0,
     }
     assert {r["row"]: r["errors"] for r in report["rows"] if r["errors"]} == DEMO_REFUSED
     rows = report["rows"]

@@ -15,6 +15,11 @@ export const IMPORT_FIELDS = [
   'guardian_rut',
   'guardian_email',
   'guardian_phone',
+  // History from before Rakin (#297): only where the gym has none yet.
+  'member_since',
+  'left_on',
+  'left_reason',
+  'prior_classes',
 ] as const
 export type ImportField = (typeof IMPORT_FIELDS)[number]
 
@@ -22,7 +27,10 @@ export type Mapping = Partial<Record<ImportField, number>>
 
 export type SheetRow = { number: number; cells: string[] }
 
-export type Sheet = { headers: string[]; rows: SheetRow[]; mapping: Mapping }
+// The file the sheet was read from, sent back so the import's record names it.
+export type SheetFile = { name: string | null; sha256: string }
+
+export type Sheet = { headers: string[]; rows: SheetRow[]; mapping: Mapping; file: SheetFile }
 
 export type RowErrorCode =
   | 'required'
@@ -45,6 +53,12 @@ export type RowErrorCode =
   // The RUT or email the row would give someone is another person's in this gym.
   | 'rut_in_gym'
   | 'email_in_gym'
+  // "Fecha de baja" before "Alumno desde".
+  | 'left_before_start'
+  // "Clases antes de Rakin" is not a whole number.
+  | 'invalid_number'
+  // "Motivo de baja" over 200 characters.
+  | 'too_long'
 
 export type Outcome = 'created' | 'existing'
 
@@ -63,10 +77,16 @@ export type RowResult = {
   missing_phone: boolean
   // Neither a RUT nor an email: imported, and found again by their name in this gym.
   missing_identity: boolean
+  // It wrote some of their history from before Rakin, where the gym had none.
+  history: boolean
+  // A former student's row: one with a "Fecha de baja", imported with no plan.
+  former: boolean
 }
 
 export type ImportReport = {
   dry_run: boolean
+  // The import's record in the gym's log; never on a dry run, nor when nothing was written.
+  import_id: string | null
   summary: {
     rows: number
     imported: number
@@ -77,6 +97,9 @@ export type ImportReport = {
     // Rows imported with "Falta teléfono".
     missing_phone: number
     missing_identity: number
+    // People whose history it wrote, and the former students it created.
+    history_set: number
+    former_created: number
   }
   rows: RowResult[]
 }
@@ -90,7 +113,7 @@ export const SHEET_TYPES = ['.csv', '.xlsx', 'text/csv', 'application/vnd.openxm
 
 /** Read the file into rows; nothing is stored. */
 export function uploadSheet(file: File): Promise<Sheet> {
-  return apiFetch<Sheet>('/api/import/sheet', {
+  return apiFetch<Sheet>(`/api/import/sheet?${new URLSearchParams({ name: file.name })}`, {
     method: 'POST',
     body: file,
     headers: { 'Content-Type': file.type || 'application/octet-stream' },
@@ -103,7 +126,11 @@ export type ImportRequest = {
   // A plan cell's value to the plan it means; `null` for no plan, the person alone.
   plans: Record<string, string | null>
   dry_run: boolean
+  file?: SheetFile
 }
+
+/** Rakin's sheet to fill in (#297): a file the browser downloads, not JSON. */
+export const TEMPLATE_PATH = '/api/import/template.xlsx'
 
 export function runImport(body: ImportRequest): Promise<ImportReport> {
   return apiFetch<ImportReport>('/api/import/members', { method: 'POST', body: JSON.stringify(body) })

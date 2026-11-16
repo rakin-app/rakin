@@ -479,6 +479,8 @@ export const es = {
       eyebrow: 'Alumnos',
       intro:
         'Sube la planilla del gimnasio (CSV o Excel). Primero revisamos cada fila sin guardar nada; después importas. Puedes volver a importarla: a quien ya está lo encontramos por su RUT (o su correo, o su nombre si no tiene ninguno) y no se duplica.',
+      templateHint: '¿Empiezas de cero, o traes alumnos antiguos y exalumnos? Usa la plantilla de Rakin.',
+      template: 'Descargar plantilla',
       fileLabel: 'Planilla',
       choose: 'Elegir archivo',
       reading: 'Leyendo la planilla…',
@@ -509,11 +511,15 @@ export const es = {
         dob: 'Fecha de nacimiento',
         plan: 'Plan',
         due_on: 'Próximo pago (vencimiento)',
-        started_on: 'Fecha de ingreso',
+        started_on: 'Inicio del plan',
         guardian_name: 'Nombre del apoderado',
         guardian_rut: 'RUT del apoderado',
         guardian_email: 'Correo del apoderado',
         guardian_phone: 'Teléfono del apoderado',
+        member_since: 'Alumno desde',
+        left_on: 'Fecha de baja',
+        left_reason: 'Motivo de baja',
+        prior_classes: 'Clases antes de Rakin',
       },
       nameRequired: 'Marca la columna con el nombre para seguir.',
       plansTitle: 'Planes de la planilla',
@@ -540,6 +546,13 @@ export const es = {
           links === 1 ? 'vínculo de apoderado' : 'vínculos de apoderado'
         }, ${memberships} ${memberships === 1 ? 'membresía' : 'membresías'}.`,
       nothingNew: 'No hay nada nuevo: todo lo de la planilla ya estaba.',
+      history: (people: number, former: number) =>
+        [
+          people > 0 && `Historial completado: ${people === 1 ? '1 persona' : `${people} personas`}.`,
+          former > 0 && `${former === 1 ? '1 exalumno' : `${former} exalumnos`}, sin plan.`,
+        ]
+          .filter(Boolean)
+          .join(' '),
       errorsTitle: 'Filas con errores',
       errorsHint: 'Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.',
       rowLabel: (row: number, name: string) => (name ? `Fila ${row} · ${name}` : `Fila ${row}`),
@@ -554,13 +567,16 @@ export const es = {
         unknown_plan: 'no corresponde a ningún plan',
         inactive_plan: 'es un plan desactivado',
         dropin_plan: 'es una clase suelta, no una membresía',
-        due_before_start: 'es anterior a la fecha de ingreso',
+        due_before_start: 'es anterior al inicio del plan',
         has_guardian: 'el alumno ya tiene otro apoderado',
         one_level: 'el apoderado está a cargo de otra persona',
         has_left: 'fue dado de baja: reactívalo desde su ficha',
         ambiguous_name: 'Nombre repetido: agrega RUT o correo',
         rut_in_gym: 'ya es de otra persona del gimnasio',
         email_in_gym: 'ya es de otra persona del gimnasio',
+        left_before_start: 'es anterior a «Alumno desde»',
+        invalid_number: 'no es un número de clases',
+        too_long: 'es demasiado largo (máximo 200 caracteres)',
       },
       fieldError: (field: string, problem: string) => `${field}: ${problem}`,
       missingPhoneTitle: (n: number) => (n === 1 ? 'Falta teléfono: 1 fila' : `Falta teléfono: ${n} filas`),
@@ -570,8 +586,14 @@ export const es = {
       missingIdentityHint:
         'Se importan igual, marcadas «Falta RUT» en Alumnos. Sin RUT ni correo, al volver a importar los encontramos por su nombre (y su fecha de nacimiento o teléfono si hay dos con el mismo nombre): agrega el RUT en su ficha.',
       keptTitle: 'Ya existen: no se actualizan',
-      keptHint: 'Lo que el gimnasio ya tiene no se sobrescribe. Si algo cambió, edítalo en la ficha del alumno.',
+      keptHint:
+        'Lo que el gimnasio ya tiene no se sobrescribe; el historial solo se completa si estaba vacío, y a quien ya entrena aquí no se le da de baja. Si algo cambió, edítalo en la ficha del alumno.',
+      formerTitle: (n: number) => (n === 1 ? 'Exalumnos: 1 fila' : `Exalumnos: ${n} filas`),
+      formerHint:
+        'Tienen «Fecha de baja»: se agregan como exalumnos, sin plan ni cobros, y no les llega ningún mensaje.',
       kept: (fields: string[]) => `Ya existe: no se actualiza ${fields.join(', ')}.`,
+      // A former student created by the sheet: their plan is not imported.
+      formerKept: (fields: string[]) => `No se importa: ${fields.join(', ')}.`,
       apply: (n: number) => (n === 1 ? 'Importar 1 fila' : `Importar ${n} filas`),
       applying: 'Importando…',
       applyFailed: 'No pudimos importar. No se guardó nada; inténtalo de nuevo.',
