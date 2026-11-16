@@ -2,10 +2,11 @@ import { queryOptions } from '@tanstack/react-query'
 import { ApiError, apiFetch } from './client'
 import type { Membership } from './member'
 
-/** Why a student asks (backend `FreezeReason`): a short list, with a note for the rest. */
-export type FreezeReason = 'lesion' | 'viaje' | 'salud' | 'otro'
+/** Why a student asks (backend `FreezeReason`): a short list, with a note for the rest.
+ * None is about health, which a gym may not keep (#384). */
+export type FreezeReason = 'viaje' | 'personal' | 'otro'
 
-export const FREEZE_REASONS: readonly FreezeReason[] = ['lesion', 'viaje', 'salud', 'otro']
+export const FREEZE_REASONS: readonly FreezeReason[] = ['viaje', 'personal', 'otro']
 
 export type FreezeRequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn'
 

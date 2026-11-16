@@ -316,6 +316,7 @@ function FieldForm({
             </CheckRow>
             <p className="settings__hint">{form.sensitiveHint}</p>
           </div>
+          {drafts.sensitive && <Banner tone="warning">{form.noHealth}</Banner>}
           <Field label={form.visibleTo}>
             {(props) => (
               <Select

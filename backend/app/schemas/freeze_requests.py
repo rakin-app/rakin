@@ -13,14 +13,15 @@ from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
 from app.schemas.memberships import Freeze
 
-# Why: a short list the page offers, with `note` for the rest; `otro` is all note.
-FreezeReason = Literal["lesion", "viaje", "salud", "otro"]
+# Why: a short list the page offers, with `note` for the rest; `otro` is all note. None
+# of them is about health, which a gym may not keep (art. 16 bis, #384): an injury or an
+# illness is `personal`.
+FreezeReason = Literal["viaje", "personal", "otro"]
 
 # How a reason reads in the freeze it becomes, and in the email to staff.
 REASON_LABELS: dict[str, str] = {
-    "lesion": "Lesión",
     "viaje": "Viaje",
-    "salud": "Salud",
+    "personal": "Motivo personal",
     "otro": "Otro",
 }
 

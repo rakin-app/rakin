@@ -32,7 +32,7 @@ const request = (over: Partial<FreezeRequest> = {}): FreezeRequest => ({
   plan_name: 'Mensual adultos',
   from_date: '2099-11-20',
   to_date: '2099-12-04',
-  reason: 'lesion',
+  reason: 'personal',
   note: null,
   status: 'pending',
   decision_note: null,
@@ -115,8 +115,16 @@ describe('Mi plan: Pedir congelamiento (#270)', () => {
     await userEvent.clear(form.getByLabelText(copy.from))
     await userEvent.type(form.getByLabelText(copy.from), '2099-11-20')
     await userEvent.type(form.getByLabelText(copy.until), '2099-12-04')
-    await userEvent.selectOptions(form.getByLabelText(copy.reason), 'lesion')
-    await userEvent.type(form.getByLabelText(copy.note), 'Esguince de tobillo')
+    // Nothing about health, which a gym may not keep (#384).
+    expect(within(form.getByLabelText(copy.reason)).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      copy.reasonPick,
+      'Viaje',
+      'Motivo personal',
+      'Otro',
+    ])
+    expect(form.getByLabelText(copy.note)).toHaveAccessibleDescription(copy.noteHint)
+    await userEvent.selectOptions(form.getByLabelText(copy.reason), 'viaje')
+    await userEvent.type(form.getByLabelText(copy.note), 'Matrimonio en el sur')
     await userEvent.click(form.getByRole('button', { name: copy.submit }))
 
     expect(await section.findByText(copy.pending)).toBeInTheDocument()
@@ -126,8 +134,8 @@ describe('Mi plan: Pedir congelamiento (#270)', () => {
       membership_id: 'm-diego',
       from_date: '2099-11-20',
       to_date: '2099-12-04',
-      reason: 'lesion',
-      note: 'Esguince de tobillo',
+      reason: 'viaje',
+      note: 'Matrimonio en el sur',
     })
   })
 
@@ -186,7 +194,7 @@ describe('Mi plan: Pedir congelamiento (#270)', () => {
   })
 
   it('shows an approved freeze running, with nothing to ask', async () => {
-    const freeze = { id: 'f-1', from_date: '2026-11-10', to_date: '2099-12-04', reason: 'Lesión', started: true }
+    const freeze = { id: 'f-1', from_date: '2026-11-10', to_date: '2099-12-04', reason: 'Viaje', started: true }
     stubApi([{ ...PLAN, status: 'frozen', freeze, last_decided: request({ status: 'approved' }) }])
     renderMe()
     const section = await plans()

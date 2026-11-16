@@ -98,7 +98,7 @@ class MyPage(BaseModel):
 
 class MyClass(BaseModel):
     """A class attended, and what it was about (#243): its topic and tags. Never the
-    coach's notes, which are staff's alone: who struggled, an injury."""
+    coach's notes, which are staff's alone: who struggled, what to work on."""
 
     session_id: uuid.UUID
     starts_at: datetime

@@ -116,7 +116,7 @@ function PlanRow({ plan, me, today }: { plan: MyPlan; me: string; today: string 
 
 function AskForm({ plan, today, onDone }: { plan: MyPlan; today: string; onDone: () => void }) {
   const queryClient = useQueryClient()
-  const ids = { from: useId(), until: useId(), hint: useId(), reason: useId(), note: useId() }
+  const ids = { from: useId(), until: useId(), hint: useId(), reason: useId(), note: useId(), noteHint: useId() }
   const [from, setFrom] = useState(today)
   const [until, setUntil] = useState('')
   const [reason, setReason] = useState<FreezeReason | ''>('')
@@ -222,9 +222,13 @@ function AskForm({ plan, today, onDone }: { plan: MyPlan; today: string; onDone:
         type="text"
         maxLength={500}
         value={note}
+        aria-describedby={ids.noteHint}
         aria-invalid={checked && !noteOk}
         onChange={(e) => setNote(e.target.value)}
       />
+      <p id={ids.noteHint} className="my-plans__detail">
+        {copy.noteHint}
+      </p>
       {checked && !noteOk && (
         <p className="my-plans__error" role="alert">
           {copy.noteNeeded}

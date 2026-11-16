@@ -58,7 +58,7 @@ CANCEL_REASON = "Se cambió de ciudad"
 
 # A frozen member's freeze, in days from the seed date: started a week ago, ends in three.
 FREEZE_DAYS = (-7, 21)
-FREEZE_REASONS = ("Viaje familiar", "Lesión de rodilla")
+FREEZE_REASONS = ("Viaje familiar", "Vacaciones")
 
 
 def seed_id(*parts: str) -> uuid.UUID:
