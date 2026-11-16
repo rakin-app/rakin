@@ -26,11 +26,27 @@ class SheetRow(BaseModel):
     cells: Annotated[list[Cell], Field(max_length=MAX_COLUMNS)]
 
 
+# A file's name as the browser gives it, no path.
+FileName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+Sha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+
+
+class SheetFile(BaseModel):
+    """The file a sheet was read from, which the import's record names (#297)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: FileName | None
+    sha256: Sha256
+
+
 class Sheet(BaseModel):
     headers: list[str]
     rows: list[SheetRow]
     # The column each field most likely is, by its header.
     mapping: dict[ImportField, int]
+    # Sent back with the rows, so the import says which file it was.
+    file: SheetFile
 
 
 # `too_large`: over `MAX_UPLOAD_BYTES`. `unreadable`: neither a workbook nor text.
@@ -58,6 +74,8 @@ class MemberImport(BaseModel):
     plans: dict[Cell, uuid.UUID | None] = {}
     # Check everything and write nothing; the default, so a slip never imports.
     dry_run: bool = True
+    # The file, as `POST /api/import/sheet` answered it: the import's record names it.
+    file: SheetFile | None = None
 
     @field_validator("mapping")
     @classmethod
@@ -96,6 +114,11 @@ class RowResult(BaseModel):
     missing_phone: bool = False
     # Neither a RUT nor an email: imported, and found again by their name in this gym.
     missing_identity: bool = False
+    # The import wrote some of their history from before Rakin: "Alumno desde", the day
+    # they left and why, their classes before Rakin. Only where the gym had none.
+    history: bool = False
+    # A former student's row: one with the day they left, imported with no membership.
+    former: bool = False
 
 
 class ImportSummary(BaseModel):
@@ -109,10 +132,16 @@ class ImportSummary(BaseModel):
     missing_phone: int = 0
     # Rows imported with neither a RUT nor an email.
     missing_identity: int = 0
+    # People whose history the import wrote.
+    history_set: int = 0
+    # Of the people created, those who had already left: former students.
+    former_created: int = 0
 
 
 class ImportReport(BaseModel):
     dry_run: bool
+    # The import's `history_imported` row, when it wrote anything; never on a dry run.
+    import_id: uuid.UUID | None = None
     summary: ImportSummary
     # In the sheet's order.
     rows: list[RowResult]

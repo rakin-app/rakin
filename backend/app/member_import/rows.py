@@ -12,6 +12,12 @@ guardian too (a teenager). Old sheets often have neither: an adult row with no R
 no email still imports, found again in this gym by their name, and so does a guardian
 the sheet names with no RUT or email. The phone is a contact and finds nobody. A row
 with a plan gets a membership, starting as of its due date.
+
+Four columns are the person's history from before Rakin (#297): the day they first
+trained here, the day they left and why, and their classes before Rakin. A row with a
+day they left is a former student: no membership, whatever plan it names. Their dates
+may go back `HISTORY_WINDOW_YEARS`, never past today; billing's dates keep
+`STARTED_ON_WINDOW_YEARS`.
 """
 
 import re
@@ -30,7 +36,7 @@ from app.domain.membership import RECURRING, PlanKind, PlanTerms
 from app.domain.phone import InvalidPhoneError, normalize_phone
 from app.domain.rut import normalize_rut
 from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
-from app.schemas.people import Email, Name
+from app.schemas.people import HISTORY_WINDOW_YEARS, MAX_PRIOR_CLASSES, Email, Name
 
 
 class Field(StrEnum):
@@ -49,6 +55,16 @@ class Field(StrEnum):
     GUARDIAN_RUT = "guardian_rut"
     GUARDIAN_EMAIL = "guardian_email"
     GUARDIAN_PHONE = "guardian_phone"
+    # History from before Rakin (#297): "Alumno desde", "Fecha de baja", "Motivo de
+    # baja" and "Clases antes de Rakin".
+    MEMBER_SINCE = "member_since"
+    LEFT_ON = "left_on"
+    LEFT_REASON = "left_reason"
+    PRIOR_CLASSES = "prior_classes"
+
+
+# At most, as the ficha takes it (0052).
+MAX_LEFT_REASON = 200
 
 
 # `required`: the cell is empty and the row needs it. `repeated`: an earlier row has the
@@ -60,6 +76,8 @@ class Field(StrEnum):
 # `ambiguous_name`: a row with no RUT and no email names someone the gym has two of, and
 # neither the birth date nor the phone says which (#165). `rut_in_gym`, `email_in_gym`:
 # the RUT or email the row would give someone is another person's in this gym.
+# `left_before_start`: the day they left is before the day they started.
+# `invalid_number`: not a whole number of classes. `too_long`: over what the field holds.
 ErrorCode = Literal[
     "required",
     "repeated",
@@ -78,6 +96,9 @@ ErrorCode = Literal[
     "ambiguous_name",
     "rut_in_gym",
     "email_in_gym",
+    "left_before_start",
+    "invalid_number",
+    "too_long",
 ]
 
 
@@ -112,6 +133,13 @@ class Member:
     guardian_rut: str | None = None
     guardian_email: str | None = None
     guardian_phone: str | None = None
+    member_since: date | None = None
+    left_on: date | None = None
+    left_reason: str | None = None
+    prior_classes: int | None = None
+    # Cells the row has that the import never applies: a former student's plan and
+    # its dates.
+    unapplied: list[Field] = field(default_factory=list)
     # "No tiene WhatsApp" for the row's contact: its guardian when it has one, else
     # itself. No sheet column gives it; the join link's form does (`app.api.join`).
     no_whatsapp: bool = False
@@ -119,6 +147,14 @@ class Member:
 
     def refuse(self, on: Field, code: ErrorCode) -> None:
         self.errors.append(RowError(on, code))
+
+    @property
+    def has_history(self) -> bool:
+        """Whether the row gives any of the person's history from before Rakin."""
+        return any(
+            value is not None
+            for value in (self.member_since, self.left_on, self.left_reason, self.prior_classes)
+        )
 
     @property
     def has_guardian(self) -> bool:
@@ -198,7 +234,13 @@ _EMAIL_WORDS = ("correo", "email", "e mail", "mail")
 _HEADER_WORDS: tuple[tuple[Field, tuple[str, ...]], ...] = (
     (Field.DOB, ("nacimiento", "cumpleanos", "f nac", "fecha nac", "birth", "dob")),
     (Field.DUE_ON, ("vencimiento", "vence", "proximo pago", "fecha de pago", "fecha pago")),
-    (Field.STARTED_ON, ("fecha de ingreso", "ingreso", "inicio", "alta")),
+    # The plan's own start, before the words a gym uses for when the student joined.
+    (Field.STARTED_ON, ("inicio del plan", "inicio de plan", "inicio plan")),
+    # Before the name's "alumno", and the reason's "motivo" before the day's "baja".
+    (Field.MEMBER_SINCE, ("alumno desde", "fecha de ingreso", "ingreso", "inicio", "alta")),
+    (Field.LEFT_REASON, ("motivo",)),
+    (Field.LEFT_ON, ("fecha de baja", "baja", "egreso")),
+    (Field.PRIOR_CLASSES, ("clase",)),
     (Field.PHONE, _PHONE_WORDS),
     (Field.EMAIL, _EMAIL_WORDS),
     (Field.RUT, _RUT_WORDS),
@@ -271,6 +313,11 @@ def _in_window(day: date, today: date) -> bool:
     return add_months(today, -months) <= day <= add_months(today, months)
 
 
+def _in_history(day: date, today: date) -> bool:
+    """Today at the latest, and no more than `HISTORY_WINDOW_YEARS` back."""
+    return add_months(today, -12 * HISTORY_WINDOW_YEARS) <= day <= today
+
+
 # --- rows ---------------------------------------------------------------------------
 
 
@@ -316,6 +363,9 @@ def _email(member: Member, on: Field, raw: str) -> str | None:
         return None
 
 
+_HISTORY_DATES = (Field.MEMBER_SINCE, Field.LEFT_ON)
+
+
 def _date(member: Member, on: Field, raw: str, today: date) -> date | None:
     if not raw:
         return None
@@ -324,6 +374,11 @@ def _date(member: Member, on: Field, raw: str, today: date) -> date | None:
     except ValueError:
         member.refuse(on, "invalid_date")
         return None
+    if on in _HISTORY_DATES:
+        if not _in_history(day, today):
+            member.refuse(on, "invalid_date")
+            return None
+        return day
     if not _in_window(day, today) and on is not Field.DOB:
         member.refuse(on, "invalid_date")
         return None
@@ -331,6 +386,32 @@ def _date(member: Member, on: Field, raw: str, today: date) -> date | None:
         member.refuse(on, "invalid_date")
         return None
     return day
+
+
+def _classes(member: Member, raw: str) -> int | None:
+    """A whole number of classes, "1.200" as Chile writes a thousand included."""
+    if not raw:
+        return None
+    digits = raw.replace(".", "").replace(" ", "")
+    if not digits.isdecimal() or int(digits) > MAX_PRIOR_CLASSES:
+        member.refuse(Field.PRIOR_CLASSES, "invalid_number")
+        return None
+    return int(digits)
+
+
+def _history(member: Member, cell: _Cells, today: date) -> None:
+    """The person's history from before Rakin, as the row gives it."""
+    member.member_since = _date(member, Field.MEMBER_SINCE, cell(Field.MEMBER_SINCE), today)
+    member.left_on = _date(member, Field.LEFT_ON, cell(Field.LEFT_ON), today)
+    reason = " ".join(cell(Field.LEFT_REASON).split()) or None
+    if reason is not None and len(reason) > MAX_LEFT_REASON:
+        member.refuse(Field.LEFT_REASON, "too_long")
+        reason = None
+    member.left_reason = reason
+    member.prior_classes = _classes(member, cell(Field.PRIOR_CLASSES))
+    since, left = member.member_since, member.left_on
+    if since is not None and left is not None and left < since:
+        member.refuse(Field.LEFT_ON, "left_before_start")
 
 
 def read_member(
@@ -364,6 +445,12 @@ def read_member(
         member.refuse(Field.GUARDIAN_RUT, "own_guardian")
 
     member.dob = _date(member, Field.DOB, cell(Field.DOB), today)
+    _history(member, cell, today)
+    if cell(Field.LEFT_ON):
+        # A former student: the person alone, already gone. Their plan and its dates
+        # are not read, and the report says so.
+        member.unapplied = [f for f in (Field.PLAN, Field.DUE_ON, Field.STARTED_ON) if cell(f)]
+        return member
     plan_value = cell(Field.PLAN)
     if plan_value and plans.cleared(plan_value):
         # The admin said this value means no plan: the person alone, and the dates

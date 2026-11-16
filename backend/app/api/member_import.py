@@ -23,9 +23,24 @@ that leaves unapplied (`ignored`), so the dry run shows it before anything is wr
 and flags a contact with no phone (`missing_phone`) and an adult with neither a RUT nor
 an email (`missing_identity`): both import.
 
+A row's history from before Rakin (#297) is the one exception to never overwriting:
+"Alumno desde", the day they left and why, and their classes before Rakin are written
+where the gym's record has none, and `ignored` where it has something else, so a
+second run of a sheet already imported fills them. A row with the day they left is a
+former student: someone new is created already gone, with no membership, and someone
+here who has not left is never given a baja by a sheet (`ignored`). Each person whose
+history a row writes gets a `history_set` row in the gym's log, and an import that
+writes anything one `history_imported` row, with the file's name and SHA-256 and the
+counts, whose id the others carry as `import_id`. A dry run writes neither.
+
+`GET /api/import/template.xlsx` is the sheet to fill in (`app.member_import.template`),
+every header one the mapping suggests by itself.
+
 Only an owner or admin may import, since a membership sets what a member is charged.
 """
 
+import hashlib
+import json
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -33,11 +48,12 @@ from datetime import date
 from functools import cached_property
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.guardians import family, link
+from app.api.history import changes, record_history_set
 from app.api.memberships import PersonHasLeft, insert_membership
 from app.api.people import (
     email_holder,
@@ -61,8 +77,10 @@ from app.member_import.rows import (
     suggest_mapping,
 )
 from app.member_import.sheet import SheetError, read_sheet
+from app.member_import.template import TEMPLATE_NAME, template
 from app.roles import AdminSession
 from app.schemas.member_import import (
+    FileName,
     ImportReport,
     ImportSummary,
     MemberImport,
@@ -70,6 +88,7 @@ from app.schemas.member_import import (
     RowError,
     RowResult,
     Sheet,
+    SheetFile,
     SheetRefusal,
     SheetRefusalCode,
     SheetRefused,
@@ -160,6 +179,18 @@ def told_apart(found: list[Named], dob: date | None, phone: str | None) -> uuid.
 
 
 RECORD = "SELECT name, email, rut, phone, dob FROM gym_person WHERE person_id = :id"
+LOCK_HISTORY = """
+    SELECT member_since, prior_classes, left_on, left_reason FROM gym_person
+    WHERE person_id = :id FOR UPDATE
+"""
+# The fields a row writes; `{fields}` names columns, never a value from the sheet.
+SET_HISTORY = "UPDATE gym_person SET {fields}, updated_at = now() WHERE person_id = :id"
+# The import's own row in the gym's log (0053); `now()` is the transaction's.
+INSERT_IMPORTED = text(
+    "INSERT INTO audit_event (id, gym_id, at, actor_id, action, detail)"
+    " VALUES (:id, current_setting('app.gym_id')::uuid, now(),"
+    " current_setting('app.person_id')::uuid, 'history_imported', CAST(:detail AS jsonb))"
+)
 MISSING_PHONE = f"SELECT {missing_phone('gp')} FROM gym_person gp WHERE person_id = :id"
 
 
@@ -185,8 +216,14 @@ def _refused(status_code: int, code: SheetRefusalCode) -> HTTPException:
         }
     },
 )
-async def upload_sheet(request: Request, session: AdminSession) -> Sheet:
-    """The spreadsheet in the body, as rows of text and a suggested mapping."""
+async def upload_sheet(
+    request: Request,
+    session: AdminSession,
+    # The file's name, which the import's record keeps beside its hash.
+    name: Annotated[FileName | None, Query()] = None,
+) -> Sheet:
+    """The spreadsheet in the body, as rows of text and a suggested mapping, with its
+    SHA-256 for the import to send back."""
     data = bytearray()
     async for chunk in request.stream():
         data += chunk
@@ -200,6 +237,33 @@ async def upload_sheet(request: Request, session: AdminSession) -> Sheet:
         headers=sheet.headers,
         rows=[SheetRow(number=row.number, cells=row.cells) for row in sheet.rows],
         mapping=suggest_mapping(sheet.headers),
+        file=SheetFile(name=name, sha256=hashlib.sha256(data).hexdigest()),
+    )
+
+
+@router.get(
+    "/template.xlsx",
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {
+            "content": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}}
+        }
+    },
+)
+async def download_template(session: AdminSession) -> Response:
+    """ "Descargar plantilla": the Alumnos sheet to fill in, with the gym's active plans
+    as the Plan column's choices."""
+    # A drop-in is not a membership, so no row starts one (`dropin_plan`). A name two
+    # plans share is offered once: the sheet matches it by name either way.
+    plans = {
+        fold(plan.name): plan.name
+        for plan in await _plans(session)
+        if plan.active and plan.terms.kind is not PlanKind.DROPIN
+    }
+    return Response(
+        content=template([plans[key] for key in sorted(plans)]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{TEMPLATE_NAME}"'},
     )
 
 
@@ -216,10 +280,18 @@ class Writer:
     """Writes rows into the current gym: the importer's, and the join link's approvals
     (`app.api.join`), so a person is added one way however they come."""
 
-    def __init__(self, session: AsyncSession, timezone: str, today: date) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        timezone: str,
+        today: date,
+        import_id: uuid.UUID | None = None,
+    ) -> None:
         self.session = session
         self.timezone = timezone
         self.today = today
+        # The import's `history_imported` row, which each `history_set` row names.
+        self.import_id = import_id
         # The current row's fields that something already here keeps it from applying.
         self.ignored: list[Field] = []
         # Whom this run's rows have written, by the name the sheet gives them: a
@@ -297,7 +369,7 @@ class Writer:
 
     async def write(self, member: Member) -> tuple[uuid.UUID, RowResult]:
         """`row`, and the id of the person the row is."""
-        self.ignored = []
+        self.ignored = list(member.unapplied)
         guardian: Outcome | None = None
         link_outcome: Outcome | None = None
         guardian_id: uuid.UUID | None = None
@@ -313,6 +385,7 @@ class Writer:
             if guardian_id is not None:
                 link_outcome = await self._link(guardian_id, person_id)
 
+        history = await self._history(member, person_id, created=person == "created")
         membership = None if member.plan is None else await self._membership(member, person_id)
         # Whom the gym messages about them, and whether it can: "Falta teléfono".
         contact = guardian_id if guardian_id is not None else person_id
@@ -334,7 +407,47 @@ class Writer:
             ignored=sorted(set(self.ignored), key=list(Field).index),
             missing_phone=missing,
             missing_identity=member.missing_identity,
+            history=history,
+            former=member.left_on is not None,
         )
+
+    async def _history(self, member: Member, person_id: uuid.UUID, *, created: bool) -> bool:
+        """Write the row's history where the gym's record of `person_id` has none, and
+        note where it has something else. The day they left only for someone the row
+        created: a sheet never gives someone here a baja. Whether it wrote any."""
+        if not member.has_history:
+            return False
+        record = (await self.session.execute(text(LOCK_HISTORY), {"id": person_id})).one()
+        before = record._asdict()
+        after: dict[str, Any] = {}
+
+        def fill(on: Field, value: Any, empty: Any = None, *, allowed: bool = True) -> None:
+            if value is None or value == before[on.value]:
+                return
+            if allowed and before[on.value] == empty:
+                after[on.value] = value
+            else:
+                self.ignored.append(on)
+
+        fill(Field.MEMBER_SINCE, member.member_since)
+        fill(Field.PRIOR_CLASSES, member.prior_classes, 0)
+        fill(Field.LEFT_ON, member.left_on, allowed=created)
+        left = after.get("left_on", before["left_on"])
+        # Why they left, only for someone who has.
+        fill(Field.LEFT_REASON, member.left_reason, allowed=left is not None)
+        since = after.get("member_since", before["member_since"])
+        if since is not None and left is not None and left < since:
+            raise RowRefused(Field.LEFT_ON, "left_before_start")
+        if not after:
+            return False
+        fields = ", ".join(f"{name} = :{name}" for name in after)
+        await self.session.execute(
+            text(SET_HISTORY.format(fields=fields)), {**after, "id": person_id}
+        )
+        await record_history_set(
+            self.session, person_id, changes(before, after), import_id=self.import_id
+        )
+        return True
 
     async def _kept(self, person_id: uuid.UUID, member: Member) -> None:
         """Note the sheet's values that differ from this gym's record of `person_id`."""
@@ -527,7 +640,8 @@ async def import_members(
         [(row.number, row.cells) for row in body.rows], body.mapping, finder, today
     )
 
-    writer = Writer(session, timezone, today)
+    import_id = None if body.dry_run else uuid.uuid4()
+    writer = Writer(session, timezone, today, import_id)
     results: dict[int, RowResult] = {}
     everything = await session.begin_nested()
     for index, member in sorted(enumerate(members), key=_guardians_first(members)):
@@ -539,13 +653,55 @@ async def import_members(
             except RowRefused as refused:
                 member.refuse(refused.on, refused.code)
         results[index] = _refusal(member)
+    rows = [results[index] for index in range(len(members))]
+    summary = _summary(rows)
     if body.dry_run:
         await everything.rollback()
     else:
+        if import_id is not None and _wrote(summary):
+            await _record_import(session, import_id, body.file, summary)
+        else:
+            # Nothing written, so nothing recorded.
+            import_id = None
         await everything.commit()
+    return ImportReport(dry_run=body.dry_run, import_id=import_id, summary=summary, rows=rows)
 
-    rows = [results[index] for index in range(len(members))]
-    return ImportReport(dry_run=body.dry_run, summary=_summary(rows), rows=rows)
+
+def _wrote(summary: ImportSummary) -> bool:
+    return (
+        summary.people_created
+        + summary.links_created
+        + summary.memberships_created
+        + summary.history_set
+    ) > 0
+
+
+async def _record_import(
+    session: AsyncSession, import_id: uuid.UUID, file: SheetFile | None, summary: ImportSummary
+) -> None:
+    """The import's `history_imported` row: which file, and what it wrote."""
+    detail = {
+        "file_name": None if file is None else file.name,
+        "sha256": None if file is None else file.sha256,
+        "tabs": ["alumnos"],
+        "counts": {
+            "alumnos": summary.model_dump(
+                include={
+                    "rows",
+                    "imported",
+                    "refused",
+                    "people_created",
+                    "links_created",
+                    "memberships_created",
+                    "history_set",
+                    "former_created",
+                }
+            )
+        },
+    }
+    result = await session.execute(INSERT_IMPORTED, {"id": import_id, "detail": json.dumps(detail)})
+    if result.rowcount != 1:  # type: ignore[attr-defined]
+        raise RuntimeError(f"no audit row for import {import_id}")
 
 
 def _guardians_first(members: list[Member]) -> Callable[[tuple[int, Member]], tuple[int, int]]:
@@ -577,4 +733,6 @@ def _summary(rows: list[RowResult]) -> ImportSummary:
         memberships_created=sum(r.membership == "created" for r in rows),
         missing_phone=sum(r.missing_phone for r in rows),
         missing_identity=sum(r.missing_identity for r in rows),
+        history_set=sum(r.history for r in rows),
+        former_created=sum(r.former and r.person == "created" for r in rows),
     )
