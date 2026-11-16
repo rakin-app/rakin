@@ -116,6 +116,15 @@ holds everything, a staged and accepted cambio de mando with an acta de traspaso
 the transfer of the account itself. Its build tickets are #308 to #318 and #320 to
 #322.
 
+## Sport fit (#336)
+
+[sport-fit.md](sport-fit.md) walks through Rakin as a martial arts academy, a climbing
+gym, a rowing club, a fitness studio and a kids' academy would use it: what works, what
+is awkward, what is missing, the martial-arts wording and logic that should be optional
+(what a gym calls itself and its members, sparring), and the gaps ranked by which gym
+needs them first. Its build tickets are #344 to #356, with #130, #25, #66 and the #307
+board tickets linked.
+
 ## Contrast (WCAG 2.1 AA)
 
 `frontend/src/components/controls.test.tsx` checks every pair in every theme.
