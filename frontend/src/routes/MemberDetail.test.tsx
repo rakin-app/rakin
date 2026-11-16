@@ -12,7 +12,7 @@ import { isoDay, shortDay } from '../format'
 import type { PersonTime } from '../api/matTime'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
-import { monthsBetween, paidOn } from './PersonHistory'
+import { firstMonthFrom, monthsBetween, paidOn, yearsBefore } from './PersonHistory'
 
 const copy = es.admin.member
 
@@ -3391,14 +3391,43 @@ describe('Historial de pagos: pagos anteriores a Rakin (#295)', () => {
     expect(sent.map((p) => p.covers_month)).toEqual(['2024-01-01', '2024-03-01'])
   })
 
-  it('leaves out the months of their plan, pointing at Pagado hasta', async () => {
-    stubHistory([], '2024-03-30')
+  it('leaves out the months of their plan, the month it began included, pointing at Pagado hasta', async () => {
+    const calls = stubHistory([], '2024-03-30')
     renderAt(PATH)
 
     const { form: f } = await openForm()
     fill(f, '2024-01', '2024-06', '25000')
-    expect(within(within(f).getByRole('list', { name: form.months })).getAllByRole('listitem')).toHaveLength(3)
-    expect(within(f).getByText(form.inPlan('abril 2024'))).toBeInTheDocument()
+    expect(within(within(f).getByRole('list', { name: form.months })).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(f).getByText(form.inPlan('marzo 2024'))).toBeInTheDocument()
+    await userEvent.click(within(f).getByRole('button', { name: form.submit(2) }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
+    const sent = (calls.find((c) => c.method === 'POST')!.body as { payments: HistoryPaymentIn[] }).payments
+    expect(sent.map((p) => p.covers_month)).toEqual(['2024-01-01', '2024-02-01'])
+  })
+
+  it('starts at the first month wholly within the last 60 years', async () => {
+    expect(firstMonthFrom('1966-11-15')).toBe('1966-12')
+    expect(firstMonthFrom('1966-11-01')).toBe('1966-11')
+    expect(firstMonthFrom('1966-12-02')).toBe('1967-01')
+    stubHistory()
+    renderAt(PATH)
+
+    const { form: f } = await openForm()
+    expect(within(f).getByLabelText(form.from)).toHaveAttribute(
+      'min',
+      firstMonthFrom(yearsBefore(isoDay(new Date().toISOString(), 'America/Santiago'), 60)),
+    )
+  })
+
+  it('says when the API finds a month outside the last 60 years', async () => {
+    stubHistory([], null, { status: 422, body: { detail: 'covers_month must be within 60 years of today' } })
+    renderAt(PATH)
+
+    const { form: f } = await openForm()
+    fill(f, '2024-04', '2024-04', '25000')
+    await userEvent.click(within(f).getByRole('button', { name: form.submit(1) }))
+    expect(await within(f).findByRole('alert')).toHaveTextContent(form.outsideWindow)
   })
 
   it('says when the API finds a month of their plan (covers_plan)', async () => {

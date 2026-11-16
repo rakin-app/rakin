@@ -151,6 +151,8 @@ HISTORY_REMOVED = "history_removed"
 
 COVERS_PLAN = "covers_plan"
 
+# `insert_membership`, every plan's way in, reads this row `FOR SHARE`: a plan started for
+# the person waits for the form, or the form for the plan, and `PLAN_FROM` sees it.
 LOCK_PERSON = text("SELECT 1 FROM gym_person WHERE person_id = :id FOR UPDATE")
 
 # A plan voided by mistake was never theirs (#256); a cancelled one was.
@@ -201,11 +203,19 @@ def covered(payment: HistoryPaymentIn) -> date:
     return payment.covers_month or payment.paid_on
 
 
+def in_plan(payment: HistoryPaymentIn, plan_from: date) -> bool:
+    """Whether the plan covers it: the month it paid for, from the month the plan began
+    (a plan started on the 10th covers that month), else the day it was paid."""
+    if payment.covers_month is not None:
+        return payment.covers_month >= plan_from.replace(day=1)
+    return payment.paid_on >= plan_from
+
+
 def refuse_covers_plan(payments: list[HistoryPaymentIn], plan_from: date | None) -> None:
-    """A 422 `covers_plan` for a payment of a month on or after the person's first plan."""
+    """A 422 `covers_plan` for a payment the person's first plan covers."""
     if plan_from is None:
         return
-    inside = [covered(p) for p in payments if covered(p) >= plan_from]
+    inside = [covered(p) for p in payments if in_plan(p, plan_from)]
     if inside:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,

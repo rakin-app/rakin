@@ -65,3 +65,11 @@ export function coversPlan(error: unknown): string | null {
   const detail = (error.body as { detail?: { code?: unknown; plan_from?: unknown } } | undefined)?.detail
   return detail?.code === 'covers_plan' && typeof detail.plan_from === 'string' ? detail.plan_from : null
 }
+
+/** Whether the API refused a day after today or more than 60 years back, which the form's
+ * own range keeps out unless the gym's today moved under it. */
+export function outsideHistory(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 422) return false
+  const detail = (error.body as { detail?: unknown } | undefined)?.detail
+  return typeof detail === 'string' && /(years of today|today at the latest)$/.test(detail)
+}

@@ -759,7 +759,8 @@ export const es = {
           dayNeeded: 'Escribe un día del 1 al 31.',
           noneLeft: 'No queda ningún mes para guardar.',
           coversPlan: (day: string) =>
-            `Su plan empezó el ${day}: los meses desde entonces se registran con Pagado hasta, no en el historial.`,
+            `Su plan empezó el ${day}: ese mes y los siguientes se registran con Pagado hasta, no en el historial.`,
+          outsideWindow: 'Hay un mes de hace más de 60 años o posterior a hoy. Revisa desde y hasta.',
           submit: (count: number) => (count === 1 ? 'Guardar 1 pago' : `Guardar ${count} pagos`),
           cancel: 'Cancelar',
           working: 'Guardando…',

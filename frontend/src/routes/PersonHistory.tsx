@@ -5,6 +5,7 @@ import {
   addHistoryPayments,
   coversPlan,
   historyPaymentsQuery,
+  outsideHistory,
   removeHistoryPayment,
   type HistoryMethod,
   type HistoryPayment,
@@ -400,6 +401,17 @@ function RemoveForm({
 }
 
 /** The first day of each month from `from` to `to` (`YYYY-MM`), in order. */
+/** The first `YYYY-MM` whose 1st is on or after `iso`: the earliest month a payment can be
+ * for when `iso` is the first day the history window allows. */
+export function firstMonthFrom(iso: string): string {
+  if (iso.slice(8, 10) === '01') return iso.slice(0, 7)
+  const year = Number(iso.slice(0, 4))
+  const month = Number(iso.slice(5, 7))
+  return month === 12
+    ? `${String(year + 1).padStart(4, '0')}-01`
+    : `${String(year).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}`
+}
+
 export function monthsBetween(from: string, to: string): string[] {
   const months: string[] = []
   let year = Number(from.slice(0, 4))
@@ -482,11 +494,12 @@ function PaymentsForm({
 
   const planFrom = history.data?.plan_from ?? null
   const thisMonth = today.slice(0, 7)
-  const earliest = today ? yearsBefore(today, HISTORY_WINDOW_YEARS).slice(0, 7) : ''
+  // A month's 1st is the day it is for, so the oldest month is the first wholly in the window.
+  const earliest = today ? firstMonthFrom(yearsBefore(today, HISTORY_WINDOW_YEARS)) : ''
   const rangeOk = from !== '' && to !== '' && from <= to && to <= thisMonth && from >= earliest
   const months = useMemo(() => (rangeOk ? monthsBetween(from, to) : []), [rangeOk, from, to])
-  // A month on or after their first plan is the plan's: the API refuses it (`covers_plan`).
-  const inPlan = planFrom ? months.filter((m) => m >= planFrom) : []
+  // From the month their first plan began, it is the plan's: the API refuses it (`covers_plan`).
+  const inPlan = planFrom ? months.filter((m) => m.slice(0, 7) >= planFrom.slice(0, 7)) : []
   const rows: Row[] = months
     .filter((m) => !inPlan.includes(m) && !removed.has(m))
     .map((m) => {
@@ -703,7 +716,11 @@ function PaymentsForm({
       </div>
       {save.error && (
         <p className="member__error" role="alert">
-          {refusedFrom ? form.coversPlan(t.common.dayYear(refusedFrom)) : form.failed}
+          {refusedFrom
+            ? form.coversPlan(t.common.dayYear(refusedFrom))
+            : outsideHistory(save.error)
+              ? form.outsideWindow
+              : form.failed}
         </p>
       )}
       <div className="member__form-actions">

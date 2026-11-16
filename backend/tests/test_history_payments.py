@@ -176,6 +176,11 @@ def test_a_month_inside_their_plan_is_refused_with_covers_plan(
     assert detail["plan_from"] == started_on.isoformat()
     assert detail["months"] == [this_month.isoformat()]
     assert read(client, gym, ana["id"]).json()["years"] == []
+    # The month their plan began is the plan's too, though paid before its 15th.
+    start_month = month(started_on.year, started_on.month, 1)
+    refused = add(client, gym, ana["id"], [start_month]).json()["detail"]
+    assert refused["code"] == "covers_plan"
+    assert refused["months"] == [started_on.replace(day=1).isoformat()]
     # With no month, the day it was paid says: their plan's first day is the plan's.
     on_start = {"paid_on": started_on.isoformat(), "amount_clp": 1_000}
     assert add(client, gym, ana["id"], [on_start]).json()["detail"]["code"] == "covers_plan"
