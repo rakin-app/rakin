@@ -82,8 +82,8 @@ def ask(
     membership_id: str,
     from_date: date,
     to_date: date,
-    reason: str = "lesion",
-    note: str | None = "Esguince de tobillo",
+    reason: str = "viaje",
+    note: str | None = "Matrimonio en el sur",
 ) -> Any:
     body = {
         "membership_id": membership_id,
@@ -155,15 +155,15 @@ def test_an_approved_request_freezes_exactly_as_an_admin_freeze(
     [listed] = waiting(client, sur).json()
     assert (listed["id"], listed["reason"], listed["note"]) == (
         request["id"],
-        "lesion",
-        "Esguince de tobillo",
+        "viaje",
+        "Matrimonio en el sur",
     )
     # Told to the owner, with a link to Ana's ficha.
     email = mailer.sent[-1]
     assert email.to == "duena@sur.cl"
     assert email.subject == "Ana pide congelar su plan"
     assert f"http://testserver/admin/alumnos/{ana}" in email.text
-    assert "Lesión · Esguince de tobillo" in email.text
+    assert "Viaje · Matrimonio en el sur" in email.text
 
     approved = approve(client, sur, request["id"])
     assert approved.status_code == 200, approved.text
@@ -171,7 +171,7 @@ def test_an_approved_request_freezes_exactly_as_an_admin_freeze(
 
     body = approved.json()
     assert body["status"] == "frozen"
-    assert body["freeze"]["reason"] == "Lesión: Esguince de tobillo"
+    assert body["freeze"]["reason"] == "Viaje: Matrimonio en el sur"
     for field in ("current_period_end", "anchor_day", "status"):
         assert body[field] == by_admin[field]
     assert periods(db, sur, asked_for) == periods(db, sur, by_hand)
@@ -292,11 +292,14 @@ def test_a_guardian_asks_for_a_dependent_and_is_told_the_answer(
     juan = new_kid(client, sur, marta, "Juan")
     started = membership(client, sur, juan, now - 3 * DAY)
 
-    request = asked(client, sur, marta, started, now=now, reason="salud", note=None)
+    request = asked(client, sur, marta, started, now=now, reason="personal", note=None)
     [mine] = my_plans(client, sur, marta)
     assert (mine["person_name"], mine["pending_request"]["id"]) == ("Juan", request["id"])
 
-    assert approve(client, sur, request["id"]).status_code == 200
+    approved = approve(client, sur, request["id"])
+    assert approved.status_code == 200
+    # A reason that says nothing about why (#384).
+    assert approved.json()["freeze"]["reason"] == "Motivo personal"
     assert sent_notices(db, sur)[-1] == ("freeze_approved", marta, "sent")
 
 
@@ -363,12 +366,15 @@ def test_a_request_needs_an_active_membership_with_no_freeze_or_request(
 @pytest.mark.parametrize(
     ("starts", "ends", "reason", "note"),
     [
-        (-1, 7, "lesion", None),  # in the past
-        (5, 3, "lesion", None),  # ends before it starts
-        (5, 5, "lesion", None),  # no day frozen
-        (0, 400, "lesion", None),  # longer than a freeze lasts
+        (-1, 7, "viaje", None),  # in the past
+        (5, 3, "viaje", None),  # ends before it starts
+        (5, 5, "viaje", None),  # no day frozen
+        (0, 400, "viaje", None),  # longer than a freeze lasts
         (0, 7, "otro", None),  # `otro` says nothing
         (0, 7, "vacaciones", None),  # not one of the reasons
+        # Health data, which a gym may not keep (#384): no longer reasons.
+        (0, 7, "lesion", "Esguince"),
+        (0, 7, "salud", None),
     ],
 )
 def test_a_request_with_bad_dates_or_reason_is_refused(

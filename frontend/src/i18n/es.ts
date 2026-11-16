@@ -24,6 +24,10 @@ const MONTHS = [
   'diciembre',
 ] as const
 
+// Under a free-text note or reason: a gym may not keep health data, even with consent
+// (art. 16 bis, #384).
+const NO_HEALTH = 'Sin datos de salud: ni lesiones ni enfermedades.'
+
 export const es = {
   app: {
     name: 'rakin',
@@ -980,8 +984,8 @@ export const es = {
       leftReason: {
         label: 'Motivo (opcional)',
         chipsLabel: 'Motivos',
-        chips: ['Precio', 'Horario', 'Se cambió', 'Lesión', 'Otro'],
-        hint: 'Solo lo ven tú y los administradores. Sin detalles: si es una lesión, basta con "Lesión".',
+        chips: ['Precio', 'Horario', 'Se cambió', 'Motivo personal', 'Otro'],
+        hint: `Solo lo ven tú y los administradores. ${NO_HEALTH} Si es eso, basta con "Motivo personal".`,
       },
       leaveForm: {
         title: 'Dar de baja',
@@ -1243,6 +1247,7 @@ export const es = {
         until: 'Vuelve el',
         untilHint: 'Desde ese día hasta que vuelve no se cobra: el próximo pago se corre esos días.',
         reason: 'Motivo',
+        reasonHint: NO_HEALTH,
         submit: 'Confirmar congelación',
         cancel: 'Cancelar',
         working: 'Guardando…',
@@ -1260,6 +1265,7 @@ export const es = {
         until: 'Vuelve el',
         untilHint: 'El próximo pago se corre los días que la congelación se alarga o se acorta.',
         reason: 'Motivo',
+        reasonHint: NO_HEALTH,
         submit: 'Guardar cambios',
         cancel: 'Cancelar',
         working: 'Guardando…',
@@ -2140,6 +2146,9 @@ export const es = {
           optionsHint: 'Una opción por línea, en el orden en que se muestran.',
           sensitive: 'Dato sensible',
           sensitiveHint: 'Se guarda cifrado. Al marcarlo, por defecto solo lo ve el dueño.',
+          // Shown once the owner marks a field sensitive (#384).
+          noHealth:
+            'No lo uses para datos de salud (lesiones, enfermedades, tratamientos, medicamentos): la ley no permite que una academia los guarde, ni con el consentimiento del alumno.',
           visibleTo: 'Quién lo ve',
           cancel: 'Cancelar',
           submit: 'Guardar',
@@ -2176,7 +2185,7 @@ export const es = {
         // Where the gym's tags are made, for a class that has none to pick yet.
         noTags: 'El gimnasio todavía no tiene etiquetas. El dueño o un admin las crea en Ajustes, Etiquetas.',
         notes: 'Notas',
-        notesHint: 'Solo las ve el equipo, nunca el alumno.',
+        notesHint: `Solo las ve el equipo, nunca el alumno. ${NO_HEALTH}`,
         notesPlaceholder: 'Lo que conviene recordar de esta clase.',
         submit: 'Guardar',
         working: 'Guardando…',
@@ -2851,8 +2860,9 @@ export const es = {
       until: 'Vuelvo el',
       reason: 'Motivo',
       reasonPick: 'Elige un motivo',
-      reasons: { lesion: 'Lesión', viaje: 'Viaje', salud: 'Salud', otro: 'Otro' },
+      reasons: { viaje: 'Viaje', personal: 'Motivo personal', otro: 'Otro' },
       note: 'Detalle (opcional)',
+      noteHint: NO_HEALTH,
       noteOther: 'Cuéntanos el motivo',
       fromNeeded: 'Elige hoy o un día después.',
       untilNeeded: 'Elige el día en que vuelves (después de “Desde”).',

@@ -155,7 +155,6 @@ CUSTOM_FIELDS = [
         "type": "enum",
         "options": ["Gallo", "Pluma", "Pena", "Liviano", "Medio", "Medio pesado", "Pesado"],
     },
-    {"key": "medical_notes", "label": "Notas médicas", "type": "text", "sensitive": True},
 ]
 
 BANK_ACCOUNT = {

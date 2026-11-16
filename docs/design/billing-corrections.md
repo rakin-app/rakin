@@ -297,6 +297,14 @@ after**.
 - **Deleting a person** (`forget_gym_person`) deletes their correction rows with the
   rest of their history and counts them in the `person_deleted` row, which keeps nothing
   about them, as 0044 decided for the ledger.
+- **One exception to append-only, in a migration** (0057, #384): a gym may not keep
+  health data (art. 16 bis), so the `history_set` rows that copied the old "Lesión" chip
+  as a `left_reason` `before` or `after` hold "Motivo personal" instead. 0057 disables
+  `audit_event_append_only` for that one statement and enables it again in the same
+  transaction, and writes a `health_reason_cleared` row for each row it changed, naming
+  the row and never the value it held. Nothing else in the log changed, and the app
+  still cannot update a row. A later exception would be another migration, decided and
+  documented the same way.
 
 Where it shows:
 

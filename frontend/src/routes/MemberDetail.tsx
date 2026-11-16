@@ -1277,7 +1277,7 @@ function FreezeForm({
   onDone: (message: string) => void
 }) {
   const form = copy.freezeForm
-  const ids = { from: useId(), until: useId(), hint: useId(), reason: useId() }
+  const ids = { from: useId(), until: useId(), hint: useId(), reason: useId(), reasonHint: useId() }
   // Today, the first day a freeze can start on, in the gym's timezone.
   const first = useGymToday()
   // Today until a day is picked: the gym's timezone may arrive after the form opens.
@@ -1358,9 +1358,13 @@ function FreezeForm({
         type="text"
         maxLength={500}
         value={reason}
+        aria-describedby={ids.reasonHint}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
+      <p id={ids.reasonHint} className="member__detail">
+        {form.reasonHint}
+      </p>
       {checked && !reasonOk && (
         <Banner tone="error">
           {form.reasonNeeded}
@@ -1397,7 +1401,7 @@ function EditFreezeForm({
   onDone: (message: string) => void
 }) {
   const form = copy.editFreezeForm
-  const ids = { until: useId(), hint: useId(), reason: useId() }
+  const ids = { until: useId(), hint: useId(), reason: useId(), reasonHint: useId() }
   // A running freeze ends after today (ending it today is "Terminar"), a booked one after its first day.
   const today = useGymToday()
   const first = addDays(freeze.started ? today : freeze.from_date, 1)
@@ -1450,9 +1454,13 @@ function EditFreezeForm({
         type="text"
         maxLength={500}
         value={reason}
+        aria-describedby={ids.reasonHint}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
+      <p id={ids.reasonHint} className="member__detail">
+        {form.reasonHint}
+      </p>
       {checked && !reasonOk && (
         <Banner tone="error">
           {form.reasonNeeded}
@@ -2432,7 +2440,7 @@ function correctionTitle(c: Correction): string {
   }
 }
 
-/** `Congelación` · `Lesión · vuelve el 24 nov · 10 nov`, with no amount. */
+/** `Congelación` · `Vacaciones · vuelve el 24 nov · 10 nov`, with no amount. */
 function FreezeEntry({ line }: { line: FreezeLine }) {
   const words = copy.ledger
   const start = line.edge === 'start'
