@@ -1,4 +1,4 @@
-"""The consent register (#370, migration 0057): what a member's data rest on, and who
+"""The consent register (#370, migration 0058): what a member's data rest on, and who
 accepted which privacy notice when.
 
 An adult's data rest on the membership contract; the join form's box is evidence that

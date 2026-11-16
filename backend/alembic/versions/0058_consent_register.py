@@ -26,8 +26,8 @@ guardian may refuse or withdraw without losing the membership.
 
 `rakin_app` may read and add rows, never change or delete them.
 
-Revision ID: 0057
-Revises: 0056
+Revision ID: 0058
+Revises: 0057
 Create Date: 2026-11-16
 
 """
@@ -39,8 +39,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0057"
-down_revision: str | Sequence[str] | None = "0056"
+revision: str = "0058"
+down_revision: str | Sequence[str] | None = "0057"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

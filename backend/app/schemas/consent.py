@@ -1,4 +1,4 @@
-"""The consent register (#370, migration 0057): what each member's data rest on, and the
+"""The consent register (#370, migration 0058): what each member's data rest on, and the
 record of who accepted which notice when.
 """
 
@@ -38,7 +38,7 @@ class ConsentEvent(BaseModel):
     by: PersonRef | None
     # `join`, the join form; `page`, the guardian's page.
     source: Literal["join", "page"]
-    # The notice's version; none on a withdrawal, or a request sent before 0057.
+    # The notice's version; none on a withdrawal, or a request sent before 0058.
     template_on: date | None
     details_on: date | None
 
