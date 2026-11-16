@@ -30,6 +30,23 @@ export type SheetRow = { number: number; cells: string[] }
 // The file the sheet was read from, sent back so the import's record names it.
 export type SheetFile = { name: string | null; sha256: string }
 
+/** A Pagos tab's column (#298): one row per payment received before Rakin. */
+export const PAYMENT_FIELDS = [
+  'rut',
+  'email',
+  'name',
+  'paid_on',
+  'amount_clp',
+  'covers_month',
+  'method',
+  'plan_name',
+  'note',
+] as const
+export type PaymentField = (typeof PAYMENT_FIELDS)[number]
+export type PaymentMapping = Partial<Record<PaymentField, number>>
+
+export type PaymentSheet = { headers: string[]; rows: SheetRow[]; mapping: PaymentMapping }
+
 /** A Grados tab's column (#299): one row per belt or stripe earned. */
 export const GRADE_FIELDS = ['rut', 'email', 'name', 'rank', 'sub_rank', 'awarded_on', 'note'] as const
 export type GradeField = (typeof GRADE_FIELDS)[number]
@@ -38,7 +55,7 @@ export type GradeMapping = Partial<Record<GradeField, number>>
 export type GradeSheet = { headers: string[]; rows: SheetRow[]; mapping: GradeMapping }
 
 /** The tabs a workbook is read by; a CSV is one of them, chosen on upload. */
-export const SHEET_TABS = ['alumnos', 'grados'] as const
+export const SHEET_TABS = ['alumnos', 'pagos', 'grados'] as const
 export type SheetTab = (typeof SHEET_TABS)[number]
 
 /** The Alumnos tab at the top level (no headers and no rows in a workbook without one), the others beside it. */
@@ -47,6 +64,7 @@ export type Sheet = {
   rows: SheetRow[]
   mapping: Mapping
   file: SheetFile
+  pagos: PaymentSheet | null
   grados: GradeSheet | null
 }
 
@@ -101,6 +119,37 @@ export type RowResult = {
   former: boolean
 }
 
+export type PaymentRowErrorCode =
+  | 'required'
+  | 'invalid_rut'
+  | 'invalid_email'
+  | 'invalid_date'
+  // Not whole pesos above zero.
+  | 'invalid_amount'
+  // None of Efectivo, Transferencia, Otro.
+  | 'invalid_method'
+  // Nobody in the gym or on the Alumnos tab is the row: a payment creates no one.
+  | 'unknown_person'
+  | 'ambiguous_name'
+  // On or after their first plan here: that month is paid with "Pagado hasta".
+  | 'covers_plan'
+  // An earlier row gives them the same day, amount and month.
+  | 'repeated'
+  | 'too_long'
+
+export type PaymentRowResult = {
+  row: number
+  name: string
+  errors: { field: PaymentField; code: PaymentRowErrorCode }[]
+  // `existing`: they already had a payment of that day, amount and month.
+  payment: Outcome | null
+}
+
+export type PaymentReport = {
+  summary: { rows: number; imported: number; refused: number; payments_created: number; amount_clp: number }
+  rows: PaymentRowResult[]
+}
+
 export type GradeRowErrorCode =
   | 'required'
   | 'invalid_rut'
@@ -147,6 +196,7 @@ export type ImportReport = {
     former_created: number
   }
   rows: RowResult[]
+  pagos: PaymentReport | null
   grados: GradeReport | null
 }
 
@@ -173,6 +223,7 @@ export type ImportRequest = {
   plans: Record<string, string | null>
   dry_run: boolean
   file?: SheetFile
+  pagos?: { rows: SheetRow[]; mapping: PaymentMapping }
   grados?: {
     rows: SheetRow[]
     mapping: GradeMapping

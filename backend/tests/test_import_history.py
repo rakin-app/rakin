@@ -119,7 +119,7 @@ def test_the_template_has_the_alumnos_columns_and_the_gyms_plans(
     assert response.headers["content-type"] == XLSX
     assert "plantilla-alumnos.xlsx" in response.headers["content-disposition"]
     book = load_workbook(io.BytesIO(response.content))
-    assert book.sheetnames == ["Alumnos", "Instrucciones", "Planes"]
+    assert book.sheetnames == ["Alumnos", "Pagos", "Instrucciones", "Planes"]
     alumnos = book["Alumnos"]
     assert [c.value for c in alumnos[1]] == [header for header, _, _ in COLUMNS]
     assert alumnos["A2"].font.color.rgb.endswith("808080")

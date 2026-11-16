@@ -7,6 +7,7 @@ import {
   GRADE_FIELDS,
   IMPORT_FIELDS,
   MAX_SHEET_BYTES,
+  PAYMENT_FIELDS,
   runImport,
   SHEET_TABS,
   SHEET_TYPES,
@@ -19,6 +20,9 @@ import {
   type ImportField,
   type ImportReport,
   type Mapping,
+  type PaymentField,
+  type PaymentMapping,
+  type PaymentReport,
   type RowResult,
   type Sheet,
   type SheetRow,
@@ -42,8 +46,8 @@ const NO_PLAN = 'none'
  * "Importar alumnos": upload the gym's spreadsheet, say what each column is, check
  * every row without saving (the dry run), then import. The file is read once; the
  * rows stay here and go back to the API with the mapping each time. A workbook's
- * Grados tab (#299) gets a mapping step of its own, and is checked and imported with
- * the Alumnos tab, after it.
+ * Pagos (#298) and Grados (#299) tabs each get a mapping step of their own, and are
+ * checked and imported with the Alumnos tab, after it.
  */
 export function MemberImport() {
   usePageTitle(copy.title)
@@ -167,6 +171,11 @@ function valuesIn(rows: SheetRow[], column: number | undefined): string[] {
   return [...values.values()]
 }
 
+const paymentsReady = (mapping: PaymentMapping) =>
+  mapping.paid_on !== undefined &&
+  mapping.amount_clp !== undefined &&
+  (mapping.rut !== undefined || mapping.email !== undefined || mapping.name !== undefined)
+
 const gradesReady = (mapping: GradeMapping) =>
   mapping.rank !== undefined &&
   mapping.awarded_on !== undefined &&
@@ -175,18 +184,24 @@ const gradesReady = (mapping: GradeMapping) =>
 /** Rows imported over every tab, and refused. */
 function totals(report: ImportReport): { imported: number; refused: number } {
   return {
-    imported: report.summary.imported + (report.grados?.summary.imported ?? 0),
-    refused: report.summary.refused + (report.grados?.summary.refused ?? 0),
+    imported:
+      report.summary.imported + (report.pagos?.summary.imported ?? 0) + (report.grados?.summary.imported ?? 0),
+    refused:
+      report.summary.refused + (report.pagos?.summary.refused ?? 0) + (report.grados?.summary.refused ?? 0),
   }
 }
 
 function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onOther: () => void }) {
   const queryClient = useQueryClient()
   const plans = useQuery(plansQuery)
+  const pagos = sheet.pagos
   const grados = sheet.grados
   const hasAlumnos = sheet.rows.length > 0
+  // The Alumnos step says which tab it is when it is not the only one.
+  const tabbed = pagos !== null || grados !== null
   const scheme = useQuery({ ...gradingSchemeQuery(), enabled: grados !== null })
   const [mapping, setMapping] = useState<Mapping>(sheet.mapping)
+  const [paymentMapping, setPaymentMapping] = useState<PaymentMapping>(pagos?.mapping ?? {})
   const [gradeMapping, setGradeMapping] = useState<GradeMapping>(grados?.mapping ?? {})
   // The admin's choice for a Grado cell's value: a rank's key, or `''` for none.
   const [rankChosen, setRankChosen] = useState<Record<string, string>>({})
@@ -229,6 +244,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
       plans: choices,
       dry_run: dryRun,
       file: sheet.file,
+      ...(pagos && { pagos: { rows: pagos.rows, mapping: paymentMapping } }),
       ...(grados && { grados: { rows: grados.rows, mapping: gradeMapping, ranks: rankChoices } }),
     })
   }
@@ -250,11 +266,16 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
     setMapping((current) => moved(IMPORT_FIELDS, current, column, field))
     changed()
   }
+  const setPaymentColumn = (column: number, field: PaymentField | '') => {
+    setPaymentMapping((current) => moved(PAYMENT_FIELDS, current, column, field))
+    changed()
+  }
   const setGradeColumn = (column: number, field: GradeField | '') => {
     setGradeMapping((current) => moved(GRADE_FIELDS, current, column, field))
     changed()
   }
   const alumnosReady = !hasAlumnos || mapping.name !== undefined
+  const pagosReady = pagos === null || paymentsReady(paymentMapping)
   const gradosReady = grados === null || gradesReady(gradeMapping)
 
   if (report && !report.dry_run) {
@@ -266,7 +287,10 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
       <section className="import__card">
         <div className="import__file-row">
           <span className="import__file-name">
-            {copy.fileSummary(name, sheet.rows.length, grados?.rows.length ?? null)}
+            {copy.fileSummary(name, sheet.rows.length, [
+              ...(pagos ? [{ tab: copy.tabs.pagos, rows: pagos.rows.length }] : []),
+              ...(grados ? [{ tab: copy.tabs.grados, rows: grados.rows.length }] : []),
+            ])}
           </span>
           <Button onClick={onOther}>
             {copy.otherFile}
@@ -286,7 +310,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
         <>
           {hasAlumnos && (
             <ColumnMapping
-              title={grados ? copy.tabMappingTitle(copy.tabs.alumnos) : copy.mappingTitle}
+              title={tabbed ? copy.tabMappingTitle(copy.tabs.alumnos) : copy.mappingTitle}
               headers={sheet.headers}
               rows={sheet.rows}
               fields={IMPORT_FIELDS}
@@ -303,9 +327,20 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
               onChange={(value, plan) => setChosen((current) => ({ ...current, [value]: plan }))}
             />
           )}
+          {pagos && (
+            <ColumnMapping
+              title={hasAlumnos || grados ? copy.tabMappingTitle(copy.tabs.pagos) : copy.mappingTitle}
+              headers={pagos.headers}
+              rows={pagos.rows}
+              fields={PAYMENT_FIELDS}
+              labels={copy.paymentFields}
+              columns={byColumn(PAYMENT_FIELDS, paymentMapping)}
+              onChange={setPaymentColumn}
+            />
+          )}
           {grados && (
             <ColumnMapping
-              title={hasAlumnos ? copy.tabMappingTitle(copy.tabs.grados) : copy.mappingTitle}
+              title={hasAlumnos || pagos ? copy.tabMappingTitle(copy.tabs.grados) : copy.mappingTitle}
               headers={grados.headers}
               rows={grados.rows}
               fields={GRADE_FIELDS}
@@ -327,6 +362,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
           )}
           <section className="import__card">
             {!alumnosReady && <p className="import__note">{copy.nameRequired}</p>}
+            {!pagosReady && <p className="import__note">{copy.paymentsRequired}</p>}
             {!gradosReady && <p className="import__note">{copy.gradesRequired}</p>}
             {check.isError && (
               <p className="import__error" role="alert">
@@ -335,7 +371,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
             )}
             <Button
               variant="primary"
-              disabled={!alumnosReady || !gradosReady || check.isPending}
+              disabled={!alumnosReady || !pagosReady || !gradosReady || check.isPending}
               onClick={() => check.mutate()}
             >
               {check.isPending ? copy.checking : copy.check}
@@ -503,15 +539,19 @@ function Counts({ report }: { report: ImportReport }) {
     history_set: history,
     former_created: former,
   } = report.summary
+  const payments = report.pagos?.summary.payments_created ?? 0
   const grades = report.grados?.summary.grades_created ?? 0
   return (
     <>
-      {people + links + memberships + history + grades === 0 ? (
+      {people + links + memberships + history + payments + grades === 0 ? (
         <p className="import__note">{copy.nothingNew}</p>
       ) : (
         rows > 0 && <p className="import__note">{copy.created(people, links, memberships)}</p>
       )}
       {(history > 0 || former > 0) && <p className="import__note">{copy.history(history, former)}</p>}
+      {report.pagos && payments > 0 && (
+        <p className="import__note">{copy.paymentsCreated(payments, report.pagos.summary.amount_clp)}</p>
+      )}
       {report.grados && grades > 0 && <p className="import__note">{copy.gradesCreated(grades)}</p>}
     </>
   )
@@ -564,6 +604,7 @@ function Review({
       <WarningRows rows={report.rows} />
       <FormerRows rows={report.rows} />
       <KeptRows rows={report.rows} />
+      {report.pagos && <PaymentRows report={report.pagos} />}
       {report.grados && <GradeRows report={report.grados} />}
     </>
   )
@@ -593,8 +634,40 @@ function Done({ name, report, onOther }: { name: string; report: ImportReport; o
       <WarningRows rows={report.rows} />
       <FormerRows rows={report.rows} />
       <KeptRows rows={report.rows} />
+      {report.pagos && <PaymentRows report={report.pagos} />}
       {report.grados && <GradeRows report={report.grados} />}
     </>
+  )
+}
+
+/** The Pagos tab's rows: how many payments are new, how many they already had, and those refused. */
+function PaymentRows({ report }: { report: PaymentReport }) {
+  const { imported, payments_created: created } = report.summary
+  const refused = report.rows.filter((row) => row.errors.length > 0)
+  return (
+    <section className="import__card" aria-labelledby="import-payments-title">
+      <h2 id="import-payments-title" className="import__title">
+        {copy.paymentsTitle}
+      </h2>
+      <p className="import__note">{copy.paymentsSummary(created, imported - created, refused.length)}</p>
+      {refused.length > 0 && (
+        <>
+          <p className="import__note">{copy.paymentsErrorsHint}</p>
+          <ul className="import__errors" aria-label={copy.paymentsErrorsTitle}>
+            {refused.map((row) => (
+              <li key={row.row} className="import__error-row">
+                <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
+                {row.errors.map((error) => (
+                  <span key={`${error.field}-${error.code}`} className="import__error-what">
+                    {copy.fieldError(copy.paymentFields[error.field], copy.paymentError[error.code])}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   )
 }
 

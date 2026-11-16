@@ -2,7 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { GradeReport, ImportReport, ImportRequest, RowResult, Sheet } from '../api/memberImport'
+import type { GradeReport, ImportReport, ImportRequest, PaymentReport, RowResult, Sheet } from '../api/memberImport'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -19,7 +19,42 @@ const SHEET: Sheet = {
   ],
   mapping: { name: 0, phone: 1, plan: 2, due_on: 3 },
   file: { name: 'alumnos.csv', sha256: 'a'.repeat(64) },
+  pagos: null,
   grados: null,
+}
+
+// A workbook with a Pagos tab (#298), headers as a gym's own notebook has them.
+const PAYMENTS_BOOK: Sheet = {
+  ...SHEET,
+  pagos: {
+    headers: ['Alumno', 'Fecha', 'Valor', 'Mes'],
+    rows: [
+      { number: 2, cells: ['Camila Ortiz', '05-03-2024', '$25.000', '03-2024'] },
+      { number: 3, cells: ['Camila Ortiz', '05-04-2024', '25000', '04-2024'] },
+      { number: 4, cells: ['Nadie', '05-04-2024', '0', '04-2024'] },
+    ],
+    mapping: { name: 0, paid_on: 1, amount_clp: 2, covers_month: 3 },
+  },
+}
+
+function paymentsFor(body: ImportRequest): PaymentReport | null {
+  if (!body.pagos) return null
+  return {
+    summary: { rows: 3, imported: 2, refused: 1, payments_created: 1, amount_clp: 25_000 },
+    rows: [
+      { row: 2, name: 'Camila Ortiz', errors: [], payment: 'existing' },
+      { row: 3, name: 'Camila Ortiz', errors: [], payment: 'created' },
+      {
+        row: 4,
+        name: 'Nadie',
+        errors: [
+          { field: 'name', code: 'unknown_person' },
+          { field: 'amount_clp', code: 'invalid_amount' },
+        ],
+        payment: null,
+      },
+    ],
+  }
 }
 
 // A workbook with a Grados tab (#299): the scheme says "Café", the sheet "Marrón".
@@ -110,6 +145,7 @@ function reportFor(body: ImportRequest): ImportReport {
       former_created: rows.filter((r) => r.former && r.person === 'created').length,
     },
     rows,
+    pagos: paymentsFor(body),
     grados: gradesFor(body),
   }
 }
@@ -177,7 +213,7 @@ describe('Importar alumnos', () => {
     renderAt('/admin/alumnos/importar')
     await chooseFile()
 
-    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 3, null))).toBeInTheDocument()
+    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 3, []))).toBeInTheDocument()
     expect(screen.getByLabelText('Nombre')).toHaveValue('name')
     expect(screen.getByLabelText('Celular')).toHaveValue('phone')
     expect(screen.getByLabelText('Notas')).toHaveValue('')
@@ -349,7 +385,7 @@ describe('Importar alumnos', () => {
     renderAt('/admin/alumnos/importar')
     await chooseFile()
 
-    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 3, 3))).toBeInTheDocument()
+    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 3, [{ tab: copy.tabs.grados, rows: 3 }]))).toBeInTheDocument()
     const grados = screen.getByRole('region', { name: copy.tabMappingTitle(copy.tabs.grados) })
     expect(within(grados).getByLabelText('Rayas')).toHaveValue('sub_rank')
     expect(within(grados).getByLabelText('Fecha')).toHaveValue('awarded_on')
@@ -385,7 +421,7 @@ describe('Importar alumnos', () => {
     renderAt('/admin/alumnos/importar')
     await chooseFile()
 
-    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 0, 3))).toBeInTheDocument()
+    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 0, [{ tab: copy.tabs.grados, rows: 3 }]))).toBeInTheDocument()
     expect(screen.getByRole('region', { name: copy.mappingTitle })).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('Fecha'), '')
     expect(screen.getByText(copy.gradesRequired)).toBeInTheDocument()
@@ -396,13 +432,64 @@ describe('Importar alumnos', () => {
     await waitFor(() => expect(sent[0]?.rows).toEqual([]))
   })
 
+  it('maps a workbook\'s Pagos tab on a step of its own and reports its payments (#298)', async () => {
+    const sent = stubApi({ sheet: PAYMENTS_BOOK })
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+
+    expect(
+      await screen.findByText(copy.fileSummary('alumnos.csv', 3, [{ tab: copy.tabs.pagos, rows: 3 }])),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: copy.tabMappingTitle(copy.tabs.alumnos) })).toBeInTheDocument()
+    const pagos = screen.getByRole('region', { name: copy.tabMappingTitle(copy.tabs.pagos) })
+    expect(within(pagos).getByLabelText('Valor')).toHaveValue('amount_clp')
+    expect(within(pagos).getByLabelText('Mes')).toHaveValue('covers_month')
+
+    // The day paid and the amount are needed.
+    await userEvent.selectOptions(within(pagos).getByLabelText('Valor'), '')
+    expect(screen.getByText(copy.paymentsRequired)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.check })).toBeDisabled()
+    await userEvent.selectOptions(within(pagos).getByLabelText('Valor'), 'amount_clp')
+
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+    const report = await screen.findByRole('region', { name: copy.paymentsTitle })
+    expect(within(report).getByText(copy.paymentsSummary(1, 1, 1))).toBeInTheDocument()
+    expect(screen.getByText(copy.paymentsCreated(1, 25_000))).toBeInTheDocument()
+    const errors = within(report).getByRole('list', { name: copy.paymentsErrorsTitle })
+    expect(
+      within(errors).getByText(copy.fieldError(copy.paymentFields.name, copy.paymentError.unknown_person)),
+    ).toBeInTheDocument()
+    expect(
+      within(errors).getByText(copy.fieldError(copy.paymentFields.amount_clp, copy.paymentError.invalid_amount)),
+    ).toBeInTheDocument()
+    expect(sent[0]?.pagos).toEqual({ rows: PAYMENTS_BOOK.pagos?.rows, mapping: PAYMENTS_BOOK.pagos?.mapping })
+    // The apply button counts every tab's rows: 1 of Alumnos, 2 of Pagos.
+    expect(screen.getByRole('button', { name: copy.apply(3) })).toBeEnabled()
+  })
+
+  it('imports a Pagos tab alone', async () => {
+    const sent = stubApi({ sheet: { ...PAYMENTS_BOOK, headers: [], rows: [], mapping: {} } })
+    renderAt('/admin/alumnos/importar')
+    await userEvent.selectOptions(await screen.findByLabelText(copy.csvTab), copy.tabs.pagos)
+    await chooseFile()
+
+    expect(
+      await screen.findByText(copy.fileSummary('alumnos.csv', 0, [{ tab: copy.tabs.pagos, rows: 3 }])),
+    ).toBeInTheDocument()
+    expect(uploadedTabs).toEqual(['pagos'])
+    expect(screen.getByRole('region', { name: copy.mappingTitle })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+    await waitFor(() => expect(sent[0]?.rows).toEqual([]))
+    expect(sent[0]?.grados).toBeUndefined()
+  })
+
   it('says which tab a CSV is', async () => {
     stubApi()
     renderAt('/admin/alumnos/importar')
     await userEvent.selectOptions(await screen.findByLabelText(copy.csvTab), copy.tabs.grados)
     await chooseFile()
 
-    await screen.findByText(copy.fileSummary('alumnos.csv', 3, null))
+    await screen.findByText(copy.fileSummary('alumnos.csv', 3, []))
     expect(uploadedTabs).toEqual(['grados'])
   })
 

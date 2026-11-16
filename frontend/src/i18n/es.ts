@@ -480,9 +480,9 @@ export const es = {
       intro:
         'Sube la planilla del gimnasio (CSV o Excel). Primero revisamos cada fila sin guardar nada; después importas. Puedes volver a importarla: a quien ya está lo encontramos por su RUT (o su correo, o su nombre si no tiene ninguno) y no se duplica.',
       templateHint:
-        '¿Empiezas de cero, o traes alumnos antiguos, exalumnos y sus grados? Usa la plantilla de Rakin.',
+        '¿Empiezas de cero, o traes alumnos antiguos, exalumnos, sus pagos y sus grados? Usa la plantilla de Rakin.',
       csvTab: 'Si es un CSV, ¿qué contiene?',
-      tabs: { alumnos: 'Alumnos', grados: 'Grados' },
+      tabs: { alumnos: 'Alumnos', pagos: 'Pagos', grados: 'Grados' },
       template: 'Descargar plantilla',
       fileLabel: 'Planilla',
       choose: 'Elegir archivo',
@@ -491,17 +491,19 @@ export const es = {
       refused: {
         unreadable: 'No pudimos leer el archivo. Guárdalo como CSV o Excel (.xlsx) e inténtalo de nuevo.',
         empty: 'La planilla no tiene filas con datos.',
-        too_many_rows: 'La planilla tiene demasiadas filas (el máximo es 2.000).',
+        too_many_rows:
+          'La planilla tiene demasiadas filas (el máximo es 2.000 en Alumnos y en Grados, y 20.000 en Pagos).',
         too_many_empty_rows:
           'La planilla sigue con miles de filas vacías después de los datos. Copia los datos a una hoja nueva e inténtalo de nuevo.',
         too_large: 'El archivo pesa más de 5 MB.',
         failed: 'No pudimos procesar la planilla. Inténtalo de nuevo.',
       },
-      fileSummary: (name: string, rows: number, grades: number | null) => {
+      // The Alumnos tab's rows, and each other tab the workbook has.
+      fileSummary: (name: string, rows: number, others: { tab: string; rows: number }[]) => {
         const count = (n: number) => (n === 1 ? '1 fila' : `${n.toLocaleString('es-CL')} filas`)
-        if (grades === null) return `${name}: ${count(rows)}`
-        if (rows === 0) return `${name}: ${count(grades)} en Grados`
-        return `${name}: ${count(rows)} en Alumnos, ${count(grades)} en Grados`
+        if (others.length === 0) return `${name}: ${count(rows)}`
+        const tabs = rows > 0 ? [{ tab: 'Alumnos', rows }, ...others] : others
+        return `${name}: ${tabs.map((tab) => `${count(tab.rows)} en ${tab.tab}`).join(', ')}`
       },
       otherFile: 'Elegir otra planilla',
       mappingTitle: '¿Qué es cada columna?',
@@ -529,6 +531,17 @@ export const es = {
         left_reason: 'Motivo de baja',
         prior_classes: 'Clases antes de Rakin',
       },
+      paymentFields: {
+        rut: 'RUT',
+        email: 'Correo',
+        name: 'Nombre',
+        paid_on: 'Fecha de pago',
+        amount_clp: 'Monto',
+        covers_month: 'Mes que paga',
+        method: 'Método',
+        plan_name: 'Plan',
+        note: 'Nota',
+      },
       gradeFields: {
         rut: 'RUT',
         email: 'Correo',
@@ -539,6 +552,8 @@ export const es = {
         note: 'Nota',
       },
       nameRequired: 'Marca la columna con el nombre para seguir.',
+      paymentsRequired:
+        'En Pagos, marca la columna de la fecha de pago, la del monto y la de quién es (RUT, correo o nombre).',
       gradesRequired: 'En Grados, marca la columna del grado, la de la fecha y la de quién es (RUT, correo o nombre).',
       ranksTitle: 'Grados de la planilla',
       ranksHint: 'Elige a qué grado del gimnasio corresponde cada valor. Un valor sin elegir se informa como error.',
@@ -575,6 +590,33 @@ export const es = {
         ]
           .filter(Boolean)
           .join(' '),
+      paymentsCreated: (n: number, amount: number) =>
+        `Pagos anteriores nuevos: ${n.toLocaleString('es-CL')}, por $${amount.toLocaleString('es-CL')}.`,
+      paymentsTitle: 'Pagos anteriores',
+      paymentsSummary: (created: number, existing: number, refused: number) =>
+        [
+          created === 1 ? '1 pago nuevo' : `${created.toLocaleString('es-CL')} pagos nuevos`,
+          existing > 0 && (existing === 1 ? '1 ya estaba' : `${existing.toLocaleString('es-CL')} ya estaban`),
+          refused > 0 && (refused === 1 ? '1 con errores' : `${refused.toLocaleString('es-CL')} con errores`),
+        ]
+          .filter(Boolean)
+          .join(', ') + '. Quedan en el historial de cada alumno: no se cobran ni cambian lo que debe.',
+      paymentsErrorsTitle: 'Pagos con errores',
+      paymentsErrorsHint:
+        'Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.',
+      paymentError: {
+        required: 'falta',
+        invalid_rut: 'no es un RUT válido',
+        invalid_email: 'no es un correo válido',
+        invalid_date: 'no es una fecha válida (hasta 60 años atrás, nunca después de hoy)',
+        invalid_amount: 'no es un monto en pesos mayor que cero',
+        invalid_method: 'no es Efectivo, Transferencia ni Otro',
+        unknown_person: 'no está en Alumnos ni en el gimnasio',
+        ambiguous_name: 'hay dos personas con ese nombre: agrega RUT o correo',
+        covers_plan: 'ya está en su plan de Rakin: regístralo con «Pagado hasta» en su ficha',
+        repeated: 'se repite en una fila anterior (misma persona, fecha, monto y mes)',
+        too_long: 'es demasiado largo',
+      },
       gradesCreated: (n: number) => (n === 1 ? 'Grados nuevos: 1.' : `Grados nuevos: ${n}.`),
       gradesTitle: 'Grados',
       gradesSummary: (created: number, existing: number, refused: number) =>

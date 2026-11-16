@@ -110,7 +110,7 @@ def test_a_zip_that_is_not_a_workbook_is_unreadable() -> None:
 
 
 def test_too_many_rows_are_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(s, "MAX_ROWS", 2)
+    monkeypatch.setitem(s.ROW_CAPS, "alumnos", 2)
     assert len(read_sheet(b"n\na\nb\n").rows) == 2
     with pytest.raises(SheetError) as refused:
         read_sheet(b"n\na\nb\nc\n")
@@ -118,7 +118,7 @@ def test_too_many_rows_are_refused(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_a_sheet_that_goes_on_empty_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(s, "MAX_ROWS", 2)
+    monkeypatch.setitem(s.ROW_CAPS, "alumnos", 2)
     # 20 rows are scanned at most (`SCAN_FACTOR` times the cap), empty ones included.
     assert len(read_sheet(b"n\na" + b"\n" * 18 + b"b\n").rows) == 2
     with pytest.raises(SheetError) as refused:
@@ -129,7 +129,7 @@ def test_a_sheet_that_goes_on_empty_is_refused(monkeypatch: pytest.MonkeyPatch) 
 def test_an_xlsx_formatted_far_down_stops_at_the_scan_bound(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(s, "MAX_ROWS", 2)
+    monkeypatch.setitem(s.ROW_CAPS, "alumnos", 2)
     data = xlsx(["Nombre"], ["Camila"], *[[None]] * 30, ["Diego"])
     with pytest.raises(SheetError) as refused:
         read_sheet(data)
@@ -202,3 +202,24 @@ def test_a_tab_with_no_rows_is_left_out() -> None:
 def test_a_csv_is_the_tab_the_upload_says() -> None:
     assert list(s.read_book(b"Nombre,Grado\nCamila,Azul\n", "grados")) == ["grados"]
     assert list(s.read_book(b"Nombre\nCamila\n")) == ["alumnos"]
+
+
+def test_a_workbooks_pagos_tab_is_read_in_order_after_alumnos() -> None:
+    data = book(
+        ("Grados", GRADOS),
+        ("Pagos", [["RUT", "Monto"], ["12.345.678-5", "25.000"]]),
+        ("Alumnos", [["Nombre"], ["Camila"]]),
+    )
+    assert list(s.read_book(data)) == ["alumnos", "pagos", "grados"]
+    assert s.read_book(data)["pagos"].rows == [Row(2, ["12.345.678-5", "25.000"])]
+    assert list(s.read_book(b"RUT,Monto\n1-9,25000\n", "pagos")) == ["pagos"]
+
+
+def test_the_pagos_tab_takes_more_rows_than_the_others(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert s.ROW_CAPS == {"alumnos": 2000, "pagos": 20_000, "grados": 2000}
+    monkeypatch.setitem(s.ROW_CAPS, "alumnos", 2)
+    monkeypatch.setitem(s.ROW_CAPS, "pagos", 3)
+    assert len(s.read_book(b"n\na\nb\nc\n", "pagos")["pagos"].rows) == 3
+    with pytest.raises(SheetError) as refused:
+        s.read_book(b"n\na\nb\nc\n", "alumnos")
+    assert refused.value.code == "too_many_rows"
