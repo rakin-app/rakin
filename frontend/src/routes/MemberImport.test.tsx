@@ -2,7 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ImportReport, ImportRequest, RowResult, Sheet } from '../api/memberImport'
+import type { GradeReport, ImportReport, ImportRequest, RowResult, Sheet } from '../api/memberImport'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -19,6 +19,45 @@ const SHEET: Sheet = {
   ],
   mapping: { name: 0, phone: 1, plan: 2, due_on: 3 },
   file: { name: 'alumnos.csv', sha256: 'a'.repeat(64) },
+  grados: null,
+}
+
+// A workbook with a Grados tab (#299): the scheme says "Café", the sheet "Marrón".
+const BOOK: Sheet = {
+  ...SHEET,
+  grados: {
+    headers: ['Nombre', 'Grado', 'Rayas', 'Fecha'],
+    rows: [
+      { number: 2, cells: ['Camila Ortiz', 'Azul', '2', '12-08-2023'] },
+      { number: 3, cells: ['Camila Ortiz', 'Marrón', '', '01-03-2025'] },
+      { number: 4, cells: ['Nadie', 'azul', '', '01-03-2025'] },
+    ],
+    mapping: { name: 0, rank: 1, sub_rank: 2, awarded_on: 3 },
+  },
+}
+
+const SCHEME = {
+  ranks: [
+    { key: 'white', label: 'Blanca', sub_ranks: [] },
+    { key: 'blue', label: 'Azul', sub_ranks: [] },
+    { key: 'brown', label: 'Café', sub_ranks: [] },
+  ],
+  kids_ladder: [],
+  goal_metric: null,
+}
+
+function gradesFor(body: ImportRequest): GradeReport | null {
+  if (!body.grados) return null
+  return {
+    summary: { rows: 3, imported: 2, refused: 1, grades_created: 1 },
+    rows: [
+      { row: 2, name: 'Camila Ortiz', errors: [], grade: 'existing' },
+      body.grados.ranks['Marrón']
+        ? { row: 3, name: 'Camila Ortiz', errors: [], grade: 'created' }
+        : { row: 3, name: 'Camila Ortiz', errors: [{ field: 'rank', code: 'unknown_rank' }], grade: null },
+      { row: 4, name: 'Nadie', errors: [{ field: 'name', code: 'unknown_person' }], grade: null },
+    ],
+  }
 }
 
 const PLANS = [
@@ -71,15 +110,21 @@ function reportFor(body: ImportRequest): ImportReport {
       former_created: rows.filter((r) => r.former && r.person === 'created').length,
     },
     rows,
+    grados: gradesFor(body),
   }
 }
 
 type Sent = ImportRequest[]
 
-// The names the sheets were uploaded with.
+// The names the sheets were uploaded with, and the tab a CSV was said to be.
 let uploadedAs: (string | null)[] = []
+let uploadedTabs: (string | null)[] = []
 
-function stubApi({ role = 'owner', refuse }: { role?: string; refuse?: string } = {}): Sent {
+function stubApi({
+  role = 'owner',
+  refuse,
+  sheet = SHEET,
+}: { role?: string; refuse?: string; sheet?: Sheet } = {}): Sent {
   const sent: Sent = []
   vi.stubGlobal(
     'fetch',
@@ -90,10 +135,12 @@ function stubApi({ role = 'owner', refuse }: { role?: string; refuse?: string } 
       if (url.pathname === '/api/me/role') return json({ role })
       if (url.pathname === '/api/plans') return json(PLANS)
       if (url.pathname === '/api/people') return json({ items: [], total: 0 })
+      if (url.pathname === '/api/gym/grading-scheme') return json(SCHEME)
       if (url.pathname === '/api/import/sheet') {
         expect(init?.body).toBeInstanceOf(File)
         uploadedAs.push(url.searchParams.get('name'))
-        return refuse ? json({ detail: { code: refuse } }, 422) : json(SHEET)
+        uploadedTabs.push(url.searchParams.get('tab'))
+        return refuse ? json({ detail: { code: refuse } }, 422) : json(sheet)
       }
       if (url.pathname === '/api/import/members') {
         const body = JSON.parse(String(init?.body)) as ImportRequest
@@ -121,6 +168,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   extraRows = []
   uploadedAs = []
+  uploadedTabs = []
 })
 
 describe('Importar alumnos', () => {
@@ -129,7 +177,7 @@ describe('Importar alumnos', () => {
     renderAt('/admin/alumnos/importar')
     await chooseFile()
 
-    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 3))).toBeInTheDocument()
+    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 3, null))).toBeInTheDocument()
     expect(screen.getByLabelText('Nombre')).toHaveValue('name')
     expect(screen.getByLabelText('Celular')).toHaveValue('phone')
     expect(screen.getByLabelText('Notas')).toHaveValue('')
@@ -294,6 +342,68 @@ describe('Importar alumnos', () => {
 
     expect(screen.getByText(copy.nameRequired)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: copy.check })).toBeDisabled()
+  })
+
+  it('maps a workbook\'s Grados tab on a step of its own, its ranks by label until chosen (#299)', async () => {
+    const sent = stubApi({ sheet: BOOK })
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+
+    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 3, 3))).toBeInTheDocument()
+    const grados = screen.getByRole('region', { name: copy.tabMappingTitle(copy.tabs.grados) })
+    expect(within(grados).getByLabelText('Rayas')).toHaveValue('sub_rank')
+    expect(within(grados).getByLabelText('Fecha')).toHaveValue('awarded_on')
+    const ranks = screen.getByRole('region', { name: copy.ranksTitle })
+    // "Azul" and "azul" are one value, matched to the rank of that label.
+    expect(await within(ranks).findByLabelText('Azul')).toHaveValue('blue')
+    expect(within(ranks).getByLabelText('Marrón')).toHaveValue('')
+
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+    const report = await screen.findByRole('region', { name: copy.gradesTitle })
+    expect(within(report).getByText(copy.gradesSummary(1, 1, 2))).toBeInTheDocument()
+    // One was already there: its note is not updated either.
+    expect(within(report).getByText(copy.gradesExistingHint)).toBeInTheDocument()
+    const errors = within(report).getByRole('list', { name: copy.gradesErrorsTitle })
+    expect(
+      within(errors).getByText(copy.fieldError(copy.gradeFields.rank, copy.gradeError.unknown_rank)),
+    ).toBeInTheDocument()
+    expect(
+      within(errors).getByText(copy.fieldError(copy.gradeFields.name, copy.gradeError.unknown_person)),
+    ).toBeInTheDocument()
+    expect(sent[0]?.grados).toEqual({ rows: BOOK.grados?.rows, mapping: BOOK.grados?.mapping, ranks: { Azul: 'blue' } })
+
+    await userEvent.click(screen.getByRole('button', { name: copy.back }))
+    await userEvent.selectOptions(screen.getByLabelText('Marrón'), 'brown')
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+    await waitFor(() => expect(sent[1]?.grados?.ranks).toEqual({ Azul: 'blue', Marrón: 'brown' }))
+    // The apply button counts every tab's rows: 1 of Alumnos, 2 of Grados.
+    expect(await screen.findByRole('button', { name: copy.apply(3) })).toBeEnabled()
+  })
+
+  it('imports a Grados tab alone, and needs its rank, day and who', async () => {
+    const sent = stubApi({ sheet: { ...BOOK, headers: [], rows: [], mapping: {} } })
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+
+    expect(await screen.findByText(copy.fileSummary('alumnos.csv', 0, 3))).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: copy.mappingTitle })).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Fecha'), '')
+    expect(screen.getByText(copy.gradesRequired)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.check })).toBeDisabled()
+
+    await userEvent.selectOptions(screen.getByLabelText('Fecha'), 'awarded_on')
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+    await waitFor(() => expect(sent[0]?.rows).toEqual([]))
+  })
+
+  it('says which tab a CSV is', async () => {
+    stubApi()
+    renderAt('/admin/alumnos/importar')
+    await userEvent.selectOptions(await screen.findByLabelText(copy.csvTab), copy.tabs.grados)
+    await chooseFile()
+
+    await screen.findByText(copy.fileSummary('alumnos.csv', 3, null))
+    expect(uploadedTabs).toEqual(['grados'])
   })
 
   it('says why a file was refused', async () => {

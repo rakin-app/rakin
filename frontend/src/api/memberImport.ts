@@ -30,7 +30,25 @@ export type SheetRow = { number: number; cells: string[] }
 // The file the sheet was read from, sent back so the import's record names it.
 export type SheetFile = { name: string | null; sha256: string }
 
-export type Sheet = { headers: string[]; rows: SheetRow[]; mapping: Mapping; file: SheetFile }
+/** A Grados tab's column (#299): one row per belt or stripe earned. */
+export const GRADE_FIELDS = ['rut', 'email', 'name', 'rank', 'sub_rank', 'awarded_on', 'note'] as const
+export type GradeField = (typeof GRADE_FIELDS)[number]
+export type GradeMapping = Partial<Record<GradeField, number>>
+
+export type GradeSheet = { headers: string[]; rows: SheetRow[]; mapping: GradeMapping }
+
+/** The tabs a workbook is read by; a CSV is one of them, chosen on upload. */
+export const SHEET_TABS = ['alumnos', 'grados'] as const
+export type SheetTab = (typeof SHEET_TABS)[number]
+
+/** The Alumnos tab at the top level (no headers and no rows in a workbook without one), the others beside it. */
+export type Sheet = {
+  headers: string[]
+  rows: SheetRow[]
+  mapping: Mapping
+  file: SheetFile
+  grados: GradeSheet | null
+}
 
 export type RowErrorCode =
   | 'required'
@@ -83,6 +101,33 @@ export type RowResult = {
   former: boolean
 }
 
+export type GradeRowErrorCode =
+  | 'required'
+  | 'invalid_rut'
+  | 'invalid_email'
+  | 'invalid_date'
+  // No rank (or sub-rank) of the scheme by that label, and none chosen.
+  | 'unknown_rank'
+  // Nobody in the gym or on the Alumnos tab is the row: a grade creates no one.
+  | 'unknown_person'
+  | 'ambiguous_name'
+  // An earlier row gives them the same grade on the same day.
+  | 'repeated'
+  | 'too_long'
+
+export type GradeRowResult = {
+  row: number
+  name: string
+  errors: { field: GradeField; code: GradeRowErrorCode }[]
+  // `existing`: they already had that grade on that day.
+  grade: Outcome | null
+}
+
+export type GradeReport = {
+  summary: { rows: number; imported: number; refused: number; grades_created: number }
+  rows: GradeRowResult[]
+}
+
 export type ImportReport = {
   dry_run: boolean
   // The import's record in the gym's log; never on a dry run, nor when nothing was written.
@@ -102,6 +147,7 @@ export type ImportReport = {
     former_created: number
   }
   rows: RowResult[]
+  grados: GradeReport | null
 }
 
 const SHEET_REFUSALS = ['unreadable', 'empty', 'too_many_rows', 'too_many_empty_rows', 'too_large'] as const
@@ -111,9 +157,9 @@ export type SheetRefusal = (typeof SHEET_REFUSALS)[number]
 export const MAX_SHEET_BYTES = 5 * 1024 * 1024
 export const SHEET_TYPES = ['.csv', '.xlsx', 'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
 
-/** Read the file into rows; nothing is stored. */
-export function uploadSheet(file: File): Promise<Sheet> {
-  return apiFetch<Sheet>(`/api/import/sheet?${new URLSearchParams({ name: file.name })}`, {
+/** Read the file into rows; nothing is stored. A CSV is `tab`; a workbook says by its tabs' names. */
+export function uploadSheet(file: File, tab: SheetTab = 'alumnos'): Promise<Sheet> {
+  return apiFetch<Sheet>(`/api/import/sheet?${new URLSearchParams({ name: file.name, tab })}`, {
     method: 'POST',
     body: file,
     headers: { 'Content-Type': file.type || 'application/octet-stream' },
@@ -127,6 +173,12 @@ export type ImportRequest = {
   plans: Record<string, string | null>
   dry_run: boolean
   file?: SheetFile
+  grados?: {
+    rows: SheetRow[]
+    mapping: GradeMapping
+    // A Grado cell's value to the rank key it means, for values that are not a rank's label.
+    ranks: Record<string, string>
+  }
 }
 
 /** Rakin's sheet to fill in (#297): a file the browser downloads, not JSON. */

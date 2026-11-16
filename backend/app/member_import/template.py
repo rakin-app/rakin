@@ -5,6 +5,9 @@ them, each header one `rows.suggest_mapping` maps by itself, so a filled templat
 uploads with no change on the mapping step. One example row in grey, which the
 instructions say to delete; the gym's active plans as the Plan column's choices; and an
 "Instrucciones" tab.
+
+In a gym that grades, a Grados tab too (#299): one row per belt or stripe earned, the
+scheme's rank labels as the Grado column's choices.
 """
 
 import io
@@ -17,12 +20,15 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.ledger_export import put
+from app.member_import.grades import GradeField
 from app.member_import.rows import Field
 from app.member_import.sheet import MAX_ROWS
+from app.schemas.grading import GradingScheme
 
 TEMPLATE_NAME = "plantilla-alumnos.xlsx"
 
 ALUMNOS = "Alumnos"
+GRADOS = "Grados"
 INSTRUCTIONS = "Instrucciones"
 
 # Header, the field it maps to, and the example row's value.
@@ -63,6 +69,33 @@ NOTES: dict[Field, str] = {
     Field.PRIOR_CLASSES: "Cuántas clases tuvo antes de Rakin: un número.",
 }
 
+# The Grados tab's, as `grades.suggest_grade_mapping` maps them. The example is the
+# Alumnos tab's example student; its rank, the scheme's.
+GRADE_COLUMNS: tuple[tuple[str, GradeField, str], ...] = (
+    ("RUT", GradeField.RUT, "12.345.678-5"),
+    ("Correo", GradeField.EMAIL, ""),
+    ("Nombre", GradeField.NAME, "Martina Soto Pérez"),
+    ("Grado", GradeField.RANK, ""),
+    ("Sub-grado", GradeField.SUB_RANK, ""),
+    ("Fecha", GradeField.AWARDED_ON, "12-08-2023"),
+    ("Nota", GradeField.NOTE, "Graduación de invierno"),
+)
+
+GRADE_NOTES: dict[GradeField, str] = {
+    GradeField.RUT: "Quién recibió el grado: su RUT, su correo o su nombre, como en Alumnos.",
+    GradeField.RANK: "Obligatorio. El grado, de la lista.",
+    GradeField.SUB_RANK: (
+        "Opcional: cuántos grados (rayas) tiene, o el sub-grado por su nombre. Ej.: Azul y 2"
+        " = azul con 2 grados. Vacío = sin grados."
+    ),
+    GradeField.AWARDED_ON: "Obligatorio. El día que lo recibió, aunque sea antes de Rakin.",
+}
+
+GRADE_INTRO = (
+    "Una fila por grado recibido, en la pestaña Grados: el más reciente queda como su"
+    " grado actual. Cada persona debe estar en Alumnos o ya en Rakin; no se crea a nadie.",
+)
+
 INTRO = (
     "Una fila por alumno, en la pestaña Alumnos. La fila gris es un ejemplo: bórrala antes"
     " de subir la planilla.",
@@ -76,9 +109,9 @@ INTRO = (
 GREY = "808080"
 
 
-def template(plans: Sequence[str]) -> bytes:
+def template(plans: Sequence[str], scheme: GradingScheme | None = None) -> bytes:
     """The workbook, with `plans` (the gym's active plan names) as the Plan choices and
-    the first of them in the example row."""
+    the first of them in the example row, and a Grados tab for `scheme`'s ranks."""
     book = Workbook()
     alumnos = book.active
     assert alumnos is not None
@@ -91,6 +124,11 @@ def template(plans: Sequence[str]) -> bytes:
         letter = get_column_letter(column)
         alumnos.column_dimensions[letter].width = max(len(header), len(example)) + 4
     alumnos.freeze_panes = "A2"
+
+    ranks = [] if scheme is None else [r.label for r in (*scheme.ranks, *scheme.kids_ladder)]
+    grados = None
+    if scheme is not None and ranks:
+        grados = _grados(book, scheme)
 
     instructions = book.create_sheet(INSTRUCTIONS)
     instructions.column_dimensions["A"].width = 24
@@ -106,28 +144,69 @@ def template(plans: Sequence[str]) -> bytes:
         row += 1
         put(instructions, row, 1, header)
         put(instructions, row, 2, NOTES.get(field, ""))
+    if grados is not None:
+        row += 1
+        for line in GRADE_INTRO:
+            row += 1
+            put(instructions, row, 1, line)
+        row += 1
+        put(instructions, row, 1, f"Columna de {GRADOS}").font = Font(bold=True)
+        put(instructions, row, 2, "Qué va").font = Font(bold=True)
+        for header, grade_field, _ in GRADE_COLUMNS:
+            row += 1
+            put(instructions, row, 1, header)
+            put(instructions, row, 2, GRADE_NOTES.get(grade_field, ""))
 
     if plans:
-        _plan_choices(book, alumnos, plans)
+        _choices(book, alumnos, "Planes", plans, _column(COLUMNS, Field.PLAN))
+    if grados is not None:
+        _choices(book, grados, "Lista de grados", ranks, _column(GRADE_COLUMNS, GradeField.RANK))
 
     out = io.BytesIO()
     book.save(out)
     return out.getvalue()
 
 
-def _plan_choices(book: Workbook, alumnos: Worksheet, plans: Sequence[str]) -> None:
-    """The Plan column offers the gym's plans, listed on a hidden tab: a list typed into
-    the rule itself breaks on a comma in a name and stops at 255 characters."""
-    listed = book.create_sheet("Planes")
-    for row, name in enumerate(plans, start=1):
-        put(listed, row, 1, name)
+def _grados(book: Workbook, scheme: GradingScheme) -> Worksheet:
+    """The Grados tab, its example the Alumnos tab's student at the scheme's second rank
+    (the first a student is promoted to), with a stripe when it has them."""
+    ranks = [*scheme.ranks, *scheme.kids_ladder]
+    rank = ranks[1] if len(ranks) > 1 else ranks[0]
+    examples = {
+        GradeField.RANK: rank.label,
+        GradeField.SUB_RANK: "1" if len(rank.sub_ranks) > 1 else "",
+    }
+    grados: Worksheet = book.create_sheet(GRADOS)
+    for column, (header, field, example) in enumerate(GRADE_COLUMNS, start=1):
+        example = examples.get(field, example)
+        put(grados, 1, column, header).font = Font(bold=True)
+        put(grados, 2, column, example).font = Font(color=GREY, italic=True)
+        letter = get_column_letter(column)
+        grados.column_dimensions[letter].width = max(len(header), len(example)) + 4
+    grados.freeze_panes = "A2"
+    return grados
+
+
+def _column(columns: Sequence[tuple[str, object, str]], field: object) -> str:
+    return get_column_letter(next(i for i, c in enumerate(columns, 1) if c[1] is field))
+
+
+def _choices(
+    book: Workbook, tab: Worksheet, listed_on: str, values: Sequence[str], column: str
+) -> None:
+    """`tab`'s `column` offers `values`, listed on a hidden tab: a list typed into the
+    rule itself breaks on a comma in a name and stops at 255 characters."""
+    listed = book.create_sheet(listed_on)
+    for row, value in enumerate(values, start=1):
+        put(listed, row, 1, value)
     listed.sheet_state = "hidden"
-    column = get_column_letter(next(i for i, c in enumerate(COLUMNS, 1) if c[1] is Field.PLAN))
+    # A tab's name with a space is quoted in a formula.
+    ref = f"'{listed_on}'" if " " in listed_on else listed_on
     rule = DataValidation(
         type="list",
-        formula1=f"=Planes!$A$1:$A${len(plans)}",
+        formula1=f"={ref}!$A$1:$A${len(values)}",
         allow_blank=True,
         showErrorMessage=False,
     )
     rule.add(f"{column}2:{column}{MAX_ROWS + 1}")
-    alumnos.add_data_validation(rule)
+    tab.add_data_validation(rule)

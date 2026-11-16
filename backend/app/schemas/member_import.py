@@ -3,16 +3,29 @@
 The file is read once (`POST /api/import/sheet`) and the browser holds its rows from
 then on, sending them back with the admin's mapping for a dry run and then for real
 (`POST /api/import/members`). Nothing is stored between the two.
+
+A workbook has tabs (#299). The Alumnos tab is the top level of each body, as it was
+before there were others, and is empty in a workbook without one; every other tab is a
+field of its own (`grados`), absent when the workbook has none.
 """
 
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
+from app.member_import.grades import GradeErrorCode, GradeField
 from app.member_import.rows import ErrorCode
 from app.member_import.rows import Field as ImportField
 from app.member_import.sheet import MAX_CELL_LENGTH, MAX_COLUMNS, MAX_ROWS, SheetErrorCode
+from app.schemas.grading import Key
 
 Cell = Annotated[str, StringConstraints(max_length=MAX_CELL_LENGTH)]
 Column = Annotated[int, Field(ge=0, lt=MAX_COLUMNS)]
@@ -40,13 +53,23 @@ class SheetFile(BaseModel):
     sha256: Sha256
 
 
+class GradeSheet(BaseModel):
+    """The Grados tab: one row per belt or stripe earned."""
+
+    headers: list[str]
+    rows: list[SheetRow]
+    mapping: dict[GradeField, int]
+
+
 class Sheet(BaseModel):
+    # The Alumnos tab; no headers and no rows in a workbook without one.
     headers: list[str]
     rows: list[SheetRow]
     # The column each field most likely is, by its header.
     mapping: dict[ImportField, int]
     # Sent back with the rows, so the import says which file it was.
     file: SheetFile
+    grados: GradeSheet | None = None
 
 
 # `too_large`: over `MAX_UPLOAD_BYTES`. `unreadable`: neither a workbook nor text.
@@ -63,12 +86,41 @@ class SheetRefused(BaseModel):
     detail: SheetRefusal
 
 
-class MemberImport(BaseModel):
+def _one_field_per_column(mapping: dict[Any, int]) -> None:
+    if len(set(mapping.values())) != len(mapping):
+        raise ValueError("a column maps to one field only")
+
+
+class GradeImport(BaseModel):
+    """The Grados tab's rows, written after the Alumnos tab's."""
+
     model_config = ConfigDict(extra="forbid")
 
     rows: Annotated[list[SheetRow], Field(min_length=1, max_length=MAX_ROWS)]
-    # Field to column. `name` is required; one column is one field.
-    mapping: dict[ImportField, Column]
+    # Field to column: `rank`, `awarded_on`, and one of `rut`, `email` or `name`.
+    mapping: dict[GradeField, Column]
+    # A Grado cell's value to the rank it means, by key, for values that are not a
+    # rank's label ("Café" → `brown`).
+    ranks: dict[Cell, Key] = {}
+
+    @field_validator("mapping")
+    @classmethod
+    def _required(cls, value: dict[GradeField, int]) -> dict[GradeField, int]:
+        if GradeField.RANK not in value or GradeField.AWARDED_ON not in value:
+            raise ValueError("map a column to rank and one to awarded_on")
+        if not {GradeField.RUT, GradeField.EMAIL, GradeField.NAME} & value.keys():
+            raise ValueError("map a column to rut, email or name")
+        _one_field_per_column(value)
+        return value
+
+
+class MemberImport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # The Alumnos tab; empty when the workbook has none, and then `grados` has rows.
+    rows: Annotated[list[SheetRow], Field(max_length=MAX_ROWS)] = []
+    # Field to column. `name` is required with rows; one column is one field.
+    mapping: dict[ImportField, Column] = {}
     # A plan cell's value to the plan it means, for values that are not a plan's name;
     # `null` for no plan, so those rows import the person with no membership.
     plans: dict[Cell, uuid.UUID | None] = {}
@@ -76,15 +128,21 @@ class MemberImport(BaseModel):
     dry_run: bool = True
     # The file, as `POST /api/import/sheet` answered it: the import's record names it.
     file: SheetFile | None = None
+    grados: GradeImport | None = None
 
     @field_validator("mapping")
     @classmethod
     def _one_column_one_field(cls, value: dict[ImportField, int]) -> dict[ImportField, int]:
-        if ImportField.NAME not in value:
-            raise ValueError("map a column to name")
-        if len(set(value.values())) != len(value):
-            raise ValueError("a column maps to one field only")
+        _one_field_per_column(value)
         return value
+
+    @model_validator(mode="after")
+    def _some_rows(self) -> "MemberImport":
+        if not self.rows and self.grados is None:
+            raise ValueError("no rows to import")
+        if self.rows and ImportField.NAME not in self.mapping:
+            raise ValueError("map a column to name")
+        return self
 
 
 class RowError(BaseModel):
@@ -138,10 +196,41 @@ class ImportSummary(BaseModel):
     former_created: int = 0
 
 
+class GradeRowError(BaseModel):
+    field: GradeField
+    code: GradeErrorCode
+
+
+class GradeRowResult(BaseModel):
+    row: int
+    # As the row names them: its name, else its RUT or email.
+    name: str
+    # Empty when the row is imported; a row with errors writes nothing.
+    errors: list[GradeRowError]
+    # `existing`: the person already has this rank and sub-rank on that day.
+    grade: Outcome | None
+
+
+class GradeSummary(BaseModel):
+    rows: int
+    imported: int
+    refused: int
+    grades_created: int
+
+
+class GradeReport(BaseModel):
+    summary: GradeSummary
+    # In the sheet's order.
+    rows: list[GradeRowResult]
+
+
 class ImportReport(BaseModel):
     dry_run: bool
     # The import's `history_imported` row, when it wrote anything; never on a dry run.
     import_id: uuid.UUID | None = None
+    # The Alumnos tab's; all zero, with no rows, in a workbook without one.
     summary: ImportSummary
     # In the sheet's order.
     rows: list[RowResult]
+    # The Grados tab's, when the import had one.
+    grados: GradeReport | None = None

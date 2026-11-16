@@ -1,8 +1,13 @@
 """A spreadsheet as rows of text: the first row that holds anything is the header.
 
-An XLSX is read from its first worksheet. A CSV is UTF-8 (with or without the BOM
-Excel writes), else Windows-1252, which is what Excel in Spanish saves as "CSV"; its
-delimiter is a comma, semicolon or tab, whichever the file uses. Cells come back as
+A workbook is read by tab (`read_book`): the worksheets named Alumnos and Grados, by
+folded name, else the first visible one that is neither as Alumnos (#299). A hidden
+sheet is never that fallback, though it is the first: the template hides its lists. A CSV is one
+tab, the one the upload says. `read_sheet` is the Alumnos tab alone.
+
+A CSV is UTF-8 (with or without the BOM Excel writes), else Windows-1252, which is what
+Excel in Spanish saves as "CSV"; its delimiter is a comma, semicolon or tab, whichever
+the file uses. Cells come back as
 text: dates as `YYYY-MM-DD`, whole numbers without a decimal point, since a phone
 typed into Excel is often stored as the number 912345678.
 
@@ -13,11 +18,14 @@ can point at the line the admin sees.
 import csv
 import io
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal, get_args
 
 from openpyxl import load_workbook
+
+from app.member_import.rows import fold
 
 # Far above a small gym's roster (under ~150 active students), with room for history.
 MAX_ROWS = 2000
@@ -33,6 +41,14 @@ SCAN_FACTOR = 10
 # `too_many_empty_rows`: data, or formatting, that goes on past `SCAN_FACTOR * MAX_ROWS`
 # rows when most are empty.
 SheetErrorCode = Literal["unreadable", "empty", "too_many_rows", "too_many_empty_rows"]
+
+
+# The tabs an import reads, in the order it writes them: people first, so a grade finds a
+# student the Alumnos tab adds.
+Tab = Literal["alumnos", "grados"]
+TABS: tuple[Tab, ...] = get_args(Tab)
+# A workbook's tab that is never the Alumnos one, however it comes first.
+INSTRUCTIONS = "instrucciones"
 
 
 class SheetError(ValueError):
@@ -55,11 +71,31 @@ class Sheet:
 
 
 def read_sheet(data: bytes) -> Sheet:
-    """`data`, an XLSX or a CSV, as a header and its rows. Raises `SheetError`."""
+    """`data`, an XLSX or a CSV, as a header and its rows: the Alumnos tab. Raises
+    `SheetError`."""
+    sheet = read_book(data).get("alumnos")
+    if sheet is None:
+        raise SheetError("empty")
+    return sheet
+
+
+def read_book(data: bytes, csv_tab: Tab = "alumnos") -> dict[Tab, Sheet]:
+    """`data`, an XLSX or a CSV, as the tabs it has rows for; a CSV is `csv_tab`. A tab
+    with no rows is left out, and a book with none is `empty`. Raises `SheetError`."""
     # An XLSX is a zip; one that starts like a zip and is not one is a damaged workbook.
-    if data.startswith(ZIP_SIGNATURE):
-        return _table(_xlsx_rows(data))
-    return _table(_csv_rows(data))
+    if not data.startswith(ZIP_SIGNATURE):
+        return {csv_tab: _table(_csv_rows(data))}
+    book: dict[Tab, Sheet] = {}
+    with _workbook(data) as workbook:
+        for tab, worksheet in _tabs(workbook):
+            try:
+                book[tab] = _table(_xlsx_rows(worksheet))
+            except SheetError as error:
+                if error.code != "empty":
+                    raise
+    if not book:
+        raise SheetError("empty")
+    return book
 
 
 def _table(numbered: Iterable[tuple[int, list[str]]]) -> Sheet:
@@ -123,7 +159,8 @@ def _cell(value: object) -> str:
     return str(value)
 
 
-def _xlsx_rows(data: bytes) -> Iterator[tuple[int, list[str]]]:
+@contextmanager
+def _workbook(data: bytes) -> Iterator[Any]:
     # openpyxl parses through defusedxml, which is installed, so entity tricks fail. A
     # zip that is not a workbook, or a damaged one, raises any of a dozen types.
     try:
@@ -131,13 +168,39 @@ def _xlsx_rows(data: bytes) -> Iterator[tuple[int, list[str]]]:
     except Exception:
         raise SheetError("unreadable") from None
     try:
-        if not workbook.worksheets:
-            raise SheetError("empty")
-        rows = workbook.worksheets[0].iter_rows(max_col=MAX_COLUMNS, values_only=True)
-        yield from ((n, [_cell(v) for v in values]) for n, values in enumerate(rows, start=1))
-    except SheetError:
-        raise
-    except Exception:
-        raise SheetError("unreadable") from None
+        yield workbook
     finally:
         workbook.close()
+
+
+def _tabs(workbook: Any) -> list[tuple[Tab, Any]]:
+    """The worksheet each tab is, in `TABS` order."""
+    try:
+        worksheets = list(workbook.worksheets)
+        titles = [fold(ws.title) for ws in worksheets]
+        visible = [ws.sheet_state == "visible" for ws in worksheets]
+    except Exception:
+        raise SheetError("unreadable") from None
+    named = {tab: titles.index(tab) for tab in TABS if tab in titles}
+    if "alumnos" not in named:
+        # An old sheet: its first tab is the people, unless it is another tab or the
+        # template's instructions.
+        first = next(
+            (
+                i
+                for i, title in enumerate(titles)
+                if visible[i] and title not in (*TABS, INSTRUCTIONS)
+            ),
+            None,
+        )
+        if first is not None:
+            named["alumnos"] = first
+    return [(tab, worksheets[named[tab]]) for tab in TABS if tab in named]
+
+
+def _xlsx_rows(worksheet: Any) -> Iterator[tuple[int, list[str]]]:
+    try:
+        rows = worksheet.iter_rows(max_col=MAX_COLUMNS, values_only=True)
+        yield from ((n, [_cell(v) for v in values]) for n, values in enumerate(rows, start=1))
+    except Exception:
+        raise SheetError("unreadable") from None

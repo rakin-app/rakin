@@ -33,6 +33,15 @@ history a row writes gets a `history_set` row in the gym's log, and an import th
 writes anything one `history_imported` row, with the file's name and SHA-256 and the
 counts, whose id the others carry as `import_id`. A dry run writes neither.
 
+A workbook's Grados tab (#299), one row per belt or stripe earned, is written after the
+Alumnos tab in the same transaction, each row in its own savepoint, so a grade finds a
+student that tab adds, in the dry run too. A grade row never creates anyone: it finds
+them as the Alumnos tab does, by RUT, else email, else name, and is refused
+`unknown_person` when nobody is the row, `ambiguous_name` when two people are. A grade
+the person already has (rank, sub-rank and day) is `existing`, and one an earlier row
+gives them is `repeated`, so a second run adds none. Each is written `source` `import`
+with the run's `import_id`, and no `promoted` event: their latest is their rank now.
+
 `GET /api/import/template.xlsx` is the sheet to fill in (`app.member_import.template`),
 every header one the mapping suggests by itself.
 
@@ -52,6 +61,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.grades import readable_scheme
+from app.api.grading import stored_scheme
 from app.api.guardians import family, link
 from app.api.history import changes, record_history_set
 from app.api.memberships import PersonHasLeft, insert_membership
@@ -66,6 +77,14 @@ from app.api.people import (
 from app.domain import membership as domain
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.membership import PlanKind, PlanTerms
+from app.member_import.grades import (
+    Grade,
+    GradeErrorCode,
+    GradeField,
+    RankFinder,
+    read_grades,
+    suggest_grade_mapping,
+)
 from app.member_import.rows import (
     ErrorCode,
     Field,
@@ -76,11 +95,17 @@ from app.member_import.rows import (
     read_members,
     suggest_mapping,
 )
-from app.member_import.sheet import SheetError, read_sheet
+from app.member_import.sheet import SheetError, Tab, read_book
 from app.member_import.template import TEMPLATE_NAME, template
 from app.roles import AdminSession
 from app.schemas.member_import import (
     FileName,
+    GradeImport,
+    GradeReport,
+    GradeRowError,
+    GradeRowResult,
+    GradeSheet,
+    GradeSummary,
     ImportReport,
     ImportSummary,
     MemberImport,
@@ -193,6 +218,22 @@ INSERT_IMPORTED = text(
 )
 MISSING_PHONE = f"SELECT {missing_phone('gp')} FROM gym_person gp WHERE person_id = :id"
 
+# A grade the person already has: the same rank and sub-rank on the same day.
+HAS_GRADE = """
+    SELECT EXISTS (
+        SELECT FROM grade_event
+        WHERE person_id = :person AND rank_key = :rank_key AND awarded_on = :awarded_on
+          AND coalesce(sub_rank, '') = coalesce(CAST(:sub_rank AS text), '')
+    )
+"""
+# Recorded by whoever imports, with no membership (0054).
+INSERT_GRADE = """
+    INSERT INTO grade_event (gym_id, person_id, rank_key, sub_rank, awarded_on, awarded_by,
+                             note, source, import_id)
+    VALUES (current_setting('app.gym_id')::uuid, :person, :rank_key, :sub_rank, :awarded_on,
+            current_setting('app.person_id')::uuid, :note, 'import', :import_id)
+"""
+
 
 def _refused(status_code: int, code: SheetRefusalCode) -> HTTPException:
     return HTTPException(status_code, SheetRefusal(code=code).model_dump())
@@ -221,24 +262,38 @@ async def upload_sheet(
     session: AdminSession,
     # The file's name, which the import's record keeps beside its hash.
     name: Annotated[FileName | None, Query()] = None,
+    # The tab a CSV is; a workbook says by its tabs' names.
+    tab: Annotated[Tab, Query()] = "alumnos",
 ) -> Sheet:
-    """The spreadsheet in the body, as rows of text and a suggested mapping, with its
-    SHA-256 for the import to send back."""
+    """The spreadsheet in the body, as each tab's rows of text and a suggested mapping,
+    with its SHA-256 for the import to send back."""
     data = bytearray()
     async for chunk in request.stream():
         data += chunk
         if len(data) > MAX_UPLOAD_BYTES:
             raise _refused(status.HTTP_413_CONTENT_TOO_LARGE, "too_large")
     try:
-        sheet = read_sheet(bytes(data))
+        book = read_book(bytes(data), tab)
     except SheetError as error:
         raise _refused(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
+    alumnos, grados = book.get("alumnos"), book.get("grados")
     return Sheet(
-        headers=sheet.headers,
-        rows=[SheetRow(number=row.number, cells=row.cells) for row in sheet.rows],
-        mapping=suggest_mapping(sheet.headers),
+        headers=[] if alumnos is None else alumnos.headers,
+        rows=[] if alumnos is None else _sheet_rows(alumnos.rows),
+        mapping={} if alumnos is None else suggest_mapping(alumnos.headers),
         file=SheetFile(name=name, sha256=hashlib.sha256(data).hexdigest()),
+        grados=None
+        if grados is None
+        else GradeSheet(
+            headers=grados.headers,
+            rows=_sheet_rows(grados.rows),
+            mapping=suggest_grade_mapping(grados.headers),
+        ),
     )
+
+
+def _sheet_rows(rows: list[Any]) -> list[SheetRow]:
+    return [SheetRow(number=row.number, cells=row.cells) for row in rows]
 
 
 @router.get(
@@ -250,9 +305,12 @@ async def upload_sheet(
         }
     },
 )
-async def download_template(session: AdminSession) -> Response:
+async def download_template(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: AdminSession
+) -> Response:
     """ "Descargar plantilla": the Alumnos sheet to fill in, with the gym's active plans
-    as the Plan column's choices."""
+    as the Plan column's choices, and in a gym that grades a Grados tab, its ranks the
+    Grado column's."""
     # A drop-in is not a membership, so no row starts one (`dropin_plan`). A name two
     # plans share is offered once: the sheet matches it by name either way.
     plans = {
@@ -260,8 +318,12 @@ async def download_template(session: AdminSession) -> Response:
         for plan in await _plans(session)
         if plan.active and plan.terms.kind is not PlanKind.DROPIN
     }
+    settings = await session.scalar(
+        text("SELECT settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
+    )
+    scheme = readable_scheme(settings)
     return Response(
-        content=template([plans[key] for key in sorted(plans)]),
+        content=template([plans[key] for key in sorted(plans)], scheme),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{TEMPLATE_NAME}"'},
     )
@@ -274,6 +336,15 @@ class RowRefused(Exception):
         super().__init__(on, code)
         self.on = on
         self.code: ErrorCode = code
+
+
+class GradeRefused(Exception):
+    """A Grados row the gym's data refuses: it writes nothing."""
+
+    def __init__(self, on: GradeField, code: GradeErrorCode) -> None:
+        super().__init__(on, code)
+        self.on = on
+        self.code: GradeErrorCode = code
 
 
 class Writer:
@@ -329,20 +400,34 @@ class Writer:
         *,
         sheet: bool = False,
         keyless: bool = False,
+        dependents: bool = False,
     ) -> uuid.UUID | None:
         """Whoever this gym has under `name`, told apart by `dob` and `phone` when
         several are; with `sheet`, first whoever this sheet's own row of the name is.
-        With `keyless`, only those with no RUT and no email. `AmbiguousName` when
-        nothing tells them apart."""
+        With `keyless`, only those with no RUT and no email; with `dependents`, someone's
+        dependents too. `AmbiguousName` when nothing tells them apart."""
         if sheet and (written := self.written.get(fold(name))):
             return told_apart(written, dob, phone)
         folded = fold(name)
         found = [
             Named(r.person_id, r.dob, r.phone)
             for r in (await self._people_by_name()).values()
-            if r.folded == folded and not r.dependent and (r.keyless or not keyless)
+            if r.folded == folded and (dependents or not r.dependent) and (r.keyless or not keyless)
         ]
         return told_apart(found, dob, phone)
+
+    async def find(self, rut: str | None, email: str | None, name: str) -> uuid.UUID | None:
+        """Whoever a row of another tab names: by the RUT, else the email, else, among
+        those with neither when it gives one, by `name`, dependents included. This gym's
+        people and those this run wrote; nobody is created or changed. `AmbiguousName`
+        when two of the name are."""
+        if (rut or email) and (found := await find_in_gym(self.session, rut, email)):
+            return found.person_id
+        if not name:
+            return None
+        return await self._named(
+            name, None, None, keyless=rut is not None or email is not None, dependents=True
+        )
 
     async def _in_gym(self, rut: str | None, email: str | None, field: Field) -> uuid.UUID | None:
         """Whoever this gym has under the RUT, or the email (`find_in_gym`): one with no
@@ -590,6 +675,61 @@ class Writer:
         return "created"
 
 
+class GradeWriter:
+    """Writes Grados rows for the people `writer` finds, after the Alumnos tab's."""
+
+    def __init__(self, writer: Writer) -> None:
+        self.writer = writer
+        self.session = writer.session
+        # The grades this run's rows have given, so an equal later row is `repeated`.
+        self.given: set[tuple[uuid.UUID, str, str | None, date]] = set()
+
+    async def row(self, grade: Grade) -> GradeRowResult:
+        assert grade.rank is not None and grade.awarded_on is not None
+        try:
+            person_id = await self.writer.find(grade.rut, grade.email, grade.name)
+        except AmbiguousName:
+            raise GradeRefused(GradeField.NAME, "ambiguous_name") from None
+        if person_id is None:
+            on = GradeField.NAME if grade.key is None else _key_field(grade)
+            raise GradeRefused(on, "unknown_person")
+        given = (person_id, grade.rank.key, grade.sub_rank, grade.awarded_on)
+        if given in self.given:
+            raise GradeRefused(GradeField.RANK, "repeated")
+        values = {
+            "person": person_id,
+            "rank_key": grade.rank.key,
+            "sub_rank": grade.sub_rank,
+            "awarded_on": grade.awarded_on,
+        }
+        outcome: Outcome = "existing"
+        if not await self.session.scalar(text(HAS_GRADE), values):
+            await self.session.execute(
+                text(INSERT_GRADE),
+                {**values, "note": grade.note, "import_id": self.writer.import_id},
+            )
+            outcome = "created"
+        self.given.add(given)
+        return GradeRowResult(row=grade.number, name=_grade_name(grade), errors=[], grade=outcome)
+
+
+def _key_field(grade: Grade) -> GradeField:
+    return GradeField.RUT if grade.rut is not None else GradeField.EMAIL
+
+
+def _grade_name(grade: Grade) -> str:
+    return grade.name or grade.rut or grade.email or ""
+
+
+def _grade_refusal(grade: Grade) -> GradeRowResult:
+    return GradeRowResult(
+        row=grade.number,
+        name=_grade_name(grade),
+        errors=[GradeRowError(field=e.field, code=e.code) for e in grade.errors],
+        grade=None,
+    )
+
+
 def _refusal(member: Member) -> RowResult:
     return RowResult(
         row=member.number,
@@ -655,49 +795,94 @@ async def import_members(
         results[index] = _refusal(member)
     rows = [results[index] for index in range(len(members))]
     summary = _summary(rows)
+    grados = None
+    if body.grados is not None:
+        grados = await _import_grades(session, tenant, writer, body.grados, today)
     if body.dry_run:
         await everything.rollback()
     else:
-        if import_id is not None and _wrote(summary):
-            await _record_import(session, import_id, body.file, summary)
+        if import_id is not None and _wrote(summary, grados):
+            await _record_import(session, import_id, body.file, summary, grados)
         else:
             # Nothing written, so nothing recorded.
             import_id = None
         await everything.commit()
-    return ImportReport(dry_run=body.dry_run, import_id=import_id, summary=summary, rows=rows)
+    return ImportReport(
+        dry_run=body.dry_run, import_id=import_id, summary=summary, rows=rows, grados=grados
+    )
 
 
-def _wrote(summary: ImportSummary) -> bool:
+async def _import_grades(
+    session: AsyncSession, tenant: Tenant, writer: Writer, tab: GradeImport, today: date
+) -> GradeReport:
+    """The Grados tab's rows, each in its own savepoint, after every Alumnos row."""
+    settings = await session.scalar(
+        text("SELECT settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
+    )
+    finder = RankFinder(stored_scheme(tenant.gym_id, settings), tab.ranks)
+    grades = read_grades([(row.number, row.cells) for row in tab.rows], tab.mapping, finder, today)
+    grade_writer = GradeWriter(writer)
+    rows: list[GradeRowResult] = []
+    for grade in grades:
+        if not grade.errors:
+            try:
+                async with session.begin_nested():
+                    rows.append(await grade_writer.row(grade))
+                continue
+            except GradeRefused as refused:
+                grade.refuse(refused.on, refused.code)
+        rows.append(_grade_refusal(grade))
+    refused_rows = sum(1 for row in rows if row.errors)
+    return GradeReport(
+        summary=GradeSummary(
+            rows=len(rows),
+            imported=len(rows) - refused_rows,
+            refused=refused_rows,
+            grades_created=sum(row.grade == "created" for row in rows),
+        ),
+        rows=rows,
+    )
+
+
+def _wrote(summary: ImportSummary, grados: GradeReport | None) -> bool:
     return (
         summary.people_created
         + summary.links_created
         + summary.memberships_created
         + summary.history_set
+        + (0 if grados is None else grados.summary.grades_created)
     ) > 0
 
 
 async def _record_import(
-    session: AsyncSession, import_id: uuid.UUID, file: SheetFile | None, summary: ImportSummary
+    session: AsyncSession,
+    import_id: uuid.UUID,
+    file: SheetFile | None,
+    summary: ImportSummary,
+    grados: GradeReport | None,
 ) -> None:
-    """The import's `history_imported` row: which file, and what it wrote."""
+    """The import's `history_imported` row: which file, and what each tab wrote."""
+    counts: dict[str, Any] = {}
+    if summary.rows:
+        counts["alumnos"] = summary.model_dump(
+            include={
+                "rows",
+                "imported",
+                "refused",
+                "people_created",
+                "links_created",
+                "memberships_created",
+                "history_set",
+                "former_created",
+            }
+        )
+    if grados is not None:
+        counts["grados"] = grados.summary.model_dump()
     detail = {
         "file_name": None if file is None else file.name,
         "sha256": None if file is None else file.sha256,
-        "tabs": ["alumnos"],
-        "counts": {
-            "alumnos": summary.model_dump(
-                include={
-                    "rows",
-                    "imported",
-                    "refused",
-                    "people_created",
-                    "links_created",
-                    "memberships_created",
-                    "history_set",
-                    "former_created",
-                }
-            )
-        },
+        "tabs": list(counts),
+        "counts": counts,
     }
     result = await session.execute(INSERT_IMPORTED, {"id": import_id, "detail": json.dumps(detail)})
     if result.rowcount != 1:  # type: ignore[attr-defined]
