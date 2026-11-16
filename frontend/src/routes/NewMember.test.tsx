@@ -294,6 +294,14 @@ describe('Nuevo alumno', () => {
     expect(within(f).getByText(copy.needed.identity)).toBeInTheDocument()
     expect(within(f).getByText(copy.needed.phone)).toBeInTheDocument()
     expect(enrolments(calls)).toEqual([])
+    // Focus goes to the first field that needs something, which names its message (#362).
+    const rut = within(f).getByLabelText(copy.rut)
+    expect(rut).toHaveFocus()
+    expect(rut).toHaveAccessibleDescription(`${copy.rutHint} ${copy.needed.identity}`)
+    expect(within(f).getByLabelText(copy.email)).toHaveAccessibleDescription(copy.needed.identity)
+    expect(within(f).getByLabelText(copy.phone)).toHaveAccessibleDescription(
+      `${copy.phoneHint} ${copy.needed.phone}`,
+    )
   })
 
   it('saves someone with no phone when "No tiene WhatsApp" is ticked', async () => {
@@ -344,6 +352,8 @@ describe('Nuevo alumno', () => {
 
     expect(await within(f).findByText(copy.refused.rut)).toBeInTheDocument()
     expect(within(f).getByLabelText(copy.rut)).toHaveAttribute('aria-invalid', 'true')
+    await waitFor(() => expect(within(f).getByLabelText(copy.rut)).toHaveFocus())
+    expect(within(f).getByLabelText(copy.guardianEmail)).toHaveAccessibleDescription(copy.refused.email)
     expect(within(f).getByText(copy.refused.dob)).toBeInTheDocument()
     expect(within(f).getByLabelText(copy.guardianEmail)).toHaveAttribute('aria-invalid', 'true')
     expect(within(f).getByLabelText(copy.guardianRut)).toHaveAttribute('aria-invalid', 'false')

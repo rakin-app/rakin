@@ -19,6 +19,7 @@ import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
 import { MyPlans } from './MyPlans'
 import { ProofUpload } from './ProofUpload'
+import { Loading } from '../components/Loading'
 import { Card, PlainList, Section } from '../components/Card'
 import { scrollBehavior } from '../motion'
 
@@ -42,7 +43,7 @@ export function MeHome() {
       <PageContainer>
         <PageHeader title={copy.home.title} />
         {page.isPending ? (
-          <p className="me-home__note">{copy.home.loading}</p>
+          <Loading className="me-home__note">{copy.home.loading}</Loading>
         ) : (
           <div className="me-home__note" role="alert">
             <p>{copy.home.error}</p>
@@ -110,6 +111,9 @@ function NextPayment({ page }: { page: MyPage }) {
   }
 
   const { period, status } = next
+  // A proof already sent (#362): the card says it waits on the gym, and sending another
+  // is the quiet way, not the card's main action.
+  const inReview = status === 'in_review'
   return (
     <>
       <section className="next" aria-label={copy.next.title}>
@@ -125,16 +129,17 @@ function NextPayment({ page }: { page: MyPage }) {
             {copy.next.due(t.common.longDay(period.due_date), period.person_id === page.person_id ? null : period.person_name)}
           </span>
         </div>
+        {inReview && <p className="next__review">{copy.next.inReview}</p>}
         {page.bank_account ? <Bank account={page.bank_account} /> : <p className="next__no-bank">{copy.next.noBank}</p>}
         <div className={page.bank_account ? 'next__actions' : 'next__actions next__actions--single'}>
           {page.bank_account && <CopyBank account={page.bank_account} />}
           <Button
-            variant="primary" size="lg" inverse
+            variant={inReview ? 'secondary' : 'primary'} size="lg" inverse
             aria-expanded={uploading}
             aria-controls={uploadId}
             onClick={() => setUploading((open) => !open)}
           >
-            {copy.next.upload}
+            {inReview ? copy.next.uploadAnother : copy.next.upload}
           </Button>
         </div>
       </section>
@@ -286,7 +291,7 @@ function MyClasses({ mine }: { mine: string }) {
       </p>
     )
   }
-  if (!classes.data) return <p className="me-home__note">{copy.classes.loading}</p>
+  if (!classes.data) return <Loading className="me-home__note">{copy.classes.loading}</Loading>
   return (
     <>
       {classes.data.people.map((person) => (
@@ -316,11 +321,10 @@ function PersonClassList({ person, mine, timeZone }: { person: PersonClasses; mi
             {shown.map((held) => (
               <li key={held.session_id} className="history__row my-class">
                 <span className="history__what">
+                  {/* The class is the row's title, its topic after the day when it has one (#362). */}
+                  <span className="history__month">{held.class_type_name}</span>
                   <span className="history__detail">
-                    {words.when(t.common.shortDay(zonedDay(held.starts_at, timeZone)), held.class_type_name)}
-                  </span>
-                  <span className={held.topic ? 'history__month' : 'history__month my-class__no-topic'}>
-                    {held.topic ?? words.noTopic}
+                    {words.when(t.common.shortDay(zonedDay(held.starts_at, timeZone)), held.topic)}
                   </span>
                   <TagList tags={held.tags} label={words.tags} />
                 </span>

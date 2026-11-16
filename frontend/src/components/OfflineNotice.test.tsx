@@ -1,10 +1,11 @@
-import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { onlineManager, QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch } from '../api/client'
 import { useSubmit, type OfflinePolicy } from '../api/submit'
 import { es } from '../i18n/es'
+import { Loading } from './Loading'
 import { OfflineNotice } from './OfflineNotice'
 
 const copy = es.offline
@@ -38,6 +39,27 @@ function renderForm(offline?: OfflinePolicy) {
   )
 }
 
+// A screen with a query's answer on it: the screen's content, or only the host's
+// (`meta.ambient`); with `loading`, a loading line beside it as well.
+function Screen({ ambient, loading }: { ambient: boolean; loading: boolean }) {
+  const data = useQuery({ queryKey: ['screen'], queryFn: () => 'loaded', meta: { ambient } })
+  return (
+    <>
+      <p>{data.data}</p>
+      {loading && <Loading>Cargando…</Loading>}
+    </>
+  )
+}
+
+function renderScreen({ ambient, loading = false }: { ambient: boolean; loading?: boolean }) {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Screen ambient={ambient} loading={loading} />
+      <OfflineNotice />
+    </QueryClientProvider>,
+  )
+}
+
 // The live region, there when it has nothing to say too.
 const notice = () => document.querySelector('[aria-live="polite"].offline-notice')
 
@@ -53,6 +75,36 @@ afterEach(() => {
 })
 
 describe('OfflineNotice', () => {
+  it('says what is on screen may be out of date while offline, until the signal is back (#362)', async () => {
+    stubFetch()
+    renderScreen({ ambient: false })
+    expect(await screen.findByText('loaded')).toBeInTheDocument()
+
+    setOnline(false)
+    expect(screen.getByText(copy.stale)).toBeInTheDocument()
+    setOnline(true)
+    expect(notice()).toBeEmptyDOMElement()
+  })
+
+  it('says nothing of out-of-date data where only the host or the session has loaded (#362)', async () => {
+    stubFetch()
+    renderScreen({ ambient: true })
+    expect(await screen.findByText('loaded')).toBeInTheDocument()
+
+    setOnline(false)
+    expect(notice()).toBeEmptyDOMElement()
+  })
+
+  it('leaves "Sin conexión" to a screen whose loading line says it already (#362)', async () => {
+    stubFetch()
+    renderScreen({ ambient: false, loading: true })
+    expect(await screen.findByText('loaded')).toBeInTheDocument()
+
+    setOnline(false)
+    expect(screen.getByText(copy.reading)).toBeInTheDocument()
+    expect(notice()).toBeEmptyDOMElement()
+  })
+
   it('says nothing while online', async () => {
     stubFetch()
     renderForm()

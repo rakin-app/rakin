@@ -8,6 +8,7 @@ import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, refusal, SectionHead } from './settingsForm'
+import { Loading } from '../components/Loading'
 import { Banner, Card, cardClass, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.tags
@@ -34,7 +35,7 @@ export function ClassTagSettings() {
     setEditing(id)
   }
 
-  if (tags.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (tags.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
   if (tags.isError) {
     return <LoadFailed error={tags.error} message={copy.error} retry={() => void tags.refetch()} />
   }

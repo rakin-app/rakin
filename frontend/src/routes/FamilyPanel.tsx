@@ -14,6 +14,7 @@ import { Button } from '../components/Button'
 import { Input, SearchInput } from '../components/Field'
 import { t } from '../i18n/es'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 import { Banner, PlainList } from '../components/Card'
 
 const copy = t.admin.family
@@ -41,7 +42,7 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
   })
   const failed = add.error ?? unlink.error
 
-  if (family.isPending) return <p className="family__note">{copy.loading}</p>
+  if (family.isPending) return <Loading className="family__note">{copy.loading}</Loading>
   if (family.isError) {
     return (
       <p className="family__note" role="alert">

@@ -132,6 +132,21 @@
   font-size: var(--text-xs);
 }
 
+/* "Toca" on a touch screen, plain "Ampliar" with a mouse or trackpad (#362). */
+.review__hint-pointer {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .review__hint-touch {
+    display: none;
+  }
+
+  .review__hint-pointer {
+    display: inline;
+  }
+}
+
 .review__proof--file {
   color: var(--color-accent);
   font-weight: var(--font-weight-semibold);

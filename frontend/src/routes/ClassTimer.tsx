@@ -60,6 +60,7 @@ import { Banner, cardClass, PlainList, SectionTitle } from '../components/Card'
 import { PageTitle } from '../components/PageHeader'
 import './Classes.css'
 import './ClassTimer.css'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.timer
 
@@ -119,7 +120,7 @@ export function ClassTimer() {
   if (session.isPending || me.isPending) {
     return (
       <Shell sessionId={sessionId}>
-        <p className="classes__note">{copy.loading}</p>
+        <Loading className="classes__note">{copy.loading}</Loading>
       </Shell>
     )
   }
@@ -319,7 +320,7 @@ function Prepare({
   if (plan.isPending || suggested.isPending || kinds.isPending) {
     return (
       <Shell sessionId={session.id} title={session.class_type_name}>
-        <p className="classes__note">{copy.loading}</p>
+        <Loading className="classes__note">{copy.loading}</Loading>
       </Shell>
     )
   }
@@ -695,7 +696,8 @@ function Running({
         <Button icon inverse aria-label={copy.back} onClick={() => setLeaving(true)}>
           <ChevronLeftIcon />
         </Button>
-        <span className="timer__class">{session.class_type_name}</span>
+        {/* The screen's heading (#362), at the size of the line it is. */}
+        <h1 className="timer__class">{session.class_type_name}</h1>
         <span className="timer__position">{words.position(run.index + 1, run.blocks.length)}</span>
       </header>
       <div className="timer__main">

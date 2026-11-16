@@ -28,6 +28,7 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './ExtraCharges.css'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.extra
 const clp = t.common.clp
@@ -121,7 +122,7 @@ function Title({ title }: { title: string }) {
 
 function ChargeList() {
   const charges = useQuery(chargesQuery())
-  if (charges.isPending) return <p className="extra__note">{copy.loading}</p>
+  if (charges.isPending) return <Loading className="extra__note">{copy.loading}</Loading>
   if (charges.isError) {
     return (
       <div className="extra__note" role="alert">
@@ -264,7 +265,7 @@ async function everyone(program: string, plan: string, rank: RankChoice | null):
 function GroupEditor({ groupId, onClose }: { groupId: string | null; onClose: (message?: string) => void }) {
   const existing = useQuery({ ...groupQuery(groupId ?? ''), enabled: groupId !== null })
   if (groupId === null) return <GroupForm groupId={null} initialName="" initialMembers={[]} onClose={onClose} />
-  if (!existing.data) return <p className="extra__note">{copy.loading}</p>
+  if (!existing.data) return <Loading className="extra__note">{copy.loading}</Loading>
   return (
     <GroupForm
       groupId={groupId}

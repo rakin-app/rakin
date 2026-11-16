@@ -85,6 +85,7 @@ import { AssignForm, AssignPlan, assignsPlan, ChangePlanForm, changesPlan, isLiv
 import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 import { PageTitle } from '../components/PageHeader'
 
 const copy = t.admin.member
@@ -131,7 +132,7 @@ export function MemberDetail() {
   if (person.isPending || memberships.isPending) {
     return (
       <Shell>
-        <p className="member__note">{copy.loading}</p>
+        <Loading className="member__note">{copy.loading}</Loading>
       </Shell>
     )
   }
@@ -1156,9 +1157,9 @@ function ReactivateForm({
             {reactivateRefusal(quote.error)}
           </Banner>
         ) : (
-          <p className="member__detail" role="status">
+          <Loading className="member__detail" role="status">
             {form.loading}
-          </p>
+          </Loading>
         )}
         <div className="member__form-actions">
           <Button onClick={onCancel}>{form.cancel}</Button>
@@ -1705,9 +1706,9 @@ export function PaymentAheadForm({
 
   if (quote.isPending) {
     return (
-      <p className="member__note" role="status">
+      <Loading className="member__note" role="status">
         {words.loading}
-      </p>
+      </Loading>
     )
   }
   if (quote.isError) {

@@ -20,6 +20,7 @@ import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 import { Banner, Card, cardClass } from '../components/Card'
 
 const copy = t.admin.settings.joinLink
@@ -50,7 +51,7 @@ export function JoinLinkSettings() {
   // Here, not in the section, so it outlives the reload after a revoke.
   const [notice, setNotice] = useState<string | null>(null)
 
-  if (link.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (link.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
   if (link.isError && !none) {
     return <LoadFailed error={link.error} message={copy.error} retry={() => void link.refetch()} />
   }

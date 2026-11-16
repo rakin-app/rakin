@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { customFieldsQuery } from '../api/customFields'
 import { familyConflict, type PersonRef } from '../api/family'
@@ -8,8 +8,10 @@ import { personQuery } from '../api/member'
 import { duplicateOf, enrol, type Enrolment, type GuardianChoice } from '../api/people'
 import { useGymToday } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
+import { cx } from '../components/classNames'
 import { SegmentedControl } from '../components/Chip'
 import { Input } from '../components/Field'
+import { useFocusFirstInvalid } from '../components/focusInvalid'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
@@ -62,6 +64,10 @@ export function refusals(error: unknown): Refusals {
 // A guardian picked from the gym: whether the gym can reach them, by phone or because
 // they have no WhatsApp, is the API's check too.
 type Picked = PersonRef & { reachable: boolean }
+
+// The form's messages, each with an id its control points at (#362).
+const MESSAGES = ['first', 'rut', 'email', 'identity', 'phone', 'dob', 'gName', 'gRut', 'gEmail', 'gIdentity', 'gPhone'] as const
+type Message = (typeof MESSAGES)[number]
 
 type Kind = 'current' | 'former'
 const KINDS: readonly { value: Kind; label: string }[] = [
@@ -122,6 +128,7 @@ export function NewMember() {
     welcome: useId(),
     welcomeHint: useId(),
     fields: useId(),
+    errors: useId(),
   }
 
   const minor = person.dob !== '' && isMinor(person.dob, today)
@@ -151,6 +158,7 @@ export function NewMember() {
       (guardian.phone.trim() === '' ? !guardian.noWhatsapp : !MOBILE.test(guardian.phone.trim())),
   }
   const ready = !Object.values(problems).some(Boolean)
+  const err = Object.fromEntries(MESSAGES.map((key) => [key, `${ids.errors}-${key}`])) as Record<Message, string>
 
   const save = useSubmit({
     offline: 'refuse',
@@ -168,10 +176,18 @@ export function NewMember() {
     },
   })
 
+  const formRef = useRef<HTMLFormElement>(null)
+  const [refusedAttempts, setRefusedAttempts] = useState(0)
+  useFocusFirstInvalid(formRef, refusedAttempts)
+  useFocusFirstInvalid(formRef, save.error)
+
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!ready) return
+    if (!ready) {
+      setRefusedAttempts((n) => n + 1)
+      return
+    }
     const optional = (value: string) => (value.trim() ? value.trim() : undefined)
     let chosen: GuardianChoice | undefined
     if (guardian.kind === 'existing' && guardian.picked) chosen = { person_id: guardian.picked.id }
@@ -229,7 +245,7 @@ export function NewMember() {
   return (
     <>
       {header}
-      <form className="new-member" aria-label={copy.title} onSubmit={submit} noValidate>
+      <form ref={formRef} className="new-member" aria-label={copy.title} onSubmit={submit} noValidate>
         <Card as="div" className="member__form">
           <label htmlFor={ids.first} className="member__label">
             {copy.firstName}
@@ -240,9 +256,10 @@ export function NewMember() {
             maxLength={100}
             value={person.firstName}
             aria-invalid={checked && problems.firstName}
+            aria-describedby={checked && problems.firstName ? err.first : undefined}
             onChange={set('firstName')}
           />
-          {checked && problems.firstName && <Needed text={copy.needed.firstName} />}
+          {checked && problems.firstName && <Needed id={err.first} text={copy.needed.firstName} />}
 
           <label htmlFor={ids.last} className="member__label">
             {copy.lastName}
@@ -262,14 +279,18 @@ export function NewMember() {
             id={ids.rut}
             autoComplete="off"
             value={person.rut}
-            aria-describedby={ids.rutHint}
+            aria-describedby={cx(
+              ids.rutHint,
+              refused.person.rut && err.rut,
+              checked && problems.identity && err.identity,
+            )}
             aria-invalid={(checked && problems.identity) || refused.person.rut !== undefined}
             onChange={set('rut')}
           />
           <p id={ids.rutHint} className="member__detail">
             {copy.rutHint}
           </p>
-          {refused.person.rut && <Needed text={refused.person.rut} />}
+          {refused.person.rut && <Needed id={err.rut} text={refused.person.rut} />}
 
           <label htmlFor={ids.email} className="member__label">
             {copy.email}
@@ -280,10 +301,13 @@ export function NewMember() {
             autoComplete="off"
             value={person.email}
             aria-invalid={(checked && problems.identity) || refused.person.email !== undefined}
+            aria-describedby={
+              cx(refused.person.email && err.email, checked && problems.identity && err.identity) || undefined
+            }
             onChange={set('email')}
           />
-          {refused.person.email && <Needed text={refused.person.email} />}
-          {checked && problems.identity && <Needed text={copy.needed.identity} />}
+          {refused.person.email && <Needed id={err.email} text={refused.person.email} />}
+          {checked && problems.identity && <Needed id={err.identity} text={copy.needed.identity} />}
 
           <label htmlFor={ids.phone} className="member__label">
             {hasGuardian || noWhatsapp ? copy.phoneOptional : copy.phone}
@@ -294,7 +318,10 @@ export function NewMember() {
             inputMode="tel"
             autoComplete="off"
             value={person.phone}
-            aria-describedby={ids.phoneHint}
+            aria-describedby={cx(
+              ids.phoneHint,
+              ((checked && problems.phone) || refused.person.phone !== undefined) && err.phone,
+            )}
             aria-invalid={(checked && problems.phone) || refused.person.phone !== undefined}
             onChange={set('phone')}
           />
@@ -313,9 +340,9 @@ export function NewMember() {
             </CheckRow>
           )}
           {checked && problems.phone ? (
-            <Needed text={copy.needed.phone} />
+            <Needed id={err.phone} text={copy.needed.phone} />
           ) : (
-            refused.person.phone && <Needed text={refused.person.phone} />
+            refused.person.phone && <Needed id={err.phone} text={refused.person.phone} />
           )}
 
           <label htmlFor={ids.dob} className="member__label">
@@ -327,9 +354,10 @@ export function NewMember() {
             max={today}
             value={person.dob}
             aria-invalid={refused.person.dob !== undefined}
+            aria-describedby={refused.person.dob ? err.dob : undefined}
             onChange={set('dob')}
           />
-          {refused.person.dob && <Needed text={refused.person.dob} />}
+          {refused.person.dob && <Needed id={err.dob} text={refused.person.dob} />}
         </Card>
 
         <Card className="member__form" aria-label={copy.guardianTitle}>
@@ -393,9 +421,10 @@ export function NewMember() {
                     maxLength={200}
                     value={guardian.name}
                     aria-invalid={checked && problems.guardianName}
+                    aria-describedby={checked && problems.guardianName ? err.gName : undefined}
                     onChange={(e) => setGuardian({ ...guardian, name: e.target.value })}
                   />
-                  {checked && problems.guardianName && <Needed text={copy.needed.guardianName} />}
+                  {checked && problems.guardianName && <Needed id={err.gName} text={copy.needed.guardianName} />}
                   <label htmlFor={ids.gRut} className="member__label">
                     {copy.guardianRut}
                   </label>
@@ -404,9 +433,13 @@ export function NewMember() {
                     autoComplete="off"
                     value={guardian.rut}
                     aria-invalid={(checked && problems.guardianIdentity) || refused.guardian.rut !== undefined}
+                    aria-describedby={
+                      cx(refused.guardian.rut && err.gRut, checked && problems.guardianIdentity && err.gIdentity) ||
+                      undefined
+                    }
                     onChange={(e) => setGuardian({ ...guardian, rut: e.target.value })}
                   />
-                  {refused.guardian.rut && <Needed text={refused.guardian.rut} />}
+                  {refused.guardian.rut && <Needed id={err.gRut} text={refused.guardian.rut} />}
                   <label htmlFor={ids.gEmail} className="member__label">
                     {copy.guardianEmail}
                   </label>
@@ -416,10 +449,16 @@ export function NewMember() {
                     autoComplete="off"
                     value={guardian.email}
                     aria-invalid={(checked && problems.guardianIdentity) || refused.guardian.email !== undefined}
+                    aria-describedby={
+                      cx(refused.guardian.email && err.gEmail, checked && problems.guardianIdentity && err.gIdentity) ||
+                      undefined
+                    }
                     onChange={(e) => setGuardian({ ...guardian, email: e.target.value })}
                   />
-                  {refused.guardian.email && <Needed text={refused.guardian.email} />}
-                  {checked && problems.guardianIdentity && <Needed text={copy.needed.guardianIdentity} />}
+                  {refused.guardian.email && <Needed id={err.gEmail} text={refused.guardian.email} />}
+                  {checked && problems.guardianIdentity && (
+                    <Needed id={err.gIdentity} text={copy.needed.guardianIdentity} />
+                  )}
                   <label htmlFor={ids.gPhone} className="member__label">
                     {guardian.noWhatsapp ? copy.guardianPhoneOptional : copy.guardianPhone}
                   </label>
@@ -430,6 +469,9 @@ export function NewMember() {
                     autoComplete="off"
                     value={guardian.phone}
                     aria-invalid={(checked && problems.guardianPhone) || refused.guardian.phone !== undefined}
+                    aria-describedby={
+                      (checked && problems.guardianPhone) || refused.guardian.phone !== undefined ? err.gPhone : undefined
+                    }
                     onChange={(e) => setGuardian({ ...guardian, phone: e.target.value })}
                   />
                   <CheckRow htmlFor={ids.gNoWhatsapp}>
@@ -442,9 +484,9 @@ export function NewMember() {
                     {copy.noWhatsapp}
                   </CheckRow>
                   {checked && problems.guardianPhone ? (
-                    <Needed text={copy.needed.guardianPhone} />
+                    <Needed id={err.gPhone} text={copy.needed.guardianPhone} />
                   ) : (
-                    refused.guardian.phone && <Needed text={refused.guardian.phone} />
+                    refused.guardian.phone && <Needed id={err.gPhone} text={refused.guardian.phone} />
                   )}
                 </>
               )}
@@ -537,9 +579,9 @@ export function NewMember() {
   )
 }
 
-export function Needed({ text }: { text: string }) {
+export function Needed({ id, text }: { id?: string; text: string }) {
   return (
-    <Banner tone="error">
+    <Banner id={id} tone="error">
       {text}
     </Banner>
   )

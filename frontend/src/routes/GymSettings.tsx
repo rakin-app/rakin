@@ -12,12 +12,14 @@ import { myselfQuery, type MyRole } from '../api/me'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
+import { useFocusFirstInvalid } from '../components/focusInvalid'
 import { t } from '../i18n/es'
 import { DEFAULT_THEME, THEMES, wearTheme, type Theme } from '../theme'
 import { ActivitySettings } from './ActivitySettings'
 import { LogoSettings } from './LogoSettings'
 import { Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 import { Banner, cardClass, CheckRow, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.gym
@@ -105,7 +107,7 @@ export function GymSettings() {
     <section className="settings__section" aria-label={t.admin.settings.sections.gym}>
       <SectionHead intro={t.admin.settings.descriptions.gym} />
       {settings.isPending ? (
-        <p className="settings__note">{t.admin.settings.loading}</p>
+        <Loading className="settings__note">{t.admin.settings.loading}</Loading>
       ) : settings.isError ? (
         <LoadFailed error={settings.error} message={copy.error} retry={() => void settings.refetch()} />
       ) : (
@@ -145,6 +147,8 @@ function GymForm({ settings }: { settings: Settings }) {
     },
   })
   const errors = validationErrors(save.error)
+  const formRef = useRef<HTMLFormElement>(null)
+  useFocusFirstInvalid(formRef, save.error)
   const blank = (value: string) => value.trim() === ''
   const errorOf = (field: string, draft: string) =>
     field in errors ? refusal(errors[field]!, field, copy, blank(draft)) : undefined
@@ -167,7 +171,7 @@ function GymForm({ settings }: { settings: Settings }) {
   }
 
   return (
-    <form className="settings__form settings__form--panels" aria-label={copy.formLabel} onSubmit={submit} noValidate>
+    <form ref={formRef} className="settings__form settings__form--panels" aria-label={copy.formLabel} onSubmit={submit} noValidate>
       <fieldset className={cardClass({}, 'settings__card')}>
         <SectionTitle as="legend" className="settings__legend">{copy.profile}</SectionTitle>
         <Field label={copy.name} error={errorOf('name', drafts.name)}>

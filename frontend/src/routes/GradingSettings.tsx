@@ -22,6 +22,7 @@ import { ChevronDownIcon, CloseIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { Field, integerOf, LoadFailed, MoveButtons, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.settings.grading
 const LADDERS = ['ranks', 'kids_ladder'] as const
@@ -134,7 +135,7 @@ export function GradingSettings() {
   const scheme = useQuery({ ...gradingSchemeQuery(), enabled: grades })
   const presets = useQuery({ ...gradingPresetsQuery, enabled: grades })
 
-  if (activities.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (activities.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
   if (activities.isError) {
     return (
       <LoadFailed
@@ -146,7 +147,7 @@ export function GradingSettings() {
   }
   // No activity grades (#245): nothing here applies until one does.
   if (!grades) return <GradingOff />
-  if (scheme.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (scheme.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
   const stale = isStale(scheme.error)
   if (scheme.isError && !stale) {
     return <LoadFailed error={scheme.error} message={copy.error} retry={() => void scheme.refetch()} />

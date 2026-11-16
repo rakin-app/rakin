@@ -24,6 +24,7 @@ import { shortDay, weekdayDay, toDate } from '../format'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.settings.schedule
 const form = copy.form
@@ -73,7 +74,7 @@ export function ScheduleSettings() {
     setEditing(id)
   }
 
-  if (slots.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (slots.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
   if (slots.isError) {
     return <LoadFailed error={slots.error} message={copy.error} retry={() => void slots.refetch()} />
   }
@@ -514,7 +515,7 @@ function ClosedDays({ today }: { today: string }) {
         </div>
       </form>
       {days.isPending ? (
-        <p className="settings__note">{t.admin.settings.loading}</p>
+        <Loading className="settings__note">{t.admin.settings.loading}</Loading>
       ) : days.isError ? (
         <LoadFailed error={days.error} message={words.error} retry={() => void days.refetch()} />
       ) : days.data.length === 0 ? (

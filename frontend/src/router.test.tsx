@@ -453,5 +453,15 @@ describe('other paths', () => {
   it('shows the not-found page for unknown paths', async () => {
     renderAt('/nope')
     expect(await screen.findByRole('heading', { level: 1, name: es.notFound.title })).toBeInTheDocument()
+    expect(screen.getByRole('main')).toBeInTheDocument()
+  })
+
+  it('keeps the admin shell around an unknown /admin path (#362)', async () => {
+    stubApi((api) => (api === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }))
+    renderAt('/admin/nada')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.notFound.title })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: es.nav.label })).toBeInTheDocument()
+    expect(screen.getAllByRole('main')).toHaveLength(1)
   })
 })

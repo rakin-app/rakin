@@ -27,6 +27,7 @@ import { usePageTitle } from '../pageTitle'
 import { PaymentFor } from './Payments'
 import { Banner, Card, EmptyState, PlainList } from '../components/Card'
 import './Students.css'
+import { LoadingText } from '../components/Loading'
 
 const copy = t.admin.students
 
@@ -319,7 +320,9 @@ export function Students() {
 
         {members.isPending ? (
           <Card flush>
-            <EmptyState>{copy.loading}</EmptyState>
+            <EmptyState>
+              <LoadingText>{copy.loading}</LoadingText>
+            </EmptyState>
           </Card>
         ) : members.isError && rows.length === 0 ? (
           <Card flush role="alert">

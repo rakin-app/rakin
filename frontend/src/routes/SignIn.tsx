@@ -88,7 +88,7 @@ export function SignIn() {
   }
 
   return (
-    <div className="signin">
+    <main className="signin">
       <PageHeader
         mark={gym && <GymMark name={gym.name} logo={gym.logo} size="large" />}
         eyebrow={
@@ -183,7 +183,7 @@ export function SignIn() {
           </form>
         )}
       </Card>
-    </div>
+    </main>
   )
 }
 

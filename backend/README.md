@@ -480,7 +480,7 @@ Each gym has a public privacy notice at `/privacidad` on its host (#168), linked
 
 | Method | Path | Does |
 | --- | --- | --- |
-| `GET` | `/api/privacy` | no session: `{gym, legal_name, rut, email, address, updated_on, human_check}` (`human_check`: whether `HUMAN_CHECK` is on, so the notice names that provider only then) for the gym the host names, else the session's gym, else the one whose join link `?link=` is (the join form on the shared host). 404 `no_privacy_notice` for a gym that has not filled in its details, or no gym at all |
+| `GET` | `/api/privacy` | no session: `{gym, legal_name, rut, email, address, updated_on, human_check}` (`human_check`: whether `HUMAN_CHECK` is on, so the notice names that provider only then) for the gym the host names, else the session's gym, else the one whose join link `?link=` is (the join form on the shared host). 404 `no_privacy_notice` for a gym that has not filled in its details, `no_gym` for no gym at all (a visitor on the base host, an unknown link) |
 
 Until the details are set, the join link cannot be generated (`POST /api/join-link`, 409 `privacy_incomplete`), and a link made before them answers 404 `invalid_link`, since its form would ask for consent to a notice that does not exist.
 

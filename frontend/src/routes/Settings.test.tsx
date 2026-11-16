@@ -448,6 +448,8 @@ describe('Ajustes: Gimnasio', () => {
     expect(within(settings).getByLabelText(gym.rut)).toHaveAccessibleDescription(gym.value['bank_account.rut'])
     expect(within(settings).getByLabelText(gym.bankName)).toHaveAccessibleDescription(invalid.required)
     expect(within(settings).getByLabelText(gym.name)).toHaveAttribute('aria-invalid', 'false')
+    // Focus is on the first field refused, not left on the page (#362).
+    expect(settings.querySelector('[aria-invalid="true"]')).toHaveFocus()
   })
 
   it('says so when the save fails for another reason', async () => {

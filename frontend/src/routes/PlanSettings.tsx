@@ -17,6 +17,7 @@ import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { EditRow, Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 import { Banner, Card, cardClass, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.plans
@@ -107,7 +108,7 @@ export function PlanSettings() {
     setEditing(id)
   }
 
-  if (plans.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (plans.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
   if (plans.isError) {
     return <LoadFailed error={plans.error} message={copy.error} retry={() => void plans.refetch()} />
   }

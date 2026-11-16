@@ -19,6 +19,7 @@ import { Input, Select, Textarea } from '../components/Field'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, MoveButtons, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 import { Banner, Card, cardClass, CheckRow, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.fields
@@ -74,7 +75,7 @@ export function FieldSettings() {
     setEditing(key)
   }
 
-  if (fields.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (fields.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
   if (fields.isError) {
     return <LoadFailed error={fields.error} message={copy.error} retry={() => void fields.refetch()} />
   }

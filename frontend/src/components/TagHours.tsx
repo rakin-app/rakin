@@ -11,6 +11,7 @@ import { Card, PlainList, Section, SectionHeader } from './Card'
 import { SegmentedControl } from './Chip'
 import { ChevronLeftIcon, ChevronRightIcon } from './icons'
 import './TagHours.css'
+import { Loading } from './Loading'
 
 const copy = t.tagHours
 
@@ -93,7 +94,7 @@ export function TagHoursCard<Key extends QueryKey>({
           <NoDuration hours={hours.data} linked />
         </>
       ) : (
-        <BarNote>{copy.loading}</BarNote>
+        <Loading className="bar-note">{copy.loading}</Loading>
       )}
       {note && <BarNote>{note}</BarNote>}
     </>

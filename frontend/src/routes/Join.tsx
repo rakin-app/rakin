@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { ADULT_AGE, ageOn, joinFormQuery, submitJoinRequest, type JoinSubmission } from '../api/join'
 import { privacyPath } from '../api/privacy'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Field, FieldError, Input } from '../components/Field'
+import { useFocusFirstInvalid } from '../components/focusInvalid'
 import { Grid, PageContainer } from '../components/Layout'
 import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
@@ -14,6 +15,7 @@ import { t } from '../i18n/es'
 import { RAKIN, useDocumentTitle } from '../pageTitle'
 import './Join.css'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 import { Card, CheckRow, SectionTitle } from '../components/Card'
 
 const copy = t.join
@@ -77,7 +79,7 @@ export function Join() {
   if (form.isPending) {
     return (
       <Shell>
-        <p role="status">{copy.loading}</p>
+        <Loading role="status">{copy.loading}</Loading>
       </Shell>
     )
   }
@@ -120,14 +122,16 @@ function Shell({
   children: ReactNode
 }) {
   return (
-    <PageContainer className="join">
-      <PageHeader
-        mark={gym && <GymMark name={gym.gym} logo={gym.gym_logo} size="large" />}
-        eyebrow={copy.eyebrow}
-        title={title ?? t.app.name}
-      />
-      <Card as="div" className="join__card">{children}</Card>
-    </PageContainer>
+    <main>
+      <PageContainer className="join">
+        <PageHeader
+          mark={gym && <GymMark name={gym.gym} logo={gym.gym_logo} size="large" />}
+          eyebrow={copy.eyebrow}
+          title={title ?? t.app.name}
+        />
+        <Card as="div" className="join__card">{children}</Card>
+      </PageContainer>
+    </main>
   )
 }
 
@@ -194,6 +198,11 @@ function JoinFormBody({
   const required = requiredFields(minor, minor ? guardianNoWhatsapp : adultNoWhatsapp)
   const empty = (field: keyof Drafts) => drafts[field].trim() === ''
   const errors = validationErrors(send.error)
+  const formRef = useRef<HTMLFormElement>(null)
+  const [refusedAttempts, setRefusedAttempts] = useState(0)
+  // A new token on each failure, the form's own checks' or the API's.
+  const failure = useMemo(() => (refusedAttempts || send.error ? {} : null), [refusedAttempts, send.error])
+  useFocusFirstInvalid(formRef, failure)
   // An empty field is only ever missing, never malformed: "Escribe tu RUT no válido"
   // is no help to someone who has written nothing.
   const error = (field: keyof Drafts) => {
@@ -215,12 +224,15 @@ function JoinFormBody({
     event.preventDefault()
     setTried(true)
     if (!consent) setConsentMissing(true)
-    if (!consent || required.some(empty)) return
+    if (!consent || required.some(empty)) {
+      setRefusedAttempts((n) => n + 1)
+      return
+    }
     send.mutate()
   }
 
   return (
-    <form className="join__form" onSubmit={submit} noValidate>
+    <form ref={formRef} className="join__form" onSubmit={submit} noValidate>
       {program && <p className="join__program">{copy.program(program)}</p>}
       <p className="join__intro">{copy.intro}</p>
       {/* Side by side from 1024px, in pairs that read together. */}

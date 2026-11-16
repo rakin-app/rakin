@@ -15,6 +15,7 @@ import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
 import { Field } from './settingsForm'
+import { Loading } from '../components/Loading'
 import { Banner, cardClass, CheckRow, PlainList, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.gym.activities
@@ -66,7 +67,7 @@ export function ActivitySettings() {
       <SectionTitle as="legend" className="settings__legend">{copy.title}</SectionTitle>
       <p className="settings__hint">{copy.hint}</p>
       {activities.isPending ? (
-        <p className="settings__note">{t.admin.settings.loading}</p>
+        <Loading className="settings__note">{t.admin.settings.loading}</Loading>
       ) : activities.isError ? (
         <div className="settings__preview">
           <Banner tone="error">

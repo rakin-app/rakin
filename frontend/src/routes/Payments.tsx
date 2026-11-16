@@ -30,6 +30,7 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { PaymentAheadForm, PaymentForm } from './MemberDetail'
 import './Payments.css'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.payments
 const clp = t.common.clp
@@ -211,7 +212,7 @@ function Book() {
       )}
 
       {book.isPending ? (
-        <p className="payments__note">{copy.loading}</p>
+        <Loading className="payments__note">{copy.loading}</Loading>
       ) : book.isError && !latest ? (
         <div className="payments__note" role="alert">
           <p>{copy.error}</p>
@@ -443,7 +444,7 @@ export function PaymentFor({
     )
   }
   if (memberships.isPending || (membership && ledger.isPending)) {
-    return <p className="payments__hint">{words.loading}</p>
+    return <Loading className="payments__hint">{words.loading}</Loading>
   }
   if (!membership) return <p className="payments__hint">{words.noPlan}</p>
   if (periods.length === 0) {

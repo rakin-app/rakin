@@ -7,6 +7,7 @@ import { BarError, BarList, BarNote } from './BarList'
 import { Card, Section, SectionHeader } from './Card'
 import { SegmentedControl } from './Chip'
 import './MatTime.css'
+import { Loading } from './Loading'
 
 const copy = t.matTime
 
@@ -38,7 +39,7 @@ function Loaded({
   // While it loads, the card holds its place, so what is below it does not jump.
   return (
     <Card className="mat-time--loading" aria-busy="true" aria-label={mine ? copy.mine : copy.theirs}>
-      <BarNote>{copy.loading}</BarNote>
+      <Loading className="bar-note">{copy.loading}</Loading>
     </Card>
   )
 }

@@ -157,10 +157,12 @@ TOKENS = {
     "--font-weight-display": "600",
     "--text-xs": "12px",
     "--text-base": "15px",
+    "--text-xl": "22px",
     "--text-3xl": "30px",
     "--tracking-eyebrow": "0.06em",
     "--tracking-title": "-0.02em",
     "--space-0-5": "2px",
+    "--space-2": "8px",
     "--space-3": "12px",
     "--space-4": "16px",
     "--space-5": "20px",
@@ -209,11 +211,12 @@ STYLESHEET = (
     "border-radius:50%;object-fit:cover}"
     ".eyebrow{margin:0 0 var(--space-0-5);color:var(--color-text-muted);font-size:var(--text-xs);"
     "font-weight:600;letter-spacing:var(--tracking-eyebrow);text-transform:uppercase}"
-    ".eyebrow--logo{margin-bottom:var(--space-3);color:var(--color-heading);font-size:20px;"
-    "text-transform:none}"
+    # The logo as `/ingresar` draws it (`.signin__logo`, #362): the same size and gap.
+    ".eyebrow--logo{margin-bottom:var(--space-2);color:var(--color-heading);font-size:var(--text-xl);"
+    "letter-spacing:var(--tracking-title);text-transform:none}"
     ".logo{display:inline-flex;align-items:center;gap:.34em;font-family:var(--font-display);"
     "font-weight:var(--font-weight-display);letter-spacing:var(--tracking-title);line-height:1}"
-    ".logo__symbol{width:1.22em;height:1.22em}"
+    ".logo__symbol{flex:none;width:1.22em;height:1.22em}"
     ".logo__tile{fill:var(--color-inverse)}.logo__mat{fill:var(--color-inverse-text)}"
     ".logo__centre{fill:var(--color-moss)}"
     ".logo__ring{fill:none;stroke:var(--color-moss);stroke-opacity:.6;stroke-width:2}"
