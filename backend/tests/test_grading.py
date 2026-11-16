@@ -143,7 +143,7 @@ def test_no_code_outside_the_presets_names_a_sport() -> None:
     allowed = {
         APP / "domain" / "grading.py",
         APP / "domain" / "vocabulary.py",
-        APP / "domain" / "sparring.py",
+        APP / "domain" / "practice.py",
     }
     offenders = [
         str(path.relative_to(APP))

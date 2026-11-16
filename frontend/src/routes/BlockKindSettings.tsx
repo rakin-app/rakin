@@ -10,9 +10,7 @@ import {
   type BlockKind,
   type BlockKindChanges,
 } from '../api/blockKinds'
-import { useSparring } from '../api/activities'
 import { ApiError } from '../api/client'
-import { gymSettingsQuery, updateGymSettings } from '../api/gym'
 import { myselfQuery } from '../api/me'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
@@ -33,15 +31,10 @@ const form = copy.form
  * (archived, to the API), which keeps the time already recorded, and whether it is
  * sparring is then fixed. A row opens its edit form, which deactivates and deletes; the
  * row keeps its ↑ ↓.
- *
- * Above them, whether the gym spars at all (#346): off, the API archives Sparring and
- * Drilling, and the archived sparring kinds and every mention of sparring leave the
- * screen; on, they come back.
  */
 export function BlockKindSettings() {
   const queryClient = useQueryClient()
   const kinds = useQuery(blockKindsQuery)
-  const sparring = useSparring()
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -69,7 +62,6 @@ export function BlockKindSettings() {
   // The API lists archived kinds last, whatever their position: only the others move.
   const list = kinds.data
   const active = list.filter((k) => !k.archived)
-  const shown = sparring ? list : list.filter((k) => !(k.archived && k.is_sparring))
   const move = (index: number, by: -1 | 1) => {
     const ids = active.map((k) => k.id)
     ;[ids[index], ids[index + by]] = [ids[index + by]!, ids[index]!]
@@ -89,13 +81,6 @@ export function BlockKindSettings() {
           )
         }
       />
-      <SparringSwitch
-        on={sparring}
-        onDone={(message) => {
-          setEditing(null)
-          setNotice(message)
-        }}
-      />
       {notice && (
         <Banner tone="done">
           {notice}
@@ -107,11 +92,11 @@ export function BlockKindSettings() {
           {copy.reorderFailed}
         </Banner>
       )}
-      {shown.length === 0 ? (
+      {list.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
         <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
-          {shown.map((kind) => {
+          {list.map((kind) => {
             const index = active.indexOf(kind)
             return editing === kind.id ? (
               <li key={kind.id}>
@@ -124,7 +109,7 @@ export function BlockKindSettings() {
                 title={
                   <>
                     {kind.name}
-                    {sparring && kind.is_sparring && <span className="settings__tag">{copy.sparring}</span>}
+                    {kind.is_sparring && <span className="settings__tag">{copy.sparring}</span>}
                     {kind.archived && <span className="settings__tag">{copy.archived}</span>}
                   </>
                 }
@@ -151,37 +136,6 @@ export function BlockKindSettings() {
   )
 }
 
-/** "El dojo hace randori": saved as soon as it changes, with what it did said below. */
-function SparringSwitch({ on, onDone }: { on: boolean; onDone: (message: string) => void }) {
-  const queryClient = useQueryClient()
-  const save = useSubmit({
-    mutationFn: (next: boolean) => updateGymSettings({ sparring: next }),
-    onSuccess: async (answer) => {
-      onDone(answer.sparring ? copy.sparringOn : copy.sparringOff)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: myselfQuery().queryKey }),
-        queryClient.invalidateQueries({ queryKey: gymSettingsQuery().queryKey }),
-        queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey }),
-      ])
-    },
-  })
-  return (
-    <Card className="settings__card settings__field">
-      <CheckRow start>
-        <input
-          type="checkbox"
-          checked={save.isPending ? save.variables : on}
-          disabled={save.isPending}
-          onChange={(e) => save.mutate(e.target.checked)}
-        />
-        {copy.sparringSwitch}
-      </CheckRow>
-      <p className="settings__hint">{copy.sparringSwitchHint}</p>
-      {save.isError && <Banner tone="error">{copy.toggleFailed}</Banner>}
-    </Card>
-  )
-}
-
 function BlockKindForm({
   kind,
   onCancel,
@@ -192,7 +146,6 @@ function BlockKindForm({
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
-  const spars = useSparring()
   const [name, setName] = useState(kind?.name ?? '')
   const [sparring, setSparring] = useState(kind?.is_sparring ?? false)
 
@@ -208,7 +161,11 @@ function BlockKindForm({
     mutationFn: () => (kind ? updateBlockKind(kind.id, changes()) : createBlockKind({ name, is_sparring: sparring })),
     onSuccess: async (answer) => {
       onDone(kind ? copy.saved(answer.name) : copy.created(answer.name))
-      await queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey })
+      // A renamed practice kind renames the practice on every screen (#346).
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: myselfQuery().queryKey }),
+      ])
     },
   })
   // Deactivating and deleting are in the form, not on the row (#177): the row keeps its moves.
@@ -260,15 +217,13 @@ function BlockKindForm({
           />
         )}
       </Field>
-      {spars && (
-        <div className="settings__field">
-          <CheckRow>
-            <input type="checkbox" checked={sparring} onChange={(e) => setSparring(e.target.checked)} />
-            {form.sparring}
-          </CheckRow>
-          <p className="settings__hint">{form.sparringHint}</p>
-        </div>
-      )}
+      <div className="settings__field">
+        <CheckRow>
+          <input type="checkbox" checked={sparring} onChange={(e) => setSparring(e.target.checked)} />
+          {form.sparring}
+        </CheckRow>
+        <p className="settings__hint">{form.sparringHint}</p>
+      </div>
       {save.error && (
         <Banner tone="error">
           {inUse !== null ? form.sparringInUse(inUse) : taken || Object.keys(errors).length > 0 ? form.invalid : form.failed}

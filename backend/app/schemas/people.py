@@ -30,7 +30,6 @@ from pydantic import (
 from app.domain.membership import MembershipStatus
 from app.domain.phone import normalize_phone
 from app.domain.rut import normalize_rut
-from app.domain.sparring import DEFAULT_PRACTICE, Practice
 from app.domain.vocabulary import DEFAULT, Vocabulary
 from app.roles import Role
 from app.schemas.memberships import MembershipStart
@@ -399,6 +398,15 @@ class MemberPage(BaseModel):
     total: int
 
 
+class PracticeNames(BaseModel):
+    """What the screens call the gym's free practice, its block and the "Sparring en
+    total" of a person's time, and the open mat made of it (#346, `app.domain.practice`):
+    "Sparring" and "Open mat", "Escalada libre" twice."""
+
+    block: str
+    open_mat: str
+
+
 class MyRole(BaseModel):
     """The person acting's role in the current gym; `None` for a member. `person_id` is
     who they are, for a screen that answers differently to the coach of a class; `name`
@@ -421,7 +429,5 @@ class MyRole(BaseModel):
     uses_grades: bool = False
     # What the gym calls itself, its members and its coach (#344).
     vocabulary: Vocabulary = DEFAULT
-    # Whether the gym spars, and its word for it (#346): the Sparring and Drilling
-    # blocks, the open mats and the sparring totals show only when it does.
-    sparring: bool = True
-    practice: Practice = DEFAULT_PRACTICE
+    # What the gym calls its free practice and its open mat (#346).
+    practice: PracticeNames = PracticeNames(block="Sparring", open_mat="Open mat")

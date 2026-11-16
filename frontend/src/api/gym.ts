@@ -28,8 +28,6 @@ export type GymSettings = {
   privacy: (Privacy & { updated_on: string }) | null
   // What the screens call the gym, its members and its coach (#344).
   vocabulary: Vocabulary
-  // Whether it spars (#346): the owner's pick once saved, else what its activities say.
-  sparring: boolean
 }
 
 /** Only the fields sent change; `bank_account: null` clears it, and `privacy` cannot
@@ -45,8 +43,6 @@ export type GymSettingsUpdate = Partial<{
   privacy: Privacy
   // The owner's pick: no activity added later changes it.
   vocabulary: Vocabulary
-  // Off archives the Sparring and Drilling blocks; on restores them.
-  sparring: boolean
 }>
 
 export function gymSettingsQuery() {

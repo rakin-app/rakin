@@ -6,7 +6,7 @@ import type { FreezeRequest } from './freezeRequests'
 import type { Freeze } from './member'
 import type { OpenPeriod } from './proofs'
 import type { Theme } from '../theme'
-import type { Practice, Vocabulary } from '../i18n/vocabulary'
+import type { PracticeNames, Vocabulary } from '../i18n/vocabulary'
 
 export type StaffRole = 'owner' | 'admin' | 'coach'
 
@@ -29,11 +29,9 @@ export type MyRole = {
   // What the gym calls itself, its members and its coach (#344); `wearVocabulary`
   // puts them on every screen.
   vocabulary?: Vocabulary
-  // Whether the gym spars, and its word for it (#346): the Sparring and Drilling blocks,
-  // the open mats and the sparring totals show only when it does. `useSparring` in
-  // `activities.ts` reads it; `wearSparring` puts both on every screen.
-  sparring?: boolean
-  practice?: Practice
+  // What the gym calls its free practice and its open mat (#346); `wearPractice` puts
+  // them on every screen.
+  practice?: PracticeNames
 }
 
 /** The signed-in person's staff role in this gym; `null` for a member. */

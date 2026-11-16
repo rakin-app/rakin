@@ -13,7 +13,7 @@ import { keepDrafts } from './api/drafts'
 import { myRoleQuery, myselfQuery, type MyRole } from './api/me'
 import { AdminLayout } from './layouts/AdminLayout'
 import { t } from './i18n/es'
-import { wearSparring, wearVocabulary } from './i18n/vocabulary'
+import { wearPractice, wearVocabulary } from './i18n/vocabulary'
 import { MeLayout } from './layouts/MeLayout'
 import { CheckIn } from './routes/CheckIn'
 import { Classes } from './routes/Classes'
@@ -82,7 +82,7 @@ async function requireSession({ queryClient, signIn }: AppContext, href: string)
     // The gym's words, before the shell's first screen reads them (#344).
     const myself = queryClient.getQueryData(myselfQuery().queryKey)
     wearVocabulary(myself?.vocabulary)
-    wearSparring(myself?.sparring, myself?.practice)
+    wearPractice(myself?.practice)
     markSignedIn()
     return me
   } catch (error) {

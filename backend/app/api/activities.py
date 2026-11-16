@@ -11,10 +11,9 @@ The gym's first activity also sets what the gym calls itself, its members and it
 gym wrote. Never once the owner has picked the words by hand, and never a later
 activity: Ajustes offers those as a suggestion.
 
-Whether the gym spars follows its activities too, until the owner picks it (#346,
-`app.domain.sparring`): an activity added or removed that turns it on or off restores
-or archives the Sparring and Drilling block kinds (`follow_sparring`), and one that
-changes the gym's word for it renames the Sparring kind, unless the gym renamed it.
+The first activity names the gym's free practice too (#346, `app.domain.practice`):
+Sparring, Randori, Escalada libre. An activity added or removed that changes it renames
+the practice's block kind (`follow_practice`), unless the gym renamed it itself.
 
 Any staff role may read them, since a coach sees the class types that belong to one;
 only an owner or admin may change them.
@@ -22,17 +21,17 @@ only an owner or admin may change them.
 
 import json
 import uuid
-from dataclasses import dataclass
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.programs import execute_refusing
-from app.domain.sparring import KINDS, Practice, kind_name, practice_of, spars
+from app.domain.practice import KIND, Practice, practice_of
 from app.domain.vocabulary import stored, words_of
 from app.roles import AdminSession, StaffSession
 from app.schemas.activities import Activity, ActivityCreate, ActivityUpdate
+from app.schemas.people import PracticeNames
 
 router = APIRouter(prefix="/api/activities", tags=["gym"])
 
@@ -56,49 +55,47 @@ async def gym_uses_grades(session: AsyncSession) -> bool:
     return graded
 
 
-@dataclass(frozen=True)
-class GymSparring:
-    """Whether the current gym spars, and its word for it."""
-
-    on: bool
-    practice: Practice
-
-
-async def gym_sparring(session: AsyncSession) -> GymSparring:
-    settings = await session.scalar(
-        text("SELECT settings FROM gym WHERE id = current_setting('app.gym_id')::uuid")
-    )
+async def gym_practice(session: AsyncSession) -> Practice:
+    """The current gym's practice, as its first activity names it."""
     presets = list(
         await session.scalars(text("SELECT preset FROM gym_activity ORDER BY created_at, id"))
     )
-    return GymSparring(spars(settings, presets), practice_of(presets))
+    return practice_of(presets)
 
 
-# The default kinds by the keys that derive their ids (0028); the first is Sparring.
-DEFAULT_KINDS = "block_kind_default_id(current_setting('app.gym_id')::uuid, :key)"
+# The default kind that is the practice (0028), in the current gym.
+PRACTICE_KIND = "block_kind_default_id(current_setting('app.gym_id')::uuid, :key)"
 
 
-async def follow_sparring(session: AsyncSession, before: GymSparring) -> None:
-    """The block kinds, once a change has moved the gym's sparring from `before`: turned
-    off, Sparring and Drilling are archived, and back on restored; their recorded time
-    stays either way. A new word renames Sparring, if it still has the old one's name."""
-    after = await gym_sparring(session)
-    if after.on != before.on:
-        for key in KINDS:
-            await session.execute(
-                text(f"UPDATE block_kind SET archived = :archived WHERE id = {DEFAULT_KINDS}"),
-                {"archived": not after.on, "key": key},
-            )
-    if after.practice != before.practice:
-        # Never onto another kind's name: the gym may have one called so already.
-        await session.execute(
-            text(
-                f"UPDATE block_kind k SET name = :new WHERE id = {DEFAULT_KINDS}"
-                " AND name = :old AND NOT EXISTS"
-                " (SELECT FROM block_kind o WHERE lower(o.name) = lower(:new) AND o.id <> k.id)"
-            ),
-            {"new": kind_name(after.practice), "old": kind_name(before.practice), "key": KINDS[0]},
+async def practice_names(session: AsyncSession) -> PracticeNames:
+    """What the screens call the practice and its open mat: the practice kind's name as
+    the gym has it now, which the owner may have changed, and the open mat's own name,
+    else the same."""
+    practice = await gym_practice(session)
+    block: str = (
+        await session.scalar(
+            text(f"SELECT name FROM block_kind WHERE id = {PRACTICE_KIND} AND is_sparring"),
+            {"key": KIND},
         )
+        or practice.block
+    )
+    return PracticeNames(block=block, open_mat=practice.open_mat or block)
+
+
+async def follow_practice(session: AsyncSession, before: Practice) -> None:
+    """Once a change has moved the gym's practice from `before`, the new name on its
+    kind, if that still has the old one's and no other kind has the new."""
+    after = await gym_practice(session)
+    if after.block == before.block:
+        return
+    await session.execute(
+        text(
+            f"UPDATE block_kind k SET name = :new WHERE id = {PRACTICE_KIND}"
+            " AND name = :old AND NOT EXISTS"
+            " (SELECT FROM block_kind o WHERE lower(o.name) = lower(:new) AND o.id <> k.id)"
+        ),
+        {"new": after.block, "old": before.block, "key": KIND},
+    )
 
 
 def _activity(row: object) -> Activity:
@@ -139,7 +136,7 @@ async def list_activities(session: StaffSession) -> list[Activity]:
     responses={status.HTTP_409_CONFLICT: {"description": "name taken"}},
 )
 async def create_activity(body: ActivityCreate, session: AdminSession) -> Activity:
-    before = await gym_sparring(session)
+    before = await gym_practice(session)
     result = await execute_refusing(
         session,
         text(
@@ -153,7 +150,7 @@ async def create_activity(body: ActivityCreate, session: AdminSession) -> Activi
     activity_id = result.scalar_one()
     words = stored(words_of(body.preset), by_hand=False)
     await session.execute(text(FIRST_WORDS), {"words": json.dumps(words)})
-    await follow_sparring(session, before)
+    await follow_practice(session, before)
     return await _get(session, activity_id)
 
 
@@ -178,10 +175,10 @@ async def update_activity(
 @router.delete("/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_activity(activity_id: uuid.UUID, session: AdminSession) -> None:
     """Its class types stay, with no activity."""
-    before = await gym_sparring(session)
+    before = await gym_practice(session)
     deleted = await session.scalar(
         text("DELETE FROM gym_activity WHERE id = :id RETURNING id"), {"id": activity_id}
     )
     if deleted is None:
         raise NOT_FOUND
-    await follow_sparring(session, before)
+    await follow_practice(session, before)

@@ -88,22 +88,28 @@ export function currentVocabulary(): Vocabulary {
 }
 
 /**
- * The gym's word for sparring (#346, backend `app.domain.sparring`): its first combat
- * activity's, "randori" in judo, "kumite" in karate; "sparring" with none. A noun the
- * copy uses as is, masculine and the same in the plural: "rounds de randori".
+ * What the gym calls its free practice and the open mat made of it (#346, backend
+ * `app.domain.practice`): "Sparring" and "Open mat" in BJJ, "Randori" in judo,
+ * "Escalada libre" in a climbing gym, "Práctica libre" with no activity yet. Names, not
+ * nouns with a gender, so the copy uses them without an article: "rounds de randori".
  */
-export const PRACTICES = ['sparring', 'randori', 'kumite', 'combate'] as const
-export type Practice = (typeof PRACTICES)[number]
+export type PracticeNames = { block: string; open_mat: string }
 
-let practice: Practice = 'sparring'
-let spars = true
+/** Today's, for a gym that has not answered yet. */
+const DEFAULT_PRACTICE: PracticeNames = { block: 'Sparring', open_mat: 'Open mat' }
 
-/** Whether the gym spars and its word for it, as every screen reads them from now on:
- * as today, yes and "sparring", for no answer or a word this build does not know. Worn
- * beside the vocabulary, from `/api/me/role`. */
-export function wearSparring(sparring: unknown, word: unknown): void {
-  spars = sparring !== false
-  practice = isOf(PRACTICES, word) ? word : 'sparring'
+let practice: PracticeNames = DEFAULT_PRACTICE
+
+/** The names every screen reads from now on, from `/api/me/role`; today's for none. */
+export function wearPractice(names: Partial<PracticeNames> | null | undefined): void {
+  const block = names?.block || DEFAULT_PRACTICE.block
+  practice = { block, open_mat: names?.open_mat || (names?.block ? block : DEFAULT_PRACTICE.open_mat) }
+}
+
+/** A name inside a sentence: "escalada libre", but "MMA" as written. */
+const inSentence = (name: string) => {
+  const second = name.charAt(1)
+  return second !== second.toLowerCase() ? name : name.charAt(0).toLowerCase() + name.slice(1)
 }
 
 const place = () => PLACE_NOUNS[current.place]
@@ -204,14 +210,21 @@ export const w = {
     return `${coach().feminine ? 'la' : 'el'} ${coach().one}`
   },
 
-  // The practice: "sparring", "Randori"; and whether the gym spars at all.
-  get spars() {
-    return spars
-  },
+  // The free practice and its open mat: "sparring", "Escalada libre", "open mat".
   get practice() {
-    return practice
+    return inSentence(practice.block)
   },
   get Practice() {
-    return cap(practice)
+    return cap(practice.block)
+  },
+  get openMat() {
+    return inSentence(practice.open_mat)
+  },
+  get OpenMat() {
+    return cap(practice.open_mat)
+  },
+  /** Whether the open mat has a name of its own, as BJJ's "Open mat". */
+  get openMatNamed() {
+    return practice.open_mat !== practice.block
   },
 }

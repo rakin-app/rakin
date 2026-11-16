@@ -13,9 +13,7 @@ A block of a sparring kind is rounds: planned, completed, each round's seconds a
 rest between them. Its seconds are the rounds' alone (`rounds * round_seconds`), rest
 not included, since that is the time spent sparring. An open mat's plan is one sparring
 block, and an open-access session (#348) has none: it is a day of visits, not a class.
-An archived kind is planned no more, but a block already of it may stay. In a gym that
-does not spar (#346, `app.domain.sparring`) an open mat is run as any class: its plan
-says `class` and is held to no rule of its own.
+An archived kind is planned no more, but a block already of it may stay.
 
 The plan to start from (`GET .../blocks/suggested`) is the latest other session of the
 same class type that has one and was not cancelled, for the coach to adjust: the usual
@@ -44,7 +42,6 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.activities import gym_sparring
 from app.api.people import NOT_FOUND as PERSON_NOT_FOUND
 from app.api.people import in_gym
 from app.api.programs import execute_refusing
@@ -157,10 +154,7 @@ async def _held(session: AsyncSession, session_id: uuid.UUID, *, lock: bool = Fa
     ).one_or_none()
     if row is None:
         raise SESSION_NOT_FOUND
-    kind = ClassKind(row.kind)
-    if kind is ClassKind.OPEN_MAT and not (await gym_sparring(session)).on:
-        kind = ClassKind.CLASS
-    return _Held(row.id, row.coach_id, row.class_type_id, kind, row.cancelled)
+    return _Held(row.id, row.coach_id, row.class_type_id, ClassKind(row.kind), row.cancelled)
 
 
 async def _runs(session: AsyncSession, tenant: Tenant, held: _Held) -> None:
