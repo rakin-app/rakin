@@ -1,7 +1,8 @@
 """A spreadsheet as rows of text: the first row that holds anything is the header.
 
-A workbook is read by tab (`read_book`): the worksheets named Alumnos and Grados, by
-folded name, else the first visible one that is neither as Alumnos (#299). A hidden
+A workbook is read by tab (`read_book`): the worksheets named Alumnos, Pagos and
+Grados, by folded name, else the first visible one that is none of them as Alumnos
+(#298, #299). A hidden
 sheet is never that fallback, though it is the first: the template hides its lists. A CSV is one
 tab, the one the upload says. `read_sheet` is the Alumnos tab alone.
 
@@ -29,24 +30,28 @@ from app.member_import.rows import fold
 
 # Far above a small gym's roster (under ~150 active students), with room for history.
 MAX_ROWS = 2000
+# Five years of a 300-student gym paying monthly (#298).
+MAX_PAYMENT_ROWS = 20_000
 MAX_COLUMNS = 60
 MAX_CELL_LENGTH = 500
 
 ZIP_SIGNATURE = b"PK\x03\x04"
 
-# How many rows are read at most, empty ones included, as a multiple of `MAX_ROWS`: an
+# How many rows are read at most, empty ones included, as a multiple of the tab's cap: an
 # XLSX formatted down to row 1,048,576 compresses to almost nothing.
 SCAN_FACTOR = 10
 
-# `too_many_empty_rows`: data, or formatting, that goes on past `SCAN_FACTOR * MAX_ROWS`
-# rows when most are empty.
+# `too_many_empty_rows`: data, or formatting, that goes on past `SCAN_FACTOR` times the
+# tab's cap when most are empty.
 SheetErrorCode = Literal["unreadable", "empty", "too_many_rows", "too_many_empty_rows"]
 
 
-# The tabs an import reads, in the order it writes them: people first, so a grade finds a
-# student the Alumnos tab adds.
-Tab = Literal["alumnos", "grados"]
+# The tabs an import reads, in the order it writes them: people first, so a payment or a
+# grade finds a student the Alumnos tab adds.
+Tab = Literal["alumnos", "pagos", "grados"]
 TABS: tuple[Tab, ...] = get_args(Tab)
+# The most rows each tab may have.
+ROW_CAPS: dict[Tab, int] = {"alumnos": MAX_ROWS, "pagos": MAX_PAYMENT_ROWS, "grados": MAX_ROWS}
 # A workbook's tab that is never the Alumnos one, however it comes first.
 INSTRUCTIONS = "instrucciones"
 
@@ -84,12 +89,12 @@ def read_book(data: bytes, csv_tab: Tab = "alumnos") -> dict[Tab, Sheet]:
     with no rows is left out, and a book with none is `empty`. Raises `SheetError`."""
     # An XLSX is a zip; one that starts like a zip and is not one is a damaged workbook.
     if not data.startswith(ZIP_SIGNATURE):
-        return {csv_tab: _table(_csv_rows(data))}
+        return {csv_tab: _table(_csv_rows(data), ROW_CAPS[csv_tab])}
     book: dict[Tab, Sheet] = {}
     with _workbook(data) as workbook:
         for tab, worksheet in _tabs(workbook):
             try:
-                book[tab] = _table(_xlsx_rows(worksheet))
+                book[tab] = _table(_xlsx_rows(worksheet), ROW_CAPS[tab])
             except SheetError as error:
                 if error.code != "empty":
                     raise
@@ -98,11 +103,11 @@ def read_book(data: bytes, csv_tab: Tab = "alumnos") -> dict[Tab, Sheet]:
     return book
 
 
-def _table(numbered: Iterable[tuple[int, list[str]]]) -> Sheet:
+def _table(numbered: Iterable[tuple[int, list[str]]], max_rows: int) -> Sheet:
     headers: list[str] | None = None
     rows: list[Row] = []
     for number, raw in numbered:
-        if number > SCAN_FACTOR * MAX_ROWS:
+        if number > SCAN_FACTOR * max_rows:
             raise SheetError("too_many_empty_rows")
         cells = [cell.strip()[:MAX_CELL_LENGTH] for cell in raw[:MAX_COLUMNS]]
         if not any(cells):
@@ -110,7 +115,7 @@ def _table(numbered: Iterable[tuple[int, list[str]]]) -> Sheet:
         if headers is None:
             headers = cells
             continue
-        if len(rows) == MAX_ROWS:
+        if len(rows) == max_rows:
             raise SheetError("too_many_rows")
         rows.append(Row(number, (cells + [""] * len(headers))[: len(headers)]))
     if headers is None:

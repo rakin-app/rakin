@@ -33,6 +33,17 @@ history a row writes gets a `history_set` row in the gym's log, and an import th
 writes anything one `history_imported` row, with the file's name and SHA-256 and the
 counts, whose id the others carry as `import_id`. A dry run writes neither.
 
+A workbook's Pagos tab (#298), one row per payment received before Rakin, is read after
+the Alumnos tab in the same transaction, so a payment finds a student that tab adds, in
+the dry run too. Like a grade it never creates anyone (`unknown_person`,
+`ambiguous_name`). A payment for a month (else a day) on or after the person's first plan
+here is refused `covers_plan`, as on the ficha: "Pagado hasta" pays that. One equal to a
+payment they already have (day, amount and month) is `existing`, and one an earlier row
+gives them is `repeated`, so a second run adds none. Each row is checked on its own, and
+those it adds are written together once the import's own row is in, since an imported
+`history_payment` names that row (0055); a dry run writes that row too, and rolls it
+back with the rest. Each is `source` `import`. Nothing billing reads is touched.
+
 A workbook's Grados tab (#299), one row per belt or stripe earned, is written after the
 Alumnos tab in the same transaction, each row in its own savepoint, so a grade finds a
 student that tab adds, in the dry run too. A grade row never creates anyone: it finds
@@ -64,7 +75,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.grades import readable_scheme
 from app.api.grading import stored_scheme
 from app.api.guardians import family, link
-from app.api.history import changes, record_history_set
+from app.api.history import LOCK_PERSON, PLAN_FROM, changes, in_plan, record_history_set
 from app.api.memberships import PersonHasLeft, insert_membership
 from app.api.people import (
     email_holder,
@@ -84,6 +95,13 @@ from app.member_import.grades import (
     RankFinder,
     read_grades,
     suggest_grade_mapping,
+)
+from app.member_import.payments import (
+    Payment,
+    PaymentErrorCode,
+    PaymentField,
+    read_payments,
+    suggest_payment_mapping,
 )
 from app.member_import.rows import (
     ErrorCode,
@@ -110,6 +128,12 @@ from app.schemas.member_import import (
     ImportSummary,
     MemberImport,
     Outcome,
+    PaymentImport,
+    PaymentReport,
+    PaymentRowError,
+    PaymentRowResult,
+    PaymentSheet,
+    PaymentSummary,
     RowError,
     RowResult,
     Sheet,
@@ -226,6 +250,17 @@ HAS_GRADE = """
           AND coalesce(sub_rank, '') = coalesce(CAST(:sub_rank AS text), '')
     )
 """
+# The payments from before Rakin someone already has, as a Pagos row is told apart.
+PAID = "SELECT paid_on, amount_clp, covers_month FROM history_payment WHERE person_id = :id"
+# Recorded by whoever imports, naming the import's own row (0055).
+INSERT_PAYMENT = """
+    INSERT INTO history_payment (gym_id, person_id, paid_on, amount_clp, method, covers_month,
+                                 plan_name, note, source, import_id, created_by)
+    VALUES (current_setting('app.gym_id')::uuid, :person, :paid_on, :amount_clp, :method,
+            :covers_month, :plan_name, :note, 'import', :import_id,
+            current_setting('app.person_id')::uuid)
+"""
+
 # Recorded by whoever imports, with no membership (0054).
 INSERT_GRADE = """
     INSERT INTO grade_event (gym_id, person_id, rank_key, sub_rank, awarded_on, awarded_by,
@@ -276,12 +311,19 @@ async def upload_sheet(
         book = read_book(bytes(data), tab)
     except SheetError as error:
         raise _refused(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
-    alumnos, grados = book.get("alumnos"), book.get("grados")
+    alumnos, pagos, grados = book.get("alumnos"), book.get("pagos"), book.get("grados")
     return Sheet(
         headers=[] if alumnos is None else alumnos.headers,
         rows=[] if alumnos is None else _sheet_rows(alumnos.rows),
         mapping={} if alumnos is None else suggest_mapping(alumnos.headers),
         file=SheetFile(name=name, sha256=hashlib.sha256(data).hexdigest()),
+        pagos=None
+        if pagos is None
+        else PaymentSheet(
+            headers=pagos.headers,
+            rows=_sheet_rows(pagos.rows),
+            mapping=suggest_payment_mapping(pagos.headers),
+        ),
         grados=None
         if grados is None
         else GradeSheet(
@@ -336,6 +378,15 @@ class RowRefused(Exception):
         super().__init__(on, code)
         self.on = on
         self.code: ErrorCode = code
+
+
+class PaymentRefused(Exception):
+    """A Pagos row the gym's data refuses: it writes nothing."""
+
+    def __init__(self, on: PaymentField, code: PaymentErrorCode) -> None:
+        super().__init__(on, code)
+        self.on = on
+        self.code: PaymentErrorCode = code
 
 
 class GradeRefused(Exception):
@@ -675,6 +726,95 @@ class Writer:
         return "created"
 
 
+@dataclass(frozen=True)
+class Payer:
+    """Someone a Pagos row names: their first plan's start here, if any, and the payments
+    from before Rakin they already have, by day, amount and month."""
+
+    plan_from: date | None
+    paid: frozenset[tuple[date, int, date | None]]
+
+
+class PaymentWriter:
+    """Checks Pagos rows for the people `writer` finds, after the Alumnos tab's, and
+    writes those it adds once the import's own row is in (`write`)."""
+
+    def __init__(self, writer: Writer) -> None:
+        self.writer = writer
+        self.session = writer.session
+        # Whom each way of naming someone found: a sheet names a few hundred people over
+        # thousands of payments, and nobody is added while this tab is read.
+        self.found: dict[tuple[str | None, str | None, str], uuid.UUID | None] = {}
+        self.payers: dict[uuid.UUID, Payer] = {}
+        # The payments this run's rows have given, so an equal later row is `repeated`.
+        self.given: set[tuple[uuid.UUID, date, int, date | None]] = set()
+        self.adds: list[dict[str, Any]] = []
+
+    async def _who(self, payment: Payment) -> uuid.UUID:
+        key = (payment.rut, payment.email, fold(payment.name))
+        if key not in self.found:
+            try:
+                self.found[key] = await self.writer.find(payment.rut, payment.email, payment.name)
+            except AmbiguousName:
+                raise PaymentRefused(PaymentField.NAME, "ambiguous_name") from None
+        if (person_id := self.found[key]) is None:
+            on = PaymentField.NAME if payment.key is None else _payment_key_field(payment)
+            raise PaymentRefused(on, "unknown_person")
+        return person_id
+
+    async def _payer(self, person_id: uuid.UUID) -> Payer:
+        """Read under the person's lock, as the ficha's form is, and held to the end of
+        the import: a plan started for them meanwhile waits, and cannot move the line."""
+        if person_id not in self.payers:
+            await self.session.execute(LOCK_PERSON, {"id": person_id})
+            rows = await self.session.execute(text(PAID), {"id": person_id})
+            self.payers[person_id] = Payer(
+                plan_from=await self.session.scalar(PLAN_FROM, {"id": person_id}),
+                paid=frozenset((r.paid_on, r.amount_clp, r.covers_month) for r in rows),
+            )
+        return self.payers[person_id]
+
+    async def row(self, payment: Payment) -> PaymentRowResult:
+        entry = payment.entry
+        assert entry is not None
+        person_id = await self._who(payment)
+        payer = await self._payer(person_id)
+        if payer.plan_from is not None and in_plan(entry, payer.plan_from):
+            on = PaymentField.PAID_ON if entry.covers_month is None else PaymentField.COVERS_MONTH
+            raise PaymentRefused(on, "covers_plan")
+        paid = (entry.paid_on, entry.amount_clp, entry.covers_month)
+        if (person_id, *paid) in self.given:
+            raise PaymentRefused(PaymentField.PAID_ON, "repeated")
+        self.given.add((person_id, *paid))
+        outcome: Outcome = "existing"
+        if paid not in payer.paid:
+            self.adds.append({**entry.model_dump(), "person": person_id})
+            outcome = "created"
+        return PaymentRowResult(
+            row=payment.number, name=_who_name(payment), errors=[], payment=outcome
+        )
+
+    async def write(self, import_id: uuid.UUID) -> None:
+        """The payments the rows add, naming the import's row, which is in by now."""
+        if self.adds:
+            await self.session.execute(
+                text(INSERT_PAYMENT), [{**add, "import_id": import_id} for add in self.adds]
+            )
+
+
+def _payment_key_field(payment: Payment) -> PaymentField:
+    return PaymentField.RUT if payment.rut is not None else PaymentField.EMAIL
+
+
+def _payment_refusal(payment: Payment) -> PaymentRowResult:
+    return PaymentRowResult(
+        row=payment.number,
+        name=_who_name(payment),
+        errors=[PaymentRowError(field=e.field, code=e.code) for e in payment.errors],
+        payment=None,
+    )
+
+
 class GradeWriter:
     """Writes Grados rows for the people `writer` finds, after the Alumnos tab's."""
 
@@ -710,21 +850,21 @@ class GradeWriter:
             )
             outcome = "created"
         self.given.add(given)
-        return GradeRowResult(row=grade.number, name=_grade_name(grade), errors=[], grade=outcome)
+        return GradeRowResult(row=grade.number, name=_who_name(grade), errors=[], grade=outcome)
 
 
 def _key_field(grade: Grade) -> GradeField:
     return GradeField.RUT if grade.rut is not None else GradeField.EMAIL
 
 
-def _grade_name(grade: Grade) -> str:
-    return grade.name or grade.rut or grade.email or ""
+def _who_name(row: Grade | Payment) -> str:
+    return row.name or row.rut or row.email or ""
 
 
 def _grade_refusal(grade: Grade) -> GradeRowResult:
     return GradeRowResult(
         row=grade.number,
-        name=_grade_name(grade),
+        name=_who_name(grade),
         errors=[GradeRowError(field=e.field, code=e.code) for e in grade.errors],
         grade=None,
     )
@@ -795,20 +935,57 @@ async def import_members(
         results[index] = _refusal(member)
     rows = [results[index] for index in range(len(members))]
     summary = _summary(rows)
+    payments, pagos = None, None
+    if body.pagos is not None:
+        payments = PaymentWriter(writer)
+        pagos = await _import_payments(payments, body.pagos, today)
     grados = None
     if body.grados is not None:
         grados = await _import_grades(session, tenant, writer, body.grados, today)
+    if _wrote(summary, pagos, grados):
+        # A dry run's record too, rolled back with the rest: an imported payment names it.
+        record_id = import_id or uuid.uuid4()
+        await _record_import(session, record_id, body.file, summary, pagos, grados)
+        if payments is not None:
+            await payments.write(record_id)
+    else:
+        # Nothing written, so nothing recorded.
+        import_id = None
     if body.dry_run:
         await everything.rollback()
     else:
-        if import_id is not None and _wrote(summary, grados):
-            await _record_import(session, import_id, body.file, summary, grados)
-        else:
-            # Nothing written, so nothing recorded.
-            import_id = None
         await everything.commit()
     return ImportReport(
-        dry_run=body.dry_run, import_id=import_id, summary=summary, rows=rows, grados=grados
+        dry_run=body.dry_run,
+        import_id=import_id,
+        summary=summary,
+        rows=rows,
+        pagos=pagos,
+        grados=grados,
+    )
+
+
+async def _import_payments(writer: PaymentWriter, tab: PaymentImport, today: date) -> PaymentReport:
+    """The Pagos tab's rows, each checked on its own after every Alumnos row."""
+    rows: list[PaymentRowResult] = []
+    for payment in read_payments([(row.number, row.cells) for row in tab.rows], tab.mapping, today):
+        if not payment.errors:
+            try:
+                rows.append(await writer.row(payment))
+                continue
+            except PaymentRefused as refused:
+                payment.refuse(refused.on, refused.code)
+        rows.append(_payment_refusal(payment))
+    refused_rows = sum(1 for row in rows if row.errors)
+    return PaymentReport(
+        summary=PaymentSummary(
+            rows=len(rows),
+            imported=len(rows) - refused_rows,
+            refused=refused_rows,
+            payments_created=len(writer.adds),
+            amount_clp=sum(add["amount_clp"] for add in writer.adds),
+        ),
+        rows=rows,
     )
 
 
@@ -844,12 +1021,13 @@ async def _import_grades(
     )
 
 
-def _wrote(summary: ImportSummary, grados: GradeReport | None) -> bool:
+def _wrote(summary: ImportSummary, pagos: PaymentReport | None, grados: GradeReport | None) -> bool:
     return (
         summary.people_created
         + summary.links_created
         + summary.memberships_created
         + summary.history_set
+        + (0 if pagos is None else pagos.summary.payments_created)
         + (0 if grados is None else grados.summary.grades_created)
     ) > 0
 
@@ -859,6 +1037,7 @@ async def _record_import(
     import_id: uuid.UUID,
     file: SheetFile | None,
     summary: ImportSummary,
+    pagos: PaymentReport | None,
     grados: GradeReport | None,
 ) -> None:
     """The import's `history_imported` row: which file, and what each tab wrote."""
@@ -876,6 +1055,8 @@ async def _record_import(
                 "former_created",
             }
         )
+    if pagos is not None:
+        counts["pagos"] = pagos.summary.model_dump()
     if grados is not None:
         counts["grados"] = grados.summary.model_dump()
     detail = {

@@ -27,7 +27,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -333,6 +333,41 @@ class Cells:
         if column is None or column >= len(self.cells):
             return ""
         return self.cells[column].strip()
+
+
+class TabRow(Protocol):
+    """A row of a tab that names someone already here, or on the Alumnos tab: Pagos and
+    Grados. Who it is reads the same on each (`read_who`)."""
+
+    name: str
+    rut: str | None
+    email: str | None
+
+    @property
+    def errors(self) -> Sequence[object]: ...
+
+    def refuse(self, on: Any, code: Any) -> None: ...
+
+
+def read_who(row: TabRow, cell: Cells, rut: StrEnum, email: StrEnum, name: StrEnum) -> None:
+    """Who `row` names: its RUT, its email and its name, each checked, the name
+    required when it gives neither of the others."""
+    row.name = " ".join(cell(name).split())
+    raw_rut, raw_email = cell(rut), cell(email)
+    row.rut = None
+    if raw_rut:
+        try:
+            row.rut = normalize_rut(raw_rut)
+        except ValueError:
+            row.refuse(rut, "invalid_rut")
+    row.email = None
+    if raw_email:
+        try:
+            row.email = _EMAIL.validate_python(raw_email)
+        except ValidationError:
+            row.refuse(email, "invalid_email")
+    if identity(row.rut, row.email) is None and not row.name and not row.errors:
+        row.refuse(name, "required")
 
 
 def _phone(member: Member, on: Field, raw: str) -> str | None:

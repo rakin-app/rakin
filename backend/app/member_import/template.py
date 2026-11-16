@@ -6,12 +6,17 @@ uploads with no change on the mapping step. One example row in grey, which the
 instructions say to delete; the gym's active plans as the Plan column's choices; and an
 "Instrucciones" tab.
 
+A Pagos tab (#298): one row per payment from before Rakin, Efectivo, Transferencia and
+Otro the Método column's choices, and on the instructions tab how a gym that keeps a grid
+(a student per row, a month per column) turns it into rows.
+
 In a gym that grades, a Grados tab too (#299): one row per belt or stripe earned, the
 scheme's rank labels as the Grado column's choices.
 """
 
 import io
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
@@ -21,13 +26,15 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from app.ledger_export import put
 from app.member_import.grades import GradeField
+from app.member_import.payments import PaymentField
 from app.member_import.rows import Field
-from app.member_import.sheet import MAX_ROWS
+from app.member_import.sheet import MAX_PAYMENT_ROWS, MAX_ROWS
 from app.schemas.grading import GradingScheme
 
 TEMPLATE_NAME = "plantilla-alumnos.xlsx"
 
 ALUMNOS = "Alumnos"
+PAGOS = "Pagos"
 GRADOS = "Grados"
 INSTRUCTIONS = "Instrucciones"
 
@@ -69,6 +76,55 @@ NOTES: dict[Field, str] = {
     Field.PRIOR_CLASSES: "Cuántas clases tuvo antes de Rakin: un número.",
 }
 
+# The Pagos tab's, as `payments.suggest_payment_mapping` maps them. The example is the
+# Alumnos tab's example student, paying for April 2024.
+PAYMENT_COLUMNS: tuple[tuple[str, PaymentField, str], ...] = (
+    ("RUT", PaymentField.RUT, "12.345.678-5"),
+    ("Correo", PaymentField.EMAIL, ""),
+    ("Nombre", PaymentField.NAME, "Martina Soto Pérez"),
+    ("Fecha de pago", PaymentField.PAID_ON, "03-04-2024"),
+    ("Monto", PaymentField.AMOUNT, "25000"),
+    ("Mes que paga", PaymentField.COVERS_MONTH, "04-2024"),
+    ("Método", PaymentField.METHOD, "Transferencia"),
+    ("Plan", PaymentField.PLAN_NAME, "Mensual 3x semana"),
+    ("Nota", PaymentField.NOTE, ""),
+)
+
+METHODS = ("Efectivo", "Transferencia", "Otro")
+
+PAYMENT_NOTES: dict[PaymentField, str] = {
+    PaymentField.RUT: (
+        "Por quién se pagó: su RUT, su correo o su nombre, como en Alumnos. El pago de un"
+        " menor va con los datos del menor."
+    ),
+    PaymentField.PAID_ON: "Obligatorio. El día que pagó: día-mes-año.",
+    PaymentField.AMOUNT: "Obligatorio. En pesos, sin decimales: 25000, 25.000 o $25.000.",
+    PaymentField.COVERS_MONTH: "Opcional. El mes que pagó, como mes-año: 04-2024.",
+    PaymentField.METHOD: "Opcional. Efectivo, Transferencia u Otro.",
+    PaymentField.PLAN_NAME: "Opcional. El plan como lo llamaban entonces, en texto libre.",
+}
+
+PAYMENT_INTRO = (
+    "Una fila por pago, en la pestaña Pagos. Cada persona debe estar en Alumnos o ya en"
+    " Rakin; no se crea a nadie. Es solo historial: no se cobra ni cambia lo que deben.",
+    "Los meses desde que la persona tiene un plan en Rakin no van aquí: se pagan con"
+    " Pagado hasta, en su ficha.",
+    "Si vuelves a subir la planilla, un pago que ya está (misma persona, día, monto y mes)"
+    " no se repite. Dos pagos iguales en la planilla cuentan como uno: si de verdad fueron"
+    " dos, cambia el Mes que paga, o agrega el segundo a mano en su ficha.",
+)
+
+# For a gym whose notebook is a grid: one row per student, one column per month.
+GRID_RECIPE = (
+    "¿Tu planilla tiene un alumno por fila y un mes por columna? Pásala a filas así:",
+    "1. Por cada casilla con un pago, agrega una fila en Pagos.",
+    "2. En RUT o Nombre, el del alumno de esa fila.",
+    "3. En Monto, lo que dice la casilla.",
+    "4. En Mes que paga, el mes de esa columna (04-2024).",
+    "5. En Fecha de pago, el día que pagó; si no lo sabes, el 5 de ese mes (05-04-2024).",
+    "Las casillas vacías no se copian: ese mes no pagó.",
+)
+
 # The Grados tab's, as `grades.suggest_grade_mapping` maps them. The example is the
 # Alumnos tab's example student; its rank, the scheme's.
 GRADE_COLUMNS: tuple[tuple[str, GradeField, str], ...] = (
@@ -97,8 +153,8 @@ GRADE_INTRO = (
 )
 
 INTRO = (
-    "Una fila por alumno, en la pestaña Alumnos. La fila gris es un ejemplo: bórrala antes"
-    " de subir la planilla.",
+    "Una fila por alumno, en la pestaña Alumnos. La fila gris de cada pestaña es un"
+    " ejemplo: bórrala antes de subir la planilla.",
     "Súbela en Alumnos, botón Importar. Primero revisamos cada fila sin guardar nada.",
     "Puedes volver a subirla: a quien ya está no lo duplicamos ni cambiamos lo que ya"
     " tiene. Alumno desde, Fecha de baja, Motivo de baja y Clases antes de Rakin se"
@@ -111,7 +167,8 @@ GREY = "808080"
 
 def template(plans: Sequence[str], scheme: GradingScheme | None = None) -> bytes:
     """The workbook, with `plans` (the gym's active plan names) as the Plan choices and
-    the first of them in the example row, and a Grados tab for `scheme`'s ranks."""
+    the first of them in the example row, a Pagos tab, and a Grados tab for `scheme`'s
+    ranks."""
     book = Workbook()
     alumnos = book.active
     assert alumnos is not None
@@ -125,6 +182,7 @@ def template(plans: Sequence[str], scheme: GradingScheme | None = None) -> bytes
         alumnos.column_dimensions[letter].width = max(len(header), len(example)) + 4
     alumnos.freeze_panes = "A2"
 
+    pagos = _tab(book, PAGOS, PAYMENT_COLUMNS, {})
     ranks = [] if scheme is None else [r.label for r in (*scheme.ranks, *scheme.kids_ladder)]
     grados = None
     if scheme is not None and ranks:
@@ -144,6 +202,17 @@ def template(plans: Sequence[str], scheme: GradingScheme | None = None) -> bytes
         row += 1
         put(instructions, row, 1, header)
         put(instructions, row, 2, NOTES.get(field, ""))
+    row += 1
+    for line in (*PAYMENT_INTRO, "", *GRID_RECIPE):
+        row += 1
+        put(instructions, row, 1, line)
+    row += 2
+    put(instructions, row, 1, f"Columna de {PAGOS}").font = Font(bold=True)
+    put(instructions, row, 2, "Qué va").font = Font(bold=True)
+    for header, payment_field, _ in PAYMENT_COLUMNS:
+        row += 1
+        put(instructions, row, 1, header)
+        put(instructions, row, 2, PAYMENT_NOTES.get(payment_field, ""))
     if grados is not None:
         row += 1
         for line in GRADE_INTRO:
@@ -159,6 +228,13 @@ def template(plans: Sequence[str], scheme: GradingScheme | None = None) -> bytes
 
     if plans:
         _choices(book, alumnos, "Planes", plans, _column(COLUMNS, Field.PLAN))
+    # Three fixed words: the rule itself can list them.
+    methods = DataValidation(
+        type="list", formula1=f'"{",".join(METHODS)}"', allow_blank=True, showErrorMessage=False
+    )
+    letter = _column(PAYMENT_COLUMNS, PaymentField.METHOD)
+    methods.add(f"{letter}2:{letter}{MAX_PAYMENT_ROWS + 1}")
+    pagos.add_data_validation(methods)
     if grados is not None:
         _choices(book, grados, "Lista de grados", ranks, _column(GRADE_COLUMNS, GradeField.RANK))
 
@@ -176,15 +252,26 @@ def _grados(book: Workbook, scheme: GradingScheme) -> Worksheet:
         GradeField.RANK: rank.label,
         GradeField.SUB_RANK: "1" if len(rank.sub_ranks) > 1 else "",
     }
-    grados: Worksheet = book.create_sheet(GRADOS)
-    for column, (header, field, example) in enumerate(GRADE_COLUMNS, start=1):
+    return _tab(book, GRADOS, GRADE_COLUMNS, examples)
+
+
+def _tab(
+    book: Workbook,
+    title: str,
+    columns: Sequence[tuple[str, object, str]],
+    examples: Mapping[Any, str],
+) -> Worksheet:
+    """A tab of `columns`: their headers in bold, the example row in grey, the example
+    `examples` gives a field in place of the column's own."""
+    tab: Worksheet = book.create_sheet(title)
+    for column, (header, field, example) in enumerate(columns, start=1):
         example = examples.get(field, example)
-        put(grados, 1, column, header).font = Font(bold=True)
-        put(grados, 2, column, example).font = Font(color=GREY, italic=True)
+        put(tab, 1, column, header).font = Font(bold=True)
+        put(tab, 2, column, example).font = Font(color=GREY, italic=True)
         letter = get_column_letter(column)
-        grados.column_dimensions[letter].width = max(len(header), len(example)) + 4
-    grados.freeze_panes = "A2"
-    return grados
+        tab.column_dimensions[letter].width = max(len(header), len(example)) + 4
+    tab.freeze_panes = "A2"
+    return tab
 
 
 def _column(columns: Sequence[tuple[str, object, str]], field: object) -> str:

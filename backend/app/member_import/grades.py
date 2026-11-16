@@ -18,9 +18,6 @@ from datetime import date
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import TypeAdapter, ValidationError
-
-from app.domain.rut import normalize_rut
 from app.member_import.rows import (
     EMAIL_WORDS,
     RUT_WORDS,
@@ -31,9 +28,9 @@ from app.member_import.rows import (
     identity,
     in_history,
     parse_date,
+    read_who,
 )
 from app.schemas.grading import GradingScheme, Rank
-from app.schemas.people import Email
 
 
 class GradeField(StrEnum):
@@ -137,7 +134,6 @@ class RankFinder:
         return self._by_label.get(key)
 
 
-_EMAIL = TypeAdapter(Email)
 _STRIPES = re.compile(r"\d{1,2}")
 
 
@@ -154,26 +150,6 @@ def sub_rank(rank: Rank, value: str) -> str | None:
     if _STRIPES.fullmatch(folded) and int(folded) < len(rank.sub_ranks):
         return rank.sub_ranks[int(folded)].key
     return None
-
-
-def _rut(grade: Grade, raw: str) -> str | None:
-    if not raw:
-        return None
-    try:
-        return normalize_rut(raw)
-    except ValueError:
-        grade.refuse(GradeField.RUT, "invalid_rut")
-        return None
-
-
-def _email(grade: Grade, raw: str) -> str | None:
-    if not raw:
-        return None
-    try:
-        return _EMAIL.validate_python(raw)
-    except ValidationError:
-        grade.refuse(GradeField.EMAIL, "invalid_email")
-        return None
 
 
 def _awarded_on(grade: Grade, raw: str, today: date) -> date | None:
@@ -199,11 +175,8 @@ def read_grade(
 ) -> Grade:
     """One row, every check that needs nothing but the row made."""
     cell = Cells(cells, mapping)
-    grade = Grade(number, " ".join(cell(GradeField.NAME).split()))
-    grade.rut = _rut(grade, cell(GradeField.RUT))
-    grade.email = _email(grade, cell(GradeField.EMAIL))
-    if grade.key is None and not grade.name and not grade.errors:
-        grade.refuse(GradeField.NAME, "required")
+    grade = Grade(number, "")
+    read_who(grade, cell, GradeField.RUT, GradeField.EMAIL, GradeField.NAME)
 
     rank_value = cell(GradeField.RANK)
     sub_value = cell(GradeField.SUB_RANK)

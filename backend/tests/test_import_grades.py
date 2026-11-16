@@ -343,7 +343,14 @@ def test_the_template_has_a_grados_tab_with_the_schemes_ranks(
     response = client.get("/api/import/template.xlsx", headers=as_gym(gym))
     assert response.status_code == 200, response.text
     book = load_workbook(io.BytesIO(response.content))
-    assert book.sheetnames == ["Alumnos", "Grados", "Instrucciones", "Planes", "Lista de grados"]
+    assert book.sheetnames == [
+        "Alumnos",
+        "Pagos",
+        "Grados",
+        "Instrucciones",
+        "Planes",
+        "Lista de grados",
+    ]
     grados = book["Grados"]
     assert [c.value for c in grados[1]] == [header for header, _, _ in GRADE_COLUMNS]
     assert [c.value for c in grados[2]][2:5] == ["Martina Soto Pérez", "Azul", "1"]

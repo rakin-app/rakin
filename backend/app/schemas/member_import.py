@@ -4,9 +4,9 @@ The file is read once (`POST /api/import/sheet`) and the browser holds its rows 
 then on, sending them back with the admin's mapping for a dry run and then for real
 (`POST /api/import/members`). Nothing is stored between the two.
 
-A workbook has tabs (#299). The Alumnos tab is the top level of each body, as it was
-before there were others, and is empty in a workbook without one; every other tab is a
-field of its own (`grados`), absent when the workbook has none.
+A workbook has tabs (#298, #299). The Alumnos tab is the top level of each body, as it
+was before there were others, and is empty in a workbook without one; every other tab is
+a field of its own (`pagos`, `grados`), absent when the workbook has none.
 """
 
 import uuid
@@ -22,9 +22,16 @@ from pydantic import (
 )
 
 from app.member_import.grades import GradeErrorCode, GradeField
+from app.member_import.payments import PaymentErrorCode, PaymentField
 from app.member_import.rows import ErrorCode
 from app.member_import.rows import Field as ImportField
-from app.member_import.sheet import MAX_CELL_LENGTH, MAX_COLUMNS, MAX_ROWS, SheetErrorCode
+from app.member_import.sheet import (
+    MAX_CELL_LENGTH,
+    MAX_COLUMNS,
+    MAX_PAYMENT_ROWS,
+    MAX_ROWS,
+    SheetErrorCode,
+)
 from app.schemas.grading import Key
 
 Cell = Annotated[str, StringConstraints(max_length=MAX_CELL_LENGTH)]
@@ -53,6 +60,14 @@ class SheetFile(BaseModel):
     sha256: Sha256
 
 
+class PaymentSheet(BaseModel):
+    """The Pagos tab: one row per payment received before Rakin."""
+
+    headers: list[str]
+    rows: list[SheetRow]
+    mapping: dict[PaymentField, int]
+
+
 class GradeSheet(BaseModel):
     """The Grados tab: one row per belt or stripe earned."""
 
@@ -69,6 +84,7 @@ class Sheet(BaseModel):
     mapping: dict[ImportField, int]
     # Sent back with the rows, so the import says which file it was.
     file: SheetFile
+    pagos: PaymentSheet | None = None
     grados: GradeSheet | None = None
 
 
@@ -89,6 +105,26 @@ class SheetRefused(BaseModel):
 def _one_field_per_column(mapping: dict[Any, int]) -> None:
     if len(set(mapping.values())) != len(mapping):
         raise ValueError("a column maps to one field only")
+
+
+class PaymentImport(BaseModel):
+    """The Pagos tab's rows, checked after the Alumnos tab's."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rows: Annotated[list[SheetRow], Field(min_length=1, max_length=MAX_PAYMENT_ROWS)]
+    # Field to column: `paid_on`, `amount_clp`, and one of `rut`, `email` or `name`.
+    mapping: dict[PaymentField, Column]
+
+    @field_validator("mapping")
+    @classmethod
+    def _required(cls, value: dict[PaymentField, int]) -> dict[PaymentField, int]:
+        if PaymentField.PAID_ON not in value or PaymentField.AMOUNT not in value:
+            raise ValueError("map a column to paid_on and one to amount_clp")
+        if not {PaymentField.RUT, PaymentField.EMAIL, PaymentField.NAME} & value.keys():
+            raise ValueError("map a column to rut, email or name")
+        _one_field_per_column(value)
+        return value
 
 
 class GradeImport(BaseModel):
@@ -117,7 +153,7 @@ class GradeImport(BaseModel):
 class MemberImport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # The Alumnos tab; empty when the workbook has none, and then `grados` has rows.
+    # The Alumnos tab; empty when the workbook has none, and then another tab has rows.
     rows: Annotated[list[SheetRow], Field(max_length=MAX_ROWS)] = []
     # Field to column. `name` is required with rows; one column is one field.
     mapping: dict[ImportField, Column] = {}
@@ -128,6 +164,7 @@ class MemberImport(BaseModel):
     dry_run: bool = True
     # The file, as `POST /api/import/sheet` answered it: the import's record names it.
     file: SheetFile | None = None
+    pagos: PaymentImport | None = None
     grados: GradeImport | None = None
 
     @field_validator("mapping")
@@ -138,7 +175,7 @@ class MemberImport(BaseModel):
 
     @model_validator(mode="after")
     def _some_rows(self) -> "MemberImport":
-        if not self.rows and self.grados is None:
+        if not self.rows and self.pagos is None and self.grados is None:
             raise ValueError("no rows to import")
         if self.rows and ImportField.NAME not in self.mapping:
             raise ValueError("map a column to name")
@@ -196,6 +233,36 @@ class ImportSummary(BaseModel):
     former_created: int = 0
 
 
+class PaymentRowError(BaseModel):
+    field: PaymentField
+    code: PaymentErrorCode
+
+
+class PaymentRowResult(BaseModel):
+    row: int
+    # As the row names them: its name, else its RUT or email.
+    name: str
+    # Empty when the row is imported; a row with errors writes nothing.
+    errors: list[PaymentRowError]
+    # `existing`: they already have a payment of that day, amount and month.
+    payment: Outcome | None
+
+
+class PaymentSummary(BaseModel):
+    rows: int
+    imported: int
+    refused: int
+    payments_created: int
+    # Of `payments_created`, in pesos.
+    amount_clp: int
+
+
+class PaymentReport(BaseModel):
+    summary: PaymentSummary
+    # In the sheet's order.
+    rows: list[PaymentRowResult]
+
+
 class GradeRowError(BaseModel):
     field: GradeField
     code: GradeErrorCode
@@ -232,5 +299,7 @@ class ImportReport(BaseModel):
     summary: ImportSummary
     # In the sheet's order.
     rows: list[RowResult]
+    # The Pagos tab's, when the import had one.
+    pagos: PaymentReport | None = None
     # The Grados tab's, when the import had one.
     grados: GradeReport | None = None
