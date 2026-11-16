@@ -1,7 +1,7 @@
 """Check-in at the door: open access, with no class scheduled (#348).
 
 A climbing gym is open all day and has no classes: people come when they want. Its
-class type is of the kind `open_access` (migration 0059), and each visit is an
+class type is of the kind `open_access` (migration 0060), and each visit is an
 attendance at that type's session of the day, so attendance keeps one shape: a credits
 pack spends the type's `credit_cost`, inactivity and a student's classes count the
 visit, as any other class's. The first check-in of a day, in the gym's timezone, makes

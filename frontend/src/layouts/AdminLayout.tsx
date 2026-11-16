@@ -22,9 +22,16 @@ type NavItem = {
   exact?: boolean
 }
 
+// Each label read when the nav renders: "Alumnos" is the gym's word for its members (#344).
 const NAV_ITEMS: readonly NavItem[] = [
   { to: '/admin', label: t.nav.today, icon: <TodayIcon />, exact: true },
-  { to: '/admin/alumnos', label: t.nav.students, icon: <StudentsIcon /> },
+  {
+    to: '/admin/alumnos',
+    get label() {
+      return t.nav.students
+    },
+    icon: <StudentsIcon />,
+  },
   { to: '/admin/clases', label: t.nav.classes, icon: <ClassesIcon /> },
   { to: '/admin/pagos', label: t.nav.payments, icon: <PaymentsIcon /> },
   { to: '/admin/ajustes', label: t.nav.settings, icon: <SettingsIcon /> },

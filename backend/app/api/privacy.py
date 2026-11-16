@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import text
 
 from app.api.unsubscribe import in_gym
+from app.domain.vocabulary import vocabulary_of
 from app.hosts import host_gym
 from app.integrations import Integrations, get_integrations
 from app.logos import logo_path
@@ -78,5 +79,6 @@ async def privacy_notice(
         gym=row.name,
         gym_logo=logo_path(gym_id, row.logo_version),
         human_check=integrations.human_check.site_key is not None,
+        vocabulary=vocabulary_of(row.settings),
         **privacy.model_dump(),
     )

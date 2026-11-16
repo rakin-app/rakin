@@ -4,6 +4,11 @@ An activity is one discipline the gym teaches, "Ballet" or "Escalada", unique in
 with case ignored. `uses_grades` is whether it grades students: belts and ranks show
 only in a gym where at least one activity does. The screen offers presets with their
 own default for it; the API takes whatever the gym sends.
+
+`preset` is the key of the preset it came from (#344, `app.domain.vocabulary`), or
+None for one the gym named itself; it stays when the activity is renamed. `words` are
+what a gym of that sport calls itself, its members and its coach: the gym's first
+activity sets them, and Ajustes offers the others' as a suggestion.
 """
 
 import uuid
@@ -11,6 +16,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
 
+from app.domain.vocabulary import PresetKey, Vocabulary
 from app.schemas.classes import Name, never_null
 
 
@@ -19,6 +25,7 @@ class ActivityCreate(BaseModel):
 
     name: Name
     uses_grades: StrictBool = False
+    preset: PresetKey | None = None
 
 
 class ActivityUpdate(BaseModel):
@@ -39,6 +46,9 @@ class Activity(BaseModel):
     id: uuid.UUID
     name: str
     uses_grades: bool
+    preset: PresetKey | None = None
+    # The preset's words; None with no preset.
+    words: Vocabulary | None = None
     # The class types that belong to it.
     class_types: int
     created_at: datetime

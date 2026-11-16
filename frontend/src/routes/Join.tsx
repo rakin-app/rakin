@@ -13,6 +13,7 @@ import { Grid, PageContainer } from '../components/Layout'
 import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
+import { wearVocabulary } from '../i18n/vocabulary'
 import { RAKIN, useDocumentTitle } from '../pageTitle'
 import './Join.css'
 import { useSubmit } from '../api/submit'
@@ -79,6 +80,8 @@ function requiredFields(minor: boolean, noWhatsapp: boolean): (keyof Drafts)[] {
 export function Join() {
   const { token } = route.useParams()
   const form = useQuery(joinFormQuery(token))
+  // The link's gym's words (#344), on the shared host too, before the form reads them.
+  if (form.data?.vocabulary) wearVocabulary(form.data.vocabulary)
   useDocumentTitle(copy.eyebrow, form.data?.gym ?? RAKIN)
 
   if (form.isPending) {

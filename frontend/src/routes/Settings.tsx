@@ -26,43 +26,39 @@ import './Settings.css'
 
 const copy = t.admin.settings
 
+type SectionKey = keyof typeof copy.sections & keyof typeof copy.descriptions
+
+/** A section, its label and line read when shown: some name the gym's words (#344). */
+function section<P extends string, C extends ComponentType>(path: P, key: SectionKey, component: C) {
+  return {
+    path,
+    component,
+    get label(): string {
+      return copy.sections[key]
+    },
+    get description(): string {
+      return copy.descriptions[key]
+    },
+  }
+}
+
 /**
  * The sections, in tab order: the router makes a route of each under `/admin/ajustes`,
  * and on a desktop the first is where it opens. A new section is its component and an
  * entry here, with the line the phone's list says it with.
  */
 export const SETTINGS_SECTIONS = [
-  { path: 'gimnasio', label: copy.sections.gym, description: copy.descriptions.gym, component: GymSettings },
-  { path: 'planes', label: copy.sections.plans, description: copy.descriptions.plans, component: PlanSettings },
-  {
-    path: 'programas',
-    label: copy.sections.programs,
-    description: copy.descriptions.programs,
-    component: ProgramSettings,
-  },
-  {
-    path: 'horario',
-    label: copy.sections.schedule,
-    description: copy.descriptions.schedule,
-    component: ScheduleSettings,
-  },
-  { path: 'etiquetas', label: copy.sections.tags, description: copy.descriptions.tags, component: ClassTagSettings },
-  { path: 'bloques', label: copy.sections.blocks, description: copy.descriptions.blocks, component: BlockKindSettings },
-  {
-    path: 'graduacion',
-    label: copy.sections.grading,
-    description: copy.descriptions.grading,
-    component: GradingSettings,
-  },
-  { path: 'campos', label: copy.sections.fields, description: copy.descriptions.fields, component: FieldSettings },
-  { path: 'equipo', label: copy.sections.staff, description: copy.descriptions.staff, component: StaffSettings },
-  {
-    path: 'inscripcion',
-    label: copy.sections.joinLink,
-    description: copy.descriptions.joinLink,
-    component: JoinLinkSettings,
-  },
-  { path: 'cuenta', label: copy.sections.account, description: copy.descriptions.account, component: AccountSettings },
+  section('gimnasio', 'gym', GymSettings),
+  section('planes', 'plans', PlanSettings),
+  section('programas', 'programs', ProgramSettings),
+  section('horario', 'schedule', ScheduleSettings),
+  section('etiquetas', 'tags', ClassTagSettings),
+  section('bloques', 'blocks', BlockKindSettings),
+  section('graduacion', 'grading', GradingSettings),
+  section('campos', 'fields', FieldSettings),
+  section('equipo', 'staff', StaffSettings),
+  section('inscripcion', 'joinLink', JoinLinkSettings),
+  section('cuenta', 'account', AccountSettings),
 ] as const satisfies readonly { path: string; label: string; description: string; component: ComponentType }[]
 
 type Section = (typeof SETTINGS_SECTIONS)[number]

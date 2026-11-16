@@ -5,6 +5,7 @@
  */
 
 import type { MembershipStatus } from '../api/people'
+import { w } from './vocabulary'
 
 // A word per membership status, where only some of them need one.
 type Statuses = Partial<Record<MembershipStatus, string>>
@@ -35,7 +36,9 @@ export const es = {
   nav: {
     label: 'Principal',
     today: 'Hoy',
-    students: 'Alumnos',
+    get students() {
+      return w.Members
+    },
     classes: 'Clases',
     payments: 'Pagos',
     settings: 'Ajustes',
@@ -72,7 +75,7 @@ export const es = {
         ? 'Demasiados intentos. Inténtalo de nuevo en unos minutos o toca el link del correo.'
         : `Demasiados intentos. Inténtalo de nuevo en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`} o toca el link del correo.`,
     codeUnreachable: (gym: string) =>
-      `Este correo no tiene acceso a ${gym}. Si entrenas ahí, pídele al gimnasio que lo registre.`,
+      `Este correo no tiene acceso a ${gym}. Si entrenas ahí, pídele ${w.toThePlace} que lo registre.`,
     codeFailed: 'No pudimos entrar. Revisa tu conexión e inténtalo de nuevo.',
     resend: 'Enviar otro',
     resent: 'Te enviamos otro link y otro código. Usa el más reciente.',
@@ -192,7 +195,7 @@ export const es = {
         title: 'A quién llamar',
         error: 'No pudimos cargar a quién llamar.',
         empty: 'Todos vinieron en las últimas dos semanas.',
-        count: (n: number) => (n === 1 ? '1 alumno' : `${n} alumnos`),
+        count: (n: number) => w.memberCount(n),
         // The five most recently away are on Hoy; the rest are in Alumnos.
         showAll: (n: number) => `Ver los ${n}`,
         absent: (days: number) => `${days} días sin venir`,
@@ -234,25 +237,37 @@ export const es = {
       },
       // A new gym's first day: what to set up, each step a link to where it is done.
       setup: {
-        title: 'Configura tu academia',
-        error: 'No pudimos revisar los primeros pasos de tu academia.',
+        get title() {
+          return `Configura tu ${w.place}`
+        },
+        get error() {
+          return `No pudimos revisar los primeros pasos de tu ${w.place}.`
+        },
         progress: (done: number, total: number) => `${done} de ${total} listos`,
         // After a step's title, for a screen reader: the tick says it to the eye.
         state: (done: boolean) => (done ? ' (listo)' : ' (pendiente)'),
         steps: {
           activities: {
-            title: 'Qué enseña tu academia',
+            get title() {
+              return `Qué enseña tu ${w.place}`
+            },
             hint: 'Una o varias actividades, y si usan grados.',
             link: 'Elegir actividades',
           },
           gym: {
-            title: 'Datos de la academia y cuenta bancaria',
-            hint: 'Dónde te transfieren tus alumnos.',
+            get title() {
+              return `Datos ${w.ofThePlace} y cuenta bancaria`
+            },
+            get hint() {
+              return `Dónde te transfieren tus ${w.members}.`
+            },
             link: 'Ir a Ajustes',
           },
           plans: {
             title: 'Planes',
-            hint: 'Qué pagan tus alumnos y cada cuánto.',
+            get hint() {
+              return `Qué pagan tus ${w.members} y cada cuánto.`
+            },
             link: 'Crear planes',
           },
           classes: {
@@ -261,7 +276,9 @@ export const es = {
             link: 'Crear clases',
           },
           members: {
-            title: 'Agrega alumnos',
+            get title() {
+              return `Agrega ${w.members}`
+            },
             hint: 'A mano, desde una planilla o con el link de inscripción.',
             manual: 'Agregar a mano',
             import: 'Importar planilla',
@@ -269,7 +286,9 @@ export const es = {
           },
           staff: {
             title: 'Invita a tu equipo',
-            hint: 'Admins y profes, cada uno con su acceso.',
+            get hint() {
+              return `Admins y ${w.coaches}, cada uno con su acceso.`
+            },
             link: 'Invitar',
           },
         },
@@ -292,7 +311,9 @@ export const es = {
       rutInGym: (name: string) => `Ya hay alguien con este RUT: ${name}`,
       plan: 'Plan',
       noPlan: 'Sin plan',
-      planHint: 'Sin plan, queda como alumno sin plan y se lo asignas después.',
+      get planHint() {
+        return `Sin plan, queda como ${w.member} sin plan y se lo asignas después.`
+      },
       coachHint: 'Queda sin plan: el dueño o un admin se lo asigna.',
       approve: 'Aprobar',
       approveLabel: (name: string) => `Aprobar la solicitud de ${name}`,
@@ -302,11 +323,15 @@ export const es = {
       confirm: 'Sí, rechazar',
       cancel: 'Cancelar',
       working: 'Guardando…',
-      approved: (name: string) => `${name} ya es alumno.`,
+      approved: (name: string) => `${name} ya es ${w.member}.`,
       rejected: (name: string) => `Solicitud de ${name} rechazada.`,
       failed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
-      family: 'Esta persona ya tiene otro apoderado en el gimnasio, o su apoderado está a cargo de alguien más. Revísalo en su ficha.',
-      hasMembership: 'Ya es alumno con un plan. Apruébala sin plan para unir la solicitud a su ficha.',
+      get family() {
+        return `Esta persona ya tiene otro apoderado en ${w.thePlace}, o su apoderado está a cargo de alguien más. Revísalo en su ficha.`
+      },
+      get hasMembership() {
+        return `Ya es ${w.member} con un plan. Apruébala sin plan para unir la solicitud a su ficha.`
+      },
       hasLeft: 'Fue dado de baja: reactívalo desde su ficha, o aprueba sin plan.',
       ignoredEmail: (email: string) => `Su ficha mantiene su correo; ${email} no se usará.`,
       oldestShown: (n: number) => `Mostrando las ${n} más antiguas.`,
@@ -328,7 +353,9 @@ export const es = {
       fromNeeded: 'Elige hoy o un día después.',
       untilNeeded: 'Elige el día en que vuelve (después de “Desde”).',
       confirmApprove: 'Aprobar y congelar',
-      note: 'Nota para el alumno (opcional)',
+      get note() {
+        return `Nota para ${w.theMember} (opcional)`
+      },
       confirmReject: 'Rechazar solicitud',
       cancel: 'Cancelar',
       working: 'Guardando…',
@@ -344,10 +371,22 @@ export const es = {
       kids: 'Kids',
     },
     students: {
-      title: 'Alumnos',
-      searchLabel: 'Buscar alumno',
+      get title() {
+        return w.Members
+      },
+      get searchLabel() {
+        return `Buscar ${w.member}`
+      },
       // The list's column labels on a desktop, where each row is one line (#199).
-      columns: { name: 'Alumno', phone: 'Teléfono', rut: 'RUT', plan: 'Plan', status: 'Estado' },
+      columns: {
+        get name() {
+          return w.Member
+        },
+        phone: 'Teléfono',
+        rut: 'RUT',
+        plan: 'Plan',
+        status: 'Estado',
+      },
       searchPlaceholder: 'Nombre, teléfono o RUT',
       filtersLabel: 'Filtros',
       // The button over plan, programa and cinturón (#358), and how many of them are set.
@@ -362,13 +401,21 @@ export const es = {
       rankLabel: 'Cinturón',
       allRanks: 'Todos los cinturones',
       clearFilters: 'Limpiar filtros',
-      count: (n: number) => (n === 1 ? '1 alumno' : `${n.toLocaleString('es-CL')} alumnos`),
+      count: (n: number) => w.memberCount(n, n.toLocaleString('es-CL')),
       pickPlan: 'Elegir un plan…',
       noPlan: 'Sin plan: solo la persona',
-      empty: 'Todavía no hay alumnos.',
-      noMatches: 'Ningún alumno coincide con la búsqueda.',
-      loading: 'Cargando alumnos…',
-      error: 'No pudimos cargar los alumnos.',
+      get empty() {
+        return `Todavía no hay ${w.members}.`
+      },
+      get noMatches() {
+        return `Ningún ${w.member} coincide con la búsqueda.`
+      },
+      get loading() {
+        return `Cargando ${w.members}…`
+      },
+      get error() {
+        return `No pudimos cargar ${w.theMembers}.`
+      },
       retry: 'Reintentar',
       more: 'Ver más',
       status: {
@@ -382,7 +429,9 @@ export const es = {
       guardianOf: (name: string) => `Apoderado: ${name}`,
       dependentsCount: (n: number) => (n === 1 ? '1 a cargo' : `${n} a cargo`),
       importLink: 'Importar planilla',
-      newLink: 'Nuevo alumno',
+      get newLink() {
+        return `${w.memberIs('Nuevo', 'Nueva')} ${w.member}`
+      },
       // The filter for who has left the gym, and how each of them reads on it.
       left: 'Dados de baja',
       leftOn: (day: string) => `De baja desde el ${day}`,
@@ -401,8 +450,12 @@ export const es = {
       payLabel: (name: string) => `Registrar pago de ${name}`,
     },
     newMember: {
-      title: 'Nuevo alumno',
-      eyebrow: 'Alumnos',
+      get title() {
+        return `${w.memberIs('Nuevo', 'Nueva')} ${w.member}`
+      },
+      get eyebrow() {
+        return w.Members
+      },
       // At the top of the form (#294): today's form, or "Agregar exalumno".
       kindLabel: '¿Entrena aquí?',
       kind: { current: 'Entrena aquí', former: 'Ya no entrena aquí' },
@@ -412,22 +465,30 @@ export const es = {
           'Para tener en Rakin a quien ya dejó de entrenar: queda en "Dados de baja", sin plan, y Rakin nunca le escribe. Después puedes agregar su historial en su ficha.',
         phone: 'Teléfono (opcional)',
         phoneHint: 'Nadie le va a escribir: solo queda en su ficha.',
-        since: 'Alumno desde (opcional)',
+        get since() {
+          return `${w.Member} desde (opcional)`
+        },
         leftOn: 'Fecha de baja',
-        submit: 'Guardar exalumno',
+        get submit() {
+          return `Guardar ${w.formerMember}`
+        },
         needed: {
           leftOn: 'Elige un día de hoy hacia atrás, de los últimos 60 años.',
           since: 'Elige un día de los últimos 60 años, no después de la fecha de baja.',
         },
         refused: {
           invalid: 'Revisa los datos: el teléfono, el RUT, el correo o una fecha no son válidos.',
-          failed: 'No pudimos guardar al exalumno. Inténtalo de nuevo.',
+          get failed() {
+            return `No pudimos guardar ${w.memberIs('al', 'a la')} ${w.formerMember}. Inténtalo de nuevo.`
+          },
         },
       },
       firstName: 'Nombre',
       lastName: 'Apellido',
       phone: 'Teléfono (WhatsApp)',
-      phoneHint: 'Celular chileno: +56 9 1234 5678. El gimnasio le escribe por WhatsApp.',
+      get phoneHint() {
+        return `Celular chileno: +56 9 1234 5678. ${w.ThePlace} le escribe por WhatsApp.`
+      },
       phoneHintMinor: 'Opcional: los avisos van al apoderado.',
       phoneOptional: 'Teléfono (opcional)',
       noWhatsapp: 'No tiene WhatsApp',
@@ -437,10 +498,14 @@ export const es = {
       dob: 'Fecha de nacimiento (opcional)',
       guardianTitle: 'Apoderado',
       guardianMinor: 'Es menor de edad: necesita un apoderado que pague y reciba los avisos.',
-      guardianOptional: 'Si alguien más paga por este alumno, agrégalo como apoderado.',
+      get guardianOptional() {
+        return `Si alguien más paga por ${w.memberIs('este', 'esta')} ${w.member}, agrégalo como apoderado.`
+      },
       guardianAdd: 'Agregar apoderado',
       guardianRemove: 'Quitar apoderado',
-      guardianExisting: 'Ya está en el gimnasio',
+      get guardianExisting() {
+        return `Ya está en ${w.thePlace}`
+      },
       guardianNew: 'Es nuevo',
       guardianSearch: 'Buscar al apoderado',
       guardianPick: 'Elegir',
@@ -462,10 +527,14 @@ export const es = {
       welcomeHint: {
         plan: 'Le explica cómo pagar y subir el comprobante, y trae su link para entrar.',
         noPlan: 'Le llega su link para entrar a su página.',
-        noEmail: 'Necesita un correo: escribe el del alumno.',
+        get noEmail() {
+          return `Necesita un correo: escribe el ${w.ofTheMember}.`
+        },
         noGuardianEmail: 'Necesita un correo: escribe el del apoderado, que es quien lo recibe.',
       },
-      submit: 'Guardar alumno',
+      get submit() {
+        return `Guardar ${w.member}`
+      },
       working: 'Guardando…',
       cancel: 'Cancelar',
       needed: {
@@ -481,8 +550,12 @@ export const es = {
           'Ese apoderado no tiene teléfono. Agrégalo en su ficha, o marca ahí "No tiene WhatsApp".',
       },
       duplicate: {
-        rut_in_gym: 'Ese RUT ya es de un alumno del gimnasio.',
-        email_in_gym: 'Ese correo ya es de un alumno del gimnasio.',
+        get rut_in_gym() {
+          return `Ese RUT ya es de ${w.aMember} ${w.ofThePlace}.`
+        },
+        get email_in_gym() {
+          return `Ese correo ya es de ${w.aMember} ${w.ofThePlace}.`
+        },
         open: 'Abrir su ficha',
       },
       refused: {
@@ -494,18 +567,32 @@ export const es = {
         phone: 'Escribe un celular, como +56 9 1234 5678.',
         dob: 'Escribe una fecha pasada.',
         one_level: 'Ese apoderado está a cargo de otro apoderado: elige a otra persona.',
-        failed: 'No pudimos guardar al alumno. Inténtalo de nuevo.',
+        get failed() {
+          return `No pudimos guardar ${w.toTheMember}. Inténtalo de nuevo.`
+        },
       },
     },
     import: {
-      title: 'Importar alumnos',
-      eyebrow: 'Alumnos',
-      intro:
-        'Sube la planilla del gimnasio (CSV o Excel). Primero revisamos cada fila sin guardar nada; después importas. Puedes volver a importarla: a quien ya está lo encontramos por su RUT (o su correo, o su nombre si no tiene ninguno) y no se duplica.',
-      templateHint:
-        '¿Empiezas de cero, o traes alumnos antiguos, exalumnos, sus pagos y sus grados? Usa la plantilla de Rakin.',
+      get title() {
+        return `Importar ${w.members}`
+      },
+      get eyebrow() {
+        return w.Members
+      },
+      get intro() {
+        return `Sube la planilla ${w.ofThePlace} (CSV o Excel). Primero revisamos cada fila sin guardar nada; después importas. Puedes volver a importarla: a quien ya está lo encontramos por su RUT (o su correo, o su nombre si no tiene ninguno) y no se duplica.`
+      },
+      get templateHint() {
+        return `¿Empiezas de cero, o traes ${w.members} antiguos, ${w.formerMembers}, sus pagos y sus grados? Usa la plantilla de Rakin.`
+      },
       csvTab: 'Si es un CSV, ¿qué contiene?',
-      tabs: { alumnos: 'Alumnos', pagos: 'Pagos', grados: 'Grados' },
+      tabs: {
+        get alumnos() {
+          return w.Members
+        },
+        pagos: 'Pagos',
+        grados: 'Grados',
+      },
       template: 'Descargar plantilla',
       fileLabel: 'Planilla',
       choose: 'Elegir archivo',
@@ -514,18 +601,19 @@ export const es = {
       refused: {
         unreadable: 'No pudimos leer el archivo. Guárdalo como CSV o Excel (.xlsx) e inténtalo de nuevo.',
         empty: 'La planilla no tiene filas con datos.',
-        too_many_rows:
-          'La planilla tiene demasiadas filas (el máximo es 2.000 en Alumnos y en Grados, y 20.000 en Pagos).',
+        get too_many_rows() {
+          return `La planilla tiene demasiadas filas (el máximo es 2.000 en ${w.Members} y en Grados, y 20.000 en Pagos).`
+        },
         too_many_empty_rows:
           'La planilla sigue con miles de filas vacías después de los datos. Copia los datos a una hoja nueva e inténtalo de nuevo.',
         too_large: 'El archivo pesa más de 5 MB.',
         failed: 'No pudimos procesar la planilla. Inténtalo de nuevo.',
       },
-      // The Alumnos tab's rows, and each other tab the workbook has.
+      // The members' tab's rows, and each other tab the workbook has.
       fileSummary: (name: string, rows: number, others: { tab: string; rows: number }[]) => {
         const count = (n: number) => (n === 1 ? '1 fila' : `${n.toLocaleString('es-CL')} filas`)
         if (others.length === 0) return `${name}: ${count(rows)}`
-        const tabs = rows > 0 ? [{ tab: 'Alumnos', rows }, ...others] : others
+        const tabs = rows > 0 ? [{ tab: w.Members, rows }, ...others] : others
         return `${name}: ${tabs.map((tab) => `${count(tab.rows)} en ${tab.tab}`).join(', ')}`
       },
       otherFile: 'Elegir otra planilla',
@@ -549,7 +637,9 @@ export const es = {
         guardian_rut: 'RUT del apoderado',
         guardian_email: 'Correo del apoderado',
         guardian_phone: 'Teléfono del apoderado',
-        member_since: 'Alumno desde',
+        get member_since() {
+          return `${w.Member} desde`
+        },
         left_on: 'Fecha de baja',
         left_reason: 'Motivo de baja',
         prior_classes: 'Clases antes de Rakin',
@@ -579,8 +669,12 @@ export const es = {
         'En Pagos, marca la columna de la fecha de pago, la del monto y la de quién es (RUT, correo o nombre).',
       gradesRequired: 'En Grados, marca la columna del grado, la de la fecha y la de quién es (RUT, correo o nombre).',
       ranksTitle: 'Grados de la planilla',
-      ranksHint: 'Elige a qué grado del gimnasio corresponde cada valor. Un valor sin elegir se informa como error.',
-      noRanks: 'El gimnasio aún no tiene grados: configúralos antes de importar los de la planilla.',
+      get ranksHint() {
+        return `Elige a qué grado ${w.ofThePlace} corresponde cada valor. Un valor sin elegir se informa como error.`
+      },
+      get noRanks() {
+        return `${w.ThePlace} aún no tiene grados: configúralos antes de importar los de la planilla.`
+      },
       pickRank: 'Elegir un grado…',
       plansTitle: 'Planes de la planilla',
       plansHint:
@@ -609,7 +703,7 @@ export const es = {
       history: (people: number, former: number) =>
         [
           people > 0 && `Historial completado: ${people === 1 ? '1 persona' : `${people} personas`}.`,
-          former > 0 && `${former === 1 ? '1 exalumno' : `${former} exalumnos`}, sin plan.`,
+          former > 0 && `${former === 1 ? `1 ${w.formerMember}` : `${former} ${w.formerMembers}`}, sin plan.`,
         ]
           .filter(Boolean)
           .join(' '),
@@ -623,7 +717,7 @@ export const es = {
           refused > 0 && (refused === 1 ? '1 con errores' : `${refused.toLocaleString('es-CL')} con errores`),
         ]
           .filter(Boolean)
-          .join(', ') + '. Quedan en el historial de cada alumno: no se cobran ni cambian lo que debe.',
+          .join(', ') + `. Quedan en el historial de cada ${w.member}: no se cobran ni cambian lo que debe.`,
       paymentsErrorsTitle: 'Pagos con errores',
       paymentsErrorsHint:
         'Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.',
@@ -634,7 +728,9 @@ export const es = {
         invalid_date: 'no es una fecha válida (hasta 60 años atrás, nunca después de hoy)',
         invalid_amount: 'no es un monto en pesos mayor que cero',
         invalid_method: 'no es Efectivo, Transferencia ni Otro',
-        unknown_person: 'no está en Alumnos ni en el gimnasio',
+        get unknown_person() {
+          return `no está en ${w.Members} ni en ${w.thePlace}`
+        },
         ambiguous_name: 'hay dos personas con ese nombre: agrega RUT o correo',
         covers_plan: 'ya está en su plan de Rakin: regístralo con «Pagado hasta» en su ficha',
         repeated: 'se repite en una fila anterior (misma persona, fecha, monto y mes)',
@@ -670,7 +766,7 @@ export const es = {
           const removed = rows.length > 0 ? `Se eliminan ${rows.join(' y ')} de esta importación.` : ''
           const restored =
             people > 0
-              ? `El historial de ${people === 1 ? '1 persona' : `${n(people)} personas`} (alumno desde, clases antes de Rakin, fecha y motivo de baja) vuelve a como estaba.`
+              ? `El historial de ${people === 1 ? '1 persona' : `${n(people)} personas`} (${w.member} desde, clases antes de Rakin, fecha y motivo de baja) vuelve a como estaba.`
               : ''
           return [removed, restored].filter(Boolean).join(' ') || 'Esta importación no dejó historial que deshacer.'
         },
@@ -678,7 +774,9 @@ export const es = {
           n === 1
             ? '1 dato cambiado después de importar se mantiene.'
             : `${n.toLocaleString('es-CL')} datos cambiados después de importar se mantienen.`,
-        stays: 'Las personas y planes que creó se mantienen. Un exalumno que creó se puede eliminar desde su ficha.',
+        get stays() {
+          return `Las personas y planes que creó se mantienen. ${w.memberIs('Un', 'Una')} ${w.formerMember} que creó se puede eliminar desde su ficha.`
+        },
         reason: 'Motivo',
         reasonNeeded: 'Escribe el motivo.',
         submit: 'Deshacer importación',
@@ -708,8 +806,12 @@ export const es = {
         invalid_rut: 'no es un RUT válido',
         invalid_email: 'no es un correo válido',
         invalid_date: 'no es una fecha válida (hasta 60 años atrás, nunca después de hoy)',
-        unknown_rank: 'no corresponde a ningún grado del gimnasio',
-        unknown_person: 'no está en Alumnos ni en el gimnasio',
+        get unknown_rank() {
+          return `no corresponde a ningún grado ${w.ofThePlace}`
+        },
+        get unknown_person() {
+          return `no está en ${w.Members} ni en ${w.thePlace}`
+        },
         ambiguous_name: 'hay dos personas con ese nombre: agrega RUT o correo',
         repeated: 'se repite en una fila anterior',
         too_long: 'es demasiado largo (máximo 500 caracteres)',
@@ -724,42 +826,58 @@ export const es = {
         invalid_email: 'no es un correo válido',
         invalid_rut: 'no es un RUT válido',
         invalid_date: 'no es una fecha válida',
-        own_guardian: 'es el mismo RUT del alumno',
+        get own_guardian() {
+          return `es el mismo RUT ${w.ofTheMember}`
+        },
         unknown_plan: 'no corresponde a ningún plan',
         inactive_plan: 'es un plan desactivado',
         dropin_plan: 'es una clase suelta, no una membresía',
         due_before_start: 'es anterior al inicio del plan',
-        has_guardian: 'el alumno ya tiene otro apoderado',
+        get has_guardian() {
+          return `${w.theMember} ya tiene otro apoderado`
+        },
         one_level: 'el apoderado está a cargo de otra persona',
         has_left: 'fue dado de baja: reactívalo desde su ficha',
         ambiguous_name: 'Nombre repetido: agrega RUT o correo',
-        rut_in_gym: 'ya es de otra persona del gimnasio',
-        email_in_gym: 'ya es de otra persona del gimnasio',
-        left_before_start: 'es anterior a «Alumno desde»',
+        get rut_in_gym() {
+          return `ya es de otra persona ${w.ofThePlace}`
+        },
+        get email_in_gym() {
+          return `ya es de otra persona ${w.ofThePlace}`
+        },
+        get left_before_start() {
+          return `es anterior a «${w.Member} desde»`
+        },
         invalid_number: 'no es un número de clases',
         too_long: 'es demasiado largo (máximo 200 caracteres)',
         minor: 'falta: es menor de 18 años',
       },
       fieldError: (field: string, problem: string) => `${field}: ${problem}`,
       missingPhoneTitle: (n: number) => (n === 1 ? 'Falta teléfono: 1 fila' : `Falta teléfono: ${n} filas`),
-      missingPhoneHint:
-        'Se importan igual, marcadas «Falta teléfono» en Alumnos. Agrega el celular en su ficha (el del apoderado, si es menor) o marca «No tiene WhatsApp».',
+      get missingPhoneHint() {
+        return `Se importan igual, marcadas «Falta teléfono» en ${w.Members}. Agrega el celular en su ficha (el del apoderado, si es menor) o marca «No tiene WhatsApp».`
+      },
       missingIdentityTitle: (n: number) => (n === 1 ? 'Falta RUT: 1 fila' : `Falta RUT: ${n} filas`),
-      missingIdentityHint:
-        'Se importan igual, marcadas «Falta RUT» en Alumnos. Sin RUT ni correo, al volver a importar los encontramos por su nombre (y su fecha de nacimiento o teléfono si hay dos con el mismo nombre): agrega el RUT en su ficha.',
+      get missingIdentityHint() {
+        return `Se importan igual, marcadas «Falta RUT» en ${w.Members}. Sin RUT ni correo, al volver a importar los encontramos por su nombre (y su fecha de nacimiento o teléfono si hay dos con el mismo nombre): agrega el RUT en su ficha.`
+      },
       keptTitle: 'Ya existen: no se actualizan',
-      keptHint:
-        'Lo que el gimnasio ya tiene no se sobrescribe; el historial solo se completa si estaba vacío, y a quien ya entrena aquí no se le da de baja. Si algo cambió, edítalo en la ficha del alumno.',
-      formerTitle: (n: number) => (n === 1 ? 'Exalumnos: 1 fila' : `Exalumnos: ${n} filas`),
-      formerHint:
-        'Tienen «Fecha de baja»: se agregan como exalumnos, sin plan ni cobros, y no les llega ningún mensaje.',
+      get keptHint() {
+        return `Lo que ${w.thePlace} ya tiene no se sobrescribe; el historial solo se completa si estaba vacío, y a quien ya entrena aquí no se le da de baja. Si algo cambió, edítalo en la ficha ${w.ofTheMember}.`
+      },
+      formerTitle: (n: number) => (n === 1 ? `${w.FormerMembers}: 1 fila` : `${w.FormerMembers}: ${n} filas`),
+      get formerHint() {
+        return `Tienen «Fecha de baja»: se agregan como ${w.formerMembers}, sin plan ni cobros, y no les llega ningún mensaje.`
+      },
       kept: (fields: string[]) => `Ya existe: no se actualiza ${fields.join(', ')}.`,
       // A former student created by the sheet: their plan is not imported.
       formerKept: (fields: string[]) => `No se importa: ${fields.join(', ')}.`,
       apply: (n: number) => (n === 1 ? 'Importar 1 fila' : `Importar ${n} filas`),
       applying: 'Importando…',
       applyFailed: 'No pudimos importar. No se guardó nada; inténtalo de nuevo.',
-      toStudents: 'Ver alumnos',
+      get toStudents() {
+        return `Ver ${w.members}`
+      },
       again: 'Importar otra planilla',
     },
     family: {
@@ -772,7 +890,7 @@ export const es = {
       none: 'No tiene a nadie a cargo.',
       unlink: 'Desvincular',
       unlinkLabel: (name: string) => `Desvincular a ${name}`,
-      unlinkConfirm: (name: string) => `¿Desvincular a ${name}? Ambos siguen en el gimnasio; solo deja de estar a cargo.`,
+      unlinkConfirm: (name: string) => `¿Desvincular a ${name}? Ambos siguen en ${w.thePlace}; solo deja de estar a cargo.`,
       unlinkCancel: 'Cancelar',
       addTitle: 'Agregar a alguien a cargo',
       close: 'Cerrar',
@@ -781,11 +899,15 @@ export const es = {
       rut: 'RUT (opcional)',
       dob: 'Fecha de nacimiento (opcional)',
       add: 'Agregar',
-      linkTitle: 'O vincular a un alumno que ya está',
+      get linkTitle() {
+        return `O vincular a ${w.aMember} que ya está`
+      },
       linkSearch: 'Buscar a quién vincular',
       link: 'Vincular',
       linkLabel: (name: string) => `Vincular a ${name}`,
-      noMatches: 'Ningún alumno coincide.',
+      get noMatches() {
+        return `Ningún ${w.member} coincide.`
+      },
       refused: {
         has_guardian: 'Esa persona ya tiene un apoderado.',
         // Unlinking a minor's guardian (#368).
@@ -797,15 +919,19 @@ export const es = {
       },
     },
     member: {
-      back: 'Volver a Alumnos',
+      get back() {
+        return `Volver a ${w.Members}`
+      },
       loading: 'Cargando ficha…',
       error: 'No pudimos cargar la ficha.',
-      notFound: 'No encontramos a este alumno.',
+      get notFound() {
+        return `No encontramos a ${w.memberIs('este', 'esta')} ${w.member}.`
+      },
       retry: 'Reintentar',
-      since: (month: string) => `Alumno desde ${month}`,
+      since: (month: string) => `${w.Member} desde ${month}`,
       // `Azul · 2 grados · alumno desde mar 2024`: the rank, and a member since. Said
       // whole, so it does not read as the belt's date, which Graduación has (#213).
-      rankSince: (rank: string, month: string) => `${rank} · alumno desde ${month}`,
+      rankSince: (rank: string, month: string) => `${rank} · ${w.member} desde ${month}`,
       noPlan: 'Sin plan',
       paymentLabel: 'Estado de pago',
       dueDay: (plan: string, day: number) => `${plan} · vence el ${day}`,
@@ -862,10 +988,16 @@ export const es = {
         saved: 'Datos guardados.',
         nameNeeded: 'Escribe el nombre.',
         refused: {
-          rut_in_gym: 'Ese RUT ya es de otro alumno del gimnasio.',
-          email_in_gym: 'Ese correo ya es de otro alumno del gimnasio.',
+          get rut_in_gym() {
+            return `Ese RUT ya es de ${w.memberIs('otro', 'otra')} ${w.member} ${w.ofThePlace}.`
+          },
+          get email_in_gym() {
+            return `Ese correo ya es de ${w.memberIs('otro', 'otra')} ${w.member} ${w.ofThePlace}.`
+          },
           open: 'Abrir su ficha',
-          phone: 'Un alumno necesita un teléfono. Si no tiene WhatsApp, marca "No tiene WhatsApp".',
+          get phone() {
+            return `${w.memberIs('Un', 'Una')} ${w.member} necesita un teléfono. Si no tiene WhatsApp, marca "No tiene WhatsApp".`
+          },
           identity: 'Deja el RUT o el correo: uno de los dos dice quién es.',
           // A birth date that makes them a minor, and they have no guardian (#368).
           minor:
@@ -893,7 +1025,9 @@ export const es = {
           'Su apoderado retiró su consentimiento. La membresía sigue igual; puede darlo de nuevo desde su página.',
         missing:
           'Falta el consentimiento de su apoderado. Se lo pide su página, en Rakin, y el correo de bienvenida le dice dónde.',
-        none: 'Sin registro: la academia lo agregó a mano o por planilla, sin el formulario de inscripción.',
+        get none() {
+          return `Sin registro: ${w.thePlace} lo agregó a mano o por planilla, sin el formulario de inscripción.`
+        },
         // One act of the register: when, who, and the notice's version.
         event: {
           notice_accepted: (by: string) => `${by} aceptó la política de privacidad en la inscripción`,
@@ -902,7 +1036,9 @@ export const es = {
           consent_withdrawn: (by: string) => `${by} retiró su consentimiento desde su página`,
         },
         // An act whose actor left the gym: only ever a guardian, since the person is here.
-        goneGuardian: 'Su apoderado, que ya no está en la academia,',
+        get goneGuardian() {
+          return `Su apoderado, que ya no está en ${w.thePlace},`
+        },
         version: (day: string) => `política del ${day}`,
         // Before the register kept the version.
         noVersion: 'versión no registrada',
@@ -911,7 +1047,7 @@ export const es = {
       history: {
         title: 'Historial',
         empty: 'Nada anterior a Rakin todavía.',
-        memberSince: (day: string) => `Alumno desde ${day}`,
+        memberSince: (day: string) => `${w.Member} desde ${day}`,
         priorClasses: (n: number) => (n === 1 ? '1 clase antes de Rakin' : `${n} clases antes de Rakin`),
         add: 'Agregar historial',
         start: 'Fecha de inicio y clases',
@@ -994,7 +1130,9 @@ export const es = {
           title: 'Fecha de inicio y clases',
           intro:
             'Desde cuándo entrena aquí y cuántas clases tuvo antes de Rakin. Solo se muestra en su ficha: no cambia su plan ni lo que se le cobra.',
-          since: 'Alumno desde (opcional)',
+          get since() {
+            return `${w.Member} desde (opcional)`
+          },
           classes: 'Clases antes de Rakin',
           sinceNeeded: 'Elige un día de hoy hacia atrás, de los últimos 60 años.',
           classesNeeded: 'Escribe un número entero, 0 o más.',
@@ -1029,7 +1167,9 @@ export const es = {
       reactivate: 'Reactivar',
       returnForm: {
         title: 'Reactivar',
-        intro: 'Vuelve a la lista de alumnos. Si eliges un plan, empieza en él desde ese día.',
+        get intro() {
+          return `Vuelve a la lista de ${w.members}. Si eliges un plan, empieza en él desde ese día.`
+        },
         plan: 'Plan (opcional)',
         noPlan: 'Sin plan por ahora',
         startedOn: 'Desde',
@@ -1042,15 +1182,18 @@ export const es = {
       remove: 'Eliminar',
       removeForm: {
         title: 'Eliminar',
-        intro:
-          'Borra todo lo que el gimnasio tiene de esta persona: su ficha, planes, cargos anulados, asistencia y grados. No se puede deshacer. Es para un error al agregarlo o si pide que borren sus datos. El registro del gimnasio guarda quién lo eliminó, cuándo y por qué, sin sus datos.',
+        get intro() {
+          return `Borra todo lo que ${w.thePlace} tiene de esta persona: su ficha, planes, cargos anulados, asistencia y grados. No se puede deshacer. Es para un error al agregarlo o si pide que borren sus datos. El registro ${w.ofThePlace} guarda quién lo eliminó, cuándo y por qué, sin sus datos.`
+        },
         confirm: (name: string) => `Para confirmar, escribe su nombre: ${name}`,
         submit: 'Eliminar para siempre',
         cancel: 'Cancelar',
         working: 'Eliminando…',
         checking: 'Revisando…',
         reason: 'Motivo',
-        reasonNeeded: 'Escribe por qué se elimina: queda en el registro del gimnasio.',
+        get reasonNeeded() {
+          return `Escribe por qué se elimina: queda en el registro ${w.ofThePlace}.`
+        },
         // What blocks deleting, and how to clear it (#256).
         refused: {
           payment: (amount: string) =>
@@ -1058,8 +1201,8 @@ export const es = {
           pending: () => 'Tiene un comprobante por validar: recházalo primero.',
           owes: (amount: string) =>
             `Debe ${amount}: anula sus cargos primero («Anular plan» o «Anular cargo»), o dale de baja si la deuda es real.`,
-          staff: () => 'Es parte del equipo del gimnasio, o ha dado clases: no se puede eliminar.',
-          guardian: () => 'Es apoderado de otros alumnos: desvincúlalos en Familia antes de eliminarlo.',
+          staff: () => `Es parte del equipo ${w.ofThePlace}, o ha dado clases: no se puede eliminar.`,
+          guardian: () => `Es apoderado de ${w.memberIs('otros', 'otras')} ${w.members}: desvincúlalos en Familia antes de eliminarlo.`,
         },
         failed: 'No pudimos eliminarlo. Inténtalo de nuevo.',
       },
@@ -1071,7 +1214,9 @@ export const es = {
       assignPlan: 'Asignar plan',
       assignForm: {
         title: 'Asignar plan',
-        intro: 'Empieza en el plan desde el día que elijas, y se le cobra como a cualquier alumno del plan.',
+        get intro() {
+          return `Empieza en el plan desde el día que elijas, y se le cobra como a cualquier ${w.member} del plan.`
+        },
         plan: 'Plan',
         noPlan: 'Elige un plan',
         startedOn: 'Desde',
@@ -1194,8 +1339,9 @@ export const es = {
       moreActions: 'Más acciones',
       reactivateForm: {
         title: 'Reactivar plan',
-        intro:
-          'El plan vuelve a quedar activo. Pagar lo que debía no lo reactiva solo: puede que el alumno se haya ido.',
+        get intro() {
+          return `El plan vuelve a quedar activo. Pagar lo que debía no lo reactiva solo: puede que ${w.theMember} se haya ido.`
+        },
         loading: 'Calculando lo que se cobra…',
         billFrom: '¿Desde cuándo se cobra?',
         last: 'Desde donde quedó',
@@ -1418,7 +1564,9 @@ export const es = {
           refused: {
             awarded_in_future: 'La fecha no puede ser posterior a hoy.',
             awarded_too_early: 'La fecha no puede ser de hace más de 60 años.',
-            grading_scheme_invalid: 'Revisa el sistema de grados del gimnasio antes de registrar.',
+            get grading_scheme_invalid() {
+              return `Revisa el sistema de grados ${w.ofThePlace} antes de registrar.`
+            },
             failed: 'No pudimos registrar la graduación. Inténtalo de nuevo.',
           },
         },
@@ -1526,7 +1674,9 @@ export const es = {
         badDuration: 'La duración va de 1 a 1440 minutos.',
         submit: 'Crear clase',
         working: 'Creando…',
-        noClassTypes: 'Todavía no hay tipos de clase. El dueño o un admin del gimnasio los configura.',
+        get noClassTypes() {
+          return `Todavía no hay tipos de clase. El dueño o un admin ${w.ofThePlace} los configura.`
+        },
         error: 'No pudimos cargar los tipos de clase.',
         failed: 'No pudimos crear la clase. Inténtalo de nuevo.',
         close: 'Cerrar',
@@ -1578,11 +1728,15 @@ export const es = {
     },
     settings: {
       title: 'Ajustes',
-      adminsOnly: 'Solo el dueño o un admin del gimnasio ve los ajustes.',
+      get adminsOnly() {
+        return `Solo el dueño o un admin ${w.ofThePlace} ve los ajustes.`
+      },
       roleError: 'No pudimos cargar los ajustes.',
       sectionsLabel: 'Secciones de ajustes',
       sections: {
-        gym: 'Gimnasio',
+        get gym() {
+          return w.Place
+        },
         plans: 'Planes',
         programs: 'Programas y clases',
         blocks: 'Bloques',
@@ -1602,8 +1756,12 @@ export const es = {
         schedule: 'Las clases de cada semana y los días cerrados.',
         tags: 'Los focos que se repiten en las clases, y sus horas.',
         blocks: 'Las partes de una clase en el timer.',
-        grading: 'Opcional: grados o cinturones, si tu academia los usa, y cuándo alguien está listo para graduarse.',
-        fields: 'Datos extra en la ficha de cada alumno.',
+        get grading() {
+          return `Opcional: grados o cinturones, si tu ${w.place} los usa, y cuándo alguien está listo para graduarse.`
+        },
+        get fields() {
+          return `Datos extra en la ficha de cada ${w.member}.`
+        },
         staff: 'Admins y coaches, y quién tiene acceso.',
         joinLink: 'El link para que se inscriban solos.',
         account: 'Tu nombre, tu email y cerrar sesión.',
@@ -1626,16 +1784,37 @@ export const es = {
         failed: 'Revisa este campo.',
       },
       gym: {
-        title: 'Gimnasio',
-        error: 'No pudimos cargar los datos del gimnasio.',
-        formLabel: 'Datos del gimnasio',
+        get title() {
+          return w.Place
+        },
+        get error() {
+          return `No pudimos cargar los datos ${w.ofThePlace}.`
+        },
+        get formLabel() {
+          return `Datos ${w.ofThePlace}`
+        },
         profile: 'Perfil',
-        name: 'Nombre del gimnasio',
+        get name() {
+          return `Nombre ${w.ofThePlace}`
+        },
         slug: 'Dirección web',
         timezone: 'Zona horaria',
+        // What the gym calls itself, its members and its coach (#344), each from a list
+        // (`vocabulary.ts`). The first activity picks them; saved here, they stay.
+        vocabulary: {
+          place: 'Cómo se llama tu lugar',
+          members: 'Cómo llamas a tus miembros',
+          coach: 'Cómo llamas a quien enseña',
+          hint: 'Las palabras de la app: el menú, los títulos, el formulario de inscripción y la página de cada persona.',
+          // One button per activity whose words differ, as a one-tap suggestion.
+          suggestionsLabel: 'Sugerencias según tus actividades',
+          suggest: (activity: string) => `Usar las palabras de ${activity}`,
+          suggested: 'Listo: guarda para usarlas.',
+        },
         theme: 'Tema',
-        themeHint:
-          'Los colores de la app, la página del alumno, el formulario de inscripción y la entrada. El cronómetro sigue verde y rojo en todos.',
+        get themeHint() {
+          return `Los colores de la app, la página ${w.ofTheMember}, el formulario de inscripción y la entrada. El cronómetro sigue verde y rojo en todos.`
+        },
         themes: { bosque: 'Bosque', oceano: 'Océano', volcan: 'Volcán' },
         themeDefault: 'Por defecto',
         themePreview: (name: string, saved: string) => `Así se ve ${name}. Guarda para dejarlo, o cancela para volver a ${saved}.`,
@@ -1643,7 +1822,9 @@ export const es = {
         themeSample: { collected: 'Cobrado', figure: '$2.115.000', paid: 'Pagado', overdue: 'Vencido', action: 'Registrar' },
         activities: {
           title: 'Actividades',
-          hint: 'Lo que enseña tu academia: una o varias. Los grados (cinturones, niveles) aparecen en la app solo si una actividad los usa.',
+          get hint() {
+            return `Lo que enseña tu ${w.place}: una o varias. Los grados (cinturones, niveles) aparecen en la app solo si una actividad los usa.`
+          },
           none: 'Todavía no hay actividades.',
           usesGrades: 'Usa grados (cinturones, niveles)',
           classTypes: (n: number) => (n === 1 ? '1 tipo de clase' : `${n} tipos de clase`),
@@ -1675,9 +1856,13 @@ export const es = {
         },
         logo: {
           title: 'Logo',
-          hint: 'Se muestra en un círculo junto al nombre del gimnasio: en la app, la página del alumno, la entrada, la inscripción y los correos. PNG, JPEG o WebP, de hasta 5 MB.',
+          get hint() {
+            return `Se muestra en un círculo junto al nombre ${w.ofThePlace}: en la app, la página ${w.ofTheMember}, la entrada, la inscripción y los correos. PNG, JPEG o WebP, de hasta 5 MB.`
+          },
           current: 'Así se ve el logo.',
-          none: 'Sin logo: se muestran las iniciales del gimnasio.',
+          get none() {
+            return `Sin logo: se muestran las iniciales ${w.ofThePlace}.`
+          },
           upload: 'Subir logo',
           replace: 'Cambiar logo',
           remove: 'Quitar logo',
@@ -1700,14 +1885,18 @@ export const es = {
         },
         billing: 'Cobro',
         graceDays: 'Días de gracia',
-        graceDaysHint: 'Días después del vencimiento de un pago antes de que el plan del alumno caduque.',
+        get graceDaysHint() {
+          return `Días después del vencimiento de un pago antes de que el plan ${w.ofTheMember} caduque.`
+        },
         reminderEveryDays: 'Recordar cada (días)',
         reminderEveryDaysHint: 'Los recordatorios de pago vencido salen el día del vencimiento y luego cada tantos días.',
         channels: 'Canales',
         email: 'El correo está siempre activo: lleva los avisos y los links de acceso.',
         whatsapp: 'Recordatorios por WhatsApp',
         bank: 'Datos bancarios',
-        bankHint: 'Es lo que ven los alumnos para pagar por transferencia. Deja todos los campos vacíos para quitarlos.',
+        get bankHint() {
+          return `Es lo que ven ${w.theMembers} para pagar por transferencia. Deja todos los campos vacíos para quitarlos.`
+        },
         bankName: 'Banco',
         accountType: 'Tipo de cuenta',
         holder: 'Titular',
@@ -1715,10 +1904,13 @@ export const es = {
         number: 'Número de cuenta',
         bankEmail: 'Correo para avisos de transferencia (opcional)',
         privacy: 'Datos de privacidad',
-        privacyHint:
-          'La academia es responsable de los datos de sus alumnos (Ley 21.719). Estos datos completan su política de privacidad, que se enlaza en el formulario de inscripción y en la página del alumno. El link de inscripción funciona solo con ellos.',
+        get privacyHint() {
+          return `${w.ThePlace} es responsable de los datos de sus ${w.members} (Ley 21.719). Estos datos completan su política de privacidad, que se enlaza en el formulario de inscripción y en la página ${w.ofTheMember}. El link de inscripción funciona solo con ellos.`
+        },
         privacyLegalName: 'Razón social',
-        privacyRut: 'RUT de la academia',
+        get privacyRut() {
+          return `RUT ${w.ofThePlace}`
+        },
         privacyEmail: 'Correo para solicitudes sobre datos personales',
         privacyAddress: 'Dirección (opcional)',
         privacyView: 'Ver política de privacidad',
@@ -1744,7 +1936,9 @@ export const es = {
       plans: {
         title: 'Planes',
         error: 'No pudimos cargar los planes.',
-        empty: 'Todavía no hay planes. Crea el primero para inscribir alumnos.',
+        get empty() {
+          return `Todavía no hay planes. Crea el primero para inscribir ${w.members}.`
+        },
         add: 'Nuevo plan',
         edit: 'Editar',
         deactivate: 'Desactivar',
@@ -1807,7 +2001,7 @@ export const es = {
         },
         created: (name: string) => `Plan ${name} creado.`,
         saved: (name: string) => `Plan ${name} guardado.`,
-        deactivated: (name: string) => `Plan ${name} desactivado. Los alumnos que ya lo tienen lo mantienen.`,
+        deactivated: (name: string) => `Plan ${name} desactivado. ${w.TheMembers} que ya lo tienen lo mantienen.`,
         reactivated: (name: string) => `Plan ${name} reactivado.`,
         toggleFailed: 'No pudimos cambiar el plan. Inténtalo de nuevo.',
       },
@@ -1848,9 +2042,13 @@ export const es = {
           kindHint:
             'Un open mat son solo rounds de sparring, sin bloques de técnica. Acceso libre es sin clases: cada visita se marca en Entrada, a cualquier hora.',
           countsAsClass: 'Cuenta como clase',
-          countsAsClassHint: 'Si asistir suma a las clases del alumno, y a su meta de graduación si la academia usa grados.',
+          get countsAsClassHint() {
+            return `Si asistir suma a las clases ${w.ofTheMember}, y a su meta de graduación si ${w.thePlace} usa grados.`
+          },
           activity: 'Actividad',
-          activityHint: 'Opcional: a qué actividad de la academia pertenece esta clase.',
+          get activityHint() {
+            return `Opcional: a qué actividad ${w.ofThePlace} pertenece esta clase.`
+          },
           noActivity: 'Ninguna',
         },
         cancel: 'Cancelar',
@@ -1949,8 +2147,9 @@ export const es = {
       },
       blocks: {
         title: 'Bloques de clase',
-        intro:
-          'Las partes en que el profe divide la clase con el cronómetro, en el orden en que se ofrecen. El tiempo de los bloques de sparring suma al sparring de cada alumno.',
+        get intro() {
+          return `Las partes en que ${w.theCoach} divide la clase con el cronómetro, en el orden en que se ofrecen. El tiempo de los bloques de sparring suma al sparring de cada ${w.member}.`
+        },
         error: 'No pudimos cargar los bloques.',
         empty: 'Todavía no hay bloques.',
         add: 'Nuevo bloque',
@@ -1979,7 +2178,9 @@ export const es = {
           edit: (name: string) => `Editar ${name}`,
           name: 'Nombre',
           sparring: 'Es sparring',
-          sparringHint: 'Un bloque de sparring se corre en rounds, y su tiempo suma al sparring del alumno.',
+          get sparringHint() {
+            return `Un bloque de sparring se corre en rounds, y su tiempo suma al sparring ${w.ofTheMember}.`
+          },
           sparringInUse: (blocks: number) =>
             `Ya se usó en ${blocks === 1 ? '1 bloque' : `${blocks} bloques`} de clases, así que no puede cambiar si es sparring.`,
           taken: 'Ya hay un bloque con ese nombre.',
@@ -1994,8 +2195,9 @@ export const es = {
       },
       tags: {
         title: 'Etiquetas',
-        intro:
-          'Los focos que se repiten de una clase a otra, como Pasaje de guardia o Fuerza. El coach los marca en cada clase, y suman las horas de cada alumno y del gimnasio.',
+        get intro() {
+          return `Los focos que se repiten de una clase a otra, como Pasaje de guardia o Fuerza. El coach los marca en cada clase, y suman las horas de cada ${w.member} y ${w.ofThePlace}.`
+        },
         error: 'No pudimos cargar las etiquetas.',
         empty: 'Todavía no hay etiquetas.',
         add: 'Nueva etiqueta',
@@ -2028,8 +2230,9 @@ export const es = {
       staff: {
         title: 'Equipo',
         error: 'No pudimos cargar el equipo.',
-        intro:
-          'Quienes llevan el gimnasio contigo. Un admin ve los pagos y los ajustes; un coach toma asistencia y no ve los pagos.',
+        get intro() {
+          return `Quienes llevan ${w.thePlace} contigo. Un admin ve los pagos y los ajustes; un coach toma asistencia y no ve los pagos.`
+        },
         roles: { owner: 'Dueño', admin: 'Admin', coach: 'Coach' } as Record<string, string>,
         add: 'Invitar',
         form: {
@@ -2049,7 +2252,9 @@ export const es = {
         invalid: 'Revisa los campos marcados.',
         failed: 'No pudimos enviar la invitación. Inténtalo de nuevo.',
         alreadyStaff: 'Esa persona ya está en el equipo.',
-        emailTaken: 'Ese correo ya es de otra persona del gimnasio.',
+        get emailTaken() {
+          return `Ese correo ya es de otra persona ${w.ofThePlace}.`
+        },
         range: {} as Record<string, string>,
         value: {
           phone: 'Escribe un teléfono válido, como +56 9 1234 5678.',
@@ -2071,8 +2276,9 @@ export const es = {
       joinLink: {
         title: 'Link de inscripción',
         error: 'No pudimos cargar el link de inscripción.',
-        intro:
-          'Un link para compartir por WhatsApp o donde quieras: cada persona llena sus datos y la solicitud te espera en Hoy y en Alumnos para aprobarla.',
+        get intro() {
+          return `Un link para compartir por WhatsApp o donde quieras: cada persona llena sus datos y la solicitud te espera en Hoy y en ${w.Members} para aprobarla.`
+        },
         none: 'Todavía no tienes un link.',
         needsPrivacy: 'Completa los datos de privacidad en Ajustes antes de activar el link.',
         needsPrivacyLink: 'Ir a Datos de privacidad',
@@ -2109,12 +2315,16 @@ export const es = {
         title: 'Graduación',
         error: 'No pudimos cargar el esquema de graduación.',
         // With no activity that grades (#245): the screen says where to turn it on.
-        off: 'Ninguna actividad de tu academia usa grados, así que los cinturones y niveles no aparecen en la app.',
+        get off() {
+          return `Ninguna actividad de tu ${w.place} usa grados, así que los cinturones y niveles no aparecen en la app.`
+        },
         turnOn: 'Activa «Usa grados» en una actividad',
-        activitiesError: 'No pudimos revisar las actividades de tu academia.',
+        get activitiesError() {
+          return `No pudimos revisar las actividades de tu ${w.place}.`
+        },
         // One scheme for every activity that grades, for now.
         shared: (names: string[]) =>
-          `Este esquema es el mismo para ${names.slice(0, -1).join(', ')} y ${names.at(-1)}: cada alumno tiene un solo grado.`,
+          `Este esquema es el mismo para ${names.slice(0, -1).join(', ')} y ${names.at(-1)}: cada ${w.member} tiene un solo grado.`,
         stale: 'El esquema guardado ya no es válido. Vuelve a usar una escala para repararlo y guarda.',
         presetsError: 'No pudimos cargar las escalas.',
         start: 'Punto de partida',
@@ -2184,7 +2394,9 @@ export const es = {
       },
       fields: {
         title: 'Campos personalizados',
-        intro: 'Los datos que el gimnasio anota de cada alumno, además de los de siempre. Aparecen en la sección Datos de cada alumno.',
+        get intro() {
+          return `Los datos que ${w.thePlace} anota de cada ${w.member}, además de los de siempre. Aparecen en la sección Datos de cada ${w.member}.`
+        },
         error: 'No pudimos cargar los campos.',
         empty: 'Todavía no hay campos personalizados.',
         add: 'Nuevo campo',
@@ -2218,8 +2430,9 @@ export const es = {
           sensitive: 'Dato sensible',
           sensitiveHint: 'Se guarda cifrado. Al marcarlo, por defecto solo lo ve el dueño.',
           // Shown once the owner marks a field sensitive (#384).
-          noHealth:
-            'No lo uses para datos de salud (lesiones, enfermedades, tratamientos, medicamentos): la ley no permite que una academia los guarde, ni con el consentimiento del alumno.',
+          get noHealth() {
+            return `No lo uses para datos de salud (lesiones, enfermedades, tratamientos, medicamentos): la ley no permite que ${w.aPlace} los guarde, ni con el consentimiento ${w.ofTheMember}.`
+          },
           visibleTo: 'Quién lo ve',
           cancel: 'Cancelar',
           submit: 'Guardar',
@@ -2227,8 +2440,8 @@ export const es = {
           invalid: 'Revisa los campos marcados.',
           failed: 'No pudimos guardar el campo. Inténtalo de nuevo.',
           inUse: (options: Record<string, number>) =>
-            `No puedes quitar opciones que hay alumnos usando: ${Object.entries(options)
-              .map(([option, count]) => `${option} (${count === 1 ? '1 alumno' : `${count} alumnos`})`)
+            `No puedes quitar opciones que hay ${w.members} usando: ${Object.entries(options)
+              .map(([option, count]) => `${option} (${w.memberCount(count)})`)
               .join(', ')}. Cambia esos datos primero.`,
           range: {} as Record<string, string>,
           value: {
@@ -2254,9 +2467,13 @@ export const es = {
         topicPlaceholder: 'Ej.: retención de guardia cerrada',
         tags: 'Etiquetas',
         // Where the gym's tags are made, for a class that has none to pick yet.
-        noTags: 'El gimnasio todavía no tiene etiquetas. El dueño o un admin las crea en Ajustes, Etiquetas.',
+        get noTags() {
+          return `${w.ThePlace} todavía no tiene etiquetas. El dueño o un admin las crea en Ajustes, Etiquetas.`
+        },
         notes: 'Notas',
-        notesHint: `Solo las ve el equipo, nunca el alumno. ${NO_HEALTH}`,
+        get notesHint() {
+          return `Solo las ve el equipo, nunca ${w.theMember}. ${NO_HEALTH}`
+        },
         notesPlaceholder: 'Lo que conviene recordar de esta clase.',
         submit: 'Guardar',
         working: 'Guardando…',
@@ -2269,15 +2486,23 @@ export const es = {
         title: 'Asistencia',
         // Of the regulars: who came to this class type in the last 30 days.
         count: (present: number, total: number) => `${present} de ${total}`,
-        search: 'Buscar alumno',
+        get search() {
+          return `Buscar ${w.member}`
+        },
         searchPlaceholder: 'Nombre o RUT',
         noMatches: 'Nadie con ese nombre o RUT.',
         others: (n: number, present: number) =>
-          present > 0 ? `Otros alumnos (${n}) · ${present} presentes` : `Otros alumnos (${n})`,
-        othersLabel: 'Otros alumnos',
+          present > 0 ? `${w.memberIs('Otros', 'Otras')} ${w.members} (${n}) · ${present} presentes` : `${w.memberIs('Otros', 'Otras')} ${w.members} (${n})`,
+        get othersLabel() {
+          return `${w.memberIs('Otros', 'Otras')} ${w.members}`
+        },
         hint: 'Toca un nombre para marcar presente. El punto naranja indica pago vencido: puede entrenar, pero conviene avisar.',
-        loading: 'Cargando alumnos…',
-        error: 'No pudimos cargar los alumnos.',
+        get loading() {
+          return `Cargando ${w.members}…`
+        },
+        get error() {
+          return `No pudimos cargar ${w.theMembers}.`
+        },
         empty: 'Nadie tiene un plan para esta clase todavía.',
         overdue: 'Pago vencido',
         left: (n: number) => (n === 1 ? 'queda 1' : `quedan ${n}`),
@@ -2293,8 +2518,12 @@ export const es = {
         failed: 'No pudimos guardar la asistencia. Inténtalo de nuevo.',
         dropped: 'La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.',
         guest: {
-          open: '+ Agregar alumno de prueba',
-          label: 'Alumno de prueba',
+          get open() {
+            return `+ Agregar ${w.member} de prueba`
+          },
+          get label() {
+            return `${w.Member} de prueba`
+          },
           name: 'Nombre',
           who: 'RUT o correo',
           whoPlaceholder: '12.345.678-5',
@@ -2304,9 +2533,11 @@ export const es = {
           submit: 'Agregar y marcar presente',
           working: 'Agregando…',
           cancel: 'Cancelar',
-          noPlans: 'Para agregar alumnos de prueba, el dueño o un admin crea un plan de prueba.',
+          get noPlans() {
+            return `Para agregar ${w.members} de prueba, el dueño o un admin crea un plan de prueba.`
+          },
           done: (name: string) => `${name} quedó presente.`,
-          member: (name: string) => `${name} ya es alumno: lo marcamos presente.`,
+          member: (name: string) => `${name} ya es ${w.member}: lo marcamos presente.`,
           invalid: 'Revisa el RUT o el correo, y el celular: 9 dígitos, empezando por 9.',
           offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
           hasLeft: 'Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.',
@@ -2514,7 +2745,7 @@ export const es = {
         pendingDetail: (n: number) => (n === 1 ? '1 comprobante' : `${n} comprobantes`),
         overdue: 'Vencido',
         overdueDetail: (members: number, days: string) =>
-          `${members === 1 ? '1 alumno' : `${members} alumnos`} · ${days} días promedio`,
+          `${w.memberCount(members)} · ${days} días promedio`,
         expected: 'Esperado',
         expectedDetail: (active: number, frozen: number) =>
           `${active === 1 ? '1 membresía activa' : `${active} membresías activas`}` +
@@ -2524,7 +2755,9 @@ export const es = {
       filters: { all: 'Todos', pending: 'Por validar', overdue: 'Vencidos', kids: 'Kids' },
       columns: {
         date: 'Fecha',
-        student: 'Alumno',
+        get student() {
+          return `${w.Member}`
+        },
         kind: 'Tipo',
         period: 'Período',
         detail: 'Detalle',
@@ -2566,13 +2799,19 @@ export const es = {
       kpiExtra: (amount: string) => ` · ${amount} de cobros extra`,
       picker: {
         label: '¿Quién paga?',
-        results: 'Alumnos encontrados',
+        get results() {
+          return `${w.Members} ${w.memberIs('encontrados', 'encontradas')}`
+        },
         none: 'Nadie coincide con esa búsqueda.',
-        error: 'No pudimos cargar los alumnos.',
+        get error() {
+          return `No pudimos cargar ${w.theMembers}.`
+        },
         loading: 'Cargando…',
         noPlan: 'No tiene plan: no hay nada que cobrarle.',
         upToDate: 'Está al día: no tiene períodos por pagar.',
-        change: 'Cambiar alumno',
+        get change() {
+          return `Cambiar ${w.member}`
+        },
         cancel: 'Cancelar',
       },
     },
@@ -2798,7 +3037,9 @@ export const es = {
       error: 'No pudimos cargar los comprobantes.',
       retry: 'Reintentar',
       empty: 'No hay comprobantes por revisar.',
-      claimLabel: 'Lo que dice el alumno',
+      get claimLabel() {
+        return `Lo que dice ${w.theMember}`
+      },
       claimed: 'Dice haber pagado',
       owes: 'Debe',
       claimedAt: (when: string, method: string) => `${when} · ${method}`,
@@ -2818,7 +3059,9 @@ export const es = {
       openFile: 'Abrir comprobante',
       openPdf: 'Abrir PDF del comprobante',
       missing: 'No encontramos el archivo del comprobante.',
-      sentByStudent: 'Enviada desde la página del alumno',
+      get sentByStudent() {
+        return `Enviada desde la página ${w.ofTheMember}`
+      },
       sentBy: (name: string) => `Enviada por ${name}`,
       extra: 'Cobro extra',
       extraDue: (category: string, due: string) => `${category} · vence ${due}`,
@@ -2829,9 +3072,13 @@ export const es = {
       noPayments: 'Ninguno',
       attendance: 'Asistencia 30 d',
       attendanceCount: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
-      noteLabel: 'Nota (obligatoria si rechazas; el alumno la ve)',
+      get noteLabel() {
+        return `Nota (obligatoria si rechazas; ${w.theMember} la ve)`
+      },
       notePlaceholder: 'p. ej. monto no coincide, falta $5.000',
-      noteNeeded: 'Escribe una nota para el alumno antes de rechazar.',
+      get noteNeeded() {
+        return `Escribe una nota para ${w.theMember} antes de rechazar.`
+      },
       reject: 'Rechazar',
       confirm: (amount: string) => `Confirmar ${amount}`,
       working: 'Guardando…',
@@ -2869,7 +3116,9 @@ export const es = {
       const h = `${hours.toLocaleString('es-CL')} h`
       return rest === 0 ? h : `${h} ${rest} min`
     },
-    emptyMine: 'Todavía no hay clases con tiempo registrado. Aparecerá aquí cuando tu profe use el cronómetro.',
+    get emptyMine() {
+      return `Todavía no hay clases con tiempo registrado. Aparecerá aquí cuando tu ${w.coach} use el cronómetro.`
+    },
     emptyTheirs: 'Todavía no hay clases con tiempo registrado.',
     emptyMonth: 'Este mes todavía no hay tiempo registrado.',
     loading: 'Cargando el tiempo de entrenamiento…',
@@ -2919,7 +3168,9 @@ export const es = {
     consent: {
       title: 'Autorización de datos',
       // Around the link to the gym's privacy notice.
-      introBefore: 'La academia te pide tu consentimiento para tratar los datos de cada menor a tu cargo, según su ',
+      get introBefore() {
+        return `${w.ThePlace} te pide tu consentimiento para tratar los datos de cada menor a tu cargo, según su `
+      },
       link: 'política de privacidad',
       introAfter:
         '. Es aparte de la inscripción: puedes no darlo, o retirarlo cuando quieras, y la inscripción sigue igual.',
@@ -2930,11 +3181,15 @@ export const es = {
       withdraw: 'Retirar mi consentimiento',
       working: 'Guardando…',
       // The notice changed since the page was loaded: it is loaded again.
-      stale: 'La academia actualizó su política de privacidad. Revísala y vuelve a intentarlo.',
+      get stale() {
+        return `${w.ThePlace} actualizó su política de privacidad. Revísala y vuelve a intentarlo.`
+      },
       failed: 'No pudimos guardar tu respuesta. Inténtalo de nuevo.',
     },
     // From the student page back to the admin screens, for staff who also train (#214).
-    toAdmin: 'Ir al panel del gimnasio',
+    get toAdmin() {
+      return `Ir al panel ${w.ofThePlace}`
+    },
     // "Pedir congelamiento" (#270): a running plan, and a freeze asked for it.
     plans: {
       title: 'Mi plan',
@@ -2945,7 +3200,9 @@ export const es = {
       ask: 'Pedir congelamiento',
       askLabel: (plan: string) => `Pedir congelamiento de ${plan}`,
       formTitle: 'Pedir congelamiento',
-      intro: 'La academia revisa tu solicitud. Mientras está congelado no se cobra: tu próximo pago se corre esos días.',
+      get intro() {
+        return `${w.ThePlace} revisa tu solicitud. Mientras está congelado no se cobra: tu próximo pago se corre esos días.`
+      },
       from: 'Desde',
       until: 'Vuelvo el',
       reason: 'Motivo',
@@ -2968,7 +3225,7 @@ export const es = {
       withdrawing: 'Retirando…',
       approved: 'Tu solicitud de congelamiento fue aprobada.',
       rejected: (from: string, to: string) => `Tu solicitud del ${from} al ${to} no fue aprobada.`,
-      rejectedNote: (note: string) => `Nota de la academia: ${note}`,
+      rejectedNote: (note: string) => `Nota ${w.ofThePlace}: ${note}`,
       refused: {
         not_active: 'Solo un plan activo se puede congelar.',
         has_freeze: 'Este plan ya tiene una congelación en curso o programada.',
@@ -2993,7 +3250,9 @@ export const es = {
         due: 'Por pagar',
         paid: 'Al día',
       },
-      inReview: 'Recibimos tu comprobante. La academia lo está revisando.',
+      get inReview() {
+        return `Recibimos tu comprobante. ${w.ThePlace} lo está revisando.`
+      },
       // `whose`: the dependent it is for, when it is not the student's own.
       due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
       paidUp: 'No tienes pagos pendientes.',
@@ -3005,7 +3264,9 @@ export const es = {
       number: 'N.º cuenta',
       // `Cuenta Vista` → `Cta. Vista`, as the card writes it.
       bankName: (bank: string, accountType: string) => `${bank} · ${accountType.replace(/^Cuenta\b/, 'Cta.')}`,
-      noBank: 'La academia todavía no publica sus datos para transferir.',
+      get noBank() {
+        return `${w.ThePlace} todavía no publica sus datos para transferir.`
+      },
       copy: 'Copiar datos',
       copied: 'Datos copiados',
       copyFailed: 'No pudimos copiar. Mantén presionado para copiar a mano.',
@@ -3035,7 +3296,7 @@ export const es = {
       month: 'Este mes',
       classes: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
       total: (n: number) => `${n} en total`,
-      memberSince: (month: string) => `Alumno desde ${month}`,
+      memberSince: (month: string) => `${w.Member} desde ${month}`,
     },
     // What each class attended was about (#243); never the coach's notes.
     classes: {
@@ -3106,19 +3367,25 @@ export const es = {
   },
   join: {
     loading: 'Cargando…',
-    invalid: 'Este link ya no es válido. Pídele uno nuevo a la academia.',
+    get invalid() {
+      return `Este link ya no es válido. Pídele uno nuevo ${w.toThePlace}.`
+    },
     error: 'No pudimos cargar el formulario. Inténtalo de nuevo.',
     retry: 'Reintentar',
     eyebrow: 'Inscripción',
     title: (gym: string) => `Inscríbete en ${gym}`,
     program: (name: string) => `Programa: ${name}`,
-    intro: 'Llena tus datos y la academia confirmará tu inscripción.',
+    get intro() {
+      return `Llena tus datos y ${w.thePlace} confirmará tu inscripción.`
+    },
     firstName: 'Nombre',
     lastName: 'Apellido',
     rut: 'RUT',
     rutHint: 'Con su dígito verificador, como 12.345.678-5. Si no tienes RUT, déjalo en blanco.',
     phone: 'Teléfono (WhatsApp)',
-    phoneHint: 'Un celular, como +56 9 1234 5678. La academia te avisa por WhatsApp de clases y pagos.',
+    get phoneHint() {
+      return `Un celular, como +56 9 1234 5678. ${w.ThePlace} te avisa por WhatsApp de clases y pagos.`
+    },
     minorPhoneHint: 'Opcional, si tiene celular propio.',
     noWhatsapp: 'No tengo WhatsApp',
     email: 'Correo',
@@ -3128,26 +3395,36 @@ export const es = {
     guardianIntro: 'Como es menor de edad, necesitamos los datos de su apoderado.',
     guardianName: 'Nombre del apoderado',
     guardianPhone: 'Teléfono del apoderado (WhatsApp)',
-    guardianPhoneHint: 'La academia le avisa por WhatsApp de clases y pagos.',
+    get guardianPhoneHint() {
+      return `${w.ThePlace} le avisa por WhatsApp de clases y pagos.`
+    },
     guardianNoWhatsapp: 'El apoderado no tiene WhatsApp',
     guardianEmail: 'Correo del apoderado',
     // The checkbox's text, around the link to the gym's privacy notice.
-    consentBefore: 'Acepto que la academia trate estos datos para gestionar mi inscripción, según su ',
+    get consentBefore() {
+      return `Acepto que ${w.thePlace} trate estos datos para gestionar mi inscripción, según su `
+    },
     consentLink: 'política de privacidad',
     consentAfter: '.',
     // A minor's guardian's own box, around the same link (#370).
-    guardianConsentBefore: 'Como apoderado, autorizo que la academia trate los datos del menor según su ',
+    get guardianConsentBefore() {
+      return `Como apoderado, autorizo que ${w.thePlace} trate los datos del menor según su `
+    },
     guardianConsentAfter:
       '. Es aparte de la inscripción: puedes no marcarla y darla después desde tu página, o retirarla cuando quieras.',
     honeypot: 'No llenes este campo',
     submit: 'Enviar inscripción',
     working: 'Enviando…',
-    done: 'Listo, la academia confirmará tu inscripción.',
+    get done() {
+      return `Listo, ${w.thePlace} confirmará tu inscripción.`
+    },
     invalidFields: 'Revisa los campos marcados.',
     failed: 'No pudimos enviar tus datos. Inténtalo de nuevo.',
     humanCheck: 'No pudimos comprobar que no eres un robot. Inténtalo de nuevo.',
     tooMany: 'Hubo demasiados envíos desde aquí. Espera un rato e inténtalo de nuevo.',
-    staleNotice: 'La academia actualizó su política de privacidad. Revísala y vuelve a enviar.',
+    get staleNotice() {
+      return `${w.ThePlace} actualizó su política de privacidad. Revísala y vuelve a enviar.`
+    },
     // A required field left empty: what to write in it. No `rut`: it is optional (#165).
     required: {
       first_name: 'Escribe tu nombre.',
@@ -3182,9 +3459,12 @@ export const es = {
     // With no gym named yet, and on Rakin's own host with none at all (#362).
     heading: 'Política de privacidad',
     loading: 'Cargando…',
-    missing: 'Esta academia todavía no publica su política de privacidad.',
-    noGym:
-      'Cada academia publica su propia política de privacidad. Ábrela desde el link de tu academia: el formulario de inscripción o tu página.',
+    get missing() {
+      return `${w.placeIs('Este', 'Esta')} ${w.place} todavía no publica su política de privacidad.`
+    },
+    get noGym() {
+      return `Cada ${w.place} publica su propia política de privacidad. Ábrela desde el link de tu ${w.place}: el formulario de inscripción o tu página.`
+    },
     error: 'No pudimos cargar la política de privacidad. Inténtalo de nuevo.',
     retry: 'Reintentar',
     updated: (day: string) => `Última actualización: ${day}.`,
@@ -3196,14 +3476,16 @@ export const es = {
     contactBefore: 'Para cualquier consulta o solicitud sobre tus datos, escribe a ',
     contactAfter: '.',
     dataTitle: '¿Qué datos guardamos?',
-    data: [
-      'Identificación: nombre, RUT y fecha de nacimiento.',
-      'Contacto: teléfono y correo.',
-      'Si eres menor de edad, los datos que entrega tu apoderado, y los suyos.',
-      'Tu actividad en la academia: asistencia a clases, grado o cinturón si la academia los usa, y tiempo de entrenamiento.',
-      'Pagos: tu plan, tus cobros y pagos, y los comprobantes de transferencia que subas.',
-      'Los campos adicionales que pida la academia, como un contacto de emergencia.',
-    ],
+    get data() {
+      return [
+        'Identificación: nombre, RUT y fecha de nacimiento.',
+        'Contacto: teléfono y correo.',
+        'Si eres menor de edad, los datos que entrega tu apoderado, y los suyos.',
+        `Tu actividad en ${w.thePlace}: asistencia a clases, grado o cinturón si ${w.thePlace} los usa, y tiempo de entrenamiento.`,
+        'Pagos: tu plan, tus cobros y pagos, y los comprobantes de transferencia que subas.',
+        `Los campos adicionales que pida ${w.thePlace}, como un contacto de emergencia.`,
+      ]
+    },
     purposeTitle: '¿Para qué los usamos?',
     purpose: [
       'Administrar tu membresía y tus clases.',
@@ -3213,11 +3495,13 @@ export const es = {
     ],
     purposeAfter: 'No vendemos tus datos ni los usamos para publicidad.',
     basisTitle: '¿Con qué base legal?',
-    basis:
-      'Los tratamos porque los necesitamos para cumplir el contrato de membresía que tienes con la academia. Los datos de un menor de edad los tratamos con el consentimiento de su apoderado.',
+    get basis() {
+      return `Los tratamos porque los necesitamos para cumplir el contrato de membresía que tienes con ${w.thePlace}. Los datos de un menor de edad los tratamos con el consentimiento de su apoderado.`
+    },
     processorsTitle: '¿Quién más los trata?',
-    processors:
-      'La academia usa Rakin, un sistema de gestión para academias, que trata tus datos por encargo de la academia y solo para prestarle ese servicio. Rakin, a su vez, se apoya en estos proveedores:',
+    get processors() {
+      return `${w.ThePlace} usa Rakin, un sistema de gestión para ${w.places}, que trata tus datos por encargo ${w.ofThePlace} y solo para prestarle ese servicio. Rakin, a su vez, se apoya en estos proveedores:`
+    },
     // Every subprocessor, named by what it does: changing a provider is an edit here.
     subprocessors: [
       'Alojamiento: los servidores y la base de datos.',
@@ -3250,7 +3534,9 @@ export const es = {
     backTo: (place: string) => `Volver a ${place}`,
     places: {
       today: 'Hoy',
-      students: 'Alumnos',
+      get students() {
+        return `${w.Members}`
+      },
       member: 'la ficha',
       classes: 'Clases',
       session: 'la clase',

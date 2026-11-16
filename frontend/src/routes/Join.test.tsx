@@ -8,6 +8,7 @@ import { TEMPLATE_UPDATED_ON } from '../api/privacy'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
+import { wearVocabulary } from '../i18n/vocabulary'
 import { createAppRouter } from '../router'
 
 const copy = es.join
@@ -63,6 +64,7 @@ async function fillAdult() {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  wearVocabulary(null)
 })
 
 // The consent box, beside "No tengo WhatsApp".
@@ -70,6 +72,16 @@ const guardianConsent = new RegExp(copy.guardianConsentBefore.slice(0, 20))
 const consentBox = () => screen.getByRole('checkbox', { name: new RegExp(copy.consentBefore.slice(0, 20)) })
 
 describe('Inscríbete', () => {
+  it("speaks the link's gym's words, on the shared host too (#344)", async () => {
+    stubApi({ form: { body: { ...FORM, vocabulary: { place: 'club', members: 'socios', coach: 'entrenador' } } } })
+    renderAt('/unirse/tok-123456789012345678901')
+
+    expect(await screen.findByText('Llena tus datos y el club confirmará tu inscripción.')).toBeInTheDocument()
+    expect(
+      screen.getByRole('checkbox', { name: /^Acepto que el club trate estos datos/ }),
+    ).toBeInTheDocument()
+  })
+
   it('shows the gym and sends an adult’s details, with no session', async () => {
     const sent = stubApi()
     const router = renderAt('/unirse/tok-123456789012345678901')

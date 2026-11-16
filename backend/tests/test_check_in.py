@@ -1,4 +1,4 @@
-"""Check-in at the door (#348, migration 0059): open-access class types, the session of
+"""Check-in at the door (#348, migration 0060): open-access class types, the session of
 the day the first check-in makes, credits spent, and what open access is kept out of.
 """
 

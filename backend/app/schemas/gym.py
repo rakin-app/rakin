@@ -14,6 +14,10 @@ wants, an address. The public notice (`app.api.privacy`) is a template filled in
 them, and the join link works only once they are set. They are replaced whole and
 cannot be cleared; each save records the gym's today as `updated_on`, the notice's
 "last updated".
+
+The vocabulary (#344, `app.domain.vocabulary`) is what the screens call the gym, its
+members and its coach. Saved here it is the owner's pick (`by_hand`), and no activity
+added later changes it.
 """
 
 from collections.abc import Mapping
@@ -33,6 +37,7 @@ from pydantic import (
 )
 
 from app.domain.membership import DEFAULT_GRACE_DAYS
+from app.domain.vocabulary import Vocabulary, vocabulary_of
 from app.schemas.people import Email, Name, Rut
 from app.schemas.theme import Theme
 
@@ -120,6 +125,7 @@ class GymSettings(BaseModel):
     channels: Channels
     bank_account: BankAccount | None
     privacy: StoredPrivacy | None
+    vocabulary: Vocabulary
 
     @classmethod
     def from_row(
@@ -144,16 +150,24 @@ class GymSettings(BaseModel):
             channels=settings.get("channels", {}),
             bank_account=settings.get("bank_account"),
             privacy=settings.get("privacy"),
+            vocabulary=vocabulary_of(settings),
         )
 
 
 # The `gym.settings` keys this API owns; any other key there is left as it is.
-SETTINGS_KEYS = ("grace_days", "reminder_every_days", "channels", "bank_account", "privacy")
+SETTINGS_KEYS = (
+    "grace_days",
+    "reminder_every_days",
+    "channels",
+    "bank_account",
+    "privacy",
+    "vocabulary",
+)
 
 
 class GymSettingsUpdate(BaseModel):
-    """Only the fields sent change. `channels`, `bank_account` and `privacy` are
-    replaced whole; `null` clears the bank details. The rest cannot be null."""
+    """Only the fields sent change. `channels`, `bank_account`, `privacy` and
+    `vocabulary` are replaced whole; `null` clears the bank details. The rest cannot be null."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -165,6 +179,7 @@ class GymSettingsUpdate(BaseModel):
     channels: Channels | None = None
     bank_account: BankAccount | None = None
     privacy: Privacy | None = None
+    vocabulary: Vocabulary | None = None
 
     @model_validator(mode="after")
     def _only_bank_account_is_cleared(self) -> "GymSettingsUpdate":

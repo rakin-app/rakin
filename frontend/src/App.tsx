@@ -8,6 +8,7 @@ import type { createAppRouter } from './router'
 import { logoIcon } from './logo'
 import { setTabIcon } from './tabIcon'
 import { applyTheme, isTheme } from './theme'
+import { wearVocabulary } from './i18n/vocabulary'
 
 type Props = {
   queryClient: QueryClient
@@ -18,6 +19,7 @@ export function App({ queryClient, router }: Props) {
   return (
     <QueryClientProvider client={queryClient}>
       <GymTheme />
+      <GymVocabulary />
       <GymTabIcon />
       <RouterProvider router={router} />
       <OfflineNotice />
@@ -38,6 +40,18 @@ function GymTheme() {
   useEffect(() => {
     if (isTheme(theme)) applyTheme(theme)
   }, [theme])
+  return null
+}
+
+/** Puts the gym's words on every screen (#344), from the same answers as its theme. Worn
+ * while rendering, not in an effect: it renders before the router, so the screens that
+ * re-render with the same answer read the new words. With neither answer the words
+ * stay as they are: today's, or the last gym's. */
+function GymVocabulary() {
+  const host = useQuery(hostQuery())
+  const me = useQuery({ ...myselfQuery(), enabled: false })
+  const vocabulary = me.data?.vocabulary ?? host.data?.gym?.vocabulary
+  if (vocabulary) wearVocabulary(vocabulary)
   return null
 }
 

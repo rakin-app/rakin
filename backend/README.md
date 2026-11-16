@@ -407,7 +407,7 @@ Any staff role may use it, coaches included; a coach may start a trial where onl
 
 ## Check-in API
 
-"Entrada" (#348): checking people in at the door of a gym open all day with no class scheduled. A class type of the kind `open_access` (migration `0059`) has no timer blocks and by default counts as a class. Each visit is an attendance at that type's session of the day, so it spends a pack's `credit_cost`, counts in `/api/people/{id}/attendance` and keeps someone off the inactive list, as any class does. The first check-in of a day, in the gym's timezone, makes the day's session, starting then and taught by whoever checked them in; `session.open_day` is its date, and a unique index on `(class_type_id, open_day)` makes two first check-ins at once one session.
+"Entrada" (#348): checking people in at the door of a gym open all day with no class scheduled. A class type of the kind `open_access` (migration `0060`) has no timer blocks and by default counts as a class. Each visit is an attendance at that type's session of the day, so it spends a pack's `credit_cost`, counts in `/api/people/{id}/attendance` and keeps someone off the inactive list, as any class does. The first check-in of a day, in the gym's timezone, makes the day's session, starting then and taught by whoever checked them in; `session.open_day` is its date, and a unique index on `(class_type_id, open_day)` makes two first check-ins at once one session.
 
 | Method | Path | Does |
 | --- | --- | --- |

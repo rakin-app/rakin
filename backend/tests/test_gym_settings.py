@@ -104,6 +104,8 @@ def test_the_bank_details_may_be_cleared() -> None:
 pg = pytest.mark.postgres
 
 URL = "/api/gym/settings"
+# A gym that never picked its words reads today's (#344).
+TODAYS_WORDS = {"place": "academia", "members": "alumnos", "coach": "profe"}
 
 
 @pytest.fixture(scope="module")
@@ -155,6 +157,7 @@ def test_a_new_gym_reads_the_defaults(client: TestClient, db: Database) -> None:
         "channels": {"whatsapp": True},
         "bank_account": None,
         "privacy": None,
+        "vocabulary": TODAYS_WORDS,
     }
 
 
@@ -179,6 +182,7 @@ def test_a_change_is_read_back_and_stored(client: TestClient, db: Database) -> N
         "logo": None,
         "bank_account": BANK_STORED,
         "privacy": None,
+        "vocabulary": TODAYS_WORDS,
     }
     assert response.json() == expected
     assert client.get(URL, headers=as_gym(gym)).json() == expected

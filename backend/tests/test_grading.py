@@ -140,7 +140,7 @@ def test_a_scheme_is_refused(scheme: dict[str, Any]) -> None:
 def test_no_code_outside_the_presets_names_a_sport() -> None:
     # Sport lives in configuration: the presets are data, and nothing branches on them.
     sports = re.compile(r"\b(bjj|jiu-?jitsu|judo|karate|muay|thai|boxing|mma)\b", re.I)
-    allowed = {APP / "domain" / "grading.py"}
+    allowed = {APP / "domain" / "grading.py", APP / "domain" / "vocabulary.py"}
     offenders = [
         str(path.relative_to(APP))
         for path in APP.rglob("*.py")

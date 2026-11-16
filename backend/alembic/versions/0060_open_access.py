@@ -13,8 +13,8 @@ make one session between them: the second insert does nothing and reads the firs
 A downgrade makes every open-access type a class and drops `open_day`; its sessions
 and their attendance stay, as classes.
 
-Revision ID: 0059
-Revises: 0058
+Revision ID: 0060
+Revises: 0059
 Create Date: 2026-11-16
 
 """
@@ -23,8 +23,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0059"
-down_revision: str | Sequence[str] | None = "0058"
+revision: str = "0060"
+down_revision: str | Sequence[str] | None = "0059"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

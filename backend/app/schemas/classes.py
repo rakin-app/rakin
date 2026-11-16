@@ -21,7 +21,7 @@ CreditCost = Annotated[int, Field(ge=0, le=MAX_CREDIT_COST)]
 
 class ClassKind(StrEnum):
     """A class; an open mat, rounds of sparring only, which by default is not a class; or
-    open access (#348, migration 0059): no class at all, people come when they want and
+    open access (#348, migration 0060): no class at all, people come when they want and
     are checked in at the door, each visit at that day's session, counted as a class."""
 
     CLASS = "class"

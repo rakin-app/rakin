@@ -418,6 +418,7 @@ def test_the_form_shows_the_gym_its_today_and_its_notice(
         "today": seeded_today().isoformat(),
         "privacy_updated_on": seeded_today().isoformat(),
         "human_check_site_key": None,
+        "vocabulary": {"place": "academia", "members": "alumnos", "coach": "profe"},
     }
 
 
