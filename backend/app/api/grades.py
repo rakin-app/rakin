@@ -2,7 +2,7 @@
 
 A promotion names a rank and sub-rank of the gym's grading scheme by key, and is
 checked against it when awarded; the labels are the scheme's when read
-(`app.schemas.grades`). A grade is the person's (migration 0053): their current rank is
+(`app.schemas.grades`). A grade is the person's (migration 0054): their current rank is
 their latest one here, with a plan or without. One awarded in Rakin attaches to the
 membership the person's ficha shows, their latest one not cancelled, when they have one.
 

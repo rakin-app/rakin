@@ -21,7 +21,7 @@ class GradeAward(BaseModel):
     """`POST /api/people/{id}/grades`: a rank of the gym's scheme, and its sub-rank when
     the rank has sub-ranks. `awarded_on` defaults to today in the gym's timezone and may
     be earlier, never later. `source` is `manual` for a grade typed in as history ("Grado
-    anterior"): one from before Rakin, which writes no `promoted` event (0053)."""
+    anterior"): one from before Rakin, which writes no `promoted` event (0054)."""
 
     model_config = ConfigDict(extra="forbid")
 

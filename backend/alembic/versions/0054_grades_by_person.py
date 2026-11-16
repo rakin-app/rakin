@@ -18,10 +18,10 @@ could hold none.
 - `forget_gym_person` deletes the person's grades by `person_id`, so those with no
   membership go too.
 
-A downgrade refuses while any grade has no membership, which 0052 has no place for.
+A downgrade refuses while any grade has no membership, which 0053 has no place for.
 
-Revision ID: 0053
-Revises: 0052
+Revision ID: 0054
+Revises: 0053
 Create Date: 2026-11-15
 
 """
@@ -33,8 +33,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0053"
-down_revision: str | Sequence[str] | None = "0052"
+revision: str = "0054"
+down_revision: str | Sequence[str] | None = "0053"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -110,8 +110,8 @@ def downgrade() -> None:
         DO $$
         BEGIN
             IF EXISTS (SELECT FROM grade_event WHERE membership_id IS NULL) THEN
-                RAISE EXCEPTION 'grades with no membership, which 0052 has no place for'
-                    USING HINT = 'grades cannot be deleted: stay on 0053';
+                RAISE EXCEPTION 'grades with no membership, which 0053 has no place for'
+                    USING HINT = 'grades cannot be deleted: stay on 0054';
             END IF;
         END
         $$

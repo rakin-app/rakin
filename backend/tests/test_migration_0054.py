@@ -1,4 +1,4 @@
-"""Migration 0053: a grade belongs to the person (#296).
+"""Migration 0054: a grade belongs to the person (#296).
 
 Every gym's grades get their membership's person, so every current rank reads the same
 through `person_id` as it did through `membership`; a downgrade puts them back, and
@@ -18,7 +18,7 @@ from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_databas
 
 pg = pytest.mark.postgres
 
-# 0052's read of everyone's current rank, through the membership.
+# 0053's read of everyone's current rank, through the membership.
 RANKS_BEFORE = """
     SELECT DISTINCT ON (m.person_id) m.person_id, ge.rank_key, ge.awarded_on
     FROM grade_event ge JOIN membership m ON m.id = ge.membership_id
@@ -34,7 +34,7 @@ RANKS_AFTER = """
 @pytest.fixture
 def db() -> Iterator[Database]:
     with throwaway_database(require_test_database_url()) as database:
-        migrate(database, "0052")
+        migrate(database, "0053")
         yield database
 
 
@@ -88,19 +88,19 @@ def test_grades_move_to_the_person_and_back(db: Database) -> None:
     before = ranks(db, RANKS_BEFORE)
     assert {r[1] for r in before} == {"blue", "purple"}
 
-    command.upgrade(db.alembic(), "0053")
+    command.upgrade(db.alembic(), "0054")
     assert ranks(db, RANKS_AFTER) == before
     sources = run(db.admin_url, lambda c: c.fetch("SELECT DISTINCT source FROM grade_event"))
     assert [r["source"] for r in sources] == ["app"]
 
-    command.downgrade(db.alembic(), "0052")
+    command.downgrade(db.alembic(), "0053")
     assert ranks(db, RANKS_BEFORE) == before
 
 
 @pg
 def test_a_grade_is_its_memberships_persons(db: Database) -> None:
     sur = seed_gym(db, "sur")
-    command.upgrade(db.alembic(), "0053")
+    command.upgrade(db.alembic(), "0054")
     stranger = uuid.uuid4()
     run(
         db.admin_url,
@@ -121,7 +121,7 @@ def test_a_grade_is_its_memberships_persons(db: Database) -> None:
 @pg
 def test_a_downgrade_refuses_a_grade_with_no_membership(db: Database) -> None:
     sur = seed_gym(db, "sur")
-    command.upgrade(db.alembic(), "0053")
+    command.upgrade(db.alembic(), "0054")
     run(
         db.owner_url,
         in_gym(
@@ -131,4 +131,4 @@ def test_a_downgrade_refuses_a_grade_with_no_membership(db: Database) -> None:
         ),
     )
     with pytest.raises(Exception, match="no place for"):
-        command.downgrade(db.alembic(), "0052")
+        command.downgrade(db.alembic(), "0053")
