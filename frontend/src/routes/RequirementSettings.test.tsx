@@ -14,7 +14,7 @@ const PATH = '/admin/ajustes/requisitos'
 
 const WAIVER: Requirement = {
   id: 'r-waiver',
-  name: 'Deslinde firmado',
+  name: 'Declaración de riesgos firmada',
   valid_months: null,
   sensitive: false,
   visible_to: 'staff',
@@ -125,13 +125,13 @@ describe('Ajustes: Requisitos (#349)', () => {
     renderAt(PATH)
 
     const list = await section()
-    await userEvent.click(await within(list).findByRole('button', { name: /^Deslinde firmado/ }))
-    const edit = within(list).getByRole('form', { name: form.edit('Deslinde firmado') })
+    await userEvent.click(await within(list).findByRole('button', { name: /^Declaración de riesgos firmada/ }))
+    const edit = within(list).getByRole('form', { name: form.edit('Declaración de riesgos firmada') })
     expect(within(edit).queryByLabelText(form.visibleTo)).not.toBeInTheDocument()
     await userEvent.clear(within(edit).getByLabelText(form.validMonths))
     await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
 
-    expect(await within(list).findByText(copy.saved('Deslinde firmado'))).toBeInTheDocument()
+    expect(await within(list).findByText(copy.saved('Declaración de riesgos firmada'))).toBeInTheDocument()
     expect(writes(calls)).toEqual([
       { method: 'PATCH', path: '/api/requirements/r-waiver', body: { valid_months: null } },
     ])
@@ -142,7 +142,7 @@ describe('Ajustes: Requisitos (#349)', () => {
     renderAt(PATH)
 
     const list = await section()
-    await userEvent.click(await within(list).findByRole('button', { name: copy.down('Deslinde firmado') }))
+    await userEvent.click(await within(list).findByRole('button', { name: copy.down('Declaración de riesgos firmada') }))
     await userEvent.click(within(list).getByRole('button', { name: /^Certificado médico/ }))
     const edit = within(list).getByRole('form', { name: form.edit('Certificado médico') })
     await userEvent.click(within(edit).getByRole('button', { name: copy.archive }))

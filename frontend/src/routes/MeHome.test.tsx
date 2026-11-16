@@ -533,14 +533,14 @@ describe('Mis requisitos (#349)', () => {
         person_id: 'diego',
         name: 'Diego Soto',
         requirements: [
-          { id: 'w', name: 'Deslinde firmado', state: 'ok', done_on: '2026-03-01', expires_on: null },
+          { id: 'w', name: 'Declaración de riesgos firmada', state: 'ok', done_on: '2026-03-01', expires_on: null },
           { id: 'm', name: 'Certificado médico', state: 'expiring', done_on: '2025-12-01', expires_on: '2026-12-01' },
         ],
       },
       {
         person_id: 'tomas',
         name: 'Tomás Soto',
-        requirements: [{ id: 'w', name: 'Deslinde firmado', state: 'pending', done_on: null, expires_on: null }],
+        requirements: [{ id: 'w', name: 'Declaración de riesgos firmada', state: 'pending', done_on: null, expires_on: null }],
       },
     ])
     renderMe()

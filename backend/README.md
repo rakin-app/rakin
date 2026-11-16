@@ -559,7 +559,7 @@ A sensitive field's value is stored in `secret`, encrypted with AES-GCM under a 
 
 ## Requirements API
 
-"Requisitos para entrenar" (#349): what a gym asks before someone trains, a signed waiver, a safety induction, a medical certificate, and the day each person did it ([design](../docs/design/sport-fit.md)). The gym's list is `requirement` (migration `0061`): a name, `valid_months` (`null` for one done once), `sensitive`, `visible_to` and `active`, in `position` order. A person's records are `person_requirement`, one row per time it was recorded, never changed or deleted: the latest recorded is their current one, and the ones before it are kept.
+"Requisitos para entrenar" (#349): what a gym asks before someone trains, a signed declaración de riesgos, a safety induction, a medical certificate, and the day each person did it ([design](../docs/design/sport-fit.md)). The gym's list is `requirement` (migration `0061`): a name, `valid_months` (`null` for one done once), `sensitive`, `visible_to` and `active`, in `position` order. A person's records are `person_requirement`, one row per time it was recorded, never changed or deleted: the latest recorded is their current one, and the ones before it are kept.
 
 | Method | Path | Does |
 | --- | --- | --- |
@@ -573,6 +573,9 @@ A sensitive field's value is stored in `secret`, encrypted with AES-GCM under a 
 
 Who sees and changes what is as for custom fields: every staff role reads, and records the requirements it sees; owner and admin define, reorder and deactivate them; only the owner sets `sensitive` and `visible_to` (403 for an admin), which default to `owner` for a sensitive one and `staff` otherwise; one the caller may not see is a 404 and left out of every list. One done on 1 March and valid 12 months is in force through 1 March of the next year (`expires_on`) and `expired` from the 2nd; `expiring` is its last 30 days (`app.domain.requirements`). A sensitive requirement's note is stored in `note_secret`, sealed with the custom fields' key and bound to its gym, person and record, and marking a requirement sensitive or not seals or opens the notes it holds. `forget_gym_person` deletes the person's records with the rest.
 
+In Chile a declaración de riesgos records that the member was told of the risks and accepted them; it does not free the gym from liability for its own fault (Ley 19.496 art. 16, Código Civil art. 1465).
+
+## Grading scheme API
 
 | Method | Path | Does |
 | --- | --- | --- |

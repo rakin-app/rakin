@@ -3775,7 +3775,7 @@ describe('Requisitos on the ficha (#349)', () => {
   const words = copy.requirements
   const WAIVER: PersonRequirement = {
     id: 'r-waiver',
-    name: 'Deslinde firmado',
+    name: 'Declaración de riesgos firmada',
     valid_months: null,
     sensitive: false,
     state: 'pending',
@@ -3829,16 +3829,16 @@ describe('Requisitos on the ficha (#349)', () => {
       within(medical).getByText(`${words.done(es.common.longDayYear('2025-03-01'))} · ${words.expiredOn(es.common.longDayYear('2026-03-01'))}`),
     ).toBeInTheDocument()
     expect(within(medical).getByText('Dr. Pérez')).toBeInTheDocument()
-    const waiver = within(card).getByRole('listitem', { name: 'Deslinde firmado' })
+    const waiver = within(card).getByRole('listitem', { name: 'Declaración de riesgos firmada' })
     expect(within(waiver).getByText(words.state.pending)).toBeInTheDocument()
 
-    await userEvent.click(within(waiver).getByRole('button', { name: words.recordLabel('Deslinde firmado') }))
-    const form = within(card).getByRole('form', { name: words.form.title('Deslinde firmado') })
+    await userEvent.click(within(waiver).getByRole('button', { name: words.recordLabel('Declaración de riesgos firmada') }))
+    const form = within(card).getByRole('form', { name: words.form.title('Declaración de riesgos firmada') })
     expect(within(form).getByLabelText(words.form.doneOn)).toHaveValue(today)
     await userEvent.type(within(form).getByLabelText(words.form.note), ' en papel ')
     await userEvent.click(within(form).getByRole('button', { name: words.form.submit }))
 
-    expect(await screen.findByText(words.recorded('Deslinde firmado'))).toBeInTheDocument()
+    expect(await screen.findByText(words.recorded('Declaración de riesgos firmada'))).toBeInTheDocument()
     expect(calls.find((c) => c.method === 'POST' && c.path.endsWith('/r-waiver'))?.body).toEqual({
       done_on: today,
       note: 'en papel',
@@ -3854,8 +3854,8 @@ describe('Requisitos on the ficha (#349)', () => {
     renderAt(PATH)
 
     const card = await screen.findByRole('region', { name: words.title })
-    await userEvent.click(await within(card).findByRole('button', { name: words.recordLabel('Deslinde firmado') }))
-    const form = within(card).getByRole('form', { name: words.form.title('Deslinde firmado') })
+    await userEvent.click(await within(card).findByRole('button', { name: words.recordLabel('Declaración de riesgos firmada') }))
+    const form = within(card).getByRole('form', { name: words.form.title('Declaración de riesgos firmada') })
     fireEvent.change(within(form).getByLabelText(words.form.doneOn), { target: { value: '2999-01-01' } })
     await userEvent.click(within(form).getByRole('button', { name: words.form.submit }))
 

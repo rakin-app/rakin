@@ -88,10 +88,10 @@ def test_the_owner_defines_requirements_with_their_defaults(
     client: TestClient, db: Database
 ) -> None:
     gym = staffed(db, "rq-define")
-    waiver = define(client, gym, name="Deslinde firmado")
+    waiver = define(client, gym, name="Declaración de riesgos firmada")
     assert waiver.pop("id")
     assert waiver == {
-        "name": "Deslinde firmado",
+        "name": "Declaración de riesgos firmada",
         "valid_months": None,
         "sensitive": False,
         "visible_to": "staff",
@@ -101,7 +101,7 @@ def test_the_owner_defines_requirements_with_their_defaults(
     assert (medical["valid_months"], medical["visible_to"]) == (12, "owner")
 
     listed = client.get(LIST, headers=gym.owner).json()
-    assert [r["name"] for r in listed] == ["Deslinde firmado", "Certificado médico"]
+    assert [r["name"] for r in listed] == ["Declaración de riesgos firmada", "Certificado médico"]
 
 
 @pytest.mark.parametrize("body", [{"name": " "}, {"name": "x", "valid_months": 0}])
@@ -190,7 +190,7 @@ def test_a_gym_with_no_requirements_answers_none(client: TestClient, db: Databas
 def test_recording_a_requirement_sets_its_state(client: TestClient, db: Database) -> None:
     gym = staffed(db, "rq-record")
     medical = define(client, gym, name="Certificado médico", valid_months=12)["id"]
-    waiver = define(client, gym, name="Deslinde firmado")["id"]
+    waiver = define(client, gym, name="Declaración de riesgos firmada")["id"]
     today = seeded_today()
 
     before = by_name(client.get(of(gym.member), headers=gym.coach))
@@ -207,7 +207,7 @@ def test_recording_a_requirement_sets_its_state(client: TestClient, db: Database
         add_months(today, 12).isoformat(),
     )
     assert fresh["note"] == "Dr. Pérez"
-    signed = by_name(record(client, gym, waiver, today, note=""))["Deslinde firmado"]
+    signed = by_name(record(client, gym, waiver, today, note=""))["Declaración de riesgos firmada"]
     assert (signed["state"], signed["expires_on"], signed["note"]) == ("ok", None, None)
     # The earlier record is kept.
     assert len(stored(db, gym)) == 3
@@ -215,7 +215,7 @@ def test_recording_a_requirement_sets_its_state(client: TestClient, db: Database
 
 def test_a_record_is_today_at_the_latest(client: TestClient, db: Database) -> None:
     gym = staffed(db, "rq-future")
-    waiver = define(client, gym, name="Deslinde firmado")["id"]
+    waiver = define(client, gym, name="Declaración de riesgos firmada")["id"]
     tomorrow = date.fromordinal(seeded_today().toordinal() + 1)
     assert record(client, gym, waiver, tomorrow).status_code == 422
     assert record(client, gym, waiver, date(1900, 1, 1)).status_code == 422
@@ -272,7 +272,7 @@ def test_marking_a_requirement_sensitive_seals_its_notes_and_unmarking_opens_the
     [row] = stored(db, gym)
     assert (row["note"], row["note_secret"]) == ("200 m", None)
     # An admin may change neither, on one they see; one they do not is not there.
-    waiver = define(client, gym, name="Deslinde firmado")["id"]
+    waiver = define(client, gym, name="Declaración de riesgos firmada")["id"]
     for body in ({"sensitive": True}, {"visible_to": "owner"}):
         refused = client.patch(f"{LIST}/{waiver}", json=body, headers=gym.admin)
         assert refused.status_code == 403
@@ -287,14 +287,14 @@ def test_the_student_page_shows_their_own_and_their_dependents_without_notes(
     client: TestClient, db: Database
 ) -> None:
     gym = staffed(db, "rq-me")
-    waiver = define(client, gym, name="Deslinde firmado")["id"]
+    waiver = define(client, gym, name="Declaración de riesgos firmada")["id"]
     define(client, gym, name="Certificado médico", valid_months=12, sensitive=True)
     record(client, gym, waiver, seeded_today(), note="firmado en papel")
 
     [mine] = client.get("/api/me/requirements", headers=as_gym(gym.id, gym.member)).json()
     assert mine["person_id"] == str(gym.member)
     assert [(r["name"], r["state"]) for r in mine["requirements"]] == [
-        ("Deslinde firmado", "ok"),
+        ("Declaración de riesgos firmada", "ok"),
         ("Certificado médico", "pending"),
     ]
     assert all("note" not in r for r in mine["requirements"])
@@ -327,7 +327,7 @@ def test_the_student_page_shows_their_own_and_their_dependents_without_notes(
 
 def test_the_database_keeps_records_as_recorded(client: TestClient, db: Database) -> None:
     gym = staffed(db, "rq-db")
-    waiver = uuid.UUID(define(client, gym, name="Deslinde firmado")["id"])
+    waiver = uuid.UUID(define(client, gym, name="Declaración de riesgos firmada")["id"])
     insert = (
         "INSERT INTO person_requirement (gym_id, person_id, requirement_id, done_on, recorded_by)"
         " VALUES ($1, $2, $3, $4, $5)"
@@ -354,7 +354,7 @@ def test_the_database_keeps_records_as_recorded(client: TestClient, db: Database
 
 def test_deleting_a_person_deletes_their_records(client: TestClient, db: Database) -> None:
     gym = staffed(db, "rq-forget")
-    waiver = define(client, gym, name="Deslinde firmado")["id"]
+    waiver = define(client, gym, name="Declaración de riesgos firmada")["id"]
     assert record(client, gym, waiver, seeded_today()).status_code == 200
 
     response = client.request(

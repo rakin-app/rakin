@@ -1029,7 +1029,7 @@ export const es = {
         expiredOn: (day: string) => `venció el ${day}`,
         record: 'Registrar',
         recordLabel: (name: string) => `Registrar ${name}`,
-        recorded: (name: string) => `${name} registrado.`,
+        recorded: (name: string) => `Registrado: ${name}.`,
         form: {
           title: (name: string) => `Registrar ${name}`,
           doneOn: 'Fecha',
@@ -1797,7 +1797,7 @@ export const es = {
         get fields() {
           return `Datos extra en la ficha de cada ${w.member}.`
         },
-        requirements: 'Deslindes, inducciones y certificados, con su fecha.',
+        requirements: 'Declaraciones de riesgos, inducciones y certificados, con su fecha.',
         staff: 'Admins y coaches, y quién tiene acceso.',
         joinLink: 'El link para que se inscriban solos.',
         account: 'Tu nombre, tu email y cerrar sesión.',
@@ -2492,11 +2492,11 @@ export const es = {
       requirements: {
         title: 'Requisitos',
         get intro() {
-          return `Lo que ${w.thePlace} pide antes de entrenar, como un deslinde o un certificado. La ficha de cada ${w.member} dice cuándo lo hizo y si está al día.`
+          return `Lo que ${w.thePlace} pide antes de entrenar, como una declaración de riesgos o un certificado. La ficha de cada ${w.member} dice cuándo lo hizo y si está al día.`
         },
         error: 'No pudimos cargar los requisitos.',
         empty: 'Todavía no hay requisitos. Por ejemplo:',
-        examples: ['Deslinde firmado', 'Inducción de seguridad', 'Certificado médico (12 meses)', 'Prueba de natación'],
+        examples: ['Declaración de riesgos firmada', 'Inducción de seguridad', 'Certificado médico (12 meses)', 'Prueba de natación'],
         add: 'Nuevo requisito',
         archive: 'Desactivar',
         restore: 'Reactivar',
@@ -2519,7 +2519,7 @@ export const es = {
           edit: (name: string) => `Editar ${name}`,
           name: 'Nombre',
           validMonths: 'Vigencia en meses',
-          validMonthsHint: 'En blanco si se hace una sola vez, como un deslinde.',
+          validMonthsHint: 'En blanco si se hace una sola vez, como una declaración de riesgos.',
           sensitive: 'Dato sensible',
           sensitiveHint: 'Su nota se guarda cifrada. Al marcarlo, por defecto solo lo ve el dueño.',
           visibleTo: 'Quién lo ve',
