@@ -29,6 +29,27 @@ export function SectionHeader({
   )
 }
 
+/** A section of a page: its `SectionHeader` over what it holds, the title outside the
+ * card (#360). Labelled by its title. */
+export function Section({
+  title,
+  trailing,
+  id,
+  children,
+}: {
+  title: ReactNode
+  trailing?: ReactNode
+  id: string
+  children: ReactNode
+}) {
+  return (
+    <section className="section" aria-labelledby={id}>
+      <SectionHeader id={id} title={title} trailing={trailing} />
+      {children}
+    </section>
+  )
+}
+
 /**
  * The inside of a list row: its title, the detail under it, and what sits at its end.
  * Put it in a `Link` or `button` with `listRowClass(true)` and the whole row is the target.

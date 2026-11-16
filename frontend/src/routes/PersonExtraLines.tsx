@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { personLinesQuery } from '../api/extraCharges'
-import { ListRowContent, listRowClass } from '../components/Card'
+import { listRowClass, ListRowContent, SectionHeader } from '../components/Card'
 import { StatusPill } from '../components/StatusPill'
 import { isoDay, shortDay } from '../format'
 import { t } from '../i18n/es'
@@ -20,9 +20,7 @@ export function PersonExtraLines({ personId }: { personId: string }) {
   const today = isoDay(new Date().toISOString())
   return (
     <section className="member__section" aria-labelledby="member-extra">
-      <h2 id="member-extra" className="member__section-title">
-        {copy.ficha}
-      </h2>
+      <SectionHeader id="member-extra" title={copy.ficha} />
       <ul className="extra__list">
         {lines.data.map((line) => {
           const status = line.status === 'in_review' ? 'in_review' : line.due_date < today ? 'overdue' : 'open'

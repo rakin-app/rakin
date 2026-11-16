@@ -6,15 +6,6 @@
   min-height: 100%;
 }
 
-/* A phone's section page: back to the list, over the section's title. */
-.settings__back {
-  margin: var(--space-4) 0 0 calc(-1 * var(--space-3));
-}
-
-.settings__back + .page-header {
-  padding-top: var(--space-1);
-}
-
 /* The sections, as tabs on a desktop: a row that scrolls sideways if they do not fit. */
 .settings__sections {
   display: flex;

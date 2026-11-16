@@ -6,6 +6,7 @@ import { useGymTimeZone } from '../api/sessions'
 import { isoDay, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { Button } from './Button'
+import { Section } from './Card'
 import { SegmentedControl } from './Chip'
 import { ChevronLeftIcon, ChevronRightIcon } from './icons'
 import './TagHours.css'
@@ -17,16 +18,19 @@ type Period = 'month' | 'year'
 /**
  * "Horas por etiqueta" for a month or a year the reader walks to (#243): Clases' for
  * the gym's classes held, the ficha's for a member's attended ones. `today` is the
- * gym's, `2026-11-11`, where it opens.
+ * gym's, `2026-11-11`, where it opens. `headed` puts the title over the card, as the
+ * ficha heads each of its sections (#360).
  */
 export function TagHoursCard<Key extends QueryKey>({
   title,
   note,
+  headed = false,
   today,
   query,
 }: {
   title: string
   note?: string
+  headed?: boolean
   today: string
   query: (stretch: Stretch) => UseQueryOptions<Hours, Error, Hours, Key>
 }) {
@@ -56,22 +60,19 @@ export function TagHoursCard<Key extends QueryKey>({
   }
   const what = period === 'month' ? copy.month : copy.year
 
-  return (
-    <section className="tag-hours" aria-labelledby={titleId}>
-      <div className="tag-hours__head">
-        <h2 id={titleId} className="tag-hours__title">
-          {title}
-        </h2>
-        <SegmentedControl
-          label={copy.periods}
-          options={[
-            { value: 'month', label: copy.month },
-            { value: 'year', label: copy.year },
-          ]}
-          value={period}
-          onChange={setPeriod}
-        />
-      </div>
+  const control = (
+    <SegmentedControl
+      label={copy.periods}
+      options={[
+        { value: 'month', label: copy.month },
+        { value: 'year', label: copy.year },
+      ]}
+      value={period}
+      onChange={setPeriod}
+    />
+  )
+  const body = (
+    <>
       <div className="tag-hours__stretch">
         <Button variant="ghost" icon aria-label={copy.previous(what)} onClick={() => step(-1)}>
           <ChevronLeftIcon />
@@ -96,6 +97,25 @@ export function TagHoursCard<Key extends QueryKey>({
         <p className="tag-hours__note">{copy.loading}</p>
       )}
       {note && <p className="tag-hours__note">{note}</p>}
+    </>
+  )
+
+  if (headed) {
+    return (
+      <Section id={titleId} title={title} trailing={control}>
+        <div className="tag-hours">{body}</div>
+      </Section>
+    )
+  }
+  return (
+    <section className="tag-hours" aria-labelledby={titleId}>
+      <div className="tag-hours__head">
+        <h2 id={titleId} className="tag-hours__title">
+          {title}
+        </h2>
+        {control}
+      </div>
+      {body}
     </section>
   )
 }
