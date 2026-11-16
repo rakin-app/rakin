@@ -445,6 +445,10 @@ const onRoster = (id: string, name: string, present: boolean, regular = true): R
 })
 
 describe('Clases on a desktop', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   const wide = (matches: boolean) =>
     vi.stubGlobal(
       'matchMedia',
@@ -455,10 +459,6 @@ describe('Clases on a desktop', () => {
     expect(mondayOf('2026-11-10')).toBe('2026-11-09')
     expect(mondayOf('2026-11-09')).toBe('2026-11-09')
     expect(mondayOf('2026-11-15')).toBe('2026-11-09')
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
   })
 
   // The clock pinned (#330): at 22:00 on a Sunday in Santiago it is already Monday in UTC,
