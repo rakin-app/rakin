@@ -134,3 +134,64 @@ def test_an_xlsx_formatted_far_down_stops_at_the_scan_bound(
     with pytest.raises(SheetError) as refused:
         read_sheet(data)
     assert refused.value.code == "too_many_empty_rows"
+
+
+# --- tabs (#299) --------------------------------------------------------------------
+
+
+def book(*tabs: tuple[str, Sequence[Sequence[object]]], hidden: Sequence[str] = ()) -> bytes:
+    workbook = Workbook()
+    first = workbook.active
+    assert first is not None
+    workbook.remove(first)
+    for title, rows in tabs:
+        worksheet = workbook.create_sheet(title)
+        for row in rows:
+            worksheet.append(list(row))
+        if title in hidden:
+            worksheet.sheet_state = "hidden"
+    out = io.BytesIO()
+    workbook.save(out)
+    return out.getvalue()
+
+
+GRADOS = [["Nombre", "Grado"], ["Camila", "Azul"]]
+
+
+def test_a_workbook_is_read_by_its_tabs_names() -> None:
+    data = book(
+        ("Instrucciones", [["Una fila por alumno"]]),
+        ("GRADOS", GRADOS),
+        ("Alumnos", [["Nombre"], ["Camila"]]),
+    )
+    assert s.read_book(data) == {
+        "alumnos": Sheet(["Nombre"], [Row(2, ["Camila"])]),
+        "grados": Sheet(["Nombre", "Grado"], [Row(2, ["Camila", "Azul"])]),
+    }
+
+
+def test_an_old_sheets_first_tab_is_alumnos_but_never_the_instructions_or_a_hidden_list() -> None:
+    data = book(
+        ("Instrucciones", [["Una fila por alumno"]]),
+        ("Lista", [["Mensual"]]),
+        ("Hoja1", [["Nombre"], ["Camila"]]),
+        hidden=("Lista",),
+    )
+    assert s.read_book(data) == {"alumnos": Sheet(["Nombre"], [Row(2, ["Camila"])])}
+
+
+def test_a_tab_with_no_rows_is_left_out() -> None:
+    # The template downloaded, only its Grados tab filled.
+    data = book(("Alumnos", [["Nombre", "RUT"]]), ("Grados", GRADOS))
+    assert list(s.read_book(data)) == ["grados"]
+    with pytest.raises(SheetError) as refused:
+        read_sheet(data)
+    assert refused.value.code == "empty"
+    with pytest.raises(SheetError) as refused:
+        s.read_book(book(("Alumnos", [["Nombre"]]), ("Grados", [["Grado"]])))
+    assert refused.value.code == "empty"
+
+
+def test_a_csv_is_the_tab_the_upload_says() -> None:
+    assert list(s.read_book(b"Nombre,Grado\nCamila,Azul\n", "grados")) == ["grados"]
+    assert list(s.read_book(b"Nombre\nCamila\n")) == ["alumnos"]

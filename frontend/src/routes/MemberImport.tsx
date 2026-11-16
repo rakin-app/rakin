@@ -1,20 +1,28 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useId, useMemo, useState, type ChangeEvent } from 'react'
+import { gradingSchemeQuery, type SchemeRank } from '../api/grading'
 import {
   fold,
+  GRADE_FIELDS,
   IMPORT_FIELDS,
   MAX_SHEET_BYTES,
   runImport,
+  SHEET_TABS,
   SHEET_TYPES,
   sheetRefusal,
   TEMPLATE_PATH,
   uploadSheet,
+  type GradeField,
+  type GradeMapping,
+  type GradeReport,
   type ImportField,
   type ImportReport,
   type Mapping,
   type RowResult,
   type Sheet,
+  type SheetRow,
+  type SheetTab,
 } from '../api/memberImport'
 import { plansQuery, type Plan } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
@@ -33,7 +41,9 @@ const NO_PLAN = 'none'
 /**
  * "Importar alumnos": upload the gym's spreadsheet, say what each column is, check
  * every row without saving (the dry run), then import. The file is read once; the
- * rows stay here and go back to the API with the mapping each time.
+ * rows stay here and go back to the API with the mapping each time. A workbook's
+ * Grados tab (#299) gets a mapping step of its own, and is checked and imported with
+ * the Alumnos tab, after it.
  */
 export function MemberImport() {
   usePageTitle(copy.title)
@@ -55,10 +65,13 @@ export function MemberImport() {
 
 function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void }) {
   const inputId = useId()
+  const tabId = useId()
   const [tooLarge, setTooLarge] = useState(false)
+  // Which tab a CSV is: a workbook says by its tabs' names.
+  const [csvTab, setCsvTab] = useState<SheetTab>('alumnos')
   const read = useSubmit({
     offline: 'refuse',
-    mutationFn: (file: File) => uploadSheet(file),
+    mutationFn: (file: File) => uploadSheet(file, csvTab),
     onSuccess: (sheet, file) => onRead(file.name, sheet),
   })
 
@@ -80,6 +93,16 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
           {copy.template}
         </a>
       </p>
+      <label htmlFor={tabId} className="import__label">
+        {copy.csvTab}
+      </label>
+      <Select id={tabId} value={csvTab} onChange={(event) => setCsvTab(event.target.value as SheetTab)}>
+        {SHEET_TABS.map((tab) => (
+          <option key={tab} value={tab}>
+            {copy.tabs[tab]}
+          </option>
+        ))}
+      </Select>
       <span className="import__label">{copy.fileLabel}</span>
       <div>
         <input
@@ -109,34 +132,77 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
 }
 
 /** Column index to field, from the field-to-column mapping the API speaks. */
-function byColumn(mapping: Mapping): (ImportField | '')[] {
-  const columns: (ImportField | '')[] = []
-  for (const field of IMPORT_FIELDS) {
+function byColumn<F extends string>(fields: readonly F[], mapping: Partial<Record<F, number>>): (F | '')[] {
+  const columns: (F | '')[] = []
+  for (const field of fields) {
     const column = mapping[field]
     if (column !== undefined) columns[column] = field
   }
   return columns
 }
 
+/** `mapping` with `field` on `column`: one column is one field, so picking a field moves it here from wherever it was. */
+function moved<F extends string>(
+  fields: readonly F[],
+  current: Partial<Record<F, number>>,
+  column: number,
+  field: F | '',
+): Partial<Record<F, number>> {
+  const next: Partial<Record<F, number>> = {}
+  for (const f of fields) {
+    if (current[f] !== undefined && current[f] !== column && f !== field) next[f] = current[f]
+  }
+  if (field) next[field] = column
+  return next
+}
+
+/** A column's values, each once, accents and case ignored, in the sheet's order. */
+function valuesIn(rows: SheetRow[], column: number | undefined): string[] {
+  if (column === undefined) return []
+  const values = new Map<string, string>()
+  for (const row of rows) {
+    const value = row.cells[column]?.trim()
+    if (value && !values.has(fold(value))) values.set(fold(value), value)
+  }
+  return [...values.values()]
+}
+
+const gradesReady = (mapping: GradeMapping) =>
+  mapping.rank !== undefined &&
+  mapping.awarded_on !== undefined &&
+  (mapping.rut !== undefined || mapping.email !== undefined || mapping.name !== undefined)
+
+/** Rows imported over every tab, and refused. */
+function totals(report: ImportReport): { imported: number; refused: number } {
+  return {
+    imported: report.summary.imported + (report.grados?.summary.imported ?? 0),
+    refused: report.summary.refused + (report.grados?.summary.refused ?? 0),
+  }
+}
+
 function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onOther: () => void }) {
   const queryClient = useQueryClient()
   const plans = useQuery(plansQuery)
+  const grados = sheet.grados
+  const hasAlumnos = sheet.rows.length > 0
+  const scheme = useQuery({ ...gradingSchemeQuery(), enabled: grados !== null })
   const [mapping, setMapping] = useState<Mapping>(sheet.mapping)
+  const [gradeMapping, setGradeMapping] = useState<GradeMapping>(grados?.mapping ?? {})
+  // The admin's choice for a Grado cell's value: a rank's key, or `''` for none.
+  const [rankChosen, setRankChosen] = useState<Record<string, string>>({})
   // The admin's choice for a plan cell's value: a plan's id, `NO_PLAN`, or `''` for none
   // made yet. Absent means "as matched by name".
   const [chosen, setChosen] = useState<Record<string, string>>({})
   const [report, setReport] = useState<ImportReport | null>(null)
 
-  const planValues = useMemo(() => {
-    const column = mapping.plan
-    if (column === undefined) return []
-    const values = new Map<string, string>()
-    for (const row of sheet.rows) {
-      const value = row.cells[column]?.trim()
-      if (value && !values.has(fold(value))) values.set(fold(value), value)
-    }
-    return [...values.values()]
-  }, [mapping.plan, sheet.rows])
+  const planValues = useMemo(() => valuesIn(sheet.rows, mapping.plan), [mapping.plan, sheet.rows])
+  const rankValues = useMemo(() => valuesIn(grados?.rows ?? [], gradeMapping.rank), [gradeMapping.rank, grados])
+  const ranks = useMemo(
+    () => (scheme.data ? [...scheme.data.ranks, ...scheme.data.kids_ladder] : []),
+    [scheme.data],
+  )
+  const rankFor = (value: string) =>
+    rankChosen[value] ?? ranks.find((rank) => fold(rank.label) === fold(value))?.key ?? ''
 
   const matched = (value: string): string => {
     const key = fold(value)
@@ -152,7 +218,19 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
       const plan = planFor(value)
       if (plan) choices[value] = plan === NO_PLAN ? null : plan
     }
-    return runImport({ rows: sheet.rows, mapping, plans: choices, dry_run: dryRun, file: sheet.file })
+    const rankChoices: Record<string, string> = {}
+    for (const value of rankValues) {
+      const rank = rankFor(value)
+      if (rank) rankChoices[value] = rank
+    }
+    return runImport({
+      rows: sheet.rows,
+      mapping,
+      plans: choices,
+      dry_run: dryRun,
+      file: sheet.file,
+      ...(grados && { grados: { rows: grados.rows, mapping: gradeMapping, ranks: rankChoices } }),
+    })
   }
   const check = useSubmit({ offline: 'refuse', mutationFn: () => request(true), onSuccess: setReport })
   const apply = useSubmit({
@@ -164,19 +242,20 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
     },
   })
 
-  const setColumn = (column: number, field: ImportField | '') => {
-    setMapping((current) => {
-      const next: Mapping = {}
-      for (const f of IMPORT_FIELDS) {
-        // One column is one field: picking a field moves it here from wherever it was.
-        if (current[f] !== undefined && current[f] !== column && f !== field) next[f] = current[f]
-      }
-      if (field) next[field] = column
-      return next
-    })
+  const changed = () => {
     setReport(null)
     check.reset()
   }
+  const setColumn = (column: number, field: ImportField | '') => {
+    setMapping((current) => moved(IMPORT_FIELDS, current, column, field))
+    changed()
+  }
+  const setGradeColumn = (column: number, field: GradeField | '') => {
+    setGradeMapping((current) => moved(GRADE_FIELDS, current, column, field))
+    changed()
+  }
+  const alumnosReady = !hasAlumnos || mapping.name !== undefined
+  const gradosReady = grados === null || gradesReady(gradeMapping)
 
   if (report && !report.dry_run) {
     return <Done name={name} report={report} onOther={onOther} />
@@ -186,7 +265,9 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
     <>
       <section className="import__card">
         <div className="import__file-row">
-          <span className="import__file-name">{copy.fileSummary(name, sheet.rows.length)}</span>
+          <span className="import__file-name">
+            {copy.fileSummary(name, sheet.rows.length, grados?.rows.length ?? null)}
+          </span>
           <Button onClick={onOther}>
             {copy.otherFile}
           </Button>
@@ -203,8 +284,18 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
         />
       ) : (
         <>
-          <ColumnMapping sheet={sheet} columns={byColumn(mapping)} onChange={setColumn} />
-          {planValues.length > 0 && (
+          {hasAlumnos && (
+            <ColumnMapping
+              title={grados ? copy.tabMappingTitle(copy.tabs.alumnos) : copy.mappingTitle}
+              headers={sheet.headers}
+              rows={sheet.rows}
+              fields={IMPORT_FIELDS}
+              labels={copy.fields}
+              columns={byColumn(IMPORT_FIELDS, mapping)}
+              onChange={setColumn}
+            />
+          )}
+          {hasAlumnos && planValues.length > 0 && (
             <PlanChoices
               values={planValues}
               plans={plans.data ?? []}
@@ -212,8 +303,31 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
               onChange={(value, plan) => setChosen((current) => ({ ...current, [value]: plan }))}
             />
           )}
+          {grados && (
+            <ColumnMapping
+              title={hasAlumnos ? copy.tabMappingTitle(copy.tabs.grados) : copy.mappingTitle}
+              headers={grados.headers}
+              rows={grados.rows}
+              fields={GRADE_FIELDS}
+              labels={copy.gradeFields}
+              columns={byColumn(GRADE_FIELDS, gradeMapping)}
+              onChange={setGradeColumn}
+            />
+          )}
+          {grados && rankValues.length > 0 && (
+            <RankChoices
+              values={rankValues}
+              ranks={ranks}
+              rankFor={rankFor}
+              onChange={(value, rank) => {
+                setRankChosen((current) => ({ ...current, [value]: rank }))
+                changed()
+              }}
+            />
+          )}
           <section className="import__card">
-            {mapping.name === undefined && <p className="import__note">{copy.nameRequired}</p>}
+            {!alumnosReady && <p className="import__note">{copy.nameRequired}</p>}
+            {!gradosReady && <p className="import__note">{copy.gradesRequired}</p>}
             {check.isError && (
               <p className="import__error" role="alert">
                 {copy.failed}
@@ -221,7 +335,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
             )}
             <Button
               variant="primary"
-              disabled={mapping.name === undefined || check.isPending}
+              disabled={!alumnosReady || !gradosReady || check.isPending}
               onClick={() => check.mutate()}
             >
               {check.isPending ? copy.checking : copy.check}
@@ -233,25 +347,33 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
   )
 }
 
-function ColumnMapping({
-  sheet,
+function ColumnMapping<F extends string>({
+  title,
+  headers,
+  rows,
+  fields,
+  labels,
   columns,
   onChange,
 }: {
-  sheet: Sheet
-  columns: (ImportField | '')[]
-  onChange: (column: number, field: ImportField | '') => void
+  title: string
+  headers: string[]
+  rows: SheetRow[]
+  fields: readonly F[]
+  labels: Record<F, string>
+  columns: (F | '')[]
+  onChange: (column: number, field: F | '') => void
 }) {
   const baseId = useId()
   return (
     <section className="import__card" aria-labelledby={`${baseId}-title`}>
       <h2 id={`${baseId}-title`} className="import__title">
-        {copy.mappingTitle}
+        {title}
       </h2>
       <p className="import__note">{copy.mappingHint}</p>
       <ul className="import__columns">
-        {sheet.headers.map((header, column) => {
-          const sample = sheet.rows.find((row) => row.cells[column])?.cells[column]
+        {headers.map((header, column) => {
+          const sample = rows.find((row) => row.cells[column])?.cells[column]
           const label = header || copy.unnamedColumn(column + 1)
           const id = `${baseId}-${column}`
           return (
@@ -263,12 +385,12 @@ function ColumnMapping({
               <Select
                 id={id}
                 value={columns[column] ?? ''}
-                onChange={(event) => onChange(column, event.target.value as ImportField | '')}
+                onChange={(event) => onChange(column, event.target.value as F | '')}
               >
                 <option value="">{copy.skip}</option>
-                {IMPORT_FIELDS.map((field) => (
+                {fields.map((field) => (
                   <option key={field} value={field}>
-                    {copy.fields[field]}
+                    {labels[field]}
                   </option>
                 ))}
               </Select>
@@ -329,20 +451,68 @@ function PlanChoices({
   )
 }
 
+/** The Grado step: which rank each value of the column is, matched by label until the admin picks. */
+function RankChoices({
+  values,
+  ranks,
+  rankFor,
+  onChange,
+}: {
+  values: string[]
+  ranks: SchemeRank[]
+  rankFor: (value: string) => string
+  onChange: (value: string, rank: string) => void
+}) {
+  const baseId = useId()
+  return (
+    <section className="import__card" aria-labelledby={`${baseId}-title`}>
+      <h2 id={`${baseId}-title`} className="import__title">
+        {copy.ranksTitle}
+      </h2>
+      <p className="import__note">{ranks.length === 0 ? copy.noRanks : copy.ranksHint}</p>
+      <ul className="import__columns">
+        {values.map((value, index) => {
+          const id = `${baseId}-${index}`
+          return (
+            <li key={value} className="import__column">
+              <label htmlFor={id} className="import__column-name">
+                {value}
+              </label>
+              <Select id={id} value={rankFor(value)} onChange={(event) => onChange(value, event.target.value)}>
+                <option value="">{copy.pickRank}</option>
+                {ranks.map((rank) => (
+                  <option key={rank.key} value={rank.key}>
+                    {rank.label}
+                  </option>
+                ))}
+              </Select>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
 function Counts({ report }: { report: ImportReport }) {
   const {
+    rows,
     people_created: people,
     links_created: links,
     memberships_created: memberships,
     history_set: history,
     former_created: former,
   } = report.summary
+  const grades = report.grados?.summary.grades_created ?? 0
   return (
     <>
-      <p className="import__note">
-        {people + links + memberships + history === 0 ? copy.nothingNew : copy.created(people, links, memberships)}
-      </p>
+      {people + links + memberships + history + grades === 0 ? (
+        <p className="import__note">{copy.nothingNew}</p>
+      ) : (
+        rows > 0 && <p className="import__note">{copy.created(people, links, memberships)}</p>
+      )}
       {(history > 0 || former > 0) && <p className="import__note">{copy.history(history, former)}</p>}
+      {report.grados && grades > 0 && <p className="import__note">{copy.gradesCreated(grades)}</p>}
     </>
   )
 }
@@ -360,7 +530,7 @@ function Review({
   onBack: () => void
   onApply: () => void
 }) {
-  const { imported, refused } = report.summary
+  const { imported, refused } = totals(report)
   return (
     <>
       <section className="import__card" aria-labelledby="import-review-title">
@@ -394,6 +564,7 @@ function Review({
       <WarningRows rows={report.rows} />
       <FormerRows rows={report.rows} />
       <KeptRows rows={report.rows} />
+      {report.grados && <GradeRows report={report.grados} />}
     </>
   )
 }
@@ -406,7 +577,7 @@ function Done({ name, report, onOther }: { name: string; report: ImportReport; o
           {copy.doneTitle}
         </h2>
         <p className="import__summary" role="status">
-          {copy.doneSummary(name, report.summary.imported, report.summary.refused)}
+          {copy.doneSummary(name, totals(report).imported, totals(report).refused)}
         </p>
         <Counts report={report} />
         <div className="import__actions">
@@ -422,7 +593,39 @@ function Done({ name, report, onOther }: { name: string; report: ImportReport; o
       <WarningRows rows={report.rows} />
       <FormerRows rows={report.rows} />
       <KeptRows rows={report.rows} />
+      {report.grados && <GradeRows report={report.grados} />}
     </>
+  )
+}
+
+/** The Grados tab's rows: how many grades are new, how many they already had, and those refused. */
+function GradeRows({ report }: { report: GradeReport }) {
+  const { imported, grades_created: created } = report.summary
+  const refused = report.rows.filter((row) => row.errors.length > 0)
+  return (
+    <section className="import__card" aria-labelledby="import-grades-title">
+      <h2 id="import-grades-title" className="import__title">
+        {copy.gradesTitle}
+      </h2>
+      <p className="import__note">{copy.gradesSummary(created, imported - created, refused.length)}</p>
+      {refused.length > 0 && (
+        <>
+          <p className="import__note">{copy.gradesErrorsHint}</p>
+          <ul className="import__errors" aria-label={copy.gradesErrorsTitle}>
+            {refused.map((row) => (
+              <li key={row.row} className="import__error-row">
+                <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
+                {row.errors.map((error) => (
+                  <span key={`${error.field}-${error.code}`} className="import__error-what">
+                    {copy.fieldError(copy.gradeFields[error.field], copy.gradeError[error.code])}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   )
 }
 

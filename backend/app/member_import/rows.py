@@ -27,7 +27,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -228,8 +228,8 @@ _GUARDIAN_WORDS = (
     "papa",
 )
 _PHONE_WORDS = ("telefono", "celular", "fono", "whatsapp", "movil", "phone", "cel")
-_RUT_WORDS = ("rut", "run")
-_EMAIL_WORDS = ("correo", "email", "e mail", "mail")
+RUT_WORDS = ("rut", "run")
+EMAIL_WORDS = ("correo", "email", "e mail", "mail")
 # In order: the first field whose words a header holds is the one suggested.
 _HEADER_WORDS: tuple[tuple[Field, tuple[str, ...]], ...] = (
     (Field.DOB, ("nacimiento", "cumpleanos", "f nac", "fecha nac", "birth", "dob")),
@@ -242,35 +242,35 @@ _HEADER_WORDS: tuple[tuple[Field, tuple[str, ...]], ...] = (
     (Field.LEFT_ON, ("fecha de baja", "baja", "egreso")),
     (Field.PRIOR_CLASSES, ("clase",)),
     (Field.PHONE, _PHONE_WORDS),
-    (Field.EMAIL, _EMAIL_WORDS),
-    (Field.RUT, _RUT_WORDS),
+    (Field.EMAIL, EMAIL_WORDS),
+    (Field.RUT, RUT_WORDS),
     (Field.LAST_NAME, ("apellido",)),
     (Field.NAME, ("nombre", "alumno", "alumna", "name")),
     (Field.PLAN, ("plan", "mensualidad")),
 )
 
 
-def _words(header: str) -> str:
+def header_words(header: str) -> str:
     return " " + re.sub(r"[^0-9a-z]+", " ", fold(header)) + " "
 
 
-def _holds(header: str, words: Sequence[str]) -> bool:
-    """Whether `header`, as `_words` spaces it, holds one of `words`, or its plural."""
+def holds(header: str, words: Sequence[str]) -> bool:
+    """Whether `header`, as `header_words` spaces it, holds one of `words`, or its plural."""
     return any(f" {word} " in header or f" {word}s " in header for word in words)
 
 
 def _field_for(header: str) -> Field | None:
-    words = _words(header)
-    if _holds(words, _GUARDIAN_WORDS):
+    words = header_words(header)
+    if holds(words, _GUARDIAN_WORDS):
         for guardian_field, keys in (
             (Field.GUARDIAN_PHONE, _PHONE_WORDS),
-            (Field.GUARDIAN_RUT, _RUT_WORDS),
-            (Field.GUARDIAN_EMAIL, _EMAIL_WORDS),
+            (Field.GUARDIAN_RUT, RUT_WORDS),
+            (Field.GUARDIAN_EMAIL, EMAIL_WORDS),
         ):
-            if _holds(words, keys):
+            if holds(words, keys):
                 return guardian_field
         return Field.GUARDIAN_NAME
-    return next((f for f, keys in _HEADER_WORDS if _holds(words, keys)), None)
+    return next((f for f, keys in _HEADER_WORDS if holds(words, keys)), None)
 
 
 def suggest_mapping(headers: Sequence[str]) -> dict[Field, int]:
@@ -313,7 +313,7 @@ def _in_window(day: date, today: date) -> bool:
     return add_months(today, -months) <= day <= add_months(today, months)
 
 
-def _in_history(day: date, today: date) -> bool:
+def in_history(day: date, today: date) -> bool:
     """Today at the latest, and no more than `HISTORY_WINDOW_YEARS` back."""
     return add_months(today, -12 * HISTORY_WINDOW_YEARS) <= day <= today
 
@@ -322,11 +322,13 @@ def _in_history(day: date, today: date) -> bool:
 
 
 @dataclass
-class _Cells:
-    cells: Sequence[str]
-    mapping: Mapping[Field, int]
+class Cells:
+    """A row's cells by field, for any tab's fields."""
 
-    def __call__(self, on: Field) -> str:
+    cells: Sequence[str]
+    mapping: Mapping[Any, int]
+
+    def __call__(self, on: StrEnum) -> str:
         column = self.mapping.get(on)
         if column is None or column >= len(self.cells):
             return ""
@@ -375,7 +377,7 @@ def _date(member: Member, on: Field, raw: str, today: date) -> date | None:
         member.refuse(on, "invalid_date")
         return None
     if on in _HISTORY_DATES:
-        if not _in_history(day, today):
+        if not in_history(day, today):
             member.refuse(on, "invalid_date")
             return None
         return day
@@ -399,7 +401,7 @@ def _classes(member: Member, raw: str) -> int | None:
     return int(digits)
 
 
-def _history(member: Member, cell: _Cells, today: date) -> None:
+def _history(member: Member, cell: Cells, today: date) -> None:
     """The person's history from before Rakin, as the row gives it."""
     member.member_since = _date(member, Field.MEMBER_SINCE, cell(Field.MEMBER_SINCE), today)
     member.left_on = _date(member, Field.LEFT_ON, cell(Field.LEFT_ON), today)
@@ -422,7 +424,7 @@ def read_member(
     today: date,
 ) -> Member:
     """One row, every check that needs nothing but the row made."""
-    cell = _Cells(cells, mapping)
+    cell = Cells(cells, mapping)
     full_name = " ".join(part for part in (cell(Field.NAME), cell(Field.LAST_NAME)) if part)
     member = Member(number, " ".join(full_name.split()))
     try:

@@ -479,7 +479,10 @@ export const es = {
       eyebrow: 'Alumnos',
       intro:
         'Sube la planilla del gimnasio (CSV o Excel). Primero revisamos cada fila sin guardar nada; después importas. Puedes volver a importarla: a quien ya está lo encontramos por su RUT (o su correo, o su nombre si no tiene ninguno) y no se duplica.',
-      templateHint: '¿Empiezas de cero, o traes alumnos antiguos y exalumnos? Usa la plantilla de Rakin.',
+      templateHint:
+        '¿Empiezas de cero, o traes alumnos antiguos, exalumnos y sus grados? Usa la plantilla de Rakin.',
+      csvTab: 'Si es un CSV, ¿qué contiene?',
+      tabs: { alumnos: 'Alumnos', grados: 'Grados' },
       template: 'Descargar plantilla',
       fileLabel: 'Planilla',
       choose: 'Elegir archivo',
@@ -494,10 +497,15 @@ export const es = {
         too_large: 'El archivo pesa más de 5 MB.',
         failed: 'No pudimos procesar la planilla. Inténtalo de nuevo.',
       },
-      fileSummary: (name: string, rows: number) =>
-        `${name}: ${rows === 1 ? '1 fila' : `${rows.toLocaleString('es-CL')} filas`}`,
+      fileSummary: (name: string, rows: number, grades: number | null) => {
+        const count = (n: number) => (n === 1 ? '1 fila' : `${n.toLocaleString('es-CL')} filas`)
+        if (grades === null) return `${name}: ${count(rows)}`
+        if (rows === 0) return `${name}: ${count(grades)} en Grados`
+        return `${name}: ${count(rows)} en Alumnos, ${count(grades)} en Grados`
+      },
       otherFile: 'Elegir otra planilla',
       mappingTitle: '¿Qué es cada columna?',
+      tabMappingTitle: (tab: string) => `${tab}: ¿qué es cada columna?`,
       mappingHint: 'Las ya reconocidas vienen marcadas. Las que no marques no se importan.',
       unnamedColumn: (n: number) => `Columna ${n}`,
       sample: (value: string) => `Ej.: ${value}`,
@@ -521,7 +529,21 @@ export const es = {
         left_reason: 'Motivo de baja',
         prior_classes: 'Clases antes de Rakin',
       },
+      gradeFields: {
+        rut: 'RUT',
+        email: 'Correo',
+        name: 'Nombre',
+        rank: 'Grado',
+        sub_rank: 'Sub-grado',
+        awarded_on: 'Fecha',
+        note: 'Nota',
+      },
       nameRequired: 'Marca la columna con el nombre para seguir.',
+      gradesRequired: 'En Grados, marca la columna del grado, la de la fecha y la de quién es (RUT, correo o nombre).',
+      ranksTitle: 'Grados de la planilla',
+      ranksHint: 'Elige a qué grado del gimnasio corresponde cada valor. Un valor sin elegir se informa como error.',
+      noRanks: 'El gimnasio aún no tiene grados: configúralos antes de importar los de la planilla.',
+      pickRank: 'Elegir un grado…',
       plansTitle: 'Planes de la planilla',
       plansHint:
         'Elige a qué plan corresponde cada valor. «Sin plan» importa a la persona sin membresía; un valor sin elegir se informa como error.',
@@ -553,6 +575,30 @@ export const es = {
         ]
           .filter(Boolean)
           .join(' '),
+      gradesCreated: (n: number) => (n === 1 ? 'Grados nuevos: 1.' : `Grados nuevos: ${n}.`),
+      gradesTitle: 'Grados',
+      gradesSummary: (created: number, existing: number, refused: number) =>
+        [
+          created === 1 ? '1 grado nuevo' : `${created} grados nuevos`,
+          existing > 0 && (existing === 1 ? '1 ya estaba' : `${existing} ya estaban`),
+          refused > 0 && (refused === 1 ? '1 con errores' : `${refused} con errores`),
+        ]
+          .filter(Boolean)
+          .join(', ') + '. El más reciente de cada persona queda como su grado actual.',
+      gradesErrorsTitle: 'Grados con errores',
+      gradesErrorsHint:
+        'Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.',
+      gradeError: {
+        required: 'falta',
+        invalid_rut: 'no es un RUT válido',
+        invalid_email: 'no es un correo válido',
+        invalid_date: 'no es una fecha válida (hasta 60 años atrás, nunca después de hoy)',
+        unknown_rank: 'no corresponde a ningún grado del gimnasio',
+        unknown_person: 'no está en Alumnos ni en el gimnasio',
+        ambiguous_name: 'hay dos personas con ese nombre: agrega RUT o correo',
+        repeated: 'se repite en una fila anterior',
+        too_long: 'es demasiado largo (máximo 500 caracteres)',
+      },
       errorsTitle: 'Filas con errores',
       errorsHint: 'Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.',
       rowLabel: (row: number, name: string) => (name ? `Fila ${row} · ${name}` : `Fila ${row}`),
