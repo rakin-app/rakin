@@ -34,6 +34,14 @@ export function TagHoursCard<Key extends QueryKey>({
   const [period, setPeriod] = useState<Period>('month')
   const [year, setYear] = useState(Number(today.slice(0, 4)))
   const [month, setMonth] = useState(Number(today.slice(5, 7)))
+  // Back to today's month when it changes: the device's is today until the gym's
+  // timezone is in, a month on in UTC on the gym's month's last evening (#330).
+  const [opened, setOpened] = useState(today.slice(0, 7))
+  if (opened !== today.slice(0, 7)) {
+    setOpened(today.slice(0, 7))
+    setYear(Number(today.slice(0, 4)))
+    setMonth(Number(today.slice(5, 7)))
+  }
   const stretch: Stretch = { year, month: period === 'month' ? month : null }
   const hours = useQuery(query(stretch))
 

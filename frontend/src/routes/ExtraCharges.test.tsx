@@ -1,7 +1,7 @@
 import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtraCharge, ExtraChargeSummary, Line, Preview } from '../api/extraCharges'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
@@ -398,6 +398,15 @@ describe('Nuevo cobro extra, while the preview catches up', () => {
 })
 
 describe('Un cobro extra', () => {
+  // Before the charge's due date, 2026-11-30, or Ana's line reads as overdue (#330).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-20T15:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('shows each person with their status and what the admin can do', async () => {
     stubApi('owner')
     renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
