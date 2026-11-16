@@ -30,6 +30,7 @@ from pydantic import (
 from app.domain.membership import MembershipStatus
 from app.domain.phone import normalize_phone
 from app.domain.rut import normalize_rut
+from app.domain.vocabulary import DEFAULT, Vocabulary
 from app.roles import Role
 from app.schemas.memberships import MembershipStart
 from app.schemas.theme import Theme
@@ -417,3 +418,5 @@ class MyRole(BaseModel):
     # Whether any of the gym's activities grades students (#245): every belt and rank
     # on the gym's screens shows only then.
     uses_grades: bool = False
+    # What the gym calls itself, its members and its coach (#344).
+    vocabulary: Vocabulary = DEFAULT

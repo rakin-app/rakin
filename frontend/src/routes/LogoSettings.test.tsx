@@ -8,6 +8,7 @@ import { App } from '../App'
 import { clampOffset, cropOf, VIEW } from '../components/LogoCropper'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { DEFAULT_VOCABULARY } from '../i18n/vocabulary'
 
 const copy = es.admin.settings.gym.logo
 
@@ -26,6 +27,7 @@ const SETTINGS: GymSettings = {
   channels: { whatsapp: true },
   bank_account: null,
   privacy: null,
+  vocabulary: DEFAULT_VOCABULARY,
 }
 
 type Call = { method: string; path: string; body: unknown; contentType: string | null }

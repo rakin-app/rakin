@@ -21,6 +21,7 @@ from app.domain.rut import check_digit
 from app.domain.schedule import HORIZON_DAYS, horizon
 from app.seed.data import (
     ACTIVITY,
+    ACTIVITY_PRESET,
     BANK_ACCOUNT,
     CLASS_DAYS,
     CLASS_PLANS,
@@ -605,6 +606,7 @@ def build(as_of: date) -> Seed:
                 "gym_id": GYM_ID,
                 "name": ACTIVITY,
                 "uses_grades": True,
+                "preset": ACTIVITY_PRESET,
                 "created_at": local(opened),
             }
         ],

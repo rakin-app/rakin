@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from app.domain.vocabulary import DEFAULT, Vocabulary
 from app.schemas.theme import Theme
 
 
@@ -9,6 +10,8 @@ class HostGymInfo(BaseModel):
     theme: Theme
     # Its logo's files (`app.logos.logo_path`), or None with no logo (#223).
     logo: str | None = None
+    # What the gym calls itself, its members and its coach (#344).
+    vocabulary: Vocabulary = DEFAULT
 
 
 class HostInfo(BaseModel):

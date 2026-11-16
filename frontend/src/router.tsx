@@ -10,9 +10,10 @@ import {
 import { appPath, hadSession, landingFor, markSignedIn, SIGN_IN_PATH } from './api/auth'
 import { ApiError, onUnauthorized } from './api/client'
 import { keepDrafts } from './api/drafts'
-import { myRoleQuery, type MyRole } from './api/me'
+import { myRoleQuery, myselfQuery, type MyRole } from './api/me'
 import { AdminLayout } from './layouts/AdminLayout'
 import { t } from './i18n/es'
+import { wearVocabulary } from './i18n/vocabulary'
 import { MeLayout } from './layouts/MeLayout'
 import { Classes } from './routes/Classes'
 import { ExtraChargeDetail } from './routes/ExtraChargeDetail'
@@ -77,6 +78,8 @@ async function requireSession({ queryClient, signIn }: AppContext, href: string)
     // No retries here: a shell that cannot reach the API still renders, and retries
     // the role itself.
     const me = await queryClient.ensureQueryData({ ...myRoleQuery(), retry: false })
+    // The gym's words, before the shell's first screen reads them (#344).
+    wearVocabulary(queryClient.getQueryData(myselfQuery().queryKey)?.vocabulary)
     markSignedIn()
     return me
   } catch (error) {

@@ -9,6 +9,7 @@ import {
   type Activity,
 } from '../api/activities'
 import { ApiError } from '../api/client'
+import { gymSettingsQuery } from '../api/gym'
 import { myselfQuery } from '../api/me'
 import { useSubmit } from '../api/submit'
 import { Button } from '../components/Button'
@@ -89,11 +90,13 @@ export function ActivitySettings() {
 
 function useRefresh() {
   const queryClient = useQueryClient()
-  // `uses_grades` rides on who is signed in, which every screen reads.
+  // `uses_grades` rides on who is signed in, which every screen reads; so do the words
+  // the gym's first activity brings (#344), which Gimnasio's selects show too.
   return () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: activitiesQuery.queryKey }),
       queryClient.invalidateQueries({ queryKey: myselfQuery().queryKey }),
+      queryClient.invalidateQueries({ queryKey: gymSettingsQuery().queryKey }),
       queryClient.invalidateQueries({ queryKey: ['class-types'] }),
     ])
 }
@@ -278,7 +281,8 @@ function AddActivity({ activities, onDone }: { activities: Activity[]; onDone: (
   }
   const submit = () => {
     if (chosenName === '') return
-    add.mutate({ name: chosenName, uses_grades: usesGrades })
+    const preset = other ? undefined : ACTIVITY_PRESETS.find((p) => p.name === choice)?.key
+    add.mutate({ name: chosenName, uses_grades: usesGrades, ...(preset && { preset }) })
   }
   const nameError = taken(add.error) ? copy.taken : undefined
 

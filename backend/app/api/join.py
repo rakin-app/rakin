@@ -79,7 +79,9 @@ from app.api.member_import import LIVE_MEMBERSHIP, RowRefused, Writer
 from app.api.memberships import start_membership, welcome_for
 from app.api.unsubscribe import in_gym
 from app.contacts import contact_for
+from app.domain import vocabulary
 from app.domain.dates import gym_today
+from app.domain.vocabulary import DEFAULT, Vocabulary
 from app.hosts import Hosts
 from app.integrations import Integrations, get_integrations
 from app.logos import logo_path
@@ -262,7 +264,8 @@ FORM = f"""
     SELECT g.id AS gym_id, g.name AS gym, g.logo_version, g.timezone,
            pr.id AS program_id, pr.name AS program,
            l.expires_on, {HAS_PRIVACY} AS has_privacy,
-           (g.settings -> 'privacy' ->> 'updated_on')::date AS privacy_updated_on
+           (g.settings -> 'privacy' ->> 'updated_on')::date AS privacy_updated_on,
+           g.settings -> 'vocabulary' AS vocabulary
     FROM join_link l
     JOIN gym g ON g.id = l.gym_id
     LEFT JOIN program pr ON pr.gym_id = l.gym_id AND pr.id = l.program_id
@@ -281,6 +284,8 @@ class _OpenLink:
     # The gym's privacy details' date, half of the notice's version (#370).
     privacy_updated_on: date
     session: AsyncSession
+    # What the gym calls itself and its members (#344).
+    words: Vocabulary = DEFAULT
 
 
 @asynccontextmanager
@@ -310,6 +315,7 @@ async def _open(request: Request, token: str) -> AsyncIterator[_OpenLink]:
             row.program,
             row.privacy_updated_on,
             session,
+            vocabulary.read(row.vocabulary),
         )
 
 
@@ -327,6 +333,7 @@ async def join_form(
             today=gym_today(link.timezone),
             privacy_updated_on=link.privacy_updated_on,
             human_check_site_key=integrations.human_check.site_key,
+            vocabulary=link.words,
         )
 
 

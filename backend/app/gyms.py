@@ -10,11 +10,12 @@ its programs and the block kinds every gym is given (0028); a grading scheme onl
 `--grading` names a preset (`app.domain.grading`), since grading is a module a gym turns
 on, not every sport has one: by default it has no grades and shows no belts. With a
 preset it also gets one activity (0043), named as the preset is, that uses grades, so
-the belts show; with none, no activity, which its owner picks on first sign-in; and
-its owner, a staff row on the person with that RUT, found or created as the API adds
-anyone (`join_gym`, 0036), or with no RUT someone new keyed by the email. The phone is
-optional, a contact only. Its slug is its host, `<slug>.<BASE_DOMAIN>` (`app.hosts`).
-The owner signs in there with the email given.
+the belts show, and that activity's words (#344, `app.domain.vocabulary`): what the gym
+calls itself, its members and its coach; with none, no activity, which its owner picks
+on first sign-in; and its owner, a staff row on the person with that RUT, found or
+created as the API adds anyone (`join_gym`, 0036), or with no RUT someone new keyed by
+the email. The phone is optional, a contact only. Its slug is its host,
+`<slug>.<BASE_DOMAIN>` (`app.hosts`). The owner signs in there with the email given.
 
 Running it again with a slug a gym already has changes nothing, whatever else it is
 given, and says so. It connects as the table owner, as the seed does: RLS holds it to
@@ -34,6 +35,7 @@ import asyncpg
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from app.db_bootstrap import to_dsn
+from app.domain import vocabulary
 from app.domain.grading import PRESETS
 from app.hosts import Hosts, slug_problem
 from app.roles import Role
@@ -88,6 +90,15 @@ class Created:
     created: bool
 
 
+def settings_of(grading: str) -> dict[str, object]:
+    """The new gym's `gym.settings`: its scheme and, with a graded activity, its words."""
+    settings: dict[str, object] = {"grading": copy.deepcopy(SCHEMES[grading])}
+    if grading in ACTIVITIES:
+        words = vocabulary.words_of(vocabulary.GRADING_PRESETS.get(grading))
+        settings["vocabulary"] = vocabulary.stored(words, by_hand=False)
+    return settings
+
+
 async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
     """Write `gym` and its owner in one transaction, unless its slug is taken."""
     async with conn.transaction():
@@ -105,7 +116,7 @@ async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
             gym.name,
             gym.slug,
             gym.timezone,
-            json.dumps({"grading": copy.deepcopy(SCHEMES[gym.grading])}),
+            json.dumps(settings_of(gym.grading)),
         )
         await conn.executemany(
             "INSERT INTO program (gym_id, name) VALUES ($1, $2)",
@@ -113,9 +124,11 @@ async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
         )
         if gym.grading in ACTIVITIES:
             await conn.execute(
-                "INSERT INTO gym_activity (gym_id, name, uses_grades) VALUES ($1, $2, true)",
+                "INSERT INTO gym_activity (gym_id, name, uses_grades, preset)"
+                " VALUES ($1, $2, true, $3)",
                 gym_id,
                 ACTIVITIES[gym.grading],
+                vocabulary.GRADING_PRESETS.get(gym.grading),
             )
         person_id = await conn.fetchval(
             "SELECT person_id FROM join_gym($1, $2, $3, $4, NULL)",

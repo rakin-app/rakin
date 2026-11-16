@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
+import type { Vocabulary } from '../i18n/vocabulary'
 
 /** What the gym's privacy notice says of it (backend `PrivacyNotice`, #168). */
 export type PrivacyNotice = {
@@ -16,10 +17,12 @@ export type PrivacyNotice = {
   updated_on: string
   // Whether the join form checks for humans, a provider the notice names only then.
   human_check: boolean
+  // What the gym calls itself and its members (#344): the notice's words.
+  vocabulary?: Vocabulary
 }
 
 /** The privacy details as Ajustes edits them (backend `Privacy`). */
-export type Privacy = Omit<PrivacyNotice, 'gym' | 'gym_logo' | 'updated_on' | 'human_check'>
+export type Privacy = Omit<PrivacyNotice, 'gym' | 'gym_logo' | 'updated_on' | 'human_check' | 'vocabulary'>
 
 // The day the notice's text (`t.privacy`) last changed; the notice is as new as this
 // or the gym's details, whichever is later. Change it with the text, and the API's copy

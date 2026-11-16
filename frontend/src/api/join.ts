@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError, apiFetch } from './client'
 import type { NoticeVersion } from './consent'
+import type { Vocabulary } from '../i18n/vocabulary'
 
 /** The gym's join link (backend `JoinLink`), owner and admin only (#154). */
 export type JoinLink = {
@@ -65,6 +66,8 @@ export type JoinForm = {
   // the form sends back (#370).
   privacy_updated_on: string
   human_check_site_key: string | null
+  // What the gym calls itself and its members (#344): the form's words.
+  vocabulary?: Vocabulary
 }
 
 /** The form for `token`; a 404 is a link that no longer works. No session needed. */

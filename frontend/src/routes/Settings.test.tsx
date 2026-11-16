@@ -10,6 +10,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { DEFAULT_VOCABULARY, wearVocabulary } from '../i18n/vocabulary'
 
 const copy = es.admin.settings
 const gym = copy.gym
@@ -36,6 +37,7 @@ const SETTINGS: GymSettings = {
     email: null,
   },
   privacy: null,
+  vocabulary: DEFAULT_VOCABULARY,
 }
 
 const ADULTS: Program = { id: 'adultos', name: 'Adultos', active: true }
@@ -126,6 +128,7 @@ function stubApi({
           student_page: studentPage,
           theme: current.theme,
           uses_grades: taught.some((a) => a.uses_grades),
+          vocabulary: current.vocabulary,
         },
       }
     }
@@ -185,6 +188,7 @@ function renderAt(path: string) {
 afterEach(() => {
   vi.unstubAllGlobals()
   localStorage.clear()
+  wearVocabulary(null)
 })
 
 describe('Ajustes', () => {
@@ -313,6 +317,55 @@ describe('Ajustes', () => {
 })
 
 describe('Ajustes: Gimnasio', () => {
+  it("saves the gym's words with the page, and every screen reads them at once (#344)", async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/gimnasio')
+
+    const settings = await screen.findByRole('form', { name: gym.formLabel })
+    const nav = screen.getByRole('navigation', { name: es.nav.label })
+    expect(within(nav).getByRole('link', { name: 'Alumnos' })).toBeInTheDocument()
+    expect(within(settings).getByLabelText(gym.vocabulary.place)).toHaveValue('academia')
+    await userEvent.selectOptions(within(settings).getByLabelText(gym.vocabulary.place), 'Club')
+    await userEvent.selectOptions(within(settings).getByLabelText(gym.vocabulary.members), 'Socios')
+    await userEvent.selectOptions(within(settings).getByLabelText(gym.vocabulary.coach), 'Entrenador')
+    await userEvent.click(within(settings).getByRole('button', { name: gym.submit }))
+
+    expect(await within(settings).findByText(gym.saved)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([
+      { vocabulary: { place: 'club', members: 'socios', coach: 'entrenador' } },
+    ])
+    expect(within(nav).getByRole('link', { name: 'Socios' })).toBeInTheDocument()
+    expect(within(settings).getByLabelText('Nombre del club')).toHaveValue('Academia Sur')
+  })
+
+  it("offers another activity's words in one tap, saved with the page (#344)", async () => {
+    const judo: Activity = {
+      ...BJJ,
+      id: 'judo',
+      name: 'Judo',
+      preset: 'judo',
+      words: { place: 'dojo', members: 'alumnos', coach: 'sensei' },
+    }
+    const calls = stubApi({ activities: [{ ...BJJ, preset: 'bjj', words: DEFAULT_VOCABULARY }, judo] })
+    renderAt('/admin/ajustes/gimnasio')
+
+    const settings = await screen.findByRole('form', { name: gym.formLabel })
+    const suggest = await within(settings).findByRole('button', { name: gym.vocabulary.suggest('Judo') })
+    // BJJ's words are the gym's already.
+    expect(within(settings).queryByRole('button', { name: gym.vocabulary.suggest('BJJ') })).not.toBeInTheDocument()
+    await userEvent.click(suggest)
+
+    expect(within(settings).getByLabelText(gym.vocabulary.place)).toHaveValue('dojo')
+    expect(within(settings).getByLabelText(gym.vocabulary.coach)).toHaveValue('sensei')
+    expect(within(settings).getByText(gym.vocabulary.suggested)).toBeInTheDocument()
+    await userEvent.click(within(settings).getByRole('button', { name: gym.submit }))
+
+    expect(await within(settings).findByText(gym.saved)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([
+      { vocabulary: { place: 'dojo', members: 'alumnos', coach: 'sensei' } },
+    ])
+  })
+
   it('shows the settings and saves only what changed', async () => {
     const calls = stubApi()
     renderAt('/admin/ajustes/gimnasio')
@@ -517,8 +570,8 @@ describe('Ajustes: Gimnasio, actividades', () => {
     await within(group).findByText(activities.added('Parkour'))
 
     expect(calls.filter((c) => c.method === 'POST' && c.path === '/api/activities').map((c) => c.body)).toEqual([
-      { name: 'Judo', uses_grades: true },
-      { name: 'Piano', uses_grades: false },
+      { name: 'Judo', uses_grades: true, preset: 'judo' },
+      { name: 'Piano', uses_grades: false, preset: 'piano' },
       { name: 'Parkour', uses_grades: false },
     ])
     // Enter added the activity; it did not save the Gimnasio form.

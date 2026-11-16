@@ -6,10 +6,16 @@ An activity is one discipline the gym teaches (migration 0043): "Ballet",
 any activity has it on (`gym_uses_grades`, which `/api/me/role` answers). Removing an
 activity leaves its class types with none.
 
+The gym's first activity also sets what the gym calls itself, its members and its coach
+(#344, `app.domain.vocabulary`): its preset's words, or the neutral ones for a name the
+gym wrote. Never once the owner has picked the words by hand, and never a later
+activity: Ajustes offers those as a suggestion.
+
 Any staff role may read them, since a coach sees the class types that belong to one;
 only an owner or admin may change them.
 """
 
+import json
 import uuid
 
 from fastapi import APIRouter, HTTPException, status
@@ -17,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.programs import execute_refusing
+from app.domain.vocabulary import stored, words_of
 from app.roles import AdminSession, StaffSession
 from app.schemas.activities import Activity, ActivityCreate, ActivityUpdate
 
@@ -28,7 +35,7 @@ REFUSALS = {"gym_activity_name_key": NAME_TAKEN}
 
 # RLS on both tables keeps every query to the current gym.
 SELECT_ACTIVITY = """
-    SELECT a.id, a.name, a.uses_grades, a.created_at,
+    SELECT a.id, a.name, a.uses_grades, a.preset, a.created_at,
            (SELECT count(*) FROM class_type c WHERE c.activity_id = a.id) AS class_types
     FROM gym_activity a
 """
@@ -42,19 +49,36 @@ async def gym_uses_grades(session: AsyncSession) -> bool:
     return graded
 
 
+def _activity(row: object) -> Activity:
+    activity = Activity.model_validate(row, from_attributes=True)
+    if activity.preset is None:
+        return activity
+    return activity.model_copy(update={"words": words_of(activity.preset)})
+
+
+# The first activity's words, unless the owner picked theirs by hand. Run after the
+# insert, so "first" is the only one there is.
+FIRST_WORDS = """
+    UPDATE gym SET settings = settings || jsonb_build_object('vocabulary', CAST(:words AS jsonb))
+    WHERE id = current_setting('app.gym_id')::uuid
+      AND coalesce((settings -> 'vocabulary' ->> 'by_hand')::boolean, false) IS NOT TRUE
+      AND (SELECT count(*) FROM gym_activity) = 1
+"""
+
+
 async def _get(session: AsyncSession, activity_id: uuid.UUID, *, lock: bool = False) -> Activity:
     sql = f"{SELECT_ACTIVITY} WHERE a.id = :id{' FOR UPDATE OF a' if lock else ''}"
     row = (await session.execute(text(sql), {"id": activity_id})).one_or_none()
     if row is None:
         raise NOT_FOUND
-    return Activity.model_validate(row, from_attributes=True)
+    return _activity(row)
 
 
 @router.get("")
 async def list_activities(session: StaffSession) -> list[Activity]:
     """By name."""
     result = await session.execute(text(f"{SELECT_ACTIVITY} ORDER BY lower(a.name), a.created_at"))
-    return [Activity.model_validate(row, from_attributes=True) for row in result]
+    return [_activity(row) for row in result]
 
 
 @router.post(
@@ -66,13 +90,17 @@ async def create_activity(body: ActivityCreate, session: AdminSession) -> Activi
     result = await execute_refusing(
         session,
         text(
-            "INSERT INTO gym_activity (gym_id, name, uses_grades)"
-            " VALUES (current_setting('app.gym_id')::uuid, :name, :uses_grades) RETURNING id"
+            "INSERT INTO gym_activity (gym_id, name, uses_grades, preset)"
+            " VALUES (current_setting('app.gym_id')::uuid, :name, :uses_grades, :preset)"
+            " RETURNING id"
         ),
         body.model_dump(),
         REFUSALS,
     )
-    return await _get(session, result.scalar_one())
+    activity_id = result.scalar_one()
+    words = stored(words_of(body.preset), by_hand=False)
+    await session.execute(text(FIRST_WORDS), {"words": json.dumps(words)})
+    return await _get(session, activity_id)
 
 
 @router.patch("/{activity_id}", responses={status.HTTP_409_CONFLICT: {"description": "name taken"}})
