@@ -157,6 +157,21 @@ describe('Cobros extra', () => {
     expect(screen.getByText('Clasificados final')).toBeInTheDocument()
   })
 
+  it('says there are no cobros and no groups the same way, each inside a card (#357)', async () => {
+    stubApi('owner', (path, method) => {
+      if (path === '/api/extra-charges' && method === 'GET') return { body: [] }
+      if (path === '/api/groups') return { body: [] }
+      return undefined
+    })
+    renderAt('/admin/pagos/cobros')
+
+    for (const text of [copy.empty, copy.groups.empty]) {
+      const said = await screen.findByText(text)
+      expect(said).toHaveClass('empty-state__text')
+      expect(said.closest('.card')).not.toBeNull()
+    }
+  })
+
   it('tells a coach it is not for them and asks the API nothing', async () => {
     const calls = stubApi('coach')
     renderAt('/admin/pagos/cobros')
@@ -313,6 +328,26 @@ describe('Nuevo cobro extra', () => {
     await user.type(screen.getByLabelText(words.messageLabel), 'Nos vamos el sábado.')
     await user.click(screen.getByRole('button', { name: words.next }))
 
+    // The last look says who, by what rule, how much each, the total, the due date and the
+    // email as it goes out (#357).
+    const look = screen.getByRole('region', { name: words.stepOf(5, 5, words.steps[4]!) })
+    const facts = Object.fromEntries(
+      within(look)
+        .getAllByRole('term')
+        .map((term) => [term.textContent, term.nextElementSibling!.textContent]),
+    )
+    expect(facts).toEqual({
+      [words.confirm.charge]: 'Bencina final',
+      [words.confirm.who]: words.confirm.whoIs(3, words.confirm.rule.group('Clasificados final')),
+      [words.confirm.amount]: words.split('$33.333', 3),
+      [words.confirm.total]: '$100.000',
+      [words.confirm.due]: '30 de noviembre de 2026',
+    })
+    const email = within(look).getByRole('region', { name: words.confirm.message })
+    expect(email).toHaveTextContent(words.confirm.hello('Ana Rojas'))
+    expect(email).toHaveTextContent(words.confirm.sends('Academia Sur', 'Bencina final', null))
+    expect(email).toHaveTextContent('Nos vamos el sábado.')
+    expect(email).toHaveTextContent(words.confirm.owes(null, '$33.334', '30-11-2026'))
     expect(screen.getByText(words.noEmail(1))).toBeInTheDocument()
     expect(screen.getByRole('link', { name: words.whatsapp('Marta Pérez') })).toHaveAttribute(
       'href',
@@ -422,6 +457,49 @@ describe('Un cobro extra', () => {
     expect(within(bea).queryByRole('button', { name: copy.detail.markPaid })).not.toBeInTheDocument()
   })
 
+  it('gives each person one action, and the rest under their "Más" (#357)', async () => {
+    stubApi('owner')
+    renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
+
+    // What a row shows outside its menu: its one action, then "Más".
+    const shown = (name: string) => {
+      const row = screen.getByRole('group', { name: copy.detail.actions(name) })
+      return [...row.querySelectorAll('a, button, summary')]
+        .filter((control) => !control.closest('.more-menu__list'))
+        .map((control) => control.getAttribute('aria-label') ?? control.textContent)
+    }
+    await screen.findByRole('link', { name: 'Ana Rojas' })
+    expect(shown('Ana Rojas')).toEqual([copy.detail.markPaid, copy.detail.moreFor('Ana Rojas')])
+    expect(shown('Carla Díaz')).toEqual([copy.detail.review, copy.detail.moreFor('Carla Díaz')])
+    expect(shown('Bea Soto')).toEqual([copy.detail.moreFor('Bea Soto')])
+
+    const ana = screen.getByRole('group', { name: copy.detail.actions('Ana Rojas') })
+    const menu = ana.querySelector('.more-menu__list')!
+    expect([...menu.children].map((item) => item.getAttribute('aria-label') ?? item.textContent)).toEqual([
+      copy.detail.whatsapp('Ana Rojas'),
+      copy.detail.notify,
+      copy.detail.editAmount,
+      copy.detail.cancelLine,
+    ])
+  })
+
+  it('cuts a long title to two lines and shows it whole on request (#357)', async () => {
+    const user = userEvent.setup()
+    // jsdom lays nothing out: the heading says it overflows, as a long one does.
+    const height = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(200)
+    try {
+      stubApi('owner')
+      renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
+      const heading = await screen.findByRole('heading', { level: 1, name: CHARGE.title })
+      expect(heading).toHaveClass('extra__title--clamped')
+      await user.click(screen.getByRole('button', { name: copy.titleMore }))
+      expect(heading).not.toHaveClass('extra__title--clamped')
+      expect(screen.getByRole('button', { name: copy.titleLess })).toHaveAttribute('aria-expanded', 'true')
+    } finally {
+      height.mockRestore()
+    }
+  })
+
   it('marks a line paid, and reminds who still owes', async () => {
     const user = userEvent.setup()
     const calls = stubApi('owner', (path, method) => {
@@ -457,6 +535,7 @@ describe('Un cobro extra', () => {
     renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
 
     const ana = (await screen.findByRole('link', { name: 'Ana Rojas' })).closest('li')!
+    await user.click(within(ana).getByText(copy.detail.more))
     await user.click(within(ana).getByRole('button', { name: copy.detail.cancelLine }))
     await user.click(await within(ana).findByRole('checkbox', { name: copy.detail.resplit }))
     expect(within(ana).getByText(copy.detail.resplitAmount('Bea Soto', '$90.000'))).toBeInTheDocument()
@@ -485,6 +564,7 @@ describe('Un cobro extra', () => {
     renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
 
     const bea = (await screen.findByRole('link', { name: 'Bea Soto' })).closest('li')!
+    await user.click(within(bea).getByText(copy.detail.more))
     await user.click(within(bea).getByRole('button', { name: copy.detail.cancelLine }))
     expect(await within(bea).findByText(copy.detail.noResplit)).toBeInTheDocument()
     await user.type(within(bea).getByLabelText(copy.detail.cancelReason), 'se retiró')

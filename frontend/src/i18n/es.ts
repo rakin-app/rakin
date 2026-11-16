@@ -2378,9 +2378,8 @@ export const es = {
     },
     payments: {
       title: 'Pagos',
-      // A charge is in its period's month, a payment in the day it came (#206).
-      subtitle:
-        'Cobros, pagos y ajustes del mes: un cargo, en el mes de su período; un pago, el día en que llegó. Nada se borra: una corrección es un movimiento nuevo.',
+      // What the screen shows, in one sentence (#357).
+      subtitle: 'Los cobros, pagos y ajustes del mes elegido.',
       coachesOnly: 'Los coaches no ven esta sección.',
       loading: 'Cargando los pagos…',
       error: 'No pudimos cargar los pagos.',
@@ -2389,6 +2388,8 @@ export const es = {
       // The month's ledger for the accountant (#40).
       exportCsv: 'Exportar CSV',
       exportXlsx: 'Exportar Excel',
+      // Cobros extra and the exports, out of the header's row (#357).
+      moreActions: 'Más',
       kpisLabel: 'Resumen del mes',
       kpis: {
         collected: 'Cobrado',
@@ -2473,6 +2474,9 @@ export const es = {
       retry: 'Reintentar',
       empty: 'Todavía no hay cobros extra.',
       listLabel: 'Cobros extra',
+      // A title cut to two lines (#357).
+      titleMore: 'Ver título completo',
+      titleLess: 'Ver menos',
       category: {
         rifa: 'Rifa',
         seminario: 'Seminario',
@@ -2577,8 +2581,33 @@ export const es = {
         messageHint: 'Va en el correo, sobre el monto que le toca a cada persona.',
         notify: 'Enviar un correo a cada persona con su monto',
         notifyHint: 'A los menores, el correo le llega a su apoderado.',
-        summary: (title: string, n: number, total: string) =>
-          `${title}: ${n === 1 ? '1 persona' : `${n} personas`}, ${total} en total.`,
+        // The last look (#357): what is charged, to whom, how much and when, and the email.
+        each: (amount: string) => `${amount} cada uno`,
+        range: (low: string, high: string) => `De ${low} a ${high} por persona`,
+        confirm: {
+          charge: 'Cobro',
+          who: 'Para quién',
+          whoIs: (n: number, rule: string) => `${n === 1 ? '1 persona' : `${n} personas`}: ${rule}`,
+          rule: {
+            active: 'todos los activos',
+            program: (name: string) => `el programa ${name}`,
+            group: (name: string) => `el grupo ${name}`,
+            people: 'elegidas a mano',
+          },
+          amount: 'Monto por persona',
+          adjusted: (n: number) => (n === 1 ? '1 ajustado a mano' : `${n} ajustados a mano`),
+          total: 'Total',
+          due: 'Vence',
+          message: 'El correo',
+          sampleFor: (name: string) => `Así le llega a ${name}; a cada uno, con su monto:`,
+          hello: (name: string) => `Hola, ${name}:`,
+          sends: (gym: string, title: string, dependent: string | null) =>
+            `${gym} te envía un cobro: ${title}${dependent ? `, de ${dependent}` : ''}.`,
+          owes: (dependent: string | null, amount: string, due: string) =>
+            `${dependent ? `A ${dependent} le corresponde` : 'Te corresponde'} pagar ${amount}, hasta el ${due}.`,
+          noNotify: 'No se envía correo: el cobro queda en la página de cada uno.',
+          nobodyEmailed: 'Nadie tiene correo: no se envía ninguno.',
+        },
         noEmail: (n: number) =>
           n === 1 ? '1 persona no tiene correo: avísale por WhatsApp.' : `${n} personas no tienen correo: avísales por WhatsApp.`,
         whatsapp: (name: string) => `Avisar a ${name} por WhatsApp`,
@@ -2603,6 +2632,8 @@ export const es = {
         paidOf: (paid: string, due: string) => `pagó ${paid} de ${due}`,
         overridden: 'monto ajustado',
         actions: (name: string) => `Acciones para ${name}`,
+        more: 'Más',
+        moreFor: (name: string) => `Más acciones para ${name}`,
         markPaid: 'Marcar pagado',
         editAmount: 'Editar monto',
         cancelLine: 'Anular',
