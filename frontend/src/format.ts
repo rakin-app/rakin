@@ -16,6 +16,11 @@ export function monthName(iso: string): string {
   return toDate(iso).toLocaleDateString('es-CL', { month: 'long' })
 }
 
+/** `30 de noviembre de 2026`. */
+export function longDay(iso: string): string {
+  return toDate(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
 /** `mar 2024`. */
 export function monthYear(iso: string): string {
   return toDate(iso).toLocaleDateString('es-CL', { month: 'short', year: 'numeric' })

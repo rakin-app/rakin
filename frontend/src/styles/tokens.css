@@ -234,6 +234,10 @@
   --control-height: 44px; /* minimum touch target */
   --control-height-lg: 52px; /* a screen's main action on a phone */
   --sidebar-width: 248px;
+  /* The phone's bottom tab bar (AdminLayout.css) above its bottom padding: whatever sits
+     on it, the page's own padding or a sticky action bar, clears
+     `var(--space-6) + var(--nav-height) + env(safe-area-inset-bottom)`. */
+  --nav-height: 72px;
   --content-max-width: 480px;
   --content-narrow: 640px; /* forms and single lists; tables run full width */
   --content-wide: 1280px; /* a page's widest: the container that holds every screen */

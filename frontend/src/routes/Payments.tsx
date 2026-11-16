@@ -22,6 +22,7 @@ import { Chip, ChipGroup } from '../components/Chip'
 import { EmailReminder } from '../components/EmailReminder'
 import { SearchInput } from '../components/Field'
 import { PageContainer } from '../components/Layout'
+import { MoreMenu, moreItemClass } from '../components/MoreMenu'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill, type Status } from '../components/StatusPill'
 import { dayTime, isoDay, monthName, monthYear, shortDay, toDate } from '../format'
@@ -71,7 +72,8 @@ const route = getRouteApi('/admin/pagos')
  * A search keeps a member's lines, and a guardian's dependents'; "Registrar pago" picks
  * a member and opens the member detail's payment form for them (#107).
  *
- * One primary action: "Revisar N comprobantes" while proofs wait, else "Registrar pago".
+ * One primary action: "Revisar N comprobantes" while proofs wait, else "Registrar pago";
+ * Cobros extra and the exports wait under "Más" (#357).
  * Below 960px each line of the table is drawn as a card (Payments.css) and the KPIs are
  * a 2×2 grid, so a phone sees name, status and amount with no sideways scroll (#180).
  */
@@ -125,6 +127,7 @@ function Book() {
   const latest = book.data?.pages.at(-1)
   const rows = uniqueEntries(book.data?.pages.flatMap((page) => page.items) ?? [])
   const lines = latest ? bookLines(rows, latest.freezes, latest.timezone, !book.hasNextPage) : []
+  const shownMonth = search.month ?? `${isoDay(new Date().toISOString()).slice(0, 7)}-01`
   const setSearch = (next: PaymentsSearch) => {
     void navigate({ search: (prev) => ({ ...prev, ...next }), replace: true })
   }
@@ -137,36 +140,6 @@ function Book() {
           <span className="payments__subtitle">{copy.subtitle}</span>
         </div>
         <div className="payments__actions">
-          {latest && (
-            <label htmlFor={monthId} className="payments__month">
-              {copy.month}
-              <select
-                id={monthId}
-                className="payments__month-select"
-                value={latest.month}
-                onChange={(event) => setSearch({ month: event.target.value })}
-              >
-                {latest.months.map((month) => (
-                  <option key={month} value={month}>
-                    {t.common.month(month, '')}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {latest && (
-            <>
-              <a href={exportPath(latest.month, 'csv')} download className={buttonClass({ variant: 'ghost' })}>
-                {copy.exportCsv}
-              </a>
-              <a href={exportPath(latest.month, 'xlsx')} download className={buttonClass({ variant: 'ghost' })}>
-                {copy.exportXlsx}
-              </a>
-            </>
-          )}
-          <Link to="/admin/pagos/cobros" className={buttonClass({ variant: 'ghost' })}>
-            {copy.extra}
-          </Link>
           {pending > 0 && (
             <Link to="/admin/pagos/comprobantes" className={buttonClass({ variant: 'primary' })}>
               {copy.review(pending)}
@@ -184,6 +157,43 @@ function Book() {
           </Button>
         </div>
       </header>
+
+      {/* The month and "Más" under the header. Drawn from the first render, so nothing
+          moves once the book answers: until then the picker holds the month asked for,
+          and waits. */}
+      <div className="payments__toolbar">
+        <label htmlFor={monthId} className="payments__month">
+          {copy.month}
+          <select
+            id={monthId}
+            className="payments__month-select"
+            value={latest?.month ?? shownMonth}
+            disabled={!latest}
+            onChange={(event) => setSearch({ month: event.target.value })}
+          >
+            {(latest?.months ?? [shownMonth]).map((month) => (
+              <option key={month} value={month}>
+                {t.common.month(month, '')}
+              </option>
+            ))}
+          </select>
+        </label>
+        <MoreMenu label={copy.moreActions}>
+          <Link to="/admin/pagos/cobros" className={moreItemClass()}>
+            {copy.extra}
+          </Link>
+          {latest && (
+            <>
+              <a href={exportPath(latest.month, 'csv')} download className={moreItemClass()}>
+                {copy.exportCsv}
+              </a>
+              <a href={exportPath(latest.month, 'xlsx')} download className={moreItemClass()}>
+                {copy.exportXlsx}
+              </a>
+            </>
+          )}
+        </MoreMenu>
+      </div>
 
       {done && (
         <p className="payments__done" role="status">
@@ -593,16 +603,15 @@ function FreezeRow({ line }: { line: BookFreeze }) {
   )
 }
 
-// A month as the table says it: `Nov 2026`.
+// A month as the table says it, lower case as every other date on it: `nov 2026` (#357).
 function shortMonth(iso: string): string {
-  const label = monthYear(iso).replace('.', '')
-  return label[0]!.toUpperCase() + label.slice(1)
+  return monthYear(iso).replace('.', '')
 }
 
 // Longer than a month: a prepaid plan's whole span.
 const MONTH_DAYS = 31
 
-/** `Nov 2026`, or `Dic 2026 – May 2027` for a period longer than a month. */
+/** `nov 2026`, or `dic 2026 – may 2027` for a period longer than a month. */
 function periodLabel(entry: BookEntry): string {
   if (entry.extra) return entry.extra.title
   const period = entry.period
@@ -611,7 +620,7 @@ function periodLabel(entry: BookEntry): string {
   const end = toDate(period.period_end)
   const days = (end.getTime() - start.getTime()) / 86_400_000
   return days > MONTH_DAYS
-    ? `${shortMonth(period.period_start)} – ${shortMonth(period.period_end)}`
+    ? t.common.span(shortMonth(period.period_start), shortMonth(period.period_end))
     : shortMonth(period.period_start)
 }
 

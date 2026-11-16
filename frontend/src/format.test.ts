@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPhone, formatRut, shiftDay, timeRange, zonedInstant } from './format'
+import { formatPhone, formatRut, longDay, shiftDay, timeRange, zonedInstant } from './format'
 
 describe('zonedInstant', () => {
   it("is the wall time in the gym's timezone, not the device's", () => {
@@ -13,6 +13,12 @@ describe('zonedInstant', () => {
     // Santiago went back an hour on 2026-04-05 at 00:00 (UTC-3 to UTC-4).
     expect(zonedInstant('2026-04-04', '20:00', 'America/Santiago')).toBe('2026-04-04T23:00:00.000Z')
     expect(zonedInstant('2026-04-05', '20:00', 'America/Santiago')).toBe('2026-04-06T00:00:00.000Z')
+  })
+})
+
+describe('longDay', () => {
+  it("writes a day in full, the day it names whatever the device's timezone", () => {
+    expect(longDay('2026-11-30')).toBe('30 de noviembre de 2026')
   })
 })
 

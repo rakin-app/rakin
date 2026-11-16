@@ -18,6 +18,7 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import type { Method } from '../api/member'
 import { Button, buttonClass } from '../components/Button'
 import { Card, SectionHeader } from '../components/Card'
+import { MoreMenu, moreItemClass } from '../components/MoreMenu'
 import { Field, Input, Select } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -41,6 +42,10 @@ const route = getRouteApi('/admin/pagos/cobros/$chargeId')
  * the admin does about a line: mark it paid, change its amount, cancel it (dividing the
  * total again while nobody has paid), give back a payment, re-send the notice, or
  * remind them on WhatsApp. "Recordar a los pendientes" emails everyone still owing.
+ *
+ * A row shows one action, the one its line most needs: "Ver comprobante" while a proof
+ * waits, else "Marcar pagado" while it is owed; every other action is under its "Más",
+ * so a cobro for the whole gym reads as a list of names (#357).
  */
 export function ExtraChargeDetail() {
   const role = useQuery(myRoleQuery())
@@ -91,8 +96,11 @@ function Detail({ charge }: { charge: ExtraCharge }) {
           </Button>
         )}
       </SubHeader>
-      <Progress charge={charge} />
-      {charge.description && <p className="extra__message">{charge.description}</p>}
+      {/* The bar spans the card (#357). */}
+      <Card className="extra__summary">
+        <Progress charge={charge} />
+        {charge.description && <p className="extra__message">{charge.description}</p>}
+      </Card>
       {done && (
         <p className="extra__done" role="status">
           {done}
@@ -140,6 +148,7 @@ function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; on
   })
   const shown = lineStatus(line, charge.due_date)
   const live = line.status !== 'cancelled'
+  const payable = line.status === 'open' || line.status === 'in_review'
   const settled = async (message?: string) => {
     setPanel(null)
     await queryClient.invalidateQueries({ queryKey: ['extra'] })
@@ -169,43 +178,57 @@ function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; on
       {!live && line.cancel_reason && <p className="extra__hint">{words.cancelledBecause(line.cancel_reason)}</p>}
       {live && (
         <div className="extra__line-actions" role="group" aria-label={words.actions(line.person.name)}>
-          {line.status === 'in_review' && (
-            <Link to="/admin/pagos/comprobantes" className={buttonClass({ variant: 'primary' })}>
+          {/* One action per person, what the line most needs; the rest under "Más" (#357). */}
+          {line.status === 'in_review' ? (
+            <Link to="/admin/pagos/comprobantes" className={buttonClass()}>
               {words.review}
             </Link>
+          ) : (
+            payable && (
+              <Button aria-expanded={panel === 'pay'} onClick={() => toggle('pay')}>
+                {words.markPaid}
+              </Button>
+            )
           )}
-          {(line.status === 'open' || line.status === 'in_review') && (
-            <Button aria-expanded={panel === 'pay'} onClick={() => toggle('pay')}>
-              {words.markPaid}
-            </Button>
-          )}
-          <Button aria-expanded={panel === 'amount'} onClick={() => toggle('amount')}>
-            {words.editAmount}
-          </Button>
-          {line.status === 'open' && (
-            <Button disabled={notify.isPending} onClick={() => notify.mutate()}>
-              {words.notify}
-            </Button>
-          )}
-          {line.whatsapp_url && (
-            <a
-              className={buttonClass()}
-              href={line.whatsapp_url}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={words.whatsapp(line.person.name)}
+          <MoreMenu label={words.more} ariaLabel={words.moreFor(line.person.name)}>
+            {line.status === 'in_review' && (
+              <button type="button" className={moreItemClass()} aria-expanded={panel === 'pay'} onClick={() => toggle('pay')}>
+                {words.markPaid}
+              </button>
+            )}
+            {line.whatsapp_url && (
+              <a
+                className={moreItemClass()}
+                href={line.whatsapp_url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={words.whatsapp(line.person.name)}
+              >
+                {words.whatsappShort}
+              </a>
+            )}
+            {line.status === 'open' && (
+              <button type="button" className={moreItemClass()} disabled={notify.isPending} onClick={() => notify.mutate()}>
+                {words.notify}
+              </button>
+            )}
+            <button type="button" className={moreItemClass()} aria-expanded={panel === 'amount'} onClick={() => toggle('amount')}>
+              {words.editAmount}
+            </button>
+            {line.refundable_payments.length > 0 && (
+              <button type="button" className={moreItemClass()} aria-expanded={panel === 'refund'} onClick={() => toggle('refund')}>
+                {words.refund}
+              </button>
+            )}
+            <button
+              type="button"
+              className={moreItemClass(true)}
+              aria-expanded={panel === 'cancel'}
+              onClick={() => toggle('cancel')}
             >
-              {words.whatsappShort}
-            </a>
-          )}
-          {line.refundable_payments.length > 0 && (
-            <Button aria-expanded={panel === 'refund'} onClick={() => toggle('refund')}>
-              {words.refund}
-            </Button>
-          )}
-          <Button variant="danger" aria-expanded={panel === 'cancel'} onClick={() => toggle('cancel')}>
-            {words.cancelLine}
-          </Button>
+              {words.cancelLine}
+            </button>
+          </MoreMenu>
         </div>
       )}
       {panel === 'pay' && <PayForm charge={charge} line={line} onDone={settled} onClose={() => setPanel(null)} />}
