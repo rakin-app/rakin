@@ -42,8 +42,11 @@ from app.hosts import Hosts, slug_problem
 from app.roles import Role
 from app.schemas.gym import Timezone
 from app.schemas.people import Email, Name, Phone, Rut
-from app.seed.data import PROGRAMS
 from app.settings import get_settings
+
+# The programs every new gym starts with (#347). Not the demo gym's (`app.seed.data`):
+# its competition team is a combat school's, and a program is never deleted.
+PROGRAMS = ("Adultos", "Niños")
 
 # A preset's key, as `--grading` takes it, to the scheme the gym starts with, and the
 # graded activity it starts with: none for the preset with no ranks.
@@ -121,7 +124,7 @@ async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
         )
         await conn.executemany(
             "INSERT INTO program (gym_id, name) VALUES ($1, $2)",
-            [(gym_id, name) for name in PROGRAMS.values()],
+            [(gym_id, name) for name in PROGRAMS],
         )
         if gym.grading in ACTIVITIES:
             preset = vocabulary.GRADING_PRESETS.get(gym.grading)

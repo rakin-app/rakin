@@ -12,6 +12,11 @@ Otro the Método column's choices, and on the instructions tab how a gym that ke
 
 In a gym that grades, a Grados tab too (#299): one row per belt or stripe earned, the
 scheme's rank labels as the Grado column's choices.
+
+The people's tab, its "Alumno desde" header and the instructions name the members by
+the gym's word (#345, `app.domain.vocabulary`): a gym of "socios" gets a Socios tab and
+"Socio desde". The importer reads every option's tab and header (`app.member_import.sheet`,
+`rows`), so a sheet from before, or from another gym, still uploads.
 """
 
 import io
@@ -24,6 +29,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 
+from app.domain.vocabulary import DEFAULT_WORDS, Words
 from app.ledger_export import put
 from app.member_import.grades import GradeField
 from app.member_import.payments import PaymentField
@@ -31,15 +37,34 @@ from app.member_import.rows import Field
 from app.member_import.sheet import MAX_PAYMENT_ROWS, MAX_ROWS
 from app.schemas.grading import GradingScheme
 
-TEMPLATE_NAME = "plantilla-alumnos.xlsx"
-
-ALUMNOS = "Alumnos"
 PAGOS = "Pagos"
 GRADOS = "Grados"
 INSTRUCTIONS = "Instrucciones"
 
-# Header, the field it maps to, and the example row's value.
-COLUMNS: tuple[tuple[str, Field, str], ...] = (
+
+def template_name(words: Words) -> str:
+    """The file's name: "plantilla-alumnos.xlsx"."""
+    return f"plantilla-{words.members}.xlsx"
+
+
+def people_tab(words: Words) -> str:
+    """The people's tab: "Alumnos", "Socios"."""
+    return words.members.capitalize()
+
+
+def _worded(text: str, words: Words) -> str:
+    """`text` with the gym's words in its slots: `{tab}` the people's tab, `{member}`
+    and `{Member}` one of them, `{former}` one who left ("exalumno")."""
+    return text.format(
+        tab=people_tab(words),
+        member=words.member,
+        Member=words.member.capitalize(),
+        former=words.former_member,
+    )
+
+
+# Header, the field it maps to, and the example row's value; the headers `_worded`.
+_COLUMNS: tuple[tuple[str, Field, str], ...] = (
     ("Nombre", Field.NAME, "Martina"),
     ("Apellido", Field.LAST_NAME, "Soto Pérez"),
     ("RUT", Field.RUT, "12.345.678-5"),
@@ -53,13 +78,21 @@ COLUMNS: tuple[tuple[str, Field, str], ...] = (
     ("Plan", Field.PLAN, "Mensual"),
     ("Próximo vencimiento", Field.DUE_ON, "01-12-2026"),
     ("Inicio del plan", Field.STARTED_ON, ""),
-    ("Alumno desde", Field.MEMBER_SINCE, "05-03-2019"),
+    ("{Member} desde", Field.MEMBER_SINCE, "05-03-2019"),
     ("Fecha de baja", Field.LEFT_ON, ""),
     ("Motivo de baja", Field.LEFT_REASON, ""),
     ("Clases antes de Rakin", Field.PRIOR_CLASSES, "320"),
 )
 
-# What each column is for, on the instructions tab.
+
+def columns(words: Words) -> tuple[tuple[str, Field, str], ...]:
+    return tuple((_worded(header, words), f, example) for header, f, example in _COLUMNS)
+
+
+# As a gym with no words of its own has them.
+COLUMNS = columns(DEFAULT_WORDS)
+
+# What each column is for, on the instructions tab; each `_worded`.
 NOTES: dict[Field, str] = {
     Field.NAME: "Obligatorio.",
     Field.RUT: "Con RUT o correo encontramos a la persona si vuelves a importar. Mejor el RUT.",
@@ -67,17 +100,17 @@ NOTES: dict[Field, str] = {
     Field.PHONE: "Celular, como +56 9 1234 5678.",
     Field.DOB: "Día-mes-año.",
     Field.GUARDIAN_NAME: "Para un menor: quien está a cargo. Recibe los avisos.",
-    Field.PLAN: "El plan que tiene hoy, de la lista. Vacío para un exalumno.",
+    Field.PLAN: "El plan que tiene hoy, de la lista. Vacío para un {former}.",
     Field.DUE_ON: "Su próximo pago. Necesario con un plan mensual o semestral.",
     Field.STARTED_ON: "Solo para packs de clases y pruebas.",
     Field.MEMBER_SINCE: "El día que empezó a entrenar aquí, aunque sea antes de Rakin.",
-    Field.LEFT_ON: "Para un exalumno: el día que dejó de venir. Se importa sin plan.",
+    Field.LEFT_ON: "Para un {former}: el día que dejó de venir. Se importa sin plan.",
     Field.LEFT_REASON: "Por qué se fue, si lo sabes. Solo lo ven el dueño y los admins.",
     Field.PRIOR_CLASSES: "Cuántas clases tuvo antes de Rakin: un número.",
 }
 
 # The Pagos tab's, as `payments.suggest_payment_mapping` maps them. The example is the
-# Alumnos tab's example student, paying for April 2024.
+# people's tab's example student, paying for April 2024.
 PAYMENT_COLUMNS: tuple[tuple[str, PaymentField, str], ...] = (
     ("RUT", PaymentField.RUT, "12.345.678-5"),
     ("Correo", PaymentField.EMAIL, ""),
@@ -92,9 +125,10 @@ PAYMENT_COLUMNS: tuple[tuple[str, PaymentField, str], ...] = (
 
 METHODS = ("Efectivo", "Transferencia", "Otro")
 
+# Each `_worded`, as are the intros and the grid's recipe.
 PAYMENT_NOTES: dict[PaymentField, str] = {
     PaymentField.RUT: (
-        "Por quién se pagó: su RUT, su correo o su nombre, como en Alumnos. El pago de un"
+        "Por quién se pagó: su RUT, su correo o su nombre, como en {tab}. El pago de un"
         " menor va con los datos del menor."
     ),
     PaymentField.PAID_ON: "Obligatorio. El día que pagó: día-mes-año.",
@@ -105,7 +139,7 @@ PAYMENT_NOTES: dict[PaymentField, str] = {
 }
 
 PAYMENT_INTRO = (
-    "Una fila por pago, en la pestaña Pagos. Cada persona debe estar en Alumnos o ya en"
+    "Una fila por pago, en la pestaña Pagos. Cada persona debe estar en {tab} o ya en"
     " Rakin; no se crea a nadie. Es solo historial: no se cobra ni cambia lo que deben.",
     "Los meses desde que la persona tiene un plan en Rakin no van aquí: se pagan con"
     " Pagado hasta, en su ficha.",
@@ -116,9 +150,9 @@ PAYMENT_INTRO = (
 
 # For a gym whose notebook is a grid: one row per student, one column per month.
 GRID_RECIPE = (
-    "¿Tu planilla tiene un alumno por fila y un mes por columna? Pásala a filas así:",
+    "¿Tu planilla tiene un {member} por fila y un mes por columna? Pásala a filas así:",
     "1. Por cada casilla con un pago, agrega una fila en Pagos.",
-    "2. En RUT o Nombre, el del alumno de esa fila.",
+    "2. En RUT o Nombre, el del {member} de esa fila.",
     "3. En Monto, lo que dice la casilla.",
     "4. En Mes que paga, el mes de esa columna (04-2024).",
     "5. En Fecha de pago, el día que pagó; si no lo sabes, el 5 de ese mes (05-04-2024).",
@@ -126,7 +160,7 @@ GRID_RECIPE = (
 )
 
 # The Grados tab's, as `grades.suggest_grade_mapping` maps them. The example is the
-# Alumnos tab's example student; its rank, the scheme's.
+# people's tab's example student; its rank, the scheme's.
 GRADE_COLUMNS: tuple[tuple[str, GradeField, str], ...] = (
     ("RUT", GradeField.RUT, "12.345.678-5"),
     ("Correo", GradeField.EMAIL, ""),
@@ -138,7 +172,7 @@ GRADE_COLUMNS: tuple[tuple[str, GradeField, str], ...] = (
 )
 
 GRADE_NOTES: dict[GradeField, str] = {
-    GradeField.RUT: "Quién recibió el grado: su RUT, su correo o su nombre, como en Alumnos.",
+    GradeField.RUT: "Quién recibió el grado: su RUT, su correo o su nombre, como en {tab}.",
     GradeField.RANK: "Obligatorio. El grado, de la lista.",
     GradeField.SUB_RANK: (
         "Opcional: cuántos grados (rayas) tiene, o el sub-grado por su nombre. Ej.: Azul y 2"
@@ -149,15 +183,15 @@ GRADE_NOTES: dict[GradeField, str] = {
 
 GRADE_INTRO = (
     "Una fila por grado recibido, en la pestaña Grados: el más reciente queda como su"
-    " grado actual. Cada persona debe estar en Alumnos o ya en Rakin; no se crea a nadie.",
+    " grado actual. Cada persona debe estar en {tab} o ya en Rakin; no se crea a nadie.",
 )
 
 INTRO = (
-    "Una fila por alumno, en la pestaña Alumnos. La fila gris de cada pestaña es un"
+    "Una fila por {member}, en la pestaña {tab}. La fila gris de cada pestaña es un"
     " ejemplo: bórrala antes de subir la planilla.",
-    "Súbela en Alumnos, botón Importar. Primero revisamos cada fila sin guardar nada.",
+    "Súbela en {tab}, botón Importar. Primero revisamos cada fila sin guardar nada.",
     "Puedes volver a subirla: a quien ya está no lo duplicamos ni cambiamos lo que ya"
-    " tiene. Alumno desde, Fecha de baja, Motivo de baja y Clases antes de Rakin se"
+    " tiene. {Member} desde, Fecha de baja, Motivo de baja y Clases antes de Rakin se"
     " completan si estaban vacíos.",
     "Las fechas van como día-mes-año: 05-03-2019.",
 )
@@ -165,15 +199,18 @@ INTRO = (
 GREY = "808080"
 
 
-def template(plans: Sequence[str], scheme: GradingScheme | None = None) -> bytes:
+def template(
+    plans: Sequence[str], scheme: GradingScheme | None = None, words: Words = DEFAULT_WORDS
+) -> bytes:
     """The workbook, with `plans` (the gym's active plan names) as the Plan choices and
     the first of them in the example row, a Pagos tab, and a Grados tab for `scheme`'s
-    ranks."""
+    ranks; its people's tab, headers and instructions in the gym's `words`."""
     book = Workbook()
     alumnos = book.active
     assert alumnos is not None
-    alumnos.title = ALUMNOS
-    for column, (header, field, example) in enumerate(COLUMNS, start=1):
+    alumnos.title = people_tab(words)
+    people_columns = columns(words)
+    for column, (header, field, example) in enumerate(people_columns, start=1):
         if field is Field.PLAN and plans:
             example = plans[0]
         put(alumnos, 1, column, header).font = Font(bold=True)
@@ -193,41 +230,41 @@ def template(plans: Sequence[str], scheme: GradingScheme | None = None) -> bytes
     instructions.column_dimensions["B"].width = 90
     row = 1
     for line in INTRO:
-        put(instructions, row, 1, line)
+        put(instructions, row, 1, _worded(line, words))
         row += 1
     row += 1
     put(instructions, row, 1, "Columna").font = Font(bold=True)
     put(instructions, row, 2, "Qué va").font = Font(bold=True)
-    for header, field, _ in COLUMNS:
+    for header, field, _ in people_columns:
         row += 1
         put(instructions, row, 1, header)
-        put(instructions, row, 2, NOTES.get(field, ""))
+        put(instructions, row, 2, _worded(NOTES.get(field, ""), words))
     row += 1
     for line in (*PAYMENT_INTRO, "", *GRID_RECIPE):
         row += 1
-        put(instructions, row, 1, line)
+        put(instructions, row, 1, _worded(line, words))
     row += 2
     put(instructions, row, 1, f"Columna de {PAGOS}").font = Font(bold=True)
     put(instructions, row, 2, "Qué va").font = Font(bold=True)
     for header, payment_field, _ in PAYMENT_COLUMNS:
         row += 1
         put(instructions, row, 1, header)
-        put(instructions, row, 2, PAYMENT_NOTES.get(payment_field, ""))
+        put(instructions, row, 2, _worded(PAYMENT_NOTES.get(payment_field, ""), words))
     if grados is not None:
         row += 1
         for line in GRADE_INTRO:
             row += 1
-            put(instructions, row, 1, line)
+            put(instructions, row, 1, _worded(line, words))
         row += 1
         put(instructions, row, 1, f"Columna de {GRADOS}").font = Font(bold=True)
         put(instructions, row, 2, "Qué va").font = Font(bold=True)
         for header, grade_field, _ in GRADE_COLUMNS:
             row += 1
             put(instructions, row, 1, header)
-            put(instructions, row, 2, GRADE_NOTES.get(grade_field, ""))
+            put(instructions, row, 2, _worded(GRADE_NOTES.get(grade_field, ""), words))
 
     if plans:
-        _choices(book, alumnos, "Planes", plans, _column(COLUMNS, Field.PLAN))
+        _choices(book, alumnos, "Planes", plans, _column(people_columns, Field.PLAN))
     # Three fixed words: the rule itself can list them.
     methods = DataValidation(
         type="list", formula1=f'"{",".join(METHODS)}"', allow_blank=True, showErrorMessage=False
@@ -244,7 +281,7 @@ def template(plans: Sequence[str], scheme: GradingScheme | None = None) -> bytes
 
 
 def _grados(book: Workbook, scheme: GradingScheme) -> Worksheet:
-    """The Grados tab, its example the Alumnos tab's student at the scheme's second rank
+    """The Grados tab, its example the people's tab's student at the scheme's second rank
     (the first a student is promoted to), with a stripe when it has them."""
     ranks = [*scheme.ranks, *scheme.kids_ladder]
     rank = ranks[1] if len(ranks) > 1 else ranks[0]

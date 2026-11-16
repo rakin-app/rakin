@@ -75,7 +75,7 @@ below, read in full, and from `docs/product.md` and `docs/technical.md`.
   `gym.settings.grading`, presets BJJ, judo/karate, muay thai and none. The gate is
   `gym_uses_grades()` (`app.api.activities`): any activity with "Usa grados". It is read
   in the frontend through `useGrades()`; the backend serves grades either way.
-- **New gym** (`app.gyms create`): the gym, programs Adultos, Kids and Competición, block
+- **New gym** (`app.gyms create`): the gym, programs Adultos and Niños (#347), block
   kinds Calentamiento, Técnica, Drilling, Juegos, Sparring and Otro (0028's trigger), a
   graded activity only if `--grading` names one, and the owner. No plans, class types or
   fields. Activity presets in Ajustes (`frontend/src/api/activities.ts`): BJJ, Judo,

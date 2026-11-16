@@ -304,6 +304,14 @@ def counts(db: Database, gym_id: uuid.UUID) -> dict[str, int]:
     return dict(run(db.admin_url, query))
 
 
+def programs(db: Database, gym_id: uuid.UUID) -> list[str]:
+    async def query(conn: asyncpg.Connection) -> list[str]:
+        rows = await conn.fetch("SELECT name FROM program WHERE gym_id = $1 ORDER BY name", gym_id)
+        return [r["name"] for r in rows]
+
+    return list(run(db.admin_url, query))
+
+
 @pytest.mark.postgres
 def test_create_makes_an_empty_gym_with_its_owner(db: Database) -> None:
     gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}")
@@ -314,7 +322,7 @@ def test_create_makes_an_empty_gym_with_its_owner(db: Database) -> None:
     made = counts(db, created.gym_id)
     assert made.pop("block_kind") > 0
     assert made == {
-        "program": 3,
+        "program": 2,
         "staff": 1,
         "gym_person": 1,
         "membership": 0,
@@ -335,6 +343,8 @@ def test_create_makes_an_empty_gym_with_its_owner(db: Database) -> None:
     gym_id = created.gym_id
     row = run(db.admin_url, query)
     assert (row["name"], row["timezone"], row["role"]) == (gym.name, gym.timezone, "owner")
+    # Programs any gym has, not the demo's competition team (#347).
+    assert programs(db, gym_id) == ["Adultos", "Niños"]
     assert (row["owner"], row["email"]) == (gym.owner_name, gym.owner_email)
     # Grading is a module a gym turns on: a new one has no grades, so no belts anywhere.
     assert json.loads(row["settings"])["grading"] == {
@@ -711,7 +721,7 @@ def test_a_gyms_emails_name_its_logo_on_its_host(site: Site) -> None:
                 secret_key="k" * 32,
                 hosts=HOSTS,
             )
-            return [await notices.gym_host(gym) for gym in gyms]
+            return [(await notices.gym_host(gym))[:2] for gym in gyms]
         finally:
             await engine.dispose()
 

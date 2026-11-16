@@ -8,7 +8,7 @@
 {% include "_bank_account.html" %}
 <p style="margin:0;">Te enviaremos el detalle de cada pago 7 días antes de su vencimiento, y te avisaremos cuando recibamos tu comprobante y cuando el pago quede validado.</p>
 {% else %}
-<p style="margin:0 0 16px;">Te damos la bienvenida a {{ gym }}. {% if dependent_name %}{{ dependent_name }} ya está{% else %}Ya estás{% endif %} en su lista de alumnos.</p>
+<p style="margin:0 0 16px;">Te damos la bienvenida a {{ gym }}. {% if dependent_name %}{{ dependent_name }} ya está{% else %}Ya estás{% endif %} en su lista de {{ words.members }}.</p>
 <p style="margin:0;">En tu página verás {% if dependent_name %}sus clases y su avance{% else %}tus clases y tu avance{% endif %}. Para volver a entrar más adelante, pide un enlace nuevo con este correo.</p>
 {% endif %}
 {% include "_consent.html" %}

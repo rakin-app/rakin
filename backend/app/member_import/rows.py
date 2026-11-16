@@ -232,6 +232,10 @@ _GUARDIAN_WORDS = (
 _PHONE_WORDS = ("telefono", "celular", "fono", "whatsapp", "movil", "phone", "cel")
 RUT_WORDS = ("rut", "run")
 EMAIL_WORDS = ("correo", "email", "e mail", "mail")
+# What a header calls the person, in any gym's words (#345, `app.domain.vocabulary`): a
+# template from a gym of "socios" says "Socio desde", one from before says "Alumno".
+NAME_WORDS = ("nombre", "alumno", "alumna", "socio", "socia", "deportista", "miembro", "name")
+SINCE_WORDS = ("alumno desde", "socio desde", "deportista desde", "miembro desde")
 # In order: the first field whose words a header holds is the one suggested.
 _HEADER_WORDS: tuple[tuple[Field, tuple[str, ...]], ...] = (
     (Field.DOB, ("nacimiento", "cumpleanos", "f nac", "fecha nac", "birth", "dob")),
@@ -239,7 +243,7 @@ _HEADER_WORDS: tuple[tuple[Field, tuple[str, ...]], ...] = (
     # The plan's own start, before the words a gym uses for when the student joined.
     (Field.STARTED_ON, ("inicio del plan", "inicio de plan", "inicio plan")),
     # Before the name's "alumno", and the reason's "motivo" before the day's "baja".
-    (Field.MEMBER_SINCE, ("alumno desde", "fecha de ingreso", "ingreso", "inicio", "alta")),
+    (Field.MEMBER_SINCE, (*SINCE_WORDS, "fecha de ingreso", "ingreso", "inicio", "alta")),
     (Field.LEFT_REASON, ("motivo",)),
     (Field.LEFT_ON, ("fecha de baja", "baja", "egreso")),
     (Field.PRIOR_CLASSES, ("clase",)),
@@ -247,7 +251,7 @@ _HEADER_WORDS: tuple[tuple[Field, tuple[str, ...]], ...] = (
     (Field.EMAIL, EMAIL_WORDS),
     (Field.RUT, RUT_WORDS),
     (Field.LAST_NAME, ("apellido",)),
-    (Field.NAME, ("nombre", "alumno", "alumna", "name")),
+    (Field.NAME, NAME_WORDS),
     (Field.PLAN, ("plan", "mensualidad")),
 )
 
