@@ -118,8 +118,9 @@ class Person(BaseModel):
     dob: date | None
     # The day they left this gym (dado de baja); null while they are here.
     left_on: date | None
-    # Why they left, as the gym wrote it (#294). It may be health data ("lesión"), so a
-    # coach's read leaves it out: null for them, whatever it holds.
+    # Why they left, as the gym wrote it (#294). It is personal, so a coach's read leaves
+    # it out: null for them, whatever it holds. Never health data, which a gym may not
+    # keep (#384), though the text is the gym's.
     left_reason: str | None = None
     # History from before Rakin (#293): the day they first trained here, and how many
     # classes they had. Read by the ficha only, never by billing.
@@ -242,7 +243,7 @@ def _said(value: str | None) -> str | None:
     return value or None
 
 
-# Why someone left (#294): free text the chips fill ("Precio", "Lesión"), and no more
+# Why someone left (#294): free text the chips fill ("Precio", "Motivo personal"), and no more
 # than a line. Blank is not said.
 LeftReason = Annotated[
     str | None,

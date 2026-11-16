@@ -118,6 +118,28 @@ def test_each_write_records_one_row_with_before_and_after(
 
 
 @pg
+def test_a_health_reason_cleared_is_no_correction(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """0057's log rows (#384) are about the person, and not about their billing."""
+    ana = enrolled(client, gym)
+    detail = {"table": "gym_person", "id": ana["id"], "column": "left_reason", "now": "x"}
+    run(
+        db.owner_url,
+        in_gym(
+            gym,
+            "INSERT INTO audit_event (gym_id, person_id, action, detail)"
+            " VALUES ($1, $2, 'health_reason_cleared', $3)",
+            gym,
+            uuid.UUID(ana["id"]),
+            json.dumps(detail),
+        ),
+    )
+    corrections = client.get(f"/api/ledger/people/{ana['id']}/corrections", headers=as_gym(gym))
+    assert corrections.json() == {"total": 0, "items": []}
+
+
+@pg
 def test_the_date_is_not_after_today_nor_over_60_years_back(
     client: TestClient, gym: uuid.UUID
 ) -> None:

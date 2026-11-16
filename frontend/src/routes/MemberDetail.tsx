@@ -2440,7 +2440,7 @@ function correctionTitle(c: Correction): string {
   }
 }
 
-/** `Congelación` · `Lesión · vuelve el 24 nov · 10 nov`, with no amount. */
+/** `Congelación` · `Vacaciones · vuelve el 24 nov · 10 nov`, with no amount. */
 function FreezeEntry({ line }: { line: FreezeLine }) {
   const words = copy.ledger
   const start = line.edge === 'start'
