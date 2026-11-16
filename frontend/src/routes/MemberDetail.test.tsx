@@ -318,6 +318,7 @@ function stubApi({
       return { status: 201, body: grades }
     }
     if (path === '/api/people/felipe/family') return { body: { guardian: null, dependents: [{ id: 'kid', name: 'Tomás Díaz' }] } }
+    if (path === '/api/people/felipe/consent') return { body: { basis: 'contract', consent: null, events: [] } }
     if (path === '/api/people/felipe/fields' && method === 'GET') return { body: currentFields }
     if (path === '/api/people/felipe/fields' && method === 'PATCH') {
       if (fieldsUpdate) return fieldsUpdate
@@ -1752,6 +1753,86 @@ describe('Ficha de alumno', () => {
     await screen.findByRole('region', { name: es.admin.family.toggle })
     await screen.findByText('Tomás Díaz')
     expect(screen.queryByRole('link', { name: copy.whatsapp('Felipe Díaz') })).not.toBeInTheDocument()
+  })
+
+  it('says an adult’s data rest on the contract, and when they accepted which notice', async () => {
+    stubApi({
+      extra: (path) =>
+        path === '/api/people/felipe/consent'
+          ? {
+              body: {
+                basis: 'contract',
+                consent: null,
+                events: [
+                  {
+                    action: 'notice_accepted',
+                    at: '2026-11-12T15:00:00Z',
+                    by: { id: 'felipe', name: 'Felipe Díaz' },
+                    source: 'join',
+                    template_on: '2026-11-15',
+                    details_on: '2026-11-10',
+                  },
+                ],
+              },
+            }
+          : undefined,
+    })
+    renderAt(PATH)
+
+    const privacy = await screen.findByRole('region', { name: copy.consent.title })
+    expect(await within(privacy).findByText(copy.consent.basis.contract)).toBeInTheDocument()
+    expect(
+      within(privacy).getByText(
+        `12-11-2026: ${copy.consent.event.notice_accepted('Felipe Díaz')} (${copy.consent.version('15-11-2026')}).`,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says so when the guardian who consented is no longer in the gym', async () => {
+    stubApi({
+      extra: (path) =>
+        path === '/api/people/felipe/consent'
+          ? {
+              body: {
+                basis: 'guardian_consent',
+                consent: 'given',
+                events: [
+                  {
+                    action: 'consent_given',
+                    at: '2026-11-12T15:00:00Z',
+                    by: null,
+                    source: 'page',
+                    template_on: '2026-11-15',
+                    details_on: '2026-11-10',
+                  },
+                ],
+              },
+            }
+          : undefined,
+    })
+    renderAt(PATH)
+
+    const privacy = await screen.findByRole('region', { name: copy.consent.title })
+    expect(
+      await within(privacy).findByText(
+        `12-11-2026: ${copy.consent.event.consent_given(copy.consent.goneGuardian, true)} (${copy.consent.version('15-11-2026')}).`,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says when a minor’s guardian has not consented', async () => {
+    stubApi({
+      extra: (path) =>
+        path === '/api/people/felipe/consent'
+          ? { body: { basis: 'guardian_consent', consent: 'missing', events: [] } }
+          : undefined,
+    })
+    renderAt(PATH)
+
+    const privacy = await screen.findByRole('region', { name: copy.consent.title })
+    expect(await within(privacy).findByText(copy.consent.basis.guardian_consent)).toBeInTheDocument()
+    expect(within(privacy).getByRole('status')).toHaveTextContent(copy.consent.missing)
+    expect(within(privacy).queryByText(copy.consent.none)).not.toBeInTheDocument()
   })
 
   it('shows who they pay for', async () => {

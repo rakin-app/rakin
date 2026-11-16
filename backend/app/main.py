@@ -10,6 +10,7 @@ from app.api import (
     block_kinds,
     class_tags,
     class_types,
+    consent,
     corrections,
     custom_fields,
     extra_charges,
@@ -113,6 +114,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(history.router)
     app.include_router(custom_fields.router)
     app.include_router(guardians.router)
+    app.include_router(consent.router)
+    app.include_router(consent.mine)
     app.include_router(me.router)
     app.include_router(proofs.router)
     app.include_router(plans.router)

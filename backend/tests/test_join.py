@@ -27,6 +27,7 @@ from app.domain.rut import check_digit, format_rut
 from app.jobs import join_requests
 from app.magiclink.ratelimit import MemoryRateLimiter
 from app.main import create_app
+from app.schemas.privacy import TEMPLATE_UPDATED_ON
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import (
@@ -116,6 +117,14 @@ def minor_dob() -> str:
     return (seeded_today() - timedelta(days=365 * 10)).isoformat()
 
 
+def notice() -> dict[str, str]:
+    """The version of a test gym's notice: its details are saved on its today."""
+    return {
+        "template_on": TEMPLATE_UPDATED_ON.isoformat(),
+        "details_on": seeded_today().isoformat(),
+    }
+
+
 def adult(**fields: Any) -> dict[str, Any]:
     return {
         "first_name": "Ana",
@@ -125,6 +134,7 @@ def adult(**fields: Any) -> dict[str, Any]:
         "email": "ana@example.cl",
         "dob": ADULT_DOB,
         "consent": True,
+        "notice": notice(),
         **fields,
     }
 
@@ -139,6 +149,7 @@ def minor(**fields: Any) -> dict[str, Any]:
         "guardian_phone": new_phone(),
         "guardian_email": "marta@example.cl",
         "consent": True,
+        "notice": notice(),
         **fields,
     }
 
@@ -394,7 +405,9 @@ def test_only_owner_and_admin_manage_the_link(
 # --- the form -------------------------------------------------------------------------
 
 
-def test_the_form_shows_the_gym_and_its_today(client: TestClient, gym: uuid.UUID) -> None:
+def test_the_form_shows_the_gym_its_today_and_its_notice(
+    client: TestClient, gym: uuid.UUID
+) -> None:
     form = client.get(f"/api/join/{token_of(client, gym)}")
 
     assert form.status_code == 200
@@ -403,6 +416,7 @@ def test_the_form_shows_the_gym_and_its_today(client: TestClient, gym: uuid.UUID
         "gym_logo": None,
         "program": None,
         "today": seeded_today().isoformat(),
+        "privacy_updated_on": seeded_today().isoformat(),
         "human_check_site_key": None,
     }
 

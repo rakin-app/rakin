@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
+import { isStaleNotice, noticeVersion } from '../api/consent'
 import { ADULT_AGE, ageOn, joinFormQuery, submitJoinRequest, type JoinSubmission } from '../api/join'
 import { privacyPath } from '../api/privacy'
 import { validationErrors } from '../api/validation'
@@ -68,8 +69,12 @@ function requiredFields(minor: boolean, noWhatsapp: boolean): (keyof Drafts)[] {
  * to approve. The answer is the same whoever they are, so the form never tells who the
  * gym, or any other, already knows. A link revoked, regenerated or past its last day
  * says it no longer works. Consent, which the form requires, is to the gym's privacy
- * notice (#168), which the checkbox links. An empty field it needs says what to write
- * in it; whether what was written is valid, the API says.
+ * notice (#168), which the checkbox links, in the version the form was opened on: the
+ * API refuses one the gym has since changed, and the form loads it again (#370). A
+ * minor's guardian has a box of their own, apart from the inscription, consenting to
+ * the processing of the child's data, which they may leave and give later on their
+ * page. An empty field it needs says what to write in it; whether what was written is
+ * valid, the API says.
  */
 export function Join() {
   const { token } = route.useParams()
@@ -105,6 +110,7 @@ export function Join() {
       <JoinFormBody
         token={token}
         today={form.data.today}
+        privacyUpdatedOn={form.data.privacy_updated_on}
         program={form.data.program}
         siteKey={form.data.human_check_site_key}
       />
@@ -138,16 +144,21 @@ function Shell({
 function JoinFormBody({
   token,
   today,
+  privacyUpdatedOn,
   program,
   siteKey,
 }: {
   token: string
   today: string
+  privacyUpdatedOn: string
   program: string | null
   siteKey: string | null
 }) {
   const [drafts, setDrafts] = useState<Drafts>(EMPTY)
   const [consent, setConsent] = useState(false)
+  // A minor's guardian's own consent to the processing of the child's data (#370).
+  const [guardianConsent, setGuardianConsent] = useState(false)
+  const queryClient = useQueryClient()
   // "No tiene WhatsApp": the adult's own, or a minor's guardian's, never carried over.
   const [adultNoWhatsapp, setAdultNoWhatsapp] = useState(false)
   const [guardianNoWhatsapp, setGuardianNoWhatsapp] = useState(false)
@@ -169,6 +180,7 @@ function JoinFormBody({
     setWasMinor(minor)
     setAdultNoWhatsapp(false)
     setGuardianNoWhatsapp(false)
+    setGuardianConsent(false)
   }
 
   const send = useSubmit({
@@ -185,12 +197,16 @@ function JoinFormBody({
         guardian_email: minor ? orNull(drafts.guardian_email) : null,
         no_whatsapp: minor ? guardianNoWhatsapp : adultNoWhatsapp,
         consent,
+        notice: noticeVersion(privacyUpdatedOn),
+        guardian_consent: minor && guardianConsent,
         website: drafts.website,
         human_check_token: humanToken,
       }
       return submitJoinRequest(token, body)
     },
-    onError: () => {
+    onError: (error) => {
+      // The notice changed since the form opened: load it again, for the next send.
+      if (isStaleNotice(error)) void queryClient.invalidateQueries({ queryKey: ['join', token] })
       setHumanToken(null)
       setHumanRound((round) => round + 1)
     },
@@ -283,6 +299,16 @@ function JoinFormBody({
             </div>
             <TextField label={copy.guardianEmail} error={error('guardian_email')} value={drafts.guardian_email} type="email" autoComplete="off" onChange={(v) => set('guardian_email', v)} />
           </Grid>
+          <CheckRow start className="join__consent">
+            <input type="checkbox" checked={guardianConsent} onChange={(e) => setGuardianConsent(e.target.checked)} />
+            <span>
+              {copy.guardianConsentBefore}
+              <a className="join__link" href={privacyPath(token)} target="_blank" rel="noreferrer">
+                {copy.consentLink}
+              </a>
+              {copy.guardianConsentAfter}
+            </span>
+          </CheckRow>
         </fieldset>
       )}
       {/* The honeypot: out of sight and out of the tab order, so only a script fills it in. */}
@@ -341,6 +367,7 @@ function NoWhatsapp({ label, checked, onChange }: { label: string; checked: bool
 
 function problem(error: Error, fields: boolean): string {
   if (fields) return copy.invalidFields
+  if (isStaleNotice(error)) return copy.staleNotice
   if (error instanceof ApiError) {
     if (error.status === 429) return copy.tooMany
     if (error.status === 400) return copy.humanCheck

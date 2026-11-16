@@ -46,7 +46,6 @@ Ningún texto se publica ni se firma como versión final hasta cerrar estos issu
 
 | Promesa | Dónde | Issue |
 | --- | --- | --- |
-| registrar el consentimiento del apoderado de un menor de 18 años, con la versión del aviso, también para los inscritos a mano o por planilla | aviso de cada academia | #370 |
 | avisos y cobros al apoderado según la edad, no según el vínculo; el cambio de contacto a los 18 | aviso de cada academia | #368 |
 | ver y exportar los propios datos | aviso de cada academia, derechos | #371 |
 | eliminar a quien pagó, conservando 6 años la contabilidad | aviso de cada academia, retención | #372 |
@@ -65,3 +64,4 @@ Ningún texto se publica ni se firma como versión final hasta cerrar estos issu
 | --- | --- |
 | 2026-11-16 | Primeros borradores de los cuatro textos (#381). |
 | 2026-11-16 | Decisión del dueño (fila 1 de la investigación): el consentimiento del apoderado se registra para todo alumno menor de 18 años, no solo bajo los 14, como un acto aparte de la membresía. 18 sigue siendo la edad del contacto y el pagador. El aviso de cada academia y los Términos de encargo dicen ahora «menor de 18 años» (#368). |
+| 2026-11-16 | El registro de consentimiento (#370) cumple la promesa del aviso de cada academia: el apoderado de todo menor de 18 años da o retira su consentimiento, aparte de la membresía, en la inscripción o en su página, y queda registrado con la fecha, quién y la versión del aviso; los inscritos a mano o por planilla se lo piden en el correo de bienvenida. Sale de la lista de promesas pendientes. |

@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError, apiFetch } from './client'
+import type { NoticeVersion } from './consent'
 
 /** The gym's join link (backend `JoinLink`), owner and admin only (#154). */
 export type JoinLink = {
@@ -60,6 +61,9 @@ export type JoinForm = {
   program: string | null
   // The gym's today, which says who is a minor.
   today: string
+  // The gym's privacy details' date: with `TEMPLATE_UPDATED_ON`, the version of the notice
+  // the form sends back (#370).
+  privacy_updated_on: string
   human_check_site_key: string | null
 }
 
@@ -89,6 +93,10 @@ export type JoinSubmission = {
   // "No tiene WhatsApp", for the adult, or for a minor's guardian.
   no_whatsapp: boolean
   consent: boolean
+  // The notice they accepted; one older than the gym's is a 409 `stale_notice` (#370).
+  notice: NoticeVersion
+  // A minor's guardian's consent to the processing of their data, a box of its own.
+  guardian_consent: boolean
   // The honeypot: never shown, so only a script fills it in.
   website: string
   human_check_token: string | null

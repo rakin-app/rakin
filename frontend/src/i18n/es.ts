@@ -879,6 +879,34 @@ export const es = {
       missingRut: 'Falta RUT: agrega su RUT (o su correo) en Editar datos para que no se confunda con otra persona del mismo nombre.',
       missingGuardian:
         'Falta apoderado: es menor de 18 años, y Rakin no le escribe hasta que tenga uno. En la ficha del apoderado, usa «Agregar a alguien a cargo» y vincúlalo.',
+      // "Privacidad" (#370): what their data rest on, and who accepted which notice when.
+      consent: {
+        title: 'Privacidad',
+        loading: 'Cargando…',
+        error: 'No pudimos cargar su registro de privacidad.',
+        basis: {
+          contract: 'Base legal: el contrato de membresía.',
+          guardian_consent: 'Base legal: el consentimiento de su apoderado, aparte de la membresía.',
+        },
+        given: 'Su apoderado dio su consentimiento.',
+        withdrawn:
+          'Su apoderado retiró su consentimiento. La membresía sigue igual; puede darlo de nuevo desde su página.',
+        missing:
+          'Falta el consentimiento de su apoderado. Se lo pide su página, en Rakin, y el correo de bienvenida le dice dónde.',
+        none: 'Sin registro: la academia lo agregó a mano o por planilla, sin el formulario de inscripción.',
+        // One act of the register: when, who, and the notice's version.
+        event: {
+          notice_accepted: (by: string) => `${by} aceptó la política de privacidad en la inscripción`,
+          consent_given: (by: string, page: boolean) =>
+            `${by} dio su consentimiento ${page ? 'desde su página' : 'en la inscripción'}`,
+          consent_withdrawn: (by: string) => `${by} retiró su consentimiento desde su página`,
+        },
+        // An act whose actor left the gym: only ever a guardian, since the person is here.
+        goneGuardian: 'Su apoderado, que ya no está en la academia,',
+        version: (day: string) => `política del ${day}`,
+        // Before the register kept the version.
+        noVersion: 'versión no registrada',
+      },
       // "Historial" (#293): what the gym knew before Rakin, never billed.
       history: {
         title: 'Historial',
@@ -2843,6 +2871,25 @@ export const es = {
     error: 'No pudimos cargar las horas por etiqueta.',
   },
   me: {
+    // "Autorización" (#370): a guardian's consent to the processing of each minor's data,
+    // apart from the inscription.
+    consent: {
+      title: 'Autorización de datos',
+      // Around the link to the gym's privacy notice.
+      introBefore: 'La academia te pide tu consentimiento para tratar los datos de cada menor a tu cargo, según su ',
+      link: 'política de privacidad',
+      introAfter:
+        '. Es aparte de la inscripción: puedes no darlo, o retirarlo cuando quieras, y la inscripción sigue igual.',
+      given: (day: string) => `Diste tu consentimiento el ${day}.`,
+      withdrawn: (day: string) => `Retiraste tu consentimiento el ${day}.`,
+      missing: 'Falta tu consentimiento.',
+      give: 'Dar mi consentimiento',
+      withdraw: 'Retirar mi consentimiento',
+      working: 'Guardando…',
+      // The notice changed since the page was loaded: it is loaded again.
+      stale: 'La academia actualizó su política de privacidad. Revísala y vuelve a intentarlo.',
+      failed: 'No pudimos guardar tu respuesta. Inténtalo de nuevo.',
+    },
     // From the student page back to the admin screens, for staff who also train (#214).
     toAdmin: 'Ir al panel del gimnasio',
     // "Pedir congelamiento" (#270): a running plan, and a freeze asked for it.
@@ -3045,6 +3092,10 @@ export const es = {
     consentBefore: 'Acepto que la academia trate estos datos para gestionar mi inscripción, según su ',
     consentLink: 'política de privacidad',
     consentAfter: '.',
+    // A minor's guardian's own box, around the same link (#370).
+    guardianConsentBefore: 'Como apoderado, autorizo que la academia trate los datos del menor según su ',
+    guardianConsentAfter:
+      '. Es aparte de la inscripción: puedes no marcarla y darla después desde tu página, o retirarla cuando quieras.',
     honeypot: 'No llenes este campo',
     submit: 'Enviar inscripción',
     working: 'Enviando…',
@@ -3053,6 +3104,7 @@ export const es = {
     failed: 'No pudimos enviar tus datos. Inténtalo de nuevo.',
     humanCheck: 'No pudimos comprobar que no eres un robot. Inténtalo de nuevo.',
     tooMany: 'Hubo demasiados envíos desde aquí. Espera un rato e inténtalo de nuevo.',
+    staleNotice: 'La academia actualizó su política de privacidad. Revísala y vuelve a enviar.',
     // A required field left empty: what to write in it. No `rut`: it is optional (#165).
     required: {
       first_name: 'Escribe tu nombre.',

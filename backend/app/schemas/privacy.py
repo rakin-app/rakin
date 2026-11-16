@@ -2,6 +2,12 @@ from datetime import date
 
 from pydantic import BaseModel
 
+# The day the notice's text last changed: the SPA's `TEMPLATE_UPDATED_ON`
+# (`frontend/src/api/privacy.ts`), which keeps the text, and a test holds the two
+# equal. What someone accepts names it (#370), so a form showing an older text is
+# refused.
+TEMPLATE_UPDATED_ON = date(2026, 11, 15)
+
 
 class PrivacyNotice(BaseModel):
     """What a gym's public privacy notice fills its template in with (#168)."""

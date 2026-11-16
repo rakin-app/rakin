@@ -13,6 +13,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, PastDate, StringConstraints
 
 from app.member_import.rows import ErrorCode
+from app.schemas.consent import NoticeVersion
 from app.schemas.people import Email, PersonRef, Phone, Rut
 
 # Each half of the name; the person's name is both, as one.
@@ -61,6 +62,9 @@ class JoinForm(BaseModel):
     program: str | None
     # The gym's today, which says who is a minor.
     today: date
+    # The gym's privacy details' date: with the template's, the version of the notice
+    # the form asks them to accept, which it sends back (#370).
+    privacy_updated_on: date
     # The human check's widget key (`app.integrations.humancheck`), when there is one.
     human_check_site_key: str | None
 
@@ -86,7 +90,13 @@ class JoinSubmission(BaseModel):
     guardian_email: Email | None = None
     # "No tiene WhatsApp", for the adult, or for a minor's guardian.
     no_whatsapp: bool = False
+    # The box: they read the gym's privacy notice, this version of it, a 409
+    # `stale_notice` when it is no longer the notice (#370).
     consent: Literal[True]
+    notice: NoticeVersion
+    # A minor's guardian's consent to the processing of their data, a box of its own:
+    # they may leave it, and give it later on their page. Ignored for an adult.
+    guardian_consent: bool = False
     # The honeypot: a field people never see, so only a script fills it in.
     website: Annotated[str, Field(max_length=200)] = ""
     # The human check widget's answer, when the form shows one.

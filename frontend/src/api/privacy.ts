@@ -22,7 +22,9 @@ export type PrivacyNotice = {
 export type Privacy = Omit<PrivacyNotice, 'gym' | 'gym_logo' | 'updated_on' | 'human_check'>
 
 // The day the notice's text (`t.privacy`) last changed; the notice is as new as this
-// or the gym's details, whichever is later. Change it with the text.
+// or the gym's details, whichever is later. Change it with the text, and the API's copy
+// with it (backend `app.schemas.privacy.TEMPLATE_UPDATED_ON`, which a test holds equal):
+// what someone accepts names it, and the API refuses an older one (#370).
 export const TEMPLATE_UPDATED_ON = '2026-11-15'
 
 /** The notice's "last updated": its text's date or the gym's details', the later. */
