@@ -266,7 +266,7 @@ Existing issues linked rather than duplicated: #69 (the epic), #63 (gym export, 
 
 ## Open legal questions
 
-For the lawyer. Not answered here.
+Researched from the primary sources in [legal-research.md](legal-research.md) (#381), which proposes an answer to each and leaves the lawyer five yes/no confirmations.
 
 1. **Consent age for minors.** Sources disagree between under 14 and under 16. The code treats everyone under 18 as needing a guardian (`ADULT_AGE = 18`, `backend/app/schemas/join.py:25`). Is that right, or may a 14- or 16-year-old consent alone?
 2. **Profiling.** Does a child's belt and attendance history count as profiling?
