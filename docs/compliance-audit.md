@@ -198,7 +198,7 @@ The privacy notice already tells members that Rakin "trata tus datos por encargo
 
 ### Breach response
 
-There is no runbook. To scope an incident today, these exist:
+When audited there was no runbook. It is now [incident-response.md](incident-response.md) (#369), which says where each source below is and how long it is kept. To scope an incident, these exist:
 
 - **Request logs**: method, path, status and request id. No gym, no person, no client IP. Kept only until 5 × 20 MB rotates out per service (`deploy/docker-compose.yml:17-22`): days, not months.
 - **`auth_session`**: who signed in to which gym, and when. No IP, no user agent.

@@ -112,7 +112,7 @@ Si la Empresa sabe de una vulneración que afecte datos de la Academia, se lo av
 - las posibles consecuencias;
 - lo que ya se hizo.
 
-La Empresa lo completa a medida que sepa más.
+La Empresa lo completa a medida que sepa más. Lo envía al contacto para vulneraciones que la Academia indica al firmar, por correo y por teléfono. La Academia avisa a la Empresa si ese contacto cambia.
 
 Además, la Empresa:
 
@@ -160,6 +160,8 @@ Firmas:
 | --- | --- |
 | [nombre, firma, fecha] | [nombre, firma, fecha] |
 
+Contacto de la Academia para vulneraciones ([cláusula 12](#12-vulneraciones-de-seguridad)): [nombre y cargo], [correo], [teléfono]. Un segundo contacto, con otro correo: [nombre y cargo], [correo], [teléfono].
+
 ---
 
 ## Anexo A: subencargados
@@ -199,6 +201,6 @@ Detalle técnico en la [auditoría](../compliance-audit.md).
 **En curso**, con su issue:
 
 - ensayo de restauración de respaldos antes de la segunda academia (ops#2);
-- protocolo de respuesta a vulneraciones (#369);
+- [protocolo de respuesta a vulneraciones](../incident-response.md): escrito, falta su primer ensayo (#369);
 - registros que permitan acotar un incidente (#374);
 - menos datos enviados a Sentry (#373).
