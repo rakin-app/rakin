@@ -8,6 +8,7 @@ from app.api import (
     attendance,
     blobs,
     block_kinds,
+    check_in,
     class_tags,
     class_types,
     consent,
@@ -127,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(schedule.router)
     app.include_router(schedule.closed)
     app.include_router(attendance.router)
+    app.include_router(check_in.router)
     app.include_router(block_kinds.router)
     app.include_router(session_blocks.router)
     app.include_router(memberships.router)

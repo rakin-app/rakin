@@ -12,9 +12,10 @@ records the seconds it ran.
 A block of a sparring kind is rounds: planned, completed, each round's seconds and the
 rest between them. Its seconds are the rounds' alone (`rounds * round_seconds`), rest
 not included, since that is the time spent sparring. An open mat's plan is one sparring
-block. An archived kind is planned no more, but a block already of it may stay. In a gym
-that does not spar (#346, `app.domain.sparring`) an open mat is run as any class: its
-plan says `class` and is held to no rule of its own.
+block, and an open-access session (#348) has none: it is a day of visits, not a class.
+An archived kind is planned no more, but a block already of it may stay. In a gym that
+does not spar (#346, `app.domain.sparring`) an open mat is run as any class: its plan
+says `class` and is held to no rule of its own.
 
 The plan to start from (`GET .../blocks/suggested`) is the latest other session of the
 same class type that has one and was not cancelled, for the coach to adjust: the usual
@@ -261,6 +262,8 @@ async def replace_plan(
     """The session's plan, replaced whole. Sending the same plan again changes nothing."""
     held = await _held(session, session_id, lock=True)
     await _runs(session, tenant, held)
+    if held.kind is ClassKind.OPEN_ACCESS and body.blocks:
+        raise _unprocessable(("blocks",), "open_access_plan", "open access has no blocks")
     kinds = {
         row.id: _Kind(row.is_sparring, row.archived)
         for row in await session.execute(

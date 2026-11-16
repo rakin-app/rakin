@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
 import { activitiesQuery } from '../api/activities'
@@ -9,7 +9,7 @@ import { recordPayment, type Method } from '../api/member'
 import { myRoleQuery, myselfQuery, readsLedger } from '../api/me'
 import { memberCountQuery, missingGuardianQuery, plansQuery, type MemberRow } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
-import { todaySessionsQuery, unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
+import { isClass, todaySessionsQuery, unmarkedSessionsQuery, type ClassSession, type SessionDay } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
 import { remindersQuery, ordinal, type PaymentReminder } from '../api/reminders'
@@ -18,6 +18,7 @@ import { Button, buttonClass } from '../components/Button'
 import { Banner, Card, cardClass, EmptyState, PlainList, SectionTitle } from '../components/Card'
 import { Select } from '../components/Field'
 import { WhatsAppIcon } from '../components/icons'
+import { EntradaCard, useHasEntrada } from '../components/EntradaCard'
 import { FreezeRequests } from '../components/FreezeRequests'
 import { JoinRequests } from '../components/JoinRequests'
 import { Grid, PageContainer } from '../components/Layout'
@@ -50,7 +51,9 @@ const OVERDUE_SHOWN = 3
  * its attendance, so a class taught without a list does not go unseen.
  *
  * Money, so for whoever reads the ledger only. A coach's Hoy is today's classes, each a
- * tap from its attendance, and the join link's requests a coach can act on (#178). The
+ * tap from its attendance, and the join link's requests a coach can act on (#178). In a
+ * gym with open access (#348) it leads with "Entrada", the door, which stands in for the
+ * class list on a day with no class; an owner's and an admin's has it too. The
  * join link's requests come first for an owner or admin (#154), then the freezes students
  * asked for from their page (#270).
  *
@@ -88,42 +91,57 @@ export function Today() {
   )
 }
 
-/** A coach's Hoy: today's classes, each a tap from its attendance, then the join requests. */
+/** A coach's Hoy: Entrada if the gym has open access, today's classes, each a tap from its
+ * attendance, then the join requests. On a day with no class, Entrada alone. */
 function CoachToday() {
-  const words = copy.classes
-  const day = useQuery(todaySessionsQuery())
+  const entrada = useHasEntrada()
+  // The open-access day is Entrada's, not a class.
+  const day = useQuery({
+    ...todaySessionsQuery(),
+    select: (today) => ({ ...today, sessions: today.sessions.filter((s) => isClass(s.class_type_kind)) }),
+  })
+  const noClass = day.data !== undefined && day.data.sessions.length === 0
   return (
     <>
-      <Card className="today__section" aria-labelledby="clases-hoy-title">
-        <SectionHead
-          id="clases-hoy-title"
-          title={words.title}
-          aside={day.data && day.data.sessions.length > 0 ? words.count(day.data.sessions.length) : null}
-        />
-        {day.isPending ? (
-          <Loading className="today__note">{copy.loading}</Loading>
-        ) : day.isError ? (
-          <Failed message={words.error} retry={() => void day.refetch()} />
-        ) : day.data.sessions.length === 0 ? (
-          <EmptyState
-            action={
-              <Link to="/admin/clases" className={buttonClass({ variant: 'primary' })}>
-                {words.create}
-              </Link>
-            }
-          >
-            {words.empty}
-          </EmptyState>
-        ) : (
-          <PlainList className="today__list">
-            {day.data.sessions.map((session) => (
-              <ClassRow key={session.id} session={session} timeZone={day.data.timezone} />
-            ))}
-          </PlainList>
-        )}
-      </Card>
+      <EntradaCard />
+      {!(entrada && noClass) && <CoachClasses day={day} />}
       <JoinRequests />
     </>
+  )
+}
+
+/** "Clases de hoy", each a tap from its attendance. */
+function CoachClasses({ day }: { day: UseQueryResult<SessionDay> }) {
+  const words = copy.classes
+  return (
+    <Card className="today__section" aria-labelledby="clases-hoy-title">
+      <SectionHead
+        id="clases-hoy-title"
+        title={words.title}
+        aside={day.data && day.data.sessions.length > 0 ? words.count(day.data.sessions.length) : null}
+      />
+      {day.isPending ? (
+        <Loading className="today__note">{copy.loading}</Loading>
+      ) : day.isError ? (
+        <Failed message={words.error} retry={() => void day.refetch()} />
+      ) : day.data.sessions.length === 0 ? (
+        <EmptyState
+          action={
+            <Link to="/admin/clases" className={buttonClass({ variant: 'primary' })}>
+              {words.create}
+            </Link>
+          }
+        >
+          {words.empty}
+        </EmptyState>
+      ) : (
+        <PlainList className="today__list">
+          {day.data.sessions.map((session) => (
+            <ClassRow key={session.id} session={session} timeZone={day.data.timezone} />
+          ))}
+        </PlainList>
+      )}
+    </Card>
   )
 }
 
@@ -201,6 +219,7 @@ function OwnerToday() {
         <Counter href="#inactivos" value={inactive.data?.length} label={copy.inactive.counter} tone="muted" />
       </div>
       <Grid className="today__grid">
+        <EntradaCard />
         <JoinRequests />
         <FreezeRequests />
         <MissingGuardians />

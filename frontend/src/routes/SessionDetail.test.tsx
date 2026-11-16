@@ -16,6 +16,7 @@ const SESSION: ClassSession = {
   id: 's1',
   class_type_id: 'fundamentos',
   class_type_name: 'Fundamentos',
+  class_type_kind: 'class',
   program_id: 'adultos',
   program_name: 'Adultos',
   starts_at: '2026-11-09T22:00:00Z',

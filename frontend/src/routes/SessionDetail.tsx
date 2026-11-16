@@ -22,7 +22,7 @@ import { useKeptDraft, useRestoredDraft } from '../api/drafts'
 import { useGrades } from '../api/activities'
 import { rankLabel } from '../api/grading'
 import { managesGym, myselfQuery, runsSession } from '../api/me'
-import { sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
+import { isClass, sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
 import { BackLink } from '../components/BackLink'
@@ -173,7 +173,8 @@ function Shell({
 /** "Abrir timer": the class timer, a secondary button for who may run it; "Volver al timer" while it runs. */
 export function TimerLink({ session }: { session: ClassSession }) {
   const me = useQuery(myselfQuery())
-  if (!runsSession(me.data, session.coach_id)) return null
+  // Open access is a day of visits: nothing to time.
+  if (!isClass(session.class_type_kind) || !runsSession(me.data, session.coach_id)) return null
   const running = savedRun(session.id)
   return (
     <Link

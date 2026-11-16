@@ -389,8 +389,7 @@ def test_a_judo_gym_starts_as_a_dojo(db: Database) -> None:
 
     async def kinds(conn: asyncpg.Connection) -> Any:
         return await conn.fetch(
-            "SELECT name, is_sparring, archived FROM block_kind"
-            " WHERE gym_id = $1 AND is_sparring",
+            "SELECT name, is_sparring, archived FROM block_kind WHERE gym_id = $1 AND is_sparring",
             created.gym_id,
         )
 

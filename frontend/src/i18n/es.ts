@@ -1622,6 +1622,49 @@ export const es = {
         fewer: 'Ver menos',
       },
     },
+    // "Entrada" (#348): checking people in at the door, with no class scheduled.
+    checkIn: {
+      title: 'Entrada',
+      loading: 'Cargando…',
+      retry: 'Reintentar',
+      error: 'No pudimos cargar la entrada.',
+      get none() {
+        return `${w.placeIs('Este', 'Esta')} ${w.place} no tiene acceso libre. Un dueño o admin lo crea en Ajustes › Programas y clases, como una clase de tipo Acceso libre.`
+      },
+      pick: 'Acceso',
+      cancelled: 'La entrada de hoy está cancelada: no se puede marcar a nadie hasta que un dueño o admin la reactive.',
+      openDay: 'Ver el día',
+      left: (n: number) => (n === 1 ? 'queda 1 clase' : `quedan ${n} clases`),
+      overdue: 'Pago vencido',
+      // A warning, never a refusal: the staff at the door decides.
+      warning: { lapsed: 'Plan vencido', frozen: 'Plan congelado', noCredits: 'Sin clases en su paquete' },
+      search: {
+        label: (door: string) => `Buscar para ${door}`,
+        placeholder: 'Nombre o RUT',
+        hint: 'Escribe el nombre o el RUT de quien llega.',
+        results: 'Resultados',
+        empty: 'Nadie con ese nombre o RUT tiene un plan para entrar.',
+        error: 'No pudimos buscar.',
+        enter: 'Entrar',
+        enterLabel: (name: string) => `Marcar la entrada de ${name}`,
+        already: (time: string) => `Entró ${time}`,
+        failed: 'No pudimos marcar la entrada. Inténtalo de nuevo.',
+      },
+      today: {
+        title: 'Hoy',
+        count: (n: number) => (n === 1 ? '1 entrada' : `${n} entradas`),
+        empty: 'Nadie ha entrado hoy.',
+        undo: 'Deshacer',
+        undoLabel: (name: string) => `Deshacer la entrada de ${name}`,
+        undoFailed: 'No pudimos deshacer la entrada. Inténtalo de nuevo.',
+      },
+      // On Clases and Hoy, for a gym with open access.
+      card: {
+        title: 'Entrada',
+        detail: (n: number) => (n === 0 ? 'Nadie ha entrado hoy' : n === 1 ? '1 entrada hoy' : `${n} entradas hoy`),
+        open: 'Abrir entrada',
+      },
+    },
     classes: {
       title: 'Clases',
       loading: 'Cargando…',
@@ -1980,6 +2023,7 @@ export const es = {
         // What one attendance takes off a pack of classes (#177: "clase", not "crédito").
         credits: (n: number) => (n === 0 ? 'No descuenta clases' : n === 1 ? 'Descuenta 1 clase' : `Descuenta ${n} clases`),
         openMat: 'Open mat',
+        openAccess: 'Acceso libre',
         notCounted: 'No cuenta como clase',
         toggleFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
         programForm: {
@@ -1996,9 +2040,11 @@ export const es = {
           creditCost: 'Clases que descuenta',
           creditCostHint: 'Lo que descuenta cada asistencia de un paquete de clases. 0 para una clase gratis.',
           kind: 'Tipo',
-          kinds: { class: 'Clase', open_mat: 'Open mat' },
+          kinds: { class: 'Clase', open_mat: 'Open mat', open_access: 'Acceso libre' },
+          // The open mat only in a gym that spars (#346).
           get kindHint() {
-            return `Un open mat son solo rounds de ${w.practice}, sin bloques de técnica.`
+            const access = 'Acceso libre es sin clases: cada visita se marca en Entrada, a cualquier hora.'
+            return w.spars ? `Un open mat son solo rounds de ${w.practice}, sin bloques de técnica. ${access}` : access
           },
           countsAsClass: 'Cuenta como clase',
           get countsAsClassHint() {

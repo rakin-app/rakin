@@ -3,8 +3,9 @@ import { isoDay } from '../format'
 import type { TagOn } from './classTags'
 import { apiFetch } from './client'
 
-/** A class, or an open mat: rounds of sparring only (backend `ClassKind`). */
-export const CLASS_KINDS = ['class', 'open_mat'] as const
+/** A class; an open mat, rounds of sparring only; or open access, no class at all:
+ * people come when they want and are checked in at Entrada (backend `ClassKind`, #348). */
+export const CLASS_KINDS = ['class', 'open_mat', 'open_access'] as const
 export type ClassKind = (typeof CLASS_KINDS)[number]
 
 /** A kind of class in one of the gym's programs (backend `ClassType`). */
@@ -14,7 +15,8 @@ export type ClassType = {
   program_id: string
   program_name: string
   credit_cost: number
-  /** An open mat is rounds of sparring only, and by default is not counted as a class. */
+  /** An open mat is rounds of sparring only, and by default is not counted as a class;
+   * an open-access type has no classes, only the day's visits. */
   kind: ClassKind
   counts_as_class: boolean
   active: boolean
@@ -29,6 +31,8 @@ export type ClassSession = {
   id: string
   class_type_id: string
   class_type_name: string
+  /** An open-access session is the door's day (#348), made by its first check-in: no class. */
+  class_type_kind: ClassKind
   program_id: string
   program_name: string
   starts_at: string
@@ -60,12 +64,18 @@ export type SessionDay = {
   sessions: ClassSession[]
 }
 
-/** The class types a session can be started of: the active ones, by program and name. */
+/** The gym's active class types, by program and name. */
 export function activeClassTypesQuery() {
   return queryOptions({
     queryKey: ['class-types', 'active'],
     queryFn: () => apiFetch<ClassType[]>('/api/class-types?active=true'),
   })
+}
+
+/** Whether a class of `kind` is one: open access is the door's day, never started,
+ * scheduled or timed as a class. */
+export function isClass(kind: ClassKind): boolean {
+  return kind !== 'open_access'
 }
 
 /** Today's sessions, today being the gym's. */

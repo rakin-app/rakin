@@ -332,7 +332,9 @@ describe('Ajustes: Programas y clases', () => {
 
     await userEvent.click(within(adults).getByRole('button', { name: copy.addClassType }))
     const create = within(adults).getByRole('form', { name: form.create('Adultos') })
-    expect(within(create).queryByLabelText(form.kind)).not.toBeInTheDocument()
+    const kinds = within(within(create).getByLabelText(form.kind)).getAllByRole('option')
+    expect(kinds.map((o) => o.textContent)).toEqual([form.kinds.class, form.kinds.open_access])
+    expect(create).not.toHaveTextContent(/open mat/i)
     await userEvent.click(within(create).getByRole('button', { name: copy.cancel }))
 
     await userEvent.click(rowButton(adults, 'Open mat'))

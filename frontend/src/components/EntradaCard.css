@@ -1,0 +1,19 @@
+/* Its title and count, and the button at the end of the row. */
+.card.entrada-card {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.entrada-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.entrada-card__detail {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}

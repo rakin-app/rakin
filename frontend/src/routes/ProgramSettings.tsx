@@ -278,12 +278,13 @@ function ProgramForm({
   )
 }
 
-/** A class type's line: its activity, if any; an open mat says so, in a gym that spars
- * (#346), then what it costs a pack, and if it does not count. */
+/** A class type's line: its activity, if any; an open mat (in a gym that spars, #346) or
+ * open access says so, then what it costs a pack, and if it does not count. */
 function classTypeSummary(classType: ClassType, sparring: boolean): string {
   return [
     classType.activity_name,
     sparring && classType.kind === 'open_mat' && copy.openMat,
+    classType.kind === 'open_access' && copy.openAccess,
     copy.credits(classType.credit_cost),
     !classType.counts_as_class && copy.notCounted,
   ]
@@ -366,8 +367,10 @@ function ClassTypeForm({
     activity_id: classType?.activity_id ?? '',
   }))
   const activities = useQuery(activitiesQuery)
-  // A gym that does not spar has no open mats to pick (#346); one it has keeps its kind.
+  // A gym that does not spar has no open mats to pick (#346); one it has keeps its kind,
+  // with no select to show it by.
   const sparring = useSparring()
+  const kinds = sparring ? CLASS_KINDS : initial.kind === 'open_mat' ? [] : CLASS_KINDS.filter((k) => k !== 'open_mat')
   const [drafts, setDrafts] = useState(initial)
   const set = (field: keyof ClassTypeDrafts, value: string | boolean) => setDrafts({ ...drafts, [field]: value })
 
@@ -445,19 +448,19 @@ function ClassTypeForm({
           />
         )}
       </Field>
-      {sparring && (
+      {kinds.length > 0 && (
         <Field label={form.kind} hint={form.kindHint}>
           {(props) => (
             <Select
               {...props}
               value={drafts.kind}
-              // As the API does: a class counts as a class by default, an open mat does not.
+              // As the API does: a class and open access count as a class by default, an open mat does not.
               onChange={(e) => {
                 const kind = e.target.value as ClassKind
-                setDrafts({ ...drafts, kind, counts_as_class: kind === 'class' })
+                setDrafts({ ...drafts, kind, counts_as_class: kind !== 'open_mat' })
               }}
             >
-              {CLASS_KINDS.map((kind) => (
+              {kinds.map((kind) => (
                 <option key={kind} value={kind}>
                   {form.kinds[kind]}
                 </option>

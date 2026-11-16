@@ -358,11 +358,13 @@ One `session` row per class (migration `0020`, [spec](../docs/technical.md#domai
 | `GET` | `/api/sessions` | `{"date", "timezone", "sessions": […]}`: the sessions starting on `?date=` (an ISO day; default today), a calendar day in the gym's timezone, earliest first |
 | `POST` | `/api/sessions` | start one: `class_type_id`, and optionally `starts_at` (with its offset; default now), `duration_minutes` (default the class type's, as below), `coach_id` (default the person acting), `topic`, `notes`; 201 with the session |
 | `GET` | `/api/sessions/duration` | `{"class_type_id", "duration_minutes"}`: how long a new class of `?class_type_id=` lasts unless told: its schedule slot's in effect today, else its next one's, else the gym's last class of the type that has one, else 60. "Crear clase" prefills its duration with it |
-| `GET` | `/api/sessions/unmarked` | `{"since", "timezone", "sessions": […]}`: the sessions already started since `since`, six days before today in the gym's timezone, that no one is marked at, latest first; owner and admin only, for the dashboard's "Sin asistencia" |
+| `GET` | `/api/sessions/unmarked` | `{"since", "timezone", "sessions": […]}`: the sessions already started since `since`, six days before today in the gym's timezone, that no one is marked at, latest first, open-access ones left out; owner and admin only, for the dashboard's "Sin asistencia" |
 | `GET` | `/api/sessions/{id}` | one session; 404 for another gym's |
 | `PATCH` | `/api/sessions/{id}` | change `topic`, `notes` or `coach_id`; only what is sent changes |
 
-A session carries its `class_type_id` and `class_type_name`, `program_id` and `program_name`, `starts_at`, `coach_id` and `coach_name` (the gym's record of them), `topic`, `notes`, `created_at` and `updated_at`, and `present`, how many are marked at it: 0 is a class whose attendance was never taken, which the Clases list flags. A topic is up to 200 characters and notes up to 4,000; a blank one, or `null`, is none. The class type must be one of the gym's active ones (422 `unknown_class_type` or `inactive_class_type` on `class_type_id`), and the coach on its staff in any role (422 `unknown_coach`) when a session is started or reassigned: a coach who leaves stays the coach of the sessions they taught, since the row references `gym_person`, not `staff`. Any staff role may read, start and edit sessions, coaches included, but only an owner or admin lists the unmarked ones; there is no delete, since attendance points at a session.
+A session carries its `class_type_id`, `class_type_name` and `class_type_kind`, `program_id` and `program_name`, `starts_at`, `coach_id` and `coach_name` (the gym's record of them), `topic`, `notes`, `created_at` and `updated_at`, and `present`, how many are marked at it: 0 is a class whose attendance was never taken, which the Clases list flags. A topic is up to 200 characters and notes up to 4,000; a blank one, or `null`, is none. The class type must be one of the gym's active ones (422 `unknown_class_type` or `inactive_class_type` on `class_type_id`), and the coach on its staff in any role (422 `unknown_coach`) when a session is started or reassigned: a coach who leaves stays the coach of the sessions they taught, since the row references `gym_person`, not `staff`. Any staff role may read, start and edit sessions, coaches included, but only an owner or admin lists the unmarked ones; there is no delete, since attendance points at a session.
+
+An open-access class type (`kind: "open_access"`, #348) has no classes: its sessions are made by its first check-in of each day (Check-in API, below). Starting one, scheduling one or changing a class to or from one is a 422 `open_access` on `class_type_id`, moving its day's session one on `starts_at`, and its session takes no timer plan (422 `open_access_plan`).
 
 ## Weekly schedule API
 
@@ -402,6 +404,19 @@ Marking spends what the membership pays the class with (`app.domain.attendance`)
 `overdue` is whether the membership has a period in `v_overdue`. A coach reads no ledger entries (`0006`), so the roster asks `overdue_memberships()`, a `SECURITY DEFINER` function that returns the current gym's overdue membership ids and nothing else.
 
 Any staff role may use it, coaches included; a coach may start a trial where only an owner or admin may start any other membership, since a trial charges nothing. A trial added at the mat sends no welcome. Members may not use it; the student page carries their own counts (`attendance` on `/api/me/page`).
+
+## Check-in API
+
+"Entrada" (#348): checking people in at the door of a gym open all day with no class scheduled. A class type of the kind `open_access` (migration `0060`) has no timer blocks and by default counts as a class. Each visit is an attendance at that type's session of the day, so it spends a pack's `credit_cost`, counts in `/api/people/{id}/attendance` and keeps someone off the inactive list, as any class does. The first check-in of a day, in the gym's timezone, makes the day's session, starting then and taught by whoever checked them in; `session.open_day` is its date, and a unique index on `(class_type_id, open_day)` makes two first check-ins at once one session.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/check-in` | the gym's active open-access types, by program and name, each `{"class_type_id", "name", "program_id", "program_name", "credit_cost", "date", "timezone", "session_id", "cancelled", "arrivals": […]}`: today, its session (`null` before the first check-in) and its arrivals, newest first. `[]` for a gym with none |
+| `GET` | `/api/check-in/{class_type_id}/search` | who `?q=` finds by name or RUT, as the member list's search reads them, that the roster's rule admits, at most 20 by name, each with `checked_in_at` (today's, or `null`); `[]` for a blank `q` |
+| `POST` | `/api/check-in/{class_type_id}` | `{"membership_id"}`: check it in today, making the day's session on the first; the day as it then stands. Checking in someone already in changes nothing |
+| `DELETE` | `/api/check-in/{class_type_id}/{membership_id}` | undo today's check-in, giving back its credits; the day as it then stands |
+
+An arrival carries `membership_id`, `person_id`, `name`, `rut`, `plan_name`, `plan_kind`, `status`, `credits_remaining`, `overdue`, `marked_at` and `credits_consumed`; a search result the same with `checked_in_at` instead of the last two. A check-in is held to the roster's rule and its 422s (Attendance API), and never refused for a lapsed plan or a spent pack, which the screen warns of. A type that is not open access is a 404, a deactivated one a 422 `inactive_class_type`, and a day whose session an admin cancelled a 409 until it is reactivated. The day's session is otherwise a session: deleting it gives back its credits, and the next check-in makes a new one. A class type with sessions or schedule slots never becomes open access or stops being it (422 `open_access_kind` on `kind`). Any staff role may use it, coaches included; members may not.
 
 ## Class timer API
 
