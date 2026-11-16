@@ -54,7 +54,7 @@ Rakin cuenta la asistencia para mostrarle al equipo quién dejó de venir o qui�
 - **Mensajes**: registro de los correos enviados y su contenido.
 - **Acceso**: sesiones de cada persona y links de acceso.
 
-**Datos de salud.** La ley prohíbe tratar datos de salud recogidos "en el ámbito [...] deportivo", salvo que una ley lo autorice expresamente (art. 16 bis). Mientras eso no se aclare, la Academia no registra lesiones, enfermedades ni otros datos de salud en Rakin, ni en campos adicionales ni en notas ([hallazgo](../legal-research.md#found-along-the-way-health-data-in-a-gym)). `[ABOGADO: ¿la prohibición del art. 16 bis alcanza a un gimnasio aun con consentimiento expreso? ¿Cubre un contacto de emergencia o el peso para una categoría? Ítem 5 de la lista.]`
+**Datos de salud.** La ley prohíbe tratar datos de salud recogidos "en el ámbito [...] deportivo", salvo que una ley lo autorice expresamente (art. 16 bis). Mientras eso no se aclare, la Academia no registra lesiones, enfermedades ni otros datos de salud en Rakin, ni en campos adicionales ni en notas ([hallazgo](../legal-research.md#found-along-the-way-health-data-in-a-gym)). `[ABOGADO: ¿la prohibición del art. 16 bis alcanza a un gimnasio aun con consentimiento expreso? ¿Cubre un contacto de emergencia o el peso para una categoría? Ítem 5 de la lista; #384.]`
 
 ## 5. Instrucciones de la Academia
 

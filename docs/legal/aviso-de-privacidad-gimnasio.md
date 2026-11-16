@@ -56,7 +56,7 @@ Ver [pregunta 6](../legal-research.md#6-legal-basis).
 
 - **Si tienes 18 años o más**: porque los necesitamos para cumplir el contrato de membresía que tienes con la academia.
 - **Si tienes entre 14 y 17 años**: por el contrato de membresía que firma tu apoderado.
-- **Si tienes menos de 14 años**: con el consentimiento de tu apoderado, que queda registrado con la fecha y la versión de este aviso. `[ABOGADO: ítem 1.]`
+- **Si tienes menos de 14 años**: con el consentimiento de tu apoderado, que queda registrado con la fecha y la versión de este aviso. Se pide aparte de la membresía: tu apoderado puede negarlo o retirarlo sin que se termine la membresía. `[ABOGADO: ítem 1. El art. 12 presume que el consentimiento no es libre si se pide dentro de un contrato que no lo necesita: ¿basta pedirlo como un acto separado de la membresía?]`
 - **Los recordatorios cuando dejas de venir**: por el interés legítimo de la academia en que sigas entrenando. Puedes pedir que no te los enviemos.
 
 ### Si eres menor de edad

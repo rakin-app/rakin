@@ -29,13 +29,13 @@ Confidence: **clear** (clear in the text), **reasonable** (a reasonable reading 
 | 13 | WhatsApp from staff phones | That sending is the gym's own processing, not the company's. The notice names WhatsApp (Meta, United States) as a channel the gym uses; the DPA says the sending is outside the service | reasonable | approve it yourself |
 | 14 | Registration and a delegate | No registry exists for controllers or processors, and a delegate is voluntary | clear | approve it yourself |
 
-One finding the audit did not ask about, and the most serious: **art. 16 bis bans health data collected "en el ámbito ... deportivo"** unless a law expressly allows it. Consent, which #376 planned to add, may not be enough. See [Health data in a gym](#found-along-the-way-health-data-in-a-gym), lawyer item 5.
+One finding the audit did not ask about, and the most serious: **art. 16 bis bans health data collected "en el ámbito ... deportivo"** unless a law expressly allows it. Consent, which #376 planned to add, may not be enough. See [Health data in a gym](#found-along-the-way-health-data-in-a-gym), lawyer item 5, and #384.
 
 ## For the lawyer
 
 Five confirmations, each a yes or no. The privacy notice wording is a separate, already pending review.
 
-1. **Children under 14.** A membership is a contract (art. 13 c), but art. 16 quáter, inciso 2, requires the consent of "sus padres o representantes legales" to process a child's data "salvo que expresamente lo autorice o mandate la ley". We read the contract as *not* being that express authorisation, so we will record the guardian's consent for every member under 14, including those staff add by hand or import. For 14 to 17 we rely on the contract the guardian signs. Is that right?
+1. **Children under 14.** A membership is a contract (art. 13 c), but art. 16 quáter, inciso 2, requires the consent of "sus padres o representantes legales" to process a child's data "salvo que expresamente lo autorice o mandate la ley". We read the contract as *not* being that express authorisation, so we will record the guardian's consent for every member under 14, including those staff add by hand or import. For 14 to 17 we rely on the contract the guardian signs. Art. 12 also presumes that consent "no ha sido libremente otorgado" when it is collected "en el marco de la ejecución de un contrato" that does not need it, and here the guardian would give it while enrolling the child. So we would ask for it as a separate act from the membership: its own step, which the guardian can refuse or withdraw without losing the membership. Is that right, and is a separate act what art. 12 requires?
 2. **Ledger after a deletion request.** We keep each ledger entry (amount, date, method, the member's name and RUT) for 6 years, under Código Tributario arts. 17 and 200, as a legal obligation (art. 13 b; art. 7, inciso 2, ii), even after the member asks to be deleted, and anonymise everything else. Is 6 years the right period, and may the name and RUT stay for it?
 3. **The DPA's shape.** (a) It names each subprocessor and its country, and the gym's signature is the "autorización específica y por escrito" art. 15 bis requires; a new subprocessor needs a new written authorisation from each gym. (b) Transfers to the United States rest on each provider's own contractual clauses (art. 27 b), since the Agencia has published no adequacy list and no model clauses. (c) The company tells the gym of a breach within 24 hours of knowing; the gym reports to the Agencia within 72 hours (art. 14 sexies says only "sin dilaciones indebidas"); the company drafts both and may send the members' notice in the gym's name. Is that shape right?
 4. **One identity across gyms.** The company keeps one `person` row per RUT, shared by every gym that enrols that RUT. No gym learns anything from it. We will reduce that row to the RUT alone and describe the link in every gym's DPA as part of the service the gym instructs, so the company stays a processor (art. 15 bis, inciso 2). Does that keep the company a processor, with no disclosure owed beyond the DPA?
@@ -156,7 +156,7 @@ For **children under 14**, art. 16 quáter requires the guardian's consent "salv
 **Proposed decision.**
 
 - `technical.md`: for adults and members of 14 to 17 the basis is the membership contract. For under-14s it is the guardian's consent, recorded with the notice version.
-- #370: record the basis per member. For every member under 14, *including staff-added and imported*, record the guardian's consent with its timestamp and notice version: send the guardian a link to give it. Adults need no consent record. Keep the join form's timestamp as evidence that the notice was shown.
+- #370: record the basis per member. For every member under 14, *including staff-added and imported*, record the guardian's consent with its timestamp and notice version: send the guardian a link to give it. Ask for it as its own step, apart from the membership, so it is not presumed unfree under art. 12; refusing or withdrawing it does not end the membership. Adults need no consent record. Keep the join form's timestamp as evidence that the notice was shown.
 
 **Confidence:** reasonable for adults; open for under-14s added by staff. **Needs the lawyer:** yes, [item 1](#for-the-lawyer).
 
@@ -324,6 +324,8 @@ An emergency contact is not health data. A weight kept for weight classes is a p
 - #376's per-gym switch defaults to off.
 - Free-text reasons and notes (a freeze for "lesión") get a hint not to record health details.
 
+Rakin collects health data today: the "Lesión" and "Salud" freeze reasons, the "Lesión" chip for why someone left, and the seed's "Notas médicas" field. So this is its own issue, #384, labelled `blocks second gym`.
+
 **Confidence:** open. **Needs the lawyer:** yes, [item 5](#for-the-lawyer).
 
 ## What changes in the gap issues
@@ -339,7 +341,7 @@ An emergency contact is not health data. A weight kept for weight classes is a p
 | #373 Sentry | it is a transfer abroad under art. 27: less data, and the provider's clauses in the DPA annex |
 | #374 incident logs | art. 14 sexies requires a record of every breach: nature, effects, categories, number of people, measures |
 | #375 request to the company | the controller answers within 30 calendar days, extendable once by 30 (art. 11); the company forwards at once |
-| #376 sensitive fields | art. 16 bis may forbid health data in a gym even with consent; the switch defaults to off (lawyer item 5) |
+| #376 sensitive fields | art. 16 bis may forbid health data in a gym even with consent; the switch defaults to off (lawyer item 5). The gap is its own issue, #384 |
 | #377 offboarding | at the end of the service the processor must delete or return the data (art. 15 bis, last inciso) |
 | #378 retention | fixed periods: 24 months after a membership ends, 6 years for the ledger, an opt-in to keep grade history (questions 7, 8) |
 

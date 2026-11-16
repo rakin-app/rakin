@@ -23,14 +23,14 @@ Borradores escritos para las primeras academias, que son conocidas y entran a un
 
 Las cinco confirmaciones de la [investigación](../legal-research.md#for-the-lawyer), cada una de sí o no:
 
-1. **Menores de 14 años**: registrar el consentimiento del apoderado aunque la membresía sea un contrato. Para 14 a 17 años, basta el contrato que firma el apoderado.
+1. **Menores de 14 años**: registrar el consentimiento del apoderado aunque la membresía sea un contrato, pidiéndolo como un acto separado de la membresía, porque el art. 12 presume que no es libre el consentimiento pedido dentro de un contrato que no lo necesita. Para 14 a 17 años, basta el contrato que firma el apoderado.
 2. **Registros contables**: guardarlos 6 años con nombre y RUT aunque la persona pida que la borren.
 3. **Forma de los Términos de encargo**:
    - (a) subencargados autorizados uno por uno;
    - (b) transferencias a Estados Unidos con las cláusulas de cada proveedor;
    - (c) 24 horas de la Empresa a la Academia, 72 de la Academia a la Agencia, y la Empresa puede avisar a los alumnos en nombre de la Academia.
 4. **Identidad por RUT** compartida entre academias, descrita en los Términos de encargo, sin que la empresa pase a ser responsable.
-5. **Datos de salud** en un gimnasio (art. 16 bis): ¿están prohibidos aun con consentimiento?
+5. **Datos de salud** en un gimnasio (art. 16 bis): ¿están prohibidos aun con consentimiento? Rakin hoy los recoge (#384).
 
 Más los puntos propios de estos textos, marcados `[ABOGADO: …]`:
 
@@ -55,7 +55,7 @@ Ningún texto se publica ni se firma como versión final hasta cerrar estos issu
 | aviso de vulneración en 24 horas, con quién y cómo | Términos de encargo, cláusula 12 | #369, #374 |
 | menos datos a Sentry | Términos de encargo, Anexo A | #373 |
 | reenviar en 1 día hábil lo que un alumno escriba a Rakin | Términos de encargo, cláusula 11; aviso de Rakin | #375 |
-| ningún dato de salud; advertir al crear un campo sensible | Términos de encargo, cláusula 4 | #376 |
+| ningún dato de salud: sin "Lesión" ni "Salud" como motivos; advertir al crear un campo sensible | Términos de encargo, cláusula 4; aviso de cada academia | #384, #376 |
 | ensayar la restauración de respaldos | Términos de encargo, Anexo B | ops#2 |
 | mostrar el aviso de Rakin en `/privacidad` sin academia | aviso de Rakin | (UX QA, run 1) |
 
