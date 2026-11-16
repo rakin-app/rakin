@@ -10,7 +10,7 @@ import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import { LeftReasonField } from './LeftReason'
 import { MOBILE, Needed, refusals } from './NewMember'
-import { HISTORY_WINDOW_YEARS, yearsBefore } from './PersonHistory'
+import { HISTORY_WINDOW_YEARS, yearsBefore } from './historyWindow'
 
 const copy = t.admin.newMember
 const form = copy.former

@@ -115,8 +115,8 @@ FROM (
     LEFT JOIN attendance a ON a.session_id = :session AND a.membership_id = m.id
     LEFT JOIN LATERAL (
         SELECT ge.rank_key, ge.sub_rank, ge.awarded_on
-        FROM grade_event ge JOIN membership gm ON gm.id = ge.membership_id
-        WHERE gm.person_id = m.person_id
+        FROM grade_event ge
+        WHERE ge.person_id = m.person_id
         ORDER BY ge.awarded_on DESC, ge.created_at DESC, ge.id
         LIMIT 1
     ) r ON true
@@ -411,10 +411,7 @@ async def attended(
 async def _promoted_on(session: AsyncSession, person_id: uuid.UUID) -> date | None:
     """The day of the person's current rank: their latest promotion's."""
     day: date | None = await session.scalar(
-        text(
-            "SELECT max(ge.awarded_on) FROM grade_event ge"
-            " JOIN membership m ON m.id = ge.membership_id WHERE m.person_id = :person"
-        ),
+        text("SELECT max(awarded_on) FROM grade_event WHERE person_id = :person"),
         {"person": person_id},
     )
     return day

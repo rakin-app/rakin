@@ -8,13 +8,11 @@ import { familyQuery } from '../api/family'
 import { freezeRequestsQuery } from '../api/freezeRequests'
 import { ApiError } from '../api/client'
 import {
-  awardGrade,
   goalProgress,
   gradesQuery,
   gradingSchemeQuery,
   rankLabel,
   type GradeEvent,
-  type Grading,
   type GradingScheme,
   type Rank,
 } from '../api/grading'
@@ -78,6 +76,7 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
+import { GradeForm } from './GradeForm'
 import { PersonExtraLines } from './PersonExtraLines'
 import { PersonHistory } from './PersonHistory'
 import { PersonData } from './PersonData'
@@ -1883,173 +1882,6 @@ function GradeRow({ event }: { event: GradeEvent }) {
       </div>
     </li>
   )
-}
-
-/** The rank and sub-rank the form starts on: the current rank's next sub-rank, else the
- * next rank, else the first. */
-function nextRank(scheme: GradingScheme, current: Rank | null | undefined): { rank: string; sub: string | null } {
-  const all = [...scheme.ranks, ...scheme.kids_ladder]
-  const at = current ? all.findIndex((r) => r.key === current.rank_key) : -1
-  const here = all[at]
-  if (here && current) {
-    const sub = here.sub_ranks.findIndex((s) => s.key === current.sub_rank)
-    const following = here.sub_ranks[sub + 1]
-    if (sub >= 0 && following) return { rank: here.key, sub: following.key }
-  }
-  const ladder = here && scheme.kids_ladder.includes(here) ? scheme.kids_ladder : scheme.ranks
-  const rank = (here && ladder[ladder.indexOf(here) + 1]) ?? here ?? all[0]!
-  return { rank: rank.key, sub: rank.sub_ranks[0]?.key ?? null }
-}
-
-function GradeForm({
-  personId,
-  scheme,
-  current,
-  onCancel,
-  onDone,
-}: {
-  personId: string
-  scheme: GradingScheme
-  current: Rank | null
-  onCancel: () => void
-  onDone: (grading: Grading) => void
-}) {
-  const queryClient = useQueryClient()
-  const form = copy.grading.form
-  const ids = { rank: useId(), sub: useId(), date: useId(), note: useId() }
-  const start = nextRank(scheme, current)
-  const [rankKey, setRankKey] = useState(start.rank)
-  const [subRank, setSubRank] = useState<string | null>(start.sub)
-  // Today in the gym's timezone, which the API refuses a later day than, until a day is picked.
-  const today = useGymToday()
-  const [picked, setAwardedOn] = useState<string | null>(null)
-  const awardedOn = picked ?? today
-  const [note, setNote] = useState('')
-  const rank = [...scheme.ranks, ...scheme.kids_ladder].find((r) => r.key === rankKey)
-
-  const award = useSubmit({
-    mutationFn: () =>
-      awardGrade(personId, {
-        rank_key: rankKey,
-        sub_rank: subRank,
-        awarded_on: awardedOn,
-        ...(note.trim() ? { note: note.trim() } : {}),
-      }),
-    onSuccess: async (grading) => {
-      onDone(grading)
-      // A new rank restarts the count of classes since it.
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['grades', personId] }),
-        queryClient.invalidateQueries({ queryKey: personAttendanceQuery(personId).queryKey }),
-      ])
-    },
-  })
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    award.mutate()
-  }
-
-  return (
-    <form className="member__form member__form--inset" aria-label={form.title} onSubmit={submit}>
-      <label htmlFor={ids.rank} className="member__label">
-        {form.rank}
-      </label>
-      <Select
-        id={ids.rank}
-        value={rankKey}
-        onChange={(e) => {
-          setRankKey(e.target.value)
-          const chosen = [...scheme.ranks, ...scheme.kids_ladder].find((r) => r.key === e.target.value)
-          setSubRank(chosen?.sub_ranks[0]?.key ?? null)
-        }}
-      >
-        {scheme.kids_ladder.length > 0 ? (
-          <>
-            <optgroup label={form.ranks}>
-              <RankOptions ranks={scheme.ranks} />
-            </optgroup>
-            <optgroup label={form.kids}>
-              <RankOptions ranks={scheme.kids_ladder} />
-            </optgroup>
-          </>
-        ) : (
-          <RankOptions ranks={scheme.ranks} />
-        )}
-      </Select>
-
-      {rank && rank.sub_ranks.length > 0 && (
-        <>
-          <label htmlFor={ids.sub} className="member__label">
-            {form.subRank}
-          </label>
-          <Select id={ids.sub} value={subRank ?? ''} onChange={(e) => setSubRank(e.target.value)}>
-            {rank.sub_ranks.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </Select>
-        </>
-      )}
-
-      <label htmlFor={ids.date} className="member__label">
-        {form.date}
-      </label>
-      <Input
-        id={ids.date}
-        type="date"
-        required
-        max={today}
-        value={awardedOn}
-        onChange={(e) => setAwardedOn(e.target.value)}
-      />
-
-      <label htmlFor={ids.note} className="member__label">
-        {form.note}
-      </label>
-      <Input
-        id={ids.note}
-        type="text"
-        maxLength={500}
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-      />
-
-      {award.error && (
-        <p className="member__error" role="alert">
-          {refusal(award.error)}
-        </p>
-      )}
-
-      <div className="member__form-actions">
-        <Button disabled={award.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={award.isPending} busy={award.isPending}>
-          {award.isPending ? form.working : form.submit}
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-function RankOptions({ ranks }: { ranks: GradingScheme['ranks'] }) {
-  return ranks.map((r) => (
-    <option key={r.key} value={r.key}>
-      {r.label}
-    </option>
-  ))
-}
-
-/** What the API's refusal `code` means to the admin; anything else is a plain failure. */
-function refusal(error: Error): string {
-  const refused = copy.grading.form.refused
-  const code =
-    error instanceof ApiError && typeof error.body === 'object' && error.body !== null
-      ? (error.body as { detail?: { code?: unknown } }).detail?.code
-      : undefined
-  return typeof code === 'string' && code in refused ? refused[code as keyof typeof refused] : refused.failed
 }
 
 /** "Cambiar monto" (#279): what the charge comes to now, the difference written as an

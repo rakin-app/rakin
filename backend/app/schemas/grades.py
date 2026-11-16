@@ -8,7 +8,7 @@ since removed) reads with its key as its label, so the history still says someth
 
 import uuid
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
@@ -20,7 +20,8 @@ Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 class GradeAward(BaseModel):
     """`POST /api/people/{id}/grades`: a rank of the gym's scheme, and its sub-rank when
     the rank has sub-ranks. `awarded_on` defaults to today in the gym's timezone and may
-    be earlier, never later."""
+    be earlier, never later. `source` is `manual` for a grade typed in as history ("Grado
+    anterior"): one from before Rakin, which writes no `promoted` event (0053)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -28,6 +29,7 @@ class GradeAward(BaseModel):
     sub_rank: Key | None = None
     awarded_on: date | None = None
     note: Note | None = None
+    source: Literal["app", "manual"] = "app"
 
 
 class Belt(BaseModel):
