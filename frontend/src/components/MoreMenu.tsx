@@ -7,7 +7,7 @@ import './MoreMenu.css'
 /**
  * "Más": the actions a screen keeps out of its main row (#357), a button that opens a
  * short list under it. A `<details>`, so it opens with no script; a tap outside it, Esc,
- * or choosing one of its actions closes it again. Its children are links and buttons,
+ * focus leaving it, or choosing one of its actions closes it again. Its children are links and buttons,
  * each given `moreItemClass`.
  */
 export function MoreMenu({
@@ -40,11 +40,17 @@ export function MoreMenu({
       close()
       menu.querySelector('summary')?.focus()
     }
+    // Tab out of it, and it closes behind the focus rather than over the next row.
+    const leave = (event: FocusEvent) => {
+      if (menu.open && !menu.contains(event.relatedTarget as Node | null)) close()
+    }
     document.addEventListener('pointerdown', outside)
     menu.addEventListener('keydown', escape)
+    menu.addEventListener('focusout', leave)
     return () => {
       document.removeEventListener('pointerdown', outside)
       menu.removeEventListener('keydown', escape)
+      menu.removeEventListener('focusout', leave)
     }
   }, [])
   return (

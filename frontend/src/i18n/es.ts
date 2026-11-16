@@ -2592,6 +2592,8 @@ export const es = {
             active: 'todos los activos',
             program: (name: string) => `el programa ${name}`,
             group: (name: string) => `el grupo ${name}`,
+            anyProgram: 'un programa',
+            anyGroup: 'un grupo',
             people: 'elegidas a mano',
           },
           amount: 'Monto por persona',

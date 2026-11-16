@@ -24,7 +24,7 @@ import { Card, SectionHeader } from '../components/Card'
 import { Field, Input, Select, Textarea } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
-import { toDate } from '../format'
+import { longDay } from '../format'
 import { t } from '../i18n/es'
 import { useGymName, usePageTitle } from '../pageTitle'
 import { PeoplePicker, SubHeader } from './ExtraCharges'
@@ -316,8 +316,15 @@ function Wizard({ person }: { person?: PersonRef }) {
 /** Whom the cobro is for, as the last step says it: `todos los activos`, `el grupo Clasificados final`. */
 function ruleOf(choice: Choice, programs: { id: string; name: string }[] | undefined, groups: { id: string; name: string }[] | undefined): string {
   const rule = words.confirm.rule
-  if (choice.kind === 'program') return rule.program(programs?.find((p) => p.id === choice.program_id)?.name ?? '')
-  if (choice.kind === 'group') return rule.group(groups?.find((g) => g.id === choice.group_id)?.name ?? '')
+  // A name not loaded yet: the kind of rule, unnamed.
+  if (choice.kind === 'program') {
+    const name = programs?.find((p) => p.id === choice.program_id)?.name
+    return name ? rule.program(name) : rule.anyProgram
+  }
+  if (choice.kind === 'group') {
+    const name = groups?.find((g) => g.id === choice.group_id)?.name
+    return name ? rule.group(name) : rule.anyGroup
+  }
   return rule[choice.kind]
 }
 
@@ -597,9 +604,4 @@ function Confirm({
 function emailDay(iso: string): string {
   const [year, month, day] = iso.split('-')
   return `${day}-${month}-${year}`
-}
-
-/** `30 de noviembre de 2026`. */
-function longDay(iso: string): string {
-  return toDate(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
 }

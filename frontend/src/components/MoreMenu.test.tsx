@@ -50,4 +50,28 @@ describe('MoreMenu (#357)', () => {
     expect(menu.open).toBe(false)
     expect(summary).toHaveFocus()
   })
+
+  it('closes once the keyboard tabs out of it', async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <MoreMenu label="Más">
+          <button type="button" className={moreItemClass()}>
+            Editar monto
+          </button>
+        </MoreMenu>
+        <button type="button">Siguiente fila</button>
+      </>,
+    )
+    const summary = screen.getByText('Más').closest('summary')!
+    const menu = summary.closest('details')!
+
+    await user.click(summary)
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Editar monto' })).toHaveFocus()
+    expect(menu.open).toBe(true)
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Siguiente fila' })).toHaveFocus()
+    expect(menu.open).toBe(false)
+  })
 })
