@@ -20,6 +20,7 @@ from typing import Literal
 
 from app.member_import.rows import (
     EMAIL_WORDS,
+    NAME_WORDS,
     RUT_WORDS,
     Cells,
     fold,
@@ -102,7 +103,7 @@ _HEADER_WORDS: tuple[tuple[GradeField, tuple[str, ...]], ...] = (
     (GradeField.NOTE, ("nota", "observacion", "observaciones", "comentario")),
     (GradeField.EMAIL, EMAIL_WORDS),
     (GradeField.RUT, RUT_WORDS),
-    (GradeField.NAME, ("nombre", "alumno", "alumna", "name")),
+    (GradeField.NAME, NAME_WORDS),
 )
 
 

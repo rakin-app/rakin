@@ -14,6 +14,9 @@ the totals each under a title row after the entries, and a line saying how each 
 dated after them. The XLSX has a sheet for each,
 with real dates and integers in their cells.
 
+The member's column is headed by what the gym calls one (#345, `app.domain.vocabulary`):
+"Alumno" for a gym that never said, "Socio" for one that says "socios".
+
 Every text a person typed (a name, a note, a custom field) goes out as text: one that
 starts like a formula is quoted in the CSV and typed as a string in the XLSX, so a
 spreadsheet never runs it.
@@ -32,19 +35,28 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-HEADERS = (
-    "Fecha",
-    "Alumno",
-    "RUT",
-    "Plan o cobro",
-    "Período",
-    "Tipo",
-    "Método",
-    "Monto (CLP)",
-    "Estado",
-    "Ref. bancaria",
-    "Nota",
-)
+from app.domain.vocabulary import DEFAULT_WORDS, Words
+
+
+def headers(words: Words) -> tuple[str, ...]:
+    """The entries' headers, the member's in the gym's word, before the custom fields'."""
+    return (
+        "Fecha",
+        words.member.capitalize(),
+        "RUT",
+        "Plan o cobro",
+        "Período",
+        "Tipo",
+        "Método",
+        "Monto (CLP)",
+        "Estado",
+        "Ref. bancaria",
+        "Nota",
+    )
+
+
+# As a gym with no words of its own has them: "Alumno".
+HEADERS = headers(DEFAULT_WORDS)
 
 KINDS = {
     "charge": "Cargo",
@@ -130,6 +142,8 @@ class MonthExport:
     entries: tuple[Row, ...]
     pending: tuple[Row, ...]
     totals: Totals
+    # What the gym calls its members, for the member's column.
+    words: Words = DEFAULT_WORDS
 
 
 def kind_label(kind: str, voids: bool) -> str:
@@ -226,7 +240,7 @@ def cells(row: Row) -> list[str | int | float | date | None]:
 def to_csv(export: MonthExport) -> bytes:
     out = io.StringIO()
     writer = csv.writer(out, delimiter=";", lineterminator="\r\n")
-    writer.writerow([*HEADERS, *(safe_text(f) for f in export.fields)])
+    writer.writerow([*headers(export.words), *(safe_text(f) for f in export.fields)])
     writer.writerows([csv_cell(c) for c in cells(row)] for row in export.entries)
     if export.pending:
         writer.writerow([])
@@ -274,12 +288,12 @@ def sheet(ws: Worksheet, headers: Sequence[str], rows: Iterable[Sequence[Any]]) 
 
 def to_xlsx(export: MonthExport) -> bytes:
     book = Workbook()
-    headers = [*HEADERS, *export.fields]
+    columns = [*headers(export.words), *export.fields]
     entries = book.active
     assert entries is not None
     entries.title = "Movimientos"
-    sheet(entries, headers, (cells(row) for row in export.entries))
-    sheet(book.create_sheet("Por validar"), headers, (cells(row) for row in export.pending))
+    sheet(entries, columns, (cells(row) for row in export.entries))
+    sheet(book.create_sheet("Por validar"), columns, (cells(row) for row in export.pending))
     totals = book.create_sheet("Totales")
     sheet(totals, ("Concepto", "Monto (CLP)"), total_lines(export.totals))
     put(totals, totals.max_row + 2, 1, FILED_BY)

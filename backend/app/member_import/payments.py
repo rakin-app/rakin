@@ -19,6 +19,7 @@ from typing import Literal
 
 from app.member_import.rows import (
     EMAIL_WORDS,
+    NAME_WORDS,
     RUT_WORDS,
     Cells,
     fold,
@@ -109,7 +110,7 @@ _HEADER_WORDS: tuple[tuple[PaymentField, tuple[str, ...]], ...] = (
     (PaymentField.NOTE, ("nota", "observacion", "observaciones", "comentario")),
     (PaymentField.EMAIL, EMAIL_WORDS),
     (PaymentField.RUT, RUT_WORDS),
-    (PaymentField.NAME, ("nombre", "alumno", "alumna", "name")),
+    (PaymentField.NAME, NAME_WORDS),
 )
 
 

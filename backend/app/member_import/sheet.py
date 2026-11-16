@@ -2,7 +2,8 @@
 
 A workbook is read by tab (`read_book`): the worksheets named Alumnos, Pagos and
 Grados, by folded name, else the first visible one that is none of them as Alumnos
-(#298, #299). A hidden
+(#298, #299). The people's tab goes by any gym's word for its members too (#345):
+Socios, Deportistas or Miembros, as the template names it in such a gym. A hidden
 sheet is never that fallback, though it is the first: the template hides its lists. A CSV is one
 tab, the one the upload says. `read_sheet` is the Alumnos tab alone.
 
@@ -26,6 +27,7 @@ from typing import Any, Literal, get_args
 
 from openpyxl import load_workbook
 
+from app.domain.vocabulary import MEMBERS
 from app.member_import.rows import fold
 
 # Far above a small gym's roster (under ~150 active students), with room for history.
@@ -187,6 +189,11 @@ def _tabs(workbook: Any) -> list[tuple[Tab, Any]]:
     except Exception:
         raise SheetError("unreadable") from None
     named = {tab: titles.index(tab) for tab in TABS if tab in titles}
+    if "alumnos" not in named:
+        # The template of a gym with words of its own: "Socios", say.
+        people = next((i for i, title in enumerate(titles) if title in MEMBERS), None)
+        if people is not None:
+            named["alumnos"] = people
     if "alumnos" not in named:
         # An old sheet: its first tab is the people, unless it is another tab or the
         # template's instructions.

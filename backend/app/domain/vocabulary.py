@@ -8,6 +8,10 @@ it. The words live in `gym.settings.vocabulary`; a gym with none reads today's,
 Activities from a preset carry the words a gym of that sport uses (`PRESETS`). A
 gym's first activity sets its words, unless the owner has picked them by hand
 (`by_hand`); after that nothing changes them on its own.
+
+Outside the screens (#345) the emails, the ledger export and the import template write
+them too, through `Words`: the same forms and genders the SPA holds, so "la academia"
+and "el club" agree there as well.
 """
 
 from collections.abc import Mapping
@@ -125,3 +129,82 @@ def read(value: object) -> Vocabulary:
 def stored(words: Vocabulary, *, by_hand: bool) -> dict[str, Any]:
     """`words` as `gym.settings.vocabulary` keeps them."""
     return {**words.model_dump(), "by_hand": by_hand}
+
+
+@dataclass(frozen=True)
+class Noun:
+    """A word as the copy needs it: singular, plural, and whether it is feminine."""
+
+    one: str
+    many: str
+    feminine: bool = False
+
+
+# Each option's forms, as `frontend/src/i18n/vocabulary.ts` has them.
+PLACE_NOUNS: dict[str, Noun] = {
+    "academia": Noun("academia", "academias", feminine=True),
+    "club": Noun("club", "clubes"),
+    "gimnasio": Noun("gimnasio", "gimnasios"),
+    "centro": Noun("centro", "centros"),
+    "escuela": Noun("escuela", "escuelas", feminine=True),
+    "dojo": Noun("dojo", "dojos"),
+}
+MEMBER_NOUNS: dict[str, Noun] = {
+    "alumnos": Noun("alumno", "alumnos"),
+    "socios": Noun("socio", "socios"),
+    "deportistas": Noun("deportista", "deportistas"),
+    "miembros": Noun("miembro", "miembros"),
+}
+
+
+@dataclass(frozen=True)
+class Words:
+    """The gym's words as the emails, the ledger export and the import template write
+    them (#345), lower case: `Words(DEFAULT).the_place` is "la academia". A template
+    capitalises with Jinja's `capitalize`."""
+
+    vocabulary: Vocabulary = DEFAULT
+
+    @property
+    def _place(self) -> Noun:
+        return PLACE_NOUNS[self.vocabulary.place]
+
+    @property
+    def _member(self) -> Noun:
+        return MEMBER_NOUNS[self.vocabulary.members]
+
+    @property
+    def place(self) -> str:
+        return self._place.one
+
+    @property
+    def the_place(self) -> str:
+        """ "la academia", "el club"."""
+        return f"{'la' if self._place.feminine else 'el'} {self._place.one}"
+
+    @property
+    def member(self) -> str:
+        return self._member.one
+
+    @property
+    def members(self) -> str:
+        return self._member.many
+
+    @property
+    def the_members(self) -> str:
+        """ "los alumnos", "los socios"."""
+        return f"{'las' if self._member.feminine else 'los'} {self._member.many}"
+
+    @property
+    def former_member(self) -> str:
+        """ "exalumno", "exsocio"."""
+        return f"ex{self._member.one}"
+
+
+# Today's, as a gym that never set any has them.
+DEFAULT_WORDS = Words(DEFAULT)
+
+
+def words_in(settings: Mapping[str, Any] | None) -> Words:
+    """The gym's `Words` in a `gym.settings` document; today's while it has none."""
+    return Words(vocabulary_of(settings))

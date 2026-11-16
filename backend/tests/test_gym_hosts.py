@@ -702,7 +702,7 @@ def test_a_gyms_emails_name_its_logo_on_its_host(site: Site) -> None:
                 secret_key="k" * 32,
                 hosts=HOSTS,
             )
-            return [await notices.gym_host(gym) for gym in gyms]
+            return [(await notices.gym_host(gym))[:2] for gym in gyms]
         finally:
             await engine.dispose()
 
