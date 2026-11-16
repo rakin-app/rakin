@@ -20,15 +20,18 @@ CreditCost = Annotated[int, Field(ge=0, le=MAX_CREDIT_COST)]
 
 
 class ClassKind(StrEnum):
-    """A class, or an open mat: rounds of sparring only, which by default is not a class."""
+    """A class; an open mat, rounds of sparring only, which by default is not a class; or
+    open access (#348, migration 0060): no class at all, people come when they want and
+    are checked in at the door, each visit at that day's session, counted as a class."""
 
     CLASS = "class"
     OPEN_MAT = "open_mat"
+    OPEN_ACCESS = "open_access"
 
 
 def counts_by_default(kind: ClassKind) -> bool:
     """Whether attending a class type of `kind` counts as a class, unless the gym says."""
-    return kind is ClassKind.CLASS
+    return kind is not ClassKind.OPEN_MAT
 
 
 def never_null(model: BaseModel, *fields: str) -> None:

@@ -50,6 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.class_tags import require_tags, set_tags, tags_of_slot
 from app.api.sessions import (
     gym_timezone,
+    refuse_open_access,
     require_class_type,
     require_coach,
     unprocessable,
@@ -152,6 +153,7 @@ async def create_slot(
 ) -> Slot:
     """A new slot, its classes made through the horizon at once."""
     await require_class_type(session, body.class_type_id)
+    await refuse_open_access(session, body.class_type_id)
     await require_coach(session, body.coach_id)
     await require_tags(session, body.tag_ids, [], "tag_ids")
     zone = await gym_timezone(session, tenant)
@@ -218,6 +220,7 @@ async def update_slot(
         raise unprocessable("from_date", "after_valid_to", "the slot has ended by then")
     if "class_type_id" in changes:
         await require_class_type(session, changes["class_type_id"])
+        await refuse_open_access(session, changes["class_type_id"])
         kind = await session.scalar(
             text("SELECT kind FROM class_type WHERE id = :id"), {"id": changes["class_type_id"]}
         )

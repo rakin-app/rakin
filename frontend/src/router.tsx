@@ -15,6 +15,7 @@ import { AdminLayout } from './layouts/AdminLayout'
 import { t } from './i18n/es'
 import { wearVocabulary } from './i18n/vocabulary'
 import { MeLayout } from './layouts/MeLayout'
+import { CheckIn } from './routes/CheckIn'
 import { Classes } from './routes/Classes'
 import { ExtraChargeDetail } from './routes/ExtraChargeDetail'
 import { ExtraChargeNew, validateExtraChargeNewSearch } from './routes/ExtraChargeNew'
@@ -191,6 +192,13 @@ const adminClassesRoute = createRoute({
   component: Classes,
 })
 
+// "Entrada": checking people in at the door, for a gym with open access (#348).
+const adminCheckInRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'entrada',
+  component: CheckIn,
+})
+
 // One class: its topic and notes.
 const adminSessionRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -287,6 +295,7 @@ const routeTree = rootRoute.addChildren([
     adminNewMemberRoute,
     adminMemberRoute,
     adminClassesRoute,
+    adminCheckInRoute,
     adminSessionRoute,
     adminSessionTimerRoute,
     adminPaymentsRoute,

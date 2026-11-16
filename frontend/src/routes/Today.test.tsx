@@ -137,6 +137,7 @@ const UNMARKED_CLASS: ClassSession = {
   id: 's-monday',
   class_type_id: 'fundamentos',
   class_type_name: 'Fundamentos',
+  class_type_kind: 'class',
   program_id: 'adultos',
   program_name: 'Adultos',
   starts_at: '2026-11-09T22:00:00Z',
@@ -188,6 +189,8 @@ type Stub = {
   freezeRequests?: FreezeRequest[]
   // Minors with no guardian, by name: "Falta apoderado" (#368).
   unguarded?: string[]
+  // The gym's open-access types, as `GET /api/check-in` answers (#348); none by default.
+  doors?: unknown[]
 }
 
 type Setup = {
@@ -235,6 +238,7 @@ function stubApi({
   roleFails = false,
   freezeRequests = [],
   unguarded = [],
+  doors = [],
 }: Stub = {}) {
   const calls: Call[] = []
   let asked = freezeRequests
@@ -290,6 +294,7 @@ function stubApi({
     }
     if (path === '/api/sessions/unmarked') return unmarked ?? { body: UNMARKED }
     if (path === '/api/sessions') return today ?? { body: TODAY }
+    if (path === '/api/check-in') return { body: doors }
     if (path === '/api/join-requests') return { body: { items: [], total: 0 } }
     if (path === '/api/freeze-requests') return role === 'coach' ? { status: 403, body: {} } : { body: asked }
     const answered = /^\/api\/freeze-requests\/(.+)\/(approve|reject)$/.exec(path)
@@ -636,6 +641,29 @@ describe('Hoy', () => {
     const classes = await section(copy.classes.title)
     expect(await within(classes).findByText(copy.classes.empty)).toBeInTheDocument()
     expect(within(classes).getByRole('link', { name: copy.classes.create })).toHaveAttribute('href', '/admin/clases')
+  })
+
+  it("shows a coach Entrada instead of the classes on a day with only open access (#348)", async () => {
+    const door = { ...TODAY.sessions[0]!, id: 's-door', class_type_kind: 'open_access', class_type_name: 'Acceso libre' }
+    const arrivals = [{ membership_id: 'm-1' }, { membership_id: 'm-2' }]
+    stubApi({ role: 'coach', today: { body: { ...TODAY, sessions: [door] } }, doors: [{ arrivals }] })
+    renderToday()
+
+    const entrada = await section(es.admin.checkIn.card.title)
+    expect(within(entrada).getByText(es.admin.checkIn.card.detail(2))).toBeInTheDocument()
+    expect(within(entrada).getByRole('link', { name: es.admin.checkIn.card.open })).toHaveAttribute(
+      'href',
+      '/admin/entrada',
+    )
+    expect(screen.queryByRole('heading', { name: copy.classes.title })).not.toBeInTheDocument()
+  })
+
+  it("shows a coach both Entrada and the day's classes when there are classes too", async () => {
+    stubApi({ role: 'coach', doors: [{ arrivals: [] }] })
+    renderToday()
+
+    expect(await section(es.admin.checkIn.card.title)).toHaveTextContent(es.admin.checkIn.card.detail(0))
+    expect(await section(copy.classes.title)).toBeInTheDocument()
   })
 
   it('says so when it cannot tell who is signed in, instead of an empty page', async () => {
