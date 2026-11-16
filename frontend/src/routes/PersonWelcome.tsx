@@ -6,6 +6,7 @@ import { sendWelcome, welcomeQuery, WELCOME_WAIT_MS } from '../api/people'
 import { useSubmit } from '../api/submit'
 import { Button } from '../components/Button'
 import { isoDay } from '../format'
+import { SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 
 const copy = t.admin.member.access
@@ -36,7 +37,7 @@ export function PersonWelcome({ person, role }: { person: Person; role: StaffRol
 
   return (
     <section className="member__section" aria-label={copy.title}>
-      <h2 className="member__section-title">{copy.title}</h2>
+      <SectionHeader title={copy.title} />
       <div className="member__card">
         {to === null ? (
           <p className="member__detail">{copy.noEmail}</p>

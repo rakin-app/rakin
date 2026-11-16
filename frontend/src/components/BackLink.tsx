@@ -2,39 +2,33 @@ import { useRouter, useRouterState } from '@tanstack/react-router'
 import type { MouseEvent, ReactNode } from 'react'
 import { SIGN_IN_PATH } from '../api/auth'
 import { t } from '../i18n/es'
+import { buttonClass } from './Button'
+import { ChevronLeftIcon } from './icons'
 import { previousEntry, type TrailEntry } from '../trail'
 
 const places = t.common.places
 
-// The pages a back link can name, by path, and whether that name stands alone as the
-// page's title ("Pagos") or only reads after "Volver a" ("la ficha"). Static paths
-// before the `$id` ones.
-const PLACES: ReadonlyArray<readonly [RegExp, string, boolean]> = [
-  [/^\/admin\/?$/, places.today, true],
-  [/^\/admin\/alumnos\/?$/, places.students, true],
-  [/^\/admin\/alumnos\/(importar|nuevo)\/?$/, '', false],
-  [/^\/admin\/alumnos\/[^/]+\/?$/, places.member, false],
-  [/^\/admin\/clases\/?$/, places.classes, true],
-  [/^\/admin\/clases\/[^/]+\/?$/, places.session, false],
-  [/^\/admin\/pagos\/?$/, places.payments, true],
-  [/^\/admin\/pagos\/comprobantes\/?$/, places.proofs, false],
-  [/^\/admin\/pagos\/cobros\/?$/, places.extra, true],
-  [/^\/admin\/pagos\/cobros\/nuevo\/?$/, '', false],
-  [/^\/admin\/pagos\/cobros\/[^/]+\/?$/, places.charge, false],
+// The pages a back link can name, by path. Static paths before the `$id` ones.
+const PLACES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^\/admin\/?$/, places.today],
+  [/^\/admin\/alumnos\/?$/, places.students],
+  [/^\/admin\/alumnos\/(importar|nuevo)\/?$/, ''],
+  [/^\/admin\/alumnos\/[^/]+\/?$/, places.member],
+  [/^\/admin\/clases\/?$/, places.classes],
+  [/^\/admin\/clases\/[^/]+\/?$/, places.session],
+  [/^\/admin\/pagos\/?$/, places.payments],
+  [/^\/admin\/pagos\/comprobantes\/?$/, places.proofs],
+  [/^\/admin\/pagos\/cobros\/?$/, places.extra],
+  [/^\/admin\/pagos\/cobros\/nuevo\/?$/, ''],
+  [/^\/admin\/pagos\/cobros\/[^/]+\/?$/, places.charge],
   // Ajustes and each of its sections.
-  [/^\/admin\/ajustes(\/.*)?$/, places.settings, true],
-  [/^\/me\/?$/, places.me, true],
+  [/^\/admin\/ajustes(\/.*)?$/, places.settings],
+  [/^\/me\/?$/, places.me],
 ]
 
 /** The name of the page at `pathname`, when it is one a back link names. */
 export function placeOf(pathname: string): string | undefined {
   return PLACES.find(([path]) => path.test(pathname))?.[1] || undefined
-}
-
-/** The page's own name, as a title says it, when it has one. */
-function nameOf(pathname: string): string | undefined {
-  const place = PLACES.find(([path]) => path.test(pathname))
-  return place?.[2] ? place[1] : undefined
 }
 
 const trimmed = (pathname: string) => pathname.replace(/(.)\/$/, '$1')
@@ -48,8 +42,6 @@ export type Back = {
   label: string
   /** The previous page's name, when it is one we name. */
   place?: string
-  /** The previous page's name as a title says it, "Pagos", when it has one. */
-  name?: string
   go: () => void
 }
 
@@ -76,7 +68,6 @@ export function useBack(fallback: string, fallbackLabel: string): Back {
     href: previous.href,
     label: place ? t.common.backTo(place) : t.common.back,
     place,
-    name: nameOf(previous.pathname),
     go: () => router.history.back(),
   }
 }
@@ -96,8 +87,9 @@ export function useLeaveTo(path: string): () => void {
 }
 
 /**
- * The back link of a screen's header, labelled by where it goes. Its children are an
- * icon, or a function of the destination for visible text.
+ * The back link of a screen's header, labelled by where it goes: one pattern across the
+ * admin app (#360), a square chevron button with a 44px target. Its children, when
+ * given, are a function of the destination for visible text.
  */
 export function BackLink({
   to,
@@ -110,7 +102,7 @@ export function BackLink({
   /** The fixed parent's label, "Volver a Alumnos". */
   label: string
   className?: string
-  children: ReactNode | ((back: Back) => ReactNode)
+  children?: (back: Back) => ReactNode
 }) {
   const back = useBack(to, label)
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -121,8 +113,13 @@ export function BackLink({
     back.go()
   }
   return (
-    <a href={back.href} className={className} aria-label={back.label} onClick={onClick}>
-      {typeof children === 'function' ? children(back) : children}
+    <a
+      href={back.href}
+      className={className ?? buttonClass({ icon: true })}
+      aria-label={back.label}
+      onClick={onClick}
+    >
+      {children ? children(back) : <ChevronLeftIcon />}
     </a>
   )
 }

@@ -203,9 +203,12 @@
   font-size: var(--text-sm);
 }
 
+/* Rechazar and Confirmar stay under the thumb on every proof, above the bottom nav
+   (AdminLayout.css) on a phone, as the roster's "Guardar asistencia" does. */
 .review__actions {
   position: sticky;
-  bottom: 0;
+  bottom: calc(var(--space-6) + var(--nav-height) + env(safe-area-inset-bottom));
+  z-index: 1;
   display: grid;
   grid-template-columns: 1fr 2fr;
   gap: var(--space-2-5);
@@ -275,6 +278,10 @@
   .review__body,
   .review__actions {
     padding-inline: var(--space-8);
+  }
+
+  .review__actions {
+    bottom: 0;
   }
 
   .review__note,

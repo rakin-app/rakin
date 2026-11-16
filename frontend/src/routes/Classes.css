@@ -311,7 +311,7 @@
    bottom nav (AdminLayout.css) on a phone. */
 .attendance__bar {
   position: sticky;
-  bottom: calc(var(--space-6) + 72px + env(safe-area-inset-bottom));
+  bottom: calc(var(--space-6) + var(--nav-height) + env(safe-area-inset-bottom));
   margin-inline: calc(-1 * var(--space-5));
   padding: var(--space-3) var(--space-5);
   background: var(--color-surface);

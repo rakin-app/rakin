@@ -13,7 +13,7 @@
   flex: 1 1 auto;
   min-width: 0;
   /* Keep content clear of the fixed bottom nav. */
-  padding-bottom: calc(var(--space-6) + 72px + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--space-6) + var(--nav-height) + env(safe-area-inset-bottom));
 }
 
 /* Mobile: a dark bar on top, the mark and the gym (#199) */

@@ -20,7 +20,7 @@ import {
   type SuggestedBlock,
 } from '../api/sessionBlocks'
 import { sessionQuery, useGymTimeZone, type ClassSession } from '../api/sessions'
-import { Button, buttonClass } from '../components/Button'
+import { Button } from '../components/Button'
 import { BackLink, useLeaveTo } from '../components/BackLink'
 import { Input, Select } from '../components/Field'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, CloseIcon } from '../components/icons'
@@ -169,9 +169,7 @@ function Shell({ sessionId, title, children }: { sessionId: string; title?: stri
   return (
     <div className="classes">
       <header className="classes__header">
-        <BackLink to={`/admin/clases/${sessionId}`} label={copy.back} className={buttonClass({ icon: true })}>
-          <ChevronLeftIcon />
-        </BackLink>
+        <BackLink to={`/admin/clases/${sessionId}`} label={copy.back} />
         {title && (
           <div className="classes__heading">
             <h1 className="classes__title">{title}</h1>

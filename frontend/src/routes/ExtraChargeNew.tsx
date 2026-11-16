@@ -24,8 +24,9 @@ import { Card, SectionHeader } from '../components/Card'
 import { Field, Input, Select, Textarea } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
+import { longDay } from '../format'
 import { t } from '../i18n/es'
-import { usePageTitle } from '../pageTitle'
+import { useGymName, usePageTitle } from '../pageTitle'
 import { PeoplePicker, SubHeader } from './ExtraCharges'
 import './ExtraCharges.css'
 import { useSubmit } from '../api/submit'
@@ -117,6 +118,9 @@ function Wizard({ person }: { person?: PersonRef }) {
   const [notify, setNotify] = useState(true)
 
   const target = targetOf(choice)
+  // The names the last step gives the rule by: TargetStep's own queries, from the cache.
+  const programs = useQuery(programsQuery)
+  const groups = useQuery(groupsQuery())
   const amountClp = Number(amount)
   const draft: Draft | null = target && {
     title,
@@ -271,7 +275,16 @@ function Wizard({ person }: { person?: PersonRef }) {
               </label>
             </>
           )}
-          {step === 4 && preview.data && <Confirm title={title} preview={preview.data} />}
+          {step === 4 && preview.data && (
+            <Confirm
+              title={title}
+              preview={preview.data}
+              rule={ruleOf(choice, programs.data, groups.data)}
+              dueDate={dueDate}
+              message={message}
+              notify={notify}
+            />
+          )}
         </Card>
         {create.isError && (
           <p className="extra__error" role="alert">
@@ -298,6 +311,21 @@ function Wizard({ person }: { person?: PersonRef }) {
       </form>
     </PageContainer>
   )
+}
+
+/** Whom the cobro is for, as the last step says it: `todos los activos`, `el grupo Clasificados final`. */
+function ruleOf(choice: Choice, programs: { id: string; name: string }[] | undefined, groups: { id: string; name: string }[] | undefined): string {
+  const rule = words.confirm.rule
+  // A name not loaded yet: the kind of rule, unnamed.
+  if (choice.kind === 'program') {
+    const name = programs?.find((p) => p.id === choice.program_id)?.name
+    return name ? rule.program(name) : rule.anyProgram
+  }
+  if (choice.kind === 'group') {
+    const name = groups?.find((g) => g.id === choice.group_id)?.name
+    return name ? rule.group(name) : rule.anyGroup
+  }
+  return rule[choice.kind]
 }
 
 function previewProblem(error: unknown): string {
@@ -466,11 +494,89 @@ function AmountStep({
   )
 }
 
-function Confirm({ title, preview }: { title: string; preview: Preview }) {
+/** The last look before charging (#357): who and by what rule, each one's amount, the
+ *  total, the due date, and the email as the first of them will read it. */
+function Confirm({
+  title,
+  preview,
+  rule,
+  dueDate,
+  message,
+  notify,
+}: {
+  title: string
+  preview: Preview
+  rule: string
+  dueDate: string
+  message: string
+  notify: boolean
+}) {
+  const gym = useGymName() ?? ''
   const without = preview.lines.filter((line) => !line.has_email && line.amount_clp > 0)
+  const adjusted = preview.lines.filter((line) => line.overridden).length
+  const amounts = preview.lines.map((line) => line.amount_clp)
+  const low = Math.min(...amounts)
+  const high = Math.max(...amounts)
+  const perPerson =
+    preview.share_clp !== null
+      ? words.split(clp(preview.share_clp), preview.lines.length)
+      : low === high
+        ? words.each(clp(low))
+        : words.range(clp(low), clp(high))
+  const sample = preview.lines.find((line) => line.has_email && line.amount_clp > 0)
   return (
     <>
-      <p>{words.summary(title.trim(), preview.lines.length, clp(preview.total_clp))}</p>
+      <dl className="extra__confirm">
+        <div>
+          <dt>{words.confirm.charge}</dt>
+          <dd className="extra__confirm-title">{title.trim()}</dd>
+        </div>
+        <div>
+          <dt>{words.confirm.who}</dt>
+          <dd>{words.confirm.whoIs(preview.lines.length, rule)}</dd>
+        </div>
+        <div>
+          <dt>{words.confirm.amount}</dt>
+          <dd>
+            {perPerson}
+            {adjusted > 0 && <span className="extra__hint">{words.confirm.adjusted(adjusted)}</span>}
+          </dd>
+        </div>
+        <div>
+          <dt>{words.confirm.total}</dt>
+          <dd className="extra__confirm-total">{clp(preview.total_clp)}</dd>
+        </div>
+        <div>
+          <dt>{words.confirm.due}</dt>
+          <dd>{longDay(dueDate)}</dd>
+        </div>
+      </dl>
+      <section className="extra__email" aria-labelledby="extra-email">
+        <h3 id="extra-email" className="extra__legend">
+          {words.confirm.message}
+        </h3>
+        {!notify ? (
+          <p className="extra__hint">{words.confirm.noNotify}</p>
+        ) : sample ? (
+          <>
+            <p className="extra__hint">{words.confirm.sampleFor(sample.contact_name)}</p>
+            <div className="extra__email-body">
+              <p>{words.confirm.hello(sample.contact_name)}</p>
+              <p>{words.confirm.sends(gym, title.trim(), sample.on_behalf ? sample.person.name : null)}</p>
+              {message.trim() && <p className="extra__message">{message.trim()}</p>}
+              <p>
+                {words.confirm.owes(
+                  sample.on_behalf ? sample.person.name : null,
+                  clp(sample.amount_clp),
+                  emailDay(dueDate),
+                )}
+              </p>
+            </div>
+          </>
+        ) : (
+          <p className="extra__hint">{words.confirm.nobodyEmailed}</p>
+        )}
+      </section>
       {without.length > 0 && (
         <>
           <p className="extra__hint">{words.noEmail(without.length)}</p>
@@ -492,4 +598,10 @@ function Confirm({ title, preview }: { title: string; preview: Preview }) {
       )}
     </>
   )
+}
+
+/** `30-11-2026`, the email's own way of writing the due date. */
+function emailDay(iso: string): string {
+  const [year, month, day] = iso.split('-')
+  return `${day}-${month}-${year}`
 }

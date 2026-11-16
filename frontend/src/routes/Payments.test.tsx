@@ -282,11 +282,11 @@ describe('Pagos', () => {
 
     const rows = within(await table()).getAllByRole('row').slice(1)
     expect(rows.map(cells)).toEqual([
-      ['8 nov 14:12', 'Diego Morales', 'Pago', 'Nov 2026', 'Transferencia', 'Por validar', '$45.000'],
-      ['7 nov 09:05', 'Mateo OrtizApoderado: Camila Ortiz', 'Pago', 'Nov 2026', 'Efectivo', 'Validado · Martín', '$45.000'],
+      ['8 nov 14:12', 'Diego Morales', 'Pago', 'nov 2026', 'Transferencia', 'Por validar', '$45.000'],
+      ['7 nov 09:05', 'Mateo OrtizApoderado: Camila Ortiz', 'Pago', 'nov 2026', 'Efectivo', 'Validado · Martín', '$45.000'],
       // A charge is dated by its period's start, the day the book files it under (#206).
-      ['1 dic', 'Andrés Molina', 'Cargo', 'Dic 2026 – May 2027', 'Prepago 6 meses', 'Abierto · vence 1 dic', '$240.000'],
-      ['31 oct', 'Felipe Díaz', 'Cargo', 'Oct 2026', 'Mensual adultos', 'Vencido 9 d', '$45.000'],
+      ['1 dic', 'Andrés Molina', 'Cargo', 'dic 2026 – may 2027', 'Prepago 6 meses', 'Abierto · vence 1 dic', '$240.000'],
+      ['31 oct', 'Felipe Díaz', 'Cargo', 'oct 2026', 'Mensual adultos', 'Vencido 9 d', '$45.000'],
       ['4 nov 20:01', 'Paula Contreras', 'Ajuste', 'A favor', 'Pagó $50.000; quedan $5.000 a favor', 'Validado · Martín', '$5.000'],
     ])
     expect(within(rows[0]!).getByRole('link', { name: 'Diego Morales' })).toHaveAttribute('href', '/admin/alumnos/diego')
@@ -336,9 +336,9 @@ describe('Pagos', () => {
 
     const rows = within(await table()).getAllByRole('row').slice(1)
     expect(rows.map(cells)).toEqual([
-      ['8 nov 14:12', 'Diego Morales', 'Devolución', 'Nov 2026', 'Efectivo', 'Validado · Martín', '−$10.000'],
-      ['8 nov 14:12', 'Diego Morales', 'Recargo', 'Nov 2026', 'matrícula', 'Validado · Martín', '+$5.000'],
-      ['8 nov 14:12', 'Diego Morales', 'Descuento', 'Nov 2026', 'hermano', 'Validado · Martín', '−$5.000'],
+      ['8 nov 14:12', 'Diego Morales', 'Devolución', 'nov 2026', 'Efectivo', 'Validado · Martín', '−$10.000'],
+      ['8 nov 14:12', 'Diego Morales', 'Recargo', 'nov 2026', 'matrícula', 'Validado · Martín', '+$5.000'],
+      ['8 nov 14:12', 'Diego Morales', 'Descuento', 'nov 2026', 'hermano', 'Validado · Martín', '−$5.000'],
     ])
   })
 
@@ -543,6 +543,43 @@ describe('Pagos', () => {
     expect(review).toHaveClass('button--primary')
     expect(screen.getByRole('button', { name: copy.record })).not.toHaveClass('button--primary')
     expect(document.querySelectorAll('.payments__header .button--primary')).toHaveLength(1)
+  })
+
+  it('keeps Cobros extra and the exports under "Más", the header holding two actions (#357)', async () => {
+    stubApi()
+    renderAt('/admin/pagos')
+    await table()
+
+    const header = document.querySelector<HTMLElement>('.payments__actions')!
+    expect([...header.querySelectorAll('a, button, summary')].map((c) => c.textContent)).toEqual([copy.review(3), copy.record])
+    // "Más" beside the period picker, holding the rest.
+    const more = document.querySelector('.payments__toolbar .more-menu__list')!
+    expect([...more.children].map((c) => c.textContent)).toEqual([copy.extra, copy.exportCsv, copy.exportXlsx])
+  })
+
+  it('draws the period picker before the book answers, so the header does not move (#357)', async () => {
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      answer = resolve
+    })
+    stubApi()
+    const real = globalThis.fetch
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input, init) => {
+        if (new URL(String(input), 'http://localhost').pathname === '/api/ledger/book') await held
+        return real(input, init)
+      }),
+    )
+    renderAt('/admin/pagos?month=2026-11-01')
+
+    const select = await screen.findByLabelText(copy.month)
+    expect(select).toBeDisabled()
+    expect(select).toHaveValue('2026-11-01')
+    answer()
+    await table()
+    expect(screen.getByLabelText(copy.month)).toBe(select)
+    expect(select).toBeEnabled()
   })
 
   it('makes recording a payment the primary action when no proof waits', async () => {

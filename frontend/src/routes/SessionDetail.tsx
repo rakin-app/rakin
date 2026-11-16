@@ -27,7 +27,7 @@ import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
 import { BackLink } from '../components/BackLink'
 import { Input, SearchInput, Select, Textarea } from '../components/Field'
-import { CheckIcon, ChevronLeftIcon } from '../components/icons'
+import { CheckIcon } from '../components/icons'
 import { TagList, TagPicker } from '../components/Tags'
 import { clockTime, dayTime, isoDay } from '../format'
 import { t } from '../i18n/es'
@@ -153,9 +153,7 @@ function Shell({
   return (
     <div className="classes">
       <header className="classes__header">
-        <BackLink to="/admin/clases" label={copy.back} className={buttonClass({ icon: true })}>
-          <ChevronLeftIcon />
-        </BackLink>
+        <BackLink to="/admin/clases" label={copy.back} />
         {title && (
           <div className="classes__heading">
             {eyebrow && <span className="classes__eyebrow">{eyebrow}</span>}

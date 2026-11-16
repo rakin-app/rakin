@@ -31,6 +31,12 @@ export function changesPlan(membership: Membership): boolean {
   return RECURRING.has(membership.plan_kind) && (membership.status === 'active' || membership.status === 'frozen')
 }
 
+/** Whether "Asignar plan" is offered: by the owner or an admin, to someone on the roster
+ * with no plan running. */
+export function assignsPlan(person: Person, membership: Membership | undefined, role: StaffRole | null | undefined): boolean {
+  return (role === 'owner' || role === 'admin') && !person.left_on && !isLive(membership)
+}
+
 /**
  * "Asignar plan" (#249), in the plan column, for someone on the roster with no plan running:
  * never had one, or it lapsed or was cancelled. A plan and its first day, as "Nuevo
@@ -38,7 +44,7 @@ export function changesPlan(membership: Membership): boolean {
  * the owner and admins; someone dado de baja comes back by "Reactivar" instead.
  *
  * `done` and `setDone` are the ficha's: once the plan starts this moves into its card,
- * a new place in the tree, and a message of its own would go with the old one.
+ * a new place in the tree, and the card says what was done.
  */
 export function AssignPlan({
   person,
@@ -54,18 +60,9 @@ export function AssignPlan({
   setDone: (message: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const manages = role === 'owner' || role === 'admin'
-  if (!manages || person.left_on) return null
-  // Started: the plan card has it now, and here only what was done.
-  if (isLive(membership)) {
-    return (
-      done && (
-        <p className="member__done" role="status">
-          {done}
-        </p>
-      )
-    )
-  }
+  if ((role !== 'owner' && role !== 'admin') || person.left_on) return null
+  // Started: the plan card has it now, and what was done.
+  if (isLive(membership)) return null
 
   return (
     <>
@@ -102,7 +99,8 @@ export function AssignPlan({
   )
 }
 
-function AssignForm({
+/** A plan and its first day, and the welcome: what "Asignar plan" opens. */
+export function AssignForm({
   person,
   onCancel,
   onDone,

@@ -1,6 +1,6 @@
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { ApiError, apiFetch } from '../api/client'
 import {
   chargesQuery,
@@ -20,7 +20,6 @@ import { Button, buttonClass } from '../components/Button'
 import { BackLink } from '../components/BackLink'
 import { Card, EmptyState, ListRowContent, listRowClass, SectionHeader } from '../components/Card'
 import { Field, Input, SearchInput, Select } from '../components/Field'
-import { ChevronLeftIcon } from '../components/icons'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { hasRanks, RankFilter, rankFilters, type RankChoice } from '../components/RankFilter'
@@ -82,17 +81,41 @@ export function SubHeader({
     <header className="extra__header">
       <BackLink
         to={back === 'pagos' ? '/admin/pagos' : '/admin/pagos/cobros'}
-        label={back === 'pagos' ? copy.back : copy.title}
-        className={buttonClass({ icon: true })}
-      >
-        <ChevronLeftIcon />
-      </BackLink>
+        label={back === 'pagos' ? copy.back : copy.title} />
       <div className="extra__heading">
-        <h1 className="extra__title">{title}</h1>
+        <Title title={title} />
         {subtitle && <p className="extra__subtitle">{subtitle}</p>}
       </div>
       {children && <div className="extra__actions">{children}</div>}
     </header>
+  )
+}
+
+/** A cobro's title at h1 size, cut to two lines; "Ver título completo" shows the rest,
+ *  for a title too long for them (#357). A screen reader hears it whole either way. */
+function Title({ title }: { title: string }) {
+  const ref = useRef<HTMLHeadingElement>(null)
+  const [cut, setCut] = useState(false)
+  const [whole, setWhole] = useState(false)
+  useLayoutEffect(() => {
+    const heading = ref.current
+    if (!heading || whole) return
+    const measure = () => setCut(heading.scrollHeight > heading.clientHeight + 1)
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [title, whole])
+  return (
+    <>
+      <h1 ref={ref} className={whole ? 'extra__title' : 'extra__title extra__title--clamped'} title={title}>
+        {title}
+      </h1>
+      {(cut || whole) && (
+        <button type="button" className="extra__title-toggle" aria-expanded={whole} onClick={() => setWhole(!whole)}>
+          {whole ? copy.titleLess : copy.titleMore}
+        </button>
+      )}
+    </>
   )
 }
 
@@ -107,7 +130,13 @@ function ChargeList() {
       </div>
     )
   }
-  if (charges.data.length === 0) return <EmptyState>{copy.empty}</EmptyState>
+  if (charges.data.length === 0) {
+    return (
+      <Card>
+        <EmptyState>{copy.empty}</EmptyState>
+      </Card>
+    )
+  }
   return (
     <ul className="extra__list" aria-label={copy.listLabel}>
       {charges.data.map((charge) => (
@@ -192,7 +221,7 @@ function Groups() {
           }}
         />
       )}
-      {groups.isSuccess && groups.data.length === 0 && editing === null && <p className="extra__note">{words.empty}</p>}
+      {groups.isSuccess && groups.data.length === 0 && editing === null && <EmptyState>{words.empty}</EmptyState>}
       {groups.isSuccess && groups.data.length > 0 && (
         <ul className="extra__list">
           {groups.data.map((group) => (

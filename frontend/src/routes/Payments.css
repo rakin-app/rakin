@@ -39,6 +39,17 @@
 .payments__actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The month and "Más", a row under the header, there from the first render: the book
+   loading does not move them (#357). */
+.payments__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
 }
 

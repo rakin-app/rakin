@@ -22,6 +22,7 @@ import { Button } from '../components/Button'
 import { Input, Select, Textarea } from '../components/Field'
 import { ChevronRightIcon, CloseIcon } from '../components/icons'
 import { shortDay } from '../format'
+import { SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 import { GradeForm } from './GradeForm'
 import './PersonHistory.css'
@@ -58,9 +59,7 @@ export function PersonHistory({ person }: { person: Person }) {
 
   return (
     <section className="member__section" aria-labelledby="member-history">
-      <h2 id="member-history" className="member__section-title">
-        {copy.title}
-      </h2>
+      <SectionHeader id="member-history" title={copy.title} />
       <div className="member__card member__history">
         {lines.length > 0 ? (
           lines.map((line) => (

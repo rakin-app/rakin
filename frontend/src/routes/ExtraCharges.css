@@ -31,6 +31,27 @@
   overflow-wrap: anywhere;
 }
 
+/* A long cobro title at h1 size, two lines at most (#357); the button under it shows all. */
+.extra__title--clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.extra__title-toggle {
+  min-height: var(--control-height);
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
 .extra__subtitle,
 .extra__hint,
 .extra__note {
@@ -96,9 +117,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-.extra > .extra__progress {
-  justify-items: start;
+/* One cobro's own, in its card: left-aligned, the bar the card's width (#357). */
+.extra__summary .extra__progress {
+  justify-items: stretch;
   text-align: left;
+}
+
+.extra__summary .extra__bar {
+  width: 100%;
 }
 
 .extra__progress-text {
@@ -217,6 +243,62 @@
   color: var(--color-text);
   background: var(--color-surface);
   font-weight: var(--font-weight-semibold);
+}
+
+/* The wizard's last look (#357): label and value per row, then the email. */
+.extra__confirm {
+  display: grid;
+  gap: var(--space-2-5);
+  margin: 0;
+}
+
+.extra__confirm > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding-bottom: var(--space-2-5);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.extra__confirm dt {
+  color: var(--color-text-muted);
+}
+
+.extra__confirm dd {
+  margin: 0;
+  font-weight: var(--font-weight-medium);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* A title can run long: its own line, read from the left. */
+.extra__confirm dd.extra__confirm-title {
+  flex-basis: 100%;
+  text-align: left;
+}
+
+.extra__confirm-total {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.extra__email {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.extra__email-body {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-sunken);
+  font-size: var(--text-md);
+}
+
+.extra__email-body p {
+  margin: 0;
 }
 
 /* One cobro's people. */

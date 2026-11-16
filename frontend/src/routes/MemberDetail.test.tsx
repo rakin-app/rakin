@@ -353,6 +353,17 @@ const PATH = '/admin/alumnos/felipe'
 const money = () => screen.findByRole('region', { name: copy.paymentLabel })
 const libro = () => screen.findByRole('region', { name: copy.ledger.title })
 
+/** The plan card's action `name`: beside "Registrar pago", or under "Más acciones",
+ * opened for it (#360). */
+async function planAction(card: HTMLElement, name: string) {
+  await within(card).findAllByRole('button', { name: (n) => n === name || n === copy.moreActions })
+  const shown = within(card).queryByRole('button', { name })
+  if (shown) return shown
+  const more = within(card).getByRole('button', { name: copy.moreActions })
+  if (more.getAttribute('aria-expanded') !== 'true') await userEvent.click(more)
+  return within(card).getByRole('button', { name })
+}
+
 /** Opens the fixes of the Libro line whose button reads `line` (#279), named `title`. */
 async function fixLine(line: RegExp, title: string) {
   const ledger = await libro()
@@ -602,9 +613,9 @@ describe('Ficha de alumno', () => {
     const card = await money()
 
     expect(await within(card).findByRole('button', { name: copy.record })).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: copy.refund })).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: copy.freeze })).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: copy.changePlan })).toBeInTheDocument()
+    expect(await planAction(card, copy.refund)).toBeInTheDocument()
+    expect(await planAction(card, copy.freeze)).toBeInTheDocument()
+    expect(await planAction(card, copy.changePlan)).toBeInTheDocument()
     for (const gone of ['Ajuste', copy.fix.voidCharge, copy.fix.restoreCharge, copy.voidPlan]) {
       expect(within(card).queryByRole('button', { name: gone })).not.toBeInTheDocument()
     }
@@ -1043,7 +1054,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    const fix = await within(card).findByRole('button', { name: copy.fix.plan })
+    const fix = await planAction(card, copy.fix.plan)
     await userEvent.click(fix)
     expect(fix).toHaveAttribute('aria-expanded', 'true')
     const choices = within(card).getByRole('group', { name: copy.fix.plan })
@@ -1066,7 +1077,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.fix.plan }))
+    await userEvent.click(await planAction(card, copy.fix.plan))
     const choices = within(card).getByRole('group', { name: copy.fix.plan })
     expect(within(choices).getByRole('link', { name: copy.fix.extraCharge })).toHaveAttribute(
       'href',
@@ -1118,7 +1129,7 @@ describe('Ficha de alumno', () => {
     expect(within(card).getByText(copy.voidedBadge)).toBeInTheDocument()
     // Nothing left to void: no line to fix, and "Corregir plan" offers only a cobro extra.
     expect(within(ledger).queryByRole('button')).not.toBeInTheDocument()
-    await userEvent.click(within(card).getByRole('button', { name: copy.fix.plan }))
+    await userEvent.click(await planAction(card, copy.fix.plan))
     const choices = within(card).getByRole('group', { name: copy.fix.plan })
     expect(within(choices).queryByRole('button', { name: copy.voidPlan })).not.toBeInTheDocument()
     expect(within(choices).getByRole('link', { name: copy.fix.extraCharge })).toBeInTheDocument()
@@ -1138,7 +1149,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.refund }))
+    await userEvent.click(await planAction(card, copy.refund))
     const form = screen.getByRole('form', { name: copy.refundForm.title })
     // Only the validated payment, not the claim waiting for review.
     expect(within(form).getAllByRole('option', { name: /^Pago/ }).map((o) => o.textContent)).toEqual([
@@ -1205,7 +1216,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.refund }))
+    await userEvent.click(await planAction(card, copy.refund))
     await userEvent.click(screen.getByRole('button', { name: copy.refundForm.submit('$45.000') }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.refundForm.refused.exceeds)
@@ -1216,7 +1227,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.refund }))
+    await userEvent.click(await planAction(card, copy.refund))
     expect(screen.getByLabelText(copy.refundForm.payment)).toHaveTextContent(
       copy.refundForm.paymentOption('septiembre', '2 oct', '$45.000'),
     )
@@ -1427,7 +1438,7 @@ describe('Ficha de alumno', () => {
     const card = await money()
     const until = isoDay(new Date(Date.now() + 15 * 86_400_000).toISOString())
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    await userEvent.click(await planAction(card, copy.freeze))
     const form = screen.getByRole('form', { name: copy.freezeForm.title })
     fireEvent.change(within(form).getByLabelText(copy.freezeForm.until), { target: { value: until } })
     await userEvent.type(within(form).getByLabelText(copy.freezeForm.reason), '  Lesión de rodilla ')
@@ -1440,8 +1451,8 @@ describe('Ficha de alumno', () => {
     // Read again, the header says it is frozen, and it can be edited or ended instead.
     expect(await within(card).findByText(copy.frozenUntil(shortDay(until)))).toBeInTheDocument()
     expect(within(card).queryByRole('button', { name: copy.freeze })).not.toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: copy.editFreeze })).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: copy.endFreeze })).toBeInTheDocument()
+    expect(await planAction(card, copy.editFreeze)).toBeInTheDocument()
+    expect(await planAction(card, copy.endFreeze)).toBeInTheDocument()
   })
 
   it('books a freeze to start on a later day', async () => {
@@ -1451,7 +1462,7 @@ describe('Ficha de alumno', () => {
     const from = isoDay(new Date(Date.now() + 5 * 86_400_000).toISOString())
     const until = isoDay(new Date(Date.now() + 15 * 86_400_000).toISOString())
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    await userEvent.click(await planAction(card, copy.freeze))
     const form = screen.getByRole('form', { name: copy.freezeForm.title })
     fireEvent.change(within(form).getByLabelText(copy.freezeForm.from), { target: { value: from } })
     fireEvent.change(within(form).getByLabelText(copy.freezeForm.until), { target: { value: until } })
@@ -1483,7 +1494,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    await userEvent.click(await planAction(card, copy.freeze))
     const from = screen.getByLabelText(copy.freezeForm.from)
     await waitFor(() => expect(from).toHaveValue(today))
     expect(from).toHaveAttribute('min', today)
@@ -1504,7 +1515,7 @@ describe('Ficha de alumno', () => {
     const from = isoDay(new Date(Date.now() + 5 * 86_400_000).toISOString())
     const next = isoDay(new Date(Date.now() + 6 * 86_400_000).toISOString())
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    await userEvent.click(await planAction(card, copy.freeze))
     // Today in the gym's timezone, not the test runner's.
     expect(screen.getByLabelText(copy.freezeForm.from)).toHaveValue(isoDay(new Date().toISOString(), 'America/Santiago'))
     fireEvent.change(screen.getByLabelText(copy.freezeForm.from), { target: { value: from } })
@@ -1518,7 +1529,7 @@ describe('Ficha de alumno', () => {
     const card = await money()
     const until = isoDay(new Date(Date.now() + 30 * 86_400_000).toISOString())
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.editFreeze }))
+    await userEvent.click(await planAction(card, copy.editFreeze))
     const form = screen.getByRole('form', { name: copy.editFreezeForm.title })
     expect(within(form).getByLabelText(copy.editFreezeForm.reason)).toHaveValue('Viaje')
     fireEvent.change(within(form).getByLabelText(copy.editFreezeForm.until), { target: { value: until } })
@@ -1538,7 +1549,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.endFreeze }))
+    await userEvent.click(await planAction(card, copy.endFreeze))
     const form = screen.getByRole('form', { name: copy.endFreezeForm.title })
     expect(form).toHaveTextContent(copy.endFreezeForm.endHint)
     expect(calls.filter((c) => c.method === 'POST')).toEqual([])
@@ -1548,7 +1559,7 @@ describe('Ficha de alumno', () => {
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       { method: 'POST', path: '/api/memberships/m-felipe/freeze/end', body: undefined },
     ])
-    expect(await within(card).findByRole('button', { name: copy.freeze })).toBeEnabled()
+    expect(await planAction(card, copy.freeze)).toBeEnabled()
   })
 
   it('calls off a booked freeze', async () => {
@@ -1560,7 +1571,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.callOffFreeze }))
+    await userEvent.click(await planAction(card, copy.callOffFreeze))
     const form = screen.getByRole('form', { name: copy.endFreezeForm.title })
     expect(form).toHaveTextContent(copy.endFreezeForm.callOffHint('1 dic', '15 dic'))
     await userEvent.click(within(form).getByRole('button', { name: copy.endFreezeForm.callOff }))
@@ -1574,7 +1585,7 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    await userEvent.click(await planAction(card, copy.freeze))
     await userEvent.click(screen.getByRole('button', { name: copy.freezeForm.submit }))
 
     const alerts = await screen.findAllByRole('alert')
@@ -1588,7 +1599,7 @@ describe('Ficha de alumno', () => {
     const card = await money()
     const until = isoDay(new Date(Date.now() + 15 * 86_400_000).toISOString())
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.freeze }))
+    await userEvent.click(await planAction(card, copy.freeze))
     fireEvent.change(screen.getByLabelText(copy.freezeForm.until), { target: { value: until } })
     await userEvent.type(screen.getByLabelText(copy.freezeForm.reason), 'Viaje')
     await userEvent.click(screen.getByRole('button', { name: copy.freezeForm.submit }))
@@ -2632,7 +2643,8 @@ describe('the plan from the ficha (#249)', () => {
     const calls = planless([{ ...MONTHLY, status: 'lapsed' }])
     renderAt(PATH)
 
-    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    // Lapsed and owing: "Registrar pago" first, "Reactivar plan" beside it, and "Asignar plan" under "Más acciones" (#360).
+    await userEvent.click(await planAction(await money(), copy.assignPlan))
     const form = screen.getByRole('form', { name: assign.title })
     expect(within(form).queryByText(assign.debt('$45.000'))).not.toBeInTheDocument()
     await userEvent.selectOptions(await within(form).findByLabelText(assign.plan), 'plan-adults')
@@ -2670,7 +2682,7 @@ describe('the plan from the ficha (#249)', () => {
     expect(await within(await money()).findByText(copy.pendingMonth('octubre'))).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: copy.earlierDebt })).not.toBeInTheDocument()
 
-    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    await userEvent.click(await planAction(await money(), copy.assignPlan))
     const form = screen.getByRole('form', { name: assign.title })
     await userEvent.selectOptions(await within(form).findByLabelText(assign.plan), 'plan-six')
     await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
@@ -2752,7 +2764,7 @@ describe('the plan from the ficha (#249)', () => {
     renderAt(PATH)
 
     expect(screen.queryByRole('button', { name: copy.assignPlan })).not.toBeInTheDocument()
-    await userEvent.click(await within(await money()).findByRole('button', { name: copy.changePlan }))
+    await userEvent.click(await planAction(await money(), copy.changePlan))
     const form = screen.getByRole('form', { name: change.title })
     const select = await within(form).findByLabelText(change.plan)
     // Another monthly or prepaid plan: not the one it is on, a pack, or one deactivated.
@@ -2780,7 +2792,7 @@ describe('the plan from the ficha (#249)', () => {
     const calls = active({ body: MONTHLY }, pending)
     renderAt(PATH)
 
-    await userEvent.click(await within(await money()).findByRole('button', { name: copy.changePlan }))
+    await userEvent.click(await planAction(await money(), copy.changePlan))
     const form = screen.getByRole('form', { name: change.title })
     await userEvent.selectOptions(await within(form).findByLabelText(change.plan), 'plan-adults')
     expect(within(form).getByText(change.withdraw('Semestral', 'Mensual adultos'))).toBeInTheDocument()
@@ -2796,7 +2808,7 @@ describe('the plan from the ficha (#249)', () => {
     active(undefined, FROZEN)
     renderAt(PATH)
 
-    await userEvent.click(await within(await money()).findByRole('button', { name: copy.changePlan }))
+    await userEvent.click(await planAction(await money(), copy.changePlan))
     const form = screen.getByRole('form', { name: change.title })
     await userEvent.selectOptions(await within(form).findByLabelText(change.plan), 'plan-six')
     expect(await within(form).findByText(change.frozen)).toBeInTheDocument()
@@ -2806,7 +2818,7 @@ describe('the plan from the ficha (#249)', () => {
     active({ status: 409, body: { detail: 'a cancelled membership cannot change plan' } })
     renderAt(PATH)
 
-    await userEvent.click(await within(await money()).findByRole('button', { name: copy.changePlan }))
+    await userEvent.click(await planAction(await money(), copy.changePlan))
     const form = screen.getByRole('form', { name: change.title })
     await userEvent.selectOptions(await within(form).findByLabelText(change.plan), 'plan-six')
     await within(form).findByText(change.next('Semestral', shortDay('2026-11-30'), '$240.000', shortDay('2027-05-29')))
@@ -2983,7 +2995,7 @@ describe('Reactivar plan caducado (#284)', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    await userEvent.click(await planAction(card, copy.reactivatePlan))
     const opened = screen.getByRole('form', { name: form.title })
     const last = await within(opened).findByRole('radio', { name: new RegExp(form.last) })
     expect(last).toBeChecked()
@@ -3015,7 +3027,7 @@ describe('Reactivar plan caducado (#284)', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    await userEvent.click(await planAction(card, copy.reactivatePlan))
     const opened = screen.getByRole('form', { name: form.title })
     await userEvent.type(await within(opened).findByLabelText(form.reason), 'volvió')
     await userEvent.click(within(opened).getByRole('button', { name: form.next }))
@@ -3037,7 +3049,7 @@ describe('Reactivar plan caducado (#284)', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    await userEvent.click(await planAction(card, copy.reactivatePlan))
     const group = screen.getByRole('group', { name: form.title })
     expect(await within(group).findByRole('alert')).toHaveTextContent(copy.reactivateRefused.unpaid('$45.000', 'octubre'))
     expect(within(group).queryByLabelText(form.reason)).not.toBeInTheDocument()
@@ -3051,7 +3063,7 @@ describe('Reactivar plan caducado (#284)', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    await userEvent.click(await planAction(card, copy.reactivatePlan))
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.reactivateRefused.live_plan('Mensual niños'))
   })
 
@@ -3110,7 +3122,7 @@ describe('Reactivar plan with no gap to skip (#284)', () => {
     renderAt(PATH)
     const card = await money()
 
-    await userEvent.click(await within(card).findByRole('button', { name: copy.reactivatePlan }))
+    await userEvent.click(await planAction(card, copy.reactivatePlan))
     const form = screen.getByRole('form', { name: copy.reactivateForm.title })
     expect(await within(form).findByText(copy.reactivateForm.lastHint(1, 'noviembre', '$45.000'))).toBeInTheDocument()
     expect(within(form).queryByRole('radio')).not.toBeInTheDocument()
@@ -3142,7 +3154,7 @@ describe('Reactivar plan, not on a pack (#284)', () => {
     })
     renderAt(PATH)
     const card = await money()
-    const button = await within(card).findByRole('button', { name: copy.reactivatePlan })
+    const button = await planAction(card, copy.reactivatePlan)
 
     await userEvent.click(button)
     expect(await screen.findByText(copy.reactivateForm.lastHint(1, 'noviembre', '$45.000'))).toBeInTheDocument()
@@ -3548,5 +3560,104 @@ describe('Historial de pagos: pagos anteriores a Rakin (#295)', () => {
 
     await screen.findByRole('region', { name: copy.attendance.title })
     expect(calls.some((c) => c.path.includes('/history/payments'))).toBe(false)
+  })
+})
+
+describe('one main action on the plan card (#360)', () => {
+  /** The card's buttons before "Más acciones" opens, and which is the primary. */
+  async function shown() {
+    const card = await money()
+    const more = await within(card).findByRole('button', { name: copy.moreActions })
+    const buttons = within(card).getAllByRole('button')
+    return {
+      card,
+      more,
+      names: buttons.map((b) => b.textContent),
+      primary: buttons.filter((b) => b.classList.contains('button--primary')).map((b) => b.textContent),
+    }
+  }
+
+  it('offers "Registrar pago" first while something is owed, the rest one tap away', async () => {
+    stubApi({ memberships: [{ ...MONTHLY, status: 'lapsed' }], ledger: { ...LEDGER, refundable_payments: [] } })
+    renderAt(PATH)
+
+    const { card, more, names, primary } = await shown()
+    expect(primary).toEqual([copy.record])
+    expect(names).toEqual([copy.record, copy.reactivatePlan, copy.moreActions])
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(more)
+    const rest = within(card).getByRole('group', { name: copy.moreActions })
+    // Nothing paid to give back: no "Devolver".
+    expect(within(rest).getAllByRole('button').map((b) => b.textContent)).toEqual([copy.assignPlan, copy.fix.plan])
+  })
+
+  it('offers "Reactivar plan" first on a lapsed plan that owes nothing, "Asignar plan" beside it', async () => {
+    stubApi({
+      memberships: [{ ...MONTHLY, status: 'lapsed' }],
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, refundable_payments: [] },
+    })
+    renderAt(PATH)
+
+    const { names, primary } = await shown()
+    expect(primary).toEqual([copy.reactivatePlan])
+    expect(names).toEqual([copy.reactivatePlan, copy.assignPlan, copy.moreActions])
+  })
+
+  it('offers "Asignar plan" first when the plan that ended cannot come back', async () => {
+    stubApi({
+      memberships: [{ ...MONTHLY, plan_kind: 'credits', anchor_day: null, status: 'lapsed' }],
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, refundable_payments: [] },
+    })
+    renderAt(PATH)
+
+    const { names, primary } = await shown()
+    expect(primary).toEqual([copy.assignPlan])
+    expect(names).toEqual([copy.assignPlan, copy.record, copy.moreActions])
+  })
+
+  it('keeps an active plan to "Registrar pago" and "Congelar", with "Devolver" under "Más acciones"', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    const { card, more, names, primary } = await shown()
+    expect(primary).toEqual([copy.record])
+    expect(names).toEqual([copy.record, copy.freeze, copy.moreActions])
+    await userEvent.click(more)
+    const rest = within(card).getByRole('group', { name: copy.moreActions })
+    expect(within(rest).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      copy.changePlan,
+      copy.refund,
+      copy.fix.plan,
+    ])
+  })
+  it('closes a form opened from "Más acciones" when it collapses, and keeps one opened beside it', async () => {
+    stubApi()
+    renderAt(PATH)
+    const card = await money()
+
+    await userEvent.click(await planAction(card, copy.refund))
+    expect(screen.getByRole('form', { name: copy.refundForm.title })).toBeInTheDocument()
+    await userEvent.click(within(card).getByRole('button', { name: copy.moreActions }))
+    expect(screen.queryByRole('form', { name: copy.refundForm.title })).not.toBeInTheDocument()
+
+    await userEvent.click(within(card).getByRole('button', { name: copy.freeze }))
+    await userEvent.click(within(card).getByRole('button', { name: copy.moreActions }))
+    await userEvent.click(within(card).getByRole('button', { name: copy.moreActions }))
+    expect(screen.getByRole('form', { name: copy.freezeForm.title })).toBeInTheDocument()
+  })
+})
+
+describe('every ficha section headed the same way (#360)', () => {
+  it('heads each section over its card, Asistencia included', async () => {
+    stubApi()
+    renderAt(PATH)
+
+    for (const title of [copy.attendance.title, es.matTime.theirs, es.tagHours.theirs, copy.ledger.title]) {
+      const heading = await screen.findByRole('heading', { level: 2, name: title })
+      expect(heading).toHaveClass('section-header__title')
+      // Outside the card: the card is the heading's section's, never its parent.
+      expect(heading.closest('.member__card, .mat-time, .tag-hours')).toBeNull()
+    }
   })
 })
