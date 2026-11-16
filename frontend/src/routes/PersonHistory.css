@@ -1,0 +1,109 @@
+@import '../styles/media.css';
+
+/* "Historial de pagos" (#295): years collapsed to their count and total, each opening to
+   its payments; then "Pagos anteriores", a form that fills a month per row. */
+
+.past-pay__years {
+  background: none;
+}
+
+.past-pay__year + .past-pay__year {
+  border-top: 1px solid var(--color-border);
+}
+
+.past-pay__year-button .member__entry-title {
+  flex: 1 1 auto;
+}
+
+.past-pay__year-button .member__entry-amount {
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+/* A year's payments, inset under it on the sunken surface. */
+.past-pay__payments {
+  margin: 0 var(--space-3) var(--space-3);
+  background: var(--color-surface-sunken);
+  border: 0;
+  border-radius: var(--radius-lg);
+}
+
+.past-pay__payment .member__entry-amount {
+  white-space: nowrap;
+}
+
+.past-pay__form-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.past-pay__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.past-pay__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.past-pay__months {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A month on two lines: its name, amount and ✕, then the day it was paid and how. The
+   amount keeps the room "$100.000" needs at 390. */
+.past-pay__month {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) var(--control-height);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+.past-pay__month + .past-pay__month {
+  border-top: 1px solid var(--color-border);
+}
+
+.past-pay__month-name {
+  font-variant-numeric: tabular-nums;
+}
+
+.past-pay__month-day {
+  grid-column: 1;
+}
+
+.past-pay__month-method {
+  grid-column: 2 / 4;
+}
+
+.past-pay__month-note {
+  grid-column: 1 / -1;
+  color: var(--color-warning-strong);
+  font-size: var(--text-sm);
+}
+
+/* The labels sit on their inputs as every ficha form's do, from the field's own gap. */
+.past-pay__fields .member__label {
+  margin: 0;
+}
+
+/* At 1280 the fields two to a row. The ficha's money column is some 460px wide, too
+   narrow to put the months beside them as well, so they stay under the fields. */
+@media (--desktop) {
+  .past-pay__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .past-pay__wide {
+    grid-column: 1 / -1;
+  }
+}
