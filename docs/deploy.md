@@ -58,6 +58,7 @@ Generate the deploy key on your machine, not the host: `ssh-keygen -t ed25519 -f
 ## 2. DNS, mail and storage
 
 - **DNS** (Cloudflare): an `A` (and `AAAA`) record `staging` → the VPS, **DNS only** (grey cloud), so Caddy terminates TLS and gets its certificate from Let's Encrypt over port 80. And for the gyms' own hosts ([below](#creating-a-gym)), a wildcard `A` (and `AAAA`) record `*.staging` → the VPS, DNS only too. Production's will be `rakin.app` and `*.rakin.app`.
+- **The landing page** ([below](#the-landing-page-rakinapp)): an `A` (and `AAAA`) record for the apex `rakin.app` and one for `www` → the VPS, DNS only, like `staging`, unless production's wildcard `*.rakin.app` already covers `www`. Caddy gets both certificates itself.
 - **Resend**: add and verify `rakin.app` (its DKIM, SPF and return-path records in Cloudflare, DNS only), then create an API key with sending access for that domain. It goes in `SMTP_PASSWORD`; `SMTP_HOST=smtp.resend.com`, `SMTP_USERNAME=resend`, and port 587 with `SMTP_SECURITY=starttls`, as `deploy/.env.example` has them. There is no sandbox to leave: a verified domain sends to anyone. Then add a webhook (Webhooks → Add endpoint) to `https://<PUBLIC_BASE_URL's host>/api/webhooks/resend` with the `email.bounced` and `email.complained` events, and put its signing secret (`whsec_…`) in `RESEND_WEBHOOK_SECRET`: a hard bounce or a spam complaint then stops all mail to that address, and the ficha says why. Without it the endpoint is a 404 and bounced addresses go on being mailed.
 - **Object storage**: a bucket in R2 (or S3), with object versioning on where the provider offers it. Create a key scoped to that bucket with object read and write for the api (`S3_*` in `.env`), and separately an admin token for the one-off CORS step below.
 - **Sentry**: a project for the api; its DSN goes in `SENTRY_DSN`. The api and the jobs both report there.
@@ -113,6 +114,22 @@ docker compose run --rm api python -m app.blob_cors --check   # the browser's pr
 ```
 
 The rule allows `PUT` and `GET` with a `Content-Type` header from `PUBLIC_BASE_URL`'s origin, and from every gym's host as `https://*.<BASE_DOMAIN>` ([`app/blob_cors.py`](../backend/app/blob_cors.py)). Re-run `--apply` if `PUBLIC_BASE_URL` or `BASE_DOMAIN` changes; a bucket set before `BASE_DOMAIN` existed needs it once, or proofs cannot be uploaded from a gym's host. Then the browser check: sign in on staging as a student with an owed period, upload a transfer proof from a phone, and see it in the admin's Validar comprobante queue. A CORS failure shows in the browser console as a blocked `PUT` to the bucket's host.
+
+### The landing page: rakin.app
+
+`rakin.app` is a static page about Rakin (#343), with Rakin's privacy notice at `/privacidad/`. Its source is [`site/`](../site/): `index.html` and `styles.css`, the screenshots in `site/img/`, and [`site/build.py`](../site/build.py), which inlines the styles and the logo, renders [`docs/legal/aviso-de-privacidad-rakin.md`](legal/aviso-de-privacidad-rakin.md) and copies the fonts and icons. The `rakin-web` image runs it in a stage of its own and Caddy serves the result from `/srv/site` on `LANDING_HOST` (default `rakin.app`), with `www.` redirecting to it. So it ships with every release, and a change to the notice reaches the page on the next one.
+
+To see it locally: `cd frontend && npm install` (the fonts), then `uv run site/build.py` and open `site/dist/` with any static server, e.g. `python3 -m http.server -d site/dist`.
+
+The screenshots come only from seed data. [`site/screenshots.py`](../site/screenshots.py) signs in to this checkout's local stack as the seed's people, refuses any host but localhost, and writes each shot at 390×844 (2×) or 1280×800. Take them again after a UX pass:
+
+```sh
+docker compose up -d --wait && make seed
+uv run --with playwright==1.65.2 playwright install chromium   # once
+uv run site/screenshots.py            # or --only hoy-390, repeatable
+```
+
+The contact address is `CONTACT_EMAIL` in `site/build.py`.
 
 ### Uptime
 

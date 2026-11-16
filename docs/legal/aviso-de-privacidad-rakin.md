@@ -22,7 +22,7 @@ Solo de estos. Los de los alumnos y apoderados de una academia son de esa academ
 
 1. **De quienes administran una academia en Rakin**: el dueño y las personas que él invita como administradores o profesores. Como clientes del servicio y sus contactos: nombre, correo, teléfono, la academia que administran, la aceptación de los términos y las conversaciones de soporte. `[ABOGADO: lo que el equipo hace dentro de la academia (clases, asistencia, validaciones) es de la academia, bajo el encargo. ¿Es correcta esa división?]`
 2. **De quienes nos escriben** a hola@rakin.app o soporte@rakin.app: el correo, el nombre y lo que nos cuenten.
-3. **De quienes visitan rakin.app**: datos técnicos que todo servidor web recibe. Nuestros registros guardan qué página se pidió, cuándo y con qué resultado; no guardan nombres, correos ni direcciones IP. No usamos cookies de publicidad ni de seguimiento. `[PENDIENTE: revisar cuando exista la página de inicio (#343): si agrega analítica o un formulario, este punto cambia.]`
+3. **De quienes visitan rakin.app**: datos técnicos que todo servidor web recibe. Nuestros registros guardan qué página se pidió, cuándo y con qué resultado; no guardan nombres, correos ni direcciones IP. No usamos cookies de publicidad ni de seguimiento.
 
 ### ¿Para qué?
 

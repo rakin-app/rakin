@@ -49,6 +49,26 @@
 	import app
 }
 
+# rakin.app, the landing page (#343): the static site site/build.py writes,
+# under /srv/site. www redirects to the apex. A host block beats the gyms'
+# wildcard below, so `www` (a reserved slug, app/hosts.py) never reaches the app.
+# Caddy writes no access log here: the privacy notice says the site keeps none.
+{$LANDING_HOST}, www.{$LANDING_HOST} {
+	encode zstd gzip
+
+	@www host www.{$LANDING_HOST}
+	redir @www {scheme}://{$LANDING_HOST}{uri} permanent
+
+	root * /srv/site
+	# Screenshots and fonts change rarely and keep their names: a week. The
+	# pages are revalidated, so a deploy shows on the next load.
+	@static path /img/* /fonts/*
+	header @static Cache-Control "public, max-age=604800"
+	@pages not path /img/* /fonts/*
+	header @pages Cache-Control "no-cache"
+	file_server
+}
+
 *.{$BASE_DOMAIN} {
 	tls {
 		on_demand
