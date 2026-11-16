@@ -22,6 +22,7 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './ValidateProof.css'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.review
 const clp = t.common.clp
@@ -41,7 +42,7 @@ export function ValidateProof() {
   const [index, setIndex] = useState(0)
   const [done, setDone] = useState<Done | null>(null)
 
-  if (queue.isPending) return <p className="review__note">{copy.loading}</p>
+  if (queue.isPending) return <Loading className="review__note">{copy.loading}</Loading>
   if (queue.isError) {
     return (
       <div className="review__note" role="alert">
@@ -302,7 +303,10 @@ function Proof({ review }: { review: ProofReview }) {
     body = (
       <button type="button" className="review__proof" aria-label={copy.zoomLabel} onClick={() => setZoomed(true)}>
         <img src={review.proof_url} alt={label} onError={() => setBroken(true)} />
-        <span className="review__proof-hint">{copy.zoom}</span>
+        <span className="review__proof-hint">
+          <span className="review__hint-touch">{copy.zoom}</span>
+          <span className="review__hint-pointer">{copy.zoomPointer}</span>
+        </span>
       </button>
     )
   } else {

@@ -26,6 +26,7 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { PaymentFor } from './Payments'
 import './Students.css'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.students
 
@@ -317,7 +318,7 @@ export function Students() {
         </div>
 
         {members.isPending ? (
-          <p className="students__note">{copy.loading}</p>
+          <Loading className="students__note">{copy.loading}</Loading>
         ) : members.isError && rows.length === 0 ? (
           <div className="students__note" role="alert">
             <p>{copy.error}</p>

@@ -29,6 +29,7 @@ import { t } from '../i18n/es'
 import { useGymName, usePageTitle } from '../pageTitle'
 import './Today.css'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.today
 const clp = t.common.clp
@@ -97,7 +98,7 @@ function CoachToday() {
           aside={day.data && day.data.sessions.length > 0 ? words.count(day.data.sessions.length) : null}
         />
         {day.isPending ? (
-          <p className="today__note">{copy.loading}</p>
+          <Loading className="today__note">{copy.loading}</Loading>
         ) : day.isError ? (
           <Failed message={words.error} retry={() => void day.refetch()} />
         ) : day.data.sessions.length === 0 ? (
@@ -206,7 +207,7 @@ function OwnerToday() {
             aside={proofs.data && proofs.data.length > 0 ? copy.proofs.count(proofs.data.length) : null}
           />
           {proofs.isPending ? (
-            <p className="today__note">{copy.loading}</p>
+            <Loading className="today__note">{copy.loading}</Loading>
           ) : proofs.isError ? (
             <Failed message={copy.proofs.error} retry={() => void proofs.refetch()} />
           ) : proofs.data.length === 0 ? (
@@ -226,7 +227,7 @@ function OwnerToday() {
             aside={overdue.data && overdue.data.total_clp > 0 ? copy.overdue.total(clp(overdue.data.total_clp)) : null}
           />
           {overdue.isPending ? (
-            <p className="today__note">{copy.loading}</p>
+            <Loading className="today__note">{copy.loading}</Loading>
           ) : overdue.isError ? (
             <Failed message={copy.overdue.error} retry={() => void overdue.refetch()} />
           ) : overdue.data.periods.length === 0 ? (
@@ -252,7 +253,7 @@ function OwnerToday() {
             aside={inactive.data && inactive.data.length > 0 ? copy.inactive.count(inactive.data.length) : null}
           />
           {inactive.isPending ? (
-            <p className="today__note">{copy.loading}</p>
+            <Loading className="today__note">{copy.loading}</Loading>
           ) : inactive.isError ? (
             <Failed message={copy.inactive.error} retry={() => void inactive.refetch()} />
           ) : inactive.data.length === 0 ? (
@@ -272,7 +273,7 @@ function OwnerToday() {
             }
           />
           {unmarked.isPending ? (
-            <p className="today__note">{copy.loading}</p>
+            <Loading className="today__note">{copy.loading}</Loading>
           ) : unmarked.isError ? (
             <Failed message={copy.unmarked.error} retry={() => void unmarked.refetch()} />
           ) : unmarked.data.sessions.length === 0 ? (

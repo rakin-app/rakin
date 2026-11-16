@@ -38,6 +38,7 @@ import { savedRun } from './timerEngine'
 import './Classes.css'
 import './ClassTimer.css'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.session
 
@@ -65,7 +66,7 @@ export function SessionDetail() {
   if (session.isPending) {
     return (
       <Shell>
-        <p className="classes__note">{copy.loading}</p>
+        <Loading className="classes__note">{copy.loading}</Loading>
       </Shell>
     )
   }
@@ -394,7 +395,7 @@ function Attendance({ sessionId }: { sessionId: string }) {
   }, [sessionId, mutate, queryClient])
 
   if (roster.isPending) {
-    return <p className="classes__note">{words.loading}</p>
+    return <Loading className="classes__note">{words.loading}</Loading>
   }
   if (roster.isError) {
     return (

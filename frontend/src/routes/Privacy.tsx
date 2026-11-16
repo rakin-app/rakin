@@ -9,6 +9,7 @@ import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import { RAKIN, useDocumentTitle } from '../pageTitle'
 import './Privacy.css'
+import { Loading } from '../components/Loading'
 
 const copy = t.privacy
 const route = getRouteApi('/privacidad')
@@ -33,15 +34,17 @@ export function Privacy() {
   if (notice.isPending) {
     return (
       <Shell>
-        <p role="status">{copy.loading}</p>
+        <Loading role="status">{copy.loading}</Loading>
       </Shell>
     )
   }
   if (notice.isError) {
     if (notice.error instanceof ApiError && notice.error.status === 404) {
+      // No gym at all is Rakin's own page, which asks for the academia's link (#362).
+      const noGym = (notice.error.body as { detail?: unknown } | undefined)?.detail === 'no_gym'
       return (
         <Shell>
-          <p role="alert">{copy.missing}</p>
+          <p role={noGym ? undefined : 'alert'}>{noGym ? copy.noGym : copy.missing}</p>
         </Shell>
       )
     }
@@ -71,14 +74,14 @@ function Shell({
   children: ReactNode
 }) {
   return (
-    <div className="privacy">
+    <main className="privacy">
       <PageHeader
         mark={gym && <GymMark name={gym.gym} logo={gym.gym_logo} size="large" />}
-        eyebrow={copy.eyebrow}
-        title={title ?? t.app.name}
+        eyebrow={gym ? copy.eyebrow : RAKIN}
+        title={title ?? copy.heading}
       />
       <div className="privacy__card">{children}</div>
-    </div>
+    </main>
   )
 }
 

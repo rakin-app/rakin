@@ -15,6 +15,7 @@ import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import './ProofUpload.css'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.me.proof
 
@@ -36,7 +37,7 @@ export function ProofUpload({ initial }: { initial?: string } = {}) {
   // periods show at once, and a cobro list that is slow or cannot load is left out, as
   // if there were none, rather than standing in the way of paying the plan.
   if (periods.isPending || (initial !== undefined && lines.isPending)) {
-    return <p className="proof__note">{copy.loading}</p>
+    return <Loading className="proof__note">{copy.loading}</Loading>
   }
   if (periods.isError) {
     return (

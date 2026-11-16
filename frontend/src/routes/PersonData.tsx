@@ -18,6 +18,7 @@ import { SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 import { FieldInput, valueOf } from './CustomFieldsPanel'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.member
 const words = copy.fields
@@ -68,7 +69,7 @@ export function PersonData({ person }: { person: Person }) {
             ))}
           </dl>
           {person.no_whatsapp && <p className="member__detail">{copy.noWhatsapp}</p>}
-          {fields.isPending && <p className="member__note">{words.loading}</p>}
+          {fields.isPending && <Loading className="member__note">{words.loading}</Loading>}
           {fields.isError && (
             <p className="member__note" role="alert">
               {words.error}

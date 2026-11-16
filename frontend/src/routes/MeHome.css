@@ -109,6 +109,13 @@
   font-size: var(--text-md);
 }
 
+/* A proof sent and waiting on the gym (#362): the card's state, said in words. */
+.next__review {
+  color: var(--color-inverse-text);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
+}
+
 .next__bank {
   display: flex;
   flex-direction: column;
@@ -280,8 +287,4 @@
 /* "Mis clases" (#243): a class's tags under its topic. */
 .my-class .tag-list {
   margin-top: var(--space-0-5);
-}
-
-.my-class__no-topic {
-  color: var(--color-text-muted);
 }

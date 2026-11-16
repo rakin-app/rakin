@@ -188,6 +188,8 @@ describe('Inscríbete', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.invalidFields)
     expect(screen.getByLabelText(copy.rut)).toHaveAccessibleDescription(`${copy.rutHint} ${copy.refused.rut}`)
+    // The first field refused takes focus, so it is read and in sight (#362).
+    await vi.waitFor(() => expect(screen.getByLabelText(copy.rut)).toHaveFocus())
   })
 
   it('says what to write in each required field left empty, and sends nothing', async () => {
@@ -196,6 +198,7 @@ describe('Inscríbete', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: copy.submit }))
 
+    expect(screen.getByLabelText(copy.firstName)).toHaveFocus()
     expect(screen.getByLabelText(copy.firstName)).toHaveAccessibleDescription(copy.required.first_name!)
     expect(screen.getByLabelText(copy.lastName)).toHaveAccessibleDescription(copy.required.last_name!)
     expect(screen.getByLabelText(copy.dob)).toHaveAccessibleDescription(copy.required.dob!)

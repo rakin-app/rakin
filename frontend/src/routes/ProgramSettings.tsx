@@ -13,6 +13,7 @@ import { ChevronRightIcon } from '../components/icons'
 import { t } from '../i18n/es'
 import { EditRow, Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.settings.programs
 
@@ -71,7 +72,7 @@ export function ProgramSettings() {
   const close = () => setEditing(null)
   const isOpen = (kind: Editing['kind'], id: string) => editing?.kind === kind && editing.id === id
 
-  if (programs.isPending || classTypes.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (programs.isPending || classTypes.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
   if (programs.isError || classTypes.isError) {
     const error = (programs.error ?? classTypes.error)!
     return (

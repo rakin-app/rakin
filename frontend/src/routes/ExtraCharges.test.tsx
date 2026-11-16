@@ -304,6 +304,9 @@ describe('Nuevo cobro extra', () => {
 
     await user.click(await screen.findByRole('button', { name: words.next }))
     expect(screen.getByText(words.titleNeeded)).toBeInTheDocument()
+    // The field to fix takes focus, and says why (#362).
+    expect(screen.getByLabelText(words.titleLabel)).toHaveFocus()
+    expect(screen.getByLabelText(words.titleLabel)).toHaveAccessibleDescription(words.titleNeeded)
     await user.type(screen.getByLabelText(words.titleLabel), 'Bencina final')
     await user.selectOptions(screen.getByLabelText(words.categoryLabel), 'gasto_compartido')
     await user.type(screen.getByLabelText(words.dueLabel), '2026-11-30')

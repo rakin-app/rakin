@@ -53,6 +53,15 @@ afterEach(() => {
 })
 
 describe('OfflineNotice', () => {
+  it('says what is on screen may be out of date while offline, until the signal is back (#362)', () => {
+    stubFetch()
+    renderForm()
+    setOnline(false)
+    expect(screen.getByText(copy.stale)).toBeInTheDocument()
+    setOnline(true)
+    expect(notice()).toBeEmptyDOMElement()
+  })
+
   it('says nothing while online', async () => {
     stubFetch()
     renderForm()
@@ -99,7 +108,8 @@ describe('OfflineNotice', () => {
     setOnline(true)
     expect(notice()).toBeEmptyDOMElement()
     setOnline(false)
-    expect(notice()).toBeEmptyDOMElement()
+    expect(screen.queryByText(copy.refused)).not.toBeInTheDocument()
+    expect(screen.getByText(copy.stale)).toBeInTheDocument()
 
     // A new refusal in this spell speaks again.
     await userEvent.click(screen.getByRole('button', { name: LABEL }))

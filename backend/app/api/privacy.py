@@ -7,7 +7,8 @@ session, and it says nothing a published notice does not.
 
 Which gym's: the one the host names (`meta.rakin.app`), else the one the session is
 in, else the one whose join link `link` is, for the join form on the base host. A gym
-that has not filled in its details, or none at all, is a 404 `no_privacy_notice`.
+that has not filled in its details is a 404 `no_privacy_notice`; no gym at all, such as
+a visitor on the base host, is a 404 `no_gym` (#362), so the page can ask which one.
 
 `human_check` says whether this instance checks the join form for humans
 (`app.integrations.humancheck`), since that provider is one the notice names only then.
@@ -30,6 +31,7 @@ from app.tenancy import Tenant
 router = APIRouter(prefix="/api/privacy", tags=["privacy"])
 
 NO_NOTICE = HTTPException(status.HTTP_404_NOT_FOUND, "no_privacy_notice")
+NO_GYM = HTTPException(status.HTTP_404_NOT_FOUND, "no_gym")
 
 
 async def _gym_of(request: Request, link: str | None) -> uuid.UUID | None:
@@ -62,7 +64,7 @@ async def privacy_notice(
 ) -> PrivacyNotice:
     gym_id = await _gym_of(request, link)
     if gym_id is None:
-        raise NO_NOTICE
+        raise NO_GYM
     async with in_gym(request, gym_id) as session:
         row = (
             await session.execute(

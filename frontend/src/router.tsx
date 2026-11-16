@@ -24,7 +24,7 @@ import { MeHome } from './routes/MeHome'
 import { MemberDetail } from './routes/MemberDetail'
 import { MemberImport } from './routes/MemberImport'
 import { NewMember } from './routes/NewMember'
-import { NotFound } from './routes/NotFound'
+import { NotFound, NotFoundBody } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { Privacy, validatePrivacySearch } from './routes/Privacy'
 import { SessionDetail } from './routes/SessionDetail'
@@ -141,6 +141,8 @@ const adminRoute = createRoute({
     await requireSession(context, location.href)
   },
   component: AdminLayout,
+  // An unknown /admin path stays in the shell (#362).
+  notFoundComponent: NotFoundBody,
 })
 
 // "Hoy": what is overdue and what waits for review.

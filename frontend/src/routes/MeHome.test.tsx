@@ -200,8 +200,28 @@ describe('Mi página', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.next.copyFailed)
   })
 
-  it('opens the proof upload from the card', async () => {
+  it('says a proof is in review, and offers another one as the quiet action (#362)', async () => {
     stubPage(diego())
+    renderMe()
+
+    const card = within(await screen.findByRole('region', { name: copy.next.title }))
+    expect(card.getByText(copy.next.inReview)).toBeInTheDocument()
+    const another = card.getByRole('button', { name: copy.next.uploadAnother })
+    expect(another).not.toHaveClass('button--primary')
+    expect(card.queryByRole('button', { name: copy.next.upload })).not.toBeInTheDocument()
+  })
+
+  it('makes the upload the main action while nothing is sent', async () => {
+    stubPage(diego({ next_payment: { period: NOVEMBER, status: 'due' } }))
+    renderMe()
+
+    const card = within(await screen.findByRole('region', { name: copy.next.title }))
+    expect(card.getByRole('button', { name: copy.next.upload })).toHaveClass('button--primary')
+    expect(card.queryByText(copy.next.inReview)).not.toBeInTheDocument()
+  })
+
+  it('opens the proof upload from the card', async () => {
+    stubPage(diego({ next_payment: { period: NOVEMBER, status: 'due' } }))
     renderMe()
 
     const upload = await screen.findByRole('button', { name: copy.next.upload })
@@ -219,7 +239,7 @@ describe('Mi página', () => {
 
     expect(await screen.findByText(copy.next.noBank)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: copy.next.copy })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: copy.next.upload })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.next.uploadAnother })).toBeInTheDocument()
   })
 
   it('calls an uncoloured rank a grade, not a belt, and since when', async () => {
@@ -474,10 +494,12 @@ describe('Mi página', () => {
     renderMe()
 
     const mine = within(await screen.findByRole('region', { name: copy.classes.title }))
-    expect(mine.getByText('10 nov · Fundamentos')).toBeInTheDocument()
-    expect(mine.getByText('Pasaje torreando')).toBeInTheDocument()
+    // The class names the row; its topic follows the day, and one with none says nothing of it (#362).
+    expect(mine.getAllByText('Fundamentos')).toHaveLength(2)
+    expect(mine.getByText('10 nov · Pasaje torreando')).toBeInTheDocument()
+    expect(mine.getByText('3 nov')).toBeInTheDocument()
     expect(mine.getByRole('list', { name: copy.classes.tags })).toHaveTextContent('Pasaje de guardia')
-    expect(mine.getByText(copy.classes.noTopic)).toBeInTheDocument()
+    expect(mine.queryByText(/Sin tema/)).not.toBeInTheDocument()
 
     const hours = within(screen.getByRole('region', { name: copy.classes.hours }))
     expect(hours.getByText('2,5 h · 2 clases')).toBeInTheDocument()

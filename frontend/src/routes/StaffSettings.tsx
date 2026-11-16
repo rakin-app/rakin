@@ -21,6 +21,7 @@ import { formatPhone } from '../format'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.settings.staff
 
@@ -44,7 +45,7 @@ export function StaffSettings() {
     setNotice(message)
   }
 
-  if (staff.isPending) return <p className="settings__note">{t.admin.settings.loading}</p>
+  if (staff.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
   if (staff.isError) return <LoadFailed error={staff.error} message={copy.error} retry={() => void staff.refetch()} />
 
   return (

@@ -6,6 +6,7 @@ import { t } from '../i18n/es'
 import { Section } from './Card'
 import { SegmentedControl } from './Chip'
 import './MatTime.css'
+import { Loading } from './Loading'
 
 const copy = t.matTime
 
@@ -41,7 +42,7 @@ function Loaded({
   // While it loads, the card holds its place, so what is below it does not jump.
   return (
     <section className="mat-time mat-time--loading" aria-busy="true" aria-label={mine ? copy.mine : copy.theirs}>
-      <p className="mat-time__note">{copy.loading}</p>
+      <Loading className="mat-time__note">{copy.loading}</Loading>
     </section>
   )
 }

@@ -27,6 +27,7 @@ import { usePageTitle } from '../pageTitle'
 import './Classes.css'
 import { useSubmit } from '../api/submit'
 import { TimerLink } from './SessionDetail'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.classes
 
@@ -83,7 +84,7 @@ export function Classes() {
                 <Button onClick={() => go(shiftDay(shown, 1))}>{copy.days.next}</Button>
               </nav>
               {day.isPending ? (
-                <p className="classes__note">{copy.loading}</p>
+                <Loading className="classes__note">{copy.loading}</Loading>
               ) : day.isError ? (
                 <Failed message={copy.today.error} retry={() => void day.refetch()} />
               ) : day.data.sessions.length === 0 ? (
@@ -162,7 +163,7 @@ function Week({ day, today, timeZone }: { day: string; today: string; timeZone: 
                   {weekdayDay(toDate(d))}
                 </h3>
                 {answer.isPending ? (
-                  <p className="classes__note">{copy.loading}</p>
+                  <Loading className="classes__note">{copy.loading}</Loading>
                 ) : answer.isError ? (
                   <Failed message={words.error} retry={() => void answer.refetch()} />
                 ) : answer.data.sessions.length === 0 ? (
@@ -231,7 +232,7 @@ function Picked({ session, timeZone }: { session: ClassSession; timeZone: string
       ) : !begun ? (
         <p className="classes__note">{words.upcoming}</p>
       ) : roster.isPending ? (
-        <p className="classes__note">{copy.loading}</p>
+        <Loading className="classes__note">{copy.loading}</Loading>
       ) : roster.isError ? (
         <Failed message={words.rosterError} retry={() => void roster.refetch()} />
       ) : (
@@ -393,7 +394,7 @@ function StartSession() {
 function StartBody() {
   const classTypes = useQuery(activeClassTypesQuery())
   return classTypes.isPending ? (
-    <p className="classes__note">{copy.loading}</p>
+    <Loading className="classes__note">{copy.loading}</Loading>
   ) : classTypes.isError ? (
     <Failed message={copy.start.error} retry={() => void classTypes.refetch()} />
   ) : classTypes.data.length === 0 ? (

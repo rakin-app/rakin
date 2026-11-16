@@ -97,6 +97,16 @@ describe('Política de privacidad', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.missing)
   })
 
+  it('asks for the academia’s link where there is no gym, under a proper title (#362)', async () => {
+    stubApi({ status: 404, body: { detail: 'no_gym' } })
+    renderAt('/privacidad')
+
+    expect(await screen.findByText(copy.noGym)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: copy.heading })).toBeInTheDocument()
+    expect(screen.getByRole('main')).toBeInTheDocument()
+    expect(screen.queryByText(/Esta academia/)).not.toBeInTheDocument()
+  })
+
   it('is linked from the student page', async () => {
     stubApi()
     renderAt('/me')

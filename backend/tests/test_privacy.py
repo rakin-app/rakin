@@ -101,8 +101,10 @@ def test_a_gym_that_has_not_filled_it_in_has_none(client: TestClient, db: Databa
 
 
 def test_the_base_host_shows_none_to_a_visitor(client: TestClient) -> None:
-    assert client.get(URL).status_code == 404
-    assert client.get(URL, headers={"host": "nadie.rakin.cl"}).status_code == 404
+    # No gym to speak for, which the page says apart from a gym with no notice (#362).
+    for headers in ({}, {"host": "nadie.rakin.cl"}):
+        response = client.get(URL, headers=headers)
+        assert (response.status_code, response.json()) == (404, {"detail": "no_gym"})
 
 
 def test_on_the_base_host_it_is_the_sessions_gym(client: TestClient, db: Database) -> None:

@@ -56,3 +56,10 @@ def test_the_pages_open_with_rakins_logo_in_the_themes_colours() -> None:
     for colour in ("--color-inverse", "--color-inverse-text", "--color-moss", "--color-focus"):
         assert f"var({colour})" in STYLESHEET
         assert all(colour in colours for colours in THEME_TOKENS.values())
+
+
+def test_the_logo_is_the_size_signin_draws_it() -> None:
+    # `.signin__logo` in the SPA, so the two pages' marks match (#362).
+    spa = (FRONTEND / "src/routes/SignIn.css").read_text()
+    assert "font-size: var(--text-xl);" in spa.split(".signin__logo")[1].split("}")[0]
+    assert "font-size:var(--text-xl)" in STYLESHEET.split(".eyebrow--logo{")[1].split("}")[0]

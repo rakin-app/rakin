@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import {
   CATEGORIES,
@@ -22,6 +22,7 @@ import { programsQuery } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
 import { Card, SectionHeader } from '../components/Card'
 import { Field, Input, Select, Textarea } from '../components/Field'
+import { useFocusFirstInvalid } from '../components/focusInvalid'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { longDay } from '../format'
@@ -174,10 +175,15 @@ function Wizard({ person }: { person?: PersonRef }) {
     null,
   ][step] ?? null
 
+  const formRef = useRef<HTMLFormElement>(null)
+  const [refusedAttempts, setRefusedAttempts] = useState(0)
+  useFocusFirstInvalid(formRef, refusedAttempts)
+
   const next = (event: FormEvent) => {
     event.preventDefault()
     if (problem) {
       setTried(true)
+      setRefusedAttempts((n) => n + 1)
       return
     }
     if (waiting) return
@@ -202,7 +208,7 @@ function Wizard({ person }: { person?: PersonRef }) {
           </li>
         ))}
       </ol>
-      <form className="extra__wizard" onSubmit={next} noValidate>
+      <form ref={formRef} className="extra__wizard" onSubmit={next} noValidate>
         <Card aria-labelledby="extra-step">
           <SectionHeader id="extra-step" title={words.stepOf(step + 1, words.steps.length, words.steps[step]!)} />
           {step === 0 && (

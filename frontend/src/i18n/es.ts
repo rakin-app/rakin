@@ -2020,15 +2020,15 @@ export const es = {
         // One scheme for every activity that grades, for now.
         shared: (names: string[]) =>
           `Este esquema es el mismo para ${names.slice(0, -1).join(', ')} y ${names.at(-1)}: cada alumno tiene un solo grado.`,
-        stale: 'El esquema guardado ya no es válido. Vuelve a aplicar un preset para repararlo y guarda.',
-        presetsError: 'No pudimos cargar los presets.',
+        stale: 'El esquema guardado ya no es válido. Vuelve a usar una escala para repararlo y guarda.',
+        presetsError: 'No pudimos cargar las escalas.',
         start: 'Punto de partida',
-        preset: 'Preset',
+        preset: 'Escala',
         presetHint: 'Reemplaza lo que estás editando. Nada cambia hasta que guardes.',
-        choosePreset: 'Elige un preset…',
-        apply: 'Aplicar preset',
-        reapply: 'Volver a aplicar un preset',
-        applied: (preset: string) => `Preset ${preset} aplicado. Revísalo y guarda.`,
+        choosePreset: 'Elige una escala…',
+        apply: 'Usar esta escala',
+        reapply: 'Volver a usar una escala',
+        applied: (preset: string) => `Escala ${preset} aplicada. Revísala y guarda.`,
         goalMetric: 'Cómo se mide el avance',
         goalMetricHint: 'Lo que cuenta el objetivo de cada grado para la siguiente graduación.',
         goalMetrics: {
@@ -2713,6 +2713,8 @@ export const es = {
       },
       proofLabel: (name: string) => `Comprobante de ${name}`,
       zoom: 'Toca para ampliar',
+      // With a mouse or trackpad, where nothing is tapped (#362).
+      zoomPointer: 'Ampliar',
       zoomLabel: 'Ampliar comprobante',
       close: 'Cerrar',
       openFile: 'Abrir comprobante',
@@ -2873,6 +2875,7 @@ export const es = {
         due: 'Por pagar',
         paid: 'Al día',
       },
+      inReview: 'Recibimos tu comprobante. La academia lo está revisando.',
       // `whose`: the dependent it is for, when it is not the student's own.
       due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
       paidUp: 'No tienes pagos pendientes.',
@@ -2895,6 +2898,8 @@ export const es = {
           .filter(Boolean)
           .join('\n'),
       upload: 'Subir comprobante',
+      // With a proof already in review (#362).
+      uploadAnother: 'Enviar otro comprobante',
     },
     extra: {
       title: 'Cobros extra',
@@ -2920,8 +2925,7 @@ export const es = {
       // A dependent's, on a guardian's page.
       theirs: (name: string) => `Clases de ${name}`,
       empty: 'Todavía no hay clases con asistencia.',
-      noTopic: 'Sin tema',
-      when: (day: string, classType: string) => `${day} · ${classType}`,
+      when: (day: string, topic: string | null) => (topic ? `${day} · ${topic}` : day),
       tags: 'Etiquetas',
       more: (n: number) => `Ver ${n} más`,
       hours: 'Tus horas por etiqueta',
@@ -3052,8 +3056,12 @@ export const es = {
     link: 'Privacidad',
     eyebrow: 'Privacidad',
     title: (gym: string) => `Política de privacidad de ${gym}`,
+    // With no gym named yet, and on Rakin's own host with none at all (#362).
+    heading: 'Política de privacidad',
     loading: 'Cargando…',
     missing: 'Esta academia todavía no publica su política de privacidad.',
+    noGym:
+      'Cada academia publica su propia política de privacidad. Ábrela desde el link de tu academia: el formulario de inscripción o tu página.',
     error: 'No pudimos cargar la política de privacidad. Inténtalo de nuevo.',
     retry: 'Reintentar',
     updated: (day: string) => `Última actualización: ${day}.`,
@@ -3168,6 +3176,10 @@ export const es = {
   offline: {
     waiting: 'Sin conexión: se guardará cuando vuelva la señal.',
     refused: 'Sin conexión: no se guardó. Inténtalo de nuevo cuando vuelva la señal.',
+    // A screen with nothing cached, in place of "Cargando…" (#362).
+    reading: 'Sin conexión. Lo mostramos apenas vuelva la señal.',
+    // A screen showing what it loaded before the signal went (#362).
+    stale: 'Sin conexión: lo que ves puede no estar al día.',
   },
   // iOS Safari, outside the installed app (#68): Compartir, then "Agregar a inicio".
   installHint: {

@@ -29,6 +29,7 @@ import { usePageTitle } from '../pageTitle'
 import { Progress, SubHeader } from './ExtraCharges'
 import './ExtraCharges.css'
 import { useSubmit } from '../api/submit'
+import { Loading } from '../components/Loading'
 
 const copy = t.admin.extra
 const words = copy.detail
@@ -61,7 +62,7 @@ export function ExtraChargeDetail() {
       </PageContainer>
     )
   }
-  if (charge.isPending) return <p className="extra__note">{words.loading}</p>
+  if (charge.isPending) return <Loading className="extra__note">{words.loading}</Loading>
   if (charge.isError) {
     const missing = charge.error instanceof ApiError && charge.error.status === 404
     return (

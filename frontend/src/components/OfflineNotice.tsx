@@ -44,7 +44,8 @@ function useOfflineSince(): number | null {
 /**
  * What a form cannot say while it waits on "Guardando…" (#231), for every screen at
  * once: a submission paused offline will be saved when the signal is back, and one a
- * form refused offline (`offline: 'refuse'`) was not saved. The live region is always
+ * form refused offline (`offline: 'refuse'`) was not saved. With neither, offline, it
+ * says what is on screen may be out of date (#362): queries keep their last answer. The live region is always
  * there, empty when there is nothing to say, so a screen reader hears the message
  * appear; it is not a `status`, which is each screen's own.
  */
@@ -56,7 +57,7 @@ export function OfflineNotice() {
     select: (m) => m.mutationId,
   })
   const refusedNow = since !== null && refused.some((id) => id > since)
-  const message = waiting > 0 ? copy.waiting : refusedNow ? copy.refused : null
+  const message = waiting > 0 ? copy.waiting : refusedNow ? copy.refused : since !== null ? copy.stale : null
   return (
     <div className="offline-notice" aria-live="polite">
       {message && <p className="offline-notice__message">{message}</p>}
