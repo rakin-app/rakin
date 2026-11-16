@@ -70,6 +70,7 @@ TOTALS_TITLE = "Totales del mes (solo lo validado)"
 FILED_BY = (
     "Fecha: un cargo, el inicio de su período; un pago o devolución validado, el día en"
     " que se validó (como Cobrado en Pagos); lo demás, el día en que se registró."
+    " No incluye el historial anterior a Rakin."
 )
 
 CSV_MEDIA_TYPE = "text/csv; charset=utf-8"
