@@ -190,6 +190,11 @@ describe('Inscríbete', () => {
     expect(screen.getByLabelText(copy.rut)).toHaveAccessibleDescription(`${copy.rutHint} ${copy.refused.rut}`)
     // The first field refused takes focus, so it is read and in sight (#362).
     await vi.waitFor(() => expect(screen.getByLabelText(copy.rut)).toHaveFocus())
+
+    // A field then left empty is refused on the next try, the API's refusal still shown.
+    await userEvent.clear(screen.getByLabelText(copy.firstName))
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+    expect(screen.getByLabelText(copy.firstName)).toHaveFocus()
   })
 
   it('says what to write in each required field left empty, and sends nothing', async () => {

@@ -69,6 +69,8 @@ export function joinFormQuery(token: string) {
     queryKey: ['join', token],
     queryFn: () => apiFetch<JoinForm>(`/api/join/${encodeURIComponent(token)}`),
     retry: false,
+    // A blank form to fill in, nothing that goes out of date (#362).
+    meta: { ambient: true },
   })
 }
 

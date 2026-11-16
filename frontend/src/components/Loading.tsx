@@ -1,5 +1,5 @@
 import type { AriaRole, ReactNode } from 'react'
-import { useOnline } from '../api/online'
+import { useOfflineLine, useOnline } from '../api/online'
 import { t } from '../i18n/es'
 
 type Props = {
@@ -24,5 +24,7 @@ export function Loading({ className, role, children }: Props) {
 
 /** The same words, for a component that draws its own line (`EmptyState`). */
 export function LoadingText({ children }: { children: ReactNode }) {
-  return useOnline() ? children : t.offline.reading
+  const online = useOnline()
+  useOfflineLine(!online)
+  return online ? children : t.offline.reading
 }

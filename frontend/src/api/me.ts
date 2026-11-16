@@ -33,12 +33,18 @@ export function myRoleQuery() {
     queryKey: ['me', 'role'],
     queryFn: () => apiFetch<MyRole>('/api/me/role'),
     select: (data) => data.role,
+    // Who is signed in, which no screen shows as its content (#362).
+    meta: { ambient: true },
   })
 }
 
 /** Who is signed in, and their role: the same answer as `myRoleQuery`, kept whole. */
 export function myselfQuery() {
-  return queryOptions({ queryKey: ['me', 'role'], queryFn: () => apiFetch<MyRole>('/api/me/role') })
+  return queryOptions({
+    queryKey: ['me', 'role'],
+    queryFn: () => apiFetch<MyRole>('/api/me/role'),
+    meta: { ambient: true },
+  })
 }
 
 /** Who may run a class's timer: the backend's `_runs`, its coach or an owner or admin. */

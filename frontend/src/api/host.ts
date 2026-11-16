@@ -12,4 +12,6 @@ export const hostQuery = () =>
     queryFn: () => apiFetch<Host>('/api/host'),
     // The host never changes under a loaded page.
     staleTime: Infinity,
+    // Every page's, and none of its content: not "out of date" offline (#362).
+    meta: { ambient: true },
   })

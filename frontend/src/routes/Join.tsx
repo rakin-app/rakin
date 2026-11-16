@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { ADULT_AGE, ageOn, joinFormQuery, submitJoinRequest, type JoinSubmission } from '../api/join'
 import { privacyPath } from '../api/privacy'
@@ -200,8 +200,9 @@ function JoinFormBody({
   const errors = validationErrors(send.error)
   const formRef = useRef<HTMLFormElement>(null)
   const [refusedAttempts, setRefusedAttempts] = useState(0)
-  useFocusFirstInvalid(formRef, refusedAttempts)
-  useFocusFirstInvalid(formRef, send.error)
+  // A new token on each failure, the form's own checks' or the API's.
+  const failure = useMemo(() => (refusedAttempts || send.error ? {} : null), [refusedAttempts, send.error])
+  useFocusFirstInvalid(formRef, failure)
   // An empty field is only ever missing, never malformed: "Escribe tu RUT no válido"
   // is no help to someone who has written nothing.
   const error = (field: keyof Drafts) => {
