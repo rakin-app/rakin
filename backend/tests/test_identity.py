@@ -109,6 +109,7 @@ def test_a_rut_known_elsewhere_answers_like_a_new_one(
         "no_whatsapp": False,
         "missing_phone": True,
         "missing_rut": False,
+        "missing_guardian": False,
         # A history is this gym's, never another's (#293).
         "member_since": None,
         "prior_classes": 0,

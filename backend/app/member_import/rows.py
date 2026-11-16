@@ -78,6 +78,7 @@ MAX_LEFT_REASON = 200
 # the RUT or email the row would give someone is another person's in this gym.
 # `left_before_start`: the day they left is before the day they started.
 # `invalid_number`: not a whole number of classes. `too_long`: over what the field holds.
+# `minor`: the birth date makes them a minor, and the row names no guardian (#368).
 ErrorCode = Literal[
     "required",
     "repeated",
@@ -99,6 +100,7 @@ ErrorCode = Literal[
     "left_before_start",
     "invalid_number",
     "too_long",
+    "minor",
 ]
 
 

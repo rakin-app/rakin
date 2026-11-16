@@ -21,7 +21,8 @@ as this gym has them, and so is a membership they already hold that is not cance
 an import never overwrites what the gym already has. Each row says which of its fields
 that leaves unapplied (`ignored`), so the dry run shows it before anything is written,
 and flags a contact with no phone (`missing_phone`) and an adult with neither a RUT nor
-an email (`missing_identity`): both import.
+an email (`missing_identity`): both import. A row that leaves a minor, by birth date, with
+no guardian is refused `minor`, as Nuevo alumno refuses one (#368).
 
 A row's history from before Rakin (#297) is the one exception to never overwriting:
 "Alumno desde", the day they left and why, and their classes before Rakin are written
@@ -86,7 +87,7 @@ from app.api.people import (
     rut_holder,
 )
 from app.domain import membership as domain
-from app.domain.dates import gym_today, start_of_local_day
+from app.domain.dates import gym_today, is_minor, start_of_local_day
 from app.domain.membership import PlanKind, PlanTerms
 from app.member_import.grades import (
     Grade,
@@ -155,6 +156,16 @@ SPREADSHEET_BODY = {"schema": {"type": "string", "format": "binary"}}
 PLANS = "SELECT id, name, active, kind, anchor, credits, credit_expiry_days FROM plan"
 
 GUARDIAN_OF = "SELECT guardian_person_id FROM guardian_link WHERE dependent_person_id = :id"
+
+# Whether a row leaves someone a minor with no guardian, still here (#368): by the
+# gym's birth date for them, else the row's.
+UNGUARDED = """
+    SELECT coalesce(gp.dob, CAST(:dob AS date)) AS dob, gp.left_on,
+           EXISTS (
+               SELECT FROM guardian_link d WHERE d.dependent_person_id = gp.person_id
+           ) AS guarded
+    FROM gym_person gp WHERE gp.person_id = :id
+"""
 LIVE_MEMBERSHIP = """
     SELECT plan_id, current_period_end FROM membership
     WHERE person_id = :id AND status <> 'cancelled'
@@ -525,6 +536,7 @@ class Writer:
                 link_outcome = await self._link(guardian_id, person_id)
 
         history = await self._history(member, person_id, created=person == "created")
+        await self._refuse_unguarded(member, person_id)
         membership = None if member.plan is None else await self._membership(member, person_id)
         # Whom the gym messages about them, and whether it can: "Falta teléfono".
         contact = guardian_id if guardian_id is not None else person_id
@@ -587,6 +599,21 @@ class Writer:
             self.session, person_id, changes(before, after), import_id=self.import_id
         )
         return True
+
+    async def _refuse_unguarded(self, member: Member, person_id: uuid.UUID) -> None:
+        """A minor on the gym's today needs a guardian, as Nuevo alumno asks: with none,
+        the gym's notices would reach the child (#368). Not a former student, whom
+        nobody writes to."""
+        found = (
+            await self.session.execute(text(UNGUARDED), {"id": person_id, "dob": member.dob})
+        ).one()
+        if (
+            found.dob is not None
+            and found.left_on is None
+            and not found.guarded
+            and is_minor(found.dob, self.today)
+        ):
+            raise RowRefused(Field.GUARDIAN_NAME, "minor")
 
     async def _kept(self, person_id: uuid.UUID, member: Member) -> None:
         """Note the sheet's values that differ from this gym's record of `person_id`."""

@@ -30,6 +30,11 @@ No notice at all goes to an address Resend reported as hard-bounced or as a spam
 complaint (`mail_suppression`, migration 0046, from `app.api.webhooks`): it is recorded
 as `suppressed` instead, whichever gym it is from.
 
+Nor does any notice of a gym go to a minor, by birth date, with no guardian there
+(`app.contacts.missing_guardian`, "Falta apoderado", #368): kids never receive
+messages, and with no guardian the notice would reach the child. It is recorded as
+`suppressed` until the gym adds one.
+
 `send` never raises for a notice it could not send: it runs after the response, where
 there is no one left to tell, so the outcome goes to `message_log` and the log. That
 includes a template that cannot render, such as one missing a value: a bug, so it is
@@ -60,6 +65,7 @@ from jinja2 import (
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.contacts import missing_guardian
 from app.domain.money import format_clp
 from app.hosts import Hosts
 from app.integrations.mailer import Email, MailDeliveryError, Mailer, check_recipient
@@ -310,6 +316,17 @@ class Notices:
             logger.info("notice suppressed", extra=extra)
             await self._record(notice, Outcome.SUPPRESSED)
             return Outcome.SUPPRESSED
+        try:
+            unguarded = await self._unguarded_minor(notice)
+        # The database down, say: a notice that may reach a child does not go.
+        except Exception as exc:
+            logger.exception("notice addressee not checked", extra=extra)
+            await self._record(notice, Outcome.FAILED, error=_error(exc))
+            return Outcome.FAILED
+        if unguarded:
+            logger.info("notice to a minor with no guardian suppressed", extra=extra)
+            await self._record(notice, Outcome.SUPPRESSED)
+            return Outcome.SUPPRESSED
         if not notice.template.essential:
             assert notice.gym_id is not None
             if await self._unsubscribed(notice.gym_id, notice.person_id):
@@ -388,6 +405,17 @@ class Notices:
                 {"g": gym_id, "p": person_id},
             )
         return found is not None
+
+    async def _unguarded_minor(self, notice: Notice) -> bool:
+        """Whether `notice` is addressed to a minor with no guardian in its gym."""
+        if notice.gym_id is None:
+            return False
+        async with self._in_gym(notice.gym_id) as session:
+            found = await session.scalar(
+                text(f"SELECT {missing_guardian('gp')} FROM gym_person gp WHERE gp.person_id = :p"),
+                {"p": notice.person_id},
+            )
+        return bool(found)
 
     async def _suppressed(self, to: str) -> bool:
         async with self._in_gym(None) as session:

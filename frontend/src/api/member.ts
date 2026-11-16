@@ -13,6 +13,9 @@ export type Person = {
   missing_phone: boolean
   // No RUT and no email, found again only by name: "Falta RUT".
   missing_rut: boolean
+  // A minor by birth date with no guardian here: nothing is sent to them until one is
+  // added, "Falta apoderado" (#368).
+  missing_guardian: boolean
   name: string
   email: string | null
   rut: string | null

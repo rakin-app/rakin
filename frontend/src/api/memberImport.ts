@@ -96,6 +96,8 @@ export type RowErrorCode =
   | 'invalid_number'
   // "Motivo de baja" over 200 characters.
   | 'too_long'
+  // Under 18 by the birth date, and the row names no guardian (#368).
+  | 'minor'
 
 export type Outcome = 'created' | 'existing'
 

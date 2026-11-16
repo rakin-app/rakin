@@ -32,11 +32,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.grading import stored_scheme
 from app.api.inactive import AWAY_IDS
+from app.contacts import missing_guardian
 from app.domain.billing import SETTLING_KINDS, settled_amount
+from app.domain.dates import gym_today, is_minor
 from app.domain.ledger import EntryStatus
 from app.domain.membership import MembershipStatus, current_first
 from app.roles import SeesMoney, StaffSession
 from app.schemas.people import (
+    MINOR_NEEDS_GUARDIAN,
     PHONE_REQUIRED,
     DuplicateCode,
     MemberPage,
@@ -94,7 +97,7 @@ def missing_rut(record: str) -> str:
 # This gym's record. RLS on `gym_person` keeps it to the current gym.
 SELECT_PERSON = f"""
     SELECT gp.person_id AS id, gp.phone, gp.no_whatsapp, {missing_phone("gp")} AS missing_phone,
-           {missing_rut("gp")} AS missing_rut,
+           {missing_rut("gp")} AS missing_rut, {missing_guardian("gp")} AS missing_guardian,
            gp.name, gp.email, gp.rut, gp.dob, gp.left_on, gp.left_reason, gp.member_since,
            gp.prior_classes, gp.created_at, gp.updated_at
     FROM gym_person gp
@@ -125,6 +128,7 @@ SHOWN_MEMBERSHIP = f"""
 MEMBERS = f"""
     SELECT gp.person_id AS id, gp.name, gp.phone, gp.no_whatsapp,
            {missing_phone("gp")} AS missing_phone, {missing_rut("gp")} AS missing_rut,
+           {missing_guardian("gp")} AS missing_guardian,
            gp.rut, gp.left_on,
            m.id AS membership_id, m.status, m.plan_id, pl.name AS plan_name,
            g.person_id AS guardian_id, g.name AS guardian_name,
@@ -209,9 +213,10 @@ async def list_people(
     plan_ids: Annotated[list[uuid.UUID], Query(alias="plan_id")] = [],  # noqa: B006
     program_ids: Annotated[list[uuid.UUID], Query(alias="program_id")] = [],  # noqa: B006
     left: Literal["no", "only", "any"] = "no",
-    # Only the members with "Falta teléfono", or "Falta RUT".
+    # Only the members with "Falta teléfono", "Falta RUT", or "Falta apoderado".
     missing_phone: bool = False,
     missing_rut: bool = False,
+    missing_guardian: bool = False,
     # Only those away 14 days or more: "A quién llamar" on Hoy, in full.
     away: bool = False,
     # A current rank by key, repeatable; or that rank or any above it ("Azul o superior").
@@ -236,6 +241,8 @@ async def list_people(
         where.append("missing_phone")
     if missing_rut:
         where.append("missing_rut")
+    if missing_guardian:
+        where.append("missing_guardian")
     if away:
         where.append(f"id IN ({AWAY_IDS})")
     if q.strip():
@@ -291,6 +298,7 @@ async def list_people(
             no_whatsapp=row.no_whatsapp,
             missing_phone=row.missing_phone,
             missing_rut=row.missing_rut,
+            missing_guardian=row.missing_guardian,
             rut=row.rut,
             membership=shown_membership(row),
             guardian=None
@@ -514,8 +522,21 @@ async def add_to_gym(
     status_code=status.HTTP_201_CREATED,
     responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}},
 )
-async def create_person(body: PersonCreate, session: StaffSession) -> Person:
+async def create_person(
+    body: PersonCreate, session: StaffSession, tenant: Annotated[Tenant, Depends(current_tenant)]
+) -> Person:
+    """Someone with no guardian: a minor's birth date is a 422, as Nuevo alumno, which
+    takes a guardian, refuses one without (#368)."""
+    if body.dob is not None and is_minor(body.dob, await _today(session, tenant.gym_id)):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, MINOR_NEEDS_GUARDIAN)
     return await read_person(session, await add_to_gym(session, **body.model_dump()))
+
+
+async def _today(session: AsyncSession, gym_id: uuid.UUID) -> date:
+    timezone: str = await session.scalar(
+        text("SELECT timezone FROM gym WHERE id = :id"), {"id": gym_id}
+    )
+    return gym_today(timezone)
 
 
 @router.get("/{person_id}")
@@ -525,12 +546,12 @@ async def get_person(person_id: uuid.UUID, session: StaffSession, money: SeesMon
 
 # This gym's record as an edit would leave it, to check before anything is written.
 EDITED = text("""
-    SELECT gp.rut, gp.email, gp.phone, gp.no_whatsapp,
+    SELECT gp.rut, gp.email, gp.phone, gp.no_whatsapp, g.timezone,
            EXISTS (SELECT FROM staff s WHERE s.person_id = gp.person_id) AS staff,
            EXISTS (
                SELECT FROM guardian_link d WHERE d.dependent_person_id = gp.person_id
            ) AS dependent
-    FROM gym_person gp WHERE gp.person_id = :id
+    FROM gym_person gp JOIN gym g ON g.id = gp.gym_id WHERE gp.person_id = :id
 """)
 
 
@@ -560,6 +581,11 @@ async def update_person(
     member = not record.staff and not record.dependent
     if changes.keys() & {"phone", "no_whatsapp"} and member and not reachable:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, PHONE_REQUIRED)
+    # A birth date that makes them a minor, only for someone with a guardian here, as
+    # Nuevo alumno asks (#368): no notice may reach a child.
+    dob = changes.get("dob")
+    if dob is not None and not record.dependent and is_minor(dob, gym_today(record.timezone)):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, MINOR_NEEDS_GUARDIAN)
     if changes:
         assignments = ", ".join(f"{column} = :{column}" for column in changes)
         await session.execute(

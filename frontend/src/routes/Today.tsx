@@ -7,7 +7,7 @@ import { ApiError } from '../api/client'
 import { gymSettingsQuery } from '../api/gym'
 import { recordPayment, type Method } from '../api/member'
 import { myRoleQuery, myselfQuery, readsLedger } from '../api/me'
-import { memberCountQuery, plansQuery } from '../api/people'
+import { memberCountQuery, missingGuardianQuery, plansQuery, type MemberRow } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
 import { todaySessionsQuery, unmarkedSessionsQuery, type ClassSession } from '../api/sessions'
 import { staffQuery } from '../api/staff'
@@ -59,6 +59,9 @@ const OVERDUE_SHOWN = 3
  * avisar" has the periods due today and the rejected proofs to follow up, when there
  * are any (#55). In the same group, the mail button emails it now (#260). Only the
  * overdue fact is in the warning colour (#358).
+ *
+ * "Falta apoderado", when there is anyone: the minors with no guardian, to whom Rakin
+ * sends nothing until the gym adds one (#368), each a tap from their ficha.
  *
  * A phone stacks it all; from 1024px the counters run across the top and the lists sit
  * in a grid of two.
@@ -200,6 +203,7 @@ function OwnerToday() {
       <Grid className="today__grid">
         <JoinRequests />
         <FreezeRequests />
+        <MissingGuardians />
         <Card id="validar" className="today__section" aria-labelledby="validar-title">
           <SectionHead
             id="validar-title"
@@ -526,6 +530,48 @@ function ProofRow({ proof }: { proof: ProofReview }) {
         </span>
         <span className={buttonClass()} aria-hidden="true">
           {copy.proofs.review}
+        </span>
+      </Link>
+    </li>
+  )
+}
+
+/** "Falta apoderado" (#368): shown only when someone has none, as a request is. */
+function MissingGuardians() {
+  const minors = useQuery(missingGuardianQuery)
+  const items = minors.data?.items ?? []
+  if (items.length === 0) return null
+  return (
+    <Card id="falta-apoderado" className="today__section" aria-labelledby="falta-apoderado-title">
+      <SectionHead
+        id="falta-apoderado-title"
+        title={copy.missingGuardian.title}
+        aside={copy.missingGuardian.count(minors.data?.total ?? items.length)}
+      />
+      <p className="today__note">{copy.missingGuardian.hint}</p>
+      <PlainList className="today__list">
+        {items.map((member) => (
+          <MissingGuardianRow key={member.id} member={member} />
+        ))}
+      </PlainList>
+    </Card>
+  )
+}
+
+function MissingGuardianRow({ member }: { member: MemberRow }) {
+  return (
+    <li>
+      <Link
+        to="/admin/alumnos/$personId"
+        params={{ personId: member.id }}
+        className="today__row today__row--link"
+        aria-label={copy.missingGuardian.openLabel(member.name)}
+      >
+        <span className="today__row-text">
+          <span className="today__name">{member.name}</span>
+        </span>
+        <span className={buttonClass()} aria-hidden="true">
+          {copy.missingGuardian.open}
         </span>
       </Link>
     </li>

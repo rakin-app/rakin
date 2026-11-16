@@ -59,6 +59,8 @@ def require_identity(rut: str | None, email: str | None) -> None:
 
 
 PHONE_REQUIRED = "a phone is required unless no_whatsapp is set"
+# Someone under 18 is enrolled, imported or edited only with a guardian (#368).
+MINOR_NEEDS_GUARDIAN = "a minor needs a guardian"
 
 
 def require_phone(phone: str | None, no_whatsapp: bool) -> None:
@@ -112,6 +114,9 @@ class Person(BaseModel):
     missing_phone: bool
     # No RUT and no email, and nobody's dependent: "Falta RUT".
     missing_rut: bool
+    # A minor by birth date with no guardian here: nothing is sent to them until one is
+    # added, "Falta apoderado" (#368).
+    missing_guardian: bool
     name: str
     email: str | None
     rut: str | None
@@ -372,6 +377,7 @@ class MemberRow(BaseModel):
     no_whatsapp: bool
     missing_phone: bool
     missing_rut: bool
+    missing_guardian: bool
     rut: str | None
     membership: MembershipSummary | None
     # Who pays for them in this gym, and how many they pay for (migration 0010).

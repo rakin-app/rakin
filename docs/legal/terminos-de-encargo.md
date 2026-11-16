@@ -38,7 +38,7 @@ Rakin cuenta la asistencia para mostrarle al equipo quién dejó de venir o qui�
 **Titulares:**
 
 - alumnos adultos;
-- alumnos menores de edad: niños y niñas menores de 14 años, y adolescentes de 14 a 17;
+- alumnos menores de 18 años, cuyos datos se tratan con el consentimiento de su apoderado;
 - apoderados de los menores;
 - personas que envían el formulario de inscripción;
 - el equipo de la Academia: dueño, administradores y profesores.

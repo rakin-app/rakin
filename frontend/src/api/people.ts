@@ -16,6 +16,8 @@ export type MemberRow = {
   missing_phone: boolean
   // No RUT and no email, found again only by name: "Falta RUT".
   missing_rut: boolean
+  // A minor with no guardian here, whom nothing reaches: "Falta apoderado" (#368).
+  missing_guardian: boolean
   rut: string | null
   membership: {
     id: string
@@ -43,9 +45,10 @@ export type MemberFilters = {
   program: readonly string[]
   // Who has left the gym: left out (the default), only them ("Dados de baja"), or anyone.
   left?: LeftFilter
-  // Only the members with "Falta teléfono", or "Falta RUT".
+  // Only the members with "Falta teléfono", "Falta RUT", or "Falta apoderado".
   missingPhone?: boolean
   missingRut?: boolean
+  missingGuardian?: boolean
   // Only those away 14 days or more: "A quién llamar", in full.
   away?: boolean
   // A current rank by key; or that rank or any above it in the gym's scheme (#219).
@@ -70,6 +73,7 @@ export function membersPath(filters: MemberFilters, offset: number): string {
   if (filters.left && filters.left !== 'no') params.set('left', filters.left)
   if (filters.missingPhone) params.set('missing_phone', 'true')
   if (filters.missingRut) params.set('missing_rut', 'true')
+  if (filters.missingGuardian) params.set('missing_guardian', 'true')
   if (filters.away) params.set('away', 'true')
   for (const rank of filters.rank ?? []) params.append('rank', rank)
   if (filters.rankMin) params.set('rank_min', filters.rankMin)
@@ -111,6 +115,14 @@ export function membersQuery(filters: MemberFilters) {
 export const memberCountQuery = queryOptions({
   queryKey: ['people', 'count'],
   queryFn: async () => (await apiFetch<MemberPage>('/api/people?limit=1&offset=0')).total,
+})
+
+// Hoy's "Falta apoderado" (#368): the minors with no guardian, whom no notice reaches
+// until one is added. Rarely more than a few, so the first page is all Hoy shows.
+export const missingGuardianQuery = queryOptions({
+  queryKey: ['people', 'missing-guardian'],
+  queryFn: () =>
+    apiFetch<MemberPage>(membersPath({ q: '', status: [], plan: [], program: [], missingGuardian: true }, 0)),
 })
 
 // The plans, as the filters and the import read them: their id, name and whether active.
