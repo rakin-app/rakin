@@ -5,7 +5,8 @@
 # file meet. Needs Docker and port 80; the stack is removed afterwards.
 #
 # Caddy serves plain HTTP on :80 here (SITE_ADDRESS=:80): no certificate,
-# no DNS. Object storage and mail (Resend) are configured but never reached.
+# no DNS; the landing page alone is on HTTPS, from Caddy's own CA. Object
+# storage and mail (Resend) are configured but never reached.
 # Backups are, under COMPOSE_PROFILES=backup: a Garage beside the stack stands in for their R2 bucket, and
 # a backup of a gym is restored with deploy/restore.sh and checked.
 set -euo pipefail
@@ -55,6 +56,7 @@ YML
 # deploy/.env.example with its placeholders filled in.
 sed \
 	-e 's|^SITE_ADDRESS=.*|SITE_ADDRESS=:80|' \
+	-e 's|^LANDING_HOST=.*|LANDING_HOST=landing.localhost|' \
 	-e 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=http://localhost|' \
 	-e 's|^SENTRY_DSN=.*|SENTRY_DSN=|' \
 	-e 's|^RESEND_WEBHOOK_SECRET=.*|RESEND_WEBHOOK_SECRET=whsec_dGVzdC1vbmx5IHNpZ25pbmcgc2VjcmV0|' \
@@ -101,6 +103,19 @@ compose run --rm garage-init
 compose run --rm migrate
 compose up -d --wait --wait-timeout 180
 "$root/deploy/smoke.sh" http://localhost
+
+# The landing page (#343), on its own host. A .localhost name gets a certificate
+# from Caddy's own CA, so this is HTTPS as in production, with -k.
+landing() { # landing <host> <path> [curl options]
+	curl -sS -k --max-time 15 --resolve "$1:443:127.0.0.1" "${@:3}" "https://$1$2"
+}
+# Caddy issues those certificates in the background at start: wait for one.
+for _ in $(seq 30); do landing landing.localhost / -o /dev/null 2>/dev/null && break; sleep 1; done
+landing landing.localhost / | grep -q 'Cada pago, claro'
+landing landing.localhost /privacidad/ | grep -q 'Política de privacidad de Rakin'
+[ "$(landing landing.localhost /img/hoy-390.webp -o /dev/null -w '%{http_code} %{content_type}')" = "200 image/webp" ]
+[ "$(landing www.landing.localhost '/x?y=1' -o /dev/null -w '%{http_code} %{redirect_url}')" = "301 https://landing.localhost/x?y=1" ]
+echo "ok   - the landing page, its privacy notice and screenshots, and www redirecting to it"
 compose ps --services --status running | grep -qx backup
 echo "ok   - with COMPOSE_PROFILES=backup, up starts the backup service"
 

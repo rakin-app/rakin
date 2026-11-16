@@ -81,6 +81,9 @@ services:
       # Every gym's host, *.BASE_DOMAIN: a wildcard DNS record, unproxied too.
       # Certificates one host at a time, on demand, for gyms the api knows.
       BASE_DOMAIN: ${BASE_DOMAIN:?staging.rakin.app}
+      # The landing page (#343), and www, which redirects to it: an A record
+      # each, unproxied too.
+      LANDING_HOST: ${LANDING_HOST:-rakin.app}
       ACME_EMAIL: ${ACME_EMAIL:?where Let's Encrypt sends expiry notices}
     ports:
       - "80:80"
