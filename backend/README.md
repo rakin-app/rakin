@@ -364,7 +364,7 @@ One `session` row per class (migration `0020`, [spec](../docs/technical.md#domai
 
 A session carries its `class_type_id`, `class_type_name` and `class_type_kind`, `program_id` and `program_name`, `starts_at`, `coach_id` and `coach_name` (the gym's record of them), `topic`, `notes`, `created_at` and `updated_at`, and `present`, how many are marked at it: 0 is a class whose attendance was never taken, which the Clases list flags. A topic is up to 200 characters and notes up to 4,000; a blank one, or `null`, is none. The class type must be one of the gym's active ones (422 `unknown_class_type` or `inactive_class_type` on `class_type_id`), and the coach on its staff in any role (422 `unknown_coach`) when a session is started or reassigned: a coach who leaves stays the coach of the sessions they taught, since the row references `gym_person`, not `staff`. Any staff role may read, start and edit sessions, coaches included, but only an owner or admin lists the unmarked ones; there is no delete, since attendance points at a session.
 
-An open-access class type (`kind: "open_access"`, #348) has no classes: its sessions are made by its first check-in of each day (Check-in API, below). Starting one, scheduling one or changing a class to or from one is a 422 `open_access` on `class_type_id`, and its session takes no timer plan (422 `open_access_plan`).
+An open-access class type (`kind: "open_access"`, #348) has no classes: its sessions are made by its first check-in of each day (Check-in API, below). Starting one, scheduling one or changing a class to or from one is a 422 `open_access` on `class_type_id`, moving its day's session one on `starts_at`, and its session takes no timer plan (422 `open_access_plan`).
 
 ## Weekly schedule API
 

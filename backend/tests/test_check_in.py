@@ -24,6 +24,7 @@ from tests.pg import (
     throwaway_database,
 )
 from tests.test_attendance import (
+    at,
     class_type,
     created,
     credits_left,
@@ -275,6 +276,12 @@ def test_open_access_has_no_classes_to_start_schedule_or_time(
         client, gym, add_person(client, gym, "Paula Contreras"), plan(client, gym, CREDITS)
     )
     day = ok(check_in(client, gym, door, paula))["session_id"]
+    later = {"starts_at": at(seeded_today() + timedelta(days=1))}
+    assert error_type(client.patch(f"/api/sessions/{day}", json=later, headers=headers)) == (
+        "open_access"
+    )
+    # The rest of it changes as any session's does.
+    ok(client.patch(f"/api/sessions/{day}", json={"topic": "Muro nuevo"}, headers=headers))
     kinds = ok(client.get("/api/block-kinds", headers=headers))
     block = {"block_kind_id": kinds[0]["id"], "planned_seconds": 600}
     planned = client.put(f"/api/sessions/{day}/blocks", json={"blocks": [block]}, headers=headers)

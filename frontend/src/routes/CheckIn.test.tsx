@@ -1,9 +1,10 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { warning, type Arrival, type Candidate, type Door } from '../api/checkIn'
 import { createQueryClient } from '../api/queryClient'
+import { isoDay, shiftDay } from '../format'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
@@ -43,7 +44,12 @@ const DOOR: Door = {
 
 type Call = { method: string; path: string; body: unknown }
 
-function stubApi({ doors = [DOOR], people = [PAULA, TOMAS, ANA] }: { doors?: Door[]; people?: Candidate[] } = {}) {
+function stubApi({
+  doors = [DOOR],
+  people = [PAULA, TOMAS, ANA],
+  // What `GET /api/check-in` answers from its second ask on: the next day, say.
+  later,
+}: { doors?: Door[]; people?: Candidate[]; later?: Door[] } = {}) {
   const calls: Call[] = []
   let day = doors
   vi.stubGlobal(
@@ -60,7 +66,11 @@ function stubApi({ doors = [DOOR], people = [PAULA, TOMAS, ANA] }: { doors?: Doo
       const withArrivals = (next: Arrival[]): Door[] =>
         day.map((d, i) => (i === 0 ? { ...d, session_id: 's-day', arrivals: next } : d))
       if (path === '/api/me/role') return answer(200, { role: 'coach', person_id: 'coach' })
-      if (path === '/api/check-in' && method === 'GET') return answer(200, day)
+      if (path === '/api/check-in' && method === 'GET') {
+        const asked = calls.filter((c) => c.path === '/api/check-in').length
+        if (later && asked > 1) day = later
+        return answer(200, day)
+      }
       if (path === '/api/check-in/ct-libre/search') {
         const q = (url.searchParams.get('q') ?? '').toLowerCase()
         const found = people
@@ -94,6 +104,7 @@ function renderEntrada() {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('Entrada', () => {
@@ -129,6 +140,40 @@ describe('Entrada', () => {
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       { method: 'POST', path: '/api/check-in/ct-libre', body: { membership_id: 'm-tomas' } },
     ])
+  })
+
+  it('does nothing on Enter before the search for what is typed has answered', async () => {
+    const calls = stubApi({ people: [PAULA, TOMAS] })
+    renderEntrada()
+
+    const box = await screen.findByRole('searchbox', { name: copy.search.label('Acceso libre') })
+    // "paula" finds one person, then "paula x" none: Enter must not act on the stale answer.
+    await userEvent.type(box, 'paula')
+    await screen.findByRole('button', { name: copy.search.enterLabel('Paula Contreras') })
+    await userEvent.type(box, ' x{Enter}')
+
+    expect(await screen.findByText(copy.search.empty)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+  })
+
+  it('asks for the new day once the gym is past midnight with the door still open', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const today = isoDay(new Date().toISOString(), 'America/Santiago')
+    const yesterday: Door = {
+      ...DOOR,
+      date: shiftDay(today, -1),
+      session_id: 's-old',
+      arrivals: [{ ...PAULA, marked_at: '2026-11-16T22:40:00Z', credits_consumed: 1 }],
+    }
+    stubApi({ doors: [yesterday], later: [{ ...DOOR, date: today }] })
+    renderEntrada()
+
+    const arrivals = await screen.findByRole('list', { name: copy.today.title })
+    expect(within(arrivals).getByText('Paula Contreras')).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    await waitFor(() => expect(screen.getByText(copy.today.empty)).toBeInTheDocument())
   })
 
   it('warns of a lapsed plan, a spent pack and a payment past due, and still lets them in', async () => {

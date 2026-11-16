@@ -21,7 +21,8 @@ the door's day, not a class, and one whose visits were all undone took no attend
 forget.
 
 An open-access class type has no classes to start, schedule or change a class to or
-from: the first check-in of each day makes its session (`app.api.check_in`).
+from: the first check-in of each day makes its session (`app.api.check_in`), which is
+never moved either.
 
 Any staff role may read them and start one, coaches included, since they are who
 start a class and write what it covered; members may not use them at all. Changing
@@ -302,6 +303,9 @@ async def update_session(
         raise FORBIDDEN
     if "coach_id" in changes:
         await require_coach(session, changes["coach_id"])
+    if "starts_at" in changes and current.class_type_kind is ClassKind.OPEN_ACCESS:
+        # Its day is its `open_day`: moved, the next check-in would make another.
+        raise unprocessable("starts_at", "open_access", "an open-access day is not moved")
     if "class_type_id" in changes:
         await require_class_type(session, changes["class_type_id"])
         await refuse_open_access(session, current.class_type_id)

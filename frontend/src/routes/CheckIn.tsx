@@ -10,7 +10,7 @@ import { SearchInput } from '../components/Field'
 import { Grid, PageContainer } from '../components/Layout'
 import { Loading } from '../components/Loading'
 import { PageHeader } from '../components/PageHeader'
-import { clockTime, toDate, weekdayDay } from '../format'
+import { clockTime, isoDay, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './CheckIn.css'
@@ -19,6 +19,9 @@ const copy = t.admin.checkIn
 
 // Typing waits this long before it becomes a search.
 const SEARCH_DEBOUNCE_MS = 150
+
+// How often a door left open looks at the clock for the gym's day to turn.
+const DAY_TICK_MS = 60_000
 
 /**
  * "Entrada" (#348): checking people in at the door of a gym open all day, with no class
@@ -32,12 +35,17 @@ const SEARCH_DEBOUNCE_MS = 150
  * are a search and a tap each; Enter checks in the one person a search found. A gym
  * with two open-access types (a climbing wall and a gym floor, say) picks one above the
  * box. From 1024px the arrivals sit beside it.
+ *
+ * Left open past midnight, the screen asks for the new day once the gym's date is no
+ * longer the one it shows, so the first check-in of the morning is not listed with
+ * yesterday's arrivals; it asks again whenever the window comes back into focus too.
  */
 export function CheckIn() {
   usePageTitle(copy.title)
   const doors = useQuery(doorsQuery())
   const [picked, setPicked] = useState<string | null>(null)
   const door = doors.data?.find((d) => d.class_type_id === picked) ?? doors.data?.[0]
+  useNewDay(door)
 
   return (
     <div className="check-in">
@@ -70,6 +78,23 @@ export function CheckIn() {
       </PageContainer>
     </div>
   )
+}
+
+/** Ask for the doors again once the gym's today is past `door.date`. */
+function useNewDay(door: Door | undefined) {
+  const queryClient = useQueryClient()
+  const date = door?.date
+  const timeZone = door?.timezone
+  useEffect(() => {
+    if (date === undefined) return
+    const check = () => {
+      if (isoDay(new Date().toISOString(), timeZone) !== date) {
+        void queryClient.invalidateQueries({ queryKey: ['check-in'] })
+      }
+    }
+    const timer = setInterval(check, DAY_TICK_MS)
+    return () => clearInterval(timer)
+  }, [queryClient, date, timeZone])
 }
 
 function DoorDay({ door }: { door: Door }) {
@@ -109,6 +134,8 @@ function DoorDay({ door }: { door: Door }) {
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
+    // Only an answer to what is in the box now: Enter before the search settles does nothing.
+    if (q !== typed.trim() || found.isFetching) return
     const only = found.data?.length === 1 ? found.data[0] : undefined
     if (only && only.checked_in_at === null && !door.cancelled) enter.mutate(only.membership_id)
   }

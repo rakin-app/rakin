@@ -42,9 +42,14 @@ export type Door = {
   arrivals: Arrival[]
 }
 
-/** The gym's active open-access class types, each with today; none is a gym with no Entrada. */
+/** The gym's active open-access class types, each with today; none is a gym with no Entrada.
+ * Asked again whenever the window comes back into focus: the door is often left open all day. */
 export function doorsQuery() {
-  return queryOptions({ queryKey: ['check-in'], queryFn: () => apiFetch<Door[]>('/api/check-in') })
+  return queryOptions({
+    queryKey: ['check-in'],
+    queryFn: () => apiFetch<Door[]>('/api/check-in'),
+    refetchOnWindowFocus: 'always',
+  })
 }
 
 const doorPath = (classTypeId: string) => `/api/check-in/${encodeURIComponent(classTypeId)}`

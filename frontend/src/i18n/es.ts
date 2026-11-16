@@ -1628,7 +1628,9 @@ export const es = {
       loading: 'Cargando…',
       retry: 'Reintentar',
       error: 'No pudimos cargar la entrada.',
-      none: 'Esta academia no tiene acceso libre. Un dueño o admin lo crea en Ajustes › Programas y clases, como una clase de tipo Acceso libre.',
+      get none() {
+        return `${w.placeIs('Este', 'Esta')} ${w.place} no tiene acceso libre. Un dueño o admin lo crea en Ajustes › Programas y clases, como una clase de tipo Acceso libre.`
+      },
       pick: 'Acceso',
       cancelled: 'La entrada de hoy está cancelada: no se puede marcar a nadie hasta que un dueño o admin la reactive.',
       openDay: 'Ver el día',
