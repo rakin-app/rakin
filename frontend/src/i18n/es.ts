@@ -697,6 +697,76 @@ export const es = {
         add: 'Agregar historial',
         start: 'Fecha de inicio y clases',
         saved: 'Historial guardado.',
+        // "Historial de pagos" (#295): what they paid before Rakin, a year at a time.
+        payments: 'Pagos anteriores',
+        paymentsError: 'No pudimos cargar sus pagos anteriores.',
+        year: (year: number, count: number) => `${year} · ${count === 1 ? '1 pago' : `${count} pagos`}`,
+        earlier: (n: number) => `Ver años anteriores (${n})`,
+        fewer: 'Ver menos años',
+        // A line: the month it paid, else the day; then how, the plan, where it came from.
+        line: {
+          month: (iso: string) => `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`,
+          payment: 'Pago',
+          paid: (day: string) => `pagado el ${day}`,
+          method: { cash: 'efectivo', transfer: 'transferencia', other: 'otro' },
+          typed: (by: string, day: string) => `agregado por ${by} · ${day}`,
+          typedNobody: (day: string) => `agregado el ${day}`,
+          imported: (file: string, by: string | null, day: string) =>
+            by ? `importado de ${file} · ${by} · ${day}` : `importado de ${file} · ${day}`,
+        },
+        remove: {
+          title: (what: string) => `Eliminar ${what}`,
+          intro:
+            'Para un error de tipeo: se borra del historial y queda registrado quién lo borró y por qué. Para corregirlo, elimínalo y agrégalo de nuevo.',
+          reason: 'Motivo',
+          reasonNeeded: 'Escribe por qué lo eliminas.',
+          submit: 'Eliminar',
+          cancel: 'Cancelar',
+          working: 'Eliminando…',
+          failed: 'No pudimos eliminarlo. Inténtalo de nuevo.',
+          done: 'Pago eliminado del historial.',
+        },
+        paymentsForm: {
+          title: 'Agregar pagos anteriores',
+          intro:
+            'Lo que pagó antes de Rakin, mes a mes. Solo se muestra en su ficha: no cuenta en Pagos ni se le cobra.',
+          from: 'Desde',
+          to: 'Hasta',
+          amount: 'Monto por mes',
+          method: 'Método',
+          methodUnknown: 'No se sabe',
+          methods: { cash: 'Efectivo', transfer: 'Transferencia', other: 'Otro' },
+          day: 'Día de pago',
+          plan: 'Plan (opcional)',
+          planPlaceholder: 'Mensual 3x semana',
+          months: 'Meses',
+          // "ene 2024", a row of the list.
+          month: (iso: string) => `${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)} ${iso.slice(0, 4)}`,
+          rowDay: (month: string) => `Día de pago de ${month}`,
+          rowAmount: (month: string) => `Monto de ${month}`,
+          rowMethod: (month: string) => `Método de ${month}`,
+          removeRow: (month: string) => `Quitar ${month}: ese mes no pagó`,
+          total: (count: number, amount: string) => `${count === 1 ? '1 pago' : `${count} pagos`} · ${amount}`,
+          inPlan: (month: string) => `Desde ${month} está en su plan: usa Pagado hasta.`,
+          duplicate: 'Ya está en el historial',
+          duplicates: (n: number) =>
+            n === 1
+              ? '1 pago es igual a uno que ya está en el historial: se guardará otra vez.'
+              : `${n} pagos son iguales a otros que ya están en el historial: se guardarán otra vez.`,
+          rangeNeeded: 'Elige desde y hasta, de los últimos 60 años hasta este mes.',
+          tooMany: (max: number) => `Hasta ${max} meses a la vez.`,
+          amountNeeded: 'Escribe el monto de cada mes.',
+          dayNeeded: 'Escribe un día del 1 al 31.',
+          noneLeft: 'No queda ningún mes para guardar.',
+          coversPlan: (day: string) =>
+            `Su plan empezó el ${day}: los meses desde entonces se registran con Pagado hasta, no en el historial.`,
+          submit: (count: number) => (count === 1 ? 'Guardar 1 pago' : `Guardar ${count} pagos`),
+          cancel: 'Cancelar',
+          working: 'Guardando…',
+          failed: 'No pudimos guardar los pagos. Inténtalo de nuevo.',
+          saved: (count: number) =>
+            count === 1 ? '1 pago guardado en el historial.' : `${count} pagos guardados en el historial.`,
+        },
         form: {
           title: 'Fecha de inicio y clases',
           intro:

@@ -259,8 +259,9 @@ def test_an_admin_writes_a_correction_only_as_themselves_in_their_gym(
             run(db.api_url, in_gym(gym, sql, person=admin))
         with pytest.raises(asyncpg.RestrictViolationError):
             run(db.owner_url, in_gym(gym, sql))
+    # With what references it (an import's history payments, #295), or it is refused first.
     with pytest.raises(asyncpg.RestrictViolationError):
-        run(db.owner_url, in_gym(gym, "TRUNCATE audit_event"))
+        run(db.owner_url, in_gym(gym, "TRUNCATE audit_event CASCADE"))
     assert count(db, gym, "SELECT count(*) FROM audit_event WHERE person_id = $1", them) == 1
 
 

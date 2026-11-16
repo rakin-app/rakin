@@ -141,7 +141,8 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # tests/test_double_submit.py `idempotency_key` (0038),
     # tests/test_class_tags.py `class_tag` and the class and slot tags (0041), and
     # tests/test_activities.py `gym_activity` (0043), tests/test_voids.py
-    # `audit_event` (0044), and tests/test_freeze_requests.py `freeze_request` (0045).
+    # `audit_event` (0044), tests/test_freeze_requests.py `freeze_request` (0045), and
+    # tests/test_history_payments.py `history_payment` (0053).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "audit_event",
@@ -158,6 +159,7 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
         "grade_event",
         "guardian_link",
         "gym_activity",
+        "history_payment",
         "idempotency_key",
         "join_link",
         "join_request",

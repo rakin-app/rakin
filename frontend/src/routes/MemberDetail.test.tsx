@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FieldValue, PersonField } from '../api/customFields'
 import type { GradeEvent, Grading, GradingScheme } from '../api/grading'
+import type { HistoryPayment, HistoryPaymentIn, HistoryPayments } from '../api/history'
 import type { Correction, Membership, MembershipLedger, OpenPeriod, Person, TimelineEntry } from '../api/member'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
@@ -11,6 +12,7 @@ import { isoDay, shortDay } from '../format'
 import type { PersonTime } from '../api/matTime'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { monthsBetween, paidOn } from './PersonHistory'
 
 const copy = es.admin.member
 
@@ -293,6 +295,7 @@ function stubApi({
     }
     if (path === '/api/ledger/memberships/m-felipe') return { body: current }
     if (path === '/api/ledger/people/felipe/corrections') return { body: { total: corrections.length, items: corrections } }
+    if (path === '/api/people/felipe/history/payments' && method === 'GET') return { body: { plan_from: null, years: [] } }
     if (path === '/api/ledger/memberships/m-felipe/ahead') return ahead ?? { body: { periods: [] } }
     if (path === '/api/ledger/payments/ahead' && method === 'POST') {
       return aheadPayment ?? { status: 201, body: { paid_through: '2027-02-28' } }
@@ -3204,7 +3207,7 @@ describe('Historial: alumno desde y clases antes de Rakin (#293)', () => {
     renderAt(PATH)
 
     const card = await history()
-    expect(within(card).getByText(copy.history.empty)).toBeInTheDocument()
+    expect(await within(card).findByText(copy.history.empty)).toBeInTheDocument()
     await userEvent.click(within(card).getByRole('button', { name: copy.history.add }))
     await userEvent.click(within(card).getByRole('button', { name: copy.history.start }))
     const form = within(card).getByRole('form', { name: copy.history.form.title })
@@ -3256,5 +3259,230 @@ describe('Historial: alumno desde y clases antes de Rakin (#293)', () => {
     const card = await history()
     expect(within(card).getByRole('button', { name: copy.history.add })).toHaveAttribute('aria-expanded', 'true')
     expect(within(card).getByRole('button', { name: copy.history.start })).toBeInTheDocument()
+  })
+})
+
+describe('Historial de pagos: pagos anteriores a Rakin (#295)', () => {
+  const words = copy.history
+  const form = words.paymentsForm
+  const history = () => screen.findByRole('region', { name: words.title })
+  const MARCH: HistoryPayment = {
+    id: 'h-mar',
+    paid_on: '2023-03-05',
+    amount_clp: 25000,
+    method: 'transfer',
+    covers_month: '2023-03-01',
+    plan_name: 'Mensual 3x semana',
+    note: null,
+    source: 'manual',
+    import_name: null,
+    created_by_name: 'Martín',
+    created_at: '2026-11-14T15:00:00Z',
+  }
+
+  /** The API as a store: what is posted is read back, by year, newest first. */
+  function stubHistory(initial: HistoryPayment[] = [], planFrom: string | null = null, refuse?: Answer) {
+    let payments = initial
+    const read = (): HistoryPayments => {
+      const years = new Map<number, HistoryPayment[]>()
+      for (const p of [...payments].sort((a, b) => ((b.covers_month ?? b.paid_on) > (a.covers_month ?? a.paid_on) ? 1 : -1))) {
+        const year = Number((p.covers_month ?? p.paid_on).slice(0, 4))
+        years.set(year, [...(years.get(year) ?? []), p])
+      }
+      return {
+        plan_from: planFrom,
+        years: [...years.entries()]
+          .sort(([a], [b]) => b - a)
+          .map(([year, ps]) => ({ year, count: ps.length, total_clp: ps.reduce((sum, p) => sum + p.amount_clp, 0), payments: ps })),
+      }
+    }
+    return stubApi({
+      extra: (path, method, body) => {
+        if (path !== '/api/people/felipe/history/payments' && !path.startsWith('/api/people/felipe/history/payments/')) return undefined
+        if (method === 'GET') return { body: read() }
+        if (path.endsWith('/remove')) {
+          const id = path.split('/').at(-2)
+          payments = payments.filter((p) => p.id !== id)
+          return { body: read() }
+        }
+        if (refuse) return refuse
+        const sent = (body as { payments: HistoryPaymentIn[] }).payments
+        payments = [
+          ...payments,
+          ...sent.map((p, i) => ({ ...MARCH, ...p, id: `h-${payments.length + i}`, note: null })),
+        ]
+        return { status: 201, body: read() }
+      },
+    })
+  }
+
+  async function openForm() {
+    const card = await history()
+    await userEvent.click(within(card).getByRole('button', { name: words.add }))
+    await userEvent.click(within(card).getByRole('button', { name: words.payments }))
+    return { card, form: within(card).getByRole('form', { name: form.title }) }
+  }
+
+  function fill(f: HTMLElement, from: string, to: string, amount: string) {
+    fireEvent.change(within(f).getByLabelText(form.from), { target: { value: from } })
+    fireEvent.change(within(f).getByLabelText(form.to), { target: { value: to } })
+    fireEvent.change(within(f).getByLabelText(form.amount), { target: { value: amount } })
+  }
+
+  it('fills a row per month and saves twelve as one year with its total', async () => {
+    const calls = stubHistory()
+    renderAt(PATH)
+
+    const { card, form: f } = await openForm()
+    fill(f, '2024-01', '2024-12', '25000')
+    fireEvent.change(within(f).getByLabelText(form.plan), { target: { value: 'Mensual 3x semana' } })
+    const months = within(f).getByRole('list', { name: form.months })
+    expect(within(months).getAllByRole('listitem')).toHaveLength(12)
+    expect(within(f).getByText(form.total(12, '$300.000'))).toBeInTheDocument()
+    // Day 5 by default; one month paid on another day, another for less.
+    fireEvent.change(within(f).getByLabelText(form.rowDay('mar 2024')), { target: { value: '10' } })
+    fireEvent.change(within(f).getByLabelText(form.rowAmount('abr 2024')), { target: { value: '20000' } })
+    expect(within(f).getByText(form.total(12, '$295.000'))).toBeInTheDocument()
+    await userEvent.click(within(f).getByRole('button', { name: form.submit(12) }))
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(form.saved(12))
+    const sent = (calls.find((c) => c.method === 'POST' && c.path === '/api/people/felipe/history/payments')?.body as {
+      payments: HistoryPaymentIn[]
+    }).payments
+    expect(sent).toHaveLength(12)
+    expect(sent[0]).toEqual({
+      paid_on: '2024-01-05',
+      amount_clp: 25000,
+      method: 'transfer',
+      covers_month: '2024-01-01',
+      plan_name: 'Mensual 3x semana',
+    })
+    expect(sent[2]!.paid_on).toBe('2024-03-10')
+    expect(sent[3]!.amount_clp).toBe(20000)
+    const year = within(card).getByRole('button', { name: /2024 · 12 pagos/ })
+    expect(year).toHaveTextContent('$295.000')
+    expect(year).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(year)
+    const lines = within(card).getAllByRole('button', { name: /pagado el/ })
+    expect(lines).toHaveLength(12)
+    expect(lines[0]).toHaveTextContent('diciembre 2024')
+    expect(lines[0]).toHaveTextContent('pagado el 5 dic 2024 · transferencia · Mensual 3x semana')
+    expect(lines[0]).toHaveTextContent(words.line.typed('Martín', '14 nov'))
+  })
+
+  it('pays a short month on its last day, and never after today', () => {
+    expect(paidOn('2024-02-01', 31, '2026-11-15')).toBe('2024-02-29')
+    expect(paidOn('2026-11-01', 20, '2026-11-15')).toBe('2026-11-15')
+    expect(monthsBetween('2023-11', '2024-02')).toEqual(['2023-11-01', '2023-12-01', '2024-01-01', '2024-02-01'])
+  })
+
+  it('takes a month off the list when it was not paid', async () => {
+    const calls = stubHistory()
+    renderAt(PATH)
+
+    const { form: f } = await openForm()
+    fill(f, '2024-01', '2024-03', '25000')
+    await userEvent.click(within(f).getByRole('button', { name: form.removeRow('feb 2024') }))
+    expect(within(f).getByText(form.total(2, '$50.000'))).toBeInTheDocument()
+    await userEvent.click(within(f).getByRole('button', { name: form.submit(2) }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
+    const sent = (calls.find((c) => c.method === 'POST')!.body as { payments: HistoryPaymentIn[] }).payments
+    expect(sent.map((p) => p.covers_month)).toEqual(['2024-01-01', '2024-03-01'])
+  })
+
+  it('leaves out the months of their plan, pointing at Pagado hasta', async () => {
+    stubHistory([], '2024-03-30')
+    renderAt(PATH)
+
+    const { form: f } = await openForm()
+    fill(f, '2024-01', '2024-06', '25000')
+    expect(within(within(f).getByRole('list', { name: form.months })).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(f).getByText(form.inPlan('abril 2024'))).toBeInTheDocument()
+  })
+
+  it('says when the API finds a month of their plan (covers_plan)', async () => {
+    stubHistory([], null, {
+      status: 422,
+      body: { detail: { code: 'covers_plan', plan_from: '2024-03-30', months: ['2024-04-01'] } },
+    })
+    renderAt(PATH)
+
+    const { form: f } = await openForm()
+    fill(f, '2024-04', '2024-04', '25000')
+    await userEvent.click(within(f).getByRole('button', { name: form.submit(1) }))
+    expect(await within(f).findByRole('alert')).toHaveTextContent(form.coversPlan('30 mar 2024'))
+  })
+
+  it('warns, without refusing, of a payment equal to one already there', async () => {
+    const calls = stubHistory([MARCH])
+    renderAt(PATH)
+
+    const { form: f } = await openForm()
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/people/felipe/history/payments')).toBe(true))
+    fill(f, '2023-03', '2023-04', '25000')
+    expect(within(f).getByText(form.duplicate)).toBeInTheDocument()
+    expect(within(f).getByRole('status')).toHaveTextContent(form.duplicates(1))
+    expect(within(f).getByRole('button', { name: form.submit(2) })).toBeEnabled()
+  })
+
+  it('refuses a form with no range or no amount before sending it', async () => {
+    const calls = stubHistory()
+    renderAt(PATH)
+
+    const { form: f } = await openForm()
+    await userEvent.click(within(f).getByRole('button', { name: form.submit(0) }))
+    expect(within(f).getByRole('alert')).toHaveTextContent(form.rangeNeeded)
+    fill(f, '2024-01', '2024-02', '')
+    expect(within(f).getByRole('alert')).toHaveTextContent(form.amountNeeded)
+    expect(calls.some((c) => c.method === 'POST')).toBe(false)
+  })
+
+  it('shows the years newest first, collapsed, and the older ones on asking', async () => {
+    stubHistory(
+      [2019, 2020, 2021, 2022].map((year) => ({
+        ...MARCH,
+        id: `h-${year}`,
+        paid_on: `${year}-03-05`,
+        covers_month: `${year}-03-01`,
+      })),
+    )
+    renderAt(PATH)
+
+    const card = await history()
+    const years = await within(card).findAllByRole('button', { name: /· 1 pago/ })
+    expect(years.map((y) => y.textContent)).toEqual(['2022 · 1 pago$25.000', '2021 · 1 pago$25.000', '2020 · 1 pago$25.000'])
+    await userEvent.click(within(card).getByRole('button', { name: words.earlier(1) }))
+    expect(within(card).getAllByRole('button', { name: /· 1 pago/ })).toHaveLength(4)
+  })
+
+  it('removes a line with a reason, and the source of an imported one', async () => {
+    const imported: HistoryPayment = { ...MARCH, id: 'h-imp', paid_on: '2023-04-05', covers_month: '2023-04-01', source: 'import', import_name: 'pagos.xlsx', created_by_name: 'Ana' }
+    const calls = stubHistory([MARCH, imported])
+    renderAt(PATH)
+
+    const card = await history()
+    await userEvent.click(await within(card).findByRole('button', { name: /2023 · 2 pagos/ }))
+    expect(within(card).getByText(words.line.imported('pagos.xlsx', 'Ana', '14 nov'))).toBeInTheDocument()
+    await userEvent.click(within(card).getByRole('button', { name: /marzo 2023/ }))
+    const removal = within(card).getByRole('form', { name: words.remove.title('marzo 2023 · $25.000') })
+    await userEvent.click(within(removal).getByRole('button', { name: words.remove.submit }))
+    expect(within(removal).getByRole('alert')).toHaveTextContent(words.remove.reasonNeeded)
+    await userEvent.type(within(removal).getByLabelText(words.remove.reason), 'mal tipeado')
+    await userEvent.click(within(removal).getByRole('button', { name: words.remove.submit }))
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(words.remove.done)
+    expect(calls.find((c) => c.path === '/api/people/felipe/history/payments/h-mar/remove')?.body).toEqual({
+      reason: 'mal tipeado',
+    })
+    expect(await within(card).findByRole('button', { name: /2023 · 1 pago/ })).toBeInTheDocument()
+  })
+
+  it('is not read on a coach’s ficha', async () => {
+    const calls = stubApi({ role: 'coach' })
+    renderAt(PATH)
+
+    await screen.findByRole('region', { name: copy.attendance.title })
+    expect(calls.some((c) => c.path.includes('/history/payments'))).toBe(false)
   })
 })
