@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
@@ -89,6 +89,28 @@ describe('Chip and SegmentedControl', () => {
     expect(screen.getByRole('button', { name: 'Prueba' })).toHaveAttribute('aria-pressed', 'false')
     await userEvent.click(screen.getByRole('button', { name: 'Activo' }))
     expect(onClick).toHaveBeenCalledOnce()
+  })
+
+  it('a chip row fades the edge more chips lie past (#358)', () => {
+    render(
+      <ChipGroup label="Estado">
+        <Chip pressed={false}>Activo</Chip>
+      </ChipGroup>,
+    )
+    const row = screen.getByRole('group', { name: 'Estado' })
+    expect(row).not.toHaveAttribute('data-more-end')
+
+    // jsdom lays nothing out: a row 300px wide holding 500px of chips.
+    Object.defineProperty(row, 'clientWidth', { configurable: true, value: 300 })
+    Object.defineProperty(row, 'scrollWidth', { configurable: true, value: 500 })
+    fireEvent.scroll(row)
+    expect(row).toHaveAttribute('data-more-end')
+    expect(row).not.toHaveAttribute('data-more-start')
+
+    row.scrollLeft = 200
+    fireEvent.scroll(row)
+    expect(row).toHaveAttribute('data-more-start')
+    expect(row).not.toHaveAttribute('data-more-end')
   })
 
   it('a segmented control presses one option at a time', async () => {

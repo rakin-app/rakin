@@ -10,7 +10,7 @@ import { App } from '../App'
 import { isoDay, shiftDay, toDate, weekdayDay } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
-import { mondayOf } from './Classes'
+import { mondayOf, nowOrNext } from './Classes'
 
 const copy = es.admin.classes
 const detail = es.admin.session
@@ -196,8 +196,15 @@ function renderAt(path: string) {
   return router
 }
 
+/** "Crear clase" is a button until it is wanted (#358): open its form. */
+async function openStart() {
+  await userEvent.click(await screen.findByRole('button', { name: copy.start.title }))
+  return screen.findByRole('form', { name: copy.start.title })
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('Clases', () => {
@@ -267,6 +274,68 @@ describe('Clases', () => {
     expect(row).not.toHaveTextContent(copy.today.unmarked)
   })
 
+  // 09:00 in Santiago on Monday the 9th: the 07:00 class is over, the 19:00 one is next.
+  it('puts the class on now, else the next one, first: its attendance and its timer (#358)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-09T12:00:00Z'))
+    stubApi()
+    renderAt('/admin/clases')
+
+    const eyebrow = await screen.findByText(copy.now.next)
+    const card = eyebrow.closest('section')!
+    expect(card).toHaveTextContent(copy.today.row('19:00', 'Fundamentos'))
+    expect(card).toHaveTextContent(copy.today.detail('Adultos', 'Rodrigo Fuentes'))
+    expect(within(card).getByRole('link', { name: copy.now.takeLabel(copy.today.row('19:00', 'Fundamentos')) })).toHaveAttribute(
+      'href',
+      '/admin/clases/s-evening',
+    )
+    // The class's own coach runs its timer.
+    expect(within(card).getByRole('link', { name: detail.timer.open })).toHaveAttribute('href', '/admin/clases/s-evening/timer')
+    // Ahead of "Crear clase" and the day's list.
+    const start = screen.getByRole('button', { name: copy.start.title })
+    const today = screen.getByRole('region', { name: copy.today.title })
+    expect(card.compareDocumentPosition(start) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(card.compareDocumentPosition(today) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('has no such card once the day’s classes are over', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // 23:00 in Santiago.
+    vi.setSystemTime(new Date('2026-11-10T02:00:00Z'))
+    stubApi()
+    renderAt('/admin/clases')
+
+    await screen.findByRole('region', { name: copy.today.title })
+    expect(screen.queryByText(copy.now.next)).not.toBeInTheDocument()
+    expect(screen.queryByText(copy.now.on)).not.toBeInTheDocument()
+  })
+
+  it('keeps "Crear clase" a button until it is wanted (#358)', async () => {
+    stubApi()
+    renderAt('/admin/clases')
+
+    const start = await screen.findByRole('button', { name: copy.start.title })
+    expect(start).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('form', { name: copy.start.title })).not.toBeInTheDocument()
+    await userEvent.click(start)
+    const form = await screen.findByRole('form', { name: copy.start.title })
+    await userEvent.click(screen.getByRole('button', { name: copy.start.close }))
+    expect(form).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.start.title })).toBeInTheDocument()
+  })
+
+  it('cuts a row short on a desktop, its full text in its title', async () => {
+    stubApi()
+    renderAt('/admin/clases')
+
+    const today = await screen.findByRole('region', { name: copy.today.title })
+    const [, evening] = await within(today).findAllByRole('link')
+    expect(evening).toHaveAttribute(
+      'title',
+      [copy.today.row('19:00', 'Fundamentos'), copy.today.detail('Adultos', 'Rodrigo Fuentes'), 'Guardia cerrada'].join(' · '),
+    )
+  })
+
   it('says when there are no classes yet today', async () => {
     stubApi({ sessions: [] })
     renderAt('/admin/clases')
@@ -279,7 +348,7 @@ describe('Clases', () => {
     const calls = stubApi()
     const router = renderAt('/admin/clases')
 
-    const form = await screen.findByRole('form', { name: copy.start.title })
+    const form = await openStart()
     const select = within(form).getByLabelText(copy.start.classType)
     // By program: the select groups the class types under each.
     expect(within(select).getAllByRole('group').map((g) => g.getAttribute('label'))).toEqual(['Adultos', 'Kids'])
@@ -297,7 +366,7 @@ describe('Clases', () => {
     const calls = stubApi({ durations: { fundamentos: 90, kids: 45 } })
     renderAt('/admin/clases')
 
-    const form = await screen.findByRole('form', { name: copy.start.title })
+    const form = await openStart()
     const duration = within(form).getByLabelText(copy.start.duration)
     await vi.waitFor(() => expect(duration).toHaveValue(90))
     await userEvent.selectOptions(within(form).getByLabelText(copy.start.classType), 'Kids 8 a 12')
@@ -320,7 +389,7 @@ describe('Clases', () => {
     stubApi({ start: { status: 422, body: { detail: [] } } })
     renderAt('/admin/clases')
 
-    const form = await screen.findByRole('form', { name: copy.start.title })
+    const form = await openStart()
     await userEvent.click(within(form).getByRole('button', { name: copy.start.submit }))
 
     expect(await within(form).findByRole('alert')).toHaveTextContent(copy.start.failed)
@@ -330,9 +399,10 @@ describe('Clases', () => {
     stubApi({ classTypes: [] })
     renderAt('/admin/clases')
 
+    await userEvent.click(await screen.findByRole('button', { name: copy.start.title }))
     const start = await screen.findByRole('region', { name: copy.start.title })
     expect(await within(start).findByText(copy.start.noClassTypes)).toBeInTheDocument()
-    expect(within(start).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(start).queryByRole('button', { name: copy.start.submit })).not.toBeInTheDocument()
   })
 })
 
@@ -454,6 +524,22 @@ describe('Clases on a desktop', () => {
       'matchMedia',
       vi.fn((query: string) => ({ matches, media: query, addEventListener: () => {}, removeEventListener: () => {} })),
     )
+
+  it('finds the class on now, else the next one, never a cancelled one', () => {
+    const at = (iso: string, extra: Partial<ClassSession> = {}): ClassSession => ({ ...EVENING, id: iso, starts_at: iso, ...extra })
+    const nine = at('2026-11-09T12:00:00Z', { duration_minutes: 90 })
+    const noon = at('2026-11-09T15:00:00Z')
+    const evening = at('2026-11-09T22:00:00Z')
+    const now = (iso: string) => new Date(iso)
+
+    expect(nowOrNext([nine, noon, evening], now('2026-11-09T13:00:00Z'))).toEqual({ session: nine, on: true })
+    expect(nowOrNext([evening, nine, noon], now('2026-11-09T13:31:00Z'))).toEqual({ session: noon, on: false })
+    // No duration: on for its first hour.
+    expect(nowOrNext([noon, evening], now('2026-11-09T15:59:00Z'))).toEqual({ session: noon, on: true })
+    expect(nowOrNext([noon, evening], now('2026-11-09T16:00:00Z'))).toEqual({ session: evening, on: false })
+    expect(nowOrNext([{ ...evening, cancelled_at: '2026-11-09T10:00:00Z' }], now('2026-11-09T12:00:00Z'))).toBeNull()
+    expect(nowOrNext([nine, noon], now('2026-11-09T23:00:00Z'))).toBeNull()
+  })
 
   it('finds the Monday of the week', () => {
     expect(mondayOf('2026-11-10')).toBe('2026-11-09')

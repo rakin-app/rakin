@@ -1,3 +1,4 @@
+import { QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -8,6 +9,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { FamilyPanel } from './FamilyPanel'
 
 const copy = es.admin.family
 
@@ -97,8 +99,14 @@ function renderStudents() {
   render(<App queryClient={queryClient} router={router} />)
 }
 
-async function openFamily(name: string) {
-  await userEvent.click(await screen.findByRole('button', { name: copy.toggleLabel(name) }))
+/** The panel as the ficha shows it, the one place a family is changed (#358). */
+function openFamily(name: string) {
+  const person = [CAMILA, MATEO, DIEGO].find((row) => row.name === name)!
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <FamilyPanel person={person} />
+    </QueryClientProvider>,
+  )
 }
 
 // The forms that add someone open behind "Agregar a alguien a cargo" (#179).
@@ -119,24 +127,17 @@ describe('Familia', () => {
     expect(screen.getByText(es.admin.students.dependentsCount(1))).toBeInTheDocument()
   })
 
-  it('controls a panel that is there, hidden, while closed', async () => {
-    stubApi({ camila: { guardian: null, dependents: [] } })
+  it('leaves changing a family to the ficha: no toggle on the list (#358)', async () => {
+    stubApi({})
     renderStudents()
-    const toggle = await screen.findByRole('button', { name: copy.toggleLabel('Camila Ortiz') })
-    const panel = document.getElementById(toggle.getAttribute('aria-controls')!)
 
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(panel).not.toBeNull()
-    expect(panel).not.toBeVisible()
-    await userEvent.click(toggle)
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(panel).toBeVisible()
+    expect(await screen.findByText(es.admin.students.guardianOf('Camila Ortiz'))).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.toggleLabel('Camila Ortiz') })).not.toBeInTheDocument()
   })
 
   it('keeps the forms that add someone closed until asked for', async () => {
     stubApi({ camila: { guardian: null, dependents: [] } })
-    renderStudents()
-    await openFamily('Camila Ortiz')
+    openFamily('Camila Ortiz')
 
     await openAdding()
     expect(screen.getByLabelText(copy.name)).toBeInTheDocument()
@@ -148,8 +149,7 @@ describe('Familia', () => {
 
   it('adds a new dependent with no phone', async () => {
     const calls = stubApi({ camila: { guardian: null, dependents: [{ id: 'mateo', name: 'Mateo Ortiz' }] } })
-    renderStudents()
-    await openFamily('Camila Ortiz')
+    openFamily('Camila Ortiz')
 
     expect(await screen.findByText('Mateo Ortiz', { selector: '.family__person span' })).toBeInTheDocument()
     await openAdding()
@@ -168,8 +168,7 @@ describe('Familia', () => {
 
   it('links someone already in the gym', async () => {
     const calls = stubApi({ camila: { guardian: null, dependents: [] } })
-    renderStudents()
-    await openFamily('Camila Ortiz')
+    openFamily('Camila Ortiz')
     await openAdding()
 
     await userEvent.type(await screen.findByRole('searchbox', { name: copy.linkSearch }), 'Ortiz')
@@ -191,8 +190,7 @@ describe('Familia', () => {
       mateo: { guardian: { id: 'camila', name: 'Camila Ortiz' }, dependents: [] },
     }
     const calls = stubApi(families)
-    renderStudents()
-    await openFamily('Mateo Ortiz')
+    openFamily('Mateo Ortiz')
 
     // A dependent cannot have dependents of their own: no form to add any.
     const panel = await screen.findByRole('heading', { name: copy.guardian })
@@ -211,8 +209,7 @@ describe('Familia', () => {
 
   it('says why a link was refused and keeps what was typed', async () => {
     stubApi({ camila: { guardian: null, dependents: [] } }, { status: 409, body: { detail: { code: 'one_level' } } })
-    renderStudents()
-    await openFamily('Camila Ortiz')
+    openFamily('Camila Ortiz')
     await openAdding()
 
     await userEvent.type(await screen.findByLabelText(copy.name), 'Abuela')

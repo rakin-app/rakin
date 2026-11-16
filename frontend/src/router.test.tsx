@@ -199,6 +199,8 @@ describe('signing in', () => {
     })
     const router = renderAt('/admin')
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    // Hoy done asking: what ends the session is the next page's request, not Hoy's.
+    await screen.findByRole('group', { name: es.admin.today.countersLabel })
 
     live = false
     await userEvent.click(within(nav).getByRole('link', { name: es.nav.students }))
@@ -270,6 +272,43 @@ describe('staff who also train (#214)', () => {
     await userEvent.click(screen.getByRole('link', { name: es.me.toAdmin }))
     expect(await screen.findByRole('navigation', { name: es.nav.label })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/admin')
+  })
+
+  it("keeps a coach's sign-out off the phone's bar, in the top bar's account menu (#358)", async () => {
+    const calls = stubApi((path) => {
+      if (path === '/api/auth/logout') return { status: 204 }
+      return path === '/api/me/role'
+        ? { status: 200, body: { role: 'coach', person_id: 'me', name: 'Felipe', email: null, gym_name: 'Academia Sur', student_page: true } }
+        : { status: 404 }
+    })
+    const router = renderAt('/admin')
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    await within(nav).findByRole('link', { name: es.nav.myPage })
+
+    // "Mi página" is a tab of a coach's bar; "Cerrar sesión" is the sidebar's alone.
+    expect(within(nav).getByRole('link', { name: es.nav.myPage }).closest('li')).toHaveClass('admin-nav__end--bar')
+    expect(within(nav).getByRole('button', { name: es.signOut.label }).closest('li')).not.toHaveClass('admin-nav__end--bar')
+
+    const account = screen.getByRole('button', { name: es.nav.account })
+    expect(account).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(account)
+    expect(account).toHaveAttribute('aria-expanded', 'true')
+    const menu = document.getElementById(account.getAttribute('aria-controls')!)!
+    expect(menu).toHaveTextContent('Felipe')
+    await userEvent.click(within(menu).getByRole('button', { name: es.signOut.label }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/ingresar')
+    expect(calls).toContainEqual({ path: '/api/auth/logout', method: 'POST' })
+  })
+
+  it('gives an owner no account menu: theirs is Ajustes › Cuenta', async () => {
+    asRole('owner', false)
+    renderAt('/admin')
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+    await within(nav).findByRole('link', { name: es.nav.settings })
+
+    expect(screen.queryByRole('button', { name: es.nav.account })).not.toBeInTheDocument()
   })
 
   it('shows no "Mi página" to staff without a membership', async () => {

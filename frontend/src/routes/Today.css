@@ -194,8 +194,35 @@
   font-size: var(--text-sm);
 }
 
-.today__detail--warning {
+/* The overdue fact alone, not the plan or amount beside it (#358). */
+.today__warning {
   color: var(--color-warning);
+}
+
+/* A row's buttons keep their label on one line and their width, at 360 as at 1440 (#358). */
+.today__row .button {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* An overdue row: the name and what it owes, then its actions (WhatsApp, mail, "Pagó"),
+   beside it where they fit and under it, at its end, where they do not. */
+.today__row-line--actions {
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+}
+
+.today__row-line--actions > .today__row-text {
+  flex-basis: 12rem;
+}
+
+.today__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1-5);
+  margin-left: auto;
 }
 
 .today__form {

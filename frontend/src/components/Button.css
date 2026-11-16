@@ -26,6 +26,8 @@
 }
 
 .button--icon {
+  /* Never squeezed by a row's text: a 44px target whatever is beside it (#358). */
+  flex: none;
   width: var(--control-height);
   height: var(--control-height);
   padding: 0;

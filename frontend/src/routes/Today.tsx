@@ -54,15 +54,17 @@ const OVERDUE_SHOWN = 3
  * asked for from their page (#270).
  *
  * Each overdue row has its WhatsApp reminder beside "Pagó", saying which one it is
- * ("2.º aviso") and standing out when the gym's cadence says the next is due; "Por
+ * ("Aviso 2") and standing out when the gym's cadence says the next is due; "Por
  * avisar" has the periods due today and the rejected proofs to follow up, when there
- * are any (#55). Under each overdue row, "Enviar recordatorio" emails it now (#260).
+ * are any (#55). In the same group, the mail button emails it now (#260). Only the
+ * overdue fact is in the warning colour (#358).
  *
  * A phone stacks it all; from 1024px the counters run across the top and the lists sit
  * in a grid of two.
  *
  * A gym on its first day has none of that: "Configura tu academia" leads the owner
- * through setting it up, until it has members and classes (#166).
+ * through setting it up, until it has members and classes (#166). Until it has a first
+ * student, Hoy is that checklist alone: no counters at zero, no "all good" cards (#358).
  */
 export function Today() {
   const role = useQuery(myRoleQuery())
@@ -146,8 +148,21 @@ function ClassRow({ session, timeZone }: { session: ClassSession; timeZone: stri
   )
 }
 
-/** The owner's and an admin's Hoy: the money, who stopped coming, the unmarked classes. */
+/** A gym with no students yet: what it can act on, and how to set it up. */
+function NoMembersYet() {
+  return (
+    <>
+      <JoinRequests />
+      <SetupChecklist doneKey={null} />
+    </>
+  )
+}
+
+/** The owner's and an admin's Hoy: the money, who stopped coming, the unmarked classes;
+ * for a gym with no students yet, its setup instead. */
 function OwnerToday() {
+  const members = useQuery(setupMembersQuery)
+  // Asked for alongside the count, not after it, so a gym with students waits no longer.
   const proofs = useQuery(proofQueueQuery())
   const overdue = useQuery(overdueQuery())
   const inactive = useQuery(inactiveQuery())
@@ -156,6 +171,11 @@ function OwnerToday() {
   const reminderFor = new Map((reminders.data ?? []).map((r) => [r.billing_period_id, r]))
   // The overdue ones are on their "Vencidos" rows.
   const toRemind = (reminders.data ?? []).filter((r) => r.days_overdue <= 0)
+
+  // Nothing before the count is in, so a new gym never sees zeros flash; a failed count
+  // shows Hoy as usual.
+  if (members.isPending) return null
+  if (members.data === 0) return <NoMembersYet />
 
   return (
     <>
@@ -274,6 +294,12 @@ function OwnerToday() {
 // screens refreshes its own; Hoy need not ask again on every visit.
 const SETUP_STALE_MS = 5 * 60_000
 
+// How many students the gym has: whether Hoy is the checklist alone (#358), and one of
+// the checklist's steps. A failed count is not asked again as the checklist mounts: Hoy
+// hides while it is pending, which would unmount the checklist and ask again, forever.
+// The checklist's "Reintentar" still does.
+const setupMembersQuery = { ...memberCountQuery, staleTime: SETUP_STALE_MS, retryOnMount: false }
+
 /** Where this browser remembers that a gym is set up: per host, which is per gym, and per
  * person, for a gym served on the instance's own address. */
 export function setupDoneKey(personId: string): string {
@@ -309,10 +335,11 @@ function Setup() {
   return remembered(key) ? null : <SetupChecklist doneKey={key} />
 }
 
-function SetupChecklist({ doneKey }: { doneKey: string }) {
+/** `doneKey` null: shown whatever this browser remembers (a gym with no students). */
+function SetupChecklist({ doneKey }: { doneKey: string | null }) {
   // First the two answers that decide whether it shows at all; the other three only once
   // it will, so a gym that is set up costs two small requests, once.
-  const members = useQuery({ ...memberCountQuery, staleTime: SETUP_STALE_MS })
+  const members = useQuery(setupMembersQuery)
   const classTypes = useQuery({ ...classTypesQuery, staleTime: SETUP_STALE_MS })
   const hasMembers = (members.data ?? 0) > 0
   const hasClasses = classTypes.data?.some((c) => c.active) ?? false
@@ -324,7 +351,7 @@ function SetupChecklist({ doneKey }: { doneKey: string }) {
   const activities = useQuery({ ...activitiesQuery, staleTime: SETUP_STALE_MS, enabled: shows })
 
   useEffect(() => {
-    if (setUp) remember(doneKey)
+    if (setUp && doneKey) remember(doneKey)
   }, [setUp, doneKey])
 
   // A failed answer says so, with a retry, rather than leaving a new gym with no checklist.
@@ -440,7 +467,10 @@ function Counter({
   return (
     // The figure and its label are two spans, which a name would otherwise run together.
     <a href={href} className="today__counter" aria-label={value === undefined ? label : `${value} ${label}`}>
-      <span className={`today__counter-value today__counter-value--${tone}`}>{value ?? '–'}</span>
+      {/* Zero is nothing to worry about: never in the warning colour (#358). */}
+      <span className={`today__counter-value today__counter-value--${value === 0 ? 'muted' : tone}`}>
+        {value ?? '–'}
+      </span>
       <span className="today__counter-label">{label}</span>
     </a>
   )
@@ -642,8 +672,9 @@ function OverdueRow({
         className="today__row-text today__row-text--link"
       >
         <span className="today__name">{first!.person_name}</span>
-        <span className="today__detail today__detail--warning">
-          {copy.overdue.periods(periods.length, clp(total))}
+        <span className="today__detail">
+          <span className="today__warning">{copy.overdue.periods(periods.length)}</span>
+          {copy.after([clp(total)])}
         </span>
       </Link>
       {periods.map((period) => (
@@ -678,34 +709,35 @@ function OverdueLine({
   const label = copy.overdue.paidLabel(
     named ? period.person_name : copy.overdue.periodOf(period.person_name, period.plan_name, monthName(period.period_start)),
   )
+  const rest = [amount, period.plan_name, copy.overdue.membership[period.membership_status]].filter(
+    (part): part is string => Boolean(part),
+  )
   return (
     <>
-      <div className="today__row-line">
+      <div className="today__row-line today__row-line--actions">
         <Link
           to="/admin/alumnos/$personId"
           params={{ personId: period.person_id }}
           className="today__row-text today__row-text--link"
         >
           {named && <span className="today__name">{period.person_name}</span>}
-          <span className={named ? 'today__detail today__detail--warning' : 'today__detail'}>
-            {[
-              copy.overdue.detail(period.days_overdue, amount, period.plan_name),
-              copy.overdue.membership[period.membership_status],
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+          {/* "Venció hace 9 días" in the warning colour; what and which plan, not. */}
+          <span className="today__detail">
+            <span className="today__warning">{copy.overdue.since(period.days_overdue)}</span>
+            {copy.after(rest)}
           </span>
           {reminded && <span className="today__detail">{reminded}</span>}
         </Link>
-        {!open && reminder && <ReminderLink reminder={reminder} />}
         {!open && (
-          <Button aria-label={label} onClick={() => setOpen(true)}>
-            {copy.overdue.paid}
-          </Button>
+          <div className="today__actions">
+            {reminder && <ReminderLink reminder={reminder} />}
+            {reminder && <EmailReminder reminder={reminder} compact />}
+            <Button aria-label={label} onClick={() => setOpen(true)}>
+              {copy.overdue.paid}
+            </Button>
+          </div>
         )}
       </div>
-      {/* On a line of its own: beside WhatsApp and "Pagó" it would not fit at 390px. */}
-      {!open && reminder && <EmailReminder reminder={reminder} />}
       {open && (
         <PaidForm
           period={period}
@@ -819,15 +851,9 @@ function InactiveRow({ member }: { member: InactiveMember }) {
     member.payment_status === 'overdue'
       ? copy.inactive.payment.overdue(clp(member.overdue_clp))
       : copy.inactive.payment[member.payment_status]
-  const detail = [
-    member.last_attended_on === null
-      ? copy.inactive.never(member.days_absent)
-      : copy.inactive.absent(member.days_absent),
-    payment,
-    member.nudged_at && copy.inactive.nudged(ago(member.nudged_at, new Date())),
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const absent =
+    member.last_attended_on === null ? copy.inactive.never(member.days_absent) : copy.inactive.absent(member.days_absent)
+  const nudged = member.nudged_at && copy.inactive.nudged(ago(member.nudged_at, new Date()))
   const label =
     member.contact_name === member.name
       ? copy.inactive.write(member.name)
@@ -841,10 +867,12 @@ function InactiveRow({ member }: { member: InactiveMember }) {
           className="today__row-text today__row-text--link"
         >
           <span className="today__name">{member.name}</span>
-          <span
-            className={`today__detail${member.payment_status === 'overdue' ? ' today__detail--warning' : ''}`}
-          >
-            {detail}
+          {/* Only what they owe in the warning colour (#358). */}
+          <span className="today__detail">
+            {absent}
+            {copy.separator}
+            {member.payment_status === 'overdue' ? <span className="today__warning">{payment}</span> : payment}
+            {nudged && copy.after([nudged])}
           </span>
         </Link>
         {member.whatsapp_url && (

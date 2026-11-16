@@ -170,7 +170,7 @@ function Shell({
 }
 
 /** "Abrir timer": the class timer, a secondary button for who may run it; "Volver al timer" while it runs. */
-function TimerLink({ session }: { session: ClassSession }) {
+export function TimerLink({ session }: { session: ClassSession }) {
   const me = useQuery(myselfQuery())
   if (!runsSession(me.data, session.coach_id)) return null
   const running = savedRun(session.id)

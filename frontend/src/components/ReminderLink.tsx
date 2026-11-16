@@ -9,8 +9,9 @@ const copy = t.admin.reminders
 
 /**
  * The wa.me payment reminder (#55): opens WhatsApp on the message, to the member or
- * their guardian, and records that it was opened. It says which reminder it is, "2.º
- * aviso", and stands out only when the gym's cadence says the next one is due.
+ * their guardian, and records that it was opened. It says which reminder it is, "Aviso
+ * 2", short enough never to wrap (#358), and stands out only when the gym's cadence says
+ * the next one is due.
  * Nothing when there is no WhatsApp to send it on.
  */
 export function ReminderLink({ reminder, label }: { reminder: PaymentReminder; label?: string }) {
@@ -31,7 +32,7 @@ export function ReminderLink({ reminder, label }: { reminder: PaymentReminder; l
       href={reminder.whatsapp_url}
       target="_blank"
       rel="noopener noreferrer"
-      className={buttonClass({ variant: reminder.reminder_due ? 'secondary' : 'ghost' })}
+      className={buttonClass({ variant: reminder.reminder_due ? 'secondary' : 'ghost', className: 'reminder-link' })}
       aria-label={aria}
       onClick={() => log.mutate()}
       // A middle-click opens it in a new tab too.
@@ -40,7 +41,7 @@ export function ReminderLink({ reminder, label }: { reminder: PaymentReminder; l
       }}
     >
       <WhatsAppIcon />
-      <span>{label ?? copy.next(next)}</span>
+      <span>{label ?? copy.next(reminder.reminders_sent + 1)}</span>
     </a>
   )
 }
