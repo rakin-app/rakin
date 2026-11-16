@@ -30,6 +30,7 @@ FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL (row-level security) · Vite SP
 - [Architecture decisions](docs/adr/): ADRs, starting with the [frontend framework](docs/adr/0001-frontend-framework.md)
 - [Frontend](frontend/README.md): running and checking the SPA
 - [Deploying](docs/deploy.md): the hosted stack on staging.rakin.app: provisioning, releases, rollback
+- [Incident response](docs/incident-response.md): a personal-data breach on hosted Rakin: who is on call, the 24-hour notice to each gym, scoping, rotating secrets, the record
 - [Privacy guard](docs/privacy-guard.md): the checks that keep real members' data, local paths and the owner's private project names out of commits, PRs, issues and comments
 
 ## Run locally
