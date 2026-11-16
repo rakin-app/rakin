@@ -65,6 +65,8 @@ export type GradeAward = {
   sub_rank: string | null
   awarded_on: string
   note?: string
+  // `manual`: a grade from before Rakin ("Grado anterior", #296), which tells nobody.
+  source?: 'app' | 'manual'
 }
 
 export function gradingSchemeQuery() {

@@ -1939,10 +1939,10 @@ describe('Ficha de alumno', () => {
 
   it.each([
     ['awarded_in_future', copy.grading.form.refused.awarded_in_future],
-    ['no_membership', copy.grading.form.refused.no_membership],
+    ['awarded_too_early', copy.grading.form.refused.awarded_too_early],
     ['unknown_rank', copy.grading.form.refused.failed],
   ] as const)('explains a %s refusal', async (code, message) => {
-    stubApi({ award: { status: code === 'no_membership' ? 409 : 422, body: { detail: { code } } } })
+    stubApi({ award: { status: 422, body: { detail: { code } } } })
     renderAt(PATH)
 
     await userEvent.click(await screen.findByRole('button', { name: copy.grading.award }))
@@ -3246,6 +3246,40 @@ describe('Historial: alumno desde y clases antes de Rakin (#293)', () => {
     await screen.findByRole('region', { name: copy.attendance.title })
     expect(screen.queryByRole('region', { name: copy.history.title })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: copy.history.add })).not.toBeInTheDocument()
+  })
+
+  it('records a belt from before Rakin for someone with no plan, as history (#296)', async () => {
+    const calls = stubApi({ memberships: [], grading: { current: null, events: [] } })
+    renderAt(PATH)
+
+    const card = await history()
+    await userEvent.click(within(card).getByRole('button', { name: copy.history.add }))
+    await userEvent.click(within(card).getByRole('button', { name: copy.history.grade }))
+    const form = within(card).getByRole('form', { name: copy.grading.form.historyTitle })
+    const day = within(form).getByLabelText(copy.grading.form.date)
+    // As far back as history goes: 60 years before today.
+    const max = day.getAttribute('max')!
+    expect(day).toHaveAttribute('min', `${Number(max.slice(0, 4)) - 60}${max.slice(4)}`)
+    fireEvent.change(day, { target: { value: '2021-06-12' } })
+    await userEvent.click(within(form).getByRole('button', { name: copy.grading.form.submit }))
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(copy.history.gradeSaved)
+    expect(calls.find((c) => c.path === '/api/people/felipe/grades' && c.method === 'POST')?.body).toEqual({
+      rank_key: 'white',
+      sub_rank: '0',
+      awarded_on: '2021-06-12',
+      source: 'manual',
+    })
+  })
+
+  it('has no grado anterior in a gym that does not grade', async () => {
+    stubApi({ grades: false })
+    renderAt(PATH)
+
+    const card = await history()
+    await userEvent.click(within(card).getByRole('button', { name: copy.history.add }))
+    expect(within(card).getByRole('button', { name: copy.history.start })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: copy.history.grade })).not.toBeInTheDocument()
   })
 
   it('offers its choices just after "Agregar exalumno" (#294)', async () => {

@@ -718,6 +718,9 @@ export const es = {
         priorClasses: (n: number) => (n === 1 ? '1 clase antes de Rakin' : `${n} clases antes de Rakin`),
         add: 'Agregar historial',
         start: 'Fecha de inicio y clases',
+        // A belt earned before Rakin (#296), with the Graduación's form.
+        grade: 'Grado anterior',
+        gradeSaved: 'Grado anterior guardado.',
         saved: 'Historial guardado.',
         form: {
           title: 'Fecha de inicio y clases',
@@ -1128,6 +1131,9 @@ export const es = {
         by: (name: string) => `registró ${name}`,
         form: {
           title: 'Registrar graduación',
+          historyTitle: 'Grado anterior',
+          historyIntro:
+            'Un grado que obtuvo antes de Rakin, con la fecha en que lo recibió. Si es el más reciente, es su grado actual. No se le avisa.',
           rank: 'Rango',
           ranks: 'Adultos',
           kids: 'Kids',
@@ -1140,7 +1146,7 @@ export const es = {
           done: (rank: string) => `Graduación registrada: ${rank}.`,
           refused: {
             awarded_in_future: 'La fecha no puede ser posterior a hoy.',
-            no_membership: 'Para registrar una graduación, el alumno necesita un plan.',
+            awarded_too_early: 'La fecha no puede ser de hace más de 60 años.',
             grading_scheme_invalid: 'Revisa el sistema de grados del gimnasio antes de registrar.',
             failed: 'No pudimos registrar la graduación. Inténtalo de nuevo.',
           },

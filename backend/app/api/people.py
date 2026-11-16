@@ -154,12 +154,12 @@ OWES = f"""
     )
 """
 
-# Everyone's current rank here: their latest promotion over every membership (as
-# `app.api.grades.CURRENT` reads one person's). RLS keeps both tables to the gym.
+# Everyone's current rank here: their latest promotion (as
+# `app.api.grades.CURRENT` reads one person's). RLS keeps it to the gym.
 CURRENT_RANKS = """
-    SELECT DISTINCT ON (m.person_id) m.person_id, ge.rank_key
-    FROM grade_event ge JOIN membership m ON m.id = ge.membership_id
-    ORDER BY m.person_id, ge.awarded_on DESC, ge.created_at DESC, ge.id
+    SELECT DISTINCT ON (ge.person_id) ge.person_id, ge.rank_key
+    FROM grade_event ge
+    ORDER BY ge.person_id, ge.awarded_on DESC, ge.created_at DESC, ge.id
 """
 
 _LIKE_SPECIALS = re.compile(r"([\\%_])")

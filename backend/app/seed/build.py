@@ -270,6 +270,7 @@ class _Builder:
         return {
             "id": seed_id("grade_event", spec.key),
             "gym_id": GYM_ID,
+            "person_id": seed_id("person", spec.key),
             "membership_id": membership_id,
             "rank_key": rank,
             "sub_rank": str(stripes),
