@@ -557,7 +557,22 @@ A value must fit its type: text up to 1,000 characters (trimmed), a JSON number,
 
 A sensitive field's value is stored in `secret`, encrypted with AES-GCM under a key derived from `FIELD_ENCRYPTION_KEY` and bound to its gym, person and field, never in `value`; changing a field's `sensitive` flag re-encrypts or decrypts what it holds. A definition change reads `gym.settings` `FOR UPDATE` and a value write `FOR SHARE`, so a value written while the owner marks its field sensitive waits for that and is sealed. `FIELD_ENCRYPTION_KEY` is its own setting, not `SECRET_KEY`, so rotating `SECRET_KEY` after a leak touches no stored value; the API refuses to start in production with its local default. **Changing `FIELD_ENCRYPTION_KEY` makes stored sensitive values unreadable**: never change it without re-encrypting them, and keep it with the backups.
 
-## Grading scheme API
+## Requirements API
+
+"Requisitos para entrenar" (#349): what a gym asks before someone trains, a signed waiver, a safety induction, a medical certificate, and the day each person did it ([design](../docs/design/sport-fit.md)). The gym's list is `requirement` (migration `0061`): a name, `valid_months` (`null` for one done once), `sensitive`, `visible_to` and `active`, in `position` order. A person's records are `person_requirement`, one row per time it was recorded, never changed or deleted: the latest recorded is their current one, and the ones before it are kept.
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `GET` | `/api/requirements` | the requirements the caller may see, in order, inactive ones included: `id`, `name`, `valid_months`, `sensitive`, `visible_to`, `active` |
+| `POST` | `/api/requirements` | a new one, last in the order, from `name`, `valid_months`, and the owner's `sensitive` and `visible_to` |
+| `PATCH` | `/api/requirements/{id}` | change `name`, `valid_months` (`null` makes it done once), `active`, and the owner's `sensitive` and `visible_to`; there is no delete |
+| `PUT` | `/api/requirements/order` | `ids`: every requirement the caller sees, in their new order; ones the caller does not see keep their places |
+| `GET` | `/api/people/{id}/requirements` | each active requirement the caller sees, in order, with the person's `state` (`ok`, `expiring`, `expired`, `pending`) and their current record's `done_on`, `expires_on`, `note` and `recorded_at` |
+| `POST` | `/api/people/{id}/requirements/{requirement_id}` | a new record, `done_on` (the gym's today at the latest, and within 60 years of it) and an optional `note`; answers the person's list |
+| `GET` | `/api/me/requirements` | the student page's: the signed-in person's and each dependent's, without notes; `[]` when the gym has none. A guardian with no plan of their own sees only their dependents' |
+
+Who sees and changes what is as for custom fields: every staff role reads, and records the requirements it sees; owner and admin define, reorder and deactivate them; only the owner sets `sensitive` and `visible_to` (403 for an admin), which default to `owner` for a sensitive one and `staff` otherwise; one the caller may not see is a 404 and left out of every list. One done on 1 March and valid 12 months is in force through 1 March of the next year (`expires_on`) and `expired` from the 2nd; `expiring` is its last 30 days (`app.domain.requirements`). A sensitive requirement's note is stored in `note_secret`, sealed with the custom fields' key and bound to its gym, person and record, and marking a requirement sensitive or not seals or opens the notes it holds. `forget_gym_person` deletes the person's records with the rest.
+
 
 | Method | Path | Does |
 | --- | --- | --- |

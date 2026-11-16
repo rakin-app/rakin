@@ -10,6 +10,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { isoDay, shortDay } from '../format'
 import type { PersonTime } from '../api/matTime'
+import type { PersonRequirement } from '../api/requirements'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { firstMonthFrom, monthsBetween, paidOn } from './PersonHistory'
@@ -319,6 +320,7 @@ function stubApi({
     }
     if (path === '/api/people/felipe/family') return { body: { guardian: null, dependents: [{ id: 'kid', name: 'Tomás Díaz' }] } }
     if (path === '/api/people/felipe/consent') return { body: { basis: 'contract', consent: null, events: [] } }
+    if (path === '/api/people/felipe/requirements' && method === 'GET') return { body: [] }
     if (path === '/api/people/felipe/fields' && method === 'GET') return { body: currentFields }
     if (path === '/api/people/felipe/fields' && method === 'PATCH') {
       if (fieldsUpdate) return fieldsUpdate
@@ -3766,5 +3768,98 @@ describe('every ficha section headed the same way (#360)', () => {
       // Outside the card: the card is the heading's section's, never its parent.
       expect(heading.closest('.member__card, .mat-time, .tag-hours')).toBeNull()
     }
+  })
+})
+
+describe('Requisitos on the ficha (#349)', () => {
+  const words = copy.requirements
+  const WAIVER: PersonRequirement = {
+    id: 'r-waiver',
+    name: 'Deslinde firmado',
+    valid_months: null,
+    sensitive: false,
+    state: 'pending',
+    done_on: null,
+    expires_on: null,
+    note: null,
+    recorded_at: null,
+  }
+  const MEDICAL: PersonRequirement = {
+    ...WAIVER,
+    id: 'r-medical',
+    name: 'Certificado médico',
+    valid_months: 12,
+    sensitive: true,
+    state: 'expired',
+    done_on: '2025-03-01',
+    expires_on: '2026-03-01',
+    note: 'Dr. Pérez',
+    recorded_at: '2025-03-01T12:00:00Z',
+  }
+
+  it('shows no card when the gym asks for nothing', async () => {
+    const calls = stubApi()
+    renderAt(PATH)
+
+    await screen.findByRole('region', { name: copy.consent.title })
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/people/felipe/requirements')).toBe(true))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByRole('region', { name: words.title })).not.toBeInTheDocument()
+  })
+
+  it('shows where they stand on each, and records one done today', async () => {
+    const today = isoDay(new Date().toISOString(), 'America/Santiago')
+    let answered = [WAIVER, MEDICAL]
+    const calls = stubApi({
+      extra: (path, method) => {
+        if (path === '/api/people/felipe/requirements' && method === 'GET') return { body: answered }
+        if (path === '/api/people/felipe/requirements/r-waiver' && method === 'POST') {
+          answered = [{ ...WAIVER, state: 'ok', done_on: today, recorded_at: `${today}T12:00:00Z` }, MEDICAL]
+          return { body: answered }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    const card = await screen.findByRole('region', { name: words.title })
+    const medical = await within(card).findByRole('listitem', { name: 'Certificado médico' })
+    expect(within(medical).getByText(words.state.expired)).toBeInTheDocument()
+    expect(
+      within(medical).getByText(`${words.done(es.common.longDayYear('2025-03-01'))} · ${words.expiredOn(es.common.longDayYear('2026-03-01'))}`),
+    ).toBeInTheDocument()
+    expect(within(medical).getByText('Dr. Pérez')).toBeInTheDocument()
+    const waiver = within(card).getByRole('listitem', { name: 'Deslinde firmado' })
+    expect(within(waiver).getByText(words.state.pending)).toBeInTheDocument()
+
+    await userEvent.click(within(waiver).getByRole('button', { name: words.recordLabel('Deslinde firmado') }))
+    const form = within(card).getByRole('form', { name: words.form.title('Deslinde firmado') })
+    expect(within(form).getByLabelText(words.form.doneOn)).toHaveValue(today)
+    await userEvent.type(within(form).getByLabelText(words.form.note), ' en papel ')
+    await userEvent.click(within(form).getByRole('button', { name: words.form.submit }))
+
+    expect(await screen.findByText(words.recorded('Deslinde firmado'))).toBeInTheDocument()
+    expect(calls.find((c) => c.method === 'POST' && c.path.endsWith('/r-waiver'))?.body).toEqual({
+      done_on: today,
+      note: 'en papel',
+    })
+    expect(within(waiver).getByText(words.state.ok)).toBeInTheDocument()
+  })
+
+  it('refuses a day after today before asking the API', async () => {
+    const calls = stubApi({
+      extra: (path, method) =>
+        path === '/api/people/felipe/requirements' && method === 'GET' ? { body: [WAIVER] } : undefined,
+    })
+    renderAt(PATH)
+
+    const card = await screen.findByRole('region', { name: words.title })
+    await userEvent.click(await within(card).findByRole('button', { name: words.recordLabel('Deslinde firmado') }))
+    const form = within(card).getByRole('form', { name: words.form.title('Deslinde firmado') })
+    fireEvent.change(within(form).getByLabelText(words.form.doneOn), { target: { value: '2999-01-01' } })
+    await userEvent.click(within(form).getByRole('button', { name: words.form.submit }))
+
+    expect(within(form).getByText(words.form.future)).toBeInTheDocument()
+    expect(calls.some((c) => c.method === 'POST' && c.path.includes('/requirements/'))).toBe(false)
   })
 })

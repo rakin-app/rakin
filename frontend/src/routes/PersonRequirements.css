@@ -1,0 +1,61 @@
+/* "Requisitos" on the ficha (#349): each requirement, its state and "Registrar". */
+.requirements__list {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.requirements__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.requirements__item + .requirements__item {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+/* The state and "Registrar" beside the text where the card is wide enough, else under
+ * it, alike on every row. */
+.requirements__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+@container (max-width: 24rem) {
+  .requirements__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.requirements__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.requirements__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.requirements__note {
+  overflow-wrap: anywhere;
+}
+
+.requirements__end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.requirements__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
