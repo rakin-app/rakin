@@ -1,7 +1,8 @@
 """A spreadsheet as rows of text: the first row that holds anything is the header.
 
 A workbook is read by tab (`read_book`): the worksheets named Alumnos and Grados, by
-folded name, else the first visible one that is neither as Alumnos (#299). A CSV is one
+folded name, else the first visible one that is neither as Alumnos (#299). A hidden
+sheet is never that fallback, though it is the first: the template hides its lists. A CSV is one
 tab, the one the upload says. `read_sheet` is the Alumnos tab alone.
 
 A CSV is UTF-8 (with or without the BOM Excel writes), else Windows-1252, which is what

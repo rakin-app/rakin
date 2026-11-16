@@ -608,6 +608,7 @@ function GradeRows({ report }: { report: GradeReport }) {
         {copy.gradesTitle}
       </h2>
       <p className="import__note">{copy.gradesSummary(created, imported - created, refused.length)}</p>
+      {imported > created && <p className="import__note">{copy.gradesExistingHint}</p>}
       {refused.length > 0 && (
         <>
           <p className="import__note">{copy.gradesErrorsHint}</p>

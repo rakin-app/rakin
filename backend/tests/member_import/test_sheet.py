@@ -180,6 +180,13 @@ def test_an_old_sheets_first_tab_is_alumnos_but_never_the_instructions_or_a_hidd
     assert s.read_book(data) == {"alumnos": Sheet(["Nombre"], [Row(2, ["Camila"])])}
 
 
+def test_a_hidden_first_sheet_is_never_the_alumnos_tab() -> None:
+    data = book(
+        ("Oculta", [["Nombre"], ["Nadie"]]), ("Hoja1", [["Nombre"], ["Camila"]]), hidden=("Oculta",)
+    )
+    assert s.read_book(data) == {"alumnos": Sheet(["Nombre"], [Row(2, ["Camila"])])}
+
+
 def test_a_tab_with_no_rows_is_left_out() -> None:
     # The template downloaded, only its Grados tab filled.
     data = book(("Alumnos", [["Nombre", "RUT"]]), ("Grados", GRADOS))

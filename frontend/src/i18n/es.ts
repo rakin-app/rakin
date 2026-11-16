@@ -585,6 +585,8 @@ export const es = {
         ]
           .filter(Boolean)
           .join(', ') + '. El más reciente de cada persona queda como su grado actual.',
+      gradesExistingHint:
+        'Los que ya estaban no se cambian, ni siquiera su nota: una nota corregida en la planilla no se aplica.',
       gradesErrorsTitle: 'Grados con errores',
       gradesErrorsHint:
         'Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.',

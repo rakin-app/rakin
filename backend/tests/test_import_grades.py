@@ -347,6 +347,12 @@ def test_the_template_has_a_grados_tab_with_the_schemes_ranks(
     grados = book["Grados"]
     assert [c.value for c in grados[1]] == [header for header, _, _ in GRADE_COLUMNS]
     assert [c.value for c in grados[2]][2:5] == ["Martina Soto Pérez", "Azul", "1"]
+    # A number in Sub-grado counts stripes, and the instructions say so with an example.
+    notes = [r[1].value for r in book["Instrucciones"].iter_rows() if r[0].value == "Sub-grado"]
+    assert notes == [
+        "Opcional: cuántos grados (rayas) tiene, o el sub-grado por su nombre."
+        " Ej.: Azul y 2 = azul con 2 grados. Vacío = sin grados."
+    ]
     listed = book["Lista de grados"]
     assert listed.sheet_state == "hidden"
     labels = [r[0].value for r in listed.iter_rows()]

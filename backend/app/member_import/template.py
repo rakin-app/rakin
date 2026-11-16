@@ -84,7 +84,10 @@ GRADE_COLUMNS: tuple[tuple[str, GradeField, str], ...] = (
 GRADE_NOTES: dict[GradeField, str] = {
     GradeField.RUT: "Quién recibió el grado: su RUT, su correo o su nombre, como en Alumnos.",
     GradeField.RANK: "Obligatorio. El grado, de la lista.",
-    GradeField.SUB_RANK: "Opcional: el sub-grado por su nombre, o cuántos grados (rayas) tiene.",
+    GradeField.SUB_RANK: (
+        "Opcional: cuántos grados (rayas) tiene, o el sub-grado por su nombre. Ej.: Azul y 2"
+        " = azul con 2 grados. Vacío = sin grados."
+    ),
     GradeField.AWARDED_ON: "Obligatorio. El día que lo recibió, aunque sea antes de Rakin.",
 }
 

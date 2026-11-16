@@ -361,6 +361,8 @@ describe('Importar alumnos', () => {
     await userEvent.click(screen.getByRole('button', { name: copy.check }))
     const report = await screen.findByRole('region', { name: copy.gradesTitle })
     expect(within(report).getByText(copy.gradesSummary(1, 1, 2))).toBeInTheDocument()
+    // One was already there: its note is not updated either.
+    expect(within(report).getByText(copy.gradesExistingHint)).toBeInTheDocument()
     const errors = within(report).getByRole('list', { name: copy.gradesErrorsTitle })
     expect(
       within(errors).getByText(copy.fieldError(copy.gradeFields.rank, copy.gradeError.unknown_rank)),
