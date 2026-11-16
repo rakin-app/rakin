@@ -445,6 +445,10 @@ const onRoster = (id: string, name: string, present: boolean, regular = true): R
 })
 
 describe('Clases on a desktop', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   const wide = (matches: boolean) =>
     vi.stubGlobal(
       'matchMedia',
@@ -457,14 +461,20 @@ describe('Clases on a desktop', () => {
     expect(mondayOf('2026-11-15')).toBe('2026-11-09')
   })
 
-  it('shows the week beside the day, and who came to the class picked in it', async () => {
+  // The clock pinned (#330): at 22:00 on a Sunday in Santiago it is already Monday in UTC,
+  // the next week on a runner in UTC until the gym's timezone is in.
+  it.each([
+    ['on a Sunday evening, Monday already in UTC', '2026-11-16T01:00:00Z', '2026-11-15'],
+    ['at midday', '2026-11-11T15:00:00Z', '2026-11-11'],
+  ])('shows the week beside the day, and who came to the class picked in it, %s', async (_, now, today) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(now))
     wide(true)
-    const today = isoDay(new Date().toISOString(), 'America/Santiago')
     const monday = mondayOf(today)
     const days = Array.from({ length: 7 }, (_, i) => shiftDay(monday, i))
-    // Today's at midnight has begun, whatever the hour the test runs at.
+    // Today's at midnight has begun.
     const begun: ClassSession = { ...EVENING, id: 's-begun', starts_at: onDay(today, '00:00'), present: 2 }
-    // Yet to start, unless the test runs in the week's last minute.
+    // Yet to start.
     const sunday: ClassSession = { ...MORNING, id: 's-sunday', starts_at: onDay(days[6]!, '23:59') }
     const calls = stubApi({
       week: [begun, sunday],
@@ -473,10 +483,10 @@ describe('Clases on a desktop', () => {
     renderAt('/admin/clases')
 
     const week = await screen.findByRole('region', { name: copy.week.title })
+    // Once the gym's timezone is in: a device in another zone has its own week until then.
     for (const day of days) {
-      expect(within(week).getByRole('heading', { name: weekdayDay(toDate(day)) })).toBeInTheDocument()
+      expect(await within(week).findByRole('heading', { name: weekdayDay(toDate(day)) })).toBeInTheDocument()
       const asked = day === today ? '/api/sessions' : `/api/sessions?date=${day}`
-      // Once the gym's timezone is in: a device in another zone has its own today until then.
       await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain(asked))
     }
 
@@ -503,16 +513,20 @@ describe('Clases on a desktop', () => {
     expect(calls.filter((c) => c.path.startsWith('/api/sessions?date='))).toEqual([])
   })
 
-  it('totals the gym’s hours per tag for a month or a year', async () => {
+  // At 22:00 on the year's last day in Santiago it is already next year in UTC (#330).
+  it.each([
+    ['on the year’s last evening, next year already in UTC', '2027-01-01T01:00:00Z', 2026, 12],
+    ['at midday', '2026-11-11T15:00:00Z', 2026, 11],
+  ])('totals the gym’s hours per tag for a month or a year, %s', async (_, now, year, month) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(now))
     const calls = stubApi()
     renderAt('/admin/clases')
 
     const card = within(await screen.findByRole('region', { name: es.tagHours.gym }))
+    // Once the gym's timezone is in.
+    await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain(`/api/class-tags/hours?year=${year}&month=${month}`))
     expect(await card.findByText('4,5 h · 3 clases')).toBeInTheDocument()
-    const today = isoDay(new Date().toISOString(), 'America/Santiago')
-    const month = Number(today.slice(5, 7))
-    const year = Number(today.slice(0, 4))
-    expect(calls.some((c) => c.path === `/api/class-tags/hours?year=${year}&month=${month}`)).toBe(true)
 
     await userEvent.click(card.getByRole('button', { name: es.tagHours.previous(es.tagHours.month) }))
     const before = month === 1 ? `year=${year - 1}&month=12` : `year=${year}&month=${month - 1}`
@@ -523,6 +537,9 @@ describe('Clases on a desktop', () => {
   })
 
   it('says which classes have no duration and add no hours, each leading to its page', async () => {
+    // November's hours, in November in UTC too: the card opens on the gym's month (#330).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-11T15:00:00Z'))
     stubApi({
       hours: {
         ...hoursFor('2026-11-01', '2026-11-30', 0),
