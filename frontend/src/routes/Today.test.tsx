@@ -319,6 +319,10 @@ function renderToday() {
 
 const section = (name: string) => screen.findByRole('region', { name })
 
+// An overdue row's line, whose "Venció hace…" is a span of its own (#358): matched whole.
+const detail = (text: string) => (_: string, element: Element | null) =>
+  element?.classList.contains('today__detail') === true && element.textContent === text
+
 afterEach(() => {
   localStorage.clear()
   vi.unstubAllGlobals()
@@ -366,7 +370,7 @@ describe('Hoy', () => {
     expect(await within(overdue).findByText(copy.overdue.total('$120.000'))).toBeInTheDocument()
     const felipe = within(overdue).getByRole('link', { name: /^Felipe Díaz/ })
     expect(felipe).toHaveAttribute('href', '/admin/alumnos/Felipe%20D%C3%ADaz')
-    expect(within(felipe).getByText('Venció hace 9 días · $45.000 · Mensual adultos')).toBeInTheDocument()
+    expect(within(felipe).getByText(detail('Venció hace 9 días · $45.000 · Mensual adultos'))).toBeInTheDocument()
   })
 
   it('keeps what a lapsed or cancelled plan still owes, saying what became of it', async () => {
@@ -384,9 +388,9 @@ describe('Hoy', () => {
 
     const overdue = await section(copy.overdue.title)
     expect(
-      await within(overdue).findByText('Venció hace 34 días · $45.000 · Mensual adultos · plan caducado'),
+      await within(overdue).findByText(detail('Venció hace 34 días · $45.000 · Mensual adultos · plan caducado')),
     ).toBeInTheDocument()
-    expect(within(overdue).getByText('Venció hace 20 días · $45.000 · Mensual adultos · dado de baja')).toBeInTheDocument()
+    expect(within(overdue).getByText(detail('Venció hace 20 días · $45.000 · Mensual adultos · dado de baja'))).toBeInTheDocument()
   })
 
   it('lists a member owing on a lapsed plan and an active one once, with the total and both periods', async () => {
@@ -411,9 +415,9 @@ describe('Hoy', () => {
     expect(rows).toHaveLength(2)
     const [row] = rows
     expect(within(row!).getAllByText('Rosa Vidal')).toHaveLength(1)
-    expect(within(row!).getByText(copy.overdue.periods(2, '$50.000'))).toBeInTheDocument()
-    expect(within(row!).getByText('Venció hace 12 días · $25.000 · Mensual adultos · plan caducado')).toBeInTheDocument()
-    expect(within(row!).getByText('Venció hace 2 días · $25.000 · Mensual')).toBeInTheDocument()
+    expect(within(row!).getByText(detail(`${copy.overdue.periods(2)} · $50.000`))).toBeInTheDocument()
+    expect(within(row!).getByText(detail('Venció hace 12 días · $25.000 · Mensual adultos · plan caducado'))).toBeInTheDocument()
+    expect(within(row!).getByText(detail('Venció hace 2 días · $25.000 · Mensual'))).toBeInTheDocument()
     // Each period is paid on its own, and says which it is.
     expect(
       within(row!).getByRole('button', {
@@ -435,7 +439,7 @@ describe('Hoy', () => {
     expect(await within(overdue).findAllByRole('listitem')).toHaveLength(3)
     await userEvent.click(within(overdue).getByRole('button', { name: copy.overdue.showAll(4) }))
     expect(within(overdue).getAllByRole('listitem')).toHaveLength(4)
-    expect(within(overdue).getByText('Venció hace 1 día · $45.000 · Mensual adultos')).toBeInTheDocument()
+    expect(within(overdue).getByText(detail('Venció hace 1 día · $45.000 · Mensual adultos'))).toBeInTheDocument()
   })
 
   it('records the outstanding amount with "Pagó", and drops the row', async () => {
@@ -705,7 +709,7 @@ describe('Recordatorios por WhatsApp', () => {
     const felipe = await within(overdue).findByRole('link', { name: words.write('Felipe Díaz', '1.er') })
     expect(felipe).toHaveAttribute('href', 'https://wa.me/56912345678?text=Felipe%20D%C3%ADaz')
     expect(felipe).toHaveAttribute('target', '_blank')
-    expect(felipe).toHaveTextContent(words.next('1.er'))
+    expect(felipe).toHaveTextContent(words.next(1))
     expect(felipe).toHaveClass('button--secondary')
     // Reminded two days ago, every three: the next is there, but quiet.
     const javiera = within(overdue).getByRole('link', { name: words.write('Javiera Silva', '2.º') })
@@ -750,6 +754,42 @@ describe('Recordatorios por WhatsApp', () => {
     expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual([
       '/api/reminders/p-Felipe%20D%C3%ADaz/email',
     ])
+  })
+
+  it('keeps a row’s reminders and "Pagó" in one group, the overdue fact alone in the warning colour (#358)', async () => {
+    stubApi({
+      reminders: [remind('Felipe Díaz', { can_email: true }), ...REMINDERS.filter((r) => r.person_name !== 'Felipe Díaz')],
+    })
+    renderToday()
+    const overdue = await section(copy.overdue.title)
+
+    const pay = await within(overdue).findByRole('button', { name: copy.overdue.paidLabel('Felipe Díaz') })
+    const actions = pay.closest('.today__actions') as HTMLElement
+    expect(within(actions).getByRole('link', { name: words.write('Felipe Díaz', '1.er') })).toHaveTextContent(words.next(1))
+    expect(within(actions).getByRole('button', { name: words.email.sendTo('Felipe Díaz') })).toBeInTheDocument()
+    const row = pay.closest('li') as HTMLElement
+    expect([...row.querySelectorAll('.today__warning')].map((el) => el.textContent)).toEqual([copy.overdue.since(9)])
+  })
+
+  it('colours only what a member away owes', async () => {
+    stubApi()
+    renderToday()
+    const away = await section(copy.inactive.title)
+
+    const tomas = (await within(away).findByText('Tomás Rojas')).closest('li') as HTMLElement
+    expect([...tomas.querySelectorAll('.today__warning')].map((el) => el.textContent)).toEqual([
+      copy.inactive.payment.overdue('$30.000'),
+    ])
+  })
+
+  it('never shows a zero in the warning colour (#358)', async () => {
+    stubApi({ overdue: { total_clp: 0, periods: [] } })
+    renderToday()
+
+    const counters = await screen.findByRole('group', { name: copy.countersLabel })
+    const zero = await within(counters).findByRole('link', { name: `0 ${copy.overdue.title}` })
+    expect(zero.querySelector('.today__counter-value')).toHaveClass('today__counter-value--muted')
+    expect(zero.querySelector('.today__counter-value')).not.toHaveClass('today__counter-value--warning')
   })
 
   it('lists what is due today and the rejected proofs to follow up, to the guardian for a dependent', async () => {
@@ -847,6 +887,27 @@ describe('Configura tu academia', () => {
     expect(state(steps.staff.title)).toContain(copy.setup.state(true))
   })
 
+  it('is all of Hoy until the gym has a student: no counters, no "all good" cards (#358)', async () => {
+    stubApi({ setup: {}, overdue: { total_clp: 0, periods: [] }, inactive: [] })
+    renderToday()
+
+    expect(await checklist()).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: copy.countersLabel })).not.toBeInTheDocument()
+    for (const title of [copy.proofs.title, copy.overdue.title, copy.inactive.title, copy.unmarked.title]) {
+      expect(screen.queryByRole('region', { name: title })).not.toBeInTheDocument()
+    }
+    expect(screen.queryByText(copy.inactive.empty)).not.toBeInTheDocument()
+  })
+
+  it('shows it to a gym with no students even where this browser remembered it as set up', async () => {
+    localStorage.setItem(setupDoneKey('owner-1'), '1')
+    stubApi({ setup: { classTypes: 1 } })
+    renderToday()
+
+    expect(await checklist()).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: copy.countersLabel })).not.toBeInTheDocument()
+  })
+
   it('stays while the gym has members but no classes', async () => {
     stubApi({ setup: { members: 12 } })
     renderToday()
@@ -867,12 +928,13 @@ describe('Configura tu academia', () => {
 
   it('asks nothing for a gym this browser already knows is set up', async () => {
     localStorage.setItem(setupDoneKey('owner-1'), '1')
-    const calls = stubApi({ setup: {} })
+    // Hoy itself counts the students (#358); the checklist's other questions go unasked.
+    const calls = stubApi({ setup: { members: 1 } })
     renderToday()
 
     await screen.findByRole('region', { name: copy.proofs.title })
     expect(screen.queryByRole('region', { name: copy.setup.title })).not.toBeInTheDocument()
-    const setupPaths = ['/api/people', '/api/class-types', '/api/gym/settings', '/api/staff']
+    const setupPaths = ['/api/class-types', '/api/gym/settings', '/api/staff']
     expect(calls.some((c) => setupPaths.includes(c.path))).toBe(false)
   })
 

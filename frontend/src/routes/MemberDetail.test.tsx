@@ -1307,7 +1307,7 @@ describe('Ficha de alumno', () => {
       name: es.admin.reminders.write('Felipe Díaz', '2.º'),
     })
     expect(link).toHaveAttribute('href', 'https://wa.me/56912345678?text=Hola')
-    expect(link).toHaveTextContent(es.admin.reminders.next('2.º'))
+    expect(link).toHaveTextContent(es.admin.reminders.next(2))
     // The reminder takes the plain chat's place: one WhatsApp button, never two (#179).
     expect(within(header).queryByRole('link', { name: copy.whatsapp('Felipe Díaz') })).not.toBeInTheDocument()
 

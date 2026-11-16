@@ -24,7 +24,6 @@ import { StatusPill } from '../components/StatusPill'
 import { formatPhone, formatRut } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
-import { FamilyPanel } from './FamilyPanel'
 import { PaymentFor } from './Payments'
 import './Students.css'
 
@@ -126,7 +125,7 @@ export function Students() {
   // belt filter.
   const grades = useGrades()
   const scheme = useQuery({ ...gradingSchemeQuery(), enabled: grades })
-  // Importing starts memberships, and "Pagar" records money, which only an owner or admin may.
+  // Importing starts memberships, and "Pagó" records money, which only an owner or admin may.
   const role = useQuery(myRoleQuery())
 
   const toggleStatus = (value: MembershipStatus) => {
@@ -173,6 +172,14 @@ export function Students() {
   const planId = useId()
   const programId = useId()
   const rankId = useId()
+  const moreId = useId()
+  // Plan, programa and cinturón, behind "Filtros" so the list starts in a phone's first
+  // screen (#358); the button counts those set.
+  const [more, setMore] = useState(false)
+  const showPlans = plans.data !== undefined && plans.data.length > 0
+  const showPrograms = programs.data !== undefined && programs.data.length > 0
+  const showRanks = grades && hasRanks(scheme.data)
+  const moreSet = [search.plan, search.program, search.belt].filter((v) => v !== undefined).length
   const rows = members.data?.pages.flatMap((page) => page.items) ?? []
   const total = members.data?.pages[0]?.total
 
@@ -181,28 +188,36 @@ export function Students() {
       <PageHeader title={copy.title} />
       <JoinRequests />
       <div className="students">
-        {readsLedger(role.data) && (
-          <div className="students__links">
-            <Link to="/admin/alumnos/nuevo" className={buttonClass({ variant: 'primary' })}>
-              {copy.newLink}
-            </Link>
-            <Link to="/admin/alumnos/importar" className={buttonClass()}>
-              {copy.importLink}
-            </Link>
-          </div>
-        )}
         <div role="search" className="students__filters">
           <label htmlFor={searchId} className="visually-hidden">
             {copy.searchLabel}
           </label>
-          <SearchInput
-            id={searchId}
-            className="students__search"
-            placeholder={copy.searchPlaceholder}
-            autoComplete="off"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-          />
+          <div className="students__search-row">
+            <SearchInput
+              id={searchId}
+              className="students__search"
+              placeholder={copy.searchPlaceholder}
+              autoComplete="off"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            {(showPlans || showPrograms || showRanks) && (
+              <Button
+                className="students__filters-toggle"
+                aria-expanded={more}
+                aria-controls={moreId}
+                aria-label={copy.moreFiltersLabel(moreSet)}
+                onClick={() => setMore(!more)}
+              >
+                {copy.filtersLabel}
+                {moreSet > 0 && (
+                  <span className="students__filters-count" aria-hidden="true">
+                    {moreSet}
+                  </span>
+                )}
+              </Button>
+            )}
+          </div>
           <ChipGroup label={copy.statusLabel}>
             {MEMBERSHIP_STATUSES.map((value) => (
               <Chip key={value} pressed={status.includes(value)} onClick={() => toggleStatus(value)}>
@@ -222,69 +237,82 @@ export function Students() {
               {copy.away}
             </Chip>
           </ChipGroup>
-          {plans.data && plans.data.length > 0 && (
-            <>
-              <label htmlFor={planId} className="visually-hidden">
-                {copy.planLabel}
-              </label>
-              <Select
-                id={planId}
-                className="students__picker"
-                value={search.plan ?? ''}
-                onChange={(event) => setPlan(event.target.value)}
-              >
-                <option value="">{copy.allPlans}</option>
-                {plans.data.map((plan) => (
-                  <option key={plan.id} value={plan.id}>
-                    {plan.active ? plan.name : copy.inactivePlan(plan.name)}
-                  </option>
-                ))}
-              </Select>
-            </>
-          )}
-          {programs.data && programs.data.length > 0 && (
-            <>
-              <label htmlFor={programId} className="visually-hidden">
-                {copy.programLabel}
-              </label>
-              <Select
-                id={programId}
-                className="students__picker"
-                value={search.program ?? ''}
-                onChange={(event) => setProgram(event.target.value)}
-              >
-                <option value="">{copy.allPrograms}</option>
-                {programs.data.map((program) => (
-                  <option key={program.id} value={program.id}>
-                    {program.active ? program.name : copy.inactiveProgram(program.name)}
-                  </option>
-                ))}
-              </Select>
-            </>
-          )}
-          {grades && hasRanks(scheme.data) && (
-            <>
-              <label htmlFor={rankId} className="visually-hidden">
-                {copy.rankLabel}
-              </label>
-              <RankFilter
-                id={rankId}
-                className="students__picker"
-                scheme={scheme.data}
-                value={belt}
-                onChange={setBelt}
-                anyLabel={copy.allRanks}
-              />
-            </>
-          )}
+          <div id={moreId} className="students__extra" hidden={!more}>
+            {plans.data && plans.data.length > 0 && (
+              <div className="field">
+                <label htmlFor={planId} className="field__label">
+                  {copy.planLabel}
+                </label>
+                <Select
+                  id={planId}
+                  className="students__picker"
+                  value={search.plan ?? ''}
+                  onChange={(event) => setPlan(event.target.value)}
+                >
+                  <option value="">{copy.allPlans}</option>
+                  {plans.data.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.active ? plan.name : copy.inactivePlan(plan.name)}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+            {programs.data && programs.data.length > 0 && (
+              <div className="field">
+                <label htmlFor={programId} className="field__label">
+                  {copy.programLabel}
+                </label>
+                <Select
+                  id={programId}
+                  className="students__picker"
+                  value={search.program ?? ''}
+                  onChange={(event) => setProgram(event.target.value)}
+                >
+                  <option value="">{copy.allPrograms}</option>
+                  {programs.data.map((program) => (
+                    <option key={program.id} value={program.id}>
+                      {program.active ? program.name : copy.inactiveProgram(program.name)}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+            {grades && hasRanks(scheme.data) && (
+              <div className="field">
+                <label htmlFor={rankId} className="field__label">
+                  {copy.rankLabel}
+                </label>
+                <RankFilter
+                  id={rankId}
+                  className="students__picker"
+                  scheme={scheme.data}
+                  value={belt}
+                  onChange={setBelt}
+                  anyLabel={copy.allRanks}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="students__summary" aria-live="polite">
-          {total !== undefined && <span>{copy.count(total)}</span>}
+        {/* The count, then adding students, on one line: the list starts in a phone's first screen (#358). */}
+        <div className="students__summary">
+          <span aria-live="polite">{total !== undefined && copy.count(total)}</span>
           {filtered && (
             <Button variant="ghost" onClick={clear}>
               {copy.clearFilters}
             </Button>
+          )}
+          {readsLedger(role.data) && (
+            <div className="students__links">
+              <Link to="/admin/alumnos/nuevo" className={buttonClass({ variant: 'primary' })}>
+                {copy.newLink}
+              </Link>
+              <Link to="/admin/alumnos/importar" className={buttonClass()}>
+                {copy.importLink}
+              </Link>
+            </div>
           )}
         </div>
 
@@ -332,18 +360,19 @@ export function Students() {
 }
 
 /** A member's row. `pays`: the signed-in owner or admin may record a payment, so a row
- *  that owes has "Pagar", which opens the ficha's payment form under it (#265). */
+ *  that owes has "Pagó", as Hoy says it (#358), which opens the ficha's payment form
+ *  under it (#265). The family is the ficha's (#358): the row only says who it is. */
 function MemberItem({ row, pays }: { row: MemberRow; pays: boolean }) {
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState<'family' | 'payment' | null>(null)
+  const [open, setOpen] = useState(false)
   const [done, setDone] = useState<string | null>(null)
   const panelId = useId()
-  const toggle = (panel: 'family' | 'payment') => {
+  const toggle = () => {
     setDone(null)
-    setOpen(open === panel ? null : panel)
+    setOpen(!open)
   }
   const paid = async (message: string) => {
-    setOpen(null)
+    setOpen(false)
     setDone(message)
     // The row's "Pagar" and status pill, as the payment left them.
     await queryClient.invalidateQueries({ queryKey: ['people', 'list'] })
@@ -386,27 +415,13 @@ function MemberItem({ row, pays }: { row: MemberRow; pays: boolean }) {
             <StatusPill status="none">{copy.noPlan}</StatusPill>
           )}
           {/* Above the row's link to the ficha, so a tap here opens what it says and nothing else. */}
-          <div className="students__actions">
-            {pays && row.owes && (
-              <Button
-                aria-expanded={open === 'payment'}
-                aria-controls={panelId}
-                aria-label={copy.payLabel(row.name)}
-                onClick={() => toggle('payment')}
-              >
+          {pays && row.owes && (
+            <div className="students__actions">
+              <Button aria-expanded={open} aria-controls={panelId} aria-label={copy.payLabel(row.name)} onClick={toggle}>
                 {copy.pay}
               </Button>
-            )}
-            <Button
-              variant="ghost"
-              aria-expanded={open === 'family'}
-              aria-controls={panelId}
-              aria-label={t.admin.family.toggleLabel(row.name)}
-              onClick={() => toggle('family')}
-            >
-              {t.admin.family.toggle}
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
       {done && (
@@ -415,11 +430,10 @@ function MemberItem({ row, pays }: { row: MemberRow; pays: boolean }) {
         </p>
       )}
       {/* Always there, so `aria-controls` names an element; filled only when open. */}
-      <div id={panelId} hidden={open === null}>
-        {open === 'family' && <FamilyPanel person={row} />}
-        {open === 'payment' && (
+      <div id={panelId} hidden={!open}>
+        {open && (
           <div className="students__payment">
-            <PaymentFor personId={row.id} onCancel={() => setOpen(null)} onDone={(message) => void paid(message)} />
+            <PaymentFor personId={row.id} onCancel={() => setOpen(false)} onDone={(message) => void paid(message)} />
           </div>
         )}
       </div>

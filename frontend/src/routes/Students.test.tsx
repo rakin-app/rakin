@@ -70,7 +70,7 @@ function stubApi(
   scheme?: GradingScheme,
   // Whether an activity of the gym grades (#245): by default, when it has a scheme.
   grades = scheme !== undefined,
-  // Any other path it should answer: "Pagar"'s membership, ledger and payment.
+  // Any other path it should answer: "Pagó"'s membership, ledger and payment.
   other?: (url: URL, init?: RequestInit) => Answer | undefined,
 ) {
   const asked: URLSearchParams[] = []
@@ -117,6 +117,13 @@ function renderAt(path: string) {
 }
 
 const list = () => screen.findByRole('list', { name: copy.title })
+
+/** Plan, programa or cinturón: behind "Filtros" (#358), opened if it is not yet. */
+async function filter(name: string) {
+  const toggle = await screen.findByRole('button', { name: /^Filtros/ })
+  if (toggle.getAttribute('aria-expanded') === 'false') await userEvent.click(toggle)
+  return screen.findByRole('combobox', { name })
+}
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -197,8 +204,9 @@ describe('Alumnos', () => {
 
     const rows = within(await list()).getAllByRole('listitem')
     expect(rows.map((row) => row.textContent)).toEqual([
-      `Camila Rojas+56 9 8765 43217.654.321-6ActivoMensual adultos${es.admin.family.toggle}`,
-      `Diego Soto${copy.noPlan}${es.admin.family.toggle}`,
+      // The family is changed on the ficha (#358): no toggle on the row.
+      `Camila Rojas+56 9 8765 43217.654.321-6ActivoMensual adultos`,
+      `Diego Soto${copy.noPlan}`,
     ])
     expect(screen.getByText(copy.count(2))).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: copy.clearFilters })).not.toBeInTheDocument()
@@ -251,7 +259,7 @@ describe('Alumnos', () => {
   it('filters by plan, inactive plans marked', async () => {
     const asked = stubApi(() => page([CAMILA]))
     renderAt('/admin/alumnos')
-    const select = await screen.findByRole('combobox', { name: copy.planLabel })
+    const select = await filter(copy.planLabel)
 
     expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
       copy.allPlans,
@@ -274,7 +282,7 @@ describe('Alumnos', () => {
   it('filters by program, inactive programs marked', async () => {
     const asked = stubApi(() => page([CAMILA]))
     renderAt('/admin/alumnos')
-    const select = await screen.findByRole('combobox', { name: copy.programLabel })
+    const select = await filter(copy.programLabel)
 
     expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
       copy.allPrograms,
@@ -291,7 +299,7 @@ describe('Alumnos', () => {
     stubApi(() => page([CAMILA]), undefined, { body: [] })
     renderAt('/admin/alumnos')
 
-    await screen.findByRole('combobox', { name: copy.planLabel })
+    await filter(copy.planLabel)
     expect(screen.queryByRole('combobox', { name: copy.programLabel })).not.toBeInTheDocument()
   })
 
@@ -306,7 +314,7 @@ describe('Alumnos', () => {
   it('filters by belt, exactly or "o superior", adults and kids apart', async () => {
     const asked = stubApi(() => page([CAMILA]), undefined, undefined, undefined, BJJ)
     const router = renderAt('/admin/alumnos')
-    const select = await screen.findByRole('combobox', { name: copy.rankLabel })
+    const select = await filter(copy.rankLabel)
 
     const groups = within(select).getAllByRole('group')
     expect(groups.map((g) => g.getAttribute('label'))).toEqual(['Adultos', 'Kids'])
@@ -344,7 +352,7 @@ describe('Alumnos', () => {
     stubApi(() => page([CAMILA]), undefined, undefined, undefined, none)
     renderAt('/admin/alumnos')
 
-    await screen.findByRole('combobox', { name: copy.programLabel })
+    await filter(copy.programLabel)
     expect(screen.queryByRole('combobox', { name: copy.rankLabel })).not.toBeInTheDocument()
   })
 
@@ -352,7 +360,7 @@ describe('Alumnos', () => {
     const asked = stubApi(() => page([CAMILA]), undefined, undefined, undefined, BJJ)
     renderAt('/admin/alumnos?belt=%22grey%22&beltUp=true')
 
-    expect(await screen.findByRole('combobox', { name: copy.rankLabel })).toHaveDisplayValue('Gris o superior')
+    expect(await filter(copy.rankLabel)).toHaveDisplayValue('Gris o superior')
     expect(asked[0]?.get('rank_min')).toBe('grey')
     expect(screen.getByRole('button', { name: copy.clearFilters })).toBeInTheDocument()
   })
@@ -378,6 +386,26 @@ describe('Alumnos', () => {
     await list()
     expect(router.state.location.search).toEqual({})
     expect(screen.getByRole('searchbox')).toHaveValue('')
+  })
+
+  it('folds plan, programa and cinturón behind "Filtros", counting those set (#358)', async () => {
+    stubApi(() => page([CAMILA]), undefined, undefined, undefined, BJJ)
+    renderAt('/admin/alumnos?plan=%22plan-adults%22&belt=%22blue%22')
+    await list()
+
+    const toggle = screen.getByRole('button', { name: copy.moreFiltersLabel(2) })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveTextContent(`${copy.filtersLabel}2`)
+    // The search and the status chips are out; the three selects are not, until asked for.
+    expect(screen.getByRole('searchbox')).toBeVisible()
+    expect(screen.getByRole('group', { name: copy.statusLabel })).toBeVisible()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('combobox', { name: copy.planLabel })).toHaveValue('plan-adults')
+    expect(screen.getByRole('combobox', { name: copy.programLabel })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: copy.rankLabel })).toHaveDisplayValue('Azul')
   })
 
   it('says so when the gym has no members yet', async () => {
@@ -473,7 +501,8 @@ describe('Alumnos: "Pagar"', () => {
     renderAt('/admin/alumnos')
     const rows = within(await list()).getAllByRole('listitem')
 
-    expect(within(rows[0]!).getByRole('button', { name: payLabel(OWING) })).toHaveTextContent(copy.pay)
+    // "Pagó", as Hoy says it (#358).
+    expect(within(rows[0]!).getByRole('button', { name: payLabel(OWING) })).toHaveTextContent(es.admin.today.overdue.paid)
     expect(within(rows[1]!).queryByRole('button', { name: payLabel(DIEGO) })).not.toBeInTheDocument()
   })
 

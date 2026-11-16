@@ -37,6 +37,8 @@ export const es = {
     settings: 'Ajustes',
     // Their own student page, for staff who also train at the gym (#214).
     myPage: 'Mi página',
+    // A coach's phone (#358): the top bar's menu with "Cerrar sesión".
+    account: 'Cuenta',
     pendingBadge: (n: number) => (n === 1 ? '1 comprobante por revisar' : `${n} comprobantes por revisar`),
   },
   signIn: {
@@ -88,8 +90,9 @@ export const es = {
   admin: {
     // The wa.me payment reminders on Hoy, the proof review and the ficha (#55).
     reminders: {
+      // The button's own label, short so it never wraps (#358): "Aviso 2".
+      next: (n: number) => `Aviso ${n}`,
       // `ordinal` is "1.er", "2.º": the reminder this one would be.
-      next: (ordinal: string) => `${ordinal} aviso`,
       write: (name: string, ordinal: string) => `Recordar por WhatsApp a ${name} (${ordinal} aviso)`,
       // A dependent's reminder goes to their guardian.
       writeFor: (contact: string, name: string, ordinal: string) =>
@@ -123,6 +126,9 @@ export const es = {
       title: 'Hoy',
       heading: (day: string) => `Hoy, ${day}`,
       countersLabel: 'Resumen',
+      // Between the parts of a row's line, where one is set apart (the warning, #358).
+      separator: ' · ',
+      after: (parts: readonly string[]) => parts.map((part) => ` · ${part}`).join(''),
       loading: 'Cargando…',
       retry: 'Reintentar',
       // Without the role Hoy cannot tell what to show: say so instead of a blank page.
@@ -143,12 +149,13 @@ export const es = {
         total: (amount: string) => `${amount} pendientes`,
         error: 'No pudimos cargar los vencidos.',
         empty: 'Nadie tiene pagos vencidos.',
-        detail: (days: number, amount: string, plan: string) =>
-          `Venció hace ${days === 1 ? '1 día' : `${days} días`} · ${amount} · ${plan}`,
+        // The overdue fact, the one part of the row in the warning colour (#358); the
+        // amount and the plan follow it.
+        since: (days: number) => `Venció hace ${days === 1 ? '1 día' : `${days} días`}`,
         // A debt outlives its plan (#207): the row says what became of the membership.
         membership: { lapsed: 'plan caducado', cancelled: 'dado de baja', frozen: 'congelado' } as Statuses,
         // A member owing on several periods, of one plan or more: one row, the total (#271).
-        periods: (n: number, amount: string) => `${n} cobros vencidos · ${amount}`,
+        periods: (n: number) => `${n} cobros vencidos`,
         paid: 'Pagó',
         paidLabel: (name: string) => `Registrar el pago de ${name}`,
         periodOf: (name: string, plan: string, month: string) => `${name}, ${plan} de ${month}`,
@@ -331,6 +338,8 @@ export const es = {
       columns: { name: 'Alumno', phone: 'Teléfono', rut: 'RUT', plan: 'Plan', status: 'Estado' },
       searchPlaceholder: 'Nombre, teléfono o RUT',
       filtersLabel: 'Filtros',
+      // The button over plan, programa and cinturón (#358), and how many of them are set.
+      moreFiltersLabel: (n: number) => (n === 0 ? 'Filtros' : n === 1 ? 'Filtros, 1 activo' : `Filtros, ${n} activos`),
       statusLabel: 'Estado',
       planLabel: 'Plan',
       allPlans: 'Todos los planes',
@@ -373,8 +382,8 @@ export const es = {
       away: 'Sin venir 14 d',
       noWhatsapp: 'Sin WhatsApp',
       // On the row of someone who owes, overdue or due soon (#265): the ficha's
-      // "Registrar pago", opened under the row.
-      pay: 'Pagar',
+      // "Registrar pago", opened under the row; "Pagó", as Hoy says it (#358).
+      pay: 'Pagó',
       payLabel: (name: string) => `Registrar pago de ${name}`,
     },
     newMember: {
@@ -1427,6 +1436,14 @@ export const es = {
         noClassTypes: 'Todavía no hay tipos de clase. El dueño o un admin del gimnasio los configura.',
         error: 'No pudimos cargar los tipos de clase.',
         failed: 'No pudimos crear la clase. Inténtalo de nuevo.',
+        close: 'Cerrar',
+      },
+      // First on Clases (#358): the class on now, else the next one today.
+      now: {
+        on: 'Ahora',
+        next: 'Siguiente',
+        take: 'Tomar asistencia',
+        takeLabel: (name: string) => `Tomar asistencia de ${name}`,
       },
       today: {
         title: 'Hoy',

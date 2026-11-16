@@ -1,6 +1,6 @@
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useId, useState, type FormEvent } from 'react'
+import { useEffect, useId, useState, type FormEvent } from 'react'
 import { rosterQuery } from '../api/attendance'
 import { gymTagHoursQuery } from '../api/classTags'
 import {
@@ -26,17 +26,22 @@ import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './Classes.css'
 import { useSubmit } from '../api/submit'
+import { TimerLink } from './SessionDetail'
 
 const copy = t.admin.classes
 
 /**
- * "Clases": a day's classes, today's first, and creating one. The weekly schedule
+ * "Clases": the class on now or next, a day's classes, today's first, and creating one. The weekly schedule
  * (Ajustes, Horario) makes most of them ahead, and the arrows walk to the days before
  * and after; a coach may also create a class as it begins, of one of the gym's class
  * types, and lands on it to take its attendance and write its topic and notes. Every
  * staff role sees and creates them.
  *
- * From 1024px the page has two columns (#178): "Crear clase" and the day on the left,
+ * The class on now, else the next one today, comes first at every width, a tap from its
+ * attendance and its timer (#358): a coach opens Clases at the mat. "Crear clase", an
+ * occasional action, is a button that opens its form.
+ *
+ * From 1024px the page has two columns (#178): the class now, "Crear clase" and the day on the left,
  * and on the right the week the day is in, with the class picked in it: who came, of
  * those who usually do. A phone keeps the one column, and never asks for the week.
  *
@@ -61,6 +66,7 @@ export function Classes() {
         <PageHeader title={copy.title} eyebrow={weekdayDay(toDate(gymToday))} />
         <Grid>
           <div className="classes__column">
+            {day.data && isToday && <NowCard sessions={day.data.sessions} timeZone={day.data.timezone} />}
             <StartSession />
             <section className="classes__section" aria-labelledby="classes-day">
               <div className="classes__section-head">
@@ -251,6 +257,65 @@ function Picked({ session, timeZone }: { session: ClassSession; timeZone: string
   )
 }
 
+/** The class on now, else the next one today: neither cancelled. Null once today's are over. */
+export function nowOrNext(sessions: readonly ClassSession[], now: Date): { session: ClassSession; on: boolean } | null {
+  const standing = sessions.filter((session) => session.cancelled_at === null)
+  const on = standing.find((session) => {
+    const start = new Date(session.starts_at).getTime()
+    // A class with no duration counts as on for its first hour.
+    const end = start + (session.duration_minutes ?? 60) * 60_000
+    return start <= now.getTime() && now.getTime() < end
+  })
+  if (on) return { session: on, on: true }
+  const next = standing
+    .filter((session) => new Date(session.starts_at) > now)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0]
+  return next ? { session: next, on: false } : null
+}
+
+// How often the card looks at the clock again: a class starts or ends on the minute.
+const NOW_TICK_MS = 60_000
+
+/** The time, again every minute, so a page left open moves on with it. */
+function useNow(): Date {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), NOW_TICK_MS)
+    return () => clearInterval(timer)
+  }, [])
+  return now
+}
+
+/** "Ahora" or "Siguiente": the class a coach at the mat came for, its attendance and timer.
+ * Clases left open on the mat moves from one class to the next as the minutes pass. */
+function NowCard({ sessions, timeZone }: { sessions: readonly ClassSession[]; timeZone: string }) {
+  const words = copy.now
+  const found = nowOrNext(sessions, useNow())
+  if (!found) return null
+  const { session, on } = found
+  const name = copy.today.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)
+  return (
+    <section className="classes__card classes__now" aria-labelledby="classes-now">
+      <span className="classes__eyebrow">{on ? words.on : words.next}</span>
+      <h2 id="classes-now" className="classes__section-title">
+        {name}
+      </h2>
+      <span className="classes__detail">{copy.today.detail(session.program_name, session.coach_name)}</span>
+      <div className="classes__now-actions">
+        <Link
+          to="/admin/clases/$sessionId"
+          params={{ sessionId: session.id }}
+          className={buttonClass({ variant: 'primary' })}
+          aria-label={words.takeLabel(name)}
+        >
+          {words.take}
+        </Link>
+        <TimerLink session={session} />
+      </div>
+    </section>
+  )
+}
+
 function Failed({ message, retry }: { message: string; retry: () => void }) {
   return (
     <div className="classes__error" role="alert">
@@ -267,21 +332,22 @@ function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: st
   // one never has: it says so instead.
   const cancelled = session.cancelled_at !== null
   const unmarked = !cancelled && session.present === 0 && new Date(session.starts_at) <= new Date()
+  const name = copy.today.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)
+  const detail = copy.today.detail(session.program_name, session.coach_name)
+  const topic = session.topic ?? copy.today.noTopic
   return (
     <li>
       <Link
         to="/admin/clases/$sessionId"
         params={{ sessionId: session.id }}
         className={cancelled ? 'classes__row classes__row--cancelled' : 'classes__row'}
+        // From 1024px each line of a row may be cut short: in full here.
+        title={[name, detail, topic].join(' · ')}
       >
         <span className="classes__row-text">
-          <span className="classes__name">
-            {copy.today.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)}
-          </span>
-          <span className="classes__detail">{copy.today.detail(session.program_name, session.coach_name)}</span>
-          <span className={session.topic ? 'classes__topic' : 'classes__topic classes__topic--none'}>
-            {session.topic ?? copy.today.noTopic}
-          </span>
+          <span className="classes__name">{name}</span>
+          <span className="classes__detail">{detail}</span>
+          <span className={session.topic ? 'classes__topic' : 'classes__topic classes__topic--none'}>{topic}</span>
         </span>
         {!cancelled && session.present > 0 && (
           <span className="classes__count">{copy.today.present(session.present)}</span>
@@ -295,25 +361,45 @@ function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: st
 }
 
 /** "Crear clase": a class of the type chosen, now, taught by whoever creates it, for the
- * minutes given, prefilled with the type's default (#257). */
+ * minutes given, prefilled with the type's default (#257). An occasional action, so a
+ * button until it is wanted (#358). */
 function StartSession() {
-  const classTypes = useQuery(activeClassTypesQuery())
+  const [open, setOpen] = useState(false)
+  const formId = useId()
 
-  return (
-    <section className="classes__card" aria-labelledby="classes-start">
-      <h2 id="classes-start" className="classes__section-title">
+  if (!open) {
+    return (
+      // No `aria-controls` while closed: the form it would name is not there yet.
+      <Button className="classes__start" aria-expanded={false} onClick={() => setOpen(true)}>
         {copy.start.title}
-      </h2>
-      {classTypes.isPending ? (
-        <p className="classes__note">{copy.loading}</p>
-      ) : classTypes.isError ? (
-        <Failed message={copy.start.error} retry={() => void classTypes.refetch()} />
-      ) : classTypes.data.length === 0 ? (
-        <p className="classes__note">{copy.start.noClassTypes}</p>
-      ) : (
-        <StartForm classTypes={classTypes.data} />
-      )}
+      </Button>
+    )
+  }
+  return (
+    <section id={formId} className="classes__card" aria-labelledby="classes-start">
+      <div className="classes__section-head">
+        <h2 id="classes-start" className="classes__section-title">
+          {copy.start.title}
+        </h2>
+        <Button variant="ghost" aria-expanded={true} aria-controls={formId} onClick={() => setOpen(false)}>
+          {copy.start.close}
+        </Button>
+      </div>
+      <StartBody />
     </section>
+  )
+}
+
+function StartBody() {
+  const classTypes = useQuery(activeClassTypesQuery())
+  return classTypes.isPending ? (
+    <p className="classes__note">{copy.loading}</p>
+  ) : classTypes.isError ? (
+    <Failed message={copy.start.error} retry={() => void classTypes.refetch()} />
+  ) : classTypes.data.length === 0 ? (
+    <p className="classes__note">{copy.start.noClassTypes}</p>
+  ) : (
+    <StartForm classTypes={classTypes.data} />
   )
 }
 

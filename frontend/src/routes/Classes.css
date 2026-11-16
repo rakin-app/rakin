@@ -188,6 +188,28 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* The class on now or next, first at every width (#358): its attendance and its timer. */
+.classes__now {
+  gap: var(--space-1);
+}
+
+.classes__now-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.classes__now-actions > * {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+/* "Crear clase" closed: one button, under the class on now. */
+.classes__start {
+  align-self: flex-start;
+}
+
 /* "Sin asistencia": a class no one has been marked at yet. */
 .classes__flag {
   flex: none;
@@ -424,23 +446,13 @@
   width: 100%;
 }
 
-/* A day's class on one line from 1024px: time and type, program and coach, then the topic. */
+/* From 1024px a day's class sits in half the page: each of its lines stays one line,
+   cut short with an ellipsis (the row's title has it in full), so neither the coach nor
+   the topic runs under the count or the pill (#358). */
 @media (--wide) {
-  .classes__row .classes__row-text {
-    flex-direction: row;
-    align-items: baseline;
-    gap: var(--space-3);
-  }
-
   .classes__row .classes__name,
-  .classes__row .classes__detail {
-    flex: none;
-    white-space: nowrap;
-  }
-
+  .classes__row .classes__detail,
   .classes__row .classes__topic {
-    flex: 1 1 auto;
-    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

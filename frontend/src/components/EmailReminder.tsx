@@ -29,8 +29,11 @@ export function daysAgo(iso: string, now: Date): string {
  * (#266): a hidden button reads as a missing feature. A double tap sends once
  * (`useSubmit`). Nothing for a period not yet overdue (a rejected proof sent early)
  * with none sent.
+ *
+ * `compact`: a 44px mail icon among a row's other actions (Hoy, #358), its notes on a
+ * line of their own under them.
  */
-export function EmailReminder({ reminder }: { reminder: PaymentReminder }) {
+export function EmailReminder({ reminder, compact = false }: { reminder: PaymentReminder; compact?: boolean }) {
   const queryClient = useQueryClient()
   const reasonId = useId()
   const send = useSubmit({
@@ -47,18 +50,20 @@ export function EmailReminder({ reminder }: { reminder: PaymentReminder }) {
       ? copy.sendTo(reminder.person_name)
       : copy.sendFor(reminder.contact_name, reminder.person_name)
   return (
-    <div className="email-reminder">
+    <div className={compact ? 'email-reminder email-reminder--compact' : 'email-reminder'}>
       {overdue && (
         <Button
-          variant="ghost"
+          variant={compact ? 'secondary' : 'ghost'}
+          icon={compact}
           busy={send.isPending}
           disabled={reason !== null}
           aria-label={aria}
           aria-describedby={reason ? reasonId : undefined}
+          title={compact ? copy.send : undefined}
           onClick={() => send.mutate()}
         >
           <MailIcon />
-          <span>{copy.send}</span>
+          {!compact && <span>{copy.send}</span>}
         </Button>
       )}
       {overdue && reason && (

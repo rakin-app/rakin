@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useSignOut } from '../api/auth'
 import { managesGym, myRoleQuery, myselfQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
@@ -35,10 +35,11 @@ const NAV_ITEMS: readonly NavItem[] = [
  * gym's name; from 960px it becomes the dark sidebar of the desktop ledger design, with
  * the gym's name under the mark (#199). One <nav>, restyled by CSS,
  * so both share a tab order. "Cerrar sesión" is the sidebar's last item; on a phone it
- * is in Ajustes → Cuenta instead, so the bar keeps to the sections (#177), except for a
- * coach, who has no Ajustes and three tabs. "Mi página", the student page of staff who
- * also train (#214), sits above it, and goes the same way: in Cuenta on an owner's phone,
- * a fourth tab on a coach's.
+ * is in Ajustes → Cuenta instead, so the bar keeps to the sections (#177). A coach has no
+ * Ajustes: theirs is in the account menu of the phone's top bar, never a tab one thumb-tap
+ * from Clases at the mat (#358). "Mi página", the student page of staff who also train
+ * (#214), sits above it in the sidebar: in Cuenta on an owner's phone, a fourth tab on a
+ * coach's.
  */
 export function AdminLayout() {
   // Proofs waiting for review, on the Pagos tab: asked for only by those who read
@@ -60,7 +61,10 @@ export function AdminLayout() {
       (item.to !== '/admin/pagos' || readsLedger(role.data)) && (item.to !== '/admin/ajustes' || managesGym(role.data)),
   )
 
-  const endClass = role.isSuccess && !managesGym(role.data) ? 'admin-nav__end admin-nav__end--bar' : 'admin-nav__end'
+  // A coach's phone has no Ajustes: "Mi página" is a tab of their bar, and signing out is
+  // in the top bar's account menu. Only once the role is known, so nothing flashes in.
+  const coach = role.isSuccess && !managesGym(role.data)
+  const myPageClass = coach ? 'admin-nav__end admin-nav__end--bar' : 'admin-nav__end'
 
   return (
     <div className="admin-shell">
@@ -75,6 +79,7 @@ export function AdminLayout() {
             <span className="admin-top__gym-name">{gym}</span>
           </span>
         )}
+        {coach && <AccountMenu />}
       </header>
       <nav className="admin-nav" aria-label={t.nav.label}>
         <div className="admin-nav__head">
@@ -108,7 +113,7 @@ export function AdminLayout() {
             </li>
           ))}
           {studentPage && (
-            <li className={endClass}>
+            <li className={myPageClass}>
               <Link to="/me" className="admin-nav__link">
                 <span className="admin-nav__icon">
                   <MyPageIcon />
@@ -117,9 +122,8 @@ export function AdminLayout() {
               </Link>
             </li>
           )}
-          {/* On a phone it is in Ajustes → Cuenta; a coach has no Ajustes, so their bar keeps it. Only
-              once the role is known: a bar that showed it while loading would flash a sixth tab. */}
-          <li className={endClass}>
+          {/* The sidebar's; on a phone it is in Ajustes → Cuenta, or a coach's account menu. */}
+          <li className="admin-nav__end">
             <button
               type="button"
               className="admin-nav__link"
@@ -145,6 +149,65 @@ export function AdminLayout() {
           <Outlet />
         </div>
       </main>
+    </div>
+  )
+}
+
+/** A coach's account on a phone (#358): who is signed in, and "Cerrar sesión", behind one
+ * button of the top bar, as an owner's are in Ajustes → Cuenta. */
+function AccountMenu() {
+  const me = useQuery(myselfQuery())
+  const signOut = useSignOut()
+  const [open, setOpen] = useState(false)
+  const menuId = useId()
+  const root = useRef<HTMLDivElement>(null)
+
+  // A tap elsewhere or Escape closes it.
+  useEffect(() => {
+    if (!open) return
+    const away = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [open])
+
+  return (
+    <div ref={root} className="admin-account">
+      <button
+        type="button"
+        className="admin-account__toggle"
+        aria-label={t.nav.account}
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen(!open)}
+      >
+        <MyPageIcon />
+      </button>
+      <div id={menuId} className="admin-account__menu" hidden={!open}>
+        {me.data?.name && <p className="admin-account__name">{me.data.name}</p>}
+        <button
+          type="button"
+          className="admin-account__item"
+          disabled={signOut.isPending}
+          onClick={() => signOut.mutate()}
+        >
+          <SignOutIcon />
+          <span>{signOut.isPending ? t.signOut.working : t.signOut.label}</span>
+        </button>
+        {signOut.isError && (
+          <p className="admin-account__error" role="alert">
+            {t.signOut.failed}
+          </p>
+        )}
+      </div>
     </div>
   )
 }
