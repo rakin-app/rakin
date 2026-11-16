@@ -22,6 +22,7 @@ from app.api import (
     health,
     history,
     hosts,
+    import_undo,
     inactive,
     join,
     ledger,
@@ -129,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(freeze_requests.mine)
     app.include_router(freeze_requests.router)
     app.include_router(member_import.router)
+    app.include_router(import_undo.router)
     app.include_router(gym.router)
     app.include_router(staff.router)
     app.include_router(grading.router)

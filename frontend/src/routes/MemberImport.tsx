@@ -35,6 +35,7 @@ import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './MemberImport.css'
+import { RecentImports } from './RecentImports'
 import { useSubmit } from '../api/submit'
 
 const copy = t.admin.import
@@ -47,7 +48,8 @@ const NO_PLAN = 'none'
  * every row without saving (the dry run), then import. The file is read once; the
  * rows stay here and go back to the API with the mapping each time. A workbook's
  * Pagos (#298) and Grados (#299) tabs each get a mapping step of their own, and are
- * checked and imported with the Alumnos tab, after it.
+ * checked and imported with the Alumnos tab, after it. Below the picker, the gym's
+ * recent imports, which the owner can undo (#300).
  */
 export function MemberImport() {
   usePageTitle(copy.title)
@@ -58,7 +60,10 @@ export function MemberImport() {
       <PageHeader title={copy.title} eyebrow={copy.eyebrow} />
       <div className="import">
         {file === null ? (
-          <SheetPicker onRead={(name, sheet) => setFile({ name, sheet })} />
+          <>
+            <SheetPicker onRead={(name, sheet) => setFile({ name, sheet })} />
+            <RecentImports />
+          </>
         ) : (
           <SheetImport key={file.name} name={file.name} sheet={file.sheet} onOther={() => setFile(null)} />
         )}
@@ -255,6 +260,8 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
     onSuccess: (done) => {
       setReport(done)
       void queryClient.invalidateQueries({ queryKey: ['people'] })
+      // Importar's recent imports gain this one (#300).
+      void queryClient.invalidateQueries({ queryKey: ['import', 'recent'] })
     },
   })
 

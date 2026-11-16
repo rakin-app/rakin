@@ -98,6 +98,7 @@ def ids(loaded: Loaded) -> dict[str, str]:
         "group_id": unknown,
         "charge_id": unknown,
         "line_id": unknown,
+        "import_id": unknown,
     }
 
 
