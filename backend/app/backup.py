@@ -205,10 +205,15 @@ def dump_encrypted(path: Path, recipient: str) -> None:
         finally:
             dump.stdout.close()
             dump_status = dump.wait()
-    if dump_status != 0:
-        raise BackupError(f"pg_dump exited with {dump_status}")
+    # age first: when it fails it stops reading, so pg_dump may then die of SIGPIPE (or
+    # not, if it had already written everything). That is age's failure, not pg_dump's.
+    failures = []
     if encrypt.returncode != 0:
-        raise BackupError(f"age exited with {encrypt.returncode}")
+        failures.append(f"age exited with {encrypt.returncode}")
+    if dump_status != 0 and not (failures and dump_status == -signal.SIGPIPE):
+        failures.append(f"pg_dump exited with {dump_status}")
+    if failures:
+        raise BackupError("; ".join(failures))
 
 
 def run_once(settings: BackupSettings, now: datetime) -> str:

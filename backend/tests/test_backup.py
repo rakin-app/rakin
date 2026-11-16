@@ -255,15 +255,24 @@ def test_the_dump_is_piped_through_age_to_the_recipient(
 
 @pytest.mark.parametrize(
     ("dump", "age", "error"),
-    [("exit 3", "cat >/dev/null", "pg_dump exited with 3"), ("echo x", "exit 1", "age exited")],
+    [
+        ("exit 3", "cat >/dev/null", "pg_dump exited with 3"),
+        # pg_dump may or may not have written before age exits: age is blamed either way.
+        ("echo x", "exit 1", "age exited with 1"),
+        # pg_dump never stops writing, so it always dies of SIGPIPE once age has gone.
+        ("exec yes", "exit 1", "age exited with 1"),
+        ("exit 3", "exit 1", "age exited with 1; pg_dump exited with 3"),
+    ],
 )
 def test_a_failing_tool_fails_the_backup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dump: str, age: str, error: str
 ) -> None:
     fake_tools(tmp_path, monkeypatch, dump=dump, age=age)
 
-    with pytest.raises(backup.BackupError, match=error):
+    with pytest.raises(backup.BackupError) as raised:
         backup.dump_encrypted(tmp_path / "out.age", RECIPIENT)
+
+    assert str(raised.value) == error
 
 
 def test_a_failed_backup_is_logged_as_an_error_and_exits_non_zero(
