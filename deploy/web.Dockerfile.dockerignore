@@ -2,5 +2,9 @@
 *
 !frontend/
 !deploy/Caddyfile
+!site/
+!docs/brand/lockup-dark.svg
+!docs/legal/aviso-de-privacidad-rakin.md
+site/dist/
 frontend/node_modules/
 frontend/dist/
