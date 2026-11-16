@@ -16,14 +16,15 @@ rows billing bills, lapses and mails from. So it is a row of its own:
   or admin of the gym reads, inserts as themselves (`created_by`) and deletes. No
   update: a typo is removed and typed again.
 - Removing one is recorded in `audit_event` as `history_removed`, with the whole row in
-  `detail` and the reason, under the policy 0051's `history_set` is written by.
+  `detail` and the reason, under the policy 0051's `history_set` is written by. 0053's
+  `history_imported` stays among the actions.
 - `forget_gym_person` deletes the person's history payments with the rest, and counts
   them in `person_deleted` (`history_payments`) beside their `history_removed` rows.
   Neither is money in the ledger, so `forget_refusal` lets someone whose only money is
   history be deleted.
 
-Revision ID: 0053
-Revises: 0052
+Revision ID: 0055
+Revises: 0054
 Create Date: 2026-11-15
 
 """
@@ -35,8 +36,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0053"
-down_revision: str | Sequence[str] | None = "0052"
+revision: str = "0055"
+down_revision: str | Sequence[str] | None = "0054"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -54,7 +55,7 @@ LEDGER_ACCESS = (
 
 REMOVED = "history_removed"
 
-# 0051's `forget_gym_person`: its corrections leave out every history action, and
+# 0054's `forget_gym_person` (0051's, grades by person): its corrections leave out every history action, and
 # beside its `history_set` it counts the removals and the payments.
 COUNT_BEFORE = (
     "                AND action <> 'history_set'\n"
@@ -95,9 +96,9 @@ def _migration(name: str) -> ModuleType:
 
 
 def forget_gym_person(payments: bool) -> str:
-    """0051's function, replacing itself; with `payments`, it deletes and counts the
+    """0054's function, replacing itself; with `payments`, it deletes and counts the
     person's history payments, and counts their removals apart from their corrections."""
-    sql: str = _migration("0051_person_history.py").forget_gym_person(history=True)
+    sql: str = _migration("0054_grades_by_person.py").forget_gym_person(by_person=True)
     if payments:
         for before, after in ((COUNT_BEFORE, COUNT_AFTER), (DELETE_BEFORE, DELETE_AFTER)):
             assert sql.count(before) == 1, before
@@ -106,11 +107,12 @@ def forget_gym_person(payments: bool) -> str:
 
 
 def _audit_event(payments: bool) -> None:
-    """`audit_event`'s actions and its insert policy for the app role, 0051's with
+    """`audit_event`'s actions and its insert policy for the app role, 0053's with
     `history_removed` or without."""
     m0048 = _migration("0048_correction_audit.py")
     m0051 = _migration("0051_person_history.py")
     actions, check = m0051._actions(history=True)
+    actions = (*actions, _migration("0053_history_imported.py").IMPORTED)
     if payments:
         written = (*m0048.CORRECTIONS, *m0051.HISTORY)
         before, after = m0048._in(written), m0048._in((*written, REMOVED))

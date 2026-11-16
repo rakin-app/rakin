@@ -34,6 +34,11 @@
   font-size: var(--text-sm);
 }
 
+.import__template {
+  font-weight: var(--font-weight-semibold);
+  text-decoration: underline;
+}
+
 .import__summary {
   margin: 0;
   font-size: var(--text-md);

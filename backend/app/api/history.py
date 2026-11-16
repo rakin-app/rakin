@@ -14,7 +14,7 @@ are both kept or neither is. Owner and admin only, as the policy on `audit_event
 holds the app role to as well (0051).
 
 "Historial de pagos" (#295): what a student paid before Rakin, in `history_payment`
-(0053). `GET /api/people/{id}/history/payments` reads them by year for the Historial
+(0055). `GET /api/people/{id}/history/payments` reads them by year for the Historial
 card; `POST` there writes "Pagos anteriores", every month of the form in one
 transaction, each before the person's first plan (`covers_plan`); `POST
 .../payments/{payment_id}/remove` deletes one with a reason and records it as
@@ -102,16 +102,22 @@ def changes(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, An
 
 
 async def record_history_set(
-    session: AsyncSession, person_id: uuid.UUID, changed: Mapping[str, Any]
+    session: AsyncSession,
+    person_id: uuid.UUID,
+    changed: Mapping[str, Any],
+    *,
+    import_id: uuid.UUID | None = None,
 ) -> None:
     """The `history_set` row for `changed` (`changes`), in the write's transaction: the
     write and its record are both kept or neither is. Nothing changed, nothing recorded.
-    Also why someone left and a former student's dates (#294)."""
+    Also why someone left and a former student's dates (#294), and what an import set,
+    with the `history_imported` row's id as `import_id` (#297)."""
     if not changed:
         return
+    detail = dict(changed) if import_id is None else {"import_id": str(import_id), **changed}
     result = await session.execute(
         INSERT_HISTORY_SET,
-        {"person": person_id, "action": HISTORY_SET, "detail": json.dumps(changed)},
+        {"person": person_id, "action": HISTORY_SET, "detail": json.dumps(detail)},
     )
     if result.rowcount != 1:  # type: ignore[attr-defined]
         raise RuntimeError(f"no audit row for the history of person {person_id}")
@@ -141,7 +147,7 @@ async def set_history(
 
 # --- Historial de pagos (#295) --------------------------------------------------------
 #
-# What a student paid before Rakin, in `history_payment` (0053), which no billing code,
+# What a student paid before Rakin, in `history_payment` (0055), which no billing code,
 # job, view or export reads. Owner and admin only (`LedgerSession`), as RLS holds the
 # app role to as well. A payment's month (else its day) is before the person's first
 # plan here, if they have one: a month on or after it is their plan's, which "Pagado

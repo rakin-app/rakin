@@ -22,6 +22,7 @@ from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_guardians import add_person, bill
+from tests.test_member_roll import count, forget
 from tests.test_plans import add_staff
 
 pg = pytest.mark.postgres
@@ -285,13 +286,148 @@ def test_a_bad_note_or_field_is_a_422(client: TestClient, db: Database) -> None:
         assert response.status_code == 422, body
 
 
+def stored(db: Database, gym: uuid.UUID, person: str) -> list[tuple[str, bool]]:
+    """Each of the person's grades as stored: its `source`, and whether it has a plan."""
+    rows = run(
+        db.api_url,
+        in_gym(
+            gym,
+            "SELECT source, membership_id IS NOT NULL AS planned FROM grade_event"
+            " WHERE person_id = $1 ORDER BY awarded_on, created_at",
+            uuid.UUID(person),
+        ),
+    )
+    return [(r["source"], r["planned"]) for r in rows]
+
+
 @pg
-def test_someone_with_no_membership_cannot_be_promoted(client: TestClient, db: Database) -> None:
+def test_a_former_student_with_no_plan_gets_a_belt_from_before_rakin(
+    client: TestClient, db: Database
+) -> None:
+    gym = gym_with(client, db)
+    person = add_person(client, gym, "Sin Plan")
+
+    response = award(
+        client,
+        gym,
+        person,
+        rank_key="purple",
+        sub_rank="1",
+        awarded_on="2021-06-12",
+        source="manual",
+    )
+
+    assert response.status_code == 201, response.text
+    current = grades(client, gym, person)["current"]
+    assert (current["rank_key"], current["awarded_on"]) == ("purple", "2021-06-12")
+    assert stored(db, gym, person) == [("manual", False)]
+    assert plan_events(db, gym) == []
+    # The people list filters by the same rank.
+    listed = client.get("/api/people?rank=purple", headers=as_gym(gym)).json()["items"]
+    assert [p["id"] for p in listed] == [person]
+
+
+@pg
+def test_someone_with_no_plan_may_be_promoted_in_rakin_with_no_event(
+    client: TestClient, db: Database
+) -> None:
     gym = gym_with(client, db)
     person = add_person(client, gym, "Sin Plan")
     response = award(client, gym, person, rank_key="white", sub_rank="0")
-    assert response.status_code == 409
-    assert response.json() == {"detail": {"code": "no_membership"}}
+    assert response.status_code == 201, response.text
+    assert stored(db, gym, person) == [("app", False)]
+    assert plan_events(db, gym) == []
+
+
+@pg
+def test_a_history_grade_writes_no_promoted_event_and_needs_no_plan(
+    client: TestClient, db: Database
+) -> None:
+    gym = gym_with(client, db)
+    person = member(client, db, gym)
+    yesterday = seeded_today() - timedelta(days=1)
+
+    # The latest, so the current rank, but typed in as history: nobody to congratulate.
+    award(
+        client,
+        gym,
+        person,
+        rank_key="blue",
+        sub_rank="0",
+        awarded_on=str(yesterday),
+        source="manual",
+    )
+    assert grades(client, gym, person)["current"]["rank_key"] == "blue"
+    assert plan_events(db, gym) == []
+    assert stored(db, gym, person) == [("manual", False)]
+
+    # One awarded in Rakin still writes one, on the plan.
+    award(client, gym, person, rank_key="blue", sub_rank="1")
+    assert plan_events(db, gym) == [("promoted", seeded_today())]
+    assert stored(db, gym, person) == [("manual", False), ("app", True)]
+
+
+@pg
+def test_a_grade_goes_back_at_most_sixty_years_and_comes_in_by_app_or_hand(
+    client: TestClient, db: Database
+) -> None:
+    gym = gym_with(client, db)
+    person = add_person(client, gym, "Sin Plan")
+    today = seeded_today()
+    edge = today.replace(year=today.year - 60)
+    assert (
+        award(
+            client,
+            gym,
+            person,
+            rank_key="white",
+            sub_rank="0",
+            awarded_on=str(edge),
+            source="manual",
+        ).status_code
+        == 201
+    )
+    response = award(
+        client,
+        gym,
+        person,
+        rank_key="white",
+        sub_rank="0",
+        awarded_on=str(edge - timedelta(days=1)),
+        source="manual",
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": {"code": "awarded_too_early"}}
+    # An import is #297's, never the form's.
+    assert (
+        award(client, gym, person, rank_key="white", sub_rank="0", source="import").status_code
+        == 422
+    )
+
+
+@pg
+def test_forgetting_someone_deletes_their_grades_with_a_plan_and_without(
+    client: TestClient, db: Database
+) -> None:
+    gym = gym_with(client, db)
+    person = member(client, db, gym)
+    award(
+        client,
+        gym,
+        person,
+        rank_key="white",
+        sub_rank="4",
+        awarded_on="2021-06-12",
+        source="manual",
+    )
+    award(client, gym, person, rank_key="blue", sub_rank="0")
+    assert stored(db, gym, person) == [("manual", False), ("app", True)]
+
+    assert forget(client, gym, person).status_code == 204
+    assert (
+        count(db, gym, "SELECT count(*) FROM grade_event WHERE person_id = $1", uuid.UUID(person))
+        == 0
+    )
 
 
 @pg

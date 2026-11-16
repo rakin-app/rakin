@@ -1,6 +1,6 @@
 """Historial de pagos: what a student paid before Rakin, never read by billing (#295).
 
-`history_payment` (0053) holds them, beside the ledger and never in it. The ficha's
+`history_payment` (0055) holds them, beside the ledger and never in it. The ficha's
 Historial card reads them by year; "Pagos anteriores" writes a form's months in one
 transaction, each before the person's first plan (`covers_plan`). Eliminar deletes one
 with a reason, kept whole in a `history_removed` row. Owner and admin only, at the API
@@ -465,7 +465,7 @@ def test_not_on_the_students_page(client: TestClient, gym: uuid.UUID) -> None:
 
 
 @pg
-def test_upgrade_and_downgrade_0053() -> None:
+def test_upgrade_and_downgrade_0055() -> None:
     with throwaway_database(require_test_database_url()) as scratch:
         migrate(scratch)
         gym = seed_gym(scratch, "sur")
@@ -480,14 +480,15 @@ def test_upgrade_and_downgrade_0053() -> None:
             )
             await conn.execute(
                 "INSERT INTO audit_event (gym_id, actor_id, person_id, action)"
-                " VALUES ($1, $2, $2, 'history_removed'), ($1, $2, $2, 'history_set')",
+                " VALUES ($1, $2, $2, 'history_removed'), ($1, $2, $2, 'history_set'),"
+                " ($1, $2, NULL, 'history_imported')",
                 gym,
                 owner,
             )
 
         run(scratch.admin_url, log)
         # The removals go with their action, and the payments with their table.
-        command.downgrade(scratch.alembic(), "0052")
+        command.downgrade(scratch.alembic(), "0054")
         kept = run(scratch.admin_url, lambda c: c.fetch("SELECT action FROM audit_event"))
-        assert [r["action"] for r in kept] == ["history_set"]
+        assert sorted(r["action"] for r in kept) == ["history_imported", "history_set"]
         migrate(scratch)

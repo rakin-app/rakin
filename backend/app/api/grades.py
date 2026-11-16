@@ -2,13 +2,15 @@
 
 A promotion names a rank and sub-rank of the gym's grading scheme by key, and is
 checked against it when awarded; the labels are the scheme's when read
-(`app.schemas.grades`). It attaches to the membership the person's ficha shows, their
-latest one not cancelled, and their current rank is their latest award over every
-membership here (migration 0018).
+(`app.schemas.grades`). A grade is the person's (migration 0054): their current rank is
+their latest one here, with a plan or without. One awarded in Rakin attaches to the
+membership the person's ficha shows, their latest one not cancelled, when they have one.
 
-Awarding a rank that becomes the person's current one writes a `promoted` plan event
-(0013) in the same transaction, for the plan-event emails (#54); recording an older
-promotion, as when a gym enters a member's history, writes none.
+Awarding a rank in Rakin that becomes the person's current one writes a `promoted` plan
+event (0013) in the same transaction, for the plan-event emails (#54); recording an older
+promotion writes none. A history grade ("Agregar historial", "Grado anterior", `source`
+`manual`) writes none either, nor attaches to a plan: nobody should be congratulated for
+a belt from 2021.
 
 Every staff role may read and award, coaches included, since they are who promote;
 members may not. A member reads their own rank on the student page (`/api/me/page`).
@@ -24,32 +26,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.grading import stored_scheme
 from app.api.people import NOT_FOUND, in_gym
-from app.domain.dates import gym_today
+from app.domain.dates import add_months, gym_today
 from app.domain.membership import current_first
 from app.roles import StaffSession
 from app.schemas.grades import GradeAward, GradeEvent, Grading, Rank
 from app.schemas.grading import GradingScheme
+from app.schemas.people import HISTORY_WINDOW_YEARS
 from app.tenancy import Tenant, current_tenant
 
 router = APIRouter(prefix="/api/people", tags=["grading"])
 
-# A person's promotions over every membership they hold here, newest first. RLS keeps
-# every table to the current gym.
+# A person's promotions here, newest first. RLS keeps every table to the current gym.
 EVENTS = """
     SELECT ge.id, ge.rank_key, ge.sub_rank, ge.awarded_on, ge.note, ge.created_at,
            ab.name AS awarded_by_name
     FROM grade_event ge
-    JOIN membership m ON m.id = ge.membership_id
     LEFT JOIN gym_person ab ON ab.gym_id = ge.gym_id AND ab.person_id = ge.awarded_by
-    WHERE m.person_id = :person
+    WHERE ge.person_id = :person
     ORDER BY ge.awarded_on DESC, ge.created_at DESC, ge.id
 """
 
 # The person's current rank: their latest promotion.
 CURRENT = """
     SELECT ge.id, ge.rank_key, ge.sub_rank, ge.awarded_on
-    FROM grade_event ge JOIN membership m ON m.id = ge.membership_id
-    WHERE m.person_id = :person
+    FROM grade_event ge
+    WHERE ge.person_id = :person
     ORDER BY ge.awarded_on DESC, ge.created_at DESC, ge.id
     LIMIT 1
 """
@@ -64,9 +65,10 @@ AWARDED_MEMBERSHIP = f"""
 """
 
 INSERT_EVENT = """
-    INSERT INTO grade_event (gym_id, membership_id, rank_key, sub_rank, awarded_on,
-                             awarded_by, note)
-    VALUES (:gym, :membership, :rank_key, :sub_rank, :awarded_on, :awarded_by, :note)
+    INSERT INTO grade_event (gym_id, person_id, membership_id, rank_key, sub_rank,
+                             awarded_on, awarded_by, note, source)
+    VALUES (:gym, :person, :membership, :rank_key, :sub_rank, :awarded_on, :awarded_by,
+            :note, :source)
     RETURNING id
 """
 
@@ -152,8 +154,9 @@ async def award_grade(
 ) -> Grading:
     """Award a rank. 422 with a `code` for a rank or sub-rank the scheme does not have
     (`unknown_rank`, `unknown_sub_rank`), a missing sub-rank on a rank that has them
-    (`sub_rank_required`) or a day after today (`awarded_in_future`); 409
-    `no_membership` for a person with no membership here that is not cancelled."""
+    (`sub_rank_required`), a day after today (`awarded_in_future`) or more than
+    `HISTORY_WINDOW_YEARS` before it (`awarded_too_early`). A person with no plan may be
+    given one: it has no membership."""
     if not await in_gym(session, person_id):
         raise NOT_FOUND
     gym = await _gym(session, tenant.gym_id)
@@ -171,25 +174,30 @@ async def award_grade(
     awarded_on = body.awarded_on or today
     if awarded_on > today:
         raise _refused("awarded_in_future")
+    if awarded_on < add_months(today, -12 * HISTORY_WINDOW_YEARS):
+        raise _refused("awarded_too_early")
 
-    membership = await session.scalar(text(AWARDED_MEMBERSHIP), {"person": person_id})
-    if membership is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "no_membership"})
+    history = body.source != "app"
+    membership = (
+        None if history else await session.scalar(text(AWARDED_MEMBERSHIP), {"person": person_id})
+    )
 
     event = await session.scalar(
         text(INSERT_EVENT),
         {
             "gym": tenant.gym_id,
+            "person": person_id,
             "membership": membership,
             "rank_key": body.rank_key,
             "sub_rank": body.sub_rank,
             "awarded_on": awarded_on,
             "awarded_by": tenant.person_id,
             "note": body.note,
+            "source": body.source,
         },
     )
     latest = (await session.execute(text(CURRENT), {"person": person_id})).one()
-    if latest.id == event:
+    if membership is not None and latest.id == event:
         await session.execute(
             text(PROMOTED),
             {"gym": tenant.gym_id, "membership": membership, "occurred_on": awarded_on},

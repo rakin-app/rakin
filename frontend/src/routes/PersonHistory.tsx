@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from '@tanstack/react-router'
 import { useId, useMemo, useState, type FormEvent } from 'react'
+import { useGrades } from '../api/activities'
+import { gradingSchemeQuery, type GradingScheme } from '../api/grading'
 import {
   addHistoryPayments,
   coversPlan,
@@ -21,23 +23,23 @@ import { Input, Select, Textarea } from '../components/Field'
 import { ChevronRightIcon, CloseIcon } from '../components/icons'
 import { shortDay } from '../format'
 import { t } from '../i18n/es'
+import { GradeForm } from './GradeForm'
 import './PersonHistory.css'
+import { HISTORY_WINDOW_YEARS, yearsBefore } from './historyWindow'
 
 const copy = t.admin.member.history
 
-// How far back a day of someone's history may go (backend `HISTORY_WINDOW_YEARS`): a
-// typo guard. "Alumno desde", and the day they left (#294).
-export const HISTORY_WINDOW_YEARS = 60
 // Backend `MAX_PRIOR_CLASSES`.
 const MAX_PRIOR_CLASSES = 20_000
 
-type Open = 'menu' | 'start' | 'payments' | null
+type Open = 'menu' | 'start' | 'grade' | 'payments' | null
 
 /**
  * "Historial" (#293): what the gym knew of the member before Rakin, beside billing and
  * never in it. The day they first trained here and their classes before Rakin ("Fecha
- * de inicio y clases"), then what they paid by year, newest first, each year opening to
- * its payments (#295, "Pagos anteriores"); grades of a later ticket join this card
+ * de inicio y clases"); in a gym that grades, a belt from before Rakin ("Grado
+ * anterior", #296), which the Graduación shows; then what they paid by year, newest
+ * first, each year opening to its payments (#295, "Pagos anteriores")
  * (docs/design/historical-data.md, section 4). Owner and admin only: the ficha draws it
  * with the Libro. Just after "Agregar exalumno" its choices are open, offered (#294).
  */
@@ -48,6 +50,7 @@ export function PersonHistory({ person }: { person: Person }) {
   // Shared with `HistoryYears`: "Nada anterior" only once it is known there are no payments.
   const payments = useQuery(historyPaymentsQuery(person.id))
   const noPayments = payments.isSuccess && payments.data.years.length === 0
+  const scheme = useGradingScheme()
   const lines = [
     person.member_since ? copy.memberSince(t.common.dayYear(person.member_since)) : null,
     person.prior_classes > 0 ? copy.priorClasses(person.prior_classes) : null,
@@ -74,7 +77,19 @@ export function PersonHistory({ person }: { person: Person }) {
             {done}
           </p>
         )}
-        {open === 'start' ? (
+        {open === 'grade' && scheme ? (
+          <GradeForm
+            personId={person.id}
+            scheme={scheme}
+            current={null}
+            history
+            onCancel={() => setOpen(null)}
+            onDone={() => {
+              setOpen(null)
+              setDone(copy.gradeSaved)
+            }}
+          />
+        ) : open === 'start' ? (
           <StartForm
             person={person}
             onCancel={() => setOpen(null)}
@@ -109,6 +124,7 @@ export function PersonHistory({ person }: { person: Person }) {
               <div className="member__actions" role="group" aria-label={copy.add}>
                 <Button onClick={() => setOpen('payments')}>{copy.payments}</Button>
                 <Button onClick={() => setOpen('start')}>{copy.start}</Button>
+                {scheme && <Button onClick={() => setOpen('grade')}>{copy.grade}</Button>}
               </div>
             )}
           </>
@@ -118,9 +134,11 @@ export function PersonHistory({ person }: { person: Person }) {
   )
 }
 
-/** The `YYYY-MM-DD` `years` before `iso`. */
-export function yearsBefore(iso: string, years: number): string {
-  return `${String(Number(iso.slice(0, 4)) - years).padStart(4, '0')}${iso.slice(4)}`
+/** The gym's grading scheme when it grades and has ranks to give; else `null`. */
+function useGradingScheme(): GradingScheme | null {
+  const graded = useGrades()
+  const scheme = useQuery({ ...gradingSchemeQuery(), enabled: graded }).data
+  return graded && scheme && scheme.ranks.length + scheme.kids_ladder.length > 0 ? scheme : null
 }
 
 function StartForm({ person, onCancel, onDone }: { person: Person; onCancel: () => void; onDone: () => void }) {

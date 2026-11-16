@@ -8,6 +8,7 @@ import {
   runImport,
   SHEET_TYPES,
   sheetRefusal,
+  TEMPLATE_PATH,
   uploadSheet,
   type ImportField,
   type ImportReport,
@@ -73,6 +74,12 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
   return (
     <section className="import__card">
       <p className="import__note">{copy.intro}</p>
+      <p className="import__note">
+        {copy.templateHint}{' '}
+        <a href={TEMPLATE_PATH} download className="import__template">
+          {copy.template}
+        </a>
+      </p>
       <span className="import__label">{copy.fileLabel}</span>
       <div>
         <input
@@ -145,7 +152,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
       const plan = planFor(value)
       if (plan) choices[value] = plan === NO_PLAN ? null : plan
     }
-    return runImport({ rows: sheet.rows, mapping, plans: choices, dry_run: dryRun })
+    return runImport({ rows: sheet.rows, mapping, plans: choices, dry_run: dryRun, file: sheet.file })
   }
   const check = useSubmit({ offline: 'refuse', mutationFn: () => request(true), onSuccess: setReport })
   const apply = useSubmit({
@@ -323,11 +330,20 @@ function PlanChoices({
 }
 
 function Counts({ report }: { report: ImportReport }) {
-  const { people_created: people, links_created: links, memberships_created: memberships } = report.summary
+  const {
+    people_created: people,
+    links_created: links,
+    memberships_created: memberships,
+    history_set: history,
+    former_created: former,
+  } = report.summary
   return (
-    <p className="import__note">
-      {people + links + memberships === 0 ? copy.nothingNew : copy.created(people, links, memberships)}
-    </p>
+    <>
+      <p className="import__note">
+        {people + links + memberships + history === 0 ? copy.nothingNew : copy.created(people, links, memberships)}
+      </p>
+      {(history > 0 || former > 0) && <p className="import__note">{copy.history(history, former)}</p>}
+    </>
   )
 }
 
@@ -376,6 +392,7 @@ function Review({
       </section>
       <RefusedRows rows={report.rows} />
       <WarningRows rows={report.rows} />
+      <FormerRows rows={report.rows} />
       <KeptRows rows={report.rows} />
     </>
   )
@@ -403,6 +420,7 @@ function Done({ name, report, onOther }: { name: string; report: ImportReport; o
       </section>
       <RefusedRows rows={report.rows} />
       <WarningRows rows={report.rows} />
+      <FormerRows rows={report.rows} />
       <KeptRows rows={report.rows} />
     </>
   )
@@ -458,9 +476,37 @@ function Warned({
   )
 }
 
+/** A former student's row creates them already gone: their plan is not imported. */
+const newFormer = (row: RowResult) => row.former && row.person === 'created'
+
+function FormerRows({ rows }: { rows: RowResult[] }) {
+  const former = rows.filter((row) => row.errors.length === 0 && newFormer(row))
+  if (former.length === 0) return null
+  return (
+    <section className="import__card" aria-labelledby="import-former-title">
+      <h2 id="import-former-title" className="import__title">
+        {copy.formerTitle(former.length)}
+      </h2>
+      <p className="import__note">{copy.formerHint}</p>
+      <ul className="import__errors" aria-label={copy.formerTitle(former.length)}>
+        {former.map((row) => (
+          <li key={row.row} className="import__error-row">
+            <span className="import__error-who">{copy.rowLabel(row.row, row.name)}</span>
+            {row.ignored.length > 0 && (
+              <span className="import__kept-what">
+                {copy.formerKept(row.ignored.map((field) => copy.fields[field]))}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 /** Rows that found someone already here whose record the sheet would change. */
 function KeptRows({ rows }: { rows: RowResult[] }) {
-  const kept = rows.filter((row) => row.errors.length === 0 && row.ignored.length > 0)
+  const kept = rows.filter((row) => row.errors.length === 0 && row.ignored.length > 0 && !newFormer(row))
   if (kept.length === 0) return null
   return (
     <section className="import__card" aria-labelledby="import-kept-title">
