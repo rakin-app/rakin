@@ -17,6 +17,12 @@ locally.
 Seed data only. The stack is the one in this checkout's `.env`
 (`PUBLIC_BASE_URL`), and the script refuses any host but localhost, so a
 screenshot can never hold staging's or a real gym's members.
+
+The page speaks to any gym, and Academia Sur is seeded as a jiu-jitsu academy.
+So before the shots the script sets it up as a gym with no sport of its own
+(`NEUTRAL_GYM`): its one activity grades no one, so no belts show, and its
+classes record no blocks (Drilling, Sparring) and hold no open mats. That
+changes the local seed only; `make seed` on a fresh stack puts it back.
 """
 
 import argparse
@@ -48,6 +54,22 @@ PHONE = {
     "has_touch": True,
 }
 DESKTOP = {"viewport": {"width": 1280, "height": 800}, "device_scale_factor": 1}
+
+# Words that would make the page read as a martial-arts app. A shot whose screen
+# holds one of them fails, so a later seed or screen change cannot slip one in.
+SPORT_WORDS = re.compile(
+    r"\b(sparring|open mat|drilling|cintur[oó]n|grados?|graduaci[oó]n|bjj|jiu|tatami|dojo|kimono)\b",
+    re.IGNORECASE,
+)
+
+# Academia Sur as a gym of no particular sport. Each statement is safe to run again.
+NEUTRAL_GYM = """
+BEGIN;
+UPDATE gym_activity SET name = 'Entrenamiento', uses_grades = false;
+DELETE FROM session_block;
+UPDATE class_type SET kind = 'class', name = 'Práctica libre' WHERE kind = 'open_mat';
+COMMIT;
+"""
 
 
 @dataclass(frozen=True)
@@ -110,6 +132,18 @@ def sign_in_link(base: str, email: str) -> str:
     sys.exit(f"screenshots: no sign-in link for {email} in the api's log; is the stack seeded?")
 
 
+def neutral_gym() -> None:
+    subprocess.run(
+        ["docker", "compose", "exec", "-T", "postgres", "psql", "-q", "-v", "ON_ERROR_STOP=1"]
+        + ["-U", "rakin", "-d", "rakin"],
+        cwd=ROOT,
+        input=NEUTRAL_GYM,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+
 def settle(page: Page) -> None:
     page.wait_for_load_state("networkidle")
     # No caret, no hover, no transition caught halfway.
@@ -132,6 +166,9 @@ def take(page: Page, base: str, shot: Shot) -> None:
             "el => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 72)"
         )
         page.wait_for_timeout(200)
+    words = sorted({m.lower() for m in SPORT_WORDS.findall(page.inner_text("body"))})
+    if words:
+        sys.exit(f"screenshots: {shot.name} shows {', '.join(words)}; the page is for any gym")
     png = page.screenshot()
     image = Image.open(io.BytesIO(png)).convert("RGB")
     OUT.mkdir(parents=True, exist_ok=True)
@@ -147,6 +184,7 @@ def main() -> None:
     args = parser.parse_args()
     shots = [s for s in SHOTS if not args.only or s.name in args.only]
     base = base_url()
+    neutral_gym()
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         sessions: dict[str, dict] = {}

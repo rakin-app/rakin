@@ -11,7 +11,8 @@ Writes, under `--out` (default `site/dist`):
 * `index.html`: `site/index.html`, with `site/styles.css` inlined, the dark
   lockup drawn inline and `CONTACT_EMAIL` filled in;
 * `privacidad/index.html`: Rakin's own privacy notice,
-  `docs/legal/aviso-de-privacidad-rakin.md`, rendered from its policy on;
+  `docs/legal/aviso-de-privacidad-rakin.md`, rendered from its policy on, with
+  its drafting notes left out;
 * `img/`, the screenshots (`site/screenshots.py` takes them), `fonts/` and the
   icons and link preview the app also serves (`frontend/public/`).
 
@@ -91,18 +92,32 @@ def lockup() -> str:
     return svg.replace("<svg ", '<svg aria-hidden="true" focusable="false" ', 1)
 
 
-def notice_html() -> str:
-    """The notice from its policy on, under the draft line it opens with.
+# The drafting notes for the lawyer and for later work, in the notice's own markup
+# (docs/legal/README.md). They are for the repo's readers, never a visitor.
+NOTES = re.compile(r" ?`\[(?:ABOGADO|PENDIENTE):.*?\]`")
 
-    The text before the policy says where the notice is published, for the repo's
-    readers; a visitor needs only the draft line and the policy itself."""
+
+def notice_html() -> str:
+    """The notice from its policy on, with no drafting notes.
+
+    The draft line the file opens with ("BORRADOR: pendiente de revisión por abogado.
+    <fecha>") and the policy's own "Versión 1, vigente desde [fecha]" become one line
+    under the title: a preliminary version, and the date it was last updated. The text
+    before the policy says where the notice is published, for the repo's readers."""
     text = NOTICE.read_text()
-    draft = text.split("\n", 1)[0]
-    if not draft.startswith("> "):
-        raise SystemExit(f"build: {NOTICE.name} no longer opens with its draft line")
-    policy = text.index("## Política de privacidad de Rakin")
+    draft = re.match(r"> \*\*BORRADOR[^*]*\*\* (.+?)\.?\n", text)
+    if not draft:
+        raise SystemExit(f"build: {NOTICE.name} no longer opens with its dated draft line")
+    policy = text[text.index("## Política de privacidad de Rakin") :]
     # One level up: the policy's title is the page's h1.
-    body = draft + "\n\n" + text[policy + 1 :].replace("\n#", "\n")
+    title, rest = policy[1:].replace("\n#", "\n").split("\n", 1)
+    rest = re.sub(r"^\s*Versión [^\n]*\n", "", rest, count=1)
+    status = f"*Versión preliminar, en revisión. Última actualización: {draft.group(1)}.*"
+    body = NOTES.sub("", f"{title}\n\n{status}\n{rest}")
+    if re.search(r"ABOGADO|PENDIENTE|BORRADOR", body):
+        raise SystemExit(
+            f"build: a drafting note in {NOTICE.name} is not in the `[ABOGADO: …]` form"
+        )
     # Sibling documents, and the research one folder up, go to the repo on GitHub.
     body = re.sub(
         r"\]\(\.\./([\w-]+\.md)", r"](https://github.com/rakin-app/rakin/blob/main/docs/\1", body

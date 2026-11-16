@@ -111,11 +111,21 @@ landing() { # landing <host> <path> [curl options]
 }
 # Caddy issues those certificates in the background at start: wait for one.
 for _ in $(seq 30); do landing landing.localhost / -o /dev/null 2>/dev/null && break; sleep 1; done
-landing landing.localhost / | grep -q 'Cada pago, claro'
-landing landing.localhost /privacidad/ | grep -q 'Política de privacidad de Rakin'
+# Into a variable first: `grep -q` stops reading at its match, and under
+# pipefail curl's write error (23) would fail the test.
+page=$(landing landing.localhost /)
+grep -q 'Cada pago, claro' <<<"$page"
+notice=$(landing landing.localhost /privacidad/)
+grep -q 'Política de privacidad de Rakin' <<<"$notice"
+grep -q 'Versión preliminar, en revisión' <<<"$notice"
+# The notice's drafting notes stay in the repo: never on the public page.
+if grep -q -E 'ABOGADO|PENDIENTE|BORRADOR' <<<"$notice"; then
+	echo "test-hosted: /privacidad/ shows a drafting note" >&2
+	exit 1
+fi
 [ "$(landing landing.localhost /img/hoy-390.webp -o /dev/null -w '%{http_code} %{content_type}')" = "200 image/webp" ]
 [ "$(landing www.landing.localhost '/x?y=1' -o /dev/null -w '%{http_code} %{redirect_url}')" = "301 https://landing.localhost/x?y=1" ]
-echo "ok   - the landing page, its privacy notice and screenshots, and www redirecting to it"
+echo "ok   - the landing page, its privacy notice (no drafting notes) and screenshots, and www redirecting to it"
 compose ps --services --status running | grep -qx backup
 echo "ok   - with COMPOSE_PROFILES=backup, up starts the backup service"
 
