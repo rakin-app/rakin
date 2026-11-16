@@ -28,3 +28,6 @@ dist/
 
 # Local BlobStore files (BLOB_STORE=local)
 backend/var/
+
+# UX QA runs' screenshots (.claude/commands/ux-qa.md): local only, never committed
+.ux-qa/
