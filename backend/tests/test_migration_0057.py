@@ -54,6 +54,27 @@ def emails(db: Database) -> list[tuple[str, str]]:
     )
 
 
+# A `history_set` row for the gym's owner, as 0051 writes them.
+HISTORY_SET = """
+    INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)
+    VALUES ($1, $2, $2, 'history_set', $3::jsonb)
+"""
+
+
+def history_set(db: Database, gym: uuid.UUID, detail: dict[str, Any]) -> None:
+    body = json.dumps(detail)
+    run(db.admin_url, lambda c: c.execute(HISTORY_SET, gym, seeded_owner(gym), body))
+
+
+def by_json(detail: dict[str, Any]) -> str:
+    return json.dumps(detail, sort_keys=True)
+
+
+def history(db: Database) -> list[dict[str, Any]]:
+    rows = admin(db, "SELECT detail FROM audit_event WHERE action = 'history_set'")
+    return sorted((json.loads(r["detail"]) for r in rows), key=by_json)
+
+
 @pytest.fixture
 def db() -> Iterator[Database]:
     with throwaway_database(require_test_database_url()) as database:
@@ -104,6 +125,11 @@ def test_health_reasons_are_cleared_logged_and_put_back(db: Database) -> None:
     email(db, sur, seeded_owner(sur), "Viaje")
     # About someone forgotten since: the log row is the recipient's.
     email(db, gyms[1], uuid.uuid4(), "Salud")
+    on = {"before": None, "after": "2024-03-01"}
+    history_set(db, sur, {"left_on": on, "left_reason": {"before": None, "after": "Lesión"}})
+    history_set(db, sur, {"left_reason": {"before": " lesion", "after": "Precio"}})
+    history_set(db, sur, {"left_reason": {"before": None, "after": "Lesión de rodilla"}})
+    history_set(db, sur, {"prior_classes": {"before": 0, "after": 12}})
 
     command.upgrade(db.alembic(), "0057")
 
@@ -126,12 +152,25 @@ def test_health_reasons_are_cleared_logged_and_put_back(db: Database) -> None:
         ("Motivo personal", "Esguince"),
         ("Viaje", "Esguince"),
     ]
+    # The log's own copies of the chip, the one exception to append-only; the rest of
+    # each row, and every other row, as it was.
+    redacted: list[dict[str, Any]] = [
+        {"left_on": on, "left_reason": {"before": None, "after": "Motivo personal"}},
+        {"left_reason": {"before": "Motivo personal", "after": "Precio"}},
+        {"left_reason": {"before": None, "after": "Lesión de rodilla"}},
+        {"prior_classes": {"before": 0, "after": 12}},
+    ]
+    assert history(db) == sorted(redacted, key=by_json)
+    # Append-only again once the migration is done.
+    with pytest.raises(asyncpg.RestrictViolationError, match="cannot change"):
+        run(db.admin_url, lambda c: c.execute("UPDATE audit_event SET reason = 'x'"))
 
-    # One row per change: 2 requests, 2 freezes, 2 left reasons and 2 emails, each about
-    # the gym's person, by nobody, naming the row and never what it held.
+    # One row per change: 2 requests, 2 freezes, 2 left reasons, 2 emails and 2 history
+    # rows, each about the gym's person, by nobody, naming the row and never what it held.
     rows = logged(db)
     tables = sorted(json.loads(r["detail"])["table"] for r in rows)
     assert tables == [
+        *["audit_event"] * 2,
         *["freeze_request"] * 2,
         *["gym_person"] * 2,
         *["membership_freeze"] * 2,
@@ -162,5 +201,7 @@ def test_health_reasons_are_cleared_logged_and_put_back(db: Database) -> None:
         "Viaje",
     }
     assert left(db, gyms)[0] == "Motivo personal"
-    assert admin(db, "SELECT count(*) FROM audit_event")[0][0] == 0
+    assert logged(db) == []
+    # The history stays redacted.
+    assert history(db) == sorted(redacted, key=by_json)
     run(db.owner_url, in_gym(sur, "UPDATE freeze_request SET reason = 'salud'"))

@@ -15,6 +15,14 @@ becomes "Motivo personal", `personal` for a request:
   accent, trimmed), becomes "Motivo personal".
 - `message_log.payload` of a `freeze_requested` email, which kept the label it sent
   staff as `reason`: "Lesión" or "Salud" becomes "Motivo personal", its `note` kept.
+- `audit_event.detail` of a `history_set` row (0051), which kept `left_reason` as its
+  `before` and `after`: either that is the chip becomes "Motivo personal".
+
+That last is the one exception to the log being append-only (0048), decided for #384:
+the log must not keep the health data it cleared everywhere else. The trigger that
+refuses an update, `audit_event_append_only`, is disabled for that statement alone and
+enabled again in the same transaction; nothing else in the log changes, and the app
+still cannot update a row.
 
 What a person wrote stays as written: a request's `note`, the note in a freeze's
 reason, a reason typed by hand. Health words there are the gym's to remove; the PR for
@@ -110,6 +118,27 @@ EMAILS = f"""
     FROM changed c LEFT JOIN person p ON p.id = c.member_id::uuid
 """
 
+# The chip, as the left reason above matches it, for a JSON string in a log row; its
+# path's braces doubled for the `format` each statement goes through.
+CHIP = "lower(btrim({value})) IN ('lesión', 'lesion')"
+BEFORE = CHIP.format(value="detail #>> '{{left_reason,before}}'")
+AFTER = CHIP.format(value="detail #>> '{{left_reason,after}}'")
+HISTORY = f"""
+    WITH changed AS (
+        UPDATE audit_event
+        SET detail = detail || jsonb_build_object('left_reason', (detail -> 'left_reason')
+            || CASE WHEN {BEFORE} THEN '{{{{"before": "{NEUTRAL}"}}}}'::jsonb ELSE '{{{{}}}}' END
+            || CASE WHEN {AFTER} THEN '{{{{"after": "{NEUTRAL}"}}}}'::jsonb ELSE '{{{{}}}}' END)
+        WHERE action = 'history_set' AND ({BEFORE} OR {AFTER})
+        RETURNING id, gym_id, person_id
+    )
+    INSERT INTO audit_event (gym_id, person_id, action, reason, detail)
+    SELECT gym_id, person_id, '{{action}}', '{{why}}',
+           jsonb_build_object('table', 'audit_event', 'id', id, 'column', 'detail.left_reason',
+                              'now', '{NEUTRAL}')
+    FROM changed
+"""
+
 TABLES = (
     "freeze_request",
     "membership_freeze",
@@ -162,6 +191,10 @@ def upgrade() -> None:
     _every_gym(force=False)
     for statement in (REQUESTS, FREEZES, LEFT, EMAILS):
         op.execute(statement.format(action=CLEARED, why=LOG_REASON))
+    # The exception to append-only, above: this statement alone.
+    op.execute("ALTER TABLE audit_event DISABLE TRIGGER audit_event_append_only")
+    op.execute(HISTORY.format(action=CLEARED, why=LOG_REASON))
+    op.execute("ALTER TABLE audit_event ENABLE TRIGGER audit_event_append_only")
     _every_gym(force=True)
     op.execute(
         "ALTER TABLE freeze_request ADD CONSTRAINT freeze_request_reason_check"
