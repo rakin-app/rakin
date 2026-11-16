@@ -133,7 +133,8 @@ On `gym_person`:
 - `member_since date`: the day they first trained here. Not after today, at most 60
   years back (a typo guard, not a rule: a founder's first students).
 - `left_reason text` (≤ 200 characters): why they left, written with Dar de baja or for
-  a former student. Owner and admin only (below): "lesión" is health data.
+  a former student. Owner and admin only (below): it is personal, and someone may still write
+  health data in it, which the hint asks them not to (#384).
 - `prior_classes integer ≥ 0`: classes before Rakin, added to the ficha's total.
 
 `history_payment`, one row per payment the gym received before Rakin:
@@ -336,7 +337,7 @@ it is seen and where more is added.
 - **A line of the card** opens "Eliminar" with a reason, for a typo. Editing is deleting
   and typing again; no edit form.
 - **Dar de baja** gains "Motivo" (optional, with chips: Precio, Horario, Se cambió,
-  Lesión, Otro, which fill the text), and its date may go back 60 years: #294 changes
+  Motivo personal, Otro, which fill the text; none about health, #384), and its date may go back 60 years: #294 changes
   the five-year check in `POST /api/people/{id}/leave` (`member_roll.leave`) and its
   message to `HISTORY_WINDOW_YEARS`.
 - **Agregar exalumno**: in Alumnos, "Nuevo alumno" gains a choice at the top: *Entrena
@@ -419,7 +420,8 @@ fields two to a row, the months in a table beside them.
 │ Alumno desde [ 03-2017 ]             │
 │ Fecha de baja [ 15-01-2022 ]         │
 │ Motivo [ Se cambió de ciudad     ]   │
-│ (Precio)(Horario)(Se cambió)(Lesión) │
+│ (Precio)(Horario)(Se cambió)(Motivo  │
+│ personal)(Otro)                      │
 │ No le escribiremos: queda en         │
 │ Dados de baja con su historial.      │
 │ [ Cancelar ] [ Agregar exalumno ]    │
@@ -501,8 +503,9 @@ import is undone once.
   notice (#168) gains one sentence: "Si dejas de entrenar, guardamos tu historial
   (inicio, pagos y grados) hasta que pidas que lo borremos." A later "exalumnos sin
   actividad hace más de N años" clean-up is a small addition if an owner wants it.
-- **The reason for leaving** may be health data ("lesión de rodilla"). The form's chip
-  says "Lesión", and the hint asks for no detail.
+- **The reason for leaving** must not be health data: a gym may not keep it, even with
+  consent (art. 16 bis, #384). No chip names an injury, and the hint asks for no health
+  data: "Motivo personal" is enough.
 
 ## 8. The pilot gym (Meta)
 

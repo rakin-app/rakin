@@ -1441,12 +1441,12 @@ describe('Ficha de alumno', () => {
     await userEvent.click(await planAction(card, copy.freeze))
     const form = screen.getByRole('form', { name: copy.freezeForm.title })
     fireEvent.change(within(form).getByLabelText(copy.freezeForm.until), { target: { value: until } })
-    await userEvent.type(within(form).getByLabelText(copy.freezeForm.reason), '  Lesión de rodilla ')
+    await userEvent.type(within(form).getByLabelText(copy.freezeForm.reason), '  Viaje familiar ')
     await userEvent.click(within(form).getByRole('button', { name: copy.freezeForm.submit }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.freezeForm.done(shortDay(until)))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
-      { method: 'POST', path: '/api/memberships/m-felipe/freeze', body: { to_date: until, reason: 'Lesión de rodilla' } },
+      { method: 'POST', path: '/api/memberships/m-felipe/freeze', body: { to_date: until, reason: 'Viaje familiar' } },
     ])
     // Read again, the header says it is frozen, and it can be edited or ended instead.
     expect(await within(card).findByText(copy.frozenUntil(shortDay(until)))).toBeInTheDocument()
@@ -1534,12 +1534,12 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByLabelText(copy.editFreezeForm.reason)).toHaveValue('Viaje')
     fireEvent.change(within(form).getByLabelText(copy.editFreezeForm.until), { target: { value: until } })
     await userEvent.clear(within(form).getByLabelText(copy.editFreezeForm.reason))
-    await userEvent.type(within(form).getByLabelText(copy.editFreezeForm.reason), 'Lesión ')
+    await userEvent.type(within(form).getByLabelText(copy.editFreezeForm.reason), 'Vacaciones ')
     await userEvent.click(within(form).getByRole('button', { name: copy.editFreezeForm.submit }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.editFreezeForm.done(shortDay(until)))
     expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
-      { method: 'PATCH', path: '/api/memberships/m-felipe/freeze', body: { to_date: until, reason: 'Lesión' } },
+      { method: 'PATCH', path: '/api/memberships/m-felipe/freeze', body: { to_date: until, reason: 'Vacaciones' } },
     ])
     expect(await within(card).findByText(copy.frozenUntil(shortDay(until)))).toBeInTheDocument()
   })
@@ -2263,20 +2263,22 @@ describe('the record and the ways out (#157)', () => {
     const form = screen.getByRole('form', { name: copy.leaveForm.title })
     const chips = within(form).getByRole('group', { name: copy.leftReason.chipsLabel })
     expect(within(chips).getAllByRole('button').map((b) => b.textContent)).toEqual(copy.leftReason.chips)
+    // Nothing about health, which a gym may not keep (#384).
+    expect(copy.leftReason.chips).not.toContain('Lesión')
     await userEvent.click(within(chips).getByRole('button', { name: 'Precio' }))
-    await userEvent.click(within(chips).getByRole('button', { name: 'Lesión' }))
-    expect(within(chips).getByRole('button', { name: 'Lesión' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(within(chips).getByRole('button', { name: 'Motivo personal' }))
+    expect(within(chips).getByRole('button', { name: 'Motivo personal' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(chips).getByRole('button', { name: 'Precio' })).toHaveAttribute('aria-pressed', 'false')
     // Pressed again, it empties what it filled.
-    await userEvent.click(within(chips).getByRole('button', { name: 'Lesión' }))
+    await userEvent.click(within(chips).getByRole('button', { name: 'Motivo personal' }))
     expect(within(form).getByLabelText(copy.leftReason.label)).toHaveValue('')
-    await userEvent.click(within(chips).getByRole('button', { name: 'Lesión' }))
+    await userEvent.click(within(chips).getByRole('button', { name: 'Motivo personal' }))
     await userEvent.click(within(form).getByRole('button', { name: copy.leaveForm.submit }))
 
     const banner = await screen.findByText(copy.leftBanner('10-11-2026'), { exact: false })
-    expect(banner).toHaveTextContent(copy.leftBannerReason('Lesión'))
+    expect(banner).toHaveTextContent(copy.leftBannerReason('Motivo personal'))
     expect(calls.filter((c) => c.path === '/api/people/felipe/leave')).toEqual([
-      { method: 'POST', path: '/api/people/felipe/leave', body: { left_reason: 'Lesión' } },
+      { method: 'POST', path: '/api/people/felipe/leave', body: { left_reason: 'Motivo personal' } },
     ])
   })
 

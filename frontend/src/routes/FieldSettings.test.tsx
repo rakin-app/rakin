@@ -180,8 +180,11 @@ describe('Ajustes: Campos', () => {
     const create = within(section).getByRole('form', { name: form.create })
     await userEvent.type(within(create).getByLabelText(form.label), 'RUT apoderado')
     expect(within(create).getByLabelText(form.visibleTo)).toHaveValue('staff')
+    expect(within(create).queryByText(form.noHealth)).not.toBeInTheDocument()
     await userEvent.click(within(create).getByLabelText(form.sensitive))
     expect(within(create).getByLabelText(form.visibleTo)).toHaveValue('owner')
+    // Sensitive is not health: a gym may not keep that at all (#384).
+    expect(within(create).getByText(form.noHealth)).toBeInTheDocument()
     await userEvent.selectOptions(within(create).getByLabelText(form.visibleTo), 'admin')
     await userEvent.click(within(create).getByRole('button', { name: form.submit }))
 

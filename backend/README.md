@@ -341,7 +341,7 @@ A student asks for a freeze from their page, and the owner or an admin answers i
 
 | Method | Path | Does |
 | --- | --- | --- |
-| `POST` | `/api/me/freeze-requests` | `{"membership_id", "from_date", "to_date", "reason", "note"?}`: ask for a freeze of their own membership, or a dependent's as their guardian (anyone else's is a 404). `reason` is `lesion`, `viaje`, `salud` or `otro`, which needs a `note` (1 to 500 characters). `from_date` today at the earliest; dates as a freeze's. 409 `{"code": …}`: `has_freeze` (frozen, or one booked), `not_active`, `has_pending`. 201; each owner and admin with an email gets `freeze_requested`, linking to the member's ficha |
+| `POST` | `/api/me/freeze-requests` | `{"membership_id", "from_date", "to_date", "reason", "note"?}`: ask for a freeze of their own membership, or a dependent's as their guardian (anyone else's is a 404). `reason` is `viaje`, `personal` or `otro`, which needs a `note`; none is about health, which a gym may not keep (#384) (1 to 500 characters). `from_date` today at the earliest; dates as a freeze's. 409 `{"code": …}`: `has_freeze` (frozen, or one booked), `not_active`, `has_pending`. 201; each owner and admin with an email gets `freeze_requested`, linking to the member's ficha |
 | `DELETE` | `/api/me/freeze-requests/{id}` | withdraw one still waiting; only whoever asked. 204 |
 | `GET` | `/api/freeze-requests` | the requests waiting, oldest first; owner and admin |
 | `POST` | `/api/freeze-requests/{id}/approve` | `{"from_date"?, "to_date"?}`: freeze on the dates asked, or these; answers the membership. `freeze_approved` to the member, or their guardian |
@@ -525,12 +525,12 @@ The public form knows a token, not a gym, so `join_link_gym(token)` (`0031`), a 
 
 ## Custom fields API
 
-Each gym defines its own fields on people (weight class, emergency contact, medical notes): `text`, `number`, `date` or `enum` ([spec](../docs/technical.md#sport-agnostic-design)). The definitions are a list in `gym.settings.custom_fields`, in the order the member detail shows them; values are rows of `person_field_value` (migration 0019), one per person and field.
+Each gym defines its own fields on people (weight class, emergency contact, uniform size): `text`, `number`, `date` or `enum` ([spec](../docs/technical.md#sport-agnostic-design)). The definitions are a list in `gym.settings.custom_fields`, in the order the member detail shows them; values are rows of `person_field_value` (migration 0019), one per person and field.
 
 | Method | Path | Does |
 | --- | --- | --- |
 | `GET` | `/api/custom-fields` | the fields the caller may see, in order, archived ones included: `key`, `label`, `type`, `options` (an enum's), `sensitive`, `visible_to`, `archived` |
-| `POST` | `/api/custom-fields` | a new field from `label`, `type`, `options` (an enum's, and only there), and the owner's `sensitive` and `visible_to`; its `key` is made from the label and a random suffix (`Notas médicas` → `notas_medicas_3f9a`) |
+| `POST` | `/api/custom-fields` | a new field from `label`, `type`, `options` (an enum's, and only there), and the owner's `sensitive` and `visible_to`; its `key` is made from the label and a random suffix (`Talla de kimono` → `talla_de_kimono_3f9a`) |
 | `PATCH` | `/api/custom-fields/{key}` | change `label`, an enum's `options`, `archived`, and the owner's `sensitive` and `visible_to`; the key and type are fixed. Removing an option people still hold is a 409, `{"code": "option_in_use", "options": {"Pluma": 2}}`, so no stored value is left naming no option |
 | `PUT` | `/api/custom-fields/order` | `keys`: every field the caller sees, in their new order; fields the caller does not see keep their places |
 | `GET` | `/api/people/{id}/fields` | the person's values for the fields the caller sees and that are not archived, in order; `value` is `null` when unset |

@@ -10,8 +10,9 @@ export const MAX_LEFT_REASON = 200
 
 /**
  * "Motivo" (#294): why someone left, optional, for Dar de baja and "Agregar exalumno".
- * The chips fill the text, and pressing the one that is filled empties it. The hint asks
- * for no detail: the reason may be health data, which only the owner and admins read.
+ * The chips fill the text, and pressing the one that is filled empties it. None is about
+ * health, and the hint asks for none: a gym may not keep it (#384). Only the owner and
+ * admins read the reason.
  */
 export function LeftReasonField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const id = useId()

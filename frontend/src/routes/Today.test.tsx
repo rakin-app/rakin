@@ -958,8 +958,8 @@ const ASKED: FreezeRequest = {
   plan_name: 'Mensual adultos',
   from_date: '2099-11-20',
   to_date: '2099-12-04',
-  reason: 'lesion',
-  note: 'Esguince',
+  reason: 'viaje',
+  note: 'Matrimonio',
   status: 'pending',
   decision_note: null,
   decided_at: null,
@@ -976,7 +976,7 @@ describe('Hoy: freeze requests (#270)', () => {
     const asked = await section(freezes.title(1))
     expect(within(asked).getByRole('link', { name: 'Sofía Reyes' })).toHaveAttribute('href', '/admin/alumnos/sofia')
     expect(within(asked).getByText(`Mensual adultos · ${freezes.dates('20 nov', '4 dic')}`)).toBeInTheDocument()
-    expect(within(asked).getByText('Lesión · Esguince')).toBeInTheDocument()
+    expect(within(asked).getByText('Viaje · Matrimonio')).toBeInTheDocument()
   })
 
   it('approves on the dates asked, or others the admin picks', async () => {
