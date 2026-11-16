@@ -14,6 +14,7 @@ import { Button } from '../components/Button'
 import { Input, SearchInput } from '../components/Field'
 import { t } from '../i18n/es'
 import { useSubmit } from '../api/submit'
+import { Banner, PlainList } from '../components/Card'
 
 const copy = t.admin.family
 
@@ -53,20 +54,20 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
   return (
     <div className="family">
       {failed && (
-        <p className="family__error" role="alert">
+        <Banner tone="error">
           {refusal(failed)}
-        </p>
+        </Banner>
       )}
       {guardian ? (
         <section className="family__section">
           <h3 className="family__title">{copy.guardian}</h3>
-          <ul className="family__list">
+          <PlainList className="family__list">
             <Linked
               person={guardian}
               disabled={unlink.isPending}
               onUnlink={() => unlink.mutate({ guardian: guardian.id, dependent: person.id })}
             />
-          </ul>
+          </PlainList>
         </section>
       ) : (
         <>
@@ -75,7 +76,7 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
             {dependents.length === 0 ? (
               <p className="family__hint">{copy.none}</p>
             ) : (
-              <ul className="family__list">
+              <PlainList className="family__list">
                 {dependents.map((dependent) => (
                   <Linked
                     key={dependent.id}
@@ -84,7 +85,7 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
                     onUnlink={() => unlink.mutate({ guardian: person.id, dependent: dependent.id })}
                   />
                 ))}
-              </ul>
+              </PlainList>
             )}
           </section>
           {/* Closed until asked for: most fichas never add anyone (#179). */}
@@ -268,7 +269,7 @@ export function PeopleSearch({
         matches.data.length === 0 ? (
           <p className="family__hint">{noMatches}</p>
         ) : (
-          <ul className="family__list" aria-label={label}>
+          <PlainList className="family__list" aria-label={label}>
             {matches.data.map((row) => (
               <li key={row.id} className="family__person">
                 <span>{row.name}</span>
@@ -277,7 +278,7 @@ export function PeopleSearch({
                 </Button>
               </li>
             ))}
-          </ul>
+          </PlainList>
         )
       )}
     </>

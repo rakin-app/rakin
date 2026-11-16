@@ -17,13 +17,13 @@ import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
 import { remindersQuery, type PaymentReminder } from '../api/reminders'
 import { Button, buttonClass } from '../components/Button'
-import { ListRowContent, listRowClass } from '../components/Card'
+import { Banner, Card, listRowClass, ListRowContent, PlainList } from '../components/Card'
 import { Chip, ChipGroup } from '../components/Chip'
 import { EmailReminder } from '../components/EmailReminder'
 import { SearchInput } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { MoreMenu, moreItemClass } from '../components/MoreMenu'
-import { PageHeader } from '../components/PageHeader'
+import { PageHeader, PageTitle } from '../components/PageHeader'
 import { StatusPill, type Status } from '../components/StatusPill'
 import { dayTime, isoDay, monthName, monthYear, shortDay, toDate } from '../format'
 import { t } from '../i18n/es'
@@ -136,7 +136,7 @@ function Book() {
     <PageContainer className="payments">
       <header className="payments__header">
         <div className="payments__heading">
-          <h1 className="payments__title">{copy.title}</h1>
+          <PageTitle>{copy.title}</PageTitle>
           <span className="payments__subtitle">{copy.subtitle}</span>
         </div>
         <div className="payments__actions">
@@ -196,9 +196,9 @@ function Book() {
       </div>
 
       {done && (
-        <p className="payments__done" role="status">
+        <Banner tone="done">
           {done}
-        </p>
+        </Banner>
       )}
       {recording && (
         <RecordPayment
@@ -221,7 +221,7 @@ function Book() {
         latest && (
           <>
             <Kpis kpis={latest.kpis} />
-            <section className="payments__table-card" aria-label={copy.title}>
+            <Card flush aria-label={copy.title}>
               <div role="search" className="payments__search">
                 <label htmlFor={searchId} className="visually-hidden">
                   {copy.searchLabel}
@@ -308,7 +308,7 @@ function Book() {
                   </Button>
                 )}
               </div>
-            </section>
+            </Card>
           </>
         )
       )}
@@ -349,7 +349,7 @@ function MemberPicker({ onPick, onCancel }: { onPick: (member: MemberRow) => voi
   const found = q ? (members.data?.pages[0]?.items ?? []) : []
 
   return (
-    <div className="payments__picker">
+    <Card as="div" className="payments__picker">
       <label htmlFor={inputId} className="payments__label">
         {words.label}
       </label>
@@ -364,13 +364,13 @@ function MemberPicker({ onPick, onCancel }: { onPick: (member: MemberRow) => voi
         onChange={(event) => setDraft(event.target.value)}
       />
       {members.isError && (
-        <p className="payments__error" role="alert">
+        <Banner tone="error">
           {words.error}
-        </p>
+        </Banner>
       )}
       {q && members.isSuccess && found.length === 0 && <p className="payments__hint">{words.none}</p>}
       {found.length > 0 && (
-        <ul className="payments__picks" aria-label={words.results}>
+        <PlainList className="payments__picks" aria-label={words.results}>
           {found.slice(0, PICKER_ROWS).map((row) => (
             <li key={row.id}>
               <button type="button" className={listRowClass(true)} onClick={() => onPick(row)}>
@@ -378,12 +378,12 @@ function MemberPicker({ onPick, onCancel }: { onPick: (member: MemberRow) => voi
               </button>
             </li>
           ))}
-        </ul>
+        </PlainList>
       )}
       <Button onClick={onCancel}>
         {words.cancel}
       </Button>
-    </div>
+    </Card>
   )
 }
 
@@ -402,7 +402,7 @@ function PayFor({ member, onBack, onDone }: { member: MemberRow; onBack: () => v
   const membership = memberships.data ? shownMembership(memberships.data) : undefined
 
   return (
-    <div className="payments__picker">
+    <Card as="div" className="payments__picker">
       <div className="payments__picked">
         <span>
           <span className="payments__pick-name">{member.name}</span>
@@ -413,7 +413,7 @@ function PayFor({ member, onBack, onDone }: { member: MemberRow; onBack: () => v
         </Button>
       </div>
       <PaymentFor personId={member.id} onCancel={onBack} onDone={onDone} />
-    </div>
+    </Card>
   )
 }
 
@@ -437,9 +437,9 @@ export function PaymentFor({
 
   if (memberships.isError || ledger.isError) {
     return (
-      <p className="payments__error" role="alert">
+      <Banner tone="error">
         {words.error}
-      </p>
+      </Banner>
     )
   }
   if (memberships.isPending || (membership && ledger.isPending)) {
@@ -507,11 +507,11 @@ function Kpis({ kpis }: { kpis: BookKpis }) {
   return (
     <section className="payments__kpis" aria-label={copy.kpisLabel}>
       {tiles.map((tile) => (
-        <div key={tile.key} className={`payments__kpi payments__kpi--${tile.key}`}>
+        <Card as="div" key={tile.key} className={`payments__kpi payments__kpi--${tile.key}`}>
           <span className="payments__kpi-label">{tile.label}</span>
           <span className="payments__kpi-amount">{clp(tile.amount)}</span>
           <span className="payments__kpi-detail">{tile.detail}</span>
-        </div>
+        </Card>
       ))}
     </section>
   )
@@ -578,7 +578,7 @@ function bookAmount(entry: BookEntry): string {
 function Student({ person, guardian }: { person: PersonRef; guardian: PersonRef | null }) {
   return (
     <td role="cell" className="payments__who">
-      <Link to="/admin/alumnos/$personId" params={{ personId: person.id }} className="payments__student">
+      <Link to="/admin/alumnos/$personId" params={{ personId: person.id }} className="tap-link tap-link--inline payments__student">
         {person.name}
       </Link>
       {guardian && <span className="payments__guardian">{t.admin.students.guardianOf(guardian.name)}</span>}

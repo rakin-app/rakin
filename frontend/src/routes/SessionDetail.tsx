@@ -38,6 +38,8 @@ import { savedRun } from './timerEngine'
 import './Classes.css'
 import './ClassTimer.css'
 import { useSubmit } from '../api/submit'
+import { Banner, Card, cardClass, PlainList, SectionTitle } from '../components/Card'
+import { PageTitle } from '../components/PageHeader'
 
 const copy = t.admin.session
 
@@ -73,14 +75,14 @@ export function SessionDetail() {
     const missing = session.error instanceof ApiError && session.error.status === 404
     return (
       <Shell>
-        <div className="classes__error" role="alert">
+        <Banner tone="error" as="div">
           <p>{missing ? copy.notFound : copy.error}</p>
           {!missing && (
             <Button onClick={() => void session.refetch()}>
               {copy.retry}
             </Button>
           )}
-        </div>
+        </Banner>
       </Shell>
     )
   }
@@ -95,10 +97,10 @@ export function SessionDetail() {
   return (
     <Shell eyebrow={copy.eyebrow(data.program_name, when)} title={data.class_type_name} subtitle={copy.coach(data.coach_name)}>
       {cancelled && (
-        <div className="classes__error class-cancelled" role="status">
+        <Banner tone="error" as="div" role="status">
           <span className="classes__flag classes__flag--cancelled">{copy.cancelled.badge}</span>
           <p>{copy.cancelled.note}</p>
-        </div>
+        </Banner>
       )}
       {!cancelled && <TimerLink session={data} />}
       {!cancelled && <Attendance key={`attendance-${data.id}`} sessionId={data.id} />}
@@ -118,7 +120,7 @@ export function SessionDetail() {
 function TopicView({ session }: { session: ClassSession }) {
   if (!session.topic && !session.notes && session.tags.length === 0) return null
   return (
-    <section className="classes__card" aria-label={copy.form.label}>
+    <Card aria-label={copy.form.label}>
       <span className="classes__label">{copy.form.topic}</span>
       <span className={session.topic ? 'classes__topic' : 'classes__topic classes__topic--none'}>
         {session.topic ?? t.admin.classes.today.noTopic}
@@ -135,7 +137,7 @@ function TopicView({ session }: { session: ClassSession }) {
           <p className="classes__topic class-notes">{session.notes}</p>
         </>
       )}
-    </section>
+    </Card>
   )
 }
 
@@ -157,7 +159,7 @@ function Shell({
         {title && (
           <div className="classes__heading">
             {eyebrow && <span className="classes__eyebrow">{eyebrow}</span>}
-            <h1 className="classes__title">{title}</h1>
+            <PageTitle tight>{title}</PageTitle>
             {subtitle && <span className="classes__detail">{subtitle}</span>}
           </div>
         )}
@@ -221,7 +223,7 @@ function TopicForm({ session }: { session: ClassSession }) {
   }
 
   return (
-    <form className="classes__card classes__form" aria-label={copy.form.label} onSubmit={submit}>
+    <form className={cardClass({}, 'classes__form')} aria-label={copy.form.label} onSubmit={submit}>
       <label htmlFor={topicId} className="classes__label">
         {copy.form.topic}
       </label>
@@ -251,19 +253,19 @@ function TopicForm({ session }: { session: ClassSession }) {
         onChange={(e) => setNotes(e.target.value)}
       />
       {restored && changed && !save.isError && (
-        <p className="classes__restored" role="status">
+        <Banner tone="warning">
           {copy.form.restored}
-        </p>
+        </Banner>
       )}
       {save.isError && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {copy.form.failed}
-        </p>
+        </Banner>
       )}
       {saved && !changed && (
-        <p className="classes__done" role="status">
+        <Banner tone="done">
           {copy.form.saved}
-        </p>
+        </Banner>
       )}
       {/* Secondary: "Guardar asistencia" is the screen's one primary. */}
       <Button type="submit" disabled={save.isPending} busy={save.isPending}>
@@ -398,12 +400,12 @@ function Attendance({ sessionId }: { sessionId: string }) {
   }
   if (roster.isError) {
     return (
-      <div className="classes__error" role="alert">
+      <Banner tone="error" as="div">
         <p>{words.error}</p>
         <Button onClick={() => void roster.refetch()}>
           {copy.retry}
         </Button>
-      </div>
+      </Banner>
     )
   }
 
@@ -448,9 +450,9 @@ function Attendance({ sessionId }: { sessionId: string }) {
   return (
     <section className="classes__section" aria-labelledby="attendance-title">
       <div className="classes__section-head">
-        <h2 id="attendance-title" className="classes__section-title">
+        <SectionTitle id="attendance-title">
           {words.title}
-        </h2>
+        </SectionTitle>
         <span className="attendance__count" aria-live="polite">
           {words.count(top.filter(here).length, top.length)}
         </span>
@@ -472,13 +474,13 @@ function Attendance({ sessionId }: { sessionId: string }) {
       )}
       {searching && shownTop.length + shownRest.length === 0 && <p className="classes__note">{words.noMatches}</p>}
       {shownTop.length > 0 && (
-        <ul className="classes__list" aria-label={words.title}>
+        <PlainList className="classes__list" aria-label={words.title}>
           {shownTop.map((member) => (
             <li key={member.membership_id}>
               <RosterRow member={member} here={here(member)} onToggle={() => toggle(member)} />
             </li>
           ))}
-        </ul>
+        </PlainList>
       )}
       {rest.length > 0 && !searching && (
         <Button fullWidth aria-expanded={othersOpen} onClick={() => setOthersOpen(!othersOpen)}>
@@ -486,39 +488,39 @@ function Attendance({ sessionId }: { sessionId: string }) {
         </Button>
       )}
       {restOpen && shownRest.length > 0 && (
-        <ul className="classes__list" aria-label={words.othersLabel}>
+        <PlainList className="classes__list" aria-label={words.othersLabel}>
           {shownRest.map((member) => (
             <li key={member.membership_id}>
               <RosterRow member={member} here={here(member)} onToggle={() => toggle(member)} />
             </li>
           ))}
-        </ul>
+        </PlainList>
       )}
       <TrialGuest sessionId={sessionId} onMember={markMember} />
       {/* Sticky at the foot of the screen, so what a save did is in view however far down the list is. */}
       <div className="attendance__bar">
         {save.isError && !isOffline(save.error) && !dropped && (
-          <p className="classes__error" role="alert">
+          <Banner tone="error">
             {words.failed}
-          </p>
+          </Banner>
         )}
         {queued && (
-          <p className="classes__error" role="status">
+          <Banner tone="error" role="status">
             {words.queued}
-          </p>
+          </Banner>
         )}
         {dropped && (
-          <p className="classes__error" role="alert">
+          <Banner tone="error">
             {words.dropped}
-          </p>
+          </Banner>
         )}
         {done && (
-          <div className="classes__done attendance__done">
+          <Banner tone="done" as="div" role={null} className="attendance__done">
             <p role="status">{words.saved}</p>
             <BackLink to="/admin/clases" label={words.back} className="attendance__back">
               {(back) => back.label}
             </BackLink>
-          </div>
+          </Banner>
         )}
         <Button
           variant="primary"
@@ -642,9 +644,9 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
     return (
       <>
         {done && (
-          <p className="classes__done" role="status">
+          <Banner tone="done">
             {done}
-          </p>
+          </Banner>
         )}
         <Button
           fullWidth
@@ -677,7 +679,7 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
     : null
 
   return (
-    <form className="classes__card classes__form" aria-label={words.label} onSubmit={submit}>
+    <form className={cardClass({}, 'classes__form')} aria-label={words.label} onSubmit={submit}>
       {plans.isSuccess && trials.length === 0 ? (
         <p className="classes__note">{words.noPlans}</p>
       ) : (
@@ -734,9 +736,9 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
             </>
           )}
           {failure && (
-            <p className="classes__error" role="alert">
+            <Banner tone="error">
               {failure}
-            </p>
+            </Banner>
           )}
           <Button
             type="submit"

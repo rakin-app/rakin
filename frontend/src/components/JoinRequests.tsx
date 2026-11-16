@@ -18,6 +18,7 @@ import { Button } from './Button'
 import { Select } from './Field'
 import './JoinRequests.css'
 import { useSubmit } from '../api/submit'
+import { Card, SectionHeader } from './Card'
 
 const copy = t.admin.joinRequests
 
@@ -45,16 +46,14 @@ export function JoinRequests() {
 
   return (
     <section className="join-requests" aria-labelledby={titleId}>
-      <h2 id={titleId} className="join-requests__title">
-        {copy.title(total)}
-      </h2>
+      <SectionHeader id={titleId} title={copy.title(total)} />
       {items.length < total && <p className="join-requests__hint">{copy.oldestShown(items.length)}</p>}
       {notice && (
         <p className="join-requests__done" role="status">
           {notice}
         </p>
       )}
-      <ul className="join-requests__list">
+      <Card as="ul" flush className="join-requests__list">
         {items.map((request) => (
           <RequestRow
             key={request.id}
@@ -63,7 +62,7 @@ export function JoinRequests() {
             onDone={setNotice}
           />
         ))}
-      </ul>
+      </Card>
     </section>
   )
 }

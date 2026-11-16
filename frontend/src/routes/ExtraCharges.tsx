@@ -18,10 +18,10 @@ import { myRoleQuery, readsLedger } from '../api/me'
 import { membersPath, membersQuery, plansQuery, programsQuery, type MemberRow } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
 import { BackLink } from '../components/BackLink'
-import { Card, EmptyState, ListRowContent, listRowClass, SectionHeader } from '../components/Card'
+import { Banner, Card, EmptyState, listRowClass, ListRowContent, PlainList, SectionHeader } from '../components/Card'
 import { Field, Input, SearchInput, Select } from '../components/Field'
 import { PageContainer } from '../components/Layout'
-import { PageHeader } from '../components/PageHeader'
+import { PageHeader, PageTitle } from '../components/PageHeader'
 import { hasRanks, RankFilter, rankFilters, type RankChoice } from '../components/RankFilter'
 import { shortDay } from '../format'
 import { t } from '../i18n/es'
@@ -107,9 +107,9 @@ function Title({ title }: { title: string }) {
   }, [title, whole])
   return (
     <>
-      <h1 ref={ref} className={whole ? 'extra__title' : 'extra__title extra__title--clamped'} title={title}>
+      <PageTitle ref={ref} className={whole ? undefined : 'extra__title--clamped'} title={title}>
         {title}
-      </h1>
+      </PageTitle>
       {(cut || whole) && (
         <button type="button" className="extra__title-toggle" aria-expanded={whole} onClick={() => setWhole(!whole)}>
           {whole ? copy.titleLess : copy.titleMore}
@@ -138,7 +138,7 @@ function ChargeList() {
     )
   }
   return (
-    <ul className="extra__list" aria-label={copy.listLabel}>
+    <PlainList className="extra__list" aria-label={copy.listLabel}>
       {charges.data.map((charge) => (
         <li key={charge.id}>
           <Link
@@ -154,7 +154,7 @@ function ChargeList() {
           </Link>
         </li>
       ))}
-    </ul>
+    </PlainList>
   )
 }
 
@@ -208,9 +208,9 @@ function Groups() {
       />
       <p className="extra__hint">{words.intro}</p>
       {done && (
-        <p className="extra__done" role="status">
+        <Banner tone="done">
           {done}
-        </p>
+        </Banner>
       )}
       {editing !== null && (
         <GroupEditor
@@ -223,7 +223,7 @@ function Groups() {
       )}
       {groups.isSuccess && groups.data.length === 0 && editing === null && <EmptyState>{words.empty}</EmptyState>}
       {groups.isSuccess && groups.data.length > 0 && (
-        <ul className="extra__list">
+        <PlainList className="extra__list">
           {groups.data.map((group) => (
             <li key={group.id} className={listRowClass(false)}>
               <ListRowContent
@@ -237,7 +237,7 @@ function Groups() {
               />
             </li>
           ))}
-        </ul>
+        </PlainList>
       )}
     </Card>
   )
@@ -340,7 +340,7 @@ function GroupForm({
       {members.length === 0 ? (
         <p className="extra__note">{words.noMembers}</p>
       ) : (
-        <ul className="extra__chosen">
+        <PlainList className="extra__chosen">
           {members.map((member) => (
             <li key={member.id} className="extra__chosen-item">
               <span>{member.name}</span>
@@ -353,7 +353,7 @@ function GroupForm({
               </Button>
             </li>
           ))}
-        </ul>
+        </PlainList>
       )}
       {error && (
         <p className="extra__error" role="alert">
@@ -480,7 +480,7 @@ export function PeoplePicker({
         onChange={(event) => setDraft(event.target.value)}
       />
       {found.length > 0 && (
-        <ul className="extra__picks">
+        <PlainList className="extra__picks">
           {found.slice(0, PICKER_ROWS).map((row) => (
             <li key={row.id}>
               <button
@@ -493,7 +493,7 @@ export function PeoplePicker({
               </button>
             </li>
           ))}
-        </ul>
+        </PlainList>
       )}
     </div>
   )

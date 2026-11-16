@@ -17,6 +17,7 @@ import { Input } from '../components/Field'
 import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, MoveButtons, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
+import { Banner, Card, cardClass, CheckRow, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.blocks
 const form = copy.form
@@ -79,20 +80,20 @@ export function BlockKindSettings() {
         }
       />
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
       {editing === 'new' && <BlockKindForm onCancel={() => setEditing(null)} onDone={done} />}
       {reorder.isError && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {copy.reorderFailed}
-        </p>
+        </Banner>
       )}
       {list.length === 0 ? (
         <p className="settings__note">{copy.empty}</p>
       ) : (
-        <ul className="settings__card settings__card--rows settings__menu">
+        <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
           {list.map((kind) => {
             const index = active.indexOf(kind)
             return editing === kind.id ? (
@@ -127,7 +128,7 @@ export function BlockKindSettings() {
               />
             )
           })}
-        </ul>
+        </Card>
       )}
     </section>
   )
@@ -197,8 +198,8 @@ function BlockKindForm({
 
   const label = kind ? form.edit(kind.name) : form.create
   return (
-    <form className="settings__card settings__form" aria-label={label} onSubmit={submit} noValidate>
-      <h2 className="settings__legend">{label}</h2>
+    <form className={cardClass({}, 'settings__card settings__form')} aria-label={label} onSubmit={submit} noValidate>
+      <SectionTitle className="settings__legend">{label}</SectionTitle>
       <Field label={form.name} error={nameError}>
         {(props) => (
           <Input
@@ -211,16 +212,16 @@ function BlockKindForm({
         )}
       </Field>
       <div className="settings__field">
-        <label className="settings__check">
+        <CheckRow>
           <input type="checkbox" checked={sparring} onChange={(e) => setSparring(e.target.checked)} />
           {form.sparring}
-        </label>
+        </CheckRow>
         <p className="settings__hint">{form.sparringHint}</p>
       </div>
       {save.error && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {inUse !== null ? form.sparringInUse(inUse) : taken || Object.keys(errors).length > 0 ? form.invalid : form.failed}
-        </p>
+        </Banner>
       )}
       <div className="settings__actions">
         <Button disabled={save.isPending} onClick={onCancel}>
@@ -233,14 +234,14 @@ function BlockKindForm({
       {kind && (
         <div className="settings__danger">
           {remove.error && (
-            <p className="settings__error" role="alert">
+            <Banner tone="error">
               {removedInUse !== null ? copy.inUse(removedInUse) : form.failed}
-            </p>
+            </Banner>
           )}
           {toggle.isError && (
-            <p className="settings__error" role="alert">
+            <Banner tone="error">
               {copy.toggleFailed}
-            </p>
+            </Banner>
           )}
           <Button
             variant={kind.archived ? 'secondary' : 'danger'}

@@ -72,7 +72,7 @@ import { FreezeRequestRow } from '../components/FreezeRequests'
 import { ReminderLink } from '../components/ReminderLink'
 import { StatusPill } from '../components/StatusPill'
 import { addDays, isoDay, monthName, monthYear, shortDay } from '../format'
-import { SectionHeader } from '../components/Card'
+import { Banner, Card, cardClass, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { FamilyPanel } from './FamilyPanel'
@@ -85,6 +85,7 @@ import { AssignForm, AssignPlan, assignsPlan, ChangePlanForm, changesPlan, isLiv
 import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
 import { useSubmit } from '../api/submit'
+import { PageTitle } from '../components/PageHeader'
 
 const copy = t.admin.member
 const clp = t.common.clp
@@ -172,7 +173,7 @@ export function MemberDetail() {
       action={<HeaderWhatsApp person={person.data} money={money} />}
     >
       {person.data.left_on && (
-        <p className="member__error" role="status">
+        <Banner tone="error" role="status">
           {copy.leftBanner(t.common.day(person.data.left_on))}
           {/* Only the owner and admins are ever sent it (#294). */}
           {person.data.left_reason && (
@@ -181,7 +182,7 @@ export function MemberDetail() {
               {copy.leftBannerReason(person.data.left_reason)}
             </>
           )}
-        </p>
+        </Banner>
       )}
       {/* On a desktop the money on the left, everything else beside it. */}
       <Grid className="member__columns">
@@ -210,9 +211,9 @@ export function MemberDetail() {
           <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
           <section className="member__section" aria-label={t.admin.family.toggle}>
             <SectionHeader title={t.admin.family.toggle} />
-            <div className="member__card member__family">
+            <Card as="div" className="member__card member__family">
               <FamilyPanel person={person.data} />
-            </div>
+            </Card>
           </section>
           <PersonData person={person.data} />
           <PersonWelcome person={person.data} role={role.data} />
@@ -240,7 +241,7 @@ function Shell({
         <BackLink to="/admin/alumnos" label={copy.back} />
         {title && (
           <div className="member__heading">
-            <h1 className="member__title">{title}</h1>
+            <PageTitle tight>{title}</PageTitle>
             {subtitle && <span className="member__subtitle">{subtitle}</span>}
           </div>
         )}
@@ -330,7 +331,7 @@ function Standing({
 
   return (
     <>
-      <section className="member__card" aria-label={copy.paymentLabel}>
+      <Card className="member__card" aria-label={copy.paymentLabel}>
         <div className="member__card-head">
           <span className="member__eyebrow">{planLine(membership)}</span>
           <Badge membership={membership} ledger={data} />
@@ -352,9 +353,9 @@ function Standing({
         {data && <Owed ledger={data} />}
         {data && overdue && <EmailReminder reminder={overdue} />}
         {money && ledger.isError && (
-          <p className="member__error" role="alert">
+          <Banner tone="error">
             {copy.ledgerError}
-          </p>
+          </Banner>
         )}
         {data ? (
           <Actions
@@ -372,11 +373,11 @@ function Standing({
         )}
         {/* One place whether the new plan's ledger is in yet or not. */}
         {isLive(membership) && assign.done && (
-          <p className="member__done" role="status">
+          <Banner tone="done">
             {assign.done}
-          </p>
+          </Banner>
         )}
-      </section>
+      </Card>
       {earlier}
       {data && <Ledger membership={membership} ledger={data} />}
       {money && <Corrections personId={personId} />}
@@ -393,9 +394,9 @@ function PlanFreezeRequest({ membershipId }: { membershipId: string }) {
   if (!request) {
     return (
       done && (
-        <p className="member__done" role="status">
+        <Banner tone="done">
           {done}
-        </p>
+        </Banner>
       )
     )
   }
@@ -432,7 +433,7 @@ function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[
     setDone(message)
   }
   return (
-    <section className="member__card" aria-label={title}>
+    <Card className="member__card" aria-label={title}>
       <span className="member__eyebrow">{title}</span>
       {owing.map(({ membership, ledger }) => {
         const due = ledger.open_periods.filter((p) => p.due)
@@ -449,12 +450,12 @@ function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[
         )
       })}
       {done && (
-        <p className="member__done" role="status">
+        <Banner tone="done">
           {done}
-        </p>
+        </Banner>
       )}
       {charges.length > 0 && (
-        <ul className="member__ledger" aria-label={title}>
+        <Card as="ul" flush className="member__ledger" aria-label={title}>
           {charges.map((charge) => {
             const { period } = charge
             const [first, ...rest] = chargeFixes(charge)
@@ -485,9 +486,9 @@ function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[
               />
             )
           })}
-        </ul>
+        </Card>
       )}
-    </section>
+    </Card>
   )
 }
 
@@ -702,17 +703,17 @@ function Actions({
         </div>
       )}
       {done && (
-        <div className="member__done" role="status">
-          <p className="member__done-text">{done}</p>
+        <Banner tone="done" as="div">
+          <p>{done}</p>
           {offer && reactivates && (
             <>
-              <p className="member__done-text">{copy.reactivateOffer}</p>
-              <Button className="member__done-action" onClick={() => toggle('reactivate')}>
+              <p>{copy.reactivateOffer}</p>
+              <Button onClick={() => toggle('reactivate')}>
                 {copy.reactivatePlan}
               </Button>
             </>
           )}
-        </div>
+        </Banner>
       )}
       {open === 'payment' &&
         (periods.length > 0 ? (
@@ -893,7 +894,7 @@ function RestoreChargeForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.reason}
@@ -907,9 +908,9 @@ function RestoreChargeForm({
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.reasonNeeded}
-        </p>
+        </Banner>
       )}
       <FixPreview
         month={month}
@@ -917,9 +918,9 @@ function RestoreChargeForm({
         balance={[balance, balance + period.voided_clp]}
       />
       {restored.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {restoreRefusal(restored.error)}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">
@@ -969,7 +970,7 @@ function VoidChargeForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.reason}
@@ -983,15 +984,15 @@ function VoidChargeForm({
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.reasonNeeded}
-        </p>
+        </Banner>
       )}
       <FixPreview month={month} owed={[period.outstanding_clp, 0]} balance={[balance, balance - period.outstanding_clp]} />
       {voided.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {voidRefusal(voided.error)}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">
@@ -1050,7 +1051,7 @@ function VoidPlanForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.reason}
@@ -1064,15 +1065,15 @@ function VoidPlanForm({
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.reasonNeeded}
-        </p>
+        </Banner>
       )}
       <FixPreview balance={[balance, balance - owed]} />
       {voided.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {voidRefusal(voided.error)}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button disabled={voided.isPending} onClick={onCancel}>
@@ -1149,11 +1150,11 @@ function ReactivateForm({
 
   if (!quote.data) {
     return (
-      <div className="member__form" role="group" aria-label={form.title}>
+      <Card as="div" className="member__form" role="group" aria-label={form.title}>
         {quote.isError ? (
-          <p className="member__error" role="alert">
+          <Banner tone="error">
             {reactivateRefusal(quote.error)}
-          </p>
+          </Banner>
         ) : (
           <p className="member__detail" role="status">
             {form.loading}
@@ -1162,7 +1163,7 @@ function ReactivateForm({
         <div className="member__form-actions">
           <Button onClick={onCancel}>{form.cancel}</Button>
         </div>
-      </div>
+      </Card>
     )
   }
 
@@ -1176,22 +1177,22 @@ function ReactivateForm({
 
   if (confirming && bill) {
     return (
-      <form className="member__form" aria-label={form.title} onSubmit={submit}>
+      <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
         <p className="member__label">{form.confirmTitle}</p>
         {bill.periods.length > 0 ? (
-          <ul className="member__bill">
+          <PlainList className="member__bill">
             {bill.periods.map((p) => (
               <li key={p.period_start}>{form.period(monthName(p.period_start), clp(p.amount_due_clp))}</li>
             ))}
             <li className="member__bill-total">{form.total(clp(bill.total_clp))}</li>
-          </ul>
+          </PlainList>
         ) : (
           <p className="member__detail">{form.nothing}</p>
         )}
         {reactivated.error && (
-          <p className="member__error" role="alert">
+          <Banner tone="error">
             {reactivateRefusal(reactivated.error)}
-          </p>
+          </Banner>
         )}
         <div className="member__form-actions">
           <Button disabled={reactivated.isPending} onClick={() => setConfirming(false)}>
@@ -1206,20 +1207,20 @@ function ReactivateForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       {!choice && <p className="member__detail">{hints.last}</p>}
       {choice && (
         <fieldset className="member__choices">
           <legend className="member__label">{form.billFrom}</legend>
           {BILL_FROM.map((value) => (
-            <label key={value} className="member__choice">
+            <CheckRow start key={value} className="member__choice">
               <input type="radio" name={`${id}-bill-from`} checked={billFrom === value} onChange={() => setBillFrom(value)} />
               <span>
                 <span className="member__choice-title">{form[value]}</span>
                 <span className="member__detail">{hints[value]}</span>
               </span>
-            </label>
+            </CheckRow>
           ))}
         </fieldset>
       )}
@@ -1235,9 +1236,9 @@ function ReactivateForm({
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.reasonNeeded}
-        </p>
+        </Banner>
       )}
       <div className="member__form-actions">
         <Button onClick={onCancel}>{form.cancel}</Button>
@@ -1309,7 +1310,7 @@ function FreezeForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <label htmlFor={ids.from} className="member__label">
         {form.from}
       </label>
@@ -1322,9 +1323,9 @@ function FreezeForm({
         onChange={(e) => setFrom(e.target.value)}
       />
       {checked && !fromOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.fromNeeded}
-        </p>
+        </Banner>
       )}
 
       <label htmlFor={ids.until} className="member__label">
@@ -1343,9 +1344,9 @@ function FreezeForm({
         {form.untilHint}
       </p>
       {checked && !untilOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.untilNeeded}
-        </p>
+        </Banner>
       )}
 
       <label htmlFor={ids.reason} className="member__label">
@@ -1360,15 +1361,15 @@ function FreezeForm({
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.reasonNeeded}
-        </p>
+        </Banner>
       )}
 
       {freeze.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {freeze.error instanceof ApiError && freeze.error.status === 409 ? form.refused.notActive : form.refused.failed}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">
@@ -1418,7 +1419,7 @@ function EditFreezeForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <label htmlFor={ids.until} className="member__label">
         {form.until}
       </label>
@@ -1435,9 +1436,9 @@ function EditFreezeForm({
         {form.untilHint}
       </p>
       {checked && !untilOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.untilNeeded}
-        </p>
+        </Banner>
       )}
 
       <label htmlFor={ids.reason} className="member__label">
@@ -1452,15 +1453,15 @@ function EditFreezeForm({
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.reasonNeeded}
-        </p>
+        </Banner>
       )}
 
       {edit.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.failed}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">
@@ -1499,15 +1500,15 @@ function EndFreezeForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">
         {freeze.started ? form.endHint : form.callOffHint(shortDay(freeze.from_date), shortDay(freeze.to_date))}
       </p>
 
       {end.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.failed}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">
@@ -1578,7 +1579,7 @@ export function PaymentForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <label htmlFor={ids.period} className="member__label">
         {form.period}
       </label>
@@ -1609,9 +1610,9 @@ export function PaymentForm({
         onChange={(e) => setAmount(e.target.value)}
       />
       {amountNeeded && !value && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.amountNeeded}
-        </p>
+        </Banner>
       )}
 
       <label htmlFor={ids.method} className="member__label">
@@ -1637,9 +1638,9 @@ export function PaymentForm({
       />
 
       {record.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {record.error instanceof ApiError && record.error.status === 409 ? form.refused.paid : form.refused.failed}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">
@@ -1711,9 +1712,9 @@ export function PaymentAheadForm({
   }
   if (quote.isError) {
     return (
-      <p className="member__error" role="alert">
+      <Banner tone="error">
         {words.error}
-      </p>
+      </Banner>
     )
   }
   if (periods.length === 0) return <>{nothing}</>
@@ -1725,7 +1726,7 @@ export function PaymentAheadForm({
   const monthly = membership.plan_kind === 'monthly'
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__note">{words.intro}</p>
       <label htmlFor={ids.periods} className="member__label">
         {words.periods}
@@ -1760,9 +1761,9 @@ export function PaymentAheadForm({
       <Input id={ids.note} type="text" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
 
       {record.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {aheadRefusal(record.error) ?? form.refused.failed}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">
@@ -1797,21 +1798,21 @@ function Attendance({ personId }: { personId: string }) {
   if (attendance.isPending) return null
   if (attendance.isError) {
     return (
-      <p className="member__error" role="alert">
+      <Banner tone="error">
         {words.error}
-      </p>
+      </Banner>
     )
   }
   const { last_30_days: recent, total, before_rakin: before } = attendance.data
   return (
     <section className="member__section" aria-label={words.title}>
       <SectionHeader title={words.title} />
-      <div className="member__card">
+      <Card as="div" className="member__card">
         <div className="member__rank">
           <span className="member__rank-label">{recent}</span>
           <span className="member__detail">{words.detail(recent, total, before)}</span>
         </div>
-      </div>
+      </Card>
     </section>
   )
 }
@@ -1838,9 +1839,9 @@ function GraduationSection({ personId, canAward }: { personId: string; canAward:
   const ranked = scheme.data ? scheme.data.ranks.length + scheme.data.kids_ladder.length > 0 : false
   if (grades.isError) {
     return (
-      <p className="member__error" role="alert">
+      <Banner tone="error">
         {words.error}
-      </p>
+      </Banner>
     )
   }
   const { current, events } = grades.data
@@ -1849,7 +1850,7 @@ function GraduationSection({ personId, canAward }: { personId: string; canAward:
   return (
     <section className="member__section" aria-label={words.title}>
       <SectionHeader title={words.title} />
-      <div className="member__card">
+      <Card as="div" className="member__card">
         {current ? (
           <div className="member__rank">
             <RankBelt rank={current} />
@@ -1875,9 +1876,9 @@ function GraduationSection({ personId, canAward }: { personId: string; canAward:
               </Button>
             </div>
             {done && (
-              <p className="member__done" role="status">
+              <Banner tone="done">
                 {done}
-              </p>
+              </Banner>
             )}
             {open && (
               <GradeForm
@@ -1893,13 +1894,13 @@ function GraduationSection({ personId, canAward }: { personId: string; canAward:
             )}
           </>
         )}
-      </div>
+      </Card>
       {events.length > 0 && (
-        <ul className="member__ledger" aria-label={words.log}>
+        <Card as="ul" flush className="member__ledger" aria-label={words.log}>
           {events.map((event) => (
             <GradeRow key={event.id} event={event} />
           ))}
-        </ul>
+        </Card>
       )}
     </section>
   )
@@ -2011,7 +2012,7 @@ function ChangeAmountForm({
     digits === '' ? (checked ? form.amountNeeded : null) : owedAfter < 0 ? form.paidMore(clp(paid)) : change === 0 && checked ? form.sameAmount : null
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.current(clp(current))}</p>
       <label htmlFor={ids.amount} className="member__label">
         {form.amount}
@@ -2024,9 +2025,9 @@ function ChangeAmountForm({
         onChange={(e) => setAmount(e.target.value)}
       />
       {amountError && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {amountError}
-        </p>
+        </Banner>
       )}
 
       <label htmlFor={ids.reason} className="member__label">
@@ -2041,9 +2042,9 @@ function ChangeAmountForm({
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.reasonNeeded}
-        </p>
+        </Banner>
       )}
       <FixPreview
         month={month}
@@ -2052,9 +2053,9 @@ function ChangeAmountForm({
       />
 
       {adjust.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {adjust.error instanceof ApiError && adjust.error.status === 409 ? form.refused.exceeds : form.refused.failed}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">
@@ -2123,7 +2124,7 @@ function RefundForm({
   }
 
   return (
-    <form className="member__form" aria-label={form.title} onSubmit={submit}>
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <label htmlFor={ids.payment} className="member__label">
         {form.payment}
       </label>
@@ -2158,9 +2159,9 @@ function RefundForm({
         onChange={(e) => setAmount(e.target.value)}
       />
       {amountNeeded && !value && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {form.amountNeeded}
-        </p>
+        </Banner>
       )}
 
       <label htmlFor={ids.method} className="member__label">
@@ -2191,9 +2192,9 @@ function RefundForm({
       />
 
       {refund.error && (
-        <p className="member__error" role="alert">
+        <Banner tone="error">
           {refund.error instanceof ApiError && refund.error.status === 409 ? form.refused.exceeds : form.refused.failed}
-        </p>
+        </Banner>
       )}
 
       <div className="member__form-actions">
@@ -2265,14 +2266,14 @@ function Ledger({ membership, ledger }: { membership: Membership; ledger: Member
     <section className="member__section" aria-label={copy.ledger.title}>
       <SectionHeader title={copy.ledger.title} />
       {done && (
-        <p className="member__done" role="status">
+        <Banner tone="done">
           {done}
-        </p>
+        </Banner>
       )}
       {lines.length === 0 ? (
         <p className="member__note">{copy.ledger.empty}</p>
       ) : (
-        <ul className="member__ledger">
+        <Card as="ul" flush className="member__ledger">
           {shown.map((line) => {
             if (line.kind === 'freeze') {
               return <FreezeEntry key={`${line.line.freeze_id}-${line.line.edge}`} line={line.line} />
@@ -2298,7 +2299,7 @@ function Ledger({ membership, ledger }: { membership: Membership; ledger: Member
               />
             )
           })}
-        </ul>
+        </Card>
       )}
       {lines.length > LEDGER_SHOWN && (
         <Button variant="ghost" className="member__more" aria-expanded={all} onClick={() => setAll(!all)}>
@@ -2362,9 +2363,9 @@ function Corrections({ personId }: { personId: string }) {
   const words = copy.corrections
   if (corrections.isError) {
     return (
-      <p className="member__error" role="alert">
+      <Banner tone="error">
         {words.error}
-      </p>
+      </Banner>
     )
   }
   const items = corrections.data?.items ?? []
@@ -2374,11 +2375,11 @@ function Corrections({ personId }: { personId: string }) {
   return (
     <section className="member__section" aria-label={words.title}>
       <SectionHeader title={words.title} />
-      <ul className="member__ledger">
+      <Card as="ul" flush className="member__ledger">
         {shown.map((c) => (
           <CorrectionLine key={c.id} correction={c} />
         ))}
-      </ul>
+      </Card>
       {total > CORRECTIONS_SHOWN && (
         <Button variant="ghost" className="member__more" aria-expanded={all} onClick={() => setAll(!all)}>
           {all ? words.fewer : words.all(total)}

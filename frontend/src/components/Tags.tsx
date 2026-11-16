@@ -1,6 +1,7 @@
 import type { TagOn } from '../api/classTags'
 import { t } from '../i18n/es'
 import { Chip } from './Chip'
+import { PlainList } from './Card'
 import './Tags.css'
 
 const copy = t.tagHours
@@ -40,12 +41,12 @@ export function TagPicker({
 export function TagList({ tags, label }: { tags: readonly TagOn[]; label: string }) {
   if (tags.length === 0) return null
   return (
-    <ul className="tag-list" aria-label={label}>
+    <PlainList className="tag-list" aria-label={label}>
       {tags.map((tag) => (
         <li key={tag.id} className="tag-list__tag">
           {tag.name}
         </li>
       ))}
-    </ul>
+    </PlainList>
   )
 }

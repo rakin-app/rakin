@@ -14,15 +14,8 @@
 }
 
 .join__card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
   margin-top: var(--space-3);
   padding: var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
 }
 
 .join__form,
@@ -47,11 +40,6 @@
 
 .join__legend {
   padding: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-display);
-  letter-spacing: var(--tracking-title);
 }
 
 .join__program,
@@ -71,21 +59,11 @@
 }
 
 .join__consent {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
   font-size: var(--text-sm);
 }
 
 .join__link {
   color: inherit;
-}
-
-.join__consent input {
-  width: 20px;
-  height: 20px;
-  margin: 0;
-  flex: none;
 }
 
 /* Out of sight but not `display: none`, which some scripts skip. */

@@ -29,12 +29,19 @@
   color: var(--color-text-muted);
 }
 
-.page-header__title {
+/* `PageTitle`: every screen's title, in a `PageHeader` or a header of its own. */
+.page-title {
+  margin: 0;
   color: var(--color-heading);
   font-family: var(--font-display);
   font-size: var(--text-3xl);
   font-weight: var(--font-weight-display);
   letter-spacing: var(--tracking-title);
+  overflow-wrap: anywhere;
+}
+
+.page-title--tight {
+  line-height: 1.1;
 }
 
 @media (--desktop) {

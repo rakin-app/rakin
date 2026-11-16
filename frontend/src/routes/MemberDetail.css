@@ -21,17 +21,6 @@
   min-width: 0;
 }
 
-.member__title {
-  margin: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-3xl);
-  font-weight: var(--font-weight-display);
-  letter-spacing: var(--tracking-title);
-  line-height: 1.1;
-  overflow-wrap: anywhere;
-}
-
 .member__subtitle,
 .member__detail {
   color: var(--color-text-muted);
@@ -48,18 +37,6 @@
 
 .member__body {
   padding: var(--space-1) 0 var(--space-6);
-}
-
-.member__card,
-.member__form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
 }
 
 /* A form opened inside a card (Registrar pago, Ajuste…) is a well in it, not a second
@@ -85,16 +62,6 @@
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
-}
-
-/* "Historial", "Graduación": a display heading over its card (v3, #199). */
-.member__section-title {
-  margin: 0;
-  color: var(--color-heading);
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-display);
-  letter-spacing: var(--tracking-title);
 }
 
 .member__owed {
@@ -171,36 +138,10 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.member__error,
-.member__done,
+/* Said before saving, not a failure: "Asignar plan"'s earlier debt (#271). A warning
+   `Banner`, its lines closer together. */
 .member__warning {
-  margin: 0;
-  padding: var(--space-2-5) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-}
-
-.member__error {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-}
-
-.member__done {
-  background: var(--color-success-soft);
-  color: var(--color-success-strong);
-}
-
-/* Said before saving, not a failure: "Asignar plan"'s earlier debt (#271). */
-.member__warning {
-  display: flex;
-  flex-direction: column;
   gap: var(--space-1);
-  background: var(--color-warning-soft);
-  color: var(--color-warning-strong);
-}
-
-.member__warning-line {
-  margin: 0;
 }
 
 .member__note {
@@ -264,18 +205,6 @@
 .member__family .family,
 .member__family .family__note {
   padding: 0;
-}
-
-.member__ledger {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
 }
 
 .member__entry {
@@ -370,7 +299,7 @@
   flex: none;
   margin-left: calc(-1 * var(--space-1));
   color: var(--color-text-subtle);
-  transition: rotate 0.15s ease;
+  transition: rotate var(--duration-fast) var(--ease-out);
 }
 
 .member__entry-button[aria-expanded='true'] .member__entry-chevron {
@@ -505,17 +434,7 @@
 }
 
 .member__choice {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  min-height: 44px;
-}
-
-.member__choice input {
-  margin-top: 3px;
-  width: 20px;
-  height: 20px;
-  flex: none;
+  font-size: var(--text-base);
 }
 
 .member__choice > span {
@@ -530,9 +449,6 @@
 
 /* Its confirmation: the periods it bills, and their total. */
 .member__bill {
-  margin: 0;
-  padding: 0;
-  list-style: none;
   display: grid;
   gap: var(--space-1);
   font-size: var(--text-sm);
@@ -542,15 +458,6 @@
   padding-top: var(--space-1);
   border-top: 1px solid var(--color-border);
   font-weight: var(--font-weight-semibold);
-}
-
-/* A success that offers what comes next: "¿Volvió?" and "Reactivar plan". */
-.member__done-text {
-  margin: 0;
-}
-
-.member__done-action {
-  margin-top: var(--space-2);
 }
 
 /* The plan card's first row of actions, while the ledger they are chosen by loads. */

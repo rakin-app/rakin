@@ -15,7 +15,7 @@ import {
 } from '../api/staff'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
-import { ListRow } from '../components/Card'
+import { Banner, Card, cardClass, ListRow, SectionTitle } from '../components/Card'
 import { Input, Select } from '../components/Field'
 import { formatPhone } from '../format'
 import { t } from '../i18n/es'
@@ -66,12 +66,12 @@ export function StaffSettings() {
         }
       />
       {notice && (
-        <p className="settings__done" role="status">
+        <Banner tone="done">
           {notice}
-        </p>
+        </Banner>
       )}
       {inviting && <InviteForm acting={role.data} onCancel={() => setInviting(false)} onDone={done} />}
-      <ul className="settings__card settings__card--rows settings__menu">
+      <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
         {staff.data.map((member) => (
           <StaffRow
             key={member.person_id}
@@ -86,7 +86,7 @@ export function StaffSettings() {
             onDone={done}
           />
         ))}
-      </ul>
+      </Card>
     </section>
   )
 }
@@ -177,15 +177,15 @@ function StaffPanel({
   const pending = change.isPending || revoke.isPending
 
   return (
-    <div className="settings__card settings__form" role="group" aria-label={member.name}>
-      <h2 className="settings__legend">{copy.panelTitle(member.name, copy.roles[member.role]!)}</h2>
+    <Card as="div" className="settings__card settings__form" role="group" aria-label={member.name}>
+      <SectionTitle className="settings__legend">{copy.panelTitle(member.name, copy.roles[member.role]!)}</SectionTitle>
       <p className="settings__detail">
         {[member.phone && formatPhone(member.phone), member.email].filter(Boolean).join(' · ')}
       </p>
       {(change.isError || revoke.isError) && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {copy.actionFailed}
-        </p>
+        </Banner>
       )}
       <div className="settings__actions">
         <Button disabled={pending} onClick={onClose}>
@@ -218,7 +218,7 @@ function StaffPanel({
           )}
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -272,8 +272,8 @@ function InviteForm({
   }
 
   return (
-    <form className="settings__card settings__form" aria-label={copy.form.title} onSubmit={submit} noValidate>
-      <h2 className="settings__legend">{copy.form.title}</h2>
+    <form className={cardClass({}, 'settings__card settings__form')} aria-label={copy.form.title} onSubmit={submit} noValidate>
+      <SectionTitle className="settings__legend">{copy.form.title}</SectionTitle>
       <Field label={copy.form.name} error={error('name')}>
         {(props) => (
           <Input
@@ -341,9 +341,9 @@ function InviteForm({
         )}
       </Field>
       {save.isError && (
-        <p className="settings__error" role="alert">
+        <Banner tone="error">
           {taken || Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
-        </p>
+        </Banner>
       )}
       <div className="settings__actions">
         <Button disabled={save.isPending} onClick={onCancel}>

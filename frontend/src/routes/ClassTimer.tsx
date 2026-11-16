@@ -56,6 +56,8 @@ import {
   type TimerBlock,
 } from './timerEngine'
 import { signal, silencedBySwitch, switchSignal, unlockSound, useSoundState, useWakeLock, type SoundState } from './timerSignal'
+import { Banner, cardClass, PlainList, SectionTitle } from '../components/Card'
+import { PageTitle } from '../components/PageHeader'
 import './Classes.css'
 import './ClassTimer.css'
 
@@ -125,7 +127,7 @@ export function ClassTimer() {
     const missing = session.error instanceof ApiError && session.error.status === 404
     return (
       <Shell sessionId={sessionId}>
-        <div className="classes__error" role="alert">
+        <Banner tone="error" as="div">
           <p>{missing ? t.admin.session.notFound : copy.error}</p>
           {!missing && (
             <Button
@@ -134,7 +136,7 @@ export function ClassTimer() {
               {copy.retry}
             </Button>
           )}
-        </div>
+        </Banner>
       </Shell>
     )
   }
@@ -172,7 +174,7 @@ function Shell({ sessionId, title, children }: { sessionId: string; title?: stri
         <BackLink to={`/admin/clases/${sessionId}`} label={copy.back} />
         {title && (
           <div className="classes__heading">
-            <h1 className="classes__title">{title}</h1>
+            <PageTitle tight>{title}</PageTitle>
           </div>
         )}
       </header>
@@ -299,7 +301,7 @@ function Prepare({
   if (failed) {
     return (
       <Shell sessionId={session.id} title={session.class_type_name}>
-        <div className="classes__error" role="alert">
+        <Banner tone="error" as="div">
           <p>{copy.error}</p>
           <Button
             onClick={() => {
@@ -310,7 +312,7 @@ function Prepare({
           >
             {copy.retry}
           </Button>
-        </div>
+        </Banner>
       </Shell>
     )
   }
@@ -415,17 +417,17 @@ function PlanEditor({
       }}
     >
       <div className="classes__section-head">
-        <h2 className="classes__section-title">{words.title}</h2>
+        <SectionTitle>{words.title}</SectionTitle>
         {total > 0 && <span className="classes__aside">{words.total(copy.minutes(total))}</span>}
       </div>
       <p className="classes__note">{hint}</p>
       {noKinds && (
-        <p className="classes__error" role="alert">
+        <Banner tone="error">
           {openMat ? words.noSparring : words.noKinds}
-        </p>
+        </Banner>
       )}
       {drafts.length === 0 && !noKinds && <p className="classes__note">{words.empty}</p>}
-      <ol className="timer-editor__list">
+      <PlainList ordered className="timer-editor__list">
         {drafts.map((draft, index) => (
           <li key={draft.id}>
             <DraftCard
@@ -444,7 +446,7 @@ function PlanEditor({
             />
           </li>
         ))}
-      </ol>
+      </PlainList>
       {!openMat && !noKinds && (
         <>
           {full && <p className="classes__note">{words.tooMany(MAX_BLOCKS)}</p>}
@@ -455,9 +457,9 @@ function PlanEditor({
       )}
       <div className="attendance__bar">
         {checked && !valid && (
-          <p className="classes__error" role="alert">
+          <Banner tone="error">
             {words.invalid}
-          </p>
+          </Banner>
         )}
         <Button
           type="submit"
@@ -520,12 +522,12 @@ function DraftCard({
     </div>
   )
   return (
-    <fieldset className="classes__card timer-editor__card">
+    <fieldset className={cardClass({}, 'timer-editor__card')}>
       <legend className="visually-hidden">{words.label(n)}</legend>
       <div className="timer-editor__head">
-        <span className="classes__section-title" aria-hidden="true">
+        <SectionTitle as="span" aria-hidden="true">
           {words.label(n)}
-        </span>
+        </SectionTitle>
         {!fixedKind && (
           <span className="timer-editor__actions">
             <Button
@@ -864,10 +866,10 @@ function Finished({ session, run }: { session: ClassSession; run: RunState }) {
   return (
     <Shell sessionId={session.id} title={session.class_type_name}>
       <section className="classes__section" aria-labelledby="timer-done">
-        <h2 id="timer-done" className="classes__section-title">
+        <SectionTitle id="timer-done">
           {words.title}
-        </h2>
-        <ul className="classes__list">
+        </SectionTitle>
+        <PlainList className="classes__list">
           {run.blocks.map((block) => {
             const result = run.results[block.id]
             const ran = !result
@@ -882,7 +884,7 @@ function Finished({ session, run }: { session: ClassSession; run: RunState }) {
               </li>
             )
           })}
-        </ul>
+        </PlainList>
         <TimerNotes sessionId={session.id} noWakeLock={false} />
         <Button
           variant="primary"
