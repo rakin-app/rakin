@@ -10,6 +10,7 @@ a field of its own (`pagos`, `grados`), absent when the workbook has none.
 """
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -303,3 +304,59 @@ class ImportReport(BaseModel):
     pagos: PaymentReport | None = None
     # The Grados tab's, when the import had one.
     grados: GradeReport | None = None
+
+
+class ImportUndone(BaseModel):
+    """An import's undo (#300): when, by whom, why, and what it removed."""
+
+    at: datetime
+    by: str | None
+    reason: str
+    payments: int
+    grades: int
+    people: int
+    kept: int
+
+
+class RecentImport(BaseModel):
+    """A line of Importar's recent imports: the `history_imported` row (0053)."""
+
+    id: uuid.UUID
+    at: datetime
+    # The name the gym has for whoever imported; null once they are deleted.
+    by: str | None
+    file_name: str | None
+    tabs: list[str]
+    # Per tab, the counts the import wrote (`ImportSummary`, `PaymentSummary`, ...).
+    counts: dict[str, dict[str, int]]
+    undone: ImportUndone | None = None
+
+
+class UndoCounts(BaseModel):
+    """What "Deshacer importación" would remove: its history payments and grades, the
+    people whose fields go back to what the import found, and the fields changed since,
+    which stay."""
+
+    payments: int
+    grades: int
+    people: int
+    kept: int
+
+
+class Undoing(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+
+
+UndoRefusalCode = Literal["undone"]
+
+
+class UndoRefusal(BaseModel):
+    code: UndoRefusalCode
+
+
+class UndoRefused(BaseModel):
+    """409 body."""
+
+    detail: UndoRefusal

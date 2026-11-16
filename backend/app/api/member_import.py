@@ -234,6 +234,9 @@ LOCK_HISTORY = """
 """
 # The fields a row writes; `{fields}` names columns, never a value from the sheet.
 SET_HISTORY = "UPDATE gym_person SET {fields}, updated_at = now() WHERE person_id = :id"
+# One import at a time per gym, and no undo of one meanwhile (#300); released when the
+# transaction ends.
+IMPORT_LOCK = text("SELECT pg_advisory_xact_lock(hashtext('rakin.import'), hashtext(:gym))")
 # The import's own row in the gym's log (0053); `now()` is the transaction's.
 INSERT_IMPORTED = text(
     "INSERT INTO audit_event (id, gym_id, at, actor_id, action, detail)"
@@ -907,10 +910,7 @@ async def import_members(
         # One import at a time per gym, so a second waits and matches the first's people
         # instead of creating them again: a person matched by name has no key to stop it
         # (#203). Released when the transaction ends.
-        await session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtext('rakin.import'), hashtext(:gym))"),
-            {"gym": str(tenant.gym_id)},
-        )
+        await session.execute(IMPORT_LOCK, {"gym": str(tenant.gym_id)})
     timezone: str = await session.scalar(
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )

@@ -617,6 +617,54 @@ export const es = {
         repeated: 'se repite en una fila anterior (misma persona, fecha, monto y mes)',
         too_long: 'es demasiado largo',
       },
+      // Importar's recent imports, and "Deshacer importación" (#300).
+      recentTitle: 'Importaciones recientes',
+      recentHint:
+        'Si una importación quedó mal (una columna corrida, una fecha equivocada), deshazla, corrige la planilla e impórtala de nuevo.',
+      unnamedFile: 'Planilla sin nombre',
+      recentWho: (by: string | null, day: string) => (by ? `${by} · ${day}` : day),
+      recentCounts: (people: number, history: number, payments: number, grades: number) =>
+        [
+          people > 0 && (people === 1 ? '1 persona nueva' : `${people.toLocaleString('es-CL')} personas nuevas`),
+          history > 0 && `historial de ${history === 1 ? '1 persona' : `${history.toLocaleString('es-CL')} personas`}`,
+          payments > 0 && (payments === 1 ? '1 pago anterior' : `${payments.toLocaleString('es-CL')} pagos anteriores`),
+          grades > 0 && (grades === 1 ? '1 grado' : `${grades.toLocaleString('es-CL')} grados`),
+        ]
+          .filter(Boolean)
+          .join(' · ') || 'Sin cambios',
+      undone: (day: string, by: string | null, reason: string) =>
+        `Deshecha el ${day}${by ? ` por ${by}` : ''}. Motivo: ${reason}`,
+      undo: 'Deshacer importación',
+      undoForm: {
+        title: 'Deshacer importación',
+        checking: 'Revisando qué se deshace…',
+        removes: (payments: number, grades: number, people: number) => {
+          const n = (count: number) => count.toLocaleString('es-CL')
+          const rows = [
+            payments > 0 && (payments === 1 ? '1 pago anterior' : `${n(payments)} pagos anteriores`),
+            grades > 0 && (grades === 1 ? '1 grado' : `${n(grades)} grados`),
+          ].filter(Boolean)
+          const removed = rows.length > 0 ? `Se eliminan ${rows.join(' y ')} de esta importación.` : ''
+          const restored =
+            people > 0
+              ? `El historial de ${people === 1 ? '1 persona' : `${n(people)} personas`} (alumno desde, clases antes de Rakin, fecha y motivo de baja) vuelve a como estaba.`
+              : ''
+          return [removed, restored].filter(Boolean).join(' ') || 'Esta importación no dejó historial que deshacer.'
+        },
+        kept: (n: number) =>
+          n === 1
+            ? '1 dato cambiado después de importar se mantiene.'
+            : `${n.toLocaleString('es-CL')} datos cambiados después de importar se mantienen.`,
+        stays: 'Las personas y planes que creó se mantienen. Un exalumno que creó se puede eliminar desde su ficha.',
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe el motivo.',
+        submit: 'Deshacer importación',
+        working: 'Deshaciendo…',
+        cancel: 'Cancelar',
+        failed: 'No pudimos deshacer la importación. Inténtalo de nuevo.',
+        alreadyUndone: 'Esta importación ya se deshizo.',
+      },
+      undoDone: 'Importación deshecha.',
       gradesCreated: (n: number) => (n === 1 ? 'Grados nuevos: 1.' : `Grados nuevos: ${n}.`),
       gradesTitle: 'Grados',
       gradesSummary: (created: number, existing: number, refused: number) =>

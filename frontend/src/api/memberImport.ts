@@ -1,3 +1,4 @@
+import { queryOptions } from '@tanstack/react-query'
 import { apiFetch, ApiError } from './client'
 
 /** What a sheet column can be, in the order the mapping offers them. */
@@ -256,4 +257,59 @@ export function fold(value: string): string {
     .split(/\s+/)
     .filter(Boolean)
     .join(' ')
+}
+
+/** An import's undo (#300): when, by whom, why, and what it removed. */
+export type ImportUndone = {
+  at: string
+  by: string | null
+  reason: string
+  payments: number
+  grades: number
+  people: number
+  kept: number
+}
+
+/** A line of Importar's recent imports. `counts` is per tab, as each tab's summary has it. */
+export type RecentImport = {
+  id: string
+  at: string
+  // The name the gym has for whoever imported; null once they are deleted.
+  by: string | null
+  file_name: string | null
+  tabs: SheetTab[]
+  counts: Partial<Record<SheetTab, Record<string, number>>>
+  undone: ImportUndone | null
+}
+
+/** The gym's latest imports, newest first. Owner and admin. */
+export function recentImportsQuery() {
+  return queryOptions({
+    queryKey: ['import', 'recent'],
+    queryFn: () => apiFetch<RecentImport[]>('/api/import/recent'),
+  })
+}
+
+/** What "Deshacer importación" would remove, and the fields changed since, which stay. */
+export type UndoCounts = { payments: number; grades: number; people: number; kept: number }
+
+const undoPath = (id: string) => `/api/import/${encodeURIComponent(id)}/undo`
+
+/** Owner only. */
+export function undoCountsQuery(id: string) {
+  return queryOptions({
+    queryKey: ['import', 'undo', id],
+    queryFn: () => apiFetch<UndoCounts>(undoPath(id)),
+  })
+}
+
+/** The history the import wrote, gone: its payments and grades, and the fields it set put back. */
+export function undoImport(id: string, reason: string): Promise<void> {
+  return apiFetch<void>(undoPath(id), { method: 'POST', body: JSON.stringify({ reason }) })
+}
+
+/** Whether the API refused because the import was already undone. */
+export function alreadyUndone(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 409) return false
+  return (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code === 'undone'
 }
