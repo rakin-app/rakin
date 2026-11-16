@@ -932,3 +932,15 @@ role was offline. A failed wake is a latency problem here, not a lost message.
 <!-- Everything below the end marker above is yours — `task-init` never
      rewrites it. Repo-specific guidance belongs here: what "Green" means in
      this repo, the pre-PR checklist it resolves to, local conventions. -->
+
+### UX QA runs
+
+A UX QA run audits every screen against a fixed checklist, on seed data in a worktree's own stack, and reports on the standing issue "UX QA runs" ([#341](https://github.com/rakin-app/rakin/issues/341)). The role, its screen list and its checklist are `.claude/commands/ux-qa.md`. Start one from the main checkout:
+
+```bash
+task-work ux-qa-<yyyymmdd> https://github.com/rakin-app/rakin/issues/341 --auto
+```
+
+The worker reads #341 and follows the role; typing `/ux-qa` in its tab starts it by hand. A run opens no PR: it posts one comment on #341, files a few batch tickets labelled `ux-qa`, adds its row to #341's run list, radios `ux-qa-run-complete` and removes its worktree.
+
+The PM runs one before a new gym goes live, after a milestone closes, and after a batch of new screens (roughly five or more since the last run). It then grooms the run's tickets like any other.
