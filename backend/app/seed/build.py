@@ -133,6 +133,11 @@ def local(day: date, hour: int = 0, minute: int = 0) -> datetime:
     return datetime.combine(day, time(hour, minute), tzinfo=ZONE).astimezone(UTC)
 
 
+def season(as_of: date) -> tuple[date, date]:
+    """The seed's fixed-period plan's first and last day: the calendar year of `as_of`."""
+    return date(as_of.year, 1, 1), date(as_of.year, 12, 31)
+
+
 def _rng(*parts: object) -> random.Random:
     return random.Random("/".join((GYM_SLUG, *map(str, parts))))
 
@@ -284,6 +289,15 @@ class _Builder:
     def _periods(self, spec: MemberSpec, plan: PlanSpec) -> tuple[list[_Period], date, date]:
         """The member's billing periods, paid-through date and start date."""
         anchor = self.day(spec.due_in)
+        if plan.kind is PlanKind.FIXED_PERIOD:
+            # Joined weeks before `due_in`'s day: one period, due when they joined or
+            # on its first day if later, as `app.domain.billing` bills it.
+            first, last = season(self.as_of)
+            since = max(first, anchor - timedelta(days=45))
+            owed = None if since > self.as_of else spec.standing
+            period = _Period(first, last, since, owed, latest=True)
+            paid_through = last if owed is Standing.PAID else since - timedelta(days=1)
+            return [period], paid_through, since
         if plan.kind is PlanKind.TRIAL:
             assert plan.credit_expiry_days is not None
             return [], anchor + timedelta(days=plan.credit_expiry_days - 1), anchor
@@ -453,14 +467,15 @@ def _block(session_id: uuid.UUID, position: int, block: Block, rng: random.Rando
 
 def _classes(as_of: date, memberships: list[Row]) -> dict[str, list[Row]]:
     """The `SLOTS` of the schedule, held since `CLASS_DAYS` before `as_of` and run as
-    `CLASS_PLANS`, with a slot's `turnout` share of the adults on a monthly or prepaid
+    `CLASS_PLANS`, with a slot's `turnout` share of the adults on a monthly, prepaid or season
     plan marked at each, which spends no credits; and the classes the schedule has made
     from `as_of` through its horizon, as the nightly `schedule` job would have, none
     marked yet."""
     adults = {
         seed_id("plan", p.key)
         for p in PLANS
-        if p.program == "adults" and p.kind in (PlanKind.MONTHLY, PlanKind.PREPAID)
+        if p.program == "adults"
+        and p.kind in (PlanKind.MONTHLY, PlanKind.PREPAID, PlanKind.FIXED_PERIOD)
     }
     regulars = [
         m
@@ -645,6 +660,8 @@ def build(as_of: date) -> Seed:
                 "price_clp": p.price_clp,
                 "anchor": p.anchor,
                 "period_months": p.period_months,
+                "period_start": season(as_of)[0] if p.kind is PlanKind.FIXED_PERIOD else None,
+                "period_end": season(as_of)[1] if p.kind is PlanKind.FIXED_PERIOD else None,
                 "credits": p.credits,
                 "credit_expiry_days": p.credit_expiry_days,
                 "active": True,

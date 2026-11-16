@@ -20,14 +20,14 @@ const copy = t.admin.member
 const clp = t.common.clp
 
 // The kinds that change plan, to each other: a pack or a trial ends instead (`plan_change_starts`).
-const RECURRING = new Set(['monthly', 'prepaid'])
+const RECURRING = new Set(['monthly', 'prepaid', 'fixed_period'])
 
 /** A membership the member is on now: what "Cambiar plan" changes, and what keeps "Asignar plan" away. */
 export function isLive(membership: Membership | undefined): membership is Membership {
   return membership !== undefined && ['trial', 'active', 'frozen'].includes(membership.status)
 }
 
-/** Whether "Cambiar plan" is offered on `membership`: a monthly or prepaid one, active or frozen. */
+/** Whether "Cambiar plan" is offered on `membership`: a monthly, prepaid or fixed-period one, active or frozen. */
 export function changesPlan(membership: Membership): boolean {
   return RECURRING.has(membership.plan_kind) && (membership.status === 'active' || membership.status === 'frozen')
 }

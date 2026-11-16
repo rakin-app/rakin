@@ -4,7 +4,7 @@ import { submissionKey } from './submit'
 import type { Rank } from './grading'
 import type { MembershipStatus } from './people'
 
-export type PlanKind = 'monthly' | 'prepaid' | 'credits' | 'dropin' | 'trial'
+export type PlanKind = 'monthly' | 'prepaid' | 'fixed_period' | 'credits' | 'dropin' | 'trial'
 
 /** One person on a session's roster (backend `RosterMember`). */
 export type RosterMember = {

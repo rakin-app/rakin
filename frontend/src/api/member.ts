@@ -32,7 +32,7 @@ export type Person = {
   created_at: string
 }
 
-export type PlanKind = 'monthly' | 'prepaid' | 'credits' | 'dropin' | 'trial'
+export type PlanKind = 'monthly' | 'prepaid' | 'fixed_period' | 'credits' | 'dropin' | 'trial'
 
 /** A freeze (backend `Freeze`): from its first day until `to_date`, the day it is Active again. */
 export type Freeze = {

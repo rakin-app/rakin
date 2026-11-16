@@ -19,12 +19,13 @@ Three configuration surfaces absorb all sport variance; the rest of the system i
 | Muay Thai | none, or prajioud arm-band colours | none | none | none |
 | Boxing / MMA | none | none | none | none |
 
-**Plan types** — one enum, five kinds, parameters per kind.
+**Plan types** — one enum, six kinds, parameters per kind.
 
 | Kind | Parameters | Billing behaviour |
 | --- | --- | --- |
 | monthly | price, anchor (signup day or 1st) | charge each period; freeze shifts next due date |
 | prepaid | price, period\_months | one charge, membership valid for N months |
+| fixed\_period | price, period\_start, period\_end | one charge for the gym's dates, the same for every member, due on period\_start or the member's start if later, at the full price; never renews: "Duplicar para el próximo período" copies the plan with the next dates and moves its members across by a plan change |
 | credits | price, credits, credit\_expiry\_days | one charge; each attendance decrements; lapsed at 0 or expiry |
 | dropin | price | one charge, one attendance, no membership persistence |
 | trial | free\_classes or free\_days | zero charge; converts or lapses |
@@ -50,7 +51,7 @@ The phone is a contact, never an identity: phones change, are shared within a fa
 | `guardian_link` | gym\_id, guardian\_person\_id, dependent\_person\_id, created\_at | one payer, N dependents, per gym; one guardian per dependent, one level deep; the guardian is in the gym through it, and gets every notice about the dependent |
 | `gym` | id, name, slug, timezone, settings jsonb | settings = channels, grace days, reminder cadence, bank details, grading scheme, custom-field definitions |
 | `staff` | person\_id, gym\_id, role (owner, admin, coach) | roles are per gym; coach role cannot read ledger, refused by the API and by RLS on `ledger_entry` |
-| `plan` | id, gym\_id, name, kind, program\_id, price\_clp, anchor, period\_months, credits, credit\_expiry\_days, active | kind ∈ monthly, prepaid, credits, dropin, trial; each kind sets only its own parameters; a trial's free classes and free days are `credits` and `credit_expiry_days`; program\_id is the program its members are in, none for a plan open to any class; deactivated, never deleted |
+| `plan` | id, gym\_id, name, kind, program\_id, price\_clp, anchor, period\_months, period\_start, period\_end, credits, credit\_expiry\_days, active | kind ∈ monthly, prepaid, fixed\_period, credits, dropin, trial; each kind sets only its own parameters; a trial's free classes and free days are `credits` and `credit_expiry_days`; program\_id is the program its members are in, none for a plan open to any class; deactivated, never deleted |
 | `membership` | id, person\_id, gym\_id, plan\_id, status, anchor\_day, started\_at, current\_period\_end, credits\_remaining, discount\_pct, next\_plan\_id, next\_plan\_from, cancel\_reason, cancelled\_at, voided\_at, voided\_by, void\_reason, reactivated\_at | status ∈ trial, active, frozen, lapsed, cancelled; a plan change waits in next\_plan\_id until next\_plan\_from, the first period not yet billed; cancelled carries its reason and is final, but for being voided: a plan started by mistake is cancelled as of its start, with its unpaid periods voided (#256); a lapsed plan returns to active only by hand, "Reactivar plan", and reactivated\_at is when it last did (#284) |
 | `membership_freeze` | gym\_id, membership\_id, from\_date, to\_date, reason, created\_by | a freeze from its first day until to\_date, when the membership is Active again; shifts current\_period\_end, and the billing periods not yet started, by the frozen days as it starts; `started` is false on one booked ahead until the job starts it; ended early or given a new end, to\_date moves and the dates move again by the difference; `freeze` is a reserved word in Postgres |
 | `billing_period` | id, membership\_id, period\_start, period\_end, amount\_due\_clp, due\_date | generated nightly; the thing reminders point at |

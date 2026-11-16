@@ -619,7 +619,7 @@ function Actions({
   const reactivates =
     membership.status === 'lapsed' &&
     !membership.voided_at &&
-    (membership.plan_kind === 'monthly' || membership.plan_kind === 'prepaid')
+    (membership.plan_kind === 'monthly' || membership.plan_kind === 'prepaid' || membership.plan_kind === 'fixed_period')
   // "Corregir plan" stays open while one of its fixes is.
   const fixingPlan = open === 'fixPlan' || open === 'voidPlan'
 
