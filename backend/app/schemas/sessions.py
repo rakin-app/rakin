@@ -24,7 +24,7 @@ from pydantic import (
 )
 
 from app.schemas.class_tags import TagIds, TagOn
-from app.schemas.classes import never_null
+from app.schemas.classes import ClassKind, never_null
 
 MAX_TOPIC = 200
 MAX_NOTES = 4000
@@ -93,6 +93,8 @@ class Session(BaseModel):
     id: uuid.UUID
     class_type_id: uuid.UUID
     class_type_name: str
+    # Its class type's kind: an open-access one is the door's day (#348), not a class.
+    class_type_kind: ClassKind
     program_id: uuid.UUID
     program_name: str
     starts_at: datetime

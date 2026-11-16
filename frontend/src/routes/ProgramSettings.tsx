@@ -277,12 +277,13 @@ function ProgramForm({
   )
 }
 
-/** A class type's line: its activity, if any; an open mat says so, then what it costs a
- * pack, and if it does not count. */
+/** A class type's line: its activity, if any; an open mat or open access says so, then
+ * what it costs a pack, and if it does not count. */
 function classTypeSummary(classType: ClassType): string {
   return [
     classType.activity_name,
     classType.kind === 'open_mat' && copy.openMat,
+    classType.kind === 'open_access' && copy.openAccess,
     copy.credits(classType.credit_cost),
     !classType.counts_as_class && copy.notCounted,
   ]
@@ -447,10 +448,10 @@ function ClassTypeForm({
           <Select
             {...props}
             value={drafts.kind}
-            // As the API does: a class counts as a class by default, an open mat does not.
+            // As the API does: a class and open access count as a class by default, an open mat does not.
             onChange={(e) => {
               const kind = e.target.value as ClassKind
-              setDrafts({ ...drafts, kind, counts_as_class: kind === 'class' })
+              setDrafts({ ...drafts, kind, counts_as_class: kind !== 'open_mat' })
             }}
           >
             {CLASS_KINDS.map((kind) => (

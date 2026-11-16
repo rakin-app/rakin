@@ -1,0 +1,110 @@
+@import '../styles/media.css';
+
+.check-in {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding-bottom: var(--space-6);
+}
+
+.check-in .segmented {
+  margin-bottom: var(--space-4);
+}
+
+/* A phone stacks the search and the day at the page's gap, the grid's from 1024px. */
+@media not (--wide) {
+  .check-in__grid {
+    gap: var(--space-5);
+  }
+}
+
+.check-in__grid > .card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.check-in__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.check-in__label {
+  font-weight: var(--font-weight-semibold);
+}
+
+.check-in__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.check-in__note,
+.check-in__aside,
+.check-in__detail {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.check-in__list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A person: the time they came, their name and plan, and the one action, at the end. */
+.check-in__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.check-in__row:first-child {
+  border-top: 0;
+}
+
+.check-in__time {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+}
+
+.check-in__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.check-in__name {
+  overflow-wrap: anywhere;
+  font-weight: var(--font-weight-semibold);
+}
+
+.check-in__warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.check-in__warning {
+  color: var(--color-warning-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.check-in__in {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.check-in__row > .button {
+  flex: 0 0 auto;
+}

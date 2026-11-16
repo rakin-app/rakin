@@ -179,7 +179,7 @@ COUNTS = """
 
 
 @dataclass(frozen=True)
-class _Class:
+class HeldClass:
     id: uuid.UUID
     starts_at: datetime
     cancelled_at: datetime | None
@@ -194,29 +194,31 @@ def _unprocessable(field: str, kind: str, msg: str) -> RequestValidationError:
     return RequestValidationError([{"type": kind, "msg": msg, "loc": ("body", field)}])
 
 
-def _admits(program_id: uuid.UUID | None, held: _Class) -> bool:
+def _admits(program_id: uuid.UUID | None, held: HeldClass) -> bool:
     """Whether a plan in `program_id` covers the class: one in its program, or a plan
     open to any class. The roster's rule, which marks and trials are held to too."""
     return program_id is None or program_id == held.program_id
 
 
-async def _class(session: AsyncSession, session_id: uuid.UUID, *, lock: bool = False) -> _Class:
+async def class_of(
+    session: AsyncSession, session_id: uuid.UUID, *, lock: bool = False
+) -> HeldClass:
     """The session with what the roster needs; locked, every change to its attendance
     waits for this one's."""
     sql = f"{SELECT_SESSION}{' FOR UPDATE OF s' if lock else ''}"
     row = (await session.execute(text(sql), {"id": session_id})).one_or_none()
     if row is None:
         raise SESSION_NOT_FOUND
-    return _Class(**row._mapping)
+    return HeldClass(**row._mapping)
 
 
-def _open(held: _Class) -> None:
+def require_open(held: HeldClass) -> None:
     """A 409 if the class is cancelled: it takes no attendance."""
     if held.cancelled_at is not None:
         raise CANCELLED
 
 
-async def _roster(session: AsyncSession, held: _Class) -> Roster:
+async def _roster(session: AsyncSession, held: HeldClass) -> Roster:
     scheme = readable_scheme(held.settings)
     rows = await session.execute(
         text(ROSTER),
@@ -239,8 +241,8 @@ async def _roster(session: AsyncSession, held: _Class) -> Roster:
     return Roster(session_id=held.id, present=sum(m.present for m in members), members=members)
 
 
-async def _mark(
-    session: AsyncSession, held: _Class, membership_id: uuid.UUID, marked_by: uuid.UUID
+async def mark_present(
+    session: AsyncSession, held: HeldClass, membership_id: uuid.UUID, marked_by: uuid.UUID
 ) -> None:
     row = (await session.execute(text(LOCK_MEMBERSHIP), {"id": membership_id})).one_or_none()
     if row is None:
@@ -274,7 +276,7 @@ async def _mark(
         await session.execute(text(SPEND), {"id": membership_id, "credits": inserted})
 
 
-async def _unmark(session: AsyncSession, held: _Class, membership_id: uuid.UUID) -> None:
+async def unmark(session: AsyncSession, held: HeldClass, membership_id: uuid.UUID) -> None:
     credits = await session.scalar(
         text(DELETE_ATTENDANCE), {"session": held.id, "membership": membership_id}
     )
@@ -302,7 +304,7 @@ async def remove_attendance(session: AsyncSession, session_id: uuid.UUID) -> Non
 
 @router.get("/api/sessions/{session_id}/roster")
 async def get_roster(session_id: uuid.UUID, session: StaffSession) -> Roster:
-    return await _roster(session, await _class(session, session_id))
+    return await _roster(session, await class_of(session, session_id))
 
 
 @router.patch(
@@ -316,16 +318,16 @@ async def change_attendance(
     session: StaffSession,
 ) -> Roster:
     """Mark and unmark at once; the roster as it then stands."""
-    held = await _class(session, session_id, lock=True)
-    _open(held)
+    held = await class_of(session, session_id, lock=True)
+    require_open(held)
     marking = set(body.mark)
     # One membership at a time in id order, as every request here takes them, so two
     # changes to different sessions never wait on each other's locks in a cycle.
     for membership_id in sorted(marking | set(body.unmark)):
         if membership_id in marking:
-            await _mark(session, held, membership_id, tenant.person_id)
+            await mark_present(session, held, membership_id, tenant.person_id)
         else:
-            await _unmark(session, held, membership_id)
+            await unmark(session, held, membership_id)
     return await _roster(session, held)
 
 
@@ -349,8 +351,8 @@ async def add_trial_guest(
     409 names the membership of someone who already has a live one, to mark instead, or
     says `has_left` for someone dado de baja, whom an admin reactivates; a cancelled
     class is a 409 too."""
-    held = await _class(session, session_id, lock=True)
-    _open(held)
+    held = await class_of(session, session_id, lock=True)
+    require_open(held)
     if not await in_gym(session, body.person_id):
         raise _unprocessable("person_id", "unknown_person", "no such person")
     plan = (
@@ -385,7 +387,7 @@ async def add_trial_guest(
     except PersonHasLeft:
         # Someone dado de baja comes back through Reactivar, not a trial.
         raise HAS_LEFT from None
-    await _mark(session, held, membership_id, tenant.person_id)
+    await mark_present(session, held, membership_id, tenant.person_id)
     return await _roster(session, held)
 
 

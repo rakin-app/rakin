@@ -8,7 +8,11 @@ A name is unique within its program, case ignored: a second "Fundamentos" in Kid
 
 A class type is a class or an open mat (`kind`, migration 0028), and `counts_as_class`
 says whether attending one counts towards a student's classes: by default a class does
-and an open mat does not.
+and an open mat does not. The third kind, open access (#348, "Acceso libre"), has no
+classes: people are checked in at the door, at a session of the day that the first
+check-in makes (`app.api.check_in`), and by default it counts. A class type with
+sessions or schedule slots never becomes open access or stops being it (422
+`open_access_kind`): its classes would be one or the other's.
 
 A class type may belong to one of the gym's activities (`activity_id`, #245), so a
 multisport gym's "Fundamentos" can be one activity's; with none it works the same.
@@ -26,7 +30,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.programs import execute_refusing, require_program
 from app.roles import AdminSession, StaffSession
-from app.schemas.classes import ClassType, ClassTypeCreate, ClassTypeUpdate, counts_by_default
+from app.schemas.classes import (
+    ClassKind,
+    ClassType,
+    ClassTypeCreate,
+    ClassTypeUpdate,
+    counts_by_default,
+)
 
 router = APIRouter(prefix="/api/class-types", tags=["classes"])
 
@@ -57,6 +67,27 @@ async def require_activity(session: AsyncSession, activity_id: uuid.UUID | None)
     raise RequestValidationError(
         [{"type": "unknown_activity", "msg": "no such activity", "loc": ("body", "activity_id")}]
     )
+
+
+async def _require_unused(session: AsyncSession, class_type_id: uuid.UUID) -> None:
+    """A 422 on `kind` if the class type has a session or a schedule slot."""
+    used = await session.scalar(
+        text(
+            "SELECT EXISTS (SELECT FROM session WHERE class_type_id = :id)"
+            " OR EXISTS (SELECT FROM schedule_slot WHERE class_type_id = :id)"
+        ),
+        {"id": class_type_id},
+    )
+    if used:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "open_access_kind",
+                    "msg": "a class type with classes cannot become or stop being open access",
+                    "loc": ("body", "kind"),
+                }
+            ]
+        )
 
 
 async def _get(session: AsyncSession, class_type_id: uuid.UUID, *, lock: bool = False) -> ClassType:
@@ -131,8 +162,11 @@ async def update_class_type(
         await require_program(session, changes["program_id"], "program_id")
     if changes.get("activity_id", current.activity_id) != current.activity_id:
         await require_activity(session, changes["activity_id"])
-    if changes.get("kind", current.kind) != current.kind and "counts_as_class" not in changes:
-        changes["counts_as_class"] = counts_by_default(changes["kind"])
+    kind = changes.get("kind", current.kind)
+    if kind != current.kind and ClassKind.OPEN_ACCESS in (kind, current.kind):
+        await _require_unused(session, class_type_id)
+    if kind != current.kind and "counts_as_class" not in changes:
+        changes["counts_as_class"] = counts_by_default(kind)
     fields = {
         "name",
         "program_id",

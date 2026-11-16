@@ -38,6 +38,7 @@ const EVENING: ClassSession = {
   id: 's-evening',
   class_type_id: FUNDAMENTALS.id,
   class_type_name: FUNDAMENTALS.name,
+  class_type_kind: 'class',
   program_id: FUNDAMENTALS.program_id,
   program_name: FUNDAMENTALS.program_name,
   starts_at: '2026-11-09T22:00:00Z',
@@ -60,6 +61,7 @@ const MORNING: ClassSession = {
   id: 's-morning',
   class_type_id: KIDS.id,
   class_type_name: KIDS.name,
+  class_type_kind: 'class',
   program_id: KIDS.program_id,
   program_name: KIDS.program_name,
   starts_at: '2026-11-09T10:00:00Z',
@@ -559,6 +561,9 @@ describe('Clases on a desktop', () => {
     expect(nowOrNext([noon, evening], now('2026-11-09T16:00:00Z'))).toEqual({ session: evening, on: false })
     expect(nowOrNext([{ ...evening, cancelled_at: '2026-11-09T10:00:00Z' }], now('2026-11-09T12:00:00Z'))).toBeNull()
     expect(nowOrNext([nine, noon], now('2026-11-09T23:00:00Z'))).toBeNull()
+    // The open-access day is the door's (#348), never the class now.
+    const door = at('2026-11-09T11:00:00Z', { class_type_kind: 'open_access' })
+    expect(nowOrNext([door, noon], now('2026-11-09T11:30:00Z'))).toEqual({ session: noon, on: false })
   })
 
   it('finds the Monday of the week', () => {

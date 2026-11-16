@@ -16,7 +16,12 @@ who has left since stays its coach.
 Each session carries `present`, how many are marked at it: none is a class whose
 attendance was never taken. The owner's dashboard lists those of the last week
 (`GET /api/sessions/unmarked`, owner and admin), so a class nobody marked does not
-leave the second ledger quietly empty.
+leave the second ledger quietly empty. An open-access session (#348) is left out: it is
+the door's day, not a class, and one whose visits were all undone took no attendance to
+forget.
+
+An open-access class type has no classes to start, schedule or change a class to or
+from: the first check-in of each day makes its session (`app.api.check_in`).
 
 Any staff role may read them and start one, coaches included, since they are who
 start a class and write what it covered; members may not use them at all. Changing
@@ -82,7 +87,8 @@ COACH_FIELDS = frozenset({"topic", "notes", "tag_ids"})
 # Each with its class type, program, coach and tags. RLS keeps every table to the
 # current gym.
 SELECT_SESSION = f"""
-    SELECT s.id, s.class_type_id, c.name AS class_type_name, c.program_id,
+    SELECT s.id, s.class_type_id, c.name AS class_type_name, c.kind AS class_type_kind,
+           c.program_id,
            p.name AS program_name, s.starts_at, s.coach_id, gp.name AS coach_name,
            s.duration_minutes, s.topic, s.notes, s.cancelled_at, s.created_at, s.updated_at,
            (SELECT count(*) FROM attendance a WHERE a.session_id = s.id) AS present,
@@ -107,6 +113,18 @@ async def require_class_type(session: AsyncSession, class_type_id: uuid.UUID) ->
         raise unprocessable("class_type_id", "unknown_class_type", "no such class type")
     if not active:
         raise unprocessable("class_type_id", "inactive_class_type", "the class type is deactivated")
+
+
+async def refuse_open_access(session: AsyncSession, class_type_id: uuid.UUID) -> None:
+    """A 422 if `class_type_id` is open access (#348): it has no classes to start or
+    schedule, only the session of each day its first check-in makes (`app.api.check_in`)."""
+    kind = await session.scalar(
+        text("SELECT kind FROM class_type WHERE id = :id"), {"id": class_type_id}
+    )
+    if kind == ClassKind.OPEN_ACCESS:
+        raise unprocessable(
+            "class_type_id", "open_access", "an open-access class type is checked in at the door"
+        )
 
 
 async def require_coach(session: AsyncSession, person_id: uuid.UUID) -> None:
@@ -182,14 +200,14 @@ async def unmarked_sessions(
     """The last `UNMARKED_DAYS` gym days' sessions with no one marked, latest first.
 
     Only those already started: one set to start later has no attendance to take yet.
-    A cancelled one has none to take at all.
+    A cancelled one has none to take at all, and an open-access one is no class.
     """
     zone = await gym_timezone(session, tenant)
     since = gym_today(zone) - timedelta(days=UNMARKED_DAYS - 1)
     result = await session.execute(
         text(
             f"{SELECT_SESSION} WHERE s.starts_at >= :start AND s.starts_at <= now()"
-            " AND s.cancelled_at IS NULL"
+            " AND s.cancelled_at IS NULL AND c.kind <> 'open_access'"
             " AND NOT EXISTS (SELECT FROM attendance a WHERE a.session_id = s.id)"
             " ORDER BY s.starts_at DESC, lower(c.name), s.created_at"
         ),
@@ -218,6 +236,7 @@ async def start_session(
     session: StaffSession,
 ) -> Session:
     await require_class_type(session, body.class_type_id)
+    await refuse_open_access(session, body.class_type_id)
     coach_id = body.coach_id or tenant.person_id
     await require_coach(session, coach_id)
     duration = body.duration_minutes
@@ -285,6 +304,8 @@ async def update_session(
         await require_coach(session, changes["coach_id"])
     if "class_type_id" in changes:
         await require_class_type(session, changes["class_type_id"])
+        await refuse_open_access(session, current.class_type_id)
+        await refuse_open_access(session, changes["class_type_id"])
         kind = await session.scalar(
             text("SELECT kind FROM class_type WHERE id = :id"), {"id": changes["class_type_id"]}
         )

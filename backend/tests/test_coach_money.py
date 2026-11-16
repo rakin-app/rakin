@@ -74,6 +74,27 @@ def loaded(db: Database) -> Loaded:
     return result
 
 
+# The demo gym has no open access; Entrada's paths (#348) are walked with this one.
+OPEN_ACCESS_ID = uuid.uuid4()
+
+
+@pytest.fixture(scope="module")
+def open_access(db: Database, loaded: Loaded) -> str:
+    program = loaded.seed.class_types[0]["program_id"]
+
+    async def go(conn: asyncpg.Connection) -> None:
+        await conn.execute(
+            "INSERT INTO class_type (id, gym_id, program_id, name, kind)"
+            " VALUES ($1, $2, $3, 'Acceso libre', 'open_access')",
+            OPEN_ACCESS_ID,
+            GYM_ID,
+            program,
+        )
+
+    run(db.admin_url, go)
+    return str(OPEN_ACCESS_ID)
+
+
 @pytest.fixture(scope="module")
 def client(db: Database, loaded: Loaded) -> Iterator[TestClient]:
     app = create_app(make_settings(database_url=db.api_url))
@@ -113,17 +134,22 @@ def staff_gets(client: TestClient, values: dict[str, str]) -> Iterator[str]:
             for p in get.get("parameters", [])
             if p["in"] == "query" and p.get("required")
         }
-        url = path.format(**values)
+        fill = values
+        if path.startswith("/api/check-in/"):
+            fill = {**values, "class_type_id": values["open_access_id"]}
+        url = path.format(**fill)
         if query:
             url += "?" + "&".join(f"{k}={v}" for k, v in query.items())
         yield url
 
 
 @pg
-def test_no_get_a_coach_can_call_sends_money(client: TestClient, loaded: Loaded) -> None:
+def test_no_get_a_coach_can_call_sends_money(
+    client: TestClient, loaded: Loaded, open_access: str
+) -> None:
     headers = as_gym(GYM_ID, COACH_ID)
     answered, leaks = [], {}
-    for url in staff_gets(client, ids(loaded)):
+    for url in staff_gets(client, {**ids(loaded), "open_access_id": open_access}):
         response = client.get(url, headers=headers)
         # A 404 or 422 would mean the walk filled a parameter wrong and checked nothing.
         assert response.status_code in (200, 403), (url, response.status_code, response.text)

@@ -7,6 +7,7 @@ import {
   activeClassTypesQuery,
   daySessionsQuery,
   defaultDurationQuery,
+  isClass,
   startSession,
   todaySessionsQuery,
   useGymTimeZone,
@@ -17,6 +18,7 @@ import {
 import { Button, buttonClass } from '../components/Button'
 import { Banner, Card, listRowClass, ListRowContent, PlainList, SectionHeader, SectionTitle } from '../components/Card'
 import { Input, Select } from '../components/Field'
+import { EntradaCard } from '../components/EntradaCard'
 import { ChevronRightIcon } from '../components/icons'
 import { Grid, PageContainer, useWide } from '../components/Layout'
 import { PageHeader, PageTitle } from '../components/PageHeader'
@@ -48,6 +50,10 @@ const copy = t.admin.classes
  *
  * Under the day, "Horas por etiqueta" (#243): the gym's classes held in a month or a
  * year, hours per tag.
+ *
+ * A gym with open access (#348) has "Entrada" under the class now: the door, where
+ * people are checked in with no class. Its day's session is on the day's list, but is
+ * never the class now, never created here and never flagged as unmarked.
  */
 export function Classes() {
   usePageTitle(copy.title)
@@ -68,6 +74,7 @@ export function Classes() {
         <Grid>
           <div className="classes__column">
             {day.data && isToday && <NowCard sessions={day.data.sessions} timeZone={day.data.timezone} />}
+            <EntradaCard />
             <StartSession />
             <section className="classes__section" aria-labelledby="classes-day">
               <div className="classes__section-head">
@@ -203,7 +210,7 @@ function WeekCount({ session }: { session: ClassSession }) {
     return <span className="classes__flag classes__flag--cancelled">{copy.today.cancelled}</span>
   }
   if (session.present > 0) return <span className="classes__aside">{copy.today.present(session.present)}</span>
-  if (new Date(session.starts_at) <= new Date()) return <span className="classes__flag">{copy.today.unmarked}</span>
+  if (isClass(session.class_type_kind) && new Date(session.starts_at) <= new Date()) return <span className="classes__flag">{copy.today.unmarked}</span>
   return null
 }
 
@@ -260,9 +267,10 @@ function Picked({ session, timeZone }: { session: ClassSession; timeZone: string
   )
 }
 
-/** The class on now, else the next one today: neither cancelled. Null once today's are over. */
+/** The class on now, else the next one today: neither cancelled, nor the open-access day.
+ * Null once today's are over. */
 export function nowOrNext(sessions: readonly ClassSession[], now: Date): { session: ClassSession; on: boolean } | null {
-  const standing = sessions.filter((session) => session.cancelled_at === null)
+  const standing = sessions.filter((session) => session.cancelled_at === null && isClass(session.class_type_kind))
   const on = standing.find((session) => {
     const start = new Date(session.starts_at).getTime()
     // A class with no duration counts as on for its first hour.
@@ -334,7 +342,8 @@ function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: st
   // A class yet to start has no attendance to take: no flag until it has. A cancelled
   // one never has: it says so instead.
   const cancelled = session.cancelled_at !== null
-  const unmarked = !cancelled && session.present === 0 && new Date(session.starts_at) <= new Date()
+  const unmarked =
+    !cancelled && isClass(session.class_type_kind) && session.present === 0 && new Date(session.starts_at) <= new Date()
   const name = copy.today.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)
   const detail = copy.today.detail(session.program_name, session.coach_name)
   const topic = session.topic ?? copy.today.noTopic
@@ -394,7 +403,11 @@ function StartSession() {
 }
 
 function StartBody() {
-  const classTypes = useQuery(activeClassTypesQuery())
+  // Open access is checked in at Entrada, never created as a class.
+  const classTypes = useQuery({
+    ...activeClassTypesQuery(),
+    select: (types) => types.filter((type) => isClass(type.kind)),
+  })
   return classTypes.isPending ? (
     <Loading className="classes__note">{copy.loading}</Loading>
   ) : classTypes.isError ? (
