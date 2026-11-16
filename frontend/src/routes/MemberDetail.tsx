@@ -55,7 +55,7 @@ import {
   type RefundablePayment,
   type TimelineEntry,
 } from '../api/member'
-import { myRoleQuery, readsLedger } from '../api/me'
+import { myRoleQuery, readsLedger, type StaffRole } from '../api/me'
 import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
@@ -63,7 +63,7 @@ import { Button, buttonClass } from '../components/Button'
 import { Chip } from '../components/Chip'
 import { BackLink } from '../components/BackLink'
 import { Input, Select } from '../components/Field'
-import { ChevronLeftIcon, ChevronRightIcon, WhatsAppIcon } from '../components/icons'
+import { ChevronRightIcon, WhatsAppIcon } from '../components/icons'
 import { Grid, PageContainer } from '../components/Layout'
 import { MemberMatTime } from '../components/MatTime'
 import { TagHoursCard } from '../components/TagHours'
@@ -72,6 +72,7 @@ import { FreezeRequestRow } from '../components/FreezeRequests'
 import { ReminderLink } from '../components/ReminderLink'
 import { StatusPill } from '../components/StatusPill'
 import { addDays, isoDay, monthName, monthYear, shortDay } from '../format'
+import { SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { FamilyPanel } from './FamilyPanel'
@@ -80,7 +81,7 @@ import { GradeForm } from './GradeForm'
 import { PersonExtraLines } from './PersonExtraLines'
 import { PersonHistory } from './PersonHistory'
 import { PersonData } from './PersonData'
-import { AssignPlan, ChangePlanForm, changesPlan } from './PersonPlan'
+import { AssignForm, AssignPlan, assignsPlan, ChangePlanForm, changesPlan, isLive } from './PersonPlan'
 import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
 import { useSubmit } from '../api/submit'
@@ -191,7 +192,7 @@ export function MemberDetail() {
               membership={membership}
               money={money}
               earlier={money ? <EarlierDebt memberships={memberships.data} shown={membership} /> : null}
-              assign={<AssignPlan person={person.data} membership={membership} role={role.data} done={assigned} setDone={setAssigned} />}
+              assign={{ person: person.data, role: role.data, done: assigned, setDone: setAssigned }}
             />
           ) : (
             <>
@@ -208,7 +209,7 @@ export function MemberDetail() {
           <MemberTagHours personId={personId} />
           <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
           <section className="member__section" aria-label={t.admin.family.toggle}>
-            <h2 className="member__section-title">{t.admin.family.toggle}</h2>
+            <SectionHeader title={t.admin.family.toggle} />
             <div className="member__card member__family">
               <FamilyPanel person={person.data} />
             </div>
@@ -236,9 +237,7 @@ function Shell({
   return (
     <PageContainer className="member">
       <header className="member__header">
-        <BackLink to="/admin/alumnos" label={copy.back} className={buttonClass({ icon: true })}>
-          <ChevronLeftIcon />
-        </BackLink>
+        <BackLink to="/admin/alumnos" label={copy.back} />
         {title && (
           <div className="member__heading">
             <h1 className="member__title">{title}</h1>
@@ -295,6 +294,15 @@ export function whatsappUrl(person: Pick<Person, 'phone' | 'no_whatsapp'>): stri
   return digits && !person.no_whatsapp ? `https://wa.me/${digits}` : null
 }
 
+/** "Asignar plan"'s part on the plan card: who to, by whom, and what it did. */
+type Assigning = {
+  person: Person
+  role: StaffRole | null | undefined
+  /** What "Asignar plan" did, kept by the ficha as the new plan takes this card's place. */
+  done: string | null
+  setDone: (message: string | null) => void
+}
+
 /** The plan and how it stands; with `money`, what is owed, the actions and the ledger.
  * `assign` is "Asignar plan", which offers itself once this plan has ended, and
  * `earlier` what other plans still owe, under the card (#249). */
@@ -309,7 +317,7 @@ function Standing({
   membership: Membership
   money: boolean
   earlier: ReactNode
-  assign: ReactNode
+  assign: Assigning
 }) {
   const ledger = useQuery({ ...membershipLedgerQuery(membership.id), enabled: money })
   const data = money ? ledger.data : undefined
@@ -348,8 +356,23 @@ function Standing({
             {copy.ledgerError}
           </p>
         )}
-        {data && <Actions personId={personId} membership={membership} ledger={data} />}
-        {assign}
+        {data ? (
+          <Actions
+            personId={personId}
+            membership={membership}
+            ledger={data}
+            assign={assignsPlan(assign.person, membership, assign.role) ? assign : undefined}
+          />
+        ) : (
+          // With no ledger to choose by, "Asignar plan" on its own.
+          ledger.isError && <AssignPlan membership={membership} {...assign} />
+        )}
+        {/* One place whether the new plan's ledger is in yet or not. */}
+        {isLive(membership) && assign.done && (
+          <p className="member__done" role="status">
+            {assign.done}
+          </p>
+        )}
       </section>
       {earlier}
       {data && <Ledger membership={membership} ledger={data} />}
@@ -547,6 +570,7 @@ type Open =
   | 'fixPlan'
   | 'voidPlan'
   | 'reactivate'
+  | 'assign'
   | null
 
 /** What the plan's periods still owe: what "Anular plan" voids. */
@@ -554,11 +578,33 @@ function unpaid(ledger: MembershipLedger): number {
   return ledger.periods.reduce((sum, p) => sum + p.outstanding_clp, 0)
 }
 
-function Actions({ personId, membership, ledger }: { personId: string; membership: Membership; ledger: MembershipLedger }) {
+/** What the plan card offers, in the order it reaches for its secondary and its menu. */
+type Action = 'payment' | 'reactivate' | 'assign' | 'endFreeze' | 'editFreeze' | 'freeze' | 'changePlan' | 'refund' | 'fixPlan'
+
+/**
+ * The plan card's actions (#360): one primary, chosen by how the plan stands ("Registrar
+ * pago" when something is owed, "Reactivar plan" when it lapsed, "Asignar plan" when
+ * none runs), one secondary beside it, and the rest under "Más acciones". What cannot be
+ * done here is not offered, rather than greyed out with no reason. A charge's fixes are
+ * on its Libro line (#279); a refund is there and here.
+ */
+function Actions({
+  personId,
+  membership,
+  ledger,
+  assign,
+}: {
+  personId: string
+  membership: Membership
+  ledger: MembershipLedger
+  /** "Asignar plan", when it is offered. */
+  assign?: Assigning
+}) {
   const periods = ledger.open_periods
   const payments = ledger.refundable_payments
   const freeze = membership.freeze
   const [open, setOpen] = useState<Open>(null)
+  const [more, setMore] = useState(false)
   const [done, setDone] = useState<string | null>(null)
   // A payment settled the last debt of this lapsed plan: "Reactivar plan" is offered (#284).
   const [offer, setOffer] = useState(false)
@@ -569,71 +615,71 @@ function Actions({ personId, membership, ledger }: { personId: string; membershi
     (membership.plan_kind === 'monthly' || membership.plan_kind === 'prepaid')
   // "Corregir plan" stays open while one of its fixes is.
   const fixingPlan = open === 'fixPlan' || open === 'voidPlan'
+
+  const offered: Action[] = [
+    ...(reactivates ? (['reactivate'] as const) : []),
+    ...(assign ? (['assign'] as const) : []),
+    'payment',
+    ...(freeze ? (['endFreeze', 'editFreeze'] as const) : membership.status === 'active' ? (['freeze'] as const) : []),
+    ...(changesPlan(membership) ? (['changePlan'] as const) : []),
+    ...(payments.length > 0 ? (['refund'] as const) : []),
+    'fixPlan',
+  ]
+  const primary: Action = ledger.owed_clp > 0 ? 'payment' : (offered[0] ?? 'payment')
+  const [secondary, ...rest] = offered.filter((action) => action !== primary)
+  const label: Record<Action, string> = {
+    payment: copy.record,
+    reactivate: copy.reactivatePlan,
+    assign: copy.assignPlan,
+    endFreeze: freeze?.started ? copy.endFreeze : copy.callOffFreeze,
+    editFreeze: copy.editFreeze,
+    freeze: copy.freeze,
+    changePlan: copy.changePlan,
+    refund: copy.refund,
+    fixPlan: copy.fix.plan,
+  }
+  const opens = (action: Action) => (action === 'fixPlan' ? fixingPlan : open === action)
+
   const toggle = (form: Open) => {
     setDone(null)
     setOffer(false)
+    if (form === 'assign') assign?.setDone(null)
     setOpen(open === form ? null : form)
   }
+  const choose = (action: Action) => toggle(action === 'fixPlan' && fixingPlan ? open : action)
   const finish = (message: string, settledLapsed = false) => {
     setOpen(null)
+    setMore(false)
     setDone(message)
     setOffer(settledLapsed)
   }
   return (
     <>
-      {/* "Registrar pago" on a line of its own: the others fit beside each other at 390px only without it. */}
-      <Button variant="primary" fullWidth aria-expanded={open === 'payment'} onClick={() => toggle('payment')}>
-        {copy.record}
-      </Button>
-      {/* What cannot be done here is not offered, rather than greyed out with no reason. A
-          charge's fixes are on its Libro line (#279); a refund is there and here. */}
-      {(payments.length > 0 || (!freeze && membership.status === 'active')) && (
-        <div className="member__actions member__actions--wrap">
-          {payments.length > 0 && (
-            <Button aria-expanded={open === 'refund'} onClick={() => toggle('refund')}>
-              {copy.refund}
+      <div className="member__actions">
+        <Button variant="primary" aria-expanded={opens(primary)} onClick={() => choose(primary)}>
+          {label[primary]}
+        </Button>
+        {secondary && (
+          <Button aria-expanded={opens(secondary)} onClick={() => choose(secondary)}>
+            {label[secondary]}
+          </Button>
+        )}
+      </div>
+      {rest.length > 0 && (
+        <Button variant="ghost" className="member__more-actions" aria-expanded={more} onClick={() => setMore(!more)}>
+          {copy.moreActions}
+        </Button>
+      )}
+      {more && rest.length > 0 && (
+        <div className="member__actions member__actions--wrap" role="group" aria-label={copy.moreActions}>
+          {rest.map((action) => (
+            <Button key={action} aria-expanded={opens(action)} onClick={() => choose(action)}>
+              {label[action]}
             </Button>
-          )}
-          {!freeze && membership.status === 'active' && (
-            <Button aria-expanded={open === 'freeze'} onClick={() => toggle('freeze')}>
-              {copy.freeze}
-            </Button>
-          )}
-        </div>
-      )}
-      {/* Two long labels: side by side where they fit whole, else one under the other. */}
-      {freeze && (
-        <div className="member__actions member__actions--wrap">
-          <Button aria-expanded={open === 'editFreeze'} onClick={() => toggle('editFreeze')}>
-            {copy.editFreeze}
-          </Button>
-          <Button aria-expanded={open === 'endFreeze'} onClick={() => toggle('endFreeze')}>
-            {freeze.started ? copy.endFreeze : copy.callOffFreeze}
-          </Button>
-        </div>
-      )}
-      {/* The plan itself, on a line of its own (#249): money, so the owner and admins only. */}
-      {changesPlan(membership) && (
-        <div className="member__actions">
-          <Button aria-expanded={open === 'changePlan'} onClick={() => toggle('changePlan')}>
-            {copy.changePlan}
-          </Button>
-        </div>
-      )}
-      {/* A lapsed plan brought back by hand (#284), never by a payment on its own. */}
-      {reactivates && (
-        <div className="member__actions">
-          <Button aria-expanded={open === 'reactivate'} onClick={() => toggle('reactivate')}>
-            {copy.reactivatePlan}
-          </Button>
+          ))}
         </div>
       )}
       {/* Fixing the plan as a whole (#279): voided with a reason (#256), or a cobro extra. */}
-      <div className="member__actions">
-        <Button aria-expanded={fixingPlan} onClick={() => toggle(fixingPlan ? open : 'fixPlan')}>
-          {copy.fix.plan}
-        </Button>
-      </div>
       {fixingPlan && (
         <div className="member__fix-choices" role="group" aria-label={copy.fix.plan}>
           {!membership.voided_at && (
@@ -702,6 +748,17 @@ function Actions({ personId, membership, ledger }: { personId: string; membershi
       )}
       {open === 'reactivate' && reactivates && (
         <ReactivateForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'assign' && assign && (
+        <AssignForm
+          person={assign.person}
+          onCancel={() => setOpen(null)}
+          onDone={(message) => {
+            setOpen(null)
+            setMore(false)
+            assign.setDone(message)
+          }}
+        />
       )}
     </>
   )
@@ -1738,11 +1795,13 @@ function Attendance({ personId }: { personId: string }) {
   }
   const { last_30_days: recent, total, before_rakin: before } = attendance.data
   return (
-    <section className="member__card" aria-label={words.title}>
-      <span className="member__eyebrow">{words.title}</span>
-      <div className="member__rank">
-        <span className="member__rank-label">{recent}</span>
-        <span className="member__detail">{words.detail(recent, total, before)}</span>
+    <section className="member__section" aria-label={words.title}>
+      <SectionHeader title={words.title} />
+      <div className="member__card">
+        <div className="member__rank">
+          <span className="member__rank-label">{recent}</span>
+          <span className="member__detail">{words.detail(recent, total, before)}</span>
+        </div>
       </div>
     </section>
   )
@@ -1780,7 +1839,7 @@ function GraduationSection({ personId, canAward }: { personId: string; canAward:
 
   return (
     <section className="member__section" aria-label={words.title}>
-      <h2 className="member__section-title">{words.title}</h2>
+      <SectionHeader title={words.title} />
       <div className="member__card">
         {current ? (
           <div className="member__rank">
@@ -2195,7 +2254,7 @@ function Ledger({ membership, ledger }: { membership: Membership; ledger: Member
 
   return (
     <section className="member__section" aria-label={copy.ledger.title}>
-      <h2 className="member__section-title">{copy.ledger.title}</h2>
+      <SectionHeader title={copy.ledger.title} />
       {done && (
         <p className="member__done" role="status">
           {done}
@@ -2305,7 +2364,7 @@ function Corrections({ personId }: { personId: string }) {
   const shown = all ? items : items.slice(0, CORRECTIONS_SHOWN)
   return (
     <section className="member__section" aria-label={words.title}>
-      <h2 className="member__section-title">{words.title}</h2>
+      <SectionHeader title={words.title} />
       <ul className="member__ledger">
         {shown.map((c) => (
           <CorrectionLine key={c.id} correction={c} />
@@ -2475,6 +2534,7 @@ function MemberTagHours({ personId }: { personId: string }) {
   return (
     <TagHoursCard
       title={t.tagHours.theirs}
+      headed
       today={useGymToday()}
       query={(stretch: Stretch) => personTagHoursQuery(personId, stretch)}
     />

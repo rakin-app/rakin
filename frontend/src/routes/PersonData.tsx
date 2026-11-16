@@ -14,6 +14,7 @@ import { duplicateOf, updatePerson, type PersonEdit } from '../api/people'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
 import { formatPhone, formatRut } from '../format'
+import { SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 import { FieldInput, valueOf } from './CustomFieldsPanel'
 import { useSubmit } from '../api/submit'
@@ -34,7 +35,7 @@ export function PersonData({ person }: { person: Person }) {
 
   return (
     <section className="member__section" aria-label={words.title}>
-      <h2 className="member__section-title">{words.title}</h2>
+      <SectionHeader title={words.title} />
       {person.missing_phone && (
         <p className="member__error" role="status">
           {copy.missingPhone}

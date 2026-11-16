@@ -20,7 +20,6 @@ import { Button, buttonClass } from '../components/Button'
 import { BackLink } from '../components/BackLink'
 import { Card, EmptyState, ListRowContent, listRowClass, SectionHeader } from '../components/Card'
 import { Field, Input, SearchInput, Select } from '../components/Field'
-import { ChevronLeftIcon } from '../components/icons'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { hasRanks, RankFilter, rankFilters, type RankChoice } from '../components/RankFilter'
@@ -82,11 +81,7 @@ export function SubHeader({
     <header className="extra__header">
       <BackLink
         to={back === 'pagos' ? '/admin/pagos' : '/admin/pagos/cobros'}
-        label={back === 'pagos' ? copy.back : copy.title}
-        className={buttonClass({ icon: true })}
-      >
-        <ChevronLeftIcon />
-      </BackLink>
+        label={back === 'pagos' ? copy.back : copy.title} />
       <div className="extra__heading">
         <h1 className="extra__title">{title}</h1>
         {subtitle && <p className="extra__subtitle">{subtitle}</p>}

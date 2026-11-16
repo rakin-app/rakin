@@ -3,10 +3,9 @@ import { Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect, useRef, type ComponentType } from 'react'
 import { useGrades } from '../api/activities'
 import { managesGym, myRoleQuery } from '../api/me'
-import { buttonClass } from '../components/Button'
 import { BackLink } from '../components/BackLink'
 import { ListRowContent, listRowClass } from '../components/Card'
-import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
+import { ChevronRightIcon } from '../components/icons'
 import { PageContainer, useDesktop } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
@@ -100,21 +99,10 @@ export function Settings() {
   return (
     <div className="settings">
       <PageContainer>
-        {inSection && (
-          <BackLink
-            to="/admin/ajustes"
-            label={copy.backLabel}
-            className={buttonClass({ variant: 'ghost', className: 'settings__back' })}
-          >
-            {(back) => (
-              <>
-                <ChevronLeftIcon />
-                {back.previous ? (back.name ?? t.common.back) : copy.back}
-              </>
-            )}
-          </BackLink>
-        )}
-        <PageHeader title={inSection ? section.label : copy.title} />
+        <PageHeader
+          title={inSection ? section.label : copy.title}
+          back={inSection && <BackLink to="/admin/ajustes" label={copy.backLabel} />}
+        />
         {managesGym(role.data) ? (
           <>
             {desktop && <SectionTabs current={section} />}

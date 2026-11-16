@@ -1132,6 +1132,7 @@ export const es = {
       },
       // "Reactivar plan" (#284): a lapsed plan Active again, billing from where it left off or from today.
       reactivatePlan: 'Reactivar plan',
+      moreActions: 'Más acciones',
       reactivateForm: {
         title: 'Reactivar plan',
         intro:
@@ -1497,7 +1498,6 @@ export const es = {
         joinLink: 'El link para que se inscriban solos.',
         account: 'Tu nombre, tu email y cerrar sesión.',
       },
-      back: 'Ajustes',
       backLabel: 'Volver a Ajustes',
       account: {
         title: 'Cuenta',

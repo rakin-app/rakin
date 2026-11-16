@@ -552,3 +552,8 @@
 .member__done-action {
   margin-top: var(--space-2);
 }
+
+/* "Más acciones", under the plan card's two actions: what else can be done (#360). */
+.member__more-actions {
+  align-self: flex-start;
+}

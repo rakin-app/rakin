@@ -12,7 +12,7 @@ import {
   type Validated,
 } from '../api/review'
 import { remindersQuery, type PaymentReminder } from '../api/reminders'
-import { Button, buttonClass } from '../components/Button'
+import { Button } from '../components/Button'
 import { BackLink } from '../components/BackLink'
 import { Input } from '../components/Field'
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
@@ -61,9 +61,7 @@ export function ValidateProof() {
   return (
     <div className="review">
       <header className="review__header">
-        <BackLink to="/admin" label={copy.back} className={buttonClass({ icon: true })}>
-          <ChevronLeftIcon />
-        </BackLink>
+        <BackLink to="/admin" label={copy.back} />
         <div className="review__heading">
           <span className="review__eyebrow">{item ? copy.position(at + 1, items.length) : copy.title}</span>
           <h1 className="review__title">{item ? item.person_name : copy.title}</h1>

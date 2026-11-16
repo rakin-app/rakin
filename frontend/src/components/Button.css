@@ -26,6 +26,8 @@
 }
 
 .button--icon {
+  /* Never squeezed under its 44px by a long title beside it (#360). */
+  flex: none;
   width: var(--control-height);
   height: var(--control-height);
   padding: 0;
