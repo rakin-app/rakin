@@ -2,8 +2,9 @@
 
 A guardian is anyone in the gym; a dependent is either someone already in it or a new
 person, added as anyone is (`add_to_gym`): by their own RUT when given, else by name
-alone, since kids have neither a RUT on hand nor an email. Every staff role may use
-it, as for the rest of the people API; members may not.
+alone, since kids have neither a RUT on hand nor an email. A minor's guardian is
+never unlinked: with none, notices would reach the child (#368). Every staff role may
+use it, as for the rest of the people API; members may not.
 """
 
 import uuid
@@ -14,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import NOT_FOUND, add_to_gym, in_gym
+from app.domain.dates import gym_today, is_minor
 from app.roles import StaffSession
 from app.schemas.guardians import (
     ConflictCode,
@@ -23,7 +25,7 @@ from app.schemas.guardians import (
     LinkDependent,
     NewDependent,
 )
-from app.schemas.people import PersonInGym, PersonRef
+from app.schemas.people import MINOR_NEEDS_GUARDIAN, PersonInGym, PersonRef
 
 router = APIRouter(prefix="/api/people", tags=["people"])
 
@@ -43,6 +45,13 @@ FAMILY = """
     FROM guardian_link gl
     JOIN gym_person gp ON gp.gym_id = gl.gym_id AND gp.person_id = gl.dependent_person_id
     WHERE gl.guardian_person_id = :id
+"""
+
+# The dependent's birth date and the gym's timezone, to say whether they are a minor.
+DEPENDENT_AGE = """
+    SELECT gp.dob, gp.left_on, g.timezone
+    FROM gym_person gp JOIN gym g ON g.id = gp.gym_id
+    WHERE gp.person_id = :id
 """
 
 LINK = """
@@ -116,7 +125,15 @@ async def add_dependent(
 async def remove_dependent(
     person_id: uuid.UUID, dependent_id: uuid.UUID, session: StaffSession
 ) -> Response:
-    """Unlink; both people stay in the gym."""
+    """Unlink; both people stay in the gym. A minor still here keeps their guardian: a 422."""
+    dependent = (await session.execute(text(DEPENDENT_AGE), {"id": dependent_id})).one_or_none()
+    if (
+        dependent is not None
+        and dependent.dob is not None
+        and dependent.left_on is None
+        and is_minor(dependent.dob, gym_today(dependent.timezone))
+    ):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, MINOR_NEEDS_GUARDIAN)
     result = await session.execute(
         text(
             "DELETE FROM guardian_link"

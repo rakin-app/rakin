@@ -153,6 +153,7 @@ def entered(body: dict[str, Any]) -> dict[str, Any]:
         "no_whatsapp",
         "missing_phone",
         "missing_rut",
+        "missing_guardian",
     )
     return {k: v for k, v in body.items() if k not in shown}
 

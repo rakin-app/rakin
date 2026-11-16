@@ -20,6 +20,7 @@ const CAMILA: MemberRow = {
   no_whatsapp: false,
   missing_phone: false,
   missing_rut: false,
+  missing_guardian: false,
   rut: null,
   membership: null,
   guardian: null,
@@ -34,6 +35,7 @@ const MATEO: MemberRow = {
   no_whatsapp: false,
   missing_phone: false,
   missing_rut: false,
+  missing_guardian: false,
   rut: null,
   membership: null,
   guardian: { id: 'camila', name: 'Camila Ortiz' },
@@ -205,6 +207,21 @@ describe('Familia', () => {
     await userEvent.click(within(asking).getByRole('button', { name: copy.unlink }))
 
     await waitFor(() => expect(calls).toEqual([{ method: 'DELETE', path: '/api/people/camila/dependents/mateo', body: undefined }]))
+  })
+
+  it('says a minor keeps their guardian when the API refuses the unlink (#368)', async () => {
+    stubApi(
+      { mateo: { guardian: { id: 'camila', name: 'Camila Ortiz' }, dependents: [] } },
+      { status: 422, body: { detail: 'a minor needs a guardian' } },
+    )
+    openFamily('Mateo Ortiz')
+
+    const panel = await screen.findByRole('heading', { name: copy.guardian })
+    await userEvent.click(within(panel.parentElement!).getByRole('button', { name: copy.unlinkLabel('Camila Ortiz') }))
+    const asking = screen.getByRole('group', { name: copy.unlinkLabel('Camila Ortiz') })
+    await userEvent.click(within(asking).getByRole('button', { name: copy.unlink }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.refused.minor)
   })
 
   it('says why a link was refused and keeps what was typed', async () => {

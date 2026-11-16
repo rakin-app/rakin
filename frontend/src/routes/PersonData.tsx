@@ -47,6 +47,11 @@ export function PersonData({ person }: { person: Person }) {
           {copy.missingRut}
         </Banner>
       )}
+      {person.missing_guardian && (
+        <Banner tone="error" role="status">
+          {copy.missingGuardian}
+        </Banner>
+      )}
       {editing ? (
         <DataForm
           person={person}
@@ -295,6 +300,8 @@ function DataForm({
             form.refused.identity
           ) : refusedFor(save.error, 'a phone is required') ? (
             form.refused.phone
+          ) : refusedFor(save.error, 'a minor needs a guardian') ? (
+            form.refused.minor
           ) : save.error instanceof ApiError && save.error.status === 422 ? (
             form.refused.invalid
           ) : (

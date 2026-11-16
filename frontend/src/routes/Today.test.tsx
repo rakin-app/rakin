@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
 import type { FreezeRequest } from '../api/freezeRequests'
 import type { InactiveMember } from '../api/inactive'
+import type { MemberRow } from '../api/people'
 import type { PaymentReminder } from '../api/reminders'
 import type { ProofReview } from '../api/review'
 import type { ClassSession, SessionDay, UnmarkedSessions } from '../api/sessions'
@@ -185,6 +186,8 @@ type Stub = {
   setupFails?: boolean
   // The freezes students asked for (#270).
   freezeRequests?: FreezeRequest[]
+  // Minors with no guardian, by name: "Falta apoderado" (#368).
+  unguarded?: string[]
 }
 
 type Setup = {
@@ -231,6 +234,7 @@ function stubApi({
   setupFails = false,
   roleFails = false,
   freezeRequests = [],
+  unguarded = [],
 }: Stub = {}) {
   const calls: Call[] = []
   let asked = freezeRequests
@@ -244,7 +248,10 @@ function stubApi({
       const method = init?.method ?? 'GET'
       const raw = init?.body
       calls.push({ method, path: url.pathname, body: typeof raw === 'string' ? JSON.parse(raw) : raw })
-      const answer = route(url.pathname, method)
+      const answer =
+        url.pathname === '/api/people' && url.searchParams.get('missing_guardian') === 'true'
+          ? { body: { items: unguarded.map(minor), total: unguarded.length } }
+          : route(url.pathname, method)
       return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
         status: answer.status ?? 200,
         headers: { 'Content-Type': 'application/json' },
@@ -310,6 +317,22 @@ function stubApi({
   return calls
 }
 
+const minor = (name: string): MemberRow => ({
+  id: `kid-${name}`,
+  name,
+  phone: null,
+  no_whatsapp: false,
+  missing_phone: false,
+  missing_rut: false,
+  missing_guardian: true,
+  rut: null,
+  membership: null,
+  guardian: null,
+  dependents: 0,
+  left_on: null,
+  owes: false,
+})
+
 function renderToday() {
   const queryClient = createQueryClient()
   const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries: ['/admin'] }))
@@ -345,6 +368,26 @@ describe('Hoy', () => {
       'href',
       '#sin-asistencia',
     )
+  })
+
+  it('lists the minors with no guardian, each leading to their ficha (#368)', async () => {
+    stubApi({ unguarded: ['Tomás Kid'] })
+    renderToday()
+
+    const card = await section(copy.missingGuardian.title)
+    expect(within(card).getByText(copy.missingGuardian.count(1))).toBeInTheDocument()
+    expect(within(card).getByRole('link', { name: copy.missingGuardian.openLabel('Tomás Kid') })).toHaveAttribute(
+      'href',
+      '/admin/alumnos/kid-Tom%C3%A1s%20Kid',
+    )
+  })
+
+  it('has no "Falta apoderado" while every minor has a guardian', async () => {
+    stubApi()
+    renderToday()
+
+    await section(copy.proofs.title)
+    expect(screen.queryByRole('region', { name: copy.missingGuardian.title })).not.toBeInTheDocument()
   })
 
   it('lists the pending proofs, each leading to the review queue', async () => {

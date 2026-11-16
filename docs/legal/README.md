@@ -16,14 +16,14 @@ Borradores escritos para las primeras academias, que son conocidas y entran a un
 | --- | --- | --- | --- |
 | [Términos de encargo](terminos-de-encargo.md) | el contrato de encargo (DPA) del art. 15 bis: cómo trata Rakin los datos de los alumnos por cuenta de cada academia | el representante de la academia y el de la empresa, firmando | antes de que los datos de la academia entren a Rakin |
 | [Términos de servicio](terminos-de-servicio.md) | el contrato del servicio: beta gratuita, soporte, término; los términos pagados van en su sección 12 | los mismos, firmando, junto con los Términos de encargo | igual |
-| [Aviso de privacidad de cada academia](aviso-de-privacidad-gimnasio.md) | lo que la academia, como responsable, informa a sus alumnos y apoderados (art. 14 ter) | nadie lo firma: la academia lo publica en `/privacidad` y lo enlaza desde la inscripción. Para los menores de 14 años, el apoderado da su consentimiento sobre él | cuando la academia completa Ajustes, antes de abrir su formulario de inscripción |
+| [Aviso de privacidad de cada academia](aviso-de-privacidad-gimnasio.md) | lo que la academia, como responsable, informa a sus alumnos y apoderados (art. 14 ter) | nadie lo firma: la academia lo publica en `/privacidad` y lo enlaza desde la inscripción. Para los menores de 18 años, el apoderado da su consentimiento sobre él | cuando la academia completa Ajustes, antes de abrir su formulario de inscripción |
 | [Aviso de privacidad de Rakin](aviso-de-privacidad-rakin.md) | lo que la empresa, como responsable, informa sobre sus propios datos: quienes administran una academia, quienes le escriben, quienes visitan rakin.app | nadie lo firma: se publica | en `rakin.app/privacidad`, en la página de inicio (#343), y en `/privacidad` cuando la dirección no es de una academia |
 
 ## Lo que queda para el abogado
 
 Las cinco confirmaciones de la [investigación](../legal-research.md#for-the-lawyer), cada una de sí o no:
 
-1. **Menores de 14 años**: registrar el consentimiento del apoderado aunque la membresía sea un contrato, pidiéndolo como un acto separado de la membresía, porque el art. 12 presume que no es libre el consentimiento pedido dentro de un contrato que no lo necesita. Para 14 a 17 años, basta el contrato que firma el apoderado.
+1. **Menores de 18 años**: registrar el consentimiento del apoderado aunque la membresía sea un contrato, pidiéndolo como un acto separado de la membresía, porque el art. 12 presume que no es libre el consentimiento pedido dentro de un contrato que no lo necesita. La ley lo pide bajo los 14 años; la academia lo pide para todo menor de 18 (decisión del 16 de noviembre).
 2. **Registros contables**: guardarlos 6 años con nombre y RUT aunque la persona pida que la borren.
 3. **Forma de los Términos de encargo**:
    - (a) subencargados autorizados uno por uno;
@@ -46,7 +46,7 @@ Ningún texto se publica ni se firma como versión final hasta cerrar estos issu
 
 | Promesa | Dónde | Issue |
 | --- | --- | --- |
-| registrar el consentimiento del apoderado de un menor de 14 años, con la versión del aviso, también para los inscritos a mano o por planilla | aviso de cada academia | #370 |
+| registrar el consentimiento del apoderado de un menor de 18 años, con la versión del aviso, también para los inscritos a mano o por planilla | aviso de cada academia | #370 |
 | avisos y cobros al apoderado según la edad, no según el vínculo; el cambio de contacto a los 18 | aviso de cada academia | #368 |
 | ver y exportar los propios datos | aviso de cada academia, derechos | #371 |
 | eliminar a quien pagó, conservando 6 años la contabilidad | aviso de cada academia, retención | #372 |
@@ -64,3 +64,4 @@ Ningún texto se publica ni se firma como versión final hasta cerrar estos issu
 | Fecha | Cambio |
 | --- | --- |
 | 2026-11-16 | Primeros borradores de los cuatro textos (#381). |
+| 2026-11-16 | Decisión del dueño (fila 1 de la investigación): el consentimiento del apoderado se registra para todo alumno menor de 18 años, no solo bajo los 14, como un acto aparte de la membresía. 18 sigue siendo la edad del contacto y el pagador. El aviso de cada academia y los Términos de encargo dicen ahora «menor de 18 años» (#368). |

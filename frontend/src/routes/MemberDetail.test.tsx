@@ -38,6 +38,7 @@ const FELIPE: Person = {
   no_whatsapp: false,
   missing_phone: false,
   missing_rut: false,
+  missing_guardian: false,
   name: 'Felipe Díaz',
   email: null,
   rut: null,
@@ -2170,6 +2171,29 @@ describe('the record and the ways out (#157)', () => {
     expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
       { method: 'PATCH', path: '/api/people/felipe', body: { phone: '9 1111 2222', rut: '7.654.321-6' } },
     ])
+  })
+
+  it('says "Falta apoderado" on a minor with no guardian (#368)', async () => {
+    stubApi({ person: { body: { ...FELIPE, dob: '2015-07-02', missing_guardian: true } } })
+    renderAt(PATH)
+
+    expect(await screen.findByText(copy.missingGuardian)).toBeInTheDocument()
+  })
+
+  it('says a minor needs a guardian when the API refuses their birth date (#368)', async () => {
+    stubApi({
+      extra: (path, method) =>
+        path === '/api/people/felipe' && method === 'PATCH'
+          ? { status: 422, body: { detail: 'a minor needs a guardian' } }
+          : undefined,
+    })
+    renderAt(PATH)
+
+    await userEvent.click(await edit())
+    const form = screen.getByRole('form', { name: copy.editForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.editForm.rut), '7.654.321-6')
+    await userEvent.click(within(form).getByRole('button', { name: copy.editForm.save }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent(copy.editForm.refused.minor)
   })
 
   it('clears the phone only with "No tiene WhatsApp", and says so when the API refuses', async () => {

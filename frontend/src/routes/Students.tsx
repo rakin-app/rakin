@@ -43,6 +43,8 @@ export type StudentsSearch = {
   missingPhone?: true
   // "Falta RUT": members with neither a RUT nor an email, found again only by name.
   missingRut?: true
+  // "Falta apoderado": minors with no guardian, whom nothing reaches (#368).
+  missingGuardian?: true
   // "Sin venir 14 d": members away 14 days or more, as Hoy's "A quién llamar" counts them.
   away?: true
   // A belt by rank key (#219); with `beltUp`, that belt or any above it ("Azul o superior").
@@ -59,6 +61,8 @@ export function validateStudentsSearch(search: Record<string, unknown>): Student
   const left = search.left === true || search.left === 'true' ? true : undefined
   const missingPhone = search.missingPhone === true || search.missingPhone === 'true' ? true : undefined
   const missingRut = search.missingRut === true || search.missingRut === 'true' ? true : undefined
+  const missingGuardian =
+    search.missingGuardian === true || search.missingGuardian === 'true' ? true : undefined
   const away = search.away === true || search.away === 'true' ? true : undefined
   const belt = typeof search.belt === 'string' && search.belt ? search.belt : undefined
   const beltUp = belt && (search.beltUp === true || search.beltUp === 'true') ? true : undefined
@@ -70,6 +74,7 @@ export function validateStudentsSearch(search: Record<string, unknown>): Student
     left,
     missingPhone,
     missingRut,
+    missingGuardian,
     away,
     belt,
     beltUp,
@@ -95,6 +100,7 @@ export function Students() {
     left: search.left ? ('only' as const) : ('no' as const),
     missingPhone: search.missingPhone === true,
     missingRut: search.missingRut === true,
+    missingGuardian: search.missingGuardian === true,
     away: search.away === true,
     ...rankFilters(belt),
   }
@@ -106,6 +112,7 @@ export function Students() {
     search.left !== undefined ||
     search.missingPhone !== undefined ||
     search.missingRut !== undefined ||
+    search.missingGuardian !== undefined ||
     search.away !== undefined ||
     search.belt !== undefined
 
@@ -402,6 +409,7 @@ function MemberItem({ row, pays }: { row: MemberRow; pays: boolean }) {
             {row.left_on && <span className="students__details">{copy.leftOn(t.common.day(row.left_on))}</span>}
             {row.missing_phone && <span className="students__flag">{copy.missingPhone}</span>}
             {row.missing_rut && <span className="students__flag">{copy.missingRut}</span>}
+            {row.missing_guardian && <span className="students__flag">{copy.missingGuardian}</span>}
             {row.no_whatsapp && <span className="students__details">{copy.noWhatsapp}</span>}
           </div>
           {(row.phone || row.rut) && (

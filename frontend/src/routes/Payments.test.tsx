@@ -132,6 +132,7 @@ const DIEGO = {
   no_whatsapp: false,
   missing_phone: false,
   missing_rut: false,
+  missing_guardian: false,
   rut: null,
   membership: { id: 'm-diego', status: 'active', plan_id: 'p-adultos', plan_name: 'Mensual adultos' },
   guardian: null,

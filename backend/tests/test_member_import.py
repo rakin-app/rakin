@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from app.api import member_import
+from app.domain.dates import gym_today
 from app.main import create_app
 from app.seed.build import GYM_ID, seed_id
 from tests.auth import FakeAuth, as_gym
@@ -909,3 +910,56 @@ def test_someone_imported_is_not_on_a_quien_llamar_for_the_months_before_rakin(
     response = client.get("/api/inactive", headers=as_gym(gym))
     assert response.status_code == 200, response.text
     assert response.json() == []
+
+
+# --- a minor needs a guardian (#368) -----------------------------------------------
+
+
+NAME_DOB_EMAIL_GUARDIAN = {"name": 0, "dob": 1, "email": 2, "guardian_name": 3, "phone": 4}
+
+
+@pg
+def test_a_minor_with_no_guardian_is_refused_in_the_dry_run_and_the_import(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # A child with their own email and no guardian: the gym's notices would reach them.
+    sheet = sheet_with(
+        ["Tomás Kid", "02/07/2015", "tomas.kid@example.cl", "", new_phone()],
+        mapping=NAME_DOB_EMAIL_GUARDIAN,
+    )
+    before = people(db, gym)
+    for dry_run in (True, False):
+        report = imported(client, gym, sheet, dry_run=dry_run)
+        [row] = report["rows"]
+        assert row["errors"] == [{"field": "guardian_name", "code": "minor"}]
+        assert report["summary"]["refused"] == 1
+    assert people(db, gym) == before
+
+
+@pg
+def test_a_minor_with_a_guardian_or_an_adult_imports(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    sheet = sheet_with(
+        ["Tomás Kid", "02/07/2015", "tomas.kid@example.cl", "Ana Kid", new_phone()],
+        ["Pedro Grande", "02/07/1990", "pedro.grande@example.cl", "", new_phone()],
+        mapping=NAME_DOB_EMAIL_GUARDIAN,
+    )
+    report = imported(client, gym, sheet, dry_run=False)
+    assert [row["errors"] for row in report["rows"]] == [[], []]
+    kid = find(client, gym, "Tomás Kid")
+    assert kid["guardian"]["name"] == "Ana Kid"
+    assert kid["missing_guardian"] is False
+
+
+@pg
+def test_a_former_student_who_is_a_minor_imports_with_no_guardian(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    # Nobody writes to someone who has left (#294).
+    left_on = (gym_today("America/Santiago") - timedelta(days=90)).strftime("%d/%m/%Y")
+    sheet = sheet_with(
+        ["Sofía Ex", "02/07/2015", left_on], mapping={"name": 0, "dob": 1, "left_on": 2}
+    )
+    [row] = imported(client, gym, sheet, dry_run=False)["rows"]
+    assert row["errors"] == []

@@ -168,6 +168,14 @@ docker compose run --rm api python -m app.jobs.daily --today 2026-11-09   # re-r
 
 Logs rotate at 5 × 20 MB per container.
 
+**Minors with no guardian** (#368). Run once on staging and on production after the release that adds "Falta apoderado", and again after any import from before it:
+
+```sh
+docker compose exec -T postgres psql -U rakin rakin < deploy/minors-without-guardian.sql
+```
+
+It lists each gym's members under 18 with no guardian, by id, never by name. Nothing is sent to them until the gym adds one, and the gym sees each on Hoy and on the ficha, so ask the gym to add the guardian there.
+
 ## Backups
 
 The `backup` service takes one every night at 03:00 in `JOBS_TIMEZONE` ([`app/backup.py`](../backend/app/backup.py)): `pg_dump --format=custom` as the Postgres superuser, piped straight into [age](https://age-encryption.org) to a public key, uploaded to a bucket of its own as `rakin/<BACKUP_ENV>/<UTC timestamp>.dump.age`. The plain dump never touches the disk, and the host holds only the public key: it can write backups but not read them. It also takes one at once when it starts and the last success is over a day old, so a new host has one within minutes.

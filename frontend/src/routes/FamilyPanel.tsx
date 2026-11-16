@@ -116,7 +116,10 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
 function refusal(error: unknown): string {
   const conflict = familyConflict(error)
   if (conflict) return copy.refused[conflict]
-  if (error instanceof ApiError && error.status === 422) return copy.refused.invalid
+  if (error instanceof ApiError && error.status === 422) {
+    const detail = (error.body as { detail?: unknown } | undefined)?.detail
+    return detail === 'a minor needs a guardian' ? copy.refused.minor : copy.refused.invalid
+  }
   return copy.refused.failed
 }
 

@@ -170,6 +170,14 @@ export const es = {
         },
         showAll: (n: number) => `Ver los ${n} vencidos`,
       },
+      // Minors with no guardian (#368): nothing reaches them until the gym adds one.
+      missingGuardian: {
+        title: 'Falta apoderado',
+        count: (n: number) => (n === 1 ? '1 menor' : `${n} menores`),
+        hint: 'Son menores de 18 años sin apoderado: Rakin no les escribe. Vincula a su apoderado desde la ficha de este, con «Agregar a alguien a cargo».',
+        open: 'Ver ficha',
+        openLabel: (name: string) => `Ver la ficha de ${name}`,
+      },
       // Due today, or a rejected proof to follow up: each a tap from its WhatsApp reminder.
       remind: {
         title: 'Por avisar',
@@ -378,6 +386,8 @@ export const es = {
       missingPhone: 'Falta teléfono',
       // No RUT and no email: found again only by name.
       missingRut: 'Falta RUT',
+      // A minor with no guardian: nothing is sent to them until one is added (#368).
+      missingGuardian: 'Falta apoderado',
       // Away 14 days or more: Hoy's "A quién llamar", in full.
       away: 'Sin venir 14 d',
       noWhatsapp: 'Sin WhatsApp',
@@ -724,6 +734,7 @@ export const es = {
         left_before_start: 'es anterior a «Alumno desde»',
         invalid_number: 'no es un número de clases',
         too_long: 'es demasiado largo (máximo 200 caracteres)',
+        minor: 'falta: es menor de 18 años',
       },
       fieldError: (field: string, problem: string) => `${field}: ${problem}`,
       missingPhoneTitle: (n: number) => (n === 1 ? 'Falta teléfono: 1 fila' : `Falta teléfono: ${n} filas`),
@@ -773,6 +784,8 @@ export const es = {
       noMatches: 'Ningún alumno coincide.',
       refused: {
         has_guardian: 'Esa persona ya tiene un apoderado.',
+        // Unlinking a minor's guardian (#368).
+        minor: 'Es menor de 18 años: no puede quedar sin apoderado.',
         one_level:
           'Un apoderado no puede estar a cargo de otro, y quien está a cargo no puede ser apoderado.',
         invalid: 'Revisa los datos: el RUT o la fecha no son válidos.',
@@ -850,6 +863,9 @@ export const es = {
           open: 'Abrir su ficha',
           phone: 'Un alumno necesita un teléfono. Si no tiene WhatsApp, marca "No tiene WhatsApp".',
           identity: 'Deja el RUT o el correo: uno de los dos dice quién es.',
+          // A birth date that makes them a minor, and they have no guardian (#368).
+          minor:
+            'Con esa fecha es menor de 18 años y necesita un apoderado. Vincúlalo primero desde la ficha del apoderado, con «Agregar a alguien a cargo».',
           invalid: 'Revisa los datos: el teléfono, el RUT, el correo o la fecha no son válidos.',
           failed: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
         },
@@ -857,6 +873,8 @@ export const es = {
       missingPhone: 'Falta teléfono: agrégalo en Editar datos, o marca "No tiene WhatsApp".',
       noWhatsapp: 'Sin WhatsApp: no le llegan recordatorios por WhatsApp.',
       missingRut: 'Falta RUT: agrega su RUT (o su correo) en Editar datos para que no se confunda con otra persona del mismo nombre.',
+      missingGuardian:
+        'Falta apoderado: es menor de 18 años, y Rakin no le escribe hasta que tenga uno. En la ficha del apoderado, usa «Agregar a alguien a cargo» y vincúlalo.',
       // "Historial" (#293): what the gym knew before Rakin, never billed.
       history: {
         title: 'Historial',

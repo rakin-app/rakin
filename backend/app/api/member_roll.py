@@ -71,6 +71,7 @@ from app.notices import Notices, get_notices, mail_address
 from app.roles import AdminSession, OwnerSession
 from app.schemas.guardians import FamilyConflict, FamilyRefused
 from app.schemas.people import (
+    MINOR_NEEDS_GUARDIAN,
     Deletion,
     Enrolment,
     ExistingGuardian,
@@ -220,7 +221,7 @@ async def enrol(
         and body.guardian is None
         and is_minor(body.dob, await _today(session, tenant))
     ):
-        raise _unprocessable("a minor needs a guardian")
+        raise _unprocessable(MINOR_NEEDS_GUARDIAN)
     guardian_id = await _guardian(session, body)
     person_id = await _member(session, body)
     if guardian_id is not None and (code := await link(session, guardian_id, person_id)):

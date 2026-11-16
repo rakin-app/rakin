@@ -266,6 +266,20 @@ def test_a_dependents_statement_goes_to_the_guardian(gym: Gym) -> None:
     assert row["person_id"] == marta
 
 
+def test_a_minors_statement_with_no_guardian_is_suppressed(gym: Gym) -> None:
+    # A child with an email of their own and no guardian, as an import could leave them
+    # (#368): the statement would reach the child.
+    to = address(gym)
+    gym.sql("UPDATE gym_person SET dob = $1 WHERE person_id = $2", date(2015, 7, 2), gym.person)
+    membership = billed(gym, NOV_15)
+    outbox = Outbox()
+
+    assert state(gym.db, NOV_8, outbox)
+
+    assert outbox.to(to) == []
+    assert logged(gym) == [("statement", "suppressed", period_id(gym, membership, NOV_15))]
+
+
 def test_statements_run_nightly_after_billing() -> None:
     notices = Notices(Outbox(), lambda: None, base_url="https://x", secret_key="s" * 32)  # type: ignore[arg-type, return-value]
 

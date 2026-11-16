@@ -136,6 +136,8 @@ Rules the diagram does not show:
 
 Email is the system of record; WhatsApp is where the reminder gets read. Neither requires an app install, and the channel mix is configurable per gym.
 
+Nothing about a minor goes to the minor: a dependent's notices go to their guardian. A member under 18 by birth date with no guardian in the gym (an old import, say) gets nothing at all, shown as "Falta apoderado" on Hoy and on their ficha: an email to them is recorded as `suppressed` in `message_log`, and no `wa.me` link is offered (#368). Enrolment, the join link, the import and edits all refuse to leave a minor without a guardian.
+
 | Message | Channel (v1) | Trigger | Notes |
 | --- | --- | --- | --- |
 | Welcome + first magic link | email | membership created | sets expectations: how to pay, how to upload proof |

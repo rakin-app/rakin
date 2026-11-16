@@ -8,7 +8,7 @@ gym that shares a parent never learns about the family.
 import asyncio
 import uuid
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import asyncpg
@@ -368,6 +368,93 @@ def test_notices_about_a_dependent_go_to_the_guardian(
         on_behalf_of=None,
     )
     assert contact(db, norte, kid) is None
+
+
+# --- a minor needs a guardian (#368) -----------------------------------------------
+
+KID_DOB = "2015-07-02"
+
+
+def person(client: TestClient, gym: uuid.UUID, person_id: str) -> Any:
+    response = client.get(f"/api/people/{person_id}", headers=as_gym(gym))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@pg
+def test_a_minors_guardian_is_never_unlinked(client: TestClient, sur: uuid.UUID) -> None:
+    mother = add_person(client, sur, "Mamá Cuatro")
+    response = add_dependent(client, sur, mother, name="Hija Cuatro", dob=KID_DOB)
+    assert response.status_code == 201, response.text
+    kid = response.json()["dependents"][0]["id"]
+    url = f"/api/people/{mother}/dependents/{kid}"
+    response = client.delete(url, headers=as_gym(sur))
+    assert response.status_code == 422
+    assert response.json()["detail"] == "a minor needs a guardian"
+    assert [d["id"] for d in family(client, sur, mother)["dependents"]] == [kid]
+    assert person(client, sur, kid)["missing_guardian"] is False
+
+
+@pg
+def test_a_birth_date_that_makes_someone_a_minor_needs_a_guardian(
+    client: TestClient, sur: uuid.UUID
+) -> None:
+    adult = add_person(client, sur, "Grande Cinco")
+    response = client.patch(f"/api/people/{adult}", json={"dob": KID_DOB}, headers=as_gym(sur))
+    assert response.status_code == 422
+    assert response.json()["detail"] == "a minor needs a guardian"
+    assert person(client, sur, adult)["dob"] is None
+
+    # Someone with a guardian here may be given one.
+    kid = new_kid(client, sur, adult, "Chico Cinco")
+    response = client.patch(f"/api/people/{kid}", json={"dob": KID_DOB}, headers=as_gym(sur))
+    assert response.status_code == 200, response.text
+    # And nobody is added with one and no guardian.
+    response = client.post(
+        "/api/people",
+        json={"name": "Niña Cinco", "email": "nina.cinco@example.cl", "dob": KID_DOB},
+        headers=as_gym(sur),
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "a minor needs a guardian"
+
+
+@pg
+def test_a_minor_already_here_with_no_guardian_says_so_and_has_no_phone(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    # As an import from before #368 could leave them.
+    phone = new_phone()
+    kid = add_person(client, sur, "Niño Seis", phone=phone)
+    as_owner(
+        db,
+        sur,
+        "UPDATE gym_person SET dob = $1 WHERE person_id = $2",
+        date.fromisoformat(KID_DOB),
+        uuid.UUID(kid),
+    )
+
+    assert person(client, sur, kid)["missing_guardian"] is True
+    listed = client.get(
+        "/api/people", params={"missing_guardian": "true"}, headers=as_gym(sur)
+    ).json()["items"]
+    assert [row["id"] for row in listed] == [kid]
+    assert listed[0]["missing_guardian"] is True
+    # Nobody offers a wa.me link to a child: their contact has no phone.
+    found = contact(db, sur, kid)
+    assert found is not None and found.phone is None and found.email is not None
+
+    # A guardian added, they are as any dependent.
+    mother = add_person(client, sur, "Mamá Seis")
+    response = add_dependent(client, sur, mother, person_id=kid)
+    assert response.status_code == 201, response.text
+    assert person(client, sur, kid)["missing_guardian"] is False
+    assert (
+        client.get("/api/people", params={"missing_guardian": "true"}, headers=as_gym(sur)).json()[
+            "items"
+        ]
+        == []
+    )
 
 
 # --- what the guardian sees -------------------------------------------------------

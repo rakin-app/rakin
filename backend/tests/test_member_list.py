@@ -143,6 +143,7 @@ def test_everyone_by_name_with_the_membership_shown(
         "no_whatsapp": False,
         "missing_phone": False,
         "missing_rut": False,
+        "missing_guardian": False,
         "rut": "7654321-6",
         "membership": {
             "id": membership,
