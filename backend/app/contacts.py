@@ -20,15 +20,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.dates import AGE_OF_MAJORITY
 
 
+def minor_today(record: str) -> str:
+    """Whether the `gym_person` row `record`, whose `dob` is known, is under
+    `AGE_OF_MAJORITY` on the gym's today (`app.domain.dates.is_minor`)."""
+    return f"""(
+        ({record}.dob + interval '{AGE_OF_MAJORITY} years')::date > (
+            SELECT (now() AT TIME ZONE g.timezone)::date FROM gym g WHERE g.id = {record}.gym_id
+        )
+    )"""
+
+
 def missing_guardian(record: str) -> str:
     """Whether the `gym_person` row `record` is a minor on the gym's today, by their
     birth date (`app.domain.dates.is_minor`), with no guardian in this gym, and still
     here: "Falta apoderado" (#368). Nothing is sent to them until one is added."""
     return f"""(
-        {record}.left_on IS NULL AND {record}.dob IS NOT NULL
-        AND ({record}.dob + interval '{AGE_OF_MAJORITY} years')::date > (
-            SELECT (now() AT TIME ZONE g.timezone)::date FROM gym g WHERE g.id = {record}.gym_id
-        )
+        {record}.left_on IS NULL AND {record}.dob IS NOT NULL AND {minor_today(record)}
         AND NOT EXISTS (
             SELECT FROM guardian_link d
             WHERE d.gym_id = {record}.gym_id AND d.dependent_person_id = {record}.person_id

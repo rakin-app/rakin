@@ -33,7 +33,7 @@ from tests.pg import (
     seeded_today,
     throwaway_database,
 )
-from tests.test_join import with_privacy
+from tests.test_join import notice, with_privacy
 from tests.test_people import new_phone
 from tests.test_plans import add_staff
 from tests.test_seed import DESIGN_DAY, load_as_owner
@@ -785,6 +785,7 @@ def test_a_join_request_with_a_rut_keys_someone_the_gym_had_by_name(
         "email": f"{uuid.uuid4().hex[:8]}@example.cl",
         "dob": "1990-05-20",
         "consent": True,
+        "notice": notice(),
     }
     assert client.post(f"/api/join/{link}", json=body).status_code == 202
     [request] = client.get("/api/join-requests", headers=as_gym(gym)).json()["items"]

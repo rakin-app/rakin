@@ -6,7 +6,9 @@ staff approve them into members.
   it works, and revoke it. The form asks for consent to the gym's privacy notice
   (#168), so a gym that has not filled in its privacy details in Ajustes cannot
   generate one (409 `privacy_incomplete`), and a link it has works only once they
-  are.
+  are. The form sends back the version of the notice it showed, and one older than the
+  gym's is a 409 `stale_notice` (#370); a minor's guardian has a box of their own,
+  consenting to the processing of the child's data apart from the inscription.
 - `/api/join/{token}` is the public form behind it, for anyone with the link and no
   session. A `GET` says what the form shows; a `POST` leaves a request in the queue,
   not a person, and answers 202 whatever it holds: nothing in the answer says
@@ -34,8 +36,10 @@ WhatsApp", which the new record keeps. With a plan, a membership starts on it to
 and the welcome goes out with its sign-in link; that is owner and admin only, since a
 plan is money, so a coach approves with no plan and the member shows as "sin plan".
 Without one, `join_approved` tells them they are in, with their sign-in link (#254).
-Either way the request is deleted: it was only ever a request. Rejecting deletes it too,
-and the nightly `join_requests` job deletes any left for 30 days (`app.jobs.join_requests`).
+Either way the request is deleted: it was only ever a request, and what its boxes said
+is kept in the consent register first (`app.api.consent.record_join`). Rejecting
+deletes it too, and the nightly `join_requests` job deletes any left for 30 days
+(`app.jobs.join_requests`).
 
 Someone already here is linked, not added again: they keep this gym's record of them,
 email included, as the importer leaves them, and the queue says when that leaves the
@@ -70,6 +74,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.consent import check_notice, consent_pending, record_join
 from app.api.member_import import LIVE_MEMBERSHIP, RowRefused, Writer
 from app.api.memberships import start_membership, welcome_for
 from app.api.unsubscribe import in_gym
@@ -256,7 +261,8 @@ Token = Annotated[str, Path()]
 FORM = f"""
     SELECT g.id AS gym_id, g.name AS gym, g.logo_version, g.timezone,
            pr.id AS program_id, pr.name AS program,
-           l.expires_on, {HAS_PRIVACY} AS has_privacy
+           l.expires_on, {HAS_PRIVACY} AS has_privacy,
+           (g.settings -> 'privacy' ->> 'updated_on')::date AS privacy_updated_on
     FROM join_link l
     JOIN gym g ON g.id = l.gym_id
     LEFT JOIN program pr ON pr.gym_id = l.gym_id AND pr.id = l.program_id
@@ -272,6 +278,8 @@ class _OpenLink:
     timezone: str
     program_id: uuid.UUID | None
     program: str | None
+    # The gym's privacy details' date, half of the notice's version (#370).
+    privacy_updated_on: date
     session: AsyncSession
 
 
@@ -300,6 +308,7 @@ async def _open(request: Request, token: str) -> AsyncIterator[_OpenLink]:
             row.timezone,
             row.program_id,
             row.program,
+            row.privacy_updated_on,
             session,
         )
 
@@ -316,6 +325,7 @@ async def join_form(
             gym_logo=link.gym_logo,
             program=link.program,
             today=gym_today(link.timezone),
+            privacy_updated_on=link.privacy_updated_on,
             human_check_site_key=integrations.human_check.site_key,
         )
 
@@ -341,17 +351,21 @@ def _admit(request: Request, token: str, ip: str) -> None:
 INSERT_REQUEST = """
     INSERT INTO join_request (gym_id, first_name, last_name, rut, phone, email, dob,
                               guardian_name, guardian_phone, guardian_email, no_whatsapp,
-                              program_id, consented_at)
+                              program_id, consented_at, notice_template_on,
+                              notice_details_on, guardian_consent)
     VALUES (current_setting('app.gym_id')::uuid, :first_name, :last_name, :rut, :phone,
             :email, :dob, :guardian_name, :guardian_phone, :guardian_email, :no_whatsapp,
-            :program_id, now())
+            :program_id, now(), :notice_template_on, :notice_details_on, :guardian_consent)
 """
 
 
 @public.post(
     "/{token}",
     status_code=status.HTTP_202_ACCEPTED,
-    responses={429: {"description": "Too many requests from this IP or for this link"}},
+    responses={
+        status.HTTP_409_CONFLICT: {"description": "stale_notice: the notice changed"},
+        429: {"description": "Too many requests from this IP or for this link"},
+    },
 )
 async def submit_join_request(
     token: Token,
@@ -365,6 +379,7 @@ async def submit_join_request(
     # submissions takes from everyone else (#162).
     async with _open(request, token) as link:
         values = _request_values(body, gym_today(link.timezone))
+        await check_notice(link.session, body.notice)
         ip = request.client.host if request.client else "unknown"
         _admit(request, token, ip)
     if body.website:
@@ -382,6 +397,11 @@ def _request_values(body: JoinSubmission, today: date) -> dict[str, Any]:
     """What `INSERT_REQUEST` stores but the program; a 422 for a field the form needs."""
     values = body.model_dump(
         include={"first_name", "last_name", "rut", "phone", "email", "dob", "no_whatsapp"}
+    )
+    values.update(
+        notice_template_on=body.notice.template_on,
+        notice_details_on=body.notice.details_on,
+        guardian_consent=False,
     )
     if age_on(body.dob, today) < ADULT_AGE:
         # The guardian's phone is the one the gym uses, unless they have no WhatsApp.
@@ -409,6 +429,7 @@ def _request_values(body: JoinSubmission, today: date) -> dict[str, Any]:
             guardian_name=body.guardian_name,
             guardian_phone=body.guardian_phone,
             guardian_email=body.guardian_email,
+            guardian_consent=body.guardian_consent,
         )
     else:
         missing = ["email"] if body.email is None else []
@@ -546,6 +567,7 @@ async def approve_join_request(
     except RowRefused as refused:
         conflict = JoinRefusal(code=refused.code, field=refused.on.value)
         raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump()) from None
+    await record_join(session, row, person_id)
 
     membership_id = None
     member_already = (
@@ -590,7 +612,12 @@ async def _approved(
         to=contact.email,
         person_id=contact.person_id,
         gym_id=gym_id,
-        context={"name": contact.name, "gym": gym, "dependent_name": dependent},
+        context={
+            "name": contact.name,
+            "gym": gym,
+            "dependent_name": dependent,
+            "consent_pending": dependent is not None and await consent_pending(session, person_id),
+        },
     )
 
 

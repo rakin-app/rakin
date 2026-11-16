@@ -17,6 +17,7 @@ import { monthYear } from '../format'
 import { t } from '../i18n/es'
 import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
+import { MyConsents } from './MyConsents'
 import { MyPlans } from './MyPlans'
 import { ProofUpload } from './ProofUpload'
 import { Loading } from '../components/Loading'
@@ -29,7 +30,8 @@ const copy = t.me
  * "Mi página", the student page: what is due next and where to transfer it,
  * the proof upload, their belt and classes, their time on the mat, what their classes
  * were about and their hours per tag (theirs and each dependent's, #243), their plans
- * with "Pedir congelamiento" (#270), and the payments already sent with how each was reviewed. From 1024px it is two columns: the payment
+ * with "Pedir congelamiento" (#270), the payments already sent with how each was reviewed,
+ * and for a guardian, their consent for each minor in their care (#370). From 1024px it is two columns: the payment
  * and its upload, and beside them the rest.
  */
 export function MeHome() {
@@ -67,6 +69,7 @@ export function MeHome() {
       <div className="me-home">
         <Grid>
           <div className="me-home__column">
+            <MyConsents />
             <NextPayment page={page.data} />
             <ExtraCharges page={page.data} />
             <MyPlans page={page.data} />

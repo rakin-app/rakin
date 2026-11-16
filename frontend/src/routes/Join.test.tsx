@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { JoinForm } from '../api/join'
 import { ageOn } from '../api/join'
+import { TEMPLATE_UPDATED_ON } from '../api/privacy'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -11,7 +12,14 @@ import { createAppRouter } from '../router'
 
 const copy = es.join
 
-const FORM: JoinForm = { gym: 'Academia Sur', gym_logo: null, program: null, today: '2026-11-10', human_check_site_key: null }
+const FORM: JoinForm = {
+  gym: 'Academia Sur',
+  gym_logo: null,
+  program: null,
+  today: '2026-11-10',
+  privacy_updated_on: '2026-11-09',
+  human_check_site_key: null,
+}
 
 type Sent = { method: string; path: string; body: Record<string, unknown> | undefined }
 type Answer = { status?: number; body?: unknown }
@@ -58,6 +66,7 @@ afterEach(() => {
 })
 
 // The consent box, beside "No tengo WhatsApp".
+const guardianConsent = new RegExp(copy.guardianConsentBefore.slice(0, 20))
 const consentBox = () => screen.getByRole('checkbox', { name: new RegExp(copy.consentBefore.slice(0, 20)) })
 
 describe('Inscríbete', () => {
@@ -88,6 +97,9 @@ describe('Inscríbete', () => {
       guardian_email: null,
       no_whatsapp: false,
       consent: true,
+      // The notice as the form showed it: this build's text, the gym's details (#370).
+      notice: { template_on: TEMPLATE_UPDATED_ON, details_on: '2026-11-09' },
+      guardian_consent: false,
       website: '',
       human_check_token: null,
     })
@@ -134,7 +146,28 @@ describe('Inscríbete', () => {
       guardian_name: 'Marta',
       guardian_phone: '912345678',
       guardian_email: 'marta@example.cl',
+      // Their own box, left as it was.
+      guardian_consent: false,
     })
+  })
+
+  it('lets a minor’s guardian consent in a box of its own, apart from the notice’s', async () => {
+    const sent = stubApi()
+    renderAt('/unirse/tok-123456789012345678901')
+
+    await userEvent.type(await screen.findByLabelText(copy.firstName), 'Juan')
+    await userEvent.type(screen.getByLabelText(copy.lastName), 'Rojas')
+    expect(screen.queryByRole('checkbox', { name: guardianConsent })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(copy.dob), { target: { value: '2015-01-01' } })
+    await userEvent.type(screen.getByLabelText(copy.guardianName), 'Marta')
+    await userEvent.type(screen.getByLabelText(copy.guardianPhone), '912345678')
+    await userEvent.type(screen.getByLabelText(copy.guardianEmail), 'marta@example.cl')
+    await userEvent.click(screen.getByRole('checkbox', { name: guardianConsent }))
+    await userEvent.click(consentBox())
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+
+    await screen.findByRole('status')
+    expect(sent[1]!.body).toMatchObject({ consent: true, guardian_consent: true })
   })
 
   it('starts "No tiene WhatsApp" over when the birth date makes them a minor', async () => {
@@ -255,6 +288,17 @@ describe('Inscríbete', () => {
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.tooMany)
+  })
+
+  it('says when the notice changed since the form opened, and loads it again', async () => {
+    const sent = stubApi({ submit: { status: 409, body: { detail: 'stale_notice' } } })
+    renderAt('/unirse/tok-123456789012345678901')
+
+    await fillAdult()
+    await userEvent.click(screen.getByRole('button', { name: copy.submit }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.staleNotice)
+    await vi.waitFor(() => expect(sent.filter((s) => s.method === 'GET')).toHaveLength(2))
   })
 
   it('says a link that no longer works is not valid', async () => {

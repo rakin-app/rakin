@@ -44,6 +44,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.consent import consent_pending
 from app.api.corrections import record_audit
 from app.api.entries import CURRENT_PERSON, standing_void
 from app.api.ledger import period_money, void_period
@@ -353,6 +354,7 @@ async def welcome_to(
         plan_name=plan_name,
         bank_account=gym.bank_account,
         dependent_name=dependent,
+        consent_pending=dependent is not None and await consent_pending(session, person_id),
     )
 
 
@@ -389,9 +391,12 @@ def welcome(
     plan_name: str | None,
     bank_account: dict[str, Any] | None,
     dependent_name: str | None,
+    consent_pending: bool = False,
 ) -> Notice:
     """The welcome: the plan, how to pay it and where to upload the proof; with no plan,
-    that they are on the gym's roster, and the sign-in link alone."""
+    that they are on the gym's roster, and the sign-in link alone. `consent_pending`: the
+    dependent's data rest on the guardian's consent, not given yet, which their page
+    asks for (#370)."""
     assert contact.email is not None
     return Notice(
         WELCOME,
@@ -406,6 +411,7 @@ def welcome(
             "plan_name": plan_name,
             "bank_account": bank_account,
             "dependent_name": dependent_name,
+            "consent_pending": consent_pending,
         },
     )
 

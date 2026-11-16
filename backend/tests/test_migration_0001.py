@@ -142,7 +142,8 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # tests/test_class_tags.py `class_tag` and the class and slot tags (0041), and
     # tests/test_activities.py `gym_activity` (0043), tests/test_voids.py
     # `audit_event` (0044), tests/test_freeze_requests.py `freeze_request` (0045), and
-    # tests/test_history_payments.py `history_payment` (0055).
+    # tests/test_history_payments.py `history_payment` (0055), and
+    # tests/test_consent.py `consent_event` (0057).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "audit_event",
@@ -153,6 +154,7 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
         "class_tag",
         "class_type",
         "closed_day",
+        "consent_event",
         "extra_charge",
         "extra_line",
         "freeze_request",

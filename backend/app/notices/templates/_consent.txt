@@ -1,0 +1,4 @@
+{% if consent_pending is defined and consent_pending %}
+
+Falta tu autorización: en tu página puedes autorizar que {{ gym }} trate los datos de {{ dependent_name }}, según su política de privacidad. Es aparte de la inscripción: puedes no darla, o retirarla cuando quieras, y la inscripción sigue igual.
+{% endif %}

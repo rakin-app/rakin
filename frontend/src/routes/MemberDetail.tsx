@@ -81,6 +81,7 @@ import { GradeForm } from './GradeForm'
 import { PersonExtraLines } from './PersonExtraLines'
 import { PersonHistory } from './PersonHistory'
 import { PersonData } from './PersonData'
+import { PersonConsent } from './PersonConsent'
 import { AssignForm, AssignPlan, assignsPlan, ChangePlanForm, changesPlan, isLive } from './PersonPlan'
 import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
@@ -217,6 +218,7 @@ export function MemberDetail() {
             </Card>
           </section>
           <PersonData person={person.data} />
+          <PersonConsent person={person.data} />
           <PersonWelcome person={person.data} role={role.data} />
           <PersonActions person={person.data} role={role.data} />
         </div>
