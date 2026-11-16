@@ -15,7 +15,7 @@ Count anything where personal data held for a gym may have been seen, copied, ch
 - a gym's staff account is taken over, for example through the owner's own email;
 - the database or a bucket is lost and cannot be restored.
 
-When in doubt, it counts. Every incident gets a [record](#5-the-record), including ones nobody is told about.
+When in doubt, it counts. Every incident gets a [record](#7-the-record), including ones nobody is told about.
 
 ## 1. Who is on call
 
@@ -30,7 +30,7 @@ Whoever learns of a possible incident tells the person on call at once, by phone
 
 **T0** is the moment someone at the company has reasonable grounds to think personal data was affected. Write it down first. Every deadline below counts from T0.
 
-1. **Open the record** ([template](#5-the-record)) with T0 and what is known. Add to it as you go, with times.
+1. **Open the record** ([template](#7-the-record)) with T0 and what is known. Add to it as you go, with times.
 2. **Preserve, then contain.** Containing can destroy evidence. A deploy, a rollback or a `docker compose up` that recreates a container **deletes that container's logs**. So save them first:
 
    ```sh
@@ -40,9 +40,9 @@ Whoever learns of a possible incident tells the person on call at once, by phone
    cp releases.log $HOME/incident-<yyyymmdd>/
    ```
 
-   If the host itself may be compromised, take a snapshot in the VPS provider's console before touching anything. Then contain, using the [playbook](#containing-by-kind) for the kind of incident.
+   If the host itself may be compromised, take a snapshot in the VPS provider's console before touching anything. Then contain, using the [playbook](#4-containing-by-kind) for the kind of incident.
 3. **Scope.** Work out which gyms, which people, which data, and over what period, using the [sources](#3-scoping-what-exists-today). An estimate is enough to tell the gym. The scope can be refined after that.
-4. **Tell each affected gym within 24 hours of T0**, using its [breach contact](#gym-breach-contacts) and the [notice](#4-the-notice-to-a-gym). If the company cannot tell which gyms are affected (for example, a secret that reaches every gym's data leaked), tell them all.
+4. **Tell each affected gym within 24 hours of T0**, using its [breach contact](#gym-breach-contacts) and the [notice](#6-the-notice-to-a-gym). If the company cannot tell which gyms are affected (for example, a secret that reaches every gym's data leaked), tell them all.
 5. **Draft the Agencia report and the members' notice** for each gym, and send both to the gym with the notice or soon after it. The gym reports to the Agencia **within 72 hours** of the company's notice.
 6. **Update** each gym as scope changes, and say when the next update is due.
 7. **Close** the record: the cause, what was fixed, and the issues filed.
@@ -87,6 +87,8 @@ Nothing records reads today: there is no record of who opened a ficha, downloade
 | GitHub | the org's audit log, and the `deploy` and `images` runs | GitHub's retention | who changed secrets, workflows or members, and what was deployed | anything on the host |
 | Cloudflare | the account audit log: DNS and Email Routing changes | Cloudflare's retention | whether the gyms' hosts or `soporte@` were redirected | |
 
+`TODO(owner)`: Sentry's retention, from the organisation's settings, goes in its row above.
+
 Query Postgres on the host with `docker compose exec postgres psql -U rakin rakin`. That is the superuser, which sees past row-level security, so **write down every query in the record** and copy out only counts and ids, never names. Example: the sessions open in a window, per gym:
 
 ```sql
@@ -95,11 +97,11 @@ WHERE created_at < '<end>' AND coalesce(ended_at, expires_at) > '<start>'
 GROUP BY gym_id;
 ```
 
-## Containing, by kind
+## 4. Containing, by kind
 
 | Kind | Contain |
 | --- | --- |
-| A secret leaked | Rotate it, [below](#rotating-secrets), and look in its source's row above to see whether it was used |
+| A secret leaked | Rotate it, [below](#5-rotating-secrets), and look in its source's row above to see whether it was used |
 | Host may be compromised (unknown SSH login, deploy key leaked, unexplained processes) | Snapshot first. Then assume everything in `.env` and on the disk leaked: rotate **every** secret, revoke the deploy key, and consider provisioning a new VPS and restoring the latest backup checked with `restore.sh` ([deploy.md](deploy.md#restoring-to-live)) instead of cleaning this one. To take the app offline for every gym: `docker compose stop caddy` |
 | A release shows the wrong data | Save the logs, then `./deploy.sh --rollback <previous tag>` ([deploy.md](deploy.md#6-rollback)). Do not wait for a fix |
 | A staff or member account taken over | End that person's sessions (below), and ask the gym to secure that email account before anyone signs in again |
@@ -113,7 +115,7 @@ UPDATE auth_session SET ended_at = now() WHERE ended_at IS NULL AND person_id = 
 UPDATE auth_session SET ended_at = now() WHERE ended_at IS NULL;   -- everyone, every gym
 ```
 
-### Rotating secrets
+## 5. Rotating secrets
 
 Generate each new value with `openssl rand -hex 32`, unless it says otherwise. Edit `/srv/rakin/.env` as `deploy`, update the copy in the password manager, and note the time in the record.
 
@@ -131,7 +133,7 @@ Generate each new value with `openssl rand -hex 32`, unless it says otherwise. E
 
 **Others in `.env`.** `SMTP_PASSWORD` is a Resend API key: anyone who has it can send mail as `rakin.app` to the gyms' members, so revoke it in Resend and create a new one. `RESEND_WEBHOOK_SECRET` is rolled in the webhook's settings. `TURNSTILE_SECRET_KEY` is rolled in Cloudflare. `SENTRY_DSN` can only send events, so rotate it only if events are being forged. After each one, run `docker compose up -d --wait api jobs`.
 
-## 4. The notice to a gym
+## 6. The notice to a gym
 
 In Spanish, by email to the breach contact and by phone. It has the four things clause 12 promises, and it is sent with what is known now: do not wait for the full scope.
 
@@ -163,7 +165,7 @@ Para cualquier pregunta: <nombre de quien atiende>, <teléfono>, soporte@rakin.a
 
 The draft for the Agencia and the draft for the members reuse the record's fields. The members' notice says, in plain words, what happened, what data of theirs, what it could mean for them, what was done, what they can do (for example, distrust messages asking for payment to a new account), and who to ask at the gym. For a minor, it goes to the guardian.
 
-## 5. The record
+## 7. The record
 
 One per incident, **notified or not**, in the private `rakin-app/ops` repo, as an issue labelled `incident`. Never in this public repo. The record holds counts, categories and ids, never members' names. Records are never deleted.
 
@@ -195,7 +197,7 @@ If not reported: why (<no reasonable risk to members' rights, because …>).
 - **What this runbook lacked**: <…>
 ```
 
-## 6. Tabletop exercises
+## 8. Tabletop exercises
 
 Read this runbook once, end to end, against one scenario, before the second gym onboards and once a year after. Time each step, look up each contact and source for real (without changing anything), and note in the table what was missing or wrong. Fix the runbook in the same week. Scenarios to rotate through:
 
