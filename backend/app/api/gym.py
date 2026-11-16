@@ -7,6 +7,9 @@ Saving the privacy details stamps them with the gym's today (`updated_on`), in t
 timezone the same change leaves it in: the date the public notice says it was last
 updated.
 
+Saving `sparring` (#346) archives or restores the Sparring and Drilling block kinds
+when it turns the gym's sparring off or on (`follow_sparring`).
+
 The logo (#223) has endpoints of its own, since it is a file: `PUT /api/gym/logo` takes
 the picture as the owner picked it, its bytes as the body, with the square they drew
 on it as `x`, `y` and `size`; `DELETE` takes it away. Each answers the settings, like
@@ -24,6 +27,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 from fastapi import status as http
 from sqlalchemy import text
 
+from app.api.activities import follow_sparring, gym_sparring
 from app.domain.dates import gym_today
 from app.domain.vocabulary import stored
 from app.hosts import Hosts
@@ -53,7 +57,7 @@ COLUMNS = "id, name, slug, timezone, theme, logo_version, settings"
 TOO_LARGE = HTTPException(http.HTTP_413_CONTENT_TOO_LARGE, "logo_too_large")
 
 
-def _settings(request: Request, row: Any) -> GymSettings:
+async def _settings(request: Request, session: AdminSession, row: Any) -> GymSettings:
     hosts: Hosts = request.app.state.hosts
     # The address as the address bar shows it: `academia-sur.rakin.app`, no scheme.
     address = urlsplit(hosts.base_url(row.slug)).netloc
@@ -65,6 +69,7 @@ def _settings(request: Request, row: Any) -> GymSettings:
         row.theme,
         logo_path(row.id, row.logo_version),
         row.settings,
+        (await gym_sparring(session)).on,
     )
 
 
@@ -77,7 +82,7 @@ async def get_settings(
             text(f"SELECT {COLUMNS} FROM gym WHERE id = :id"), {"id": tenant.gym_id}
         )
     ).one()
-    return _settings(request, row)
+    return await _settings(request, session, row)
 
 
 @router.patch("/settings")
@@ -87,6 +92,7 @@ async def update_settings(
     tenant: Annotated[Tenant, Depends(current_tenant)],
     session: AdminSession,
 ) -> GymSettings:
+    before = await gym_sparring(session)
     changes = body.model_dump(mode="json", exclude_unset=True)
     columns: dict[str, Any] = {
         c: changes.pop(c) for c in ("name", "timezone", "theme") if c in changes
@@ -116,7 +122,8 @@ async def update_settings(
     if "theme" in columns:
         # The pages shown before sign-in wear it at once, not when the kept copy expires.
         request.app.state.gym_lookup.forget(row.slug)
-    return _settings(request, row)
+    await follow_sparring(session, before)
+    return await _settings(request, session, row)
 
 
 async def _body(request: Request, content_length: int | None) -> bytes:
@@ -163,7 +170,7 @@ async def _set_logo(
         background.add_task(_delete_logo, store, tenant.gym_id, previous)
     # The pages shown before sign-in show it at once, not when the kept copy expires.
     request.app.state.gym_lookup.forget(row.slug)
-    return _settings(request, row)
+    return await _settings(request, session, row)
 
 
 @router.put("/logo")

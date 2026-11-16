@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BlockKind } from '../api/blockKinds'
@@ -31,9 +31,17 @@ const DEFAULTS = [
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 
-function stubApi({ role = 'owner', save, remove }: { role?: string; save?: Answer; remove?: Answer } = {}) {
+function stubApi({
+  role = 'owner',
+  save,
+  remove,
+  sparring = true,
+  practice = 'sparring',
+}: { role?: string; save?: Answer; remove?: Answer; sparring?: boolean; practice?: string } = {}) {
   const calls: Call[] = []
-  let kinds = [...DEFAULTS]
+  let spars = sparring
+  // Off, the API archives the sparring kind, as it does Drilling (#346).
+  let kinds = DEFAULTS.map((k) => (k.is_sparring ? { ...k, archived: !spars } : k))
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input, init) => {
@@ -51,7 +59,12 @@ function stubApi({ role = 'owner', save, remove }: { role?: string; save?: Answe
   )
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
-    if (path === '/api/me/role') return { body: { role } }
+    if (path === '/api/me/role') return { body: { role, sparring: spars, practice } }
+    if (path === '/api/gym/settings' && method === 'PATCH') {
+      spars = body['sparring'] as boolean
+      kinds = kinds.map((k) => (k.is_sparring ? { ...k, archived: !spars } : k))
+      return { body: { sparring: spars } }
+    }
     if (path === '/api/block-kinds' && method === 'GET') return { body: kinds }
     if (path === '/api/block-kinds' && method === 'POST') {
       if (save) return save
@@ -232,5 +245,49 @@ describe('Ajustes: Bloques', () => {
     stubApi({ role: 'coach' })
     renderAt('/admin/ajustes/bloques')
     expect(await screen.findByText(es.admin.settings.adminsOnly)).toBeInTheDocument()
+  })
+  // #346: sparring is a module the gym turns on or off.
+  it('in a gym that does not spar, leaves out its sparring kinds and every mention of it', async () => {
+    stubApi({ sparring: false })
+    renderAt('/admin/ajustes/bloques')
+
+    const section = await screen.findByRole('region', { name: copy.title })
+    const rows = within(section).getAllByRole('listitem')
+    expect(rows.map((r) => within(r).getByText(/./, { selector: '.list-row__title' }).textContent)).toEqual([
+      'Calentamiento',
+      'Técnica',
+      `Yoga${copy.archived}`,
+    ])
+    expect(within(section).getByRole('checkbox', { name: copy.sparringSwitch })).not.toBeChecked()
+    await userEvent.click(within(section).getByRole('button', { name: copy.add }))
+    const create = within(section).getByRole('form', { name: form.create })
+    expect(within(create).queryByRole('checkbox', { name: form.sparring })).not.toBeInTheDocument()
+  })
+
+  it('turns sparring off and on from its switch, the kinds following', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/bloques')
+
+    const section = await screen.findByRole('region', { name: copy.title })
+    const toggle = await within(section).findByRole('checkbox', { name: copy.sparringSwitch })
+    expect(toggle).toBeChecked()
+    await userEvent.click(toggle)
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.sparringOff)
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/api/gym/settings', body: { sparring: false } })
+    await waitFor(() => expect(within(section).queryByText('Sparring')).not.toBeInTheDocument())
+    expect(toggle).not.toBeChecked()
+
+    await userEvent.click(toggle)
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.sparringOn)
+    expect(await within(section).findByText(copy.sparring, { selector: '.settings__tag' })).toBeInTheDocument()
+  })
+
+  it("speaks of sparring in the gym's own word", async () => {
+    stubApi({ practice: 'randori' })
+    renderAt('/admin/ajustes/bloques')
+
+    const section = await screen.findByRole('region', { name: copy.title })
+    expect(await within(section).findByRole('checkbox', { name: 'La academia hace randori' })).toBeChecked()
+    expect(within(section).getAllByText('Randori', { selector: '.settings__tag' })).toHaveLength(1)
   })
 })

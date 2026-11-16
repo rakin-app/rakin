@@ -11,7 +11,8 @@ its programs and the block kinds every gym is given (0028); a grading scheme onl
 on, not every sport has one: by default it has no grades and shows no belts. With a
 preset it also gets one activity (0043), named as the preset is, that uses grades, so
 the belts show, and that activity's words (#344, `app.domain.vocabulary`): what the gym
-calls itself, its members and its coach; with none, no activity, which its owner picks
+calls itself, its members and its coach, and its word for sparring, which names the
+Sparring block kind (#346, "Randori" for some); with none, no activity, which its owner picks
 on first sign-in; and its owner, a staff row on the person with that RUT, found or
 created as the API adds anyone (`join_gym`, 0036), or with no RUT someone new keyed by
 the email. The phone is optional, a contact only. Its slug is its host,
@@ -35,7 +36,7 @@ import asyncpg
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from app.db_bootstrap import to_dsn
-from app.domain import vocabulary
+from app.domain import sparring, vocabulary
 from app.domain.grading import PRESETS
 from app.hosts import Hosts, slug_problem
 from app.roles import Role
@@ -123,12 +124,20 @@ async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
             [(gym_id, name) for name in PROGRAMS.values()],
         )
         if gym.grading in ACTIVITIES:
+            preset = vocabulary.GRADING_PRESETS.get(gym.grading)
             await conn.execute(
                 "INSERT INTO gym_activity (gym_id, name, uses_grades, preset)"
                 " VALUES ($1, $2, true, $3)",
                 gym_id,
                 ACTIVITIES[gym.grading],
-                vocabulary.GRADING_PRESETS.get(gym.grading),
+                preset,
+            )
+            # Its sport's word for sparring names the Sparring kind (#346): "Randori".
+            await conn.execute(
+                "UPDATE block_kind SET name = $2 WHERE id = block_kind_default_id($1, $3)",
+                gym_id,
+                sparring.kind_name(sparring.practice_of([preset])),
+                sparring.KINDS[0],
             )
         person_id = await conn.fetchval(
             "SELECT person_id FROM join_gym($1, $2, $3, $4, NULL)",

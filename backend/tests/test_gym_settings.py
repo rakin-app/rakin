@@ -158,6 +158,7 @@ def test_a_new_gym_reads_the_defaults(client: TestClient, db: Database) -> None:
         "bank_account": None,
         "privacy": None,
         "vocabulary": TODAYS_WORDS,
+        "sparring": True,
     }
 
 
@@ -183,6 +184,7 @@ def test_a_change_is_read_back_and_stored(client: TestClient, db: Database) -> N
         "bank_account": BANK_STORED,
         "privacy": None,
         "vocabulary": TODAYS_WORDS,
+        "sparring": True,
     }
     assert response.json() == expected
     assert client.get(URL, headers=as_gym(gym)).json() == expected

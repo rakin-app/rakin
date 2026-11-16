@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useId, useState } from 'react'
+import { useSparring } from '../api/activities'
 import { hasTime, myTimeQuery, personTimeQuery, type PersonTime, type TimeTotals } from '../api/matTime'
 import type { ReactNode } from 'react'
 import { t } from '../i18n/es'
@@ -32,10 +33,11 @@ function Loaded({
   mine: boolean
   headed?: boolean
 }) {
+  const sparring = useSparring()
   if (query.isError) {
     return <BarError>{copy.error}</BarError>
   }
-  if (query.data) return <MatTime time={query.data} mine={mine} headed={headed} />
+  if (query.data) return <MatTime time={query.data} mine={mine} headed={headed} sparring={sparring} />
   // While it loads, the card holds its place, so what is below it does not jump.
   return (
     <Card className="mat-time--loading" aria-busy="true" aria-label={mine ? copy.mine : copy.theirs}>
@@ -48,12 +50,24 @@ function Loaded({
  * "Tiempo de entrenamiento" (#141): the classes a person attended and the time each block
  * kind ran in them, this month or all time, as the API totals them. Each kind is a bar
  * whose text carries the figure, so the bars themselves are only decoration. Open mats
- * are a line of their own: their time is sparring too, as the API counts it.
+ * are a line of their own: their time is sparring too, as the API counts it. In a gym
+ * that does not spar (#346) neither the sparring total nor the open mats show: each
+ * kind's time, its archived Sparring included, stays in the bars (`sparring`).
  *
  * `mine` is the student page's wording; the ficha's speaks of the member. `headed` puts
  * the title over the card, as the ficha heads each of its sections (#360).
  */
-export function MatTime({ time, mine, headed = false }: { time: PersonTime; mine: boolean; headed?: boolean }) {
+export function MatTime({
+  time,
+  mine,
+  headed = false,
+  sparring = true,
+}: {
+  time: PersonTime
+  mine: boolean
+  headed?: boolean
+  sparring?: boolean
+}) {
   const [period, setPeriod] = useState<Period>('month')
   const titleId = useId()
   const title = mine ? copy.mine : copy.theirs
@@ -84,7 +98,7 @@ export function MatTime({ time, mine, headed = false }: { time: PersonTime; mine
         />
       }
     >
-      <Totals totals={totals} mine={mine} />
+      <Totals totals={totals} mine={mine} sparring={sparring} />
     </Frame>
   )
 }
@@ -118,7 +132,7 @@ function Frame({
   )
 }
 
-function Totals({ totals, mine }: { totals: TimeTotals; mine: boolean }) {
+function Totals({ totals, mine, sparring }: { totals: TimeTotals; mine: boolean; sparring: boolean }) {
   return (
     <>
       <dl className="mat-time__figures">
@@ -126,10 +140,12 @@ function Totals({ totals, mine }: { totals: TimeTotals; mine: boolean }) {
           <dt>{copy.classes}</dt>
           <dd>{totals.classes.toLocaleString('es-CL')}</dd>
         </div>
-        <div className="mat-time__figure">
-          <dt>{copy.sparring}</dt>
-          <dd>{copy.duration(totals.sparring_seconds)}</dd>
-        </div>
+        {sparring && (
+          <div className="mat-time__figure">
+            <dt>{copy.sparring}</dt>
+            <dd>{copy.duration(totals.sparring_seconds)}</dd>
+          </div>
+        )}
       </dl>
       {hasTime(totals) ? (
         <>
@@ -141,11 +157,11 @@ function Totals({ totals, mine }: { totals: TimeTotals; mine: boolean }) {
                 label: kind.name,
                 figure: copy.duration(kind.seconds),
                 value: kind.seconds,
-                muted: !kind.is_sparring,
+                muted: sparring && !kind.is_sparring,
               }))}
             />
           )}
-          {totals.open_mats > 0 && (
+          {sparring && totals.open_mats > 0 && (
             <p className="mat-time__open-mat">
               <span>{copy.openMat(totals.open_mats, copy.duration(totals.open_mat_seconds))}</span>
               <span className="bar-note">{mine ? copy.openMatNoteMine : copy.openMatNoteTheirs}</span>

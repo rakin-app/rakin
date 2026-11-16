@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { activitiesQuery } from '../api/activities'
+import { activitiesQuery, useSparring } from '../api/activities'
 import { classTypesQuery, createClassType, createProgram, updateClassType, updateProgram } from '../api/classes'
 import { ApiError } from '../api/client'
 import { programsQuery, type Program } from '../api/people'
@@ -58,6 +58,7 @@ function FormActions({ pending, onCancel }: { pending: boolean; onCancel: () => 
 export function ProgramSettings() {
   const programs = useQuery(programsQuery)
   const classTypes = useQuery(classTypesQuery)
+  const sparring = useSparring()
   const [editing, setEditing] = useState<Editing | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -165,7 +166,7 @@ export function ProgramSettings() {
                               {!classType.active && <span className="settings__tag">{copy.inactive}</span>}
                             </>
                           }
-                          detail={classTypeSummary(classType)}
+                          detail={classTypeSummary(classType, sparring)}
                           onOpen={() => open({ kind: 'classType', id: classType.id, programId: program.id })}
                         />
                       ),
@@ -277,12 +278,12 @@ function ProgramForm({
   )
 }
 
-/** A class type's line: its activity, if any; an open mat says so, then what it costs a
- * pack, and if it does not count. */
-function classTypeSummary(classType: ClassType): string {
+/** A class type's line: its activity, if any; an open mat says so, in a gym that spars
+ * (#346), then what it costs a pack, and if it does not count. */
+function classTypeSummary(classType: ClassType, sparring: boolean): string {
   return [
     classType.activity_name,
-    classType.kind === 'open_mat' && copy.openMat,
+    sparring && classType.kind === 'open_mat' && copy.openMat,
     copy.credits(classType.credit_cost),
     !classType.counts_as_class && copy.notCounted,
   ]
@@ -365,6 +366,8 @@ function ClassTypeForm({
     activity_id: classType?.activity_id ?? '',
   }))
   const activities = useQuery(activitiesQuery)
+  // A gym that does not spar has no open mats to pick (#346); one it has keeps its kind.
+  const sparring = useSparring()
   const [drafts, setDrafts] = useState(initial)
   const set = (field: keyof ClassTypeDrafts, value: string | boolean) => setDrafts({ ...drafts, [field]: value })
 
@@ -442,25 +445,27 @@ function ClassTypeForm({
           />
         )}
       </Field>
-      <Field label={form.kind} hint={form.kindHint}>
-        {(props) => (
-          <Select
-            {...props}
-            value={drafts.kind}
-            // As the API does: a class counts as a class by default, an open mat does not.
-            onChange={(e) => {
-              const kind = e.target.value as ClassKind
-              setDrafts({ ...drafts, kind, counts_as_class: kind === 'class' })
-            }}
-          >
-            {CLASS_KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {form.kinds[kind]}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
+      {sparring && (
+        <Field label={form.kind} hint={form.kindHint}>
+          {(props) => (
+            <Select
+              {...props}
+              value={drafts.kind}
+              // As the API does: a class counts as a class by default, an open mat does not.
+              onChange={(e) => {
+                const kind = e.target.value as ClassKind
+                setDrafts({ ...drafts, kind, counts_as_class: kind === 'class' })
+              }}
+            >
+              {CLASS_KINDS.map((kind) => (
+                <option key={kind} value={kind}>
+                  {form.kinds[kind]}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      )}
       {/* Offered once the gym has activities, or the class type already has one. */}
       {((activities.data?.length ?? 0) > 0 || initial.activity_id !== '') && (
         <Field label={form.activity} hint={form.activityHint}>

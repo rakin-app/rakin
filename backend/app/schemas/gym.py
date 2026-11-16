@@ -18,6 +18,9 @@ cannot be cleared; each save records the gym's today as `updated_on`, the notice
 The vocabulary (#344, `app.domain.vocabulary`) is what the screens call the gym, its
 members and its coach. Saved here it is the owner's pick (`by_hand`), and no activity
 added later changes it.
+
+`sparring` (#346, `app.domain.sparring`) is whether the gym spars: the owner's pick once
+saved here, else what its activities say. It reads as it stands, never absent.
 """
 
 from collections.abc import Mapping
@@ -126,6 +129,7 @@ class GymSettings(BaseModel):
     bank_account: BankAccount | None
     privacy: StoredPrivacy | None
     vocabulary: Vocabulary
+    sparring: bool
 
     @classmethod
     def from_row(
@@ -137,6 +141,7 @@ class GymSettings(BaseModel):
         theme: Theme,
         logo: str | None,
         settings: Mapping[str, Any],
+        sparring: bool,
     ) -> "GymSettings":
         return cls(
             name=name,
@@ -151,6 +156,7 @@ class GymSettings(BaseModel):
             bank_account=settings.get("bank_account"),
             privacy=settings.get("privacy"),
             vocabulary=vocabulary_of(settings),
+            sparring=sparring,
         )
 
 
@@ -162,6 +168,7 @@ SETTINGS_KEYS = (
     "bank_account",
     "privacy",
     "vocabulary",
+    "sparring",
 )
 
 
@@ -180,6 +187,7 @@ class GymSettingsUpdate(BaseModel):
     bank_account: BankAccount | None = None
     privacy: Privacy | None = None
     vocabulary: Vocabulary | None = None
+    sparring: StrictBool | None = None
 
     @model_validator(mode="after")
     def _only_bank_account_is_cleared(self) -> "GymSettingsUpdate":

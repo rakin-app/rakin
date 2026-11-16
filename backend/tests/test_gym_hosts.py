@@ -387,6 +387,16 @@ def test_a_judo_gym_starts_as_a_dojo(db: Database) -> None:
     words = json.loads(run(db.admin_url, query))["vocabulary"]
     assert (words["place"], words["coach"]) == ("dojo", "sensei")
 
+    async def kinds(conn: asyncpg.Connection) -> Any:
+        return await conn.fetch(
+            "SELECT name, is_sparring, archived FROM block_kind"
+            " WHERE gym_id = $1 AND is_sparring",
+            created.gym_id,
+        )
+
+    # Its sparring is randori, by name (#346).
+    assert [tuple(r) for r in run(db.admin_url, kinds)] == [("Randori", True, False)]
+
 
 @pytest.mark.postgres
 def test_a_gym_with_no_grading_has_no_words_yet(db: Database) -> None:

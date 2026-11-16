@@ -8,6 +8,7 @@ import {
   updateActivity,
   type Activity,
 } from '../api/activities'
+import { blockKindsQuery } from '../api/blockKinds'
 import { ApiError } from '../api/client'
 import { gymSettingsQuery } from '../api/gym'
 import { myselfQuery } from '../api/me'
@@ -91,9 +92,11 @@ export function ActivitySettings() {
 function useRefresh() {
   const queryClient = useQueryClient()
   // `uses_grades` rides on who is signed in, which every screen reads; so do the words
-  // the gym's first activity brings (#344), which Gimnasio's selects show too.
+  // the gym's first activity brings (#344), which Gimnasio's selects show too, and
+  // whether the gym spars (#346), which archives or names its block kinds.
   return () =>
     Promise.all([
+      queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey }),
       queryClient.invalidateQueries({ queryKey: activitiesQuery.queryKey }),
       queryClient.invalidateQueries({ queryKey: myselfQuery().queryKey }),
       queryClient.invalidateQueries({ queryKey: gymSettingsQuery().queryKey }),

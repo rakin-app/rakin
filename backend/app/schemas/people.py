@@ -30,6 +30,7 @@ from pydantic import (
 from app.domain.membership import MembershipStatus
 from app.domain.phone import normalize_phone
 from app.domain.rut import normalize_rut
+from app.domain.sparring import DEFAULT_PRACTICE, Practice
 from app.domain.vocabulary import DEFAULT, Vocabulary
 from app.roles import Role
 from app.schemas.memberships import MembershipStart
@@ -420,3 +421,7 @@ class MyRole(BaseModel):
     uses_grades: bool = False
     # What the gym calls itself, its members and its coach (#344).
     vocabulary: Vocabulary = DEFAULT
+    # Whether the gym spars, and its word for it (#346): the Sparring and Drilling
+    # blocks, the open mats and the sparring totals show only when it does.
+    sparring: bool = True
+    practice: Practice = DEFAULT_PRACTICE

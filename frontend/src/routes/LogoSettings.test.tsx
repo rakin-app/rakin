@@ -28,6 +28,7 @@ const SETTINGS: GymSettings = {
   bank_account: null,
   privacy: null,
   vocabulary: DEFAULT_VOCABULARY,
+  sparring: true,
 }
 
 type Call = { method: string; path: string; body: unknown; contentType: string | null }

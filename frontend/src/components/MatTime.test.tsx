@@ -5,6 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import type { PersonTime, TimeTotals } from '../api/matTime'
 import { createQueryClient } from '../api/queryClient'
 import { es } from '../i18n/es'
+import { wearSparring } from '../i18n/vocabulary'
 import { MatTime, MyMatTime } from './MatTime'
 
 const copy = es.matTime
@@ -57,6 +58,8 @@ describe('duration', () => {
 })
 
 describe('MatTime', () => {
+  afterEach(() => wearSparring(true, 'sparring'))
+
   it('says there is nothing yet when no session was timed', () => {
     render(<MatTime time={time(NONE, { ...NONE, classes: 4 })} mine />)
 
@@ -105,6 +108,26 @@ describe('MatTime', () => {
 
     await userEvent.click(within(region).getByRole('button', { name: copy.allTime }))
     expect(within(region).queryByText(copy.emptyMonth)).not.toBeInTheDocument()
+  })
+
+  // #346: a gym that does not spar.
+  it('shows no sparring total nor open mats in a gym that does not spar, its time kept in the bars', () => {
+    render(<MatTime time={time(MONTH, ALL_TIME)} mine sparring={false} />)
+    const region = card()
+
+    expect(figure(region, copy.classes)).toBe('2')
+    expect(within(region).queryByText(copy.sparring)).not.toBeInTheDocument()
+    expect(within(region).queryByText(/open mat/i)).not.toBeInTheDocument()
+    const kinds = within(within(region).getByRole('list', { name: copy.byKind })).getAllByRole('listitem')
+    expect(kinds.map((row) => row.textContent)).toEqual(['Técnica40 min', 'Sparring6 h'])
+  })
+
+  it("names the sparring total in the gym's word", () => {
+    wearSparring(true, 'randori')
+    render(<MatTime time={time(MONTH, ALL_TIME)} mine />)
+
+    expect(figure(card(), 'Randori en total')).toBe('6 h')
+    expect(within(card()).getByText('Tu tiempo de open mat cuenta como randori.')).toBeInTheDocument()
   })
 
   it('leaves out the open mat line without open mats', () => {

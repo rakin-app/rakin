@@ -8,7 +8,7 @@ import type { createAppRouter } from './router'
 import { logoIcon } from './logo'
 import { setTabIcon } from './tabIcon'
 import { applyTheme, isTheme } from './theme'
-import { wearVocabulary } from './i18n/vocabulary'
+import { wearSparring, wearVocabulary } from './i18n/vocabulary'
 
 type Props = {
   queryClient: QueryClient
@@ -52,6 +52,9 @@ function GymVocabulary() {
   const me = useQuery({ ...myselfQuery(), enabled: false })
   const vocabulary = me.data?.vocabulary ?? host.data?.gym?.vocabulary
   if (vocabulary) wearVocabulary(vocabulary)
+  // Whether it spars, and its word for it (#346): signed in only, as no page before
+  // sign-in speaks of sparring.
+  if (me.data) wearSparring(me.data.sparring, me.data.practice)
   return null
 }
 

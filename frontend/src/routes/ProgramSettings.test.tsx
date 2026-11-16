@@ -65,7 +65,14 @@ function stubApi({
   saveProgram,
   saveClassType,
   activities = [],
-}: { role?: string; saveProgram?: Answer; saveClassType?: Answer; activities?: Activity[] } = {}) {
+  sparring = true,
+}: {
+  role?: string
+  saveProgram?: Answer
+  saveClassType?: Answer
+  activities?: Activity[]
+  sparring?: boolean
+} = {}) {
   const calls: Call[] = []
   let programs = [ADULTS, KIDS, OLD]
   let classTypes = [FUNDAMENTOS, OPEN_MAT, SPARRING]
@@ -86,7 +93,7 @@ function stubApi({
   )
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
-    if (path === '/api/me/role') return { body: { role } }
+    if (path === '/api/me/role') return { body: { role, sparring } }
     if (path === '/api/activities') return { body: activities }
     if (path === '/api/programs' && method === 'GET') return { body: programs }
     if (path === '/api/programs' && method === 'POST') {
@@ -309,6 +316,32 @@ describe('Ajustes: Programas y clases', () => {
         },
       },
     ])
+  })
+
+  // #346: a gym that does not spar has no open mats to pick, and shows its old ones as classes.
+  it('offers no open mat in a gym that does not spar, and keeps the one it has', async () => {
+    const calls = stubApi({ sparring: false })
+    renderAt('/admin/ajustes/programas')
+
+    const adults = await programCard('Adultos')
+    const rows = within(within(adults).getByRole('list', { name: copy.classTypesLabel('Adultos') })).getAllByRole(
+      'listitem',
+    )
+    expect(rows[1]).toHaveTextContent(`Open mat${copy.credits(0)} · ${copy.notCounted}`)
+    expect(rows[1]).not.toHaveTextContent(`${copy.openMat} ·`)
+
+    await userEvent.click(within(adults).getByRole('button', { name: copy.addClassType }))
+    const create = within(adults).getByRole('form', { name: form.create('Adultos') })
+    expect(within(create).queryByLabelText(form.kind)).not.toBeInTheDocument()
+    await userEvent.click(within(create).getByRole('button', { name: copy.cancel }))
+
+    await userEvent.click(rowButton(adults, 'Open mat'))
+    const edit = within(adults).getByRole('form', { name: form.edit('Open mat') })
+    expect(within(edit).queryByLabelText(form.kind)).not.toBeInTheDocument()
+    await userEvent.type(within(edit).getByLabelText(form.name), ' sábado')
+    await userEvent.click(within(edit).getByRole('button', { name: copy.submit }))
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.classTypeSaved('Open mat sábado'))
+    expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({ name: 'Open mat sábado' })
   })
 
   it('creates an open mat, which does not count as a class unless told', async () => {

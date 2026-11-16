@@ -87,6 +87,25 @@ export function currentVocabulary(): Vocabulary {
   return current
 }
 
+/**
+ * The gym's word for sparring (#346, backend `app.domain.sparring`): its first combat
+ * activity's, "randori" in judo, "kumite" in karate; "sparring" with none. A noun the
+ * copy uses as is, masculine and the same in the plural: "rounds de randori".
+ */
+export const PRACTICES = ['sparring', 'randori', 'kumite', 'combate'] as const
+export type Practice = (typeof PRACTICES)[number]
+
+let practice: Practice = 'sparring'
+let spars = true
+
+/** Whether the gym spars and its word for it, as every screen reads them from now on:
+ * as today, yes and "sparring", for no answer or a word this build does not know. Worn
+ * beside the vocabulary, from `/api/me/role`. */
+export function wearSparring(sparring: unknown, word: unknown): void {
+  spars = sparring !== false
+  practice = isOf(PRACTICES, word) ? word : 'sparring'
+}
+
 const place = () => PLACE_NOUNS[current.place]
 const member = () => MEMBER_NOUNS[current.members]
 const coach = () => COACH_NOUNS[current.coach]
@@ -183,5 +202,16 @@ export const w = {
   },
   get theCoach() {
     return `${coach().feminine ? 'la' : 'el'} ${coach().one}`
+  },
+
+  // The practice: "sparring", "Randori"; and whether the gym spars at all.
+  get spars() {
+    return spars
+  },
+  get practice() {
+    return practice
+  },
+  get Practice() {
+    return cap(practice)
   },
 }

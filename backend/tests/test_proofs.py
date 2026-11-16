@@ -464,6 +464,8 @@ def test_my_role_names_who_is_signed_in_and_the_gym(
         # No activity grades in a new gym (#245).
         "uses_grades": False,
         "vocabulary": {"place": "academia", "members": "alumnos", "coach": "profe"},
+        "sparring": True,
+        "practice": "sparring",
     }
 
 

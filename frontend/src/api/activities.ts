@@ -82,3 +82,12 @@ export function deleteActivity(id: string): Promise<void> {
 export function useGrades(): boolean {
   return useQuery(myselfQuery()).data?.uses_grades === true
 }
+
+/**
+ * Whether the gym spars (#346): the Sparring and Drilling blocks, the "Open mat" kind and
+ * the sparring totals show only then. Until told otherwise it does, as every gym did
+ * before; the shell has the answer before any screen renders (`router.tsx`).
+ */
+export function useSparring(): boolean {
+  return useQuery(myselfQuery()).data?.sparring !== false
+}

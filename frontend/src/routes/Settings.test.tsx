@@ -38,6 +38,7 @@ const SETTINGS: GymSettings = {
   },
   privacy: null,
   vocabulary: DEFAULT_VOCABULARY,
+  sparring: true,
 }
 
 const ADULTS: Program = { id: 'adultos', name: 'Adultos', active: true }
