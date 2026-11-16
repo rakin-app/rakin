@@ -2,6 +2,8 @@
 
 Spike #381, researched 2026-11-16. It answers the 14 [open legal questions](compliance-audit.md#open-legal-questions) of the readiness audit (#366) from the primary sources, proposes a decision for Rakin on each, and leaves the lawyer [five yes/no confirmations](#for-the-lawyer).
 
+Drafts built on these answers (the DPA, both privacy notices and the beta terms of service) are in [`docs/legal/`](legal/README.md).
+
 **This is research, not legal advice.** Every answer is a proposal. The owner approves the ones marked *approve it yourself*; the lawyer confirms the rest.
 
 The text quoted is Ley 19.628 as Ley 21.719 rewrites it, in the consolidated version BCN publishes for 1 December 2026 (see [sources](#sources)). Article numbers are those of Ley 19.628 unless marked "21.719 transitorio".

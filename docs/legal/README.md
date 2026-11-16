@@ -1,0 +1,66 @@
+> **BORRADOR: pendiente de revisión por abogado.** 16 de noviembre de 2026.
+
+# Textos legales de Rakin
+
+Borradores escritos para las primeras academias, que son conocidas y entran a una beta gratuita. Un borrador razonable es mejor que nada mientras un abogado los revisa. Se basan en la [investigación legal](../legal-research.md) (#381), que cita la ley N° 19.628 modificada por la ley N° 21.719. Cada cláusula que descansa en una de sus respuestas la enlaza.
+
+**Marcas en el texto:**
+
+- `[ABOGADO: …]`: un punto abierto para el abogado.
+- `[PENDIENTE: …]`: algo que depende de una función aún no construida.
+- **[entre corchetes]**: un dato que se completa: el nombre de la empresa, el de la academia, una ciudad.
+
+## Los documentos
+
+| Documento | Qué es | Quién lo acepta | Cuándo |
+| --- | --- | --- | --- |
+| [Términos de encargo](terminos-de-encargo.md) | el contrato de encargo (DPA) del art. 15 bis: cómo trata Rakin los datos de los alumnos por cuenta de cada academia | el representante de la academia y el de la empresa, firmando | antes de que los datos de la academia entren a Rakin |
+| [Términos de servicio](terminos-de-servicio.md) | el contrato del servicio: beta gratuita, soporte, término; los términos pagados van en su sección 12 | los mismos, firmando, junto con los Términos de encargo | igual |
+| [Aviso de privacidad de cada academia](aviso-de-privacidad-gimnasio.md) | lo que la academia, como responsable, informa a sus alumnos y apoderados (art. 14 ter) | nadie lo firma: la academia lo publica en `/privacidad` y lo enlaza desde la inscripción. Para los menores de 14 años, el apoderado da su consentimiento sobre él | cuando la academia completa Ajustes, antes de abrir su formulario de inscripción |
+| [Aviso de privacidad de Rakin](aviso-de-privacidad-rakin.md) | lo que la empresa, como responsable, informa sobre sus propios datos: quienes administran una academia, quienes le escriben, quienes visitan rakin.app | nadie lo firma: se publica | en `rakin.app/privacidad`, en la página de inicio (#343), y en `/privacidad` cuando la dirección no es de una academia |
+
+## Lo que queda para el abogado
+
+Las cinco confirmaciones de la [investigación](../legal-research.md#for-the-lawyer), cada una de sí o no:
+
+1. **Menores de 14 años**: registrar el consentimiento del apoderado aunque la membresía sea un contrato. Para 14 a 17 años, basta el contrato que firma el apoderado.
+2. **Registros contables**: guardarlos 6 años con nombre y RUT aunque la persona pida que la borren.
+3. **Forma de los Términos de encargo**:
+   - (a) subencargados autorizados uno por uno;
+   - (b) transferencias a Estados Unidos con las cláusulas de cada proveedor;
+   - (c) 24 horas de la Empresa a la Academia, 72 de la Academia a la Agencia, y la Empresa puede avisar a los alumnos en nombre de la Academia.
+4. **Identidad por RUT** compartida entre academias, descrita en los Términos de encargo, sin que la empresa pase a ser responsable.
+5. **Datos de salud** en un gimnasio (art. 16 bis): ¿están prohibidos aun con consentimiento?
+
+Más los puntos propios de estos textos, marcados `[ABOGADO: …]`:
+
+- el límite de responsabilidad en la beta y su validez frente a la ley N° 19.496;
+- si Cloudflare R2 debe fijar una región;
+- la división entre lo que el equipo de una academia hace dentro de ella (de la academia) y su cuenta como cliente (de Rakin);
+- cuánto tiempo guardar la facturación cuando Rakin cobre;
+- la redacción del aviso de cada academia, que ya estaba pendiente con el abogado.
+
+## Lo que estos textos prometen y el código aún no hace
+
+Ningún texto se publica ni se firma como versión final hasta cerrar estos issues, o hasta quitarle al texto la promesa:
+
+| Promesa | Dónde | Issue |
+| --- | --- | --- |
+| registrar el consentimiento del apoderado de un menor de 14 años, con la versión del aviso, también para los inscritos a mano o por planilla | aviso de cada academia | #370 |
+| avisos y cobros al apoderado según la edad, no según el vínculo; el cambio de contacto a los 18 | aviso de cada academia | #368 |
+| ver y exportar los propios datos | aviso de cada academia, derechos | #371 |
+| eliminar a quien pagó, conservando 6 años la contabilidad | aviso de cada academia, retención | #372 |
+| anonimizar a los 24 meses; eliminar los comprobantes a los 12 | aviso de cada academia, retención | #378 |
+| copia completa y eliminación de una academia al terminar | Términos de encargo, cláusula 14 | #377 |
+| aviso de vulneración en 24 horas, con quién y cómo | Términos de encargo, cláusula 12 | #369, #374 |
+| menos datos a Sentry | Términos de encargo, Anexo A | #373 |
+| reenviar en 1 día hábil lo que un alumno escriba a Rakin | Términos de encargo, cláusula 11; aviso de Rakin | #375 |
+| ningún dato de salud; advertir al crear un campo sensible | Términos de encargo, cláusula 4 | #376 |
+| ensayar la restauración de respaldos | Términos de encargo, Anexo B | ops#2 |
+| mostrar el aviso de Rakin en `/privacidad` sin academia | aviso de Rakin | (UX QA, run 1) |
+
+## Cambios
+
+| Fecha | Cambio |
+| --- | --- |
+| 2026-11-16 | Primeros borradores de los cuatro textos (#381). |
