@@ -562,12 +562,18 @@ async def approve_join_request(
         # As at submission: a child given their parent's email or phone has none of their
         # own. A request sent before 0036 may still hold one (#165).
         own_guardian(member)
+    writer = Writer(session, timezone, gym_today(timezone))
     try:
-        person_id, _ = await Writer(session, timezone, gym_today(timezone)).write(member)
+        person_id, _ = await writer.write(member)
     except RowRefused as refused:
         conflict = JoinRefusal(code=refused.code, field=refused.on.value)
         raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump()) from None
-    await record_join(session, row, person_id)
+    if row.guardian_name is not None and writer.guardian_id is None:
+        # A minor's request names a guardian, whom writing it always finds or adds; were
+        # there none, nobody could be recorded as accepting for the child.
+        conflict = JoinRefusal(code="minor", field="guardian_name")
+        raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump())
+    await record_join(session, row, person_id, writer.guardian_id)
 
     membership_id = None
     member_already = (

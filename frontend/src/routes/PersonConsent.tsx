@@ -53,7 +53,8 @@ export function PersonConsent({ person }: { person: Person }) {
 }
 
 function line(event: ConsentEvent): string {
-  const by = event.by?.name ?? copy.someone
+  // `null` once the one who acted left the gym, which only a guardian can have.
+  const by = event.by?.name ?? copy.goneGuardian
   const what =
     event.action === 'consent_given'
       ? copy.event.consent_given(by, event.source === 'page')

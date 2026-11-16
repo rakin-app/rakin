@@ -16,6 +16,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.api.member_import import Writer
 from app.main import create_app
 from app.schemas.privacy import TEMPLATE_UPDATED_ON
 from tests.auth import FakeAuth, as_gym
@@ -24,6 +25,7 @@ from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, thr
 from tests.test_guardians import add_dependent, add_person
 from tests.test_join import (
     adult,
+    approve,
     approved,
     minor,
     notice,
@@ -172,6 +174,73 @@ def test_a_minors_record_names_the_guardian_who_consented(
     ]
     assert all(e["by"] == by for e in record["events"])
     assert all(e["template_on"] == TEMPLATE_UPDATED_ON.isoformat() for e in record["events"])
+
+
+def test_the_record_names_the_guardian_the_request_gave(client: TestClient, gym: uuid.UUID) -> None:
+    """A kid here already, with their guardian: approving a request that names that
+    guardian, by email, records them, whoever else the gym knows."""
+    token = token_of(client, gym)
+    kid = approved(client, gym, one_request(client, gym, token, minor()))["person_id"]
+    guardian = guardian_of(client, gym, kid)
+    add_person(client, gym, "Otra Apoderada")
+    [kid_rut] = [
+        r["rut"]
+        for r in client.get("/api/people", headers=as_gym(gym)).json()["items"]
+        if r["id"] == kid
+    ]
+
+    again = one_request(client, gym, token, minor(rut=kid_rut, guardian_consent=True))
+    assert approved(client, gym, again)["person_id"] == kid
+
+    given = [e for e in consent(client, gym, kid)["events"] if e["action"] == "consent_given"]
+    assert [e["by"]["id"] for e in given] == [str(guardian)]
+
+
+def test_a_request_naming_another_guardian_is_refused_and_records_nothing(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    """A minor has one guardian in a gym (0010): a request naming someone else for a kid
+    who has one is a 409, and the register keeps nothing of it."""
+    token = token_of(client, gym)
+    kid = approved(client, gym, one_request(client, gym, token, minor()))["person_id"]
+    [kid_rut] = [
+        r["rut"]
+        for r in client.get("/api/people", headers=as_gym(gym)).json()["items"]
+        if r["id"] == kid
+    ]
+    other = minor(
+        rut=kid_rut,
+        guardian_name="Otro Apoderado",
+        guardian_email=f"{uuid.uuid4().hex[:8]}@x.cl",
+        guardian_consent=True,
+    )
+
+    response = approve(client, gym, one_request(client, gym, token, other))
+
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "has_guardian"
+    assert events(client, gym, kid) == [("notice_accepted", "Marta Pérez", "join")]
+
+
+def test_a_minors_request_that_finds_no_guardian_is_a_409_not_a_500(
+    client: TestClient, gym: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write = Writer.write
+
+    async def without_guardian(self: Writer, member: Any) -> Any:
+        written = await write(self, member)
+        self.guardian_id = None
+        return written
+
+    monkeypatch.setattr(Writer, "write", without_guardian)
+    request = one_request(client, gym, token_of(client, gym), minor(guardian_consent=True))
+
+    response = approve(client, gym, request)
+
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"] == {"code": "minor", "field": "guardian_name"}
+    # Rolled back: the request waits in the queue still.
+    assert [r["id"] for r in queue(client, gym)] == [request]
 
 
 def test_a_guardian_may_send_the_form_without_consenting(

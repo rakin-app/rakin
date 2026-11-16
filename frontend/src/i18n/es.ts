@@ -901,7 +901,8 @@ export const es = {
             `${by} dio su consentimiento ${page ? 'desde su página' : 'en la inscripción'}`,
           consent_withdrawn: (by: string) => `${by} retiró su consentimiento desde su página`,
         },
-        someone: 'Alguien que ya no está en la academia',
+        // An act whose actor left the gym: only ever a guardian, since the person is here.
+        goneGuardian: 'Su apoderado, que ya no está en la academia,',
         version: (day: string) => `política del ${day}`,
         // Before the register kept the version.
         noVersion: 'versión no registrada',

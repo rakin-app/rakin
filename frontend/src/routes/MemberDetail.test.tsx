@@ -1788,6 +1788,38 @@ describe('Ficha de alumno', () => {
     ).toBeInTheDocument()
   })
 
+  it('says so when the guardian who consented is no longer in the gym', async () => {
+    stubApi({
+      extra: (path) =>
+        path === '/api/people/felipe/consent'
+          ? {
+              body: {
+                basis: 'guardian_consent',
+                consent: 'given',
+                events: [
+                  {
+                    action: 'consent_given',
+                    at: '2026-11-12T15:00:00Z',
+                    by: null,
+                    source: 'page',
+                    template_on: '2026-11-15',
+                    details_on: '2026-11-10',
+                  },
+                ],
+              },
+            }
+          : undefined,
+    })
+    renderAt(PATH)
+
+    const privacy = await screen.findByRole('region', { name: copy.consent.title })
+    expect(
+      await within(privacy).findByText(
+        `12-11-2026: ${copy.consent.event.consent_given(copy.consent.goneGuardian, true)} (${copy.consent.version('15-11-2026')}).`,
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('says when a minor’s guardian has not consented', async () => {
     stubApi({
       extra: (path) =>

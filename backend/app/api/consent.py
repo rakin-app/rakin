@@ -101,19 +101,15 @@ INSERT = """
 """
 
 
-async def record_join(session: AsyncSession, request: Any, person_id: uuid.UUID) -> None:
+async def record_join(
+    session: AsyncSession, request: Any, person_id: uuid.UUID, guardian_id: uuid.UUID | None
+) -> None:
     """What an approved join request said, kept on `person_id`: the notice accepted when
     it was sent, and for a minor, by their guardian, with the guardian's consent when
-    they gave it. The guardian is whoever approving linked."""
-    by = person_id
-    if request.guardian_name is not None:
-        guardian: uuid.UUID | None = await session.scalar(
-            text("SELECT guardian_person_id FROM guardian_link WHERE dependent_person_id = :id"),
-            {"id": person_id},
-        )
-        # A minor's request always links one (`app.member_import.Writer`).
-        assert guardian is not None, "a minor's approved request has a guardian"
-        by = guardian
+    they gave it. `guardian_id` is the guardian the request named, as approving found or
+    added them (`app.api.member_import.Writer.guardian_id`); a minor's request has one."""
+    minor = request.guardian_name is not None
+    by = guardian_id if minor and guardian_id is not None else person_id
     values = {
         "person": person_id,
         "by": by,
@@ -123,7 +119,7 @@ async def record_join(session: AsyncSession, request: Any, person_id: uuid.UUID)
         "at": request.consented_at,
     }
     await session.execute(text(INSERT), {**values, "action": "notice_accepted"})
-    if request.guardian_name is not None and request.guardian_consent:
+    if minor and guardian_id is not None and request.guardian_consent:
         await session.execute(text(INSERT), {**values, "action": "consent_given"})
 
 

@@ -430,6 +430,9 @@ class Writer:
         self.import_id = import_id
         # The current row's fields that something already here keeps it from applying.
         self.ignored: list[Field] = []
+        # The guardian the current row named, as `write` found or added them: whom a
+        # join request's consent is recorded as given by (#370).
+        self.guardian_id: uuid.UUID | None = None
         # Whom this run's rows have written, by the name the sheet gives them: a
         # guardian the sheet names alone is the person their own row is.
         self.written: dict[str, list[Named]] = {}
@@ -525,6 +528,7 @@ class Writer:
         guardian_id: uuid.UUID | None = None
         if member.has_guardian:
             guardian_id, guardian = await self._guardian(member)
+        self.guardian_id = guardian_id
 
         if member.is_dependent:
             assert guardian_id is not None
