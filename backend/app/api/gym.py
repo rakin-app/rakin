@@ -25,6 +25,7 @@ from fastapi import status as http
 from sqlalchemy import text
 
 from app.domain.dates import gym_today
+from app.domain.vocabulary import stored
 from app.hosts import Hosts
 from app.integrations import Integrations, get_integrations
 from app.integrations.blobstore import BlobStore
@@ -95,6 +96,9 @@ async def update_settings(
             text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
         )
         changes["privacy"]["updated_on"] = gym_today(timezone).isoformat()
+    if body.vocabulary is not None:
+        # The owner's pick: no activity added later changes it (#344).
+        changes["vocabulary"] = stored(body.vocabulary, by_hand=True)
     # A cleared key is removed rather than stored as JSON null, so it reads as unset.
     removed = [k for k in SETTINGS_KEYS if k in changes and changes[k] is None]
     patch = {k: v for k, v in changes.items() if v is not None}

@@ -1,6 +1,7 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import { apiFetch } from './client'
 import { myselfQuery } from './me'
+import type { Vocabulary } from '../i18n/vocabulary'
 
 /** One discipline the gym teaches, "BJJ" or "Ballet" (backend `Activity`, #245). Belts
  * and ranks show in the gym only while one of its activities `uses_grades`. */
@@ -8,6 +9,10 @@ export type Activity = {
   id: string
   name: string
   uses_grades: boolean
+  // The preset it came from (#344), kept through a rename; `null` for a name the gym wrote.
+  preset?: ActivityPreset | null
+  // What a gym of that sport calls itself, its members and its coach; `null` with no preset.
+  words?: Vocabulary | null
   // How many class types belong to it.
   class_types: number
   created_at: string
@@ -15,27 +20,32 @@ export type Activity = {
 
 export type ActivityChanges = Partial<{ name: string; uses_grades: boolean }>
 
-/** The ones Ajustes offers, each with whether it grades by default: on for the martial
- * arts that give belts, off for the rest. "Otra" is a name the gym writes itself. */
-export const ACTIVITY_PRESETS: readonly { name: string; usesGrades: boolean }[] = [
-  { name: 'BJJ', usesGrades: true },
-  { name: 'Judo', usesGrades: true },
-  { name: 'Karate', usesGrades: true },
-  { name: 'Taekwondo', usesGrades: true },
-  { name: 'Muay Thai', usesGrades: true },
-  { name: 'Boxeo', usesGrades: false },
-  { name: 'MMA', usesGrades: false },
-  { name: 'Lucha', usesGrades: false },
-  { name: 'Ballet', usesGrades: false },
-  { name: 'Danza', usesGrades: false },
-  { name: 'Música', usesGrades: false },
-  { name: 'Piano', usesGrades: false },
-  { name: 'Escalada', usesGrades: false },
-  { name: 'Natación', usesGrades: false },
-  { name: 'Fútbol', usesGrades: false },
-  { name: 'Fuerza / CrossFit', usesGrades: false },
-  { name: 'Yoga', usesGrades: false },
-]
+/** The ones Ajustes offers, each by the key the API stores (backend
+ * `app.domain.vocabulary.PRESETS`, which holds the words each brings, #344) and with
+ * whether it grades by default: on for the martial arts that give belts, off for the
+ * rest. "Otra" is a name the gym writes itself. */
+export const ACTIVITY_PRESETS = [
+  { key: 'bjj', name: 'BJJ', usesGrades: true },
+  { key: 'judo', name: 'Judo', usesGrades: true },
+  { key: 'karate', name: 'Karate', usesGrades: true },
+  { key: 'taekwondo', name: 'Taekwondo', usesGrades: true },
+  { key: 'muay_thai', name: 'Muay Thai', usesGrades: true },
+  { key: 'boxeo', name: 'Boxeo', usesGrades: false },
+  { key: 'mma', name: 'MMA', usesGrades: false },
+  { key: 'lucha', name: 'Lucha', usesGrades: false },
+  { key: 'ballet', name: 'Ballet', usesGrades: false },
+  { key: 'danza', name: 'Danza', usesGrades: false },
+  { key: 'musica', name: 'Música', usesGrades: false },
+  { key: 'piano', name: 'Piano', usesGrades: false },
+  { key: 'escalada', name: 'Escalada', usesGrades: false },
+  { key: 'remo', name: 'Remo', usesGrades: false },
+  { key: 'natacion', name: 'Natación', usesGrades: false },
+  { key: 'futbol', name: 'Fútbol', usesGrades: false },
+  { key: 'crossfit', name: 'Fuerza / CrossFit', usesGrades: false },
+  { key: 'yoga', name: 'Yoga', usesGrades: false },
+] as const satisfies readonly { key: string; name: string; usesGrades: boolean }[]
+
+export type ActivityPreset = (typeof ACTIVITY_PRESETS)[number]['key']
 
 /** The gym's activities by name. Any staff role may read them. */
 export const activitiesQuery = queryOptions({
@@ -43,7 +53,11 @@ export const activitiesQuery = queryOptions({
   queryFn: () => apiFetch<Activity[]>('/api/activities'),
 })
 
-export function createActivity(body: { name: string; uses_grades: boolean }): Promise<Activity> {
+export function createActivity(body: {
+  name: string
+  uses_grades: boolean
+  preset?: ActivityPreset
+}): Promise<Activity> {
   return apiFetch<Activity>('/api/activities', { method: 'POST', body: JSON.stringify(body) })
 }
 

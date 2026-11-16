@@ -72,6 +72,7 @@ def notice(slug: str) -> dict[str, Any]:
         "address": "Av. Pedro de Valdivia 1234, Providencia",
         "updated_on": gym_today(DEFAULT_TIMEZONE).isoformat(),
         "human_check": False,
+        "vocabulary": {"place": "academia", "members": "alumnos", "coach": "profe"},
     }
 
 

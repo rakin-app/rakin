@@ -7,6 +7,7 @@ import { Button } from '../components/Button'
 import { GymMark } from '../components/GymMark'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
+import { wearVocabulary } from '../i18n/vocabulary'
 import { RAKIN, useDocumentTitle } from '../pageTitle'
 import { Card } from '../components/Card'
 import './Privacy.css'
@@ -30,6 +31,8 @@ export function validatePrivacySearch(search: Record<string, unknown>): { enlace
 export function Privacy() {
   const { enlace } = route.useSearch()
   const notice = useQuery(privacyNoticeQuery(enlace))
+  // The gym's words (#344), on the shared host too, before the notice reads them.
+  if (notice.data?.vocabulary) wearVocabulary(notice.data.vocabulary)
   useDocumentTitle(copy.eyebrow, notice.data?.gym ?? RAKIN)
 
   if (notice.isPending) {

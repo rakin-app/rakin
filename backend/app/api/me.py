@@ -24,7 +24,7 @@ from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
 from app.api.proofs import OPEN_PERIODS, PAYABLE, payable_params, to_open_period
 from app.api.session_blocks import person_time_of
-from app.domain import billing
+from app.domain import billing, vocabulary
 from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.ledger import EntryKind, EntryStatus
@@ -121,6 +121,7 @@ PAYMENTS = """
 # get a way to it (#214).
 WHO = """
     SELECT g.name AS gym_name, g.theme, g.logo_version, gp.name, gp.email,
+           g.settings -> 'vocabulary' AS vocabulary,
            (EXISTS (SELECT 1 FROM membership m WHERE m.gym_id = g.id AND m.person_id = :me)
             OR EXISTS (SELECT 1 FROM guardian_link l
                        WHERE l.gym_id = g.id AND l.guardian_person_id = :me)) AS student_page
@@ -184,7 +185,8 @@ async def my_role(
     admin screens show, such as the pending-proofs badge only to who reads the ledger,
     and who they are, such as the class timer to the session's coach, Ajustes → Cuenta
     and the gym's name in the sidebar and the page titles; and whether the gym grades,
-    for the belts and ranks every screen shows only then (#245)."""
+    for the belts and ranks every screen shows only then (#245); and what the gym calls
+    itself, its members and its coach (#344)."""
     who = (await session.execute(text(WHO), {"me": tenant.person_id, "gym": tenant.gym_id})).one()
     return MyRole(
         role=await role_in_gym(session, tenant),
@@ -196,6 +198,7 @@ async def my_role(
         theme=who.theme,
         gym_logo=logo_path(tenant.gym_id, who.logo_version),
         uses_grades=await gym_uses_grades(session),
+        vocabulary=vocabulary.read(who.vocabulary),
     )
 
 

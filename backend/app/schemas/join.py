@@ -12,6 +12,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PastDate, StringConstraints
 
+from app.domain.vocabulary import DEFAULT, Vocabulary
 from app.member_import.rows import ErrorCode
 from app.schemas.consent import NoticeVersion
 from app.schemas.people import Email, PersonRef, Phone, Rut
@@ -67,6 +68,8 @@ class JoinForm(BaseModel):
     privacy_updated_on: date
     # The human check's widget key (`app.integrations.humancheck`), when there is one.
     human_check_site_key: str | None
+    # What the gym calls itself and its members (#344): the form's words.
+    vocabulary: Vocabulary = DEFAULT
 
 
 class JoinSubmission(BaseModel):

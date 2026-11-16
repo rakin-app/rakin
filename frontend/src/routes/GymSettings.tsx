@@ -15,6 +15,18 @@ import { Input, Select } from '../components/Field'
 import { useFocusFirstInvalid } from '../components/focusInvalid'
 import { t } from '../i18n/es'
 import { DEFAULT_THEME, THEMES, wearTheme, type Theme } from '../theme'
+import {
+  COACHES,
+  coachLabel,
+  MEMBERS,
+  membersLabel,
+  PLACES,
+  placeLabel,
+  sameWords,
+  wearVocabulary,
+  type Vocabulary,
+} from '../i18n/vocabulary'
+import { activitiesQuery } from '../api/activities'
 import { ActivitySettings } from './ActivitySettings'
 import { LogoSettings } from './LogoSettings'
 import { Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
@@ -39,6 +51,7 @@ type Drafts = {
   whatsapp: boolean
   bank: Record<BankField, string>
   privacy: Record<PrivacyField, string>
+  vocabulary: Vocabulary
 }
 
 function draftsOf(settings: Settings): Drafts {
@@ -64,6 +77,7 @@ function draftsOf(settings: Settings): Drafts {
       email: settings.privacy?.email ?? '',
       address: settings.privacy?.address ?? '',
     },
+    vocabulary: settings.vocabulary,
   }
 }
 
@@ -90,6 +104,8 @@ function changesOf(before: Drafts, after: Drafts): GymSettingsUpdate {
     const privacy = after.privacy
     changes.privacy = { ...privacy, address: privacy.address.trim() || null }
   }
+  // Sent whole once any word changed: then it is the owner's pick, and stays (#344).
+  if (!sameWords(after.vocabulary, before.vocabulary)) changes.vocabulary = after.vocabulary
   return changes
 }
 
@@ -123,6 +139,16 @@ function GymForm({ settings }: { settings: Settings }) {
   const [drafts, setDrafts] = useState(initial)
   const [saved, setSaved] = useState(false)
 
+  // The gym's first activity, added above, brings its words (#344): shown here at once,
+  // unless the owner already changed the selects.
+  const [seenWords, setSeenWords] = useState(settings.vocabulary)
+  if (!sameWords(seenWords, settings.vocabulary)) {
+    setSeenWords(settings.vocabulary)
+    setInitial({ ...initial, vocabulary: settings.vocabulary })
+    if (sameWords(drafts.vocabulary, initial.vocabulary)) setDrafts({ ...drafts, vocabulary: settings.vocabulary })
+  }
+  const setWords = (words: Partial<Vocabulary>) => setDrafts({ ...drafts, vocabulary: { ...drafts.vocabulary, ...words } })
+
   // A theme picked is worn at once, on every screen, as a preview (#241); until it is
   // saved, leaving Gimnasio puts the saved one back.
   const savedTheme = useRef(initial.theme)
@@ -137,8 +163,14 @@ function GymForm({ settings }: { settings: Settings }) {
     mutationFn: updateGymSettings,
     onSuccess: (answer) => {
       queryClient.setQueryData(gymSettingsQuery().queryKey, answer)
-      // Every screen wears the new theme at once (App's `GymTheme` reads it there).
-      queryClient.setQueryData<MyRole>(myselfQuery().queryKey, (me) => me && { ...me, theme: answer.theme })
+      // Every screen wears the new theme and words at once (App's `GymTheme` and
+      // `GymVocabulary` read them there).
+      wearVocabulary(answer.vocabulary)
+      queryClient.setQueryData<MyRole>(
+        myselfQuery().queryKey,
+        (me) => me && { ...me, theme: answer.theme, vocabulary: answer.vocabulary },
+      )
+      setSeenWords(answer.vocabulary)
       const next = draftsOf(answer)
       savedTheme.current = next.theme
       setInitial(next)
@@ -203,6 +235,7 @@ function GymForm({ settings }: { settings: Settings }) {
             </Select>
           )}
         </Field>
+        <VocabularyFields words={drafts.vocabulary} onChange={setWords} />
       </fieldset>
 
       <ActivitySettings />
@@ -448,5 +481,89 @@ function ThemePreview({ theme }: { theme: Theme }) {
         <span className="theme-preview__button">{sample.action}</span>
       </span>
     </span>
+  )
+}
+
+/**
+ * "Cómo se llama tu lugar" and the other two (#344): each a select of the words Rakin
+ * knows how to agree with. Under them, one button per activity whose preset brings other
+ * words, which fills the selects with them; "Guardar" saves them with the page.
+ */
+function VocabularyFields({ words, onChange }: { words: Vocabulary; onChange: (words: Partial<Vocabulary>) => void }) {
+  const vocabulary = copy.vocabulary
+  const activities = useQuery(activitiesQuery)
+  const [suggested, setSuggested] = useState(false)
+  const suggestions: { name: string; words: Vocabulary }[] = []
+  for (const activity of activities.data ?? []) {
+    const theirs = activity.words
+    if (!theirs || sameWords(theirs, words) || suggestions.some((s) => sameWords(s.words, theirs))) continue
+    suggestions.push({ name: activity.name, words: theirs })
+  }
+  const pick = (next: Partial<Vocabulary>) => {
+    setSuggested(false)
+    onChange(next)
+  }
+
+  return (
+    <>
+      <p className="settings__hint">{vocabulary.hint}</p>
+      <Field label={vocabulary.place}>
+        {(props) => (
+          <Select {...props} value={words.place} onChange={(e) => pick({ place: e.target.value as Vocabulary['place'] })}>
+            {PLACES.map((key) => (
+              <option key={key} value={key}>
+                {placeLabel(key)}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      <Field label={vocabulary.members}>
+        {(props) => (
+          <Select
+            {...props}
+            value={words.members}
+            onChange={(e) => pick({ members: e.target.value as Vocabulary['members'] })}
+          >
+            {MEMBERS.map((key) => (
+              <option key={key} value={key}>
+                {membersLabel(key)}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      <Field label={vocabulary.coach}>
+        {(props) => (
+          <Select {...props} value={words.coach} onChange={(e) => pick({ coach: e.target.value as Vocabulary['coach'] })}>
+            {COACHES.map((key) => (
+              <option key={key} value={key}>
+                {coachLabel(key)}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      {suggestions.length > 0 && (
+        <div className="settings__preview" role="group" aria-label={vocabulary.suggestionsLabel}>
+          {suggestions.map((suggestion) => (
+            <Button
+              key={suggestion.name}
+              onClick={() => {
+                onChange(suggestion.words)
+                setSuggested(true)
+              }}
+            >
+              {vocabulary.suggest(suggestion.name)}
+            </Button>
+          ))}
+        </div>
+      )}
+      {suggested && (
+        <p className="settings__hint" role="status">
+          {vocabulary.suggested}
+        </p>
+      )}
+    </>
   )
 }

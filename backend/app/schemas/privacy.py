@@ -2,6 +2,8 @@ from datetime import date
 
 from pydantic import BaseModel
 
+from app.domain.vocabulary import DEFAULT, Vocabulary
+
 # The day the notice's text last changed: the SPA's `TEMPLATE_UPDATED_ON`
 # (`frontend/src/api/privacy.ts`), which keeps the text, and a test holds the two
 # equal. What someone accepts names it (#370), so a form showing an older text is
@@ -27,3 +29,5 @@ class PrivacyNotice(BaseModel):
     # Whether the join form checks for humans (`HUMAN_CHECK`), so the notice names that
     # provider only where it is used.
     human_check: bool
+    # What the gym calls itself and its members (#344): the notice's words.
+    vocabulary: Vocabulary = DEFAULT

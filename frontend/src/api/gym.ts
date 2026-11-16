@@ -3,6 +3,7 @@ import { apiFetch } from './client'
 import type { BankAccount } from './me'
 import type { Privacy } from './privacy'
 import type { Theme } from '../theme'
+import type { Vocabulary } from '../i18n/vocabulary'
 
 /** The bank's account types the API takes (backend `AccountType`). */
 export const ACCOUNT_TYPES = ['Cuenta Corriente', 'Cuenta Vista', 'Cuenta RUT', 'Cuenta de Ahorro'] as const
@@ -25,6 +26,8 @@ export type GymSettings = {
   bank_account: BankAccount | null
   // What the privacy notice names the gym by (#168); the join link works only once set.
   privacy: (Privacy & { updated_on: string }) | null
+  // What the screens call the gym, its members and its coach (#344).
+  vocabulary: Vocabulary
 }
 
 /** Only the fields sent change; `bank_account: null` clears it, and `privacy` cannot
@@ -38,6 +41,8 @@ export type GymSettingsUpdate = Partial<{
   channels: { whatsapp: boolean }
   bank_account: Omit<BankAccount, 'account_type'> & { account_type: string } | null
   privacy: Privacy
+  // The owner's pick: no activity added later changes it.
+  vocabulary: Vocabulary
 }>
 
 export function gymSettingsQuery() {

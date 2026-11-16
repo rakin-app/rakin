@@ -353,15 +353,50 @@ def test_create_with_a_grading_preset_starts_the_gym_on_it(db: Database) -> None
     async def query(conn: asyncpg.Connection) -> Any:
         return await conn.fetchval("SELECT settings FROM gym WHERE id = $1", created.gym_id)
 
-    assert json.loads(run(db.admin_url, query))["grading"] == GRADING
+    settings = json.loads(run(db.admin_url, query))
+    assert settings["grading"] == GRADING
+    # Its activity's words (#344), which the owner may still change.
+    assert settings["vocabulary"] == {
+        "place": "academia",
+        "members": "alumnos",
+        "coach": "profe",
+        "by_hand": False,
+    }
 
     async def activities(conn: asyncpg.Connection) -> Any:
         return await conn.fetch(
-            "SELECT name, uses_grades FROM gym_activity WHERE gym_id = $1", created.gym_id
+            "SELECT name, uses_grades, preset FROM gym_activity WHERE gym_id = $1",
+            created.gym_id,
         )
 
     # An activity that grades, named as the preset is, so its belts show (#245).
-    assert [tuple(r) for r in run(db.admin_url, activities)] == [("Jiu-jitsu brasileño", True)]
+    assert [tuple(r) for r in run(db.admin_url, activities)] == [
+        ("Jiu-jitsu brasileño", True, "bjj")
+    ]
+
+
+@pytest.mark.postgres
+def test_a_judo_gym_starts_as_a_dojo(db: Database) -> None:
+    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"grading": "judo-karate"})
+
+    created = create(db, gym)
+
+    async def query(conn: asyncpg.Connection) -> Any:
+        return await conn.fetchval("SELECT settings FROM gym WHERE id = $1", created.gym_id)
+
+    words = json.loads(run(db.admin_url, query))["vocabulary"]
+    assert (words["place"], words["coach"]) == ("dojo", "sensei")
+
+
+@pytest.mark.postgres
+def test_a_gym_with_no_grading_has_no_words_yet(db: Database) -> None:
+    created = create(db, new_gym(f"meta-{uuid.uuid4().hex[:6]}"))
+
+    async def query(conn: asyncpg.Connection) -> Any:
+        return await conn.fetchval("SELECT settings FROM gym WHERE id = $1", created.gym_id)
+
+    # Its first activity, picked in Ajustes, brings them.
+    assert "vocabulary" not in json.loads(run(db.admin_url, query))
 
 
 @pytest.mark.postgres
@@ -555,7 +590,13 @@ def new_gym_slug(site: Site, gym_id: uuid.UUID) -> str:
 def test_the_host_names_its_gym_for_the_sign_in_page(site: Site) -> None:
     with site.client(site.slug_a) as client:
         assert client.get("/api/host").json() == {
-            "gym": {"slug": site.slug_a, "name": site.slug_a, "theme": "bosque", "logo": None}
+            "gym": {
+                "slug": site.slug_a,
+                "name": site.slug_a,
+                "theme": "bosque",
+                "logo": None,
+                "vocabulary": {"place": "academia", "members": "alumnos", "coach": "profe"},
+            }
         }
     with site.client(None) as client:
         assert client.get("/api/host").json() == {"gym": None}
