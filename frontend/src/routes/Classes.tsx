@@ -1,6 +1,6 @@
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useId, useState, type FormEvent } from 'react'
+import { useEffect, useId, useState, type FormEvent } from 'react'
 import { rosterQuery } from '../api/attendance'
 import { gymTagHoursQuery } from '../api/classTags'
 import {
@@ -273,10 +273,24 @@ export function nowOrNext(sessions: readonly ClassSession[], now: Date): { sessi
   return next ? { session: next, on: false } : null
 }
 
-/** "Ahora" or "Siguiente": the class a coach at the mat came for, its attendance and timer. */
+// How often the card looks at the clock again: a class starts or ends on the minute.
+const NOW_TICK_MS = 60_000
+
+/** The time, again every minute, so a page left open moves on with it. */
+function useNow(): Date {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), NOW_TICK_MS)
+    return () => clearInterval(timer)
+  }, [])
+  return now
+}
+
+/** "Ahora" or "Siguiente": the class a coach at the mat came for, its attendance and timer.
+ * Clases left open on the mat moves from one class to the next as the minutes pass. */
 function NowCard({ sessions, timeZone }: { sessions: readonly ClassSession[]; timeZone: string }) {
   const words = copy.now
-  const found = nowOrNext(sessions, new Date())
+  const found = nowOrNext(sessions, useNow())
   if (!found) return null
   const { session, on } = found
   const name = copy.today.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)
@@ -355,7 +369,8 @@ function StartSession() {
 
   if (!open) {
     return (
-      <Button className="classes__start" aria-expanded={false} aria-controls={formId} onClick={() => setOpen(true)}>
+      // No `aria-controls` while closed: the form it would name is not there yet.
+      <Button className="classes__start" aria-expanded={false} onClick={() => setOpen(true)}>
         {copy.start.title}
       </Button>
     )

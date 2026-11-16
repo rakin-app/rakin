@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
@@ -298,6 +298,24 @@ describe('Clases', () => {
     expect(card.compareDocumentPosition(today) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('moves on to the class on now as the minutes pass, the page left open', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    // 18:59 in Santiago: the 19:00 class is next.
+    vi.setSystemTime(new Date('2026-11-09T21:59:00Z'))
+    stubApi()
+    renderAt('/admin/clases')
+
+    const card = (await screen.findByText(copy.now.next)).closest('section')!
+    expect(card).toHaveTextContent(copy.today.row('19:00', 'Fundamentos'))
+
+    // A minute on, with nothing else re-rendering the page.
+    await act(async () => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(await screen.findByText(copy.now.on)).toBeInTheDocument()
+    expect(screen.queryByText(copy.now.next)).not.toBeInTheDocument()
+  })
+
   it('has no such card once the day’s classes are over', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     // 23:00 in Santiago.
@@ -316,6 +334,8 @@ describe('Clases', () => {
 
     const start = await screen.findByRole('button', { name: copy.start.title })
     expect(start).toHaveAttribute('aria-expanded', 'false')
+    // Nothing to point at while closed.
+    expect(start).not.toHaveAttribute('aria-controls')
     expect(screen.queryByRole('form', { name: copy.start.title })).not.toBeInTheDocument()
     await userEvent.click(start)
     const form = await screen.findByRole('form', { name: copy.start.title })
