@@ -253,4 +253,6 @@ Chile's Ley 21.719 (personal data protection) enters into force on 1 December 20
 | Waivers | climbing requires signed liability waivers; BJJ academies use them for minors | v2: on-phone signature, PDF stored per person with version of the text signed |
 | Security | reasonable measures | TLS only, RLS, magic links expire, audit via `message_log` and ledger `validated_by`, backups encrypted |
 
+Where the code stands against this table, and what hosting needs beyond it, is audited in [compliance-audit.md](compliance-audit.md) (#366).
+
 **Open question:** whether a 4-year-old's belt and attendance history counts as profiling under the new law. Conservative reading: it does not, but kids' records carry no custom fields by default.
