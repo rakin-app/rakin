@@ -89,6 +89,7 @@ from app.api.people import (
 from app.domain import membership as domain
 from app.domain.dates import gym_today, is_minor, start_of_local_day
 from app.domain.membership import PlanKind, PlanTerms
+from app.domain.vocabulary import words_in
 from app.member_import.grades import (
     Grade,
     GradeErrorCode,
@@ -115,7 +116,7 @@ from app.member_import.rows import (
     suggest_mapping,
 )
 from app.member_import.sheet import SheetError, Tab, read_book
-from app.member_import.template import TEMPLATE_NAME, template
+from app.member_import.template import template, template_name
 from app.roles import AdminSession
 from app.schemas.member_import import (
     FileName,
@@ -364,9 +365,9 @@ def _sheet_rows(rows: list[Any]) -> list[SheetRow]:
 async def download_template(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: AdminSession
 ) -> Response:
-    """ "Descargar plantilla": the Alumnos sheet to fill in, with the gym's active plans
-    as the Plan column's choices, and in a gym that grades a Grados tab, its ranks the
-    Grado column's."""
+    """ "Descargar plantilla": the people's sheet to fill in, in the gym's words (#345),
+    with the gym's active plans as the Plan column's choices, and in a gym that grades a
+    Grados tab, its ranks the Grado column's."""
     # A drop-in is not a membership, so no row starts one (`dropin_plan`). A name two
     # plans share is offered once: the sheet matches it by name either way.
     plans = {
@@ -378,10 +379,11 @@ async def download_template(
         text("SELECT settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
     scheme = readable_scheme(settings)
+    words = words_in(settings)
     return Response(
-        content=template([plans[key] for key in sorted(plans)], scheme),
+        content=template([plans[key] for key in sorted(plans)], scheme, words),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{TEMPLATE_NAME}"'},
+        headers={"Content-Disposition": f'attachment; filename="{template_name(words)}"'},
     )
 
 

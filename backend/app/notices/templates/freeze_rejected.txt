@@ -8,5 +8,5 @@ Hola, {{ name }}:
 Nota: {{ note }}
 {% endif %}
 
-El plan sigue activo. Si tienes dudas, habla con la academia.
+El plan sigue activo. Si tienes dudas, habla con {{ words.the_place }}.
 {% endblock %}

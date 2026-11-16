@@ -18,6 +18,9 @@ sign-in link's own email, as `code`.
 A gym's notices link to its own host (`app.hosts`), its sign-in and unsubscribe links
 both: `meta.rakin.app` for Meta's. A notice of no gym links to the base host. A gym
 with a logo (#223) has it over the message, as a PNG on that host (`app.api.logos`).
+And a gym's notices call it, and its members, by its own words (#345,
+`app.domain.vocabulary`), as `words`: "habla con el club". A gym with none, and a notice
+of no gym, read today's.
 
 A non-essential notice (plan events, announcements) carries a one-click unsubscribe
 link, in its footer and as `List-Unsubscribe` with `List-Unsubscribe-Post` (RFC 8058),
@@ -66,7 +69,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.contacts import missing_guardian
+from app.domain import vocabulary
 from app.domain.money import format_clp
+from app.domain.vocabulary import DEFAULT_WORDS, Words
 from app.hosts import Hosts
 from app.integrations.mailer import Email, MailDeliveryError, Mailer, check_recipient
 from app.logos import EMAIL_VARIANT, logo_path
@@ -202,13 +207,15 @@ def render(
     logo_url: str | None = None,
     gym_logo_url: str | None = None,
     app_url: str | None = None,
+    words: Words = DEFAULT_WORDS,
     env: Environment = ENVIRONMENT,
 ) -> Email:
     """The message `notice` is, with its unsubscribe and sign-in links when it has them,
     and the sign-in link's code, `page_code`, when it has one.
     `logo_url` is Rakin's logo for the footer; without it the footer names Rakin in text.
     `gym_logo_url` is the gym's (#223), over the message; without it there is none.
-    `app_url` is where the gym's app is, for a link into it that signs nobody in."""
+    `app_url` is where the gym's app is, for a link into it that signs nobody in.
+    `words` are what the gym calls itself and its members (#345); today's by default."""
     name = notice.template.name
     context = {
         **notice.context,
@@ -218,6 +225,7 @@ def render(
         "logo_url": logo_url,
         "gym_logo_url": gym_logo_url,
         "app_url": app_url,
+        "words": words,
         "page_link_days": PAGE_LINK_TTL.days,
     }
     subject = " ".join(env.get_template(f"{name}.subject.txt").render(context).split())
@@ -277,21 +285,27 @@ class Notices:
         base = (base_url or self._base_url).rstrip("/")
         return f"{base}{UNSUBSCRIBE_PATH}/{self._signer.sign(gym_id, person_id)}"
 
-    async def gym_host(self, gym_id: uuid.UUID | None) -> tuple[str, str | None]:
-        """Where the gym's notices link to, its own host or the base host, and the URL
-        of its logo there for the header (#223), None with no logo."""
+    async def gym_host(self, gym_id: uuid.UUID | None) -> tuple[str, str | None, Words]:
+        """Where the gym's notices link to, its own host or the base host, the URL of
+        its logo there for the header (#223), None with no logo, and its words (#345)."""
         if gym_id is None:
-            return self._base_url, None
+            return self._base_url, None, DEFAULT_WORDS
         async with self._in_gym(gym_id) as session:
             row = (
                 await session.execute(
-                    text("SELECT slug, logo_version FROM gym WHERE id = :g"), {"g": gym_id}
+                    text(
+                        "SELECT slug, logo_version, settings -> 'vocabulary' AS vocabulary"
+                        " FROM gym WHERE id = :g"
+                    ),
+                    {"g": gym_id},
                 )
             ).one_or_none()
         slug, version = (None, None) if row is None else (row.slug, row.logo_version)
+        words = DEFAULT_WORDS if row is None else Words(vocabulary.read(row.vocabulary))
         base_url = self._base_url if self._hosts is None else self._hosts.base_url(slug)
         path = logo_path(gym_id, version)
-        return base_url, None if path is None else f"{base_url}{path}/{EMAIL_VARIANT}"
+        logo_url = None if path is None else f"{base_url}{path}/{EMAIL_VARIANT}"
+        return base_url, logo_url, words
 
     async def send(self, notice: Notice) -> Outcome:
         """Send `notice` unless its addressee unsubscribed from it or its address is
@@ -299,7 +313,7 @@ class Notices:
         unsubscribe_url = None
         extra = {"template": notice.template.name, "person_id": str(notice.person_id)}
         try:
-            base_url, gym_logo_url = await self.gym_host(notice.gym_id)
+            base_url, gym_logo_url, words = await self.gym_host(notice.gym_id)
         # The database down, say: a link to the wrong host is no better than none.
         except Exception as exc:
             logger.exception("notice host not found", extra=extra)
@@ -358,6 +372,7 @@ class Notices:
                 logo_url=self.logo_url,
                 gym_logo_url=gym_logo_url,
                 app_url=base_url,
+                words=words,
                 env=self._env,
             )
             await self._mailer.send(email)

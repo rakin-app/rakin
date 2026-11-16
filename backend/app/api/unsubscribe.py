@@ -9,6 +9,10 @@ List-Unsubscribe=One-Click` (RFC 8058), and what the button on the `GET` page se
 No session is needed: the token is the authority, and all it can do is stop that
 gym's non-essential notices to that person. It acts in the token's gym, so RLS holds
 it there like any request.
+
+A link that names a gym it no longer works for says to write to the gym by the gym's
+own word (#345, `app.domain.vocabulary`): "escríbele a tu club". One that names no gym
+says "tu academia", today's word.
 """
 
 import html
@@ -21,6 +25,8 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain import vocabulary
+from app.domain.vocabulary import DEFAULT_WORDS, Words
 from app.magiclink.web import PAGE_HEADERS
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
 
@@ -41,10 +47,10 @@ def page(body: str, status_code: int = status.HTTP_200_OK) -> HTMLResponse:
     return HTMLResponse(document, status_code=status_code, headers=PAGE_HEADERS)
 
 
-def invalid() -> HTMLResponse:
+def invalid(words: Words = DEFAULT_WORDS) -> HTMLResponse:
     return page(
         "<p>Este enlace no es válido. Si sigues recibiendo avisos que no quieres,"
-        " escríbele a tu academia.</p>",
+        f" escríbele a tu {html.escape(words.place)}.</p>",
         status.HTTP_404_NOT_FOUND,
     )
 
@@ -69,6 +75,14 @@ GYM_OF = """
 """
 
 
+async def gym_words(session: AsyncSession, gym_id: uuid.UUID) -> Words:
+    """What the token's gym calls itself; today's word for a gym that is gone."""
+    stored = await session.scalar(
+        text("SELECT settings -> 'vocabulary' FROM gym WHERE id = :gym_id"), {"gym_id": gym_id}
+    )
+    return Words(vocabulary.read(stored))
+
+
 @router.get("/{token}", response_class=HTMLResponse)
 async def confirm(request: Request, token: str) -> HTMLResponse:
     """A button that unsubscribes. Opening the link does not."""
@@ -78,8 +92,8 @@ async def confirm(request: Request, token: str) -> HTMLResponse:
     gym_id, person_id = found
     async with in_gym(request, gym_id) as session:
         gym = await session.scalar(text(GYM_OF), {"gym_id": gym_id, "person_id": person_id})
-    if gym is None:
-        return invalid()
+        if gym is None:
+            return invalid(await gym_words(session, gym_id))
     action = html.escape(f"{UNSUBSCRIBE_PATH}/{token}")
     return page(
         f"<p>¿Dejar de recibir los avisos opcionales de {html.escape(gym)}? Seguirás"
@@ -100,7 +114,7 @@ async def unsubscribe(request: Request, token: str) -> HTMLResponse:
     async with in_gym(request, gym_id) as session:
         gym = await session.scalar(text(GYM_OF), params)
         if gym is None:
-            return invalid()
+            return invalid(await gym_words(session, gym_id))
         await session.execute(
             text(
                 "INSERT INTO mail_unsubscribe (gym_id, person_id) VALUES (:gym_id, :person_id)"

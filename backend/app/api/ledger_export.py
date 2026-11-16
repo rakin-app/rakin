@@ -28,6 +28,7 @@ from app import ledger_export as export
 from app.api.ledger import ENTRY_DAY, GYM_CLOCK, book_rows
 from app.domain import custom_fields as cf
 from app.domain.billing import SETTLING_KINDS
+from app.domain.vocabulary import Words, words_in
 from app.roles import LedgerSession, role_in_gym
 from app.schemas.ledger import ExportFormat
 from app.tenancy import Tenant, current_tenant
@@ -66,18 +67,21 @@ MEDIA_TYPES = {
 }
 
 
-async def exported_fields(session: AsyncSession, tenant: Tenant) -> list[dict[str, Any]]:
+async def exported_fields(
+    session: AsyncSession, tenant: Tenant
+) -> tuple[list[dict[str, Any]], Words]:
     """The custom fields the export carries: those the caller sees that are neither
-    sensitive nor archived, in the gym's order."""
+    sensitive nor archived, in the gym's order; and the gym's words (#345)."""
     settings = await session.scalar(
         text("SELECT settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
     role = await role_in_gym(session, tenant)
-    return [
+    fields = [
         d
         for d in cf.visible(role, cf.definitions(settings or {}))
         if not d["sensitive"] and not d["archived"]
     ]
+    return fields, words_in(settings)
 
 
 def field_value(definition: dict[str, Any], value: Any) -> str | int | float | date | None:
@@ -127,7 +131,7 @@ async def ledger_export(
         )
     ).all()
 
-    fields = await exported_fields(session, tenant)
+    fields, words = await exported_fields(session, tenant)
     values: dict[tuple[uuid.UUID, str], Any] = {}
     if fields and rows:
         found = await session.execute(
@@ -158,6 +162,7 @@ async def ledger_export(
         entries=tuple(entries),
         pending=tuple(pending),
         totals=export.totals(entries, outstanding),
+        words=words,
     )
 
     if export_format is ExportFormat.XLSX:

@@ -2,7 +2,7 @@
 {% block body %}
 Hola, {{ name }}:
 
-{{ inviter }} te invitó a {{ gym }} en Rakin como {{ role }}. {% if role_is_coach %}Desde ahí tomas asistencia y registras el tema de cada clase.{% else %}Desde ahí llevas los pagos, los alumnos y los ajustes del gimnasio.{% endif %}
+{{ inviter }} te invitó a {{ gym }} en Rakin como {{ role }}. {% if role_is_coach %}Desde ahí tomas asistencia y registras el tema de cada clase.{% else %}Desde ahí llevas los pagos, {{ words.the_members }} y los ajustes del gimnasio.{% endif %}
 
 Entras siempre con un enlace a este correo, sin contraseña.
 {% endblock %}
