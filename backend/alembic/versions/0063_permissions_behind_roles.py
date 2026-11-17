@@ -29,7 +29,8 @@ nobody can do anything more or less than before.
 `staff.role` stays, written by the staff API alongside the appointments, because every
 role-keyed policy still reads it until #309. `forget_gym_person` deletes the person's
 appointments with the rest. Both tables are held to the gym by RLS; `rakin_app` may add
-and change rows, and delete an appointment that has not yet run a day.
+and change rows of both and delete appointments; the staff API deletes only appointments
+that have not started yet, and ends the others.
 
 Revision ID: 0063
 Revises: 0062
