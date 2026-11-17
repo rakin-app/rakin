@@ -140,12 +140,13 @@ def to_open_period(row: Any) -> OpenPeriod:
 
 ALREADY_CLAIMED = HTTPException(status.HTTP_409_CONFLICT, "this proof is already claimed")
 
-# Whether the upload already backs a payment. Under a lock on the key, so two claims of
-# it at once, one for one period and one for another, take it once (0067).
-CLAIMED = text(
-    "SELECT pg_advisory_xact_lock(hashtextextended(:key, 0)),"
-    " EXISTS (SELECT FROM ledger_entry WHERE proof_object_key = :key) AS claimed"
-)
+# Two claims of one upload at once, one for one period and one for another, take it
+# once (0068): each takes the key's lock, held to the end of its transaction, and only
+# then asks whether the key backs a payment. Two statements, never one: under READ
+# COMMITTED a statement reads the snapshot it started with, so an EXISTS beside the lock
+# would read from before the wait, and miss the claim that held it.
+LOCK_PROOF = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
+CLAIMED = text("SELECT EXISTS (SELECT FROM ledger_entry WHERE proof_object_key = :key)")
 
 
 async def _usable_proof(
@@ -164,7 +165,8 @@ async def _usable_proof(
         or stored.size > MAX_UPLOAD_BYTES
     ):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "proof not uploaded")
-    if (await session.execute(CLAIMED, {"key": key})).one().claimed:
+    await session.execute(LOCK_PROOF, {"key": key})
+    if await session.scalar(CLAIMED, {"key": key}):
         raise ALREADY_CLAIMED
 
 

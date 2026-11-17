@@ -5,9 +5,11 @@ claim records a pending transfer pointing at it, emails "proof received" to whoe
 gets the student's notices, and shows up in the admin's pending count.
 """
 
+import asyncio
 import dataclasses
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -17,6 +19,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from alembic import command
+from app.db_bootstrap import to_dsn
 from app.integrations.blobstore import MAX_UPLOAD_BYTES
 from app.integrations.mailer import Email
 from app.main import create_app
@@ -537,6 +540,84 @@ def test_a_split_proof_is_claimed_once(client: TestClient, db: Database, sur: uu
     assert len(proof_entries(db, other)) == 1
 
 
+def at_once(db: Database, key: str, claims: list[Callable[[], Any]]) -> list[int]:
+    """Run `claims` side by side, each in its own request and transaction, while another
+    session holds `key`'s lock, so every one of them is waiting on it when it is let go;
+    the status codes they answer, in order."""
+
+    async def go() -> list[int]:
+        holder = await asyncpg.connect(to_dsn(db.admin_url))
+        try:
+            await holder.execute("BEGIN")
+            await holder.execute("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", key)
+            with ThreadPoolExecutor(len(claims)) as pool:
+                running = [asyncio.wrap_future(pool.submit(claim)) for claim in claims]
+                await asyncio.sleep(0.5)
+                assert not any(r.done() for r in running), "a claim did not wait for the lock"
+                await holder.execute("COMMIT")
+                responses = await asyncio.gather(*running)
+        finally:
+            await holder.close()
+        return [r.status_code for r in responses]
+
+    return asyncio.run(go())
+
+
+@pg
+def test_two_claims_of_one_proof_at_once_take_it_once(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    """One for Juan's period and one for Eva's: the index lets both through (0068), the
+    lock and a fresh look at the ledger after it let one."""
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    bill(db, sur, juan, [(-1, 25000, 0, 0)])
+    bill(db, sur, eva, [(-1, 25000, 0, 0)])
+    first, second = (p["id"] for p in periods(client, sur, marta))
+    key = upload(client, sur, marta)
+
+    codes = at_once(
+        db,
+        key,
+        [
+            lambda: claim(client, sur, marta, first, key, 25000),
+            lambda: claim(client, sur, marta, second, key, 25000),
+        ],
+    )
+
+    assert sorted(codes) == [201, 409]
+    assert len(proof_entries(db, key)) == 1
+
+
+@pg
+def test_a_claim_racing_a_split_of_the_same_proof_takes_it_once(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    tomas = new_kid(client, sur, marta, "Tomás")
+    for kid in (juan, eva, tomas):
+        bill(db, sur, kid, [(-1, 25000, 0, 0)])
+    by_name = {p["person_name"]: p["id"] for p in periods(client, sur, marta)}
+    key = upload(client, sur, marta)
+    two = [(by_name["Juan"], 25000), (by_name["Eva"], 25000)]
+
+    codes = at_once(
+        db,
+        key,
+        [
+            lambda: split(client, sur, marta, key, two),
+            lambda: claim(client, sur, marta, by_name["Tomás"], key, 25000),
+        ],
+    )
+
+    assert sorted(codes) == [201, 409]
+    claimed = {str(e["billing_period_id"]) for e in proof_entries(db, key)}
+    assert claimed in ({by_name["Juan"], by_name["Eva"]}, {by_name["Tomás"]})
+
+
 @pg
 def test_a_split_records_all_its_periods_or_none(
     client: TestClient, db: Database, sur: uuid.UUID
@@ -757,11 +838,11 @@ def test_the_table_takes_a_proof_once_per_period(
 
 
 @pg
-def test_upgrade_and_downgrade_0067(client: TestClient, db: Database, sur: uuid.UUID) -> None:
+def test_upgrade_and_downgrade_0068(client: TestClient, db: Database, sur: uuid.UUID) -> None:
     with throwaway_database(require_test_database_url()) as scratch:
-        migrate(scratch, "0066")
+        migrate(scratch, "0067")
         migrate(scratch)
-        command.downgrade(scratch.alembic(), "0066")
+        command.downgrade(scratch.alembic(), "0067")
         migrate(scratch)
 
     # A proof split over two periods cannot go back to backing one entry.
@@ -773,7 +854,7 @@ def test_upgrade_and_downgrade_0067(client: TestClient, db: Database, sur: uuid.
     two = [(p["id"], 25000) for p in periods(client, sur, marta)]
     assert split(client, sur, marta, upload(client, sur, marta), two).status_code == 201
     with pytest.raises(Exception, match="could not create unique index"):
-        command.downgrade(db.alembic(), "0066")
+        command.downgrade(db.alembic(), "0067")
 
 
 @pg

@@ -11,8 +11,8 @@ That a key already claimed is not claimed again for something else is the API's 
 hold (`app.api.proofs`), since a split claims every period of it at once and a later
 claim of the same key is the replay this index cannot see.
 
-Revision ID: 0067
-Revises: 0066
+Revision ID: 0068
+Revises: 0067
 Create Date: 2026-11-17
 
 """
@@ -21,8 +21,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0067"
-down_revision: str | Sequence[str] | None = "0066"
+revision: str = "0068"
+down_revision: str | Sequence[str] | None = "0067"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

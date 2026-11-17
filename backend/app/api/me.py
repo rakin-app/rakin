@@ -236,6 +236,7 @@ async def my_dependents(
         },
     )
     dependents = []
+    # A query or two per dependent: a guardian has a handful, never a roster's worth.
     for row in rows.all():
         total, this_month, _ = await attended(session, row.id, recent=month, since=None)
         dependents.append(
