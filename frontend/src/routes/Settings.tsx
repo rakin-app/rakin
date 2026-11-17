@@ -19,6 +19,7 @@ import { GymSettings } from './GymSettings'
 import { JoinLinkSettings } from './JoinLinkSettings'
 import { PlanSettings } from './PlanSettings'
 import { ProgramSettings } from './ProgramSettings'
+import { RequirementSettings } from './RequirementSettings'
 import { ScheduleSettings } from './ScheduleSettings'
 import { StaffSettings } from './StaffSettings'
 import { AdminsOnly } from './settingsForm'
@@ -56,6 +57,7 @@ export const SETTINGS_SECTIONS = [
   section('bloques', 'blocks', BlockKindSettings),
   section('graduacion', 'grading', GradingSettings),
   section('campos', 'fields', FieldSettings),
+  section('requisitos', 'requirements', RequirementSettings),
   section('equipo', 'staff', StaffSettings),
   section('inscripcion', 'joinLink', JoinLinkSettings),
   section('cuenta', 'account', AccountSettings),

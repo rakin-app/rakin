@@ -152,9 +152,26 @@ def create(
 ) -> Membership:
     """A trial plan starts in Trial, every paid plan in Active."""
     if plan_kind is PlanKind.DROPIN:
-        raise ValueError("a drop-in is a single attendance, not a membership")
+        raise ValueError("a drop-in is a single visit, not a membership: see `drop_in`")
     status = S.TRIAL if plan_kind is PlanKind.TRIAL else S.ACTIVE
     return Membership(plan_kind, status, current_period_end, credits_remaining)
+
+
+# The reason a drop-in visit's membership carries: it ends as it starts (#130).
+DROPIN_REASON = "clase suelta"
+
+
+def drop_in(day: date) -> Membership:
+    """A drop-in visit on `day`: one class, paid for once (docs/adr/0002-drop-in-visits.md).
+
+    Not a membership anyone is on. The ledger hangs off a membership, so the visit is
+    one that lasts `day` and is ended as it starts, Cancelled with `DROPIN_REASON`: on no
+    later roster, in no count of members, never billed or lapsed by a job. Its one
+    period and charge are written with it (`dropin_charge`, migration 0061).
+    """
+    return Membership(
+        PlanKind.DROPIN, S.CANCELLED, current_period_end=day, cancel_reason=DROPIN_REASON
+    )
 
 
 def anchor_day(terms: PlanTerms, period_start: date) -> int | None:

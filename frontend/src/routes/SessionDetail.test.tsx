@@ -49,6 +49,7 @@ const member = (id: string, name: string, over: Partial<RosterMember> = {}): Ros
   regular: true,
   rank: null,
   present: false,
+  unmet_requirements: [],
   ...over,
 })
 
@@ -62,6 +63,7 @@ const IGNACIO = member('ignacio', 'Ignacio Vera', { days_absent: 16, status: 'la
 
 const TRIAL_PLAN = { id: 'trial', name: 'Clase de prueba', kind: 'trial', active: true }
 const MONTHLY_PLAN = { id: 'monthly', name: 'Mensual adultos', kind: 'monthly', active: true }
+const DROPIN_PLAN = { id: 'dropin', name: 'Clase suelta', kind: 'dropin', active: true }
 
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
@@ -72,6 +74,7 @@ type Stub = {
   change?: Answer | 'offline'
   person?: Answer | 'offline'
   trial?: Answer
+  visitor?: Answer
   // Who is signed in, as `/api/me/role` answers.
   me?: unknown
   // How a topic save (`PATCH /api/sessions/s1`) is answered.
@@ -139,6 +142,14 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
     if (path === '/api/sessions/s1/trials' && method === 'POST') {
       if (stub.trial) return stub.trial
       roster = [...roster, member('camila', 'Camila Ortiz', { plan_kind: 'trial', status: 'trial', present: true })]
+      return { status: 201, body: answer() }
+    }
+    if (path === '/api/sessions/s1/visitors' && method === 'POST') {
+      if (stub.visitor) return stub.visitor
+      roster = [
+        ...roster,
+        member('tomas', 'Tomás Vidal', { plan_name: 'Clase suelta', plan_kind: 'dropin', status: 'cancelled', present: true }),
+      ]
       return { status: 201, body: answer() }
     }
     return { status: 404, body: { detail: 'Not Found' } }
@@ -295,6 +306,29 @@ describe('Asistencia', () => {
     expect(felipe).toHaveTextContent(/^Felipe Díaz/)
     expect(paula).toHaveTextContent(/^Paula Contreras/)
     expect(document.querySelector('.belt')).toBeNull()
+  })
+
+  it('names a requirement someone lacks or whose record expired, and still marks them (#350)', async () => {
+    const lacking = member('felipe', 'Felipe Díaz', {
+      unmet_requirements: [
+        { id: 'r1', name: 'Inducción', state: 'pending', expires_on: null },
+        { id: 'r2', name: 'Certificado médico', state: 'expired', expires_on: '2026-11-01' },
+      ],
+    })
+    const api = stubApi({ members: [ANTONIA, lacking] })
+    renderClass()
+
+    const list = await rosterList()
+    const felipe = list.getByRole('button', { name: /Felipe Díaz/ })
+    expect(felipe).toHaveTextContent('Inducción: pendiente · Certificado médico: vencido')
+    expect(list.getByRole('button', { name: /Antonia Rojas/ })).not.toHaveTextContent('pendiente')
+    await userEvent.click(felipe)
+    await userEvent.click(screen.getByRole('button', { name: copy.save(2) }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.saved)
+    expect(writes(api.calls)).toEqual([
+      { method: 'PATCH', path: '/api/sessions/s1/attendance', body: { mark: ['m-felipe'], unmark: [] } },
+    ])
   })
 
   it('counts each tap and saves what changed', async () => {
@@ -648,6 +682,98 @@ describe('Alumno de prueba', () => {
     const form = within(screen.getByRole('form', { name: copy.guest.label }))
     expect(await form.findByText(copy.guest.noPlans)).toBeInTheDocument()
     expect(form.queryByRole('button', { name: copy.guest.submit })).not.toBeInTheDocument()
+  })
+})
+
+describe('Visitante (#130)', () => {
+  const words = copy.visitor
+
+  async function openVisitor() {
+    await userEvent.click(await screen.findByRole('button', { name: words.open }))
+    return within(screen.getByRole('form', { name: words.label }))
+  }
+
+  async function addVisitor(name: string, phone: string) {
+    const form = await openVisitor()
+    await userEvent.type(form.getByLabelText(words.name), name)
+    await userEvent.type(form.getByLabelText(words.phone), phone)
+    return form
+  }
+
+  it('adds someone by name and phone on the drop-in plan, present at the class', async () => {
+    const api = stubApi({ plans: [TRIAL_PLAN, DROPIN_PLAN] })
+    renderClass()
+
+    const form = await addVisitor('Tomás Vidal', '9 1234 5678')
+    // A coach takes no money: the class waits in Pagos.
+    expect(form.queryByLabelText(words.paid)).not.toBeInTheDocument()
+    await userEvent.click(form.getByRole('button', { name: words.submit }))
+
+    expect(await screen.findByText(words.done('Tomás Vidal'))).toBeInTheDocument()
+    const list = await rosterList()
+    expect(list.getByRole('button', { name: /Tomás Vidal/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(list.getByRole('button', { name: /Tomás Vidal/ })).toHaveTextContent('Clase suelta')
+    expect(writes(api.calls)).toEqual([
+      {
+        method: 'POST',
+        path: '/api/sessions/s1/visitors',
+        body: { name: 'Tomás Vidal', phone: '9 1234 5678', plan_id: 'dropin' },
+      },
+    ])
+  })
+
+  it('lets an owner record that they paid at the desk', async () => {
+    const api = stubApi({ plans: [DROPIN_PLAN], me: { role: 'owner', person_id: 'owner', uses_grades: true } })
+    renderClass()
+
+    const form = await addVisitor('Tomás Vidal', '9 1234 5678')
+    await userEvent.selectOptions(form.getByLabelText(words.paid), 'cash')
+    await userEvent.click(form.getByRole('button', { name: words.submit }))
+
+    expect(await screen.findByText(words.paidDone('Tomás Vidal'))).toBeInTheDocument()
+    expect(writes(api.calls).map((c) => c.body)).toEqual([
+      { name: 'Tomás Vidal', phone: '9 1234 5678', plan_id: 'dropin', paid: 'cash' },
+    ])
+  })
+
+  it('marks someone already on the roster instead', async () => {
+    const api = stubApi({
+      plans: [DROPIN_PLAN],
+      visitor: { status: 409, body: { detail: { code: 'already_member', membership_id: 'm-felipe' } } },
+    })
+    renderClass()
+
+    const form = await addVisitor('Felipe', '9 8765 4321')
+    await userEvent.click(form.getByRole('button', { name: words.submit }))
+
+    expect(await screen.findByText(words.member('Felipe'))).toBeInTheDocument()
+    expect(writes(api.calls).map((c) => c.path)).toEqual(['/api/sessions/s1/visitors', '/api/sessions/s1/attendance'])
+    const list = await rosterList()
+    expect(list.getByRole('button', { name: /Felipe Díaz/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('needs a drop-in plan', async () => {
+    stubApi({ plans: [TRIAL_PLAN] })
+    renderClass()
+
+    const form = await openVisitor()
+    expect(await form.findByText(words.noPlans)).toBeInTheDocument()
+    expect(form.queryByRole('button', { name: words.submit })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['paid', copy.visitKept.paid],
+    ['past', copy.visitKept.past],
+  ])('says why a %s visit stays marked when it is unmarked', async (code, message) => {
+    const visit = member('tomas', 'Tomás Vidal', { plan_kind: 'dropin', status: 'cancelled', present: true, regular: true })
+    stubApi({ members: [ANTONIA, visit], change: { status: 409, body: { detail: { code, message: 'x' } } } })
+    renderClass()
+
+    const list = await rosterList()
+    await userEvent.click(list.getByRole('button', { name: /Tomás Vidal/ }))
+    await userEvent.click(screen.getByRole('button', { name: copy.save(1) }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
   })
 })
 

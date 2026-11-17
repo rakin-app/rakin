@@ -3,6 +3,7 @@ import { ApiError, apiFetch } from './client'
 import { submissionKey } from './submit'
 import type { Rank } from './grading'
 import type { MembershipStatus } from './people'
+import type { RequirementFlag } from './requirements'
 
 export type PlanKind = 'monthly' | 'prepaid' | 'fixed_period' | 'credits' | 'dropin' | 'trial'
 
@@ -26,6 +27,8 @@ export type RosterMember = {
   regular: boolean
   rank: Rank | null
   present: boolean
+  // What they lack or whose record expired, of the requirements the role sees (#350).
+  unmet_requirements: RequirementFlag[]
 }
 
 /** Who may be marked at a session, by name, and how many are (backend `Roster`). */
@@ -103,6 +106,54 @@ export async function addTrialGuest(
     if (membership === null) throw error
     return { member: membership }
   }
+}
+
+/** The plans a visitor pays one class on: the active drop-in plans ("Clase suelta"). */
+export function dropinPlansQuery() {
+  return queryOptions({
+    queryKey: ['plans', 'active'],
+    queryFn: () => apiFetch<TrialPlan[]>('/api/plans?active=true'),
+    select: (plans) => plans.filter((p) => p.kind === 'dropin'),
+  })
+}
+
+/** How a visitor paid at the desk; only an owner or admin records it. */
+export type VisitPayment = 'cash' | 'transfer'
+
+/**
+ * A drop-in visitor (#130): someone paying for this one class, by name and phone, present
+ * at it and charged its plan's price. A phone already in the gym is that person, and one
+ * this roster already lists is their membership instead, to mark as any other tap.
+ */
+export async function addVisitor(
+  sessionId: string,
+  visitor: { name: string; phone: string; planId: string; paid: VisitPayment | null },
+): Promise<{ roster: Roster } | { member: string }> {
+  try {
+    const roster = await apiFetch<Roster>(`/api/sessions/${encodeURIComponent(sessionId)}/visitors`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: visitor.name,
+        phone: visitor.phone,
+        plan_id: visitor.planId,
+        ...(visitor.paid ? { paid: visitor.paid } : {}),
+      }),
+    })
+    return { roster }
+  } catch (error) {
+    const membership = conflict(error, 'already_member', 'membership_id')
+    if (membership === null) throw error
+    return { member: membership }
+  }
+}
+
+/** Why unmarking a drop-in visit was refused: paid, a proof waiting, or added another day. */
+export type DropinKept = 'paid' | 'pending' | 'past'
+
+export function dropinKept(error: unknown): DropinKept | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const code = (error.body as { detail?: Record<string, unknown> } | undefined)?.detail?.code
+  return code === 'paid' || code === 'pending' || code === 'past' ? code : null
 }
 
 async function addPerson(name: string, who: string, phone: string): Promise<string> {

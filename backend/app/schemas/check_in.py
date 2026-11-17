@@ -6,6 +6,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
 
 from app.domain.membership import MembershipStatus, PlanKind
+from app.schemas.requirements import RequirementFlag
 
 
 class CheckIn(BaseModel):
@@ -35,9 +36,11 @@ class Visitor(BaseModel):
 
 
 class Candidate(Visitor):
-    """A search result: when they came in today, `None` if they have not."""
+    """A search result: when they came in today, `None` if they have not, and the
+    requirements the caller sees that they lack or whose record expired (#350)."""
 
     checked_in_at: datetime | None
+    unmet_requirements: list[RequirementFlag] = []
 
 
 class Arrival(Visitor):

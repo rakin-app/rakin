@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { candidatesQuery, checkIn, doorsQuery, undoCheckIn, warning, type Door, type Visitor } from '../api/checkIn'
+import type { RequirementFlag } from '../api/requirements'
 import { useSubmit } from '../api/submit'
 import { Button, buttonClass } from '../components/Button'
 import { Banner, Card, EmptyState, PlainList, SectionTitle } from '../components/Card'
@@ -183,7 +184,11 @@ function DoorDay({ door }: { door: Door }) {
           <PlainList className="check-in__list" aria-label={copy.search.results}>
             {found.data.map((candidate) => (
               <li key={candidate.membership_id} className="check-in__row">
-                <VisitorText visitor={candidate} creditCost={door.credit_cost} />
+                <VisitorText
+                  visitor={candidate}
+                  creditCost={door.credit_cost}
+                  requirements={candidate.unmet_requirements}
+                />
                 {candidate.checked_in_at !== null ? (
                   <span className="check-in__in">
                     {copy.search.already(clockTime(candidate.checked_in_at, door.timezone))}
@@ -237,8 +242,17 @@ function DoorDay({ door }: { door: Door }) {
 }
 
 /** Their name, and their plan's state under it: what is left of a pack, a payment past
- * due, and the warning, if any. An arrival's `creditCost` is 0: it is in already. */
-function VisitorText({ visitor, creditCost }: { visitor: Visitor; creditCost: number }) {
+ * due, and the warning, if any. An arrival's `creditCost` is 0: it is in already. A search
+ * result also names the requirements they lack or whose record expired (#350). */
+function VisitorText({
+  visitor,
+  creditCost,
+  requirements = [],
+}: {
+  visitor: Visitor
+  creditCost: number
+  requirements?: RequirementFlag[]
+}) {
   const warned = warning(visitor, creditCost)
   const detail = [visitor.plan_name, visitor.credits_remaining !== null && copy.left(visitor.credits_remaining)]
     .filter(Boolean)
@@ -247,10 +261,15 @@ function VisitorText({ visitor, creditCost }: { visitor: Visitor; creditCost: nu
     <span className="check-in__text">
       <span className="check-in__name">{visitor.name}</span>
       <span className="check-in__detail">{detail}</span>
-      {(warned || visitor.overdue) && (
+      {(warned || visitor.overdue || requirements.length > 0) && (
         <span className="check-in__warnings">
           {warned && <span className="check-in__warning">{copy.warning[warned]}</span>}
           {visitor.overdue && <span className="check-in__warning">{copy.overdue}</span>}
+          {requirements.map((flag) => (
+            <span key={flag.id} className="check-in__warning">
+              {copy.requirement(flag)}
+            </span>
+          ))}
         </span>
       )}
     </span>

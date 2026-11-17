@@ -29,6 +29,23 @@ const MONTHS = [
 // (art. 16 bis, #384).
 const NO_HEALTH = 'Sin datos de salud: ni lesiones ni enfermedades.'
 
+// Where someone stands on a requirement (#349), on the ficha and the student page.
+const REQUIREMENT_STATES = {
+  ok: 'Al día',
+  expiring: 'Vence pronto',
+  expired: 'Vencido',
+  pending: 'Pendiente',
+} as const
+
+// A requirement someone is short on, where they are marked and on Hoy (#350), name first
+// so the state need not agree with it: "Certificado médico: vencido".
+const requirementFlag = (flag: { name: string; state: keyof typeof REQUIREMENT_STATES; expires_on: string | null }) =>
+  `${flag.name}: ${
+    flag.state === 'expiring' && flag.expires_on !== null
+      ? `vence el ${es.common.longDay(flag.expires_on)}`
+      : REQUIREMENT_STATES[flag.state].toLowerCase()
+  }`
+
 export const es = {
   app: {
     name: 'rakin',
@@ -182,6 +199,16 @@ export const es = {
         title: 'Falta apoderado',
         count: (n: number) => (n === 1 ? '1 menor' : `${n} menores`),
         hint: 'Son menores de 18 años sin apoderado: Rakin no les escribe. Vincula a su apoderado desde la ficha de este, con «Agregar a alguien a cargo».',
+        open: 'Ver ficha',
+        openLabel: (name: string) => `Ver la ficha de ${name}`,
+      },
+      // "Requisitos" (#350): who lacks one or whose one expired, then whose one expires soon.
+      requirements: {
+        title: 'Requisitos',
+        count: (n: number) => w.memberCount(n),
+        hint: 'Pendientes o vencidos, y los que vencen en los próximos 30 días. Se registran en su ficha.',
+        flag: requirementFlag,
+        showAll: (n: number) => `Ver los ${n}`,
         open: 'Ver ficha',
         openLabel: (name: string) => `Ver la ficha de ${name}`,
       },
@@ -1012,6 +1039,30 @@ export const es = {
       missingRut: 'Falta RUT: agrega su RUT (o su correo) en Editar datos para que no se confunda con otra persona del mismo nombre.',
       missingGuardian:
         'Falta apoderado: es menor de 18 años, y Rakin no le escribe hasta que tenga uno. En la ficha del apoderado, usa «Agregar a alguien a cargo» y vincúlalo.',
+      // "Requisitos" (#349): each of the gym's requirements, and where they stand on it.
+      requirements: {
+        title: 'Requisitos',
+        error: 'No pudimos cargar sus requisitos.',
+        state: REQUIREMENT_STATES,
+        done: (day: string) => `Hecho el ${day}`,
+        until: (day: string) => `vence el ${day}`,
+        expiredOn: (day: string) => `venció el ${day}`,
+        record: 'Registrar',
+        recordLabel: (name: string) => `Registrar ${name}`,
+        recorded: (name: string) => `Registrado: ${name}.`,
+        form: {
+          title: (name: string) => `Registrar ${name}`,
+          doneOn: 'Fecha',
+          doneOnHint: 'Hoy, o el día en que lo hizo.',
+          note: 'Nota (opcional)',
+          noteHint: NO_HEALTH,
+          cancel: 'Cancelar',
+          submit: 'Guardar',
+          working: 'Guardando…',
+          future: 'La fecha es hoy como máximo.',
+          failed: 'No pudimos registrarlo. Inténtalo de nuevo.',
+        },
+      },
       // "Privacidad" (#370): what their data rest on, and who accepted which notice when.
       consent: {
         title: 'Privacidad',
@@ -1640,6 +1691,8 @@ export const es = {
       overdue: 'Pago vencido',
       // A warning, never a refusal: the staff at the door decides.
       warning: { lapsed: 'Plan vencido', frozen: 'Plan congelado', noCredits: 'Sin clases en su paquete' },
+      // A requirement they lack or whose record expired (#350): a warning too.
+      requirement: requirementFlag,
       search: {
         label: (door: string) => `Buscar para ${door}`,
         placeholder: 'Nombre o RUT',
@@ -1746,6 +1799,7 @@ export const es = {
         blocks: 'Bloques',
         grading: 'Graduación',
         fields: 'Campos',
+        requirements: 'Requisitos',
         staff: 'Equipo',
         joinLink: 'Inscripción',
         schedule: 'Horario',
@@ -1766,6 +1820,7 @@ export const es = {
         get fields() {
           return `Datos extra en la ficha de cada ${w.member}.`
         },
+        requirements: 'Declaraciones de riesgos, inducciones y certificados, con su fecha.',
         staff: 'Admins y coaches, y quién tiene acceso.',
         joinLink: 'El link para que se inscriban solos.',
         account: 'Tu nombre, tu email y cerrar sesión.',
@@ -2058,7 +2113,9 @@ export const es = {
         classTypesLabel: (program: string) => `Clases de ${program}`,
         // What one attendance takes off a pack of classes (#177: "clase", not "crédito").
         credits: (n: number) => (n === 0 ? 'No descuenta clases' : n === 1 ? 'Descuenta 1 clase' : `Descuenta ${n} clases`),
-        openMat: 'Open mat',
+        get openMat() {
+          return w.OpenMat
+        },
         openAccess: 'Acceso libre',
         notCounted: 'No cuenta como clase',
         toggleFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
@@ -2076,9 +2133,17 @@ export const es = {
           creditCost: 'Clases que descuenta',
           creditCostHint: 'Lo que descuenta cada asistencia de un paquete de clases. 0 para una clase gratis.',
           kind: 'Tipo',
-          kinds: { class: 'Clase', open_mat: 'Open mat', open_access: 'Acceso libre' },
-          kindHint:
-            'Un open mat son solo rounds de sparring, sin bloques de técnica. Acceso libre es sin clases: cada visita se marca en Entrada, a cualquier hora.',
+          // The open mat under the gym's name for it (#346): "Open mat", "Escalada libre".
+          kinds: {
+            class: 'Clase',
+            get open_mat() {
+              return w.OpenMat
+            },
+            open_access: 'Acceso libre',
+          },
+          get kindHint() {
+            return `${w.OpenMat}: solo rounds de ${w.practice}, sin bloques de técnica. Acceso libre es sin clases: cada visita se marca en Entrada, a cualquier hora.`
+          },
           countsAsClass: 'Cuenta como clase',
           get countsAsClassHint() {
             return `Si asistir suma a las clases ${w.ofTheMember}, y a su meta de graduación si ${w.thePlace} usa grados.`
@@ -2159,8 +2224,9 @@ export const es = {
           endsTooSoon: 'Termina antes de empezar.',
           noClassTypes: 'Primero crea un tipo de clase en Programas y clases.',
           afterEnd: 'Esta clase fija ya terminó en esa fecha.',
-          openMatPlan:
-            'Un open mat es un solo bloque de sparring, y alguna de las próximas clases tiene otro registro en el timer. Corrígelo antes.',
+          get openMatPlan() {
+            return `Una clase de tipo ${w.OpenMat} es un solo bloque de ${w.practice}, y alguna de las próximas clases tiene otro registro en el timer. Corrígelo antes.`
+          },
           cancel: 'Cancelar',
           submit: 'Guardar',
           working: 'Guardando…',
@@ -2186,7 +2252,7 @@ export const es = {
       blocks: {
         title: 'Bloques de clase',
         get intro() {
-          return `Las partes en que ${w.theCoach} divide la clase con el cronómetro, en el orden en que se ofrecen. El tiempo de los bloques de sparring suma al sparring de cada ${w.member}.`
+          return `Las partes en que ${w.theCoach} divide la clase con el cronómetro, en el orden en que se ofrecen. El tiempo de los bloques de ${w.practice} suma al total de ${w.practice} de cada ${w.member}.`
         },
         error: 'No pudimos cargar los bloques.',
         empty: 'Todavía no hay bloques.',
@@ -2197,7 +2263,8 @@ export const es = {
         restore: 'Reactivar',
         delete: 'Eliminar',
         archived: 'Inactivo',
-        sparring: 'Sparring',
+        // The tag on a kind that counts as the practice: run in rounds, whatever its name (#346).
+        sparring: 'En rounds',
         upMark: '↑',
         downMark: '↓',
         up: (name: string) => `Subir ${name}`,
@@ -2215,12 +2282,14 @@ export const es = {
           create: 'Nuevo bloque',
           edit: (name: string) => `Editar ${name}`,
           name: 'Nombre',
-          sparring: 'Es sparring',
+          get sparring() {
+            return `Cuenta como ${w.practice}`
+          },
           get sparringHint() {
-            return `Un bloque de sparring se corre en rounds, y su tiempo suma al sparring ${w.ofTheMember}.`
+            return `Un bloque de ${w.practice} se corre en rounds, y su tiempo suma al total de ${w.practice} ${w.ofTheMember}.`
           },
           sparringInUse: (blocks: number) =>
-            `Ya se usó en ${blocks === 1 ? '1 bloque' : `${blocks} bloques`} de clases, así que no puede cambiar si es sparring.`,
+            `Ya se usó en ${blocks === 1 ? '1 bloque' : `${blocks} bloques`} de clases, así que no puede cambiar si cuenta como ${w.practice}.`,
           taken: 'Ya hay un bloque con ese nombre.',
           cancel: 'Cancelar',
           submit: 'Guardar',
@@ -2490,6 +2559,50 @@ export const es = {
           optionTooLong: 'Cada opción tiene hasta 80 caracteres.',
         },
       },
+      // "Requisitos" (#349): what the gym asks before someone trains.
+      requirements: {
+        title: 'Requisitos',
+        get intro() {
+          return `Lo que ${w.thePlace} pide antes de entrenar, como una declaración de riesgos o un certificado. La ficha de cada ${w.member} dice cuándo lo hizo y si está al día.`
+        },
+        error: 'No pudimos cargar los requisitos.',
+        empty: 'Todavía no hay requisitos. Por ejemplo:',
+        examples: ['Declaración de riesgos firmada', 'Inducción de seguridad', 'Certificado médico (12 meses)', 'Prueba de natación'],
+        add: 'Nuevo requisito',
+        archive: 'Desactivar',
+        restore: 'Reactivar',
+        archived: 'Inactivo',
+        sensitive: 'Sensible',
+        up: (name: string) => `Subir ${name}`,
+        down: (name: string) => `Bajar ${name}`,
+        row: (first: string, second: string) => `${first} · ${second}`,
+        once: 'Una sola vez',
+        months: (n: number) => (n === 1 ? 'Vence al mes' : `Vence a los ${n} meses`),
+        visibleTo: { owner: 'Solo dueño', admin: 'Dueño y administradores', staff: 'Todo el staff' },
+        created: (name: string) => `Requisito ${name} creado.`,
+        saved: (name: string) => `Requisito ${name} guardado.`,
+        archivedDone: (name: string) => `Requisito ${name} desactivado. Sus registros se guardan, pero no se muestran.`,
+        restored: (name: string) => `Requisito ${name} reactivado.`,
+        toggleFailed: 'No pudimos cambiar el requisito. Inténtalo de nuevo.',
+        reorderFailed: 'No pudimos cambiar el orden. Inténtalo de nuevo.',
+        form: {
+          create: 'Nuevo requisito',
+          edit: (name: string) => `Editar ${name}`,
+          name: 'Nombre',
+          validMonths: 'Vigencia en meses',
+          validMonthsHint: 'En blanco si se hace una sola vez, como una declaración de riesgos.',
+          sensitive: 'Dato sensible',
+          sensitiveHint: 'Su nota se guarda cifrada. Al marcarlo, por defecto solo lo ve el dueño.',
+          visibleTo: 'Quién lo ve',
+          cancel: 'Cancelar',
+          submit: 'Guardar',
+          working: 'Guardando…',
+          invalid: 'Revisa los campos marcados.',
+          failed: 'No pudimos guardar el requisito. Inténtalo de nuevo.',
+          range: { valid_months: 'Entre 1 y 120 meses.' } as Record<string, string>,
+          value: {} as Record<string, string>,
+        },
+      },
     },
     session: {
       back: 'Volver a Clases',
@@ -2534,7 +2647,8 @@ export const es = {
         get othersLabel() {
           return `${w.memberIs('Otros', 'Otras')} ${w.members}`
         },
-        hint: 'Toca un nombre para marcar presente. El punto naranja indica pago vencido: puede entrenar, pero conviene avisar.',
+        hint: 'Toca un nombre para marcar presente. El punto naranja indica pago vencido, y un requisito pendiente o vencido aparece bajo el nombre: puede entrenar igual, pero conviene avisar.',
+        requirement: requirementFlag,
         get loading() {
           return `Cargando ${w.members}…`
         },
@@ -2555,6 +2669,12 @@ export const es = {
         queued: 'Sin conexión: quedó en este teléfono. Se guardará cuando vuelva la señal.',
         failed: 'No pudimos guardar la asistencia. Inténtalo de nuevo.',
         dropped: 'La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.',
+        // Unmarking a drop-in visit gives its charge back only while nothing was paid, the day it was added (#130).
+        visitKept: {
+          paid: 'La clase suelta ya está pagada: sigue presente. El dueño o un admin la devuelve en Pagos.',
+          pending: 'Hay un comprobante esperando por esa clase suelta: sigue presente. Se revisa en Pagos.',
+          past: 'Esa clase suelta se agregó otro día: sigue presente. El dueño o un admin la anula en Pagos.',
+        },
         guest: {
           get open() {
             return `+ Agregar ${w.member} de prueba`
@@ -2577,6 +2697,30 @@ export const es = {
           done: (name: string) => `${name} quedó presente.`,
           member: (name: string) => `${name} ya es ${w.member}: lo marcamos presente.`,
           invalid: 'Revisa el RUT o el correo, y el celular: 9 dígitos, empezando por 9.',
+          offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
+          hasLeft: 'Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.',
+          failed: 'No pudimos agregarlo. Inténtalo de nuevo.',
+        },
+        // "Clase suelta": someone paying for this one class (#130).
+        visitor: {
+          open: '+ Agregar visitante',
+          label: 'Visitante',
+          name: 'Nombre',
+          phone: 'Celular (WhatsApp)',
+          phonePlaceholder: '9 1234 5678',
+          plan: 'Clase suelta',
+          paid: 'Pago',
+          unpaid: 'Pendiente',
+          cash: 'Pagó en efectivo',
+          transfer: 'Pagó por transferencia',
+          submit: 'Agregar y marcar presente',
+          working: 'Agregando…',
+          cancel: 'Cancelar',
+          noPlans: 'Para agregar visitantes, el dueño o un admin crea un plan de clase suelta.',
+          done: (name: string) => `${name} quedó presente. La clase suelta queda en Pagos.`,
+          paidDone: (name: string) => `${name} quedó presente, con la clase suelta pagada.`,
+          member: (name: string) => `${name} ya está en la lista: lo marcamos presente.`,
+          invalid: 'Revisa el nombre y el celular: 9 dígitos, empezando por 9.',
           offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
           hasLeft: 'Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.',
           failed: 'No pudimos agregarlo. Inténtalo de nuevo.',
@@ -2613,8 +2757,9 @@ export const es = {
         close: 'Volver',
         saved: 'Clase actualizada.',
         failed: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
-        openMatPlan:
-          'Un open mat es un solo bloque de sparring. Corrige el registro del timer antes de cambiarle el tipo.',
+        get openMatPlan() {
+          return `Una clase de tipo ${w.OpenMat} es un solo bloque de ${w.practice}. Corrige el registro del timer antes de cambiarle el tipo.`
+        },
       },
       manage: {
         title: 'Opciones de la clase',
@@ -2645,7 +2790,9 @@ export const es = {
         empty: 'Sin registro del timer.',
         edit: 'Editar registro',
         label: 'Editar registro del timer',
-        hint: 'Corrige lo que quedó registrado: el tipo de cada bloque, los minutos que duró y, en sparring, las rondas hechas.',
+        get hint() {
+          return `Corrige lo que quedó registrado: el tipo de cada bloque, los minutos que duró y, en ${w.practice}, las rondas hechas.`
+        },
         block: (n: number) => `Bloque ${n}`,
         kind: 'Tipo',
         minutes: 'Minutos hechos',
@@ -2658,7 +2805,9 @@ export const es = {
         noKinds: 'No hay tipos de bloque. El dueño o un admin los crea en Ajustes › Bloques.',
         running: 'La clase está corriendo en el timer de este teléfono. Termínala para corregir el registro.',
         pending: 'El timer de este teléfono tiene bloques sin enviar. Se podrá corregir cuando se guarden.',
-        invalid: 'Revisa los campos marcados. En sparring, los minutos no pueden pasar de las rondas hechas.',
+        get invalid() {
+          return `Revisa los campos marcados. En ${w.practice}, los minutos no pueden pasar de las rondas hechas.`
+        },
         submit: 'Guardar registro',
         working: 'Guardando…',
         close: 'Cancelar',
@@ -2680,7 +2829,9 @@ export const es = {
         title: 'Bloques de la clase',
         hint: 'Parte de la última clase de este tipo. Cambia lo que quieras antes de empezar.',
         hintEmpty: 'Arma la clase bloque por bloque.',
-        hintOpenMat: 'Un open mat son rondas de sparring.',
+        get hintOpenMat() {
+          return `${w.OpenMat}: rondas de ${w.practice}.`
+        },
         hintRunning: 'Cambia los bloques que faltan o agrega uno. El timer sigue corriendo.',
         label: (n: number) => `Bloque ${n}`,
         kind: 'Tipo',
@@ -2694,7 +2845,9 @@ export const es = {
         add: '+ Agregar bloque',
         empty: 'Sin bloques todavía.',
         noKinds: 'No hay tipos de bloque. El dueño o un admin los crea en Ajustes › Bloques.',
-        noSparring: 'No hay un tipo de bloque de sparring. El dueño o un admin lo marca en Ajustes › Bloques.',
+        get noSparring() {
+          return `No hay un tipo de bloque de ${w.practice}. El dueño o un admin lo marca en Ajustes › Bloques.`
+        },
         tooMany: (max: number) => `Una clase tiene hasta ${max} bloques.`,
         invalid: 'Revisa los campos marcados.',
         total: (minutes: string) => `Total: ${minutes}`,
@@ -3138,12 +3291,19 @@ export const es = {
     month: 'Este mes',
     allTime: 'Siempre',
     classes: 'Clases',
-    // The sparring kinds and the open mats together, so not the breakdown's own Sparring line.
-    sparring: 'Sparring en total',
+    // The practice's kinds and the open mats together, so not the breakdown's own line.
+    get sparring() {
+      return `${w.Practice} en total`
+    },
     byKind: 'Tiempo por bloque',
-    openMat: (n: number, time: string) => `Open mat: ${n} · ${time}`,
-    openMatNoteMine: 'Tu tiempo de open mat cuenta como sparring.',
-    openMatNoteTheirs: 'Su tiempo de open mat cuenta como sparring.',
+    openMat: (n: number, time: string) => `${w.OpenMat}: ${n} · ${time}`,
+    // Only where the open mat has a name of its own, as "Open mat" in BJJ (`MatTime`).
+    get openMatNoteMine() {
+      return `Tu tiempo de ${w.openMat} cuenta como ${w.practice}.`
+    },
+    get openMatNoteTheirs() {
+      return `Su tiempo de ${w.openMat} cuenta como ${w.practice}.`
+    },
     // Seconds as `4 h 30 min`, `2 h` or `45 min`; under half a minute, but some, `< 1 min`.
     duration: (seconds: number) => {
       const minutes = Math.round(seconds / 60)
@@ -3227,6 +3387,15 @@ export const es = {
     // From the student page back to the admin screens, for staff who also train (#214).
     get toAdmin() {
       return `Ir al panel ${w.ofThePlace}`
+    },
+    // "Requisitos" (#349): what the gym asks before training, and where each stands.
+    requirements: {
+      title: 'Mis requisitos',
+      theirs: (name: string) => `Requisitos de ${name}`,
+      state: REQUIREMENT_STATES,
+      done: (day: string) => `Hecho el ${day}`,
+      until: (day: string) => `vence el ${day}`,
+      expiredOn: (day: string) => `venció el ${day}`,
     },
     // "Pedir congelamiento" (#270): a running plan, and a freeze asked for it.
     plans: {

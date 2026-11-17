@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { es } from './es'
 import copySource from './es.ts?raw'
-import { currentVocabulary, DEFAULT_VOCABULARY, wearVocabulary, w } from './vocabulary'
+import { currentVocabulary, DEFAULT_VOCABULARY, wearPractice, wearVocabulary, w } from './vocabulary'
 
-afterEach(() => wearVocabulary(null))
+afterEach(() => {
+  wearVocabulary(null)
+  wearPractice(null)
+})
 
 // Every string under `node`, functions called with stand-in arguments: what a screen
 // built from that part of the copy can say.
@@ -73,5 +76,33 @@ describe("a gym's words", () => {
       .replace(/\/\/.*$/gm, '')
     const words = [...source.matchAll(/\b(ex)?(academias?|alumn[oa]s?)\b(?!\s*(\(\)|:))/gi)].map((m) => m[0])
     expect(words).toEqual([])
+  })
+})
+
+// #346: the free practice goes by the gym's names for it.
+describe("a gym's free practice", () => {
+  it('reads as today with none: sparring in open mats', () => {
+    expect([w.Practice, w.practice, w.OpenMat, w.openMat, w.openMatNamed]).toEqual([
+      'Sparring',
+      'sparring',
+      'Open mat',
+      'open mat',
+      true,
+    ])
+    expect(es.matTime.sparring).toBe('Sparring en total')
+  })
+
+  it('names a climbing gym’s free climbing, and its open mat the same', () => {
+    wearPractice({ block: 'Escalada libre', open_mat: 'Escalada libre' })
+    expect(es.matTime.sparring).toBe('Escalada libre en total')
+    expect(es.matTime.openMat(2, '3 h')).toBe('Escalada libre: 2 · 3 h')
+    expect(es.admin.settings.programs.classTypeForm.kinds.open_mat).toBe('Escalada libre')
+    expect(es.admin.settings.blocks.form.sparring).toBe('Cuenta como escalada libre')
+    expect(w.openMatNamed).toBe(false)
+  })
+
+  it('keeps a name in capitals as written inside a sentence', () => {
+    wearPractice({ block: 'MMA libre' })
+    expect([w.practice, w.OpenMat]).toEqual(['MMA libre', 'MMA libre'])
   })
 })

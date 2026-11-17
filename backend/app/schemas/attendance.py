@@ -1,12 +1,16 @@
 """Attendance (migration 0023): a session's roster, marking it, and a person's counts."""
 
 import uuid
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.membership import MembershipStatus, PlanKind
 from app.schemas.grades import Rank
+from app.schemas.ledger import Method
+from app.schemas.people import Name, Phone
+from app.schemas.requirements import RequirementFlag
 
 # More than a class holds, well short of a request worth refusing for its size.
 MAX_MARKS = 500
@@ -43,6 +47,21 @@ class TrialGuest(BaseModel):
     plan_id: uuid.UUID
 
 
+class DropinVisitor(BaseModel):
+    """`POST /api/sessions/{id}/visitors`: someone paying for this one class, "Clase
+    suelta", by name and phone; a phone already in the gym is that person (#130).
+
+    `paid` is how they paid, at the desk, if they did: an owner's or admin's to record,
+    as every payment is (`app.roles.LEDGER_ROLES`). Without it the class is owed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Name
+    phone: Phone
+    plan_id: uuid.UUID
+    paid: Method | None = None
+
+
 class RosterMember(BaseModel):
     """One person on a session's roster, by the membership the roster marks."""
 
@@ -64,6 +83,9 @@ class RosterMember(BaseModel):
     regular: bool
     rank: Rank | None
     present: bool
+    # The requirements the caller sees that they lack or whose record expired (#350):
+    # a warning, never a refusal.
+    unmet_requirements: list[RequirementFlag] = []
 
 
 class Roster(BaseModel):
@@ -84,6 +106,22 @@ class AlreadyMember(BaseModel):
 
     code: str = "already_member"
     membership_id: uuid.UUID
+
+
+class DropinRefusal(StrEnum):
+    # A payment the gym kept: refunded in the payment book first.
+    PAID = "paid"
+    # A proof waits on it: rejected in the payment book first.
+    PENDING = "pending"
+    # Recorded on an earlier day: voided in the payment book, never by unmarking.
+    PAST = "past"
+
+
+class DropinKept(BaseModel):
+    """The 409 for unmarking a drop-in visit whose charge unmarking cannot give back."""
+
+    code: DropinRefusal
+    message: str
 
 
 class PersonAttendance(BaseModel):

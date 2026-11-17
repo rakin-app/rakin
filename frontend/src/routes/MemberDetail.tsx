@@ -82,6 +82,7 @@ import { PersonExtraLines } from './PersonExtraLines'
 import { PersonHistory } from './PersonHistory'
 import { PersonData } from './PersonData'
 import { PersonConsent } from './PersonConsent'
+import { PersonRequirements } from './PersonRequirements'
 import { AssignForm, AssignPlan, assignsPlan, ChangePlanForm, changesPlan, isLive } from './PersonPlan'
 import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
@@ -217,6 +218,7 @@ export function MemberDetail() {
               <FamilyPanel person={person.data} />
             </Card>
           </section>
+          <PersonRequirements person={person.data} />
           <PersonData person={person.data} />
           <PersonConsent person={person.data} />
           <PersonWelcome person={person.data} role={role.data} />

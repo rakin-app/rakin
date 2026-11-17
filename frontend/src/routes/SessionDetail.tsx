@@ -3,9 +3,12 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   addTrialGuest,
+  addVisitor,
   hasLeft,
   changeAttendance,
   clearQueuedChange,
+  dropinKept,
+  dropinPlansQuery,
   isOffline,
   isRefusal,
   queueChange,
@@ -15,6 +18,7 @@ import {
   type AttendanceChange,
   type Roster,
   type RosterMember,
+  type VisitPayment,
 } from '../api/attendance'
 import { classTagsQuery, pickableTags } from '../api/classTags'
 import { ApiError } from '../api/client'
@@ -429,6 +433,8 @@ function Attendance({ sessionId }: { sessionId: string }) {
   const changed = change.mark.length + change.unmark.length > 0
   // "Guardado ✓" until the next tap.
   const done = saved && !changed && !queued && !save.isPending
+  // A drop-in visit unmarking could not give back: paid, a proof waiting, or another day's.
+  const visitKept = save.isError ? dropinKept(save.error) : null
 
   const tap = (member: RosterMember, value: boolean): Taps => {
     setSaved(false)
@@ -499,11 +505,12 @@ function Attendance({ sessionId }: { sessionId: string }) {
         </PlainList>
       )}
       <TrialGuest sessionId={sessionId} onMember={markMember} />
+      <Visitor sessionId={sessionId} onMember={markMember} />
       {/* Sticky at the foot of the screen, so what a save did is in view however far down the list is. */}
       <div className="attendance__bar">
         {save.isError && !isOffline(save.error) && !dropped && (
           <Banner tone="error">
-            {words.failed}
+            {visitKept ? words.visitKept[visitKept] : words.failed}
           </Banner>
         )}
         {queued && (
@@ -594,6 +601,11 @@ function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boo
           {belt && <RankBelt rank={belt} compact />}
           {detail}
         </span>
+        {member.unmet_requirements.length > 0 && (
+          <span className="attendance__requirements">
+            {member.unmet_requirements.map(words.requirement).join(' · ')}
+          </span>
+        )}
       </span>
       {member.overdue && <span className="attendance__overdue" role="img" aria-label={words.overdue} />}
     </button>
@@ -644,23 +656,15 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
 
   if (!open) {
     return (
-      <>
-        {done && (
-          <Banner tone="done">
-            {done}
-          </Banner>
-        )}
-        <Button
-          fullWidth
-          onClick={() => {
-            setDone(null)
-            add.reset()
-            setOpen(true)
-          }}
-        >
-          {words.open}
-        </Button>
-      </>
+      <AddOpener
+        done={done}
+        label={words.open}
+        onOpen={() => {
+          setDone(null)
+          add.reset()
+          setOpen(true)
+        }}
+      />
     )
   }
 
@@ -746,6 +750,159 @@ function TrialGuest({ sessionId, onMember }: { sessionId: string; onMember: (mem
             type="submit"
             variant="primary"
             disabled={add.isPending || !chosen || !name.trim() || !who.trim()} busy={add.isPending}
+          >
+            {add.isPending ? words.working : words.submit}
+          </Button>
+        </>
+      )}
+      <Button onClick={() => setOpen(false)}>
+        {words.cancel}
+      </Button>
+    </form>
+  )
+}
+
+/** What an add form left said, and the button that opens it again. */
+function AddOpener({ done, label, onOpen }: { done: string | null; label: string; onOpen: () => void }) {
+  return (
+    <>
+      {done && (
+        <Banner tone="done">
+          {done}
+        </Banner>
+      )}
+      <Button fullWidth onClick={onOpen}>
+        {label}
+      </Button>
+    </>
+  )
+}
+
+/** "+ Agregar visitante": someone paying for this one class, "Clase suelta" (#130), by name
+ * and phone, present at it and charged its plan's price, in Pagos until paid. An owner or
+ * admin may record that they paid at the desk; a coach leaves it pending. */
+function Visitor({ sessionId, onMember }: { sessionId: string; onMember: (membershipId: string) => void }) {
+  const words = copy.attendance.visitor
+  const queryClient = useQueryClient()
+  const plans = useQuery(dropinPlansQuery())
+  const me = useQuery(myselfQuery())
+  const takesMoney = managesGym(me.data?.role)
+  const ids = { name: useId(), phone: useId(), plan: useId(), paid: useId() }
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [planId, setPlanId] = useState('')
+  const [paid, setPaid] = useState<VisitPayment | ''>('')
+  const [done, setDone] = useState<string | null>(null)
+  const add = useSubmit({
+    // Tried offline too, so the coach reads "Sin conexión" rather than "Agregando…" (#215).
+    networkMode: 'always',
+    mutationFn: (visitor: { name: string; phone: string; planId: string; paid: VisitPayment | null }) =>
+      addVisitor(sessionId, visitor),
+    onSuccess: (added, visitor) => {
+      if ('roster' in added) {
+        queryClient.setQueryData(rosterQuery(sessionId).queryKey, added.roster)
+        refreshFlags(queryClient, sessionId)
+        setDone(visitor.paid ? words.paidDone(visitor.name) : words.done(visitor.name))
+      } else {
+        onMember(added.member)
+        setDone(words.member(visitor.name))
+      }
+      setOpen(false)
+      setName('')
+      setPhone('')
+      setPaid('')
+    },
+  })
+
+  if (!open) {
+    return (
+      <AddOpener
+        done={done}
+        label={words.open}
+        onOpen={() => {
+          setDone(null)
+          add.reset()
+          setOpen(true)
+        }}
+      />
+    )
+  }
+
+  const dropins = plans.data ?? []
+  const chosen = planId || dropins[0]?.id || ''
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    add.mutate({ name: name.trim(), phone, planId: chosen, paid: takesMoney && paid ? paid : null })
+  }
+  const failure = add.isError
+    ? isOffline(add.error)
+      ? words.offline
+      : add.error instanceof ApiError && add.error.status === 422
+        ? words.invalid
+        : hasLeft(add.error)
+          ? words.hasLeft
+          : words.failed
+    : null
+
+  return (
+    <form className={cardClass({}, 'classes__form')} aria-label={words.label} onSubmit={submit}>
+      {plans.isSuccess && dropins.length === 0 ? (
+        <p className="classes__note">{words.noPlans}</p>
+      ) : (
+        <>
+          <label htmlFor={ids.name} className="classes__label">
+            {words.name}
+          </label>
+          <Input id={ids.name} value={name} required autoComplete="off" onChange={(e) => setName(e.target.value)} />
+          <label htmlFor={ids.phone} className="classes__label">
+            {words.phone}
+          </label>
+          <Input
+            id={ids.phone}
+            type="tel"
+            inputMode="tel"
+            value={phone}
+            required
+            placeholder={words.phonePlaceholder}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          {dropins.length > 1 && (
+            <>
+              <label htmlFor={ids.plan} className="classes__label">
+                {words.plan}
+              </label>
+              <Select id={ids.plan} value={chosen} onChange={(e) => setPlanId(e.target.value)}>
+                {dropins.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.name}
+                  </option>
+                ))}
+              </Select>
+            </>
+          )}
+          {takesMoney && (
+            <>
+              <label htmlFor={ids.paid} className="classes__label">
+                {words.paid}
+              </label>
+              <Select id={ids.paid} value={paid} onChange={(e) => setPaid(e.target.value as VisitPayment | '')}>
+                <option value="">{words.unpaid}</option>
+                <option value="cash">{words.cash}</option>
+                <option value="transfer">{words.transfer}</option>
+              </Select>
+            </>
+          )}
+          {failure && (
+            <Banner tone="error">
+              {failure}
+            </Banner>
+          )}
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={add.isPending || !chosen || !name.trim() || !phone.trim()}
+            busy={add.isPending}
           >
             {add.isPending ? words.working : words.submit}
           </Button>

@@ -287,7 +287,7 @@ def test_a_downgrade_makes_a_fixed_period_plan_prepaid() -> None:
             )
 
         run(scratch.admin_url, seed)
-        command.downgrade(scratch.alembic(), "0060")
+        command.downgrade(scratch.alembic(), "0063")
         rows = run(
             scratch.admin_url,
             lambda c: c.fetch("SELECT name, kind, period_months FROM plan ORDER BY name"),

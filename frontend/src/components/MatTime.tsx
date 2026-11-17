@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { hasTime, myTimeQuery, personTimeQuery, type PersonTime, type TimeTotals } from '../api/matTime'
 import type { ReactNode } from 'react'
 import { t } from '../i18n/es'
+import { w } from '../i18n/vocabulary'
 import { BarError, BarList, BarNote } from './BarList'
 import { Card, Section, SectionHeader } from './Card'
 import { SegmentedControl } from './Chip'
@@ -48,7 +49,8 @@ function Loaded({
  * "Tiempo de entrenamiento" (#141): the classes a person attended and the time each block
  * kind ran in them, this month or all time, as the API totals them. Each kind is a bar
  * whose text carries the figure, so the bars themselves are only decoration. Open mats
- * are a line of their own: their time is sparring too, as the API counts it.
+ * are a line of their own: their time is sparring too, as the API counts it. Both go by
+ * the gym's names for them (#346): "Sparring en total", "Escalada libre en total".
  *
  * `mine` is the student page's wording; the ficha's speaks of the member. `headed` puts
  * the title over the card, as the ficha heads each of its sections (#360).
@@ -148,7 +150,10 @@ function Totals({ totals, mine }: { totals: TimeTotals; mine: boolean }) {
           {totals.open_mats > 0 && (
             <p className="mat-time__open-mat">
               <span>{copy.openMat(totals.open_mats, copy.duration(totals.open_mat_seconds))}</span>
-              <span className="bar-note">{mine ? copy.openMatNoteMine : copy.openMatNoteTheirs}</span>
+              {/* Said only where the open mat has a name of its own, as BJJ's (#346). */}
+              {w.openMatNamed && (
+                <span className="bar-note">{mine ? copy.openMatNoteMine : copy.openMatNoteTheirs}</span>
+              )}
             </p>
           )}
         </>

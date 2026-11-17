@@ -19,43 +19,67 @@ present at the class (`POST .../trials`). A trial charges nothing, which is why 
 may start one where only an owner or admin may start any other membership. No welcome
 is sent: the person added at the mat has nothing to pay yet.
 
+A drop-in visitor pays for this one class, "Clase suelta" (#130): the screen adds them by
+name and phone, the phone finding someone the gym has (`POST .../visitors`). The visit
+is a one-day membership on a drop-in plan, ended as it starts, marked present, with its
+one period and charge (`app.domain.membership.drop_in`, docs/adr/0002-drop-in-visits.md).
+A coach adds one, and its charge is written for them (`dropin_charge`, migration 0061);
+recording that they paid at the desk is an owner's or admin's, as any payment is.
+Unmarking the visit on the day it was added gives the charge back, voided, never
+deleted (`dropin_void`); it is refused once the gym has kept a payment for it or a proof
+waits, and on any later day: the payment book corrects it then.
+
 A cancelled class (migration 0033) takes no attendance: marking at it, or adding a
-trial guest to it, is a 409. Cancelling is refused once anyone is marked, so it has
-none to count. Deleting a class removes its attendance (`remove_attendance`), giving
-back what each mark took, as unmarking would.
+trial guest or a visitor to it, is a 409. Cancelling is refused once anyone is marked,
+so it has none to count. Deleting a class removes its attendance (`remove_attendance`),
+giving back what each mark took, as unmarking would, and a drop-in's charge while
+nothing was paid on it.
+
+Each person on the roster names the requirements they lack or whose record expired
+(`app.api.requirements.requirement_flags`, #350), those the caller's role sees: a
+warning, never a refusal, so marking them still works.
 
 Any staff role may use it, coaches included; members may not. A member reads their own
 counts on the student page (`/api/me/page`).
 """
 
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.grades import readable_scheme
+from app.api.ledger import record_payment
 from app.api.memberships import HAS_LEFT, PersonHasLeft, insert_membership
 from app.api.people import NOT_FOUND as PERSON_NOT_FOUND
-from app.api.people import in_gym
+from app.api.people import in_gym, join_gym
+from app.api.requirements import requirement_flags
 from app.domain import membership as memberships
 from app.domain.attendance import credits_to_consume
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.membership import Membership, MembershipStatus, PlanKind, PlanTerms
-from app.roles import StaffSession
+from app.notices import Notices, get_notices
+from app.roles import FORBIDDEN, LEDGER_ROLES, StaffSession, role_in_gym
 from app.schemas.attendance import (
     AlreadyMember,
     AttendanceChange,
+    DropinKept,
+    DropinRefusal,
+    DropinVisitor,
     PersonAttendance,
     Roster,
     RosterMember,
     TrialGuest,
 )
 from app.schemas.grades import Rank
+from app.schemas.ledger import PaymentRecord
 from app.schemas.memberships import HasLeft
 from app.tenancy import Tenant, current_tenant
 
@@ -218,7 +242,7 @@ def require_open(held: HeldClass) -> None:
         raise CANCELLED
 
 
-async def _roster(session: AsyncSession, held: HeldClass) -> Roster:
+async def _roster(session: AsyncSession, tenant: Tenant, held: HeldClass) -> Roster:
     scheme = readable_scheme(held.settings)
     rows = await session.execute(
         text(ROSTER),
@@ -238,6 +262,9 @@ async def _roster(session: AsyncSession, held: HeldClass) -> Roster:
         )
         rank = None if rank_key is None else Rank.labelled(scheme, rank_key, sub_rank, awarded_on)
         members.append(RosterMember(**fields, rank=rank))
+    flags = await requirement_flags(session, tenant, [m.person_id for m in members])
+    for m in members:
+        m.unmet_requirements = flags.get(m.person_id, [])
     return Roster(session_id=held.id, present=sum(m.present for m in members), members=members)
 
 
@@ -276,7 +303,52 @@ async def mark_present(
         await session.execute(text(SPEND), {"id": membership_id, "credits": inserted})
 
 
+def _kept(code: DropinRefusal, message: str) -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT, DropinKept(code=code, message=message).model_dump()
+    )
+
+
+# Whether the membership marked at the session is a drop-in visit, and whether it was
+# added today, in the gym's timezone: the day unmarking it gives its charge back.
+MARKED_VISIT = """
+    SELECT pl.kind = 'dropin' AS dropin,
+           (m.created_at AT TIME ZONE g.timezone)::date
+               = (now() AT TIME ZONE g.timezone)::date AS today
+    FROM attendance a
+    JOIN membership m ON m.id = a.membership_id
+    JOIN plan pl ON pl.id = m.plan_id
+    JOIN gym g ON g.id = m.gym_id
+    WHERE a.session_id = :session AND a.membership_id = :membership
+"""
+
+# The void's reason, in the ledger and in the record of corrections.
+UNMARKED_REASON = "Clase suelta desmarcada el día de la visita"
+DELETED_REASON = "Clase suelta de una clase eliminada"
+
+VOID_VISIT = "SELECT dropin_void(:id, :reason)"
+
+
+async def _void_visit(session: AsyncSession, membership_id: uuid.UUID, reason: str) -> None:
+    """Give a drop-in visit's charge back (`dropin_void`); a 409 when the gym kept a
+    payment for it or a proof waits on it, for the payment book to settle first."""
+    refused = await session.scalar(text(VOID_VISIT), {"id": membership_id, "reason": reason})
+    if refused == DropinRefusal.PAID:
+        raise _kept(DropinRefusal.PAID, "the class was paid: refund it in the payment book")
+    if refused == DropinRefusal.PENDING:
+        raise _kept(DropinRefusal.PENDING, "a proof waits on it: review it in the payment book")
+
+
 async def unmark(session: AsyncSession, held: HeldClass, membership_id: uuid.UUID) -> None:
+    """Unmark the membership, giving back what the mark took: credits, or a drop-in
+    visit's charge on the day it was added. On a later day a visit stays marked."""
+    marked = (
+        await session.execute(text(MARKED_VISIT), {"session": held.id, "membership": membership_id})
+    ).one_or_none()
+    if marked is not None and marked.dropin:
+        if not marked.today:
+            raise _kept(DropinRefusal.PAST, "added on an earlier day: void it in the payment book")
+        await _void_visit(session, membership_id, UNMARKED_REASON)
     credits = await session.scalar(
         text(DELETE_ATTENDANCE), {"session": held.id, "membership": membership_id}
     )
@@ -284,10 +356,24 @@ async def unmark(session: AsyncSession, held: HeldClass, membership_id: uuid.UUI
         await session.execute(text(REFUND), {"id": membership_id, "credits": credits})
 
 
+# The session's drop-in visits, in id order.
+VISITS_AT = """
+    SELECT a.membership_id FROM attendance a
+    JOIN membership m ON m.id = a.membership_id
+    JOIN plan pl ON pl.id = m.plan_id
+    WHERE a.session_id = :session AND pl.kind = 'dropin'
+    ORDER BY a.membership_id
+"""
+
+
 async def remove_attendance(session: AsyncSession, session_id: uuid.UUID) -> None:
-    """Everyone's attendance at the session, gone, each giving back what it took. The
-    caller holds the session locked; memberships go in id order, as every change here
-    takes them."""
+    """Everyone's attendance at the session, gone, each giving back what it took, and a
+    drop-in visit its charge, unless the gym kept a payment for it or a proof waits:
+    that money is the payment book's. The caller holds the session locked; memberships
+    go in id order, as every change here takes them."""
+    for row in (await session.execute(text(VISITS_AT), {"session": session_id})).all():
+        # Its answer is why not, when it was paid; then the charge stays, as the money.
+        await session.scalar(text(VOID_VISIT), {"id": row.membership_id, "reason": DELETED_REASON})
     rows = await session.execute(
         text(
             "DELETE FROM attendance WHERE session_id = :session"
@@ -303,8 +389,12 @@ async def remove_attendance(session: AsyncSession, session_id: uuid.UUID) -> Non
 
 
 @router.get("/api/sessions/{session_id}/roster")
-async def get_roster(session_id: uuid.UUID, session: StaffSession) -> Roster:
-    return await _roster(session, await class_of(session, session_id))
+async def get_roster(
+    session_id: uuid.UUID,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: StaffSession,
+) -> Roster:
+    return await _roster(session, tenant, await class_of(session, session_id))
 
 
 @router.patch(
@@ -328,7 +418,7 @@ async def change_attendance(
             await mark_present(session, held, membership_id, tenant.person_id)
         else:
             await unmark(session, held, membership_id)
-    return await _roster(session, held)
+    return await _roster(session, tenant, held)
 
 
 @router.post(
@@ -388,7 +478,132 @@ async def add_trial_guest(
         # Someone dado de baja comes back through Reactivar, not a trial.
         raise HAS_LEFT from None
     await mark_present(session, held, membership_id, tenant.person_id)
-    return await _roster(session, held)
+    return await _roster(session, tenant, held)
+
+
+# Everyone here with the phone, oldest record first. RLS keeps it to the current gym.
+BY_PHONE = "SELECT person_id, name FROM gym_person WHERE phone = :phone ORDER BY created_at"
+
+
+def _folded(name: str) -> str:
+    """A name with case and accents ignored: "Martín" is "martin"."""
+    plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return " ".join(plain.casefold().split())
+
+
+async def visitor(session: AsyncSession, name: str, phone: str) -> uuid.UUID:
+    """Who a visitor is: the one person here with `phone`, or among several sharing it
+    (a family) the one called `name`; else someone new, by name and phone, with no RUT
+    or email yet, as an import's row with neither (`join_gym`)."""
+    rows = (await session.execute(text(BY_PHONE), {"phone": phone})).all()
+    named = [row for row in rows if _folded(row.name) == _folded(name)]
+    if len(rows) == 1 or named:
+        found: uuid.UUID = (named or rows)[0].person_id
+        return found
+    person_id, _ = await join_gym(session, name=name, phone=phone)
+    return person_id
+
+
+# The person's membership this roster already marks them by: one present at the class,
+# else one the class's program admits, as the roster picks it (`ROSTER`).
+ON_THIS_ROSTER = f"""
+    SELECT m.id FROM membership m
+    JOIN plan pl ON pl.id = m.plan_id
+    LEFT JOIN attendance a ON a.session_id = :session AND a.membership_id = m.id
+    WHERE m.person_id = :person
+      AND (a.membership_id IS NOT NULL
+           OR (m.status IN {ON_ROSTER}
+               AND (pl.program_id IS NULL OR pl.program_id = :program)))
+    ORDER BY a.membership_id IS NOT NULL DESC,
+             array_position(ARRAY{list(ON_ROSTER)}, m.status), m.created_at DESC
+    LIMIT 1
+"""
+
+VISIT_PERIOD = "SELECT dropin_charge(:id)"
+
+PERIOD_DUE = "SELECT amount_due_clp FROM billing_period WHERE id = :id"
+
+
+@router.post(
+    "/api/sessions/{session_id}/visitors",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "a coach recording a payment"},
+        status.HTTP_409_CONFLICT: {
+            "model": AlreadyMember | HasLeft,
+            "description": "on this roster already, has left, or the class is cancelled",
+        },
+    },
+)
+async def add_dropin_visitor(
+    session_id: uuid.UUID,
+    body: DropinVisitor,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: StaffSession,
+    notices: Annotated[Notices, Depends(get_notices)],
+    background: BackgroundTasks,
+) -> Roster:
+    """A drop-in visitor (#130): the person their phone is, or someone new, on a one-day
+    membership of the drop-in plan for the class's day, marked present, its charge
+    written. `paid` records the payment too, validated, with its receipt, for an owner
+    or admin; a coach sending it is a 403. A 409 names the membership of someone this
+    roster already lists, to mark instead, or says `has_left` for someone dado de baja;
+    a cancelled class is a 409 too."""
+    if body.paid is not None and await role_in_gym(session, tenant) not in LEDGER_ROLES:
+        raise FORBIDDEN
+    held = await class_of(session, session_id, lock=True)
+    require_open(held)
+    plan = (
+        await session.execute(
+            text("SELECT kind, program_id, active FROM plan WHERE id = :id"), {"id": body.plan_id}
+        )
+    ).one_or_none()
+    if plan is None or plan.kind != PlanKind.DROPIN:
+        raise _unprocessable("plan_id", "not_a_dropin_plan", "not one of the gym's drop-in plans")
+    if not plan.active:
+        raise _unprocessable("plan_id", "inactive_plan", "the plan is deactivated")
+    if not _admits(plan.program_id, held):
+        raise _unprocessable("plan_id", "not_in_program", "the plan is not for this class")
+    person_id = await visitor(session, body.name, body.phone)
+    listed = await session.scalar(
+        text(ON_THIS_ROSTER),
+        {"session": held.id, "person": person_id, "program": held.program_id},
+    )
+    if listed is not None:
+        conflict = AlreadyMember(membership_id=listed)
+        raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
+
+    day = held.starts_at.astimezone(ZoneInfo(held.timezone)).date()
+    try:
+        membership_id = await insert_membership(
+            session,
+            person_id,
+            body.plan_id,
+            memberships.drop_in(day),
+            start_of_local_day(day, held.timezone),
+        )
+    except PersonHasLeft:
+        raise HAS_LEFT from None
+    period_id = await session.scalar(text(VISIT_PERIOD), {"id": membership_id})
+    await session.execute(
+        text(INSERT_ATTENDANCE),
+        {
+            "session": held.id,
+            "membership": membership_id,
+            "marked_by": tenant.person_id,
+            "credits": 0,
+        },
+    )
+    due = await session.scalar(text(PERIOD_DUE), {"id": period_id})
+    if body.paid is not None and due > 0:
+        payment = PaymentRecord(
+            membership_id=membership_id,
+            billing_period_id=period_id,
+            amount_clp=due,
+            method=body.paid,
+        )
+        await record_payment(payment, session, notices, background)
+    return await _roster(session, tenant, held)
 
 
 # "The last 30 days": today and the 29 before it, by the gym's calendar.
