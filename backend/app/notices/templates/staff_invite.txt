@@ -1,8 +1,9 @@
 {% extends "_layout.txt" %}
+{% import "_staff_roles.txt" as staff with context %}
 {% block body %}
 Hola, {{ name }}:
 
-{{ inviter }} te invitó a {{ gym }} en Rakin como {{ role }}. {% if role_is_coach %}Desde ahí tomas asistencia y registras el tema de cada clase.{% else %}Desde ahí llevas los pagos, {{ words.the_members }} y los ajustes del gimnasio.{% endif %}
+{{ inviter }} te invitó a {{ gym }} en Rakin como {{ staff.role_names }}.{% if staff.can_text %} Desde ahí podrás {{ staff.can_text }}.{% endif %}
 
 Entras siempre con un enlace a este correo, sin contraseña.
 {% endblock %}

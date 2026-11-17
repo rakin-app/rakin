@@ -1,6 +1,7 @@
-"""Staff management (#62): invite an admin or a coach, change their role, revoke it.
+"""Staff management (#62, #311): invite someone to the gym's roles, revoke them.
 
-The owner manages everyone but themselves; an admin manages coaches only.
+The owner manages everyone but themselves; an admin manages coaches only. The
+appointments, roles and history of Equipo are `tests/test_equipo.py`'s.
 """
 
 import dataclasses
@@ -13,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.integrations.mailer import Email, MailDeliveryError
 from app.main import create_app
+from app.permissions import ACADEMIA, preset_title_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
@@ -51,6 +53,15 @@ def gym(db: Database) -> uuid.UUID:
     return seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
 
 
+# Today's admin and coach: the Academia preset's roles every gym is created with (0065).
+ACADEMIA_KEYS = {"admin": "administrador", "coach": "coach"}
+
+
+def academia(gym: uuid.UUID, role: str) -> str:
+    """The id of the gym's Academia role that `role` ("admin" or "coach") stands for."""
+    return str(preset_title_id(gym, ACADEMIA, ACADEMIA_KEYS[role]))
+
+
 def invite(
     client: TestClient,
     gym: uuid.UUID,
@@ -60,7 +71,12 @@ def invite(
 ) -> Any:
     # One email per name: a gym holds each email once.
     name = body.get("name", "Pedro")
-    sent = {"rut": random_rut(), "name": name, "email": f"{name.lower()}@example.cl", "role": role}
+    sent = {
+        "rut": random_rut(),
+        "name": name,
+        "email": f"{name.lower()}@example.cl",
+        "title_ids": [academia(gym, role)],
+    }
     return client.post("/api/staff", json={**sent, **body}, headers=as_gym(gym, by))
 
 
@@ -91,11 +107,12 @@ def test_an_invite_adds_the_person_with_their_role(client: TestClient, gym: uuid
         "carla@example.cl",
         "admin",
     )
+    assert [a["title_name"] for a in body["appointments"]] == ["Administrador"]
     invited(client, gym, "coach", name="Beto")
-    # The owner first, then admins, then coaches.
+    # The titular first, then everyone by name.
     [owner, *rest] = staff_of(client, gym)
     assert owner[1] == "owner"
-    assert rest == [("Carla", "admin"), ("Beto", "coach")]
+    assert rest == [("Beto", "coach"), ("Carla", "admin")]
 
 
 def test_the_invite_emails_a_sign_in_link_to_the_admin_screens(
@@ -111,7 +128,8 @@ def test_the_invite_emails_a_sign_in_link_to_the_admin_screens(
     assert email.subject.startswith("owner of academia-")
     assert " te invitó al equipo de academia-" in email.subject
     assert "Hola, Pedro:" in email.text
-    assert "como coach." in email.text
+    # The roles it names, and what they let one do.
+    assert "como Coach. Desde ahí podrás agregar alumnos y tomar asistencia." in email.text
     assert "Tu página" not in email.text
     [url] = [line for line in email.text.splitlines() if line.startswith("Entrar: ")]
     assert "/api/auth/callback?token=" in url
@@ -241,8 +259,8 @@ def test_an_invite_refuses_someone_already_on_the_staff(client: TestClient, gym:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("role", "owner"),
-        ("role", "member"),
+        ("title_ids", []),
+        ("title_ids", ["owner"]),
         ("email", None),
         ("email", "nope"),
         ("phone", "12"),
@@ -255,32 +273,16 @@ def test_an_invite_refuses_what_it_cannot_send(
     response = invite(client, gym, **{field: value})
 
     assert response.status_code == 422, response.text
-    assert response.json()["detail"][0]["loc"] == ["body", field]
+    assert response.json()["detail"][0]["loc"][:2] == ["body", field]
 
 
 def test_an_invite_without_an_email_is_refused(client: TestClient, gym: uuid.UUID) -> None:
-    body = {"rut": random_rut(), "name": "Pedro", "role": "coach"}
+    body = {"rut": random_rut(), "name": "Pedro", "title_ids": [academia(gym, "coach")]}
     response = client.post("/api/staff", json=body, headers=as_gym(gym))
     assert response.status_code == 422
 
 
-# --- change role and revoke -----------------------------------------------------------
-
-
-def test_the_owner_moves_someone_between_admin_and_coach(
-    client: TestClient, gym: uuid.UUID
-) -> None:
-    pedro = invited(client, gym)
-
-    up = client.patch(f"/api/staff/{pedro}", json={"role": "admin"}, headers=as_gym(gym))
-    assert up.status_code == 200, up.text
-    assert up.json()["role"] == "admin"
-    again = client.patch(f"/api/staff/{pedro}", json={"role": "admin"}, headers=as_gym(gym))
-    assert again.status_code == 200
-    down = client.patch(f"/api/staff/{pedro}", json={"role": "coach"}, headers=as_gym(gym))
-    assert down.json()["role"] == "coach"
-    # A role takes effect on the next request (app.roles).
-    assert client.get("/api/staff", headers=as_gym(gym, pedro)).status_code == 403
+# --- revoke ---------------------------------------------------------------------------
 
 
 def test_a_revoked_person_loses_the_role_and_keeps_their_record(
@@ -318,7 +320,6 @@ def test_an_invite_needs_no_rut_and_no_phone(client: TestClient, gym: uuid.UUID)
 def test_someone_not_on_the_staff_is_not_found(client: TestClient, gym: uuid.UUID) -> None:
     ana = add_person(client, gym, "Ana")
     for response in (
-        client.patch(f"/api/staff/{ana}", json={"role": "admin"}, headers=as_gym(gym)),
         client.delete(f"/api/staff/{ana}", headers=as_gym(gym)),
         client.delete(f"/api/staff/{uuid.uuid4()}", headers=as_gym(gym)),
     ):
@@ -338,9 +339,13 @@ def test_the_owner_is_never_changed_or_revoked(client: TestClient, gym: uuid.UUI
     admin = invited(client, gym, "admin")
     for by in (None, admin):
         headers = as_gym(gym, by)
-        changed = client.patch(f"/api/staff/{owner}", json={"role": "admin"}, headers=headers)
+        appointed = client.post(
+            f"/api/staff/{owner}/appointments",
+            json={"title_id": academia(gym, "coach")},
+            headers=headers,
+        )
         revoked = client.delete(f"/api/staff/{owner}", headers=headers)
-        assert (changed.status_code, revoked.status_code) == (403, 403)
+        assert (appointed.status_code, revoked.status_code) == (403, 403)
     assert staff_of(client, gym)[0][1] == "owner"
 
 
@@ -357,10 +362,12 @@ def test_an_admin_manages_coaches_and_not_admins(client: TestClient, gym: uuid.U
     headers = as_gym(gym, admin)
 
     assert invite(client, gym, "admin", by=admin).status_code == 403
-    promote = client.patch(f"/api/staff/{coach_id}", json={"role": "admin"}, headers=headers)
+    promote = client.post(
+        f"/api/staff/{coach_id}/appointments",
+        json={"title_id": academia(gym, "admin")},
+        headers=headers,
+    )
     assert promote.status_code == 403
-    demote = client.patch(f"/api/staff/{other_admin}", json={"role": "coach"}, headers=headers)
-    assert demote.status_code == 403
     assert client.delete(f"/api/staff/{other_admin}", headers=headers).status_code == 403
     # Not even themselves: stepping down is the owner's call too.
     assert client.delete(f"/api/staff/{admin}", headers=headers).status_code == 403

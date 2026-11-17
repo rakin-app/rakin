@@ -71,9 +71,11 @@ describe("a gym's words", () => {
   it('names no academia and no alumno in the copy itself', () => {
     // Every one comes from the gym's words (`vocabulary.ts`); comments and object keys
     // (`tabs.alumnos`, the API's own name for the tab) are not copy.
+    // Nor are the names of Rakin's role presets, "Academia" among them (#311).
     const source = copySource
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '')
+      .replace(/\bpresets: \{[^}]*\}/g, '')
     const words = [...source.matchAll(/\b(ex)?(academias?|alumn[oa]s?)\b(?!\s*(\(\)|:))/gi)].map((m) => m[0])
     expect(words).toEqual([])
   })

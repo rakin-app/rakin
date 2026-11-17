@@ -417,10 +417,27 @@ def appoint(
 
 
 def end(
-    client: TestClient, gym: uuid.UUID, by: uuid.UUID | None, person: uuid.UUID, title: PresetTitle
+    client: TestClient,
+    db: Database,
+    gym: uuid.UUID,
+    by: uuid.UUID | None,
+    person: uuid.UUID,
+    title: PresetTitle,
 ) -> Any:
-    return client.delete(
-        f"/api/staff/{person}/appointments/{title_id(gym, title)}", headers=as_gym(gym, by)
+    """End `person`'s appointment to `title` today: nobody's, a 404, when they hold none."""
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT id FROM staff_title WHERE person_id = $1 AND title_id = $2"
+            " AND (ends_on IS NULL OR ends_on > greatest(starts_on, $3))",
+            person,
+            title_id(gym, title),
+            seeded_today(),
+        ),
+    )
+    appointment = rows[0]["id"] if rows else uuid.uuid4()
+    return client.post(
+        f"/api/staff/{person}/appointments/{appointment}/end", headers=as_gym(gym, by)
     )
 
 
@@ -439,10 +456,13 @@ def test_an_administrador_does_not_touch_another(
     admin, other = staff(db, gym, ADMINISTRADOR), staff(db, gym, ADMINISTRADOR)
     headers = as_gym(gym, admin)
     assert refused(client.delete(f"/api/staff/{other}", headers=headers), PERSON_RULE)
-    change = client.patch(f"/api/staff/{other}", json={"role": "coach"}, headers=headers)
-    assert refused(change, PERSON_RULE)
-    assert refused(end(client, gym, admin, other, ADMINISTRADOR), PERSON_RULE)
-    invite = {"name": "Otra", "email": "otra@example.com", "role": "admin"}
+    assert refused(appoint(client, gym, admin, other, COACH), PERSON_RULE)
+    assert refused(end(client, db, gym, admin, other, ADMINISTRADOR), PERSON_RULE)
+    invite = {
+        "name": "Otra",
+        "email": "otra@example.com",
+        "title_ids": [str(title_id(gym, ADMINISTRADOR))],
+    }
     assert refused(client.post("/api/staff", json=invite, headers=headers), ROLE_RULE)
     assert titles_of(db, other) == {"Administrador"}
 
@@ -453,12 +473,15 @@ def test_an_administrador_appoints_and_ends_coaches(
 ) -> None:
     admin, coach = staff(db, gym, ADMINISTRADOR), staff(db, gym, COACH)
     headers = as_gym(gym, admin)
-    invite = {"name": "Nuevo", "email": "nuevo@example.com", "role": "coach"}
+    invite = {
+        "name": "Nuevo",
+        "email": "nuevo@example.com",
+        "title_ids": [str(title_id(gym, COACH))],
+    }
     assert client.post("/api/staff", json=invite, headers=headers).status_code == 201
     # Not to a role as wide as their own.
-    to_admin = client.patch(f"/api/staff/{coach}", json={"role": "admin"}, headers=headers)
-    assert refused(to_admin, ROLE_RULE)
-    assert end(client, gym, admin, coach, COACH).status_code == 204
+    assert refused(appoint(client, gym, admin, coach, ADMINISTRADOR), ROLE_RULE)
+    assert end(client, db, gym, admin, coach, COACH).status_code == 204
     assert titles_of(db, coach) == set()
     assert appoint(client, gym, admin, coach, COACH).status_code == 201
     assert appoint(client, gym, admin, coach, COACH).status_code == 409
@@ -476,10 +499,10 @@ def test_a_presidente_appoints_only_a_director(
         assert refused(appoint(client, gym, presidente, someone, title), ROLE_RULE), title.name
     assert titles_of(db, someone) == {"Director"}
     # A Director holds nothing, so they are fewer; the board's other seats are not.
-    assert end(client, gym, presidente, someone, DIRECTOR).status_code == 204
+    assert end(client, db, gym, presidente, someone, DIRECTOR).status_code == 204
     for title in (SECRETARIO, DELEGADO, TESORERO):
         seated = staff(db, gym, title)
-        assert refused(end(client, gym, presidente, seated, title), PERSON_RULE), title.name
+        assert refused(end(client, db, gym, presidente, seated, title), PERSON_RULE), title.name
         assert titles_of(db, seated) == {title.name}
 
 
@@ -511,7 +534,7 @@ def test_nobody_touches_the_titular_and_the_titular_touches_everyone(
     # The titular, acting by default in these headers, appoints to any role and ends any.
     for title in (TESORERO, SECRETARIO, ADMINISTRADOR):
         assert appoint(client, gym, None, presidente, title).status_code == 201, title.name
-    assert end(client, gym, None, admin, ADMINISTRADOR).status_code == 204
+    assert end(client, db, gym, None, admin, ADMINISTRADOR).status_code == 204
     assert titles_of(db, presidente) == {"Presidente", "Tesorero", "Secretario", "Administrador"}
 
 
@@ -533,7 +556,7 @@ def test_an_unknown_or_archived_role_is_not_found(
         headers=as_gym(gym),
     )
     assert unknown.status_code == 404
-    assert end(client, gym, None, someone, COACH).status_code == 404
+    assert end(client, db, gym, None, someone, COACH).status_code == 404
 
 
 @pg
@@ -547,16 +570,5 @@ def test_an_appointment_to_a_role_archived_since_is_still_ended(
             "UPDATE gym_title SET archived_at = now() WHERE id = $1", title_id(gym, DIRECTOR)
         ),
     )
-    assert end(client, gym, None, someone, DIRECTOR).status_code == 204
+    assert end(client, db, gym, None, someone, DIRECTOR).status_code == 204
     assert titles_of(db, someone) == set()
-
-
-@pg
-def test_a_change_of_role_ends_only_the_appointment_it_replaces(
-    client: TestClient, db: Database, gym: uuid.UUID
-) -> None:
-    # A coach who is also the club's Secretario: made admin, they stay Secretario.
-    person = staff(db, gym, COACH, SECRETARIO)
-    change = client.patch(f"/api/staff/{person}", json={"role": "admin"}, headers=as_gym(gym))
-    assert change.status_code == 200, change.text
-    assert titles_of(db, person) == {"Administrador", "Secretario"}

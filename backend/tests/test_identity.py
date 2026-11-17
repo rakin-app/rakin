@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from alembic import command
 from app.domain.rut import check_digit, format_rut
 from app.main import create_app
+from app.permissions import preset_title_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, make_staff, migrate, run, seed_gym, throwaway_database
@@ -308,7 +309,11 @@ def test_staff_need_no_phone(client: TestClient, sur: uuid.UUID) -> None:
     address = f"{uuid.uuid4().hex[:8]}@example.cl"
     invited = client.post(
         "/api/staff",
-        json={"name": "Coach", "email": address, "role": "coach"},
+        json={
+            "name": "Coach",
+            "email": address,
+            "title_ids": [str(preset_title_id(sur, "academia", "coach"))],
+        },
         headers=as_gym(sur),
     )
     assert invited.status_code == 201, invited.text

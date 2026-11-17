@@ -361,9 +361,15 @@ def test_a_roles_name_is_unique_among_the_gyms_unarchived_ones(
 
 
 @pg
-def test_a_term_ends_after_it_starts(db: Database, gym: uuid.UUID) -> None:
+def test_a_term_never_ends_before_it_starts(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    today = seeded_today()
     with pytest.raises(asyncpg.CheckViolationError):
-        person_in(db, gym, "coach", starts_on=seeded_today(), ends_on=seeded_today())
+        person_in(db, gym, "coach", starts_on=today, ends_on=today - timedelta(days=1))
+    # One that ends on the day it starts was ended then, and granted nothing (0070).
+    person = person_in(db, gym, "coach", starts_on=today, ends_on=today)
+    assert me(client, gym, person)["permissions"] is None
 
 
 @pg
@@ -426,7 +432,9 @@ def test_a_gym_with_no_staff_has_no_titular_to_keep(db: Database, gym: uuid.UUID
 
 
 def invite(client: TestClient, gym: uuid.UUID, role: str, name: str) -> uuid.UUID:
-    body = {"name": name, "email": f"{name.lower()}@example.cl", "role": role}
+    key = "administrador" if role == "admin" else "coach"
+    title = str(preset_title_id(gym, ACADEMIA, key))
+    body = {"name": name, "email": f"{name.lower()}@example.cl", "title_ids": [title]}
     response = client.post("/api/staff", json=body, headers=as_gym(gym))
     assert response.status_code == 201, response.text
     return uuid.UUID(response.json()["person_id"])
@@ -456,7 +464,7 @@ def test_an_invite_appoints_from_today(client: TestClient, db: Database, gym: uu
 
 
 @pg
-def test_a_change_moves_the_appointment_from_today(
+def test_a_new_role_is_appointed_beside_the_one_ended(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     owner, today = seeded_owner(gym), seeded_today()
@@ -464,29 +472,24 @@ def test_a_change_moves_the_appointment_from_today(
     beto = person_in(db, gym, "coach", starts_on=since)
     coach = preset_title_id(gym, ACADEMIA, "coach")
     administrador = preset_title_id(gym, ACADEMIA, "administrador")
+    [(appointment,)] = admin(db, "SELECT id FROM staff_title WHERE person_id = $1", beto)
 
-    response = client.patch(f"/api/staff/{beto}", json={"role": "admin"}, headers=as_gym(gym))
-    assert response.status_code == 200, response.text
+    made = client.post(
+        f"/api/staff/{beto}/appointments",
+        json={"title_id": str(administrador)},
+        headers=as_gym(gym),
+    )
+    assert made.status_code == 201, made.text
+    ended = client.post(f"/api/staff/{beto}/appointments/{appointment}/end", headers=as_gym(gym))
+    assert ended.status_code == 204, ended.text
 
     assert terms(db, beto) == [
         (coach, "Coach", since, today, None),
         (administrador, "Administrador", today, None, owner),
     ]
-    ended = "SELECT ended_by FROM staff_title WHERE person_id = $1 AND ends_on IS NOT NULL"
-    assert admin(db, ended, beto) == [(owner,)]
+    ended_by = "SELECT ended_by FROM staff_title WHERE person_id = $1 AND ends_on IS NOT NULL"
+    assert admin(db, ended_by, beto) == [(owner,)]
     assert me(client, gym, beto)["permissions"] == sorted(ADMINISTRADOR.permissions)
-
-
-@pg
-def test_a_change_on_the_day_of_the_invite_replaces_the_appointment(
-    client: TestClient, db: Database, gym: uuid.UUID
-) -> None:
-    pedro = invite(client, gym, "coach", "Pedro")
-    response = client.patch(f"/api/staff/{pedro}", json={"role": "admin"}, headers=as_gym(gym))
-    assert response.status_code == 200, response.text
-    # A term may not end on the day it starts: today's coach term never ran a day.
-    [(title, *_)] = terms(db, pedro)
-    assert title == preset_title_id(gym, ACADEMIA, "administrador")
 
 
 @pg
@@ -511,11 +514,15 @@ def test_revoked_on_the_day_of_the_invite_and_invited_again(
 ) -> None:
     pedro = invite(client, gym, "coach", "Pedro")
     assert client.delete(f"/api/staff/{pedro}", headers=as_gym(gym)).status_code == 204
-    # Today's term never ran a day: it goes with the row.
-    assert terms(db, pedro) == []
-    assert invite(client, gym, "coach", "Pedro") == pedro
+    # Today's term never ran a day: it ends on the day it started, and stays on record.
+    today = seeded_today()
     [(_, name, starts, ends, _)] = terms(db, pedro)
-    assert (name, starts, ends) == ("Coach", seeded_today(), None)
+    assert (name, starts, ends) == ("Coach", today, today)
+    assert invite(client, gym, "coach", "Pedro") == pedro
+    assert [(name, starts, ends) for _, name, starts, ends, _ in terms(db, pedro)] == [
+        ("Coach", today, today),
+        ("Coach", today, None),
+    ]
 
 
 @pg

@@ -242,15 +242,22 @@ def test_the_page_link_goes_under_the_message() -> None:
 
 def test_the_staff_invite_has_its_own_sign_in_link() -> None:
     url = f"{BASE_URL}/api/auth/callback?token=tok"
-    context = {"name": "Pedro", "gym": "Academia Sur", "inviter": "Carla", "role": "coach"}
-    email = render(
-        Notice(STAFF_INVITE, "pedro@example.cl", PERSON, GYM, {**context, "role_is_coach": True}),
-        page_url=url,
-    )
+    context = {
+        "name": "Pedro",
+        "gym": "Academia Sur",
+        "inviter": "Carla",
+        "roles": ["Tesorera", "Coach"],
+        "can": ["money_read", "money_write", "members_add", "attendance"],
+    }
+    email = render(Notice(STAFF_INVITE, "pedro@example.cl", PERSON, GYM, context), page_url=url)
 
     assert email.subject == "Carla te invitó al equipo de Academia Sur"
-    assert "Carla te invitó a Academia Sur en Rakin como coach." in email.text
-    assert "tomas asistencia" in email.text
+    # The roles, and what they let one do: "Registrar pagos" says seeing them too.
+    assert (
+        "Carla te invitó a Academia Sur en Rakin como Tesorera y Coach. Desde ahí podrás"
+        " registrar pagos, agregar alumnos y tomar asistencia." in email.text
+    )
+    assert "como <strong>Tesorera y Coach</strong>." in (email.html or "")
     assert f"Entrar: {url}\n" in email.text
     assert "Tu página" not in email.text
     assert email.html is not None

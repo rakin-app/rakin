@@ -80,6 +80,11 @@ class Case:
 
 
 EXPENSE_ACTION = "expense_changed"
+# The team's actions (0070), read with `team_manage` alone.
+TEAM_ACTIONS = (
+    "('title_created', 'title_changed', 'appointment_started', 'appointment_ended',"
+    " 'appointment_corrected')"
+)
 
 CASES = (
     Case(
@@ -164,7 +169,13 @@ CASES = (
     Case(
         "audit_event_read",
         Permission.MONEY_READ,
-        "SELECT id FROM audit_event WHERE gym_id = $1 AND NOT starts_with(action, 'expense_')",
+        "SELECT id FROM audit_event WHERE gym_id = $1 AND NOT starts_with(action, 'expense_')"
+        f" AND action NOT IN {TEAM_ACTIONS}",
+    ),
+    Case(
+        "audit_event_read",
+        Permission.TEAM_MANAGE,
+        f"SELECT id FROM audit_event WHERE gym_id = $1 AND action IN {TEAM_ACTIONS}",
     ),
     Case(
         "audit_event_read",
@@ -190,6 +201,20 @@ CASES = (
         Permission.MONEY_WRITE,
         "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
         " VALUES ($1, $2, $3, 'discount_changed', '{}')",
+        lambda gym, actor: (gym.id, actor, gym.owner),
+    ),
+    Case(
+        "audit_event_team",
+        Permission.TEAM_MANAGE,
+        "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
+        " VALUES ($1, $2, 'title_created', '{}')",
+        lambda gym, actor: (gym.id, actor),
+    ),
+    Case(
+        "audit_event_team",
+        Permission.TEAM_MANAGE,
+        "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
+        " VALUES ($1, $2, $3, 'appointment_started', '{}')",
         lambda gym, actor: (gym.id, actor, gym.owner),
     ),
     Case(
@@ -291,6 +316,12 @@ def gym(db: Database) -> Gym:
     one(
         "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
         " VALUES ($1, $2, $2, 'ledger_corrected', '{}')",
+        owner,
+    )
+    # A team's row (0070), which only `team_manage` reads.
+    one(
+        "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
+        " VALUES ($1, $2, 'title_created', '{}')",
         owner,
     )
     # An expense's row, which #314 adds the action for: this database lets it in early.

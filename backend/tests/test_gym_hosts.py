@@ -31,6 +31,7 @@ from app.integrations.mailer import Email
 from app.magiclink import COOKIE_NAME, Session
 from app.main import create_app
 from app.notices import Notices
+from app.permissions import preset_title_id
 from app.seed.data import GRADING
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
@@ -814,7 +815,12 @@ def test_a_link_opened_from_another_hosts_page_is_refused(site: Site) -> None:
 def test_a_gyms_notices_link_to_its_host(site: Site) -> None:
     email = address()
     with site.client(None) as client:
-        body = {"phone": new_phone(), "name": "Coach", "email": email, "role": "coach"}
+        body = {
+            "phone": new_phone(),
+            "name": "Coach",
+            "email": email,
+            **{"title_ids": [str(preset_title_id(site.a, "academia", "coach"))]},
+        }
         response = client.post("/api/staff", json=body, headers=as_gym(site.a))
         assert response.status_code == 201, response.text
 
