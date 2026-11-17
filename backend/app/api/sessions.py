@@ -24,13 +24,13 @@ An open-access class type has no classes to start, schedule or change a class to
 from: the first check-in of each day makes its session (`app.api.check_in`), which is
 never moved either.
 
-Any staff role may read them and start one, coaches included, since they are who
-start a class and write what it covered; members may not use them at all. Changing
-one is narrower (#163): an owner or admin may move it, change its duration, its type
-or its coach,
-and its own coach may write its topic and notes and set its tags. A type changed after the class
-re-applies the new type's `counts_as_class` and `kind`, since every count reads them
-off the type; its attendance stays.
+Anyone on the team may read them, and whoever runs classes (`attendance`, coaches
+included) start one, since they are who start a class and write what it covered;
+members may not use them at all. Changing one is narrower (#163, #310): whoever sets
+up the gym (`gym_setup`) may move it, change its duration, its type or its coach, and
+its own coach, holding `attendance`, may write its topic and notes and set its tags. A
+type changed after the class re-applies the new type's `counts_as_class` and `kind`,
+since every count reads them off the type; its attendance stays.
 
 Changing one class of the schedule changes that class only, and it keeps its slot and
 date, so the schedule never makes that date again.
@@ -56,7 +56,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.attendance import CLASS_BACKFILLED, record_backfill, remove_attendance
 from app.api.class_tags import require_tags, set_tags, tags_of_session
 from app.domain.dates import gym_today, local_date, start_of_local_day
-from app.permissions import FORBIDDEN, AdminSession, Permission, StaffSession, holds
+from app.permissions import (
+    FORBIDDEN,
+    AdminSession,
+    AttendanceSession,
+    Permission,
+    StaffSession,
+    holds,
+)
 from app.schemas.classes import ClassKind
 from app.schemas.sessions import (
     Day,
@@ -244,18 +251,16 @@ async def class_type_duration(
 async def start_session(
     body: SessionCreate,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Session:
     """Start a class, now unless `starts_at` says otherwise. One on an earlier day is a
-    class registered after it happened (#407): it takes `attendance`, and writes a
-    `class_backfilled` row in the gym's log. A later day is the schedule's, a 422."""
+    class registered after it happened (#407), and writes a `class_backfilled` row in
+    the gym's log. A later day is the schedule's, a 422."""
     zone = await gym_timezone(session, tenant)
     today = gym_today(zone)
     day = today if body.starts_at is None else local_date(body.starts_at, zone)
     if day > today:
         raise unprocessable("starts_at", "future_day", "a later day's class is the schedule's")
-    if day < today and not await holds(session, tenant, Permission.ATTENDANCE):
-        raise FORBIDDEN
     await require_class_type(session, body.class_type_id)
     await refuse_open_access(session, body.class_type_id)
     coach_id = body.coach_id or tenant.person_id
@@ -318,7 +323,9 @@ async def update_session(
 ) -> Session:
     """The fields sent, as they then stand. A field sent as it already is changes
     nothing, so a form may send them all; changing any but the topic and notes is an
-    owner's or admin's, and those two the session's own coach's too, else a 403."""
+    owner's or admin's, and those two the session's own coach's too, else a 403. A class
+    moved to an earlier day than today is registered after it happened, as one created
+    there (#407): it takes `attendance` too, and writes a `class_backfilled` row."""
     current = await _get(session, session_id, lock=True)
     sent = body.model_dump(exclude_unset=True)
     tag_ids = [tag.id for tag in current.tags]
@@ -327,7 +334,12 @@ async def update_session(
         for k, v in sent.items()
         if (set(v) != set(tag_ids) if k == "tag_ids" else v != getattr(current, k))
     }
-    coaching = current.coach_id == tenant.person_id and changes.keys() <= COACH_FIELDS
+    # Its own coach writes what it covered with `attendance`; the rest is the gym's setup.
+    coaching = (
+        current.coach_id == tenant.person_id
+        and changes.keys() <= COACH_FIELDS
+        and await holds(session, tenant, Permission.ATTENDANCE)
+    )
     if changes and not coaching and not await holds(session, tenant, Permission.GYM_SETUP):
         raise FORBIDDEN
     if "coach_id" in changes:
@@ -335,6 +347,14 @@ async def update_session(
     if "starts_at" in changes and current.class_type_kind is ClassKind.OPEN_ACCESS:
         # Its day is its `open_day`: moved, the next check-in would make another.
         raise unprocessable("starts_at", "open_access", "an open-access day is not moved")
+    backdated: date | None = None
+    if "starts_at" in changes:
+        zone = await gym_timezone(session, tenant)
+        day = local_date(changes["starts_at"], zone)
+        if day < gym_today(zone) and day != local_date(current.starts_at, zone):
+            if not await holds(session, tenant, Permission.ATTENDANCE):
+                raise FORBIDDEN
+            backdated = day
     if "class_type_id" in changes:
         await require_class_type(session, changes["class_type_id"])
         await refuse_open_access(session, current.class_type_id)
@@ -358,6 +378,16 @@ async def update_session(
         ),
         {**columns, "id": session_id},
     )
+    if backdated is not None:
+        await record_backfill(
+            session,
+            CLASS_BACKFILLED,
+            None,
+            session_id=str(session_id),
+            class_type_id=str(columns["class_type_id"]),
+            day=backdated.isoformat(),
+            moved_from=local_date(current.starts_at, zone).isoformat(),
+        )
     return await _get(session, session_id)
 
 

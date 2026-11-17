@@ -1,4 +1,4 @@
-"""Each permission holds at the database (#309, docs/design/expenses-and-officers.md,
+"""Each permission holds at the database (#309, #310, docs/design/expenses-and-officers.md,
 section 7).
 
 Every policy that asks `app_can` has a case here: what `rakin_app` does under it, and
@@ -128,30 +128,30 @@ CASES = (
     ),
     Case(
         "charge_group_insert",
-        Permission.MONEY_WRITE,
+        Permission.MEMBERS_MANAGE,
         "INSERT INTO charge_group (gym_id, name) VALUES ($1, 'Nuevo')",
     ),
     Case(
         "charge_group_update",
-        Permission.MONEY_WRITE,
+        Permission.MEMBERS_MANAGE,
         "UPDATE charge_group SET name = 'Renombrado' WHERE id = $1",
         lambda gym, actor: (gym.group,),
     ),
     Case(
         "charge_group_delete",
-        Permission.MONEY_WRITE,
+        Permission.MEMBERS_MANAGE,
         "DELETE FROM charge_group WHERE id = $1",
         lambda gym, actor: (gym.empty_group,),
     ),
     Case(
         "charge_group_member_insert",
-        Permission.MONEY_WRITE,
+        Permission.MEMBERS_MANAGE,
         "INSERT INTO charge_group_member (gym_id, group_id, person_id) VALUES ($1, $2, $3)",
         lambda gym, actor: (gym.id, gym.group, gym.newcomer),
     ),
     Case(
         "charge_group_member_delete",
-        Permission.MONEY_WRITE,
+        Permission.MEMBERS_MANAGE,
         "DELETE FROM charge_group_member WHERE group_id = $1",
         lambda gym, actor: (gym.group,),
     ),
@@ -176,6 +176,13 @@ CASES = (
         Permission.MONEY_WRITE,
         "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
         " VALUES ($1, $2, $3, 'ledger_corrected', '{}')",
+        lambda gym, actor: (gym.id, actor, gym.owner),
+    ),
+    Case(
+        "audit_event_correct",
+        Permission.MEMBERS_MANAGE,
+        "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
+        " VALUES ($1, $2, $3, 'history_set', '{}')",
         lambda gym, actor: (gym.id, actor, gym.owner),
     ),
     Case(

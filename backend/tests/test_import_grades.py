@@ -6,7 +6,8 @@ name is `unknown_person`, two of the name `ambiguous_name`. Its rank is the sche
 label, else the admin's choice for that value. A grade the person already has is
 `existing`, so a second run adds none, and one an earlier row gives is `repeated`. Each
 is `source` `import` with the run's `import_id`, and writes no `promoted` event
-(docs/design/historical-data.md, section 3).
+(docs/design/historical-data.md, section 3). A gym none of whose activities grades reads
+no Grados tab, however many ranks its stored scheme has (#352).
 """
 
 import copy
@@ -25,6 +26,7 @@ from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, throwaway_database
 from tests.test_grades import BJJ, gym_with
+from tests.test_gym_hosts import create, new_gym
 from tests.test_import_history import XLSX, audit, find
 
 pg = pytest.mark.postgres
@@ -50,7 +52,40 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database, client: TestClient) -> uuid.UUID:
-    return gym_with(client, db)
+    return graded_gym(client, db)
+
+
+def graded_gym(client: TestClient, db: Database, scheme: dict[str, Any] = BJJ) -> uuid.UUID:
+    """A gym with `scheme` and an activity that grades: belts show while one does (#245),
+    and so its Grados tab is read (#352)."""
+    gym = gym_with(client, db, scheme)
+    response = client.post(
+        "/api/activities",
+        json={"name": "BJJ", "uses_grades": True, "preset": "bjj"},
+        headers=as_gym(gym),
+    )
+    assert response.status_code == 201, response.text
+    return gym
+
+
+def graded_off(client: TestClient, db: Database) -> tuple[uuid.UUID, dict[str, str]]:
+    """A gym created on the BJJ preset, its only activity then set not to grade: its
+    scheme keeps the preset's ranks. With the headers that act as its owner."""
+    gym_id = create(
+        db, new_gym(f"apagado-{uuid.uuid4().hex[:6]}").model_copy(update={"grading": "bjj"})
+    ).gym_id
+    owner = run(
+        db.owner_url,
+        in_gym(gym_id, "SELECT person_id FROM staff WHERE role = 'owner'"),
+    )[0]["person_id"]
+    headers = as_gym(gym_id, owner)
+    [activity] = client.get("/api/activities", headers=headers).json()
+    response = client.patch(
+        f"/api/activities/{activity['id']}", json={"uses_grades": False}, headers=headers
+    )
+    assert response.status_code == 200, response.text
+    assert client.get("/api/gym/grading-scheme", headers=headers).json()["ranks"]
+    return gym_id, headers
 
 
 def workbook(**tabs: Sequence[Sequence[object]]) -> bytes:
@@ -246,7 +281,7 @@ def test_a_label_chosen_on_the_mapping_step_matches_and_an_unmatched_one_is_refu
 ) -> None:
     scheme = copy.deepcopy(BJJ)
     scheme["ranks"][3]["label"] = "Marrón"
-    gym = gym_with(client, db, scheme)
+    gym = graded_gym(client, db, scheme)
     add(client, gym, "Diego Rojas", rut="11.111.111-1")
     sheet = grades_tab(
         ["11.111.111-1", "", "Café", "", "01-02-2024", ""],
@@ -382,3 +417,57 @@ def test_a_gym_that_does_not_grade_gets_no_grados_tab(client: TestClient, db: Da
     gym = gym_with(client, db, None)
     response = client.get("/api/import/template.xlsx", headers=as_gym(gym))
     assert "Grados" not in load_workbook(io.BytesIO(response.content)).sheetnames
+
+
+@pg
+def test_a_gym_whose_only_graded_activity_is_off_gets_no_grados_tab(
+    client: TestClient, db: Database
+) -> None:
+    _, headers = graded_off(client, db)
+    response = client.get("/api/import/template.xlsx", headers=headers)
+    assert response.status_code == 200, response.text
+    book = load_workbook(io.BytesIO(response.content))
+    assert "Grados" not in book.sheetnames and "Lista de grados" not in book.sheetnames
+    notes = [str(r[1].value) for r in book["Instrucciones"].iter_rows() if r[1].value]
+    assert not any("rayas" in note for note in notes)
+
+
+@pg
+def test_a_grados_tab_where_no_activity_grades_is_ignored_and_writes_no_grade(
+    client: TestClient, db: Database
+) -> None:
+    gym, headers = graded_off(client, db)
+    data = workbook(
+        Alumnos=ALUMNOS,
+        Grados=[
+            ["RUT", "Nombre", "Grado", "Fecha"],
+            ["12.345.678-5", "Martina Soto", "Azul", "12-08-2023"],
+        ],
+    )
+    response = client.post(
+        "/api/import/sheet", content=data, headers={"Content-Type": XLSX, **headers}
+    )
+    assert response.status_code == 200, response.text
+    sheet = response.json()
+    assert (sheet["grados"], sheet["grados_ignored"]) == (None, True)
+    assert len(sheet["rows"]) == 1
+
+    # Sent anyway, as an older page would: the people import, the grades do not.
+    body = {
+        "rows": sheet["rows"],
+        "mapping": sheet["mapping"],
+        "dry_run": False,
+        "file": sheet["file"],
+        "grados": {
+            "rows": [
+                {"number": 2, "cells": ["12.345.678-5", "Martina Soto", "Azul", "12-08-2023"]}
+            ],
+            "mapping": {"rut": 0, "name": 1, "rank": 2, "awarded_on": 3},
+            "ranks": {},
+        },
+    }
+    response = client.post("/api/import/members", json=body, headers=headers)
+    assert response.status_code == 200, response.text
+    report = response.json()
+    assert (report["summary"]["people_created"], report["grados"]) == (1, None)
+    assert stored_grades(db, gym) == []

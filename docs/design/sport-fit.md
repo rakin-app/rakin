@@ -195,7 +195,7 @@ fixed in the copy and the email templates (`backend/app/notices/templates/`).
 | **Open mat**, "rounds de sparring" | the class type's kind, the schedule, the timer, the student's training time | **only when the gym spars**; an open-gym check-in is a different thing (section 4) |
 | **Competición**, **Kids** | default programs of every new gym (`gyms.py`, `seed/data.py`) | start with "Adultos" and "Niños" only |
 | "Pasaje de guardia" | the tags' example (`es.ts` around line 1886) | a neutral example |
-| **cinturón**, **franja**, "rayas" | the Alumnos and Grupos filter, the Graduación editor, the import's Grados notes | **only when grading is on** (it is, except the import); for levels with no colours say "Grado" or "Nivel", as the student page already does |
+| **cinturón**, **franja**, "rayas" | the Alumnos and Grupos filter, the Graduación editor, the import's Grados notes | **only when grading is on** (the import too, since #352); for levels with no colours say "Grado" or "Nivel", as the student page already does |
 | **grado**, **graduación** | the ficha, Ajustes › Graduación, Importar | **only when grading is on**; fine words for levels |
 
 No "tatami", "dojo", "kimono", "sensei" or "profesor" appears in the product's copy. The
@@ -208,11 +208,11 @@ grading presets' names (BJJ, judo / karate, muay thai) are seen only when chosen
   on the training-time card (`MatTime.tsx`, `MyMatTime` on `MeHome.tsx`), which also
   waits for "tu profe" to use the timer in a gym that never will. An admin can rename or
   archive the kinds; the labels stay.
-- **Grading is gated in the screens, not the import.** The import template gets a Grados
-  tab when the stored scheme has ranks (`api/member_import.py`, `template.py`), not when
-  an activity grades, and the upload maps a sheet's Grados tab whenever it has one
-  (`MemberImport.tsx`). A gym created with a preset that then turns grades off still gets
-  belt wording in its template. `?belt=` on Alumnos filters with no chip shown.
+- **Grading is gated in the screens and the import (#352).** The import template gets a
+  Grados tab only when an activity grades (`gym_uses_grades`), whatever ranks the stored
+  scheme keeps; the upload lists a sheet's Grados tab as ignored, with one line saying
+  why, and the import writes no grade from it (`api/member_import.py`,
+  `MemberImport.tsx`). `?belt=` on Alumnos is dropped while grading is off.
 - **The gate is gym-wide.** A gym with BJJ and ballet shows the Graduación card to its
   ballet students. #251 (a scheme per activity) owns that.
 - **Every change of rank is a "promotion".** Fine for climbing grades and swim levels; a

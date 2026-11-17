@@ -22,7 +22,7 @@ from fastapi import APIRouter
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.permissions import LedgerSession
+from app.permissions import LedgerReadSession
 from app.schemas.ledger import Correction, Corrections, DiscountShift, Figures
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
@@ -113,7 +113,7 @@ CORRECTIONS = text(
     LEFT JOIN plan p ON p.id = m.plan_id
     -- History typed on the ficha, or removed from it, is not a correction of their
     -- billing (#293, #295), nor a health reason cleared (0057, #384), nor attendance
-    -- marked on another day than its class's (0069, #407).
+    -- marked on another day than its class's (0070, #407).
     WHERE a.person_id = :person
       AND a.action NOT IN ('history_set', 'history_removed', 'health_reason_cleared',
                            'attendance_backfilled')
@@ -151,7 +151,7 @@ def correction(row: Any) -> Correction:
 
 
 @router.get("/people/{person_id}/corrections")
-async def person_corrections(person_id: uuid.UUID, session: LedgerSession) -> Corrections:
+async def person_corrections(person_id: uuid.UUID, session: LedgerReadSession) -> Corrections:
     """Every correction of the person's billing, newest first: the ficha's "Correcciones"."""
     rows = (
         await session.execute(CORRECTIONS, {"person": person_id, "limit": CORRECTIONS_LIMIT})

@@ -32,6 +32,7 @@ from app.domain import custom_fields as cf
 from app.permissions import (
     FORBIDDEN,
     AdminSession,
+    MembersAddSession,
     Permission,
     StaffSession,
     Standing,
@@ -328,7 +329,7 @@ async def update_person_fields(
     body: PersonFieldsUpdate,
     request: Request,
     tenant: CurrentTenant,
-    session: StaffSession,
+    session: MembersAddSession,
 ) -> list[PersonField]:
     if not await in_gym(session, person_id):
         raise NOT_FOUND

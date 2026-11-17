@@ -45,8 +45,8 @@ mid-month adds its members as of today and fills in the classes they came to bef
 the membership each has. A drop-in visitor added to it is a visit on the class's day,
 as on any day (#130). A trial guest is not: a trial starts the day it is
 given, at the mat, so adding one to a class of an earlier day is a 409. Marking at a
-class on another day than its own, a visitor included, takes `attendance`, and writes
-an `attendance_backfilled` row in the gym's log (migration 0069) for each person it
+class on another day than its own, a visitor included, writes an
+`attendance_backfilled` row in the gym's log (migration 0070) for each person it
 marks, so a month filled in afterwards is told apart from one taken live.
 
 Each person on the roster names the requirements they lack or whose record expired
@@ -80,7 +80,7 @@ from app.domain.attendance import credits_to_consume
 from app.domain.dates import gym_today, local_date, start_of_local_day
 from app.domain.membership import Membership, MembershipStatus, PlanKind, PlanTerms
 from app.notices import Notices, get_notices
-from app.permissions import FORBIDDEN, Permission, StaffSession, holds
+from app.permissions import FORBIDDEN, AttendanceSession, Permission, StaffSession, holds
 from app.schemas.attendance import (
     AlreadyMember,
     AttendanceChange,
@@ -107,7 +107,7 @@ PAST_TRIAL = HTTPException(
 )
 
 # The gym's log of classes registered after they happened and attendance marked on
-# another day (migration 0069).
+# another day (migration 0070).
 CLASS_BACKFILLED = "class_backfilled"
 ATTENDANCE_BACKFILLED = "attendance_backfilled"
 
@@ -284,19 +284,10 @@ def require_open(held: HeldClass) -> None:
 async def record_backfill(
     session: AsyncSession, action: str, person_id: uuid.UUID | None, **detail: Any
 ) -> None:
-    """Write `action` in the gym's log, by the person acting, now (migration 0069)."""
+    """Write `action` in the gym's log, by the person acting, now (migration 0070)."""
     await session.execute(
         INSERT_BACKFILL, {"person": person_id, "action": action, "detail": json.dumps(detail)}
     )
-
-
-async def require_marking_another_day(
-    session: AsyncSession, tenant: Tenant, held: HeldClass
-) -> None:
-    """A 403 unless the person acting takes attendance, when the class is not today's:
-    marking it then is recorded, and only they record it (migration 0069)."""
-    if held.other_day and not await holds(session, tenant, Permission.ATTENDANCE):
-        raise FORBIDDEN
 
 
 async def _record_marked(
@@ -466,7 +457,7 @@ async def remove_attendance(session: AsyncSession, session_id: uuid.UUID) -> Non
 async def get_roster(
     session_id: uuid.UUID,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Roster:
     return await _roster(session, tenant, await class_of(session, session_id))
 
@@ -479,13 +470,11 @@ async def change_attendance(
     session_id: uuid.UUID,
     body: AttendanceChange,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Roster:
     """Mark and unmark at once; the roster as it then stands."""
     held = await class_of(session, session_id, lock=True)
     require_open(held)
-    if body.mark:
-        await require_marking_another_day(session, tenant, held)
     marking = set(body.mark)
     # One membership at a time in id order, as every request here takes them, so two
     # changes to different sessions never wait on each other's locks in a cycle.
@@ -511,7 +500,7 @@ async def add_trial_guest(
     session_id: uuid.UUID,
     body: TrialGuest,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Roster:
     """Start the person on a trial plan from today, marked present at the session. A
     409 names the membership of someone who already has a live one, to mark instead, or
@@ -617,7 +606,7 @@ async def add_dropin_visitor(
     session_id: uuid.UUID,
     body: DropinVisitor,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> Roster:
@@ -631,7 +620,6 @@ async def add_dropin_visitor(
         raise FORBIDDEN
     held = await class_of(session, session_id, lock=True)
     require_open(held)
-    await require_marking_another_day(session, tenant, held)
     plan = (
         await session.execute(
             text("SELECT kind, program_id, active FROM plan WHERE id = :id"), {"id": body.plan_id}

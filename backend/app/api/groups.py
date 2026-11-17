@@ -2,9 +2,9 @@
 
 "Clasificados final", "Competidores kids": the admin builds one from the member list's
 filters plus people picked by hand, and saves it as a fixed list, a snapshot rather
-than a live filter. Saving replaces the list. A coach may read the groups' names and
-sizes, which can help with rosters; only an owner or admin reads who is in one or
-changes it.
+than a live filter. Saving replaces the list. Anyone on the team may read the groups' names
+and sizes, which can help with rosters; only whoever manages the members
+(`members_manage`) reads who is in one or changes it.
 """
 
 import uuid
@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.permissions import AdminSession, StaffSession
+from app.permissions import MembersSession, StaffSession
 from app.schemas.extra_charges import Group, GroupSummary, GroupWrite
 from app.schemas.ledger import PersonRef
 
@@ -69,7 +69,7 @@ async def read_group(session: AsyncSession, group_id: uuid.UUID) -> Group:
 
 
 @router.get("/{group_id}")
-async def get_group(group_id: uuid.UUID, session: AdminSession) -> Group:
+async def get_group(group_id: uuid.UUID, session: MembersSession) -> Group:
     return await read_group(session, group_id)
 
 
@@ -109,7 +109,7 @@ async def named(
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def create_group(body: GroupWrite, session: AdminSession) -> Group:
+async def create_group(body: GroupWrite, session: MembersSession) -> Group:
     group_id = await named(
         session,
         "INSERT INTO charge_group (gym_id, name)"
@@ -122,7 +122,7 @@ async def create_group(body: GroupWrite, session: AdminSession) -> Group:
 
 
 @router.put("/{group_id}")
-async def update_group(group_id: uuid.UUID, body: GroupWrite, session: AdminSession) -> Group:
+async def update_group(group_id: uuid.UUID, body: GroupWrite, session: MembersSession) -> Group:
     """Rename the group and replace who is in it."""
     found = await named(
         session,
@@ -136,7 +136,7 @@ async def update_group(group_id: uuid.UUID, body: GroupWrite, session: AdminSess
 
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_group(group_id: uuid.UUID, session: AdminSession) -> Response:
+async def delete_group(group_id: uuid.UUID, session: MembersSession) -> Response:
     """The cobros that targeted it keep their lines: a group is only a list."""
     deleted = await session.scalar(
         text("DELETE FROM charge_group WHERE id = :id RETURNING id"), {"id": group_id}

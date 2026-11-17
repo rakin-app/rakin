@@ -41,7 +41,7 @@ from app.api.people import people_matching
 from app.api.requirements import requirement_flags
 from app.api.sessions import gym_timezone
 from app.domain.dates import gym_today
-from app.permissions import StaffSession
+from app.permissions import AttendanceSession
 from app.schemas.check_in import Arrival, Candidate, CheckIn, Door
 from app.tenancy import Tenant, current_tenant
 
@@ -149,7 +149,7 @@ async def _door(session: AsyncSession, door: Any, day: date, zone: str) -> Door:
 
 @router.get("")
 async def list_doors(
-    tenant: Annotated[Tenant, Depends(current_tenant)], session: StaffSession
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: AttendanceSession
 ) -> list[Door]:
     """The gym's active open-access class types, by program and name, each with today."""
     zone = await gym_timezone(session, tenant)
@@ -164,7 +164,7 @@ async def list_doors(
 async def search(
     class_type_id: uuid.UUID,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
     q: Annotated[str, Query(max_length=100)] = "",
 ) -> list[Candidate]:
     """Who `q` finds that may be checked in, by name; nothing for a blank `q`."""
@@ -193,7 +193,7 @@ async def check_in(
     class_type_id: uuid.UUID,
     body: CheckIn,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Door:
     """Check the membership in at today's session, making it if this is the first; the
     day as it then stands. Checking in someone already in changes nothing."""
@@ -223,7 +223,7 @@ async def undo_check_in(
     class_type_id: uuid.UUID,
     membership_id: uuid.UUID,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Door:
     """Undo today's check-in of the membership, giving back what it took; the day as it
     then stands. Undoing one that is not there changes nothing."""

@@ -1,7 +1,7 @@
 """The join link (#154): a gym shares one link, people fill in their own details, and
 staff approve them into members.
 
-- `/api/join-link` is the gym's link, for owner and admin: generate it (a new token,
+- `/api/join-link` is the gym's link, for `members_manage`: generate it (a new token,
   so the old one stops working), change the program it pre-selects or the last day
   it works, and revoke it. The form asks for consent to the gym's privacy notice
   (#168), so a gym that has not filled in its privacy details in Ajustes cannot
@@ -22,7 +22,7 @@ staff approve them into members.
   The human check runs with no transaction open, since it is an HTTP round trip
   (#162); the request is written in a second one, which finds the link again, so a
   link revoked meanwhile is a 404 `invalid_link` and stores nothing.
-- `/api/join-requests` is the queue, for every staff role: each request with whoever
+- `/api/join-requests` is the queue, for `members_add`, a coach included: each request with whoever
   in this gym already has its RUT, or its email when it has none, approving one and
   rejecting one.
 
@@ -33,7 +33,7 @@ another gym knows attaches that identity without this gym learning so), a minor 
 their guardian, found by the guardian's email, linked. The phone is a contact: an
 adult's is required, as a minor's guardian's is, unless the form ticks "No tiene
 WhatsApp", which the new record keeps. With a plan, a membership starts on it today
-and the welcome goes out with its sign-in link; that is owner and admin only, since a
+and the welcome goes out with its sign-in link; that needs `money_write`, since a
 plan is money, so a coach approves with no plan and the member shows as "sin plan".
 Without one, `join_approved` tells them they are in, with their sign-in link (#254).
 Either way the request is deleted: it was only ever a request, and what its boxes said
@@ -76,7 +76,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.consent import check_notice, consent_pending, record_join
 from app.api.member_import import LIVE_MEMBERSHIP, RowRefused, Writer
-from app.api.memberships import start_membership, welcome_for
+from app.api.memberships import PLAN_IS_MONEY, start_membership, welcome_for
 from app.api.unsubscribe import in_gym
 from app.contacts import contact_for
 from app.domain import vocabulary
@@ -88,7 +88,7 @@ from app.logos import logo_path
 from app.magiclink.ratelimit import MemoryRateLimiter, RateLimiter
 from app.member_import.rows import Member, own_guardian
 from app.notices import JOIN_APPROVED, Notice, Notices, get_notices
-from app.permissions import AdminSession, Permission, StaffSession, holds
+from app.permissions import MembersAddSession, MembersSession, Permission, holds
 from app.schemas.join import (
     ADULT_AGE,
     JoinApproval,
@@ -124,7 +124,6 @@ INVALID_LINK = HTTPException(status.HTTP_404_NOT_FOUND, "invalid_link")
 TOKEN_LENGTHS = range(20, 65)
 NO_LINK = HTTPException(status.HTTP_404_NOT_FOUND, "no join link")
 NO_REQUEST = HTTPException(status.HTTP_404_NOT_FOUND, "join request not found")
-PLAN_IS_MONEY = HTTPException(status.HTTP_403_FORBIDDEN, "only an owner or admin gives a plan")
 NO_PRIVACY = HTTPException(status.HTTP_409_CONFLICT, "privacy_incomplete")
 
 # Whether the gym has filled in what its privacy notice says (`app.api.privacy`).
@@ -194,7 +193,7 @@ async def _check_program(session: AsyncSession, program_id: uuid.UUID | None) ->
 
 
 @router.get("/join-link")
-async def get_join_link(request: Request, session: AdminSession) -> JoinLink:
+async def get_join_link(request: Request, session: MembersSession) -> JoinLink:
     """The gym's link; a 404 when it has none."""
     return await _link(request, session)
 
@@ -208,7 +207,7 @@ async def generate_join_link(
     body: JoinLinkOptions,
     request: Request,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: MembersSession,
 ) -> JoinLink:
     """A new link with these options. Any link the gym had stops working."""
     has_privacy = await session.scalar(
@@ -232,7 +231,7 @@ async def generate_join_link(
 
 @router.patch("/join-link")
 async def change_join_link(
-    body: JoinLinkOptions, request: Request, session: AdminSession
+    body: JoinLinkOptions, request: Request, session: MembersSession
 ) -> JoinLink:
     """Change what the link says, keeping its token: only the fields sent change."""
     changes = body.model_dump(exclude_unset=True)
@@ -247,7 +246,7 @@ async def change_join_link(
 
 
 @router.delete("/join-link", status_code=status.HTTP_204_NO_CONTENT)
-async def revoke_join_link(session: AdminSession) -> Response:
+async def revoke_join_link(session: MembersSession) -> Response:
     """The link stops working. Requests already sent stay in the queue."""
     await session.execute(text("DELETE FROM join_link"))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -513,7 +512,7 @@ def _request(row: Any) -> JoinRequest:
 
 @router.get("/join-requests")
 async def list_join_requests(
-    session: StaffSession,
+    session: MembersAddSession,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> JoinRequestPage:
@@ -534,11 +533,11 @@ async def approve_join_request(
     request_id: uuid.UUID,
     body: JoinApproval,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: MembersAddSession,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> JoinApproved:
-    if body.plan_id is not None and not await holds(session, tenant, Permission.GYM_SETUP):
+    if body.plan_id is not None and not await holds(session, tenant, Permission.MONEY_WRITE):
         raise PLAN_IS_MONEY
     # Deleted first: it was only ever a request, and a second approval at once waits
     # for this one and then finds nothing. Anything below that fails rolls it back.
@@ -635,7 +634,7 @@ async def _approved(
 
 
 @router.delete("/join-requests/{request_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def reject_join_request(request_id: uuid.UUID, session: StaffSession) -> Response:
+async def reject_join_request(request_id: uuid.UUID, session: MembersAddSession) -> Response:
     """Reject it: its data is deleted."""
     result = await session.execute(
         text("DELETE FROM join_request WHERE id = :id"), {"id": request_id}

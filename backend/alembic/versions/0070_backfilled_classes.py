@@ -19,8 +19,8 @@ policy of its own, as themselves, now, holding `attendance` (`app_can`, 0067), a
 the log is, and are not corrections of anyone's billing: the ficha's "Correcciones"
 leaves them out (`app.api.corrections`).
 
-Revision ID: 0069
-Revises: 0068
+Revision ID: 0070
+Revises: 0069
 Create Date: 2026-11-17
 
 """
@@ -32,8 +32,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0069"
-down_revision: str | Sequence[str] | None = "0068"
+revision: str = "0070"
+down_revision: str | Sequence[str] | None = "0069"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

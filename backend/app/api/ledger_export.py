@@ -30,7 +30,7 @@ from app.api.ledger import ENTRY_DAY, GYM_CLOCK, book_rows
 from app.domain import custom_fields as cf
 from app.domain.billing import SETTLING_KINDS
 from app.domain.vocabulary import Words, words_in
-from app.permissions import LedgerSession, standing_in_gym
+from app.permissions import LedgerReadSession, standing_in_gym
 from app.schemas.ledger import ExportFormat
 from app.tenancy import Tenant, current_tenant
 
@@ -116,7 +116,7 @@ def export_row(row: Any, values: tuple[str | int | float | date | None, ...]) ->
 
 @router.get("/export")
 async def ledger_export(
-    session: LedgerSession,
+    session: LedgerReadSession,
     tenant: Annotated[Tenant, Depends(current_tenant)],
     # Any day of the month to export; the current one in the gym's timezone by default.
     month: date | None = None,

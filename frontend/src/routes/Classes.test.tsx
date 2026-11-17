@@ -420,7 +420,14 @@ describe('Clases', () => {
     expect(day).toHaveAttribute('max', today)
     await userEvent.selectOptions(within(form).getByLabelText(copy.start.classType), 'Avanzado')
     fireEvent.change(day, { target: { value: earlier } })
-    fireEvent.change(within(form).getByLabelText(copy.start.time), { target: { value: '07:30' } })
+    // An earlier day's time is chosen, never the clock's by accident.
+    const time = within(form).getByLabelText(copy.start.time)
+    expect(time).toHaveValue('')
+    expect(time).toHaveAccessibleDescription(copy.start.chooseTime)
+    expect(within(form).getByRole('button', { name: copy.start.submit })).toBeDisabled()
+    fireEvent.change(time, { target: { value: '07:30' } })
+    expect(within(form).queryByText(copy.start.chooseTime)).not.toBeInTheDocument()
+    expect(within(form).getByRole('button', { name: copy.start.submit })).toBeEnabled()
     expect(within(form).getByText(copy.start.pastDay)).toBeInTheDocument()
     // The type's duration as of that day.
     await vi.waitFor(() =>
@@ -452,6 +459,11 @@ describe('Clases', () => {
     const form = await openStart()
     const day = within(form).getByLabelText(copy.start.day)
     expect(day).toHaveValue(shiftDay(today, -1))
+    expect(within(form).getByLabelText(copy.start.time)).toHaveValue('')
+    expect(within(form).getByText(copy.start.chooseTime)).toBeInTheDocument()
+    // Back on today, the time is now again, as it always was.
+    fireEvent.change(day, { target: { value: today } })
+    expect(within(form).getByLabelText(copy.start.time)).not.toHaveValue('')
     fireEvent.change(day, { target: { value: shiftDay(today, 1) } })
     expect(within(form).getByRole('alert')).toHaveTextContent(copy.start.futureDay)
     expect(within(form).getByRole('button', { name: copy.start.submit })).toBeDisabled()

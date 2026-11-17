@@ -3,7 +3,7 @@
 A gym that starts using Rakin mid-month creates the classes it held before, on their own
 day and time, and marks them. The class is a class like any other; the gym's log tells
 it apart (`class_backfilled`, and `attendance_backfilled` for each mark on another day
-than the class's own, migration 0069). Marking it takes what each membership pays with
+than the class's own, migration 0070). Marking it takes what each membership pays with
 now and never touches the ledger; a drop-in visit is on the class's day; a trial guest
 is refused; and every count reads the class's own date.
 """
@@ -203,8 +203,35 @@ def test_a_coach_registers_an_earlier_class_and_a_role_without_attendance_may_no
 
     treasurer = no_attendance_role(db, gym)
     assert start(client, gym, body, treasurer).status_code == 403
-    # Today's class is anyone's on the team to start, as before.
-    assert start(client, gym, {"class_type_id": fundamentals}, treasurer).status_code == 201
+    # Nor today's: running a class is `attendance`'s on any day.
+    assert start(client, gym, {"class_type_id": fundamentals}, treasurer).status_code == 403
+
+
+def move(client: TestClient, gym: uuid.UUID, session: str, starts_at: str) -> Any:
+    return client.patch(
+        f"/api/sessions/{session}", json={"starts_at": starts_at}, headers=as_gym(gym)
+    )
+
+
+def test_a_class_moved_to_an_earlier_day_is_in_the_log(
+    client: TestClient, db: Database, gym: uuid.UUID, fundamentals: str
+) -> None:
+    today = seeded_today()
+    made = created(start(client, gym, {"class_type_id": fundamentals}))["id"]
+    day = today - timedelta(days=5)
+    assert move(client, gym, made, at(day, 8)).status_code == 200
+    [entry] = log(db, gym, "class_backfilled")
+    assert entry["person_id"] is None
+    assert entry["detail"] == {
+        "session_id": made,
+        "class_type_id": fundamentals,
+        "day": day.isoformat(),
+        "moved_from": today.isoformat(),
+    }
+    # Another time on the same day, or back to today, is no new back-filled class.
+    assert move(client, gym, made, at(day, 10)).status_code == 200
+    assert move(client, gym, made, at(today, 10)).status_code == 200
+    assert len(log(db, gym, "class_backfilled")) == 1
 
 
 def test_a_past_class_lasts_its_types_duration_as_of_its_day(

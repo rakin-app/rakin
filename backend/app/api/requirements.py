@@ -44,7 +44,13 @@ from app.domain import custom_fields as cf
 from app.domain.dates import gym_today
 from app.domain.membership import LIVE
 from app.domain.requirements import RequirementState, expires_on, state_of
-from app.permissions import FORBIDDEN, AdminSession, StaffSession, standing_in_gym
+from app.permissions import (
+    FORBIDDEN,
+    AdminSession,
+    MembersAddSession,
+    StaffSession,
+    standing_in_gym,
+)
 from app.schemas.requirements import (
     MyRequirement,
     PersonRequirement,
@@ -351,7 +357,7 @@ async def record_requirement(
     body: RequirementRecord,
     request: Request,
     tenant: CurrentTenant,
-    session: StaffSession,
+    session: MembersAddSession,
 ) -> list[PersonRequirement]:
     """A new record of it, which becomes the person's current one; the last is kept."""
     if not await in_gym(session, person_id):

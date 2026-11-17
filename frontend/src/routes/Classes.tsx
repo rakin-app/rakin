@@ -432,14 +432,19 @@ function StartForm({ classTypes, ...props }: { classTypes: ClassType[] } & Start
   const durationId = useId()
   const dayId = useId()
   const timeId = useId()
+  const timeNoteId = useId()
   const [classTypeId, setClassTypeId] = useState(classTypes[0]!.id)
   const [day, setDay] = useState(props.day > today ? today : props.day)
   // The time as the form opened; untouched on today, the class starts now.
   const [opened] = useState(() => clockTime(new Date().toISOString(), timeZone))
   const [time, setTime] = useState<string | null>(null)
   const future = day > today
+  const past = day !== '' && day < today
+  // An earlier day has no "now": its time is chosen, never the clock's by accident.
+  const shownTime = time ?? (past ? '' : opened)
+  const noTime = shownTime === ''
   // Today at the time it opened is today's class as it always was: now.
-  const startsAt = !day || (day === today && time === null) ? null : zonedInstant(day, time || opened, timeZone)
+  const startsAt = !day || noTime || (day === today && time === null) ? null : zonedInstant(day, shownTime, timeZone)
   // What was typed for the type chosen; another type starts again from its default.
   const [typed, setTyped] = useState<{ classTypeId: string; value: string } | null>(null)
   const fallback = useQuery(defaultDurationQuery(classTypeId, future || !day ? today : day))
@@ -466,7 +471,7 @@ function StartForm({ classTypes, ...props }: { classTypes: ClassType[] } & Start
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (badDuration || future || !day) return
+    if (badDuration || future || !day || noTime) return
     start.mutate()
   }
 
@@ -522,15 +527,21 @@ function StartForm({ classTypes, ...props }: { classTypes: ClassType[] } & Start
         id={timeId}
         type="time"
         required
-        value={time ?? opened}
+        aria-describedby={noTime ? timeNoteId : undefined}
+        value={shownTime}
         onChange={(e) => setTime(e.target.value)}
       />
+      {noTime && !future && (
+        <p id={timeNoteId} className="classes__note">
+          {copy.start.chooseTime}
+        </p>
+      )}
       {future ? (
         <Banner tone="error">
           {copy.start.futureDay}
         </Banner>
       ) : (
-        day && day < today && <p className="classes__note">{copy.start.pastDay}</p>
+        past && <p className="classes__note">{copy.start.pastDay}</p>
       )}
       {badDuration && (
         <Banner tone="error">
@@ -545,7 +556,7 @@ function StartForm({ classTypes, ...props }: { classTypes: ClassType[] } & Start
       <Button
         type="submit"
         variant="primary"
-        disabled={start.isPending || badDuration || future || !day}
+        disabled={start.isPending || badDuration || future || !day || noTime}
         busy={start.isPending}
       >
         {start.isPending ? copy.start.working : copy.start.submit}
