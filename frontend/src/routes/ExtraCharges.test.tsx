@@ -215,7 +215,7 @@ describe('Cobros extra', () => {
 describe('Cobros extra: a group by belt', () => {
   const scheme = {
     ranks: [
-      { key: 'white', label: 'Blanca', sub_ranks: [] },
+      { key: 'white', label: 'Blanca', colors: ['#f4f4f1'], sub_ranks: [] },
       { key: 'blue', label: 'Azul', sub_ranks: [] },
       { key: 'black', label: 'Negra', sub_ranks: [] },
     ],
@@ -262,6 +262,23 @@ describe('Cobros extra: a group by belt', () => {
       null,
       ['pr-kids'],
     ])
+  })
+
+  it('calls a scheme with no colours "Nivel" (#353)', async () => {
+    const user = userEvent.setup()
+    const levels = { ...scheme, ranks: scheme.ranks.map(({ key, label }) => ({ key, label, sub_ranks: [] })) }
+    stubApi('owner', (path) =>
+      path === '/api/me/role'
+        ? { body: { ...asRole('owner'), person_id: 'me', uses_grades: true } }
+        : path === '/api/gym/grading-scheme'
+          ? { body: levels }
+          : undefined,
+    )
+    renderAt('/admin/pagos/cobros')
+
+    await user.click(await screen.findByRole('button', { name: copy.groups.create }))
+    expect(await screen.findByLabelText(copy.groups.level)).toHaveDisplayValue(copy.groups.any)
+    expect(screen.queryByLabelText(copy.groups.rank)).not.toBeInTheDocument()
   })
 
   it('offers no belt while no activity of the gym grades, whatever its scheme', async () => {

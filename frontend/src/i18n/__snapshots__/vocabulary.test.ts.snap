@@ -14,6 +14,7 @@ exports[`a gym's words > reads exactly as before with none set: nav, Hoy and Alu
     "today": "Hoy",
   },
   "students": {
+    "allLevels": "Todos los niveles",
     "allPlans": "Todos los planes",
     "allPrograms": "Todos los programas",
     "allRanks": "Todos los cinturones",
@@ -37,6 +38,7 @@ exports[`a gym's words > reads exactly as before with none set: nav, Hoy and Alu
     "inactiveProgram": "2 (programa inactivo)",
     "left": "Dados de baja",
     "leftOn": "De baja desde el 2",
+    "levelLabel": "Nivel",
     "loading": "Cargando alumnos…",
     "missingGuardian": "Falta apoderado",
     "missingPhone": "Falta teléfono",

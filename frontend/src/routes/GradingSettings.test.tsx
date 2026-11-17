@@ -103,7 +103,9 @@ function renderGrading() {
 
 const puts = (calls: Call[]) => calls.filter((c) => c.method === 'PUT').map((c) => c.body as GradingScheme)
 const ladder = (name: string) => screen.getByRole('group', { name })
-const rank = (name: string, n: number) => within(ladder(name)).getByRole('listitem', { name: copy.rank(n) })
+// A rank's item is "Grado N", or "Nivel N" while the scheme has no colours (#353).
+const rank = (name: string, n: number) =>
+  within(ladder(name)).getByRole('listitem', { name: new RegExp(`^(${copy.rank(n)}|${copy.levels.rank(n)})$`) })
 const save = () => userEvent.click(screen.getByRole('button', { name: copy.submit }))
 /** A rank's row: the button that opens it, named `N. Label` and its line. */
 const rowOf = (name: string, n: number) =>
@@ -115,6 +117,7 @@ async function open(name: string, n: number) {
   return rank(name, n)
 }
 const RANKS = copy.ladders.ranks
+const LEVELS = copy.levels
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -255,6 +258,36 @@ describe('Ajustes: Graduación', () => {
     expect(puts(calls)[0]!.ranks.map((r) => r.key)).toEqual(['blue'])
   })
 
+  it('reads a scheme with no colours as levels: "Nivel", "Subnivel", no belt (#353)', async () => {
+    stubApi()
+    renderGrading()
+
+    // A belt scheme reads as it did: grades, a belt, sub-ranks.
+    await screen.findByRole('listitem', { name: copy.rank(1) })
+    const white = await open(RANKS, 1)
+    expect(within(white).getByLabelText(copy.rank(1))).toHaveValue('Blanca')
+    expect(within(white).getByRole('group', { name: copy.belt.title })).toBeInTheDocument()
+    expect(within(white).getByRole('img', { name: copy.belt.preview('Blanca') })).toBeInTheDocument()
+    expect(within(white).getByText(copy.subRanks(2))).toBeInTheDocument()
+
+    // Its only colour removed, it is levels.
+    await userEvent.click(within(white).getByRole('button', { name: copy.belt.remove }))
+    const level = rank(LEVELS.ladders.ranks, 1)
+    expect(within(level).getByLabelText(LEVELS.rank(1))).toHaveValue('Blanca')
+    expect(within(level).queryByText(copy.belt.title)).not.toBeInTheDocument()
+    expect(within(level).getByRole('group', { name: LEVELS.belt.title })).toHaveTextContent(LEVELS.belt.none)
+    expect(within(level).queryByRole('img')).not.toBeInTheDocument()
+    expect(level.querySelector('.settings__rank-belt')).toBeNull()
+    await userEvent.click(within(level).getByText(LEVELS.subRanks(2)))
+    expect(within(level).getByLabelText(LEVELS.subRank(1))).toHaveValue('Sin grados')
+    expect(within(level).getByRole('button', { name: LEVELS.addSubRank })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: LEVELS.addRank })).toHaveLength(2)
+
+    // A colour back, and it is belts again.
+    await userEvent.click(within(level).getByRole('button', { name: copy.belt.add }))
+    expect(rank(RANKS, 1).querySelector('.settings__rank-belt')).not.toBeNull()
+  })
+
   it('applies a preset as a starting point, saved only with the scheme', async () => {
     const calls = stubApi()
     renderGrading()
@@ -269,10 +302,11 @@ describe('Ajustes: Graduación', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent(copy.applied('Judo / karate'))
     expect(screen.getByLabelText(copy.goalMetric)).toHaveValue('time_in_rank')
-    const kyu = await open(RANKS, 1)
-    expect(within(kyu).getByLabelText(copy.rank(1))).toHaveValue('2.º kyu')
+    // Kyu have no colours: levels (#353).
+    const kyu = await open(LEVELS.ladders.ranks, 1)
+    expect(within(kyu).getByLabelText(LEVELS.rank(1))).toHaveValue('2.º kyu')
     // Months in rank, for this metric.
-    expect(within(kyu).getByLabelText(copy.target.time_in_rank)).toBeInTheDocument()
+    expect(within(kyu).getByLabelText(LEVELS.target.time_in_rank)).toBeInTheDocument()
     expect(puts(calls)).toEqual([])
 
     await save()
@@ -349,11 +383,12 @@ describe('Ajustes: Graduación', () => {
     })
     renderGrading()
 
-    expect(await screen.findAllByText(copy.emptyLadder)).toHaveLength(2)
-    await userEvent.selectOptions(screen.getByLabelText(copy.goalMetric), copy.goalMetrics.time_in_rank)
+    // An empty scheme has no colours: levels (#353).
+    expect(await screen.findAllByText(LEVELS.emptyLadder)).toHaveLength(2)
+    await userEvent.selectOptions(screen.getByLabelText(copy.goalMetric), LEVELS.goalMetrics.time_in_rank)
     await save()
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(copy.schemeInvalid)
+    expect(await screen.findByRole('alert')).toHaveTextContent(LEVELS.schemeInvalid)
   })
 
   it('offers to re-apply a preset when the stored scheme no longer fits', async () => {

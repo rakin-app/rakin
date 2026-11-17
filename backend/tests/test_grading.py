@@ -31,7 +31,7 @@ NONE: dict[str, Any] = {"ranks": [], "kids_ladder": [], "goal_metric": None}
 
 def test_the_presets_are_the_spec_table() -> None:
     by_key = {p.key: p.scheme for p in PRESETS}
-    assert list(by_key) == ["bjj", "judo-karate", "muay-thai", "none"]
+    assert list(by_key) == ["bjj", "judo-karate", "muay-thai", "levels", "none"]
 
     bjj = by_key["bjj"]
     assert [r.key for r in bjj.ranks] == ["white", "blue", "purple", "brown", "black"]
@@ -55,6 +55,10 @@ def test_the_presets_are_the_spec_table() -> None:
     muay_thai = by_key["muay-thai"]
     assert muay_thai.ranks and muay_thai.kids_ladder == []
     assert muay_thai.goal_metric is None
+
+    # Levels (#353): an empty list to fill, read as levels since no rank has colours.
+    assert by_key["levels"].model_dump() == NONE
+    assert bjj.belts and not judo.belts and not by_key["levels"].belts
 
     assert by_key["none"].model_dump() == NONE
 
@@ -209,7 +213,13 @@ def test_the_presets_are_listed(client: TestClient, db: Database) -> None:
     gym = seed_gym(db, "dojo-presets")
     response = client.get(f"{URL}/presets", headers=as_gym(gym))
     assert response.status_code == 200
-    assert [p["key"] for p in response.json()] == ["bjj", "judo-karate", "muay-thai", "none"]
+    assert [p["key"] for p in response.json()] == [
+        "bjj",
+        "judo-karate",
+        "muay-thai",
+        "levels",
+        "none",
+    ]
     assert response.json()[0]["scheme"] == BJJ
 
 

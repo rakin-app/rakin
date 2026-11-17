@@ -27,6 +27,14 @@ export type GradingScheme = {
   goal_metric: GoalMetric | null
 }
 
+/**
+ * Whether the scheme is levels, not belts (#353): no rank on either ladder has colours,
+ * as a swimming school's or a climbing gym's. The screens then say "Nivel".
+ */
+export function isLevels(scheme: { ranks: { colors?: string[] }[]; kids_ladder: { colors?: string[] }[] }): boolean {
+  return ![...scheme.ranks, ...scheme.kids_ladder].some((rank) => (rank.colors ?? []).length > 0)
+}
+
 /** A starting point for a scheme (`GET /api/gym/grading-scheme/presets`). */
 export type GradingPreset = { key: string; label: string; scheme: GradingScheme }
 

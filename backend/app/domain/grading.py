@@ -113,6 +113,13 @@ PRESETS: list[dict[str, Any]] = [
         "label": "Muay thai (prajioud)",
         "scheme": {"ranks": _ladder(PRAJIOUD), "kids_ladder": [], "goal_metric": None},
     },
+    # Levels (#353): a swimming school's or a climbing gym's, no colours and no
+    # sub-ranks, for the gym to fill.
+    {
+        "key": "levels",
+        "label": "Niveles",
+        "scheme": {"ranks": [], "kids_ladder": [], "goal_metric": None},
+    },
     {
         "key": "none",
         "label": "Sin grados",

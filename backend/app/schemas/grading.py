@@ -90,6 +90,12 @@ class GradingScheme(BaseModel):
     def from_settings(cls, settings: Mapping[str, Any]) -> "GradingScheme":
         return cls.model_validate(settings.get("grading", {"ranks": []}))
 
+    @property
+    def belts(self) -> bool:
+        """Whether any rank is drawn as a belt (#353): a scheme with no colours is
+        levels, and the screens and the import say "nivel", not "cinturón" or "rayas"."""
+        return any(r.colors for r in (*self.ranks, *self.kids_ladder))
+
     def rank(self, key: str) -> Rank | None:
         """The rank `key` names, in the ranks or the kids ladder."""
         return next((r for r in (*self.ranks, *self.kids_ladder) if r.key == key), None)
