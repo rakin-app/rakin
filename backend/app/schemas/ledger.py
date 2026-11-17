@@ -318,6 +318,9 @@ class TimelineEntry(BaseModel):
     voided: Voided | None = None
     # On a charge whose period had a void restored, the latest (#278).
     restored: Restored | None = None
+    # The discount its period was billed at, and why (#25); 0 and null with none.
+    discount_pct: int = 0
+    discount_reason: str | None = None
 
 
 class FreezeEdge(StrEnum):
@@ -467,6 +470,9 @@ class BookPeriod(BaseModel):
     outstanding_clp: int
     # Whole days past the due date in the gym's timezone while unpaid; 0 otherwise.
     days_overdue: int
+    # The discount it was billed at, and why (#25); 0 and null with none.
+    discount_pct: int = 0
+    discount_reason: str | None = None
 
 
 class BookExtra(BaseModel):

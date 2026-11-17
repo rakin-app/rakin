@@ -236,6 +236,8 @@ class MemberSpec:
     overpaid_clp: int = 0
     credits_remaining: int | None = None
     discount_pct: int = 0
+    # Why they have the discount (#25), with one.
+    discount_reason: str | None = None
     phone: str | None = None
     # Days from the seed date to the day they were given `rank` (negative is past).
     # Default: their first day for a first rank with no sub-rank, else a day drawn from
@@ -448,6 +450,7 @@ def _filler() -> tuple[MemberSpec, ...]:
                     guardian=guardian,
                     # One scholarship.
                     discount_pct=50 if guardian == families[-1][0] else 0,
+                    discount_reason="Beca" if guardian == families[-1][0] else None,
                 )
             )
     return tuple(members)

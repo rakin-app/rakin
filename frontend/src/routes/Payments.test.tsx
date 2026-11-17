@@ -316,6 +316,23 @@ describe('Pagos', () => {
     ])
   })
 
+  it('says beside a charge the discount it was billed at', async () => {
+    // A discount with its reason (#25), kept as the period was billed.
+    const period = { ...entry({ id: 'x', kind: 'charge' }).period!, discount_pct: 50, discount_reason: 'Beca' }
+    const charges = [
+      entry({ id: 'discounted', kind: 'charge', amount_clp: 22500, period }),
+      entry({ id: 'lapsed', kind: 'charge', membership_status: 'lapsed', period }),
+    ]
+    stubApi({ book: () => ({ ...BOOK, items: charges, total: 2 }) })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map((row) => cells(row)[4])).toEqual([
+      'Mensual adultos · descuento 50% (Beca)',
+      'Mensual adultos · descuento 50% (Beca) · Plan caducado',
+    ])
+  })
+
   it('lists a discount and a surcharge by what each does to what is owed, and refunds as money out', async () => {
     const corrections = [
       entry({

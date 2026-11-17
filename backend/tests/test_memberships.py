@@ -26,6 +26,7 @@ from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
+from tests.test_billing_job import generate
 from tests.test_guardians import add_person, new_kid
 from tests.test_proofs import RecordingMailer, sent_notices
 
@@ -449,6 +450,138 @@ def test_a_frozen_membership_is_quoted_and_changes_plan(client: TestClient, sur:
     assert saved.json()["next_plan"]["starts_on"] == quoted.json()["starts_on"]
 
 
+# --- discounts (#25) ----------------------------------------------------------------
+
+
+def discount(client: TestClient, gym: uuid.UUID, membership: str, body: Any) -> Any:
+    return client.put(
+        f"/api/memberships/{membership}/discount", json={"discount": body}, headers=as_gym(gym)
+    )
+
+
+def charges(client: TestClient, gym: uuid.UUID, membership: str) -> list[tuple[Any, ...]]:
+    """The membership's charges on its ledger, oldest first: the period, the amount, and
+    the discount it was billed at."""
+    response = client.get(f"/api/ledger/memberships/{membership}", headers=as_gym(gym))
+    assert response.status_code == 200, response.text
+    return sorted(
+        (e["period_start"], e["amount_clp"], e["discount_pct"], e["discount_reason"])
+        for e in response.json()["entries"]
+        if e["kind"] == "charge"
+    )
+
+
+def test_a_plan_starts_with_a_discount_and_its_reason(client: TestClient, sur: uuid.UUID) -> None:
+    membership = started(client, sur, "signup", discount={"pct": 50, "reason": "Hermanos"})
+
+    assert (membership["discount_pct"], membership["discount_reason"]) == (50, "Hermanos")
+    assert charges(client, sur, membership["id"]) == [(NOV_15, 22_500, 50, "Hermanos")]
+
+
+def test_a_discount_bills_from_the_next_period_and_keeps_the_billed_ones(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    membership = started(client, sur, "signup")
+    url = f"/api/memberships/{membership['id']}/discount"
+
+    quoted = client.get(url, params={"pct": 10}, headers=as_gym(sur))
+    assert quoted.status_code == 200, quoted.text
+    assert quoted.json() == {
+        "starts_on": "2026-12-15",
+        "period_end": "2027-01-14",
+        "amount_due_clp": 40_500,
+    }
+    saved = discount(client, sur, membership["id"], {"pct": 10, "reason": " Beca "})
+    assert saved.status_code == 200, saved.text
+    assert (saved.json()["discount_pct"], saved.json()["discount_reason"]) == (10, "Beca")
+
+    generate(db, date(2026, 12, 10))
+    assert charges(client, sur, membership["id"]) == [
+        (NOV_15, 45_000, 0, None),
+        ("2026-12-15", 40_500, 10, "Beca"),
+    ]
+
+    # Taken off, the next period is billed in full; December keeps its discount.
+    cleared = discount(client, sur, membership["id"], None)
+    assert (cleared.json()["discount_pct"], cleared.json()["discount_reason"]) == (0, None)
+    generate(db, date(2027, 1, 10))
+    assert charges(client, sur, membership["id"])[1:] == [
+        ("2026-12-15", 40_500, 10, "Beca"),
+        ("2027-01-15", 45_000, 0, None),
+    ]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"pct": 10},
+        {"pct": 10, "reason": "  "},
+        {"pct": 0, "reason": "Beca"},
+        {"pct": 101, "reason": "Beca"},
+    ],
+)
+def test_a_discount_needs_a_percentage_and_a_reason(
+    client: TestClient, sur: uuid.UUID, body: dict[str, Any]
+) -> None:
+    membership = started(client, sur, "signup")
+    assert discount(client, sur, membership["id"], body).status_code == 422
+    assert start(client, sur, membership["plan_id"], discount=body).status_code == 422
+
+
+@pytest.mark.parametrize("key", ["credits", "trial"])
+def test_only_a_plan_that_bills_again_takes_a_discount(
+    client: TestClient, sur: uuid.UUID, key: str
+) -> None:
+    membership = started(client, sur, key)
+    body = {"pct": 10, "reason": "Beca"}
+    assert discount(client, sur, membership["id"], body).status_code == 409
+    url = f"/api/memberships/{membership['id']}/discount"
+    assert client.get(url, params={"pct": 10}, headers=as_gym(sur)).status_code == 409
+
+
+def test_a_cancelled_plan_takes_no_discount(client: TestClient, sur: uuid.UUID) -> None:
+    membership = started(client, sur, "signup")
+    assert cancel(client, sur, membership["id"]).status_code == 200
+    body = {"pct": 10, "reason": "Beca"}
+    assert discount(client, sur, membership["id"], body).status_code == 409
+
+
+def test_a_frozen_plan_is_quoted_after_what_it_billed(client: TestClient, sur: uuid.UUID) -> None:
+    membership = started(client, sur, "signup")
+    frozen = client.post(
+        f"/api/memberships/{membership['id']}/freeze",
+        json={"to_date": "2026-12-01", "reason": "lesión"},
+        headers=as_gym(sur),
+    )
+    assert frozen.status_code == 200, frozen.text
+    url = f"/api/memberships/{membership['id']}/discount"
+    quoted = client.get(url, params={"pct": 20}, headers=as_gym(sur))
+    assert quoted.status_code == 200, quoted.text
+    assert quoted.json()["amount_due_clp"] == 36_000
+    body = {"pct": 20, "reason": "Beca"}
+    assert discount(client, sur, membership["id"], body).status_code == 200
+
+
+@pytest.mark.parametrize(("role", "writes"), [("admin", True), ("coach", False)])
+def test_only_owner_or_admin_set_a_discount_and_coaches_never_see_it(
+    client: TestClient, db: Database, sur: uuid.UUID, role: str, writes: bool
+) -> None:
+    membership = started(client, sur, "signup", discount={"pct": 50, "reason": "Hermanos"})
+    headers = as_gym(sur, add_staff(db, sur, role))
+    url = f"/api/memberships/{membership['id']}"
+
+    codes = (
+        client.get(f"{url}/discount", params={"pct": 10}, headers=headers).status_code,
+        client.put(
+            f"{url}/discount", json={"discount": {"pct": 10, "reason": "x"}}, headers=headers
+        ).status_code,
+    )
+    assert codes == ((200, 200) if writes else (403, 403))
+    read = client.get(url, headers=headers).json()
+    assert ("discount_reason" in read) is writes
+    assert ("discount_pct" in read) is writes
+
+
 # --- cancelling ---------------------------------------------------------------------
 
 
@@ -606,6 +739,35 @@ def test_the_upgrade_gives_rows_cancelled_before_it_a_reason() -> None:
             ),
         )
         assert {"cancel_reason", "next_plan_id"}.isdisjoint({r[0] for r in columns})
+
+
+def test_the_upgrade_gives_periods_billed_before_it_their_memberships_discount() -> None:
+    with throwaway_database(require_test_database_url()) as database:
+        migrate(database, "0063")
+        seed_gym(database, "antes")
+        run(database.admin_url, lambda c: c.execute("UPDATE membership SET discount_pct = 15"))
+        migrate(database)
+        row = run(database.admin_url, lambda c: c.fetchrow("SELECT * FROM billing_period"))
+        assert (row["discount_pct"], row["discount_reason"]) == (15, None)
+
+        # A reason only with a discount.
+        with pytest.raises(asyncpg.CheckViolationError):
+            run(
+                database.admin_url,
+                lambda c: c.execute(
+                    "UPDATE membership SET discount_pct = 0, discount_reason = 'Beca'"
+                ),
+            )
+
+        command.downgrade(database.alembic(), "0063")
+        columns = run(
+            database.admin_url,
+            lambda c: c.fetch(
+                "SELECT column_name FROM information_schema.columns"
+                " WHERE table_name IN ('membership', 'billing_period')"
+            ),
+        )
+        assert "discount_reason" not in {r[0] for r in columns}
 
 
 # --- the welcome email ----------------------------------------------------------

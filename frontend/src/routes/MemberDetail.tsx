@@ -83,7 +83,7 @@ import { PersonHistory } from './PersonHistory'
 import { PersonData } from './PersonData'
 import { PersonConsent } from './PersonConsent'
 import { PersonRequirements } from './PersonRequirements'
-import { AssignForm, AssignPlan, assignsPlan, ChangePlanForm, changesPlan, isLive } from './PersonPlan'
+import { AssignForm, AssignPlan, assignsPlan, ChangePlanForm, changesPlan, DiscountForm, isLive, takesDiscount } from './PersonPlan'
 import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
 import { useSubmit } from '../api/submit'
@@ -350,6 +350,9 @@ function Standing({
         {membership.voided_at && membership.void_reason && (
           <p className="member__detail">{copy.voidedBanner(membership.void_reason, shortDay(isoDay(membership.voided_at)))}</p>
         )}
+        {money && membership.discount_pct ? (
+          <p className="member__detail">{copy.discountLine(membership.discount_pct, membership.discount_reason ?? null)}</p>
+        ) : null}
         {membership.next_plan && membership.status !== 'cancelled' && (
           <p className="member__detail">
             {copy.planChangeBooked(membership.next_plan.plan_name, shortDay(membership.next_plan.starts_on))}
@@ -576,6 +579,7 @@ type Open =
   | 'editFreeze'
   | 'endFreeze'
   | 'changePlan'
+  | 'discount'
   | 'fixPlan'
   | 'voidPlan'
   | 'reactivate'
@@ -588,7 +592,17 @@ function unpaid(ledger: MembershipLedger): number {
 }
 
 /** What the plan card offers, in the order it reaches for its secondary and its menu. */
-type Action = 'payment' | 'reactivate' | 'assign' | 'endFreeze' | 'editFreeze' | 'freeze' | 'changePlan' | 'refund' | 'fixPlan'
+type Action =
+  | 'payment'
+  | 'reactivate'
+  | 'assign'
+  | 'endFreeze'
+  | 'editFreeze'
+  | 'freeze'
+  | 'changePlan'
+  | 'discount'
+  | 'refund'
+  | 'fixPlan'
 
 /**
  * The plan card's actions (#360): one primary, chosen by how the plan stands ("Registrar
@@ -631,6 +645,7 @@ function Actions({
     'payment',
     ...(freeze ? (['endFreeze', 'editFreeze'] as const) : membership.status === 'active' ? (['freeze'] as const) : []),
     ...(changesPlan(membership) ? (['changePlan'] as const) : []),
+    ...(takesDiscount(membership) ? (['discount'] as const) : []),
     ...(payments.length > 0 ? (['refund'] as const) : []),
     'fixPlan',
   ]
@@ -644,6 +659,7 @@ function Actions({
     editFreeze: copy.editFreeze,
     freeze: copy.freeze,
     changePlan: copy.changePlan,
+    discount: copy.discount,
     refund: copy.refund,
     fixPlan: copy.fix.plan,
   }
@@ -751,6 +767,9 @@ function Actions({
       )}
       {open === 'changePlan' && changesPlan(membership) && (
         <ChangePlanForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'discount' && takesDiscount(membership) && (
+        <DiscountForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
       )}
       {open === 'voidPlan' && !membership.voided_at && (
         <VoidPlanForm
@@ -2522,6 +2541,7 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
                 words.restored(entry.restored.reason, entry.restored.by_name, shortDay(entry.restored.at)),
               )
             : words.generated(shortDay(entry.created_at)),
+          entry.discount_pct ? words.discounted(entry.discount_pct, entry.discount_reason ?? null) : null,
           unpaid ? (paidClp > 0 ? words.partlyPaid(clp(paidClp)) : words.unpaid) : null,
         ),
         tone: unpaid ? 'owed' : 'muted',

@@ -120,6 +120,8 @@ def ids(loaded: Loaded) -> dict[str, str]:
         "charge_id": unknown,
         "line_id": unknown,
         "import_id": unknown,
+        # A discount quoted (#25).
+        "pct": "10",
     }
 
 

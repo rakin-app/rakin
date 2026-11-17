@@ -64,7 +64,13 @@ export type Membership = {
   // Voided as started by mistake (#256): cancelled as of its start, its unpaid charges voided.
   voided_at?: string | null
   void_reason?: string | null
+  // A percentage off every period, and why (#25); left out for a coach, who sees no money.
+  discount_pct?: number
+  discount_reason?: string | null
 }
+
+/** A fixed percentage off every period a membership bills, and why (backend `Discount`, #25). */
+export type Discount = { pct: number; reason: string }
 
 /** A plan change saved, from `starts_on`, the first day not yet billed (backend `PendingPlanChange`). */
 export type PendingPlanChange = { plan_id: string; plan_name: string; starts_on: string }
@@ -108,6 +114,9 @@ export type TimelineEntry = {
   voided?: Voided | null
   // On a charge whose period had a void restored, the latest (#278).
   restored?: Restored | null
+  // The discount its period was billed at, and why (#25); 0 and null with none.
+  discount_pct?: number
+  discount_reason?: string | null
 }
 
 /** What a correcting entry is for (backend `Purpose`, #278). */
@@ -439,10 +448,11 @@ export function startMembership(
   personId: string,
   start: MembershipStart,
   sendWelcome: boolean,
+  discount?: Discount,
 ): Promise<Membership> {
   return apiFetch<Membership>('/api/memberships', {
     method: 'POST',
-    body: JSON.stringify({ person_id: personId, ...start, send_welcome: sendWelcome }),
+    body: JSON.stringify({ person_id: personId, ...start, send_welcome: sendWelcome, ...(discount && { discount }) }),
   })
 }
 
@@ -468,6 +478,29 @@ export function changePlan(membershipId: string, planId: string): Promise<Member
   return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/plan-change`, {
     method: 'POST',
     body: JSON.stringify({ plan_id: planId }),
+  })
+}
+
+/** What a discount would bill, before it is saved (backend `DiscountQuote`, #25): the next
+ * period not yet billed, from `starts_on` until `period_end`, for `amount_due_clp`. */
+export type DiscountQuote = { starts_on: string; period_end: string; amount_due_clp: number }
+
+export function discountQuery(membershipId: string, pct: number) {
+  return queryOptions({
+    queryKey: ['memberships', 'discount', membershipId, pct],
+    queryFn: () =>
+      apiFetch<DiscountQuote>(`/api/memberships/${encodeURIComponent(membershipId)}/discount?pct=${pct}`),
+    // Read as the form shows it: what has been billed since decides the period.
+    staleTime: 0,
+    retry: false,
+  })
+}
+
+/** "Descuento": set from the next period not yet billed; `null` takes it off. */
+export function setDiscount(membershipId: string, discount: Discount | null): Promise<Membership> {
+  return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/discount`, {
+    method: 'PUT',
+    body: JSON.stringify({ discount }),
   })
 }
 

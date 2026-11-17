@@ -216,6 +216,7 @@ class _Builder:
                 "current_period_end": paid_through,
                 "credits_remaining": credits,
                 "discount_pct": spec.discount_pct,
+                "discount_reason": spec.discount_reason,
                 "created_at": local(since),
                 # On the due date of the period they did not pay.
                 "cancel_reason": CANCEL_REASON if cancelled else None,
