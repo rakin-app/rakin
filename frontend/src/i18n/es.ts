@@ -2056,7 +2056,9 @@ export const es = {
         classTypesLabel: (program: string) => `Clases de ${program}`,
         // What one attendance takes off a pack of classes (#177: "clase", not "crédito").
         credits: (n: number) => (n === 0 ? 'No descuenta clases' : n === 1 ? 'Descuenta 1 clase' : `Descuenta ${n} clases`),
-        openMat: 'Open mat',
+        get openMat() {
+          return w.OpenMat
+        },
         openAccess: 'Acceso libre',
         notCounted: 'No cuenta como clase',
         toggleFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
@@ -2074,9 +2076,17 @@ export const es = {
           creditCost: 'Clases que descuenta',
           creditCostHint: 'Lo que descuenta cada asistencia de un paquete de clases. 0 para una clase gratis.',
           kind: 'Tipo',
-          kinds: { class: 'Clase', open_mat: 'Open mat', open_access: 'Acceso libre' },
-          kindHint:
-            'Un open mat son solo rounds de sparring, sin bloques de técnica. Acceso libre es sin clases: cada visita se marca en Entrada, a cualquier hora.',
+          // The open mat under the gym's name for it (#346): "Open mat", "Escalada libre".
+          kinds: {
+            class: 'Clase',
+            get open_mat() {
+              return w.OpenMat
+            },
+            open_access: 'Acceso libre',
+          },
+          get kindHint() {
+            return `${w.OpenMat}: solo rounds de ${w.practice}, sin bloques de técnica. Acceso libre es sin clases: cada visita se marca en Entrada, a cualquier hora.`
+          },
           countsAsClass: 'Cuenta como clase',
           get countsAsClassHint() {
             return `Si asistir suma a las clases ${w.ofTheMember}, y a su meta de graduación si ${w.thePlace} usa grados.`
@@ -2157,8 +2167,9 @@ export const es = {
           endsTooSoon: 'Termina antes de empezar.',
           noClassTypes: 'Primero crea un tipo de clase en Programas y clases.',
           afterEnd: 'Esta clase fija ya terminó en esa fecha.',
-          openMatPlan:
-            'Un open mat es un solo bloque de sparring, y alguna de las próximas clases tiene otro registro en el timer. Corrígelo antes.',
+          get openMatPlan() {
+            return `Una clase de tipo ${w.OpenMat} es un solo bloque de ${w.practice}, y alguna de las próximas clases tiene otro registro en el timer. Corrígelo antes.`
+          },
           cancel: 'Cancelar',
           submit: 'Guardar',
           working: 'Guardando…',
@@ -2184,7 +2195,7 @@ export const es = {
       blocks: {
         title: 'Bloques de clase',
         get intro() {
-          return `Las partes en que ${w.theCoach} divide la clase con el cronómetro, en el orden en que se ofrecen. El tiempo de los bloques de sparring suma al sparring de cada ${w.member}.`
+          return `Las partes en que ${w.theCoach} divide la clase con el cronómetro, en el orden en que se ofrecen. El tiempo de los bloques de ${w.practice} suma al total de ${w.practice} de cada ${w.member}.`
         },
         error: 'No pudimos cargar los bloques.',
         empty: 'Todavía no hay bloques.',
@@ -2195,7 +2206,8 @@ export const es = {
         restore: 'Reactivar',
         delete: 'Eliminar',
         archived: 'Inactivo',
-        sparring: 'Sparring',
+        // The tag on a kind that counts as the practice: run in rounds, whatever its name (#346).
+        sparring: 'En rounds',
         upMark: '↑',
         downMark: '↓',
         up: (name: string) => `Subir ${name}`,
@@ -2213,12 +2225,14 @@ export const es = {
           create: 'Nuevo bloque',
           edit: (name: string) => `Editar ${name}`,
           name: 'Nombre',
-          sparring: 'Es sparring',
+          get sparring() {
+            return `Cuenta como ${w.practice}`
+          },
           get sparringHint() {
-            return `Un bloque de sparring se corre en rounds, y su tiempo suma al sparring ${w.ofTheMember}.`
+            return `Un bloque de ${w.practice} se corre en rounds, y su tiempo suma al total de ${w.practice} ${w.ofTheMember}.`
           },
           sparringInUse: (blocks: number) =>
-            `Ya se usó en ${blocks === 1 ? '1 bloque' : `${blocks} bloques`} de clases, así que no puede cambiar si es sparring.`,
+            `Ya se usó en ${blocks === 1 ? '1 bloque' : `${blocks} bloques`} de clases, así que no puede cambiar si cuenta como ${w.practice}.`,
           taken: 'Ya hay un bloque con ese nombre.',
           cancel: 'Cancelar',
           submit: 'Guardar',
@@ -2685,8 +2699,9 @@ export const es = {
         close: 'Volver',
         saved: 'Clase actualizada.',
         failed: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
-        openMatPlan:
-          'Un open mat es un solo bloque de sparring. Corrige el registro del timer antes de cambiarle el tipo.',
+        get openMatPlan() {
+          return `Una clase de tipo ${w.OpenMat} es un solo bloque de ${w.practice}. Corrige el registro del timer antes de cambiarle el tipo.`
+        },
       },
       manage: {
         title: 'Opciones de la clase',
@@ -2717,7 +2732,9 @@ export const es = {
         empty: 'Sin registro del timer.',
         edit: 'Editar registro',
         label: 'Editar registro del timer',
-        hint: 'Corrige lo que quedó registrado: el tipo de cada bloque, los minutos que duró y, en sparring, las rondas hechas.',
+        get hint() {
+          return `Corrige lo que quedó registrado: el tipo de cada bloque, los minutos que duró y, en ${w.practice}, las rondas hechas.`
+        },
         block: (n: number) => `Bloque ${n}`,
         kind: 'Tipo',
         minutes: 'Minutos hechos',
@@ -2730,7 +2747,9 @@ export const es = {
         noKinds: 'No hay tipos de bloque. El dueño o un admin los crea en Ajustes › Bloques.',
         running: 'La clase está corriendo en el timer de este teléfono. Termínala para corregir el registro.',
         pending: 'El timer de este teléfono tiene bloques sin enviar. Se podrá corregir cuando se guarden.',
-        invalid: 'Revisa los campos marcados. En sparring, los minutos no pueden pasar de las rondas hechas.',
+        get invalid() {
+          return `Revisa los campos marcados. En ${w.practice}, los minutos no pueden pasar de las rondas hechas.`
+        },
         submit: 'Guardar registro',
         working: 'Guardando…',
         close: 'Cancelar',
@@ -2752,7 +2771,9 @@ export const es = {
         title: 'Bloques de la clase',
         hint: 'Parte de la última clase de este tipo. Cambia lo que quieras antes de empezar.',
         hintEmpty: 'Arma la clase bloque por bloque.',
-        hintOpenMat: 'Un open mat son rondas de sparring.',
+        get hintOpenMat() {
+          return `${w.OpenMat}: rondas de ${w.practice}.`
+        },
         hintRunning: 'Cambia los bloques que faltan o agrega uno. El timer sigue corriendo.',
         label: (n: number) => `Bloque ${n}`,
         kind: 'Tipo',
@@ -2766,7 +2787,9 @@ export const es = {
         add: '+ Agregar bloque',
         empty: 'Sin bloques todavía.',
         noKinds: 'No hay tipos de bloque. El dueño o un admin los crea en Ajustes › Bloques.',
-        noSparring: 'No hay un tipo de bloque de sparring. El dueño o un admin lo marca en Ajustes › Bloques.',
+        get noSparring() {
+          return `No hay un tipo de bloque de ${w.practice}. El dueño o un admin lo marca en Ajustes › Bloques.`
+        },
         tooMany: (max: number) => `Una clase tiene hasta ${max} bloques.`,
         invalid: 'Revisa los campos marcados.',
         total: (minutes: string) => `Total: ${minutes}`,
@@ -3210,12 +3233,19 @@ export const es = {
     month: 'Este mes',
     allTime: 'Siempre',
     classes: 'Clases',
-    // The sparring kinds and the open mats together, so not the breakdown's own Sparring line.
-    sparring: 'Sparring en total',
+    // The practice's kinds and the open mats together, so not the breakdown's own line.
+    get sparring() {
+      return `${w.Practice} en total`
+    },
     byKind: 'Tiempo por bloque',
-    openMat: (n: number, time: string) => `Open mat: ${n} · ${time}`,
-    openMatNoteMine: 'Tu tiempo de open mat cuenta como sparring.',
-    openMatNoteTheirs: 'Su tiempo de open mat cuenta como sparring.',
+    openMat: (n: number, time: string) => `${w.OpenMat}: ${n} · ${time}`,
+    // Only where the open mat has a name of its own, as "Open mat" in BJJ (`MatTime`).
+    get openMatNoteMine() {
+      return `Tu tiempo de ${w.openMat} cuenta como ${w.practice}.`
+    },
+    get openMatNoteTheirs() {
+      return `Su tiempo de ${w.openMat} cuenta como ${w.practice}.`
+    },
     // Seconds as `4 h 30 min`, `2 h` or `45 min`; under half a minute, but some, `< 1 min`.
     duration: (seconds: number) => {
       const minutes = Math.round(seconds / 60)

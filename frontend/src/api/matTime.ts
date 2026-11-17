@@ -10,8 +10,8 @@ export type KindTime = {
 }
 
 /** A person's time over a stretch (backend `TimeTotals`). `by_kind` holds the kinds
- * with any time, in the gym's order; `sparring_seconds` sums the sparring kinds, open
- * mats included, and `open_mat_seconds` is the open mats' time alone. */
+ * with any time, in the gym's order; `sparring_seconds` sums the practice kinds
+ * (`is_sparring`: sparring, randori, escalada libre, as the gym names it), open mats included, and `open_mat_seconds` is the open mats' time alone. */
 export type TimeTotals = {
   by_kind: KindTime[]
   sparring_seconds: number

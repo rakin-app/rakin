@@ -5,7 +5,7 @@ import { apiFetch } from './client'
 import type { ClassKind } from './sessions'
 
 /** One block of a session's plan, and what it ran once it has (backend `SessionBlock`). A
- * sparring block is rounds, and its seconds are the rounds' alone, rest not included. */
+ * practice block (`is_sparring`) is rounds, and its seconds are the rounds' alone, rest not included. */
 export type SessionBlock = {
   id: string
   position: number
@@ -20,7 +20,7 @@ export type SessionBlock = {
   rest_seconds: number | null
 }
 
-/** A session's blocks in order (backend `SessionPlan`). An open mat's is one sparring block. */
+/** A session's blocks in order (backend `SessionPlan`). An open mat's is one practice block. */
 export type SessionPlan = {
   session_id: string
   class_kind: ClassKind
@@ -37,7 +37,7 @@ export type SuggestedPlan = {
   blocks: SuggestedBlock[]
 }
 
-/** One block as the plan sends it (backend `PlannedBlock`): a sparring block its rounds,
+/** One block as the plan sends it (backend `PlannedBlock`): a practice block its rounds,
  * any other its seconds. */
 export type PlannedBlock = {
   id: string
@@ -97,7 +97,7 @@ export function recordActual(sessionId: string, blockId: string, actual: BlockAc
   })
 }
 
-/** The most seconds a sparring block may record: the backend's `sparred_at_most`, its
+/** The most seconds a practice block may record: the backend's `sparred_at_most`, its
  * completed rounds and part of the next one, if one was planned. Rest never counts. */
 export function sparredAtMost(completed: number, planned: number, roundSeconds: number): number {
   return Math.min(completed + 1, planned) * roundSeconds

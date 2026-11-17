@@ -5,6 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import type { PersonTime, TimeTotals } from '../api/matTime'
 import { createQueryClient } from '../api/queryClient'
 import { es } from '../i18n/es'
+import { wearPractice } from '../i18n/vocabulary'
 import { MatTime, MyMatTime } from './MatTime'
 
 const copy = es.matTime
@@ -57,6 +58,8 @@ describe('duration', () => {
 })
 
 describe('MatTime', () => {
+  afterEach(() => wearPractice(null))
+
   it('says there is nothing yet when no session was timed', () => {
     render(<MatTime time={time(NONE, { ...NONE, classes: 4 })} mine />)
 
@@ -105,6 +108,17 @@ describe('MatTime', () => {
 
     await userEvent.click(within(region).getByRole('button', { name: copy.allTime }))
     expect(within(region).queryByText(copy.emptyMonth)).not.toBeInTheDocument()
+  })
+
+  // #346: the gym's names for its free practice.
+  it("names the practice and its open mat as the gym does, with no note when they are one", () => {
+    wearPractice({ block: 'Escalada libre', open_mat: 'Escalada libre' })
+    render(<MatTime time={time(MONTH, ALL_TIME)} mine />)
+    const region = card()
+
+    expect(figure(region, 'Escalada libre en total')).toBe('6 h')
+    expect(within(region).getByText(copy.openMat(3, '4 h 30 min'))).toHaveTextContent('Escalada libre: 3 · 4 h 30 min')
+    expect(within(region).queryByText(/cuenta como/)).not.toBeInTheDocument()
   })
 
   it('leaves out the open mat line without open mats', () => {

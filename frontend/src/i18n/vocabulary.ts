@@ -87,6 +87,31 @@ export function currentVocabulary(): Vocabulary {
   return current
 }
 
+/**
+ * What the gym calls its free practice and the open mat made of it (#346, backend
+ * `app.domain.practice`): "Sparring" and "Open mat" in BJJ, "Randori" in judo,
+ * "Escalada libre" in a climbing gym, "Práctica libre" with no activity yet. Names, not
+ * nouns with a gender, so the copy uses them without an article: "rounds de randori".
+ */
+export type PracticeNames = { block: string; open_mat: string }
+
+/** Today's, for a gym that has not answered yet. */
+const DEFAULT_PRACTICE: PracticeNames = { block: 'Sparring', open_mat: 'Open mat' }
+
+let practice: PracticeNames = DEFAULT_PRACTICE
+
+/** The names every screen reads from now on, from `/api/me/role`; today's for none. */
+export function wearPractice(names: Partial<PracticeNames> | null | undefined): void {
+  const block = names?.block || DEFAULT_PRACTICE.block
+  practice = { block, open_mat: names?.open_mat || (names?.block ? block : DEFAULT_PRACTICE.open_mat) }
+}
+
+/** A name inside a sentence: "escalada libre", but "MMA" as written. */
+const inSentence = (name: string) => {
+  const second = name.charAt(1)
+  return second !== second.toLowerCase() ? name : name.charAt(0).toLowerCase() + name.slice(1)
+}
+
 const place = () => PLACE_NOUNS[current.place]
 const member = () => MEMBER_NOUNS[current.members]
 const coach = () => COACH_NOUNS[current.coach]
@@ -183,5 +208,23 @@ export const w = {
   },
   get theCoach() {
     return `${coach().feminine ? 'la' : 'el'} ${coach().one}`
+  },
+
+  // The free practice and its open mat: "sparring", "Escalada libre", "open mat".
+  get practice() {
+    return inSentence(practice.block)
+  },
+  get Practice() {
+    return cap(practice.block)
+  },
+  get openMat() {
+    return inSentence(practice.open_mat)
+  },
+  get OpenMat() {
+    return cap(practice.open_mat)
+  },
+  /** Whether the open mat has a name of its own, as BJJ's "Open mat". */
+  get openMatNamed() {
+    return practice.open_mat !== practice.block
   },
 }

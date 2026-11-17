@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.activities import gym_uses_grades
+from app.api.activities import gym_uses_grades, practice_names
 from app.api.attendance import attended
 from app.api.class_tags import month_of, tag_hours, tags_of_session, year_of
 from app.api.extra_charges import open_lines
@@ -186,7 +186,7 @@ async def my_role(
     and who they are, such as the class timer to the session's coach, Ajustes → Cuenta
     and the gym's name in the sidebar and the page titles; and whether the gym grades,
     for the belts and ranks every screen shows only then (#245); and what the gym calls
-    itself, its members and its coach (#344)."""
+    itself, its members and its coach (#344), and its free practice (#346)."""
     who = (await session.execute(text(WHO), {"me": tenant.person_id, "gym": tenant.gym_id})).one()
     return MyRole(
         role=await role_in_gym(session, tenant),
@@ -199,6 +199,7 @@ async def my_role(
         gym_logo=logo_path(tenant.gym_id, who.logo_version),
         uses_grades=await gym_uses_grades(session),
         vocabulary=vocabulary.read(who.vocabulary),
+        practice=await practice_names(session),
     )
 
 
