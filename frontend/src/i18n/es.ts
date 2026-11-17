@@ -643,6 +643,10 @@ export const es = {
         const tabs = rows > 0 ? [{ tab: w.Members, rows }, ...others] : others
         return `${name}: ${tabs.map((tab) => `${count(tab.rows)} en ${tab.tab}`).join(', ')}`
       },
+      // A Grados tab in a gym none of whose activities grades (#352).
+      get gradosIgnored() {
+        return `Grados: no se importa, porque ninguna actividad ${w.ofThePlace} entrega grados.`
+      },
       otherFile: 'Elegir otra planilla',
       mappingTitle: '¿Qué es cada columna?',
       tabMappingTitle: (tab: string) => `${tab}: ¿qué es cada columna?`,

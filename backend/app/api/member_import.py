@@ -53,6 +53,9 @@ them as the Alumnos tab does, by RUT, else email, else name, and is refused
 the person already has (rank, sub-rank and day) is `existing`, and one an earlier row
 gives them is `repeated`, so a second run adds none. Each is written `source` `import`
 with the run's `import_id`, and no `promoted` event: their latest is their rank now.
+In a gym none of whose activities grades (`gym_uses_grades`, #352) the tab is not read:
+the upload answers `grados_ignored` instead of its rows, the template has no Grados tab,
+and an import sent one anyway writes no grade.
 
 `GET /api/import/template.xlsx` is the sheet to fill in (`app.member_import.template`),
 every header one the mapping suggests by itself.
@@ -73,6 +76,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.activities import gym_uses_grades
 from app.api.grades import readable_scheme
 from app.api.grading import stored_scheme
 from app.api.guardians import family, link
@@ -330,6 +334,10 @@ async def upload_sheet(
     except SheetError as error:
         raise _refused(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
     alumnos, pagos, grados = book.get("alumnos"), book.get("pagos"), book.get("grados")
+    # A gym that does not grade reads no Grados tab, and says so (#352).
+    grados_ignored = grados is not None and not await gym_uses_grades(session)
+    if grados_ignored:
+        grados = None
     return Sheet(
         headers=[] if alumnos is None else alumnos.headers,
         rows=[] if alumnos is None else _sheet_rows(alumnos.rows),
@@ -349,6 +357,7 @@ async def upload_sheet(
             rows=_sheet_rows(grados.rows),
             mapping=suggest_grade_mapping(grados.headers),
         ),
+        grados_ignored=grados_ignored,
     )
 
 
@@ -370,7 +379,8 @@ async def download_template(
 ) -> Response:
     """ "Descargar plantilla": the people's sheet to fill in, in the gym's words (#345),
     with the gym's active plans as the Plan column's choices, and in a gym that grades a
-    Grados tab, its ranks the Grado column's."""
+    Grados tab, its ranks the Grado column's: one with ranks but no activity that grades
+    gets none (#352)."""
     # A drop-in is not a membership, so no row starts one (`dropin_plan`). A name two
     # plans share is offered once: the sheet matches it by name either way.
     plans = {
@@ -381,7 +391,7 @@ async def download_template(
     settings = await session.scalar(
         text("SELECT settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
-    scheme = readable_scheme(settings)
+    scheme = readable_scheme(settings) if await gym_uses_grades(session) else None
     words = words_in(settings)
     return Response(
         content=template([plans[key] for key in sorted(plans)], scheme, words),
@@ -983,7 +993,8 @@ async def import_members(
         payments = PaymentWriter(writer)
         pagos = await _import_payments(payments, body.pagos, today)
     grados = None
-    if body.grados is not None:
+    # A gym that does not grade writes no grade, whatever the request sends (#352).
+    if body.grados is not None and await gym_uses_grades(session):
         grados = await _import_grades(session, tenant, writer, body.grados, today)
     if _wrote(summary, pagos, grados):
         # A dry run's record too, rolled back with the rest: an imported payment names it.

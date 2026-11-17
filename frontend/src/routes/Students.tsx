@@ -3,7 +3,7 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 import { useGrades } from '../api/activities'
 import { gradingSchemeQuery } from '../api/grading'
-import { myAccessQuery, readsLedger } from '../api/me'
+import { myAccessQuery, myselfQuery, readsLedger } from '../api/me'
 import {
   MEMBERSHIP_STATUSES,
   membersQuery,
@@ -91,7 +91,11 @@ export function Students() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const status = search.status ?? []
-  const belt: RankChoice | null = search.belt ? { rank: search.belt, orHigher: search.beltUp === true } : null
+  // A gym known not to grade (#352) filters by no belt: a `?belt=` it is sent is dropped,
+  // not applied with no chip to show it. Until the answer is in, the URL's stands.
+  const gradingOff = useQuery(myselfQuery()).data?.uses_grades === false
+  const beltSet = gradingOff ? undefined : search.belt
+  const belt: RankChoice | null = beltSet ? { rank: beltSet, orHigher: search.beltUp === true } : null
   const filters = {
     q: search.q ?? '',
     status,
@@ -114,7 +118,12 @@ export function Students() {
     search.missingRut !== undefined ||
     search.missingGuardian !== undefined ||
     search.away !== undefined ||
-    search.belt !== undefined
+    beltSet !== undefined
+
+  useEffect(() => {
+    if (!gradingOff || search.belt === undefined) return
+    void navigate({ search: (prev) => ({ ...prev, belt: undefined, beltUp: undefined }), replace: true })
+  }, [gradingOff, search.belt, navigate])
 
   const [draft, setDraft] = useState(filters.q)
   useEffect(() => {
@@ -188,7 +197,7 @@ export function Students() {
   const showPlans = plans.data !== undefined && plans.data.length > 0
   const showPrograms = programs.data !== undefined && programs.data.length > 0
   const showRanks = grades && hasRanks(scheme.data)
-  const moreSet = [search.plan, search.program, search.belt].filter((v) => v !== undefined).length
+  const moreSet = [search.plan, search.program, beltSet].filter((v) => v !== undefined).length
   const rows = members.data?.pages.flatMap((page) => page.items) ?? []
   const total = members.data?.pages[0]?.total
 

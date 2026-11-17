@@ -24,7 +24,7 @@ from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_grades import gym_with
-from tests.test_import_grades import GRADES, stored_grades
+from tests.test_import_grades import GRADES, graded_gym, stored_grades
 from tests.test_import_history import HISTORY, audit, find, person
 from tests.test_import_payments import PAYMENTS, paid, stored
 from tests.test_plans import add_staff
@@ -49,7 +49,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database, client: TestClient) -> uuid.UUID:
-    return gym_with(client, db)
+    return graded_gym(client, db)
 
 
 def tab(rows: list[list[str]], mapping: dict[str, int]) -> dict[str, Any]:
