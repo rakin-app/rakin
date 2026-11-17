@@ -2597,6 +2597,12 @@ export const es = {
         queued: 'Sin conexión: quedó en este teléfono. Se guardará cuando vuelva la señal.',
         failed: 'No pudimos guardar la asistencia. Inténtalo de nuevo.',
         dropped: 'La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.',
+        // Unmarking a drop-in visit gives its charge back only while nothing was paid, the day it was added (#130).
+        visitKept: {
+          paid: 'La clase suelta ya está pagada: sigue presente. El dueño o un admin la devuelve en Pagos.',
+          pending: 'Hay un comprobante esperando por esa clase suelta: sigue presente. Se revisa en Pagos.',
+          past: 'Esa clase suelta se agregó otro día: sigue presente. El dueño o un admin la anula en Pagos.',
+        },
         guest: {
           get open() {
             return `+ Agregar ${w.member} de prueba`
@@ -2619,6 +2625,30 @@ export const es = {
           done: (name: string) => `${name} quedó presente.`,
           member: (name: string) => `${name} ya es ${w.member}: lo marcamos presente.`,
           invalid: 'Revisa el RUT o el correo, y el celular: 9 dígitos, empezando por 9.',
+          offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
+          hasLeft: 'Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.',
+          failed: 'No pudimos agregarlo. Inténtalo de nuevo.',
+        },
+        // "Clase suelta": someone paying for this one class (#130).
+        visitor: {
+          open: '+ Agregar visitante',
+          label: 'Visitante',
+          name: 'Nombre',
+          phone: 'Celular (WhatsApp)',
+          phonePlaceholder: '9 1234 5678',
+          plan: 'Clase suelta',
+          paid: 'Pago',
+          unpaid: 'Pendiente',
+          cash: 'Pagó en efectivo',
+          transfer: 'Pagó por transferencia',
+          submit: 'Agregar y marcar presente',
+          working: 'Agregando…',
+          cancel: 'Cancelar',
+          noPlans: 'Para agregar visitantes, el dueño o un admin crea un plan de clase suelta.',
+          done: (name: string) => `${name} quedó presente. La clase suelta queda en Pagos.`,
+          paidDone: (name: string) => `${name} quedó presente, con la clase suelta pagada.`,
+          member: (name: string) => `${name} ya está en la lista: lo marcamos presente.`,
+          invalid: 'Revisa el nombre y el celular: 9 dígitos, empezando por 9.',
           offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
           hasLeft: 'Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.',
           failed: 'No pudimos agregarlo. Inténtalo de nuevo.',

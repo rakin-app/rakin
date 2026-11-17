@@ -219,7 +219,8 @@ async def insert_membership(
     started: domain.Membership,
     started_at: datetime,
 ) -> uuid.UUID:
-    """Write `started`, a new membership of `person_id` on `plan_id`, in the current gym.
+    """Write `started`, a new membership of `person_id` on `plan_id`, in the current gym;
+    one Cancelled already, a drop-in visit (`domain.drop_in`), with its reason and now.
     Raises `PersonHasLeft` for someone who has left it: their record is read `FOR SHARE`,
     so a baja and a new membership take turns."""
     left_on = await session.scalar(
@@ -230,9 +231,11 @@ async def insert_membership(
     result = await session.execute(
         text(
             "INSERT INTO membership (gym_id, person_id, plan_id, status, anchor_day,"
-            " started_at, current_period_end, credits_remaining)"
+            " started_at, current_period_end, credits_remaining, cancel_reason, cancelled_at)"
             " VALUES (current_setting('app.gym_id')::uuid, :person_id, :plan_id, :status,"
-            " :anchor_day, :started_at, :current_period_end, :credits_remaining)"
+            " :anchor_day, :started_at, :current_period_end, :credits_remaining,"
+            " CAST(:cancel_reason AS text),"
+            " CASE WHEN CAST(:cancel_reason AS text) IS NULL THEN NULL ELSE now() END)"
             " RETURNING id"
         ),
         {
@@ -243,6 +246,7 @@ async def insert_membership(
             "started_at": started_at,
             "current_period_end": started.current_period_end,
             "credits_remaining": started.credits_remaining,
+            "cancel_reason": started.cancel_reason,
         },
     )
     membership_id: uuid.UUID = result.scalar_one()
