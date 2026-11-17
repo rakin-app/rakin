@@ -10,6 +10,7 @@ import { App } from '../App'
 import { es } from '../i18n/es'
 import { wearPractice } from '../i18n/vocabulary'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const settings = es.admin.settings
 const copy = settings.programs
@@ -94,7 +95,7 @@ function stubApi({
   )
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
-    if (path === '/api/me/role') return { body: { role, practice } }
+    if (path === '/api/me/role') return { body: { ...asRole(role), practice } }
     if (path === '/api/activities') return { body: activities }
     if (path === '/api/programs' && method === 'GET') return { body: programs }
     if (path === '/api/programs' && method === 'POST') {

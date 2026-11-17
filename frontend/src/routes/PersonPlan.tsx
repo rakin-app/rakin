@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
-import type { StaffRole } from '../api/me'
+import { managesGym, type Access } from '../api/me'
 import { changePlan, planChangeQuery, startMembership, startQuery, type Membership, type Person } from '../api/member'
 import { welcomeQuery } from '../api/people'
 import { plansQuery } from '../api/plans'
@@ -34,8 +34,8 @@ export function changesPlan(membership: Membership): boolean {
 
 /** Whether "Asignar plan" is offered: by the owner or an admin, to someone on the roster
  * with no plan running. */
-export function assignsPlan(person: Person, membership: Membership | undefined, role: StaffRole | null | undefined): boolean {
-  return (role === 'owner' || role === 'admin') && !person.left_on && !isLive(membership)
+export function assignsPlan(person: Person, membership: Membership | undefined, access: Access | null | undefined): boolean {
+  return managesGym(access) && !person.left_on && !isLive(membership)
 }
 
 /**
@@ -50,18 +50,18 @@ export function assignsPlan(person: Person, membership: Membership | undefined, 
 export function AssignPlan({
   person,
   membership,
-  role,
+  access,
   done,
   setDone,
 }: {
   person: Person
   membership: Membership | undefined
-  role: StaffRole | null | undefined
+  access: Access | null | undefined
   done: string | null
   setDone: (message: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  if ((role !== 'owner' && role !== 'admin') || person.left_on) return null
+  if (!managesGym(access) || person.left_on) return null
   // Started: the plan card has it now, and what was done.
   if (isLive(membership)) return null
 

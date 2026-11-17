@@ -7,6 +7,7 @@ import type { Requirement } from '../api/requirements'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.settings.requirements
 const form = copy.form
@@ -43,7 +44,7 @@ function stubApi({ role = 'owner', initial = [WAIVER, MEDICAL] }: { role?: 'owne
       const body = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Record<string, unknown>
       calls.push({ method, path: url.pathname, body })
       const path = url.pathname
-      if (path === '/api/me/role') return Response.json({ role })
+      if (path === '/api/me/role') return Response.json(asRole(role))
       if (path === '/api/requirements' && method === 'GET') return Response.json(list)
       if (path === '/api/requirements' && method === 'POST') {
         const created = { id: 'r-new', sensitive: false, visible_to: 'staff', active: true, ...body } as Requirement

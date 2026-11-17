@@ -37,14 +37,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import Row, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.custom_fields import field_cipher
+from app.api.custom_fields import field_cipher, reach_of
 from app.api.history import refuse_outside_history
 from app.api.people import NOT_FOUND, in_gym
 from app.domain import custom_fields as cf
 from app.domain.dates import gym_today
 from app.domain.membership import LIVE
 from app.domain.requirements import RequirementState, expires_on, state_of
-from app.roles import FORBIDDEN, AdminSession, Role, StaffSession, role_in_gym
+from app.permissions import FORBIDDEN, AdminSession, StaffSession, standing_in_gym
 from app.schemas.requirements import (
     MyRequirement,
     PersonRequirement,
@@ -136,11 +136,12 @@ def bound_to(record_id: uuid.UUID) -> str:
     return f"requirement/{record_id}"
 
 
-async def _role(session: AsyncSession, tenant: Tenant) -> Role:
-    role = await role_in_gym(session, tenant)
-    # The session dependency already refused anyone without a staff role.
-    assert role is not None
-    return role
+async def _reach(session: AsyncSession, tenant: Tenant) -> cf.VisibleTo:
+    """The narrowest `visible_to` the caller reaches (`reach_of`)."""
+    reach = reach_of(await standing_in_gym(session, tenant))
+    # The session dependency already refused anyone not on the team.
+    assert reach is not None
+    return reach
 
 
 async def _today(session: AsyncSession, tenant: Tenant) -> date:
@@ -150,12 +151,12 @@ async def _today(session: AsyncSession, tenant: Tenant) -> date:
     return gym_today(str(zone))
 
 
-def _sees(role: Role, visible_to: str) -> bool:
-    return cf.sees(role, {"visible_to": visible_to})
+def _sees(reach: cf.VisibleTo, visible_to: str) -> bool:
+    return cf.sees(reach, {"visible_to": visible_to})
 
 
-def _only_the_owner(role: Role, sent: set[str]) -> None:
-    if role is not Role.OWNER and sent & {"sensitive", "visible_to"}:
+def _only_the_owner(reach: cf.VisibleTo, sent: set[str]) -> None:
+    if reach is not cf.VisibleTo.OWNER and sent & {"sensitive", "visible_to"}:
         raise FORBIDDEN
 
 
@@ -164,20 +165,20 @@ async def _all(session: AsyncSession, *, lock: bool = False) -> Sequence[Row[Any
     return (await session.execute(text(sql))).all()
 
 
-async def _visible(session: AsyncSession, role: Role) -> list[Requirement]:
+async def _visible(session: AsyncSession, reach: cf.VisibleTo) -> list[Requirement]:
     return [
         Requirement.model_validate(r, from_attributes=True)
         for r in await _all(session)
-        if _sees(role, r.visible_to)
+        if _sees(reach, r.visible_to)
     ]
 
 
 async def _get(
-    session: AsyncSession, role: Role, requirement_id: uuid.UUID, lock: str = ""
+    session: AsyncSession, reach: cf.VisibleTo, requirement_id: uuid.UUID, lock: str = ""
 ) -> Requirement:
     sql = f"{SELECT_REQUIREMENT} WHERE id = :id" + (f" FOR {lock}" if lock else "")
     row = (await session.execute(text(sql), {"id": requirement_id})).one_or_none()
-    if row is None or not _sees(role, row.visible_to):
+    if row is None or not _sees(reach, row.visible_to):
         raise REQUIREMENT_NOT_FOUND
     return Requirement.model_validate(row, from_attributes=True)
 
@@ -185,15 +186,15 @@ async def _get(
 @router.get("/api/requirements")
 async def list_requirements(tenant: CurrentTenant, session: StaffSession) -> list[Requirement]:
     """The requirements the caller sees, in order, inactive ones included."""
-    return await _visible(session, await _role(session, tenant))
+    return await _visible(session, await _reach(session, tenant))
 
 
 @router.post("/api/requirements", status_code=status.HTTP_201_CREATED)
 async def create_requirement(
     body: RequirementCreate, tenant: CurrentTenant, session: AdminSession
 ) -> Requirement:
-    role = await _role(session, tenant)
-    _only_the_owner(role, body.model_fields_set)
+    reach = await _reach(session, tenant)
+    _only_the_owner(reach, body.model_fields_set)
     visible_to = body.visible_to or cf.default_visible_to(body.sensitive)
     created = await session.scalar(
         text(
@@ -205,7 +206,7 @@ async def create_requirement(
         {**body.model_dump(exclude={"visible_to"}), "visible_to": visible_to.value},
     )
     assert created is not None
-    return await _get(session, role, created)
+    return await _get(session, reach, created)
 
 
 @router.put("/api/requirements/order")
@@ -213,11 +214,11 @@ async def reorder_requirements(
     body: RequirementOrder, tenant: CurrentTenant, session: AdminSession
 ) -> list[Requirement]:
     """Those the caller sees in the order of `ids`; the others keep their places."""
-    role = await _role(session, tenant)
+    reach = await _reach(session, tenant)
     rows = await _all(session, lock=True)
     defs = [{"key": str(r.id), "visible_to": r.visible_to} for r in rows]
     try:
-        ordered = cf.reorder(defs, [str(i) for i in body.ids], role)
+        ordered = cf.reorder(defs, [str(i) for i in body.ids], reach)
     except ValueError:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "send every requirement you see, once each"
@@ -230,7 +231,7 @@ async def reorder_requirements(
         ),
         {"ids": [uuid.UUID(d["key"]) for d in ordered]},
     )
-    return await _visible(session, role)
+    return await _visible(session, reach)
 
 
 @router.patch("/api/requirements/{requirement_id}")
@@ -241,10 +242,10 @@ async def update_requirement(
     tenant: CurrentTenant,
     session: AdminSession,
 ) -> Requirement:
-    role = await _role(session, tenant)
-    found = await _get(session, role, requirement_id, lock="UPDATE")
+    reach = await _reach(session, tenant)
+    found = await _get(session, reach, requirement_id, lock="UPDATE")
     changes = body.model_dump(exclude_unset=True)
-    _only_the_owner(role, set(changes))
+    _only_the_owner(reach, set(changes))
     if changes.get("sensitive") and not found.sensitive and "visible_to" not in changes:
         changes["visible_to"] = cf.VisibleTo.OWNER
     updated = found.model_copy(update=changes)
@@ -261,7 +262,7 @@ async def update_requirement(
             "id": requirement_id,
         },
     )
-    return await _get(session, role, requirement_id)
+    return await _get(session, reach, requirement_id)
 
 
 async def _reseal(
@@ -307,11 +308,11 @@ async def _current(session: AsyncSession, person_id: uuid.UUID) -> Sequence[Row[
 async def _person_requirements(
     session: AsyncSession, tenant: Tenant, cipher: cf.FieldCipher, person_id: uuid.UUID
 ) -> list[PersonRequirement]:
-    role = await _role(session, tenant)
+    reach = await _reach(session, tenant)
     today = await _today(session, tenant)
     out = []
     for r in await _current(session, person_id):
-        if not _sees(role, r.visible_to):
+        if not _sees(reach, r.visible_to):
             continue
         note = r.note
         if r.note_secret is not None:
@@ -355,9 +356,9 @@ async def record_requirement(
     """A new record of it, which becomes the person's current one; the last is kept."""
     if not await in_gym(session, person_id):
         raise NOT_FOUND
-    role = await _role(session, tenant)
+    reach = await _reach(session, tenant)
     # Held to the commit: whether the note is sealed is decided on a settled requirement.
-    requirement = await _get(session, role, requirement_id, lock="SHARE")
+    requirement = await _get(session, reach, requirement_id, lock="SHARE")
     if not requirement.active:
         raise REQUIREMENT_NOT_FOUND
     refuse_outside_history("done_on", body.done_on, await _today(session, tenant))
@@ -392,7 +393,7 @@ async def record_requirement(
 
 async def _flags(
     session: AsyncSession,
-    role: Role,
+    reach: cf.VisibleTo,
     today: date,
     people: Sequence[uuid.UUID],
     states: frozenset[RequirementState],
@@ -401,7 +402,7 @@ async def _flags(
     if not people:
         return out
     for r in (await session.execute(FLAGS, {"people": list(people)})).all():
-        if not _sees(role, r.visible_to):
+        if not _sees(reach, r.visible_to):
             continue
         state = state_of(r.done_on, r.valid_months, today)
         if state not in states:
@@ -422,8 +423,8 @@ async def requirement_flags(
 ) -> dict[uuid.UUID, list[RequirementFlag]]:
     """For each of `people` who has one, the requirements the caller sees that they lack
     or whose record expired, in the gym's order: the roster's and Entrada's warning."""
-    role = await _role(session, tenant)
-    return await _flags(session, role, await _today(session, tenant), people, UNMET)
+    reach = await _reach(session, tenant)
+    return await _flags(session, reach, await _today(session, tenant), people, UNMET)
 
 
 @router.get("/api/requirements/due")
@@ -431,10 +432,10 @@ async def requirements_due(tenant: CurrentTenant, session: StaffSession) -> list
     """Hoy's "Requisitos": everyone with a live membership short on a requirement the
     caller sees. Those who lack one or whose one expired first, by name; then those whose
     one expires within 30 days, soonest first."""
-    role = await _role(session, tenant)
+    reach = await _reach(session, tenant)
     today = await _today(session, tenant)
     people = (await session.execute(LIVE_PEOPLE)).all()
-    flags = await _flags(session, role, today, [p.person_id for p in people], DUE)
+    flags = await _flags(session, reach, today, [p.person_id for p in people], DUE)
     due = [
         RequirementsDue(person_id=p.person_id, name=p.name, requirements=flags[p.person_id])
         for p in people

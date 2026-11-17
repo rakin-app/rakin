@@ -9,6 +9,7 @@ import type { ClassSession, ClassType } from '../api/sessions'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.session
 
@@ -138,7 +139,7 @@ function stubApi({
   )
 
   function route(path: string, method: string, body: unknown): Answer {
-    if (path === '/api/me/role') return { body: { role, person_id: me } }
+    if (path === '/api/me/role') return { body: { ...asRole(role), person_id: me } }
     if (path === '/api/sessions' && method === 'GET') {
       return { body: { date: '2026-11-10', timezone: 'America/Santiago', sessions: [current] } }
     }

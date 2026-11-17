@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.memberships import change_starts, locked_membership
 from app.api.programs import require_program
 from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
-from app.roles import AdminSession, SeesMoney, StaffSession
+from app.permissions import AdminSession, SeesMoney, StaffSession
 from app.schemas.plans import (
     COLUMNS,
     PLAN,

@@ -9,6 +9,7 @@ import type { ClassSession } from '../api/sessions'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.session.attendance
 
@@ -122,7 +123,7 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
 
   function route(path: string, method: string, body: unknown): Answer {
     // A gym one of whose activities grades (#245), unless `me` says otherwise.
-    if (path === '/api/me/role') return { body: stub.me ?? { role: 'coach', person_id: 'coach', uses_grades: true } }
+    if (path === '/api/me/role') return { body: stub.me ?? { ...asRole('coach'), person_id: 'coach', uses_grades: true } }
     if (path === '/api/sessions' && method === 'GET') {
       return { body: { date: '2026-11-09', timezone: 'America/Santiago', sessions: [SESSION] } }
     }
@@ -289,7 +290,7 @@ describe('Asistencia', () => {
 
   it('shows no belt and no rank while no activity of the gym grades (#245)', async () => {
     const rank = { ...ANTONIA.rank!, belt: { colors: ['#1f4fa3'], stripes: 0, max_stripes: 4 } }
-    stubApi({ members: [{ ...ANTONIA, rank }, PAULA], me: { role: 'coach', person_id: 'coach', uses_grades: false } })
+    stubApi({ members: [{ ...ANTONIA, rank }, PAULA], me: { ...asRole('coach'), person_id: 'coach', uses_grades: false } })
     renderClass()
 
     const [antonia] = (await rosterList()).getAllByRole('button')
@@ -723,7 +724,7 @@ describe('Visitante (#130)', () => {
   })
 
   it('lets an owner record that they paid at the desk', async () => {
-    const api = stubApi({ plans: [DROPIN_PLAN], me: { role: 'owner', person_id: 'owner', uses_grades: true } })
+    const api = stubApi({ plans: [DROPIN_PLAN], me: { ...asRole('owner'), person_id: 'owner', uses_grades: true } })
     renderClass()
 
     const form = await addVisitor('Tomás Vidal', '9 1234 5678')
@@ -828,7 +829,7 @@ describe('Tema de la clase, when the session expires (#212)', () => {
     await screen.findByRole('heading', { level: 1, name: es.signIn.title })
 
     cleanup()
-    stubApi({ me: { role: 'owner', person_id: 'someone-else' } })
+    stubApi({ me: { ...asRole('owner'), person_id: 'someone-else' } })
     renderClass()
     const other = await screen.findByRole('form', { name: form.label })
     expect(within(other).getByLabelText(form.topic)).toHaveValue('')

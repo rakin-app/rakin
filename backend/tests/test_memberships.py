@@ -25,7 +25,16 @@ from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
-from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
+from tests.pg import (
+    Database,
+    in_gym,
+    make_staff,
+    migrate,
+    run,
+    seed_gym,
+    seeded_today,
+    throwaway_database,
+)
 from tests.test_guardians import add_person, new_kid
 from tests.test_proofs import RecordingMailer, sent_notices
 
@@ -500,9 +509,7 @@ def add_staff(db: Database, gym: uuid.UUID, role: str) -> uuid.UUID:
         await conn.execute(
             "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'x')", gym, staff
         )
-        await conn.execute(
-            "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, $3)", gym, staff, role
-        )
+        await make_staff(conn, gym, staff, role)
 
     run(db.admin_url, query)
     return staff

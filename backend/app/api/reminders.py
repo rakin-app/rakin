@@ -56,7 +56,7 @@ from app.notices.whatsapp import (
     payment_overdue,
     proof_rejected_followup,
 )
-from app.roles import LedgerSession
+from app.permissions import LedgerSession
 from app.schemas.gym import DEFAULT_REMINDER_EVERY_DAYS, Channels
 from app.schemas.reminders import Emailed, PaymentReminder, Reminded, ReminderKind
 from app.tenancy import Tenant, current_tenant

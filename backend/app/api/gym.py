@@ -40,7 +40,7 @@ from app.logos import (
     make_variants,
     new_version,
 )
-from app.roles import AdminSession
+from app.permissions import AdminSession
 from app.schemas.gym import SETTINGS_KEYS, GymSettings, GymSettingsUpdate
 from app.tenancy import Tenant, current_tenant
 

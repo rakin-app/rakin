@@ -6,6 +6,7 @@ import { createQueryClient } from './api/queryClient'
 import { App } from './App'
 import { es } from './i18n/es'
 import { createAppRouter } from './router'
+import { asRole } from './test/access'
 
 // An owner, who sees every tab; anything else the screens ask for is not found.
 beforeEach(() => {
@@ -13,7 +14,7 @@ beforeEach(() => {
     'fetch',
     vi.fn<typeof fetch>(async (input) => {
       const owner = new URL(String(input), 'http://localhost').pathname === '/api/me/role'
-      const me = { role: 'owner', person_id: 'me', name: 'Martín', email: null, gym_name: 'Academia Sur' }
+      const me = { ...asRole('owner'), person_id: 'me', name: 'Martín', email: null, gym_name: 'Academia Sur' }
       return new Response(JSON.stringify(owner ? me : { detail: 'Not Found' }), {
         status: owner ? 200 : 404,
         headers: { 'Content-Type': 'application/json' },
@@ -151,7 +152,7 @@ describe('signing in', () => {
   )
 
   it('lands a staff member in /admin with the full nav, and a member on /me', async () => {
-    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }))
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: asRole('owner') } : { status: 404 }))
     const router = renderAt('/')
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
     expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual([
@@ -165,7 +166,7 @@ describe('signing in', () => {
   })
 
   it('lands a member on /me', async () => {
-    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: null } } : { status: 404 }))
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: asRole(null) } : { status: 404 }))
     const router = renderAt('/')
 
     expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
@@ -174,7 +175,7 @@ describe('signing in', () => {
 
   it('returns them to the page they had asked for, once', async () => {
     localStorage.setItem('rakin.returnTo', '/admin/pagos')
-    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }))
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: asRole('owner') } : { status: 404 }))
     const router = renderAt('/')
 
     expect(await screen.findByRole('heading', { level: 1, name: es.admin.payments.title })).toBeInTheDocument()
@@ -184,7 +185,7 @@ describe('signing in', () => {
 
   it('lands a member on /me although they had asked for an admin page', async () => {
     localStorage.setItem('rakin.returnTo', '/admin/pagos')
-    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: null } } : { status: 404 }))
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: asRole(null) } : { status: 404 }))
     const router = renderAt('/')
 
     expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
@@ -195,7 +196,7 @@ describe('signing in', () => {
     let live = true
     stubApi((path) => {
       if (!live) return { status: 401 }
-      return path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }
+      return path === '/api/me/role' ? { status: 200, body: asRole('owner') } : { status: 404 }
     })
     const router = renderAt('/admin')
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
@@ -212,7 +213,7 @@ describe('signing in', () => {
   })
 
   it('says the session expired when a page is opened after it did (#212)', async () => {
-    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: { role: null } } : { status: 404 }))
+    stubApi((path) => (path === '/api/me/role' ? { status: 200, body: asRole(null) } : { status: 404 }))
     renderAt('/me')
     await screen.findByRole('heading', { level: 1, name: es.me.home.title })
     cleanup()
@@ -227,7 +228,7 @@ describe('signing in', () => {
 
   it('does not say a session expired to someone who signed out, or never signed in', async () => {
     stubApi((path) =>
-      path === '/api/me/role' ? { status: 200, body: { role: null } } : path === '/api/auth/logout' ? { status: 204 } : { status: 404 },
+      path === '/api/me/role' ? { status: 200, body: asRole(null) } : path === '/api/auth/logout' ? { status: 204 } : { status: 404 },
     )
     renderAt('/me')
     await userEvent.click(await screen.findByRole('button', { name: es.signOut.label }))
@@ -244,16 +245,16 @@ describe('signing in', () => {
 })
 
 describe('staff who also train (#214)', () => {
-  const asRole = (role: string | null, studentPage: boolean) =>
+  const signedInAs = (role: string | null, studentPage: boolean) =>
     stubApi((path) =>
       path === '/api/me/role'
-        ? { status: 200, body: { role, person_id: 'me', name: 'Felipe', email: null, gym_name: 'Academia Sur', student_page: studentPage } }
+        ? { status: 200, body: { ...asRole(role), person_id: 'me', name: 'Felipe', email: null, gym_name: 'Academia Sur', student_page: studentPage } }
         : { status: 404 },
     )
 
   it('lands them on /me when that is the page they asked for', async () => {
     localStorage.setItem('rakin.returnTo', '/me')
-    asRole('coach', true)
+    signedInAs('coach', true)
     const router = renderAt('/')
 
     expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
@@ -261,7 +262,7 @@ describe('staff who also train (#214)', () => {
   })
 
   it('gives staff with a membership a "Mi página" link in the nav, and the student page a way back', async () => {
-    asRole('coach', true)
+    signedInAs('coach', true)
     const router = renderAt('/admin')
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
 
@@ -278,7 +279,7 @@ describe('staff who also train (#214)', () => {
     const calls = stubApi((path) => {
       if (path === '/api/auth/logout') return { status: 204 }
       return path === '/api/me/role'
-        ? { status: 200, body: { role: 'coach', person_id: 'me', name: 'Felipe', email: null, gym_name: 'Academia Sur', student_page: true } }
+        ? { status: 200, body: { ...asRole('coach'), person_id: 'me', name: 'Felipe', email: null, gym_name: 'Academia Sur', student_page: true } }
         : { status: 404 }
     })
     const router = renderAt('/admin')
@@ -303,7 +304,7 @@ describe('staff who also train (#214)', () => {
   })
 
   it('gives an owner no account menu: theirs is Ajustes › Cuenta', async () => {
-    asRole('owner', false)
+    signedInAs('owner', false)
     renderAt('/admin')
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
     await within(nav).findByRole('link', { name: es.nav.settings })
@@ -312,7 +313,7 @@ describe('staff who also train (#214)', () => {
   })
 
   it('shows no "Mi página" to staff without a membership', async () => {
-    asRole('owner', false)
+    signedInAs('owner', false)
     renderAt('/admin')
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
     await within(nav).findByRole('link', { name: es.nav.settings })
@@ -321,7 +322,7 @@ describe('staff who also train (#214)', () => {
   })
 
   it('shows a member no way into the panel', async () => {
-    asRole(null, true)
+    signedInAs(null, true)
     renderAt('/me')
 
     expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
@@ -344,7 +345,7 @@ describe('one trip to sign in', () => {
     let live = true
     const calls = stubApi((path) => {
       if (!live) return { status: 401 }
-      return path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }
+      return path === '/api/me/role' ? { status: 200, body: asRole('owner') } : { status: 404 }
     })
     const router = renderAt('/admin')
     const { queryClient } = router.options.context
@@ -382,7 +383,7 @@ describe('one trip to sign in', () => {
     let live = true
     stubApi((path) => {
       if (!live) return { status: 401 }
-      return path === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }
+      return path === '/api/me/role' ? { status: 200, body: asRole('owner') } : { status: 404 }
     })
     const router = renderAt('/admin')
     const { queryClient } = router.options.context
@@ -416,7 +417,7 @@ describe('Cerrar sesión', () => {
         return { status: 204 }
       }
       if (!live) return { status: 401 }
-      return api === '/api/me/role' ? { status: 200, body: { role } } : { status: 404 }
+      return api === '/api/me/role' ? { status: 200, body: asRole(role) } : { status: 404 }
     })
     const router = renderAt(path)
 
@@ -430,7 +431,7 @@ describe('Cerrar sesión', () => {
   it('stays put and says so when the session could not be ended', async () => {
     stubApi((api) => {
       if (api === '/api/auth/logout') return { status: 503 }
-      return api === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }
+      return api === '/api/me/role' ? { status: 200, body: asRole('owner') } : { status: 404 }
     })
     const router = renderAt('/admin')
 
@@ -457,7 +458,7 @@ describe('other paths', () => {
   })
 
   it('keeps the admin shell around an unknown /admin path (#362)', async () => {
-    stubApi((api) => (api === '/api/me/role' ? { status: 200, body: { role: 'owner' } } : { status: 404 }))
+    stubApi((api) => (api === '/api/me/role' ? { status: 200, body: asRole('owner') } : { status: 404 }))
     renderAt('/admin/nada')
 
     expect(await screen.findByRole('heading', { level: 1, name: es.notFound.title })).toBeInTheDocument()

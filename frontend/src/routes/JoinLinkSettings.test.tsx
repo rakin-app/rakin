@@ -7,6 +7,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.settings.joinLink
 
@@ -42,7 +43,7 @@ function stubApi(initial: JoinLink | null = null, { privacy = true }: { privacy?
       const body = init?.body ? JSON.parse(String(init.body)) : undefined
       calls.push({ method, path: url.pathname, body })
       let answer: { status?: number; body?: unknown } = { status: 404, body: { detail: 'Not Found' } }
-      if (url.pathname === '/api/me/role') answer = { body: { role: 'owner', person_id: 'me' } }
+      if (url.pathname === '/api/me/role') answer = { body: { ...asRole('owner'), person_id: 'me' } }
       if (url.pathname === '/api/programs') answer = { body: [{ id: 'kids', name: 'Kids', active: true }] }
       if (url.pathname === '/api/gym/settings') {
         answer = { body: { name: 'Academia Sur', privacy: privacy ? PRIVACY : null } }

@@ -14,7 +14,7 @@ import {
 import { useGrades } from '../api/activities'
 import { gradingSchemeQuery } from '../api/grading'
 import type { PersonRef } from '../api/ledger'
-import { myRoleQuery, readsLedger } from '../api/me'
+import { myAccessQuery, readsLedger } from '../api/me'
 import { membersPath, membersQuery, plansQuery, programsQuery, type MemberRow } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
 import { BackLink } from '../components/BackLink'
@@ -44,12 +44,12 @@ const PICKER_ROWS = 8
  */
 export function ExtraCharges() {
   usePageTitle(copy.title)
-  const role = useQuery(myRoleQuery())
-  if (!readsLedger(role.data)) {
+  const access = useQuery(myAccessQuery())
+  if (!readsLedger(access.data)) {
     return (
       <PageContainer>
         <PageHeader title={copy.title} />
-        {role.isSuccess && <p className="extra__note">{t.admin.payments.coachesOnly}</p>}
+        {access.isSuccess && <p className="extra__note">{t.admin.payments.coachesOnly}</p>}
       </PageContainer>
     )
   }

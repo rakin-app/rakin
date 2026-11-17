@@ -46,7 +46,7 @@ from app.api.people import NOT_FOUND as PERSON_NOT_FOUND
 from app.api.people import in_gym
 from app.api.programs import execute_refusing
 from app.domain.dates import gym_today, start_of_local_day
-from app.roles import ADMIN_ROLES, FORBIDDEN, StaffSession, role_in_gym
+from app.permissions import FORBIDDEN, Permission, StaffSession, holds
 from app.schemas.blocks import (
     MAX_BLOCK_SECONDS,
     BlockActual,
@@ -160,7 +160,7 @@ async def _held(session: AsyncSession, session_id: uuid.UUID, *, lock: bool = Fa
 async def _runs(session: AsyncSession, tenant: Tenant, held: _Held) -> None:
     """A 403 unless the person acting is the session's coach, an owner or an admin; a
     409 if the class is cancelled."""
-    if held.coach_id != tenant.person_id and await role_in_gym(session, tenant) not in ADMIN_ROLES:
+    if held.coach_id != tenant.person_id and not await holds(session, tenant, Permission.GYM_SETUP):
         raise FORBIDDEN
     if held.cancelled:
         raise CANCELLED

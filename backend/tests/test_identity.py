@@ -20,7 +20,7 @@ from app.domain.rut import check_digit, format_rut
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import Database, in_gym, make_staff, migrate, run, seed_gym, throwaway_database
 
 pytestmark = pytest.mark.postgres
 
@@ -436,9 +436,7 @@ def test_a_record_under_a_shared_rut_moves_to_the_person_who_keeps_it() -> None:
                 other,
                 plan,
             )
-            await conn.execute(
-                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')", norte, other
-            )
+            await make_staff(conn, norte, other, "coach")
 
         run(db.admin_url, seed)
         migrate(db)

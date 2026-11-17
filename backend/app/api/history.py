@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import NOT_FOUND, read_person
 from app.domain.dates import add_months, gym_today
-from app.roles import AdminSession, LedgerSession
+from app.permissions import AdminSession, LedgerSession
 from app.schemas.history import (
     HistoryPayment,
     HistoryPaymentIn,

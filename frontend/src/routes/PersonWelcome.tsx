@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from '@tanstack/react-router'
-import type { StaffRole } from '../api/me'
+import { managesGym, type Access } from '../api/me'
 import type { Person } from '../api/member'
 import { sendWelcome, welcomeQuery, WELCOME_WAIT_MS } from '../api/people'
 import { useSubmit } from '../api/submit'
@@ -19,8 +19,8 @@ const copy = t.admin.member.access
  * ticked, it waits a few seconds for it to be recorded. An address no mail goes to
  * (#104) says why instead, with nothing to send: a new address in Datos is the fix.
  */
-export function PersonWelcome({ person, role }: { person: Person; role: StaffRole | null | undefined }) {
-  const manages = role === 'owner' || role === 'admin'
+export function PersonWelcome({ person, access }: { person: Person; access: Access | null | undefined }) {
+  const manages = managesGym(access)
   const welcomeSince = useLocation({ select: (location) => location.state.welcomeSince ?? null })
   const state = useQuery({ ...welcomeQuery(person.id, welcomeSince), enabled: manages && !person.left_on })
   const queryClient = useQueryClient()

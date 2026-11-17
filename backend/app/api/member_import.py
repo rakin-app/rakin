@@ -117,7 +117,7 @@ from app.member_import.rows import (
 )
 from app.member_import.sheet import SheetError, Tab, read_book
 from app.member_import.template import template, template_name
-from app.roles import AdminSession
+from app.permissions import AdminSession
 from app.schemas.member_import import (
     FileName,
     GradeImport,

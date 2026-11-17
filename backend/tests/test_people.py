@@ -22,7 +22,7 @@ from app.schemas.people import PersonCreate, PersonUpdate
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_email
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import Database, in_gym, make_staff, migrate, run, seed_gym, throwaway_database
 
 # --- input rules, no database -----------------------------------------------------
 
@@ -388,11 +388,7 @@ def test_backfill_gives_every_member_and_staff_a_record() -> None:
                     owner,
                     member,
                 )
-                await conn.execute(
-                    "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'owner')",
-                    gym,
-                    owner,
-                )
+                await make_staff(conn, gym, owner, "owner")
                 plan = await conn.fetchval(
                     "INSERT INTO plan (gym_id, name, kind, price_clp)"
                     " VALUES ($1, 'M', 'monthly', 1) RETURNING id",

@@ -28,7 +28,7 @@ from app.schemas.plans import (
 )
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import Database, in_gym, make_staff, migrate, run, seed_gym, throwaway_database
 
 # One of each kind, as an owner would type it.
 MONTHLY: dict[str, Any] = {
@@ -225,9 +225,7 @@ def add_staff(db: Database, gym: uuid.UUID, role: str) -> uuid.UUID:
         await conn.execute(
             "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'x')", gym, person
         )
-        await conn.execute(
-            "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, $3)", gym, person, role
-        )
+        await make_staff(conn, gym, person, role)
 
     run(db.admin_url, query)
     return person

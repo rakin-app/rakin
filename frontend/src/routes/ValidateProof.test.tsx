@@ -7,6 +7,7 @@ import type { ProofReview } from '../api/review'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.review
 
@@ -80,7 +81,7 @@ function stubApi(
   )
 
   function route(path: string, method: string): Answer {
-    if (path === '/api/me/role') return { body: { role: 'owner' } }
+    if (path === '/api/me/role') return { body: asRole('owner') }
     if (path === '/api/ledger/pending') return { body: { count: queue.length } }
     if (path === '/api/ledger/proofs') return { body: queue }
     if (path === '/api/reminders') return { body: answers.reminders ?? [] }

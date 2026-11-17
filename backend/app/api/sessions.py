@@ -56,7 +56,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.attendance import remove_attendance
 from app.api.class_tags import require_tags, set_tags, tags_of_session
 from app.domain.dates import gym_today, start_of_local_day
-from app.roles import ADMIN_ROLES, FORBIDDEN, AdminSession, StaffSession, role_in_gym
+from app.permissions import FORBIDDEN, AdminSession, Permission, StaffSession, holds
 from app.schemas.classes import ClassKind
 from app.schemas.sessions import (
     Day,
@@ -299,7 +299,7 @@ async def update_session(
         if (set(v) != set(tag_ids) if k == "tag_ids" else v != getattr(current, k))
     }
     coaching = current.coach_id == tenant.person_id and changes.keys() <= COACH_FIELDS
-    if changes and not coaching and await role_in_gym(session, tenant) not in ADMIN_ROLES:
+    if changes and not coaching and not await holds(session, tenant, Permission.GYM_SETUP):
         raise FORBIDDEN
     if "coach_id" in changes:
         await require_coach(session, changes["coach_id"])

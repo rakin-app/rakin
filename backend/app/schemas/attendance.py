@@ -52,7 +52,7 @@ class DropinVisitor(BaseModel):
     suelta", by name and phone; a phone already in the gym is that person (#130).
 
     `paid` is how they paid, at the desk, if they did: an owner's or admin's to record,
-    as every payment is (`app.roles.LEDGER_ROLES`). Without it the class is owed."""
+    as every payment is (`money_write`, `app.permissions`). Without it the class is owed."""
 
     model_config = ConfigDict(extra="forbid")
 

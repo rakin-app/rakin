@@ -25,11 +25,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import ledger_export as export
+from app.api.custom_fields import reach_of
 from app.api.ledger import ENTRY_DAY, GYM_CLOCK, book_rows
 from app.domain import custom_fields as cf
 from app.domain.billing import SETTLING_KINDS
 from app.domain.vocabulary import Words, words_in
-from app.roles import LedgerSession, role_in_gym
+from app.permissions import LedgerSession, standing_in_gym
 from app.schemas.ledger import ExportFormat
 from app.tenancy import Tenant, current_tenant
 
@@ -75,10 +76,10 @@ async def exported_fields(
     settings = await session.scalar(
         text("SELECT settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
     )
-    role = await role_in_gym(session, tenant)
+    reach = reach_of(await standing_in_gym(session, tenant))
     fields = [
         d
-        for d in cf.visible(role, cf.definitions(settings or {}))
+        for d in cf.visible(reach, cf.definitions(settings or {}))
         if not d["sensitive"] and not d["archived"]
     ]
     return fields, words_in(settings)

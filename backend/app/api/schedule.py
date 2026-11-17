@@ -57,7 +57,7 @@ from app.api.sessions import (
 )
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.schedule import horizon
-from app.roles import AdminSession
+from app.permissions import AdminSession
 from app.schemas.classes import ClassKind
 from app.schemas.schedule import ClosedDay, ClosedDayChange, Slot, SlotCreate, SlotUpdate
 from app.tenancy import Tenant, current_tenant

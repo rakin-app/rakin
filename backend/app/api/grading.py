@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 from sqlalchemy import text
 
-from app.roles import AdminSession, StaffSession
+from app.permissions import AdminSession, StaffSession
 from app.schemas.grading import PRESETS, GradingScheme, Preset
 from app.tenancy import Tenant, current_tenant
 

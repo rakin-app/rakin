@@ -12,6 +12,7 @@ import { clockTime } from '../format'
 import { createAppRouter } from '../router'
 import { savedRun, saveRun, startRun } from './timerEngine'
 import { VIBRATION } from './timerSignal'
+import { asRole } from '../test/access'
 
 const copy = es.admin.timer
 const running = copy.running
@@ -107,7 +108,7 @@ function stubApi({ role = 'coach', me = 'coach', plan = [], suggested = LAST_CLA
   )
 
   function route(path: string, method: string, body: unknown): { status?: number; body?: unknown } {
-    if (path === '/api/me/role') return { body: { role, person_id: me } }
+    if (path === '/api/me/role') return { body: { ...asRole(role), person_id: me } }
     if (path === '/api/sessions' && method === 'GET') {
       return { body: { date: '2026-11-09', timezone: 'America/Santiago', sessions: [SESSION] } }
     }

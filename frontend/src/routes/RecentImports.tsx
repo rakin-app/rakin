@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type FormEvent } from 'react'
-import { myRoleQuery } from '../api/me'
+import { holdsAccount, myAccessQuery } from '../api/me'
 import {
   alreadyUndone,
   recentImportsQuery,
@@ -25,7 +25,7 @@ const copy = t.admin.import
  */
 export function RecentImports() {
   const recent = useQuery(recentImportsQuery())
-  const role = useQuery(myRoleQuery())
+  const access = useQuery(myAccessQuery())
   const [open, setOpen] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
@@ -45,7 +45,7 @@ export function RecentImports() {
         {recent.data.map((item) => (
           <li key={item.id} className="import__recent-row">
             <ImportLine item={item} />
-            {role.data === 'owner' && !item.undone && open !== item.id && (
+            {holdsAccount(access.data) && !item.undone && open !== item.id && (
               <Button
                 variant="danger"
                 onClick={() => {

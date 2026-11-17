@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import NOT_FOUND
 from app.contacts import minor_today
-from app.roles import StaffSession
+from app.permissions import StaffSession
 from app.schemas.consent import (
     ConsentEvent,
     ConsentState,

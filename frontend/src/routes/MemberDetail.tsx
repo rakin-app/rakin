@@ -55,7 +55,7 @@ import {
   type RefundablePayment,
   type TimelineEntry,
 } from '../api/member'
-import { myRoleQuery, readsLedger, type StaffRole } from '../api/me'
+import { myAccessQuery, readsLedger, type Access } from '../api/me'
 import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
@@ -127,7 +127,7 @@ export function MemberDetail() {
   // No rank by the name in a gym none of whose activities grades (#245).
   const graded = useGrades()
   const grades = useQuery({ ...gradesQuery(personId), enabled: graded })
-  const role = useQuery(myRoleQuery())
+  const access = useQuery(myAccessQuery())
   // "Asignar plan"'s confirmation, kept here as the form moves into the new plan's card.
   const [assigned, setAssigned] = useState<string | null>(null)
 
@@ -167,7 +167,7 @@ export function MemberDetail() {
     .sort()[0]
   const since = monthYear(firstStart ?? person.data.created_at)
   const rank = graded ? grades.data?.current : undefined
-  const money = readsLedger(role.data)
+  const money = readsLedger(access.data)
 
   return (
     <Shell
@@ -196,12 +196,12 @@ export function MemberDetail() {
               membership={membership}
               money={money}
               earlier={money ? <EarlierDebt memberships={memberships.data} shown={membership} /> : null}
-              assign={{ person: person.data, role: role.data, done: assigned, setDone: setAssigned }}
+              assign={{ person: person.data, access: access.data, done: assigned, setDone: setAssigned }}
             />
           ) : (
             <>
               <p className="member__note">{copy.noPlan}</p>
-              <AssignPlan person={person.data} membership={membership} role={role.data} done={assigned} setDone={setAssigned} />
+              <AssignPlan person={person.data} membership={membership} access={access.data} done={assigned} setDone={setAssigned} />
             </>
           )}
           {money && <PersonExtraLines personId={personId} />}
@@ -221,8 +221,8 @@ export function MemberDetail() {
           <PersonRequirements person={person.data} />
           <PersonData person={person.data} />
           <PersonConsent person={person.data} />
-          <PersonWelcome person={person.data} role={role.data} />
-          <PersonActions person={person.data} role={role.data} />
+          <PersonWelcome person={person.data} access={access.data} />
+          <PersonActions person={person.data} access={access.data} />
         </div>
       </Grid>
     </Shell>
@@ -303,7 +303,7 @@ export function whatsappUrl(person: Pick<Person, 'phone' | 'no_whatsapp'>): stri
 /** "Asignar plan"'s part on the plan card: who to, by whom, and what it did. */
 type Assigning = {
   person: Person
-  role: StaffRole | null | undefined
+  access: Access | null | undefined
   /** What "Asignar plan" did, kept by the ficha as the new plan takes this card's place. */
   done: string | null
   setDone: (message: string | null) => void
@@ -367,7 +367,7 @@ function Standing({
             personId={personId}
             membership={membership}
             ledger={data}
-            assign={assignsPlan(assign.person, membership, assign.role) ? assign : undefined}
+            assign={assignsPlan(assign.person, membership, assign.access) ? assign : undefined}
           />
         ) : ledger.isError ? (
           // With no ledger to choose by, "Asignar plan" on its own.

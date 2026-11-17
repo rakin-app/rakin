@@ -20,7 +20,7 @@ from sqlalchemy import TextClause, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.roles import AdminSession, StaffSession
+from app.permissions import AdminSession, StaffSession
 from app.schemas.classes import Program, ProgramCreate, ProgramUpdate
 
 router = APIRouter(prefix="/api/programs", tags=["classes"])

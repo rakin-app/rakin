@@ -39,7 +39,7 @@ from app.notices import (
     Template,
     get_notices,
 )
-from app.roles import ADMIN_ROLES, AdminSession
+from app.permissions import AdminSession, Permission, holder_of
 from app.schemas.freeze_requests import (
     REASON_LABELS,
     FreezeApproval,
@@ -84,11 +84,12 @@ DECIDED_SHOWN_DAYS = 30
 # The longest reason a freeze takes: `Reason` in `schemas/memberships.py`.
 FREEZE_REASON_MAX = 500
 
-# The owner and admins, each with the email they are told at.
-ADMINS = """
+# Who sets up the gym (the owner and admins, as `AdminSession` lets them answer),
+# each with the email they are told at.
+ADMINS = f"""
     SELECT gp.person_id, gp.name, gp.email FROM staff s
     JOIN gym_person gp ON gp.gym_id = s.gym_id AND gp.person_id = s.person_id
-    WHERE s.role = ANY(CAST(:roles AS text[])) AND gp.email IS NOT NULL
+    WHERE {holder_of(Permission.GYM_SETUP)} AND gp.email IS NOT NULL
     ORDER BY gp.person_id
 """
 
@@ -206,7 +207,7 @@ async def request_freeze(
 async def _requested(session: AsyncSession, tenant: Tenant, request: FreezeRequest) -> list[Notice]:
     """`freeze_requested`, to each owner and admin with an email."""
     gym = await session.scalar(text("SELECT name FROM gym WHERE id = :id"), {"id": tenant.gym_id})
-    admins = await session.execute(text(ADMINS), {"roles": sorted(ADMIN_ROLES)})
+    admins = await session.execute(text(ADMINS))
     return [
         Notice(
             FREEZE_REQUESTED,

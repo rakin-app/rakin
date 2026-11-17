@@ -8,6 +8,7 @@ import { isoDay, shiftDay } from '../format'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.checkIn
 
@@ -66,7 +67,7 @@ function stubApi({
       const arrivals = () => day[0]?.arrivals ?? []
       const withArrivals = (next: Arrival[]): Door[] =>
         day.map((d, i) => (i === 0 ? { ...d, session_id: 's-day', arrivals: next } : d))
-      if (path === '/api/me/role') return answer(200, { role: 'coach', person_id: 'coach' })
+      if (path === '/api/me/role') return answer(200, { ...asRole('coach'), person_id: 'coach' })
       if (path === '/api/check-in' && method === 'GET') {
         const asked = calls.filter((c) => c.path === '/api/check-in').length
         if (later && asked > 1) day = later

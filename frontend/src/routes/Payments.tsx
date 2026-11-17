@@ -11,7 +11,7 @@ import {
   type BookKpis,
   type PersonRef,
 } from '../api/ledger'
-import { myRoleQuery, readsLedger } from '../api/me'
+import { myAccessQuery, readsLedger } from '../api/me'
 import { membershipLedgerQuery, membershipsQuery, shownMembership } from '../api/member'
 import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
@@ -80,18 +80,18 @@ const route = getRouteApi('/admin/pagos')
  */
 export function Payments() {
   usePageTitle(t.nav.payments)
-  const role = useQuery(myRoleQuery())
+  const access = useQuery(myAccessQuery())
 
-  if (readsLedger(role.data)) return <Book />
+  if (readsLedger(access.data)) return <Book />
   return (
     <>
       <PageHeader title={copy.title} />
-      {role.isError && (
+      {access.isError && (
         <p className="payments__note" role="alert">
           {copy.error}
         </p>
       )}
-      {role.isSuccess && <p className="payments__note">{copy.coachesOnly}</p>}
+      {access.isSuccess && <p className="payments__note">{copy.coachesOnly}</p>}
     </>
   )
 }
