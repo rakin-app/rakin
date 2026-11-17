@@ -679,6 +679,7 @@ def build(as_of: date) -> Seed:
                 "kind": p.kind.value,
                 "program_id": None if p.program is None else seed_id("program", p.program),
                 "price_clp": p.price_clp,
+                "enrolment_fee_clp": p.enrolment_fee_clp,
                 "anchor": p.anchor,
                 "period_months": p.period_months,
                 "period_start": season(as_of)[0] if p.kind is PlanKind.FIXED_PERIOD else None,

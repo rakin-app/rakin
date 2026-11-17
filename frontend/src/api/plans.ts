@@ -17,13 +17,18 @@ type Base = {
   created_at: string
 }
 
+// The matrícula a membership starting on the plan is charged once, as a cobro extra (#355);
+// none when null. A plan a member joins and pays on again may have one; a drop-in or a
+// trial never. Money, so a coach's plans come without it.
+type Enrolment = { enrolment_fee_clp?: number | null }
+
 /** One of the gym's plans (backend `Plan`): each kind carries exactly its own parameters. */
 export type Plan =
-  | (Base & { kind: 'monthly'; price_clp: number; anchor: Anchor })
-  | (Base & { kind: 'prepaid'; price_clp: number; period_months: number })
+  | (Base & Enrolment & { kind: 'monthly'; price_clp: number; anchor: Anchor })
+  | (Base & Enrolment & { kind: 'prepaid'; price_clp: number; period_months: number })
   // The same days for every member: a season, a year, a term (#351), as `2027-03-01`.
-  | (Base & { kind: 'fixed_period'; price_clp: number; period_start: string; period_end: string })
-  | (Base & { kind: 'credits'; price_clp: number; credits: number; credit_expiry_days: number })
+  | (Base & Enrolment & { kind: 'fixed_period'; price_clp: number; period_start: string; period_end: string })
+  | (Base & Enrolment & { kind: 'credits'; price_clp: number; credits: number; credit_expiry_days: number })
   | (Base & { kind: 'dropin'; price_clp: number })
   // Free: lasts `free_classes` classes, `free_days` days, or whichever comes first.
   | (Base & { kind: 'trial'; free_classes: number | null; free_days: number | null })
@@ -33,6 +38,7 @@ export type PlanFields = Partial<{
   name: string
   program_id: string | null
   price_clp: number | string
+  enrolment_fee_clp: number | string | null
   anchor: string
   period_months: number | string
   period_start: string

@@ -117,6 +117,9 @@ class PlanSpec:
     credits: int | None = None
     # Days a pack lasts; free days on a trial.
     credit_expiry_days: int | None = None
+    # The matrícula a membership starting on it is charged (#355); the seed's members
+    # are on it already, so none of them owes one.
+    enrolment_fee_clp: int | None = None
 
 
 PLANS = (
@@ -130,7 +133,15 @@ PLANS = (
         anchor="signup",
     ),
     PlanSpec("student", "Estudiante", PlanKind.MONTHLY, 30_000, "adults", anchor="signup"),
-    PlanSpec("kids", "Mensual kids", PlanKind.MONTHLY, 36_000, "kids", anchor="signup"),
+    PlanSpec(
+        "kids",
+        "Mensual kids",
+        PlanKind.MONTHLY,
+        36_000,
+        "kids",
+        anchor="signup",
+        enrolment_fee_clp=25_000,
+    ),
     PlanSpec("prepaid-6", "Prepago 6 meses", PlanKind.PREPAID, 240_000, "adults", period_months=6),
     # The seed year's dates, the same for every member on it (`app.seed.build.season`).
     PlanSpec("season", "Temporada", PlanKind.FIXED_PERIOD, 420_000, "adults"),

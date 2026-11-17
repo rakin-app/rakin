@@ -101,7 +101,7 @@ def test_money_columns_are_integers(db: Database) -> None:
         ),
     )
     tables = {r["column_name"] for r in rows if r["table_type"] == "BASE TABLE"}
-    assert tables == {"price_clp", "amount_due_clp", "amount_clp"}
+    assert tables == {"price_clp", "amount_due_clp", "amount_clp", "enrolment_fee_clp"}
     assert {r["data_type"] for r in rows} == {"bigint"}
 
 

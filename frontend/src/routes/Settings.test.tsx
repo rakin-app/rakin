@@ -795,9 +795,63 @@ describe('Ajustes: Planes', () => {
           price_clp: 32000,
           credits: 8,
           credit_expiry_days: 45,
+          // No matrícula (#355).
+          enrolment_fee_clp: null,
         },
       },
     ])
+  })
+
+  it('creates a plan with a matrícula, lists it, and an edit takes it off (#355)', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    await userEvent.click(within(section).getByRole('button', { name: plans.add }))
+    const create = within(section).getByRole('form', { name: form.create })
+    await userEvent.type(within(create).getByLabelText(form.name), 'Mensual kids')
+    await userEvent.type(within(create).getByLabelText(form.price), '36.000')
+    const fee = within(create).getByLabelText(form.enrolmentFee)
+    expect(fee).toHaveAccessibleDescription(form.enrolmentHint)
+    await userEvent.type(fee, '25.000')
+    await userEvent.click(within(create).getByRole('button', { name: form.submit }))
+
+    expect(await within(section).findByRole('status')).toHaveTextContent(plans.created('Mensual kids'))
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([
+      {
+        kind: 'monthly',
+        name: 'Mensual kids',
+        program_id: null,
+        price_clp: 36000,
+        anchor: 'signup',
+        enrolment_fee_clp: 25000,
+      },
+    ])
+    const row = (await within(section).findAllByRole('listitem')).find((r) => r.textContent?.includes('Mensual kids'))!
+    expect(row).toHaveTextContent(
+      plans.row(plans.kinds.monthly, plans.row(plans.row('$36.000 al mes', plans.anchors.signup), 'matrícula $25.000')),
+    )
+
+    await userEvent.click(within(row).getByRole('button'))
+    const edit = within(section).getByRole('form', { name: form.edit('Mensual kids') })
+    await userEvent.clear(within(edit).getByLabelText(form.enrolmentFee))
+    await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
+
+    expect(await within(section).findByRole('status')).toHaveTextContent(plans.saved('Mensual kids'))
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ enrolment_fee_clp: null }])
+  })
+
+  it('asks no matrícula of a drop-in or a trial (#355)', async () => {
+    stubApi()
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    await userEvent.click(within(section).getByRole('button', { name: plans.add }))
+    const create = within(section).getByRole('form', { name: form.create })
+    for (const kind of ['dropin', 'trial'] as const) {
+      await userEvent.selectOptions(within(create).getByLabelText(form.kind), plans.kinds[kind])
+      expect(within(create).queryByLabelText(form.enrolmentFee)).not.toBeInTheDocument()
+    }
   })
 
   it("puts a create's refusals under the fields they name, past the kind", async () => {
@@ -932,6 +986,7 @@ describe('Ajustes: Planes', () => {
         price_clp: 300000,
         period_start: '2027-03-01',
         period_end: '2027-12-31',
+        enrolment_fee_clp: null,
       },
     ])
   })

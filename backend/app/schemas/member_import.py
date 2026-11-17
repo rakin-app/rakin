@@ -166,6 +166,9 @@ class MemberImport(BaseModel):
     plans: dict[Cell, uuid.UUID | None] = {}
     # Check everything and write nothing; the default, so a slip never imports.
     dry_run: bool = True
+    # Charge each membership the import starts its plan's matrícula (#355); off, since
+    # the members a sheet brings in have mostly paid theirs already.
+    charge_enrolment: bool = False
     # The file, as `POST /api/import/sheet` answered it: the import's record names it.
     file: SheetFile | None = None
     pagos: PaymentImport | None = None

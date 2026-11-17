@@ -233,7 +233,13 @@ async def enrol(
         await write_person_fields(session, tenant, field_cipher(request), person_id, body.fields)
     plan_name = None
     if body.membership is not None:
-        created = await start_membership(session, tenant, person_id, body.membership)
+        created = await start_membership(
+            session,
+            tenant,
+            person_id,
+            body.membership,
+            enrolment=body.membership.charge_enrolment,
+        )
         plan_name = created.plan_name
     if body.send_welcome and (notice := await welcome_to(session, tenant, person_id, plan_name)):
         # After the response, which is after the member has committed.
@@ -291,7 +297,8 @@ async def return_to_gym(
     await session.execute(SET_LEFT, {"id": person_id, "left_on": None, "left_reason": None})
     await record_history_set(session, person_id, changes(record._asdict(), {"left_reason": None}))
     if body.membership is not None:
-        await start_membership(session, tenant, person_id, body.membership)
+        # They paid their matrícula when they first joined.
+        await start_membership(session, tenant, person_id, body.membership, enrolment=False)
     return await read_person(session, person_id, sees_reason=True)
 
 

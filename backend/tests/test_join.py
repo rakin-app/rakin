@@ -40,6 +40,7 @@ from tests.pg import (
     seeded_today,
     throwaway_database,
 )
+from tests.test_enrolment import matriculas
 from tests.test_guardians import add_person
 from tests.test_gym_settings import PRIVACY
 from tests.test_memberships import PLANS, add_staff
@@ -1176,3 +1177,19 @@ def test_a_request_queued_before_0036_with_the_guardians_email_is_approved(
     guardian = guardian_of(db, gym, answer["person_id"])
     assert guardian is not None
     assert record(db, gym, str(guardian))["email"] == "marta.vieja@example.cl"
+
+
+def test_approving_onto_a_plan_with_a_fee_charges_its_matricula(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    created = client.post(
+        "/api/plans", json={**PLANS["signup"], "enrolment_fee_clp": 30_000}, headers=as_gym(gym)
+    )
+    assert created.status_code == 201, created.text
+    request = one_request(client, gym, token_of(client, gym), adult())
+
+    answer = approved(client, gym, request, plan_id=created.json()["id"])
+
+    [line] = matriculas(db, gym, answer["person_id"])
+    assert (line["amount_due_clp"], line["due_date"]) == (30_000, seeded_today())
+    assert str(line["membership_id"]) == answer["membership_id"]
