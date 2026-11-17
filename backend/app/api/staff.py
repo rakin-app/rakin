@@ -23,9 +23,19 @@ A sign-in with an email reaches only the gyms whose own record holds it (migrati
 0029), so the invite's email signs in to this gym and no other, whoever else knows the
 person: it is always written, and the invite always goes to it.
 
-Who sets up the gym (`AdminSession`) manages the staff, and only its coaches: making,
-unmaking or revoking an admin is the titular's, the owner who holds the account. The
-owner's own row is not changed here at all, so a gym always keeps its owner.
+Whoever holds `team_manage` (`TeamSession`) manages the team, by the strictly-fewer
+rule (`app.permissions.manages`, docs/design/expenses-and-officers.md, section 4): they
+invite, change, appoint, end or revoke only a person whose permissions today are a
+proper subset of theirs, and only to a role whose permissions are a proper subset of
+theirs. So an Administrador manages Coaches and not another Administrador, a Presidente
+of the Club federado preset appoints only a Director, nobody grants a permission they
+lack, and the titular manages everyone. The titular's own row is not changed here at
+all, so a gym always keeps its titular. Each refusal is a 403 that says which rule.
+
+`POST /{person_id}/appointments` appoints someone already on the staff list to one of
+the gym's roles from today, and `DELETE /{person_id}/appointments/{title_id}` ends
+theirs to it today. Their `staff` row and its role stay as they are: Equipo makes the
+row follow the appointments (#311).
 """
 
 import uuid
@@ -37,10 +47,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import find_in_gym, give_identity, join_gym, refuse_email_in_gym
 from app.notices import STAFF_INVITE, Notice, Notices, get_notices
-from app.permissions import ACADEMIA, AdminSession, Standing, preset_title_id, standing_in_gym
+from app.permissions import (
+    ACADEMIA,
+    NOBODY,
+    Permission,
+    Standing,
+    TeamSession,
+    manages,
+    preset_title_id,
+    standing_in_gym,
+    standing_of,
+)
 from app.roles import TITLE_OF, Role
 from app.schemas.staff import (
     AlreadyStaff,
+    Appointment,
     StaffConflict,
     StaffInvite,
     StaffMember,
@@ -51,8 +72,18 @@ from app.tenancy import Tenant, current_tenant
 router = APIRouter(prefix="/api/staff", tags=["staff"])
 
 NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "not on this gym's staff")
-OWNER_FIXED = HTTPException(status.HTTP_403_FORBIDDEN, "the owner's role is not changed here")
-OWNERS_CALL = HTTPException(status.HTTP_403_FORBIDDEN, "only the owner manages admins")
+NO_TITLE = HTTPException(status.HTTP_404_NOT_FOUND, "no such role in this gym")
+NOT_HELD = HTTPException(status.HTTP_404_NOT_FOUND, "they hold no such appointment")
+HOLDS_IT = HTTPException(status.HTTP_409_CONFLICT, "they hold this role already")
+TITULAR_FIXED = HTTPException(status.HTTP_403_FORBIDDEN, "the account holder is not changed here")
+NOT_FEWER_PERSON = HTTPException(
+    status.HTTP_403_FORBIDDEN,
+    "you manage only people whose permissions are strictly fewer than yours",
+)
+NOT_FEWER_ROLE = HTTPException(
+    status.HTTP_403_FORBIDDEN,
+    "you give only a role whose permissions are strictly fewer than yours",
+)
 
 # What the invite calls each role, as the person reads it.
 ROLE_NAMES = {Role.ADMIN: "administrador", Role.COACH: "coach"}
@@ -95,33 +126,65 @@ Acting = Annotated[Tenant, Depends(current_tenant)]
 
 async def _acting(session: AsyncSession, tenant: Tenant) -> Standing:
     standing = await standing_in_gym(session, tenant)
-    # `AdminSession` already refused anyone not on the team.
+    # `TeamSession` already refused anyone not on the team.
     assert standing is not None
     return standing
 
 
-def _may_manage(acting: Standing, role: Role) -> None:
-    """A 403 unless `acting` may give or take away `role`."""
-    if role is Role.OWNER:
-        raise OWNER_FIXED
-    if role is Role.ADMIN and not acting.account_holder:
-        raise OWNERS_CALL
+async def _may_manage_person(
+    session: AsyncSession, tenant: Tenant, acting: Standing, person_id: uuid.UUID
+) -> None:
+    """A 403 unless `acting` may manage `person_id`: never the titular, and otherwise
+    someone holding strictly fewer permissions today (none, off the team)."""
+    standing = await standing_of(session, tenant.gym_id, person_id) or NOBODY
+    if standing.account_holder:
+        raise TITULAR_FIXED
+    if not manages(acting, standing.permissions):
+        raise NOT_FEWER_PERSON
 
 
-async def _appoint(session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, role: Role) -> None:
-    """Appoint `person_id` from today to the Academia role `role` stands for."""
-    title = preset_title_id(tenant.gym_id, ACADEMIA, TITLE_OF[role].key)
-    appointed = await session.scalar(
-        text(APPOINT), {"id": person_id, "title": title, "by": tenant.person_id}
+async def _may_give(session: AsyncSession, acting: Standing, title_id: uuid.UUID) -> None:
+    """A 403 unless `acting` may appoint someone to, or end, the gym's role `title_id`;
+    a 404 when the gym has no such role, unarchived."""
+    permissions = await session.scalar(
+        text("SELECT permissions FROM gym_title WHERE id = :id AND archived_at IS NULL"),
+        {"id": title_id},
     )
-    # Every gym is given its preset's roles when it is created (0065).
-    assert appointed is not None, f"gym {tenant.gym_id} has no {TITLE_OF[role].key} role"
+    if permissions is None:
+        raise NO_TITLE
+    if not manages(acting, frozenset(map(Permission, permissions))):
+        raise NOT_FEWER_ROLE
 
 
-async def _end_appointments(session: AsyncSession, tenant: Tenant, person_id: uuid.UUID) -> None:
-    params = {"id": person_id, "by": tenant.person_id}
-    await session.execute(text(END_APPOINTMENTS), params)
-    await session.execute(text(DROP_UNSTARTED), {"id": person_id})
+def _academia(tenant: Tenant, role: Role) -> uuid.UUID:
+    """The gym's Academia role that `role` stands for."""
+    return preset_title_id(tenant.gym_id, ACADEMIA, TITLE_OF[role].key)
+
+
+async def _appoint(
+    session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, title_id: uuid.UUID
+) -> None:
+    """Appoint `person_id` from today to the gym's role `title_id`."""
+    appointed = await session.scalar(
+        text(APPOINT), {"id": person_id, "title": title_id, "by": tenant.person_id}
+    )
+    # `_may_give` found the role: every gym is given the Academia ones (0065).
+    assert appointed is not None, f"gym {tenant.gym_id} has no role {title_id}"
+
+
+async def _end_appointments(
+    session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, title_id: uuid.UUID | None = None
+) -> bool:
+    """End today what `person_id` holds today or later, of `title_id` alone when given;
+    whether there was any."""
+    only, params = "", {"id": person_id}
+    if title_id is not None:
+        only, params = " AND title_id = :title", {**params, "title": title_id}
+    ended = await session.execute(
+        text(f"{END_APPOINTMENTS}{only} RETURNING id"), {**params, "by": tenant.person_id}
+    )
+    dropped = await session.execute(text(f"{DROP_UNSTARTED}{only} RETURNING id"), params)
+    return bool(ended.all()) | bool(dropped.all())
 
 
 async def _get(session: AsyncSession, person_id: uuid.UUID) -> StaffMember:
@@ -144,7 +207,7 @@ async def _role_of(session: AsyncSession, person_id: uuid.UUID) -> Role:
 
 
 @router.get("")
-async def list_staff(session: AdminSession) -> list[StaffMember]:
+async def list_staff(session: TeamSession) -> list[StaffMember]:
     rows = await session.execute(text(f"{SELECT_STAFF} ORDER BY {ORDER}"))
     return [StaffMember.model_validate(row, from_attributes=True) for row in rows]
 
@@ -157,12 +220,13 @@ async def list_staff(session: AdminSession) -> list[StaffMember]:
 async def invite_staff(
     body: StaffInvite,
     tenant: Acting,
-    session: AdminSession,
+    session: TeamSession,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> StaffMember:
     role = Role(body.role)
-    _may_manage(await _acting(session, tenant), role)
+    acting = await _acting(session, tenant)
+    await _may_give(session, acting, _academia(tenant, role))
     # One invite of an email, and of a RUT, at a time: `find_in_gym` matches either, so a
     # second waits and finds the first's person, a 409, instead of creating another
     # (#204). Taken in one order, so two invites never wait on each other; released when
@@ -197,7 +261,7 @@ async def invite_staff(
         # Raised, so the transaction rolls back; nothing was written.
         conflict = StaffConflict(person_id=person_id)
         raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
-    await _appoint(session, tenant, person_id, role)
+    await _appoint(session, tenant, person_id, _academia(tenant, role))
     # A record new here took the invite's email from `join_gym`; a known one did not.
     if not joined:
         await session.execute(
@@ -240,27 +304,68 @@ async def invite_staff(
 
 @router.patch("/{person_id}")
 async def change_role(
-    person_id: uuid.UUID, body: StaffRoleChange, tenant: Acting, session: AdminSession
+    person_id: uuid.UUID, body: StaffRoleChange, tenant: Acting, session: TeamSession
 ) -> StaffMember:
     """Move someone between admin and coach; the role they have already is a no-op."""
     acting = await _acting(session, tenant)
     current = await _role_of(session, person_id)
     role = Role(body.role)
-    _may_manage(acting, current)
-    _may_manage(acting, role)
+    await _may_manage_person(session, tenant, acting, person_id)
+    await _may_give(session, acting, _academia(tenant, role))
     if role is not current:
         await session.execute(
             text("UPDATE staff SET role = :role WHERE person_id = :id"),
             {"id": person_id, "role": role.value},
         )
         await _end_appointments(session, tenant, person_id)
-        await _appoint(session, tenant, person_id, role)
+        await _appoint(session, tenant, person_id, _academia(tenant, role))
     return await _get(session, person_id)
 
 
 @router.delete("/{person_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def revoke_staff(person_id: uuid.UUID, tenant: Acting, session: AdminSession) -> Response:
-    _may_manage(await _acting(session, tenant), await _role_of(session, person_id))
+async def revoke_staff(person_id: uuid.UUID, tenant: Acting, session: TeamSession) -> Response:
+    acting = await _acting(session, tenant)
+    await _role_of(session, person_id)
+    await _may_manage_person(session, tenant, acting, person_id)
     await _end_appointments(session, tenant, person_id)
     await session.execute(text("DELETE FROM staff WHERE person_id = :id"), {"id": person_id})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{person_id}/appointments", status_code=status.HTTP_201_CREATED)
+async def appoint(
+    person_id: uuid.UUID, body: Appointment, tenant: Acting, session: TeamSession
+) -> StaffMember:
+    """Appoint someone on the staff list to `body.title_id` from today; a 409 when they
+    hold it today or from a later day already."""
+    acting = await _acting(session, tenant)
+    # Locks their row, so two appointments of them at once are one after the other.
+    await _role_of(session, person_id)
+    await _may_manage_person(session, tenant, acting, person_id)
+    await _may_give(session, acting, body.title_id)
+    held = await session.scalar(
+        text(
+            "SELECT true FROM staff_title WHERE person_id = :id AND title_id = :title"
+            f" AND (ends_on IS NULL OR ends_on > {TODAY})"
+        ),
+        {"id": person_id, "title": body.title_id},
+    )
+    if held:
+        raise HOLDS_IT
+    await _appoint(session, tenant, person_id, body.title_id)
+    return await _get(session, person_id)
+
+
+@router.delete("/{person_id}/appointments/{title_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def end_appointment(
+    person_id: uuid.UUID, title_id: uuid.UUID, tenant: Acting, session: TeamSession
+) -> Response:
+    """End today their appointment to `title_id`, running or yet to start; a 404 when
+    they hold none."""
+    acting = await _acting(session, tenant)
+    await _role_of(session, person_id)
+    await _may_manage_person(session, tenant, acting, person_id)
+    await _may_give(session, acting, title_id)
+    if not await _end_appointments(session, tenant, person_id, title_id):
+        raise NOT_HELD
     return Response(status_code=status.HTTP_204_NO_CONTENT)

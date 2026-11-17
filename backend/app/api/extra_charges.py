@@ -67,7 +67,7 @@ from app.domain.money import format_clp
 from app.integrations.messenger import Message, wa_me_link
 from app.notices import EXTRA_CHARGE, RECEIPT, Notice, Notices, get_notices
 from app.notices.whatsapp import extra_charge_reminder
-from app.permissions import LedgerSession
+from app.permissions import LedgerReadSession, LedgerSession
 from app.schemas.extra_charges import (
     AmountDraft,
     CancelPreview,
@@ -502,7 +502,7 @@ def summary(row: Any) -> ExtraChargeSummary:
 
 
 @router.get("")
-async def list_charges(session: LedgerSession) -> list[ExtraChargeSummary]:
+async def list_charges(session: LedgerReadSession) -> list[ExtraChargeSummary]:
     """Every cobro, newest first, with how far along it is: "7 de 9 pagaron · $140.000 de
     $180.000"."""
     return [summary(row) for row in await session.execute(SUMMARIES)]
@@ -577,7 +577,7 @@ async def read_charge(session: AsyncSession, charge_id: uuid.UUID) -> ExtraCharg
 
 
 @router.get("/{charge_id}")
-async def get_charge(charge_id: uuid.UUID, session: LedgerSession) -> ExtraCharge:
+async def get_charge(charge_id: uuid.UUID, session: LedgerReadSession) -> ExtraCharge:
     """The cobro, with each person's line: status, amount, what they paid and any proof."""
     return await read_charge(session, charge_id)
 
@@ -652,7 +652,7 @@ SHARE_CHARGE = text("SELECT amount_mode, amount_clp FROM extra_charge WHERE id =
 
 @router.get("/{charge_id}/lines/{line_id}/cancel")
 async def cancel_preview(
-    charge_id: uuid.UUID, line_id: uuid.UUID, session: LedgerSession
+    charge_id: uuid.UUID, line_id: uuid.UUID, session: LedgerReadSession
 ) -> CancelPreview:
     """What cancelling the line would leave: whether the total may be divided again
     among the others, and how. It reads under the cobro's lock, shared, so no payment
@@ -916,7 +916,7 @@ async def open_lines(session: AsyncSession, me: uuid.UUID) -> list[MyExtraLine]:
 
 
 @people_router.get("/{person_id}/extra-lines")
-async def person_lines(person_id: uuid.UUID, session: LedgerSession) -> list[MyExtraLine]:
+async def person_lines(person_id: uuid.UUID, session: LedgerReadSession) -> list[MyExtraLine]:
     """The person's cobros extra still owed: "Cobros extra pendientes" on their ficha."""
     known = await session.scalar(
         text("SELECT EXISTS (SELECT FROM gym_person WHERE person_id = :id)"), {"id": person_id}

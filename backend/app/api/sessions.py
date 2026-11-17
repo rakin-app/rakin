@@ -24,13 +24,13 @@ An open-access class type has no classes to start, schedule or change a class to
 from: the first check-in of each day makes its session (`app.api.check_in`), which is
 never moved either.
 
-Any staff role may read them and start one, coaches included, since they are who
-start a class and write what it covered; members may not use them at all. Changing
-one is narrower (#163): an owner or admin may move it, change its duration, its type
-or its coach,
-and its own coach may write its topic and notes and set its tags. A type changed after the class
-re-applies the new type's `counts_as_class` and `kind`, since every count reads them
-off the type; its attendance stays.
+Anyone on the team may read them, and whoever runs classes (`attendance`, coaches
+included) start one, since they are who start a class and write what it covered;
+members may not use them at all. Changing one is narrower (#163, #310): whoever sets
+up the gym (`gym_setup`) may move it, change its duration, its type or its coach, and
+its own coach, holding `attendance`, may write its topic and notes and set its tags. A
+type changed after the class re-applies the new type's `counts_as_class` and `kind`,
+since every count reads them off the type; its attendance stays.
 
 Changing one class of the schedule changes that class only, and it keeps its slot and
 date, so the schedule never makes that date again.
@@ -56,7 +56,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.attendance import remove_attendance
 from app.api.class_tags import require_tags, set_tags, tags_of_session
 from app.domain.dates import gym_today, start_of_local_day
-from app.permissions import FORBIDDEN, AdminSession, Permission, StaffSession, holds
+from app.permissions import (
+    FORBIDDEN,
+    AdminSession,
+    AttendanceSession,
+    Permission,
+    StaffSession,
+    holds,
+)
 from app.schemas.classes import ClassKind
 from app.schemas.sessions import (
     Day,
@@ -234,7 +241,7 @@ async def class_type_duration(
 async def start_session(
     body: SessionCreate,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Session:
     await require_class_type(session, body.class_type_id)
     await refuse_open_access(session, body.class_type_id)
@@ -298,7 +305,12 @@ async def update_session(
         for k, v in sent.items()
         if (set(v) != set(tag_ids) if k == "tag_ids" else v != getattr(current, k))
     }
-    coaching = current.coach_id == tenant.person_id and changes.keys() <= COACH_FIELDS
+    # Its own coach writes what it covered with `attendance`; the rest is the gym's setup.
+    coaching = (
+        current.coach_id == tenant.person_id
+        and changes.keys() <= COACH_FIELDS
+        and await holds(session, tenant, Permission.ATTENDANCE)
+    )
     if changes and not coaching and not await holds(session, tenant, Permission.GYM_SETUP):
         raise FORBIDDEN
     if "coach_id" in changes:

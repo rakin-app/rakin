@@ -70,7 +70,7 @@ from app.domain.membership import (
 from app.jobs import lapse
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
-from app.permissions import AdminSession, SeesMoney, StaffSession
+from app.permissions import LedgerReadSession, LedgerSession, SeesMoney, StaffSession
 from app.schemas.ledger import DiscountFigures, DiscountShift, VoidConflict
 from app.schemas.memberships import (
     Cancellation,
@@ -106,6 +106,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/memberships", tags=["memberships"])
 
 NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "membership not found")
+# Starting a plan is money (`money_write`), wherever it is given: by hand, on an
+# enrolment or a return, or approving a join request (#310).
+PLAN_IS_MONEY = HTTPException(status.HTTP_403_FORBIDDEN, "giving a plan needs money_write")
 
 # RLS keeps every table to the current gym.
 SELECT_MEMBERSHIP = """
@@ -403,7 +406,7 @@ async def welcome_to(
 async def create_membership(
     body: MembershipCreate,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerSession,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> Membership:
@@ -475,7 +478,7 @@ async def start_quote(
     person_id: uuid.UUID,
     plan_id: uuid.UUID,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerReadSession,
     started_on: date | None = None,
 ) -> StartQuote:
     """What `POST /api/memberships` would start, saving nothing (#271): the day the plan
@@ -518,7 +521,7 @@ async def get_membership(
 
 @router.post("/{membership_id}/plan-change")
 async def change_plan(
-    membership_id: uuid.UUID, body: PlanChange, session: AdminSession
+    membership_id: uuid.UUID, body: PlanChange, session: LedgerSession
 ) -> Membership:
     """Move to `plan_id` from the next period; the current plan withdraws the change."""
     current, plan_id = await locked_membership(session, membership_id)
@@ -562,7 +565,7 @@ async def change_starts(
 
 @router.get("/{membership_id}/plan-change")
 async def plan_change_quote(
-    membership_id: uuid.UUID, plan_id: uuid.UUID, session: AdminSession
+    membership_id: uuid.UUID, plan_id: uuid.UUID, session: LedgerReadSession
 ) -> PlanChangeQuote:
     """What `POST .../plan-change` to `plan_id` would do, saving nothing (#249): the day
     it takes effect and the first period the new plan bills from it, as the nightly job
@@ -648,7 +651,7 @@ async def _discountable(session: AsyncSession, membership_id: uuid.UUID, *, lock
 
 @router.put("/{membership_id}/discount")
 async def set_discount(
-    membership_id: uuid.UUID, body: DiscountChange, session: AdminSession
+    membership_id: uuid.UUID, body: DiscountChange, session: LedgerSession
 ) -> Membership:
     """Set or take off the membership's discount, from the next period it bills; the
     periods billed already keep theirs. A change is recorded as a correction; asking
@@ -684,7 +687,7 @@ async def set_discount(
 async def discount_quote(
     membership_id: uuid.UUID,
     pct: Annotated[int, Query(ge=0, le=100)],
-    session: AdminSession,
+    session: LedgerReadSession,
 ) -> DiscountQuote:
     """What `PUT .../discount` of `pct` would bill, saving nothing: the next period not
     yet billed, at that discount, as the nightly job will bill it."""
@@ -800,7 +803,7 @@ async def freeze_membership(
     membership_id: uuid.UUID,
     body: FreezeCreate,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerSession,
 ) -> Membership:
     """Frozen from `from_date`, in the gym's timezone, until `to_date`. One from today
     starts at once, with a `frozen` plan event for the plan-event emails; one from a
@@ -870,7 +873,7 @@ async def edit_freeze(
     membership_id: uuid.UUID,
     body: FreezeEdit,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerSession,
 ) -> Membership:
     """A new end or reason for the freeze running or booked. A running one ends after
     today (ending it today is `end`), and the due date moves by the days it gains or
@@ -901,7 +904,7 @@ async def edit_freeze(
 async def end_freeze(
     membership_id: uuid.UUID,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerSession,
 ) -> Membership:
     """The freeze ends today: a running one returns the membership to Active, its due
     date moved back by the days it no longer lasts, with an `unfrozen` plan event
@@ -934,7 +937,7 @@ async def end_freeze(
 
 @router.post("/{membership_id}/cancel")
 async def cancel_membership(
-    membership_id: uuid.UUID, body: Cancellation, session: AdminSession
+    membership_id: uuid.UUID, body: Cancellation, session: LedgerSession
 ) -> Membership:
     """Terminal: a pending plan change goes with it, and a freeze booked ahead."""
     current, _ = await locked_membership(session, membership_id)
@@ -999,7 +1002,7 @@ async def void_membership(
     membership_id: uuid.UUID,
     body: Cancellation,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerSession,
 ) -> Membership:
     """Anular un plan started by mistake (#256): it ends as of its start, every unpaid
     charge on it is voided with `reason`, and it bills no more. Unlike cancelling, which
@@ -1209,7 +1212,7 @@ def _bill(bills_from: date, owed: billing.Billing) -> ReactivationBill:
 async def reactivation_quote(
     membership_id: uuid.UUID,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerReadSession,
 ) -> ReactivationQuote:
     """What `POST .../reactivate` would bill with each `bill_from`, saving nothing: the
     periods and their total, for "Reactivar plan" to list before it saves. Refused as
@@ -1232,7 +1235,7 @@ async def reactivate_membership(
     membership_id: uuid.UUID,
     body: Reactivation,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerSession,
 ) -> Membership:
     """ "Reactivar plan" (#284): a lapsed plan Active again, with `reason`, billed at once
     from `bill_from`: after its last period (`last`), catching up the periods since the

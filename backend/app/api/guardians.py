@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import NOT_FOUND, add_to_gym, in_gym
 from app.domain.dates import gym_today, is_minor
-from app.permissions import StaffSession
+from app.permissions import MembersAddSession, StaffSession
 from app.schemas.guardians import (
     ConflictCode,
     Family,
@@ -106,7 +106,7 @@ async def get_family(person_id: uuid.UUID, session: StaffSession) -> Family:
     responses={status.HTTP_409_CONFLICT: {"model": FamilyRefused | PersonInGym}},
 )
 async def add_dependent(
-    person_id: uuid.UUID, body: LinkDependent | NewDependent, session: StaffSession
+    person_id: uuid.UUID, body: LinkDependent | NewDependent, session: MembersAddSession
 ) -> Family:
     """Link `body.person_id`, someone in this gym, or add a new person by name."""
     if not await in_gym(session, person_id):
@@ -123,7 +123,7 @@ async def add_dependent(
 
 @router.delete("/{person_id}/dependents/{dependent_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_dependent(
-    person_id: uuid.UUID, dependent_id: uuid.UUID, session: StaffSession
+    person_id: uuid.UUID, dependent_id: uuid.UUID, session: MembersAddSession
 ) -> Response:
     """Unlink; both people stay in the gym. A minor still here keeps their guardian: a 422."""
     dependent = (await session.execute(text(DEPENDENT_AGE), {"id": dependent_id})).one_or_none()

@@ -36,6 +36,14 @@ class StaffRoleChange(BaseModel):
     role: InvitableRole
 
 
+class Appointment(BaseModel):
+    """One of the gym's roles to appoint someone on the staff list to, from today."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title_id: uuid.UUID
+
+
 class StaffMember(BaseModel):
     person_id: uuid.UUID
     name: str

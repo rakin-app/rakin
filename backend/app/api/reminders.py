@@ -56,7 +56,7 @@ from app.notices.whatsapp import (
     payment_overdue,
     proof_rejected_followup,
 )
-from app.permissions import LedgerSession
+from app.permissions import LedgerReadSession, LedgerSession
 from app.schemas.gym import DEFAULT_REMINDER_EVERY_DAYS, Channels
 from app.schemas.reminders import Emailed, PaymentReminder, Reminded, ReminderKind
 from app.tenancy import Tenant, current_tenant
@@ -257,7 +257,7 @@ async def reminder_rows(
 
 @router.get("")
 async def reminders(
-    session: LedgerSession, emailed_on: EmailDay, person_id: uuid.UUID | None = None
+    session: LedgerReadSession, emailed_on: EmailDay, person_id: uuid.UUID | None = None
 ) -> list[PaymentReminder]:
     """The periods to remind about, longest overdue first; with `person_id`, only that
     member's (the ficha's)."""

@@ -47,7 +47,7 @@ from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry, Purpose
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import RECEIPT, Notice, Notices, get_notices
-from app.permissions import LedgerSession
+from app.permissions import LedgerReadSession, LedgerSession
 from app.schemas.ledger import (
     AdjustmentRecord,
     AheadPeriod,
@@ -230,7 +230,7 @@ async def ahead_of(session: AsyncSession, membership_id: uuid.UUID, count: int) 
 
 
 @router.get("/memberships/{membership_id}/ahead")
-async def ahead_quote(membership_id: uuid.UUID, session: LedgerSession) -> AheadQuote:
+async def ahead_quote(membership_id: uuid.UUID, session: LedgerReadSession) -> AheadQuote:
     """What the next periods would cost paid ahead, for "Registrar pago" to offer 1 to
     `MAX_PAID_AHEAD` of them."""
     owed = await ahead_of(session, membership_id, billing.MAX_PAID_AHEAD)
@@ -702,7 +702,7 @@ def receipt(
 
 
 @router.get("/pending")
-async def pending(session: LedgerSession) -> PendingCount:
+async def pending(session: LedgerReadSession) -> PendingCount:
     """Payments students claimed with a proof, waiting to be validated or rejected: the
     admin's pending badge."""
     count = await session.scalar(
@@ -861,7 +861,9 @@ REFUNDABLE = text(
 
 
 @router.get("/memberships/{membership_id}")
-async def membership_ledger(membership_id: uuid.UUID, session: LedgerSession) -> MembershipLedger:
+async def membership_ledger(
+    membership_id: uuid.UUID, session: LedgerReadSession
+) -> MembershipLedger:
     """What the membership owes, and its latest entries: the member detail's money."""
     found = await session.scalar(
         text("SELECT EXISTS (SELECT FROM membership WHERE id = :id)"), {"id": membership_id}
@@ -1100,7 +1102,7 @@ BOOK_PAGE_MAX = 200
 
 @router.get("/book")
 async def ledger_book(
-    session: LedgerSession,
+    session: LedgerReadSession,
     # Any day of the month to show; the current one in the gym's timezone by default.
     month: date | None = None,
     book_filter: Annotated[BookFilter, Query(alias="filter")] = BookFilter.ALL,
@@ -1246,7 +1248,7 @@ OVERDUE = text(
 
 
 @router.get("/overdue")
-async def overdue(session: LedgerSession) -> Overdue:
+async def overdue(session: LedgerReadSession) -> Overdue:
     """The periods past due and not paid in full, of memberships in any status: the
     owner's "Vencidos" ("Hoy", #58)."""
     periods = [

@@ -162,7 +162,7 @@ keeps what a coach does today (footnote ¹ below).
 | `expenses_read` | Ver gastos | Gastos, Finanzas, the export's Gastos sheet | new |
 | `expenses_write` | Registrar gastos | Record, correct and void expenses; gastos fijos; categories. Implies `expenses_read` | new |
 | `members_manage` | Gestionar alumnos | Add and edit people and their data, join requests, groups, Dar de baja. Implies `members_add` | admin |
-| `members_add` | Agregar alumnos | Add a student without a plan, as a coach can today | coach |
+| `members_add` | Agregar alumnos | Add a student without a plan and keep their record (contact, fields, family, requirements, join requests), as a coach can today | coach |
 | `attendance` | Tomar asistencia | Run a class: attendance, notes, the timer, on a session they coach | coach (own sessions) |
 | `gym_setup` | Configurar gimnasio | Plans and prices, programs, schedule, custom fields, grading, theme, bank details; run any session | `ADMIN_ROLES` |
 | `team_manage` | Gestionar equipo | Invite, appoint and end appointments, create and edit roles, start a cambio de mando (under section 4's rule) | owner; admin for coaches |
@@ -222,8 +222,13 @@ The matrix, with the titular:
 
 ¹ Today a coach can add a student without a plan and nothing else of what
 `members_manage` covers, so the Coach role gets `members_add` and not the whole of
-it. #310 confirms the set by walking the 63 `StaffSession` endpoints; if a coach
-does less, the role gets less.
+it. #310 confirmed the set by walking the `StaffSession` endpoints. A coach does a
+little more than add: they edit a student's record (contact, custom fields, family,
+requirements) and see and approve join requests, with no plan. `members_add` covers
+all of that, as keeping the record of a student one may add, so the Coach role keeps
+`attendance` and `members_add` exactly; a promotion is `attendance`, given on the mat.
+Groups, the join link, enrolling, Dar de baja and the welcome are `members_manage`,
+and RLS writes groups and a `history_set` row with it (migration 0068).
 
 A new gym picks a preset (or none) in its first-run setup; an existing one finds
 "Agregar plantilla" in Cargos.

@@ -17,7 +17,8 @@ picker that must still find them (a payment they owe).
 It filters by belt too (#219): `rank` a current rank exactly, `rank_min` that rank or
 any above it, by the order of the gym's grading scheme, whatever the sport.
 
-Every staff role may use it, coaches included; members may not.
+Anyone on the team reads it; adding and editing someone is `members_add`, which a
+coach holds (#310). Members may not use it.
 """
 
 import re
@@ -37,7 +38,7 @@ from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.dates import gym_today, is_minor
 from app.domain.ledger import EntryStatus
 from app.domain.membership import MembershipStatus, current_first
-from app.permissions import SeesMoney, StaffSession
+from app.permissions import MembersAddSession, SeesMoney, StaffSession
 from app.schemas.people import (
     MINOR_NEEDS_GUARDIAN,
     PHONE_REQUIRED,
@@ -523,7 +524,9 @@ async def add_to_gym(
     responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}},
 )
 async def create_person(
-    body: PersonCreate, session: StaffSession, tenant: Annotated[Tenant, Depends(current_tenant)]
+    body: PersonCreate,
+    session: MembersAddSession,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
 ) -> Person:
     """Someone with no guardian: a minor's birth date is a 422, as Nuevo alumno, which
     takes a guardian, refuses one without (#368)."""
@@ -560,7 +563,7 @@ EDITED = text("""
     responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}},
 )
 async def update_person(
-    person_id: uuid.UUID, body: PersonUpdate, session: StaffSession, money: SeesMoney
+    person_id: uuid.UUID, body: PersonUpdate, session: MembersAddSession, money: SeesMoney
 ) -> Person:
     """Checked first, written second: a refusal writes nothing."""
     changes = body.model_dump(exclude_unset=True)

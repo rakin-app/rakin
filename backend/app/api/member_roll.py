@@ -36,8 +36,9 @@ voided is deleted, one the gym kept a payment of is not until it is refunded (#2
 Otherwise it answers why not, and how much it is about; `GET .../deletion` answers the
 same without deleting.
 
-Adding, leaving, returning and the welcome are the owner's and admins': each starts or
-ends what a member is charged, or speaks for the gym. Deleting is the owner's alone.
+Adding, leaving, returning and the welcome are for whoever manages the members
+(`members_manage`), and the plan one starts on for whoever records money too
+(`money_write`, a 403 without it). Deleting is the titular's alone.
 """
 
 import uuid
@@ -51,7 +52,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.custom_fields import field_cipher, write_person_fields
 from app.api.guardians import link
 from app.api.history import changes, record_history_set, refuse_outside_history
-from app.api.memberships import CALL_OFF_BOOKED, start_membership, welcome_to
+from app.api.memberships import CALL_OFF_BOOKED, PLAN_IS_MONEY, start_membership, welcome_to
 from app.api.people import (
     NOT_FOUND,
     add_to_gym,
@@ -68,7 +69,7 @@ from app.domain.billing import settled_amount
 from app.domain.dates import gym_today, is_minor
 from app.domain.membership import MembershipStatus, PlanKind, current_first
 from app.notices import Notices, get_notices, mail_address
-from app.permissions import AdminSession, OwnerSession
+from app.permissions import MembersSession, OwnerSession, Permission, holds
 from app.schemas.guardians import FamilyConflict, FamilyRefused
 from app.schemas.people import (
     MINOR_NEEDS_GUARDIAN,
@@ -211,11 +212,13 @@ async def enrol(
     body: Enrolment,
     request: Request,
     tenant: CurrentTenant,
-    session: AdminSession,
+    session: MembersSession,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> Person:
     """Add a member by hand; on a refusal nothing is written. A minor needs a guardian."""
+    if body.membership is not None and not await holds(session, tenant, Permission.MONEY_WRITE):
+        raise PLAN_IS_MONEY
     if (
         body.dob is not None
         and body.guardian is None
@@ -240,7 +243,7 @@ async def enrol(
 
 @router.post("/{person_id}/leave")
 async def leave(
-    person_id: uuid.UUID, body: Leaving, tenant: CurrentTenant, session: AdminSession
+    person_id: uuid.UUID, body: Leaving, tenant: CurrentTenant, session: MembersSession
 ) -> Person:
     """Dar de baja from `left_on`, and why if said: every membership they hold ends now,
     so nothing more is billed, and what is owed stays owed. A 409 if they have already
@@ -273,11 +276,13 @@ async def leave(
 
 @router.post("/{person_id}/return")
 async def return_to_gym(
-    person_id: uuid.UUID, body: Return, tenant: CurrentTenant, session: AdminSession
+    person_id: uuid.UUID, body: Return, tenant: CurrentTenant, session: MembersSession
 ) -> Person:
     """Reactivar: back on the member list, and on `body.membership`'s plan if given.
     Why they had left goes, recorded as it went. No welcome: they know the gym. A 409
     if they have not left."""
+    if body.membership is not None and not await holds(session, tenant, Permission.MONEY_WRITE):
+        raise PLAN_IS_MONEY
     record = (await session.execute(LOCK_LEFT, {"id": person_id})).one_or_none()
     if record is None:
         raise NOT_FOUND
@@ -296,7 +301,7 @@ async def return_to_gym(
     responses={status.HTTP_409_CONFLICT: {"model": PersonInGym}},
 )
 async def add_former_student(
-    body: FormerStudent, tenant: CurrentTenant, session: AdminSession
+    body: FormerStudent, tenant: CurrentTenant, session: MembersSession
 ) -> Person:
     """Agregar exalumno: their record, already left, with no membership and no welcome.
     A RUT or email someone here already has is a 409 naming them, as for anyone."""
@@ -340,7 +345,7 @@ async def _welcome_state(session: AsyncSession, person_id: uuid.UUID) -> Welcome
 
 
 @router.get("/{person_id}/welcome")
-async def welcome_state(person_id: uuid.UUID, session: AdminSession) -> WelcomeState:
+async def welcome_state(person_id: uuid.UUID, session: MembersSession) -> WelcomeState:
     return await _welcome_state(session, person_id)
 
 
@@ -348,7 +353,7 @@ async def welcome_state(person_id: uuid.UUID, session: AdminSession) -> WelcomeS
 async def send_welcome(
     person_id: uuid.UUID,
     tenant: CurrentTenant,
-    session: AdminSession,
+    session: MembersSession,
     notices: Annotated[Notices, Depends(get_notices)],
 ) -> WelcomeState:
     """Send their welcome now and answer how it went. Nothing here waits on this

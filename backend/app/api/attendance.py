@@ -66,7 +66,7 @@ from app.domain.attendance import credits_to_consume
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.membership import Membership, MembershipStatus, PlanKind, PlanTerms
 from app.notices import Notices, get_notices
-from app.permissions import FORBIDDEN, Permission, StaffSession, holds
+from app.permissions import FORBIDDEN, AttendanceSession, Permission, StaffSession, holds
 from app.schemas.attendance import (
     AlreadyMember,
     AttendanceChange,
@@ -392,7 +392,7 @@ async def remove_attendance(session: AsyncSession, session_id: uuid.UUID) -> Non
 async def get_roster(
     session_id: uuid.UUID,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Roster:
     return await _roster(session, tenant, await class_of(session, session_id))
 
@@ -405,7 +405,7 @@ async def change_attendance(
     session_id: uuid.UUID,
     body: AttendanceChange,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Roster:
     """Mark and unmark at once; the roster as it then stands."""
     held = await class_of(session, session_id, lock=True)
@@ -435,7 +435,7 @@ async def add_trial_guest(
     session_id: uuid.UUID,
     body: TrialGuest,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Roster:
     """Start the person on a trial plan from today, marked present at the session. A
     409 names the membership of someone who already has a live one, to mark instead, or
@@ -539,7 +539,7 @@ async def add_dropin_visitor(
     session_id: uuid.UUID,
     body: DropinVisitor,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> Roster:
