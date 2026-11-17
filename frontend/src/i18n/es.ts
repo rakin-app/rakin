@@ -1875,7 +1875,7 @@ export const es = {
           return `Datos extra en la ficha de cada ${w.member}.`
         },
         requirements: 'Declaraciones de riesgos, inducciones y certificados, con su fecha.',
-        staff: 'Admins y coaches, y quién tiene acceso.',
+        staff: 'Quién está en el equipo, sus cargos y qué puede hacer cada uno.',
         joinLink: 'El link para que se inscriban solos.',
         account: 'Tu nombre, tu email y cerrar sesión.',
       },
@@ -2391,11 +2391,154 @@ export const es = {
       staff: {
         title: 'Equipo',
         error: 'No pudimos cargar el equipo.',
-        get intro() {
-          return `Quienes llevan ${w.thePlace} contigo. Un admin ve los pagos y los ajustes; un coach toma asistencia y no ve los pagos.`
-        },
-        roles: { owner: 'Dueño', admin: 'Admin', coach: 'Coach' } as Record<string, string>,
+        intro: 'Quién está en el equipo y qué puede hacer.',
         add: 'Invitar',
+        // What each permission is called in Cargos and "Puede:", with its line of help.
+        permissions: {
+          money_read: 'Ver ingresos',
+          money_write: 'Registrar pagos',
+          expenses_read: 'Ver gastos',
+          expenses_write: 'Registrar gastos',
+          get members_manage() {
+            return `Gestionar ${w.members}`
+          },
+          get members_add() {
+            return `Agregar ${w.members}`
+          },
+          attendance: 'Tomar asistencia',
+          get gym_setup() {
+            return `Configurar ${w.thePlace}`
+          },
+          team_manage: 'Gestionar equipo',
+        } as Record<string, string>,
+        // Short, for the 1280 table's head.
+        short: {
+          money_read: 'Ingresos',
+          money_write: 'Pagos',
+          expenses_read: 'Gastos',
+          expenses_write: 'Reg. gastos',
+          get members_manage() {
+            return w.Members
+          },
+          members_add: 'Agregar',
+          attendance: 'Asistencia',
+          gym_setup: 'Configurar',
+          team_manage: 'Equipo',
+        } as Record<string, string>,
+        help: {
+          money_read: 'Pagos, el Libro, los montos y la exportación.',
+          money_write: 'Registra y valida pagos, corrige cobros y cambia planes. Incluye ver ingresos.',
+          expenses_read: 'Gastos y Finanzas. Incluye sueldos y honorarios.',
+          expenses_write: 'Registra, corrige y anula gastos. Incluye ver gastos.',
+          get members_manage() {
+            return `Grupos, el link de inscripción, dar de baja. Incluye agregar ${w.members}.`
+          },
+          get members_add() {
+            return `Agrega ${w.members} sin plan y lleva su ficha.`
+          },
+          attendance: 'Toma asistencia en las clases que dirige.',
+          get gym_setup() {
+            return 'Planes y precios, programas, horario, ajustes y datos bancarios.'
+          },
+          team_manage: 'Invita, nombra y termina cargos; crea y edita cargos.',
+        } as Record<string, string>,
+        people: {
+          title: 'Personas',
+          titular: 'Titular de la cuenta',
+          noRole: 'Sin cargo',
+          until: (month: string) => `hasta ${month}`,
+          from: (day: string) => `desde ${day}`,
+          name: 'Nombre',
+          roles: 'Cargos',
+          term: 'Período',
+          can: 'Puede',
+          all: 'Todo',
+          count: (n: number, of: number) => `${n} de ${of}`,
+          open: '…',
+        },
+        panel: {
+          close: 'Cerrar',
+          from: 'Desde',
+          until: 'Hasta (opcional)',
+          untilHint: 'El primer día sin el cargo.',
+          saveDates: 'Guardar fechas',
+          datesSaved: (role: string) => `Fechas de ${role} corregidas.`,
+          end: 'Terminar cargo',
+          confirmEnd: (role: string, name: string) => `¿Terminar hoy el cargo de ${role} de ${name}?`,
+          confirm: 'Sí, terminar',
+          ended: (role: string, name: string) => `${name} ya no es ${role}.`,
+          add: 'Agregar cargo',
+          role: 'Cargo',
+          appoint: 'Agregar',
+          appointed: (role: string, name: string) => `${name} ahora es ${role}.`,
+          can: 'Puede:',
+          nothing: 'Nada por ahora: aparece en el equipo.',
+          canAll: 'Todo, como titular de la cuenta.',
+          overlaps: 'Ya tiene ese cargo en esas fechas.',
+          badTerm: '“Hasta” va después de “Desde”.',
+          noneToGive: 'No hay cargos que puedas darle.',
+        },
+        titles: {
+          title: 'Cargos',
+          empty: 'Todavía no hay cargos. Crea uno o agrega una plantilla.',
+          none: 'Sin permisos',
+          add: 'Nuevo cargo',
+          addPreset: 'Agregar plantilla',
+          presetAdded: (n: number) =>
+            n === 0 ? 'Ya tenías todos los cargos de esa plantilla.' : n === 1 ? 'Agregamos 1 cargo.' : `Agregamos ${n} cargos.`,
+          fromPreset: (preset: string) => `de la plantilla ${preset}`,
+          holders: (n: number) => (n === 1 ? '1 persona' : `${n} personas`),
+          form: {
+            title: 'Nuevo cargo',
+            name: 'Nombre',
+            nameHint: 'Como lo llaman en el club: Tesorera, Encargado de cobranza.',
+            get public() {
+              return `Visible para ${w.theMembers}`
+            },
+            get publicHint() {
+              return `Aparece en la página de ${w.theMembers}, con su nombre.`
+            },
+            permissions: 'Permisos',
+            notYours: 'Solo das permisos que tú tienes, y no todos los tuyos.',
+            implied: (what: string) => `Viene con ${what}.`,
+          },
+          save: 'Guardar',
+          saved: (name: string) => `Cargo ${name} guardado.`,
+          created: (name: string) => `Creamos el cargo ${name}.`,
+          widens: (holders: string, what: string) => `${holders} podrán ${what}.`,
+          widensConfirm: 'Guardar igual',
+          archive: 'Archivar',
+          confirmArchive: (name: string) => `¿Archivar ${name}? Sale de los cargos, y el historial lo mantiene.`,
+          confirm: 'Sí, archivar',
+          archived: (name: string) => `Archivamos ${name}.`,
+          held: 'Alguien tiene este cargo: termina sus cargos antes de archivarlo.',
+          nameTaken: 'Ya hay un cargo con ese nombre.',
+          notAllowed: 'Ese cargo tiene permisos que no puedes dar.',
+        },
+        // Rakin's names for its presets (backend `app.permissions.PRESETS`), whatever the
+        // gym calls itself.
+        presets: {
+          academia: 'Academia',
+          club_federado: 'Club federado',
+        } as Record<string, string>,
+        presetRoles: {
+          academia: 'Administrador y Coach.',
+          club_federado: 'Presidente, Tesorero, Secretario, Director, Delegado y Coach.',
+        } as Record<string, string>,
+        setup: {
+          title: '¿Cómo se organiza tu equipo?',
+          intro: 'Elige una plantilla de cargos para empezar. Después cambias, agregas o archivas los que quieras.',
+          none: 'Sin plantilla',
+          noneHint: 'Creo los cargos yo.',
+          choose: (preset: string) => `Usar ${preset}`,
+          chosen: 'Listo. Ahora invita a tu equipo.',
+        },
+        history: {
+          title: 'Historial',
+          empty: 'Todavía no hay cargos en el historial.',
+          term: (from: string, until: string | null) => (until ? `${from} – ${until}` : `desde ${from}`),
+          never: 'no llegó a empezar',
+        },
         form: {
           title: 'Invitar al equipo',
           name: 'Nombre',
@@ -2404,12 +2547,15 @@ export const es = {
           phone: 'Teléfono (opcional)',
           email: 'Correo',
           emailHint: 'Le enviamos un link para entrar. Siempre entra con este correo, sin contraseña.',
-          role: 'Rol',
-          adminOnlyHint: 'Solo el dueño invita admins.',
+          roles: 'Cargos',
+          rolesHint: 'Uno o más. Solo los que puedes dar.',
+          rolesNeeded: 'Elige al menos un cargo.',
+          from: 'Desde',
+          until: 'Hasta (opcional)',
         },
         cancel: 'Cancelar',
         submit: 'Enviar invitación',
-        working: 'Enviando…',
+        working: 'Guardando…',
         invalid: 'Revisa los campos marcados.',
         failed: 'No pudimos enviar la invitación. Inténtalo de nuevo.',
         alreadyStaff: 'Esa persona ya está en el equipo.',
@@ -2423,16 +2569,7 @@ export const es = {
           email: 'Correo no válido.',
         } as Record<string, string>,
         invited: (name: string, email: string) => `Invitamos a ${name}. Le llegará un link a ${email}.`,
-        makeAdmin: 'Hacer admin',
-        makeCoach: 'Hacer coach',
-        roleChanged: (name: string, role: string) => `${name} ahora es ${role.toLowerCase()}.`,
-        revoke: 'Quitar acceso',
-        confirmRevoke: (name: string) => `¿Quitar el acceso de ${name}? Su ficha y sus clases se mantienen.`,
-        confirm: 'Sí, quitar',
-        revoked: (name: string) => `${name} ya no está en el equipo.`,
         actionFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
-        close: 'Cerrar',
-        panelTitle: (name: string, role: string) => `${name} · ${role}`,
       },
       joinLink: {
         title: 'Link de inscripción',

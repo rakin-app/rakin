@@ -80,6 +80,11 @@ class Case:
 
 
 EXPENSE_ACTION = "expense_changed"
+# The team's actions (0071), read with `team_manage` alone.
+TEAM_ACTIONS = (
+    "('title_created', 'title_changed', 'appointment_started', 'appointment_ended',"
+    " 'appointment_corrected')"
+)
 
 CASES = (
     Case(
@@ -164,7 +169,13 @@ CASES = (
     Case(
         "audit_event_read",
         Permission.MONEY_READ,
-        "SELECT id FROM audit_event WHERE gym_id = $1 AND NOT starts_with(action, 'expense_')",
+        "SELECT id FROM audit_event WHERE gym_id = $1 AND NOT starts_with(action, 'expense_')"
+        f" AND action NOT IN {TEAM_ACTIONS}",
+    ),
+    Case(
+        "audit_event_read",
+        Permission.TEAM_MANAGE,
+        f"SELECT id FROM audit_event WHERE gym_id = $1 AND action IN {TEAM_ACTIONS}",
     ),
     Case(
         "audit_event_read",
@@ -193,6 +204,20 @@ CASES = (
         lambda gym, actor: (gym.id, actor, gym.owner),
     ),
     Case(
+        "audit_event_team",
+        Permission.TEAM_MANAGE,
+        "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
+        " VALUES ($1, $2, 'title_created', '{}')",
+        lambda gym, actor: (gym.id, actor),
+    ),
+    Case(
+        "audit_event_team",
+        Permission.TEAM_MANAGE,
+        "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
+        " VALUES ($1, $2, $3, 'appointment_started', '{}')",
+        lambda gym, actor: (gym.id, actor, gym.owner),
+    ),
+    Case(
         "audit_event_backfill",
         Permission.ATTENDANCE,
         "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
@@ -205,6 +230,33 @@ CASES = (
         "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
         " VALUES ($1, $2, $3, 'attendance_backfilled', '{}')",
         lambda gym, actor: (gym.id, actor, gym.owner),
+    ),
+    Case(
+        "gym_title_insert",
+        Permission.TEAM_MANAGE,
+        "INSERT INTO gym_title (gym_id, name) VALUES ($1, 'Delegada')",
+    ),
+    Case(
+        "gym_title_update",
+        Permission.TEAM_MANAGE,
+        "UPDATE gym_title SET public = NOT public WHERE gym_id = $1",
+    ),
+    Case(
+        "staff_title_insert",
+        Permission.TEAM_MANAGE,
+        "INSERT INTO staff_title (gym_id, person_id, title_id, title_name, starts_on)"
+        " SELECT $1, $2, id, name, current_date FROM gym_title WHERE gym_id = $1 LIMIT 1",
+        lambda gym, actor: (gym.id, gym.newcomer),
+    ),
+    Case(
+        "staff_title_update",
+        Permission.TEAM_MANAGE,
+        "UPDATE staff_title SET public_contact = NULL WHERE gym_id = $1",
+    ),
+    Case(
+        "staff_title_delete",
+        Permission.TEAM_MANAGE,
+        "DELETE FROM staff_title WHERE gym_id = $1",
     ),
     Case(
         "audit_event_import",
@@ -305,6 +357,12 @@ def gym(db: Database) -> Gym:
     one(
         "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
         " VALUES ($1, $2, $2, 'ledger_corrected', '{}')",
+        owner,
+    )
+    # A team's row (0071), which only `team_manage` reads.
+    one(
+        "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
+        " VALUES ($1, $2, 'title_created', '{}')",
         owner,
     )
     # An expense's row, which #314 adds the action for: this database lets it in early.

@@ -21,7 +21,16 @@ from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.domain.dates import gym_today
 from app.integrations import build_mailer
-from app.jobs import billing, freezes, join_requests, lapse, overdue, schedule, statements
+from app.jobs import (
+    billing,
+    freezes,
+    join_requests,
+    lapse,
+    overdue,
+    schedule,
+    statements,
+    team,
+)
 from app.jobs.runner import Job, Outcome, Report, run_due
 from app.logging import configure_logging
 from app.notices import Notices
@@ -37,6 +46,7 @@ JOBS: tuple[Job, ...] = (
     lapse.JOB,
     join_requests.JOB,
     schedule.JOB,
+    team.JOB,
 )
 
 

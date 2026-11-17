@@ -78,6 +78,11 @@ IMPLIES: dict[Permission, Permission] = {
 }
 
 
+def with_implied(permissions: frozenset[Permission]) -> frozenset[Permission]:
+    """`permissions` with what each implies, as a role stores them."""
+    return permissions | {IMPLIES[p] for p in permissions if p in IMPLIES}
+
+
 @dataclass(frozen=True)
 class PresetTitle:
     """A role a preset adds to a gym. `key` names it within the preset, for its id."""
@@ -112,7 +117,8 @@ COACH = PresetTitle(
     "coach", "Coach", frozenset({Permission.ATTENDANCE, Permission.MEMBERS_ADD}), public=True
 )
 
-# The board of a club (section 2). No gym is given it yet: Cargos adds it (#311).
+# The board of a club (section 2): a gym adds it in Equipo, at its first-run setup or
+# from Cargos (#311).
 CLUB_FEDERADO = "club_federado"
 PRESIDENTE = PresetTitle(
     "presidente",

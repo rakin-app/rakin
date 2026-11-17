@@ -46,6 +46,7 @@ from app.api import (
     session_blocks,
     sessions,
     staff,
+    titles,
     unsubscribe,
     webhooks,
 )
@@ -140,6 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(import_undo.router)
     app.include_router(gym.router)
     app.include_router(staff.router)
+    app.include_router(titles.router)
     app.include_router(grading.router)
     app.include_router(grades.router)
     app.include_router(ledger.router)

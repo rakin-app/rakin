@@ -28,6 +28,7 @@ from app.member_import.sheet import read_book
 from app.member_import.template import COLUMNS, template, template_name
 from app.notices import FREEZE_REJECTED, JOIN_APPROVED, STAFF_INVITE, WELCOME, Notice, render
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
+from app.permissions import ADMINISTRADOR, Permission
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
@@ -51,7 +52,12 @@ CONTEXTS: dict[str, dict[str, Any]] = {
         "to_date": date(2026, 12, 31),
         "note": None,
     },
-    "staff_invite": {**BASE, "inviter": "Pía", "role": "admin", "role_is_coach": False},
+    "staff_invite": {
+        **BASE,
+        "inviter": "Pía",
+        "roles": ["Administrador"],
+        "can": [p.value for p in Permission if p in ADMINISTRADOR.permissions],
+    },
 }
 TEMPLATES = {"welcome": WELCOME, "join_approved": JOIN_APPROVED}
 TEMPLATES |= {"freeze_rejected": FREEZE_REJECTED, "staff_invite": STAFF_INVITE}
@@ -61,9 +67,10 @@ SENTENCES = {
     "welcome": ("Ya estás en su lista de alumnos.", "Ya estás en su lista de socios."),
     "join_approved": ("La academia te contará qué plan", "El club te contará qué plan"),
     "freeze_rejected": ("habla con la academia.", "habla con el club."),
+    # What the roles let one do, since #311.
     "staff_invite": (
-        "llevas los pagos, los alumnos y los ajustes del gimnasio.",
-        "llevas los pagos, los socios y los ajustes del gimnasio.",
+        "registrar pagos, llevar a los alumnos, tomar asistencia, configurar la academia",
+        "registrar pagos, llevar a los socios, tomar asistencia, configurar el club",
     ),
 }
 

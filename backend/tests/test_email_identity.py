@@ -30,6 +30,7 @@ from app.magiclink import COOKIE_NAME
 from app.magiclink.tokens import hash_token
 from app.main import create_app
 from app.notices import Notices
+from app.permissions import preset_title_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import require_test_database_url
 from tests.ids import random_rut
@@ -199,7 +200,13 @@ def test_inviting_them_as_staff(harness: Harness, gyms: Gyms) -> None:
     attacker = address()
 
     invited = harness.write(
-        "POST", "/api/staff", gyms.b, rut=rut, name="X", email=attacker, role="admin"
+        "POST",
+        "/api/staff",
+        gyms.b,
+        rut=rut,
+        name="X",
+        email=attacker,
+        title_ids=[str(preset_title_id(gyms.b, "academia", "administrador"))],
     )
     assert uuid.UUID(invited["person_id"]) == person
     # The invite's email is gym B's to write: it signs in to gym B alone.
