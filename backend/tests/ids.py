@@ -22,6 +22,13 @@ from app.domain.rut import check_digit
 PER_RUN = 1_000_000
 # This process's worker, `gw3`, or none outside xdist.
 _WORKER = int(re.sub(r"\D", "", os.environ.get("PYTEST_XDIST_WORKER", "")) or 0)
+# The slices below hold nine: a tenth's RUTs would reach the 76M of companies, and its
+# phones a ninth digit.
+MAX_WORKERS = 9
+assert _WORKER < MAX_WORKERS, (
+    f"tests/ids.py has identity slices for {MAX_WORKERS} xdist workers (gw0 to gw8),"
+    f" not gw{_WORKER}: run with -n {MAX_WORKERS} or fewer, or make the slices smaller"
+)
 
 
 def _sequence(floor: int, slice_size: int) -> "itertools.count[int]":
@@ -31,9 +38,9 @@ def _sequence(floor: int, slice_size: int) -> "itertools.count[int]":
     return itertools.count(start)
 
 
-# RUT bodies 30M to 75M: nine workers' slices of 5M.
+# RUT bodies 30M to 75M: `MAX_WORKERS` slices of 5M.
 _ruts = _sequence(30_000_000, 5_000_000)
-# The eight digits after +569: nine slices of 10M from 10M.
+# The eight digits after +569: `MAX_WORKERS` slices of 10M from 10M.
 _phones = _sequence(10_000_000, 10_000_000)
 _emails = itertools.count()
 # Apart from another run's addresses in a database a run reuses.
