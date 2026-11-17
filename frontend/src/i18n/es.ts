@@ -859,6 +859,7 @@ export const es = {
         unknown_plan: 'no corresponde a ningún plan',
         inactive_plan: 'es un plan desactivado',
         dropin_plan: 'es una clase suelta, no una membresía',
+        ended_plan: 'es un plan cuyo período ya terminó',
         due_before_start: 'es anterior al inicio del plan',
         get has_guardian() {
           return `${w.theMember} ya tiene otro apoderado`
@@ -1421,6 +1422,7 @@ export const es = {
       reactivateRefused: {
         not_lapsed: 'Este plan no está caducado.',
         not_recurring: 'Un pack o una prueba no se reactiva: asígnale uno nuevo.',
+        period_ended: 'El período del plan terminó: cámbialo al plan del próximo período.',
         unpaid: (amount: string, month: string) =>
           `Debe ${amount} desde ${month}, ya fuera del plazo de gracia: caducaría de nuevo esta noche. Registra el pago o anula ese cargo primero.`,
         live_plan: (plan: string) => `Ya tiene otro plan vigente (${plan}): no puede tener dos a la vez.`,
@@ -2006,6 +2008,7 @@ export const es = {
         kinds: {
           monthly: 'Mensual',
           prepaid: 'Prepago',
+          fixed_period: 'Período fijo',
           credits: 'Paquete de clases',
           dropin: 'Clase suelta',
           trial: 'Prueba',
@@ -2014,6 +2017,7 @@ export const es = {
         summary: {
           monthly: (price: string) => `${price} al mes`,
           prepaid: (price: string, months: number) => `${price} por ${months === 1 ? '1 mes' : `${months} meses`}`,
+          fixed_period: (price: string, start: string, end: string) => `${price} del ${start} al ${end}`,
           credits: (price: string, credits: number, days: number) =>
             `${price} por ${credits === 1 ? '1 clase' : `${credits} clases`} · vencen en ${days === 1 ? '1 día' : `${days} días`}`,
           dropin: (price: string) => `${price} por clase`,
@@ -2032,6 +2036,11 @@ export const es = {
           price: 'Precio (CLP)',
           anchor: 'Día de cobro',
           periodMonths: 'Meses que cubre',
+          periodStart: 'Desde',
+          periodEnd: 'Hasta',
+          get periodHint() {
+            return `Las mismas fechas para ${w.memberIs('todos', 'todas')} ${w.theMembers}, se inscriban cuando se inscriban. Quien entra después paga el precio completo.`
+          },
           credits: 'Clases incluidas',
           creditExpiryDays: 'Vencen a los (días)',
           freeClasses: 'Clases gratis',
@@ -2054,7 +2063,34 @@ export const es = {
           value: {
             unknown_program: 'Ese programa no existe.',
             inactive_program: 'Ese programa está desactivado.',
+            period_order: 'Debe ser igual o posterior a la fecha de inicio.',
+            date_parsing: 'Indica una fecha.',
+            date_from_datetime_parsing: 'Indica una fecha.',
           } as Record<string, string>,
+        },
+        nextPeriod: {
+          open: 'Duplicar para el próximo período',
+          title: (name: string) => `Próximo período de ${name}`,
+          get intro() {
+            return `Se crea un plan nuevo con estas fechas, y ${w.theMembers} que marques pasan a él cuando termine lo que ya pagaron. Este plan no se renueva solo.`
+          },
+          get members() {
+            return `${w.Members} que pasan al nuevo período`
+          },
+          loading: 'Cargando…',
+          error: 'No pudimos cargar la lista.',
+          get none() {
+            return `Este plan no tiene ${w.members} ${w.memberIs('activos', 'activas')}.`
+          },
+          frozen: 'plan congelado',
+          pending: (plan: string) => `ya cambia a ${plan}`,
+          submit: 'Crear y pasar',
+          working: 'Creando…',
+          failed: 'No pudimos crear el próximo período. Inténtalo de nuevo.',
+          afterPeriod: (end: string) => `Debe ser posterior al ${end}, cuando termina este período.`,
+          notOnPlan: 'Alguien de la lista ya no está en este plan. Vuelve a abrir el formulario.',
+          done: (name: string, moved: number) =>
+            `Plan ${name} creado. ${moved === 0 ? 'Nadie pasa a él todavía.' : `${w.memberCount(moved)} ${moved === 1 ? 'pasa' : 'pasan'} a él.`}`,
         },
         created: (name: string) => `Plan ${name} creado.`,
         saved: (name: string) => `Plan ${name} guardado.`,

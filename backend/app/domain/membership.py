@@ -29,6 +29,9 @@ MAX_FREEZE_DAYS = 365
 class PlanKind(StrEnum):
     MONTHLY = "monthly"
     PREPAID = "prepaid"
+    # Prepaid with dates the gym sets, the same for every member: a season, a year, a
+    # term (#351).
+    FIXED_PERIOD = "fixed_period"
     CREDITS = "credits"
     DROPIN = "dropin"
     TRIAL = "trial"
@@ -94,10 +97,24 @@ class PlanTerms:
     anchor: str | None = None
     credits: int | None = None
     credit_expiry_days: int | None = None
+    # A fixed-period plan's first and last day (#351).
+    period_start: date | None = None
+    period_end: date | None = None
 
 
-# The kinds billed period after period, which a plan change can move between.
-RECURRING = frozenset({PlanKind.MONTHLY, PlanKind.PREPAID})
+# The kinds billed period after period, which a plan change can move between. A
+# fixed-period plan bills its one period and no more: its members move to the next
+# period's plan by a plan change.
+RECURRING = frozenset({PlanKind.MONTHLY, PlanKind.PREPAID, PlanKind.FIXED_PERIOD})
+
+
+def check_open(terms: PlanTerms, starts_on: date) -> None:
+    """Refuse a membership on `terms` from `starts_on`, a start or a plan change, once a
+    fixed-period plan's period has ended: nothing would ever be billed on it."""
+    if terms.kind is PlanKind.FIXED_PERIOD and (
+        terms.period_end is None or starts_on > terms.period_end
+    ):
+        raise ValueError(f"the plan's period ended on {terms.period_end}, before {starts_on}")
 
 
 def grace_days(gym_settings: Mapping[str, object]) -> int:
@@ -169,7 +186,8 @@ def start(terms: PlanTerms, started_on: date) -> Membership:
     """A membership on `terms` from `started_on`, a calendar date in the gym's timezone.
 
     A monthly or prepaid membership starts with nothing paid: paid through the day
-    before it starts, so its first period falls due on the start date. A credits pack
+    before it starts, so its first period falls due on the start date; a fixed-period
+    one too, refused once its period has ended (`check_open`). A credits pack
     or a trial starts with what it allows: its credits or free classes, and the last
     day it lasts as `current_period_end` (none for a trial limited by classes alone).
     """
@@ -177,6 +195,7 @@ def start(terms: PlanTerms, started_on: date) -> Membership:
         days = terms.credit_expiry_days
         last_day = None if days is None else started_on + timedelta(days=days - 1)
         return create(terms.kind, current_period_end=last_day, credits_remaining=terms.credits)
+    check_open(terms, started_on)
     membership = create(terms.kind, current_period_end=started_on - timedelta(days=1))
     return replace(membership, anchor_day=anchor_day(terms, started_on))
 
@@ -186,12 +205,14 @@ def imported(terms: PlanTerms, started_on: date, due_on: date | None) -> Members
 
     A monthly or prepaid one is paid through the day before `due_on`, the day its next
     payment falls due, which it bills on from then: a monthly one's anchor day is
-    `due_on`'s (the 1st on a `first` anchor). A credits pack or a trial starts as
+    `due_on`'s (the 1st on a `first` anchor). A fixed-period one is refused when its
+    period ended before `due_on` (`check_open`). A credits pack or a trial starts as
     `start` would on `started_on`, lasting through `due_on` when given.
     """
     if terms.kind in RECURRING:
         if due_on is None:
             raise ValueError("an imported monthly or prepaid membership needs its due date")
+        check_open(terms, due_on)
         membership = create(terms.kind, current_period_end=due_on - timedelta(days=1))
         return replace(membership, anchor_day=anchor_day(terms, due_on))
     membership = start(terms, started_on)

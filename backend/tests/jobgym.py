@@ -18,6 +18,12 @@ PLANS: dict[str, dict[str, Any]] = {
     "prepaid": {"kind": "prepaid", "price_clp": 240_000, "period_months": 6},
     "credits": {"kind": "credits", "price_clp": 45_000, "credits": 12, "credit_expiry_days": 60},
     "dropin": {"kind": "dropin", "price_clp": 10_000},
+    "season": {
+        "kind": "fixed_period",
+        "price_clp": 300_000,
+        "period_start": date(2027, 3, 1),
+        "period_end": date(2027, 12, 31),
+    },
     "trial": {"kind": "trial", "price_clp": 0, "credits": 2, "credit_expiry_days": 14},
 }
 

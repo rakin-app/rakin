@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Activity } from '../api/activities'
 import type { GymSettings } from '../api/gym'
 import type { Program } from '../api/people'
-import type { Plan } from '../api/plans'
+import type { Plan, PlanMembership } from '../api/plans'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -47,6 +47,20 @@ const OLD: Program = { id: 'old', name: 'Competición', active: false }
 const at = { active: true, created_at: '2026-10-01T12:00:00Z' }
 const MONTHLY: Plan = { ...at, id: 'mensual', kind: 'monthly', name: 'Mensual adultos', program_id: 'adultos', price_clp: 35000, anchor: 'signup' }
 const TRIAL: Plan = { ...at, id: 'prueba', kind: 'trial', name: 'Clase de prueba', program_id: null, free_classes: 2, free_days: 7 }
+const SEASON: Plan = {
+  ...at,
+  id: 'temporada',
+  kind: 'fixed_period',
+  name: 'Temporada 2027',
+  program_id: 'adultos',
+  price_clp: 300000,
+  period_start: '2027-03-01',
+  period_end: '2027-12-31',
+}
+const ON_SEASON: PlanMembership[] = [
+  { membership_id: 'm-ana', person_id: 'ana', name: 'Ana Rojas', status: 'active', next_plan_name: null },
+  { membership_id: 'm-luis', person_id: 'luis', name: 'Luis Pérez', status: 'frozen', next_plan_name: null },
+]
 const OLD_CREDITS: Plan = {
   ...at,
   active: false,
@@ -68,6 +82,8 @@ type Stub = {
   settings?: Answer
   saveSettings?: Answer
   savePlan?: Answer
+  // The plans listed, in order; by default a monthly plan, a trial and an old pack.
+  plans?: Plan[]
   // What the gym teaches (#245); by default BJJ, which grades.
   activities?: Activity[]
   // An answer to every change of an activity, in place of the stub's own.
@@ -93,13 +109,14 @@ function stubApi({
   settings,
   saveSettings,
   savePlan,
+  plans: listed = [MONTHLY, TRIAL, OLD_CREDITS],
   activities = [BJJ],
   changeActivity,
 }: Stub = {}) {
   const calls: Call[] = []
   let current = SETTINGS
   let taught = activities
-  let list: Plan[] = [MONTHLY, TRIAL, OLD_CREDITS]
+  let list: Plan[] = listed
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input, init) => {
@@ -164,6 +181,14 @@ function stubApi({
       const created = { ...at, id: 'nuevo', ...body } as Plan
       list = [...list, created]
       return { status: 201, body: created }
+    }
+    if (path === `/api/plans/${SEASON.id}/memberships`) return { body: ON_SEASON }
+    if (path === `/api/plans/${SEASON.id}/next-period` && method === 'POST') {
+      if (savePlan) return savePlan
+      const { membership_ids: moved, ...fields } = body as { membership_ids: string[] }
+      const created = { ...SEASON, id: 'temporada-2028', ...fields } as Plan
+      list = [...list, created]
+      return { status: 201, body: { plan: created, moved: moved.length } }
     }
     const found = list.find((p) => path === `/api/plans/${p.id}`)
     if (found && method === 'PATCH') {
@@ -878,6 +903,109 @@ describe('Ajustes: Planes', () => {
     const program = within(edit).getByLabelText(form.program)
     expect(program).toHaveValue('old')
     expect(within(program).getByRole('option', { name: form.inactiveProgram('Competición') })).toBeInTheDocument()
+  })
+
+  it('creates a fixed-period plan with its two dates, and lists it with them', async () => {
+    const calls = stubApi()
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    await userEvent.click(within(section).getByRole('button', { name: plans.add }))
+    const create = within(section).getByRole('form', { name: form.create })
+    await userEvent.selectOptions(within(create).getByLabelText(form.kind), plans.kinds.fixed_period)
+    expect(within(create).queryByLabelText(form.periodMonths)).not.toBeInTheDocument()
+    await userEvent.type(within(create).getByLabelText(form.name), 'Temporada 2027')
+    await userEvent.type(within(create).getByLabelText(form.price), '300.000')
+    await userEvent.type(within(create).getByLabelText(form.periodStart), '2027-03-01')
+    await userEvent.type(within(create).getByLabelText(form.periodEnd), '2027-12-31')
+    await userEvent.click(within(create).getByRole('button', { name: form.submit }))
+
+    expect(await within(section).findByRole('status')).toHaveTextContent(plans.created('Temporada 2027'))
+    const row = (await within(section).findAllByRole('listitem')).at(-1)!
+    expect(row).toHaveTextContent(plans.row(plans.kinds.fixed_period, plans.summary.fixed_period('$300.000', '1 mar 2027', '31 dic 2027')))
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([
+      {
+        kind: 'fixed_period',
+        name: 'Temporada 2027',
+        program_id: null,
+        price_clp: 300000,
+        period_start: '2027-03-01',
+        period_end: '2027-12-31',
+      },
+    ])
+  })
+
+  it('puts a period ending before it starts under Hasta', async () => {
+    stubApi({ savePlan: refused([['body', 'fixed_period', 'period_end'], 'period_order']) })
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    await userEvent.click(within(section).getByRole('button', { name: plans.add }))
+    const create = within(section).getByRole('form', { name: form.create })
+    await userEvent.selectOptions(within(create).getByLabelText(form.kind), plans.kinds.fixed_period)
+    await userEvent.click(within(create).getByRole('button', { name: form.submit }))
+
+    expect(await within(create).findByRole('alert')).toHaveTextContent(form.invalid)
+    expect(within(create).getByLabelText(form.periodEnd)).toHaveAccessibleDescription(
+      `${form.periodHint} ${form.value.period_order}`,
+    )
+  })
+
+  it('copies a fixed-period plan for its next period and moves the members ticked', async () => {
+    const calls = stubApi({ plans: [SEASON] })
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    await userEvent.click(within((await within(section).findAllByRole('listitem'))[0]!).getByRole('button'))
+    const edit = within(section).getByRole('form', { name: form.edit('Temporada 2027') })
+    await userEvent.click(within(edit).getByRole('button', { name: plans.nextPeriod.open }))
+
+    const next = within(section).getByRole('form', { name: plans.nextPeriod.title('Temporada 2027') })
+    // A year on, to begin with.
+    expect(within(next).getByLabelText(form.name)).toHaveValue('Temporada 2028')
+    expect(within(next).getByLabelText(form.price)).toHaveValue('300000')
+    expect(within(next).getByLabelText(form.periodStart)).toHaveValue('2028-03-01')
+    expect(within(next).getByLabelText(form.periodEnd)).toHaveValue('2028-12-31')
+    const ana = await within(next).findByRole('checkbox', { name: 'Ana Rojas' })
+    const luis = within(next).getByRole('checkbox', { name: `Luis Pérez · ${plans.nextPeriod.frozen}` })
+    expect(ana).toBeChecked()
+    expect(luis).toBeChecked()
+    await userEvent.click(luis)
+    await userEvent.clear(within(next).getByLabelText(form.price))
+    await userEvent.type(within(next).getByLabelText(form.price), '320.000')
+    await userEvent.click(within(next).getByRole('button', { name: plans.nextPeriod.submit }))
+
+    expect(await within(section).findByRole('status')).toHaveTextContent(plans.nextPeriod.done('Temporada 2028', 1))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/plans/temporada/next-period',
+        body: {
+          name: 'Temporada 2028',
+          price_clp: 320000,
+          period_start: '2028-03-01',
+          period_end: '2028-12-31',
+          membership_ids: ['m-ana'],
+        },
+      },
+    ])
+  })
+
+  it('says when the next period does not start after this one', async () => {
+    stubApi({ plans: [SEASON], savePlan: refused([['body', 'period_start'], 'after_period']) })
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    await userEvent.click(within((await within(section).findAllByRole('listitem'))[0]!).getByRole('button'))
+    await userEvent.click(within(section).getByRole('button', { name: plans.nextPeriod.open }))
+    const next = within(section).getByRole('form', { name: plans.nextPeriod.title('Temporada 2027') })
+    await within(next).findByRole('checkbox', { name: 'Ana Rojas' })
+    await userEvent.click(within(next).getByRole('button', { name: plans.nextPeriod.submit }))
+
+    expect(await within(next).findByRole('alert')).toHaveTextContent(form.invalid)
+    expect(within(next).getByLabelText(form.periodStart)).toHaveAccessibleDescription(
+      plans.nextPeriod.afterPeriod('31 dic 2027'),
+    )
   })
 
   it('deactivates a plan and reactivates it', async () => {

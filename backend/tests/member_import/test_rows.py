@@ -35,7 +35,13 @@ SEMESTRAL = plan("Semestral", PlanKind.PREPAID)
 PACK = plan("Pack 12 clases", PlanKind.CREDITS, credits=12, credit_expiry_days=60)
 SUELTA = plan("Clase suelta", PlanKind.DROPIN)
 VIEJO = plan("Mensual 2025", PlanKind.MONTHLY, anchor="signup", active=False)
-PLANS = PlanFinder([MENSUAL, KIDS, SEMESTRAL, PACK, SUELTA, VIEJO], {})
+TEMPORADA = plan(
+    "Temporada",
+    PlanKind.FIXED_PERIOD,
+    period_start=date(2026, 3, 1),
+    period_end=date(2026, 12, 31),
+)
+PLANS = PlanFinder([MENSUAL, KIDS, SEMESTRAL, PACK, SUELTA, VIEJO, TEMPORADA], {})
 
 MAPPING = {
     F.NAME: 0,
@@ -282,6 +288,11 @@ def test_a_dependent_is_flagged_by_their_guardians_phone_not_their_own() -> None
             [RowError(F.DUE_ON, "invalid_date")],
         ),
         ({"name": "Ana", "rut": CAMILA_RUT, "plan": "Pack 12 clases"}, []),
+        ({"name": "Ana", "rut": CAMILA_RUT, "plan": "Temporada", "due": "05/12/2026"}, []),
+        (
+            {"name": "Ana", "rut": CAMILA_RUT, "plan": "Temporada", "due": "05/01/2027"},
+            [RowError(F.PLAN, "ended_plan")],
+        ),
     ],
     ids=[
         "no-name",
@@ -299,6 +310,8 @@ def test_a_dependent_is_flagged_by_their_guardians_phone_not_their_own() -> None
         "bad-due",
         "due-out-of-range",
         "pack-without-due",
+        "fixed-period-open",
+        "fixed-period-ended",
     ],
 )
 def test_a_row_reports_what_is_wrong_with_it(row: dict[str, str], expected: list[RowError]) -> None:

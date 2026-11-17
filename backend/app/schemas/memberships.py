@@ -141,6 +141,8 @@ class ReactivationRefusal(StrEnum):
     NOT_LAPSED = "not_lapsed"
     # A pack or a trial ends: the member starts a new one.
     NOT_RECURRING = "not_recurring"
+    # A fixed-period plan whose period has ended: the member moves to the next one's plan.
+    PERIOD_ENDED = "period_ended"
     # A period past due plus grace is unpaid: the nightly job would lapse it again.
     UNPAID = "unpaid"
     # The person is on another plan (Trial, Active or Frozen).

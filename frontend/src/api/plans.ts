@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
 
-export const PLAN_KINDS = ['monthly', 'prepaid', 'credits', 'dropin', 'trial'] as const
+export const PLAN_KINDS = ['monthly', 'prepaid', 'fixed_period', 'credits', 'dropin', 'trial'] as const
 export type PlanKind = (typeof PLAN_KINDS)[number]
 
 // The day of the month a monthly plan bills on: the member's signup day, or the 1st.
@@ -21,6 +21,8 @@ type Base = {
 export type Plan =
   | (Base & { kind: 'monthly'; price_clp: number; anchor: Anchor })
   | (Base & { kind: 'prepaid'; price_clp: number; period_months: number })
+  // The same days for every member: a season, a year, a term (#351), as `2027-03-01`.
+  | (Base & { kind: 'fixed_period'; price_clp: number; period_start: string; period_end: string })
   | (Base & { kind: 'credits'; price_clp: number; credits: number; credit_expiry_days: number })
   | (Base & { kind: 'dropin'; price_clp: number })
   // Free: lasts `free_classes` classes, `free_days` days, or whichever comes first.
@@ -33,6 +35,8 @@ export type PlanFields = Partial<{
   price_clp: number | string
   anchor: string
   period_months: number | string
+  period_start: string
+  period_end: string
   credits: number | string
   credit_expiry_days: number | string
   free_classes: number | string | null
@@ -55,5 +59,39 @@ export function updatePlan(planId: string, changes: PlanFields & { active?: bool
   return apiFetch<Plan>(`/api/plans/${encodeURIComponent(planId)}`, {
     method: 'PATCH',
     body: JSON.stringify(changes),
+  })
+}
+
+/** A membership on a plan now, active or frozen: the plan's list (`GET /api/plans/{id}/memberships`). */
+export type PlanMembership = {
+  membership_id: string
+  person_id: string
+  name: string
+  status: 'active' | 'frozen'
+  // A change to another plan already pending, which moving it replaces.
+  next_plan_name: string | null
+}
+
+export const planMembershipsQuery = (planId: string) =>
+  queryOptions({
+    queryKey: ['plans', planId, 'memberships'],
+    queryFn: () => apiFetch<PlanMembership[]>(`/api/plans/${encodeURIComponent(planId)}/memberships`),
+  })
+
+export type NextPeriod = {
+  name: string
+  price_clp: number | string
+  period_start: string
+  period_end: string
+  membership_ids: string[]
+}
+
+/** "Duplicar para el próximo período" (#351): a copy of a fixed-period plan with the
+ * next period's dates, and the memberships chosen moved to it from the day after they
+ * are paid through. */
+export function nextPeriod(planId: string, body: NextPeriod): Promise<{ plan: Plan; moved: number }> {
+  return apiFetch(`/api/plans/${encodeURIComponent(planId)}/next-period`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   })
 }

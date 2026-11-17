@@ -16,6 +16,17 @@ export function monthName(iso: string): string {
   return toDate(iso).toLocaleDateString('es-CL', { month: 'long' })
 }
 
+/** `1 mar 2027`. */
+export function shortDate(iso: string): string {
+  return toDate(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+/** The same day a year after `day`, both as `2027-03-01`; 29 February moves to the 28th. */
+export function nextYear(day: string): string {
+  const [year, month, date] = day.split('-')
+  return `${Number(year) + 1}-${month}-${month === '02' && date === '29' ? '28' : date}`
+}
+
 /** `30 de noviembre de 2026`. */
 export function longDay(iso: string): string {
   return toDate(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
