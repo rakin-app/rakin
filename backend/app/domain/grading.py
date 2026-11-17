@@ -66,6 +66,7 @@ _BELT = {
     "yellow": "#f2c12e",
     "orange": "#e8782a",
     "green": "#2f8a40",
+    "red": "#c62f2f",
 }
 BJJ_COLORS = {key: [_BELT[key]] for key, _ in BJJ_RANKS} | {
     key: [_BELT[base], *([_BELT[tone]] if tone else [])]
@@ -78,6 +79,15 @@ BJJ_COLORS = {key: [_BELT[key]] for key, _ in BJJ_RANKS} | {
 KYU_DAN = [(f"kyu-{n}", f"{n}.º kyu") for n in range(10, 0, -1)] + [
     (f"dan-{n}", f"{n}.º dan") for n in range(1, 11)
 ]
+# Their belts (#353): a common kyu sequence, white to brown, then black, the red and
+# white of 6.º to 8.º dan and the red of 9.º and 10.º. Federations and styles differ;
+# the gym edits it.
+_KYU = ["white", "yellow", "orange", "green", "blue", "blue", "purple", "brown", "brown", "brown"]
+_DAN = {n: ["black"] for n in range(1, 6)} | {n: ["red", "white"] for n in range(6, 9)}
+_DAN |= {n: ["red"] for n in (9, 10)}
+KYU_DAN_COLORS = {f"kyu-{n}": [_BELT[c]] for n, c in zip(range(10, 0, -1), _KYU, strict=True)} | {
+    f"dan-{n}": [_BELT[c] for c in colours] for n, colours in _DAN.items()
+}
 
 # Prajioud arm-band colours. Camps and federations order them differently; this is a
 # common sequence, for the gym to edit.
@@ -91,6 +101,8 @@ PRAJIOUD = [
     ("brown", "Café"),
     ("black", "Negro"),
 ]
+# Each arm band its colour (#353), so the scheme reads as bands, not levels.
+PRAJIOUD_COLORS = {key: [_BELT[key]] for key, _ in PRAJIOUD}
 
 # In the order the gym is offered them. Boxing and MMA have no grading: `none`.
 PRESETS: list[dict[str, Any]] = [
@@ -106,12 +118,20 @@ PRESETS: list[dict[str, Any]] = [
     {
         "key": "judo-karate",
         "label": "Judo / karate",
-        "scheme": {"ranks": _ladder(KYU_DAN), "kids_ladder": [], "goal_metric": "time_in_rank"},
+        "scheme": {
+            "ranks": _ladder(KYU_DAN, colors=KYU_DAN_COLORS),
+            "kids_ladder": [],
+            "goal_metric": "time_in_rank",
+        },
     },
     {
         "key": "muay-thai",
         "label": "Muay thai (prajioud)",
-        "scheme": {"ranks": _ladder(PRAJIOUD), "kids_ladder": [], "goal_metric": None},
+        "scheme": {
+            "ranks": _ladder(PRAJIOUD, colors=PRAJIOUD_COLORS),
+            "kids_ladder": [],
+            "goal_metric": None,
+        },
     },
     # Levels (#353): a swimming school's or a climbing gym's, no colours and no
     # sub-ranks, for the gym to fill.

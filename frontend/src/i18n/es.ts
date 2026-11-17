@@ -3587,7 +3587,7 @@ export const es = {
       title: 'Mi entrenamiento',
       // A dependent's, on their guardian's student page (#66).
       theirs: (name: string) => `Entrenamiento de ${name}`,
-      // A rank drawn as a belt is a belt; one with no colours (kyu, a level) is a grade.
+      // A rank drawn as a belt is a belt; one with no colours (a level) is a grade.
       belt: 'Cinturón',
       rank: 'Grado',
       since: (day: string) => `desde ${day}`,

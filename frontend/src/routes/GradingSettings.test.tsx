@@ -26,12 +26,12 @@ const SCHEME: GradingScheme = {
 }
 const PRESETS: GradingPreset[] = [
   {
-    key: 'judo-karate',
-    label: 'Judo / karate',
+    key: 'levels',
+    label: 'Niveles',
     scheme: {
       ranks: [
-        { key: 'kyu-2', label: '2.º kyu', target: null, colors: [], sub_ranks: [] },
-        { key: 'kyu-1', label: '1.º kyu', target: null, colors: [], sub_ranks: [] },
+        { key: 'tadpole', label: 'Renacuajo', target: null, colors: [], sub_ranks: [] },
+        { key: 'dolphin', label: 'Delfín', target: null, colors: [], sub_ranks: [] },
       ],
       kids_ladder: [],
       goal_metric: 'time_in_rank',
@@ -297,16 +297,16 @@ describe('Ajustes: Graduación', () => {
     expect(start).not.toHaveAttribute('open')
     await userEvent.click(within(start).getByText(copy.start))
     expect(start).toHaveAttribute('open')
-    await userEvent.selectOptions(await within(start).findByLabelText(copy.preset), 'Judo / karate')
+    await userEvent.selectOptions(await within(start).findByLabelText(copy.preset), 'Niveles')
     await userEvent.click(within(start).getByRole('button', { name: copy.apply }))
 
-    expect(screen.getByRole('status')).toHaveTextContent(copy.applied('Judo / karate'))
+    expect(screen.getByRole('status')).toHaveTextContent(copy.applied('Niveles'))
     expect(screen.getByLabelText(copy.goalMetric)).toHaveValue('time_in_rank')
-    // Kyu have no colours: levels (#353).
-    const kyu = await open(LEVELS.ladders.ranks, 1)
-    expect(within(kyu).getByLabelText(LEVELS.rank(1))).toHaveValue('2.º kyu')
+    // No colours: levels (#353).
+    const first = await open(LEVELS.ladders.ranks, 1)
+    expect(within(first).getByLabelText(LEVELS.rank(1))).toHaveValue('Renacuajo')
     // Months in rank, for this metric.
-    expect(within(kyu).getByLabelText(LEVELS.target.time_in_rank)).toBeInTheDocument()
+    expect(within(first).getByLabelText(LEVELS.target.time_in_rank)).toBeInTheDocument()
     expect(puts(calls)).toEqual([])
 
     await save()

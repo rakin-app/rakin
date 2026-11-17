@@ -26,7 +26,9 @@ import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
 
 const copy = t.admin.settings.grading
-// The copy's literals as strings, so the levels' words can stand in for the belts'.
+// The copy's literals as strings. `es` is `as const`, so `typeof copy` types each word as
+// its exact belt literal ('Grados', 'Cinturón') and the levels' words ('Niveles', 'Color')
+// would not fit it; widened, either set is a `Words`.
 type Widened<T> = T extends string
   ? string
   : T extends (...args: infer A) => infer R

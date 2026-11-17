@@ -417,10 +417,7 @@ def test_a_scheme_with_no_colours_is_levels_and_its_notes_say_no_rayas(
     client: TestClient, db: Database
 ) -> None:
     # Levels (#353): a sub-rank is no belt's stripe, so it goes by its name.
-    swim = {
-        "label": "Sin color",
-        "sub_ranks": [{"key": "a", "label": "A"}, {"key": "b", "label": "B"}],
-    }
+    swim = {"sub_ranks": [{"key": "a", "label": "A"}, {"key": "b", "label": "B"}]}
     scheme = {
         "ranks": [
             {"key": "uno", **swim, "label": "Nivel 1"},
