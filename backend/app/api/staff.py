@@ -5,7 +5,7 @@ their appointment to one of the gym's roles (`app.permissions`): the Academia pr
 Administrador for an admin, its Coach for a coach. So each of these writes both: an
 invite writes the row and an appointment from today, a change rewrites the row's role
 and moves the appointment to the other role from today, a revoke ends the appointment
-and deletes the row. The row's role is still what the database's policies read, until
+and deletes the row. The row's role is still written, though no policy reads it since
 #309. An appointment that began only today is deleted rather than ended, since it
 would end on the day it starts. A revoked person keeps the gym's record of them and
 everything that names them, such as the classes they taught (migration 0020) and the
