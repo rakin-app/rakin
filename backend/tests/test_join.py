@@ -6,8 +6,6 @@ gym.
 """
 
 import dataclasses
-import itertools
-import random
 import uuid
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
@@ -23,13 +21,14 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.api.join import JoinLimits
 from app.domain.dates import start_of_local_day
-from app.domain.rut import check_digit, format_rut
+from app.domain.rut import format_rut
 from app.jobs import join_requests
 from app.magiclink.ratelimit import MemoryRateLimiter
 from app.main import create_app
 from app.schemas.privacy import TEMPLATE_UPDATED_ON
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_rut
 from tests.pg import (
     DEFAULT_TIMEZONE,
     Database,
@@ -103,12 +102,8 @@ def gym(db: Database, client: TestClient) -> uuid.UUID:
     return with_privacy(client, seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}"))
 
 
-_ruts = itertools.count(random.randrange(10_000_000, 20_000_000, 10_000))
-
-
 def new_rut() -> str:
-    body = next(_ruts)
-    return f"{body}-{check_digit(body)}"
+    return random_rut()
 
 
 ADULT_DOB = "1990-05-20"
