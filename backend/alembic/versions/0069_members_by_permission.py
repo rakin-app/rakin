@@ -12,10 +12,10 @@
   payment's removal, stays `money_write`. `action` is NOT NULL (0044), so each row is
   one or the other.
 
-A downgrade puts both back as 0067 left them.
+A downgrade puts both back as 0067 left them (0068 changed neither).
 
-Revision ID: 0068
-Revises: 0067
+Revision ID: 0069
+Revises: 0068
 Create Date: 2026-11-17
 
 """
@@ -27,8 +27,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0068"
-down_revision: str | Sequence[str] | None = "0067"
+revision: str = "0069"
+down_revision: str | Sequence[str] | None = "0068"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -281,7 +281,7 @@ The ledger book lists a line's entries with `extra` (`id`, `title`, `category`) 
 
 ### Groups
 
-A group (`charge_group`, `0037`) is a named list of people a cobro can target, "Clasificados final" or "Competidores kids": built from the member list's filters plus people picked by hand and saved as a fixed list, a snapshot rather than a live filter. Names are unique in a gym, ignoring case. Any staff role may list them, a coach for rosters; reading who is in one and changing it is `members_manage` (`MembersSession`), and RLS lets only someone holding it write either table (`0068`; `money_write` from `0067` until then). Deleting a group leaves the cobros that targeted it as they are.
+A group (`charge_group`, `0037`) is a named list of people a cobro can target, "Clasificados final" or "Competidores kids": built from the member list's filters plus people picked by hand and saved as a fixed list, a snapshot rather than a live filter. Names are unique in a gym, ignoring case. Any staff role may list them, a coach for rosters; reading who is in one and changing it is `members_manage` (`MembersSession`), and RLS lets only someone holding it write either table (`0069`; `money_write` from `0067` until then). Deleting a group leaves the cobros that targeted it as they are.
 
 | Method | Path | Does |
 | --- | --- | --- |

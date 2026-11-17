@@ -352,7 +352,7 @@ def test_members_manage_alone_adds_and_edits_people_and_sees_no_amounts(
         "/api/groups", json={"name": "Competidores", "person_ids": [person]}, headers=headers
     )
     assert group.status_code == 201, group.text
-    # Dar de baja writes its `history_set` row, which the database lets them (0068).
+    # Dar de baja writes its `history_set` row, which the database lets them (0069).
     left = client.post(f"/api/people/{person}/leave", json={}, headers=headers)
     assert left.status_code == 200, left.text
 

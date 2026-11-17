@@ -228,7 +228,7 @@ requirements) and see and approve join requests, with no plan. `members_add` cov
 all of that, as keeping the record of a student one may add, so the Coach role keeps
 `attendance` and `members_add` exactly; a promotion is `attendance`, given on the mat.
 Groups, the join link, enrolling, Dar de baja and the welcome are `members_manage`,
-and RLS writes groups and a `history_set` row with it (migration 0068).
+and RLS writes groups and a `history_set` row with it (migration 0069).
 
 A new gym picks a preset (or none) in its first-run setup; an existing one finds
 "Agregar plantilla" in Cargos.
