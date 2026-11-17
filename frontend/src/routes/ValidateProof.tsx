@@ -23,7 +23,7 @@ import { usePageTitle } from '../pageTitle'
 import './ValidateProof.css'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
-import { Banner, Card } from '../components/Card'
+import { Banner, Card, PlainList } from '../components/Card'
 import { PageTitle } from '../components/PageHeader'
 
 const copy = t.admin.review
@@ -205,6 +205,8 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
 
         <Proof review={review} />
 
+        {review.shared_with && review.shared_with.length > 0 && <SharedProof review={review} />}
+
         <Card as="dl" className="review__details">
           {line ? (
             // A cobro extra has no plan, prior balance or history of its own (#195).
@@ -284,6 +286,25 @@ function Review({ review, onDone }: { review: ProofReview; onDone: (done: Done) 
         </Button>
       </div>
     </>
+  )
+}
+
+/**
+ * One transfer split over several periods (#66): what else the same proof pays, so the
+ * bank shows the sum. Each is validated or rejected on its own.
+ */
+function SharedProof({ review }: { review: ProofReview }) {
+  const others = review.shared_with ?? []
+  const total = others.reduce((sum, c) => sum + c.amount_clp, review.amount_clp)
+  return (
+    <Banner tone="info" as="div" role={null} className="review__shared">
+      <span>{copy.shared.intro(clp(total))}</span>
+      <PlainList className="review__shared-list">
+        {others.map((c) => (
+          <li key={c.id}>{copy.shared.claim(c.person_name, clp(c.amount_clp), copy.shared.status[c.status])}</li>
+        ))}
+      </PlainList>
+    </Banner>
   )
 }
 

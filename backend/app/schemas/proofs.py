@@ -13,6 +13,7 @@ from typing import Annotated, Self
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.extra_charges import Category
+from app.domain.ledger import EntryStatus
 from app.integrations.blobstore import MAX_UPLOAD_BYTES, validate_content_type
 from app.schemas.ledger import Amount, Method, Note
 
@@ -51,6 +52,36 @@ class ProofClaim(BaseModel):
     def pays_one_thing(self) -> Self:
         if (self.billing_period_id is None) == (self.extra_line_id is None):
             raise ValueError("a claim pays a billing period or a cobro line, one of them")
+        return self
+
+
+# How many periods one transfer may pay at once: a family's, with room to spare.
+MAX_SPLIT = 20
+
+
+class SplitItem(BaseModel):
+    """One period a shared transfer pays, and how much of it goes there."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    billing_period_id: uuid.UUID
+    amount_clp: Amount
+
+
+class SplitClaim(BaseModel):
+    """One transfer for several periods, theirs and their dependents' (#66): one proof,
+    and a pending payment for each period, which an admin reviews one by one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: Annotated[list[SplitItem], Field(min_length=2, max_length=MAX_SPLIT)]
+    proof_key: Annotated[str, Field(max_length=512)]
+
+    @model_validator(mode="after")
+    def each_period_once(self) -> Self:
+        ids = [item.billing_period_id for item in self.items]
+        if len(set(ids)) != len(ids):
+            raise ValueError("a shared transfer pays each period once")
         return self
 
 
@@ -109,6 +140,16 @@ class ReviewLine(BaseModel):
     outstanding_clp: int
 
 
+class SharedClaim(BaseModel):
+    """Another payment claimed with the same proof (#66): one transfer split over
+    several periods, so the transfer is the sum of them all."""
+
+    id: uuid.UUID
+    person_name: str
+    amount_clp: int
+    status: EntryStatus
+
+
 class ProofReview(BaseModel):
     """A pending proof, with what an admin needs to validate or reject it in one tap
     ("Validar comprobante", #36). It pays a membership's period, or a cobro extra line,
@@ -138,6 +179,8 @@ class ProofReview(BaseModel):
     last_payments: list[RecentPayment]
     # Classes the person attended here in the last 30 days: today and the 29 before it.
     attendance_30d: int
+    # The other payments the same proof was claimed for, when one transfer paid several.
+    shared_with: list[SharedClaim] = []
 
 
 class ProofRejection(BaseModel):

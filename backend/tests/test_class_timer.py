@@ -33,7 +33,7 @@ from tests.test_attendance import (
     program,
     roster,
 )
-from tests.test_guardians import add_person
+from tests.test_guardians import add_person, new_kid
 from tests.test_plans import MONTHLY, add_staff
 
 KIND = str(uuid.uuid4())
@@ -856,3 +856,38 @@ def test_a_member_reads_their_own_time(client: TestClient, gym: uuid.UUID) -> No
         "classes": 0,
         "open_mats": 0,
     }
+
+
+@pg
+def test_a_guardian_reads_their_dependents_time_and_no_one_elses(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    adults, fundamentals = classes(client, gym)
+    monthly = plan(client, gym, {**MONTHLY, "program_id": adults})
+    marta = add_person(client, gym, "Marta Díaz")
+    juan = new_kid(client, gym, marta, "Juan Díaz")
+    bruno = add_person(client, gym, "Bruno Díaz")
+    k = kinds(client, gym)
+    run_class(
+        client,
+        gym,
+        fundamentals,
+        local(gym_today(SANTIAGO), 0, 5),
+        [{"block_kind_id": k["Juegos"]["id"], "planned_seconds": 600}],
+        [{"actual_seconds": 600}],
+        [join(client, gym, juan, monthly), join(client, gym, bruno, monthly)],
+    )
+
+    as_marta = as_gym(gym, uuid.UUID(marta))
+    his = ok(client.get(f"/api/me/dependents/{juan}/time", headers=as_marta))
+    assert his == ok(client.get(f"/api/people/{juan}/time", headers=as_gym(gym)))
+    assert his["all_time"]["classes"] == 1
+    [dependent] = ok(client.get("/api/me/dependents", headers=as_marta))
+    assert dependent["attendance"] == {"this_month": 1, "total": 1}
+
+    # Bruno is not hers, nor is she her own dependent.
+    for someone in (bruno, marta, str(uuid.uuid4())):
+        response = client.get(f"/api/me/dependents/{someone}/time", headers=as_marta)
+        assert response.status_code == 404
+    as_bruno = as_gym(gym, uuid.UUID(bruno))
+    assert client.get(f"/api/me/dependents/{juan}/time", headers=as_bruno).status_code == 404

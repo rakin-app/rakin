@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, PastDate
 
+from app.schemas.grades import Rank
+from app.schemas.me import MyAttendance
 from app.schemas.people import Email, MembershipSummary, Name, PersonRef, Phone, Rut
 
 
@@ -69,13 +71,13 @@ class Balance(BaseModel):
 
 
 class Dependent(BaseModel):
-    """One of the signed-in guardian's dependents, as their page shows them.
-
-    The dependent's attendance (0023) and rank (0018) join this when the student page
-    shows them.
-    """
+    """One of the signed-in guardian's dependents, as their page shows them: what they
+    owe, and their rank and classes (#66)."""
 
     id: uuid.UUID
     name: str
     membership: MembershipSummary | None
     balance: Balance
+    # Their latest promotion; None until the gym records one.
+    rank: Rank | None
+    attendance: MyAttendance

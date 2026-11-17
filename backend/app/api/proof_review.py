@@ -3,7 +3,8 @@
 `GET /api/ledger/proofs` is the queue: every pending payment a student (or their
 guardian) claimed with a proof (#35), oldest first, each with what the admin needs to
 decide in one tap: the claimed amount against the period it pays, the proof itself,
-the plan, what else the membership owes, and its latest payments.
+the plan, what else the membership owes, and its latest payments; and, for one transfer
+split over several periods (#66), the other payments the same proof claims.
 
 Validating settles the period as recording a payment does (`app.api.ledger`): the
 entry turns validated, the period closes once paid in full, and whatever was paid
@@ -57,6 +58,7 @@ from app.schemas.proofs import (
     RecentPayment,
     ReviewLine,
     ReviewPeriod,
+    SharedClaim,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,6 +151,19 @@ EXTRA_QUEUE = f"""
           AND s.starts_at >= :recent
     ) att
     WHERE e.kind = :payment AND e.status = :pending AND e.proof_object_key IS NOT NULL
+"""
+
+# Every payment claimed with one of `:keys`, for the proofs one transfer split over
+# several periods (#66): the admin sees what else the same transfer pays.
+SHARED = """
+    SELECT e.id, e.proof_object_key, gp.name AS person_name, e.amount_clp, e.status
+    FROM ledger_entry e
+    LEFT JOIN membership m ON m.id = e.membership_id
+    LEFT JOIN extra_line l ON l.id = e.extra_line_id
+    JOIN gym_person gp ON gp.gym_id = e.gym_id
+     AND gp.person_id = coalesce(m.person_id, l.person_id)
+    WHERE e.kind = :payment AND e.proof_object_key = ANY(CAST(:keys AS text[]))
+    ORDER BY e.claimed_at, lower(gp.name), e.id
 """
 
 # The proof to review; locked, so two admins reviewing it at once settle it once.
@@ -268,6 +283,20 @@ async def queue(
     reviews = await asyncio.gather(
         *(_review(row, store) for row in rows), *(_review_line(row, store) for row in lines)
     )
+    keys = {row.id: row.proof_object_key for row in (*rows, *lines)}
+    claims: dict[str, list[Any]] = {}
+    for claim in await session.execute(
+        text(SHARED), {"payment": EntryKind.PAYMENT.value, "keys": sorted(set(keys.values()))}
+    ):
+        claims.setdefault(claim.proof_object_key, []).append(claim)
+    for review in reviews:
+        review.shared_with = [
+            SharedClaim(
+                id=c.id, person_name=c.person_name, amount_clp=c.amount_clp, status=c.status
+            )
+            for c in claims.get(keys[review.id], [])
+            if c.id != review.id
+        ]
     return sorted(reviews, key=lambda r: (r.claimed_at is None, r.claimed_at, str(r.id)))
 
 

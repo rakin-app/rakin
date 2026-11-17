@@ -87,6 +87,8 @@ function stubApi(
       return { status: 201, body: { key: 'proofs/g/ana/k', url: UPLOAD_URL, headers: { 'Content-Type': 'image/jpeg' }, expires_in_seconds: 900 } }
     }
     if (url.pathname === '/api/me/payments') return answers.claim ?? { status: 201, body: {} }
+    if (url.pathname === '/api/me/payments/split') return answers.claim ?? { status: 201, body: [] }
+    if (url.pathname === '/api/me/dependents') return { body: [] }
     if (url.pathname === '/api/ledger/pending') return answers.pending ?? { body: { count: 0 } }
     if (url.pathname === '/api/me/role') return { body: asRole(answers.role === undefined ? 'owner' : answers.role) }
     return { status: 404, body: { detail: 'Not Found' } }
@@ -374,5 +376,89 @@ describe('pending badge', () => {
     expect(calls.some((c) => c.url.endsWith('/api/ledger/pending'))).toBe(false)
     // Nor is there a Pagos tab for whoever does not read the ledger (#39).
     expect(within(nav).queryByRole('link', { name: es.nav.payments })).not.toBeInTheDocument()
+  })
+})
+
+// Sofía is Ana's daughter: her period is owed, with no proof sent yet.
+const SOFIA: OpenPeriod = {
+  ...ANA,
+  id: 'p-sofia',
+  membership_id: 'm-sofia',
+  person_id: 'sofia',
+  person_name: 'Sofía Rojas',
+  plan_name: 'Kids',
+  outstanding_clp: 25000,
+}
+
+const together = () => screen.findByRole('region', { name: es.me.together.title })
+
+describe('Pagar todo junto (#66)', () => {
+  it('adds up what a guardian and their dependents owe, and pays it all with one proof', async () => {
+    const calls = stubApi([ANA, SOFIA])
+    renderAt('/me')
+
+    const card = await together()
+    expect(within(card).getByText('$70.000')).toBeInTheDocument()
+    expect(within(card).getByText(es.me.together.who('Ana Rojas y Sofía Rojas'))).toBeInTheDocument()
+    await userEvent.click(within(card).getByRole('button', { name: es.me.together.upload }))
+
+    const ana = await screen.findByRole('checkbox', { name: /Ana Rojas · Mensual/ })
+    const sofia = screen.getByRole('checkbox', { name: /Sofía Rojas · Kids/ })
+    expect(ana).toBeChecked()
+    expect(sofia).toBeChecked()
+    expect(screen.getByText(copy.together.total)).toBeInTheDocument()
+    await userEvent.upload(screen.getByLabelText(copy.choose), photo())
+    await userEvent.click(screen.getByRole('button', { name: copy.together.submit('$70.000') }))
+
+    expect(await screen.findByText(copy.sent)).toBeInTheDocument()
+    const writes = calls.filter((c) => c.method !== 'GET')
+    expect(writes.map((c) => [c.method, c.url])).toEqual([
+      ['POST', 'http://localhost/api/me/proofs'],
+      ['PUT', UPLOAD_URL],
+      ['POST', 'http://localhost/api/me/payments/split'],
+    ])
+    expect(writes[2]!.body).toEqual({
+      proof_key: 'proofs/g/ana/k',
+      items: [
+        { billing_period_id: 'p-ana', amount_clp: 45000 },
+        { billing_period_id: 'p-sofia', amount_clp: 25000 },
+      ],
+    })
+    expect(writes[2]!.headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}:claim$/)
+  })
+
+  it('pays only what is ticked, and two at least', async () => {
+    const third: OpenPeriod = { ...SOFIA, id: 'p-tomas', person_id: 'tomas', person_name: 'Tomás Rojas', outstanding_clp: 10000 }
+    stubApi([ANA, SOFIA, third])
+    renderAt('/me')
+    await userEvent.click(within(await together()).getByRole('button', { name: es.me.together.upload }))
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Tomás Rojas/ }))
+    await userEvent.upload(screen.getByLabelText(copy.choose), photo())
+    expect(screen.getByRole('button', { name: copy.together.submit('$70.000') })).toBeEnabled()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sofía Rojas/ }))
+    expect(screen.getByText(copy.together.pickTwo)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.together.submit('$45.000') })).toBeDisabled()
+  })
+
+  it('is not offered for one person, nor counts a period whose proof is in review', async () => {
+    // Juan's proof waits for review: only Ana's is left to pay, so nothing to put together.
+    stubApi([ANA, JUAN])
+    renderAt('/me')
+
+    await screen.findByRole('button', { name: es.me.next.upload })
+    expect(screen.queryByRole('region', { name: es.me.together.title })).not.toBeInTheDocument()
+  })
+
+  it('says a proof already claimed was refused', async () => {
+    stubApi([ANA, SOFIA], { claim: { status: 409, body: { detail: 'this proof is already claimed' } } })
+    renderAt('/me')
+    await userEvent.click(within(await together()).getByRole('button', { name: es.me.together.upload }))
+
+    await userEvent.upload(await screen.findByLabelText(copy.choose), photo())
+    await userEvent.click(screen.getByRole('button', { name: copy.together.submit('$70.000') }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.refused.paid)
   })
 })
