@@ -4,6 +4,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { activitiesQuery } from '../api/activities'
 import { ApiError } from '../api/client'
 import {
+  beltsByActivity,
   GOAL_METRICS,
   gradingPresetsQuery,
   gradingSchemeQuery,
@@ -171,7 +172,10 @@ export function GradingSettings() {
   }
   // No activity grades (#245): nothing here applies until one does.
   if (!grades) return <GradingOff />
-  if (scheme.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
+  // The presets too: a scheme never set up reads by them (#353), and should not flicker.
+  if (scheme.isPending || presets.isPending) {
+    return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
+  }
   const stale = isStale(scheme.error)
   if (scheme.isError && !stale) {
     return <LoadFailed error={scheme.error} message={copy.error} retry={() => void scheme.refetch()} />
@@ -183,6 +187,7 @@ export function GradingSettings() {
       stale={stale}
       presets={presets.data}
       presetsFailed={presets.isError}
+      belts={beltsByActivity(graded, presets.data ?? [])}
     />
   )
 }
@@ -208,6 +213,7 @@ function GradingEditor({
   stale,
   presets,
   presetsFailed,
+  belts,
 }: {
   // The graded activities' names, when more than one shares the scheme.
   shared: string[] | null
@@ -215,6 +221,8 @@ function GradingEditor({
   stale: boolean
   presets: GradingPreset[] | undefined
   presetsFailed: boolean
+  // Whether the gym's graded activities are belt sports: how a scheme never set up reads.
+  belts: boolean
 }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState(() => draftOf(initial))
@@ -224,7 +232,10 @@ function GradingEditor({
   const [repairing, setRepairing] = useState(stale)
   // The one rank open to edit, by its draft id (#177): the rest are a row each.
   const [opened, setOpened] = useState<number | null>(null)
-  const levels = isLevels(draft)
+  // Levels while no rank has colours; but a scheme never saved, in a BJJ gym, reads as
+  // belts until its first save (#353).
+  const unset = initial.ranks.length + initial.kids_ladder.length === 0
+  const levels = isLevels(draft) && !(unset && belts)
   const words = wordsOf(levels)
 
   const save = useSubmit({

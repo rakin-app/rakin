@@ -42,17 +42,34 @@ const PRESETS: GradingPreset[] = [
     label: 'Sin grados',
     scheme: { ranks: [], kids_ladder: [], goal_metric: null },
   },
+  {
+    key: 'bjj',
+    label: 'Jiu-jitsu brasileño',
+    scheme: {
+      ranks: [{ key: 'white', label: 'Blanca', target: null, colors: ['#f4f4f1'], sub_ranks: [] }],
+      kids_ladder: [],
+      goal_metric: null,
+    },
+  },
 ]
 
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 
-type Activity = { id: string; name: string; uses_grades: boolean; class_types: number; created_at: string }
+type Activity = {
+  id: string
+  name: string
+  uses_grades: boolean
+  preset?: string | null
+  class_types: number
+  created_at: string
+}
 
-const activity = (name: string, usesGrades = true): Activity => ({
+const activity = (name: string, usesGrades = true, preset: string | null = null): Activity => ({
   id: name.toLowerCase(),
   name,
   uses_grades: usesGrades,
+  preset,
   class_types: 0,
   created_at: '2026-10-01T12:00:00Z',
 })
@@ -286,6 +303,27 @@ describe('Ajustes: Graduación', () => {
     // A colour back, and it is belts again.
     await userEvent.click(within(level).getByRole('button', { name: copy.belt.add }))
     expect(rank(RANKS, 1).querySelector('.settings__rank-belt')).not.toBeNull()
+  })
+
+  it("reads a scheme never set up by the gym's activity: belts for BJJ, levels for swimming (#353)", async () => {
+    const empty = { body: { ranks: [], kids_ladder: [], goal_metric: null } }
+    stubApi({ scheme: empty, activities: [activity('BJJ', true, 'bjj')] })
+    renderGrading()
+    // BJJ's preset has colours: a first visit reads as belts.
+    expect(await screen.findByRole('group', { name: copy.ladders.ranks })).toBeInTheDocument()
+    expect(screen.getAllByText(copy.emptyLadder)).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: copy.addRank })).toHaveLength(2)
+  })
+
+  it('reads a scheme never set up as levels for a sport with no belts, or a free name (#353)', async () => {
+    const empty = { body: { ranks: [], kids_ladder: [], goal_metric: null } }
+    stubApi({ scheme: empty, activities: [activity('Natación', true, 'natacion'), activity('Escalada en bloque')] })
+    renderGrading()
+    expect(await screen.findByRole('group', { name: LEVELS.ladders.ranks })).toBeInTheDocument()
+    // Read with the presets loaded, BJJ's among them.
+    expect(screen.getByRole('option', { name: 'Jiu-jitsu brasileño', hidden: true })).toBeInTheDocument()
+    expect(screen.getAllByText(LEVELS.emptyLadder)).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: copy.addRank })).not.toBeInTheDocument()
   })
 
   it('applies a preset as a starting point, saved only with the scheme', async () => {
