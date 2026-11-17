@@ -106,19 +106,28 @@ def forget_gym_person(payments: bool) -> str:
     return sql
 
 
-def _audit_event(payments: bool) -> None:
-    """`audit_event`'s actions and its insert policy for the app role, 0053's with
-    `history_removed` or without."""
+def correct_check(payments: bool) -> str:
+    """`audit_event_correct`'s check, 0051's with `history_removed` among the actions
+    `rakin_app` writes or without."""
     m0048 = _migration("0048_correction_audit.py")
     m0051 = _migration("0051_person_history.py")
-    actions, check = m0051._actions(history=True)
-    actions = (*actions, _migration("0053_history_imported.py").IMPORTED)
+    check: str = m0051._actions(history=True)[1]
     if payments:
         written = (*m0048.CORRECTIONS, *m0051.HISTORY)
         before, after = m0048._in(written), m0048._in((*written, REMOVED))
         assert check.count(before) == 1, before
         check = check.replace(before, after)
+    return check
+
+
+def _audit_event(payments: bool) -> None:
+    """`audit_event`'s actions and its insert policy for the app role, 0053's with
+    `history_removed` or without."""
+    actions: tuple[str, ...] = _migration("0051_person_history.py")._actions(history=True)[0]
+    actions = (*actions, _migration("0053_history_imported.py").IMPORTED)
+    if payments:
         actions = (*actions, REMOVED)
+    check = correct_check(payments)
     listed = ", ".join(f"'{a}'" for a in actions)
     op.execute(
         "ALTER TABLE audit_event DROP CONSTRAINT audit_event_action_check,"

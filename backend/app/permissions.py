@@ -19,9 +19,12 @@ database work. An endpoint every staff member may read but whose answer carries 
 out without `money_read` (#205).
 
 Every gym starts with the Academia preset's roles, Administrador and Coach, carrying
-what today's admin and coach do (migration 0065). Until #309 the database still keys its
-policies off `staff.role`, which the staff API writes alongside the appointments; the
-ledger is closed to coaches there too (migration 0006).
+what today's admin and coach do (migration 0065). The database holds the same
+permissions on its own: every policy that once named a role asks `app_can` (migration
+0066), which reads the titular flag and the current appointments as `STANDING_IN_GYM`
+does, so an endpoint that took the wrong session still reads no money it may not.
+`staff.role` is still written by the staff API alongside the appointments, and read by
+nothing, until #313.
 
 Each permission is its own literal: two that hold the same people today are never
 defined as one another, so narrowing one later narrows only it

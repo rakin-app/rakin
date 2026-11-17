@@ -450,7 +450,7 @@ def test_an_invite_appoints_from_today(client: TestClient, db: Database, gym: uu
     administrador = preset_title_id(gym, ACADEMIA, "administrador")
     assert terms(db, pedro) == [(coach, "Coach", today, None, owner)]
     assert terms(db, carla) == [(administrador, "Administrador", today, None, owner)]
-    # The row's role, which the database's policies read until #309, is written too.
+    # The row's role, which no policy reads since #309, is still written until #313.
     assert admin(db, "SELECT role FROM staff WHERE person_id = $1", pedro) == [("coach",)]
     assert me(client, gym, carla)["permissions"] == sorted(ADMINISTRADOR.permissions)
 
