@@ -97,13 +97,20 @@
 }
 
 /* One cobro's own, in its card: left-aligned, the bar the card's width (#357). */
-.extra__summary .extra__progress {
+.extra__summary .extra__progress,
+.extra__instalment .extra__progress {
   justify-items: stretch;
   text-align: left;
 }
 
-.extra__summary .extra__bar {
+.extra__summary .extra__bar,
+.extra__instalment .extra__bar {
   width: 100%;
+}
+
+/* A cobro's instalments (#356): the last row needs no rule under it. */
+.extra__instalment:last-child {
+  border-bottom: none;
 }
 
 .extra__progress-text {

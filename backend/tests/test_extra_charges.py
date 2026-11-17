@@ -9,7 +9,7 @@ import asyncio
 import dataclasses
 import uuid
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import asyncpg
@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.db_bootstrap import to_dsn
+from app.domain.extra_charges import instalment_dates, instalments, line_title
 from app.main import create_app
 from app.schemas.extra_charges import Target
 from app.schemas.proofs import ProofClaim
@@ -1035,3 +1036,194 @@ def test_a_claim_waits_for_a_cancel_holding_the_cobro_and_is_refused(
         lambda c: c.fetchval("SELECT count(*) FROM ledger_entry WHERE extra_line_id = $1", line),
     )
     assert held == 0
+
+
+# --- instalments (#356) -----------------------------------------------------------
+
+
+def test_an_amount_in_instalments_puts_the_remainder_on_the_first() -> None:
+    assert instalments(100_001, 3) == [33_335, 33_333, 33_333]
+    assert instalments(30_000, 1) == [30_000]
+    # Someone let off it owes nothing in each.
+    assert instalments(0, 3) == [0, 0, 0]
+    with pytest.raises(ValueError):
+        instalments(2, 3)
+    with pytest.raises(ValueError):
+        instalments(10_000, 13)
+
+
+def test_instalments_fall_due_monthly_on_the_day_or_a_short_months_last() -> None:
+    assert instalment_dates(date(2027, 1, 31), 3) == [
+        date(2027, 1, 31),
+        date(2027, 2, 28),
+        date(2027, 3, 31),
+    ]
+    assert line_title("Viaje", 2, 3) == "Viaje · cuota 2 de 3"
+    assert line_title("Viaje", 1, 1) == "Viaje"
+
+
+def in_instalments(person_ids: list[str], **extra: Any) -> dict[str, Any]:
+    return draft(
+        person_ids,
+        **{
+            "title": "Viaje a la regata",
+            "category": "gasto_compartido",
+            "amount_clp": 100_001,
+            "instalments": 3,
+            **extra,
+        },
+    )
+
+
+def lines_of(charge: dict[str, Any], person: str) -> list[dict[str, Any]]:
+    return [line for line in charge["people"] if line["person"]["id"] == person]
+
+
+def test_a_cobro_in_three_instalments_gives_each_person_three_lines(
+    client: TestClient, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    ana, bea = (add_person(client, sur, n) for n in ("Ana", "Bea"))
+    body = in_instalments([ana, bea])
+    first = seeded_today() + timedelta(days=10)
+
+    preview = ok(client.post("/api/extra-charges/preview", json=body, headers=as_gym(sur)))
+    assert [line["instalments_clp"] for line in preview["lines"]] == [[33_335, 33_333, 33_333]] * 2
+    assert preview["total_clp"] == 200_002
+    assert preview["due_dates"] == [str(d) for d in instalment_dates(first, 3)]
+
+    mailer.sent.clear()
+    charge = create(client, sur, body)
+
+    assert charge["instalments"] == 3
+    mine = lines_of(charge, ana)
+    assert [(x["instalment"], x["amount_due_clp"], x["due_date"]) for x in mine] == [
+        (i + 1, amount, str(due))
+        for i, (amount, due) in enumerate(
+            zip([33_335, 33_333, 33_333], instalment_dates(first, 3), strict=True)
+        )
+    ]
+    # Counted by person: two owe it, nobody has paid.
+    assert (charge["lines"], charge["paid_lines"], charge["due_clp"]) == (2, 0, 200_002)
+    assert [(s["instalment"], s["lines"], s["due_clp"]) for s in charge["schedule"]] == [
+        (1, 2, 66_670),
+        (2, 2, 66_666),
+        (3, 2, 66_666),
+    ]
+    # Each is told of the first instalment only, its amount and its date.
+    assert sorted(email.to for email in mailer.sent) == ["ana@example.cl", "bea@example.cl"]
+    email = next(e for e in mailer.sent if e.to == "ana@example.cl")
+    assert "Viaje a la regata · cuota 1 de 3" in email.text
+    assert "$33.335" in email.text
+    assert f"hasta el {first:%d-%m-%Y}" in email.text
+
+    # The ficha and the student page list each instalment, earliest due first.
+    owed = ok(client.get(f"/api/people/{ana}/extra-lines", headers=as_gym(sur)))
+    assert [(x["title"], x["due_date"]) for x in owed] == [
+        (f"Viaje a la regata · cuota {i + 1} de 3", str(due))
+        for i, due in enumerate(instalment_dates(first, 3))
+    ]
+
+
+def test_paying_the_first_instalment_leaves_the_others_owed_and_reminded_on_their_dates(
+    client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    charge = create(client, sur, in_instalments([ana], notify=False))
+    first, second, third = lines_of(charge, ana)
+    ok(
+        client.post(
+            f"/api/extra-charges/{charge['id']}/lines/{first['id']}/payments",
+            json={"amount_clp": 33_335, "method": "cash"},
+            headers=as_gym(sur),
+        ),
+        201,
+    )
+
+    charge = get(client, sur, charge["id"])
+    assert [x["status"] for x in lines_of(charge, ana)] == ["paid", "open", "open"]
+    assert [x["outstanding_clp"] for x in lines_of(charge, ana)] == [0, 33_333, 33_333]
+    # Ana has not paid the cobro until she pays every instalment.
+    assert (charge["paid_lines"], charge["collected_clp"]) == (0, 33_335)
+    assert [(s["paid_lines"], s["collected_clp"]) for s in charge["schedule"]] == [
+        (1, 33_335),
+        (0, 0),
+        (0, 0),
+    ]
+
+    # Before the second falls due, a reminder is about it alone, with its own date.
+    mailer.sent.clear()
+    reminded = ok(client.post(f"/api/extra-charges/{charge['id']}/remind", headers=as_gym(sur)))
+    assert reminded == {"sent": 1, "without_email": 0}
+    [email] = mailer.sent
+    assert "cuota 2 de 3" in email.text
+    assert "$33.333" in email.text
+    assert f"hasta el {date.fromisoformat(second['due_date']):%d-%m-%Y}" in email.text
+
+    # Once both others are due, both are reminded, each on its own.
+    run(
+        db.owner_url,
+        in_gym(
+            sur,
+            "UPDATE extra_line SET due_date = due_date - 100 WHERE id = ANY($1::uuid[])",
+            [uuid.UUID(second["id"]), uuid.UUID(third["id"])],
+        ),
+    )
+    mailer.sent.clear()
+    reminded = ok(client.post(f"/api/extra-charges/{charge['id']}/remind", headers=as_gym(sur)))
+    assert reminded == {"sent": 2, "without_email": 0}
+    assert sorted("cuota 3 de 3" in e.text for e in mailer.sent) == [False, True]
+
+
+def test_a_proof_pays_one_instalment_and_the_review_names_it(
+    client: TestClient, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    charge = create(client, sur, in_instalments([ana], notify=False))
+    _, second, _ = lines_of(charge, ana)
+    mailer.sent.clear()
+
+    entry = claim_line(client, sur, ana, second["id"], 33_333)
+
+    assert "por Viaje a la regata · cuota 2 de 3" in mailer.sent[0].text
+    queue = ok(client.get("/api/ledger/proofs", headers=as_gym(sur)))
+    [review] = [r for r in queue if r["id"] == entry["id"]]
+    assert review["extra_line"]["title"] == "Viaje a la regata · cuota 2 de 3"
+    assert review["extra_line"]["due_date"] == second["due_date"]
+    statuses = [x["status"] for x in lines_of(get(client, sur, charge["id"]), ana)]
+    assert statuses == ["open", "in_review", "open"]
+
+    # The first is still owed with no proof, so a reminder is about it.
+    mailer.sent.clear()
+    ok(client.post(f"/api/extra-charges/{charge['id']}/remind", headers=as_gym(sur)))
+    [email] = mailer.sent
+    assert "cuota 1 de 3" in email.text
+
+
+def test_a_cobro_in_instalments_is_not_divided_again(client: TestClient, sur: uuid.UUID) -> None:
+    ana, bea = (add_person(client, sur, n) for n in ("Ana", "Bea"))
+    charge = create(client, sur, in_instalments([ana, bea], amount_mode="split", amount_clp=60_000))
+    assert [x["amount_due_clp"] for x in lines_of(charge, ana)] == [10_000] * 3
+    line = lines_of(charge, bea)[2]["id"]
+    preview = ok(
+        client.get(f"/api/extra-charges/{charge['id']}/lines/{line}/cancel", headers=as_gym(sur))
+    )
+    assert preview == {"resplit_allowed": False, "amounts": {}}
+    # One instalment cancels on its own; the others stay owed.
+    after = ok(
+        client.post(
+            f"/api/extra-charges/{charge['id']}/lines/{line}/cancel",
+            json=CANCEL,
+            headers=as_gym(sur),
+        )
+    )
+    assert [x["status"] for x in lines_of(after, bea)] == ["open", "open", "cancelled"]
+    assert [s["lines"] for s in after["schedule"]] == [2, 2, 1]
+
+
+def test_instalments_too_small_or_too_many_are_refused(client: TestClient, sur: uuid.UUID) -> None:
+    ana = add_person(client, sur, "Ana")
+    for extra in ({"amount_clp": 2}, {"instalments": 13}, {"instalments": 0}):
+        response = client.post(
+            "/api/extra-charges", json=in_instalments([ana], **extra), headers=as_gym(sur)
+        )
+        assert response.status_code == 422, response.text

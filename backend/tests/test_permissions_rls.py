@@ -121,8 +121,8 @@ CASES = (
     Case(
         "extra_line_insert",
         Permission.MONEY_WRITE,
-        "INSERT INTO extra_line (gym_id, extra_charge_id, person_id, amount_due_clp)"
-        " VALUES ($1, $2, $3, 1000)",
+        "INSERT INTO extra_line (gym_id, extra_charge_id, person_id, due_date, amount_due_clp)"
+        " VALUES ($1, $2, $3, '2026-11-30', 1000)",
         lambda gym, actor: (gym.id, gym.charge, gym.newcomer),
     ),
     Case(
@@ -329,8 +329,8 @@ def gym(db: Database) -> Gym:
         " 'people') RETURNING id"
     )
     line = one(
-        "INSERT INTO extra_line (gym_id, extra_charge_id, person_id, amount_due_clp)"
-        " VALUES ($1, $2, $3, 20000) RETURNING id",
+        "INSERT INTO extra_line (gym_id, extra_charge_id, person_id, due_date, amount_due_clp)"
+        " VALUES ($1, $2, $3, '2026-11-30', 20000) RETURNING id",
         charge,
         owner,
     )

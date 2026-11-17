@@ -54,7 +54,7 @@ below, read in full, and from `docs/product.md` and `docs/technical.md`.
 - **Cobros extra** (`app.api.extra_charges`, #195): one-off charges by category (rifa,
   seminario, equipamiento, gasto compartido, otro), a fixed amount each or a total split,
   to everyone active, a program, a saved group or hand-picked people (no membership
-  needed). One due date each, no instalments, admin-created only.
+  needed). Paid at once or in 2 to 12 monthly instalments (#356), admin-created only.
 - **Attendance** (`app.api.attendance`): a row is `(session_id, membership_id)`, so every
   mark needs a session and a membership that is active, trial, lapsed or frozen. Staff tap
   names on the roster; there is no self check-in. Sessions come from the weekly schedule
@@ -125,8 +125,7 @@ below, read in full, and from `docs/product.md` and `docs/technical.md`.
    on the period lowers. "Duplicar para el próximo período" copies it for the next season
    and moves the members across.
 2. **Charge a regatta's travel to the crew going.** **Works**: a Cobro extra split across
-   a saved group or hand-picked people. Paying it in two instalments is **missing**
-   (later).
+   a saved group or hand-picked people, paid at once or in instalments (#356).
 3. **Keep the medical certificate and the swim test current.** **Missing**, as for the
    climbing gym's waiver.
 4. **Run the club as a board** (presidente, tesorero, secretario). **Missing, filed**:
@@ -171,7 +170,7 @@ by the boatman and Rakin does not need to own them.
 | Requirements before taking part | not needed | missing: waiver, induction, belay check | missing: medical certificate, swim test | not needed | awkward: medical certificate for some |
 | People | awkward: one proof per child (#66) | works | missing: board (#308–#322); awkward: socios on rosters | works | awkward: one proof per child (#66) |
 | Equipment and spaces | not needed | not core (rentals as Cobros extra) | not core (boats) | missing: spaces with capacity (v3) | not needed |
-| Events | works (Cobros extra) | works | works; instalments missing | not needed | works |
+| Events | works (Cobros extra) | works | works | not needed | works |
 | Wording | works | awkward | awkward | awkward | awkward |
 | Onboarding from Ajustes | works after `app.gyms create` | awkward: dojo defaults | awkward: dojo defaults | awkward | awkward |
 

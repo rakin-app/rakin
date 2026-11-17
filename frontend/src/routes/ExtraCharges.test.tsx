@@ -2,7 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ExtraCharge, ExtraChargeSummary, Line, Preview } from '../api/extraCharges'
+import type { ExtraCharge, ExtraChargeSummary, Line, Preview, PreviewLine } from '../api/extraCharges'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -18,6 +18,7 @@ const SUMMARY: ExtraChargeSummary = {
   due_date: '2026-11-30',
   amount_mode: 'split',
   amount_clp: 180000,
+  instalments: 1,
   target_kind: 'group',
   target_label: 'Clasificados final',
   created_at: '2026-11-11T12:00:00Z',
@@ -32,6 +33,8 @@ function line(id: string, name: string, extra: Partial<Line> = {}): Line {
   return {
     id,
     person: { id: `p-${id}`, name },
+    instalment: 1,
+    due_date: '2026-11-30',
     guardian: null,
     amount_due_clp: 20000,
     overridden: false,
@@ -57,6 +60,9 @@ const CHARGE: ExtraCharge = {
     line('bea', 'Bea Soto', { status: 'paid', paid_clp: 20000, outstanding_clp: 0 }),
     line('carla', 'Carla Díaz', { status: 'in_review', pending_clp: 20000, pending_proof_id: 'e-1' }),
   ],
+  schedule: [
+    { instalment: 1, due_date: '2026-11-30', lines: 9, paid_lines: 7, waived_lines: 0, due_clp: 180000, collected_clp: 140000 },
+  ],
 }
 
 const PREVIEW: Preview = {
@@ -64,6 +70,7 @@ const PREVIEW: Preview = {
     {
       person: { id: 'p-ana', name: 'Ana Rojas' },
       amount_clp: 33334,
+      instalments_clp: [33334],
       overridden: false,
       contact_name: 'Ana Rojas',
       on_behalf: false,
@@ -73,6 +80,7 @@ const PREVIEW: Preview = {
     {
       person: { id: 'p-juan', name: 'Juan Pérez' },
       amount_clp: 33333,
+      instalments_clp: [33333],
       overridden: false,
       contact_name: 'Marta Pérez',
       on_behalf: true,
@@ -82,6 +90,7 @@ const PREVIEW: Preview = {
     {
       person: { id: 'p-luis', name: 'Luis Mora' },
       amount_clp: 33333,
+      instalments_clp: [33333],
       overridden: false,
       contact_name: 'Luis Mora',
       on_behalf: false,
@@ -92,6 +101,7 @@ const PREVIEW: Preview = {
   total_clp: 100000,
   remainder_clp: 1,
   share_clp: 33333,
+  due_dates: ['2026-11-30'],
 }
 
 type Call = { method: string; path: string; body: unknown }
@@ -389,8 +399,75 @@ describe('Nuevo cobro extra', () => {
       amount_mode: 'split',
       amount_clp: 100000,
       overrides: [{ person_id: 'p-luis', amount_clp: 0 }],
+      instalments: 1,
       notify: true,
     })
+  })
+
+  it('charges in instalments: how many, each one\'s amount, their dates, and the email about the first (#356)', async () => {
+    const user = userEvent.setup()
+    const DATES = ['2026-12-15', '2027-01-15', '2027-02-15']
+    const calls = stubApi('owner', (path, method, body) => {
+      if (path === '/api/extra-charges/preview') {
+        const n = (body as { instalments: number }).instalments
+        const split = n === 3 ? [33335, 33333, 33333] : [100001]
+        const each = (person: PreviewLine['person'], email: boolean): PreviewLine => ({
+          person,
+          amount_clp: 100001,
+          instalments_clp: split,
+          overridden: false,
+          contact_name: person.name,
+          on_behalf: false,
+          has_email: email,
+          whatsapp_url: null,
+        })
+        return {
+          body: {
+            lines: [each({ id: 'p-ana', name: 'Ana Rojas' }, true)],
+            total_clp: 100001,
+            remainder_clp: 0,
+            share_clp: null,
+            due_dates: DATES.slice(0, n),
+          } satisfies Preview,
+        }
+      }
+      if (path === '/api/extra-charges' && method === 'POST') return { status: 201, body: CHARGE }
+      return undefined
+    })
+    renderAt('/admin/pagos/cobros/nuevo')
+    const words = copy.wizard
+
+    await user.type(await screen.findByLabelText(words.titleLabel), 'Viaje a la regata')
+    await user.type(screen.getByLabelText(words.dueLabel), DATES[0]!)
+    await user.click(screen.getByRole('button', { name: words.next }))
+    await user.click(screen.getByRole('radio', { name: words.target.group }))
+    await user.selectOptions(await screen.findByLabelText(words.groupLabel), 'g-final')
+    await user.click(screen.getByRole('button', { name: words.next }))
+
+    await user.type(screen.getByLabelText(words.amountLabel.fixed), '100001')
+    expect(screen.queryByLabelText(words.instalmentsLabel)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: new RegExp(words.inInstalments) }))
+    await user.selectOptions(screen.getByLabelText(words.instalmentsLabel), '3')
+    const preview = await screen.findByRole('region', { name: words.previewLabel })
+    expect(await within(preview).findByText(words.instalmentsOf('$33.335 + $33.333 + $33.333'))).toBeInTheDocument()
+    expect(within(preview).getByText(words.instalmentsRemainder)).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: words.next }))
+    await user.click(screen.getByRole('button', { name: words.next }))
+
+    const look = screen.getByRole('region', { name: words.stepOf(5, 5, words.steps[4]!) })
+    const terms = within(look).getAllByRole('term').map((term) => term.textContent)
+    expect(terms).toContain(words.confirm.instalments)
+    expect(terms).not.toContain(words.confirm.due)
+    expect(look).toHaveTextContent(words.confirm.instalmentDue(1, '15 de diciembre de 2026'))
+    expect(look).toHaveTextContent(words.confirm.instalmentDue(3, '15 de febrero de 2027'))
+    const email = within(look).getByRole('region', { name: words.confirm.message })
+    expect(email).toHaveTextContent(words.confirm.sends('Academia Sur', 'Viaje a la regata · cuota 1 de 3', null))
+    expect(email).toHaveTextContent(words.confirm.owes(null, '$33.335', '15-12-2026'))
+    await user.click(screen.getByRole('button', { name: words.create }))
+
+    await screen.findByRole('heading', { name: 'Bencina final' })
+    const created = writes(calls).find((c) => c.path === '/api/extra-charges')
+    expect(created!.body).toMatchObject({ amount_clp: 100001, instalments: 3, due_date: DATES[0] })
   })
 })
 
@@ -592,5 +669,44 @@ describe('Un cobro extra', () => {
     await user.click(within(bea).getByRole('button', { name: copy.detail.cancelConfirm }))
 
     expect(await within(bea).findByRole('alert')).toHaveTextContent(copy.detail.refused.money)
+  })
+
+  it("shows a cobro in instalments: each instalment's progress, and each line's own date (#356)", async () => {
+    const IN_CUOTAS: ExtraCharge = {
+      ...CHARGE,
+      title: 'Viaje a la regata',
+      instalments: 3,
+      due_date: '2026-11-15',
+      lines: 1,
+      paid_lines: 0,
+      due_clp: 100001,
+      collected_clp: 33335,
+      people: [
+        line('ana-1', 'Ana Rojas', { instalment: 1, due_date: '2026-11-15', amount_due_clp: 33335, status: 'paid', paid_clp: 33335, outstanding_clp: 0 }),
+        line('ana-2', 'Ana Rojas', { instalment: 2, due_date: '2026-12-15', amount_due_clp: 33333, outstanding_clp: 33333 }),
+        line('ana-3', 'Ana Rojas', { instalment: 3, due_date: '2027-01-15', amount_due_clp: 33333, outstanding_clp: 33333 }),
+      ],
+      schedule: [
+        { instalment: 1, due_date: '2026-11-15', lines: 1, paid_lines: 1, waived_lines: 0, due_clp: 33335, collected_clp: 33335 },
+        { instalment: 2, due_date: '2026-12-15', lines: 1, paid_lines: 0, waived_lines: 0, due_clp: 33333, collected_clp: 0 },
+        { instalment: 3, due_date: '2027-01-15', lines: 1, paid_lines: 0, waived_lines: 0, due_clp: 33333, collected_clp: 0 },
+      ],
+    }
+    stubApi('owner', (path) => (path === `/api/extra-charges/${CHARGE.id}` ? { body: IN_CUOTAS } : undefined))
+    renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
+
+    const schedule = await screen.findByRole('region', { name: copy.detail.scheduleLabel })
+    expect(within(schedule).getAllByRole('progressbar').map((bar) => bar.getAttribute('aria-label'))).toEqual([
+      copy.progress(1, 1, '$33.335', '$33.335'),
+      copy.progress(0, 1, '$0', '$33.333'),
+      copy.progress(0, 1, '$0', '$33.333'),
+    ])
+    const people = screen.getByRole('region', { name: copy.detail.peopleLabel })
+    // One person, three lines, each with its own date and actions.
+    expect(within(people).getAllByRole('link', { name: 'Ana Rojas' })).toHaveLength(3)
+    const second = within(people).getByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 2) }).closest('li')!
+    expect(within(second).getByText(copy.detail.instalmentDue(2, 3, '15 dic'), { exact: false })).toBeInTheDocument()
+    expect(within(second).getByText(copy.status.open)).toBeInTheDocument()
+    expect(within(people).queryByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 1) })).toBeInTheDocument()
   })
 })
