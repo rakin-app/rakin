@@ -19,6 +19,7 @@ import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
 import { MyConsents } from './MyConsents'
 import { MyPlans } from './MyPlans'
+import { MyRequirements } from './MyRequirements'
 import { ProofUpload } from './ProofUpload'
 import { Loading } from '../components/Loading'
 import { Card, PlainList, Section } from '../components/Card'
@@ -73,6 +74,7 @@ export function MeHome() {
             <NextPayment page={page.data} />
             <ExtraCharges page={page.data} />
             <MyPlans page={page.data} />
+            <MyRequirements mine={page.data.person_id} />
           </div>
           <div className="me-home__column">
             <Training page={page.data} />

@@ -41,6 +41,7 @@ from app.api import (
     proof_review,
     proofs,
     reminders,
+    requirements,
     schedule,
     session_blocks,
     sessions,
@@ -114,6 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(member_roll.router)
     app.include_router(history.router)
     app.include_router(custom_fields.router)
+    app.include_router(requirements.router)
     app.include_router(guardians.router)
     app.include_router(consent.router)
     app.include_router(consent.mine)

@@ -212,6 +212,7 @@ describe('Ajustes', () => {
     [copy.sections.blocks, '/admin/ajustes/bloques'],
     [copy.sections.grading, '/admin/ajustes/graduacion'],
     [copy.sections.fields, '/admin/ajustes/campos'],
+    [copy.sections.requirements, '/admin/ajustes/requisitos'],
     [copy.sections.staff, '/admin/ajustes/equipo'],
     [copy.sections.joinLink, '/admin/ajustes/inscripcion'],
     [copy.sections.account, '/admin/ajustes/cuenta'],
@@ -652,7 +653,7 @@ describe('Ajustes: Graduación, with no activity that grades', () => {
     stubApi({ activities: [{ ...BJJ, uses_grades: false }] })
     renderAt('/admin/ajustes')
     const sections = await screen.findByRole('navigation', { name: copy.sectionsLabel })
-    await waitFor(() => expect(within(sections).getAllByRole('link')).toHaveLength(10))
+    await waitFor(() => expect(within(sections).getAllByRole('link')).toHaveLength(11))
     expect(within(sections).queryByRole('link', { name: new RegExp(copy.sections.grading) })).not.toBeInTheDocument()
   })
 
