@@ -54,8 +54,9 @@ const PROGRAMS: Program[] = [
 ]
 
 const rank = (key: string, label: string) => ({ key, label, sub_ranks: [] })
+// Belts: one rank with colours is enough. With none the scheme is levels (#353).
 const BJJ: GradingScheme = {
-  ranks: [rank('white', 'Blanca'), rank('blue', 'Azul'), rank('black', 'Negra')],
+  ranks: [{ ...rank('white', 'Blanca'), colors: ['#f4f4f1'] }, rank('blue', 'Azul'), rank('black', 'Negra')],
   kids_ladder: [rank('grey', 'Gris'), rank('yellow', 'Amarilla')],
   goal_metric: null,
 }
@@ -318,6 +319,7 @@ describe('Alumnos', () => {
     const asked = stubApi(() => page([CAMILA]), undefined, undefined, undefined, BJJ)
     const router = renderAt('/admin/alumnos')
     const select = await filter(copy.rankLabel)
+    expect(within(select).getAllByRole('option')[0]).toHaveTextContent(copy.allRanks)
 
     const groups = within(select).getAllByRole('group')
     expect(groups.map((g) => g.getAttribute('label'))).toEqual(['Adultos', 'Kids'])
@@ -348,6 +350,25 @@ describe('Alumnos', () => {
     // Back to the unfiltered list, already in the cache.
     await userEvent.selectOptions(select, copy.allRanks)
     await waitFor(() => expect(router.state.location.search).toEqual({}))
+  })
+
+  it('calls a scheme with no colours levels: "Nivel", "Todos los niveles" (#353)', async () => {
+    const levels: GradingScheme = {
+      ranks: [rank('one', 'Nivel 1'), rank('two', 'Nivel 2')],
+      kids_ladder: [],
+      goal_metric: null,
+    }
+    stubApi(() => page([CAMILA]), undefined, undefined, undefined, levels)
+    renderAt('/admin/alumnos')
+
+    const select = await filter(copy.levelLabel)
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      copy.allLevels,
+      'Nivel 1',
+      'Nivel 1 o superior',
+      'Nivel 2',
+    ])
+    expect(screen.queryByRole('combobox', { name: copy.rankLabel })).not.toBeInTheDocument()
   })
 
   it('has no belt filter while the gym does not grade', async () => {

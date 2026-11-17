@@ -155,9 +155,9 @@ by the boatman and Rakin does not need to own them.
 3. **One transfer for two children.** **Missing** (#66).
 4. **Bill by term or school year.** **Works** (#351): the same fixed-period plan as the
    rowing club's season.
-5. **A swimming or gymnastics level.** **Awkward**: the grading module can hold levels with
-   no colours (they render as a plain label), but the filter says "Cinturón" and the
-   editor "Franja" (section 3). Later.
+5. **A swimming or gymnastics level.** **Works** (#353): a scheme with no colours, from
+   the "Niveles" preset, reads as levels: "Nivel" in the filters, niveles and subniveles
+   with no belt in the editor.
 6. **The end-of-year showcase or tournament.** **Works** as a Cobro extra plus an ad hoc
    session.
 
@@ -195,7 +195,7 @@ fixed in the copy and the email templates (`backend/app/notices/templates/`).
 | **Open mat**, "rounds de sparring" | the class type's kind, the schedule, the timer, the student's training time | **only when the gym spars**; an open-gym check-in is a different thing (section 4) |
 | **Competición**, **Kids** | default programs of every new gym (`gyms.py`, `seed/data.py`) | start with "Adultos" and "Niños" only |
 | "Pasaje de guardia" | the tags' example (`es.ts` around line 1886) | a neutral example |
-| **cinturón**, **franja**, "rayas" | the Alumnos and Grupos filter, the Graduación editor, the import's Grados notes | **only when grading is on** (the import too, since #352); for levels with no colours say "Grado" or "Nivel", as the student page already does |
+| **cinturón**, **franja**, "rayas" | the Alumnos and Grupos filter, the Graduación editor, the import's Grados notes | **only when grading is on** (the import too, since #352), and only while a rank has colours: a scheme with none says "Nivel" and "Subnivel" (#353) |
 | **grado**, **graduación** | the ficha, Ajustes › Graduación, Importar | **only when grading is on**; fine words for levels |
 
 No "tatami", "dojo", "kimono", "sensei" or "profesor" appears in the product's copy. The

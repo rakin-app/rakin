@@ -413,6 +413,34 @@ def test_the_template_has_a_grados_tab_with_the_schemes_ranks(
 
 
 @pg
+def test_a_scheme_with_no_colours_is_levels_and_its_notes_say_no_rayas(
+    client: TestClient, db: Database
+) -> None:
+    # Levels (#353): a sub-rank is no belt's stripe, so it goes by its name.
+    swim = {"sub_ranks": [{"key": "a", "label": "A"}, {"key": "b", "label": "B"}]}
+    scheme = {
+        "ranks": [
+            {"key": "uno", **swim, "label": "Nivel 1"},
+            {"key": "dos", **swim, "label": "Nivel 2"},
+        ],
+        "kids_ladder": [],
+        "goal_metric": None,
+    }
+    gym = graded_gym(client, db, scheme)
+    response = client.get("/api/import/template.xlsx", headers=as_gym(gym))
+    assert response.status_code == 200, response.text
+    book = load_workbook(io.BytesIO(response.content))
+    assert [c.value for c in book["Grados"][2]][3:5] == ["Nivel 2", "B"]
+    notes = [str(r[1].value) for r in book["Instrucciones"].iter_rows() if r[1].value]
+    assert not any("rayas" in note for note in notes)
+    [note] = [r[1].value for r in book["Instrucciones"].iter_rows() if r[0].value == "Sub-grado"]
+    assert note == "Opcional: el sub-grado por su nombre. Vacío = el primero de su grado."
+    # The example reads back as the level it names.
+    sheet = upload(client, gym, response.content)
+    assert outcomes(send(client, gym, sheet, dry_run=True)) == [(2, "created", [])]
+
+
+@pg
 def test_a_gym_that_does_not_grade_gets_no_grados_tab(client: TestClient, db: Database) -> None:
     gym = gym_with(client, db, None)
     response = client.get("/api/import/template.xlsx", headers=as_gym(gym))

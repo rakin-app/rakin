@@ -4,9 +4,11 @@ import { useId, useState, type FormEvent } from 'react'
 import { activitiesQuery } from '../api/activities'
 import { ApiError } from '../api/client'
 import {
+  beltsByActivity,
   GOAL_METRICS,
   gradingPresetsQuery,
   gradingSchemeQuery,
+  isLevels,
   saveGradingScheme,
   type GoalMetric,
   type GradingPreset,
@@ -25,6 +27,29 @@ import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
 
 const copy = t.admin.settings.grading
+// The copy's literals as strings. `es` is `as const`, so `typeof copy` types each word as
+// its exact belt literal ('Grados', 'Cinturón') and the levels' words ('Niveles', 'Color')
+// would not fit it; widened, either set is a `Words`.
+type Widened<T> = T extends string
+  ? string
+  : T extends (...args: infer A) => infer R
+    ? (...args: A) => Widened<R>
+    : { [K in keyof T]: Widened<T[K]> }
+type Words = Widened<typeof copy>
+
+/** The editor's words: a scheme no rank of which has colours is levels (#353). */
+function wordsOf(levels: boolean): Words {
+  if (!levels) return copy
+  const over = copy.levels
+  return {
+    ...copy,
+    ...over,
+    goalMetrics: { ...copy.goalMetrics, ...over.goalMetrics },
+    ladders: { ...copy.ladders, ...over.ladders },
+    laddersHint: { ...copy.laddersHint, ...over.laddersHint },
+    belt: { ...copy.belt, ...over.belt },
+  }
+}
 const LADDERS = ['ranks', 'kids_ladder'] as const
 type Ladder = (typeof LADDERS)[number]
 
@@ -147,7 +172,10 @@ export function GradingSettings() {
   }
   // No activity grades (#245): nothing here applies until one does.
   if (!grades) return <GradingOff />
-  if (scheme.isPending) return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
+  // The presets too: a scheme never set up reads by them (#353), and should not flicker.
+  if (scheme.isPending || presets.isPending) {
+    return <Loading className="settings__note">{t.admin.settings.loading}</Loading>
+  }
   const stale = isStale(scheme.error)
   if (scheme.isError && !stale) {
     return <LoadFailed error={scheme.error} message={copy.error} retry={() => void scheme.refetch()} />
@@ -159,6 +187,7 @@ export function GradingSettings() {
       stale={stale}
       presets={presets.data}
       presetsFailed={presets.isError}
+      belts={beltsByActivity(graded, presets.data ?? [])}
     />
   )
 }
@@ -184,6 +213,7 @@ function GradingEditor({
   stale,
   presets,
   presetsFailed,
+  belts,
 }: {
   // The graded activities' names, when more than one shares the scheme.
   shared: string[] | null
@@ -191,6 +221,8 @@ function GradingEditor({
   stale: boolean
   presets: GradingPreset[] | undefined
   presetsFailed: boolean
+  // Whether the gym's graded activities are belt sports: how a scheme never set up reads.
+  belts: boolean
 }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState(() => draftOf(initial))
@@ -200,6 +232,11 @@ function GradingEditor({
   const [repairing, setRepairing] = useState(stale)
   // The one rank open to edit, by its draft id (#177): the rest are a row each.
   const [opened, setOpened] = useState<number | null>(null)
+  // Levels while no rank has colours; but a scheme never saved, in a BJJ gym, reads as
+  // belts until its first save (#353).
+  const unset = initial.ranks.length + initial.kids_ladder.length === 0
+  const levels = isLevels(draft) && !(unset && belts)
+  const words = wordsOf(levels)
 
   const save = useSubmit({
     mutationFn: () => saveGradingScheme(schemeOf(draft)),
@@ -207,7 +244,7 @@ function GradingEditor({
       setDraft(draftOf(answer))
       setOpened(null)
       setRepairing(false)
-      setNotice(copy.saved)
+      setNotice(words.saved)
       queryClient.setQueryData(gradingSchemeQuery().queryKey, answer)
     },
     // The first rank the API refused opens, so its error shows.
@@ -220,7 +257,7 @@ function GradingEditor({
   })
   const errors = validationErrors(save.error)
   const errorOf = (path: string, leaf: 'label' | 'target', text: string) =>
-    path in errors ? refusal(errors[path]!, leaf, { range: copy.range, value: {} }, text.trim() === '') : undefined
+    path in errors ? refusal(errors[path]!, leaf, { range: words.range, value: {} }, text.trim() === '') : undefined
   const refused = (prefix: string) => Object.keys(errors).some((path) => path.startsWith(prefix))
 
   const change = (next: Draft) => {
@@ -235,7 +272,7 @@ function GradingEditor({
     save.reset()
     setOpened(null)
     setDraft(draftOf(chosen.scheme))
-    setNotice(copy.applied(chosen.label))
+    setNotice(words.applied(chosen.label))
   }
 
   const submit = (event: FormEvent) => {
@@ -245,16 +282,16 @@ function GradingEditor({
   }
 
   return (
-    <section className="settings__section" aria-label={copy.title}>
+    <section className="settings__section" aria-label={words.title}>
       <SectionHead intro={t.admin.settings.descriptions.grading} />
       {shared && (
         <p className="settings__hint" role="note">
-          {copy.shared(shared)}
+          {words.shared(shared)}
         </p>
       )}
       {repairing && (
         <Banner tone="error">
-          {copy.stale}
+          {words.stale}
         </Banner>
       )}
       {notice && (
@@ -263,23 +300,23 @@ function GradingEditor({
         </Banner>
       )}
       {/* Closed unless the stored scheme needs one (#177): a preset is a starting point, not a daily edit. */}
-      <details className={cardClass({}, 'settings__card settings__start')} open={repairing || undefined} aria-label={copy.start}>
+      <details className={cardClass({}, 'settings__card settings__start')} open={repairing || undefined} aria-label={words.start}>
         <SectionTitle as="summary" className="settings__legend">
-          {copy.start}
+          {words.start}
           <ChevronDownIcon />
         </SectionTitle>
         {presetsFailed ? (
-          <p className="settings__detail">{copy.presetsError}</p>
+          <p className="settings__detail">{words.presetsError}</p>
         ) : (
           <>
-            <Field label={copy.preset} hint={copy.presetHint}>
+            <Field label={words.preset} hint={words.presetHint}>
               {(props) => (
                 <Select
                   {...props}
                   value={preset}
                   onChange={(e) => setPreset(e.target.value)}
                 >
-                  <option value="">{copy.choosePreset}</option>
+                  <option value="">{words.choosePreset}</option>
                   {presets?.map((p) => (
                     <option key={p.key} value={p.key}>
                       {p.label}
@@ -289,15 +326,15 @@ function GradingEditor({
               )}
             </Field>
             <Button disabled={preset === ''} onClick={apply}>
-              {repairing ? copy.reapply : copy.apply}
+              {repairing ? words.reapply : words.apply}
             </Button>
           </>
         )}
       </details>
 
-      <form className="settings__form" aria-label={copy.title} onSubmit={submit} noValidate>
+      <form className="settings__form" aria-label={words.title} onSubmit={submit} noValidate>
         <Card as="div" className="settings__card">
-          <Field label={copy.goalMetric} hint={copy.goalMetricHint}>
+          <Field label={words.goalMetric} hint={words.goalMetricHint}>
             {(props) => (
               <Select
                 {...props}
@@ -309,10 +346,10 @@ function GradingEditor({
                   })
                 }
               >
-                <option value="">{copy.goalMetrics.none}</option>
+                <option value="">{words.goalMetrics.none}</option>
                 {GOAL_METRICS.map((m) => (
                   <option key={m} value={m}>
-                    {copy.goalMetrics[m]}
+                    {words.goalMetrics[m]}
                   </option>
                 ))}
               </Select>
@@ -324,6 +361,8 @@ function GradingEditor({
           <LadderEditor
             key={ladder}
             ladder={ladder}
+            words={words}
+            belts={!levels}
             ranks={draft[ladder]}
             metric={draft.goal_metric}
             errorOf={errorOf}
@@ -336,12 +375,12 @@ function GradingEditor({
 
         {save.error && (
           <Banner tone="error">
-            {'' in errors ? copy.schemeInvalid : Object.keys(errors).length > 0 ? copy.invalid : copy.failed}
+            {'' in errors ? words.schemeInvalid : Object.keys(errors).length > 0 ? words.invalid : words.failed}
           </Banner>
         )}
         <div className="settings__actions settings__actions--sticky">
           <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
-            {save.isPending ? copy.working : copy.submit}
+            {save.isPending ? words.working : words.submit}
           </Button>
         </div>
       </form>
@@ -365,6 +404,8 @@ const removed = <T,>(list: T[], index: number) => list.filter((_, i) => i !== in
 
 function LadderEditor({
   ladder,
+  words,
+  belts,
   ranks,
   metric,
   errorOf,
@@ -374,6 +415,9 @@ function LadderEditor({
   onChange,
 }: {
   ladder: Ladder
+  words: Words
+  // Whether any rank has colours: the rows keep room for a belt.
+  belts: boolean
   ranks: DraftRank[]
   metric: GoalMetric | null
   errorOf: ErrorOf
@@ -382,19 +426,21 @@ function LadderEditor({
   onOpen: (id: number | null) => void
   onChange: (ranks: DraftRank[]) => void
 }) {
-  const title = copy.ladders[ladder]
+  const title = words.ladders[ladder]
   return (
     <Card as="div" className="settings__card" role="group" aria-label={title}>
       <SectionTitle className="settings__legend">{title}</SectionTitle>
-      <p className="settings__hint">{copy.laddersHint[ladder]}</p>
+      <p className="settings__hint">{words.laddersHint[ladder]}</p>
       {ranks.length === 0 ? (
-        <p className="settings__detail">{copy.emptyLadder}</p>
+        <p className="settings__detail">{words.emptyLadder}</p>
       ) : (
         <PlainList ordered className="settings__menu settings__ladder">
           {ranks.map((rank, index) => (
             <RankEditor
               key={rank.id}
               path={`${ladder}.${index}`}
+              words={words}
+              belts={belts}
               number={index + 1}
               rank={rank}
               metric={metric}
@@ -422,7 +468,7 @@ function LadderEditor({
           onOpen(rank.id)
         }}
       >
-        {copy.addRank}
+        {words.addRank}
       </Button>
     </Card>
   )
@@ -435,6 +481,8 @@ function LadderEditor({
  */
 function RankEditor({
   path,
+  words,
+  belts,
   number,
   rank,
   metric,
@@ -449,6 +497,8 @@ function RankEditor({
   onRemove,
 }: {
   path: string
+  words: Words
+  belts: boolean
   number: number
   rank: DraftRank
   metric: GoalMetric | null
@@ -462,26 +512,26 @@ function RankEditor({
   onMove: (by: -1 | 1) => void
   onRemove: () => void
 }) {
-  const name = rank.label.trim() || copy.unnamed
+  const name = rank.label.trim() || words.unnamed
   const setSubRanks = (sub_ranks: DraftSubRank[]) => onChange({ ...rank, sub_ranks })
   // A rank whose sub-ranks were refused opens on them.
   const [subOpen, setSubOpen] = useState(false)
   const panel = useId()
   const target = Number(rank.target)
   const detail = refused(`${path}.`) ? (
-    <span className="settings__refused">{copy.refusedRank}</span>
+    <span className="settings__refused">{words.refusedRank}</span>
   ) : (
     [
       // A rank with no target of its own says nothing about one.
-      metric && rank.target.trim() !== '' && Number.isFinite(target) && copy.summary[metric](target),
-      rank.sub_ranks.length > 0 && copy.subRanks(rank.sub_ranks.length),
+      metric && rank.target.trim() !== '' && Number.isFinite(target) && words.summary[metric](target),
+      rank.sub_ranks.length > 0 && words.subRanks(rank.sub_ranks.length),
     ]
       .filter(Boolean)
       .join(' · ')
   )
 
   return (
-    <li aria-label={copy.rank(number)}>
+    <li aria-label={words.rank(number)}>
       <div className="settings__row">
         <button
           type="button"
@@ -490,23 +540,26 @@ function RankEditor({
           aria-controls={panel}
           onClick={onToggle}
         >
-          <span className="settings__rank-belt" aria-hidden="true">
-            {rank.colors.length > 0 && <Belt colors={rank.colors} stripes={0} maxStripes={0} label="" compact />}
-          </span>
+          {/* Levels have no belt to show (#353): no room kept for one. */}
+          {belts && (
+            <span className="settings__rank-belt" aria-hidden="true">
+              {rank.colors.length > 0 && <Belt colors={rank.colors} stripes={0} maxStripes={0} label="" compact />}
+            </span>
+          )}
           <ListRowContent
             title={`${number}. ${name}`}
             detail={detail || undefined}
           />
         </button>
         <div className="settings__row-controls">
-          <MoveButtons up={copy.moveUp(name)} down={copy.moveDown(name)} first={first} last={last} onMove={onMove} />
+          <MoveButtons up={words.moveUp(name)} down={words.moveDown(name)} first={first} last={last} onMove={onMove} />
         </div>
       </div>
       <div id={panel} className="settings__rank-panel" hidden={!open}>
         {open && (
           <>
             <div className="settings__rank-fields">
-              <Field label={copy.rank(number)} error={errorOf(`${path}.label`, 'label', rank.label)}>
+              <Field label={words.rank(number)} error={errorOf(`${path}.label`, 'label', rank.label)}>
                 {(props) => (
                   <Input
                     {...props}
@@ -519,8 +572,8 @@ function RankEditor({
               </Field>
               {metric && (
                 <Field
-                  label={copy.target[metric]}
-                  hint={rank.sub_ranks.length > 0 ? copy.targetHint : undefined}
+                  label={words.target[metric]}
+                  hint={rank.sub_ranks.length > 0 ? words.targetHint : undefined}
                   error={errorOf(`${path}.target`, 'target', rank.target)}
                 >
                   {(props) => (
@@ -535,13 +588,13 @@ function RankEditor({
                 </Field>
               )}
             </div>
-            <BeltColors rank={rank} name={name} onChange={(colors) => onChange({ ...rank, colors })} />
+            <BeltColors words={words.belt} rank={rank} name={name} onChange={(colors) => onChange({ ...rank, colors })} />
             <details
               className="settings__sub-ranks"
               open={subOpen || refused(`${path}.sub_ranks.`)}
               onToggle={(e) => setSubOpen(e.currentTarget.open)}
             >
-              <summary>{copy.subRanks(rank.sub_ranks.length)}</summary>
+              <summary>{words.subRanks(rank.sub_ranks.length)}</summary>
               <PlainList ordered className="settings__list">
                 {rank.sub_ranks.map((sub, index) => {
                   const subPath = `${path}.sub_ranks.${index}`
@@ -550,7 +603,7 @@ function RankEditor({
                       key={sub.id}
                       className={metric ? 'settings__sub-rank settings__sub-rank--target' : 'settings__sub-rank'}
                     >
-                      <Field label={copy.subRank(index + 1)} error={errorOf(`${subPath}.label`, 'label', sub.label)}>
+                      <Field label={words.subRank(index + 1)} error={errorOf(`${subPath}.label`, 'label', sub.label)}>
                         {(props) => (
                           <Input
                             {...props}
@@ -569,7 +622,7 @@ function RankEditor({
                         )}
                       </Field>
                       {metric && (
-                        <Field label={copy.subTarget[metric]} error={errorOf(`${subPath}.target`, 'target', sub.target)}>
+                        <Field label={words.subTarget[metric]} error={errorOf(`${subPath}.target`, 'target', sub.target)}>
                           {(props) => (
                             <Input
                               {...props}
@@ -591,7 +644,7 @@ function RankEditor({
                       )}
                       <Button
                         icon
-                        aria-label={copy.remove(sub.label.trim() || copy.subRank(index + 1))}
+                        aria-label={words.remove(sub.label.trim() || words.subRank(index + 1))}
                         onClick={() => setSubRanks(removed(rank.sub_ranks, index))}
                       >
                         <CloseIcon />
@@ -601,17 +654,17 @@ function RankEditor({
                 })}
               </PlainList>
               <Button onClick={() => setSubRanks([...rank.sub_ranks, blank()])}>
-                {copy.addSubRank}
+                {words.addSubRank}
               </Button>
             </details>
             <div className="settings__actions">
               <Button onClick={onToggle}>
-                {copy.done}
+                {words.done}
               </Button>
             </div>
             <div className="settings__danger">
               <Button variant="danger" onClick={onRemove}>
-                {copy.remove(name)}
+                {words.remove(name)}
               </Button>
             </div>
           </>
@@ -625,8 +678,17 @@ function RankEditor({
  * A rank's belt colours: none, and the rank shows as its name; one; or a second for the
  * stripe through a two-tone belt. Drawn as it will look, every stripe on its bar.
  */
-function BeltColors({ rank, name, onChange }: { rank: DraftRank; name: string; onChange: (colors: string[]) => void }) {
-  const words = copy.belt
+function BeltColors({
+  words,
+  rank,
+  name,
+  onChange,
+}: {
+  words: Words['belt']
+  rank: DraftRank
+  name: string
+  onChange: (colors: string[]) => void
+}) {
   const [main, tone] = rank.colors
   const stripes = Math.max(rank.sub_ranks.length - 1, 0)
   return (

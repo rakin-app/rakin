@@ -427,6 +427,9 @@ export const es = {
       inactiveProgram: (name: string) => `${name} (programa inactivo)`,
       rankLabel: 'Cinturón',
       allRanks: 'Todos los cinturones',
+      // A scheme with no colours is levels (#353): a swimming school's, a climbing gym's.
+      levelLabel: 'Nivel',
+      allLevels: 'Todos los niveles',
       clearFilters: 'Limpiar filtros',
       count: (n: number) => w.memberCount(n, n.toLocaleString('es-CL')),
       pickPlan: 'Elegir un plan…',
@@ -2675,6 +2678,33 @@ export const es = {
           remove: 'Quitar color',
           preview: (label: string) => `Vista previa del cinturón ${label}`,
         },
+        // The editor's words while no rank has colours (#353): levels, not belts, and a
+        // sub-rank is no stripe. Over the ones above.
+        levels: {
+          goalMetricHint: 'Lo que cuenta el objetivo de cada nivel para pasar al siguiente.',
+          goalMetrics: { time_in_rank: 'Meses en el nivel' },
+          ladders: { ranks: 'Niveles' },
+          laddersHint: { kids_ladder: 'Opcional: los niveles de los niños, si tienen una escalera propia.' },
+          emptyLadder: 'Sin niveles.',
+          addRank: 'Agregar nivel',
+          rank: (n: number) => `Nivel ${n}`,
+          target: {
+            classes_since_promotion: 'Clases para el siguiente',
+            time_in_rank: 'Meses para el siguiente',
+          },
+          targetHint: 'Opcional. Un subnivel sin objetivo propio usa el de su nivel.',
+          summary: {
+            classes_since_promotion: (n: number) => (n === 1 ? '1 clase para el siguiente' : `${n} clases para el siguiente`),
+            time_in_rank: (n: number) => (n === 1 ? '1 mes para el siguiente' : `${n} meses para el siguiente`),
+          },
+          refusedRank: 'Revisa este nivel.',
+          subRanks: (n: number) => (n === 0 ? 'Sin subniveles' : n === 1 ? '1 subnivel' : `${n} subniveles`),
+          subRank: (n: number) => `Subnivel ${n}`,
+          addSubRank: 'Agregar subnivel',
+          belt: { title: 'Color', none: 'Sin color: el nivel se muestra con su nombre.' },
+          unnamed: 'nivel sin nombre',
+          schemeInvalid: 'El esquema no es válido: para medir el avance necesita al menos un nivel.',
+        },
         moveUp: (label: string) => `Subir ${label}`,
         moveDown: (label: string) => `Bajar ${label}`,
         remove: (label: string) => `Quitar ${label}`,
@@ -3243,6 +3273,7 @@ export const es = {
         program: 'Programa',
         plan: 'Plan',
         rank: 'Cinturón',
+        level: 'Nivel',
         any: 'Todos',
         addAll: (n: number) => (n === 1 ? 'Agregar a 1 persona' : `Agregar a las ${n} personas`),
         loadingFilter: 'Buscando…',
@@ -3700,7 +3731,7 @@ export const es = {
       title: 'Mi entrenamiento',
       // A dependent's, on their guardian's student page (#66).
       theirs: (name: string) => `Entrenamiento de ${name}`,
-      // A rank drawn as a belt is a belt; one with no colours (kyu, a level) is a grade.
+      // A rank drawn as a belt is a belt; one with no colours (a level) is a grade.
       belt: 'Cinturón',
       rank: 'Grado',
       since: (day: string) => `desde ${day}`,

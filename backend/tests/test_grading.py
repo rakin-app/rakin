@@ -31,7 +31,7 @@ NONE: dict[str, Any] = {"ranks": [], "kids_ladder": [], "goal_metric": None}
 
 def test_the_presets_are_the_spec_table() -> None:
     by_key = {p.key: p.scheme for p in PRESETS}
-    assert list(by_key) == ["bjj", "judo-karate", "muay-thai", "none"]
+    assert list(by_key) == ["bjj", "judo-karate", "muay-thai", "levels", "none"]
 
     bjj = by_key["bjj"]
     assert [r.key for r in bjj.ranks] == ["white", "blue", "purple", "brown", "black"]
@@ -48,15 +48,41 @@ def test_the_presets_are_the_spec_table() -> None:
     judo = by_key["judo-karate"]
     keys = [r.key for r in judo.ranks]
     assert keys[0] == "kyu-10" and keys[9:11] == ["kyu-1", "dan-1"] and keys[-1] == "dan-10"
-    assert all(not r.sub_ranks and not r.colors for r in judo.ranks)
+    assert all(not r.sub_ranks for r in judo.ranks)
+    # Kyu and dan are belts (#353): white first, black from 1.º dan, red at 10.º.
+    assert all(r.colors for r in judo.ranks) and judo.belts
+    by_judo = {r.key: r.colors for r in judo.ranks}
+    assert by_judo["kyu-10"] == bjj.ranks[0].colors
+    assert by_judo["dan-1"] == bjj.ranks[-1].colors
+    assert len(by_judo["dan-6"]) == 2 and by_judo["dan-10"] == by_judo["dan-6"][:1]
     assert judo.kids_ladder == []  # kids climb the same ladder
     assert judo.goal_metric == "time_in_rank"
 
     muay_thai = by_key["muay-thai"]
     assert muay_thai.ranks and muay_thai.kids_ladder == []
     assert muay_thai.goal_metric is None
+    # Prajioud are arm bands (#353): each its colour, white first and black last.
+    assert all(len(r.colors) == 1 for r in muay_thai.ranks) and muay_thai.belts
+    assert muay_thai.ranks[0].colors == bjj.ranks[0].colors
+    assert muay_thai.ranks[-1].colors == bjj.ranks[-1].colors
+
+    # Levels (#353): an empty list to fill, read as levels since no rank has colours.
+    assert by_key["levels"].model_dump() == NONE
+    assert bjj.belts and not by_key["levels"].belts
 
     assert by_key["none"].model_dump() == NONE
+
+
+@pytest.mark.parametrize(
+    ("key", "belts"),
+    [("bjj", True), ("judo-karate", True), ("muay-thai", True), ("levels", False), ("none", False)],
+)
+def test_a_preset_reads_as_belts_only_when_its_ranks_have_colours(key: str, belts: bool) -> None:
+    # A belt or arm-band sport says "Cinturón"; levels and no grades say "Nivel" (#353).
+    scheme = next(p.scheme for p in PRESETS if p.key == key)
+    assert scheme.belts is belts
+    if belts:
+        assert all(r.colors for r in (*scheme.ranks, *scheme.kids_ladder))
 
 
 def test_a_gym_with_no_scheme_has_none() -> None:
@@ -209,7 +235,13 @@ def test_the_presets_are_listed(client: TestClient, db: Database) -> None:
     gym = seed_gym(db, "dojo-presets")
     response = client.get(f"{URL}/presets", headers=as_gym(gym))
     assert response.status_code == 200
-    assert [p["key"] for p in response.json()] == ["bjj", "judo-karate", "muay-thai", "none"]
+    assert [p["key"] for p in response.json()] == [
+        "bjj",
+        "judo-karate",
+        "muay-thai",
+        "levels",
+        "none",
+    ]
     assert response.json()[0]["scheme"] == BJJ
 
 

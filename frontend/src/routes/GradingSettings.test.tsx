@@ -26,12 +26,12 @@ const SCHEME: GradingScheme = {
 }
 const PRESETS: GradingPreset[] = [
   {
-    key: 'judo-karate',
-    label: 'Judo / karate',
+    key: 'levels',
+    label: 'Niveles',
     scheme: {
       ranks: [
-        { key: 'kyu-2', label: '2.º kyu', target: null, colors: [], sub_ranks: [] },
-        { key: 'kyu-1', label: '1.º kyu', target: null, colors: [], sub_ranks: [] },
+        { key: 'tadpole', label: 'Renacuajo', target: null, colors: [], sub_ranks: [] },
+        { key: 'dolphin', label: 'Delfín', target: null, colors: [], sub_ranks: [] },
       ],
       kids_ladder: [],
       goal_metric: 'time_in_rank',
@@ -42,17 +42,34 @@ const PRESETS: GradingPreset[] = [
     label: 'Sin grados',
     scheme: { ranks: [], kids_ladder: [], goal_metric: null },
   },
+  {
+    key: 'bjj',
+    label: 'Jiu-jitsu brasileño',
+    scheme: {
+      ranks: [{ key: 'white', label: 'Blanca', target: null, colors: ['#f4f4f1'], sub_ranks: [] }],
+      kids_ladder: [],
+      goal_metric: null,
+    },
+  },
 ]
 
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 
-type Activity = { id: string; name: string; uses_grades: boolean; class_types: number; created_at: string }
+type Activity = {
+  id: string
+  name: string
+  uses_grades: boolean
+  preset?: string | null
+  class_types: number
+  created_at: string
+}
 
-const activity = (name: string, usesGrades = true): Activity => ({
+const activity = (name: string, usesGrades = true, preset: string | null = null): Activity => ({
   id: name.toLowerCase(),
   name,
   uses_grades: usesGrades,
+  preset,
   class_types: 0,
   created_at: '2026-10-01T12:00:00Z',
 })
@@ -103,7 +120,9 @@ function renderGrading() {
 
 const puts = (calls: Call[]) => calls.filter((c) => c.method === 'PUT').map((c) => c.body as GradingScheme)
 const ladder = (name: string) => screen.getByRole('group', { name })
-const rank = (name: string, n: number) => within(ladder(name)).getByRole('listitem', { name: copy.rank(n) })
+// A rank's item is "Grado N", or "Nivel N" while the scheme has no colours (#353).
+const rank = (name: string, n: number) =>
+  within(ladder(name)).getByRole('listitem', { name: new RegExp(`^(${copy.rank(n)}|${copy.levels.rank(n)})$`) })
 const save = () => userEvent.click(screen.getByRole('button', { name: copy.submit }))
 /** A rank's row: the button that opens it, named `N. Label` and its line. */
 const rowOf = (name: string, n: number) =>
@@ -115,6 +134,7 @@ async function open(name: string, n: number) {
   return rank(name, n)
 }
 const RANKS = copy.ladders.ranks
+const LEVELS = copy.levels
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -255,6 +275,57 @@ describe('Ajustes: Graduación', () => {
     expect(puts(calls)[0]!.ranks.map((r) => r.key)).toEqual(['blue'])
   })
 
+  it('reads a scheme with no colours as levels: "Nivel", "Subnivel", no belt (#353)', async () => {
+    stubApi()
+    renderGrading()
+
+    // A belt scheme reads as it did: grades, a belt, sub-ranks.
+    await screen.findByRole('listitem', { name: copy.rank(1) })
+    const white = await open(RANKS, 1)
+    expect(within(white).getByLabelText(copy.rank(1))).toHaveValue('Blanca')
+    expect(within(white).getByRole('group', { name: copy.belt.title })).toBeInTheDocument()
+    expect(within(white).getByRole('img', { name: copy.belt.preview('Blanca') })).toBeInTheDocument()
+    expect(within(white).getByText(copy.subRanks(2))).toBeInTheDocument()
+
+    // Its only colour removed, it is levels.
+    await userEvent.click(within(white).getByRole('button', { name: copy.belt.remove }))
+    const level = rank(LEVELS.ladders.ranks, 1)
+    expect(within(level).getByLabelText(LEVELS.rank(1))).toHaveValue('Blanca')
+    expect(within(level).queryByText(copy.belt.title)).not.toBeInTheDocument()
+    expect(within(level).getByRole('group', { name: LEVELS.belt.title })).toHaveTextContent(LEVELS.belt.none)
+    expect(within(level).queryByRole('img')).not.toBeInTheDocument()
+    expect(level.querySelector('.settings__rank-belt')).toBeNull()
+    await userEvent.click(within(level).getByText(LEVELS.subRanks(2)))
+    expect(within(level).getByLabelText(LEVELS.subRank(1))).toHaveValue('Sin grados')
+    expect(within(level).getByRole('button', { name: LEVELS.addSubRank })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: LEVELS.addRank })).toHaveLength(2)
+
+    // A colour back, and it is belts again.
+    await userEvent.click(within(level).getByRole('button', { name: copy.belt.add }))
+    expect(rank(RANKS, 1).querySelector('.settings__rank-belt')).not.toBeNull()
+  })
+
+  it("reads a scheme never set up by the gym's activity: belts for BJJ, levels for swimming (#353)", async () => {
+    const empty = { body: { ranks: [], kids_ladder: [], goal_metric: null } }
+    stubApi({ scheme: empty, activities: [activity('BJJ', true, 'bjj')] })
+    renderGrading()
+    // BJJ's preset has colours: a first visit reads as belts.
+    expect(await screen.findByRole('group', { name: copy.ladders.ranks })).toBeInTheDocument()
+    expect(screen.getAllByText(copy.emptyLadder)).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: copy.addRank })).toHaveLength(2)
+  })
+
+  it('reads a scheme never set up as levels for a sport with no belts, or a free name (#353)', async () => {
+    const empty = { body: { ranks: [], kids_ladder: [], goal_metric: null } }
+    stubApi({ scheme: empty, activities: [activity('Natación', true, 'natacion'), activity('Escalada en bloque')] })
+    renderGrading()
+    expect(await screen.findByRole('group', { name: LEVELS.ladders.ranks })).toBeInTheDocument()
+    // Read with the presets loaded, BJJ's among them.
+    expect(screen.getByRole('option', { name: 'Jiu-jitsu brasileño', hidden: true })).toBeInTheDocument()
+    expect(screen.getAllByText(LEVELS.emptyLadder)).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: copy.addRank })).not.toBeInTheDocument()
+  })
+
   it('applies a preset as a starting point, saved only with the scheme', async () => {
     const calls = stubApi()
     renderGrading()
@@ -264,15 +335,16 @@ describe('Ajustes: Graduación', () => {
     expect(start).not.toHaveAttribute('open')
     await userEvent.click(within(start).getByText(copy.start))
     expect(start).toHaveAttribute('open')
-    await userEvent.selectOptions(await within(start).findByLabelText(copy.preset), 'Judo / karate')
+    await userEvent.selectOptions(await within(start).findByLabelText(copy.preset), 'Niveles')
     await userEvent.click(within(start).getByRole('button', { name: copy.apply }))
 
-    expect(screen.getByRole('status')).toHaveTextContent(copy.applied('Judo / karate'))
+    expect(screen.getByRole('status')).toHaveTextContent(copy.applied('Niveles'))
     expect(screen.getByLabelText(copy.goalMetric)).toHaveValue('time_in_rank')
-    const kyu = await open(RANKS, 1)
-    expect(within(kyu).getByLabelText(copy.rank(1))).toHaveValue('2.º kyu')
+    // No colours: levels (#353).
+    const first = await open(LEVELS.ladders.ranks, 1)
+    expect(within(first).getByLabelText(LEVELS.rank(1))).toHaveValue('Renacuajo')
     // Months in rank, for this metric.
-    expect(within(kyu).getByLabelText(copy.target.time_in_rank)).toBeInTheDocument()
+    expect(within(first).getByLabelText(LEVELS.target.time_in_rank)).toBeInTheDocument()
     expect(puts(calls)).toEqual([])
 
     await save()
@@ -349,11 +421,12 @@ describe('Ajustes: Graduación', () => {
     })
     renderGrading()
 
-    expect(await screen.findAllByText(copy.emptyLadder)).toHaveLength(2)
-    await userEvent.selectOptions(screen.getByLabelText(copy.goalMetric), copy.goalMetrics.time_in_rank)
+    // An empty scheme has no colours: levels (#353).
+    expect(await screen.findAllByText(LEVELS.emptyLadder)).toHaveLength(2)
+    await userEvent.selectOptions(screen.getByLabelText(copy.goalMetric), LEVELS.goalMetrics.time_in_rank)
     await save()
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(copy.schemeInvalid)
+    expect(await screen.findByRole('alert')).toHaveTextContent(LEVELS.schemeInvalid)
   })
 
   it('offers to re-apply a preset when the stored scheme no longer fits', async () => {
