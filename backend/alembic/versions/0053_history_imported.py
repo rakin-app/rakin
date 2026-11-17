@@ -59,15 +59,22 @@ def _constraints(imported: bool) -> None:
     )
 
 
-def upgrade() -> None:
+def import_check() -> str:
+    """`audit_event_import`'s check."""
     m0048 = _migration("0048_correction_audit.py")
-    _constraints(imported=True)
-    op.execute(
-        f"CREATE POLICY audit_event_import ON audit_event FOR INSERT TO {APP_ROLE}"
-        f" WITH CHECK (gym_id = {m0048.CURRENT_GYM} AND actor_id = {m0048.CURRENT_PERSON}"
+    return (
+        f"(gym_id = {m0048.CURRENT_GYM} AND actor_id = {m0048.CURRENT_PERSON}"
         f" AND at = now() AND action = '{IMPORTED}' AND person_id IS NULL"
         f" AND EXISTS (SELECT FROM staff s WHERE s.gym_id = {m0048.CURRENT_GYM}"
         f" AND s.person_id = {m0048.CURRENT_PERSON} AND s.role IN ('owner', 'admin')))"
+    )
+
+
+def upgrade() -> None:
+    _constraints(imported=True)
+    op.execute(
+        f"CREATE POLICY audit_event_import ON audit_event FOR INSERT TO {APP_ROLE}"
+        f" WITH CHECK {import_check()}"
     )
 
 
