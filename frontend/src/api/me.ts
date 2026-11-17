@@ -6,7 +6,7 @@ import type { FreezeRequest } from './freezeRequests'
 import type { Freeze } from './member'
 import type { OpenPeriod } from './proofs'
 import type { Theme } from '../theme'
-import type { Vocabulary } from '../i18n/vocabulary'
+import type { PracticeNames, Vocabulary } from '../i18n/vocabulary'
 
 /** The role a staff row still names (backend `app.roles.Role`), until #313. What a
  * person may do is their permissions, never this. */
@@ -51,6 +51,9 @@ export type MyRole = {
   // What the gym calls itself, its members and its coach (#344); `wearVocabulary`
   // puts them on every screen.
   vocabulary?: Vocabulary
+  // What the gym calls its free practice and its open mat (#346); `wearPractice` puts
+  // them on every screen.
+  practice?: PracticeNames
 }
 
 /** What `me` may do here; `null` when they are not on the team. */

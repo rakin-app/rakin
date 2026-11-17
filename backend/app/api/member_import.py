@@ -154,7 +154,10 @@ MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 SPREADSHEET_BODY = {"schema": {"type": "string", "format": "binary"}}
 
-PLANS = "SELECT id, name, active, kind, anchor, credits, credit_expiry_days FROM plan"
+PLANS = (
+    "SELECT id, name, active, kind, anchor, credits, credit_expiry_days, period_start,"
+    " period_end FROM plan"
+)
 
 GUARDIAN_OF = "SELECT guardian_person_id FROM guardian_link WHERE dependent_person_id = :id"
 
@@ -926,7 +929,14 @@ async def _plans(session: AsyncSession) -> list[Plan]:
             id=row.id,
             name=row.name,
             active=row.active,
-            terms=PlanTerms(PlanKind(row.kind), row.anchor, row.credits, row.credit_expiry_days),
+            terms=PlanTerms(
+                PlanKind(row.kind),
+                row.anchor,
+                row.credits,
+                row.credit_expiry_days,
+                period_start=row.period_start,
+                period_end=row.period_end,
+            ),
         )
         for row in rows
     ]

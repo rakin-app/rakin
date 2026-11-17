@@ -16,7 +16,8 @@ roster's rule (`app.api.attendance`): one membership per person, not cancelled, 
 the type's program. A check-in (`POST`) marks that membership, and is idempotent, so a
 second tap changes nothing; undoing one (`DELETE .../{membership_id}`) unmarks it,
 giving its credits back. A lapsed plan or a spent pack is the screen's warning, never a
-refusal: the membership checks in for what it has, as at a class.
+refusal: the membership checks in for what it has, as at a class. So is a requirement
+someone lacks or whose record expired, which each search result names (#350).
 
 The day's session is a session like any other: its roster, its deletion and its
 cancelling are `app.api.sessions`'. A cancelled one refuses check-ins (409) until an
@@ -37,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.attendance import ON_ROSTER, class_of, mark_present, require_open, unmark
 from app.api.people import people_matching
+from app.api.requirements import requirement_flags
 from app.api.sessions import gym_timezone
 from app.domain.dates import gym_today
 from app.permissions import StaffSession
@@ -176,7 +178,11 @@ async def search(
         text(CANDIDATES.format(matching=matching)),
         {**params, "session": None if held is None else held.id, "program": door.program_id},
     )
-    return [Candidate.model_validate(row, from_attributes=True) for row in rows]
+    found = [Candidate.model_validate(row, from_attributes=True) for row in rows]
+    flags = await requirement_flags(session, tenant, [c.person_id for c in found])
+    for c in found:
+        c.unmet_requirements = flags.get(c.person_id, [])
+    return found
 
 
 @router.post(

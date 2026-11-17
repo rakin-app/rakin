@@ -389,6 +389,11 @@
     "coach": 404,
     "owner": 404
   },
+  "GET /api/plans/{plan_id}/memberships": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
   "GET /api/programs": {
     "admin": 200,
     "coach": 200,
@@ -405,6 +410,11 @@
     "owner": 200
   },
   "GET /api/requirements": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/requirements/due": {
     "admin": 200,
     "coach": 200,
     "owner": 200
@@ -805,6 +815,11 @@
     "owner": 404
   },
   "POST /api/plans": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/plans/{plan_id}/next-period": {
     "admin": 422,
     "coach": 403,
     "owner": 422

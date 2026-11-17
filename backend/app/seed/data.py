@@ -132,6 +132,8 @@ PLANS = (
     PlanSpec("student", "Estudiante", PlanKind.MONTHLY, 30_000, "adults", anchor="signup"),
     PlanSpec("kids", "Mensual kids", PlanKind.MONTHLY, 36_000, "kids", anchor="signup"),
     PlanSpec("prepaid-6", "Prepago 6 meses", PlanKind.PREPAID, 240_000, "adults", period_months=6),
+    # The seed year's dates, the same for every member on it (`app.seed.build.season`).
+    PlanSpec("season", "Temporada", PlanKind.FIXED_PERIOD, 420_000, "adults"),
     PlanSpec(
         "pack-12", "Pack 12 clases", PlanKind.CREDITS, 45_000, credits=12, credit_expiry_days=60
     ),
@@ -410,8 +412,9 @@ def _filler() -> tuple[MemberSpec, ...]:
             )
         )
 
-    for _ in range(25):
-        adult("adults")
+    for i in range(25):
+        # The last one on the season plan: a member who joined mid-season (#351).
+        adult("season" if i == 24 else "adults")
     for _ in range(5):
         adult("student")
     for _ in range(3):

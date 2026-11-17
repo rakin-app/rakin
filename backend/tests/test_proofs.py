@@ -467,6 +467,8 @@ def test_my_role_names_who_is_signed_in_and_the_gym(
         # No activity grades in a new gym (#245).
         "uses_grades": False,
         "vocabulary": {"place": "academia", "members": "alumnos", "coach": "profe"},
+        # A gym with no activity: the seed's kind is still "Sparring" (#346).
+        "practice": {"block": "Sparring", "open_mat": "Sparring"},
     }
 
 

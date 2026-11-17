@@ -32,7 +32,7 @@ from typing import Any, Literal, Protocol
 from pydantic import TypeAdapter, ValidationError
 
 from app.domain.dates import add_months
-from app.domain.membership import RECURRING, PlanKind, PlanTerms
+from app.domain.membership import RECURRING, PlanKind, PlanTerms, check_open
 from app.domain.phone import InvalidPhoneError, normalize_phone
 from app.domain.rut import normalize_rut
 from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
@@ -70,7 +70,8 @@ MAX_LEFT_REASON = 200
 # `required`: the cell is empty and the row needs it. `repeated`: an earlier row has the
 # same RUT or email, or the same guardian and name. `own_guardian`: the guardian's RUT
 # is the row's own. `unknown_plan`, `inactive_plan`, `dropin_plan`: no such plan, a deactivated
-# one, or a drop-in, which is not a membership. `due_before_start`: the due date is
+# one, or a drop-in, which is not a membership. `ended_plan`: a fixed-period plan whose
+# period ended before the due date, so nothing would bill. `due_before_start`: the due date is
 # before the start. `has_guardian`, `one_level`: the link is refused (migration 0010).
 # `has_left`: the member was dado de baja, and starts no plan until reactivated (0032).
 # `ambiguous_name`: a row with no RUT and no email names someone the gym has two of, and
@@ -90,6 +91,7 @@ ErrorCode = Literal[
     "unknown_plan",
     "inactive_plan",
     "dropin_plan",
+    "ended_plan",
     "due_before_start",
     "has_guardian",
     "one_level",
@@ -535,6 +537,11 @@ def _plan(member: Member, plans: "PlanFinder", value: str) -> None:
         and not any(e.field is Field.DUE_ON for e in member.errors)
     ):
         member.refuse(Field.DUE_ON, "required")
+    elif plan.terms.kind is PlanKind.FIXED_PERIOD and member.due_on is not None:
+        try:
+            check_open(plan.terms, member.due_on)
+        except ValueError:
+            member.refuse(Field.PLAN, "ended_plan")
     started_on = member.started_on
     if member.due_on is not None and started_on is not None and member.due_on < started_on:
         member.refuse(Field.DUE_ON, "due_before_start")

@@ -19,7 +19,7 @@ database work. An endpoint every staff member may read but whose answer carries 
 out without `money_read` (#205).
 
 Every gym starts with the Academia preset's roles, Administrador and Coach, carrying
-what today's admin and coach do (migration 0063). Until #309 the database still keys its
+what today's admin and coach do (migration 0065). Until #309 the database still keys its
 policies off `staff.role`, which the staff API writes alongside the appointments; the
 ledger is closed to coaches there too (migration 0006).
 
@@ -56,7 +56,7 @@ class Permission(StrEnum):
 
 # What holding one permission brings with it. Stored on the role, never inferred at
 # read time: a role with `money_write` lists `money_read` too, and a CHECK refuses one
-# without it (migration 0063).
+# without it (migration 0065).
 IMPLIES: dict[Permission, Permission] = {
     Permission.MONEY_WRITE: Permission.MONEY_READ,
     Permission.EXPENSES_WRITE: Permission.EXPENSES_READ,
@@ -74,7 +74,7 @@ class PresetTitle:
     public: bool
 
 
-# What every gym starts with, today's admin and coach (migration 0063 adds them to each
+# What every gym starts with, today's admin and coach (migration 0065 adds them to each
 # gym when it is created, under `preset_title_id`). A coach adds a student without a
 # plan and runs their own classes, nothing else of `members_manage`.
 ACADEMIA = "academia"
@@ -101,7 +101,7 @@ PRESETS: dict[str, tuple[PresetTitle, ...]] = {ACADEMIA: (ADMINISTRADOR, COACH)}
 
 
 def preset_title_id(gym_id: uuid.UUID, preset: str, key: str) -> uuid.UUID:
-    """The id of a preset's role in a gym, as `gym_title_preset_id` (0063) derives it."""
+    """The id of a preset's role in a gym, as `gym_title_preset_id` (0065) derives it."""
     return uuid.UUID(hashlib.md5(f"{gym_id}/gym_title/{preset}/{key}".encode()).hexdigest())
 
 

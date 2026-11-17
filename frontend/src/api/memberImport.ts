@@ -80,6 +80,8 @@ export type RowErrorCode =
   | 'unknown_plan'
   | 'inactive_plan'
   | 'dropin_plan'
+  // A fixed-period plan whose period ended before the due date (#351).
+  | 'ended_plan'
   | 'due_before_start'
   | 'has_guardian'
   | 'one_level'

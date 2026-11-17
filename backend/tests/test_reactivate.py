@@ -325,6 +325,49 @@ def test_only_a_lapsed_monthly_or_prepaid_plan_is_reactivated(
     assert refusal(reactivate(client, gym, lapsed))["code"] == "not_lapsed"
 
 
+def test_a_fixed_period_plan_is_not_reactivated_once_its_period_ended(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    today = seeded_today()
+    season = client.post(
+        "/api/plans",
+        json={
+            "kind": "fixed_period",
+            "name": "Temporada",
+            "price_clp": 300_000,
+            "period_start": (today - timedelta(days=30)).isoformat(),
+            "period_end": (today + timedelta(days=30)).isoformat(),
+        },
+        headers=as_gym(gym),
+    ).json()["id"]
+    person = enrolled(client, gym, name="Rosa Vidal", membership={"plan_id": season})["id"]
+    [membership] = memberships(client, gym, person)
+    run(
+        db.owner_url,
+        in_gym(
+            gym,
+            "UPDATE plan SET period_end = $2 WHERE id = $1",
+            uuid.UUID(season),
+            today - timedelta(days=1),
+        ),
+    )
+    run(
+        db.owner_url,
+        in_gym(
+            gym,
+            "UPDATE membership SET status = 'lapsed' WHERE id = $1",
+            uuid.UUID(membership["id"]),
+        ),
+    )
+
+    for response in (
+        quote(client, gym, membership["id"]),
+        reactivate(client, gym, membership["id"]),
+    ):
+        assert refusal(response)["code"] == "period_ended"
+    assert status(client, gym, membership["id"]) == "lapsed"
+
+
 def test_a_reactivation_needs_a_reason_and_an_owner_or_admin(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:

@@ -1,4 +1,4 @@
-"""Plans: the five kinds and their parameters, edits, and deactivating instead of deleting.
+"""Plans: the six kinds and their parameters, edits, and deactivating instead of deleting.
 
 Each kind takes exactly its own parameters, at the API and in the table (migration
 0007): a body or a row that mixes two kinds is refused, not half-stored.
@@ -7,6 +7,7 @@ Each kind takes exactly its own parameters, at the API and in the table (migrati
 import asyncio
 import uuid
 from collections.abc import Iterator
+from datetime import date
 from typing import Any
 
 import asyncpg
@@ -49,6 +50,13 @@ CREDITS: dict[str, Any] = {
     "credits": 12,
     "credit_expiry_days": 60,
 }
+FIXED: dict[str, Any] = {
+    "kind": "fixed_period",
+    "name": "Temporada 2027",
+    "price_clp": 300_000,
+    "period_start": "2027-03-01",
+    "period_end": "2027-12-31",
+}
 DROPIN: dict[str, Any] = {"kind": "dropin", "name": "Clase suelta", "price_clp": 10_000}
 TRIAL: dict[str, Any] = {
     "kind": "trial",
@@ -57,7 +65,7 @@ TRIAL: dict[str, Any] = {
     "free_days": 14,
 }
 KINDS: dict[str, dict[str, Any]] = {
-    p["kind"]: p for p in (MONTHLY, PREPAID, CREDITS, DROPIN, TRIAL)
+    p["kind"]: p for p in (MONTHLY, PREPAID, FIXED, CREDITS, DROPIN, TRIAL)
 }
 
 # --- input rules, no database -----------------------------------------------------
@@ -65,7 +73,8 @@ KINDS: dict[str, dict[str, Any]] = {
 
 @pytest.mark.parametrize("body", KINDS.values(), ids=KINDS)
 def test_each_kind_takes_its_parameters(body: dict[str, Any]) -> None:
-    assert PLAN_CREATE.validate_python(body).model_dump(exclude_none=True) == body
+    plan = PLAN_CREATE.validate_python(body)
+    assert plan.model_dump(mode="json", exclude_none=True) == body
 
 
 @pytest.mark.parametrize(
@@ -103,6 +112,10 @@ def test_also_accepted(body: dict[str, Any]) -> None:
         {**MONTHLY, "name": "  "},
         {**MONTHLY, "active": False},
         {**MONTHLY, "gym_id": str(uuid.uuid4())},
+        {k: v for k, v in FIXED.items() if k != "period_end"},
+        {**FIXED, "period_start": "1 de marzo"},
+        {**FIXED, "period_months": 10},
+        {**PREPAID, "period_start": "2027-03-01"},
     ],
     ids=str,
 )
@@ -137,6 +150,15 @@ def test_update_refuses_a_value_the_column_cannot_hold(field: str) -> None:
         PlanUpdate.model_validate({field: max(MAX_PRICE_CLP, INT4_MAX) + 1})
 
 
+def test_a_period_ends_on_or_after_it_starts() -> None:
+    PLAN_CREATE.validate_python({**FIXED, "period_end": FIXED["period_start"]})
+    with pytest.raises(ValidationError) as refused:
+        PLAN_CREATE.validate_python({**FIXED, "period_end": "2027-02-28"})
+    assert [(e["loc"], e["type"]) for e in refused.value.errors()] == [
+        (("fixed_period", "period_end"), "period_order")
+    ]
+
+
 def test_update_takes_only_the_fields_sent() -> None:
     body = PlanUpdate.model_validate({"price_clp": 50_000, "free_days": None})
     assert body.model_dump(exclude_unset=True) == {"price_clp": 50_000, "free_days": None}
@@ -157,6 +179,8 @@ def test_a_trial_is_stored_in_the_credits_columns_and_free() -> None:
         "price_clp": 0,
         "anchor": None,
         "period_months": None,
+        "period_start": None,
+        "period_end": None,
         "credits": 2,
         "credit_expiry_days": 14,
     }
@@ -166,7 +190,8 @@ def test_a_trial_is_stored_in_the_credits_columns_and_free() -> None:
 @pytest.mark.parametrize("body", KINDS.values(), ids=KINDS)
 def test_every_column_round_trips(body: dict[str, Any]) -> None:
     columns = to_columns(PLAN_CREATE.validate_python(body))
-    assert {k: v for k, v in from_row(columns).items() if v is not None} == body
+    read = PLAN_CREATE.validate_python(from_row(columns))
+    assert read.model_dump(mode="json", exclude_none=True) == body
 
 
 # --- against real Postgres --------------------------------------------------------
@@ -358,6 +383,7 @@ def test_list_puts_active_plans_first_and_filters(client: TestClient, db: Databa
         (PREPAID, {"period_months": 12, "name": "Prepago anual"}),
         (CREDITS, {"credits": 8, "credit_expiry_days": 30}),
         (DROPIN, {"price_clp": 12_000}),
+        (FIXED, {"period_end": "2027-11-30", "price_clp": 280_000}),
         (TRIAL, {"free_classes": None}),
         (TRIAL, {"free_days": 7, "free_classes": 1}),
     ],
@@ -385,6 +411,9 @@ def test_edit_the_kinds_own_parameters(
         (TRIAL, {"price_clp": 1000}, "price_clp"),
         (TRIAL, {"free_classes": None, "free_days": None}, None),
         (PREPAID, {"kind": "monthly"}, "kind"),
+        (FIXED, {"period_end": "2027-02-01"}, "period_end"),
+        (FIXED, {"period_start": None}, "period_start"),
+        (PREPAID, {"period_end": "2027-12-31"}, "period_end"),
     ],
     ids=str,
 )
@@ -455,23 +484,28 @@ def test_coaches_read_plans_and_only_owner_or_admin_change_them(
 
 INSERT = (
     "INSERT INTO plan (gym_id, name, kind, price_clp, anchor, period_months, credits,"
-    " credit_expiry_days) VALUES ($1, 'x', $2, $3, $4, $5, $6, $7)"
+    " credit_expiry_days, period_start, period_end)"
+    " VALUES ($1, 'x', $2, $3, $4, $5, $6, $7, $8, $9)"
 )
+MAR_1, DEC_31 = date(2027, 3, 1), date(2027, 12, 31)
 
 
 @pg
 @pytest.mark.parametrize(
     "values",
     [
-        ("monthly", 1, None, None, None, None),  # no anchor
-        ("monthly", 1, "signup", 3, None, None),
-        ("prepaid", 1, None, None, None, None),
-        ("prepaid", 1, "first", 3, None, None),
-        ("credits", 1, None, None, 10, None),
-        ("dropin", 1, None, None, 1, None),
-        ("trial", 0, None, None, None, None),
-        ("trial", 1000, None, None, 2, None),
-        ("trial", 0, None, 1, 2, None),
+        ("monthly", 1, None, None, None, None, None, None),  # no anchor
+        ("monthly", 1, "signup", 3, None, None, None, None),
+        ("prepaid", 1, None, None, None, None, None, None),
+        ("prepaid", 1, "first", 3, None, None, None, None),
+        ("credits", 1, None, None, 10, None, None, None),
+        ("dropin", 1, None, None, 1, None, None, None),
+        ("trial", 0, None, None, None, None, None, None),
+        ("trial", 1000, None, None, 2, None, None, None),
+        ("trial", 0, None, 1, 2, None, None, None),
+        ("fixed_period", 1, None, None, None, None, MAR_1, None),
+        ("fixed_period", 1, None, 10, None, None, MAR_1, DEC_31),
+        ("monthly", 1, "signup", None, None, None, MAR_1, DEC_31),
     ],
     ids=str,
 )

@@ -145,7 +145,7 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # tests/test_history_payments.py `history_payment` (0055), and
     # tests/test_consent.py `consent_event` (0058), tests/test_requirements.py
     # `requirement` and `person_requirement` (0062), and tests/test_permissions.py
-    # `gym_title` and `staff_title` (0063).
+    # `gym_title` and `staff_title` (0065).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "audit_event",

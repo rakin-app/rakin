@@ -274,8 +274,12 @@ def check_periods(state: State, day: date) -> None:
                 gap += until - since
             assert after.start == before.end + gap, (member_id, before, after)
         for p in periods:
-            assert p.start <= p.end and p.due == p.start, p
-            assert p.start <= horizon, f"{p} billed past {horizon}"
+            if member.kind == "fixed_period":
+                # Due on its first day, or the day the member joined if later (#351).
+                assert p.start <= p.due <= p.end, p
+            else:
+                assert p.start <= p.end and p.due == p.start, p
+            assert p.due <= horizon, f"{p} billed past {horizon}"
             if p.amount_due > 0:
                 assert charged_periods[p.id] == 1, p
                 assert charges[(p.id, p.amount_due)] == 1, p

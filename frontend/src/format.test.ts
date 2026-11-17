@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPhone, formatRut, longDay, shiftDay, timeRange, zonedInstant } from './format'
+import { formatPhone, formatRut, longDay, nextYear, shiftDay, timeRange, zonedInstant } from './format'
 
 describe('zonedInstant', () => {
   it("is the wall time in the gym's timezone, not the device's", () => {
@@ -64,5 +64,13 @@ describe('formatting', () => {
     ['12345678-K', '12.345.678-K'],
   ])('shows RUT %s as %s', (rut, shown) => {
     expect(formatRut(rut)).toBe(shown)
+  })
+})
+
+describe('nextYear', () => {
+  it('is the same day a year on, and 29 February the 28th', () => {
+    expect(nextYear('2027-03-01')).toBe('2028-03-01')
+    expect(nextYear('2027-12-31')).toBe('2028-12-31')
+    expect(nextYear('2028-02-29')).toBe('2029-02-28')
   })
 })

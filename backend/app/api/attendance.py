@@ -35,6 +35,10 @@ so it has none to count. Deleting a class removes its attendance (`remove_attend
 giving back what each mark took, as unmarking would, and a drop-in's charge while
 nothing was paid on it.
 
+Each person on the roster names the requirements they lack or whose record expired
+(`app.api.requirements.requirement_flags`, #350), those the caller's role sees: a
+warning, never a refusal, so marking them still works.
+
 Any staff role may use it, coaches included; members may not. A member reads their own
 counts on the student page (`/api/me/page`).
 """
@@ -56,6 +60,7 @@ from app.api.ledger import record_payment
 from app.api.memberships import HAS_LEFT, PersonHasLeft, insert_membership
 from app.api.people import NOT_FOUND as PERSON_NOT_FOUND
 from app.api.people import in_gym, join_gym
+from app.api.requirements import requirement_flags
 from app.domain import membership as memberships
 from app.domain.attendance import credits_to_consume
 from app.domain.dates import gym_today, start_of_local_day
@@ -237,7 +242,7 @@ def require_open(held: HeldClass) -> None:
         raise CANCELLED
 
 
-async def _roster(session: AsyncSession, held: HeldClass) -> Roster:
+async def _roster(session: AsyncSession, tenant: Tenant, held: HeldClass) -> Roster:
     scheme = readable_scheme(held.settings)
     rows = await session.execute(
         text(ROSTER),
@@ -257,6 +262,9 @@ async def _roster(session: AsyncSession, held: HeldClass) -> Roster:
         )
         rank = None if rank_key is None else Rank.labelled(scheme, rank_key, sub_rank, awarded_on)
         members.append(RosterMember(**fields, rank=rank))
+    flags = await requirement_flags(session, tenant, [m.person_id for m in members])
+    for m in members:
+        m.unmet_requirements = flags.get(m.person_id, [])
     return Roster(session_id=held.id, present=sum(m.present for m in members), members=members)
 
 
@@ -381,8 +389,12 @@ async def remove_attendance(session: AsyncSession, session_id: uuid.UUID) -> Non
 
 
 @router.get("/api/sessions/{session_id}/roster")
-async def get_roster(session_id: uuid.UUID, session: StaffSession) -> Roster:
-    return await _roster(session, await class_of(session, session_id))
+async def get_roster(
+    session_id: uuid.UUID,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: StaffSession,
+) -> Roster:
+    return await _roster(session, tenant, await class_of(session, session_id))
 
 
 @router.patch(
@@ -406,7 +418,7 @@ async def change_attendance(
             await mark_present(session, held, membership_id, tenant.person_id)
         else:
             await unmark(session, held, membership_id)
-    return await _roster(session, held)
+    return await _roster(session, tenant, held)
 
 
 @router.post(
@@ -466,7 +478,7 @@ async def add_trial_guest(
         # Someone dado de baja comes back through Reactivar, not a trial.
         raise HAS_LEFT from None
     await mark_present(session, held, membership_id, tenant.person_id)
-    return await _roster(session, held)
+    return await _roster(session, tenant, held)
 
 
 # Everyone here with the phone, oldest record first. RLS keeps it to the current gym.
@@ -591,7 +603,7 @@ async def add_dropin_visitor(
             method=body.paid,
         )
         await record_payment(payment, session, notices, background)
-    return await _roster(session, held)
+    return await _roster(session, tenant, held)
 
 
 # "The last 30 days": today and the 29 before it, by the gym's calendar.

@@ -32,8 +32,8 @@ appointments with the rest. Both tables are held to the gym by RLS; `rakin_app` 
 and change rows of both and delete appointments; the staff API deletes only appointments
 that have not started yet, and ends the others.
 
-Revision ID: 0063
-Revises: 0062
+Revision ID: 0065
+Revises: 0064
 Create Date: 2026-11-16
 
 """
@@ -45,8 +45,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0063"
-down_revision: str | Sequence[str] | None = "0062"
+revision: str = "0065"
+down_revision: str | Sequence[str] | None = "0064"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

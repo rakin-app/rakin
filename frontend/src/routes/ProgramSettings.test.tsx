@@ -8,6 +8,7 @@ import type { ClassType } from '../api/sessions'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
+import { wearPractice } from '../i18n/vocabulary'
 import { createAppRouter } from '../router'
 import { asRole } from '../test/access'
 
@@ -66,7 +67,14 @@ function stubApi({
   saveProgram,
   saveClassType,
   activities = [],
-}: { role?: string; saveProgram?: Answer; saveClassType?: Answer; activities?: Activity[] } = {}) {
+  practice,
+}: {
+  role?: string
+  saveProgram?: Answer
+  saveClassType?: Answer
+  activities?: Activity[]
+  practice?: { block: string; open_mat: string }
+} = {}) {
   const calls: Call[] = []
   let programs = [ADULTS, KIDS, OLD]
   let classTypes = [FUNDAMENTOS, OPEN_MAT, SPARRING]
@@ -87,7 +95,7 @@ function stubApi({
   )
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
-    if (path === '/api/me/role') return { body: asRole(role) }
+    if (path === '/api/me/role') return { body: { ...asRole(role), practice } }
     if (path === '/api/activities') return { body: activities }
     if (path === '/api/programs' && method === 'GET') return { body: programs }
     if (path === '/api/programs' && method === 'POST') {
@@ -151,6 +159,7 @@ function rowButton(card: HTMLElement, name: string) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  wearPractice(null)
 })
 
 describe('Ajustes: Programas y clases', () => {
@@ -310,6 +319,19 @@ describe('Ajustes: Programas y clases', () => {
         },
       },
     ])
+  })
+
+  // #346: the open mat goes by the gym's name for it.
+  it("names the open mat as the gym's activity does", async () => {
+    stubApi({ practice: { block: 'Randori', open_mat: 'Randori' } })
+    renderAt('/admin/ajustes/programas')
+
+    const adults = await programCard('Adultos')
+    expect(rowButton(adults, 'Open mat')).toHaveTextContent(`Randori · ${copy.credits(0)}`)
+    await userEvent.click(within(adults).getByRole('button', { name: copy.addClassType }))
+    const create = within(adults).getByRole('form', { name: form.create('Adultos') })
+    const kinds = within(within(create).getByLabelText(form.kind)).getAllByRole('option')
+    expect(kinds.map((o) => o.textContent)).toEqual(['Clase', 'Randori', 'Acceso libre'])
   })
 
   it('creates an open mat, which does not count as a class unless told', async () => {

@@ -8,6 +8,7 @@ import type { FreezeRequest } from '../api/freezeRequests'
 import type { InactiveMember } from '../api/inactive'
 import type { MemberRow } from '../api/people'
 import type { PaymentReminder } from '../api/reminders'
+import type { RequirementsDue } from '../api/requirements'
 import type { ProofReview } from '../api/review'
 import type { ClassSession, SessionDay, UnmarkedSessions } from '../api/sessions'
 import type { Overdue, OverduePeriod } from '../api/today'
@@ -192,6 +193,8 @@ type Stub = {
   unguarded?: string[]
   // The gym's open-access types, as `GET /api/check-in` answers (#348); none by default.
   doors?: unknown[]
+  // `GET /api/requirements/due` (#350).
+  due?: RequirementsDue[]
 }
 
 type Setup = {
@@ -240,6 +243,7 @@ function stubApi({
   freezeRequests = [],
   unguarded = [],
   doors = [],
+  due = [],
 }: Stub = {}) {
   const calls: Call[] = []
   let asked = freezeRequests
@@ -296,6 +300,7 @@ function stubApi({
     if (path === '/api/sessions/unmarked') return unmarked ?? { body: UNMARKED }
     if (path === '/api/sessions') return today ?? { body: TODAY }
     if (path === '/api/check-in') return { body: doors }
+    if (path === '/api/requirements/due') return { body: due }
     if (path === '/api/join-requests') return { body: { items: [], total: 0 } }
     if (path === '/api/freeze-requests') return role === 'coach' ? { status: 403, body: {} } : { body: asked }
     const answered = /^\/api\/freeze-requests\/(.+)\/(approve|reject)$/.exec(path)
@@ -394,6 +399,70 @@ describe('Hoy', () => {
 
     await section(copy.proofs.title)
     expect(screen.queryByRole('region', { name: copy.missingGuardian.title })).not.toBeInTheDocument()
+  })
+
+  it('lists who is short on a requirement, each leading to their ficha (#350)', async () => {
+    stubApi({
+      due: [
+        {
+          person_id: 'p-carla',
+          name: 'Carla Díaz',
+          requirements: [
+            { id: 'r1', name: 'Inducción', state: 'pending', expires_on: null },
+            { id: 'r2', name: 'Certificado médico', state: 'expired', expires_on: '2026-11-01' },
+          ],
+        },
+        {
+          person_id: 'p-bea',
+          name: 'Bea Rojas',
+          requirements: [{ id: 'r2', name: 'Certificado médico', state: 'expiring', expires_on: '2026-12-03' }],
+        },
+      ],
+    })
+    renderToday()
+
+    const card = await section(copy.requirements.title)
+    expect(within(card).getByText(copy.requirements.count(2))).toBeInTheDocument()
+    const carla = within(card).getByRole('link', { name: copy.requirements.openLabel('Carla Díaz') })
+    expect(carla).toHaveAttribute('href', '/admin/alumnos/p-carla')
+    expect(carla).toHaveTextContent('Inducción: pendiente · Certificado médico: vencido')
+    expect(within(card).getByRole('link', { name: copy.requirements.openLabel('Bea Rojas') })).toHaveTextContent(
+      'Certificado médico: vence el 3 de diciembre',
+    )
+  })
+
+  it('shows five short on a requirement until asked for all', async () => {
+    const due = Array.from({ length: 7 }, (_, i) => ({
+      person_id: `p-${i}`,
+      name: `Persona ${i}`,
+      requirements: [{ id: 'r1', name: 'Inducción', state: 'pending' as const, expires_on: null }],
+    }))
+    stubApi({ due })
+    renderToday()
+
+    const card = await section(copy.requirements.title)
+    expect(within(card).getAllByRole('link')).toHaveLength(5)
+    await userEvent.click(within(card).getByRole('button', { name: copy.requirements.showAll(7) }))
+    expect(within(card).getAllByRole('link')).toHaveLength(7)
+  })
+
+  it('has no "Requisitos" while no one is short on one', async () => {
+    stubApi()
+    renderToday()
+
+    await section(copy.proofs.title)
+    expect(screen.queryByRole('region', { name: copy.requirements.title })).not.toBeInTheDocument()
+  })
+
+  it("shows a coach who is short on a requirement too", async () => {
+    stubApi({
+      role: 'coach',
+      due: [{ person_id: 'p-carla', name: 'Carla Díaz', requirements: [{ id: 'r1', name: 'Inducción', state: 'pending', expires_on: null }] }],
+    })
+    renderToday()
+
+    const card = await section(copy.requirements.title)
+    expect(within(card).getByRole('link', { name: copy.requirements.openLabel('Carla Díaz') })).toBeInTheDocument()
   })
 
   it('lists the pending proofs, each leading to the review queue', async () => {

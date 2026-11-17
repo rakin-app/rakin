@@ -1,8 +1,8 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError, apiFetch } from './client'
 
-/** One of the gym's names for a part of a class (backend `BlockKind`). A sparring
- * kind's time counts as sparring. */
+/** One of the gym's names for a part of a class (backend `BlockKind`). A practice
+ * kind's (`is_sparring`) time counts as the gym's free practice, whatever it calls it. */
 export type BlockKind = {
   id: string
   name: string

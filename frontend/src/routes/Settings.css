@@ -467,6 +467,22 @@
   border-top: 1px solid var(--color-divider);
 }
 
+/* The members a fixed-period plan moves to its next period (#351), one tick each. */
+.settings__moves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings__moves > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+
 /* What takes an item away, under the form's own buttons and apart from them. */
 .settings__danger {
   display: flex;

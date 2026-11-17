@@ -1,4 +1,4 @@
-"""Migration 0063: today's roles onto the Academia preset (#308).
+"""Migration 0065: today's roles onto the Academia preset (#308).
 
 Each gym already here gets Administrador and Coach; each `admin` and `coach` row an
 open appointment to its role from the day the row was created, in the gym's timezone;
@@ -28,7 +28,7 @@ CREATED_ON = date(2026, 2, 28)
 @pytest.fixture
 def db() -> Iterator[Database]:
     with throwaway_database(require_test_database_url()) as database:
-        migrate(database, "0062")
+        migrate(database, "0064")
         yield database
 
 
@@ -38,7 +38,7 @@ def admin(db: Database, sql: str, *args: object) -> list[Any]:
 
 
 def staff(db: Database, gym: uuid.UUID, role: str) -> uuid.UUID:
-    """Someone on `gym`'s staff in `role` since `CREATED_AT`, as 0062 kept them."""
+    """Someone on `gym`'s staff in `role` since `CREATED_AT`, as 0064 kept them."""
     person = uuid.uuid4()
 
     async def query(conn: asyncpg.Connection) -> None:
@@ -114,10 +114,10 @@ def test_every_role_is_mapped_and_the_migration_round_trips(db: Database) -> Non
         }
         assert holders(db) == {seeded_owner(sur), seeded_owner(norte)}
 
-    migrate(db, "0063")
+    migrate(db, "0065")
     mapped()
 
-    command.downgrade(db.alembic(), "0062")
+    command.downgrade(db.alembic(), "0064")
     tables = admin(db, "SELECT to_regclass('gym_title'), to_regclass('staff_title')")
     assert tuple(tables[0]) == (None, None)
     columns = admin(
@@ -136,11 +136,11 @@ def test_every_role_is_mapped_and_the_migration_round_trips(db: Database) -> Non
         (pia, "coach"),
     }
 
-    migrate(db, "0063")
+    migrate(db, "0065")
     mapped()
 
 
 def test_a_gym_made_after_it_starts_with_the_preset(db: Database) -> None:
-    migrate(db, "0063")
+    migrate(db, "0065")
     gym = seed_gym(db, "academia-sur")
     assert {name for g, name, *_ in titles(db) if g == gym} == {"Administrador", "Coach"}

@@ -284,6 +284,94 @@ def test_a_plan_change_waits_for_its_day() -> None:
     assert (owed.plan, owed.anchor_day) == (MONTHLY, 15)
 
 
+# --- a fixed-period plan (#351) ---------------------------------------------------
+
+
+def season(year: int, price: int = 300_000) -> billing.Plan:
+    """A rowing club's season, 1 March to 31 December of `year`."""
+    terms = PlanTerms(
+        PlanKind.FIXED_PERIOD, period_start=date(year, 3, 1), period_end=date(year, 12, 31)
+    )
+    return billing.Plan(terms, price)
+
+
+SEASON = season(2027)
+
+
+def test_members_starting_on_different_days_share_the_period_end() -> None:
+    early = billable(SEASON, started_on=date(2027, 3, 1))
+    late = billable(SEASON, started_on=date(2027, 6, 10))
+
+    (first,) = billing.due_periods(early, date(2027, 12, 31)).periods
+    (second,) = billing.due_periods(late, date(2027, 12, 31)).periods
+
+    assert (first.period_start, first.period_end) == (date(2027, 3, 1), date(2027, 12, 31))
+    assert (second.period_start, second.period_end) == (first.period_start, first.period_end)
+
+
+def test_a_late_joiner_is_due_on_their_start_at_the_full_price() -> None:
+    late = billable(SEASON, started_on=date(2027, 6, 10))
+
+    assert billing.due_periods(late, date(2027, 6, 2)).periods == ()
+    (period,) = billing.due_periods(late, date(2027, 6, 3)).periods
+
+    assert period.due_date == date(2027, 6, 10)
+    assert period.amount_due_clp == 300_000
+
+
+def test_an_early_joiner_is_due_on_the_first_day_of_the_period() -> None:
+    early = billable(SEASON, started_on=date(2027, 2, 10))
+
+    assert billing.due_periods(early, date(2027, 2, 21)).periods == ()
+    (period,) = billing.due_periods(early, date(2027, 2, 22)).periods
+
+    assert (period.period_start, period.due_date) == (date(2027, 3, 1), date(2027, 3, 1))
+
+
+def test_the_discount_comes_off_a_fixed_period_too() -> None:
+    (period,) = billing.due_periods(billable(SEASON, discount_pct=10), date(2027, 3, 1)).periods
+    assert period.amount_due_clp == 270_000
+
+
+def test_nothing_is_billed_after_the_period_until_moved_to_the_next_plan() -> None:
+    billed = billable(SEASON, started_on=date(2027, 3, 1), billed_through=date(2027, 12, 31))
+
+    assert billing.due_periods(billed, date(2028, 12, 31)).periods == ()
+    assert billing.periods_ahead(billed, 1).periods == ()
+
+
+def test_moved_to_the_next_season_it_bills_that_period_when_it_falls_due() -> None:
+    # Moved by "Duplicar para el próximo período": a plan change from the day after
+    # the season it is paid through, two months before the next one starts.
+    next_season = season(2028, price=320_000)
+    moved = billable(
+        SEASON,
+        started_on=date(2027, 3, 1),
+        billed_through=date(2027, 12, 31),
+        next_plan=next_season,
+        next_plan_from=date(2028, 1, 1),
+    )
+
+    waiting = billing.due_periods(moved, date(2028, 2, 22))  # a leap year
+    assert waiting.periods == ()
+    assert not waiting.plan_changed
+
+    owed = billing.due_periods(moved, date(2028, 2, 23))
+    assert spans(owed) == [(date(2028, 3, 1), date(2028, 12, 31), 320_000)]
+    assert owed.periods[0].due_date == date(2028, 3, 1)
+    assert owed.plan_changed
+    assert (owed.plan, owed.anchor_day) == (next_season, None)
+
+
+def test_a_change_to_a_fixed_period_is_quoted_from_the_period_it_bills() -> None:
+    first = billing.first_period_after_change(SEASON, date(2027, 5, 15))
+    assert (first.period_start, first.period_end) == (date(2027, 3, 1), date(2027, 12, 31))
+    assert first.due_date == date(2027, 5, 15)
+
+    with pytest.raises(ValueError, match="ended"):
+        billing.first_period_after_change(SEASON, date(2028, 1, 1))
+
+
 # --- adjustments and refunds (#38) ------------------------------------------------
 
 

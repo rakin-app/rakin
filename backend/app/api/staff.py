@@ -114,7 +114,7 @@ async def _appoint(session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, 
     appointed = await session.scalar(
         text(APPOINT), {"id": person_id, "title": title, "by": tenant.person_id}
     )
-    # Every gym is given its preset's roles when it is created (0063).
+    # Every gym is given its preset's roles when it is created (0065).
     assert appointed is not None, f"gym {tenant.gym_id} has no {TITLE_OF[role].key} role"
 
 

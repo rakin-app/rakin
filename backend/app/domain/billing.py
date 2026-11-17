@@ -4,6 +4,10 @@ The nightly job generates each period `GENERATE_AHEAD_DAYS` before it falls due,
 its first day (`due_periods`). A monthly membership owes one period per cycle, from
 its anchor day to the day before the next; a prepaid one a block of `period_months`;
 a credits pack (or a drop-in) a single charge for the whole of it; a trial nothing.
+A fixed-period plan (#351) owes one period, its own dates the same for every member,
+due on its first day or on the day the membership started if later, at the full
+price; nothing after it, until a plan change moves the member to the next period's
+plan.
 Each is priced at the plan's price less the membership's discount, in whole pesos.
 A pending plan change prices the first period starting on or after its day at the new
 plan, which becomes the membership's plan from then on. A member paying ahead is
@@ -53,6 +57,9 @@ GENERATE_AHEAD_DAYS = 7
 
 # The kinds charged once, for the whole of what was bought.
 SINGLE_CHARGE = frozenset({PlanKind.CREDITS, PlanKind.DROPIN})
+
+# The kinds a member pays ahead on (#196): a fixed-period plan has no next period.
+PAID_AHEAD = frozenset({PlanKind.MONTHLY, PlanKind.PREPAID})
 
 
 @dataclass(frozen=True)
@@ -255,6 +262,24 @@ def _next_anchor(after: date, anchor_day: int) -> date:
     return same_month if same_month > after else add_months(after, 1, anchor_day=anchor_day)
 
 
+def _period(
+    plan: Plan, start: date, anchor_day: int | None, discount_pct: int
+) -> BillingPeriod | None:
+    """The period of `plan` billed from `start`, the first day not billed, priced less
+    `discount_pct`; `None` for a fixed-period plan whose period ended before `start`."""
+    amount = discounted(plan.price_clp, discount_pct)
+    terms = plan.terms
+    if terms.kind is PlanKind.FIXED_PERIOD:
+        if terms.period_start is None or terms.period_end is None:
+            raise ValueError("a fixed-period plan has period_start and period_end")
+        if start > terms.period_end:
+            return None
+        due = max(terms.period_start, start)
+        return BillingPeriod(terms.period_start, terms.period_end, amount, due_date=due)
+    end = _period_end(plan, start, anchor_day)
+    return BillingPeriod(start, end, amount_due_clp=amount, due_date=start)
+
+
 def _period_end(plan: Plan, start: date, anchor_day: int | None) -> date:
     kind = plan.terms.kind
     if kind is PlanKind.MONTHLY:
@@ -299,7 +324,7 @@ def due_periods(
     """
     horizon = today + timedelta(days=ahead)
     return _billing(
-        billable, lambda start, billed: start <= horizon and (limit is None or billed < limit)
+        billable, lambda due, billed: due <= horizon and (limit is None or billed < limit)
     )
 
 
@@ -313,14 +338,14 @@ def periods_ahead(billable: Billable, count: int) -> Billing:
     change applied, as the nightly job would when it reached it. None for any other."""
     if not 1 <= count <= MAX_PAID_AHEAD:
         raise ValueError(f"count must be 1..{MAX_PAID_AHEAD}, got {count}")
-    if billable.plan.terms.kind not in memberships.RECURRING:
+    if billable.plan.terms.kind not in PAID_AHEAD:
         return Billing((), plan_changed=False, plan=billable.plan, anchor_day=billable.anchor_day)
     return _billing(billable, lambda _, billed: billed < count)
 
 
 def _billing(billable: Billable, more: Callable[[date, int], bool]) -> Billing:
     """The periods `billable` owes from the first day not billed, oldest first, while
-    `more(start, periods so far)` says another starting on `start` is billed."""
+    `more(due date, periods so far)` says another falling due then is billed."""
     plan, anchor_day = billable.plan, billable.anchor_day
     unchanged = Billing((), plan_changed=False, plan=plan, anchor_day=anchor_day)
     if billable.status is not MembershipStatus.ACTIVE or plan.terms.kind is PlanKind.TRIAL:
@@ -331,14 +356,22 @@ def _billing(billable: Billable, more: Callable[[date, int], bool]) -> Billing:
     # A monthly row from before anchor days were stored bills on the day it resumes.
     fallback_anchor = start.day if start is not None else None
     periods: list[BillingPeriod] = []
-    while start is not None and more(start, len(periods)):
-        if pending is not None and pending_from is not None and start >= pending_from:
-            plan, anchor_day = pending, changed_anchor(pending, pending_from)
-            pending, changed = None, True
-        end = _period_end(plan, start, anchor_day or fallback_anchor)
-        amount = discounted(plan.price_clp, billable.discount_pct)
-        periods.append(BillingPeriod(start, end, amount_due_clp=amount, due_date=start))
-        start = end + timedelta(days=1) if plan.terms.kind not in SINGLE_CHARGE else None
+    while start is not None:
+        # The plan change applies with the period it reaches, not before.
+        bill_plan, bill_anchor = plan, anchor_day
+        changing = pending is not None and pending_from is not None and start >= pending_from
+        if changing:
+            assert pending is not None and pending_from is not None
+            bill_plan, bill_anchor = pending, changed_anchor(pending, pending_from)
+        period = _period(bill_plan, start, bill_anchor or fallback_anchor, billable.discount_pct)
+        if period is None or not more(period.due_date, len(periods)):
+            break
+        if changing:
+            plan, anchor_day, pending, changed = bill_plan, bill_anchor, None, True
+        periods.append(period)
+        start = period.period_end + timedelta(days=1)
+        if plan.terms.kind in SINGLE_CHARGE:
+            start = None
     return Billing(tuple(periods), plan_changed=changed, plan=plan, anchor_day=anchor_day)
 
 
@@ -352,9 +385,10 @@ def changed_anchor(plan: Plan, starts_on: date) -> int | None:
 def first_period_after_change(plan: Plan, starts_on: date, discount_pct: int = 0) -> BillingPeriod:
     """The first period a change to `plan` from `starts_on` bills, as the nightly job
     will when it reaches that day: for the ficha to say so before it is saved (#249)."""
-    end = _period_end(plan, starts_on, changed_anchor(plan, starts_on))
-    amount = discounted(plan.price_clp, discount_pct)
-    return BillingPeriod(starts_on, end, amount_due_clp=amount, due_date=starts_on)
+    period = _period(plan, starts_on, changed_anchor(plan, starts_on), discount_pct)
+    if period is None:
+        raise ValueError(f"the plan's period ended before {starts_on}")
+    return period
 
 
 def paid_through(periods: Iterable[tuple[date, date, int]]) -> date | None:

@@ -233,6 +233,14 @@
   border-color: var(--color-success);
 }
 
+/* A requirement they lack or whose record expired (#350), under the plan: a warning. */
+.attendance__requirements {
+  display: block;
+  color: var(--color-warning-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
 .attendance__overdue {
   flex: none;
   width: 10px;

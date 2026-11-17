@@ -11,6 +11,7 @@ import {
   type BlockKindChanges,
 } from '../api/blockKinds'
 import { ApiError } from '../api/client'
+import { myselfQuery } from '../api/me'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input } from '../components/Field'
@@ -160,7 +161,11 @@ function BlockKindForm({
     mutationFn: () => (kind ? updateBlockKind(kind.id, changes()) : createBlockKind({ name, is_sparring: sparring })),
     onSuccess: async (answer) => {
       onDone(kind ? copy.saved(answer.name) : copy.created(answer.name))
-      await queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey })
+      // A renamed practice kind renames the practice on every screen (#346).
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: blockKindsQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: myselfQuery().queryKey }),
+      ])
     },
   })
   // Deactivating and deleting are in the form, not on the row (#177): the row keeps its moves.
