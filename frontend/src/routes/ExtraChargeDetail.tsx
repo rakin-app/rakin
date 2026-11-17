@@ -16,6 +16,7 @@ import {
 } from '../api/extraCharges'
 import { myAccessQuery, readsLedger } from '../api/me'
 import type { Method } from '../api/member'
+import { useGymToday } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
 import { Banner, Card, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { MoreMenu, moreItemClass } from '../components/MoreMenu'
@@ -23,7 +24,7 @@ import { Field, Input, Select } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill, type Status } from '../components/StatusPill'
-import { isoDay, shortDay } from '../format'
+import { shortDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { Progress, SubHeader } from './ExtraCharges'
@@ -43,6 +44,9 @@ const route = getRouteApi('/admin/pagos/cobros/$chargeId')
  * the admin does about a line: mark it paid, change its amount, cancel it (dividing the
  * total again while nobody has paid), give back a payment, re-send the notice, or
  * remind them on WhatsApp. "Recordar a los pendientes" emails everyone still owing.
+ *
+ * A cobro in instalments (#356) lists each person's instalments as lines of their own,
+ * each with its due date, and how far along each instalment is across everyone.
  *
  * A row shows one action, the one its line most needs: "Ver comprobante" while a proof
  * waits, else "Marcar pagado" while it is owed; every other action is under its "Más",
@@ -84,13 +88,12 @@ function Detail({ charge }: { charge: ExtraCharge }) {
     onSuccess: (r) => setDone(words.reminded(r.sent, r.without_email)),
   })
   const owing = charge.people.some((line) => line.status === 'open')
+  const people = new Set(charge.people.map((line) => line.person.id)).size
+  const when =
+    charge.instalments > 1 ? words.firstDue(charge.instalments, shortDay(charge.due_date)) : copy.due(shortDay(charge.due_date))
   return (
     <PageContainer className="extra">
-      <SubHeader
-        title={charge.title}
-        subtitle={`${copy.category[charge.category]} · ${copy.due(shortDay(charge.due_date))}`}
-        back="cobros"
-      >
+      <SubHeader title={charge.title} subtitle={`${copy.category[charge.category]} · ${when}`} back="cobros">
         {owing && (
           <Button disabled={remind.isPending} onClick={() => remind.mutate()}>
             {remind.isPending ? words.reminding : words.remind}
@@ -112,8 +115,23 @@ function Detail({ charge }: { charge: ExtraCharge }) {
           {words.failed}
         </p>
       )}
+      {charge.instalments > 1 && (
+        <Card aria-labelledby="extra-schedule">
+          <SectionHeader id="extra-schedule" title={words.scheduleLabel} trailing={String(charge.instalments)} />
+          <PlainList className="extra__lines">
+            {charge.schedule.map((instalment) => (
+              <li key={instalment.instalment} className="extra__line extra__instalment">
+                <span className="extra__line-name">
+                  {words.instalmentDue(instalment.instalment, charge.instalments, shortDay(instalment.due_date))}
+                </span>
+                <Progress charge={instalment} />
+              </li>
+            ))}
+          </PlainList>
+        </Card>
+      )}
       <Card aria-labelledby="extra-people">
-        <SectionHeader id="extra-people" title={words.peopleLabel} trailing={String(charge.people.length)} />
+        <SectionHeader id="extra-people" title={words.peopleLabel} trailing={String(people)} />
         <PlainList className="extra__lines">
           {charge.people.map((line) => (
             <LineRow key={line.id} charge={charge} line={line} onDone={setDone} />
@@ -126,8 +144,9 @@ function Detail({ charge }: { charge: ExtraCharge }) {
 
 type Panel = 'pay' | 'amount' | 'cancel' | 'refund' | null
 
-function lineStatus(line: Line, dueDate: string): { status: Status; label: string } {
-  if (line.status === 'open' && dueDate < isoDay(new Date().toISOString())) {
+/** The line's status; an open line past its due date, in the gym's day, is "Vencido". */
+function lineStatus(line: Line, today: string): { status: Status; label: string } {
+  if (line.status === 'open' && line.due_date < today) {
     return { status: 'overdue', label: copy.status.overdue }
   }
   const status: Record<Line['status'], Status> = {
@@ -147,7 +166,8 @@ function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; on
     mutationFn: () => notifyLine(charge.id, line.id),
     onSuccess: (r) => onDone(r.sent ? words.notified : words.noEmail),
   })
-  const shown = lineStatus(line, charge.due_date)
+  const shown = lineStatus(line, useGymToday())
+  const instalments = charge.instalments > 1
   const live = line.status !== 'cancelled'
   const payable = line.status === 'open' || line.status === 'in_review'
   const settled = async (message?: string) => {
@@ -166,6 +186,11 @@ function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; on
             {line.person.name}
           </Link>
           {line.guardian && <span className="extra__hint">{words.guardianOf(line.guardian.name)}</span>}
+          {instalments && (
+            <span className="extra__hint">
+              {words.instalmentDue(line.instalment, charge.instalments, shortDay(line.due_date))}
+            </span>
+          )}
         </span>
         <StatusPill status={shown.status}>{shown.label}</StatusPill>
       </div>
@@ -178,7 +203,11 @@ function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; on
       </div>
       {!live && line.cancel_reason && <p className="extra__hint">{words.cancelledBecause(line.cancel_reason)}</p>}
       {live && (
-        <div className="extra__line-actions" role="group" aria-label={words.actions(line.person.name)}>
+        <div
+          className="extra__line-actions"
+          role="group"
+          aria-label={instalments ? words.actionsOf(line.person.name, line.instalment) : words.actions(line.person.name)}
+        >
           {/* One action per person, what the line most needs; the rest under "Más" (#357). */}
           {line.status === 'in_review' ? (
             <Link to="/admin/pagos/comprobantes" className={buttonClass()}>
@@ -191,7 +220,10 @@ function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; on
               </Button>
             )
           )}
-          <MoreMenu label={words.more} ariaLabel={words.moreFor(line.person.name)}>
+          <MoreMenu
+            label={words.more}
+            ariaLabel={instalments ? words.moreForOf(line.person.name, line.instalment) : words.moreFor(line.person.name)}
+          >
             {line.status === 'in_review' && (
               <button type="button" className={moreItemClass()} aria-expanded={panel === 'pay'} onClick={() => toggle('pay')}>
                 {words.markPaid}
@@ -298,6 +330,7 @@ function PayForm({ charge, line, onDone, onClose }: FormProps) {
 }
 
 function AmountForm({ charge, line, onDone, onClose }: FormProps) {
+  const instalments = charge.instalments > 1
   const [amount, setAmount] = useState(String(line.amount_due_clp))
   const change = useSubmit({
     offline: 'refuse',
@@ -312,7 +345,7 @@ function AmountForm({ charge, line, onDone, onClose }: FormProps) {
         if (amount !== '') change.mutate()
       }}
     >
-      <Field label={words.amountLabel}>
+      <Field label={words.amountLabel} hint={instalments ? words.amountOneInstalment : undefined}>
         {(props) => <Input {...props} inputMode="numeric" value={amount} onChange={(e) => setAmount(digits(e.target.value))} />}
       </Field>
       <Actions busy={change.isPending} error={change.error} onClose={onClose} />
@@ -411,6 +444,8 @@ function CancelForm({ charge, line, onDone, onClose }: FormProps) {
             </PlainList>
           )}
         </>
+      ) : charge.instalments > 1 ? (
+        <p className="extra__hint">{words.noResplitInstalments}</p>
       ) : (
         charge.amount_mode === 'split' && <p className="extra__hint">{words.noResplit}</p>
       )}

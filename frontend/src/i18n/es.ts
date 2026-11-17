@@ -3269,6 +3269,11 @@ export const es = {
         matricula: 'Matrícula',
       },
       due: (day: string) => `vence ${day}`,
+      // A cobro in instalments (#356): "3 cuotas", "cuota 2 de 3". A line's own name,
+      // "Título · cuota 2 de 3", is the backend's (`line_title`, `line_title_sql`); the
+      // wizard's sample email spells it the same way from `instalmentOf`.
+      instalments: (n: number) => `${n} cuotas`,
+      instalmentOf: (i: number, n: number) => `Cuota ${i} de ${n}`,
       progress: (paid: number, lines: number, collected: string, due: string) =>
         `${paid} de ${lines} pagaron · ${collected} de ${due}`,
       waived: (n: number) => (n === 1 ? '1 exento' : `${n} exentos`),
@@ -3353,6 +3358,13 @@ export const es = {
         previewError: 'No pudimos calcular los montos.',
         nobody: 'Ese grupo no tiene a nadie a quién cobrarle.',
         tooSmall: 'El total no alcanza para un peso por persona.',
+        // "En cuotas" (#356): each person's amount in N, monthly from the due date.
+        inInstalments: 'En cuotas',
+        inInstalmentsHint: 'Cada persona paga su monto en cuotas mensuales desde la fecha de vencimiento.',
+        instalmentsLabel: 'Número de cuotas',
+        instalmentsTooSmall: 'Cada cuota tiene que ser de al menos un peso.',
+        instalmentsRemainder: 'Lo que no se divide parejo se suma a la primera cuota.',
+        instalmentsOf: (amounts: string) => `en cuotas de ${amounts}`,
         split: (share: string, n: number) => `${share} cada uno entre ${n === 1 ? '1 persona' : `${n} personas`}`,
         remainder: (n: number) =>
           n === 1 ? 'El peso que sobra lo paga la primera persona por orden alfabético.' : `Los ${n} pesos que sobran los paga un peso más cada uno de los primeros ${n} por orden alfabético.`,
@@ -3385,6 +3397,8 @@ export const es = {
           adjusted: (n: number) => (n === 1 ? '1 ajustado a mano' : `${n} ajustados a mano`),
           total: 'Total',
           due: 'Vence',
+          instalments: 'Cuotas',
+          instalmentDue: (i: number, day: string) => `Cuota ${i}: ${day}`,
           message: 'El correo',
           sampleFor: (name: string) => `Así le llega a ${name}; a cada uno, con su monto:`,
           hello: (name: string) => `Hola, ${name}:`,
@@ -3409,6 +3423,10 @@ export const es = {
         error: 'No pudimos cargar el cobro.',
         notFound: 'Ese cobro no existe.',
         peopleLabel: 'Personas',
+        // Paid and owed per instalment (#356).
+        scheduleLabel: 'Cuotas',
+        instalmentDue: (i: number, n: number, day: string) => `Cuota ${i} de ${n} · vence ${day}`,
+        firstDue: (n: number, day: string) => `${n} cuotas · la primera vence ${day}`,
         remind: 'Recordar a los pendientes',
         reminding: 'Enviando…',
         reminded: (sent: number, without: number) =>
@@ -3419,8 +3437,10 @@ export const es = {
         paidOf: (paid: string, due: string) => `pagó ${paid} de ${due}`,
         overridden: 'monto ajustado',
         actions: (name: string) => `Acciones para ${name}`,
+        actionsOf: (name: string, i: number) => `Acciones para ${name}, cuota ${i}`,
         more: 'Más',
         moreFor: (name: string) => `Más acciones para ${name}`,
+        moreForOf: (name: string, i: number) => `Más acciones para ${name}, cuota ${i}`,
         markPaid: 'Marcar pagado',
         editAmount: 'Editar monto',
         cancelLine: 'Anular',
@@ -3432,6 +3452,8 @@ export const es = {
         review: 'Ver comprobante',
         refund: 'Devolver',
         amountLabel: 'Monto (CLP)',
+        // "Editar monto" on one instalment (#356).
+        amountOneInstalment: 'Cambia solo esta cuota: las demás quedan como están.',
         methodLabel: 'Cómo pagó',
         refundMethodLabel: 'Cómo se devolvió',
         method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },
@@ -3447,6 +3469,7 @@ export const es = {
         resplit: 'Volver a dividir el total entre los que quedan',
         resplitAmount: (name: string, amount: string) => `${name}: ${amount}`,
         noResplit: 'El total no se vuelve a dividir: alguien ya pagó, o no es un total a dividir.',
+        noResplitInstalments: 'Un cobro en cuotas no se vuelve a dividir: se anula solo esta cuota.',
         refundOf: (amount: string, left: string) => `Pago de ${amount} · quedan ${left} por devolver`,
         failed: 'No pudimos guardarlo. Inténtalo de nuevo.',
         refused: {

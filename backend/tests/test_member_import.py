@@ -970,10 +970,13 @@ def test_a_former_student_who_is_a_minor_imports_with_no_guardian(
 # --- matrícula (#355) ---------------------------------------------------------------
 
 ON_PLAN = {"name": 0, "rut": 1, "phone": 2, "plan": 3, "started_on": 4, "due_on": 5}
+# A name no other plan here has: `seed_gym` has a "Mensual" of its own beside the
+# fixture's, and which of the two a name finds is not fixed.
+WITH_FEE = "Mensual con matrícula"
 
 
-def on_mensual(name: str) -> list[str]:
-    return [name, random_rut(), new_phone(), "Mensual", "01/11/2026", "01/12/2026"]
+def on_plan(name: str) -> list[str]:
+    return [name, random_rut(), new_phone(), WITH_FEE, "01/11/2026", "01/12/2026"]
 
 
 def send_enrolment(
@@ -986,7 +989,7 @@ def send_enrolment(
     )
     assert response.status_code == 200, response.text
     report: dict[str, Any] = response.json()
-    assert [row["errors"] for row in report["rows"]] == [[]]
+    assert [(row["errors"], row["membership"]) for row in report["rows"]] == [([], "created")]
     return report
 
 
@@ -994,14 +997,12 @@ def send_enrolment(
 def test_an_import_onto_a_plan_with_a_fee_charges_it_only_when_asked(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    mensual = plan_id(client, gym, "Mensual")
-    fee = client.patch(
-        f"/api/plans/{mensual}", json={"enrolment_fee_clp": 30_000}, headers=as_gym(gym)
-    )
-    assert fee.status_code == 200, fee.text
+    plan = {**PLANS[0], "name": WITH_FEE, "enrolment_fee_clp": 30_000}
+    created = client.post("/api/plans", json=plan, headers=as_gym(gym))
+    assert created.status_code == 201, created.text
 
-    send_enrolment(client, gym, sheet_with(on_mensual("Ana Rojas"), mapping=ON_PLAN), dry_run=False)
-    asked = sheet_with(on_mensual("Rosa Vidal"), mapping=ON_PLAN)
+    send_enrolment(client, gym, sheet_with(on_plan("Ana Rojas"), mapping=ON_PLAN), dry_run=False)
+    asked = sheet_with(on_plan("Rosa Vidal"), mapping=ON_PLAN)
     send_enrolment(client, gym, asked, dry_run=True, charge_enrolment=True)
     assert matriculas(db, gym, find(client, gym, "Ana Rojas")["id"]) == []
     assert people_count(client, gym, "Rosa Vidal") == 0
@@ -1012,5 +1013,11 @@ def test_an_import_onto_a_plan_with_a_fee_charges_it_only_when_asked(
     assert str(line["membership_id"]) == membership_of(client, gym, "Rosa Vidal")["id"]
 
     # Imported again, the membership is already theirs: no second matrícula.
-    send_enrolment(client, gym, asked, dry_run=False, charge_enrolment=True)
+    again = client.post(
+        "/api/import/members",
+        json={**asked, "dry_run": False, "charge_enrolment": True},
+        headers=as_gym(gym),
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["rows"][0]["membership"] == "existing"
     assert len(matriculas(db, gym, find(client, gym, "Rosa Vidal")["id"])) == 1

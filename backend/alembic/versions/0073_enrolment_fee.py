@@ -7,16 +7,17 @@ do (`plan_enrolment_fee_kind`).
 
 Starting a membership on such a plan writes a cobro extra of the new category
 `matricula` with one line, for that person, due on the day the plan starts
-(`app.api.enrolment`). `extra_charge.membership_id` names the membership it is for, at
-most one cobro each, so the fee is never charged twice for one start; a reactivation or
-a plan change starts no membership and charges none. Paid, reminded and cancelled as
-any cobro extra.
+(`app.api.enrolment`), in one instalment (0072): a matrícula is never split into
+cuotas. `extra_charge.membership_id` names the membership it is for, at most one cobro
+each, so the fee is never charged twice for one start; a reactivation or a plan change
+starts no membership and charges none. Paid, reminded and cancelled as any cobro
+extra.
 
 A downgrade keeps the matrícula cobros, with their lines and money, as `otro`, and
 drops the columns and the category.
 
-Revision ID: 0072
-Revises: 0071
+Revision ID: 0073
+Revises: 0072
 Create Date: 2026-11-17
 
 """
@@ -25,8 +26,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0072"
-down_revision: str | Sequence[str] | None = "0071"
+revision: str = "0073"
+down_revision: str | Sequence[str] | None = "0072"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.corrections import balance, record_correction
 from app.api.entries import insert_entry, standing_void
-from app.api.extra_lines import refund_line_payment
+from app.api.extra_lines import line_title_sql, refund_line_payment
 from app.api.people import people_matching
 from app.contacts import Contact, contact_for
 from app.db import driver_connection
@@ -974,7 +974,8 @@ def book_rows(columns: str = "") -> str:
     SELECT {columns}e.id, e.created_at, e.kind, e.status, e.amount_clp, e.method, e.note,
            e.refund_of, e.membership_id, pl.name AS plan_name, em.status AS membership_status,
            m.person_id, mp.name AS person_name,
-           x.id AS extra_charge_id, x.title AS charge_title, x.category AS charge_category,
+           x.id AS extra_charge_id, {line_title_sql("x", "xl")} AS charge_title,
+           x.category AS charge_category,
            gl.guardian_person_id AS guardian_id, gp.name AS guardian_name,
            bp.period_start, bp.period_end, bp.due_date,
            bp.amount_due_clp - least(coalesce(paid.amount, 0), bp.amount_due_clp)

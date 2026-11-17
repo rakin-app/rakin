@@ -9,6 +9,7 @@ no new membership and charge none.
 
 From then on it is a cobro extra like any other (`app.api.extra_charges`): paid by a
 proof or at the desk, reminded with "Recordar a los pendientes", cancelled by "Anular".
+It is one line in one instalment: a fee charged once is paid at once, not in cuotas.
 The cobro names its membership (`extra_charge.membership_id`, migration 0072), which
 holds it to one per membership. Voiding the membership, a plan started by mistake,
 cancels its matrícula too while nothing has been paid on it; one with money on it stays,
@@ -79,6 +80,9 @@ async def charge_enrolment(
         {
             "charge": charge_id,
             "people": [row.person_id],
+            # One instalment: a matrícula is paid at once, never in cuotas (#356).
+            "instalments": [1],
+            "due_dates": [due_on],
             "amounts": [row.enrolment_fee_clp],
             "overridden": [False],
         },

@@ -126,6 +126,7 @@ def matriculas(db: Database, gym: uuid.UUID, person_id: str) -> list[dict[str, A
         in_gym(
             gym,
             "SELECT x.title, x.description, x.due_date, x.membership_id, l.amount_due_clp,"
+            " x.instalments, l.instalment, l.due_date AS line_due,"
             " l.cancelled_at IS NOT NULL AS cancelled, l.cancel_reason"
             " FROM extra_line l JOIN extra_charge x ON x.id = l.extra_charge_id"
             " WHERE x.category = 'matricula' AND l.person_id = $1 ORDER BY x.created_at",
@@ -198,6 +199,8 @@ def test_starting_a_plan_with_a_fee_charges_one_matricula_due_that_day(
     assert line["title"] == "Matrícula · Alumna"
     assert line["description"] == "Mensual"
     assert (line["amount_due_clp"], line["due_date"]) == (FEE, day)
+    # Paid at once: one instalment, never cuotas (#356).
+    assert (line["instalments"], line["instalment"], line["line_due"]) == (1, 1, day)
     assert str(line["membership_id"]) == membership["id"]
     # As any cobro extra: on the ficha's "Cobros extra pendientes" and in the cobros.
     [owed] = ok(client.get(f"/api/people/{person_id}/extra-lines", headers=as_gym(gym)))

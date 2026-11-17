@@ -5,6 +5,9 @@ A cobro is drafted in a wizard: its details, whom it is for (`Target`), how much
 draft is previewed (`ExtraChargePreview`) before it is created, so the admin sees each
 person's amount, the remainder of a split, and who has no email to be told by.
 
+A cobro may be paid in instalments (#356): each person then has a line per instalment,
+each with its own due date, monthly from the cobro's.
+
 Once created, each person has a line, with what they owe, have paid and have claimed
 by a proof, and the line's status: pendiente, comprobante enviado, pagado or anulado.
 """
@@ -22,7 +25,13 @@ from pydantic import (
     model_validator,
 )
 
-from app.domain.extra_charges import AmountMode, Category, LineStatus, TargetKind
+from app.domain.extra_charges import (
+    MAX_INSTALMENTS,
+    AmountMode,
+    Category,
+    LineStatus,
+    TargetKind,
+)
 from app.schemas.ledger import Amount, Method, Note, PersonRef, SignedAmount
 from app.schemas.plans import MAX_PRICE_CLP
 
@@ -116,6 +125,8 @@ class AmountDraft(BaseModel):
     # Each person's, or the total to divide.
     amount_clp: Amount
     overrides: Annotated[list[Override], Field(max_length=MAX_PEOPLE)] = []
+    # "En cuotas": each person's amount in this many, monthly from the due date.
+    instalments: Annotated[int, Field(ge=1, le=MAX_INSTALMENTS)] = 1
 
 
 class ExtraChargePreview(AmountDraft):
@@ -135,6 +146,7 @@ class ExtraChargeCreate(AmountDraft):
     # What the email says, above the amount.
     message: LongText | None = None
     category: DraftedCategory
+    # The first instalment's, in instalments.
     due_date: date
     # Email each person their amount (their guardian, for a dependent).
     notify: bool = True
@@ -143,6 +155,8 @@ class ExtraChargeCreate(AmountDraft):
 class PreviewLine(BaseModel):
     person: PersonRef
     amount_clp: int
+    # In instalments, what each is, the first carrying the remainder; else `[amount_clp]`.
+    instalments_clp: list[int]
     overridden: bool
     # Whom the notice goes to: them, or their guardian.
     contact_name: str
@@ -159,6 +173,8 @@ class Preview(BaseModel):
     remainder_clp: int
     # A split's even share, before the remainder and any override.
     share_clp: int | None
+    # When each instalment is due, once the draft has a due date.
+    due_dates: list[date]
 
 
 # --- cobros and their lines -------------------------------------------------------
@@ -175,6 +191,9 @@ class RefundableLinePayment(BaseModel):
 class Line(BaseModel):
     id: uuid.UUID
     person: PersonRef
+    # Which instalment, from 1; 1 in a cobro paid at once.
+    instalment: int
+    due_date: date
     # Who pays for them, when they are a dependent.
     guardian: PersonRef | None
     amount_due_clp: int
@@ -201,11 +220,14 @@ class ExtraChargeSummary(BaseModel):
     due_date: date
     amount_mode: AmountMode
     amount_clp: int
+    # 1, or how many instalments each person pays it in.
+    instalments: int
     target_kind: TargetKind
     target_label: str | None
     created_at: datetime
-    # Lines not cancelled that owe something, and of them those paid in full: "7 de 9
-    # pagaron". Lines let off at nothing (exentos) are `waived_lines`, in neither.
+    # People whose lines not cancelled owe something, and of them those paid in full:
+    # "7 de 9 pagaron". People let off at nothing (exentos) are `waived_lines`, in
+    # neither. In instalments, someone has paid when every instalment is paid.
     lines: int
     paid_lines: int
     waived_lines: int
@@ -214,10 +236,26 @@ class ExtraChargeSummary(BaseModel):
     collected_clp: int
 
 
+class InstalmentProgress(BaseModel):
+    """One instalment of a cobro in instalments, across everyone: "Cuota 2 · 3 de 9
+    pagaron · $100.000 de $300.000". Counted as the summary counts, over its lines."""
+
+    instalment: int
+    due_date: date
+    lines: int
+    paid_lines: int
+    waived_lines: int
+    due_clp: int
+    collected_clp: int
+
+
 class ExtraCharge(ExtraChargeSummary):
     description: str | None
     message: str | None
+    # Each person's lines, by name, then instalment.
     people: list[Line]
+    # Paid and owed per instalment; one entry for a cobro paid at once.
+    schedule: list[InstalmentProgress]
 
 
 class LineAmountChange(BaseModel):

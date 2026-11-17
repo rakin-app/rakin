@@ -249,6 +249,7 @@ def seed_month(client: TestClient, db: Database, gym: uuid.UUID) -> dict[str, st
         "extra_line",
         extra_charge_id=rifa,
         person_id=uuid.UUID(carla),
+        due_date=date(2020, 3, 25),
         amount_due_clp=5_000,
     )
     entry(
