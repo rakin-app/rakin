@@ -275,7 +275,9 @@ after**.
 - **`audit_event` becomes the record of every correction**, entries and row changes
   alike, so one query answers "what was changed on this student". New actions:
   `ledger_corrected` (C2–C4, C6, C7, C15, and the existing void and adjustment from now
-  on), `due_date_changed`, `membership_reactivated`, `cancel_undone`. A `person_id` column
+  on), `due_date_changed`, `membership_reactivated`, `cancel_undone`, and later
+  `discount_changed` (#25: a discount set, changed or taken off, its percentage and reason
+  before and after in `detail.discount`). A `person_id` column
   (nullable) says whose; `detail` holds what the action touched and the figures:
 
   ```json
