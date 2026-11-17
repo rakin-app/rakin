@@ -447,16 +447,13 @@ function PersonClassList({ person, mine, timeZone }: { person: PersonClasses; mi
   )
 }
 
-/** Who, the student or a dependent, is on more than one plan here, a course beside a
- * monthly one (#354): by the plans running and the plans their payments paid. */
+/** Who, the student or a dependent, is on more than one plan running here, a course
+ * beside a monthly one (#354). Plans that ended do not count: someone who changed plan
+ * is on one. */
 function onTwoPlans(page: MyPage): Set<string> {
-  const plans = new Map<string, Set<string>>()
-  const add = (person: string, plan: string | null | undefined) => {
-    if (plan) plans.set(person, (plans.get(person) ?? new Set()).add(plan))
-  }
-  for (const plan of page.plans ?? []) add(plan.person_id, plan.plan_name)
-  for (const payment of page.payments) add(payment.person_id, payment.plan_name)
-  return new Set([...plans].filter(([, names]) => names.size > 1).map(([person]) => person))
+  const running = new Map<string, number>()
+  for (const plan of page.plans ?? []) running.set(plan.person_id, (running.get(plan.person_id) ?? 0) + 1)
+  return new Set([...running].filter(([, count]) => count > 1).map(([person]) => person))
 }
 
 /** `text` with the plan it is about, when there is one to name. */

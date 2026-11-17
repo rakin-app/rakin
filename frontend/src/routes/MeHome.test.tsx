@@ -208,6 +208,36 @@ describe('Mi página', () => {
     expect(within(history).getByText('Octubre · Mensual adultos')).toBeInTheDocument()
   })
 
+  it('names no plan for someone who changed plan, on one now (#354)', async () => {
+    stubPage(
+      diego({
+        plans: [
+          {
+            membership_id: 'm-diego',
+            person_id: 'diego',
+            person_name: 'Diego Morales',
+            plan_name: 'Mensual adultos',
+            status: 'active',
+            freeze: null,
+            pending_request: null,
+            last_decided: null,
+          },
+        ],
+        payments: [
+          payment({ id: 'e-oct', plan_name: 'Mensual adultos' }),
+          payment({ id: 'e-sep', period_start: `${YEAR}-09-10`, plan_name: 'Estudiante' }),
+        ],
+      }),
+    )
+    renderMe()
+
+    await screen.findByRole('heading', { level: 1, name: 'Hola, Diego' })
+    expect(within(nextCard()).getByText('vence el 10 de noviembre')).toBeInTheDocument()
+    const history = screen.getByRole('region', { name: copy.history.title })
+    expect(within(history).getByText('Octubre')).toBeInTheDocument()
+    expect(within(history).getByText('Septiembre')).toBeInTheDocument()
+  })
+
   it('names no plan for someone on one', async () => {
     stubPage(diego({ payments: [payment({ id: 'e-oct', plan_name: 'Mensual adultos' })] }))
     renderMe()

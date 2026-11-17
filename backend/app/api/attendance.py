@@ -141,6 +141,8 @@ REGULAR_DAYS = 30
 # `ON_ROSTER`'s order, then one with credits left, then the earliest started (#354). A
 # member on a monthly plan open to every class who also takes a course of credits is
 # marked on the course at its classes, and once it is spent on the plan started first.
+# Status orders first, so credits left only decide between memberships of one status: a
+# frozen course beside an active plan falls to the plan.
 ROSTER_PICK = (
     f"a.membership_id IS NOT NULL DESC, array_position(ARRAY{list(ON_ROSTER)}, m.status),"
     " coalesce(m.credits_remaining > 0, false) DESC, m.started_at, m.created_at"
