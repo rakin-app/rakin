@@ -9,8 +9,8 @@ keeps "Sparring".
 
 The downgrade gives "Sparring" back to every kind called one of the names below.
 
-Revision ID: 0061
-Revises: 0060
+Revision ID: 0063
+Revises: 0062
 Create Date: 2026-11-16
 
 """
@@ -19,8 +19,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0061"
-down_revision: str | Sequence[str] | None = "0060"
+revision: str = "0063"
+down_revision: str | Sequence[str] | None = "0062"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

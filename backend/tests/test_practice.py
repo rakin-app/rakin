@@ -173,7 +173,7 @@ PRACTICE_KIND = "SELECT name FROM block_kind WHERE id = block_kind_default_id($1
 @pg
 def test_the_migration_names_the_practice_of_the_gyms_already_there() -> None:
     with throwaway_database(require_test_database_url()) as fresh:
-        migrate(fresh, "0060")
+        migrate(fresh, "0062")
         gyms = {
             name: seed_gym(fresh, name)
             for name in ("bjj", "climbing", "judo", "empty", "free", "late", "renamed")
@@ -203,7 +203,7 @@ def test_the_migration_names_the_practice_of_the_gyms_already_there() -> None:
         assert practice("late") == "Sparring"
         assert practice("renamed") == "Rolar"
 
-        command.downgrade(fresh.alembic(), "0060")
+        command.downgrade(fresh.alembic(), "0062")
         assert [practice(n) for n in ("climbing", "judo", "empty", "renamed")] == [
             "Sparring",
             "Sparring",
