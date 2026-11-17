@@ -229,6 +229,8 @@ export type ImportRequest = {
   // A plan cell's value to the plan it means; `null` for no plan, the person alone.
   plans: Record<string, string | null>
   dry_run: boolean
+  // Charge each membership it starts its plan's matrícula (#355); off by default.
+  charge_enrolment?: boolean
   file?: SheetFile
   pagos?: { rows: SheetRow[]; mapping: PaymentMapping }
   grados?: {

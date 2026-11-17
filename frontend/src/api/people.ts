@@ -133,8 +133,9 @@ export const programsQuery = queryOptions({
   queryFn: () => apiFetch<Program[]>('/api/programs'),
 })
 
-/** A plan to start someone on, from a day (today in the gym's timezone when omitted). */
-export type MembershipStart = { plan_id: string; started_on?: string }
+/** A plan to start someone on, from a day (today in the gym's timezone when omitted).
+ * `charge_enrolment: false`: "ya pagó matrícula", the plan's enrolment fee not charged (#355). */
+export type MembershipStart = { plan_id: string; started_on?: string; charge_enrolment?: boolean }
 
 /** Who answers for a minor: someone already in the gym, or someone new by their RUT or
  * email. The guardian is who the gym messages, so a new one needs a phone, unless they

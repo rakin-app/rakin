@@ -38,7 +38,7 @@ import { usePageTitle } from '../pageTitle'
 import './MemberImport.css'
 import { RecentImports } from './RecentImports'
 import { useSubmit } from '../api/submit'
-import { Banner, PlainList } from '../components/Card'
+import { Banner, CheckRow, PlainList } from '../components/Card'
 
 const copy = t.admin.import
 
@@ -220,6 +220,10 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
   // made yet. Absent means "as matched by name".
   const [chosen, setChosen] = useState<Record<string, string>>({})
   const [report, setReport] = useState<ImportReport | null>(null)
+  // Charge the matrícula of the plans that have one (#355): off, since a sheet's members
+  // have mostly paid theirs.
+  const [enrolment, setEnrolment] = useState(false)
+  const enrolmentId = useId()
 
   const planValues = useMemo(() => valuesIn(sheet.rows, mapping.plan), [mapping.plan, sheet.rows])
   const rankValues = useMemo(() => valuesIn(grados?.rows ?? [], gradeMapping.rank), [gradeMapping.rank, grados])
@@ -254,6 +258,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
       mapping,
       plans: choices,
       dry_run: dryRun,
+      ...(enrolment && { charge_enrolment: true }),
       file: sheet.file,
       ...(pagos && { pagos: { rows: pagos.rows, mapping: paymentMapping } }),
       ...(grados && { grados: { rows: grados.rows, mapping: gradeMapping, ranks: rankChoices } }),
@@ -292,6 +297,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
   const gradosReady = grados === null || gradesReady(gradeMapping)
   // Only an ignored Grados tab: nothing to check.
   const anything = hasAlumnos || pagos !== null || grados !== null
+  const withFee = (plans.data ?? []).some((p) => p.active && 'enrolment_fee_clp' in p && Boolean(p.enrolment_fee_clp))
 
   if (report && !report.dry_run) {
     return <Done name={name} report={report} onOther={onOther} />
@@ -377,6 +383,23 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
             />
           )}
           <section className="import__card">
+            {hasAlumnos && mapping.plan !== undefined && withFee && (
+              <>
+                <CheckRow htmlFor={enrolmentId}>
+                  <input
+                    id={enrolmentId}
+                    type="checkbox"
+                    checked={enrolment}
+                    onChange={(e) => {
+                      setEnrolment(e.target.checked)
+                      changed()
+                    }}
+                  />
+                  {copy.enrolment}
+                </CheckRow>
+                <p className="import__note">{copy.enrolmentHint}</p>
+              </>
+            )}
             {!alumnosReady && <p className="import__note">{copy.nameRequired}</p>}
             {!pagosReady && <p className="import__note">{copy.paymentsRequired}</p>}
             {!gradosReady && <p className="import__note">{copy.gradesRequired}</p>}

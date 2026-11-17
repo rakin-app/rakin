@@ -699,6 +699,10 @@ export const es = {
         note: 'Nota',
       },
       nameRequired: 'Marca la columna con el nombre para seguir.',
+      // A plan's matrícula on the memberships the import starts (#355).
+      enrolment: 'Cobrar la matrícula de los planes que la tienen',
+      enrolmentHint:
+        'Déjalo sin marcar si ya la pagaron. Marcado, a quien empieza un plan con matrícula se le cobra como cobro extra, con vencimiento el día que empezó.',
       paymentsRequired:
         'En Pagos, marca la columna de la fecha de pago, la del monto y la de quién es (RUT, correo o nombre).',
       gradesRequired: 'En Grados, marca la columna del grado, la de la fecha y la de quién es (RUT, correo o nombre).',
@@ -1275,6 +1279,12 @@ export const es = {
       addPlan: 'Agregar otro plan',
       // A plan card and its Libro, named by the plan while there are two (#354).
       planLabel: (label: string, plan: string) => `${label} · ${plan}`,
+      // A plan's matrícula, as a plan starts on Asignar plan or Nuevo alumno (#355).
+      enrolment: {
+        paid: 'Ya pagó la matrícula',
+        charged: (fee: string) => `El plan tiene matrícula: se cobra ${fee} una vez, como cobro extra, con vencimiento el día que empieza.`,
+        notCharged: (fee: string) => `No se cobra la matrícula de ${fee}.`,
+      },
       assignForm: {
         title: 'Asignar plan',
         get intro() {
@@ -2079,6 +2089,7 @@ export const es = {
           credits: (price: string, credits: number, days: number) =>
             `${price} por ${credits === 1 ? '1 clase' : `${credits} clases`} · vencen en ${days === 1 ? '1 día' : `${days} días`}`,
           dropin: (price: string) => `${price} por clase`,
+          enrolment: (fee: string) => `matrícula ${fee}`,
           trial: (classes: number | null, days: number | null) =>
             ['Gratis', classes === null ? null : classes === 1 ? '1 clase' : `${classes} clases`, days === null ? null : days === 1 ? '1 día' : `${days} días`]
               .filter((part) => part !== null)
@@ -2092,6 +2103,8 @@ export const es = {
           program: 'Programa',
           inactiveProgram: (name: string) => `${name} (desactivado)`,
           price: 'Precio (CLP)',
+          enrolmentFee: 'Matrícula (CLP)',
+          enrolmentHint: 'Opcional. Se cobra una vez, como cobro extra, a quien empieza el plan; no al reactivarlo ni al cambiarse a él.',
           anchor: 'Día de cobro',
           periodMonths: 'Meses que cubre',
           periodStart: 'Desde',
@@ -2112,6 +2125,7 @@ export const es = {
           failed: 'No pudimos guardar el plan. Inténtalo de nuevo.',
           range: {
             price_clp: 'Entre $0 y $100.000.000.',
+            enrolment_fee_clp: 'Entre $1 y $100.000.000, o vacía para no cobrar matrícula.',
             period_months: 'Debe ser mayor que 0.',
             credits: 'Debe ser mayor que 0.',
             credit_expiry_days: 'Debe ser mayor que 0.',
@@ -3252,6 +3266,7 @@ export const es = {
         equipamiento: 'Equipamiento',
         gasto_compartido: 'Gasto compartido',
         otro: 'Otro',
+        matricula: 'Matrícula',
       },
       due: (day: string) => `vence ${day}`,
       // A cobro in instalments (#356): "3 cuotas", "cuota 2 de 3". A line's own name,

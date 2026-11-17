@@ -201,6 +201,7 @@ async def next_period(
         name=body.name,
         program_id=current.program_id,
         price_clp=body.price_clp,
+        enrolment_fee_clp=current.enrolment_fee_clp,
         period_start=body.period_start,
         period_end=body.period_end,
     )

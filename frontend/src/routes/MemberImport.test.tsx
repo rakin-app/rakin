@@ -165,7 +165,8 @@ function stubApi({
   refuse,
   sheet = SHEET,
   grades = true,
-}: { role?: string; refuse?: string; sheet?: Sheet; grades?: boolean } = {}): Sent {
+  plans = PLANS,
+}: { role?: string; refuse?: string; sheet?: Sheet; grades?: boolean; plans?: unknown[] } = {}): Sent {
   grading = grades
   const sent: Sent = []
   vi.stubGlobal(
@@ -175,7 +176,7 @@ function stubApi({
       const json = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
       if (url.pathname === '/api/me/role') return json({ ...asRole(role), uses_grades: grading })
-      if (url.pathname === '/api/plans') return json(PLANS)
+      if (url.pathname === '/api/plans') return json(plans)
       if (url.pathname === '/api/people') return json({ items: [], total: 0 })
       if (url.pathname === '/api/gym/grading-scheme') return json(SCHEME)
       if (url.pathname === '/api/import/sheet') {
@@ -265,6 +266,34 @@ describe('Importar alumnos', () => {
     expect(await screen.findByText(copy.doneSummary('alumnos.csv', 1, 2))).toBeInTheDocument()
     expect(sent[1]?.dry_run).toBe(false)
     expect(screen.getByRole('link', { name: copy.toStudents })).toHaveAttribute('href', '/admin/alumnos')
+  })
+
+  it('charges the matrícula of the plans that have one only when ticked (#355)', async () => {
+    const sent = stubApi({ plans: [PLANS[0], { ...PLANS[1], kind: 'monthly', enrolment_fee_clp: 25000 }] })
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+
+    const enrolment = await screen.findByLabelText(copy.enrolment)
+    expect(enrolment).not.toBeChecked()
+    expect(screen.getByText(copy.enrolmentHint)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+    expect(await screen.findByText(copy.summary(1, 2))).toBeInTheDocument()
+    expect(sent[0]).not.toHaveProperty('charge_enrolment')
+
+    await userEvent.click(screen.getByRole('button', { name: copy.back }))
+    await userEvent.click(await screen.findByLabelText(copy.enrolment))
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+    expect(await screen.findByText(copy.summary(1, 2))).toBeInTheDocument()
+    expect(sent[1]?.charge_enrolment).toBe(true)
+  })
+
+  it('asks nothing of a matrícula when no plan has one (#355)', async () => {
+    stubApi()
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+
+    expect(await screen.findByRole('button', { name: copy.check })).toBeInTheDocument()
+    expect(screen.queryByLabelText(copy.enrolment)).not.toBeInTheDocument()
   })
 
   it('offers the template to download', async () => {

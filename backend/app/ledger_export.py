@@ -74,6 +74,7 @@ CATEGORIES = {
     "equipamiento": "Equipamiento",
     "gasto_compartido": "Gasto compartido",
     "otro": "Otro",
+    "matricula": "Matrícula",
 }
 
 PENDING_TITLE = "Comprobantes por validar (no cuentan en los totales)"

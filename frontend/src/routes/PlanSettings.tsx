@@ -30,6 +30,7 @@ const clp = t.common.clp
 
 type Param =
   | 'price_clp'
+  | 'enrolment_fee_clp'
   | 'anchor'
   | 'period_months'
   | 'period_start'
@@ -44,16 +45,17 @@ const DATE_PARAMS = new Set<Param>(['period_start', 'period_end'])
 
 // Each kind's own parameters, in the order the form asks for them.
 const KIND_PARAMS: Record<PlanKind, readonly Param[]> = {
-  monthly: ['price_clp', 'anchor'],
-  prepaid: ['price_clp', 'period_months'],
-  fixed_period: ['price_clp', 'period_start', 'period_end'],
-  credits: ['price_clp', 'credits', 'credit_expiry_days'],
+  monthly: ['price_clp', 'anchor', 'enrolment_fee_clp'],
+  prepaid: ['price_clp', 'period_months', 'enrolment_fee_clp'],
+  fixed_period: ['price_clp', 'period_start', 'period_end', 'enrolment_fee_clp'],
+  credits: ['price_clp', 'credits', 'credit_expiry_days', 'enrolment_fee_clp'],
   dropin: ['price_clp'],
   trial: ['free_classes', 'free_days'],
 }
 
 const PARAM_LABELS: Record<Param, string> = {
   price_clp: form.price,
+  enrolment_fee_clp: form.enrolmentFee,
   anchor: form.anchor,
   period_months: form.periodMonths,
   period_start: form.periodStart,
@@ -75,6 +77,7 @@ function draftsOf(plan: Plan | undefined): Drafts {
     name: plan?.name ?? '',
     program_id: plan?.program_id ?? '',
     price_clp: value('price_clp'),
+    enrolment_fee_clp: value('enrolment_fee_clp'),
     anchor: plan ? value('anchor') : 'signup',
     period_months: value('period_months'),
     period_start: value('period_start'),
@@ -86,14 +89,24 @@ function draftsOf(plan: Plan | undefined): Drafts {
   }
 }
 
-/** A draft as the API takes it: a trial's limits may be left out, everything else is sent as typed. */
+// The parameters that may be left empty: a trial's limits, and the matrícula (#355).
+const OPTIONAL_PARAMS = new Set<Param>(['free_classes', 'free_days', 'enrolment_fee_clp'])
+
+/** A draft as the API takes it: an optional one left out is none, everything else is sent as typed. */
 function valueOf(param: Param, draft: string): PlanFields[Param] {
   if (param === 'anchor' || DATE_PARAMS.has(param)) return draft
-  if ((param === 'free_classes' || param === 'free_days') && draft.trim() === '') return null
+  if (OPTIONAL_PARAMS.has(param) && draft.trim() === '') return null
   return integerOf(draft)
 }
 
+/** What the plan costs, and its matrícula when it has one: `$45.000 al mes · matrícula $30.000`. */
 function summary(plan: Plan): string {
+  const terms = kindSummary(plan)
+  const fee = ('enrolment_fee_clp' in plan && plan.enrolment_fee_clp) || null
+  return fee === null ? terms : copy.row(terms, copy.summary.enrolment(clp(fee)))
+}
+
+function kindSummary(plan: Plan): string {
   switch (plan.kind) {
     case 'monthly':
       return copy.row(copy.summary.monthly(clp(plan.price_clp)), copy.anchors[plan.anchor])
@@ -313,7 +326,15 @@ function PlanForm({
         <Field
           key={param}
           label={PARAM_LABELS[param]}
-          hint={param === 'free_days' ? form.trialHint : param === 'period_end' ? form.periodHint : undefined}
+          hint={
+            param === 'free_days'
+              ? form.trialHint
+              : param === 'period_end'
+                ? form.periodHint
+                : param === 'enrolment_fee_clp'
+                  ? form.enrolmentHint
+                  : undefined
+          }
           error={errorOf(param)}
         >
           {(props) =>

@@ -18,7 +18,7 @@ from app.main import create_app
 from app.schemas.grading import PRESETS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_phone, random_rut
 from tests.pg import (
     Database,
     make_staff,
@@ -52,11 +52,8 @@ def gym(db: Database) -> uuid.UUID:
     return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
 
 
-_phones = iter(range(20_000_000, 100_000_000, 6_997))
-
-
 def new_phone() -> str:
-    return f"+569{next(_phones):08d}"
+    return random_phone()
 
 
 def as_owner(db: Database, gym: uuid.UUID, sql: str, *args: object) -> Any:

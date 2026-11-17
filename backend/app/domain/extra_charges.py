@@ -35,6 +35,9 @@ class Category(StrEnum):
     EQUIPAMIENTO = "equipamiento"
     GASTO_COMPARTIDO = "gasto_compartido"
     OTRO = "otro"
+    # A plan's enrolment fee, charged as a membership on it starts (#355): written by
+    # `app.api.enrolment`, never drafted by hand.
+    MATRICULA = "matricula"
 
 
 class AmountMode(StrEnum):

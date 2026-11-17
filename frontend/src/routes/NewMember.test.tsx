@@ -87,6 +87,7 @@ function stubApi(enrolled: Answer = { status: 201, body: CREATED }, former: Answ
         body: [
           { id: 'plan-adults', name: 'Mensual adultos', kind: 'monthly', active: true },
           { id: 'plan-dropin', name: 'Clase suelta', kind: 'dropin', active: true },
+          { id: 'plan-kids', name: 'Mensual kids', kind: 'monthly', enrolment_fee_clp: 25000, active: true },
           { id: 'plan-old', name: 'Plan 2024', kind: 'monthly', active: false },
         ],
       }
@@ -163,6 +164,25 @@ describe('Nuevo alumno', () => {
         send_welcome: true,
       },
     ])
+  })
+
+  it('starts a plan with a matrícula without one when "Ya pagó la matrícula" is ticked (#355)', async () => {
+    const calls = stubApi()
+    renderAt('/admin/alumnos/nuevo')
+    const f = await form()
+    const enrolment = es.admin.member.enrolment
+
+    await userEvent.type(within(f).getByLabelText(copy.firstName), 'Camila')
+    await userEvent.type(within(f).getByLabelText(copy.lastName), 'Rojas')
+    await userEvent.type(within(f).getByLabelText(copy.phone), '9 8765 4321')
+    await userEvent.type(within(f).getByLabelText(copy.rut), '7.654.321-6')
+    await userEvent.selectOptions(within(f).getByLabelText(copy.plan), 'plan-kids')
+    expect(within(f).getByLabelText(enrolment.paid)).toHaveAccessibleDescription(enrolment.charged('$25.000'))
+    await userEvent.click(within(f).getByLabelText(enrolment.paid))
+    await userEvent.click(within(f).getByRole('button', { name: copy.submit }))
+
+    await waitFor(() => expect(enrolments(calls)).toHaveLength(1))
+    expect(enrolments(calls)[0]).toMatchObject({ membership: { plan_id: 'plan-kids', charge_enrolment: false } })
   })
 
   it('ticks the welcome once there is an email, with no plan too (#246)', async () => {

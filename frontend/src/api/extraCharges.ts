@@ -3,9 +3,10 @@ import { apiFetch } from './client'
 import type { PersonRef } from './ledger'
 import type { Method } from './member'
 
-/** A cobro extra's kind (#195), which the book and Cobrado label it by. */
+/** The kinds of cobro extra an admin drafts (#195), which the book and Cobrado label it by. */
 export const CATEGORIES = ['rifa', 'seminario', 'equipamiento', 'gasto_compartido', 'otro'] as const
-export type Category = (typeof CATEGORIES)[number]
+// And a plan's matrícula, charged as a membership on it starts, never drafted (#355).
+export type Category = (typeof CATEGORIES)[number] | 'matricula'
 
 /** `fixed`: the amount from each person. `split`: the amount in all, divided among them. */
 export type AmountMode = 'fixed' | 'split'

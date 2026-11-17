@@ -220,7 +220,7 @@ export function AssignForm({
   return (
     <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit} noValidate>
       <p className="member__detail">{form.intro}</p>
-      <PlanStart choice={plan} today={today} labels={form} onChange={setPlan} />
+      <PlanStart choice={plan} today={today} labels={form} enrolment onChange={setPlan} />
       {plan.plan_id && quote.data && (quote.data.debt_clp > 0 || quote.data.billed_through) && (
         <Banner tone="warning" as="div" className="member__warning">
           {quote.data.debt_clp > 0 && <p>{form.debt(clp(quote.data.debt_clp))}</p>}

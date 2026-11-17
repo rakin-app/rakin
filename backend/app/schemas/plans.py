@@ -10,6 +10,10 @@ parameters, the program, and `active`: a plan is deactivated, never deleted. Any
 may name the program it is for (`program_id`, migration 0016). A coach reads a plan
 without its price (`PlanForCoach`, #205).
 
+A plan a member joins and pays on again (monthly, prepaid, fixed-period, credits) may
+carry an enrolment fee, `enrolment_fee_clp` (#355): a matrícula charged once as a
+membership on it starts (`app.api.enrolment`). Money, so a coach does not read it.
+
 A fixed-period plan (#351) runs from `period_start` to `period_end`, the same days for
 every member on it, and is copied for the next period (`NextPeriod`).
 """
@@ -42,6 +46,8 @@ INT4_MAX = 2**31 - 1
 MAX_PRICE_CLP = 100_000_000
 Price = Annotated[int, Field(ge=0, le=MAX_PRICE_CLP)]
 Count = Annotated[int, Field(gt=0, le=INT4_MAX)]
+# None is no fee; a fee of nothing is no fee too, and is refused rather than stored.
+Fee = Annotated[int, Field(gt=0, le=MAX_PRICE_CLP)]
 
 
 class _Plan(BaseModel):
@@ -94,18 +100,22 @@ class _DropinTerms(_Plan):
 
 class MonthlyPlanCreate(_MonthlyTerms):
     price_clp: Price
+    enrolment_fee_clp: Fee | None = None
 
 
 class PrepaidPlanCreate(_PrepaidTerms):
     price_clp: Price
+    enrolment_fee_clp: Fee | None = None
 
 
 class FixedPeriodPlanCreate(_FixedPeriodTerms):
     price_clp: Price
+    enrolment_fee_clp: Fee | None = None
 
 
 class CreditsPlanCreate(_CreditsTerms):
     price_clp: Price
+    enrolment_fee_clp: Fee | None = None
 
 
 class DropinPlanCreate(_DropinTerms):
@@ -149,6 +159,8 @@ class PlanUpdate(BaseModel):
 
     name: Name | None = None
     price_clp: Price | None = None
+    # `null` takes the fee off.
+    enrolment_fee_clp: Fee | None = None
     anchor: Anchor | None = None
     period_months: Count | None = None
     period_start: date | None = None
@@ -242,7 +254,9 @@ PLAN_FOR_COACH: TypeAdapter[PlanForCoach] = TypeAdapter(PlanForCoach)
 
 
 def for_coach(plan: Plan) -> PlanForCoach:
-    return PLAN_FOR_COACH.validate_python(plan.model_dump(exclude={"price_clp"}))
+    return PLAN_FOR_COACH.validate_python(
+        plan.model_dump(exclude={"price_clp", "enrolment_fee_clp"})
+    )
 
 
 KIND_MODELS: dict[PlanKind, type[_Plan]] = {
@@ -261,6 +275,7 @@ COLUMNS = (
     "kind",
     "program_id",
     "price_clp",
+    "enrolment_fee_clp",
     "anchor",
     "period_months",
     "period_start",
@@ -295,9 +310,10 @@ MAX_MOVED = 5_000
 
 class NextPeriod(BaseModel):
     """A fixed-period plan copied for the period after its own (#351): the copy's
-    name, price and dates, and the memberships on the plan to move onto it, each from
-    the day after it is paid through (`app.domain.membership.plan_change_starts`).
-    `period_start` must come after the plan's `period_end` (`after_period`)."""
+    name, price and dates (it keeps the plan's enrolment fee), and the memberships on
+    the plan to move onto it, each from the day after it is paid through
+    (`app.domain.membership.plan_change_starts`). `period_start` must come after the
+    plan's `period_end` (`after_period`)."""
 
     model_config = ConfigDict(extra="forbid")
 
