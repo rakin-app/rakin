@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { useId, useState } from 'react'
-import { hasTime, myTimeQuery, personTimeQuery, type PersonTime, type TimeTotals } from '../api/matTime'
+import {
+  dependentTimeQuery,
+  hasTime,
+  myTimeQuery,
+  personTimeQuery,
+  type PersonTime,
+  type TimeTotals,
+} from '../api/matTime'
 import type { ReactNode } from 'react'
 import { t } from '../i18n/es'
 import { w } from '../i18n/vocabulary'
@@ -19,6 +26,11 @@ export function MyMatTime() {
   return <Loaded query={useQuery(myTimeQuery())} mine />
 }
 
+/** A dependent's card on their guardian's student page, from `/api/me/dependents/{id}/time` (#66). */
+export function DependentMatTime({ personId, name }: { personId: string; name: string }) {
+  return <Loaded query={useQuery(dependentTimeQuery(personId))} mine={false} title={copy.ofDependent(name)} />
+}
+
 /** The ficha's card for the member, from `/api/people/{id}/time`. */
 export function MemberMatTime({ personId }: { personId: string }) {
   return <Loaded query={useQuery(personTimeQuery(personId))} mine={false} headed />
@@ -28,18 +40,20 @@ function Loaded({
   query,
   mine,
   headed = false,
+  title,
 }: {
   query: { data?: PersonTime; isError: boolean }
   mine: boolean
   headed?: boolean
+  title?: string
 }) {
   if (query.isError) {
     return <BarError>{copy.error}</BarError>
   }
-  if (query.data) return <MatTime time={query.data} mine={mine} headed={headed} />
+  if (query.data) return <MatTime time={query.data} mine={mine} headed={headed} title={title} />
   // While it loads, the card holds its place, so what is below it does not jump.
   return (
-    <Card className="mat-time--loading" aria-busy="true" aria-label={mine ? copy.mine : copy.theirs}>
+    <Card className="mat-time--loading" aria-busy="true" aria-label={title ?? (mine ? copy.mine : copy.theirs)}>
       <Loading className="bar-note">{copy.loading}</Loading>
     </Card>
   )
@@ -53,12 +67,23 @@ function Loaded({
  * the gym's names for them (#346): "Sparring en total", "Escalada libre en total".
  *
  * `mine` is the student page's wording; the ficha's speaks of the member. `headed` puts
- * the title over the card, as the ficha heads each of its sections (#360).
+ * the title over the card, as the ficha heads each of its sections (#360). `title`
+ * names whose time it is, a dependent's on their guardian's page (#66).
  */
-export function MatTime({ time, mine, headed = false }: { time: PersonTime; mine: boolean; headed?: boolean }) {
+export function MatTime({
+  time,
+  mine,
+  headed = false,
+  title: named,
+}: {
+  time: PersonTime
+  mine: boolean
+  headed?: boolean
+  title?: string
+}) {
   const [period, setPeriod] = useState<Period>('month')
   const titleId = useId()
-  const title = mine ? copy.mine : copy.theirs
+  const title = named ?? (mine ? copy.mine : copy.theirs)
 
   if (!hasTime(time.all_time)) {
     return (

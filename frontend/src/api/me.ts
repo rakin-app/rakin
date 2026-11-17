@@ -182,6 +182,24 @@ export type MyPlan = {
   last_decided: FreezeRequest | null
 }
 
+/** One of the signed-in guardian's dependents (backend `Dependent`): their rank and classes (#66). */
+export type Dependent = {
+  id: string
+  name: string
+  // Their latest promotion; null until the gym records one.
+  rank: Rank | null
+  // Their classes here, this calendar month in the gym's timezone and in all.
+  attendance: { this_month: number; total: number }
+}
+
+/** Whom the signed-in person pays for; none for someone who is nobody's guardian. */
+export function myDependentsQuery() {
+  return queryOptions({
+    queryKey: ['me', 'dependents'],
+    queryFn: () => apiFetch<Dependent[]>('/api/me/dependents'),
+  })
+}
+
 export function myPageQuery() {
   return queryOptions({
     queryKey: ['me', 'page'],

@@ -40,6 +40,7 @@ from tests.test_proofs import (
     pending,
     periods,
     sent_notices,
+    split,
     stored_entry,
     upload,
 )
@@ -164,6 +165,7 @@ def test_the_queue_shows_the_claim_beside_the_period(
     # Seeded in one transaction, so at one time: compared unordered.
     assert sorted(p["amount_clp"] for p in item["last_payments"]) == [20000, 30000]
     assert item["attendance_30d"] == 0
+    assert item["shared_with"] == []
     assert item["proof_content_type"] == "application/pdf"
     proof = client.get(item["proof_url"])
     assert proof.status_code == 200
@@ -204,6 +206,36 @@ def attended(db: Database, gym: uuid.UUID, membership: str, days_ago: int) -> No
             )
 
     run(db.owner_url, query)
+
+
+@pg
+def test_a_transfer_split_over_several_periods_shows_what_else_it_pays(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    bill(db, sur, juan, [(-1, 25000, 0, 0)])
+    bill(db, sur, eva, [(-1, 20000, 0, 0)])
+    items = [(p["id"], p["outstanding_clp"]) for p in periods(client, sur, marta)]
+    response = split(client, sur, marta, upload(client, sur, marta), items)
+    assert response.status_code == 201, response.text
+    juans, evas = sorted(response.json(), key=lambda e: e["amount_clp"], reverse=True)
+
+    by_id = {item["id"]: item for item in queue(client, sur)}
+    assert [
+        (c["id"], c["person_name"], c["amount_clp"], c["status"])
+        for c in by_id[juans["id"]]["shared_with"]
+    ] == [(evas["id"], "Eva", 20000, "pending")]
+    assert by_id[juans["id"]]["proof_url"] is not None
+    assert by_id[evas["id"]]["shared_with"][0]["person_name"] == "Juan"
+
+    # Each is reviewed alone: Eva's rejected, Juan's validated, and each still says so.
+    assert reject(client, sur, evas["id"], "falta la mitad").status_code == 200
+    [left] = queue(client, sur)
+    assert [(c["person_name"], c["status"]) for c in left["shared_with"]] == [("Eva", "rejected")]
+    assert validate(client, sur, juans["id"]).status_code == 200
+    assert queue(client, sur) == []
 
 
 @pg

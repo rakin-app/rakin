@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MyClasses, TagHours } from '../api/classTags'
 import type { PersonTime } from '../api/matTime'
-import type { BankAccount, MyPage, MyPayment } from '../api/me'
+import type { BankAccount, Dependent, MyPage, MyPayment } from '../api/me'
 import type { OpenPeriod } from '../api/proofs'
 import type { PersonRequirements } from '../api/requirements'
 import { createQueryClient } from '../api/queryClient'
@@ -101,6 +101,9 @@ function stubPage(
   grades = true,
   // What the gym asks before training (#349); by default nothing.
   requirements: PersonRequirements[] = [],
+  // A guardian's dependents (#66), and each one's time on the mat; by default none.
+  dependents: Dependent[] = [],
+  dependentTime: Record<string, PersonTime> = {},
 ) {
   vi.stubGlobal(
     'fetch',
@@ -115,6 +118,9 @@ function stubPage(
       if (url.pathname === '/api/me/time') return Response.json(time)
       if (url.pathname === '/api/me/classes') return Response.json(classes)
       if (url.pathname === '/api/me/requirements') return Response.json(requirements)
+      if (url.pathname === '/api/me/dependents') return Response.json(dependents)
+      const theirs = /^\/api\/me\/dependents\/([^/]+)\/time$/.exec(url.pathname)?.[1]
+      if (theirs && dependentTime[theirs]) return Response.json(dependentTime[theirs])
       if (url.pathname === '/api/me/role') {
         return Response.json({ ...asRole(null), person_id: 'diego', gym_name: 'Academia Sur', uses_grades: grades })
       }
@@ -340,6 +346,58 @@ describe('Mi página', () => {
 
     const card = within(await screen.findByRole('region', { name: es.matTime.mine, busy: false }))
     expect(card.getByRole('list', { name: es.matTime.byKind })).toHaveTextContent('Sparring6 h 30 min')
+  })
+
+  it("shows each dependent's rank, classes and time on the mat (#66)", async () => {
+    const mateo: Dependent = {
+      id: 'mateo',
+      name: 'Mateo Morales',
+      rank: {
+        rank_key: 'grey',
+        rank_label: 'Gris',
+        sub_rank: '2',
+        sub_rank_label: '2 grados',
+        awarded_on: '2026-04-02',
+        belt: { colors: ['#8a8a8a'], stripes: 2, max_stripes: 4 },
+      },
+      attendance: { this_month: 3, total: 41 },
+    }
+    const lucia: Dependent = { id: 'lucia', name: 'Lucía Morales', rank: null, attendance: { this_month: 0, total: 0 } }
+    const month = {
+      by_kind: [{ block_kind_id: 'k-juegos', name: 'Juegos', is_sparring: false, seconds: 1800 }],
+      sparring_seconds: 0,
+      open_mat_seconds: 0,
+      classes: 3,
+      open_mats: 0,
+    }
+    stubPage(diego(), NO_TIME, NO_CLASSES, true, [], [mateo, lucia], {
+      mateo: { ...NO_TIME, this_month: month, all_time: month },
+      lucia: NO_TIME,
+    })
+    renderMe()
+
+    const his = within(await screen.findByRole('region', { name: copy.training.theirs('Mateo Morales') }))
+    expect(his.getByRole('img', { name: 'Gris, 2 grados' })).toBeInTheDocument()
+    expect(his.getByText('Gris · 2 grados')).toBeInTheDocument()
+    expect(his.getByText('desde 2 abr 2026')).toBeInTheDocument()
+    expect(his.getByText(copy.training.classes(3))).toBeInTheDocument()
+    expect(his.getByText(copy.training.total(41))).toBeInTheDocument()
+    const time = within(await his.findByRole('region', { name: es.matTime.ofDependent('Mateo Morales'), busy: false }))
+    expect(time.getByRole('list', { name: es.matTime.byKind })).toHaveTextContent('Juegos30 min')
+
+    // No rank yet: only her classes, and no timed class.
+    const hers = within(screen.getByRole('region', { name: copy.training.theirs('Lucía Morales') }))
+    expect(hers.queryByText(copy.training.belt)).not.toBeInTheDocument()
+    expect(hers.getByText(copy.training.classes(0))).toBeInTheDocument()
+    expect(await hers.findByText(es.matTime.emptyTheirs)).toBeInTheDocument()
+  })
+
+  it('shows no dependent for someone who is nobody\'s guardian', async () => {
+    stubPage(diego())
+    renderMe()
+
+    await screen.findByRole('region', { name: copy.training.title })
+    expect(screen.queryByRole('region', { name: /^Entrenamiento de / })).not.toBeInTheDocument()
   })
 
   it('says there is no timed class yet', async () => {

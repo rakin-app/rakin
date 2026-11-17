@@ -44,6 +44,14 @@ export function myTimeQuery() {
   })
 }
 
+/** A dependent's time, for their guardian's student page (#66). */
+export function dependentTimeQuery(personId: string) {
+  return queryOptions({
+    queryKey: ['me', 'time', personId],
+    queryFn: () => apiFetch<PersonTime>(`/api/me/dependents/${encodeURIComponent(personId)}/time`),
+  })
+}
+
 /** Whether any session the person attended was timed. */
 export function hasTime(totals: TimeTotals): boolean {
   return totals.by_kind.length > 0 || totals.open_mats > 0

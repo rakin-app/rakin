@@ -5,9 +5,11 @@ claim records a pending transfer pointing at it, emails "proof received" to whoe
 gets the student's notices, and shows up in the admin's pending count.
 """
 
+import asyncio
 import dataclasses
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -17,11 +19,12 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from alembic import command
+from app.db_bootstrap import to_dsn
 from app.integrations.blobstore import MAX_UPLOAD_BYTES
 from app.integrations.mailer import Email
 from app.main import create_app
 from app.schemas.plans import MAX_PRICE_CLP
-from app.schemas.proofs import ProofClaim, ProofUploadRequest
+from app.schemas.proofs import MAX_SPLIT, ProofClaim, ProofUploadRequest, SplitClaim
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
@@ -80,6 +83,21 @@ def test_a_claim_refuses(extra: dict[str, Any]) -> None:
 def test_a_claim_may_exceed_what_is_owed_up_to_the_price_ceiling() -> None:
     body = {"billing_period_id": str(uuid.uuid4()), "proof_key": "k", "amount_clp": MAX_PRICE_CLP}
     assert ProofClaim.model_validate(body).amount_clp == MAX_PRICE_CLP
+
+
+@pytest.mark.parametrize(
+    "items",
+    [
+        [],
+        [{"billing_period_id": "11111111-1111-1111-1111-111111111111", "amount_clp": 1}],
+        2 * [{"billing_period_id": "11111111-1111-1111-1111-111111111111", "amount_clp": 1}],
+        [{"billing_period_id": str(uuid.uuid4()), "amount_clp": 1} for _ in range(MAX_SPLIT + 1)],
+        [{"billing_period_id": str(uuid.uuid4()), "amount_clp": 0} for _ in range(2)],
+    ],
+)
+def test_a_split_pays_two_or_more_periods_once_each(items: list[dict[str, Any]]) -> None:
+    with pytest.raises(ValidationError):
+        SplitClaim.model_validate({"items": items, "proof_key": "k"})
 
 
 # --- against real Postgres --------------------------------------------------------
@@ -420,6 +438,232 @@ def test_a_claim_above_what_is_owed_is_taken_for_review(
     assert claim(client, sur, ana, period["id"], "x", MAX_PRICE_CLP + 1).status_code == 422
 
 
+def split(
+    client: TestClient, gym: uuid.UUID, person: str, key: str, items: list[tuple[str, int]]
+) -> Any:
+    return client.post(
+        "/api/me/payments/split",
+        json={
+            "proof_key": key,
+            "items": [{"billing_period_id": p, "amount_clp": a} for p, a in items],
+        },
+        headers=as_gym(gym, me(person)),
+    )
+
+
+def proof_entries(db: Database, key: str) -> list[dict[str, Any]]:
+    rows = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT * FROM ledger_entry WHERE proof_object_key = $1 ORDER BY amount_clp", key
+        ),
+    )
+    return [dict(r) for r in rows]
+
+
+@pg
+def test_one_transfer_pays_a_guardians_and_two_dependents_periods(
+    client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    sofia = new_kid(client, sur, marta, "Sofía")
+    bill(db, sur, marta, [(-2, 30000, 0, 0)])
+    bill(db, sur, juan, [(-1, 25000, 0, 0)])
+    bill(db, sur, sofia, [(-1, 20000, 5000, 0)])
+    by_person = {p["person_name"]: p for p in periods(client, sur, marta)}
+    key = upload(client, sur, marta)
+
+    mailer.sent.clear()
+    response = split(
+        client,
+        sur,
+        marta,
+        key,
+        [
+            (by_person["Marta"]["id"], 30000),
+            (by_person["Juan"]["id"], 25000),
+            (by_person["Sofía"]["id"], 15000),
+        ],
+    )
+
+    assert response.status_code == 201, response.text
+    entries = response.json()
+    assert [e["amount_clp"] for e in entries] == [30000, 25000, 15000]
+    assert {e["proof_object_key"] for e in entries} == {key}
+    assert {(e["kind"], e["status"], e["method"], e["claimed_by"]) for e in entries} == {
+        ("payment", "pending", "transfer", marta)
+    }
+    stored = proof_entries(db, key)
+    assert {str(e["billing_period_id"]) for e in stored} == {p["id"] for p in by_person.values()}
+    assert len({e["membership_id"] for e in stored}) == 3
+    assert {p["person_name"]: p["pending_clp"] for p in periods(client, sur, marta)} == {
+        "Marta": 30000,
+        "Juan": 25000,
+        "Sofía": 15000,
+    }
+    assert pending(client, sur) == 3
+
+    # One email to Marta, for the whole transfer, naming each kid's period.
+    [email] = mailer.sent
+    assert email.to == "marta@example.cl"
+    assert "Recibimos tu comprobante de $70.000" in email.text
+    assert "- Tu período del" in email.text
+    assert "- Juan, el período del" in email.text
+    assert "- Sofía, el período del" in email.text
+    assert "$15.000" in email.text
+    assert sent_notices(db, sur) == [("proof_received", marta, "sent")]
+
+
+@pg
+def test_a_split_proof_is_claimed_once(client: TestClient, db: Database, sur: uuid.UUID) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    bill(db, sur, juan, [(-1, 25000, 0, 0)])
+    bill(db, sur, eva, [(-1, 25000, 0, 0)])
+    two = [(p["id"], 25000) for p in periods(client, sur, marta)]
+    key = upload(client, sur, marta)
+
+    assert split(client, sur, marta, key, two).status_code == 201
+    # A replay, or the same proof for one of them alone: refused.
+    assert split(client, sur, marta, key, two).status_code == 409
+    assert claim(client, sur, marta, two[0][0], key, 25000).status_code == 409
+    assert len(proof_entries(db, key)) == 2
+
+    # Nor is a proof already claimed for one period split afterwards.
+    other = upload(client, sur, marta)
+    bill(db, sur, juan, [(5, 25000, 0, 0)])
+    later = next(p for p in periods(client, sur, marta) if p["pending_clp"] == 0)
+    assert claim(client, sur, marta, later["id"], other, 25000).status_code == 201
+    assert split(client, sur, marta, other, two).status_code == 409
+    assert len(proof_entries(db, other)) == 1
+
+
+def at_once(db: Database, key: str, claims: list[Callable[[], Any]]) -> list[int]:
+    """Run `claims` side by side, each in its own request and transaction, while another
+    session holds `key`'s lock, so every one of them is waiting on it when it is let go;
+    the status codes they answer, in order."""
+
+    async def go() -> list[int]:
+        holder = await asyncpg.connect(to_dsn(db.admin_url))
+        try:
+            await holder.execute("BEGIN")
+            await holder.execute("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", key)
+            with ThreadPoolExecutor(len(claims)) as pool:
+                running = [asyncio.wrap_future(pool.submit(claim)) for claim in claims]
+                await asyncio.sleep(0.5)
+                assert not any(r.done() for r in running), "a claim did not wait for the lock"
+                await holder.execute("COMMIT")
+                responses = await asyncio.gather(*running)
+        finally:
+            await holder.close()
+        return [r.status_code for r in responses]
+
+    return asyncio.run(go())
+
+
+@pg
+def test_two_claims_of_one_proof_at_once_take_it_once(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    """One for Juan's period and one for Eva's: the index lets both through (0068), the
+    lock and a fresh look at the ledger after it let one."""
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    bill(db, sur, juan, [(-1, 25000, 0, 0)])
+    bill(db, sur, eva, [(-1, 25000, 0, 0)])
+    first, second = (p["id"] for p in periods(client, sur, marta))
+    key = upload(client, sur, marta)
+
+    codes = at_once(
+        db,
+        key,
+        [
+            lambda: claim(client, sur, marta, first, key, 25000),
+            lambda: claim(client, sur, marta, second, key, 25000),
+        ],
+    )
+
+    assert sorted(codes) == [201, 409]
+    assert len(proof_entries(db, key)) == 1
+
+
+@pg
+def test_a_claim_racing_a_split_of_the_same_proof_takes_it_once(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    tomas = new_kid(client, sur, marta, "Tomás")
+    for kid in (juan, eva, tomas):
+        bill(db, sur, kid, [(-1, 25000, 0, 0)])
+    by_name = {p["person_name"]: p["id"] for p in periods(client, sur, marta)}
+    key = upload(client, sur, marta)
+    two = [(by_name["Juan"], 25000), (by_name["Eva"], 25000)]
+
+    codes = at_once(
+        db,
+        key,
+        [
+            lambda: split(client, sur, marta, key, two),
+            lambda: claim(client, sur, marta, by_name["Tomás"], key, 25000),
+        ],
+    )
+
+    assert sorted(codes) == [201, 409]
+    claimed = {str(e["billing_period_id"]) for e in proof_entries(db, key)}
+    assert claimed in ({by_name["Juan"], by_name["Eva"]}, {by_name["Tomás"]})
+
+
+@pg
+def test_a_split_records_all_its_periods_or_none(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    stranger = add_person(client, sur, "Otra")
+    bill(db, sur, juan, [(-1, 25000, 0, 0)])
+    evas = bill(db, sur, eva, [(-1, 25000, 25000, 0)])
+    bill(db, sur, stranger, [(-1, 25000, 0, 0)])
+    [juans] = [p["id"] for p in periods(client, sur, marta)]
+    [strangers] = [p["id"] for p in periods(client, sur, stranger)]
+    paid = run(
+        db.admin_url,
+        lambda c: c.fetchval(
+            "SELECT id FROM billing_period WHERE membership_id = $1", uuid.UUID(evas)
+        ),
+    )
+    key = upload(client, sur, marta)
+
+    # Someone else's period is not theirs to pay; Eva's is paid in full.
+    assert split(client, sur, marta, key, [(juans, 1), (strangers, 1)]).status_code == 404
+    assert split(client, sur, marta, key, [(juans, 1), (str(paid), 1)]).status_code == 409
+    assert proof_entries(db, key) == []
+    assert pending(client, sur) == 0
+
+
+@pg
+def test_a_split_takes_only_the_persons_own_upload(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    bill(db, sur, juan, [(-1, 25000, 0, 0)])
+    bill(db, sur, eva, [(-1, 25000, 0, 0)])
+    two = [(p["id"], 25000) for p in periods(client, sur, marta)]
+    juans_upload = upload(client, sur, juan)
+    never_uploaded = f"proofs/{sur}/{marta}/{uuid.uuid4()}"
+
+    for key in (juans_upload, never_uploaded):
+        assert split(client, sur, marta, key, two).status_code == 422
+    assert pending(client, sur) == 0
+
+
 @pg
 @pytest.mark.parametrize(
     ("role", "expected"),
@@ -505,6 +749,7 @@ def insert_as(db: Database, gym: uuid.UUID, person: str, membership: str, **colu
         "claimed_by": uuid.UUID(person),
         "proof_object_key": f"proofs/{gym}/{person}/{uuid.uuid4()}",
         "validated_by": None,
+        "billing_period_id": None,
         **columns,
     }
     return run(
@@ -512,9 +757,10 @@ def insert_as(db: Database, gym: uuid.UUID, person: str, membership: str, **colu
         in_gym(
             gym,
             "INSERT INTO ledger_entry (gym_id, membership_id, amount_clp, kind, status, method,"
-            " claimed_by, claimed_at, proof_object_key, validated_by, validated_at)"
+            " claimed_by, claimed_at, proof_object_key, validated_by, validated_at,"
+            " billing_period_id)"
             " VALUES ($1, $2, 1000, $3, $4, $5, $6, now(), $7, $8,"
-            " CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END) RETURNING id",
+            " CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END, $9) RETURNING id",
             gym,
             uuid.UUID(membership),
             values["kind"],
@@ -523,6 +769,7 @@ def insert_as(db: Database, gym: uuid.UUID, person: str, membership: str, **colu
             values["claimed_by"],
             values["proof_object_key"],
             values["validated_by"],
+            values["billing_period_id"],
             person=uuid.UUID(person),
         ),
     )
@@ -561,6 +808,53 @@ def test_the_table_takes_a_proof_once(client: TestClient, db: Database, sur: uui
 
     with pytest.raises(asyncpg.UniqueViolationError):
         insert_as(db, sur, ana, mine, proof_object_key=key)
+
+
+@pg
+def test_the_table_takes_a_proof_once_per_period(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    juans = bill(db, sur, juan, [(-1, 25000, 0, 0)])
+    evas = bill(db, sur, eva, [(-1, 25000, 0, 0)])
+
+    def period_of(membership: str) -> uuid.UUID:
+        found: uuid.UUID = run(
+            db.admin_url,
+            lambda c: c.fetchval(
+                "SELECT id FROM billing_period WHERE membership_id = $1", uuid.UUID(membership)
+            ),
+        )
+        return found
+
+    key = f"proofs/{sur}/{marta}/{uuid.uuid4()}"
+    insert_as(db, sur, marta, juans, proof_object_key=key, billing_period_id=period_of(juans))
+    insert_as(db, sur, marta, evas, proof_object_key=key, billing_period_id=period_of(evas))
+
+    with pytest.raises(asyncpg.UniqueViolationError):
+        insert_as(db, sur, marta, juans, proof_object_key=key, billing_period_id=period_of(juans))
+
+
+@pg
+def test_upgrade_and_downgrade_0068(client: TestClient, db: Database, sur: uuid.UUID) -> None:
+    with throwaway_database(require_test_database_url()) as scratch:
+        migrate(scratch, "0067")
+        migrate(scratch)
+        command.downgrade(scratch.alembic(), "0067")
+        migrate(scratch)
+
+    # A proof split over two periods cannot go back to backing one entry.
+    marta = add_person(client, sur, "Marta")
+    juan = new_kid(client, sur, marta, "Juan")
+    eva = new_kid(client, sur, marta, "Eva")
+    bill(db, sur, juan, [(-1, 25000, 0, 0)])
+    bill(db, sur, eva, [(-1, 25000, 0, 0)])
+    two = [(p["id"], 25000) for p in periods(client, sur, marta)]
+    assert split(client, sur, marta, upload(client, sur, marta), two).status_code == 201
+    with pytest.raises(Exception, match="could not create unique index"):
+        command.downgrade(db.alembic(), "0067")
 
 
 @pg

@@ -97,6 +97,37 @@ export type ProofTarget = { kind: 'period' | 'line'; id: string }
 export async function submitProof(file: File, target: ProofTarget, amountClp: number): Promise<void> {
   // Each step by its own name, so a double tap uploads to one key and claims once (#208).
   const key = submissionKey()
+  const proofKey = await uploadProof(file, key)
+  await apiFetch('/api/me/payments', {
+    method: 'POST',
+    body: JSON.stringify({
+      [target.kind === 'period' ? 'billing_period_id' : 'extra_line_id']: target.id,
+      amount_clp: amountClp,
+      proof_key: proofKey,
+    }),
+    idempotencyKey: key && `${key}:claim`,
+  })
+}
+
+/** One period a shared transfer pays, and how much of it goes there. */
+export type SplitItem = { billing_period_id: string; amount_clp: number }
+
+/**
+ * Upload `file` once and claim it for several periods, theirs and their dependents'
+ * (#66): one transfer, a pending payment on each, all or none.
+ */
+export async function submitSplitProof(file: File, items: SplitItem[]): Promise<void> {
+  const key = submissionKey()
+  const proofKey = await uploadProof(file, key)
+  await apiFetch('/api/me/payments/split', {
+    method: 'POST',
+    body: JSON.stringify({ items, proof_key: proofKey }),
+    idempotencyKey: key && `${key}:claim`,
+  })
+}
+
+/** PUT `file` to storage on a presigned URL; returns the key to claim it by. */
+async function uploadProof(file: File, key: string | undefined): Promise<string> {
   const contentType = proofContentType(file)
   if (contentType === null) throw new Error(`not a proof type: ${file.name}`)
   const upload = await apiFetch<ProofUpload>('/api/me/proofs', {
@@ -108,15 +139,7 @@ export async function submitProof(file: File, target: ProofTarget, amountClp: nu
   // the file's size as Content-Length, which the signature covers.
   const put = await fetch(upload.url, { method: 'PUT', headers: upload.headers, body: file })
   if (!put.ok) throw new UploadFailed(put.status)
-  await apiFetch('/api/me/payments', {
-    method: 'POST',
-    body: JSON.stringify({
-      [target.kind === 'period' ? 'billing_period_id' : 'extra_line_id']: target.id,
-      amount_clp: amountClp,
-      proof_key: upload.key,
-    }),
-    idempotencyKey: key && `${key}:claim`,
-  })
+  return upload.key
 }
 
 export function isConflict(error: unknown): boolean {

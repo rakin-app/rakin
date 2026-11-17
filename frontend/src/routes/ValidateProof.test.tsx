@@ -133,6 +133,34 @@ describe('Validar comprobante', () => {
     expect(screen.getByRole('button', { name: copy.confirm('$45.000') })).toBeInTheDocument()
   })
 
+  it('says what else a transfer split over several periods pays, and its total (#66)', async () => {
+    const shared: ProofReview = {
+      ...JUAN,
+      amount_clp: 25000,
+      shared_with: [
+        { id: 'e-sofia', person_name: 'Sofía Rojas', amount_clp: 20000, status: 'pending' },
+        { id: 'e-marta', person_name: 'Marta Rojas', amount_clp: 45000, status: 'validated' },
+      ],
+    }
+    stubApi([shared])
+    renderAt(PATH)
+
+    expect(await screen.findByRole('heading', { name: 'Juan Rojas' })).toBeInTheDocument()
+    expect(screen.getByText(copy.shared.intro('$90.000'))).toBeInTheDocument()
+    expect(screen.getByText(copy.shared.claim('Sofía Rojas', '$20.000', copy.shared.status.pending))).toBeInTheDocument()
+    expect(screen.getByText(copy.shared.claim('Marta Rojas', '$45.000', copy.shared.status.validated))).toBeInTheDocument()
+    // Each is reviewed alone: this one's own amount.
+    expect(screen.getByRole('button', { name: copy.confirm('$25.000') })).toBeInTheDocument()
+  })
+
+  it('says nothing of other periods for a proof that pays one', async () => {
+    stubApi([{ ...DIEGO, shared_with: [] }])
+    renderAt(PATH)
+
+    expect(await screen.findByRole('heading', { name: 'Diego Morales' })).toBeInTheDocument()
+    expect(screen.queryByText(/también paga/)).not.toBeInTheDocument()
+  })
+
   it('shows a cobro extra\'s proof against what its line owes, with no plan or history', async () => {
     const rifa: ProofReview = {
       ...DIEGO,

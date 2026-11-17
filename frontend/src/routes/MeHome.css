@@ -248,3 +248,24 @@
 .my-class .tag-list {
   margin-top: var(--space-0-5);
 }
+
+/* "Pagar todo junto" (#66): a family's periods in one transfer. */
+.together {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.together__total {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.together__who {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
