@@ -4,6 +4,9 @@ A session's roster is everyone who may train at it: a membership that is not can
 (a frozen member who turns up trains, for nothing, and stays frozen), open to its class
 type's program, one row per person, plus anyone already marked
 (`app.schemas.attendance.Roster`). A mark or a trial guest is held to the same rule.
+Someone on two plans the class admits, a monthly plan open to every class and a course
+of credits, say, is listed on the one with credits left, else the one started first
+(`ROSTER_PICK`, #354), and the screen marks that one.
 A coach taps names on and off and sends what changed (`PATCH .../attendance`);
 marking takes what the membership pays the class with (`app.domain.attendance`) and
 unmarking gives it back. Each change is idempotent, so a
@@ -133,8 +136,18 @@ ON_ROSTER = ("active", "trial", "lapsed", "frozen")
 # Days before a class in which coming to one of its type makes someone a regular of it.
 REGULAR_DAYS = 30
 
-# One row per person: the membership marked present, else their one the program admits,
-# by `ON_ROSTER`'s order, latest first. `days_absent` counts from their last class
+# Which of a person's memberships stands for them on a roster, as `ORDER BY` terms after
+# `m.person_id`, with `a` their attendance at the class: the one marked present, else by
+# `ON_ROSTER`'s order, then one with credits left, then the earliest started (#354). A
+# member on a monthly plan open to every class who also takes a course of credits is
+# marked on the course at its classes, and once it is spent on the plan started first.
+ROSTER_PICK = (
+    f"a.membership_id IS NOT NULL DESC, array_position(ARRAY{list(ON_ROSTER)}, m.status),"
+    " coalesce(m.credits_remaining > 0, false) DESC, m.started_at, m.created_at"
+)
+
+# One row per person: the membership marked present, else the one the program admits
+# that `ROSTER_PICK` puts first. `days_absent` counts from their last class
 # before this one, on the gym's calendar, once per person kept. `regular` is whether
 # they came to a class of this one's type in the `REGULAR_DAYS` before it, which the
 # screen lists first (#178). RLS keeps every table to the current gym.
@@ -176,9 +189,7 @@ FROM (
     WHERE a.membership_id IS NOT NULL
        OR (m.status IN {ON_ROSTER}
            AND (pl.program_id IS NULL OR pl.program_id = :program))
-    ORDER BY m.person_id, a.membership_id IS NOT NULL DESC,
-             array_position(ARRAY{list(ON_ROSTER)}, m.status), m.created_at DESC,
-             m.started_at DESC
+    ORDER BY m.person_id, {ROSTER_PICK}
 ) roster
 ORDER BY lower(name), person_id
 """

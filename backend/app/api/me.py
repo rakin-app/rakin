@@ -82,7 +82,8 @@ DEPENDENTS = f"""
 PAYMENTS = """
     WITH mine AS (
         SELECT e.id, e.kind, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
-               bp.period_start, x.title AS charge_title, e.claimed_at, e.validated_at,
+               bp.period_start, pl.name AS plan_name, x.title AS charge_title,
+               e.claimed_at, e.validated_at,
                CASE WHEN e.status = :rejected
                       OR (e.kind = :adjustment AND e.billing_period_id IS NULL
                           AND e.extra_line_id IS NULL)
@@ -95,6 +96,7 @@ PAYMENTS = """
         CROSS JOIN LATERAL (SELECT coalesce(m.person_id, l.person_id) AS person_id) w
         JOIN gym_person gp ON gp.gym_id = e.gym_id AND gp.person_id = w.person_id
         LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
+        LEFT JOIN plan pl ON pl.id = m.plan_id AND bp.id IS NOT NULL
         WHERE e.kind = ANY(CAST(:kinds AS text[]))
           AND (w.person_id = :me OR w.person_id IN (
               SELECT g.dependent_person_id FROM guardian_link g

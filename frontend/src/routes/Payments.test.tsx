@@ -189,6 +189,8 @@ type Stub = {
   pending?: number
   // The reminders' list, for "Enviar recordatorio" on the overdue list (#260).
   reminders?: PaymentReminder[]
+  // The ledgers of Diego's other memberships, by id: a course beside his plan (#354).
+  others?: Record<string, MembershipLedger>
 }
 
 function stubApi({
@@ -199,6 +201,7 @@ function stubApi({
   ledger = DIEGO_LEDGER,
   pending = 3,
   reminders = [],
+  others = {},
 }: Stub = {}) {
   const asked: URLSearchParams[] = []
   vi.stubGlobal(
@@ -221,6 +224,9 @@ function stubApi({
         body = { sent_at: new Date().toISOString(), contact_name: 'Felipe Díaz' }
       }
       else if (url.pathname === `/api/ledger/memberships/${DIEGO_MEMBERSHIP.id}`) body = ledger
+      else if (url.pathname.replace('/api/ledger/memberships/', '') in others) {
+        body = others[url.pathname.replace('/api/ledger/memberships/', '')]
+      }
       // Nothing to pay ahead: the member is on a plan that cannot (#196).
       else if (url.pathname === `/api/ledger/memberships/${DIEGO_MEMBERSHIP.id}/ahead`) body = { periods: [] }
       else if (url.pathname === '/api/ledger/payments' && init?.method === 'POST') {
@@ -734,6 +740,48 @@ describe('Pagos', () => {
       { membership_id: 'm-diego', billing_period_id: 'bp-nov', amount_clp: 45000, method: 'transfer' },
     ])
     expect(screen.queryByRole('region', { name: copy.record })).not.toBeInTheDocument()
+  })
+
+  it('asks which plan a payment is for when two run, each with its own periods (#354)', async () => {
+    const COURSE: Membership = {
+      ...DIEGO_MEMBERSHIP,
+      id: 'm-curso',
+      plan_id: 'p-curso',
+      plan_name: 'Curso de iniciación',
+      plan_kind: 'credits',
+      anchor_day: null,
+      started_on: '2026-11-02',
+      current_period_end: '2027-01-01',
+      credits_remaining: 8,
+    }
+    const COURSE_PERIOD: OpenPeriod = { ...NOVEMBER, id: 'bp-curso', period_start: '2026-11-02', amount_due_clp: 60000, outstanding_clp: 60000 }
+    // The API lists the latest created first.
+    stubApi({
+      memberships: [COURSE, DIEGO_MEMBERSHIP],
+      others: { 'm-curso': { ...DIEGO_LEDGER, open_periods: [COURSE_PERIOD], owed_clp: 60000 } },
+    })
+    renderAt('/admin/pagos')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: copy.record }))
+    const panel = screen.getByRole('region', { name: copy.record })
+    await userEvent.type(within(panel).getByLabelText(copy.picker.label), 'diego')
+    await userEvent.click(await within(panel).findByRole('button', { name: /Diego Morales/ }))
+
+    expect(await within(panel).findByText('Mensual adultos · Curso de iniciación')).toBeInTheDocument()
+    const plans = await within(panel).findByRole('group', { name: copy.picker.plan })
+    // The plan started first is picked first.
+    expect(within(plans).getByRole('button', { name: 'Mensual adultos' })).toHaveAttribute('aria-pressed', 'true')
+    let form = await within(panel).findByRole('form', { name: es.admin.member.form.title })
+    expect(within(form).getByLabelText(es.admin.member.form.amount)).toHaveValue('45000')
+
+    await userEvent.click(within(plans).getByRole('button', { name: 'Curso de iniciación' }))
+    form = await within(panel).findByRole('form', { name: es.admin.member.form.title })
+    await waitFor(() => expect(within(form).getByLabelText(es.admin.member.form.amount)).toHaveValue('60000'))
+    await userEvent.click(within(form).getByRole('button', { name: es.admin.member.form.submit('$60.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(es.admin.member.form.recorded('$60.000'))
+    expect(payments).toEqual([{ membership_id: 'm-curso', billing_period_id: 'bp-curso', amount_clp: 60000, method: 'cash' }])
   })
 
   it('says when the member picked has nothing to pay', async () => {

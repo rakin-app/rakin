@@ -36,7 +36,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.attendance import ON_ROSTER, class_of, mark_present, require_open, unmark
+from app.api.attendance import ON_ROSTER, ROSTER_PICK, class_of, mark_present, require_open, unmark
 from app.api.people import people_matching
 from app.api.requirements import requirement_flags
 from app.api.sessions import gym_timezone
@@ -78,7 +78,7 @@ ARRIVALS = f"""
 """
 
 # One row per person found, by the roster's rule: the membership checked in today,
-# else their one the program admits, by `ON_ROSTER`'s order, latest first.
+# else the one the program admits that `ROSTER_PICK` puts first.
 CANDIDATES = f"""
 SELECT * FROM (
     SELECT DISTINCT ON (m.person_id) {VISITOR}, a.marked_at AS checked_in_at
@@ -91,9 +91,7 @@ SELECT * FROM (
       AND (a.membership_id IS NOT NULL
            OR (m.status IN {ON_ROSTER}
                AND (pl.program_id IS NULL OR pl.program_id = :program)))
-    ORDER BY m.person_id, a.membership_id IS NOT NULL DESC,
-             array_position(ARRAY{list(ON_ROSTER)}, m.status), m.created_at DESC,
-             m.started_at DESC
+    ORDER BY m.person_id, {ROSTER_PICK}
 ) found
 ORDER BY lower(name), person_id
 LIMIT {SEARCH_LIMIT}

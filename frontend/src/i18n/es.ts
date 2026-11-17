@@ -1271,6 +1271,10 @@ export const es = {
       // A plan change saved, waiting for the first period not yet billed (#249).
       planChangeBooked: (plan: string, day: string) => `Pasa a ${plan} desde el ${day}`,
       assignPlan: 'Asignar plan',
+      // A second plan beside the one running, a course beside a monthly plan (#354).
+      addPlan: 'Agregar otro plan',
+      // A plan card and its Libro, named by the plan while there are two (#354).
+      planLabel: (label: string, plan: string) => `${label} · ${plan}`,
       assignForm: {
         title: 'Asignar plan',
         get intro() {
@@ -3081,6 +3085,8 @@ export const es = {
         loading: 'Cargando…',
         noPlan: 'No tiene plan: no hay nada que cobrarle.',
         upToDate: 'Está al día: no tiene períodos por pagar.',
+        // With two plans running, a course beside a monthly plan, which one it pays (#354).
+        plan: '¿Qué plan paga?',
         get change() {
           return `Cambiar ${w.member}`
         },
@@ -3552,6 +3558,8 @@ export const es = {
       },
       // `whose`: the dependent it is for, when it is not the student's own.
       due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
+      // On two plans, a course beside a monthly one: the plan it bills (#354).
+      ofPlan: (due: string, plan: string) => `${due} · ${plan}`,
       paidUp: 'No tienes pagos pendientes.',
       paidThrough: (day: string) => `No tienes pagos pendientes. Pagado hasta el ${day}.`,
       bankLabel: 'Datos para transferir',
@@ -3623,6 +3631,8 @@ export const es = {
       empty: 'Todavía no hay pagos.',
       payment: 'Pago',
       month: (month: string, whose: string | null) => (whose ? `${month} · ${whose}` : month),
+      // On two plans, a course beside a monthly one: the plan it paid (#354).
+      ofPlan: (title: string, plan: string) => `${title} · ${plan}`,
       sent: (when: string) => `comprobante enviado ${when}`,
       validated: (when: string) => `validado ${when}`,
       rejected: (when: string, note: string | null) => (note ? `rechazado ${when}: ${note}` : `rechazado ${when}`),

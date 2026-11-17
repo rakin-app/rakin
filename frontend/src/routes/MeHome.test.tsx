@@ -179,6 +179,44 @@ describe('Mi página', () => {
     expect(await within(await screen.findByRole('region', { name: copy.next.title })).findByText(label)).toBeInTheDocument()
   })
 
+  it('names the plan by what is due and by each payment for someone on two plans (#354)', async () => {
+    const plan = (membership_id: string, plan_name: string) => ({
+      membership_id,
+      person_id: 'diego',
+      person_name: 'Diego Morales',
+      plan_name,
+      status: 'active' as const,
+      freeze: null,
+      pending_request: null,
+      last_decided: null,
+    })
+    stubPage(
+      diego({
+        plans: [plan('m-diego', 'Mensual adultos'), plan('m-curso', 'Curso de iniciación')],
+        payments: [
+          payment({ id: 'e-curso', period_start: `${YEAR}-10-02`, plan_name: 'Curso de iniciación' }),
+          payment({ id: 'e-oct', plan_name: 'Mensual adultos' }),
+        ],
+      }),
+    )
+    renderMe()
+
+    await screen.findByRole('heading', { level: 1, name: 'Hola, Diego' })
+    expect(within(nextCard()).getByText('vence el 10 de noviembre · Mensual adultos')).toBeInTheDocument()
+    const history = screen.getByRole('region', { name: copy.history.title })
+    expect(within(history).getByText('Octubre · Curso de iniciación')).toBeInTheDocument()
+    expect(within(history).getByText('Octubre · Mensual adultos')).toBeInTheDocument()
+  })
+
+  it('names no plan for someone on one', async () => {
+    stubPage(diego({ payments: [payment({ id: 'e-oct', plan_name: 'Mensual adultos' })] }))
+    renderMe()
+
+    await screen.findByRole('heading', { level: 1, name: 'Hola, Diego' })
+    expect(within(nextCard()).getByText('vence el 10 de noviembre')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: copy.history.title })).getByText('Octubre')).toBeInTheDocument()
+  })
+
   it('copies the bank details in full', async () => {
     const user = userEvent.setup()
     stubPage(diego())

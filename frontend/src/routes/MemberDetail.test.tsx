@@ -2737,6 +2737,72 @@ describe('the plan from the ficha (#249)', () => {
     expect(screen.queryByRole('button', { name: copy.assignPlan })).not.toBeInTheDocument()
   })
 
+  it('gives a member on a plan "Agregar otro plan", and a card and a Libro for each plan (#354)', async () => {
+    const PACK: Membership = {
+      ...MONTHLY,
+      id: 'm-pack',
+      plan_id: 'plan-pack',
+      plan_name: 'Pack 12',
+      plan_kind: 'credits',
+      anchor_day: null,
+      started_on: '2026-11-10',
+      current_period_end: '2027-01-09',
+      credits_remaining: 12,
+    }
+    let members: Membership[] = [MONTHLY]
+    const calls = stubApi({
+      memberships: members,
+      corrections: [correction({ id: 'void' })],
+      extra: (path, method) => {
+        if (path === '/api/plans') return { body: PLANS }
+        if (path === '/api/people/felipe/welcome') return { body: { to: 'felipe@example.com', guardian: null, last: null } }
+        if (path === '/api/memberships/start') return { body: { starts_on: '2026-11-10', billed_through: null, debt_clp: 0 } }
+        // The API lists the latest created first.
+        if (path === '/api/memberships' && method === 'GET') return { body: members }
+        if (path === '/api/memberships' && method === 'POST') {
+          members = [PACK, MONTHLY]
+          return { status: 201, body: PACK }
+        }
+        if (path === '/api/ledger/memberships/m-pack') return { body: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [], periods: [], refundable_payments: [] } }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    // Not "Asignar plan": the plan running stays.
+    const add = await screen.findByRole('button', { name: copy.addPlan })
+    expect(screen.queryByRole('button', { name: copy.assignPlan })).not.toBeInTheDocument()
+    await userEvent.click(add)
+    const form = screen.getByRole('form', { name: assign.title })
+    const select = await within(form).findByLabelText(assign.plan)
+    await waitFor(() => expect(within(select).getAllByRole('option').length).toBeGreaterThan(1))
+    await userEvent.selectOptions(select, 'plan-pack')
+    // They were welcomed with their first plan.
+    expect(await within(form).findByLabelText(assign.welcome)).not.toBeChecked()
+    await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
+
+    expect(await screen.findByText(assign.done('Pack 12'))).toBeInTheDocument()
+    expect(calls.find((c) => c.path === '/api/memberships' && c.method === 'POST')?.body).toMatchObject({
+      plan_id: 'plan-pack',
+      send_welcome: false,
+    })
+    // The plan started first comes first, each named by its plan.
+    const monthly = await screen.findByRole('region', { name: copy.planLabel(copy.paymentLabel, 'Mensual adultos') })
+    const pack = await screen.findByRole('region', { name: copy.planLabel(copy.paymentLabel, 'Pack 12') })
+    expect(monthly.compareDocumentPosition(pack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(await screen.findByRole('region', { name: copy.planLabel(copy.ledger.title, 'Mensual adultos') })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: copy.planLabel(copy.ledger.title, 'Pack 12') })).toBeInTheDocument()
+    // "Correcciones" once, for the person.
+    expect(await screen.findAllByRole('region', { name: copy.corrections.title })).toHaveLength(1)
+  })
+
+  it('gives a coach no "Agregar otro plan"', async () => {
+    stubApi({ role: 'coach' })
+    renderAt(PATH)
+    expect(await screen.findByText('Mensual adultos · vence el 30')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.addPlan })).not.toBeInTheDocument()
+  })
+
   it('keeps "Volver" to where the ficha was opened from after assigning a plan with the welcome (#250)', async () => {
     planless()
     const router = renderAt('/admin/pagos?filter=pending')

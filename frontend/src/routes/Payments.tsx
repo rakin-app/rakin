@@ -12,7 +12,7 @@ import {
   type PersonRef,
 } from '../api/ledger'
 import { myAccessQuery, readsLedger } from '../api/me'
-import { membershipLedgerQuery, membershipsQuery, shownMembership } from '../api/member'
+import { membershipLedgerQuery, membershipsQuery, shownMemberships } from '../api/member'
 import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
 import { remindersQuery, type PaymentReminder } from '../api/reminders'
@@ -398,16 +398,16 @@ function pickDetail(row: MemberRow): string {
 
 function PayFor({ member, onBack, onDone }: { member: MemberRow; onBack: () => void; onDone: (message: string) => void }) {
   const words = copy.picker
-  // The same query `PaymentFor` reads, so one request: the plan's name for the header.
+  // The same query `PaymentFor` reads, so one request: the plans' names for the header.
   const memberships = useQuery(membershipsQuery(member.id))
-  const membership = memberships.data ? shownMembership(memberships.data) : undefined
+  const shown = memberships.data ? shownMemberships(memberships.data) : []
 
   return (
     <Card as="div" className="payments__picker">
       <div className="payments__picked">
         <span>
           <span className="payments__pick-name">{member.name}</span>
-          {membership && <span className="payments__pick-detail">{membership.plan_name}</span>}
+          {shown.length > 0 && <span className="payments__pick-detail">{shown.map((m) => m.plan_name).join(' · ')}</span>}
         </span>
         <Button variant="ghost" onClick={onBack}>
           {words.change}
@@ -420,7 +420,8 @@ function PayFor({ member, onBack, onDone }: { member: MemberRow; onBack: () => v
 
 /** The member detail's payment form for the membership a person's detail shows: for an
  *  open period, else paid ahead. The book's picker opens it, and an Alumnos row's
- *  "Pagar" (#265). */
+ *  "Pagar" (#265). With two plans running, a course beside a monthly plan, a chip for
+ *  each plan says which one it pays, each with its own periods (#354). */
 export function PaymentFor({
   personId,
   onCancel,
@@ -432,9 +433,20 @@ export function PaymentFor({
 }) {
   const words = copy.picker
   const memberships = useQuery(membershipsQuery(personId))
-  const membership = memberships.data ? shownMembership(memberships.data) : undefined
+  const shown = memberships.data ? shownMemberships(memberships.data) : []
+  const [chosen, setChosen] = useState<string | null>(null)
+  const membership = shown.find((m) => m.id === chosen) ?? shown[0]
   const ledger = useQuery({ ...membershipLedgerQuery(membership?.id ?? ''), enabled: membership !== undefined })
   const periods = ledger.data?.open_periods ?? []
+  const plans = shown.length > 1 && membership && (
+    <ChipGroup label={words.plan}>
+      {shown.map((m) => (
+        <Chip key={m.id} pressed={m.id === membership.id} onClick={() => setChosen(m.id)}>
+          {m.plan_name}
+        </Chip>
+      ))}
+    </ChipGroup>
+  )
 
   if (memberships.isError || ledger.isError) {
     return (
@@ -443,21 +455,30 @@ export function PaymentFor({
       </Banner>
     )
   }
-  if (memberships.isPending || (membership && ledger.isPending)) {
-    return <Loading className="payments__hint">{words.loading}</Loading>
-  }
+  if (memberships.isPending) return <Loading className="payments__hint">{words.loading}</Loading>
   if (!membership) return <p className="payments__hint">{words.noPlan}</p>
-  if (periods.length === 0) {
-    return (
-      <PaymentAheadForm
-        membership={membership}
-        onCancel={onCancel}
-        onDone={onDone}
-        nothing={<p className="payments__hint">{words.upToDate}</p>}
-      />
-    )
-  }
-  return <PaymentForm membership={membership} periods={periods} onCancel={onCancel} onDone={onDone} />
+  // Keyed by the plan: another plan's form starts on its own periods.
+  const form = ledger.isPending ? (
+    <Loading className="payments__hint">{words.loading}</Loading>
+  ) : periods.length === 0 ? (
+    <PaymentAheadForm
+      key={membership.id}
+      membership={membership}
+      onCancel={onCancel}
+      onDone={onDone}
+      nothing={<p className="payments__hint">{words.upToDate}</p>}
+    />
+  ) : (
+    <PaymentForm key={membership.id} membership={membership} periods={periods} onCancel={onCancel} onDone={onDone} />
+  )
+  return plans ? (
+    <>
+      {plans}
+      {form}
+    </>
+  ) : (
+    form
+  )
 }
 
 /** The pages' entries, each once: offset pages of a list that grows at its head can

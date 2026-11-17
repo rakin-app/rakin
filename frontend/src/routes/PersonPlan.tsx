@@ -111,13 +111,62 @@ export function AssignPlan({
   )
 }
 
-/** A plan and its first day, and the welcome: what "Asignar plan" opens. */
+/**
+ * "Agregar otro plan" (#354), under the plan cards, for someone on a plan already: a
+ * second one beside it, a course of credits beside a monthly plan say, with the form
+ * "Asignar plan" opens. Each plan then has its own card, bills and lapses on its own,
+ * and the roster marks the one a class's program admits. For the owner and admins.
+ */
+export function AddPlan({ person, access, live }: { person: Person; access: Access | null | undefined; live: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+  if (!live || !managesGym(access) || person.left_on) return null
+  return (
+    <>
+      {!open && (
+        <div className="member__actions">
+          <Button
+            aria-expanded={false}
+            onClick={() => {
+              setDone(null)
+              setOpen(true)
+            }}
+          >
+            {copy.addPlan}
+          </Button>
+        </div>
+      )}
+      {done && (
+        <Banner tone="done">
+          {done}
+        </Banner>
+      )}
+      {open && (
+        <AssignForm
+          person={person}
+          // They were welcomed with their first plan.
+          welcomed={false}
+          onCancel={() => setOpen(false)}
+          onDone={(message) => {
+            setOpen(false)
+            setDone(message)
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+/** A plan and its first day, and the welcome: what "Asignar plan" opens. `welcomed`:
+ * whether the welcome starts ticked, when there is an address to send it to. */
 export function AssignForm({
   person,
+  welcomed = true,
   onCancel,
   onDone,
 }: {
   person: Person
+  welcomed?: boolean
   onCancel: () => void
   onDone: (message: string) => void
 }) {
@@ -128,7 +177,7 @@ export function AssignForm({
   const ids = { welcome: useId(), hint: useId(), discount: useId() }
   const [plan, setPlan] = useState<PlanChoice>({ plan_id: '', started_on: '' })
   const [checked, setChecked] = useState(false)
-  const [welcome, setWelcome] = useState(true)
+  const [welcome, setWelcome] = useState(welcomed)
   // Off every period from the first (#25), when ticked.
   const [discounted, setDiscounted] = useState(false)
   const [discount, setDiscountDraft] = useState<DiscountDraft>(NO_DISCOUNT)

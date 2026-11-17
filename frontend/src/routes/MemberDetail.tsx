@@ -34,7 +34,7 @@ import {
   recordRefund,
   recordRestore,
   recordVoid,
-  shownMembership,
+  shownMemberships,
   restoreRefused,
   voidMembership,
   voidRefused,
@@ -83,7 +83,7 @@ import { PersonHistory } from './PersonHistory'
 import { PersonData } from './PersonData'
 import { PersonConsent } from './PersonConsent'
 import { PersonRequirements } from './PersonRequirements'
-import { AssignForm, AssignPlan, assignsPlan, ChangePlanForm, changesPlan, DiscountForm, isLive, takesDiscount } from './PersonPlan'
+import { AddPlan, AssignForm, AssignPlan, assignsPlan, ChangePlanForm, changesPlan, DiscountForm, isLive, takesDiscount } from './PersonPlan'
 import { PersonWelcome } from './PersonWelcome'
 import './MemberDetail.css'
 import { useSubmit } from '../api/submit'
@@ -101,7 +101,8 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * owe, their ledger with its freezes, "Registrar pago", "Congelar" (#26), "Devolver"
  * (#38), "Cambiar plan" and "Corregir plan"; each Libro line with something to fix opens
  * its fixes under it (#279); with no plan running, "Asignar plan", and
- * what an earlier plan still owes as "Deuda anterior" (#249). A freeze the member asked
+ * what an earlier plan still owes as "Deuda anterior" (#249). On a plan, "Agregar otro
+ * plan", and a card and a Libro for each plan running (#354). A freeze the member asked
  * for from their page waits on the plan card, with "Aprobar" and "Rechazar" (#270).
  * A coach sees the member, their plan and rank, whether it is frozen, and promotes
  * them; never money.
@@ -159,7 +160,9 @@ export function MemberDetail() {
     )
   }
 
-  const membership = shownMembership(memberships.data)
+  // A card for each plan running, a course beside a monthly plan say (#354).
+  const shown = shownMemberships(memberships.data)
+  const membership = shown[0]
   // A member since the day they first trained here (#293) or their first plan here,
   // whichever is earlier: the current plan comes first in the list, not the earliest.
   const firstStart = [person.data.member_since, ...memberships.data.map((m) => m.started_on)]
@@ -191,13 +194,21 @@ export function MemberDetail() {
       <Grid className="member__columns">
         <div className="member__column">
           {membership ? (
-            <Standing
-              personId={personId}
-              membership={membership}
-              money={money}
-              earlier={money ? <EarlierDebt memberships={memberships.data} shown={membership} /> : null}
-              assign={{ person: person.data, access: access.data, done: assigned, setDone: setAssigned }}
-            />
+            <>
+              {shown.map((m, i) => (
+                <Standing
+                  key={m.id}
+                  personId={personId}
+                  membership={m}
+                  money={money}
+                  named={shown.length > 1}
+                  earlier={money && i === 0 ? <EarlierDebt memberships={memberships.data} shown={shown} /> : null}
+                  assign={{ person: person.data, access: access.data, done: assigned, setDone: setAssigned }}
+                />
+              ))}
+              <AddPlan person={person.data} access={access.data} live={isLive(membership)} />
+              {money && <Corrections personId={personId} />}
+            </>
           ) : (
             <>
               <p className="member__note">{copy.noPlan}</p>
@@ -311,17 +322,20 @@ type Assigning = {
 
 /** The plan and how it stands; with `money`, what is owed, the actions and the ledger.
  * `assign` is "Asignar plan", which offers itself once this plan has ended, and
- * `earlier` what other plans still owe, under the card (#249). */
+ * `earlier` what other plans still owe, under the card (#249). `named`: the card and its
+ * Libro say the plan's name, beside another plan's (#354). */
 function Standing({
   personId,
   membership,
   money,
+  named,
   earlier,
   assign,
 }: {
   personId: string
   membership: Membership
   money: boolean
+  named: boolean
   earlier: ReactNode
   assign: Assigning
 }) {
@@ -336,7 +350,10 @@ function Standing({
 
   return (
     <>
-      <Card className="member__card" aria-label={copy.paymentLabel}>
+      <Card
+        className="member__card"
+        aria-label={named ? copy.planLabel(copy.paymentLabel, membership.plan_name) : copy.paymentLabel}
+      >
         <div className="member__card-head">
           <span className="member__eyebrow">{planLine(membership)}</span>
           <Badge membership={membership} ledger={data} />
@@ -387,8 +404,7 @@ function Standing({
         )}
       </Card>
       {earlier}
-      {data && <Ledger membership={membership} ledger={data} />}
-      {money && <Corrections personId={personId} />}
+      {data && <Ledger membership={membership} ledger={data} named={named} />}
     </>
   )
 }
@@ -423,7 +439,7 @@ function PlanFreezeRequest({ membershipId }: { membershipId: string }) {
  * (#271), opens its fixes as a Libro line does (#279); "Otros planes" when only a void
  * is left to restore.
  */
-function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[]; shown: Membership }) {
+function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[]; shown: readonly Membership[] }) {
   const [fixing, setFixing] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const others = useOtherLedgers(memberships, shown, true)
@@ -502,9 +518,9 @@ function EarlierDebt({ memberships, shown }: { memberships: readonly Membership[
 
 type Held = { membership: Membership; ledger: MembershipLedger }
 
-/** The ledgers of the member's memberships other than `shown`, those loaded so far. */
-function useOtherLedgers(memberships: readonly Membership[], shown: Membership, enabled: boolean): Held[] {
-  const others = memberships.filter((m) => m.id !== shown.id)
+/** The ledgers of the member's memberships other than those `shown`, loaded so far. */
+function useOtherLedgers(memberships: readonly Membership[], shown: readonly Membership[], enabled: boolean): Held[] {
+  const others = memberships.filter((m) => !shown.some((s) => s.id === m.id))
   const ledgers = useQueries({ queries: others.map((m) => ({ ...membershipLedgerQuery(m.id), enabled })) })
   return others.flatMap((m, i) => {
     const ledger = ledgers[i]?.data
@@ -2260,7 +2276,7 @@ const LEDGER_SHOWN = 4
 
 /** The Libro: each line with something to fix a button that opens its fixes under it
  * (#279), one line at a time. */
-function Ledger({ membership, ledger }: { membership: Membership; ledger: MembershipLedger }) {
+function Ledger({ membership, ledger, named = false }: { membership: Membership; ledger: MembershipLedger; named?: boolean }) {
   const [all, setAll] = useState(false)
   const [fixing, setFixing] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -2269,6 +2285,7 @@ function Ledger({ membership, ledger }: { membership: Membership; ledger: Member
   const refundable = new Map(ledger.refundable_payments.map((p) => [p.id, p]))
   const lines = timeline(ledger)
   const shown = all ? lines : lines.slice(0, LEDGER_SHOWN)
+  const title = named ? copy.planLabel(copy.ledger.title, membership.plan_name) : copy.ledger.title
   const finish = (message: string) => {
     setFixing(null)
     setDone(message)
@@ -2295,8 +2312,8 @@ function Ledger({ membership, ledger }: { membership: Membership; ledger: Member
   }
 
   return (
-    <section className="member__section" aria-label={copy.ledger.title}>
-      <SectionHeader title={copy.ledger.title} />
+    <section className="member__section" aria-label={title}>
+      <SectionHeader title={title} />
       {done && (
         <Banner tone="done">
           {done}
