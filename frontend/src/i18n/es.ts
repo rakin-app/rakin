@@ -3254,7 +3254,9 @@ export const es = {
         otro: 'Otro',
       },
       due: (day: string) => `vence ${day}`,
-      // A cobro in instalments (#356): "3 cuotas", "cuota 2 de 3".
+      // A cobro in instalments (#356): "3 cuotas", "cuota 2 de 3". A line's own name,
+      // "Título · cuota 2 de 3", is the backend's (`line_title`, `line_title_sql`); the
+      // wizard's sample email spells it the same way from `instalmentOf`.
       instalments: (n: number) => `${n} cuotas`,
       instalmentOf: (i: number, n: number) => `Cuota ${i} de ${n}`,
       progress: (paid: number, lines: number, collected: string, due: string) =>
@@ -3435,6 +3437,8 @@ export const es = {
         review: 'Ver comprobante',
         refund: 'Devolver',
         amountLabel: 'Monto (CLP)',
+        // "Editar monto" on one instalment (#356).
+        amountOneInstalment: 'Cambia solo esta cuota: las demás quedan como están.',
         methodLabel: 'Cómo pagó',
         refundMethodLabel: 'Cómo se devolvió',
         method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },

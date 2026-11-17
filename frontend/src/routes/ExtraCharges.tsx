@@ -10,7 +10,6 @@ import {
   progress,
   saveGroup,
   type Counted,
-
 } from '../api/extraCharges'
 import { useGrades } from '../api/activities'
 import { gradingSchemeQuery, isLevels } from '../api/grading'
@@ -162,8 +161,7 @@ function ChargeList() {
   )
 }
 
-/** "7 de 9 pagaron · $140.000 de $180.000", with a bar. */
-/** "7 de 9 pagaron · $140.000 de $180.000": a cobro's, or one of its instalments' (#356). */
+/** "7 de 9 pagaron · $140.000 de $180.000": a cobro's, or one of its instalments' (#356), with a bar. */
 export function Progress({ charge }: { charge: Counted }) {
   const label = copy.progress(charge.paid_lines, charge.lines, clp(charge.collected_clp), clp(charge.due_clp))
   return (

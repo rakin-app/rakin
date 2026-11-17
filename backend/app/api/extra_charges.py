@@ -341,26 +341,30 @@ async def notify(
 
 
 def to_remind(rows: list[Any], today: date) -> list[Any]:
-    """Of the lines `rows` (`LINES`), those a notice is for: each person's instalments
-    still owed that are due by `today`, or, with none due yet, their next one; and of
-    those, the ones with no proof waiting. A cobro paid at once has one line each, so
-    whoever still owes it."""
+    """Of the lines `rows` (`LINES`), those a reminder is for: of each person's lines
+    still owed with no proof waiting, the instalments due by `today`, or, with none due
+    yet, their next one. A cobro paid at once has one line each, so whoever still owes
+    it."""
     owing: dict[uuid.UUID, list[Any]] = defaultdict(list)
     for row in rows:
-        if row_status(row) in (LineStatus.OPEN, LineStatus.IN_REVIEW):
+        if row_status(row) is LineStatus.OPEN:
             owing[row.person_id].append(row)
     chosen = []
     for lines in owing.values():
         lines.sort(key=lambda row: (row.due_date, row.instalment))
-        due = [row for row in lines if row.due_date <= today] or lines[:1]
-        chosen += [row for row in due if row_status(row) is LineStatus.OPEN]
+        chosen += [row for row in lines if row.due_date <= today] or lines[:1]
     return chosen
 
 
+async def charge_rows(session: AsyncSession, charge_id: uuid.UUID) -> list[Any]:
+    """The cobro's lines (`LINES`), in the order the cobro lists them."""
+    return list(await session.execute(text(LINES + LINES_ORDER), {"id": charge_id, "line": None}))
+
+
 async def open_rows(session: AsyncSession, charge_id: uuid.UUID, today: date) -> list[Any]:
-    """The cobro's lines a notice is for (`to_remind`), in the order the cobro lists
+    """The cobro's lines a reminder is for (`to_remind`), in the order the cobro lists
     them."""
-    rows = list(await session.execute(text(LINES + LINES_ORDER), {"id": charge_id, "line": None}))
+    rows = await charge_rows(session, charge_id)
     chosen = {row.id for row in to_remind(rows, today)}
     return [row for row in rows if row.id in chosen]
 
@@ -483,9 +487,13 @@ async def create(
     )
     if body.notify:
         facts = await charge_facts(session, charge_id)
-        gym = (await session.execute(GYM)).one()
-        # Someone let off it, at nothing, is not told to pay nothing.
-        owing = await open_rows(session, charge_id, gym.today)
+        # The first instalment alone, whenever it falls due; someone let off it, at
+        # nothing, is not told to pay nothing.
+        owing = [
+            row
+            for row in await charge_rows(session, charge_id)
+            if row.instalment == 1 and row_status(row) is LineStatus.OPEN
+        ]
         await notify(session, facts, owing, notices, background, reminder=False)
     return await read_charge(session, charge_id)
 

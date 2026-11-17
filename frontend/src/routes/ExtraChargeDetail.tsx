@@ -16,6 +16,7 @@ import {
 } from '../api/extraCharges'
 import { myAccessQuery, readsLedger } from '../api/me'
 import type { Method } from '../api/member'
+import { useGymToday } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
 import { Banner, Card, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { MoreMenu, moreItemClass } from '../components/MoreMenu'
@@ -23,7 +24,7 @@ import { Field, Input, Select } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill, type Status } from '../components/StatusPill'
-import { isoDay, shortDay } from '../format'
+import { shortDay } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { Progress, SubHeader } from './ExtraCharges'
@@ -143,8 +144,9 @@ function Detail({ charge }: { charge: ExtraCharge }) {
 
 type Panel = 'pay' | 'amount' | 'cancel' | 'refund' | null
 
-function lineStatus(line: Line): { status: Status; label: string } {
-  if (line.status === 'open' && line.due_date < isoDay(new Date().toISOString())) {
+/** The line's status; an open line past its due date, in the gym's day, is "Vencido". */
+function lineStatus(line: Line, today: string): { status: Status; label: string } {
+  if (line.status === 'open' && line.due_date < today) {
     return { status: 'overdue', label: copy.status.overdue }
   }
   const status: Record<Line['status'], Status> = {
@@ -164,7 +166,7 @@ function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; on
     mutationFn: () => notifyLine(charge.id, line.id),
     onSuccess: (r) => onDone(r.sent ? words.notified : words.noEmail),
   })
-  const shown = lineStatus(line)
+  const shown = lineStatus(line, useGymToday())
   const instalments = charge.instalments > 1
   const live = line.status !== 'cancelled'
   const payable = line.status === 'open' || line.status === 'in_review'
@@ -328,6 +330,7 @@ function PayForm({ charge, line, onDone, onClose }: FormProps) {
 }
 
 function AmountForm({ charge, line, onDone, onClose }: FormProps) {
+  const instalments = charge.instalments > 1
   const [amount, setAmount] = useState(String(line.amount_due_clp))
   const change = useSubmit({
     offline: 'refuse',
@@ -342,7 +345,7 @@ function AmountForm({ charge, line, onDone, onClose }: FormProps) {
         if (amount !== '') change.mutate()
       }}
     >
-      <Field label={words.amountLabel}>
+      <Field label={words.amountLabel} hint={instalments ? words.amountOneInstalment : undefined}>
         {(props) => <Input {...props} inputMode="numeric" value={amount} onChange={(e) => setAmount(digits(e.target.value))} />}
       </Field>
       <Actions busy={change.isPending} error={change.error} onClose={onClose} />

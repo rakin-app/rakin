@@ -709,4 +709,37 @@ describe('Un cobro extra', () => {
     expect(within(second).getByText(copy.status.open)).toBeInTheDocument()
     expect(within(people).queryByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 1) })).toBeInTheDocument()
   })
+
+  it("reads an instalment due today as owed, not late, in the gym's evening (#356)", async () => {
+    // 22:00 on 20 November in Santiago, already the 21st in UTC.
+    vi.setSystemTime(new Date('2026-11-21T01:00:00Z'))
+    const user = userEvent.setup()
+    const TODAY: ExtraCharge = {
+      ...CHARGE,
+      instalments: 2,
+      people: [
+        line('ana-1', 'Ana Rojas', { instalment: 1, due_date: '2026-11-19' }),
+        line('ana-2', 'Ana Rojas', { instalment: 2, due_date: '2026-11-20' }),
+      ],
+    }
+    stubApi('owner', (path) => {
+      if (path === `/api/extra-charges/${CHARGE.id}`) return { body: TODAY }
+      if (path === '/api/sessions') return { body: { date: '2026-11-20', timezone: 'America/Santiago', sessions: [] } }
+      return undefined
+    })
+    renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
+
+    const row = (i: number) =>
+      screen.getByRole('group', { name: copy.detail.actionsOf('Ana Rojas', i) }).closest('li')!
+    await screen.findByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 2) })
+    await vi.waitFor(() => expect(within(row(2)).getByText(copy.status.open)).toBeInTheDocument())
+    expect(within(row(1)).getByText(copy.status.overdue)).toBeInTheDocument()
+
+    // Changing one instalment's amount says the others stay as they are.
+    await user.click(within(row(2)).getByText(copy.detail.more))
+    await user.click(within(row(2)).getByRole('button', { name: copy.detail.editAmount }))
+    expect(within(row(2)).getByLabelText(copy.detail.amountLabel)).toHaveAccessibleDescription(
+      copy.detail.amountOneInstalment,
+    )
+  })
 })

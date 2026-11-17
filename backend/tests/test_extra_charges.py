@@ -1227,3 +1227,35 @@ def test_instalments_too_small_or_too_many_are_refused(client: TestClient, sur: 
             "/api/extra-charges", json=in_instalments([ana], **extra), headers=as_gym(sur)
         )
         assert response.status_code == 422, response.text
+
+
+def test_a_cobro_whose_instalments_are_already_due_is_announced_by_its_first(
+    client: TestClient, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    first = seeded_today() - timedelta(days=70)
+    mailer.sent.clear()
+
+    create(client, sur, in_instalments([ana], due_date=str(first)))
+
+    # Two instalments are due already; the notice is still one, about the first.
+    [email] = mailer.sent
+    assert "cuota 1 de 3" in email.text
+    assert f"hasta el {first:%d-%m-%Y}" in email.text
+
+
+def test_an_instalment_in_review_does_not_hide_the_next_one_owed(
+    client: TestClient, sur: uuid.UUID, mailer: RecordingMailer
+) -> None:
+    ana = add_person(client, sur, "Ana")
+    charge = create(client, sur, in_instalments([ana], notify=False))
+    first, second, _ = lines_of(charge, ana)
+    # The first, not yet due, waits for review: the reminder is about the next one owed.
+    claim_line(client, sur, ana, first["id"], 33_335)
+    mailer.sent.clear()
+
+    ok(client.post(f"/api/extra-charges/{charge['id']}/remind", headers=as_gym(sur)))
+
+    [email] = mailer.sent
+    assert "cuota 2 de 3" in email.text
+    assert f"hasta el {date.fromisoformat(second['due_date']):%d-%m-%Y}" in email.text
