@@ -4,7 +4,9 @@
 `MAX_UPLOAD_BYTES`) and answers its header, its rows and a suggested mapping; nothing
 is stored. `POST /api/import/members` takes those rows back with the admin's mapping
 and writes, for each row, the person, their guardian and the link between them, and a
-membership with its plan and current due date.
+membership with its plan and current due date. With `charge_enrolment`, a membership
+it starts on a plan with an enrolment fee is charged its matrícula, due the day it
+started (#355); by default it is not, since a sheet's members have mostly paid theirs.
 
 Each row is written in a savepoint of its own: a row the database refuses writes
 nothing and is reported with its errors, and the other rows still import. A dry run
@@ -77,6 +79,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.activities import gym_uses_grades
+from app.api.enrolment import charge_enrolment
 from app.api.grades import readable_scheme
 from app.api.grading import stored_scheme
 from app.api.guardians import family, link
@@ -445,12 +448,17 @@ class Writer:
         timezone: str,
         today: date,
         import_id: uuid.UUID | None = None,
+        *,
+        enrolment: bool = False,
     ) -> None:
         self.session = session
         self.timezone = timezone
         self.today = today
         # The import's `history_imported` row, which each `history_set` row names.
         self.import_id = import_id
+        # Charge each membership a row starts its plan's matrícula, as the import was
+        # asked to (#355): members a sheet brings in have mostly paid theirs already.
+        self.enrolment = enrolment
         # The current row's fields that something already here keeps it from applying.
         self.ignored: list[Field] = []
         # The guardian the current row named, as `write` found or added them: whom a
@@ -779,7 +787,7 @@ class Writer:
         if converts:
             trial = await convertible_trial(self.session, person_id, lock=True)
         try:
-            await insert_membership(
+            membership_id = await insert_membership(
                 self.session,
                 person_id,
                 member.plan.id,
@@ -792,6 +800,8 @@ class Writer:
             raise RowRefused(Field.PLAN, "has_left") from None
         if trial is not None:
             await convert_trial(self.session, trial)
+        if self.enrolment:
+            await charge_enrolment(self.session, membership_id, started_on)
         return "created"
 
 
@@ -994,7 +1004,7 @@ async def import_members(
     )
 
     import_id = None if body.dry_run else uuid.uuid4()
-    writer = Writer(session, timezone, today, import_id)
+    writer = Writer(session, timezone, today, import_id, enrolment=body.charge_enrolment)
     results: dict[int, RowResult] = {}
     everything = await session.begin_nested()
     for index, member in sorted(enumerate(members), key=_guardians_first(members)):

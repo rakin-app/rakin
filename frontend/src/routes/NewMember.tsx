@@ -522,7 +522,7 @@ export function NewMember() {
 
         <Card className="member__form" aria-label={copy.planTitle}>
           <SectionTitle>{copy.planTitle}</SectionTitle>
-          <PlanStart choice={plan} today={today} labels={copy} onChange={setPlan} />
+          <PlanStart choice={plan} today={today} labels={copy} enrolment onChange={setPlan} />
           <CheckRow htmlFor={ids.welcome}>
             <input
               id={ids.welcome}

@@ -2671,7 +2671,8 @@ describe('Acceso (#246)', () => {
 describe('the plan from the ficha (#249)', () => {
   const PLANS = [
     { id: 'plan-adults', name: 'Mensual adultos', kind: 'monthly', price_clp: 45000, anchor: 'signup', active: true },
-    { id: 'plan-six', name: 'Semestral', kind: 'prepaid', price_clp: 240000, period_months: 6, active: true },
+    // With a matrícula (#355).
+    { id: 'plan-six', name: 'Semestral', kind: 'prepaid', price_clp: 240000, period_months: 6, enrolment_fee_clp: 30000, active: true },
     { id: 'plan-pack', name: 'Pack 12', kind: 'credits', price_clp: 45000, credits: 12, active: true },
     { id: 'plan-old', name: 'Mensual 2025', kind: 'monthly', price_clp: 40000, anchor: 'signup', active: false },
   ]
@@ -3192,6 +3193,30 @@ describe('the plan from the ficha (#249)', () => {
     renderAt(PATH)
     await within(await money()).findByRole('button', { name: copy.record })
     expect(screen.queryByRole('button', { name: copy.discount })).not.toBeInTheDocument()
+  })
+
+  it('says a plan has a matrícula, and "Ya pagó la matrícula" starts it without one (#355)', async () => {
+    const calls = planless()
+    renderAt(PATH)
+    const enrolment = copy.enrolment
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    const form = screen.getByRole('form', { name: assign.title })
+    const select = await within(form).findByLabelText(assign.plan)
+    await userEvent.selectOptions(select, 'plan-adults')
+    // No matrícula on this one.
+    expect(within(form).queryByLabelText(enrolment.paid)).not.toBeInTheDocument()
+    await userEvent.selectOptions(select, 'plan-six')
+    const paid = within(form).getByLabelText(enrolment.paid)
+    expect(paid).not.toBeChecked()
+    expect(paid).toHaveAccessibleDescription(enrolment.charged('$30.000'))
+    await userEvent.click(paid)
+    expect(paid).toHaveAccessibleDescription(enrolment.notCharged('$30.000'))
+    await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
+
+    expect(await screen.findByText(assign.done('Semestral'))).toBeInTheDocument()
+    const [posted] = calls.filter((c) => c.path === '/api/memberships' && c.method === 'POST')
+    expect(posted?.body).toEqual({ person_id: 'felipe', plan_id: 'plan-six', charge_enrolment: false, send_welcome: true })
   })
 
   it('starts a plan with a discount from "Asignar plan"', async () => {

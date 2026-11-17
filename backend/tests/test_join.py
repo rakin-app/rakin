@@ -6,8 +6,6 @@ gym.
 """
 
 import dataclasses
-import itertools
-import random
 import uuid
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
@@ -23,13 +21,14 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.api.join import JoinLimits
 from app.domain.dates import start_of_local_day
-from app.domain.rut import check_digit, format_rut
+from app.domain.rut import format_rut
 from app.jobs import join_requests
 from app.magiclink.ratelimit import MemoryRateLimiter
 from app.main import create_app
 from app.schemas.privacy import TEMPLATE_UPDATED_ON
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_rut
 from tests.pg import (
     DEFAULT_TIMEZONE,
     Database,
@@ -40,6 +39,7 @@ from tests.pg import (
     seeded_today,
     throwaway_database,
 )
+from tests.test_enrolment import matriculas
 from tests.test_guardians import add_person
 from tests.test_gym_settings import PRIVACY
 from tests.test_memberships import PLANS, add_staff
@@ -102,12 +102,8 @@ def gym(db: Database, client: TestClient) -> uuid.UUID:
     return with_privacy(client, seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}"))
 
 
-_ruts = itertools.count(random.randrange(10_000_000, 20_000_000, 10_000))
-
-
 def new_rut() -> str:
-    body = next(_ruts)
-    return f"{body}-{check_digit(body)}"
+    return random_rut()
 
 
 ADULT_DOB = "1990-05-20"
@@ -1176,3 +1172,19 @@ def test_a_request_queued_before_0036_with_the_guardians_email_is_approved(
     guardian = guardian_of(db, gym, answer["person_id"])
     assert guardian is not None
     assert record(db, gym, str(guardian))["email"] == "marta.vieja@example.cl"
+
+
+def test_approving_onto_a_plan_with_a_fee_charges_its_matricula(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    created = client.post(
+        "/api/plans", json={**PLANS["signup"], "enrolment_fee_clp": 30_000}, headers=as_gym(gym)
+    )
+    assert created.status_code == 201, created.text
+    request = one_request(client, gym, token_of(client, gym), adult())
+
+    answer = approved(client, gym, request, plan_id=created.json()["id"])
+
+    [line] = matriculas(db, gym, answer["person_id"])
+    assert (line["amount_due_clp"], line["due_date"]) == (30_000, seeded_today())
+    assert str(line["membership_id"]) == answer["membership_id"]

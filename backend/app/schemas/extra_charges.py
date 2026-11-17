@@ -16,7 +16,14 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from app.domain.extra_charges import (
     MAX_INSTALMENTS,
@@ -31,6 +38,16 @@ from app.schemas.plans import MAX_PRICE_CLP
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 LongText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 GroupName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+def _drafted(category: Category) -> Category:
+    if category is Category.MATRICULA:
+        raise ValueError("a matrícula is charged as a plan starts, not drafted")
+    return category
+
+
+# The kinds an admin drafts: a matrícula comes with a plan's start (#355).
+DraftedCategory = Annotated[Category, AfterValidator(_drafted)]
 
 # A cobro charges at most this many people at once: a whole gym, with room.
 MAX_PEOPLE = 1000
@@ -128,7 +145,7 @@ class ExtraChargeCreate(AmountDraft):
     description: LongText | None = None
     # What the email says, above the amount.
     message: LongText | None = None
-    category: Category
+    category: DraftedCategory
     # The first instalment's, in instalments.
     due_date: date
     # Email each person their amount (their guardian, for a dependent).

@@ -16,12 +16,12 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from alembic import command
-from app.domain.rut import check_digit, format_rut
+from app.domain.rut import format_rut
 from app.main import create_app
 from app.schemas.people import PersonCreate, PersonUpdate
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_email
+from tests.ids import random_email, random_phone, random_rut
 from tests.pg import Database, in_gym, make_staff, migrate, run, seed_gym, throwaway_database
 
 # --- input rules, no database -----------------------------------------------------
@@ -120,20 +120,13 @@ def client(db: Database) -> Iterator[TestClient]:
         yield c
 
 
-_phones = iter(range(10_000_000, 100_000_000, 7_919))
-
-
 def new_phone() -> str:
-    return f"+569{next(_phones):08d}"
-
-
-_ruts = iter(range(10_000_000, 30_000_000, 7_919))
+    return random_phone()
 
 
 def new_rut() -> str:
     """A RUT no one in these tests has yet, normalised: a gym holds each RUT once."""
-    body = next(_ruts)
-    return f"{body}-{check_digit(body)}"
+    return random_rut()
 
 
 def create(client: TestClient, gym: uuid.UUID, **fields: Any) -> Any:

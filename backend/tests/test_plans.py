@@ -177,6 +177,7 @@ def test_a_trial_is_stored_in_the_credits_columns_and_free() -> None:
         "kind": "trial",
         "program_id": None,
         "price_clp": 0,
+        "enrolment_fee_clp": None,
         "anchor": None,
         "period_months": None,
         "period_start": None,

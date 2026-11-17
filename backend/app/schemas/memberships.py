@@ -41,6 +41,9 @@ class MembershipStart(BaseModel):
     plan_id: uuid.UUID
     # Today in the gym's timezone when omitted; a past day records an existing member.
     started_on: date | None = None
+    # The plan's matrícula, if it has one (#355); `false` is "ya pagó matrícula".
+    # Reactivar never charges it, whatever this says.
+    charge_enrolment: bool = True
 
     @field_validator("started_on")
     @classmethod

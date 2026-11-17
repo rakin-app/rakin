@@ -591,7 +591,7 @@ async def approve_join_request(
             conflict = JoinRefusal(code="has_membership", field="plan_id")
             raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump())
         membership = await start_membership(
-            session, tenant, person_id, MembershipStart(plan_id=body.plan_id)
+            session, tenant, person_id, MembershipStart(plan_id=body.plan_id), enrolment=True
         )
         notice = await welcome_for(session, tenant, membership)
         membership_id = membership.id

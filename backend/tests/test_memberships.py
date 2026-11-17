@@ -6,7 +6,6 @@ Dates are the gym's: a membership starts on a local calendar day, and its stored
 
 import dataclasses
 import json
-import random
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
@@ -24,7 +23,7 @@ from app.main import create_app
 from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_phone, random_rut
 from tests.pg import (
     Database,
     in_gym,
@@ -97,7 +96,7 @@ def plan(client: TestClient, gym: uuid.UUID, key: str) -> str:
 
 
 def person(client: TestClient, gym: uuid.UUID) -> str:
-    phone = f"+569{random.randrange(10**7, 10**8)}"
+    phone = random_phone()
     response = client.post(
         "/api/people",
         json={"rut": random_rut(), "phone": phone, "name": "Alumna"},

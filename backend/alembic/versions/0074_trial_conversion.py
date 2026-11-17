@@ -12,8 +12,8 @@ column alone. A trial it links that is still running ends, as `domain.end_conver
 ends one when a plan starts now: cancelled with its reason, as of the day the plan was
 created, so no trial is converted and running at once.
 
-Revision ID: 0073
-Revises: 0072
+Revision ID: 0074
+Revises: 0073
 Create Date: 2026-11-17
 
 """
@@ -22,8 +22,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0073"
-down_revision: str | Sequence[str] | None = "0072"
+revision: str = "0074"
+down_revision: str | Sequence[str] | None = "0073"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -16,11 +16,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from alembic import command
-from app.domain.rut import check_digit, format_rut
+from app.domain.rut import format_rut
 from app.main import create_app
 from app.permissions import preset_title_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import random_email, random_rut
 from tests.pg import Database, in_gym, make_staff, migrate, run, seed_gym, throwaway_database
 
 pytestmark = pytest.mark.postgres
@@ -51,17 +52,12 @@ def client(db: Database) -> Iterator[TestClient]:
         yield c
 
 
-_ruts = iter(range(30_000_000, 50_000_000, 7_919))
-_emails = iter(range(1_000_000))
-
-
 def new_rut() -> str:
-    body = next(_ruts)
-    return f"{body}-{check_digit(body)}"
+    return random_rut()
 
 
 def new_email() -> str:
-    return f"someone{next(_emails)}@example.com"
+    return random_email()
 
 
 def create(client: TestClient, gym: uuid.UUID, **fields: Any) -> Any:

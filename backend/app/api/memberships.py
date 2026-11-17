@@ -54,6 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.consent import consent_pending
 from app.api.corrections import record_audit
+from app.api.enrolment import cancel_enrolment, charge_enrolment
 from app.api.entries import CURRENT_PERSON, standing_void
 from app.api.ledger import period_money, void_period
 from app.contacts import Contact, contact_for
@@ -394,12 +395,15 @@ async def start_membership(
     person_id: uuid.UUID,
     body: MembershipStart,
     discount: Discount | None = None,
+    *,
+    enrolment: bool,
 ) -> Membership:
     """Start `person_id`, someone in this gym, on `body`'s plan from its day, today in
     the gym's timezone when it has none, or after what a lapsed plan of theirs billed
-    (`_starts_on`), with `discount` off every period; a 422 for a plan this gym cannot
-    start. A paid plan converts the person's trial (`convertible_trial`, #27), and ends
-    it if it is still running."""
+    (`_starts_on`), with `discount` off every period, and with `enrolment` the plan's
+    matrícula, if it has one, due that day (`app.api.enrolment`); a 422 for a plan this
+    gym cannot start. A paid plan converts the person's trial (`convertible_trial`, #27),
+    and ends it if it is still running."""
     terms = await _plan_terms(session, body.plan_id)
     timezone = await session.scalar(
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
@@ -430,6 +434,8 @@ async def start_membership(
     if trial is not None:
         await convert_trial(session, trial)
     await bill_now(session, membership_id, gym_today(timezone))
+    if enrolment:
+        await charge_enrolment(session, membership_id, started_on)
     if discount is not None:
         await _record_discount(session, membership_id, NO_DISCOUNT, discount, started_on)
     return await _get(session, membership_id)
@@ -506,7 +512,9 @@ async def create_membership(
     )
     if not known:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "person not found")
-    created = await start_membership(session, tenant, body.person_id, body, body.discount)
+    created = await start_membership(
+        session, tenant, body.person_id, body, body.discount, enrolment=body.charge_enrolment
+    )
     notice = await welcome_for(session, tenant, created) if body.send_welcome else None
     if notice is not None:
         # After the response, which is after the membership has committed.
@@ -1137,7 +1145,8 @@ async def void_membership(
     charge on it is voided with `reason`, and it bills no more. Unlike cancelling, which
     ends a real plan from a day and keeps what was owed. Refused, writing nothing, while
     any of its periods has money on it (`period_money`); a cancelled one may still be
-    voided, keeping how it ended."""
+    voided, keeping how it ended. Its matrícula is cancelled with it, while nothing is
+    paid on it (`app.api.enrolment`)."""
     found = (await session.execute(LOCK_FOR_VOID, {"id": membership_id})).one_or_none()
     if found is None:
         raise NOT_FOUND
@@ -1154,6 +1163,7 @@ async def void_membership(
             raise refused
     for period_id in periods:
         await void_period(session, membership_id, period_id, body.reason, plan_void=True)
+    await cancel_enrolment(session, membership_id, body.reason)
     params = {"id": membership_id, "reason": body.reason}
     if found.status == MembershipStatus.CANCELLED.value:
         await session.execute(VOID_CANCELLED, params)
