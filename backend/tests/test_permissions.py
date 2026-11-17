@@ -2,7 +2,7 @@
 gym's roles and the dates of their appointments, and the titular who holds it all.
 
 docs/design/expenses-and-officers.md, sections 1 to 3 and 7. `tests/test_permissions
-_equivalence.py` holds that nobody's access changed; `tests/test_migration_0062.py`
+_equivalence.py` holds that nobody's access changed; `tests/test_migration_0063.py`
 that today's roles moved onto the Academia preset.
 """
 

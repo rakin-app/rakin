@@ -7,7 +7,9 @@ export type StatusTone = 'success' | 'accent' | 'warning' | 'danger' | 'neutral'
 /**
  * Every status a pill shows, across the admin and the student page. A membership's
  * (`active`…`cancelled`), a payment's (`pending`, `validated`, `rejected`) and a period's
- * (`paid`, `open`, `due`, `overdue`, `in_review`); `none` is a member with no plan.
+ * (`paid`, `open`, `due`, `overdue`, `in_review`); `none` is a member with no plan. A
+ * requirement's (#349) is `done`, `expiring`, `overdue` once past its date, or `required`,
+ * never done.
  */
 export type Status =
   | 'active'
@@ -25,10 +27,14 @@ export type Status =
   | 'overdue'
   | 'freeze'
   | 'none'
+  | 'done'
+  | 'expiring'
+  | 'required'
 
 /**
  * The one mapping from status to colour: green is settled, blue waits on the gym, orange is
- * overdue and nothing else, red is a payment the gym refused.
+ * overdue (a payment, or a requirement past its date) and nothing else, red is a payment the
+ * gym refused.
  */
 export const STATUS_TONE: Record<Status, StatusTone> = {
   active: 'success',
@@ -46,6 +52,9 @@ export const STATUS_TONE: Record<Status, StatusTone> = {
   due: 'neutral',
   freeze: 'neutral',
   none: 'neutral',
+  done: 'success',
+  expiring: 'accent',
+  required: 'neutral',
 }
 
 /** A status, not a control: it never looks tappable. `inverse` on a dark surface. */

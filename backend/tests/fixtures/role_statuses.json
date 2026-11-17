@@ -269,6 +269,11 @@
     "coach": 200,
     "owner": 200
   },
+  "GET /api/me/requirements": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
   "GET /api/me/role": {
     "admin": 200,
     "coach": 200,
@@ -354,6 +359,11 @@
     "coach": 403,
     "owner": 404
   },
+  "GET /api/people/{person_id}/requirements": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
   "GET /api/people/{person_id}/tag-hours": {
     "admin": 404,
     "coach": 404,
@@ -392,6 +402,11 @@
   "GET /api/reminders": {
     "admin": 200,
     "coach": 403,
+    "owner": 200
+  },
+  "GET /api/requirements": {
+    "admin": 200,
+    "coach": 200,
     "owner": 200
   },
   "GET /api/schedule": {
@@ -500,6 +515,11 @@
     "owner": 422
   },
   "PATCH /api/programs/{program_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/requirements/{requirement_id}": {
     "admin": 422,
     "coach": 403,
     "owner": 422
@@ -769,6 +789,11 @@
     "coach": 403,
     "owner": 422
   },
+  "POST /api/people/{person_id}/requirements/{requirement_id}": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
   "POST /api/people/{person_id}/return": {
     "admin": 422,
     "coach": 403,
@@ -798,6 +823,11 @@
     "admin": 404,
     "coach": 403,
     "owner": 404
+  },
+  "POST /api/requirements": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
   },
   "POST /api/schedule": {
     "admin": 422,
@@ -865,6 +895,11 @@
     "owner": 415
   },
   "PUT /api/people/{person_id}/history": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PUT /api/requirements/order": {
     "admin": 422,
     "coach": 403,
     "owner": 422

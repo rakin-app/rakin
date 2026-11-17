@@ -126,8 +126,8 @@ def seeded_today(tz: str = DEFAULT_TIMEZONE) -> date:
     return gym_today(tz)
 
 
-# A staff member as the API makes one since 0062: the owner holds the account, an admin
-# or coach holds the gym's Academia role from today. Before 0062, the row alone.
+# A staff member as the API makes one since 0063: the owner holds the account, an admin
+# or coach holds the gym's Academia role from today. Before 0063, the row alone.
 STAFF_TITLE_FOR = {"admin": "administrador", "coach": "coach"}
 
 

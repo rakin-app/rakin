@@ -6,6 +6,7 @@ import type { MyClasses, TagHours } from '../api/classTags'
 import type { PersonTime } from '../api/matTime'
 import type { BankAccount, MyPage, MyPayment } from '../api/me'
 import type { OpenPeriod } from '../api/proofs'
+import type { PersonRequirements } from '../api/requirements'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -98,6 +99,8 @@ function stubPage(
   classes: MyClasses = NO_CLASSES,
   // Whether an activity of the gym grades (#245); by default one does.
   grades = true,
+  // What the gym asks before training (#349); by default nothing.
+  requirements: PersonRequirements[] = [],
 ) {
   vi.stubGlobal(
     'fetch',
@@ -111,6 +114,7 @@ function stubPage(
       if (url.pathname === '/api/me/extra-lines') return Response.json([])
       if (url.pathname === '/api/me/time') return Response.json(time)
       if (url.pathname === '/api/me/classes') return Response.json(classes)
+      if (url.pathname === '/api/me/requirements') return Response.json(requirements)
       if (url.pathname === '/api/me/role') {
         return Response.json({ ...asRole(null), person_id: 'diego', gym_name: 'Academia Sur', uses_grades: grades })
       }
@@ -510,5 +514,48 @@ describe('Mi página', () => {
 
     const son = within(screen.getByRole('region', { name: copy.classes.theirs('Juan Morales') }))
     expect(son.getByText(copy.classes.empty)).toBeInTheDocument()
+  })
+})
+
+describe('Mis requisitos (#349)', () => {
+  const words = copy.requirements
+
+  it('shows none when the gym asks for nothing', async () => {
+    stubPage(diego())
+    renderMe()
+
+    await screen.findByRole('heading', { level: 1, name: 'Hola, Diego' })
+    expect(screen.queryByRole('region', { name: words.title })).not.toBeInTheDocument()
+  })
+
+  it('shows their own and a dependent’s, each with its state and dates', async () => {
+    stubPage(diego(), NO_TIME, NO_CLASSES, true, [
+      {
+        person_id: 'diego',
+        name: 'Diego Soto',
+        requirements: [
+          { id: 'w', name: 'Declaración de riesgos firmada', state: 'ok', done_on: '2026-03-01', expires_on: null },
+          { id: 'm', name: 'Certificado médico', state: 'expiring', done_on: '2025-12-01', expires_on: '2026-12-01' },
+        ],
+      },
+      {
+        person_id: 'tomas',
+        name: 'Tomás Soto',
+        requirements: [{ id: 'w', name: 'Declaración de riesgos firmada', state: 'pending', done_on: null, expires_on: null }],
+      },
+    ])
+    renderMe()
+
+    const mine = await screen.findByRole('region', { name: words.title })
+    expect(within(mine).getByText(words.state.ok)).toBeInTheDocument()
+    expect(within(mine).getByText(words.done(es.common.longDayYear('2026-03-01')))).toBeInTheDocument()
+    expect(within(mine).getByText(words.state.expiring)).toBeInTheDocument()
+    expect(
+      within(mine).getByText(`${words.done(es.common.longDayYear('2025-12-01'))} · ${words.until(es.common.longDayYear('2026-12-01'))}`),
+    ).toBeInTheDocument()
+    const theirs = screen.getByRole('region', { name: words.theirs('Tomás Soto') })
+    expect(within(theirs).getByText(words.state.pending)).toBeInTheDocument()
+    // Read-only: nothing to record here.
+    expect(within(mine).queryByRole('button')).not.toBeInTheDocument()
   })
 })

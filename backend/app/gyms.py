@@ -140,7 +140,7 @@ async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
             gym.owner_name,
             gym.owner_phone,
         )
-        # The owner holds the account (0062); the gym's roles came with its row.
+        # The owner holds the account (0063); the gym's roles came with its row.
         await conn.execute(
             "INSERT INTO staff (gym_id, person_id, role, account_holder) VALUES ($1, $2, $3, true)",
             gym_id,

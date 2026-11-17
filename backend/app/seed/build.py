@@ -88,7 +88,7 @@ class Seed:
     guardian_links: list[Row]
     staff: list[Row]
     # The admin's and the coach's appointments to the Academia roles every gym is
-    # given; the owner holds the account instead (migration 0062).
+    # given; the owner holds the account instead (migration 0063).
     staff_titles: list[Row]
     # What it teaches (migration 0043): one activity, graded, with every class type.
     activities: list[Row]

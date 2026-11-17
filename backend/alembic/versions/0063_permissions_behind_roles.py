@@ -31,8 +31,8 @@ role-keyed policy still reads it until #309. `forget_gym_person` deletes the per
 appointments with the rest. Both tables are held to the gym by RLS; `rakin_app` may add
 and change rows, and delete an appointment that has not yet run a day.
 
-Revision ID: 0062
-Revises: 0061
+Revision ID: 0063
+Revises: 0062
 Create Date: 2026-11-16
 
 """
@@ -44,8 +44,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0062"
-down_revision: str | Sequence[str] | None = "0061"
+revision: str = "0063"
+down_revision: str | Sequence[str] | None = "0062"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -248,9 +248,9 @@ def _migration(name: str) -> ModuleType:
 
 
 def forget_gym_person(appointments: bool) -> str:
-    """0058's function, replacing itself; with `appointments`, it deletes the person's
+    """0062's function, replacing itself; with `appointments`, it deletes the person's
     appointments."""
-    sql: str = _migration("0058_consent_register.py").forget_gym_person(consent=True)
+    sql: str = _migration("0062_requirements.py").forget_gym_person(requirements=True)
     if appointments:
         assert sql.count(DELETE_BEFORE) == 1, DELETE_BEFORE
         sql = sql.replace(DELETE_BEFORE, DELETE_AFTER)
