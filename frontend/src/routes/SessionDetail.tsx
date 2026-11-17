@@ -108,7 +108,13 @@ export function SessionDetail() {
         </Banner>
       )}
       {!cancelled && <TimerLink session={data} />}
-      {!cancelled && <Attendance key={`attendance-${data.id}`} sessionId={data.id} />}
+      {!cancelled && (
+        <Attendance
+          key={`attendance-${data.id}`}
+          sessionId={data.id}
+          earlierDay={isoDay(data.starts_at, timeZone) < today}
+        />
+      )}
       {runs ? <TopicForm key={data.id} session={data} /> : <TopicView session={data} />}
       {runs && begun && !cancelled && <TimerRecord key={`record-${data.id}`} session={data} />}
       {managesGym(me.data && accessOf(me.data)) && (
@@ -317,8 +323,12 @@ type Save = { change: AttendanceChange; replay: boolean }
  * once, so resending is safe. A queued change the API refuses (`isRefusal`) is dropped,
  * not resent forever: the coach sees the roster as saved and marks again. Any other
  * failure keeps it queued, for the next flush.
+ *
+ * A class of an earlier day, one registered after it happened included (#407), is marked
+ * the same way, and takes a drop-in visitor on its own day; not a trial guest, whose trial
+ * starts the day it is given.
  */
-function Attendance({ sessionId }: { sessionId: string }) {
+function Attendance({ sessionId, earlierDay }: { sessionId: string; earlierDay: boolean }) {
   const words = copy.attendance
   const queryClient = useQueryClient()
   const roster = useQuery(rosterQuery(sessionId))
@@ -504,7 +514,7 @@ function Attendance({ sessionId }: { sessionId: string }) {
           ))}
         </PlainList>
       )}
-      <TrialGuest sessionId={sessionId} onMember={markMember} />
+      {!earlierDay && <TrialGuest sessionId={sessionId} onMember={markMember} />}
       <Visitor sessionId={sessionId} onMember={markMember} />
       {/* Sticky at the foot of the screen, so what a save did is in view however far down the list is. */}
       <div className="attendance__bar">

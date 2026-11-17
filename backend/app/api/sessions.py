@@ -53,9 +53,9 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.attendance import remove_attendance
+from app.api.attendance import CLASS_BACKFILLED, record_backfill, remove_attendance
 from app.api.class_tags import require_tags, set_tags, tags_of_session
-from app.domain.dates import gym_today, start_of_local_day
+from app.domain.dates import gym_today, local_date, start_of_local_day
 from app.permissions import FORBIDDEN, AdminSession, Permission, StaffSession, holds
 from app.schemas.classes import ClassKind
 from app.schemas.sessions import (
@@ -144,21 +144,29 @@ async def gym_timezone(session: AsyncSession, tenant: Tenant) -> str:
     return zone
 
 
-async def default_duration(session: AsyncSession, class_type_id: uuid.UUID, today: date) -> int:
-    """How long a new class of `class_type_id` lasts unless told: the duration of its
-    schedule slot in effect today, else of its next one to come, else of the gym's last
-    class of it that has one, else `DEFAULT_DURATION`."""
+async def default_duration(
+    session: AsyncSession, class_type_id: uuid.UUID, day: date, zone: str
+) -> int:
+    """How long a new class of `class_type_id` on `day` lasts unless told: the duration
+    of its schedule slot in effect that day, else of its next one to come, else of the
+    gym's last class of it by that day that has one, else `DEFAULT_DURATION`. A class
+    registered after it happened (#407) gets the type's duration as of its own day."""
     minutes: int | None = await session.scalar(
         text(
             "SELECT coalesce("
             " (SELECT duration_minutes FROM schedule_slot"
-            "  WHERE class_type_id = :type AND (valid_to IS NULL OR valid_to >= :today)"
-            "  ORDER BY valid_from <= :today DESC, valid_from, created_at, id LIMIT 1),"
+            "  WHERE class_type_id = :type AND (valid_to IS NULL OR valid_to >= :day)"
+            "  ORDER BY valid_from <= :day DESC, valid_from, created_at, id LIMIT 1),"
             " (SELECT duration_minutes FROM session"
             "  WHERE class_type_id = :type AND duration_minutes IS NOT NULL"
+            "  AND starts_at < :until"
             "  ORDER BY starts_at DESC, created_at DESC LIMIT 1))"
         ),
-        {"type": class_type_id, "today": today},
+        {
+            "type": class_type_id,
+            "day": day,
+            "until": start_of_local_day(day + timedelta(days=1), zone),
+        },
     )
     return minutes or DEFAULT_DURATION
 
@@ -223,10 +231,12 @@ async def class_type_duration(
     tenant: Annotated[Tenant, Depends(current_tenant)],
     session: StaffSession,
     class_type_id: uuid.UUID,
+    day: Annotated[date | None, Query(alias="date")] = None,
 ) -> DefaultDuration:
-    """`?class_type_id=`: how long a new class of that type lasts unless told."""
+    """`?class_type_id=`: how long a new class of that type lasts unless told, on
+    `?date=` (default today, in the gym's timezone)."""
     zone = await gym_timezone(session, tenant)
-    minutes = await default_duration(session, class_type_id, gym_today(zone))
+    minutes = await default_duration(session, class_type_id, day or gym_today(zone), zone)
     return DefaultDuration(class_type_id=class_type_id, duration_minutes=minutes)
 
 
@@ -236,14 +246,23 @@ async def start_session(
     tenant: Annotated[Tenant, Depends(current_tenant)],
     session: StaffSession,
 ) -> Session:
+    """Start a class, now unless `starts_at` says otherwise. One on an earlier day is a
+    class registered after it happened (#407): it takes `attendance`, and writes a
+    `class_backfilled` row in the gym's log. A later day is the schedule's, a 422."""
+    zone = await gym_timezone(session, tenant)
+    today = gym_today(zone)
+    day = today if body.starts_at is None else local_date(body.starts_at, zone)
+    if day > today:
+        raise unprocessable("starts_at", "future_day", "a later day's class is the schedule's")
+    if day < today and not await holds(session, tenant, Permission.ATTENDANCE):
+        raise FORBIDDEN
     await require_class_type(session, body.class_type_id)
     await refuse_open_access(session, body.class_type_id)
     coach_id = body.coach_id or tenant.person_id
     await require_coach(session, coach_id)
     duration = body.duration_minutes
     if duration is None:
-        zone = await gym_timezone(session, tenant)
-        duration = await default_duration(session, body.class_type_id, gym_today(zone))
+        duration = await default_duration(session, body.class_type_id, day, zone)
     result = await session.execute(
         text(
             "INSERT INTO session"
@@ -254,7 +273,17 @@ async def start_session(
         ),
         {**body.model_dump(), "coach_id": coach_id, "duration_minutes": duration},
     )
-    return await _get(session, result.scalar_one())
+    session_id: uuid.UUID = result.scalar_one()
+    if day < today:
+        await record_backfill(
+            session,
+            CLASS_BACKFILLED,
+            None,
+            session_id=str(session_id),
+            class_type_id=str(body.class_type_id),
+            day=day.isoformat(),
+        )
+    return await _get(session, session_id)
 
 
 @router.get("/{session_id}")

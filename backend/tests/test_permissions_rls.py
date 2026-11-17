@@ -186,6 +186,20 @@ CASES = (
         lambda gym, actor: (gym.id, actor, gym.owner),
     ),
     Case(
+        "audit_event_backfill",
+        Permission.ATTENDANCE,
+        "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
+        " VALUES ($1, $2, 'class_backfilled', '{}')",
+        lambda gym, actor: (gym.id, actor),
+    ),
+    Case(
+        "audit_event_backfill",
+        Permission.ATTENDANCE,
+        "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
+        " VALUES ($1, $2, $3, 'attendance_backfilled', '{}')",
+        lambda gym, actor: (gym.id, actor, gym.owner),
+    ),
+    Case(
         "audit_event_import",
         Permission.GYM_SETUP,
         "INSERT INTO audit_event (gym_id, actor_id, action, detail)"

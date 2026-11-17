@@ -23,7 +23,7 @@ import { ChevronRightIcon } from '../components/icons'
 import { Grid, PageContainer, useWide } from '../components/Layout'
 import { PageHeader, PageTitle } from '../components/PageHeader'
 import { TagHoursCard } from '../components/TagHours'
-import { clockTime, isoDay, shiftDay, shortDay, timeRange, toDate, weekdayDay } from '../format'
+import { clockTime, isoDay, shiftDay, shortDay, timeRange, toDate, weekdayDay, zonedInstant } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './Classes.css'
@@ -38,7 +38,9 @@ const copy = t.admin.classes
  * (Ajustes, Horario) makes most of them ahead, and the arrows walk to the days before
  * and after; a coach may also create a class as it begins, of one of the gym's class
  * types, and lands on it to take its attendance and write its topic and notes. Every
- * staff role sees and creates them.
+ * staff role sees and creates them. A class that already happened is created on its own
+ * day and time (#407): the form starts on the day shown, so walking back to a day and
+ * creating one there registers it on that day, marked like any other.
  *
  * The class on now, else the next one today, comes first at every width, a tap from its
  * attendance and its timer (#358): a coach opens Clases at the mat. "Crear clase", an
@@ -75,7 +77,7 @@ export function Classes() {
           <div className="classes__column">
             {day.data && isToday && <NowCard sessions={day.data.sessions} timeZone={day.data.timezone} />}
             <EntradaCard />
-            <StartSession />
+            <StartSession day={shown} today={gymToday} timeZone={timeZone} />
             <section className="classes__section" aria-labelledby="classes-day">
               <div className="classes__section-head">
                 <SectionTitle id="classes-day">
@@ -374,8 +376,11 @@ function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: st
 
 /** "Crear clase": a class of the type chosen, now, taught by whoever creates it, for the
  * minutes given, prefilled with the type's default (#257). An occasional action, so a
- * button until it is wanted (#358). */
-function StartSession() {
+ * button until it is wanted (#358). Its day and time start as the day shown and now; an
+ * earlier day registers a class that already happened (#407), a later one is refused. */
+type StartProps = { day: string; today: string; timeZone: string }
+
+function StartSession(props: StartProps) {
   const [open, setOpen] = useState(false)
   const formId = useId()
 
@@ -397,12 +402,12 @@ function StartSession() {
           {copy.start.close}
         </Button>
       </div>
-      <StartBody />
+      <StartBody {...props} />
     </Card>
   )
 }
 
-function StartBody() {
+function StartBody(props: StartProps) {
   // Open access is checked in at Entrada, never created as a class.
   const classTypes = useQuery({
     ...activeClassTypesQuery(),
@@ -415,19 +420,29 @@ function StartBody() {
   ) : classTypes.data.length === 0 ? (
     <p className="classes__note">{copy.start.noClassTypes}</p>
   ) : (
-    <StartForm classTypes={classTypes.data} />
+    <StartForm classTypes={classTypes.data} {...props} />
   )
 }
 
-function StartForm({ classTypes }: { classTypes: ClassType[] }) {
+function StartForm({ classTypes, ...props }: { classTypes: ClassType[] } & StartProps) {
+  const { today, timeZone } = props
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const selectId = useId()
   const durationId = useId()
+  const dayId = useId()
+  const timeId = useId()
   const [classTypeId, setClassTypeId] = useState(classTypes[0]!.id)
+  const [day, setDay] = useState(props.day > today ? today : props.day)
+  // The time as the form opened; untouched on today, the class starts now.
+  const [opened] = useState(() => clockTime(new Date().toISOString(), timeZone))
+  const [time, setTime] = useState<string | null>(null)
+  const future = day > today
+  // Today at the time it opened is today's class as it always was: now.
+  const startsAt = !day || (day === today && time === null) ? null : zonedInstant(day, time || opened, timeZone)
   // What was typed for the type chosen; another type starts again from its default.
   const [typed, setTyped] = useState<{ classTypeId: string; value: string } | null>(null)
-  const fallback = useQuery(defaultDurationQuery(classTypeId))
+  const fallback = useQuery(defaultDurationQuery(classTypeId, future || !day ? today : day))
   const duration =
     typed?.classTypeId === classTypeId ? typed.value : (fallback.data?.duration_minutes.toString() ?? '')
   const minutes = duration.trim() === '' ? null : Number(duration)
@@ -435,17 +450,23 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
   const start = useSubmit({
     // Left empty, the class still gets the type's default.
     mutationFn: () =>
-      startSession({ class_type_id: classTypeId, ...(minutes === null ? {} : { duration_minutes: minutes }) }),
+      startSession({
+        class_type_id: classTypeId,
+        ...(minutes === null ? {} : { duration_minutes: minutes }),
+        ...(startsAt === null ? {} : { starts_at: startsAt }),
+      }),
     onSuccess: async (session) => {
       queryClient.setQueryData(['sessions', 'detail', session.id], session)
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
+      void queryClient.invalidateQueries({ queryKey: ['sessions', 'day', isoDay(session.starts_at, timeZone)] })
+      void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
       await navigate({ to: '/admin/clases/$sessionId', params: { sessionId: session.id } })
     },
   })
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (badDuration) return
+    if (badDuration || future || !day) return
     start.mutate()
   }
 
@@ -482,6 +503,35 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
         value={duration}
         onChange={(e) => setTyped({ classTypeId, value: e.target.value })}
       />
+      <label htmlFor={dayId} className="classes__label">
+        {copy.start.day}
+      </label>
+      <Input
+        id={dayId}
+        type="date"
+        max={today}
+        required
+        aria-invalid={future}
+        value={day}
+        onChange={(e) => setDay(e.target.value)}
+      />
+      <label htmlFor={timeId} className="classes__label">
+        {copy.start.time}
+      </label>
+      <Input
+        id={timeId}
+        type="time"
+        required
+        value={time ?? opened}
+        onChange={(e) => setTime(e.target.value)}
+      />
+      {future ? (
+        <Banner tone="error">
+          {copy.start.futureDay}
+        </Banner>
+      ) : (
+        day && day < today && <p className="classes__note">{copy.start.pastDay}</p>
+      )}
       {badDuration && (
         <Banner tone="error">
           {copy.start.badDuration}
@@ -492,7 +542,12 @@ function StartForm({ classTypes }: { classTypes: ClassType[] }) {
           {copy.start.failed}
         </Banner>
       )}
-      <Button type="submit" variant="primary" disabled={start.isPending || badDuration} busy={start.isPending}>
+      <Button
+        type="submit"
+        variant="primary"
+        disabled={start.isPending || badDuration || future || !day}
+        busy={start.isPending}
+      >
         {start.isPending ? copy.start.working : copy.start.submit}
       </Button>
     </form>

@@ -126,21 +126,27 @@ export function sessionQuery(id: string) {
   })
 }
 
-/** How long a new class of `classTypeId` lasts unless told (#257): its schedule slot's,
- * else the gym's last class of the type's, else 60. */
-export function defaultDurationQuery(classTypeId: string) {
+/** How long a new class of `classTypeId` on `day` lasts unless told (#257): its schedule
+ * slot's that day, else the gym's last class of the type's by then, else 60. */
+export function defaultDurationQuery(classTypeId: string, day: string) {
   return queryOptions({
-    queryKey: ['sessions', 'duration', classTypeId],
+    queryKey: ['sessions', 'duration', classTypeId, day],
     queryFn: () =>
       apiFetch<{ class_type_id: string; duration_minutes: number }>(
-        `/api/sessions/duration?class_type_id=${encodeURIComponent(classTypeId)}`,
+        `/api/sessions/duration?class_type_id=${encodeURIComponent(classTypeId)}&date=${encodeURIComponent(day)}`,
       ),
   })
 }
 
-/** Start a class of `class_type_id` now, taught by whoever starts it, lasting
- * `duration_minutes` (without it, the type's default). */
-export function startSession(body: { class_type_id: string; duration_minutes?: number }): Promise<ClassSession> {
+/** Start a class of `class_type_id`, taught by whoever starts it, lasting
+ * `duration_minutes` (without it, the type's default): now, or at `starts_at`, today
+ * or an earlier day, a class registered after it happened (#407). A later day is the
+ * schedule's, a 422. */
+export function startSession(body: {
+  class_type_id: string
+  duration_minutes?: number
+  starts_at?: string
+}): Promise<ClassSession> {
   return apiFetch<ClassSession>('/api/sessions', { method: 'POST', body: JSON.stringify(body) })
 }
 
