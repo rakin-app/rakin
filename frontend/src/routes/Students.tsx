@@ -2,7 +2,7 @@ import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@t
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 import { useGrades } from '../api/activities'
-import { gradingSchemeQuery } from '../api/grading'
+import { gradingSchemeQuery, isLevels } from '../api/grading'
 import { myAccessQuery, myselfQuery, readsLedger } from '../api/me'
 import {
   MEMBERSHIP_STATUSES,
@@ -299,7 +299,7 @@ export function Students() {
             {grades && hasRanks(scheme.data) && (
               <div className="field">
                 <label htmlFor={rankId} className="field__label">
-                  {copy.rankLabel}
+                  {isLevels(scheme.data) ? copy.levelLabel : copy.rankLabel}
                 </label>
                 <RankFilter
                   id={rankId}
@@ -307,7 +307,7 @@ export function Students() {
                   scheme={scheme.data}
                   value={belt}
                   onChange={setBelt}
-                  anyLabel={copy.allRanks}
+                  anyLabel={isLevels(scheme.data) ? copy.allLevels : copy.allRanks}
                 />
               </div>
             )}

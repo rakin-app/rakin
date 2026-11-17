@@ -1,4 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
+import type { ActivityPreset } from './activities'
 import { apiFetch } from './client'
 
 export const GOAL_METRICS = ['classes_since_promotion', 'time_in_rank'] as const
@@ -25,6 +26,41 @@ export type GradingScheme = {
   ranks: SchemeRank[]
   kids_ladder: SchemeRank[]
   goal_metric: GoalMetric | null
+}
+
+/**
+ * Whether the scheme is levels, not belts (#353): no rank on either ladder has colours,
+ * as a swimming school's or a climbing gym's. The screens then say "Nivel".
+ */
+export function isLevels(scheme: { ranks: { colors?: string[] }[]; kids_ladder: { colors?: string[] }[] }): boolean {
+  return ![...scheme.ranks, ...scheme.kids_ladder].some((rank) => (rank.colors ?? []).length > 0)
+}
+
+/**
+ * The grading preset of each activity preset that has one (backend
+ * `app.domain.vocabulary.GRADING_PRESETS`, read the other way, with karate beside judo).
+ */
+export const GRADING_PRESET_OF: Partial<Record<ActivityPreset, string>> = {
+  bjj: 'bjj',
+  judo: 'judo-karate',
+  karate: 'judo-karate',
+  muay_thai: 'muay-thai',
+}
+
+/**
+ * Whether a scheme never set up reads as belts (#353): when a graded activity's preset
+ * has a grading preset whose ranks have colours. A free name, or a sport with no grading
+ * preset, reads as levels.
+ */
+export function beltsByActivity(
+  activities: { uses_grades: boolean; preset?: ActivityPreset | null }[],
+  presets: GradingPreset[],
+): boolean {
+  return activities.some((activity) => {
+    const key = activity.uses_grades && activity.preset ? GRADING_PRESET_OF[activity.preset] : undefined
+    const preset = presets.find((p) => p.key === key)
+    return preset !== undefined && !isLevels(preset.scheme)
+  })
 }
 
 /** A starting point for a scheme (`GET /api/gym/grading-scheme/presets`). */

@@ -12,7 +12,7 @@ import {
   type ExtraChargeSummary,
 } from '../api/extraCharges'
 import { useGrades } from '../api/activities'
-import { gradingSchemeQuery } from '../api/grading'
+import { gradingSchemeQuery, isLevels } from '../api/grading'
 import type { PersonRef } from '../api/ledger'
 import { myAccessQuery, readsLedger } from '../api/me'
 import { membersPath, membersQuery, plansQuery, programsQuery, type MemberRow } from '../api/people'
@@ -429,7 +429,7 @@ function FilterAdd({ onAdd }: { onAdd: (people: PersonRef[]) => void }) {
         )}
       </Field>
       {ranked && (
-        <Field label={words.rank}>
+        <Field label={isLevels(ranked) ? words.level : words.rank}>
           {(props) => (
             <RankFilter {...props} scheme={ranked} value={rank} onChange={setRank} anyLabel={words.any} />
           )}

@@ -200,7 +200,11 @@ def test_a_kids_ladder_rank_and_a_rank_without_sub_ranks(client: TestClient, db:
     # Two-tone: grey with a white stripe through it.
     assert current["belt"] == {"colors": ["#8b8f94", "#f4f4f1"], "stripes": 1, "max_stripes": 4}
 
-    dojo = gym_with(client, db, JUDO)
+    # Its colours taken off, the judo ladder is levels (#353).
+    levels = copy.deepcopy(JUDO)
+    for rank in levels["ranks"]:
+        rank["colors"] = []
+    dojo = gym_with(client, db, levels)
     judoka = member(client, db, dojo)
     response = award(client, dojo, judoka, rank_key="kyu-9")
     assert response.status_code == 201, response.text
@@ -210,7 +214,7 @@ def test_a_kids_ladder_rank_and_a_rank_without_sub_ranks(client: TestClient, db:
         None,
         None,
     )
-    # The preset gives kyu and dan no colours: shown as the label, as before.
+    # A rank with no colours is shown as its label.
     assert current["belt"] is None
 
 

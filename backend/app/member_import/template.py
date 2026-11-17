@@ -180,6 +180,8 @@ GRADE_NOTES: dict[GradeField, str] = {
     ),
     GradeField.AWARDED_ON: "Obligatorio. El día que lo recibió, aunque sea antes de Rakin.",
 }
+# A scheme with no colours is levels (#353): its sub-ranks are no belt's stripes.
+LEVEL_SUB_RANK_NOTE = "Opcional: el sub-grado por su nombre. Vacío = el primero de su grado."
 
 GRADE_INTRO = (
     "Una fila por grado recibido, en la pestaña Grados: el más reciente queda como su"
@@ -261,7 +263,10 @@ def template(
         for header, grade_field, _ in GRADE_COLUMNS:
             row += 1
             put(instructions, row, 1, header)
-            put(instructions, row, 2, _worded(GRADE_NOTES.get(grade_field, ""), words))
+            note = GRADE_NOTES.get(grade_field, "")
+            if grade_field is GradeField.SUB_RANK and scheme is not None and not scheme.belts:
+                note = LEVEL_SUB_RANK_NOTE
+            put(instructions, row, 2, _worded(note, words))
 
     if plans:
         _choices(book, alumnos, "Planes", plans, _column(people_columns, Field.PLAN))
@@ -282,13 +287,14 @@ def template(
 
 def _grados(book: Workbook, scheme: GradingScheme) -> Worksheet:
     """The Grados tab, its example the people's tab's student at the scheme's second rank
-    (the first a student is promoted to), with a stripe when it has them."""
+    (the first a student is promoted to), with a stripe when it has them: by its number on
+    a belt, by its name on a level (#353)."""
     ranks = [*scheme.ranks, *scheme.kids_ladder]
     rank = ranks[1] if len(ranks) > 1 else ranks[0]
-    examples = {
-        GradeField.RANK: rank.label,
-        GradeField.SUB_RANK: "1" if len(rank.sub_ranks) > 1 else "",
-    }
+    sub = ""
+    if len(rank.sub_ranks) > 1:
+        sub = "1" if scheme.belts else rank.sub_ranks[1].label
+    examples = {GradeField.RANK: rank.label, GradeField.SUB_RANK: sub}
     return _tab(book, GRADOS, GRADE_COLUMNS, examples)
 
 
