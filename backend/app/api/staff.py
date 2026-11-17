@@ -4,13 +4,13 @@ Roles are per gym, a `staff` row for the person and the gym, and what they may d
 their appointment to one of the gym's roles (`app.permissions`): the Academia preset's
 Administrador for an admin, its Coach for a coach. So each of these writes both: an
 invite writes the row and an appointment from today, a change rewrites the row's role
-and moves the appointment to the other role from today, a revoke ends the appointment
-and deletes the row. The row's role is still written, though no policy reads it since
-#309. An appointment that began only today is deleted rather than ended, since it
-would end on the day it starts. A revoked person keeps the gym's record of them and
-everything that names them, such as the classes they taught (migration 0020) and the
-terms they held; with no membership either, their session here ends at once
-(migration 0005).
+and moves that appointment to the other role from today, keeping any other role they
+hold, a revoke ends every appointment and deletes the row. The row's role is still
+written, though no policy reads it since #309. An appointment that began only today is
+deleted rather than ended, since it would end on the day it starts. A revoked person
+keeps the gym's record of them and everything that names them, such as the classes
+they taught (migration 0020) and the terms they held; with no membership either, their
+session here ends at once (migration 0005).
 
 An invite adds the person the way a member is added, through `join_gym`: by their RUT
 when given, so a RUT another gym knows attaches that person without the gym learning
@@ -143,12 +143,15 @@ async def _may_manage_person(
         raise NOT_FEWER_PERSON
 
 
-async def _may_give(session: AsyncSession, acting: Standing, title_id: uuid.UUID) -> None:
+async def _may_give(
+    session: AsyncSession, acting: Standing, title_id: uuid.UUID, *, archived: bool = False
+) -> None:
     """A 403 unless `acting` may appoint someone to, or end, the gym's role `title_id`;
-    a 404 when the gym has no such role, unarchived."""
+    a 404 when the gym has no such role, or, unless `archived`, has archived it. An
+    appointment to a role archived since is still ended."""
+    live = "" if archived else " AND archived_at IS NULL"
     permissions = await session.scalar(
-        text("SELECT permissions FROM gym_title WHERE id = :id AND archived_at IS NULL"),
-        {"id": title_id},
+        text(f"SELECT permissions FROM gym_title WHERE id = :id{live}"), {"id": title_id}
     )
     if permissions is None:
         raise NO_TITLE
@@ -185,6 +188,18 @@ async def _end_appointments(
     )
     dropped = await session.execute(text(f"{DROP_UNSTARTED}{only} RETURNING id"), params)
     return bool(ended.all()) | bool(dropped.all())
+
+
+async def _holds(session: AsyncSession, person_id: uuid.UUID, title_id: uuid.UUID) -> bool:
+    """Whether `person_id` holds `title_id` today or from a later day."""
+    held = await session.scalar(
+        text(
+            "SELECT true FROM staff_title WHERE person_id = :id AND title_id = :title"
+            f" AND (ends_on IS NULL OR ends_on > {TODAY})"
+        ),
+        {"id": person_id, "title": title_id},
+    )
+    return bool(held)
 
 
 async def _get(session: AsyncSession, person_id: uuid.UUID) -> StaffMember:
@@ -306,7 +321,8 @@ async def invite_staff(
 async def change_role(
     person_id: uuid.UUID, body: StaffRoleChange, tenant: Acting, session: TeamSession
 ) -> StaffMember:
-    """Move someone between admin and coach; the role they have already is a no-op."""
+    """Move someone between admin and coach; the role they have already is a no-op. Only
+    the appointment the change replaces ends: any other role they hold stays."""
     acting = await _acting(session, tenant)
     current = await _role_of(session, person_id)
     role = Role(body.role)
@@ -317,8 +333,9 @@ async def change_role(
             text("UPDATE staff SET role = :role WHERE person_id = :id"),
             {"id": person_id, "role": role.value},
         )
-        await _end_appointments(session, tenant, person_id)
-        await _appoint(session, tenant, person_id, _academia(tenant, role))
+        await _end_appointments(session, tenant, person_id, _academia(tenant, current))
+        if not await _holds(session, person_id, _academia(tenant, role)):
+            await _appoint(session, tenant, person_id, _academia(tenant, role))
     return await _get(session, person_id)
 
 
@@ -343,14 +360,7 @@ async def appoint(
     await _role_of(session, person_id)
     await _may_manage_person(session, tenant, acting, person_id)
     await _may_give(session, acting, body.title_id)
-    held = await session.scalar(
-        text(
-            "SELECT true FROM staff_title WHERE person_id = :id AND title_id = :title"
-            f" AND (ends_on IS NULL OR ends_on > {TODAY})"
-        ),
-        {"id": person_id, "title": body.title_id},
-    )
-    if held:
+    if await _holds(session, person_id, body.title_id):
         raise HOLDS_IT
     await _appoint(session, tenant, person_id, body.title_id)
     return await _get(session, person_id)
@@ -365,7 +375,7 @@ async def end_appointment(
     acting = await _acting(session, tenant)
     await _role_of(session, person_id)
     await _may_manage_person(session, tenant, acting, person_id)
-    await _may_give(session, acting, title_id)
+    await _may_give(session, acting, title_id, archived=True)
     if not await _end_appointments(session, tenant, person_id, title_id):
         raise NOT_HELD
     return Response(status_code=status.HTTP_204_NO_CONTENT)

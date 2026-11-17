@@ -534,3 +534,29 @@ def test_an_unknown_or_archived_role_is_not_found(
     )
     assert unknown.status_code == 404
     assert end(client, gym, None, someone, COACH).status_code == 404
+
+
+@pg
+def test_an_appointment_to_a_role_archived_since_is_still_ended(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    someone = staff(db, gym, DIRECTOR)
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE gym_title SET archived_at = now() WHERE id = $1", title_id(gym, DIRECTOR)
+        ),
+    )
+    assert end(client, gym, None, someone, DIRECTOR).status_code == 204
+    assert titles_of(db, someone) == set()
+
+
+@pg
+def test_a_change_of_role_ends_only_the_appointment_it_replaces(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # A coach who is also the club's Secretario: made admin, they stay Secretario.
+    person = staff(db, gym, COACH, SECRETARIO)
+    change = client.patch(f"/api/staff/{person}", json={"role": "admin"}, headers=as_gym(gym))
+    assert change.status_code == 200, change.text
+    assert titles_of(db, person) == {"Administrador", "Secretario"}
