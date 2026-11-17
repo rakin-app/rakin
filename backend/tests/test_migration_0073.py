@@ -95,12 +95,15 @@ def test_the_backfill_links_each_paid_plan_to_the_trial_before_it(db: Database) 
 
     async def query(conn: asyncpg.Connection) -> dict[str, uuid.UUID]:
         seed = Seed(conn, gym)
-        ana, bea, caro, dani = [await seed.person() for _ in range(4)]
+        ana, bea, caro, dani, eva = [await seed.person() for _ in range(5)]
         ids = {
             # A trial, then a monthly plan since cancelled: converted.
             "ana_trial": await seed.membership(ana, "trial", 0, "lapsed"),
             "ana_paid": await seed.membership(ana, "monthly", 10, "cancelled"),
             "ana_later": await seed.membership(ana, "credits", 40),
+            # A trial still running beside the plan that converted it: it ends.
+            "eva_trial": await seed.membership(eva, "trial", 0, "trial"),
+            "eva_paid": await seed.membership(eva, "monthly", 3),
             # A trial, a drop-in, a second trial, then a pack: the second trial.
             "bea_trial": await seed.membership(bea, "trial", 0, "lapsed"),
             "bea_visit": await seed.membership(bea, "dropin", 5, "cancelled"),
@@ -118,7 +121,19 @@ def test_the_backfill_links_each_paid_plan_to_the_trial_before_it(db: Database) 
     assert links(db) == {
         ids["ana_paid"]: ids["ana_trial"],
         ids["bea_paid"]: ids["bea_trial2"],
+        ids["eva_paid"]: ids["eva_trial"],
     }
+    states = {
+        r["id"]: (r["status"], r["cancel_reason"], r["cancelled_at"])
+        for r in run(
+            db.admin_url,
+            lambda c: c.fetch("SELECT id, status, cancel_reason, cancelled_at FROM membership"),
+        )
+    }
+    assert states[ids["eva_trial"]] == ("cancelled", "pasó a un plan", T0 + timedelta(days=3))
+    # A trial linked but lapsed stays as it was; one never converted runs on.
+    assert states[ids["ana_trial"]] == ("lapsed", None, None)
+    assert states[ids["dani_trial"]] == ("trial", None, None)
 
 
 def test_a_downgrade_drops_the_column(db: Database) -> None:

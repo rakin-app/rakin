@@ -8,7 +8,9 @@ plans not voided: a plan voided as started by mistake gives its trial back.
 The backfill links the plans already here by that rule, each paid plan the first one
 after its trial, no other trial between them. A cancelled plan keeps every column
 (0009's trigger), so the trigger is off while the backfill writes; it writes this
-column alone.
+column alone. A trial it links that is still running ends, as `domain.end_converted`
+ends one when a plan starts now: cancelled with its reason, as of the day the plan was
+created, so no trial is converted and running at once.
 
 Revision ID: 0073
 Revises: 0072
@@ -50,6 +52,16 @@ BACKFILL = f"""
     FROM pairs WHERE m.id = pairs.paid_id
 """
 
+# `app.domain.membership.CONVERTED_REASON`, as it read when this ran.
+CONVERTED_REASON = "pasó a un plan"
+
+END_RUNNING = f"""
+    UPDATE membership t
+    SET status = 'cancelled', cancel_reason = '{CONVERTED_REASON}', cancelled_at = p.created_at
+    FROM membership p
+    WHERE p.converted_from = t.id AND p.voided_at IS NULL AND t.status = 'trial'
+"""
+
 
 def upgrade() -> None:
     op.execute("ALTER TABLE membership ADD COLUMN converted_from uuid REFERENCES membership (id)")
@@ -63,6 +75,7 @@ def upgrade() -> None:
         op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE membership DISABLE TRIGGER membership_cancelled_is_final")
     op.execute(BACKFILL)
+    op.execute(END_RUNNING)
     op.execute("ALTER TABLE membership ENABLE TRIGGER membership_cancelled_is_final")
     for table in TABLES:
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")

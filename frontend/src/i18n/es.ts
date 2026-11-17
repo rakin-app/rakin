@@ -250,7 +250,6 @@ export const es = {
       // How the trials of the last `days` days went (#27).
       trials: {
         title: 'Pruebas',
-        error: 'No pudimos cargar las pruebas.',
         aside: (days: number) => `Últimos ${days} días`,
         converted: (converted: number, started: number) =>
           `${converted} de ${started} ${started === 1 ? 'prueba pasó' : 'pruebas pasaron'} a un plan`,

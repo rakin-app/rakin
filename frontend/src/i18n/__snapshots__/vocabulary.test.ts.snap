@@ -213,7 +213,6 @@ exports[`a gym's words > reads exactly as before with none set: nav, Hoy and Alu
     "trials": {
       "aside": "Últimos 2 días",
       "converted": "2 de 3 pruebas pasaron a un plan",
-      "error": "No pudimos cargar las pruebas.",
       "running": "2 siguen en prueba",
       "title": "Pruebas",
     },

@@ -610,22 +610,19 @@ function MissingGuardianRow({ member }: { member: MemberRow }) {
 }
 
 /** "Pruebas" (#27): how many of the last days' trials went on to a plan, and how many are
- * still running. Shown once the gym has had one. */
+ * still running. Shown once the gym has had one; a count that fails shows nothing, so it
+ * never puts an error card on a gym that has had no trial. */
 function TrialsCard() {
   const trials = useQuery(trialConversionsQuery)
   const words = copy.trials
-  if (trials.isPending || (trials.data && trials.data.started === 0)) return null
+  if (!trials.data || trials.data.started === 0) return null
   return (
     <Card id="pruebas" className="today__section" aria-labelledby="pruebas-title">
-      <SectionHead id="pruebas-title" title={words.title} aside={trials.data ? words.aside(trials.data.days) : null} />
-      {trials.isError ? (
-        <Failed message={words.error} retry={() => void trials.refetch()} />
-      ) : (
-        <p className="today__note">
-          {words.converted(trials.data.converted, trials.data.started)}
-          {trials.data.running > 0 && ` · ${words.running(trials.data.running)}`}
-        </p>
-      )}
+      <SectionHead id="pruebas-title" title={words.title} aside={words.aside(trials.data.days)} />
+      <p className="today__note">
+        {words.converted(trials.data.converted, trials.data.started)}
+        {trials.data.running > 0 && ` · ${words.running(trials.data.running)}`}
+      </p>
     </Card>
   )
 }

@@ -1,6 +1,6 @@
 import { onlineManager } from '@tanstack/react-query'
 import { createMemoryHistory } from '@tanstack/react-router'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
@@ -394,6 +394,15 @@ describe('Hoy', () => {
     expect(
       within(card).getByText(`${copy.trials.converted(3, 8)} · ${copy.trials.running(2)}`),
     ).toBeInTheDocument()
+  })
+
+  it('shows no "Pruebas", and no error, when the count fails', async () => {
+    const calls = stubApi({ trials: { status: 500, body: { detail: 'boom' } } })
+    renderToday()
+
+    await section(copy.proofs.title)
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/memberships/trials')).toBe(true))
+    expect(screen.queryByRole('region', { name: copy.trials.title })).not.toBeInTheDocument()
   })
 
   it('has no "Pruebas" while the gym has had no trial', async () => {
