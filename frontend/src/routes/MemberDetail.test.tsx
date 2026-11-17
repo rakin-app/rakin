@@ -2797,6 +2797,55 @@ describe('the plan from the ficha (#249)', () => {
     expect(await screen.findAllByRole('region', { name: copy.corrections.title })).toHaveLength(1)
   })
 
+  it('gives a member on a trial "Asignar plan", which converts the trial and says so (#27)', async () => {
+    const TRIAL: Membership = {
+      ...MONTHLY,
+      id: 'm-trial',
+      plan_id: 'plan-trial',
+      plan_name: 'Prueba',
+      plan_kind: 'trial',
+      status: 'trial',
+      anchor_day: null,
+      started_on: '2026-11-03',
+      current_period_end: '2026-11-17',
+      credits_remaining: 1,
+    }
+    const converts = { id: 'm-trial', plan_name: 'Prueba', started_on: '2026-11-03', running: true }
+    let members: Membership[] = [TRIAL]
+    const calls = stubApi({
+      memberships: members,
+      ledger: { ...LEDGER, open_periods: [], owed_clp: 0, entries: [], periods: [], refundable_payments: [] },
+      extra: (path, method, body) => {
+        if (path === '/api/plans') return { body: PLANS }
+        if (path === '/api/people/felipe/welcome') return { body: { to: null, guardian: null, last: null } }
+        if (path === '/api/memberships/start') {
+          return { body: { starts_on: '2026-11-10', billed_through: null, debt_clp: 0, converts } }
+        }
+        if (path === '/api/memberships' && method === 'GET') return { body: members }
+        if (path === '/api/memberships' && method === 'POST') {
+          const { plan_id } = body as { plan_id: string }
+          const started: Membership = { ...MONTHLY, id: 'm-new', plan_id, converted_from: { ...converts, running: false } }
+          members = [started, { ...TRIAL, status: 'cancelled' }]
+          return { status: 201, body: started }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    // On the trial's own card, not "Agregar otro plan" beside it.
+    await userEvent.click(await planAction(await money(), copy.assignPlan))
+    expect(screen.queryByRole('button', { name: copy.addPlan })).not.toBeInTheDocument()
+    const form = screen.getByRole('form', { name: assign.title })
+    await userEvent.selectOptions(await within(form).findByLabelText(assign.plan), 'plan-adults')
+    expect(await within(form).findByText(assign.converts('Prueba', shortDay('2026-11-03'), true))).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
+
+    expect(await screen.findByText(assign.done('Mensual adultos'))).toBeInTheDocument()
+    expect(calls.some((c) => c.path === '/api/memberships' && c.method === 'POST')).toBe(true)
+    expect(await within(await money()).findByText(copy.convertedFrom('Prueba', shortDay('2026-11-03')))).toBeInTheDocument()
+  })
+
   it('gives a coach no "Agregar otro plan"', async () => {
     stubApi({ role: 'coach' })
     renderAt(PATH)

@@ -29,6 +29,9 @@ then (#196). A recurring plan assigned to someone whose plan lapsed with days bi
 the day asked for starts the day after the last of them instead: those days are billed
 once, on the lapsed plan, and what it owes stays its own ("Deuda anterior"). `GET
 .../start` quotes that day and the debt before the form saves (#271).
+A paid plan starting converts the person's trial (#27): it names the trial in
+`converted_from`, and a trial still running ends then. `GET .../trials` counts how the
+last 90 days' trials went, for Hoy.
 Starting one emails the member, or their guardian, a welcome: how to pay and how to
 upload a proof, with their first sign-in link to the student page; unless the request
 says `send_welcome: false` (#249). Nobody who has left
@@ -62,6 +65,7 @@ from app.domain.dates import gym_today, start_of_local_day
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryStatus
 from app.domain.membership import (
+    CONVERTS,
     MAX_FREEZE_DAYS,
     RECURRING,
     MembershipStatus,
@@ -75,6 +79,7 @@ from app.permissions import LedgerReadSession, LedgerSession, SeesMoney, StaffSe
 from app.schemas.ledger import DiscountFigures, DiscountShift, VoidConflict
 from app.schemas.memberships import (
     Cancellation,
+    ConvertedTrial,
     Discount,
     DiscountChange,
     DiscountQuote,
@@ -98,6 +103,7 @@ from app.schemas.memberships import (
     ReactivationRefusal,
     ReactivationRefused,
     StartQuote,
+    TrialConversions,
     for_coach,
 )
 from app.tenancy import Tenant, current_tenant
@@ -119,11 +125,16 @@ SELECT_MEMBERSHIP = """
            m.next_plan_id, np.name AS next_plan_name, m.next_plan_from,
            m.cancel_reason, m.cancelled_at, m.voided_at, m.void_reason, m.created_at,
            fz.id AS freeze_id, fz.from_date AS freeze_from, fz.to_date AS freeze_to,
-           fz.reason AS freeze_reason, fz.started AS freeze_started
+           fz.reason AS freeze_reason, fz.started AS freeze_started,
+           cf.id AS cf_id, cfp.name AS cf_plan_name,
+           (cf.started_at AT TIME ZONE g.timezone)::date AS cf_started_on,
+           cf.status = 'trial' AS cf_running
     FROM membership m
     JOIN gym g ON g.id = m.gym_id
     JOIN plan pl ON pl.id = m.plan_id
     LEFT JOIN plan np ON np.id = m.next_plan_id
+    LEFT JOIN membership cf ON cf.id = m.converted_from
+    LEFT JOIN plan cfp ON cfp.id = cf.plan_id
     LEFT JOIN LATERAL (
         SELECT f.id, f.from_date, f.to_date, f.reason, f.started FROM membership_freeze f
         WHERE f.membership_id = m.id AND f.to_date > f.from_date
@@ -161,7 +172,14 @@ def membership_of(row: Any) -> Membership:
             reason=freeze_reason,
             started=freeze_started,
         )
-    return Membership(**fields, next_plan=pending, freeze=freeze)
+    converted = converted_trial(fields)
+    return Membership(**fields, next_plan=pending, freeze=freeze, converted_from=converted)
+
+
+def converted_trial(fields: dict[str, Any]) -> ConvertedTrial | None:
+    """The trial of `cf_` columns, popped from `fields`; `None` with none."""
+    trial = {name: fields.pop(f"cf_{name}") for name in ConvertedTrial.model_fields}
+    return None if trial["id"] is None else ConvertedTrial(**trial)
 
 
 async def _get(session: AsyncSession, membership_id: uuid.UUID) -> Membership:
@@ -239,9 +257,11 @@ async def insert_membership(
     started: domain.Membership,
     started_at: datetime,
     discount: Discount | None = None,
+    converted_from: uuid.UUID | None = None,
 ) -> uuid.UUID:
     """Write `started`, a new membership of `person_id` on `plan_id`, in the current gym;
-    one Cancelled already, a drop-in visit (`domain.drop_in`), with its reason and now.
+    one Cancelled already, a drop-in visit (`domain.drop_in`), with its reason and now;
+    `converted_from`, the trial it converts (#27).
     Raises `PersonHasLeft` for someone who has left it: their record is read `FOR SHARE`,
     so a baja and a new membership take turns."""
     left_on = await session.scalar(
@@ -253,12 +273,12 @@ async def insert_membership(
         text(
             "INSERT INTO membership (gym_id, person_id, plan_id, status, anchor_day,"
             " started_at, current_period_end, credits_remaining, cancel_reason, cancelled_at,"
-            " discount_pct, discount_reason)"
+            " discount_pct, discount_reason, converted_from)"
             " VALUES (current_setting('app.gym_id')::uuid, :person_id, :plan_id, :status,"
             " :anchor_day, :started_at, :current_period_end, :credits_remaining,"
             " CAST(:cancel_reason AS text),"
             " CASE WHEN CAST(:cancel_reason AS text) IS NULL THEN NULL ELSE now() END,"
-            " :discount_pct, :discount_reason)"
+            " :discount_pct, :discount_reason, :converted_from)"
             " RETURNING id"
         ),
         {
@@ -272,6 +292,7 @@ async def insert_membership(
             "cancel_reason": started.cancel_reason,
             "discount_pct": 0 if discount is None else discount.pct,
             "discount_reason": None if discount is None else discount.reason,
+            "converted_from": converted_from,
         },
     )
     membership_id: uuid.UUID = result.scalar_one()
@@ -305,6 +326,69 @@ async def _starts_on(
     return billed_through + timedelta(days=1), billed_through
 
 
+# Every trial of the person, locked until the request commits: two plans starting for
+# them take turns, and the second sees the first's conversion (`convertible_trial`).
+LOCK_TRIALS = text(
+    """
+    SELECT t.id FROM membership t JOIN plan tp ON tp.id = t.plan_id
+    WHERE t.person_id = :person AND tp.kind = 'trial'
+    ORDER BY t.id
+    FOR UPDATE OF t
+    """
+)
+
+# The trial a paid plan of the person converts (#27): their latest one not voided, not
+# converted already, with no paid plan of theirs started since. Read after the lock, in
+# a statement of its own, so it sees a conversion that committed while the lock waited.
+CONVERTIBLE_TRIAL = text(
+    f"""
+    SELECT t.id, tp.name AS plan_name,
+           (t.started_at AT TIME ZONE g.timezone)::date AS started_on,
+           t.status = 'trial' AS running
+    FROM membership t
+    JOIN plan tp ON tp.id = t.plan_id
+    JOIN gym g ON g.id = t.gym_id
+    WHERE t.person_id = :person AND tp.kind = 'trial' AND t.voided_at IS NULL
+      AND NOT EXISTS (
+          SELECT FROM membership p JOIN plan pp ON pp.id = p.plan_id
+          WHERE p.person_id = t.person_id AND p.voided_at IS NULL
+            AND (p.converted_from = t.id
+                 OR (p.created_at > t.created_at
+                     AND pp.kind IN ({", ".join(f"'{k.value}'" for k in sorted(CONVERTS))})))
+      )
+    ORDER BY t.created_at DESC, t.id
+    LIMIT 1
+    """
+)
+
+# A trial still running ends as a paid plan converts it (`domain.end_converted`).
+END_TRIAL = text(
+    "UPDATE membership SET status = :status, cancel_reason = :reason, cancelled_at = now()"
+    " WHERE id = :id"
+)
+
+
+async def convertible_trial(
+    session: AsyncSession, person_id: uuid.UUID, *, lock: bool
+) -> ConvertedTrial | None:
+    """The trial a paid plan starting for `person_id` converts, if any; with `lock`, the
+    person's trials locked until the request commits."""
+    if lock:
+        await session.execute(LOCK_TRIALS, {"person": person_id})
+    row = (await session.execute(CONVERTIBLE_TRIAL, {"person": person_id})).one_or_none()
+    return None if row is None else ConvertedTrial(**row._mapping)
+
+
+async def convert_trial(session: AsyncSession, trial: ConvertedTrial) -> None:
+    """End `trial`, converted, when it is still running: its free classes end with it."""
+    if not trial.running:
+        return
+    ended = domain.end_converted(domain.Membership(PlanKind.TRIAL, MembershipStatus.TRIAL))
+    await session.execute(
+        END_TRIAL, {"id": trial.id, "status": ended.status.value, "reason": ended.cancel_reason}
+    )
+
+
 async def start_membership(
     session: AsyncSession,
     tenant: Tenant,
@@ -318,7 +402,8 @@ async def start_membership(
     the gym's timezone when it has none, or after what a lapsed plan of theirs billed
     (`_starts_on`), with `discount` off every period, and with `enrolment` the plan's
     matrícula, if it has one, due that day (`app.api.enrolment`); a 422 for a plan this
-    gym cannot start."""
+    gym cannot start. A paid plan converts the person's trial (`convertible_trial`, #27),
+    and ends it if it is still running."""
     terms = await _plan_terms(session, body.plan_id)
     timezone = await session.scalar(
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
@@ -331,6 +416,9 @@ async def start_membership(
     except (ValueError, OverflowError) as error:
         raise _unprocessable(error) from None
 
+    trial = None
+    if terms.kind in CONVERTS:
+        trial = await convertible_trial(session, person_id, lock=True)
     try:
         membership_id = await insert_membership(
             session,
@@ -339,9 +427,12 @@ async def start_membership(
             started,
             start_of_local_day(started_on, timezone),
             discount,
+            None if trial is None else trial.id,
         )
     except PersonHasLeft:
         raise HAS_LEFT from None
+    if trial is not None:
+        await convert_trial(session, trial)
     await bill_now(session, membership_id, gym_today(timezone))
     if enrolment:
         await charge_enrolment(session, membership_id, started_on)
@@ -490,9 +581,9 @@ async def start_quote(
     started_on: date | None = None,
 ) -> StartQuote:
     """What `POST /api/memberships` would start, saving nothing (#271): the day the plan
-    starts, after the last day a lapsed plan billed when that moves it, and what the
-    lapsed plans still owe, for "Asignar plan" to warn of before it saves. Someone not in
-    this gym is a 404."""
+    starts, after the last day a lapsed plan billed when that moves it, what the lapsed
+    plans still owe, and the trial it converts (#27), for "Asignar plan" to warn of
+    before it saves. Someone not in this gym is a 404."""
     known = await session.scalar(
         text("SELECT true FROM gym_person WHERE person_id = :id"), {"id": person_id}
     )
@@ -502,7 +593,45 @@ async def start_quote(
     today = await _gym_today(session, tenant)
     starts_on, billed_through = await _starts_on(session, person_id, terms, started_on or today)
     debt = await session.scalar(LAPSED_DEBT, {"person": person_id, "today": today})
-    return StartQuote(starts_on=starts_on, billed_through=billed_through, debt_clp=debt or 0)
+    converts = None
+    if terms.kind in CONVERTS:
+        converts = await convertible_trial(session, person_id, lock=False)
+    return StartQuote(
+        starts_on=starts_on, billed_through=billed_through, debt_clp=debt or 0, converts=converts
+    )
+
+
+# The days back `GET /api/memberships/trials` counts trials started in, today's included.
+TRIAL_DAYS = 90
+
+# The trials started in the window, in the gym's timezone, and what came of them. RLS
+# keeps it to the current gym.
+TRIAL_COUNTS = text(
+    """
+    SELECT count(*) AS started,
+           count(*) FILTER (WHERE EXISTS (
+               SELECT FROM membership c
+               WHERE c.converted_from = t.id AND c.voided_at IS NULL
+           )) AS converted,
+           count(*) FILTER (WHERE t.status = 'trial') AS running
+    FROM membership t
+    JOIN plan tp ON tp.id = t.plan_id
+    JOIN gym g ON g.id = t.gym_id
+    WHERE tp.kind = 'trial' AND t.voided_at IS NULL
+      AND (t.started_at AT TIME ZONE g.timezone)::date
+          > CAST(:today AS date) - CAST(:days AS integer)
+    """
+)
+
+
+@router.get("/trials")
+async def trial_conversions(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: StaffSession
+) -> TrialConversions:
+    """How the trials of the last `TRIAL_DAYS` days went (#27): Hoy's "Pruebas"."""
+    today = await _gym_today(session, tenant)
+    row = (await session.execute(TRIAL_COUNTS, {"today": today, "days": TRIAL_DAYS})).one()
+    return TrialConversions(days=TRIAL_DAYS, **row._mapping)
 
 
 @router.get("")

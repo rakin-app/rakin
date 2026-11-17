@@ -583,7 +583,7 @@ async def approve_join_request(
 
     membership_id = None
     member_already = (
-        await session.execute(text(LIVE_MEMBERSHIP), {"id": person_id})
+        await session.execute(text(LIVE_MEMBERSHIP), {"id": person_id, "converts": False})
     ).first() is not None
     if body.plan_id is not None:
         if member_already:

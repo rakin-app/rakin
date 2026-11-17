@@ -1,6 +1,6 @@
 import { onlineManager } from '@tanstack/react-query'
 import { createMemoryHistory } from '@tanstack/react-router'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
@@ -191,6 +191,8 @@ type Stub = {
   freezeRequests?: FreezeRequest[]
   // Minors with no guardian, by name: "Falta apoderado" (#368).
   unguarded?: string[]
+  // How the last 90 days' trials went (#27); none by default.
+  trials?: Answer
   // The gym's open-access types, as `GET /api/check-in` answers (#348); none by default.
   doors?: unknown[]
   // `GET /api/requirements/due` (#350).
@@ -244,6 +246,7 @@ function stubApi({
   unguarded = [],
   doors = [],
   due = [],
+  trials = { body: { days: 90, started: 0, converted: 0, running: 0 } },
 }: Stub = {}) {
   const calls: Call[] = []
   let asked = freezeRequests
@@ -301,6 +304,7 @@ function stubApi({
     if (path === '/api/sessions') return today ?? { body: TODAY }
     if (path === '/api/check-in') return { body: doors }
     if (path === '/api/requirements/due') return { body: due }
+    if (path === '/api/memberships/trials') return trials
     if (path === '/api/join-requests') return { body: { items: [], total: 0 } }
     if (path === '/api/freeze-requests') return role === 'coach' ? { status: 403, body: {} } : { body: asked }
     const answered = /^\/api\/freeze-requests\/(.+)\/(approve|reject)$/.exec(path)
@@ -379,6 +383,34 @@ describe('Hoy', () => {
       'href',
       '#sin-asistencia',
     )
+  })
+
+  it('says how many of the last trials went on to a plan, and how many still run (#27)', async () => {
+    stubApi({ trials: { body: { days: 90, started: 8, converted: 3, running: 2 } } })
+    renderToday()
+
+    const card = await section(copy.trials.title)
+    expect(within(card).getByText(copy.trials.aside(90))).toBeInTheDocument()
+    expect(
+      within(card).getByText(`${copy.trials.converted(3, 8)} · ${copy.trials.running(2)}`),
+    ).toBeInTheDocument()
+  })
+
+  it('shows no "Pruebas", and no error, when the count fails', async () => {
+    const calls = stubApi({ trials: { status: 500, body: { detail: 'boom' } } })
+    renderToday()
+
+    await section(copy.proofs.title)
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/memberships/trials')).toBe(true))
+    expect(screen.queryByRole('region', { name: copy.trials.title })).not.toBeInTheDocument()
+  })
+
+  it('has no "Pruebas" while the gym has had no trial', async () => {
+    stubApi()
+    renderToday()
+
+    await section(copy.proofs.title)
+    expect(screen.queryByRole('region', { name: copy.trials.title })).not.toBeInTheDocument()
   })
 
   it('lists the minors with no guardian, each leading to their ficha (#368)', async () => {

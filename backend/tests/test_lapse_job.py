@@ -258,6 +258,16 @@ def test_a_trial_lapses_after_its_free_days(gym: Gym) -> None:
     assert events(gym, member) == [("lapsed", date(2026, 11, 15))]
 
 
+def test_a_trial_lapses_once_its_free_classes_run_out(gym: Gym) -> None:
+    member = gym.member("trial", NOV_1, status="trial", current_period_end=date(2026, 11, 14))
+    gym.sql("UPDATE membership SET credits_remaining = 0 WHERE id = $1", member)
+
+    run_lapse(gym.db, date(2026, 11, 5))
+
+    assert status(gym, member) == "lapsed"
+    assert events(gym, member) == [("lapsed", date(2026, 11, 5))]
+
+
 @pytest.mark.parametrize(
     ("plan", "member_status"),
     [("signup", "frozen"), ("signup", "lapsed"), ("signup", "cancelled"), ("dropin", "active")],

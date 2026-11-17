@@ -5,7 +5,7 @@ import { activitiesQuery } from '../api/activities'
 import { classTypesQuery } from '../api/classes'
 import { ApiError } from '../api/client'
 import { gymSettingsQuery } from '../api/gym'
-import { recordPayment, type Method } from '../api/member'
+import { recordPayment, trialConversionsQuery, type Method } from '../api/member'
 import { myAccessQuery, myselfQuery, readsLedger } from '../api/me'
 import { memberCountQuery, missingGuardianQuery, plansQuery, type MemberRow } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
@@ -296,6 +296,7 @@ function OwnerToday() {
             <InactiveList members={inactive.data} />
           )}
         </Card>
+        <TrialsCard />
         <Card id="sin-asistencia" className="today__section" aria-labelledby="sin-asistencia-title">
           <SectionHead
             id="sin-asistencia-title"
@@ -605,6 +606,24 @@ function MissingGuardianRow({ member }: { member: MemberRow }) {
         </span>
       </Link>
     </li>
+  )
+}
+
+/** "Pruebas" (#27): how many of the last days' trials went on to a plan, and how many are
+ * still running. Shown once the gym has had one; a count that fails shows nothing, so it
+ * never puts an error card on a gym that has had no trial. */
+function TrialsCard() {
+  const trials = useQuery(trialConversionsQuery)
+  const words = copy.trials
+  if (!trials.data || trials.data.started === 0) return null
+  return (
+    <Card id="pruebas" className="today__section" aria-labelledby="pruebas-title">
+      <SectionHead id="pruebas-title" title={words.title} aside={words.aside(trials.data.days)} />
+      <p className="today__note">
+        {words.converted(trials.data.converted, trials.data.started)}
+        {trials.data.running > 0 && ` · ${words.running(trials.data.running)}`}
+      </p>
+    </Card>
   )
 }
 

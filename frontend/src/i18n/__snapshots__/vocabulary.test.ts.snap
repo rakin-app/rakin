@@ -210,6 +210,12 @@ exports[`a gym's words > reads exactly as before with none set: nav, Hoy and Alu
       "title": "Configura tu academia",
     },
     "title": "Hoy",
+    "trials": {
+      "aside": "Últimos 2 días",
+      "converted": "2 de 3 pruebas pasaron a un plan",
+      "running": "2 siguen en prueba",
+      "title": "Pruebas",
+    },
     "unmarked": {
       "count": "2 clases",
       "detail": "2 · 3",

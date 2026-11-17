@@ -247,6 +247,14 @@ export const es = {
         take: 'Pasar lista',
         takeLabel: (name: string) => `Pasar lista de ${name}`,
       },
+      // How the trials of the last `days` days went (#27).
+      trials: {
+        title: 'Pruebas',
+        aside: (days: number) => `Últimos ${days} días`,
+        converted: (converted: number, started: number) =>
+          `${converted} de ${started} ${started === 1 ? 'prueba pasó' : 'pruebas pasaron'} a un plan`,
+        running: (n: number) => (n === 1 ? '1 sigue en prueba' : `${n} siguen en prueba`),
+      },
       // A coach's Hoy: today's classes, each a tap from its attendance.
       classes: {
         title: 'Clases de hoy',
@@ -1301,6 +1309,11 @@ export const es = {
         cancel: 'Cancelar',
         working: 'Guardando…',
         done: (plan: string) => `Plan asignado: ${plan}.`,
+        // The trial the plan converts (#27): one still running ends as it is saved.
+        converts: (trial: string, since: string, running: boolean) =>
+          running
+            ? `Pasa de la prueba (${trial}, desde el ${since}): la prueba termina al guardar.`
+            : `Cuenta como paso de la prueba (${trial}, del ${since}) a un plan.`,
         // Said before saving, when a lapsed plan still owes or has billed past the day asked (#271).
         debt: (amount: string) => `Debe ${amount} de un plan anterior. Queda como deuda anterior: se cobra aparte del nuevo plan.`,
         moved: (billed: string, starts: string) =>
@@ -1394,6 +1407,8 @@ export const es = {
       },
       voidedBadge: 'Anulado',
       voidedBanner: (reason: string, day: string) => `Plan anulado el ${day}: ${reason}`,
+      // The trial a paid plan converted (#27).
+      convertedFrom: (trial: string, since: string) => `Viene de la prueba (${trial}, del ${since})`,
       voidForm: {
         title: 'Anular cargo',
         intro: 'Para un cargo hecho por error: deja de deberse en todas partes. Queda en el libro, tachado y con el motivo.',

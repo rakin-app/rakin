@@ -64,10 +64,16 @@ export type Membership = {
   // Voided as started by mistake (#256): cancelled as of its start, its unpaid charges voided.
   voided_at?: string | null
   void_reason?: string | null
+  // The trial this plan converted (#27); null on a trial and on a plan with none.
+  converted_from?: ConvertedTrial | null
   // A percentage off every period, and why (#25); left out for a coach, who sees no money.
   discount_pct?: number
   discount_reason?: string | null
 }
+
+/** A trial a paid plan converted, or would (backend `ConvertedTrial`, #27); `running`: the
+ * plan starting ends it. */
+export type ConvertedTrial = { id: string; plan_name: string; started_on: string; running: boolean }
 
 /** A fixed percentage off every period a membership bills, and why (backend `Discount`, #25). */
 export type Discount = { pct: number; reason: string }
@@ -544,8 +550,21 @@ export function shownMemberships(memberships: readonly Membership[]): Membership
 
 /** What "Asignar plan" would start, before it is saved (backend `StartQuote`, #271): the
  * day it starts, after `billed_through`, the last day a lapsed plan billed, when that moved
- * it; and `debt_clp`, what the lapsed plans still owe. */
-export type StartQuote = { starts_on: string; billed_through: string | null; debt_clp: number }
+ * it; `debt_clp`, what the lapsed plans still owe; and `converts`, the trial it converts (#27). */
+export type StartQuote = {
+  starts_on: string
+  billed_through: string | null
+  debt_clp: number
+  converts?: ConvertedTrial | null
+}
+
+/** How the trials of the last `days` days went (backend `TrialConversions`, #27): Hoy's "Pruebas". */
+export type TrialConversions = { days: number; started: number; converted: number; running: number }
+
+export const trialConversionsQuery = queryOptions({
+  queryKey: ['memberships', 'trials'],
+  queryFn: () => apiFetch<TrialConversions>('/api/memberships/trials'),
+})
 
 export function startQuery(personId: string, planId: string, startedOn: string) {
   const params = new URLSearchParams({ person_id: personId, plan_id: planId, started_on: startedOn })

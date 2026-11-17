@@ -124,6 +124,16 @@ class PlanChangeQuote(BaseModel):
     amount_due_clp: int
 
 
+class ConvertedTrial(BaseModel):
+    """A trial a paid plan converted, or would (#27)."""
+
+    id: uuid.UUID
+    plan_name: str
+    started_on: date
+    # Still running: the paid plan starting ends it.
+    running: bool
+
+
 class StartQuote(BaseModel):
     """What starting a plan would do, before it is saved (#271): the day it starts, and
     `billed_through`, the last day a lapsed plan of the person billed, when the start
@@ -133,6 +143,9 @@ class StartQuote(BaseModel):
     starts_on: date
     billed_through: date | None
     debt_clp: int
+    # The trial the plan converts (#27): the person's latest one not converted yet, when
+    # the plan is a paid one; ended as the plan starts when it is still running.
+    converts: ConvertedTrial | None = None
 
 
 class Cancellation(BaseModel):
@@ -271,6 +284,8 @@ class MembershipForCoach(BaseModel):
     # charges voided. Null on every other membership.
     voided_at: datetime | None = None
     void_reason: str | None = None
+    # The trial this plan converted (#27); null on a trial and on a plan with none.
+    converted_from: ConvertedTrial | None = None
     created_at: datetime
 
 
@@ -284,3 +299,14 @@ def for_coach(membership: Membership) -> MembershipForCoach:
     return MembershipForCoach.model_validate(
         membership.model_dump(exclude={"discount_pct", "discount_reason"})
     )
+
+
+class TrialConversions(BaseModel):
+    """The trials started in the last `days` days, today's included (#27): how many,
+    how many a paid plan converted, and how many are still running. Voided ones are not
+    counted, nor a conversion by a plan voided."""
+
+    days: int
+    started: int
+    converted: int
+    running: int

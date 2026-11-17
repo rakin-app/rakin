@@ -84,7 +84,12 @@ from app.api.grades import readable_scheme
 from app.api.grading import stored_scheme
 from app.api.guardians import family, link
 from app.api.history import LOCK_PERSON, PLAN_FROM, changes, in_plan, record_history_set
-from app.api.memberships import PersonHasLeft, insert_membership
+from app.api.memberships import (
+    PersonHasLeft,
+    convert_trial,
+    convertible_trial,
+    insert_membership,
+)
 from app.api.people import (
     email_holder,
     find_in_gym,
@@ -95,7 +100,7 @@ from app.api.people import (
 )
 from app.domain import membership as domain
 from app.domain.dates import gym_today, is_minor, start_of_local_day
-from app.domain.membership import PlanKind, PlanTerms
+from app.domain.membership import CONVERTS, PlanKind, PlanTerms
 from app.domain.vocabulary import words_in
 from app.member_import.grades import (
     Grade,
@@ -177,10 +182,13 @@ UNGUARDED = """
            ) AS guarded
     FROM gym_person gp WHERE gp.person_id = :id
 """
+# The membership that keeps a row's plan from starting: their latest not cancelled. A
+# trial does not keep a paid plan from starting, which converts it (#27), `:converts`.
 LIVE_MEMBERSHIP = """
-    SELECT plan_id, current_period_end FROM membership
-    WHERE person_id = :id AND status <> 'cancelled'
-    ORDER BY started_at DESC, created_at DESC
+    SELECT m.plan_id, m.current_period_end FROM membership m JOIN plan p ON p.id = m.plan_id
+    WHERE m.person_id = :id AND m.status <> 'cancelled'
+      AND NOT (CAST(:converts AS boolean) AND p.kind = 'trial')
+    ORDER BY m.started_at DESC, m.created_at DESC
     LIMIT 1
 """
 # This gym's people, for finding a row that gives no RUT and no email by name (#165):
@@ -760,7 +768,12 @@ class Writer:
             # An overdue member started no later than the payment they owe.
             started_on = min(started_on, member.due_on)
         started = domain.imported(member.plan.terms, started_on, member.due_on)
-        live = (await self.session.execute(text(LIVE_MEMBERSHIP), {"id": person_id})).first()
+        converts = member.plan.terms.kind in CONVERTS
+        live = (
+            await self.session.execute(
+                text(LIVE_MEMBERSHIP), {"id": person_id, "converts": converts}
+            )
+        ).first()
         if live is not None:
             if live.plan_id != member.plan.id:
                 self.ignored.append(Field.PLAN)
@@ -769,6 +782,10 @@ class Writer:
             ):
                 self.ignored.append(Field.DUE_ON)
             return "existing"
+        # A paid plan converts their trial, as every start does (#27).
+        trial = None
+        if converts:
+            trial = await convertible_trial(self.session, person_id, lock=True)
         try:
             membership_id = await insert_membership(
                 self.session,
@@ -776,10 +793,13 @@ class Writer:
                 member.plan.id,
                 started,
                 start_of_local_day(started_on, self.timezone),
+                converted_from=None if trial is None else trial.id,
             )
         except PersonHasLeft:
             # Reactivated from their ficha, not by a sheet that still lists them.
             raise RowRefused(Field.PLAN, "has_left") from None
+        if trial is not None:
+            await convert_trial(self.session, trial)
         if self.enrolment:
             await charge_enrolment(self.session, membership_id, started_on)
         return "created"

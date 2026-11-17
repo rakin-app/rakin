@@ -402,6 +402,45 @@ def test_a_live_membership_keeps_its_plan_and_dates_and_says_so(
 
 
 @pg
+@pytest.mark.parametrize(("status", "after"), [("lapsed", "lapsed"), ("trial", "cancelled")])
+def test_an_imported_paid_plan_converts_a_trial(
+    client: TestClient, db: Database, gym: uuid.UUID, status: str, after: str
+) -> None:
+    trial_plan = {"kind": "trial", "name": "Prueba", "free_classes": 2, "free_days": 14}
+    response = client.post("/api/plans", json=trial_plan, headers=as_gym(gym))
+    assert response.status_code == 201, response.text
+    body = {"rut": "12.345.678-5", "name": "Cami Ortiz", "phone": new_phone()}
+    person = client.post("/api/people", json=body, headers=as_gym(gym)).json()
+    trial = client.post(
+        "/api/memberships",
+        json={"person_id": person["id"], "plan_id": response.json()["id"], "send_welcome": False},
+        headers=as_gym(gym),
+    ).json()
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE membership SET status = $2 WHERE id = $1", uuid.UUID(trial["id"]), status
+        ),
+    )
+    due = (seeded_today() + timedelta(days=10)).strftime("%d/%m/%Y")
+    sheet = {
+        "rows": [{"number": 2, "cells": ["Cami Ortiz", "12.345.678-5", "Mensual", due]}],
+        "mapping": {"name": 0, "rut": 1, "plan": 2, "due_on": 3},
+    }
+
+    [row] = imported(client, gym, sheet, dry_run=False)["rows"]
+
+    assert (row["errors"], row["membership"]) == ([], "created")
+    memberships = client.get(
+        "/api/memberships", params={"person_id": person["id"]}, headers=as_gym(gym)
+    ).json()
+    paid = next(m for m in memberships if m["plan_kind"] == "monthly")
+    assert paid["converted_from"]["id"] == trial["id"]
+    # A trial still running ends as it converts.
+    assert next(m for m in memberships if m["id"] == trial["id"])["status"] == after
+
+
+@pg
 @pytest.mark.parametrize(
     ("guardian_column", "named"),
     [("guardian_rut", "7.654.321-6"), ("guardian_name", "PAULA DIAZ")],

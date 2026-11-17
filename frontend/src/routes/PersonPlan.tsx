@@ -10,6 +10,7 @@ import {
   setDiscount,
   startMembership,
   startQuery,
+  type ConvertedTrial,
   type Discount,
   type Membership,
   type Person,
@@ -43,10 +44,16 @@ export function changesPlan(membership: Membership): boolean {
   return RECURRING.has(membership.plan_kind) && (membership.status === 'active' || membership.status === 'frozen')
 }
 
+/** Whether `membership` keeps "Asignar plan" away: a plan running, but for a trial, which
+ * a plan assigned converts (#27). */
+function holdsPlan(membership: Membership | undefined): boolean {
+  return isLive(membership) && membership.plan_kind !== 'trial'
+}
+
 /** Whether "Asignar plan" is offered: by the owner or an admin, to someone on the roster
- * with no plan running. */
+ * with no plan running, or on a trial. */
 export function assignsPlan(person: Person, membership: Membership | undefined, access: Access | null | undefined): boolean {
-  return managesGym(access) && !person.left_on && !isLive(membership)
+  return managesGym(access) && !person.left_on && !holdsPlan(membership)
 }
 
 /**
@@ -74,7 +81,7 @@ export function AssignPlan({
   const [open, setOpen] = useState(false)
   if (!managesGym(access) || person.left_on) return null
   // Started: the plan card has it now, and what was done.
-  if (isLive(membership)) return null
+  if (holdsPlan(membership)) return null
 
   return (
     <>
@@ -117,10 +124,19 @@ export function AssignPlan({
  * "Asignar plan" opens. Each plan then has its own card, bills and lapses on its own,
  * and the roster marks the one a class's program admits. For the owner and admins.
  */
-export function AddPlan({ person, access, live }: { person: Person; access: Access | null | undefined; live: boolean }) {
+export function AddPlan({
+  person,
+  access,
+  membership,
+}: {
+  person: Person
+  access: Access | null | undefined
+  membership: Membership | undefined
+}) {
   const [open, setOpen] = useState(false)
   const [done, setDone] = useState<string | null>(null)
-  if (!live || !managesGym(access) || person.left_on) return null
+  // A trial's card has "Asignar plan", which converts it (#27).
+  if (!holdsPlan(membership) || !managesGym(access) || person.left_on) return null
   return (
     <>
       {!open && (
@@ -231,6 +247,9 @@ export function AssignForm({
           )}
         </Banner>
       )}
+      {plan.plan_id && quote.data?.converts && (
+        <ConvertsTrial trial={quote.data.converts} />
+      )}
       {missing && (
         <Banner tone="error">
           {form.planNeeded}
@@ -276,6 +295,18 @@ export function AssignForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+/** The trial the plan converts (#27): a warning while it runs, since saving ends it. */
+function ConvertsTrial({ trial }: { trial: ConvertedTrial }) {
+  const line = copy.assignForm.converts(trial.plan_name, shortDay(trial.started_on), trial.running)
+  return trial.running ? (
+    <Banner tone="warning" as="div" className="member__warning">
+      <p>{line}</p>
+    </Banner>
+  ) : (
+    <p className="member__detail">{line}</p>
   )
 }
 

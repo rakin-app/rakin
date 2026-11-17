@@ -206,7 +206,7 @@ export function MemberDetail() {
                   assign={{ person: person.data, access: access.data, done: assigned, setDone: setAssigned }}
                 />
               ))}
-              <AddPlan person={person.data} access={access.data} live={isLive(membership)} />
+              <AddPlan person={person.data} access={access.data} membership={membership} />
               {money && <Corrections personId={personId} />}
             </>
           ) : (
@@ -366,6 +366,11 @@ function Standing({
         {money && <PlanFreezeRequest membershipId={membership.id} />}
         {membership.voided_at && membership.void_reason && (
           <p className="member__detail">{copy.voidedBanner(membership.void_reason, shortDay(isoDay(membership.voided_at)))}</p>
+        )}
+        {membership.converted_from && (
+          <p className="member__detail">
+            {copy.convertedFrom(membership.converted_from.plan_name, shortDay(membership.converted_from.started_on))}
+          </p>
         )}
         {money && membership.discount_pct ? (
           <p className="member__detail">{copy.discountLine(membership.discount_pct, membership.discount_reason ?? null)}</p>
