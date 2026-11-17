@@ -1,7 +1,7 @@
 """A gym's free practice (#346): sparring, randori, escalada libre.
 
-The gym's first activity names its free practice and the open mat made of it; with none
-yet, or one with no preset, it is "Práctica libre". The name lands on the practice's
+The gym's first activity with a preset names its free practice and the open mat made of
+it; with none yet, or none with a preset, it is "Práctica libre". The name lands on the practice's
 block kind, unless the gym renamed that, and `/api/me/role` answers it as the gym has it
 now, for every screen that names the practice.
 """
@@ -35,7 +35,8 @@ def test_every_preset_names_its_practice() -> None:
 
 def test_the_first_activity_names_the_practice() -> None:
     assert practice_of([]) == NEUTRAL
-    assert practice_of([None, "judo"]) == NEUTRAL
+    assert practice_of([None]) == NEUTRAL
+    assert practice_of([None, "judo"]).block == "Randori"
     assert practice_of(["escalada", "judo"]).block == "Escalada libre"
     assert practice_of(["judo"]).block == "Randori"
     bjj = practice_of(["bjj"])
@@ -124,6 +125,15 @@ def test_only_the_first_activity_names_it(client: TestClient, gym: uuid.UUID) ->
 
 
 @pg
+def test_the_first_activity_with_a_preset_names_it(client: TestClient, gym: uuid.UUID) -> None:
+    add(client, gym, "Parkour")
+    assert names(client, gym)[0] == "Práctica libre"
+    add(client, gym, "BJJ", "bjj")
+    assert names(client, gym) == ("Sparring", "Open mat")
+    assert "Sparring" in kinds(client, gym)
+
+
+@pg
 def test_a_name_the_gym_gave_stays(client: TestClient, gym: uuid.UUID) -> None:
     practice = default_block_kind_id(gym, "sparring")
     renamed = {"name": "Rolar"}
@@ -166,7 +176,7 @@ def test_the_migration_names_the_practice_of_the_gyms_already_there() -> None:
         migrate(fresh, "0060")
         gyms = {
             name: seed_gym(fresh, name)
-            for name in ("bjj", "climbing", "judo", "empty", "free", "renamed")
+            for name in ("bjj", "climbing", "judo", "empty", "free", "late", "renamed")
         }
         for name, label, preset in (
             ("bjj", "BJJ", "bjj"),
@@ -174,6 +184,8 @@ def test_the_migration_names_the_practice_of_the_gyms_already_there() -> None:
             ("judo", "Judo", "judo"),
             ("judo", "Escalada", "escalada"),
             ("free", "Parkour", None),
+            ("late", "Parkour", None),
+            ("late", "BJJ", "bjj"),
             ("renamed", "Judo", "judo"),
         ):
             run(fresh.admin_url, in_gym(gyms[name], ACTIVITY, gyms[name], label, preset))
@@ -188,6 +200,7 @@ def test_the_migration_names_the_practice_of_the_gyms_already_there() -> None:
         assert practice("judo") == "Randori"
         assert practice("empty") == "Práctica libre"
         assert practice("free") == "Práctica libre"
+        assert practice("late") == "Sparring"
         assert practice("renamed") == "Rolar"
 
         command.downgrade(fresh.alembic(), "0060")

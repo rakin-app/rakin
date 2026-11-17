@@ -1,8 +1,8 @@
 """A gym's free practice under its activity's name (#346): the existing gyms.
 
 Every gym's default "Sparring" block kind (0028) is its free practice, and its first
-activity now names it (`app.domain.practice`): Randori in judo, Escalada libre in a
-climbing gym, "Práctica libre" for an activity with no preset or a gym with none yet.
+activity with a preset now names it (`app.domain.practice`): Randori in judo, Escalada libre in a
+climbing gym, "Práctica libre" for a gym with no activity that has a preset.
 A kind still called "Sparring" takes that name, unless another of the gym's kinds has
 it already. One the gym renamed keeps its name, and the pilot, whose activity is BJJ,
 keeps "Sparring".
@@ -63,7 +63,7 @@ def upgrade() -> None:
             SELECT coalesce(
                 (SELECT p.name FROM gym_activity a
                  LEFT JOIN (VALUES {VALUES}) AS p (key, name) ON p.key = a.preset
-                 WHERE a.gym_id = g.id
+                 WHERE a.gym_id = g.id AND a.preset IS NOT NULL
                  ORDER BY a.created_at, a.id LIMIT 1),
                 '{NEUTRAL}') AS name) AS word
         WHERE k.id = block_kind_default_id(g.id, 'sparring')

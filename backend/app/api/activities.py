@@ -11,7 +11,7 @@ The gym's first activity also sets what the gym calls itself, its members and it
 gym wrote. Never once the owner has picked the words by hand, and never a later
 activity: Ajustes offers those as a suggestion.
 
-The first activity names the gym's free practice too (#346, `app.domain.practice`):
+The first activity with a preset names the gym's free practice too (#346, `app.domain.practice`):
 Sparring, Randori, Escalada libre. An activity added or removed that changes it renames
 the practice's block kind (`follow_practice`), unless the gym renamed it itself.
 
@@ -56,7 +56,7 @@ async def gym_uses_grades(session: AsyncSession) -> bool:
 
 
 async def gym_practice(session: AsyncSession) -> Practice:
-    """The current gym's practice, as its first activity names it."""
+    """The current gym's practice, as its first activity with a preset names it."""
     presets = list(
         await session.scalars(text("SELECT preset FROM gym_activity ORDER BY created_at, id"))
     )

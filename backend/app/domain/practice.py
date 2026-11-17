@@ -7,9 +7,9 @@ default kind 0028 gives every gym), and the open mat is a class made of it alone
 
 Each activity preset names both (`PRACTICES`): the block, and the open mat when it has
 a name of its own ("Open mat" in BJJ; elsewhere the block's). The gym's first activity
-names its practice; with none yet, or one with no preset, it is the neutral "Práctica
-libre", so a new gym does not start as a dojo. The name lands on the default block kind,
-which the owner may rename like any other.
+that has a preset names its practice; with none yet, or none with a preset, it is the
+neutral "Práctica libre", so a new gym does not start as a dojo. The name lands on the
+default block kind, which the owner may rename like any other.
 """
 
 from collections.abc import Sequence
@@ -55,6 +55,9 @@ KIND = "sparring"
 
 
 def practice_of(presets: Sequence[str | None]) -> Practice:
-    """The practice of a gym whose activities, oldest first, came from `presets`."""
-    first = presets[0] if presets else None
-    return PRACTICES.get(first, NEUTRAL) if first is not None else NEUTRAL
+    """The practice of a gym whose activities, oldest first, came from `presets`: the
+    first one with a preset names it."""
+    for preset in presets:
+        if preset is not None:
+            return PRACTICES.get(preset, NEUTRAL)
+    return NEUTRAL
