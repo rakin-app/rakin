@@ -46,7 +46,7 @@ from app.api.people import NOT_FOUND as PERSON_NOT_FOUND
 from app.api.people import in_gym
 from app.api.programs import execute_refusing
 from app.domain.dates import gym_today, start_of_local_day
-from app.permissions import FORBIDDEN, Permission, StaffSession, holds
+from app.permissions import FORBIDDEN, AttendanceSession, Permission, StaffSession, holds
 from app.schemas.blocks import (
     MAX_BLOCK_SECONDS,
     BlockActual,
@@ -251,7 +251,7 @@ async def get_plan(session_id: uuid.UUID, session: StaffSession) -> SessionPlan:
     },
 )
 async def replace_plan(
-    session_id: uuid.UUID, body: PlanReplace, tenant: CurrentTenant, session: StaffSession
+    session_id: uuid.UUID, body: PlanReplace, tenant: CurrentTenant, session: AttendanceSession
 ) -> SessionPlan:
     """The session's plan, replaced whole. Sending the same plan again changes nothing."""
     held = await _held(session, session_id, lock=True)
@@ -306,7 +306,7 @@ async def record_actual(
     block_id: uuid.UUID,
     body: BlockActual,
     tenant: CurrentTenant,
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> SessionBlock:
     """What the block ran. A sparring block also says the rounds completed, at most
     those planned, and its seconds are the rounds' alone, rest not included: at most

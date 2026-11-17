@@ -50,7 +50,7 @@ from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.integrations import Integrations, get_integrations
 from app.integrations.blobstore import BlobStore
 from app.notices import PROOF_REJECTED, Notice, Notices, get_notices
-from app.permissions import LedgerSession
+from app.permissions import LedgerReadSession, LedgerSession
 from app.schemas.ledger import Entry, RecordedPayment
 from app.schemas.proofs import (
     ProofRejection,
@@ -271,7 +271,7 @@ async def _review(row: Any, store: BlobStore) -> ProofReview:
 
 @router.get("")
 async def queue(
-    session: LedgerSession, integrations: Annotated[Integrations, Depends(get_integrations)]
+    session: LedgerReadSession, integrations: Annotated[Integrations, Depends(get_integrations)]
 ) -> list[ProofReview]:
     """The proofs waiting for review, oldest first: the admin pages through them."""
     zone: str = await session.scalar(text("SELECT timezone FROM gym"))

@@ -39,7 +39,7 @@ from app.notices import (
     Template,
     get_notices,
 )
-from app.permissions import AdminSession, Permission, holder_of
+from app.permissions import LedgerReadSession, LedgerSession, Permission, holder_of
 from app.schemas.freeze_requests import (
     REASON_LABELS,
     FreezeApproval,
@@ -251,7 +251,7 @@ async def withdraw_freeze_request(
 
 
 @router.get("")
-async def list_freeze_requests(session: AdminSession) -> list[FreezeRequest]:
+async def list_freeze_requests(session: LedgerReadSession) -> list[FreezeRequest]:
     """The requests waiting for an answer, oldest first."""
     rows = await session.execute(
         text(f"{SELECT_REQUEST} WHERE r.status = 'pending' ORDER BY r.created_at, r.id")
@@ -282,7 +282,7 @@ async def approve_freeze_request(
     request_id: uuid.UUID,
     body: FreezeApproval,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerSession,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> Membership:
@@ -320,7 +320,7 @@ async def reject_freeze_request(
     request_id: uuid.UUID,
     body: FreezeRejection,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: LedgerSession,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> FreezeRequest:

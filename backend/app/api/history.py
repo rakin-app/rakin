@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import NOT_FOUND, read_person
 from app.domain.dates import add_months, gym_today
-from app.permissions import AdminSession, LedgerSession
+from app.permissions import LedgerReadSession, LedgerSession, MembersSession
 from app.schemas.history import (
     HistoryPayment,
     HistoryPaymentIn,
@@ -128,7 +128,7 @@ async def set_history(
     person_id: uuid.UUID,
     body: PersonHistory,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: AdminSession,
+    session: MembersSession,
 ) -> Person:
     """Their start and their classes before Rakin, as given. Writing what is already
     there records nothing."""
@@ -255,7 +255,7 @@ async def read_history_payments(session: AsyncSession, person_id: uuid.UUID) -> 
 
 
 @router.get("/{person_id}/history/payments")
-async def history_payments(person_id: uuid.UUID, session: LedgerSession) -> HistoryPaymentsRead:
+async def history_payments(person_id: uuid.UUID, session: LedgerReadSession) -> HistoryPaymentsRead:
     """The Historial card's payments, by year, newest first."""
     if (
         await session.scalar(

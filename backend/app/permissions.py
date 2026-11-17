@@ -9,14 +9,25 @@ tested on every request: an appointment ending today grants nothing today, one s
 tomorrow nothing yet, whatever a job has or has not run
 (docs/design/expenses-and-officers.md, sections 1 to 3 and 7).
 
-A gym-scoped endpoint takes the session for what it does instead of a bare
-`TenantSession`: `StaffSession` for anyone on the team, `AdminSession` for the gym's
-setup (`gym_setup`), `LedgerSession` for the ledger (`money_write`, #310 splits its
-reads off to `money_read`), `OwnerSession` for the titular alone (deleting a member,
-#157). Without it, the request is a 403; without a tenant, still a 401, before any
-database work. An endpoint every staff member may read but whose answer carries money
-(a plan's price, a membership's discount) takes `SeesMoney` too, and leaves the amounts
-out without `money_read` (#205).
+A gym-scoped endpoint takes the session for the one permission it needs instead of a
+bare `TenantSession` (#310): `StaffSession` for anyone on the team (the roster, the
+schedule, what a class is), `LedgerReadSession` to read money (`money_read`),
+`LedgerSession` to record it and to start, change, freeze or end a student's plan
+(`money_write`), `MembersSession` for the members (`members_manage`: groups, the join
+link, enrolling, Dar de baja), `MembersAddSession` to add a student without a plan and
+keep their record (`members_add`), `AttendanceSession` to run a class (`attendance`),
+`AdminSession` for the gym's setup (`gym_setup`), `TeamSession` for the team
+(`team_manage`), and `OwnerSession` for the titular alone (deleting a member, #157).
+Without it, the request is a 403; without a tenant, still a 401, before any database
+work. An endpoint every staff member may read but whose answer carries money (a plan's
+price, a membership's discount) takes `SeesMoney` too, and leaves the amounts out
+without `money_read` (#205). Each gate is listed in `GATES`, which
+`tests/test_endpoint_permissions.py` reads to fail on an endpoint that asks for none.
+
+The team is managed by the strictly-fewer rule (section 4, `manages`): you appoint, end
+or change an appointment only for a person whose permissions are a proper subset of
+yours, and only to a role whose permissions are a proper subset of yours. The titular
+manages everyone, and nobody manages the titular.
 
 Every gym starts with the Academia preset's roles, Administrador and Coach, carrying
 what today's admin and coach do (migration 0065). The database holds the same
@@ -100,7 +111,40 @@ ADMINISTRADOR = PresetTitle(
 COACH = PresetTitle(
     "coach", "Coach", frozenset({Permission.ATTENDANCE, Permission.MEMBERS_ADD}), public=True
 )
-PRESETS: dict[str, tuple[PresetTitle, ...]] = {ACADEMIA: (ADMINISTRADOR, COACH)}
+
+# The board of a club (section 2). No gym is given it yet: Cargos adds it (#311).
+CLUB_FEDERADO = "club_federado"
+PRESIDENTE = PresetTitle(
+    "presidente",
+    "Presidente",
+    frozenset({Permission.MONEY_READ, Permission.EXPENSES_READ, Permission.TEAM_MANAGE}),
+    public=True,
+)
+TESORERO = PresetTitle(
+    "tesorero",
+    "Tesorero",
+    frozenset(
+        {
+            Permission.MONEY_READ,
+            Permission.MONEY_WRITE,
+            Permission.EXPENSES_READ,
+            Permission.EXPENSES_WRITE,
+        }
+    ),
+    public=True,
+)
+SECRETARIO = PresetTitle(
+    "secretario",
+    "Secretario",
+    frozenset({Permission.MEMBERS_MANAGE, Permission.MEMBERS_ADD}),
+    public=True,
+)
+DIRECTOR = PresetTitle("director", "Director", frozenset(), public=True)
+DELEGADO = PresetTitle("delegado", "Delegado", frozenset({Permission.ATTENDANCE}), public=True)
+PRESETS: dict[str, tuple[PresetTitle, ...]] = {
+    ACADEMIA: (ADMINISTRADOR, COACH),
+    CLUB_FEDERADO: (PRESIDENTE, TESORERO, SECRETARIO, DIRECTOR, DELEGADO, COACH),
+}
 
 
 def preset_title_id(gym_id: uuid.UUID, preset: str, key: str) -> uuid.UUID:
@@ -117,6 +161,25 @@ class Standing:
 
     def holds(self, *needed: Permission) -> bool:
         return self.permissions.issuperset(needed)
+
+
+NOBODY = Standing(account_holder=False, permissions=frozenset())
+"""The standing of someone not on the team, as the rule of section 4 weighs them."""
+
+
+def manages(acting: Standing, permissions: frozenset[Permission]) -> bool:
+    """Whether `acting` may manage a person or a role holding `permissions` (section 4):
+    the titular any, anyone else only a proper subset of their own, never by count. So
+    nobody grants a permission they lack."""
+    return acting.account_holder or permissions < acting.permissions
+
+
+def may_change_role(
+    acting: Standing, before: frozenset[Permission], after: frozenset[Permission]
+) -> bool:
+    """Whether `acting` may edit a role from `before` to `after`: the rule holds of
+    both, so a role nobody may touch is not edited into one they may (#311's Cargos)."""
+    return manages(acting, before) and manages(acting, after)
 
 
 FORBIDDEN = HTTPException(status.HTTP_403_FORBIDDEN, "not allowed for your role in this gym")
@@ -161,10 +224,15 @@ def holder_of(permission: Permission) -> str:
 async def standing_in_gym(session: AsyncSession, tenant: Tenant) -> Standing | None:
     """The person acting's standing in the gym; `None` when they are not on the team:
     no `staff` row, or one with neither the titular flag nor a current appointment."""
+    return await standing_of(session, tenant.gym_id, tenant.person_id)
+
+
+async def standing_of(
+    session: AsyncSession, gym_id: uuid.UUID, person_id: uuid.UUID | None
+) -> Standing | None:
+    """`person_id`'s standing in `gym_id`, as `standing_in_gym` reads the person acting's."""
     row = (
-        await session.execute(
-            text(STANDING_IN_GYM), {"gym_id": tenant.gym_id, "person_id": tenant.person_id}
-        )
+        await session.execute(text(STANDING_IN_GYM), {"gym_id": gym_id, "person_id": person_id})
     ).one_or_none()
     if row is None:
         return None
@@ -188,7 +256,15 @@ async def holds(session: AsyncSession, tenant: Tenant, *needed: Permission) -> b
     return standing is not None and standing.holds(*needed)
 
 
-def requires(*needed: Permission) -> Callable[..., Awaitable[AsyncSession]]:
+Gate = Callable[..., Awaitable[AsyncSession]]
+
+# Each session dependency that refuses whoever may not use an endpoint, and what it asks:
+# the permissions it needs (none: being on the team), or `TITULAR`.
+TITULAR = "titular"
+GATES: dict[Gate, frozenset[Permission] | str] = {}
+
+
+def requires(*needed: Permission) -> Gate:
     """A dependency: the request's `TenantSession`, once its person is on the team and
     holds every one of `needed` (with none, being on the team is enough)."""
 
@@ -200,6 +276,7 @@ def requires(*needed: Permission) -> Callable[..., Awaitable[AsyncSession]]:
             raise FORBIDDEN
         return session
 
+    GATES[session_for] = frozenset(needed)
     return session_for
 
 
@@ -214,9 +291,16 @@ async def account_holder_session(
     return session
 
 
+GATES[account_holder_session] = TITULAR
+
 StaffSession = Annotated[AsyncSession, Depends(requires())]
-AdminSession = Annotated[AsyncSession, Depends(requires(Permission.GYM_SETUP))]
+LedgerReadSession = Annotated[AsyncSession, Depends(requires(Permission.MONEY_READ))]
 LedgerSession = Annotated[AsyncSession, Depends(requires(Permission.MONEY_WRITE))]
+MembersSession = Annotated[AsyncSession, Depends(requires(Permission.MEMBERS_MANAGE))]
+MembersAddSession = Annotated[AsyncSession, Depends(requires(Permission.MEMBERS_ADD))]
+AttendanceSession = Annotated[AsyncSession, Depends(requires(Permission.ATTENDANCE))]
+AdminSession = Annotated[AsyncSession, Depends(requires(Permission.GYM_SETUP))]
+TeamSession = Annotated[AsyncSession, Depends(requires(Permission.TEAM_MANAGE))]
 OwnerSession = Annotated[AsyncSession, Depends(account_holder_session)]
 
 

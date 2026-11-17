@@ -28,7 +28,7 @@ from app.api.grading import stored_scheme
 from app.api.people import NOT_FOUND, in_gym
 from app.domain.dates import add_months, gym_today
 from app.domain.membership import current_first
-from app.permissions import StaffSession
+from app.permissions import AttendanceSession, StaffSession
 from app.schemas.grades import GradeAward, GradeEvent, Grading, Rank
 from app.schemas.grading import GradingScheme
 from app.schemas.people import HISTORY_WINDOW_YEARS
@@ -150,7 +150,7 @@ async def award_grade(
     person_id: uuid.UUID,
     body: GradeAward,
     tenant: Annotated[Tenant, Depends(current_tenant)],
-    session: StaffSession,
+    session: AttendanceSession,
 ) -> Grading:
     """Award a rank. 422 with a `code` for a rank or sub-rank the scheme does not have
     (`unknown_rank`, `unknown_sub_rank`), a missing sub-rank on a rank that has them

@@ -22,7 +22,7 @@ from fastapi import APIRouter
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.permissions import LedgerSession
+from app.permissions import LedgerReadSession
 from app.schemas.ledger import Correction, Corrections, DiscountShift, Figures
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
@@ -149,7 +149,7 @@ def correction(row: Any) -> Correction:
 
 
 @router.get("/people/{person_id}/corrections")
-async def person_corrections(person_id: uuid.UUID, session: LedgerSession) -> Corrections:
+async def person_corrections(person_id: uuid.UUID, session: LedgerReadSession) -> Corrections:
     """Every correction of the person's billing, newest first: the ficha's "Correcciones"."""
     rows = (
         await session.execute(CORRECTIONS, {"person": person_id, "limit": CORRECTIONS_LIMIT})
