@@ -1,6 +1,6 @@
-"""Migration 0066: the policies ask permissions, not role names (#309).
+"""Migration 0067: the policies ask permissions, not role names (#309).
 
-A downgrade puts every policy and `undo_import` back as 0065 left them, and an upgrade
+A downgrade puts every policy and `undo_import` back as 0066 left them, and an upgrade
 after it rewrites them again. `undo_import` follows the titular flag: whoever holds the
 account runs it, whatever their row's role says.
 """
@@ -37,7 +37,7 @@ UNDO_SOURCE = "SELECT prosrc FROM pg_proc WHERE proname = 'undo_import'"
 @pytest.fixture
 def db() -> Iterator[Database]:
     with throwaway_database(require_test_database_url()) as database:
-        migrate(database, "0065")
+        migrate(database, "0066")
         yield database
 
 
@@ -58,7 +58,7 @@ def test_a_downgrade_puts_back_every_policy_and_an_upgrade_rewrites_them(db: Dat
     assert not any("role" in f"{p[5]} {p[6]}" for p in after[0])
     assert "account_holder" in after[1]
 
-    command.downgrade(db.alembic(), "0065")
+    command.downgrade(db.alembic(), "0066")
     assert schema(db) == before
     migrate(db)
     assert schema(db) == after

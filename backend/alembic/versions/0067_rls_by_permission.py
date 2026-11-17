@@ -17,10 +17,11 @@ each policy asks it for the permission the command needs
   `charge_group_member` are still read by anyone in the gym (0037), and written with
   `money_write`. `history_payment` (0055) the same as the ledger.
 - `session_delete_by_role` (0033), restrictive, becomes `session_delete`: `gym_setup`.
-- `audit_event`: a correction's row (0048, 0051, 0055) is written with `money_write`, an
-  import's (0053) with `gym_setup`, as the import itself is. The log is read with
-  `money_read`, except an expense's rows (`expense_…`, #314), which need
-  `expenses_read`: so a role that sees expenses but not income reads only those.
+- `audit_event`: a correction's row (0048, 0051, 0055) and a discount's (0066) are
+  written with `money_write`, an import's (0053) with `gym_setup`, as the import itself
+  is. The log is read with `money_read`, except an expense's rows (`expense_…`, #314),
+  which need `expenses_read`: so a role that sees expenses but not income reads only
+  those.
 - `undo_import` (0056), which only the titular may run, reads the titular flag instead
   of `role = 'owner'`.
 
@@ -29,8 +30,8 @@ until #313 drops it. A student's own policies (their entries, their dependents',
 proof claims) are about the person acting, not a role, and stay as they are. A downgrade
 puts every policy back as it was.
 
-Revision ID: 0066
-Revises: 0065
+Revision ID: 0067
+Revises: 0066
 Create Date: 2026-11-17
 
 """
@@ -42,8 +43,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0066"
-down_revision: str | Sequence[str] | None = "0065"
+revision: str = "0067"
+down_revision: str | Sequence[str] | None = "0066"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -53,7 +54,7 @@ CURRENT_GYM = "NULLIF(current_setting('app.gym_id', true), '')::uuid"
 CURRENT_PERSON = "NULLIF(current_setting('app.person_id', true), '')::uuid"
 
 # What every role-keyed policy asked, word for word (0006, 0033, 0037, 0044, 0048, 0053,
-# 0055), and the access 0006 built from it.
+# 0055, 0066), and the access 0006 built from it.
 ROLE_CHECK = (
     f"EXISTS (SELECT FROM staff s WHERE s.gym_id = {CURRENT_GYM}"
     f" AND s.person_id = {CURRENT_PERSON} AND s.role IN ('owner', 'admin'))"
@@ -101,7 +102,7 @@ def by_permission(check: str, permission: str) -> str:
 
 
 # Who sees which of the gym's log: an expense's rows (#314) need `expenses_read`,
-# every other row `money_read`.
+# every other row `money_read`. `action` is NOT NULL (0044), so every row is one or the other.
 EXPENSE_ACTIONS = "starts_with(action, 'expense_')"
 AUDIT_READ = (
     f"(gym_id = {CURRENT_GYM} AND CASE WHEN {EXPENSE_ACTIONS}"
@@ -157,10 +158,12 @@ def _audit_and_history(permissions: bool) -> None:
     """The policies an earlier migration made for one command, altered in place."""
     correct: str = _migration("0055_history_payment.py").correct_check(payments=True)
     imported: str = _migration("0053_history_imported.py").import_check()
+    discount: str = _migration("0066_discount_reason.py").DISCOUNT_INSERT
     history_write = f"({ROLE_ACCESS} AND created_by = {CURRENT_PERSON})"
     if permissions:
         correct = by_permission(correct, "money_write")
         imported = by_permission(imported, "gym_setup")
+        discount = by_permission(discount, "money_write")
         history_write = by_permission(history_write, "money_write")
     read = AUDIT_READ if permissions else ROLE_ACCESS
     ledger_read = access("money_read") if permissions else ROLE_ACCESS
@@ -168,6 +171,7 @@ def _audit_and_history(permissions: bool) -> None:
     op.execute(f"ALTER POLICY audit_event_read ON audit_event USING {read}")
     op.execute(f"ALTER POLICY audit_event_correct ON audit_event WITH CHECK {correct}")
     op.execute(f"ALTER POLICY audit_event_import ON audit_event WITH CHECK {imported}")
+    op.execute(f"ALTER POLICY audit_event_discount ON audit_event WITH CHECK {discount}")
     op.execute(f"ALTER POLICY history_payment_read ON history_payment USING {ledger_read}")
     op.execute(f"ALTER POLICY history_payment_write ON history_payment WITH CHECK {history_write}")
     op.execute(f"ALTER POLICY history_payment_remove ON history_payment USING {ledger_write}")
