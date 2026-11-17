@@ -5,7 +5,8 @@ the owner reactivates it, billing from where it left off (the months since the l
 one per cycle, at once) or from today (the gap never billed). Hoy and Alumnos show it
 Active, and the nightly lapse leaves it alone tonight: it has its grace from the day it
 was reactivated. Refused while a period past grace is unpaid, which the job would lapse
-again, and beside another live plan of the person.
+again, and beside another live plan of the person for the same program: a course in its
+own program leaves it be (#354).
 """
 
 import json
@@ -34,6 +35,7 @@ from tests.pg import (
 from tests.test_lapsed_reassign import ledger, ok, overdue, run_lapse, shown, start, status
 from tests.test_member_roll import enrolled, memberships, plan
 from tests.test_memberships import add_staff
+from tests.test_plans import CREDITS
 
 pytestmark = pytest.mark.postgres
 
@@ -296,6 +298,26 @@ def test_refused_beside_another_live_plan(client: TestClient, db: Database, gym:
         refused = refusal(response)
         assert (refused["code"], refused["plan_name"]) == ("live_plan", "Mensual")
     assert status(client, gym, membership) == "lapsed"
+
+
+def test_a_course_in_another_program_does_not_refuse_it(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # A course of credits in its own program, beside the monthly plan open to every
+    # class (#354).
+    person, membership, _ = lapsed_plan(client, db, gym)
+    program = ok(client.post("/api/programs", json={"name": "Curso"}, headers=as_gym(gym)), 201)
+    course = ok(
+        client.post(
+            "/api/plans",
+            json={**CREDITS, "name": "Curso 8 sesiones", "credits": 8, "program_id": program["id"]},
+            headers=as_gym(gym),
+        ),
+        201,
+    )
+    ok(start(client, gym, person, course["id"], seeded_today()), 201)
+    assert ok(reactivate(client, gym, membership))["status"] == "active"
+    assert status(client, gym, membership) == "active"
 
 
 def test_only_a_lapsed_monthly_or_prepaid_plan_is_reactivated(

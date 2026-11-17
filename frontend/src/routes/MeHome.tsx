@@ -44,8 +44,9 @@ const copy = t.me
  * with "Pedir congelamiento" (#270), the payments already sent with how each was reviewed,
  * and for a guardian, their consent for each minor in their care (#370), what they and
  * their dependents owe in one transfer, and each dependent's rank, classes and time on
- * the mat (#66). From 1024px it is two columns: the payment and its upload, and beside
- * them the rest.
+ * the mat (#66). Someone on two plans, a course beside a monthly one, reads the plan by
+ * what is due next and by each payment (#354). From 1024px it is two columns: the
+ * payment and its upload, and beside them the rest.
  */
 export function MeHome() {
   const page = useQuery(myPageQuery())
@@ -145,7 +146,11 @@ function NextPayment({ page }: { page: MyPage }) {
         <div className="next__amount">
           <span className="next__figure">{t.common.clp(period.outstanding_clp)}</span>
           <span className="next__due">
-            {copy.next.due(t.common.longDay(period.due_date), period.person_id === page.person_id ? null : period.person_name)}
+            {withPlan(
+              copy.next.due(t.common.longDay(period.due_date), period.person_id === page.person_id ? null : period.person_name),
+              onTwoPlans(page).has(period.person_id) ? period.plan_name : null,
+              copy.next.ofPlan,
+            )}
           </span>
         </div>
         {inReview && <p className="next__review">{copy.next.inReview}</p>}
@@ -442,8 +447,23 @@ function PersonClassList({ person, mine, timeZone }: { person: PersonClasses; mi
   )
 }
 
+/** Who, the student or a dependent, is on more than one plan running here, a course
+ * beside a monthly one (#354). Plans that ended do not count: someone who changed plan
+ * is on one. */
+function onTwoPlans(page: MyPage): Set<string> {
+  const running = new Map<string, number>()
+  for (const plan of page.plans ?? []) running.set(plan.person_id, (running.get(plan.person_id) ?? 0) + 1)
+  return new Set([...running].filter(([, count]) => count > 1).map(([person]) => person))
+}
+
+/** `text` with the plan it is about, when there is one to name. */
+function withPlan(text: string, plan: string | null | undefined, ofPlan: (text: string, plan: string) => string): string {
+  return plan ? ofPlan(text, plan) : text
+}
+
 function History({ page }: { page: MyPage }) {
   const year = zonedDay(new Date().toISOString(), page.timezone).slice(0, 4)
+  const named = onTwoPlans(page)
   return (
     <Section id="history-title" title={copy.history.title}>
       {page.payments.length === 0 ? (
@@ -456,7 +476,7 @@ function History({ page }: { page: MyPage }) {
               <span className="history__what">
                 <span className="history__month">
                   {copy.history.month(
-                    title(payment, year),
+                    withPlan(title(payment, year), named.has(payment.person_id) ? payment.plan_name : null, copy.history.ofPlan),
                     payment.person_id === page.person_id ? null : payment.person_name,
                   )}
                 </span>

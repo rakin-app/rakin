@@ -134,6 +134,8 @@ export type MyPayment = {
   amount_clp: number
   status: PaymentStatus
   period_start: string | null
+  // The plan that period bills, for someone on two plans, a course beside a monthly one (#354).
+  plan_name?: string | null
   // The cobro extra it pays instead, when it pays one (#195).
   charge_title?: string | null
   claimed_at: string | null

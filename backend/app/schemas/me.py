@@ -45,8 +45,10 @@ class MyPayment(BaseModel):
     person_name: str
     amount_clp: int
     status: EntryStatus
-    # The period it pays, when it pays one.
+    # The period it pays, when it pays one, and the plan that period bills: a member on
+    # two plans, a monthly one and a course, is told which one each paid (#354).
     period_start: date | None
+    plan_name: str | None = None
     # The cobro extra it pays instead, when it pays one (#195).
     charge_title: str | None = None
     # When the proof was sent, or the admin recorded it.

@@ -1056,9 +1056,15 @@ REACTIVATION_STATE = text(
 # a reactivation take turns, so they are never left with two live plans.
 LOCK_PERSON = text("SELECT true FROM gym_person WHERE person_id = :id FOR UPDATE")
 
+# Another live plan of the person for the same classes: one in the same program, or
+# open to every class as this one is. A course in its own program beside a monthly plan
+# leaves it be (#354).
 LIVE_PLAN = text(
     "SELECT pl.name FROM membership m JOIN plan pl ON pl.id = m.plan_id"
     " WHERE m.person_id = :person AND m.id <> :id"
+    " AND pl.program_id IS NOT DISTINCT FROM ("
+    "SELECT own.program_id FROM membership r JOIN plan own ON own.id = r.plan_id"
+    " WHERE r.id = :id)"
     f" AND m.status IN ({', '.join(repr(s.value) for s in domain.LIVE)})"
     f" ORDER BY {domain.current_first('m')} LIMIT 1"
 )
@@ -1242,8 +1248,8 @@ async def reactivate_membership(
     lapse, or from today, the days between never billed. The nightly job then gives it
     its grace from today (migration 0050). Recorded as a `membership_reactivated`
     correction, with its status before and after and from when it bills. Refused, writing
-    nothing, beside another live plan of the person, and while a period past due plus
-    grace is unpaid (`_reactivatable`)."""
+    nothing, beside another live plan of the person for the same program (`LIVE_PLAN`),
+    and while a period past due plus grace is unpaid (`_reactivatable`)."""
     current, terms, today = await _reactivatable(session, tenant, membership_id, lock=True)
     reactivated, bills_from, owed = await _reactivation(
         session, membership_id, current, terms, today, body.bill_from

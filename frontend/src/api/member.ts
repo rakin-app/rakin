@@ -531,6 +531,17 @@ export function shownMembership(memberships: readonly Membership[]): Membership 
   )
 }
 
+/** The memberships the detail shows a card for (#354): every one the member is on now,
+ * a course beside a monthly plan say, the first started first; else the one
+ * `shownMembership` picks. */
+export function shownMemberships(memberships: readonly Membership[]): Membership[] {
+  const live = memberships.filter((m) => LIVE.includes(m.status))
+  // The API lists the latest created first: reversed, a tie on the day keeps the earlier.
+  if (live.length > 0) return [...live].reverse().sort((a, b) => a.started_on.localeCompare(b.started_on))
+  const shown = shownMembership(memberships)
+  return shown ? [shown] : []
+}
+
 /** What "Asignar plan" would start, before it is saved (backend `StartQuote`, #271): the
  * day it starts, after `billed_through`, the last day a lapsed plan billed, when that moved
  * it; and `debt_clp`, what the lapsed plans still owe. */
