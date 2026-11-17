@@ -10,6 +10,7 @@ from app.domain.membership import MembershipStatus, PlanKind
 from app.schemas.grades import Rank
 from app.schemas.ledger import Method
 from app.schemas.people import Name, Phone
+from app.schemas.requirements import RequirementFlag
 
 # More than a class holds, well short of a request worth refusing for its size.
 MAX_MARKS = 500
@@ -82,6 +83,9 @@ class RosterMember(BaseModel):
     regular: bool
     rank: Rank | None
     present: bool
+    # The requirements the caller sees that they lack or whose record expired (#350):
+    # a warning, never a refusal.
+    unmet_requirements: list[RequirementFlag] = []
 
 
 class Roster(BaseModel):

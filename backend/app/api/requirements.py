@@ -19,6 +19,13 @@ SHARE`, so a note is never stored in the clear while the owner is marking it sen
 
 The student page reads its own and its dependents' (`/api/me/requirements`): no notes,
 which are the staff's.
+
+Where people are marked (#350), the roster and Entrada's search name the requirements
+each person lacks or whose record expired (`requirement_flags`), and Hoy lists everyone
+with a live membership who lacks one, or whose one is expired or expires within 30 days
+(`/api/requirements/due`). Each only the requirements the caller's role sees: a
+sensitive one is not hinted at to anyone else. A warning, never a refusal: the coach
+decides who trains.
 """
 
 import uuid
@@ -35,7 +42,8 @@ from app.api.history import refuse_outside_history
 from app.api.people import NOT_FOUND, in_gym
 from app.domain import custom_fields as cf
 from app.domain.dates import gym_today
-from app.domain.requirements import expires_on, state_of
+from app.domain.membership import LIVE
+from app.domain.requirements import RequirementState, expires_on, state_of
 from app.roles import FORBIDDEN, AdminSession, Role, StaffSession, role_in_gym
 from app.schemas.requirements import (
     MyRequirement,
@@ -43,8 +51,10 @@ from app.schemas.requirements import (
     PersonRequirements,
     Requirement,
     RequirementCreate,
+    RequirementFlag,
     RequirementOrder,
     RequirementRecord,
+    RequirementsDue,
     RequirementUpdate,
 )
 from app.tenancy import Tenant, TenantSession, current_tenant
@@ -74,6 +84,35 @@ CURRENT = text("""
     WHERE r.active
     ORDER BY r.position, r.created_at, r.id
 """)
+
+
+# Each active requirement for each of `people`, with their current record's day.
+FLAGS = text("""
+    SELECT p.person_id, r.id, r.name, r.valid_months, r.visible_to, c.done_on
+    FROM unnest(CAST(:people AS uuid[])) AS p (person_id)
+    CROSS JOIN requirement r
+    LEFT JOIN LATERAL (
+        SELECT pr.done_on
+        FROM person_requirement pr
+        WHERE pr.requirement_id = r.id AND pr.person_id = p.person_id
+        ORDER BY pr.recorded_at DESC, pr.id DESC
+        LIMIT 1
+    ) c ON true
+    WHERE r.active
+    ORDER BY r.position, r.created_at, r.id
+""")
+
+# Everyone with a live membership, as Hoy's list reads them.
+LIVE_PEOPLE = text(f"""
+    SELECT gp.person_id, gp.name FROM gym_person gp
+    WHERE EXISTS (SELECT FROM membership m
+                  WHERE m.person_id = gp.person_id AND m.status IN {tuple(map(str, LIVE))})
+    ORDER BY lower(gp.name), gp.person_id
+""")
+
+# What the roster and Entrada warn of; Hoy warns of a record about to expire too.
+UNMET = frozenset({RequirementState.PENDING, RequirementState.EXPIRED})
+DUE = UNMET | {RequirementState.EXPIRING}
 
 
 # Whose requirements the student page shows: their own, unless they only pay for
@@ -346,6 +385,72 @@ async def record_requirement(
         },
     )
     return await _person_requirements(session, tenant, cipher, person_id)
+
+
+# --- where people are marked, and Hoy -----------------------------------------------
+
+
+async def _flags(
+    session: AsyncSession,
+    role: Role,
+    today: date,
+    people: Sequence[uuid.UUID],
+    states: frozenset[RequirementState],
+) -> dict[uuid.UUID, list[RequirementFlag]]:
+    out: dict[uuid.UUID, list[RequirementFlag]] = {}
+    if not people:
+        return out
+    for r in (await session.execute(FLAGS, {"people": list(people)})).all():
+        if not _sees(role, r.visible_to):
+            continue
+        state = state_of(r.done_on, r.valid_months, today)
+        if state not in states:
+            continue
+        out.setdefault(r.person_id, []).append(
+            RequirementFlag(
+                id=r.id,
+                name=r.name,
+                state=state,
+                expires_on=None if r.done_on is None else expires_on(r.done_on, r.valid_months),
+            )
+        )
+    return out
+
+
+async def requirement_flags(
+    session: AsyncSession, tenant: Tenant, people: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[RequirementFlag]]:
+    """For each of `people` who has one, the requirements the caller sees that they lack
+    or whose record expired, in the gym's order: the roster's and Entrada's warning."""
+    role = await _role(session, tenant)
+    return await _flags(session, role, await _today(session, tenant), people, UNMET)
+
+
+@router.get("/api/requirements/due")
+async def requirements_due(tenant: CurrentTenant, session: StaffSession) -> list[RequirementsDue]:
+    """Hoy's "Requisitos": everyone with a live membership short on a requirement the
+    caller sees. Those who lack one or whose one expired first, by name; then those whose
+    one expires within 30 days, soonest first."""
+    role = await _role(session, tenant)
+    today = await _today(session, tenant)
+    people = (await session.execute(LIVE_PEOPLE)).all()
+    flags = await _flags(session, role, today, [p.person_id for p in people], DUE)
+    due = [
+        RequirementsDue(person_id=p.person_id, name=p.name, requirements=flags[p.person_id])
+        for p in people
+        if p.person_id in flags
+    ]
+
+    def soonest(d: RequirementsDue) -> date:
+        return min(r.expires_on for r in d.requirements if r.expires_on is not None)
+
+    def short(d: RequirementsDue) -> bool:
+        return any(r.state in UNMET for r in d.requirements)
+
+    unmet = [d for d in due if short(d)]
+    expiring = [d for d in due if not short(d)]
+    # `sorted` is stable: people expiring the same day stay by name.
+    return unmet + sorted(expiring, key=soonest)
 
 
 # --- the student page ----------------------------------------------------------

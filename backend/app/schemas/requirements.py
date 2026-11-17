@@ -109,3 +109,23 @@ class PersonRequirements(BaseModel):
     person_id: uuid.UUID
     name: str
     requirements: list[MyRequirement]
+
+
+class RequirementFlag(BaseModel):
+    """A requirement someone stands short on, where they are marked or on Hoy (#350):
+    pendiente or vencido, and on Hoy vence pronto too. A warning, never a refusal."""
+
+    id: uuid.UUID
+    name: str
+    state: RequirementState
+    # The last day it is in force; `None` while it was never done.
+    expires_on: date | None
+
+
+class RequirementsDue(BaseModel):
+    """`GET /api/requirements/due`: someone with a live membership, and the requirements
+    they lack, whose record expired, or whose record expires within 30 days."""
+
+    person_id: uuid.UUID
+    name: str
+    requirements: list[RequirementFlag]

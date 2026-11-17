@@ -3,6 +3,7 @@ import { ApiError, apiFetch } from './client'
 import { submissionKey } from './submit'
 import type { Rank } from './grading'
 import type { MembershipStatus } from './people'
+import type { RequirementFlag } from './requirements'
 
 export type PlanKind = 'monthly' | 'prepaid' | 'credits' | 'dropin' | 'trial'
 
@@ -26,6 +27,8 @@ export type RosterMember = {
   regular: boolean
   rank: Rank | null
   present: boolean
+  // What they lack or whose record expired, of the requirements the role sees (#350).
+  unmet_requirements: RequirementFlag[]
 }
 
 /** Who may be marked at a session, by name, and how many are (backend `Roster`). */

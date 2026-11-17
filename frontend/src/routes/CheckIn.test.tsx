@@ -22,6 +22,7 @@ const person = (id: string, name: string, extra: Partial<Candidate> = {}): Candi
   credits_remaining: 6,
   overdue: false,
   checked_in_at: null,
+  unmet_requirements: [],
   ...extra,
 })
 
@@ -189,6 +190,25 @@ describe('Entrada', () => {
     for (const name of ['Paula Contreras', 'Tomás Pérez', 'Ana Rojas']) {
       expect(within(results).getByRole('button', { name: copy.search.enterLabel(name) })).toBeEnabled()
     }
+  })
+
+  it('names a requirement someone lacks before the tap, and still lets them in (#350)', async () => {
+    const lacking = person('paula', 'Paula Contreras', {
+      unmet_requirements: [{ id: 'r1', name: 'Inducción', state: 'pending', expires_on: null }],
+    })
+    const calls = stubApi({ people: [lacking] })
+    renderEntrada()
+
+    const box = await screen.findByRole('searchbox', { name: copy.search.label('Acceso libre') })
+    await userEvent.type(box, 'paula')
+    const results = await screen.findByRole('list', { name: copy.search.results })
+    expect(within(results).getByText('Inducción: pendiente')).toBeInTheDocument()
+    await userEvent.click(within(results).getByRole('button', { name: copy.search.enterLabel('Paula Contreras') }))
+
+    expect(calls).toContainEqual({ method: 'POST', path: '/api/check-in/ct-libre', body: { membership_id: 'm-paula' } })
+    // Once in, the day's list does not repeat it.
+    const today = await screen.findByRole('list', { name: copy.today.title })
+    expect(within(today).queryByText('Inducción: pendiente')).not.toBeInTheDocument()
   })
 
   it('says when someone came in already, and undoes an arrival', async () => {
