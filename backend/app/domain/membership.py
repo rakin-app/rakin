@@ -188,12 +188,14 @@ def imported(terms: PlanTerms, started_on: date, due_on: date | None) -> Members
 
     A monthly or prepaid one is paid through the day before `due_on`, the day its next
     payment falls due, which it bills on from then: a monthly one's anchor day is
-    `due_on`'s (the 1st on a `first` anchor). A credits pack or a trial starts as
+    `due_on`'s (the 1st on a `first` anchor). A fixed-period one is refused when its
+    period ended before `due_on` (`check_open`). A credits pack or a trial starts as
     `start` would on `started_on`, lasting through `due_on` when given.
     """
     if terms.kind in RECURRING:
         if due_on is None:
             raise ValueError("an imported monthly or prepaid membership needs its due date")
+        check_open(terms, due_on)
         membership = create(terms.kind, current_period_end=due_on - timedelta(days=1))
         return replace(membership, anchor_day=anchor_day(terms, due_on))
     membership = start(terms, started_on)

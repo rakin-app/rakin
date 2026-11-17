@@ -25,7 +25,7 @@ Three configuration surfaces absorb all sport variance; the rest of the system i
 | --- | --- | --- |
 | monthly | price, anchor (signup day or 1st) | charge each period; freeze shifts next due date |
 | prepaid | price, period\_months | one charge, membership valid for N months |
-| fixed\_period | price, period\_start, period\_end | one charge for the gym's dates, the same for every member, due on period\_start or the member's start if later, at the full price; never renews: "Duplicar para el próximo período" copies the plan with the next dates and moves its members across by a plan change |
+| fixed\_period | price, period\_start, period\_end | one charge for the gym's dates, the same for every member, due on period\_start or the member's start if later, at the full price; never renews: "Duplicar para el próximo período" copies the plan with the next dates and moves its members across by a plan change; once period\_end has passed, no member starts, changes to, is imported onto or is reactivated on it |
 | credits | price, credits, credit\_expiry\_days | one charge; each attendance decrements; lapsed at 0 or expiry |
 | dropin | price | one charge, one attendance, no membership persistence |
 | trial | free\_classes or free\_days | zero charge; converts or lapses |

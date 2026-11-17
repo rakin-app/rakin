@@ -906,8 +906,8 @@ async def void_membership(
 # anchor, whose it is and its gym's grace.
 REACTIVATION_STATE = text(
     f"""
-    SELECT m.status, pl.kind, pl.anchor, m.current_period_end, m.credits_remaining,
-           m.person_id, g.settings,
+    SELECT m.status, pl.kind, pl.anchor, pl.period_start, pl.period_end,
+           m.current_period_end, m.credits_remaining, m.person_id, g.settings,
            {lapse.unpaid_due(":day", ":validated", "CAST(:kinds AS text[])")},
            {lapse.NOT_DUE_BEFORE}
     FROM membership m JOIN plan pl ON pl.id = m.plan_id JOIN gym g ON g.id = m.gym_id
@@ -984,6 +984,16 @@ async def _reactivatable(
         raise _refused(
             ReactivationRefusal.NOT_RECURRING, "a pack or a trial is not reactivated: start one"
         )
+    terms = PlanTerms(
+        current.plan_kind, row.anchor, period_start=row.period_start, period_end=row.period_end
+    )
+    try:
+        domain.check_open(terms, today)
+    except ValueError:
+        raise _refused(
+            ReactivationRefusal.PERIOD_ENDED,
+            "the plan's period has ended: move the member to the next period's plan",
+        ) from None
     other = await session.scalar(LIVE_PLAN, {"person": row.person_id, "id": membership_id})
     if other is not None:
         raise _refused(
@@ -1001,7 +1011,7 @@ async def _reactivatable(
             period_start=owed.period_start,
             amount_clp=owed.owed,
         )
-    return current, PlanTerms(current.plan_kind, row.anchor), today
+    return current, terms, today
 
 
 async def _reactivation_bill(

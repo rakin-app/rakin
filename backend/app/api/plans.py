@@ -18,7 +18,7 @@ falls due and the old plan bills nothing more.
 
 import uuid
 from datetime import date
-from typing import Any
+from typing import Any, overload
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.exceptions import RequestValidationError
@@ -76,7 +76,12 @@ async def create_plan(body: PlanCreate, session: AdminSession) -> Plan:
     return await _insert(session, body)
 
 
+@overload
+async def _insert(session: AsyncSession, body: FixedPeriodPlanCreate) -> FixedPeriodPlan: ...
+@overload
+async def _insert(session: AsyncSession, body: PlanCreate) -> Plan: ...
 async def _insert(session: AsyncSession, body: PlanCreate) -> Plan:
+    """The new plan, of `body`'s kind."""
     columns = to_columns(body)
     result = await session.execute(
         text(
@@ -200,7 +205,6 @@ async def next_period(
         period_end=body.period_end,
     )
     created = await _insert(session, copy)
-    assert isinstance(created, FixedPeriodPlan)
     terms = _terms(body.period_start, body.period_end)
     moved = 0
     for membership_id in dict.fromkeys(body.membership_ids):

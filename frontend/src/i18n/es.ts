@@ -4,95 +4,100 @@
  * English, when it comes, is a second file with the same shape.
  */
 
-import type { MembershipStatus } from '../api/people'
-import { w } from './vocabulary'
+import type { MembershipStatus } from "../api/people";
+import { w } from "./vocabulary";
 
 // A word per membership status, where only some of them need one.
-type Statuses = Partial<Record<MembershipStatus, string>>
+type Statuses = Partial<Record<MembershipStatus, string>>;
 
 const MONTHS = [
-  'enero',
-  'febrero',
-  'marzo',
-  'abril',
-  'mayo',
-  'junio',
-  'julio',
-  'agosto',
-  'septiembre',
-  'octubre',
-  'noviembre',
-  'diciembre',
-] as const
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+] as const;
 
 // Under a free-text note or reason: a gym may not keep health data, even with consent
 // (art. 16 bis, #384).
-const NO_HEALTH = 'Sin datos de salud: ni lesiones ni enfermedades.'
+const NO_HEALTH = "Sin datos de salud: ni lesiones ni enfermedades.";
 
 export const es = {
   app: {
-    name: 'rakin',
+    name: "rakin",
   },
   nav: {
-    label: 'Principal',
-    today: 'Hoy',
+    label: "Principal",
+    today: "Hoy",
     get students() {
-      return w.Members
+      return w.Members;
     },
-    classes: 'Clases',
-    payments: 'Pagos',
-    settings: 'Ajustes',
+    classes: "Clases",
+    payments: "Pagos",
+    settings: "Ajustes",
     // Their own student page, for staff who also train at the gym (#214).
-    myPage: 'Mi página',
+    myPage: "Mi página",
     // A coach's phone (#358): the top bar's menu with "Cerrar sesión".
-    account: 'Cuenta',
-    pendingBadge: (n: number) => (n === 1 ? '1 comprobante por revisar' : `${n} comprobantes por revisar`),
+    account: "Cuenta",
+    pendingBadge: (n: number) =>
+      n === 1 ? "1 comprobante por revisar" : `${n} comprobantes por revisar`,
   },
   signIn: {
-    title: 'Entrar a Rakin',
+    title: "Entrar a Rakin",
     // The browser tab: `Entrar · Academia Sur`, as the admin screens name theirs (#213).
-    tab: 'Entrar',
+    tab: "Entrar",
     // On a gym's own address (meta.rakin.app): its name, Rakin above it.
     titleAt: (gym: string) => `Entrar a ${gym}`,
-    intro: 'Escribe tu correo y te enviamos un link para entrar. No necesitas clave.',
-    emailLabel: 'Correo',
-    submit: 'Enviarme el link',
-    sending: 'Enviando…',
+    intro:
+      "Escribe tu correo y te enviamos un link para entrar. No necesitas clave.",
+    emailLabel: "Correo",
+    submit: "Enviarme el link",
+    sending: "Enviando…",
     // The same whatever the address: it never says whether an account exists.
     sent: (email: string) =>
       `Si el correo ${email} está registrado, te llegará un link y un código para entrar. Vencen en 15 minutos y sirven una sola vez. Si no llega en un par de minutos, revisa spam o promociones.`,
     // The code that comes with the link (#276): the app on an iPhone's home screen never
     // opens a link from mail, so it is typed here instead.
-    sentTitle: 'Te enviamos un link y un código',
-    codeLabel: 'Código del correo',
-    codeHint: 'Escríbelo aquí para entrar en esta ventana, o toca el link del correo.',
-    codeSubmit: 'Entrar',
-    codeChecking: 'Entrando…',
-    codeInvalid: 'Ese código no es el del correo. Revísalo e inténtalo de nuevo.',
-    codeExpired: 'Ese código venció. Pide otro y usa el más reciente.',
+    sentTitle: "Te enviamos un link y un código",
+    codeLabel: "Código del correo",
+    codeHint:
+      "Escríbelo aquí para entrar en esta ventana, o toca el link del correo.",
+    codeSubmit: "Entrar",
+    codeChecking: "Entrando…",
+    codeInvalid:
+      "Ese código no es el del correo. Revísalo e inténtalo de nuevo.",
+    codeExpired: "Ese código venció. Pide otro y usa el más reciente.",
     codeTooMany: (minutes: number | null) =>
       minutes === null
-        ? 'Demasiados intentos. Inténtalo de nuevo en unos minutos o toca el link del correo.'
-        : `Demasiados intentos. Inténtalo de nuevo en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`} o toca el link del correo.`,
+        ? "Demasiados intentos. Inténtalo de nuevo en unos minutos o toca el link del correo."
+        : `Demasiados intentos. Inténtalo de nuevo en ${minutes === 1 ? "1 minuto" : `${minutes} minutos`} o toca el link del correo.`,
     codeUnreachable: (gym: string) =>
       `Este correo no tiene acceso a ${gym}. Si entrenas ahí, pídele ${w.toThePlace} que lo registre.`,
-    codeFailed: 'No pudimos entrar. Revisa tu conexión e inténtalo de nuevo.',
-    resend: 'Enviar otro',
-    resent: 'Te enviamos otro link y otro código. Usa el más reciente.',
-    another: 'Usar otro correo',
+    codeFailed: "No pudimos entrar. Revisa tu conexión e inténtalo de nuevo.",
+    resend: "Enviar otro",
+    resent: "Te enviamos otro link y otro código. Usa el más reciente.",
+    another: "Usar otro correo",
     tooMany: (minutes: number | null) =>
       minutes === null
-        ? 'Pediste varios links seguidos. Inténtalo de nuevo en unos minutos.'
-        : `Pediste varios links seguidos. Inténtalo de nuevo en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`}.`,
-    invalid: 'Revisa el correo: no parece una dirección válida.',
-    failed: 'No pudimos enviar el link. Revisa tu conexión e inténtalo de nuevo.',
+        ? "Pediste varios links seguidos. Inténtalo de nuevo en unos minutos."
+        : `Pediste varios links seguidos. Inténtalo de nuevo en ${minutes === 1 ? "1 minuto" : `${minutes} minutos`}.`,
+    invalid: "Revisa el correo: no parece una dirección válida.",
+    failed:
+      "No pudimos enviar el link. Revisa tu conexión e inténtalo de nuevo.",
     // Why they are here, when the session ended rather than never began (#212).
-    expired: 'Tu sesión venció. Entra de nuevo para seguir.',
+    expired: "Tu sesión venció. Entra de nuevo para seguir.",
   },
   signOut: {
-    label: 'Cerrar sesión',
-    working: 'Cerrando sesión…',
-    failed: 'No pudimos cerrar la sesión. Inténtalo de nuevo.',
+    label: "Cerrar sesión",
+    working: "Cerrando sesión…",
+    failed: "No pudimos cerrar la sesión. Inténtalo de nuevo.",
   },
   admin: {
     // The wa.me payment reminders on Hoy, the proof review and the ficha (#55).
@@ -100,1747 +105,1970 @@ export const es = {
       // The button's own label, short so it never wraps (#358): "Aviso 2".
       next: (n: number) => `Aviso ${n}`,
       // `ordinal` is "1.er", "2.º": the reminder this one would be.
-      write: (name: string, ordinal: string) => `Recordar por WhatsApp a ${name} (${ordinal} aviso)`,
+      write: (name: string, ordinal: string) =>
+        `Recordar por WhatsApp a ${name} (${ordinal} aviso)`,
       // A dependent's reminder goes to their guardian.
       writeFor: (contact: string, name: string, ordinal: string) =>
         `Recordar por WhatsApp a ${contact}, por ${name} (${ordinal} aviso)`,
       sent: (ordinal: string, when: string) => `${ordinal} aviso ${when}`,
-      dueToday: (amount: string, plan: string) => `Vence hoy · ${amount} · ${plan}`,
+      dueToday: (amount: string, plan: string) =>
+        `Vence hoy · ${amount} · ${plan}`,
       rejected: (note: string) => `Comprobante rechazado: ${note}`,
       // After rejecting a proof: the follow-up by WhatsApp beside the email.
       followUp: (name: string) => `Avisar por WhatsApp a ${name}`,
       // The overdue email (#260), sent now from the ficha, Hoy and Pagos.
       email: {
-        send: 'Enviar recordatorio',
+        send: "Enviar recordatorio",
         sendTo: (name: string) => `Enviar recordatorio por correo a ${name}`,
-        sendFor: (contact: string, name: string) => `Enviar recordatorio por correo a ${contact}, por ${name}`,
+        sendFor: (contact: string, name: string) =>
+          `Enviar recordatorio por correo a ${contact}, por ${name}`,
         sent: (name: string) => `Recordatorio enviado a ${name}.`,
         last: (when: string) => `Último recordatorio: ${when}`,
         // Beside the disabled button (#266): why it cannot send now.
-        sentToday: 'Ya se envió hoy',
-        noEmail: 'Sin correo',
-        today: 'hoy',
-        yesterday: 'ayer',
+        sentToday: "Ya se envió hoy",
+        noEmail: "Sin correo",
+        today: "hoy",
+        yesterday: "ayer",
         daysAgo: (n: number) => `hace ${n} días`,
         refused: {
-          emailed_today: 'Ya se envió un recordatorio hoy.',
-          no_email: 'No tiene correo para enviarlo.',
+          emailed_today: "Ya se envió un recordatorio hoy.",
+          no_email: "No tiene correo para enviarlo.",
         },
-        failed: 'No pudimos enviar el recordatorio. Inténtalo de nuevo.',
+        failed: "No pudimos enviar el recordatorio. Inténtalo de nuevo.",
       },
     },
     today: {
-      title: 'Hoy',
+      title: "Hoy",
       heading: (day: string) => `Hoy, ${day}`,
-      countersLabel: 'Resumen',
+      countersLabel: "Resumen",
       // Between the parts of a row's line, where one is set apart (the warning, #358).
-      separator: ' · ',
-      after: (parts: readonly string[]) => parts.map((part) => ` · ${part}`).join(''),
-      loading: 'Cargando…',
-      retry: 'Reintentar',
+      separator: " · ",
+      after: (parts: readonly string[]) =>
+        parts.map((part) => ` · ${part}`).join(""),
+      loading: "Cargando…",
+      retry: "Reintentar",
       // Without the role Hoy cannot tell what to show: say so instead of a blank page.
-      roleError: 'No pudimos cargar tu acceso.',
+      roleError: "No pudimos cargar tu acceso.",
       proofs: {
-        title: 'Por validar',
-        count: (n: number) => (n === 1 ? '1 comprobante' : `${n} comprobantes`),
-        error: 'No pudimos cargar los comprobantes.',
-        empty: 'No hay comprobantes por revisar.',
+        title: "Por validar",
+        count: (n: number) => (n === 1 ? "1 comprobante" : `${n} comprobantes`),
+        error: "No pudimos cargar los comprobantes.",
+        empty: "No hay comprobantes por revisar.",
         // A guardian who sent the proof for a dependent.
-        sentFor: (sender: string, person: string) => `${sender} (por ${person})`,
-        detail: (amount: string, month: string) => `Transfirió ${amount} · ${month}`,
-        review: 'Revisar',
+        sentFor: (sender: string, person: string) =>
+          `${sender} (por ${person})`,
+        detail: (amount: string, month: string) =>
+          `Transfirió ${amount} · ${month}`,
+        review: "Revisar",
         reviewLabel: (name: string) => `Revisar el comprobante de ${name}`,
       },
       overdue: {
-        title: 'Vencidos',
+        title: "Vencidos",
         total: (amount: string) => `${amount} pendientes`,
-        error: 'No pudimos cargar los vencidos.',
-        empty: 'Nadie tiene pagos vencidos.',
+        error: "No pudimos cargar los vencidos.",
+        empty: "Nadie tiene pagos vencidos.",
         // The overdue fact, the one part of the row in the warning colour (#358); the
         // amount and the plan follow it.
-        since: (days: number) => `Venció hace ${days === 1 ? '1 día' : `${days} días`}`,
+        since: (days: number) =>
+          `Venció hace ${days === 1 ? "1 día" : `${days} días`}`,
         // A debt outlives its plan (#207): the row says what became of the membership.
-        membership: { lapsed: 'plan caducado', cancelled: 'dado de baja', frozen: 'congelado' } as Statuses,
+        membership: {
+          lapsed: "plan caducado",
+          cancelled: "dado de baja",
+          frozen: "congelado",
+        } as Statuses,
         // A member owing on several periods, of one plan or more: one row, the total (#271).
         periods: (n: number) => `${n} cobros vencidos`,
-        paid: 'Pagó',
+        paid: "Pagó",
         paidLabel: (name: string) => `Registrar el pago de ${name}`,
-        periodOf: (name: string, plan: string, month: string) => `${name}, ${plan} de ${month}`,
-        method: 'Medio de pago',
+        periodOf: (name: string, plan: string, month: string) =>
+          `${name}, ${plan} de ${month}`,
+        method: "Medio de pago",
         submit: (amount: string) => `Registrar ${amount}`,
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        recorded: (name: string, amount: string) => `Pago registrado: ${name}, ${amount}.`,
+        cancel: "Cancelar",
+        working: "Guardando…",
+        recorded: (name: string, amount: string) =>
+          `Pago registrado: ${name}, ${amount}.`,
         refused: {
-          paid: 'Eso ya está pagado.',
-          failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
+          paid: "Eso ya está pagado.",
+          failed: "No pudimos registrar el pago. Inténtalo de nuevo.",
         },
         showAll: (n: number) => `Ver los ${n} vencidos`,
       },
       // Minors with no guardian (#368): nothing reaches them until the gym adds one.
       missingGuardian: {
-        title: 'Falta apoderado',
-        count: (n: number) => (n === 1 ? '1 menor' : `${n} menores`),
-        hint: 'Son menores de 18 años sin apoderado: Rakin no les escribe. Vincula a su apoderado desde la ficha de este, con «Agregar a alguien a cargo».',
-        open: 'Ver ficha',
+        title: "Falta apoderado",
+        count: (n: number) => (n === 1 ? "1 menor" : `${n} menores`),
+        hint: "Son menores de 18 años sin apoderado: Rakin no les escribe. Vincula a su apoderado desde la ficha de este, con «Agregar a alguien a cargo».",
+        open: "Ver ficha",
         openLabel: (name: string) => `Ver la ficha de ${name}`,
       },
       // Due today, or a rejected proof to follow up: each a tap from its WhatsApp reminder.
       remind: {
-        title: 'Por avisar',
-        count: (n: number) => (n === 1 ? '1 pago' : `${n} pagos`),
+        title: "Por avisar",
+        count: (n: number) => (n === 1 ? "1 pago" : `${n} pagos`),
       },
       inactive: {
-        counter: 'Sin venir 14 d',
-        title: 'A quién llamar',
-        error: 'No pudimos cargar a quién llamar.',
-        empty: 'Todos vinieron en las últimas dos semanas.',
+        counter: "Sin venir 14 d",
+        title: "A quién llamar",
+        error: "No pudimos cargar a quién llamar.",
+        empty: "Todos vinieron en las últimas dos semanas.",
         count: (n: number) => w.memberCount(n),
         // The five most recently away are on Hoy; the rest are in Alumnos.
         showAll: (n: number) => `Ver los ${n}`,
         absent: (days: number) => `${days} días sin venir`,
-        never: (days: number) => `No ha venido desde que entró, hace ${days} días`,
+        never: (days: number) =>
+          `No ha venido desde que entró, hace ${days} días`,
         payment: {
-          up_to_date: 'al día en pagos',
-          trial: 'en prueba',
+          up_to_date: "al día en pagos",
+          trial: "en prueba",
           overdue: (amount: string) => `debe ${amount}`,
         },
         nudged: (when: string) => `avisado ${when}`,
         write: (name: string) => `Escribir por WhatsApp a ${name}`,
         // A dependent's nudge goes to their guardian.
-        writeFor: (contact: string, name: string) => `Escribir por WhatsApp a ${contact}, por ${name}`,
+        writeFor: (contact: string, name: string) =>
+          `Escribir por WhatsApp a ${contact}, por ${name}`,
       },
       unmarked: {
-        title: 'Sin asistencia',
-        count: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
-        error: 'No pudimos cargar las clases sin asistencia.',
-        empty: 'Todas las clases de la semana tienen asistencia.',
+        title: "Sin asistencia",
+        count: (n: number) => (n === 1 ? "1 clase" : `${n} clases`),
+        error: "No pudimos cargar las clases sin asistencia.",
+        empty: "Todas las clases de la semana tienen asistencia.",
         row: (when: string, classType: string) => `${when} · ${classType}`,
         detail: (program: string, coach: string) => `${program} · ${coach}`,
-        take: 'Pasar lista',
+        take: "Pasar lista",
         takeLabel: (name: string) => `Pasar lista de ${name}`,
       },
       // A coach's Hoy: today's classes, each a tap from its attendance.
       classes: {
-        title: 'Clases de hoy',
-        count: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
-        error: 'No pudimos cargar las clases de hoy.',
-        empty: 'No hay clases hoy.',
-        create: 'Crear clase',
-        present: (n: number) => (n === 0 ? 'sin asistencia' : n === 1 ? '1 presente' : `${n} presentes`),
-        cancelled: 'cancelada',
-        take: 'Tomar asistencia',
+        title: "Clases de hoy",
+        count: (n: number) => (n === 1 ? "1 clase" : `${n} clases`),
+        error: "No pudimos cargar las clases de hoy.",
+        empty: "No hay clases hoy.",
+        create: "Crear clase",
+        present: (n: number) =>
+          n === 0
+            ? "sin asistencia"
+            : n === 1
+              ? "1 presente"
+              : `${n} presentes`,
+        cancelled: "cancelada",
+        take: "Tomar asistencia",
         takeLabel: (name: string) => `Tomar asistencia de ${name}`,
         // A cancelled class takes no attendance; its page is still where it is reactivated (#213).
-        view: 'Ver clase',
+        view: "Ver clase",
         viewLabel: (name: string) => `Ver ${name}`,
       },
       // A new gym's first day: what to set up, each step a link to where it is done.
       setup: {
         get title() {
-          return `Configura tu ${w.place}`
+          return `Configura tu ${w.place}`;
         },
         get error() {
-          return `No pudimos revisar los primeros pasos de tu ${w.place}.`
+          return `No pudimos revisar los primeros pasos de tu ${w.place}.`;
         },
         progress: (done: number, total: number) => `${done} de ${total} listos`,
         // After a step's title, for a screen reader: the tick says it to the eye.
-        state: (done: boolean) => (done ? ' (listo)' : ' (pendiente)'),
+        state: (done: boolean) => (done ? " (listo)" : " (pendiente)"),
         steps: {
           activities: {
             get title() {
-              return `Qué enseña tu ${w.place}`
+              return `Qué enseña tu ${w.place}`;
             },
-            hint: 'Una o varias actividades, y si usan grados.',
-            link: 'Elegir actividades',
+            hint: "Una o varias actividades, y si usan grados.",
+            link: "Elegir actividades",
           },
           gym: {
             get title() {
-              return `Datos ${w.ofThePlace} y cuenta bancaria`
+              return `Datos ${w.ofThePlace} y cuenta bancaria`;
             },
             get hint() {
-              return `Dónde te transfieren tus ${w.members}.`
+              return `Dónde te transfieren tus ${w.members}.`;
             },
-            link: 'Ir a Ajustes',
+            link: "Ir a Ajustes",
           },
           plans: {
-            title: 'Planes',
+            title: "Planes",
             get hint() {
-              return `Qué pagan tus ${w.members} y cada cuánto.`
+              return `Qué pagan tus ${w.members} y cada cuánto.`;
             },
-            link: 'Crear planes',
+            link: "Crear planes",
           },
           classes: {
-            title: 'Programas y clases',
-            hint: 'Las clases que das, en cada programa.',
-            link: 'Crear clases',
+            title: "Programas y clases",
+            hint: "Las clases que das, en cada programa.",
+            link: "Crear clases",
           },
           members: {
             get title() {
-              return `Agrega ${w.members}`
+              return `Agrega ${w.members}`;
             },
-            hint: 'A mano, desde una planilla o con el link de inscripción.',
-            manual: 'Agregar a mano',
-            import: 'Importar planilla',
-            joinLink: 'Link de inscripción',
+            hint: "A mano, desde una planilla o con el link de inscripción.",
+            manual: "Agregar a mano",
+            import: "Importar planilla",
+            joinLink: "Link de inscripción",
           },
           staff: {
-            title: 'Invita a tu equipo',
+            title: "Invita a tu equipo",
             get hint() {
-              return `Admins y ${w.coaches}, cada uno con su acceso.`
+              return `Admins y ${w.coaches}, cada uno con su acceso.`;
             },
-            link: 'Invitar',
+            link: "Invitar",
           },
         },
       },
       ago: {
-        now: 'recién',
+        now: "recién",
         minutes: (n: number) => `hace ${n}\u00a0min`,
         hours: (n: number) => `hace ${n}\u00a0h`,
-        yesterday: 'ayer',
+        yesterday: "ayer",
       },
     },
     joinRequests: {
       title: (n: number) => `Solicitudes (${n})`,
-      age: (years: number) => (years === 1 ? '1 año' : `${years} años`),
+      age: (years: number) => (years === 1 ? "1 año" : `${years} años`),
       guardian: (name: string) => `Apoderado: ${name}`,
       program: (name: string) => `Programa: ${name}`,
       sent: (day: string) => `Enviada el ${day}`,
-      emailInGym: (name: string) => `Ya hay alguien sin RUT con este correo: ${name}`,
-      noWhatsapp: 'Sin WhatsApp',
+      emailInGym: (name: string) =>
+        `Ya hay alguien sin RUT con este correo: ${name}`,
+      noWhatsapp: "Sin WhatsApp",
       rutInGym: (name: string) => `Ya hay alguien con este RUT: ${name}`,
-      plan: 'Plan',
-      noPlan: 'Sin plan',
+      plan: "Plan",
+      noPlan: "Sin plan",
       get planHint() {
-        return `Sin plan, queda como ${w.member} sin plan y se lo asignas después.`
+        return `Sin plan, queda como ${w.member} sin plan y se lo asignas después.`;
       },
-      coachHint: 'Queda sin plan: el dueño o un admin se lo asigna.',
-      approve: 'Aprobar',
+      coachHint: "Queda sin plan: el dueño o un admin se lo asigna.",
+      approve: "Aprobar",
       approveLabel: (name: string) => `Aprobar la solicitud de ${name}`,
-      reject: 'Rechazar',
+      reject: "Rechazar",
       rejectLabel: (name: string) => `Rechazar la solicitud de ${name}`,
-      confirmReject: (name: string) => `¿Rechazar la solicitud de ${name}? Sus datos se borran.`,
-      confirm: 'Sí, rechazar',
-      cancel: 'Cancelar',
-      working: 'Guardando…',
+      confirmReject: (name: string) =>
+        `¿Rechazar la solicitud de ${name}? Sus datos se borran.`,
+      confirm: "Sí, rechazar",
+      cancel: "Cancelar",
+      working: "Guardando…",
       approved: (name: string) => `${name} ya es ${w.member}.`,
       rejected: (name: string) => `Solicitud de ${name} rechazada.`,
-      failed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
+      failed: "No pudimos hacer el cambio. Inténtalo de nuevo.",
       get family() {
-        return `Esta persona ya tiene otro apoderado en ${w.thePlace}, o su apoderado está a cargo de alguien más. Revísalo en su ficha.`
+        return `Esta persona ya tiene otro apoderado en ${w.thePlace}, o su apoderado está a cargo de alguien más. Revísalo en su ficha.`;
       },
       get hasMembership() {
-        return `Ya es ${w.member} con un plan. Apruébala sin plan para unir la solicitud a su ficha.`
+        return `Ya es ${w.member} con un plan. Apruébala sin plan para unir la solicitud a su ficha.`;
       },
-      hasLeft: 'Fue dado de baja: reactívalo desde su ficha, o aprueba sin plan.',
-      ignoredEmail: (email: string) => `Su ficha mantiene su correo; ${email} no se usará.`,
+      hasLeft:
+        "Fue dado de baja: reactívalo desde su ficha, o aprueba sin plan.",
+      ignoredEmail: (email: string) =>
+        `Su ficha mantiene su correo; ${email} no se usará.`,
       oldestShown: (n: number) => `Mostrando las ${n} más antiguas.`,
     },
     // A freeze asked for from /me (#270), on Hoy and on the plan card of the ficha.
     freezeRequests: {
       title: (n: number) => `Solicitudes de congelamiento (${n})`,
       dates: (from: string, to: string) => `Del ${from}, vuelve el ${to}`,
-      reason: (reason: string, note: string | null) => (note ? `${reason} · ${note}` : reason),
+      reason: (reason: string, note: string | null) =>
+        note ? `${reason} · ${note}` : reason,
       askedBy: (name: string) => `La pidió ${name}`,
-      onCard: 'Pide congelar su plan',
-      approve: 'Aprobar',
+      onCard: "Pide congelar su plan",
+      approve: "Aprobar",
       approveLabel: (name: string) => `Aprobar el congelamiento de ${name}`,
-      reject: 'Rechazar',
+      reject: "Rechazar",
       rejectLabel: (name: string) => `Rechazar el congelamiento de ${name}`,
-      from: 'Desde',
-      until: 'Vuelve el',
-      datesHint: 'Puedes cambiar las fechas antes de aprobar. El próximo pago se corre esos días.',
-      fromNeeded: 'Elige hoy o un día después.',
-      untilNeeded: 'Elige el día en que vuelve (después de “Desde”).',
-      confirmApprove: 'Aprobar y congelar',
+      from: "Desde",
+      until: "Vuelve el",
+      datesHint:
+        "Puedes cambiar las fechas antes de aprobar. El próximo pago se corre esos días.",
+      fromNeeded: "Elige hoy o un día después.",
+      untilNeeded: "Elige el día en que vuelve (después de “Desde”).",
+      confirmApprove: "Aprobar y congelar",
       get note() {
-        return `Nota para ${w.theMember} (opcional)`
+        return `Nota para ${w.theMember} (opcional)`;
       },
-      confirmReject: 'Rechazar solicitud',
-      cancel: 'Cancelar',
-      working: 'Guardando…',
-      approved: (name: string, day: string) => `Congelamiento de ${name} aprobado. Vuelve el ${day}.`,
+      confirmReject: "Rechazar solicitud",
+      cancel: "Cancelar",
+      working: "Guardando…",
+      approved: (name: string, day: string) =>
+        `Congelamiento de ${name} aprobado. Vuelve el ${day}.`,
       rejected: (name: string) => `Solicitud de ${name} rechazada.`,
-      refused: 'No se puede congelar así: revisa que el plan siga activo, sin otra congelación, y las fechas.',
-      failed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
+      refused:
+        "No se puede congelar así: revisa que el plan siga activo, sin otra congelación, y las fechas.",
+      failed: "No pudimos hacer el cambio. Inténtalo de nuevo.",
     },
     // The belt filter of Alumnos and the group builder (#219), by the scheme's order.
     rankFilter: {
       orHigher: (label: string) => `${label} o superior`,
-      ranks: 'Adultos',
-      kids: 'Kids',
+      ranks: "Adultos",
+      kids: "Kids",
     },
     students: {
       get title() {
-        return w.Members
+        return w.Members;
       },
       get searchLabel() {
-        return `Buscar ${w.member}`
+        return `Buscar ${w.member}`;
       },
       // The list's column labels on a desktop, where each row is one line (#199).
       columns: {
         get name() {
-          return w.Member
+          return w.Member;
         },
-        phone: 'Teléfono',
-        rut: 'RUT',
-        plan: 'Plan',
-        status: 'Estado',
+        phone: "Teléfono",
+        rut: "RUT",
+        plan: "Plan",
+        status: "Estado",
       },
-      searchPlaceholder: 'Nombre, teléfono o RUT',
-      filtersLabel: 'Filtros',
+      searchPlaceholder: "Nombre, teléfono o RUT",
+      filtersLabel: "Filtros",
       // The button over plan, programa and cinturón (#358), and how many of them are set.
-      moreFiltersLabel: (n: number) => (n === 0 ? 'Filtros' : n === 1 ? 'Filtros, 1 activo' : `Filtros, ${n} activos`),
-      statusLabel: 'Estado',
-      planLabel: 'Plan',
-      allPlans: 'Todos los planes',
+      moreFiltersLabel: (n: number) =>
+        n === 0
+          ? "Filtros"
+          : n === 1
+            ? "Filtros, 1 activo"
+            : `Filtros, ${n} activos`,
+      statusLabel: "Estado",
+      planLabel: "Plan",
+      allPlans: "Todos los planes",
       inactivePlan: (name: string) => `${name} (inactivo)`,
-      programLabel: 'Programa',
-      allPrograms: 'Todos los programas',
+      programLabel: "Programa",
+      allPrograms: "Todos los programas",
       inactiveProgram: (name: string) => `${name} (programa inactivo)`,
-      rankLabel: 'Cinturón',
-      allRanks: 'Todos los cinturones',
-      clearFilters: 'Limpiar filtros',
-      count: (n: number) => w.memberCount(n, n.toLocaleString('es-CL')),
-      pickPlan: 'Elegir un plan…',
-      noPlan: 'Sin plan: solo la persona',
+      rankLabel: "Cinturón",
+      allRanks: "Todos los cinturones",
+      clearFilters: "Limpiar filtros",
+      count: (n: number) => w.memberCount(n, n.toLocaleString("es-CL")),
+      pickPlan: "Elegir un plan…",
+      noPlan: "Sin plan: solo la persona",
       get empty() {
-        return `Todavía no hay ${w.members}.`
+        return `Todavía no hay ${w.members}.`;
       },
       get noMatches() {
-        return `Ningún ${w.member} coincide con la búsqueda.`
+        return `Ningún ${w.member} coincide con la búsqueda.`;
       },
       get loading() {
-        return `Cargando ${w.members}…`
+        return `Cargando ${w.members}…`;
       },
       get error() {
-        return `No pudimos cargar ${w.theMembers}.`
+        return `No pudimos cargar ${w.theMembers}.`;
       },
-      retry: 'Reintentar',
-      more: 'Ver más',
+      retry: "Reintentar",
+      more: "Ver más",
       status: {
-        active: 'Activo',
-        trial: 'Prueba',
-        frozen: 'Congelado',
+        active: "Activo",
+        trial: "Prueba",
+        frozen: "Congelado",
         // Not "Vencido", which is a payment past due (#193, #207): the plan itself ran out.
-        lapsed: 'Caducado',
-        cancelled: 'Cancelado',
+        lapsed: "Caducado",
+        cancelled: "Cancelado",
       },
       guardianOf: (name: string) => `Apoderado: ${name}`,
-      dependentsCount: (n: number) => (n === 1 ? '1 a cargo' : `${n} a cargo`),
-      importLink: 'Importar planilla',
+      dependentsCount: (n: number) => (n === 1 ? "1 a cargo" : `${n} a cargo`),
+      importLink: "Importar planilla",
       get newLink() {
-        return `${w.memberIs('Nuevo', 'Nueva')} ${w.member}`
+        return `${w.memberIs("Nuevo", "Nueva")} ${w.member}`;
       },
       // The filter for who has left the gym, and how each of them reads on it.
-      left: 'Dados de baja',
+      left: "Dados de baja",
       leftOn: (day: string) => `De baja desde el ${day}`,
       // No phone and "No tiene WhatsApp" unticked: the filter, and how a row says so.
-      missingPhone: 'Falta teléfono',
+      missingPhone: "Falta teléfono",
       // No RUT and no email: found again only by name.
-      missingRut: 'Falta RUT',
+      missingRut: "Falta RUT",
       // A minor with no guardian: nothing is sent to them until one is added (#368).
-      missingGuardian: 'Falta apoderado',
+      missingGuardian: "Falta apoderado",
       // Away 14 days or more: Hoy's "A quién llamar", in full.
-      away: 'Sin venir 14 d',
-      noWhatsapp: 'Sin WhatsApp',
+      away: "Sin venir 14 d",
+      noWhatsapp: "Sin WhatsApp",
       // On the row of someone who owes, overdue or due soon (#265): the ficha's
       // "Registrar pago", opened under the row; "Pagó", as Hoy says it (#358).
-      pay: 'Pagó',
+      pay: "Pagó",
       payLabel: (name: string) => `Registrar pago de ${name}`,
     },
     newMember: {
       get title() {
-        return `${w.memberIs('Nuevo', 'Nueva')} ${w.member}`
+        return `${w.memberIs("Nuevo", "Nueva")} ${w.member}`;
       },
       get eyebrow() {
-        return w.Members
+        return w.Members;
       },
       // At the top of the form (#294): today's form, or "Agregar exalumno".
-      kindLabel: '¿Entrena aquí?',
-      kind: { current: 'Entrena aquí', former: 'Ya no entrena aquí' },
+      kindLabel: "¿Entrena aquí?",
+      kind: { current: "Entrena aquí", former: "Ya no entrena aquí" },
       // "Ya no entrena aquí": someone who trained here before Rakin and already left.
       former: {
         intro:
           'Para tener en Rakin a quien ya dejó de entrenar: queda en "Dados de baja", sin plan, y Rakin nunca le escribe. Después puedes agregar su historial en su ficha.',
-        phone: 'Teléfono (opcional)',
-        phoneHint: 'Nadie le va a escribir: solo queda en su ficha.',
+        phone: "Teléfono (opcional)",
+        phoneHint: "Nadie le va a escribir: solo queda en su ficha.",
         get since() {
-          return `${w.Member} desde (opcional)`
+          return `${w.Member} desde (opcional)`;
         },
-        leftOn: 'Fecha de baja',
+        leftOn: "Fecha de baja",
         get submit() {
-          return `Guardar ${w.formerMember}`
+          return `Guardar ${w.formerMember}`;
         },
         needed: {
-          leftOn: 'Elige un día de hoy hacia atrás, de los últimos 60 años.',
-          since: 'Elige un día de los últimos 60 años, no después de la fecha de baja.',
+          leftOn: "Elige un día de hoy hacia atrás, de los últimos 60 años.",
+          since:
+            "Elige un día de los últimos 60 años, no después de la fecha de baja.",
         },
         refused: {
-          invalid: 'Revisa los datos: el teléfono, el RUT, el correo o una fecha no son válidos.',
+          invalid:
+            "Revisa los datos: el teléfono, el RUT, el correo o una fecha no son válidos.",
           get failed() {
-            return `No pudimos guardar ${w.memberIs('al', 'a la')} ${w.formerMember}. Inténtalo de nuevo.`
+            return `No pudimos guardar ${w.memberIs("al", "a la")} ${w.formerMember}. Inténtalo de nuevo.`;
           },
         },
       },
-      firstName: 'Nombre',
-      lastName: 'Apellido',
-      phone: 'Teléfono (WhatsApp)',
+      firstName: "Nombre",
+      lastName: "Apellido",
+      phone: "Teléfono (WhatsApp)",
       get phoneHint() {
-        return `Celular chileno: +56 9 1234 5678. ${w.ThePlace} le escribe por WhatsApp.`
+        return `Celular chileno: +56 9 1234 5678. ${w.ThePlace} le escribe por WhatsApp.`;
       },
-      phoneHintMinor: 'Opcional: los avisos van al apoderado.',
-      phoneOptional: 'Teléfono (opcional)',
-      noWhatsapp: 'No tiene WhatsApp',
-      email: 'Correo',
-      rut: 'RUT',
-      rutHint: 'El RUT o el correo identifica a la persona. Si no tiene RUT, basta el correo.',
-      dob: 'Fecha de nacimiento (opcional)',
-      guardianTitle: 'Apoderado',
-      guardianMinor: 'Es menor de edad: necesita un apoderado que pague y reciba los avisos.',
+      phoneHintMinor: "Opcional: los avisos van al apoderado.",
+      phoneOptional: "Teléfono (opcional)",
+      noWhatsapp: "No tiene WhatsApp",
+      email: "Correo",
+      rut: "RUT",
+      rutHint:
+        "El RUT o el correo identifica a la persona. Si no tiene RUT, basta el correo.",
+      dob: "Fecha de nacimiento (opcional)",
+      guardianTitle: "Apoderado",
+      guardianMinor:
+        "Es menor de edad: necesita un apoderado que pague y reciba los avisos.",
       get guardianOptional() {
-        return `Si alguien más paga por ${w.memberIs('este', 'esta')} ${w.member}, agrégalo como apoderado.`
+        return `Si alguien más paga por ${w.memberIs("este", "esta")} ${w.member}, agrégalo como apoderado.`;
       },
-      guardianAdd: 'Agregar apoderado',
-      guardianRemove: 'Quitar apoderado',
+      guardianAdd: "Agregar apoderado",
+      guardianRemove: "Quitar apoderado",
       get guardianExisting() {
-        return `Ya está en ${w.thePlace}`
+        return `Ya está en ${w.thePlace}`;
       },
-      guardianNew: 'Es nuevo',
-      guardianSearch: 'Buscar al apoderado',
-      guardianPick: 'Elegir',
+      guardianNew: "Es nuevo",
+      guardianSearch: "Buscar al apoderado",
+      guardianPick: "Elegir",
       guardianPickLabel: (name: string) => `Elegir a ${name} como apoderado`,
       guardianPicked: (name: string) => `Apoderado: ${name}`,
-      guardianChange: 'Cambiar',
-      guardianName: 'Nombre del apoderado',
-      guardianRut: 'RUT del apoderado',
-      guardianPhone: 'Teléfono del apoderado (WhatsApp)',
-      guardianPhoneOptional: 'Teléfono del apoderado (opcional)',
-      guardianEmail: 'Correo del apoderado',
-      noMatches: 'Nadie coincide.',
-      fieldsTitle: 'Otros datos',
-      planTitle: 'Plan',
-      plan: 'Plan (opcional)',
-      noPlan: 'Sin plan por ahora',
-      startedOn: 'Desde',
-      welcome: 'Enviar el correo de bienvenida',
+      guardianChange: "Cambiar",
+      guardianName: "Nombre del apoderado",
+      guardianRut: "RUT del apoderado",
+      guardianPhone: "Teléfono del apoderado (WhatsApp)",
+      guardianPhoneOptional: "Teléfono del apoderado (opcional)",
+      guardianEmail: "Correo del apoderado",
+      noMatches: "Nadie coincide.",
+      fieldsTitle: "Otros datos",
+      planTitle: "Plan",
+      plan: "Plan (opcional)",
+      noPlan: "Sin plan por ahora",
+      startedOn: "Desde",
+      welcome: "Enviar el correo de bienvenida",
       welcomeHint: {
-        plan: 'Le explica cómo pagar y subir el comprobante, y trae su link para entrar.',
-        noPlan: 'Le llega su link para entrar a su página.',
+        plan: "Le explica cómo pagar y subir el comprobante, y trae su link para entrar.",
+        noPlan: "Le llega su link para entrar a su página.",
         get noEmail() {
-          return `Necesita un correo: escribe el ${w.ofTheMember}.`
+          return `Necesita un correo: escribe el ${w.ofTheMember}.`;
         },
-        noGuardianEmail: 'Necesita un correo: escribe el del apoderado, que es quien lo recibe.',
+        noGuardianEmail:
+          "Necesita un correo: escribe el del apoderado, que es quien lo recibe.",
       },
       get submit() {
-        return `Guardar ${w.member}`
+        return `Guardar ${w.member}`;
       },
-      working: 'Guardando…',
-      cancel: 'Cancelar',
+      working: "Guardando…",
+      cancel: "Cancelar",
       needed: {
-        firstName: 'Escribe el nombre.',
-        identity: 'Escribe el RUT o el correo.',
+        firstName: "Escribe el nombre.",
+        identity: "Escribe el RUT o el correo.",
         phone: 'Escribe un celular chileno, o marca "No tiene WhatsApp".',
-        guardian: 'Un menor de edad necesita un apoderado.',
-        guardianName: 'Escribe el nombre del apoderado.',
-        guardianIdentity: 'Escribe el RUT o el correo del apoderado.',
-        guardianPhone: 'Escribe el celular del apoderado, o marca "No tiene WhatsApp".',
-        guardianPicked: 'Elige al apoderado, o agrega uno nuevo.',
+        guardian: "Un menor de edad necesita un apoderado.",
+        guardianName: "Escribe el nombre del apoderado.",
+        guardianIdentity: "Escribe el RUT o el correo del apoderado.",
+        guardianPhone:
+          'Escribe el celular del apoderado, o marca "No tiene WhatsApp".',
+        guardianPicked: "Elige al apoderado, o agrega uno nuevo.",
         guardianUnreachable:
           'Ese apoderado no tiene teléfono. Agrégalo en su ficha, o marca ahí "No tiene WhatsApp".',
       },
       duplicate: {
         get rut_in_gym() {
-          return `Ese RUT ya es de ${w.aMember} ${w.ofThePlace}.`
+          return `Ese RUT ya es de ${w.aMember} ${w.ofThePlace}.`;
         },
         get email_in_gym() {
-          return `Ese correo ya es de ${w.aMember} ${w.ofThePlace}.`
+          return `Ese correo ya es de ${w.aMember} ${w.ofThePlace}.`;
         },
-        open: 'Abrir su ficha',
+        open: "Abrir su ficha",
       },
       refused: {
-        invalid: 'Revisa los datos: el teléfono, el RUT, el correo o una fecha no son válidos.',
+        invalid:
+          "Revisa los datos: el teléfono, el RUT, el correo o una fecha no son válidos.",
         // When the API names the fields, each says why under itself, as the join form does (#211).
-        fields: 'Revisa los campos marcados.',
-        rut: 'RUT no válido: revisa el dígito verificador.',
-        email: 'Correo no válido.',
-        phone: 'Escribe un celular, como +56 9 1234 5678.',
-        dob: 'Escribe una fecha pasada.',
-        one_level: 'Ese apoderado está a cargo de otro apoderado: elige a otra persona.',
+        fields: "Revisa los campos marcados.",
+        rut: "RUT no válido: revisa el dígito verificador.",
+        email: "Correo no válido.",
+        phone: "Escribe un celular, como +56 9 1234 5678.",
+        dob: "Escribe una fecha pasada.",
+        one_level:
+          "Ese apoderado está a cargo de otro apoderado: elige a otra persona.",
         get failed() {
-          return `No pudimos guardar ${w.toTheMember}. Inténtalo de nuevo.`
+          return `No pudimos guardar ${w.toTheMember}. Inténtalo de nuevo.`;
         },
       },
     },
     import: {
       get title() {
-        return `Importar ${w.members}`
+        return `Importar ${w.members}`;
       },
       get eyebrow() {
-        return w.Members
+        return w.Members;
       },
       get intro() {
-        return `Sube la planilla ${w.ofThePlace} (CSV o Excel). Primero revisamos cada fila sin guardar nada; después importas. Puedes volver a importarla: a quien ya está lo encontramos por su RUT (o su correo, o su nombre si no tiene ninguno) y no se duplica.`
+        return `Sube la planilla ${w.ofThePlace} (CSV o Excel). Primero revisamos cada fila sin guardar nada; después importas. Puedes volver a importarla: a quien ya está lo encontramos por su RUT (o su correo, o su nombre si no tiene ninguno) y no se duplica.`;
       },
       get templateHint() {
-        return `¿Empiezas de cero, o traes ${w.members} antiguos, ${w.formerMembers}, sus pagos y sus grados? Usa la plantilla de Rakin.`
+        return `¿Empiezas de cero, o traes ${w.members} antiguos, ${w.formerMembers}, sus pagos y sus grados? Usa la plantilla de Rakin.`;
       },
-      csvTab: 'Si es un CSV, ¿qué contiene?',
+      csvTab: "Si es un CSV, ¿qué contiene?",
       tabs: {
         get alumnos() {
-          return w.Members
+          return w.Members;
         },
-        pagos: 'Pagos',
-        grados: 'Grados',
+        pagos: "Pagos",
+        grados: "Grados",
       },
-      template: 'Descargar plantilla',
-      fileLabel: 'Planilla',
-      choose: 'Elegir archivo',
-      reading: 'Leyendo la planilla…',
-      tooLarge: 'El archivo pesa más de 5 MB.',
+      template: "Descargar plantilla",
+      fileLabel: "Planilla",
+      choose: "Elegir archivo",
+      reading: "Leyendo la planilla…",
+      tooLarge: "El archivo pesa más de 5 MB.",
       refused: {
-        unreadable: 'No pudimos leer el archivo. Guárdalo como CSV o Excel (.xlsx) e inténtalo de nuevo.',
-        empty: 'La planilla no tiene filas con datos.',
+        unreadable:
+          "No pudimos leer el archivo. Guárdalo como CSV o Excel (.xlsx) e inténtalo de nuevo.",
+        empty: "La planilla no tiene filas con datos.",
         get too_many_rows() {
-          return `La planilla tiene demasiadas filas (el máximo es 2.000 en ${w.Members} y en Grados, y 20.000 en Pagos).`
+          return `La planilla tiene demasiadas filas (el máximo es 2.000 en ${w.Members} y en Grados, y 20.000 en Pagos).`;
         },
         too_many_empty_rows:
-          'La planilla sigue con miles de filas vacías después de los datos. Copia los datos a una hoja nueva e inténtalo de nuevo.',
-        too_large: 'El archivo pesa más de 5 MB.',
-        failed: 'No pudimos procesar la planilla. Inténtalo de nuevo.',
+          "La planilla sigue con miles de filas vacías después de los datos. Copia los datos a una hoja nueva e inténtalo de nuevo.",
+        too_large: "El archivo pesa más de 5 MB.",
+        failed: "No pudimos procesar la planilla. Inténtalo de nuevo.",
       },
       // The members' tab's rows, and each other tab the workbook has.
-      fileSummary: (name: string, rows: number, others: { tab: string; rows: number }[]) => {
-        const count = (n: number) => (n === 1 ? '1 fila' : `${n.toLocaleString('es-CL')} filas`)
-        if (others.length === 0) return `${name}: ${count(rows)}`
-        const tabs = rows > 0 ? [{ tab: w.Members, rows }, ...others] : others
-        return `${name}: ${tabs.map((tab) => `${count(tab.rows)} en ${tab.tab}`).join(', ')}`
+      fileSummary: (
+        name: string,
+        rows: number,
+        others: { tab: string; rows: number }[],
+      ) => {
+        const count = (n: number) =>
+          n === 1 ? "1 fila" : `${n.toLocaleString("es-CL")} filas`;
+        if (others.length === 0) return `${name}: ${count(rows)}`;
+        const tabs = rows > 0 ? [{ tab: w.Members, rows }, ...others] : others;
+        return `${name}: ${tabs.map((tab) => `${count(tab.rows)} en ${tab.tab}`).join(", ")}`;
       },
-      otherFile: 'Elegir otra planilla',
-      mappingTitle: '¿Qué es cada columna?',
+      otherFile: "Elegir otra planilla",
+      mappingTitle: "¿Qué es cada columna?",
       tabMappingTitle: (tab: string) => `${tab}: ¿qué es cada columna?`,
-      mappingHint: 'Las ya reconocidas vienen marcadas. Las que no marques no se importan.',
+      mappingHint:
+        "Las ya reconocidas vienen marcadas. Las que no marques no se importan.",
       unnamedColumn: (n: number) => `Columna ${n}`,
       sample: (value: string) => `Ej.: ${value}`,
-      skip: 'No importar',
+      skip: "No importar",
       fields: {
-        name: 'Nombre',
-        last_name: 'Apellido',
-        phone: 'Teléfono',
-        email: 'Correo',
-        rut: 'RUT',
-        dob: 'Fecha de nacimiento',
-        plan: 'Plan',
-        due_on: 'Próximo pago (vencimiento)',
-        started_on: 'Inicio del plan',
-        guardian_name: 'Nombre del apoderado',
-        guardian_rut: 'RUT del apoderado',
-        guardian_email: 'Correo del apoderado',
-        guardian_phone: 'Teléfono del apoderado',
+        name: "Nombre",
+        last_name: "Apellido",
+        phone: "Teléfono",
+        email: "Correo",
+        rut: "RUT",
+        dob: "Fecha de nacimiento",
+        plan: "Plan",
+        due_on: "Próximo pago (vencimiento)",
+        started_on: "Inicio del plan",
+        guardian_name: "Nombre del apoderado",
+        guardian_rut: "RUT del apoderado",
+        guardian_email: "Correo del apoderado",
+        guardian_phone: "Teléfono del apoderado",
         get member_since() {
-          return `${w.Member} desde`
+          return `${w.Member} desde`;
         },
-        left_on: 'Fecha de baja',
-        left_reason: 'Motivo de baja',
-        prior_classes: 'Clases antes de Rakin',
+        left_on: "Fecha de baja",
+        left_reason: "Motivo de baja",
+        prior_classes: "Clases antes de Rakin",
       },
       paymentFields: {
-        rut: 'RUT',
-        email: 'Correo',
-        name: 'Nombre',
-        paid_on: 'Fecha de pago',
-        amount_clp: 'Monto',
-        covers_month: 'Mes que paga',
-        method: 'Método',
-        plan_name: 'Plan',
-        note: 'Nota',
+        rut: "RUT",
+        email: "Correo",
+        name: "Nombre",
+        paid_on: "Fecha de pago",
+        amount_clp: "Monto",
+        covers_month: "Mes que paga",
+        method: "Método",
+        plan_name: "Plan",
+        note: "Nota",
       },
       gradeFields: {
-        rut: 'RUT',
-        email: 'Correo',
-        name: 'Nombre',
-        rank: 'Grado',
-        sub_rank: 'Sub-grado',
-        awarded_on: 'Fecha',
-        note: 'Nota',
+        rut: "RUT",
+        email: "Correo",
+        name: "Nombre",
+        rank: "Grado",
+        sub_rank: "Sub-grado",
+        awarded_on: "Fecha",
+        note: "Nota",
       },
-      nameRequired: 'Marca la columna con el nombre para seguir.',
+      nameRequired: "Marca la columna con el nombre para seguir.",
       paymentsRequired:
-        'En Pagos, marca la columna de la fecha de pago, la del monto y la de quién es (RUT, correo o nombre).',
-      gradesRequired: 'En Grados, marca la columna del grado, la de la fecha y la de quién es (RUT, correo o nombre).',
-      ranksTitle: 'Grados de la planilla',
+        "En Pagos, marca la columna de la fecha de pago, la del monto y la de quién es (RUT, correo o nombre).",
+      gradesRequired:
+        "En Grados, marca la columna del grado, la de la fecha y la de quién es (RUT, correo o nombre).",
+      ranksTitle: "Grados de la planilla",
       get ranksHint() {
-        return `Elige a qué grado ${w.ofThePlace} corresponde cada valor. Un valor sin elegir se informa como error.`
+        return `Elige a qué grado ${w.ofThePlace} corresponde cada valor. Un valor sin elegir se informa como error.`;
       },
       get noRanks() {
-        return `${w.ThePlace} aún no tiene grados: configúralos antes de importar los de la planilla.`
+        return `${w.ThePlace} aún no tiene grados: configúralos antes de importar los de la planilla.`;
       },
-      pickRank: 'Elegir un grado…',
-      plansTitle: 'Planes de la planilla',
+      pickRank: "Elegir un grado…",
+      plansTitle: "Planes de la planilla",
       plansHint:
-        'Elige a qué plan corresponde cada valor. «Sin plan» importa a la persona sin membresía; un valor sin elegir se informa como error.',
-      pickPlan: 'Elegir un plan…',
-      noPlan: 'Sin plan: solo la persona',
-      check: 'Revisar sin guardar',
-      checking: 'Revisando…',
-      back: 'Volver a las columnas',
-      failed: 'No pudimos revisar la planilla. Inténtalo de nuevo.',
-      reviewTitle: 'Revisión',
-      doneTitle: 'Importación lista',
+        "Elige a qué plan corresponde cada valor. «Sin plan» importa a la persona sin membresía; un valor sin elegir se informa como error.",
+      pickPlan: "Elegir un plan…",
+      noPlan: "Sin plan: solo la persona",
+      check: "Revisar sin guardar",
+      checking: "Revisando…",
+      back: "Volver a las columnas",
+      failed: "No pudimos revisar la planilla. Inténtalo de nuevo.",
+      reviewTitle: "Revisión",
+      doneTitle: "Importación lista",
       summary: (imported: number, refused: number) =>
-        `${imported === 1 ? '1 fila se importa' : `${imported} filas se importan`}, ${
-          refused === 1 ? '1 tiene errores' : `${refused} tienen errores`
+        `${imported === 1 ? "1 fila se importa" : `${imported} filas se importan`}, ${
+          refused === 1 ? "1 tiene errores" : `${refused} tienen errores`
         }.`,
       doneSummary: (name: string, imported: number, refused: number) =>
-        `${name}: ${imported === 1 ? '1 fila importada' : `${imported} filas importadas`}, ${
-          refused === 1 ? '1 con errores' : `${refused} con errores`
+        `${name}: ${imported === 1 ? "1 fila importada" : `${imported} filas importadas`}, ${
+          refused === 1 ? "1 con errores" : `${refused} con errores`
         }.`,
       created: (people: number, links: number, memberships: number) =>
-        `Nuevos: ${people} ${people === 1 ? 'persona' : 'personas'}, ${links} ${
-          links === 1 ? 'vínculo de apoderado' : 'vínculos de apoderado'
-        }, ${memberships} ${memberships === 1 ? 'membresía' : 'membresías'}.`,
-      nothingNew: 'No hay nada nuevo: todo lo de la planilla ya estaba.',
+        `Nuevos: ${people} ${people === 1 ? "persona" : "personas"}, ${links} ${
+          links === 1 ? "vínculo de apoderado" : "vínculos de apoderado"
+        }, ${memberships} ${memberships === 1 ? "membresía" : "membresías"}.`,
+      nothingNew: "No hay nada nuevo: todo lo de la planilla ya estaba.",
       history: (people: number, former: number) =>
         [
-          people > 0 && `Historial completado: ${people === 1 ? '1 persona' : `${people} personas`}.`,
-          former > 0 && `${former === 1 ? `1 ${w.formerMember}` : `${former} ${w.formerMembers}`}, sin plan.`,
+          people > 0 &&
+            `Historial completado: ${people === 1 ? "1 persona" : `${people} personas`}.`,
+          former > 0 &&
+            `${former === 1 ? `1 ${w.formerMember}` : `${former} ${w.formerMembers}`}, sin plan.`,
         ]
           .filter(Boolean)
-          .join(' '),
+          .join(" "),
       paymentsCreated: (n: number, amount: number) =>
-        `Pagos anteriores nuevos: ${n.toLocaleString('es-CL')}, por $${amount.toLocaleString('es-CL')}.`,
-      paymentsTitle: 'Pagos anteriores',
+        `Pagos anteriores nuevos: ${n.toLocaleString("es-CL")}, por $${amount.toLocaleString("es-CL")}.`,
+      paymentsTitle: "Pagos anteriores",
       paymentsSummary: (created: number, existing: number, refused: number) =>
         [
-          created === 1 ? '1 pago nuevo' : `${created.toLocaleString('es-CL')} pagos nuevos`,
-          existing > 0 && (existing === 1 ? '1 ya estaba' : `${existing.toLocaleString('es-CL')} ya estaban`),
-          refused > 0 && (refused === 1 ? '1 con errores' : `${refused.toLocaleString('es-CL')} con errores`),
+          created === 1
+            ? "1 pago nuevo"
+            : `${created.toLocaleString("es-CL")} pagos nuevos`,
+          existing > 0 &&
+            (existing === 1
+              ? "1 ya estaba"
+              : `${existing.toLocaleString("es-CL")} ya estaban`),
+          refused > 0 &&
+            (refused === 1
+              ? "1 con errores"
+              : `${refused.toLocaleString("es-CL")} con errores`),
         ]
           .filter(Boolean)
-          .join(', ') + `. Quedan en el historial de cada ${w.member}: no se cobran ni cambian lo que debe.`,
-      paymentsErrorsTitle: 'Pagos con errores',
+          .join(", ") +
+        `. Quedan en el historial de cada ${w.member}: no se cobran ni cambian lo que debe.`,
+      paymentsErrorsTitle: "Pagos con errores",
       paymentsErrorsHint:
-        'Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.',
+        "Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.",
       paymentError: {
-        required: 'falta',
-        invalid_rut: 'no es un RUT válido',
-        invalid_email: 'no es un correo válido',
-        invalid_date: 'no es una fecha válida (hasta 60 años atrás, nunca después de hoy)',
-        invalid_amount: 'no es un monto en pesos mayor que cero',
-        invalid_method: 'no es Efectivo, Transferencia ni Otro',
+        required: "falta",
+        invalid_rut: "no es un RUT válido",
+        invalid_email: "no es un correo válido",
+        invalid_date:
+          "no es una fecha válida (hasta 60 años atrás, nunca después de hoy)",
+        invalid_amount: "no es un monto en pesos mayor que cero",
+        invalid_method: "no es Efectivo, Transferencia ni Otro",
         get unknown_person() {
-          return `no está en ${w.Members} ni en ${w.thePlace}`
+          return `no está en ${w.Members} ni en ${w.thePlace}`;
         },
-        ambiguous_name: 'hay dos personas con ese nombre: agrega RUT o correo',
-        covers_plan: 'ya está en su plan de Rakin: regístralo con «Pagado hasta» en su ficha',
-        repeated: 'se repite en una fila anterior (misma persona, fecha, monto y mes)',
-        too_long: 'es demasiado largo',
+        ambiguous_name: "hay dos personas con ese nombre: agrega RUT o correo",
+        covers_plan:
+          "ya está en su plan de Rakin: regístralo con «Pagado hasta» en su ficha",
+        repeated:
+          "se repite en una fila anterior (misma persona, fecha, monto y mes)",
+        too_long: "es demasiado largo",
       },
       // Importar's recent imports, and "Deshacer importación" (#300).
-      recentTitle: 'Importaciones recientes',
+      recentTitle: "Importaciones recientes",
       recentHint:
-        'Si una importación quedó mal (una columna corrida, una fecha equivocada), deshazla, corrige la planilla e impórtala de nuevo.',
-      unnamedFile: 'Planilla sin nombre',
-      recentWho: (by: string | null, day: string) => (by ? `${by} · ${day}` : day),
-      recentCounts: (people: number, history: number, payments: number, grades: number) =>
+        "Si una importación quedó mal (una columna corrida, una fecha equivocada), deshazla, corrige la planilla e impórtala de nuevo.",
+      unnamedFile: "Planilla sin nombre",
+      recentWho: (by: string | null, day: string) =>
+        by ? `${by} · ${day}` : day,
+      recentCounts: (
+        people: number,
+        history: number,
+        payments: number,
+        grades: number,
+      ) =>
         [
-          people > 0 && (people === 1 ? '1 persona nueva' : `${people.toLocaleString('es-CL')} personas nuevas`),
-          history > 0 && `historial de ${history === 1 ? '1 persona' : `${history.toLocaleString('es-CL')} personas`}`,
-          payments > 0 && (payments === 1 ? '1 pago anterior' : `${payments.toLocaleString('es-CL')} pagos anteriores`),
-          grades > 0 && (grades === 1 ? '1 grado' : `${grades.toLocaleString('es-CL')} grados`),
+          people > 0 &&
+            (people === 1
+              ? "1 persona nueva"
+              : `${people.toLocaleString("es-CL")} personas nuevas`),
+          history > 0 &&
+            `historial de ${history === 1 ? "1 persona" : `${history.toLocaleString("es-CL")} personas`}`,
+          payments > 0 &&
+            (payments === 1
+              ? "1 pago anterior"
+              : `${payments.toLocaleString("es-CL")} pagos anteriores`),
+          grades > 0 &&
+            (grades === 1
+              ? "1 grado"
+              : `${grades.toLocaleString("es-CL")} grados`),
         ]
           .filter(Boolean)
-          .join(' · ') || 'Sin cambios',
+          .join(" · ") || "Sin cambios",
       undone: (day: string, by: string | null, reason: string) =>
-        `Deshecha el ${day}${by ? ` por ${by}` : ''}. Motivo: ${reason}`,
-      undo: 'Deshacer importación',
+        `Deshecha el ${day}${by ? ` por ${by}` : ""}. Motivo: ${reason}`,
+      undo: "Deshacer importación",
       undoForm: {
-        title: 'Deshacer importación',
-        checking: 'Revisando qué se deshace…',
+        title: "Deshacer importación",
+        checking: "Revisando qué se deshace…",
         removes: (payments: number, grades: number, people: number) => {
-          const n = (count: number) => count.toLocaleString('es-CL')
+          const n = (count: number) => count.toLocaleString("es-CL");
           const rows = [
-            payments > 0 && (payments === 1 ? '1 pago anterior' : `${n(payments)} pagos anteriores`),
-            grades > 0 && (grades === 1 ? '1 grado' : `${n(grades)} grados`),
-          ].filter(Boolean)
-          const removed = rows.length > 0 ? `Se eliminan ${rows.join(' y ')} de esta importación.` : ''
+            payments > 0 &&
+              (payments === 1
+                ? "1 pago anterior"
+                : `${n(payments)} pagos anteriores`),
+            grades > 0 && (grades === 1 ? "1 grado" : `${n(grades)} grados`),
+          ].filter(Boolean);
+          const removed =
+            rows.length > 0
+              ? `Se eliminan ${rows.join(" y ")} de esta importación.`
+              : "";
           const restored =
             people > 0
-              ? `El historial de ${people === 1 ? '1 persona' : `${n(people)} personas`} (${w.member} desde, clases antes de Rakin, fecha y motivo de baja) vuelve a como estaba.`
-              : ''
-          return [removed, restored].filter(Boolean).join(' ') || 'Esta importación no dejó historial que deshacer.'
+              ? `El historial de ${people === 1 ? "1 persona" : `${n(people)} personas`} (${w.member} desde, clases antes de Rakin, fecha y motivo de baja) vuelve a como estaba.`
+              : "";
+          return (
+            [removed, restored].filter(Boolean).join(" ") ||
+            "Esta importación no dejó historial que deshacer."
+          );
         },
         kept: (n: number) =>
           n === 1
-            ? '1 dato cambiado después de importar se mantiene.'
-            : `${n.toLocaleString('es-CL')} datos cambiados después de importar se mantienen.`,
+            ? "1 dato cambiado después de importar se mantiene."
+            : `${n.toLocaleString("es-CL")} datos cambiados después de importar se mantienen.`,
         get stays() {
-          return `Las personas y planes que creó se mantienen. ${w.memberIs('Un', 'Una')} ${w.formerMember} que creó se puede eliminar desde su ficha.`
+          return `Las personas y planes que creó se mantienen. ${w.memberIs("Un", "Una")} ${w.formerMember} que creó se puede eliminar desde su ficha.`;
         },
-        reason: 'Motivo',
-        reasonNeeded: 'Escribe el motivo.',
-        submit: 'Deshacer importación',
-        working: 'Deshaciendo…',
-        cancel: 'Cancelar',
-        failed: 'No pudimos deshacer la importación. Inténtalo de nuevo.',
-        alreadyUndone: 'Esta importación ya se deshizo.',
+        reason: "Motivo",
+        reasonNeeded: "Escribe el motivo.",
+        submit: "Deshacer importación",
+        working: "Deshaciendo…",
+        cancel: "Cancelar",
+        failed: "No pudimos deshacer la importación. Inténtalo de nuevo.",
+        alreadyUndone: "Esta importación ya se deshizo.",
       },
-      undoDone: 'Importación deshecha.',
-      gradesCreated: (n: number) => (n === 1 ? 'Grados nuevos: 1.' : `Grados nuevos: ${n}.`),
-      gradesTitle: 'Grados',
+      undoDone: "Importación deshecha.",
+      gradesCreated: (n: number) =>
+        n === 1 ? "Grados nuevos: 1." : `Grados nuevos: ${n}.`,
+      gradesTitle: "Grados",
       gradesSummary: (created: number, existing: number, refused: number) =>
         [
-          created === 1 ? '1 grado nuevo' : `${created} grados nuevos`,
-          existing > 0 && (existing === 1 ? '1 ya estaba' : `${existing} ya estaban`),
-          refused > 0 && (refused === 1 ? '1 con errores' : `${refused} con errores`),
+          created === 1 ? "1 grado nuevo" : `${created} grados nuevos`,
+          existing > 0 &&
+            (existing === 1 ? "1 ya estaba" : `${existing} ya estaban`),
+          refused > 0 &&
+            (refused === 1 ? "1 con errores" : `${refused} con errores`),
         ]
           .filter(Boolean)
-          .join(', ') + '. El más reciente de cada persona queda como su grado actual.',
+          .join(", ") +
+        ". El más reciente de cada persona queda como su grado actual.",
       gradesExistingHint:
-        'Los que ya estaban no se cambian, ni siquiera su nota: una nota corregida en la planilla no se aplica.',
-      gradesErrorsTitle: 'Grados con errores',
+        "Los que ya estaban no se cambian, ni siquiera su nota: una nota corregida en la planilla no se aplica.",
+      gradesErrorsTitle: "Grados con errores",
       gradesErrorsHint:
-        'Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.',
+        "Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.",
       gradeError: {
-        required: 'falta',
-        invalid_rut: 'no es un RUT válido',
-        invalid_email: 'no es un correo válido',
-        invalid_date: 'no es una fecha válida (hasta 60 años atrás, nunca después de hoy)',
+        required: "falta",
+        invalid_rut: "no es un RUT válido",
+        invalid_email: "no es un correo válido",
+        invalid_date:
+          "no es una fecha válida (hasta 60 años atrás, nunca después de hoy)",
         get unknown_rank() {
-          return `no corresponde a ningún grado ${w.ofThePlace}`
+          return `no corresponde a ningún grado ${w.ofThePlace}`;
         },
         get unknown_person() {
-          return `no está en ${w.Members} ni en ${w.thePlace}`
+          return `no está en ${w.Members} ni en ${w.thePlace}`;
         },
-        ambiguous_name: 'hay dos personas con ese nombre: agrega RUT o correo',
-        repeated: 'se repite en una fila anterior',
-        too_long: 'es demasiado largo (máximo 500 caracteres)',
+        ambiguous_name: "hay dos personas con ese nombre: agrega RUT o correo",
+        repeated: "se repite en una fila anterior",
+        too_long: "es demasiado largo (máximo 500 caracteres)",
       },
-      errorsTitle: 'Filas con errores',
-      errorsHint: 'Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.',
-      rowLabel: (row: number, name: string) => (name ? `Fila ${row} · ${name}` : `Fila ${row}`),
+      errorsTitle: "Filas con errores",
+      errorsHint:
+        "Estas filas no se importan. Corrígelas en la planilla y vuelve a subirla: lo ya importado no se duplica.",
+      rowLabel: (row: number, name: string) =>
+        name ? `Fila ${row} · ${name}` : `Fila ${row}`,
       error: {
-        required: 'falta',
-        repeated: 'se repite en una fila anterior',
-        invalid_phone: 'no es un celular chileno',
-        invalid_email: 'no es un correo válido',
-        invalid_rut: 'no es un RUT válido',
-        invalid_date: 'no es una fecha válida',
+        required: "falta",
+        repeated: "se repite en una fila anterior",
+        invalid_phone: "no es un celular chileno",
+        invalid_email: "no es un correo válido",
+        invalid_rut: "no es un RUT válido",
+        invalid_date: "no es una fecha válida",
         get own_guardian() {
-          return `es el mismo RUT ${w.ofTheMember}`
+          return `es el mismo RUT ${w.ofTheMember}`;
         },
-        unknown_plan: 'no corresponde a ningún plan',
-        inactive_plan: 'es un plan desactivado',
-        dropin_plan: 'es una clase suelta, no una membresía',
-        due_before_start: 'es anterior al inicio del plan',
+        unknown_plan: "no corresponde a ningún plan",
+        inactive_plan: "es un plan desactivado",
+        dropin_plan: "es una clase suelta, no una membresía",
+        ended_plan: "es un plan cuyo período ya terminó",
+        due_before_start: "es anterior al inicio del plan",
         get has_guardian() {
-          return `${w.theMember} ya tiene otro apoderado`
+          return `${w.theMember} ya tiene otro apoderado`;
         },
-        one_level: 'el apoderado está a cargo de otra persona',
-        has_left: 'fue dado de baja: reactívalo desde su ficha',
-        ambiguous_name: 'Nombre repetido: agrega RUT o correo',
+        one_level: "el apoderado está a cargo de otra persona",
+        has_left: "fue dado de baja: reactívalo desde su ficha",
+        ambiguous_name: "Nombre repetido: agrega RUT o correo",
         get rut_in_gym() {
-          return `ya es de otra persona ${w.ofThePlace}`
+          return `ya es de otra persona ${w.ofThePlace}`;
         },
         get email_in_gym() {
-          return `ya es de otra persona ${w.ofThePlace}`
+          return `ya es de otra persona ${w.ofThePlace}`;
         },
         get left_before_start() {
-          return `es anterior a «${w.Member} desde»`
+          return `es anterior a «${w.Member} desde»`;
         },
-        invalid_number: 'no es un número de clases',
-        too_long: 'es demasiado largo (máximo 200 caracteres)',
-        minor: 'falta: es menor de 18 años',
+        invalid_number: "no es un número de clases",
+        too_long: "es demasiado largo (máximo 200 caracteres)",
+        minor: "falta: es menor de 18 años",
       },
       fieldError: (field: string, problem: string) => `${field}: ${problem}`,
-      missingPhoneTitle: (n: number) => (n === 1 ? 'Falta teléfono: 1 fila' : `Falta teléfono: ${n} filas`),
+      missingPhoneTitle: (n: number) =>
+        n === 1 ? "Falta teléfono: 1 fila" : `Falta teléfono: ${n} filas`,
       get missingPhoneHint() {
-        return `Se importan igual, marcadas «Falta teléfono» en ${w.Members}. Agrega el celular en su ficha (el del apoderado, si es menor) o marca «No tiene WhatsApp».`
+        return `Se importan igual, marcadas «Falta teléfono» en ${w.Members}. Agrega el celular en su ficha (el del apoderado, si es menor) o marca «No tiene WhatsApp».`;
       },
-      missingIdentityTitle: (n: number) => (n === 1 ? 'Falta RUT: 1 fila' : `Falta RUT: ${n} filas`),
+      missingIdentityTitle: (n: number) =>
+        n === 1 ? "Falta RUT: 1 fila" : `Falta RUT: ${n} filas`,
       get missingIdentityHint() {
-        return `Se importan igual, marcadas «Falta RUT» en ${w.Members}. Sin RUT ni correo, al volver a importar los encontramos por su nombre (y su fecha de nacimiento o teléfono si hay dos con el mismo nombre): agrega el RUT en su ficha.`
+        return `Se importan igual, marcadas «Falta RUT» en ${w.Members}. Sin RUT ni correo, al volver a importar los encontramos por su nombre (y su fecha de nacimiento o teléfono si hay dos con el mismo nombre): agrega el RUT en su ficha.`;
       },
-      keptTitle: 'Ya existen: no se actualizan',
+      keptTitle: "Ya existen: no se actualizan",
       get keptHint() {
-        return `Lo que ${w.thePlace} ya tiene no se sobrescribe; el historial solo se completa si estaba vacío, y a quien ya entrena aquí no se le da de baja. Si algo cambió, edítalo en la ficha ${w.ofTheMember}.`
+        return `Lo que ${w.thePlace} ya tiene no se sobrescribe; el historial solo se completa si estaba vacío, y a quien ya entrena aquí no se le da de baja. Si algo cambió, edítalo en la ficha ${w.ofTheMember}.`;
       },
-      formerTitle: (n: number) => (n === 1 ? `${w.FormerMembers}: 1 fila` : `${w.FormerMembers}: ${n} filas`),
+      formerTitle: (n: number) =>
+        n === 1
+          ? `${w.FormerMembers}: 1 fila`
+          : `${w.FormerMembers}: ${n} filas`,
       get formerHint() {
-        return `Tienen «Fecha de baja»: se agregan como ${w.formerMembers}, sin plan ni cobros, y no les llega ningún mensaje.`
+        return `Tienen «Fecha de baja»: se agregan como ${w.formerMembers}, sin plan ni cobros, y no les llega ningún mensaje.`;
       },
-      kept: (fields: string[]) => `Ya existe: no se actualiza ${fields.join(', ')}.`,
+      kept: (fields: string[]) =>
+        `Ya existe: no se actualiza ${fields.join(", ")}.`,
       // A former student created by the sheet: their plan is not imported.
-      formerKept: (fields: string[]) => `No se importa: ${fields.join(', ')}.`,
-      apply: (n: number) => (n === 1 ? 'Importar 1 fila' : `Importar ${n} filas`),
-      applying: 'Importando…',
-      applyFailed: 'No pudimos importar. No se guardó nada; inténtalo de nuevo.',
+      formerKept: (fields: string[]) => `No se importa: ${fields.join(", ")}.`,
+      apply: (n: number) =>
+        n === 1 ? "Importar 1 fila" : `Importar ${n} filas`,
+      applying: "Importando…",
+      applyFailed:
+        "No pudimos importar. No se guardó nada; inténtalo de nuevo.",
       get toStudents() {
-        return `Ver ${w.members}`
+        return `Ver ${w.members}`;
       },
-      again: 'Importar otra planilla',
+      again: "Importar otra planilla",
     },
     family: {
-      toggle: 'Familia',
+      toggle: "Familia",
       toggleLabel: (name: string) => `Familia de ${name}`,
-      loading: 'Cargando familia…',
-      error: 'No pudimos cargar la familia.',
-      guardian: 'Apoderado',
-      dependents: 'A cargo',
-      none: 'No tiene a nadie a cargo.',
-      unlink: 'Desvincular',
+      loading: "Cargando familia…",
+      error: "No pudimos cargar la familia.",
+      guardian: "Apoderado",
+      dependents: "A cargo",
+      none: "No tiene a nadie a cargo.",
+      unlink: "Desvincular",
       unlinkLabel: (name: string) => `Desvincular a ${name}`,
-      unlinkConfirm: (name: string) => `¿Desvincular a ${name}? Ambos siguen en ${w.thePlace}; solo deja de estar a cargo.`,
-      unlinkCancel: 'Cancelar',
-      addTitle: 'Agregar a alguien a cargo',
-      close: 'Cerrar',
-      addHint: 'Sin teléfono ni correo: todo le llega al apoderado.',
-      name: 'Nombre',
-      rut: 'RUT (opcional)',
-      dob: 'Fecha de nacimiento (opcional)',
-      add: 'Agregar',
+      unlinkConfirm: (name: string) =>
+        `¿Desvincular a ${name}? Ambos siguen en ${w.thePlace}; solo deja de estar a cargo.`,
+      unlinkCancel: "Cancelar",
+      addTitle: "Agregar a alguien a cargo",
+      close: "Cerrar",
+      addHint: "Sin teléfono ni correo: todo le llega al apoderado.",
+      name: "Nombre",
+      rut: "RUT (opcional)",
+      dob: "Fecha de nacimiento (opcional)",
+      add: "Agregar",
       get linkTitle() {
-        return `O vincular a ${w.aMember} que ya está`
+        return `O vincular a ${w.aMember} que ya está`;
       },
-      linkSearch: 'Buscar a quién vincular',
-      link: 'Vincular',
+      linkSearch: "Buscar a quién vincular",
+      link: "Vincular",
       linkLabel: (name: string) => `Vincular a ${name}`,
       get noMatches() {
-        return `Ningún ${w.member} coincide.`
+        return `Ningún ${w.member} coincide.`;
       },
       refused: {
-        has_guardian: 'Esa persona ya tiene un apoderado.',
+        has_guardian: "Esa persona ya tiene un apoderado.",
         // Unlinking a minor's guardian (#368).
-        minor: 'Es menor de 18 años: no puede quedar sin apoderado.',
+        minor: "Es menor de 18 años: no puede quedar sin apoderado.",
         one_level:
-          'Un apoderado no puede estar a cargo de otro, y quien está a cargo no puede ser apoderado.',
-        invalid: 'Revisa los datos: el RUT o la fecha no son válidos.',
-        failed: 'No pudimos guardar el cambio. Inténtalo de nuevo.',
+          "Un apoderado no puede estar a cargo de otro, y quien está a cargo no puede ser apoderado.",
+        invalid: "Revisa los datos: el RUT o la fecha no son válidos.",
+        failed: "No pudimos guardar el cambio. Inténtalo de nuevo.",
       },
     },
     member: {
       get back() {
-        return `Volver a ${w.Members}`
+        return `Volver a ${w.Members}`;
       },
-      loading: 'Cargando ficha…',
-      error: 'No pudimos cargar la ficha.',
+      loading: "Cargando ficha…",
+      error: "No pudimos cargar la ficha.",
       get notFound() {
-        return `No encontramos a ${w.memberIs('este', 'esta')} ${w.member}.`
+        return `No encontramos a ${w.memberIs("este", "esta")} ${w.member}.`;
       },
-      retry: 'Reintentar',
+      retry: "Reintentar",
       since: (month: string) => `${w.Member} desde ${month}`,
       // `Azul · 2 grados · alumno desde mar 2024`: the rank, and a member since. Said
       // whole, so it does not read as the belt's date, which Graduación has (#213).
-      rankSince: (rank: string, month: string) => `${rank} · ${w.member} desde ${month}`,
-      noPlan: 'Sin plan',
-      paymentLabel: 'Estado de pago',
+      rankSince: (rank: string, month: string) =>
+        `${rank} · ${w.member} desde ${month}`,
+      noPlan: "Sin plan",
+      paymentLabel: "Estado de pago",
       dueDay: (plan: string, day: number) => `${plan} · vence el ${day}`,
       until: (plan: string, day: string) => `${plan} · hasta el ${day}`,
       overdue: (days: number) => `Vencido ${days} d`,
       frozenUntil: (day: string) => `Congelado · vuelve el ${day}`,
-      freezeBooked: (from: string, to: string) => `Congelación programada: del ${from} al ${to}`,
+      freezeBooked: (from: string, to: string) =>
+        `Congelación programada: del ${from} al ${to}`,
       pendingMonth: (month: string) => `${month} pendiente`,
       pendingPeriods: (n: number) => `${n} períodos pendientes`,
-      upToDate: 'Al día',
+      upToDate: "Al día",
       upToDateNext: (day: string) => `Al día · vence el ${day}`,
       paidThrough: (day: string) => `Al día · pagado hasta el ${day}`,
-      nothingToRecord: 'Está al día y no tiene un período abierto: el pago se registra cuando se genere el próximo cobro.',
+      nothingToRecord:
+        "Está al día y no tiene un período abierto: el pago se registra cuando se genere el próximo cobro.",
       // Dado de baja: no charge is coming, so none to wait for (#213).
-      nothingToRecordLeft: 'Su plan terminó y no debe nada: no hay pagos por registrar.',
+      nothingToRecordLeft:
+        "Su plan terminó y no debe nada: no hay pagos por registrar.",
       whatsapp: (name: string) => `WhatsApp a ${name}`,
       whatsappGuardian: (name: string) => `WhatsApp a ${name}, su apoderado`,
-      ledgerError: 'No pudimos cargar los pagos.',
-      editPerson: 'Editar datos',
-      exitLabel: 'Dar de baja o eliminar',
+      ledgerError: "No pudimos cargar los pagos.",
+      editPerson: "Editar datos",
+      exitLabel: "Dar de baja o eliminar",
       // Their sign-in link (#246): the welcome, and how the latest one went.
       access: {
-        title: 'Acceso',
+        title: "Acceso",
         to: (address: string) => `Su link para entrar llega a ${address}.`,
-        toGuardian: (name: string, address: string) => `Su link para entrar llega a ${name}, su apoderado: ${address}.`,
-        noEmail: 'Sin correo: agrégalo en Datos para enviarle su link para entrar.',
-        never: 'Aún no le hemos enviado la bienvenida.',
-        waiting: 'Enviando la bienvenida…',
+        toGuardian: (name: string, address: string) =>
+          `Su link para entrar llega a ${name}, su apoderado: ${address}.`,
+        noEmail:
+          "Sin correo: agrégalo en Datos para enviarle su link para entrar.",
+        never: "Aún no le hemos enviado la bienvenida.",
+        waiting: "Enviando la bienvenida…",
         sent: (day: string) => `Bienvenida enviada el ${day}.`,
-        failed: (day: string) => `No se pudo enviar la bienvenida el ${day}. Revisa el correo y vuelve a intentarlo.`,
+        failed: (day: string) =>
+          `No se pudo enviar la bienvenida el ${day}. Revisa el correo y vuelve a intentarlo.`,
         // An address Resend reported (#104): no mail goes to it, from any gym.
         bounced: (day: string) =>
           `Los correos a esta dirección rebotan desde el ${day}, así que ya no le enviamos ninguno. Corrígela en Datos.`,
         complained: (day: string) =>
           `El ${day} marcó uno de nuestros correos como spam, así que ya no le enviamos ninguno a esta dirección.`,
         bounceDetail: (detail: string) => `Su servidor respondió: ${detail}`,
-        suppressedLast: (day: string) => `La bienvenida del ${day} no se envió: esa dirección no recibía correos.`,
-        send: 'Enviar link para entrar',
-        resend: 'Reenviar link para entrar',
-        working: 'Enviando…',
-        error: 'No pudimos enviarlo. Vuelve a intentarlo.',
+        suppressedLast: (day: string) =>
+          `La bienvenida del ${day} no se envió: esa dirección no recibía correos.`,
+        send: "Enviar link para entrar",
+        resend: "Reenviar link para entrar",
+        working: "Enviando…",
+        error: "No pudimos enviarlo. Vuelve a intentarlo.",
       },
       editForm: {
-        title: 'Editar datos',
-        name: 'Nombre y apellido',
-        phone: 'Teléfono (WhatsApp)',
-        noWhatsapp: 'No tiene WhatsApp',
-        email: 'Correo',
-        rut: 'RUT',
-        dob: 'Fecha de nacimiento (opcional)',
-        save: 'Guardar',
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        saved: 'Datos guardados.',
-        nameNeeded: 'Escribe el nombre.',
+        title: "Editar datos",
+        name: "Nombre y apellido",
+        phone: "Teléfono (WhatsApp)",
+        noWhatsapp: "No tiene WhatsApp",
+        email: "Correo",
+        rut: "RUT",
+        dob: "Fecha de nacimiento (opcional)",
+        save: "Guardar",
+        cancel: "Cancelar",
+        working: "Guardando…",
+        saved: "Datos guardados.",
+        nameNeeded: "Escribe el nombre.",
         refused: {
           get rut_in_gym() {
-            return `Ese RUT ya es de ${w.memberIs('otro', 'otra')} ${w.member} ${w.ofThePlace}.`
+            return `Ese RUT ya es de ${w.memberIs("otro", "otra")} ${w.member} ${w.ofThePlace}.`;
           },
           get email_in_gym() {
-            return `Ese correo ya es de ${w.memberIs('otro', 'otra')} ${w.member} ${w.ofThePlace}.`
+            return `Ese correo ya es de ${w.memberIs("otro", "otra")} ${w.member} ${w.ofThePlace}.`;
           },
-          open: 'Abrir su ficha',
+          open: "Abrir su ficha",
           get phone() {
-            return `${w.memberIs('Un', 'Una')} ${w.member} necesita un teléfono. Si no tiene WhatsApp, marca "No tiene WhatsApp".`
+            return `${w.memberIs("Un", "Una")} ${w.member} necesita un teléfono. Si no tiene WhatsApp, marca "No tiene WhatsApp".`;
           },
-          identity: 'Deja el RUT o el correo: uno de los dos dice quién es.',
+          identity: "Deja el RUT o el correo: uno de los dos dice quién es.",
           // A birth date that makes them a minor, and they have no guardian (#368).
           minor:
-            'Con esa fecha es menor de 18 años y necesita un apoderado. Vincúlalo primero desde la ficha del apoderado, con «Agregar a alguien a cargo».',
-          invalid: 'Revisa los datos: el teléfono, el RUT, el correo o la fecha no son válidos.',
-          failed: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
+            "Con esa fecha es menor de 18 años y necesita un apoderado. Vincúlalo primero desde la ficha del apoderado, con «Agregar a alguien a cargo».",
+          invalid:
+            "Revisa los datos: el teléfono, el RUT, el correo o la fecha no son válidos.",
+          failed: "No pudimos guardar los cambios. Inténtalo de nuevo.",
         },
       },
-      missingPhone: 'Falta teléfono: agrégalo en Editar datos, o marca "No tiene WhatsApp".',
-      noWhatsapp: 'Sin WhatsApp: no le llegan recordatorios por WhatsApp.',
-      missingRut: 'Falta RUT: agrega su RUT (o su correo) en Editar datos para que no se confunda con otra persona del mismo nombre.',
+      missingPhone:
+        'Falta teléfono: agrégalo en Editar datos, o marca "No tiene WhatsApp".',
+      noWhatsapp: "Sin WhatsApp: no le llegan recordatorios por WhatsApp.",
+      missingRut:
+        "Falta RUT: agrega su RUT (o su correo) en Editar datos para que no se confunda con otra persona del mismo nombre.",
       missingGuardian:
-        'Falta apoderado: es menor de 18 años, y Rakin no le escribe hasta que tenga uno. En la ficha del apoderado, usa «Agregar a alguien a cargo» y vincúlalo.',
+        "Falta apoderado: es menor de 18 años, y Rakin no le escribe hasta que tenga uno. En la ficha del apoderado, usa «Agregar a alguien a cargo» y vincúlalo.",
       // "Privacidad" (#370): what their data rest on, and who accepted which notice when.
       consent: {
-        title: 'Privacidad',
-        loading: 'Cargando…',
-        error: 'No pudimos cargar su registro de privacidad.',
+        title: "Privacidad",
+        loading: "Cargando…",
+        error: "No pudimos cargar su registro de privacidad.",
         basis: {
-          contract: 'Base legal: el contrato de membresía.',
-          guardian_consent: 'Base legal: el consentimiento de su apoderado, aparte de la membresía.',
+          contract: "Base legal: el contrato de membresía.",
+          guardian_consent:
+            "Base legal: el consentimiento de su apoderado, aparte de la membresía.",
         },
-        given: 'Su apoderado dio su consentimiento.',
+        given: "Su apoderado dio su consentimiento.",
         withdrawn:
-          'Su apoderado retiró su consentimiento. La membresía sigue igual; puede darlo de nuevo desde su página.',
+          "Su apoderado retiró su consentimiento. La membresía sigue igual; puede darlo de nuevo desde su página.",
         missing:
-          'Falta el consentimiento de su apoderado. Se lo pide su página, en Rakin, y el correo de bienvenida le dice dónde.',
+          "Falta el consentimiento de su apoderado. Se lo pide su página, en Rakin, y el correo de bienvenida le dice dónde.",
         get none() {
-          return `Sin registro: ${w.thePlace} lo agregó a mano o por planilla, sin el formulario de inscripción.`
+          return `Sin registro: ${w.thePlace} lo agregó a mano o por planilla, sin el formulario de inscripción.`;
         },
         // One act of the register: when, who, and the notice's version.
         event: {
-          notice_accepted: (by: string) => `${by} aceptó la política de privacidad en la inscripción`,
+          notice_accepted: (by: string) =>
+            `${by} aceptó la política de privacidad en la inscripción`,
           consent_given: (by: string, page: boolean) =>
-            `${by} dio su consentimiento ${page ? 'desde su página' : 'en la inscripción'}`,
-          consent_withdrawn: (by: string) => `${by} retiró su consentimiento desde su página`,
+            `${by} dio su consentimiento ${page ? "desde su página" : "en la inscripción"}`,
+          consent_withdrawn: (by: string) =>
+            `${by} retiró su consentimiento desde su página`,
         },
         // An act whose actor left the gym: only ever a guardian, since the person is here.
         get goneGuardian() {
-          return `Su apoderado, que ya no está en ${w.thePlace},`
+          return `Su apoderado, que ya no está en ${w.thePlace},`;
         },
         version: (day: string) => `política del ${day}`,
         // Before the register kept the version.
-        noVersion: 'versión no registrada',
+        noVersion: "versión no registrada",
       },
       // "Historial" (#293): what the gym knew before Rakin, never billed.
       history: {
-        title: 'Historial',
-        empty: 'Nada anterior a Rakin todavía.',
+        title: "Historial",
+        empty: "Nada anterior a Rakin todavía.",
         memberSince: (day: string) => `${w.Member} desde ${day}`,
-        priorClasses: (n: number) => (n === 1 ? '1 clase antes de Rakin' : `${n} clases antes de Rakin`),
-        add: 'Agregar historial',
-        start: 'Fecha de inicio y clases',
+        priorClasses: (n: number) =>
+          n === 1 ? "1 clase antes de Rakin" : `${n} clases antes de Rakin`,
+        add: "Agregar historial",
+        start: "Fecha de inicio y clases",
         // A belt earned before Rakin (#296), with the Graduación's form.
-        grade: 'Grado anterior',
-        gradeSaved: 'Grado anterior guardado.',
-        saved: 'Historial guardado.',
+        grade: "Grado anterior",
+        gradeSaved: "Grado anterior guardado.",
+        saved: "Historial guardado.",
         // "Historial de pagos" (#295): what they paid before Rakin, a year at a time.
-        payments: 'Pagos anteriores',
-        paymentsError: 'No pudimos cargar sus pagos anteriores.',
-        year: (year: number, count: number) => `${year} · ${count === 1 ? '1 pago' : `${count} pagos`}`,
+        payments: "Pagos anteriores",
+        paymentsError: "No pudimos cargar sus pagos anteriores.",
+        year: (year: number, count: number) =>
+          `${year} · ${count === 1 ? "1 pago" : `${count} pagos`}`,
         earlier: (n: number) => `Ver años anteriores (${n})`,
-        fewer: 'Ver menos años',
+        fewer: "Ver menos años",
         // A line: the month it paid, else the day; then how, the plan, where it came from.
         line: {
-          month: (iso: string) => `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`,
-          payment: 'Pago',
+          month: (iso: string) =>
+            `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`,
+          payment: "Pago",
           paid: (day: string) => `pagado el ${day}`,
-          method: { cash: 'efectivo', transfer: 'transferencia', other: 'otro' },
+          method: {
+            cash: "efectivo",
+            transfer: "transferencia",
+            other: "otro",
+          },
           typed: (by: string, day: string) => `agregado por ${by} · ${day}`,
           typedNobody: (day: string) => `agregado el ${day}`,
           imported: (file: string, by: string | null, day: string) =>
-            by ? `importado de ${file} · ${by} · ${day}` : `importado de ${file} · ${day}`,
+            by
+              ? `importado de ${file} · ${by} · ${day}`
+              : `importado de ${file} · ${day}`,
         },
         remove: {
           title: (what: string) => `Eliminar ${what}`,
           intro:
-            'Para un error de tipeo: se borra del historial y queda registrado quién lo borró y por qué. Para corregirlo, elimínalo y agrégalo de nuevo.',
-          reason: 'Motivo',
-          reasonNeeded: 'Escribe por qué lo eliminas.',
-          submit: 'Eliminar',
-          cancel: 'Cancelar',
-          working: 'Eliminando…',
-          failed: 'No pudimos eliminarlo. Inténtalo de nuevo.',
-          done: 'Pago eliminado del historial.',
+            "Para un error de tipeo: se borra del historial y queda registrado quién lo borró y por qué. Para corregirlo, elimínalo y agrégalo de nuevo.",
+          reason: "Motivo",
+          reasonNeeded: "Escribe por qué lo eliminas.",
+          submit: "Eliminar",
+          cancel: "Cancelar",
+          working: "Eliminando…",
+          failed: "No pudimos eliminarlo. Inténtalo de nuevo.",
+          done: "Pago eliminado del historial.",
         },
         paymentsForm: {
-          title: 'Agregar pagos anteriores',
+          title: "Agregar pagos anteriores",
           intro:
-            'Lo que pagó antes de Rakin, mes a mes. Solo se muestra en su ficha: no cuenta en Pagos ni se le cobra.',
-          from: 'Desde',
-          to: 'Hasta',
-          amount: 'Monto por mes',
-          method: 'Método',
-          methodUnknown: 'No se sabe',
-          methods: { cash: 'Efectivo', transfer: 'Transferencia', other: 'Otro' },
-          day: 'Día de pago',
-          plan: 'Plan (opcional)',
-          planPlaceholder: 'Mensual 3x semana',
-          months: 'Meses',
+            "Lo que pagó antes de Rakin, mes a mes. Solo se muestra en su ficha: no cuenta en Pagos ni se le cobra.",
+          from: "Desde",
+          to: "Hasta",
+          amount: "Monto por mes",
+          method: "Método",
+          methodUnknown: "No se sabe",
+          methods: {
+            cash: "Efectivo",
+            transfer: "Transferencia",
+            other: "Otro",
+          },
+          day: "Día de pago",
+          plan: "Plan (opcional)",
+          planPlaceholder: "Mensual 3x semana",
+          months: "Meses",
           // "ene 2024", a row of the list.
-          month: (iso: string) => `${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)} ${iso.slice(0, 4)}`,
+          month: (iso: string) =>
+            `${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)} ${iso.slice(0, 4)}`,
           rowDay: (month: string) => `Día de pago de ${month}`,
           rowAmount: (month: string) => `Monto de ${month}`,
           rowMethod: (month: string) => `Método de ${month}`,
           removeRow: (month: string) => `Quitar ${month}: ese mes no pagó`,
-          total: (count: number, amount: string) => `${count === 1 ? '1 pago' : `${count} pagos`} · ${amount}`,
-          inPlan: (month: string) => `Desde ${month} está en su plan: usa Pagado hasta.`,
-          duplicate: 'Ya está en el historial',
+          total: (count: number, amount: string) =>
+            `${count === 1 ? "1 pago" : `${count} pagos`} · ${amount}`,
+          inPlan: (month: string) =>
+            `Desde ${month} está en su plan: usa Pagado hasta.`,
+          duplicate: "Ya está en el historial",
           duplicates: (n: number) =>
             n === 1
-              ? '1 pago es igual a uno que ya está en el historial: se guardará otra vez.'
+              ? "1 pago es igual a uno que ya está en el historial: se guardará otra vez."
               : `${n} pagos son iguales a otros que ya están en el historial: se guardarán otra vez.`,
-          rangeNeeded: 'Elige desde y hasta, de los últimos 60 años hasta este mes.',
+          rangeNeeded:
+            "Elige desde y hasta, de los últimos 60 años hasta este mes.",
           tooMany: (max: number) => `Hasta ${max} meses a la vez.`,
-          amountNeeded: 'Escribe el monto de cada mes.',
-          dayNeeded: 'Escribe un día del 1 al 31.',
-          noneLeft: 'No queda ningún mes para guardar.',
+          amountNeeded: "Escribe el monto de cada mes.",
+          dayNeeded: "Escribe un día del 1 al 31.",
+          noneLeft: "No queda ningún mes para guardar.",
           coversPlan: (day: string) =>
             `Su plan empezó el ${day}: ese mes y los siguientes se registran con Pagado hasta, no en el historial.`,
-          outsideWindow: 'Hay un mes de hace más de 60 años o posterior a hoy. Revisa desde y hasta.',
-          submit: (count: number) => (count === 1 ? 'Guardar 1 pago' : `Guardar ${count} pagos`),
-          cancel: 'Cancelar',
-          working: 'Guardando…',
-          failed: 'No pudimos guardar los pagos. Inténtalo de nuevo.',
+          outsideWindow:
+            "Hay un mes de hace más de 60 años o posterior a hoy. Revisa desde y hasta.",
+          submit: (count: number) =>
+            count === 1 ? "Guardar 1 pago" : `Guardar ${count} pagos`,
+          cancel: "Cancelar",
+          working: "Guardando…",
+          failed: "No pudimos guardar los pagos. Inténtalo de nuevo.",
           saved: (count: number) =>
-            count === 1 ? '1 pago guardado en el historial.' : `${count} pagos guardados en el historial.`,
+            count === 1
+              ? "1 pago guardado en el historial."
+              : `${count} pagos guardados en el historial.`,
         },
         form: {
-          title: 'Fecha de inicio y clases',
+          title: "Fecha de inicio y clases",
           intro:
-            'Desde cuándo entrena aquí y cuántas clases tuvo antes de Rakin. Solo se muestra en su ficha: no cambia su plan ni lo que se le cobra.',
+            "Desde cuándo entrena aquí y cuántas clases tuvo antes de Rakin. Solo se muestra en su ficha: no cambia su plan ni lo que se le cobra.",
           get since() {
-            return `${w.Member} desde (opcional)`
+            return `${w.Member} desde (opcional)`;
           },
-          classes: 'Clases antes de Rakin',
-          sinceNeeded: 'Elige un día de hoy hacia atrás, de los últimos 60 años.',
-          classesNeeded: 'Escribe un número entero, 0 o más.',
-          submit: 'Guardar',
-          cancel: 'Cancelar',
-          working: 'Guardando…',
-          failed: 'No pudimos guardar el historial. Inténtalo de nuevo.',
+          classes: "Clases antes de Rakin",
+          sinceNeeded:
+            "Elige un día de hoy hacia atrás, de los últimos 60 años.",
+          classesNeeded: "Escribe un número entero, 0 o más.",
+          submit: "Guardar",
+          cancel: "Cancelar",
+          working: "Guardando…",
+          failed: "No pudimos guardar el historial. Inténtalo de nuevo.",
         },
       },
-      leave: 'Dar de baja',
-      leftBanner: (day: string) => `Dado de baja desde el ${day}. Su historial sigue aquí.`,
+      leave: "Dar de baja",
+      leftBanner: (day: string) =>
+        `Dado de baja desde el ${day}. Su historial sigue aquí.`,
       // Under the banner, for the owner and admins only (#294).
       leftBannerReason: (reason: string) => `Motivo: ${reason}`,
       // "Motivo" (#294), on Dar de baja and "Agregar exalumno": the chips fill the text.
       leftReason: {
-        label: 'Motivo (opcional)',
-        chipsLabel: 'Motivos',
-        chips: ['Precio', 'Horario', 'Se cambió', 'Motivo personal', 'Otro'],
+        label: "Motivo (opcional)",
+        chipsLabel: "Motivos",
+        chips: ["Precio", "Horario", "Se cambió", "Motivo personal", "Otro"],
         hint: `Solo lo ven tú y los administradores. ${NO_HEALTH} Si es eso, basta con "Motivo personal".`,
       },
       leaveForm: {
-        title: 'Dar de baja',
+        title: "Dar de baja",
         intro:
-          'Termina su plan desde ese día: no se le cobra nada más y sale de las listas, de la asistencia y de Hoy. Lo que debe sigue pendiente en Pagos, y su historial (pagos, asistencia, grados, tiempo de entrenamiento) se mantiene.',
-        on: 'Desde',
-        submit: 'Dar de baja',
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        onNeeded: 'Elige un día de hoy hacia atrás, de los últimos 60 años.',
-        failed: 'No pudimos darlo de baja. Inténtalo de nuevo.',
+          "Termina su plan desde ese día: no se le cobra nada más y sale de las listas, de la asistencia y de Hoy. Lo que debe sigue pendiente en Pagos, y su historial (pagos, asistencia, grados, tiempo de entrenamiento) se mantiene.",
+        on: "Desde",
+        submit: "Dar de baja",
+        cancel: "Cancelar",
+        working: "Guardando…",
+        onNeeded: "Elige un día de hoy hacia atrás, de los últimos 60 años.",
+        failed: "No pudimos darlo de baja. Inténtalo de nuevo.",
       },
-      reactivate: 'Reactivar',
+      reactivate: "Reactivar",
       returnForm: {
-        title: 'Reactivar',
+        title: "Reactivar",
         get intro() {
-          return `Vuelve a la lista de ${w.members}. Si eliges un plan, empieza en él desde ese día.`
+          return `Vuelve a la lista de ${w.members}. Si eliges un plan, empieza en él desde ese día.`;
         },
-        plan: 'Plan (opcional)',
-        noPlan: 'Sin plan por ahora',
-        startedOn: 'Desde',
-        submit: 'Reactivar',
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        done: 'Reactivado.',
-        failed: 'No pudimos reactivarlo. Inténtalo de nuevo.',
+        plan: "Plan (opcional)",
+        noPlan: "Sin plan por ahora",
+        startedOn: "Desde",
+        submit: "Reactivar",
+        cancel: "Cancelar",
+        working: "Guardando…",
+        done: "Reactivado.",
+        failed: "No pudimos reactivarlo. Inténtalo de nuevo.",
       },
-      remove: 'Eliminar',
+      remove: "Eliminar",
       removeForm: {
-        title: 'Eliminar',
+        title: "Eliminar",
         get intro() {
-          return `Borra todo lo que ${w.thePlace} tiene de esta persona: su ficha, planes, cargos anulados, asistencia y grados. No se puede deshacer. Es para un error al agregarlo o si pide que borren sus datos. El registro ${w.ofThePlace} guarda quién lo eliminó, cuándo y por qué, sin sus datos.`
+          return `Borra todo lo que ${w.thePlace} tiene de esta persona: su ficha, planes, cargos anulados, asistencia y grados. No se puede deshacer. Es para un error al agregarlo o si pide que borren sus datos. El registro ${w.ofThePlace} guarda quién lo eliminó, cuándo y por qué, sin sus datos.`;
         },
         confirm: (name: string) => `Para confirmar, escribe su nombre: ${name}`,
-        submit: 'Eliminar para siempre',
-        cancel: 'Cancelar',
-        working: 'Eliminando…',
-        checking: 'Revisando…',
-        reason: 'Motivo',
+        submit: "Eliminar para siempre",
+        cancel: "Cancelar",
+        working: "Eliminando…",
+        checking: "Revisando…",
+        reason: "Motivo",
         get reasonNeeded() {
-          return `Escribe por qué se elimina: queda en el registro ${w.ofThePlace}.`
+          return `Escribe por qué se elimina: queda en el registro ${w.ofThePlace}.`;
         },
         // What blocks deleting, and how to clear it (#256).
         refused: {
           payment: (amount: string) =>
             `Tiene un pago de ${amount}: devuélvelo primero. El dinero recibido no se borra; si fue real, puedes darlo de baja.`,
-          pending: () => 'Tiene un comprobante por validar: recházalo primero.',
+          pending: () => "Tiene un comprobante por validar: recházalo primero.",
           owes: (amount: string) =>
             `Debe ${amount}: anula sus cargos primero («Anular plan» o «Anular cargo»), o dale de baja si la deuda es real.`,
-          staff: () => `Es parte del equipo ${w.ofThePlace}, o ha dado clases: no se puede eliminar.`,
-          guardian: () => `Es apoderado de ${w.memberIs('otros', 'otras')} ${w.members}: desvincúlalos en Familia antes de eliminarlo.`,
+          staff: () =>
+            `Es parte del equipo ${w.ofThePlace}, o ha dado clases: no se puede eliminar.`,
+          guardian: () =>
+            `Es apoderado de ${w.memberIs("otros", "otras")} ${w.members}: desvincúlalos en Familia antes de eliminarlo.`,
         },
-        failed: 'No pudimos eliminarlo. Inténtalo de nuevo.',
+        failed: "No pudimos eliminarlo. Inténtalo de nuevo.",
       },
       // What an earlier plan, lapsed say, still owes once a new one started (#249).
-      earlierDebt: 'Deuda anterior',
-      earlierDebtLine: (plan: string, pending: string) => `${plan} · ${pending}`,
+      earlierDebt: "Deuda anterior",
+      earlierDebtLine: (plan: string, pending: string) =>
+        `${plan} · ${pending}`,
       // A plan change saved, waiting for the first period not yet billed (#249).
-      planChangeBooked: (plan: string, day: string) => `Pasa a ${plan} desde el ${day}`,
-      assignPlan: 'Asignar plan',
+      planChangeBooked: (plan: string, day: string) =>
+        `Pasa a ${plan} desde el ${day}`,
+      assignPlan: "Asignar plan",
       assignForm: {
-        title: 'Asignar plan',
+        title: "Asignar plan",
         get intro() {
-          return `Empieza en el plan desde el día que elijas, y se le cobra como a cualquier ${w.member} del plan.`
+          return `Empieza en el plan desde el día que elijas, y se le cobra como a cualquier ${w.member} del plan.`;
         },
-        plan: 'Plan',
-        noPlan: 'Elige un plan',
-        startedOn: 'Desde',
-        planNeeded: 'Elige un plan.',
-        welcome: 'Enviar el correo de bienvenida',
-        welcomeHint: 'Le explica cómo pagar y subir el comprobante, y trae su link para entrar.',
-        noEmail: 'Necesita un correo para la bienvenida: agrégalo en Datos.',
-        submit: 'Asignar plan',
-        cancel: 'Cancelar',
-        working: 'Guardando…',
+        plan: "Plan",
+        noPlan: "Elige un plan",
+        startedOn: "Desde",
+        planNeeded: "Elige un plan.",
+        welcome: "Enviar el correo de bienvenida",
+        welcomeHint:
+          "Le explica cómo pagar y subir el comprobante, y trae su link para entrar.",
+        noEmail: "Necesita un correo para la bienvenida: agrégalo en Datos.",
+        submit: "Asignar plan",
+        cancel: "Cancelar",
+        working: "Guardando…",
         done: (plan: string) => `Plan asignado: ${plan}.`,
         // Said before saving, when a lapsed plan still owes or has billed past the day asked (#271).
-        debt: (amount: string) => `Debe ${amount} de un plan anterior. Queda como deuda anterior: se cobra aparte del nuevo plan.`,
+        debt: (amount: string) =>
+          `Debe ${amount} de un plan anterior. Queda como deuda anterior: se cobra aparte del nuevo plan.`,
         moved: (billed: string, starts: string) =>
           `El plan anterior ya cobró hasta el ${billed}: el nuevo empieza el ${starts}, para no cobrar dos veces los mismos días.`,
-        failed: 'No pudimos asignar el plan. Inténtalo de nuevo.',
+        failed: "No pudimos asignar el plan. Inténtalo de nuevo.",
       },
-      changePlan: 'Cambiar plan',
+      changePlan: "Cambiar plan",
       changeForm: {
-        title: 'Cambiar plan',
-        plan: 'Nuevo plan',
-        noPlan: 'Elige un plan',
+        title: "Cambiar plan",
+        plan: "Nuevo plan",
+        noPlan: "Elige un plan",
         // The plan it is on, offered while a change is pending: choosing it withdraws it.
         stay: (plan: string) => `Seguir en ${plan}`,
-        none: 'No hay otro plan mensual o de varios meses activo al que cambiarlo.',
-        planNeeded: 'Elige un plan.',
-        checking: 'Calculando…',
+        none: "No hay otro plan mensual o de varios meses activo al que cambiarlo.",
+        planNeeded: "Elige un plan.",
+        checking: "Calculando…",
         current: (plan: string, day: string) =>
           `El período actual no cambia: sigue en ${plan} hasta el ${day}, sin devoluciones ni cobros extra.`,
         next: (plan: string, from: string, amount: string, to: string) =>
           `Desde el ${from} pasa a ${plan}. El próximo cobro es de ${amount}, el ${from}, por el período hasta el ${to}.`,
-        frozen: 'Está congelado: si la congelación cambia, el cambio de plan se corre con ella.',
-        withdraw: (plan: string, current: string) => `Se anula el cambio a ${plan}: sigue en ${current}.`,
-        submit: 'Confirmar cambio',
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        done: (plan: string, day: string) => `Cambio guardado: pasa a ${plan} desde el ${day}.`,
-        withdrawn: 'Cambio de plan anulado.',
+        frozen:
+          "Está congelado: si la congelación cambia, el cambio de plan se corre con ella.",
+        withdraw: (plan: string, current: string) =>
+          `Se anula el cambio a ${plan}: sigue en ${current}.`,
+        submit: "Confirmar cambio",
+        cancel: "Cancelar",
+        working: "Guardando…",
+        done: (plan: string, day: string) =>
+          `Cambio guardado: pasa a ${plan} desde el ${day}.`,
+        withdrawn: "Cambio de plan anulado.",
         refused: {
-          conflict: 'Esta membresía ya no puede cambiar de plan.',
-          plan: 'Ese plan ya no está disponible para un cambio.',
-          failed: 'No pudimos cambiar el plan. Inténtalo de nuevo.',
+          conflict: "Esta membresía ya no puede cambiar de plan.",
+          plan: "Ese plan ya no está disponible para un cambio.",
+          failed: "No pudimos cambiar el plan. Inténtalo de nuevo.",
         },
       },
-      record: 'Registrar pago',
-      freeze: 'Congelar',
-      editFreeze: 'Editar congelación',
-      endFreeze: 'Terminar congelación',
-      callOffFreeze: 'Anular congelación',
-      refund: 'Devolver',
+      record: "Registrar pago",
+      freeze: "Congelar",
+      editFreeze: "Editar congelación",
+      endFreeze: "Terminar congelación",
+      callOffFreeze: "Anular congelación",
+      refund: "Devolver",
       // Fixing a mistake (#256): the whole plan voided with a reason, under "Corregir plan" (#279).
-      voidPlan: 'Anular plan',
+      voidPlan: "Anular plan",
       // One "Corregir" per Libro line, offering only that line's fixes, and "Corregir plan" (#279).
       fix: {
-        charge: (month: string, plan: string | null) => `Corregir cargo ${month}${plan ? ` · ${plan}` : ''}`,
+        charge: (month: string, plan: string | null) =>
+          `Corregir cargo ${month}${plan ? ` · ${plan}` : ""}`,
         payment: (month: string) => `Corregir pago ${month}`,
-        changeAmount: 'Cambiar monto',
-        voidCharge: 'Anular cargo',
+        changeAmount: "Cambiar monto",
+        voidCharge: "Anular cargo",
         // A charge voided by mistake, owed again (#278).
-        restoreCharge: 'Restaurar cargo',
-        refund: 'Reembolsar',
-        plan: 'Corregir plan',
-        extraCharge: 'Cobro extra',
+        restoreCharge: "Restaurar cargo",
+        refund: "Reembolsar",
+        plan: "Corregir plan",
+        extraCharge: "Cobro extra",
         // What the fix does as it is typed: the period's debt and the plan's balance.
-        owed: (month: string, before: string, after: string) => `Debe en ${month}: ${before} → ${after}`,
-        balance: (before: string, after: string) => `Saldo: ${before} → ${after}`,
+        owed: (month: string, before: string, after: string) =>
+          `Debe en ${month}: ${before} → ${after}`,
+        balance: (before: string, after: string) =>
+          `Saldo: ${before} → ${after}`,
         // Another plan's charge, under "Deuda anterior": its plan, and whether it is owed or voided.
-        otherPlans: 'Otros planes',
+        otherPlans: "Otros planes",
         voided: (amount: string) => `anulado ${amount}`,
       },
-      voidedBadge: 'Anulado',
-      voidedBanner: (reason: string, day: string) => `Plan anulado el ${day}: ${reason}`,
+      voidedBadge: "Anulado",
+      voidedBanner: (reason: string, day: string) =>
+        `Plan anulado el ${day}: ${reason}`,
       voidForm: {
-        title: 'Anular cargo',
-        intro: 'Para un cargo hecho por error: deja de deberse en todas partes. Queda en el libro, tachado y con el motivo.',
-        reason: 'Motivo',
-        reasonNeeded: 'Escribe por qué se anula.',
+        title: "Anular cargo",
+        intro:
+          "Para un cargo hecho por error: deja de deberse en todas partes. Queda en el libro, tachado y con el motivo.",
+        reason: "Motivo",
+        reasonNeeded: "Escribe por qué se anula.",
         submit: (amount: string) => `Anular cargo de ${amount}`,
-        cancel: 'Cancelar',
-        working: 'Anulando…',
-        done: (month: string, amount: string) => `Cargo de ${month} anulado: ${amount}.`,
+        cancel: "Cancelar",
+        working: "Anulando…",
+        done: (month: string, amount: string) =>
+          `Cargo de ${month} anulado: ${amount}.`,
       },
       restoreForm: {
-        title: 'Restaurar cargo',
-        intro: 'Para un cargo anulado por error: vuelve a deberse, como si no se hubiera anulado. Quedan en el libro la anulación y la restauración.',
-        reason: 'Motivo',
-        reasonNeeded: 'Escribe por qué se restaura.',
-        submit: 'Restaurar cargo',
-        cancel: 'Cancelar',
-        working: 'Restaurando…',
-        done: (month: string, amount: string) => `Cargo de ${month} restaurado: vuelve a deberse ${amount}.`,
+        title: "Restaurar cargo",
+        intro:
+          "Para un cargo anulado por error: vuelve a deberse, como si no se hubiera anulado. Quedan en el libro la anulación y la restauración.",
+        reason: "Motivo",
+        reasonNeeded: "Escribe por qué se restaura.",
+        submit: "Restaurar cargo",
+        cancel: "Cancelar",
+        working: "Restaurando…",
+        done: (month: string, amount: string) =>
+          `Cargo de ${month} restaurado: vuelve a deberse ${amount}.`,
       },
       // Why a restore was refused (#278).
       restoreRefused: {
-        not_a_void: 'Ese movimiento no es una anulación.',
-        restored: 'Ese cargo ya se restauró.',
-        plan_voided: 'El plan se anuló completo: para volver a cobrarlo, asígnalo de nuevo.',
-        failed: 'No pudimos restaurarlo. Inténtalo de nuevo.',
+        not_a_void: "Ese movimiento no es una anulación.",
+        restored: "Ese cargo ya se restauró.",
+        plan_voided:
+          "El plan se anuló completo: para volver a cobrarlo, asígnalo de nuevo.",
+        failed: "No pudimos restaurarlo. Inténtalo de nuevo.",
       },
       voidPlanForm: {
-        title: 'Anular plan',
+        title: "Anular plan",
         intro:
-          'Para un plan asignado por error: termina desde su inicio, se anulan todos sus cargos sin pagar y no se cobra más. Distinto de dar de baja, que termina un plan real y mantiene lo que se debe.',
-        reason: 'Motivo',
-        reasonNeeded: 'Escribe por qué se anula.',
-        submit: 'Anular plan',
-        cancel: 'Cancelar',
-        working: 'Anulando…',
-        done: 'Plan anulado. Sus cargos sin pagar ya no se deben.',
+          "Para un plan asignado por error: termina desde su inicio, se anulan todos sus cargos sin pagar y no se cobra más. Distinto de dar de baja, que termina un plan real y mantiene lo que se debe.",
+        reason: "Motivo",
+        reasonNeeded: "Escribe por qué se anula.",
+        submit: "Anular plan",
+        cancel: "Cancelar",
+        working: "Anulando…",
+        done: "Plan anulado. Sus cargos sin pagar ya no se deben.",
       },
       // Why a void was refused, and how to clear it (#256).
       voidRefused: {
-        paid: (amount: string) => `Tiene un pago de ${amount}: devuélvelo primero con «Devolver».`,
-        pending: 'Tiene un comprobante por validar: recházalo primero.',
-        nothing_owed: 'Ese cargo ya no se debe: nada que anular.',
-        failed: 'No pudimos anularlo. Inténtalo de nuevo.',
+        paid: (amount: string) =>
+          `Tiene un pago de ${amount}: devuélvelo primero con «Devolver».`,
+        pending: "Tiene un comprobante por validar: recházalo primero.",
+        nothing_owed: "Ese cargo ya no se debe: nada que anular.",
+        failed: "No pudimos anularlo. Inténtalo de nuevo.",
       },
       // "Reactivar plan" (#284): a lapsed plan Active again, billing from where it left off or from today.
-      reactivatePlan: 'Reactivar plan',
-      moreActions: 'Más acciones',
+      reactivatePlan: "Reactivar plan",
+      moreActions: "Más acciones",
       reactivateForm: {
-        title: 'Reactivar plan',
+        title: "Reactivar plan",
         get intro() {
-          return `El plan vuelve a quedar activo. Pagar lo que debía no lo reactiva solo: puede que ${w.theMember} se haya ido.`
+          return `El plan vuelve a quedar activo. Pagar lo que debía no lo reactiva solo: puede que ${w.theMember} se haya ido.`;
         },
-        loading: 'Calculando lo que se cobra…',
-        billFrom: '¿Desde cuándo se cobra?',
-        last: 'Desde donde quedó',
+        loading: "Calculando lo que se cobra…",
+        billFrom: "¿Desde cuándo se cobra?",
+        last: "Desde donde quedó",
         lastHint: (count: number, month: string, total: string) =>
           count === 0
-            ? 'No hay cuotas pendientes desde que caducó.'
-            : `Cobra ${count === 1 ? 'la cuota' : `${count} cuotas`} desde ${month}: ${total}.`,
-        today: 'Desde hoy',
-        todayHint: (day: string, total: string) => `No cobra los meses sin plan. Cobra desde el ${day}: ${total}.`,
-        reason: 'Motivo',
-        reasonNeeded: 'Escribe por qué se reactiva.',
-        next: 'Continuar',
-        cancel: 'Cancelar',
+            ? "No hay cuotas pendientes desde que caducó."
+            : `Cobra ${count === 1 ? "la cuota" : `${count} cuotas`} desde ${month}: ${total}.`,
+        today: "Desde hoy",
+        todayHint: (day: string, total: string) =>
+          `No cobra los meses sin plan. Cobra desde el ${day}: ${total}.`,
+        reason: "Motivo",
+        reasonNeeded: "Escribe por qué se reactiva.",
+        next: "Continuar",
+        cancel: "Cancelar",
         // The second step: what it bills, before it is saved.
-        confirmTitle: 'Al reactivar se cobra',
-        nothing: 'Nada por ahora: la próxima cuota llega en su fecha.',
+        confirmTitle: "Al reactivar se cobra",
+        nothing: "Nada por ahora: la próxima cuota llega en su fecha.",
         period: (month: string, amount: string) => `${month} · ${amount}`,
         total: (amount: string) => `Total ${amount}`,
-        back: 'Volver',
-        submit: 'Reactivar plan',
-        working: 'Reactivando…',
+        back: "Volver",
+        submit: "Reactivar plan",
+        working: "Reactivando…",
         done: (total: string) => `Plan reactivado. Se cobraron ${total}.`,
-        doneNothing: 'Plan reactivado.',
+        doneNothing: "Plan reactivado.",
       },
       // Why a reactivation was refused, and what to do first.
       reactivateRefused: {
-        not_lapsed: 'Este plan no está caducado.',
-        not_recurring: 'Un pack o una prueba no se reactiva: asígnale uno nuevo.',
+        not_lapsed: "Este plan no está caducado.",
+        not_recurring:
+          "Un pack o una prueba no se reactiva: asígnale uno nuevo.",
+        period_ended:
+          "El período del plan terminó: cámbialo al plan del próximo período.",
         unpaid: (amount: string, month: string) =>
           `Debe ${amount} desde ${month}, ya fuera del plazo de gracia: caducaría de nuevo esta noche. Registra el pago o anula ese cargo primero.`,
-        live_plan: (plan: string) => `Ya tiene otro plan vigente (${plan}): no puede tener dos a la vez.`,
-        failed: 'No pudimos reactivarlo. Inténtalo de nuevo.',
+        live_plan: (plan: string) =>
+          `Ya tiene otro plan vigente (${plan}): no puede tener dos a la vez.`,
+        failed: "No pudimos reactivarlo. Inténtalo de nuevo.",
       },
       // After a payment settles the last debt of a lapsed plan: offered, never done on its own.
-      reactivateOffer: '¿Volvió? El plan sigue caducado hasta que lo reactives.',
+      reactivateOffer:
+        "¿Volvió? El plan sigue caducado hasta que lo reactives.",
       // "Cambiar monto" (#279): the charge's new amount, the difference written as an adjustment.
       amountForm: {
-        title: 'Cambiar monto',
+        title: "Cambiar monto",
         current: (amount: string) => `Monto actual: ${amount}`,
-        amount: 'Monto nuevo (CLP)',
-        reason: 'Motivo',
+        amount: "Monto nuevo (CLP)",
+        reason: "Motivo",
         submit: (amount: string) => `Cambiar a ${amount}`,
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        amountNeeded: 'Escribe el monto nuevo.',
-        sameAmount: 'Es el monto actual: escribe otro.',
+        cancel: "Cancelar",
+        working: "Guardando…",
+        amountNeeded: "Escribe el monto nuevo.",
+        sameAmount: "Es el monto actual: escribe otro.",
         // Lower than what came in already: the rest is given back first.
-        paidMore: (paid: string) => `Ya se pagaron ${paid}: para cobrar menos, devuelve primero lo que sobra con «Devolver».`,
-        reasonNeeded: 'Escribe por qué cambia el monto.',
-        done: (month: string, before: string, after: string) => `Monto de ${month} cambiado: ${before} → ${after}.`,
+        paidMore: (paid: string) =>
+          `Ya se pagaron ${paid}: para cobrar menos, devuelve primero lo que sobra con «Devolver».`,
+        reasonNeeded: "Escribe por qué cambia el monto.",
+        done: (month: string, before: string, after: string) =>
+          `Monto de ${month} cambiado: ${before} → ${after}.`,
         refused: {
-          exceeds: 'Ya se pagó más que eso: devuelve primero lo que sobra con «Devolver».',
-          failed: 'No pudimos cambiar el monto. Inténtalo de nuevo.',
+          exceeds:
+            "Ya se pagó más que eso: devuelve primero lo que sobra con «Devolver».",
+          failed: "No pudimos cambiar el monto. Inténtalo de nuevo.",
         },
       },
       refundForm: {
-        title: 'Devolución',
-        payment: 'Pago a devolver',
-        paymentOption: (month: string, day: string, amount: string) => `Pago ${month} · ${day} · ${amount} por devolver`,
-        amount: 'Monto devuelto (CLP)',
-        method: 'Medio de devolución',
-        note: 'Nota (opcional)',
+        title: "Devolución",
+        payment: "Pago a devolver",
+        paymentOption: (month: string, day: string, amount: string) =>
+          `Pago ${month} · ${day} · ${amount} por devolver`,
+        amount: "Monto devuelto (CLP)",
+        method: "Medio de devolución",
+        note: "Nota (opcional)",
         submit: (amount: string) => `Devolver ${amount}`,
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        amountNeeded: 'Escribe el monto devuelto.',
+        cancel: "Cancelar",
+        working: "Guardando…",
+        amountNeeded: "Escribe el monto devuelto.",
         done: (amount: string) => `Devolución registrada: ${amount}.`,
         refused: {
-          exceeds: 'Ese pago ya no tiene tanto por devolver.',
-          failed: 'No pudimos registrar la devolución. Inténtalo de nuevo.',
+          exceeds: "Ese pago ya no tiene tanto por devolver.",
+          failed: "No pudimos registrar la devolución. Inténtalo de nuevo.",
         },
       },
       freezeForm: {
-        title: 'Congelar membresía',
-        from: 'Desde',
-        fromNeeded: 'Elige hoy o un día después.',
-        until: 'Vuelve el',
-        untilHint: 'Desde ese día hasta que vuelve no se cobra: el próximo pago se corre esos días.',
-        reason: 'Motivo',
+        title: "Congelar membresía",
+        from: "Desde",
+        fromNeeded: "Elige hoy o un día después.",
+        until: "Vuelve el",
+        untilHint:
+          "Desde ese día hasta que vuelve no se cobra: el próximo pago se corre esos días.",
+        reason: "Motivo",
         reasonHint: NO_HEALTH,
-        submit: 'Confirmar congelación',
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        untilNeeded: 'Elige el día en que vuelve (después de “Desde”).',
-        reasonNeeded: 'Escribe el motivo.',
+        submit: "Confirmar congelación",
+        cancel: "Cancelar",
+        working: "Guardando…",
+        untilNeeded: "Elige el día en que vuelve (después de “Desde”).",
+        reasonNeeded: "Escribe el motivo.",
         done: (day: string) => `Membresía congelada. Vuelve el ${day}.`,
-        booked: (from: string, to: string) => `Congelación programada del ${from} al ${to}.`,
+        booked: (from: string, to: string) =>
+          `Congelación programada del ${from} al ${to}.`,
         refused: {
-          notActive: 'Solo una membresía activa y sin otra congelación programada se puede congelar.',
-          failed: 'No pudimos congelar la membresía. Inténtalo de nuevo.',
+          notActive:
+            "Solo una membresía activa y sin otra congelación programada se puede congelar.",
+          failed: "No pudimos congelar la membresía. Inténtalo de nuevo.",
         },
       },
       editFreezeForm: {
-        title: 'Editar congelación',
-        until: 'Vuelve el',
-        untilHint: 'El próximo pago se corre los días que la congelación se alarga o se acorta.',
-        reason: 'Motivo',
+        title: "Editar congelación",
+        until: "Vuelve el",
+        untilHint:
+          "El próximo pago se corre los días que la congelación se alarga o se acorta.",
+        reason: "Motivo",
         reasonHint: NO_HEALTH,
-        submit: 'Guardar cambios',
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        untilNeeded: 'Elige un día después de hoy y del primer día.',
-        reasonNeeded: 'Escribe el motivo.',
+        submit: "Guardar cambios",
+        cancel: "Cancelar",
+        working: "Guardando…",
+        untilNeeded: "Elige un día después de hoy y del primer día.",
+        reasonNeeded: "Escribe el motivo.",
         done: (day: string) => `Congelación actualizada. Vuelve el ${day}.`,
-        failed: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
+        failed: "No pudimos guardar los cambios. Inténtalo de nuevo.",
       },
       endFreezeForm: {
-        title: 'Terminar congelación',
-        endHint: 'Vuelve hoy. El próximo pago se adelanta los días que ya no estará congelado.',
-        callOffHint: (from: string, to: string) => `La congelación del ${from} al ${to} no se hará.`,
-        end: 'Terminar hoy',
-        callOff: 'Anular congelación',
-        cancel: 'Volver',
-        working: 'Guardando…',
-        ended: 'Congelación terminada. La membresía está activa.',
-        calledOff: 'Congelación anulada.',
-        failed: 'No pudimos terminar la congelación. Inténtalo de nuevo.',
+        title: "Terminar congelación",
+        endHint:
+          "Vuelve hoy. El próximo pago se adelanta los días que ya no estará congelado.",
+        callOffHint: (from: string, to: string) =>
+          `La congelación del ${from} al ${to} no se hará.`,
+        end: "Terminar hoy",
+        callOff: "Anular congelación",
+        cancel: "Volver",
+        working: "Guardando…",
+        ended: "Congelación terminada. La membresía está activa.",
+        calledOff: "Congelación anulada.",
+        failed: "No pudimos terminar la congelación. Inténtalo de nuevo.",
       },
       form: {
-        title: 'Registrar pago',
-        period: 'Período',
-        periodOption: (month: string, amount: string) => `${month} · ${amount} por pagar`,
-        amount: 'Monto recibido (CLP)',
-        method: 'Medio de pago',
-        methods: { cash: 'Efectivo', transfer: 'Transferencia', other: 'Otro' },
-        note: 'Nota (opcional)',
+        title: "Registrar pago",
+        period: "Período",
+        periodOption: (month: string, amount: string) =>
+          `${month} · ${amount} por pagar`,
+        amount: "Monto recibido (CLP)",
+        method: "Medio de pago",
+        methods: { cash: "Efectivo", transfer: "Transferencia", other: "Otro" },
+        note: "Nota (opcional)",
         submit: (amount: string) => `Registrar ${amount}`,
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        amountNeeded: 'Escribe el monto recibido.',
+        cancel: "Cancelar",
+        working: "Guardando…",
+        amountNeeded: "Escribe el monto recibido.",
         recorded: (amount: string) => `Pago registrado: ${amount}.`,
         credit: (amount: string) => ` Quedan ${amount} a favor.`,
-        remainder: (amount: string) => ` Quedan ${amount} por pagar del período.`,
+        remainder: (amount: string) =>
+          ` Quedan ${amount} por pagar del período.`,
         refused: {
-          paid: 'Ese período ya está pagado.',
-          failed: 'No pudimos registrar el pago. Inténtalo de nuevo.',
+          paid: "Ese período ya está pagado.",
+          failed: "No pudimos registrar el pago. Inténtalo de nuevo.",
         },
         // Paying ahead (#196): al día, with no period open.
         ahead: {
-          intro: 'Está al día. Registra lo que paga por adelantado.',
-          periods: 'Paga',
+          intro: "Está al día. Registra lo que paga por adelantado.",
+          periods: "Paga",
           // `3 meses · hasta el 10 feb · $135.000`
-          option: (n: number, monthly: boolean, until: string, amount: string) =>
-            `${n} ${monthly ? (n === 1 ? 'mes' : 'meses') : n === 1 ? 'período' : 'períodos'} · hasta el ${until} · ${amount}`,
-          loading: 'Calculando los próximos períodos…',
-          error: 'No pudimos calcular los próximos períodos.',
-          recorded: (amount: string, day: string) => `Pago registrado: ${amount}. Pagado hasta el ${day}.`,
+          option: (
+            n: number,
+            monthly: boolean,
+            until: string,
+            amount: string,
+          ) =>
+            `${n} ${monthly ? (n === 1 ? "mes" : "meses") : n === 1 ? "período" : "períodos"} · hasta el ${until} · ${amount}`,
+          loading: "Calculando los próximos períodos…",
+          error: "No pudimos calcular los próximos períodos.",
+          recorded: (amount: string, day: string) =>
+            `Pago registrado: ${amount}. Pagado hasta el ${day}.`,
           // One for each 409 `code` of `POST /api/ledger/payments/ahead`.
           refused: {
             cannot_pay_ahead:
-              'Ya no puede pagar por adelantado: tiene un período abierto o su plan cambió. Revisa su ficha.',
-            amount_changed: 'El precio de esos períodos cambió. Revisa el nuevo total y vuelve a registrar.',
-            already_billed: 'Esos períodos se generaron mientras tanto. Revisa su ficha antes de registrar.',
+              "Ya no puede pagar por adelantado: tiene un período abierto o su plan cambió. Revisa su ficha.",
+            amount_changed:
+              "El precio de esos períodos cambió. Revisa el nuevo total y vuelve a registrar.",
+            already_billed:
+              "Esos períodos se generaron mientras tanto. Revisa su ficha antes de registrar.",
           },
         },
       },
       fields: {
-        title: 'Datos',
-        phone: 'Teléfono',
-        email: 'Correo',
-        rut: 'RUT',
-        dob: 'Fecha de nacimiento',
-        loading: 'Cargando datos…',
-        error: 'No pudimos cargar los datos.',
-        empty: 'Sin dato',
-        sensitive: 'Sensible',
-        edit: 'Editar datos',
-        formTitle: 'Editar datos',
-        choose: 'Sin elegir',
-        save: 'Guardar',
-        cancel: 'Cancelar',
-        working: 'Guardando…',
-        saved: 'Datos guardados.',
+        title: "Datos",
+        phone: "Teléfono",
+        email: "Correo",
+        rut: "RUT",
+        dob: "Fecha de nacimiento",
+        loading: "Cargando datos…",
+        error: "No pudimos cargar los datos.",
+        empty: "Sin dato",
+        sensitive: "Sensible",
+        edit: "Editar datos",
+        formTitle: "Editar datos",
+        choose: "Sin elegir",
+        save: "Guardar",
+        cancel: "Cancelar",
+        working: "Guardando…",
+        saved: "Datos guardados.",
         refused: {
-          invalid: 'Revisa los campos marcados.',
-          failed: 'No pudimos guardar los datos. Inténtalo de nuevo.',
+          invalid: "Revisa los campos marcados.",
+          failed: "No pudimos guardar los datos. Inténtalo de nuevo.",
         },
       },
       attendance: {
-        title: 'Asistencia',
+        title: "Asistencia",
         // With classes before Rakin, the total says how many of it they are (#293):
         // "clases en 30 días · 340 clases (320 antes de Rakin)".
         detail: (recent: number, total: number, before = 0) =>
-          `${recent === 1 ? 'clase' : 'clases'} en 30 días · ${
-            before > 0 ? `${total} ${total === 1 ? 'clase' : 'clases'} (${before} antes de Rakin)` : `${total} en total`
+          `${recent === 1 ? "clase" : "clases"} en 30 días · ${
+            before > 0
+              ? `${total} ${total === 1 ? "clase" : "clases"} (${before} antes de Rakin)`
+              : `${total} en total`
           }`,
-        error: 'No pudimos cargar la asistencia.',
+        error: "No pudimos cargar la asistencia.",
       },
       grading: {
-        title: 'Graduación',
-        error: 'No pudimos cargar la graduación.',
-        none: 'Sin graduación registrada.',
+        title: "Graduación",
+        error: "No pudimos cargar la graduación.",
+        none: "Sin graduación registrada.",
         since: (day: string) => `desde ${day}`,
         sincePromotion: (n: number) =>
-          n === 1 ? '1 clase desde la última graduación' : `${n} clases desde la última graduación`,
+          n === 1
+            ? "1 clase desde la última graduación"
+            : `${n} clases desde la última graduación`,
         // "62 / 80 clases para Morada": towards the next promotion, named by the scheme's own label.
-        goal: (done: number, target: number, metric: 'classes_since_promotion' | 'time_in_rank', next: string | null) =>
+        goal: (
+          done: number,
+          target: number,
+          metric: "classes_since_promotion" | "time_in_rank",
+          next: string | null,
+        ) =>
           `${done} / ${target} ${
-            metric === 'classes_since_promotion' ? (target === 1 ? 'clase' : 'clases') : target === 1 ? 'mes' : 'meses'
-          } para ${next ?? 'la próxima graduación'}`,
-        goalLabel: 'Avance a la próxima graduación',
-        award: 'Registrar graduación',
-        log: 'Historial',
+            metric === "classes_since_promotion"
+              ? target === 1
+                ? "clase"
+                : "clases"
+              : target === 1
+                ? "mes"
+                : "meses"
+          } para ${next ?? "la próxima graduación"}`,
+        goalLabel: "Avance a la próxima graduación",
+        award: "Registrar graduación",
+        log: "Historial",
         by: (name: string) => `registró ${name}`,
         form: {
-          title: 'Registrar graduación',
-          historyTitle: 'Grado anterior',
+          title: "Registrar graduación",
+          historyTitle: "Grado anterior",
           historyIntro:
-            'Un grado que obtuvo antes de Rakin, con la fecha en que lo recibió. Si es el más reciente, es su grado actual. No se le avisa.',
-          rank: 'Rango',
-          ranks: 'Adultos',
-          kids: 'Kids',
-          subRank: 'Grado',
-          date: 'Fecha',
-          note: 'Nota (opcional)',
-          submit: 'Registrar',
-          cancel: 'Cancelar',
-          working: 'Guardando…',
+            "Un grado que obtuvo antes de Rakin, con la fecha en que lo recibió. Si es el más reciente, es su grado actual. No se le avisa.",
+          rank: "Rango",
+          ranks: "Adultos",
+          kids: "Kids",
+          subRank: "Grado",
+          date: "Fecha",
+          note: "Nota (opcional)",
+          submit: "Registrar",
+          cancel: "Cancelar",
+          working: "Guardando…",
           done: (rank: string) => `Graduación registrada: ${rank}.`,
           refused: {
-            awarded_in_future: 'La fecha no puede ser posterior a hoy.',
-            awarded_too_early: 'La fecha no puede ser de hace más de 60 años.',
+            awarded_in_future: "La fecha no puede ser posterior a hoy.",
+            awarded_too_early: "La fecha no puede ser de hace más de 60 años.",
             get grading_scheme_invalid() {
-              return `Revisa el sistema de grados ${w.ofThePlace} antes de registrar.`
+              return `Revisa el sistema de grados ${w.ofThePlace} antes de registrar.`;
             },
-            failed: 'No pudimos registrar la graduación. Inténtalo de nuevo.',
+            failed: "No pudimos registrar la graduación. Inténtalo de nuevo.",
           },
         },
       },
       ledger: {
-        title: 'Libro',
-        empty: 'Sin movimientos todavía.',
+        title: "Libro",
+        empty: "Sin movimientos todavía.",
         charge: (month: string) => `Cargo ${month}`,
         payment: (month: string) => `Pago ${month}`,
         // An adjustment by which way it goes (#210): a discount takes from what is owed.
-        adjustment: (favor: boolean, month: string) => `${favor ? 'Descuento' : 'Recargo'} ${month}`,
-        credit: 'Saldo a favor',
+        adjustment: (favor: boolean, month: string) =>
+          `${favor ? "Descuento" : "Recargo"} ${month}`,
+        credit: "Saldo a favor",
         refund: (month: string) => `Devolución ${month}`,
         generated: (day: string) => `generado ${day}`,
-        unpaid: 'sin pago',
+        unpaid: "sin pago",
         // A charge partly paid: what has come in against it so far.
         partlyPaid: (amount: string) => `abonado ${amount}`,
         validatedBy: (name: string) => `validó ${name}`,
-        pending: 'por validar',
-        rejected: 'rechazado',
-        method: { transfer: 'transferencia', cash: 'efectivo', other: 'otro' },
-        freezeStart: 'Congelación',
-        freezeEnd: 'Fin de congelación',
+        pending: "por validar",
+        rejected: "rechazado",
+        method: { transfer: "transferencia", cash: "efectivo", other: "otro" },
+        freezeStart: "Congelación",
+        freezeEnd: "Fin de congelación",
         returns: (day: string) => `vuelve el ${day}`,
         // A voided charge, struck through, and the void beside it (#256).
         voided: (reason: string, by: string | null, day: string) =>
-          `Anulado: ${reason}${by ? `, por ${by}` : ''}, ${day}`,
+          `Anulado: ${reason}${by ? `, por ${by}` : ""}, ${day}`,
         void: (month: string) => `Anulación ${month}`,
         // A void restored (#278): the charge is owed again.
         restored: (reason: string, by: string | null, day: string) =>
-          `Restaurado: ${reason}${by ? `, por ${by}` : ''}, ${day}`,
+          `Restaurado: ${reason}${by ? `, por ${by}` : ""}, ${day}`,
         restore: (month: string) => `Restauración ${month}`,
         all: (n: number) => `Ver todo el libro (${n})`,
-        fewer: 'Ver menos',
+        fewer: "Ver menos",
       },
       // Every fix to the person's billing, with who, why, and before and after (#277).
       corrections: {
-        title: 'Correcciones',
-        error: 'No pudimos cargar las correcciones.',
+        title: "Correcciones",
+        error: "No pudimos cargar las correcciones.",
         void: (month: string) => `Anuló cargo ${month}`,
         planVoid: (month: string) => `Anuló plan · cargo ${month}`,
         restore: (month: string) => `Restauró cargo ${month}`,
         // An adjustment by which way it went, as the Libro names it.
-        adjustment: (favor: boolean, month: string) => `${favor ? 'Descuento' : 'Recargo'} ${month}`,
-        dueDate: 'Cambió el vencimiento',
-        reactivated: 'Reactivó el plan',
-        cancelUndone: 'Deshizo la baja',
+        adjustment: (favor: boolean, month: string) =>
+          `${favor ? "Descuento" : "Recargo"} ${month}`,
+        dueDate: "Cambió el vencimiento",
+        reactivated: "Reactivó el plan",
+        cancelUndone: "Deshizo la baja",
         // What the period owed, before → after.
         owed: (before: string, after: string) => `${before} → ${after}`,
-        balance: (before: string, after: string) => `Saldo ${before} → ${after}`,
+        balance: (before: string, after: string) =>
+          `Saldo ${before} → ${after}`,
         by: (name: string) => `por ${name}`,
         all: (n: number) => `Ver todas (${n})`,
-        fewer: 'Ver menos',
+        fewer: "Ver menos",
       },
     },
     // "Entrada" (#348): checking people in at the door, with no class scheduled.
     checkIn: {
-      title: 'Entrada',
-      loading: 'Cargando…',
-      retry: 'Reintentar',
-      error: 'No pudimos cargar la entrada.',
+      title: "Entrada",
+      loading: "Cargando…",
+      retry: "Reintentar",
+      error: "No pudimos cargar la entrada.",
       get none() {
-        return `${w.placeIs('Este', 'Esta')} ${w.place} no tiene acceso libre. Un dueño o admin lo crea en Ajustes › Programas y clases, como una clase de tipo Acceso libre.`
+        return `${w.placeIs("Este", "Esta")} ${w.place} no tiene acceso libre. Un dueño o admin lo crea en Ajustes › Programas y clases, como una clase de tipo Acceso libre.`;
       },
-      pick: 'Acceso',
-      cancelled: 'La entrada de hoy está cancelada: no se puede marcar a nadie hasta que un dueño o admin la reactive.',
-      openDay: 'Ver el día',
-      left: (n: number) => (n === 1 ? 'queda 1 clase' : `quedan ${n} clases`),
-      overdue: 'Pago vencido',
+      pick: "Acceso",
+      cancelled:
+        "La entrada de hoy está cancelada: no se puede marcar a nadie hasta que un dueño o admin la reactive.",
+      openDay: "Ver el día",
+      left: (n: number) => (n === 1 ? "queda 1 clase" : `quedan ${n} clases`),
+      overdue: "Pago vencido",
       // A warning, never a refusal: the staff at the door decides.
-      warning: { lapsed: 'Plan vencido', frozen: 'Plan congelado', noCredits: 'Sin clases en su paquete' },
+      warning: {
+        lapsed: "Plan vencido",
+        frozen: "Plan congelado",
+        noCredits: "Sin clases en su paquete",
+      },
       search: {
         label: (door: string) => `Buscar para ${door}`,
-        placeholder: 'Nombre o RUT',
-        hint: 'Escribe el nombre o el RUT de quien llega.',
-        results: 'Resultados',
-        empty: 'Nadie con ese nombre o RUT tiene un plan para entrar.',
-        error: 'No pudimos buscar.',
-        enter: 'Entrar',
+        placeholder: "Nombre o RUT",
+        hint: "Escribe el nombre o el RUT de quien llega.",
+        results: "Resultados",
+        empty: "Nadie con ese nombre o RUT tiene un plan para entrar.",
+        error: "No pudimos buscar.",
+        enter: "Entrar",
         enterLabel: (name: string) => `Marcar la entrada de ${name}`,
         already: (time: string) => `Entró ${time}`,
-        failed: 'No pudimos marcar la entrada. Inténtalo de nuevo.',
+        failed: "No pudimos marcar la entrada. Inténtalo de nuevo.",
       },
       today: {
-        title: 'Hoy',
-        count: (n: number) => (n === 1 ? '1 entrada' : `${n} entradas`),
-        empty: 'Nadie ha entrado hoy.',
-        undo: 'Deshacer',
+        title: "Hoy",
+        count: (n: number) => (n === 1 ? "1 entrada" : `${n} entradas`),
+        empty: "Nadie ha entrado hoy.",
+        undo: "Deshacer",
         undoLabel: (name: string) => `Deshacer la entrada de ${name}`,
-        undoFailed: 'No pudimos deshacer la entrada. Inténtalo de nuevo.',
+        undoFailed: "No pudimos deshacer la entrada. Inténtalo de nuevo.",
       },
       // On Clases and Hoy, for a gym with open access.
       card: {
-        title: 'Entrada',
-        detail: (n: number) => (n === 0 ? 'Nadie ha entrado hoy' : n === 1 ? '1 entrada hoy' : `${n} entradas hoy`),
-        open: 'Abrir entrada',
+        title: "Entrada",
+        detail: (n: number) =>
+          n === 0
+            ? "Nadie ha entrado hoy"
+            : n === 1
+              ? "1 entrada hoy"
+              : `${n} entradas hoy`,
+        open: "Abrir entrada",
       },
     },
     classes: {
-      title: 'Clases',
-      loading: 'Cargando…',
-      retry: 'Reintentar',
+      title: "Clases",
+      loading: "Cargando…",
+      retry: "Reintentar",
       start: {
-        title: 'Crear clase',
-        classType: 'Tipo de clase',
-        duration: 'Duración (min)',
-        badDuration: 'La duración va de 1 a 1440 minutos.',
-        submit: 'Crear clase',
-        working: 'Creando…',
+        title: "Crear clase",
+        classType: "Tipo de clase",
+        duration: "Duración (min)",
+        badDuration: "La duración va de 1 a 1440 minutos.",
+        submit: "Crear clase",
+        working: "Creando…",
         get noClassTypes() {
-          return `Todavía no hay tipos de clase. El dueño o un admin ${w.ofThePlace} los configura.`
+          return `Todavía no hay tipos de clase. El dueño o un admin ${w.ofThePlace} los configura.`;
         },
-        error: 'No pudimos cargar los tipos de clase.',
-        failed: 'No pudimos crear la clase. Inténtalo de nuevo.',
-        close: 'Cerrar',
+        error: "No pudimos cargar los tipos de clase.",
+        failed: "No pudimos crear la clase. Inténtalo de nuevo.",
+        close: "Cerrar",
       },
       // First on Clases (#358): the class on now, else the next one today.
       now: {
-        on: 'Ahora',
-        next: 'Siguiente',
-        take: 'Tomar asistencia',
+        on: "Ahora",
+        next: "Siguiente",
+        take: "Tomar asistencia",
         takeLabel: (name: string) => `Tomar asistencia de ${name}`,
       },
       today: {
-        title: 'Hoy',
-        count: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
-        empty: 'Todavía no hay clases hoy.',
-        error: 'No pudimos cargar las clases de hoy.',
+        title: "Hoy",
+        count: (n: number) => (n === 1 ? "1 clase" : `${n} clases`),
+        empty: "Todavía no hay clases hoy.",
+        error: "No pudimos cargar las clases de hoy.",
         row: (time: string, classType: string) => `${time} · ${classType}`,
         detail: (program: string, coach: string) => `${program} · ${coach}`,
-        noTopic: 'Sin tema',
-        unmarked: 'Sin asistencia',
-        cancelled: 'Cancelada',
-        present: (n: number) => (n === 1 ? '1 presente' : `${n} presentes`),
+        noTopic: "Sin tema",
+        unmarked: "Sin asistencia",
+        cancelled: "Cancelada",
+        present: (n: number) => (n === 1 ? "1 presente" : `${n} presentes`),
       },
       // From 1024px: the week the day is in, and the class picked in it.
       week: {
-        title: 'Semana',
+        title: "Semana",
         range: (from: string, to: string) => `${from} – ${to}`,
-        error: 'No pudimos cargar este día.',
-        empty: 'Sin clases.',
-        picked: 'Clase elegida',
-        pick: 'Elige una clase de la semana para ver su asistencia.',
-        cancelled: 'Esta clase está cancelada.',
-        upcoming: 'Todavía no empieza.',
-        rosterError: 'No pudimos cargar la asistencia.',
+        error: "No pudimos cargar este día.",
+        empty: "Sin clases.",
+        picked: "Clase elegida",
+        pick: "Elige una clase de la semana para ver su asistencia.",
+        cancelled: "Esta clase está cancelada.",
+        upcoming: "Todavía no empieza.",
+        rosterError: "No pudimos cargar la asistencia.",
         // Of those who came to this class type in the last 30 days.
         present: (present: number, regulars: number) =>
-          `${present === 1 ? '1 presente' : `${present} presentes`} · ${regulars === 1 ? '1 habitual' : `${regulars} habituales`}`,
-        presentLabel: 'Presentes',
-        take: 'Tomar asistencia',
-        open: 'Ver clase',
+          `${present === 1 ? "1 presente" : `${present} presentes`} · ${regulars === 1 ? "1 habitual" : `${regulars} habituales`}`,
+        presentLabel: "Presentes",
+        take: "Tomar asistencia",
+        open: "Ver clase",
       },
       days: {
-        label: 'Cambiar de día',
-        previous: '← Anterior',
-        next: 'Siguiente →',
-        today: 'Hoy',
-        empty: 'No hay clases este día.',
+        label: "Cambiar de día",
+        previous: "← Anterior",
+        next: "Siguiente →",
+        today: "Hoy",
+        empty: "No hay clases este día.",
       },
     },
     settings: {
-      title: 'Ajustes',
+      title: "Ajustes",
       get adminsOnly() {
-        return `Solo el dueño o un admin ${w.ofThePlace} ve los ajustes.`
+        return `Solo el dueño o un admin ${w.ofThePlace} ve los ajustes.`;
       },
-      roleError: 'No pudimos cargar los ajustes.',
-      sectionsLabel: 'Secciones de ajustes',
+      roleError: "No pudimos cargar los ajustes.",
+      sectionsLabel: "Secciones de ajustes",
       sections: {
         get gym() {
-          return w.Place
+          return w.Place;
         },
-        plans: 'Planes',
-        programs: 'Programas y clases',
-        blocks: 'Bloques',
-        grading: 'Graduación',
-        fields: 'Campos',
-        staff: 'Equipo',
-        joinLink: 'Inscripción',
-        schedule: 'Horario',
-        tags: 'Etiquetas',
-        account: 'Cuenta',
+        plans: "Planes",
+        programs: "Programas y clases",
+        blocks: "Bloques",
+        grading: "Graduación",
+        fields: "Campos",
+        staff: "Equipo",
+        joinLink: "Inscripción",
+        schedule: "Horario",
+        tags: "Etiquetas",
+        account: "Cuenta",
       },
       // Each section's line in the list Ajustes opens on, on a phone (#177).
       descriptions: {
-        gym: 'Nombre, cobro, cuenta bancaria y privacidad.',
-        plans: 'Lo que vendes: mensualidades, packs y clases de prueba.',
-        programs: 'Tus programas y sus tipos de clase.',
-        schedule: 'Las clases de cada semana y los días cerrados.',
-        tags: 'Los focos que se repiten en las clases, y sus horas.',
-        blocks: 'Las partes de una clase en el timer.',
+        gym: "Nombre, cobro, cuenta bancaria y privacidad.",
+        plans: "Lo que vendes: mensualidades, packs y clases de prueba.",
+        programs: "Tus programas y sus tipos de clase.",
+        schedule: "Las clases de cada semana y los días cerrados.",
+        tags: "Los focos que se repiten en las clases, y sus horas.",
+        blocks: "Las partes de una clase en el timer.",
         get grading() {
-          return `Opcional: grados o cinturones, si tu ${w.place} los usa, y cuándo alguien está listo para graduarse.`
+          return `Opcional: grados o cinturones, si tu ${w.place} los usa, y cuándo alguien está listo para graduarse.`;
         },
         get fields() {
-          return `Datos extra en la ficha de cada ${w.member}.`
+          return `Datos extra en la ficha de cada ${w.member}.`;
         },
-        staff: 'Admins y coaches, y quién tiene acceso.',
-        joinLink: 'El link para que se inscriban solos.',
-        account: 'Tu nombre, tu email y cerrar sesión.',
+        staff: "Admins y coaches, y quién tiene acceso.",
+        joinLink: "El link para que se inscriban solos.",
+        account: "Tu nombre, tu email y cerrar sesión.",
       },
-      backLabel: 'Volver a Ajustes',
+      backLabel: "Volver a Ajustes",
       account: {
-        title: 'Cuenta',
-        name: 'Nombre',
-        email: 'Email',
-        none: 'Sin registrar',
+        title: "Cuenta",
+        name: "Nombre",
+        email: "Email",
+        none: "Sin registrar",
       },
-      loading: 'Cargando…',
-      retry: 'Reintentar',
+      loading: "Cargando…",
+      retry: "Reintentar",
       // What an API 422 `type` means under a field; `range` and `value` say it per field.
       invalid: {
-        required: 'Obligatorio.',
-        tooLong: 'Demasiado largo.',
-        choose: 'Elige una opción.',
-        integer: 'Escribe un número entero, sin decimales.',
-        failed: 'Revisa este campo.',
+        required: "Obligatorio.",
+        tooLong: "Demasiado largo.",
+        choose: "Elige una opción.",
+        integer: "Escribe un número entero, sin decimales.",
+        failed: "Revisa este campo.",
       },
       gym: {
         get title() {
-          return w.Place
+          return w.Place;
         },
         get error() {
-          return `No pudimos cargar los datos ${w.ofThePlace}.`
+          return `No pudimos cargar los datos ${w.ofThePlace}.`;
         },
         get formLabel() {
-          return `Datos ${w.ofThePlace}`
+          return `Datos ${w.ofThePlace}`;
         },
-        profile: 'Perfil',
+        profile: "Perfil",
         get name() {
-          return `Nombre ${w.ofThePlace}`
+          return `Nombre ${w.ofThePlace}`;
         },
-        slug: 'Dirección web',
-        timezone: 'Zona horaria',
+        slug: "Dirección web",
+        timezone: "Zona horaria",
         // What the gym calls itself, its members and its coach (#344), each from a list
         // (`vocabulary.ts`). The first activity picks them; saved here, they stay.
         vocabulary: {
-          place: 'Cómo se llama tu lugar',
-          members: 'Cómo llamas a tus miembros',
-          coach: 'Cómo llamas a quien enseña',
-          hint: 'Las palabras de la app: el menú, los títulos, el formulario de inscripción y la página de cada persona.',
+          place: "Cómo se llama tu lugar",
+          members: "Cómo llamas a tus miembros",
+          coach: "Cómo llamas a quien enseña",
+          hint: "Las palabras de la app: el menú, los títulos, el formulario de inscripción y la página de cada persona.",
           // One button per activity whose words differ, as a one-tap suggestion.
-          suggestionsLabel: 'Sugerencias según tus actividades',
+          suggestionsLabel: "Sugerencias según tus actividades",
           suggest: (activity: string) => `Usar las palabras de ${activity}`,
-          suggested: 'Listo: guarda para usarlas.',
+          suggested: "Listo: guarda para usarlas.",
         },
-        theme: 'Tema',
+        theme: "Tema",
         get themeHint() {
-          return `Los colores de la app, la página ${w.ofTheMember}, el formulario de inscripción y la entrada. El cronómetro sigue verde y rojo en todos.`
+          return `Los colores de la app, la página ${w.ofTheMember}, el formulario de inscripción y la entrada. El cronómetro sigue verde y rojo en todos.`;
         },
-        themes: { bosque: 'Bosque', oceano: 'Océano', volcan: 'Volcán' },
-        themeDefault: 'Por defecto',
-        themePreview: (name: string, saved: string) => `Así se ve ${name}. Guarda para dejarlo, o cancela para volver a ${saved}.`,
-        themeCancel: 'Cancelar',
-        themeSample: { collected: 'Cobrado', figure: '$2.115.000', paid: 'Pagado', overdue: 'Vencido', action: 'Registrar' },
+        themes: { bosque: "Bosque", oceano: "Océano", volcan: "Volcán" },
+        themeDefault: "Por defecto",
+        themePreview: (name: string, saved: string) =>
+          `Así se ve ${name}. Guarda para dejarlo, o cancela para volver a ${saved}.`,
+        themeCancel: "Cancelar",
+        themeSample: {
+          collected: "Cobrado",
+          figure: "$2.115.000",
+          paid: "Pagado",
+          overdue: "Vencido",
+          action: "Registrar",
+        },
         activities: {
-          title: 'Actividades',
+          title: "Actividades",
           get hint() {
-            return `Lo que enseña tu ${w.place}: una o varias. Los grados (cinturones, niveles) aparecen en la app solo si una actividad los usa.`
+            return `Lo que enseña tu ${w.place}: una o varias. Los grados (cinturones, niveles) aparecen en la app solo si una actividad los usa.`;
           },
-          none: 'Todavía no hay actividades.',
-          usesGrades: 'Usa grados (cinturones, niveles)',
-          classTypes: (n: number) => (n === 1 ? '1 tipo de clase' : `${n} tipos de clase`),
-          add: 'Agregar actividad',
-          pick: 'Elige…',
-          other: 'Otra',
-          name: 'Nombre de la actividad',
-          adding: 'Agregando…',
-          addSubmit: 'Agregar',
-          rename: 'Renombrar',
+          none: "Todavía no hay actividades.",
+          usesGrades: "Usa grados (cinturones, niveles)",
+          classTypes: (n: number) =>
+            n === 1 ? "1 tipo de clase" : `${n} tipos de clase`,
+          add: "Agregar actividad",
+          pick: "Elige…",
+          other: "Otra",
+          name: "Nombre de la actividad",
+          adding: "Agregando…",
+          addSubmit: "Agregar",
+          rename: "Renombrar",
           renameLabel: (name: string) => `Nuevo nombre para ${name}`,
-          save: 'Guardar nombre',
-          cancel: 'Cancelar',
-          remove: 'Quitar',
+          save: "Guardar nombre",
+          cancel: "Cancelar",
+          remove: "Quitar",
           removeLabel: (name: string) => `Quitar ${name}`,
           removeConfirm: (name: string, classTypes: number) =>
             classTypes > 0
@@ -1851,253 +2079,288 @@ export const es = {
           renamed: (name: string) => `Ahora se llama ${name}.`,
           gradesOn: (name: string) => `${name} usa grados.`,
           gradesOff: (name: string) => `${name} no usa grados.`,
-          taken: 'Ya hay una actividad con ese nombre.',
-          required: 'Escribe el nombre.',
-          failed: 'No pudimos guardar el cambio. Inténtalo de nuevo.',
-          error: 'No pudimos cargar las actividades.',
+          taken: "Ya hay una actividad con ese nombre.",
+          required: "Escribe el nombre.",
+          failed: "No pudimos guardar el cambio. Inténtalo de nuevo.",
+          error: "No pudimos cargar las actividades.",
         },
         logo: {
-          title: 'Logo',
+          title: "Logo",
           get hint() {
-            return `Se muestra en un círculo junto al nombre ${w.ofThePlace}: en la app, la página ${w.ofTheMember}, la entrada, la inscripción y los correos. PNG, JPEG o WebP, de hasta 5 MB.`
+            return `Se muestra en un círculo junto al nombre ${w.ofThePlace}: en la app, la página ${w.ofTheMember}, la entrada, la inscripción y los correos. PNG, JPEG o WebP, de hasta 5 MB.`;
           },
-          current: 'Así se ve el logo.',
+          current: "Así se ve el logo.",
           get none() {
-            return `Sin logo: se muestran las iniciales ${w.ofThePlace}.`
+            return `Sin logo: se muestran las iniciales ${w.ofThePlace}.`;
           },
-          upload: 'Subir logo',
-          replace: 'Cambiar logo',
-          remove: 'Quitar logo',
-          removing: 'Quitando…',
-          cropHint: 'Arrastra la imagen para encuadrarla en el círculo, o muévela con las flechas, y acércala con el control.',
-          frame: 'Encuadre del logo',
-          zoom: 'Acercar',
-          save: 'Guardar logo',
-          saving: 'Subiendo…',
-          cancel: 'Cancelar',
-          saved: 'Logo guardado.',
-          removed: 'Logo quitado.',
+          upload: "Subir logo",
+          replace: "Cambiar logo",
+          remove: "Quitar logo",
+          removing: "Quitando…",
+          cropHint:
+            "Arrastra la imagen para encuadrarla en el círculo, o muévela con las flechas, y acércala con el control.",
+          frame: "Encuadre del logo",
+          zoom: "Acercar",
+          save: "Guardar logo",
+          saving: "Subiendo…",
+          cancel: "Cancelar",
+          saved: "Logo guardado.",
+          removed: "Logo quitado.",
           refused: {
-            type: 'Ese archivo no es una imagen PNG, JPEG o WebP. Los SVG no se aceptan.',
-            tooLarge: 'La imagen pesa más de 5 MB. Elige una más liviana.',
-            unreadable: 'No pudimos leer esa imagen. Prueba con otro archivo.',
-            failed: 'No pudimos guardar el logo. Inténtalo de nuevo.',
+            type: "Ese archivo no es una imagen PNG, JPEG o WebP. Los SVG no se aceptan.",
+            tooLarge: "La imagen pesa más de 5 MB. Elige una más liviana.",
+            unreadable: "No pudimos leer esa imagen. Prueba con otro archivo.",
+            failed: "No pudimos guardar el logo. Inténtalo de nuevo.",
           },
-          removeFailed: 'No pudimos quitar el logo. Inténtalo de nuevo.',
+          removeFailed: "No pudimos quitar el logo. Inténtalo de nuevo.",
         },
-        billing: 'Cobro',
-        graceDays: 'Días de gracia',
+        billing: "Cobro",
+        graceDays: "Días de gracia",
         get graceDaysHint() {
-          return `Días después del vencimiento de un pago antes de que el plan ${w.ofTheMember} caduque.`
+          return `Días después del vencimiento de un pago antes de que el plan ${w.ofTheMember} caduque.`;
         },
-        reminderEveryDays: 'Recordar cada (días)',
-        reminderEveryDaysHint: 'Los recordatorios de pago vencido salen el día del vencimiento y luego cada tantos días.',
-        channels: 'Canales',
-        email: 'El correo está siempre activo: lleva los avisos y los links de acceso.',
-        whatsapp: 'Recordatorios por WhatsApp',
-        bank: 'Datos bancarios',
+        reminderEveryDays: "Recordar cada (días)",
+        reminderEveryDaysHint:
+          "Los recordatorios de pago vencido salen el día del vencimiento y luego cada tantos días.",
+        channels: "Canales",
+        email:
+          "El correo está siempre activo: lleva los avisos y los links de acceso.",
+        whatsapp: "Recordatorios por WhatsApp",
+        bank: "Datos bancarios",
         get bankHint() {
-          return `Es lo que ven ${w.theMembers} para pagar por transferencia. Deja todos los campos vacíos para quitarlos.`
+          return `Es lo que ven ${w.theMembers} para pagar por transferencia. Deja todos los campos vacíos para quitarlos.`;
         },
-        bankName: 'Banco',
-        accountType: 'Tipo de cuenta',
-        holder: 'Titular',
-        rut: 'RUT del titular',
-        number: 'Número de cuenta',
-        bankEmail: 'Correo para avisos de transferencia (opcional)',
-        privacy: 'Datos de privacidad',
+        bankName: "Banco",
+        accountType: "Tipo de cuenta",
+        holder: "Titular",
+        rut: "RUT del titular",
+        number: "Número de cuenta",
+        bankEmail: "Correo para avisos de transferencia (opcional)",
+        privacy: "Datos de privacidad",
         get privacyHint() {
-          return `${w.ThePlace} es responsable de los datos de sus ${w.members} (Ley 21.719). Estos datos completan su política de privacidad, que se enlaza en el formulario de inscripción y en la página ${w.ofTheMember}. El link de inscripción funciona solo con ellos.`
+          return `${w.ThePlace} es responsable de los datos de sus ${w.members} (Ley 21.719). Estos datos completan su política de privacidad, que se enlaza en el formulario de inscripción y en la página ${w.ofTheMember}. El link de inscripción funciona solo con ellos.`;
         },
-        privacyLegalName: 'Razón social',
+        privacyLegalName: "Razón social",
         get privacyRut() {
-          return `RUT ${w.ofThePlace}`
+          return `RUT ${w.ofThePlace}`;
         },
-        privacyEmail: 'Correo para solicitudes sobre datos personales',
-        privacyAddress: 'Dirección (opcional)',
-        privacyView: 'Ver política de privacidad',
-        choose: 'Elige…',
-        submit: 'Guardar',
-        working: 'Guardando…',
-        saved: 'Guardado.',
-        invalid: 'Revisa los campos marcados.',
-        failed: 'No pudimos guardar. Inténtalo de nuevo.',
+        privacyEmail: "Correo para solicitudes sobre datos personales",
+        privacyAddress: "Dirección (opcional)",
+        privacyView: "Ver política de privacidad",
+        choose: "Elige…",
+        submit: "Guardar",
+        working: "Guardando…",
+        saved: "Guardado.",
+        invalid: "Revisa los campos marcados.",
+        failed: "No pudimos guardar. Inténtalo de nuevo.",
         range: {
-          grace_days: 'Entre 0 y 60 días.',
-          reminder_every_days: 'Entre 1 y 30 días.',
+          grace_days: "Entre 0 y 60 días.",
+          reminder_every_days: "Entre 1 y 30 días.",
         } as Record<string, string>,
         value: {
-          timezone: 'No es una zona horaria válida.',
-          'bank_account.rut': 'RUT no válido.',
-          'bank_account.email': 'Correo no válido.',
-          'bank_account.number': 'Solo dígitos y guiones.',
-          'privacy.rut': 'RUT no válido.',
-          'privacy.email': 'Correo no válido.',
+          timezone: "No es una zona horaria válida.",
+          "bank_account.rut": "RUT no válido.",
+          "bank_account.email": "Correo no válido.",
+          "bank_account.number": "Solo dígitos y guiones.",
+          "privacy.rut": "RUT no válido.",
+          "privacy.email": "Correo no válido.",
         } as Record<string, string>,
       },
       plans: {
-        title: 'Planes',
-        error: 'No pudimos cargar los planes.',
+        title: "Planes",
+        error: "No pudimos cargar los planes.",
         get empty() {
-          return `Todavía no hay planes. Crea el primero para inscribir ${w.members}.`
+          return `Todavía no hay planes. Crea el primero para inscribir ${w.members}.`;
         },
-        add: 'Nuevo plan',
-        edit: 'Editar',
-        deactivate: 'Desactivar',
-        reactivate: 'Reactivar',
-        inactive: 'Inactivo',
-        anyProgram: 'Cualquier programa',
+        add: "Nuevo plan",
+        edit: "Editar",
+        deactivate: "Desactivar",
+        reactivate: "Reactivar",
+        inactive: "Inactivo",
+        anyProgram: "Cualquier programa",
         row: (first: string, second: string) => `${first} · ${second}`,
         kinds: {
-          monthly: 'Mensual',
-          prepaid: 'Prepago',
-          fixed_period: 'Período fijo',
-          credits: 'Paquete de clases',
-          dropin: 'Clase suelta',
-          trial: 'Prueba',
+          monthly: "Mensual",
+          prepaid: "Prepago",
+          fixed_period: "Período fijo",
+          credits: "Paquete de clases",
+          dropin: "Clase suelta",
+          trial: "Prueba",
         },
-        anchors: { signup: 'El día de inscripción', first: 'El día 1 de cada mes' },
+        anchors: {
+          signup: "El día de inscripción",
+          first: "El día 1 de cada mes",
+        },
         summary: {
           monthly: (price: string) => `${price} al mes`,
-          prepaid: (price: string, months: number) => `${price} por ${months === 1 ? '1 mes' : `${months} meses`}`,
-          fixed_period: (price: string, start: string, end: string) => `${price} del ${start} al ${end}`,
+          prepaid: (price: string, months: number) =>
+            `${price} por ${months === 1 ? "1 mes" : `${months} meses`}`,
+          fixed_period: (price: string, start: string, end: string) =>
+            `${price} del ${start} al ${end}`,
           credits: (price: string, credits: number, days: number) =>
-            `${price} por ${credits === 1 ? '1 clase' : `${credits} clases`} · vencen en ${days === 1 ? '1 día' : `${days} días`}`,
+            `${price} por ${credits === 1 ? "1 clase" : `${credits} clases`} · vencen en ${days === 1 ? "1 día" : `${days} días`}`,
           dropin: (price: string) => `${price} por clase`,
           trial: (classes: number | null, days: number | null) =>
-            ['Gratis', classes === null ? null : classes === 1 ? '1 clase' : `${classes} clases`, days === null ? null : days === 1 ? '1 día' : `${days} días`]
+            [
+              "Gratis",
+              classes === null
+                ? null
+                : classes === 1
+                  ? "1 clase"
+                  : `${classes} clases`,
+              days === null ? null : days === 1 ? "1 día" : `${days} días`,
+            ]
               .filter((part) => part !== null)
-              .join(' · '),
+              .join(" · "),
         },
         form: {
-          create: 'Nuevo plan',
+          create: "Nuevo plan",
           edit: (name: string) => `Editar ${name}`,
-          kind: 'Tipo de plan',
-          name: 'Nombre',
-          program: 'Programa',
+          kind: "Tipo de plan",
+          name: "Nombre",
+          program: "Programa",
           inactiveProgram: (name: string) => `${name} (desactivado)`,
-          price: 'Precio (CLP)',
-          anchor: 'Día de cobro',
-          periodMonths: 'Meses que cubre',
-          periodStart: 'Desde',
-          periodEnd: 'Hasta',
+          price: "Precio (CLP)",
+          anchor: "Día de cobro",
+          periodMonths: "Meses que cubre",
+          periodStart: "Desde",
+          periodEnd: "Hasta",
           get periodHint() {
-            return `Las mismas fechas para ${w.memberIs('todos', 'todas')} ${w.theMembers}, se inscriban cuando se inscriban. Quien entra después paga el precio completo.`
+            return `Las mismas fechas para ${w.memberIs("todos", "todas")} ${w.theMembers}, se inscriban cuando se inscriban. Quien entra después paga el precio completo.`;
           },
-          credits: 'Clases incluidas',
-          creditExpiryDays: 'Vencen a los (días)',
-          freeClasses: 'Clases gratis',
-          freeDays: 'Días gratis',
-          trialHint: 'La prueba dura esas clases, esos días, o lo que se cumpla primero.',
-          cancel: 'Cancelar',
-          submit: 'Guardar',
-          working: 'Guardando…',
-          invalid: 'Revisa los campos marcados.',
-          trialLimit: 'Indica las clases gratis, los días gratis o ambos.',
-          failed: 'No pudimos guardar el plan. Inténtalo de nuevo.',
+          credits: "Clases incluidas",
+          creditExpiryDays: "Vencen a los (días)",
+          freeClasses: "Clases gratis",
+          freeDays: "Días gratis",
+          trialHint:
+            "La prueba dura esas clases, esos días, o lo que se cumpla primero.",
+          cancel: "Cancelar",
+          submit: "Guardar",
+          working: "Guardando…",
+          invalid: "Revisa los campos marcados.",
+          trialLimit: "Indica las clases gratis, los días gratis o ambos.",
+          failed: "No pudimos guardar el plan. Inténtalo de nuevo.",
           range: {
-            price_clp: 'Entre $0 y $100.000.000.',
-            period_months: 'Debe ser mayor que 0.',
-            credits: 'Debe ser mayor que 0.',
-            credit_expiry_days: 'Debe ser mayor que 0.',
-            free_classes: 'Debe ser mayor que 0.',
-            free_days: 'Debe ser mayor que 0.',
+            price_clp: "Entre $0 y $100.000.000.",
+            period_months: "Debe ser mayor que 0.",
+            credits: "Debe ser mayor que 0.",
+            credit_expiry_days: "Debe ser mayor que 0.",
+            free_classes: "Debe ser mayor que 0.",
+            free_days: "Debe ser mayor que 0.",
           } as Record<string, string>,
           value: {
-            unknown_program: 'Ese programa no existe.',
-            inactive_program: 'Ese programa está desactivado.',
-            period_order: 'Debe ser igual o posterior a la fecha de inicio.',
-            date_parsing: 'Indica una fecha.',
-            date_from_datetime_parsing: 'Indica una fecha.',
+            unknown_program: "Ese programa no existe.",
+            inactive_program: "Ese programa está desactivado.",
+            period_order: "Debe ser igual o posterior a la fecha de inicio.",
+            date_parsing: "Indica una fecha.",
+            date_from_datetime_parsing: "Indica una fecha.",
           } as Record<string, string>,
         },
         nextPeriod: {
-          open: 'Duplicar para el próximo período',
+          open: "Duplicar para el próximo período",
           title: (name: string) => `Próximo período de ${name}`,
           get intro() {
-            return `Se crea un plan nuevo con estas fechas, y ${w.theMembers} que marques pasan a él cuando termine lo que ya pagaron. Este plan no se renueva solo.`
+            return `Se crea un plan nuevo con estas fechas, y ${w.theMembers} que marques pasan a él cuando termine lo que ya pagaron. Este plan no se renueva solo.`;
           },
           get members() {
-            return `${w.Members} que pasan al nuevo período`
+            return `${w.Members} que pasan al nuevo período`;
           },
-          loading: 'Cargando…',
-          error: 'No pudimos cargar la lista.',
+          loading: "Cargando…",
+          error: "No pudimos cargar la lista.",
           get none() {
-            return `Este plan no tiene ${w.members} ${w.memberIs('activos', 'activas')}.`
+            return `Este plan no tiene ${w.members} ${w.memberIs("activos", "activas")}.`;
           },
-          frozen: 'plan congelado',
+          frozen: "plan congelado",
           pending: (plan: string) => `ya cambia a ${plan}`,
-          submit: 'Crear y pasar',
-          working: 'Creando…',
-          failed: 'No pudimos crear el próximo período. Inténtalo de nuevo.',
-          afterPeriod: (end: string) => `Debe ser posterior al ${end}, cuando termina este período.`,
-          notOnPlan: 'Alguien de la lista ya no está en este plan. Vuelve a abrir el formulario.',
+          submit: "Crear y pasar",
+          working: "Creando…",
+          failed: "No pudimos crear el próximo período. Inténtalo de nuevo.",
+          afterPeriod: (end: string) =>
+            `Debe ser posterior al ${end}, cuando termina este período.`,
+          notOnPlan:
+            "Alguien de la lista ya no está en este plan. Vuelve a abrir el formulario.",
           done: (name: string, moved: number) =>
-            `Plan ${name} creado. ${moved === 0 ? 'Nadie pasa a él todavía.' : `${w.memberCount(moved)} ${moved === 1 ? 'pasa' : 'pasan'} a él.`}`,
+            `Plan ${name} creado. ${moved === 0 ? "Nadie pasa a él todavía." : `${w.memberCount(moved)} ${moved === 1 ? "pasa" : "pasan"} a él.`}`,
         },
         created: (name: string) => `Plan ${name} creado.`,
         saved: (name: string) => `Plan ${name} guardado.`,
-        deactivated: (name: string) => `Plan ${name} desactivado. ${w.TheMembers} que ya lo tienen lo mantienen.`,
+        deactivated: (name: string) =>
+          `Plan ${name} desactivado. ${w.TheMembers} que ya lo tienen lo mantienen.`,
         reactivated: (name: string) => `Plan ${name} reactivado.`,
-        toggleFailed: 'No pudimos cambiar el plan. Inténtalo de nuevo.',
+        toggleFailed: "No pudimos cambiar el plan. Inténtalo de nuevo.",
       },
       programs: {
-        title: 'Programas y clases',
-        error: 'No pudimos cargar los programas y las clases.',
-        empty: 'Todavía no hay programas. Crea uno, como Adultos o Kids, y luego sus clases.',
-        add: 'Nuevo programa',
-        rename: 'Renombrar',
-        edit: 'Editar',
-        deactivate: 'Desactivar',
-        reactivate: 'Reactivar',
-        inactive: 'Inactivo',
-        noClassTypes: 'Este programa todavía no tiene clases.',
-        addClassType: 'Nueva clase',
+        title: "Programas y clases",
+        error: "No pudimos cargar los programas y las clases.",
+        empty:
+          "Todavía no hay programas. Crea uno, como Adultos o Kids, y luego sus clases.",
+        add: "Nuevo programa",
+        rename: "Renombrar",
+        edit: "Editar",
+        deactivate: "Desactivar",
+        reactivate: "Reactivar",
+        inactive: "Inactivo",
+        noClassTypes: "Este programa todavía no tiene clases.",
+        addClassType: "Nueva clase",
         classTypesLabel: (program: string) => `Clases de ${program}`,
         // What one attendance takes off a pack of classes (#177: "clase", not "crédito").
-        credits: (n: number) => (n === 0 ? 'No descuenta clases' : n === 1 ? 'Descuenta 1 clase' : `Descuenta ${n} clases`),
-        openMat: 'Open mat',
-        openAccess: 'Acceso libre',
-        notCounted: 'No cuenta como clase',
-        toggleFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
+        credits: (n: number) =>
+          n === 0
+            ? "No descuenta clases"
+            : n === 1
+              ? "Descuenta 1 clase"
+              : `Descuenta ${n} clases`,
+        openMat: "Open mat",
+        openAccess: "Acceso libre",
+        notCounted: "No cuenta como clase",
+        toggleFailed: "No pudimos hacer el cambio. Inténtalo de nuevo.",
         programForm: {
-          create: 'Nuevo programa',
+          create: "Nuevo programa",
           rename: (name: string) => `Renombrar ${name}`,
-          name: 'Nombre del programa',
+          name: "Nombre del programa",
         },
         classTypeForm: {
           create: (program: string) => `Nueva clase en ${program}`,
           edit: (name: string) => `Editar ${name}`,
-          name: 'Nombre de la clase',
-          program: 'Programa',
+          name: "Nombre de la clase",
+          program: "Programa",
           inactiveProgram: (name: string) => `${name} (desactivado)`,
-          creditCost: 'Clases que descuenta',
-          creditCostHint: 'Lo que descuenta cada asistencia de un paquete de clases. 0 para una clase gratis.',
-          kind: 'Tipo',
-          kinds: { class: 'Clase', open_mat: 'Open mat', open_access: 'Acceso libre' },
+          creditCost: "Clases que descuenta",
+          creditCostHint:
+            "Lo que descuenta cada asistencia de un paquete de clases. 0 para una clase gratis.",
+          kind: "Tipo",
+          kinds: {
+            class: "Clase",
+            open_mat: "Open mat",
+            open_access: "Acceso libre",
+          },
           kindHint:
-            'Un open mat son solo rounds de sparring, sin bloques de técnica. Acceso libre es sin clases: cada visita se marca en Entrada, a cualquier hora.',
-          countsAsClass: 'Cuenta como clase',
+            "Un open mat son solo rounds de sparring, sin bloques de técnica. Acceso libre es sin clases: cada visita se marca en Entrada, a cualquier hora.",
+          countsAsClass: "Cuenta como clase",
           get countsAsClassHint() {
-            return `Si asistir suma a las clases ${w.ofTheMember}, y a su meta de graduación si ${w.thePlace} usa grados.`
+            return `Si asistir suma a las clases ${w.ofTheMember}, y a su meta de graduación si ${w.thePlace} usa grados.`;
           },
-          activity: 'Actividad',
+          activity: "Actividad",
           get activityHint() {
-            return `Opcional: a qué actividad ${w.ofThePlace} pertenece esta clase.`
+            return `Opcional: a qué actividad ${w.ofThePlace} pertenece esta clase.`;
           },
-          noActivity: 'Ninguna',
+          noActivity: "Ninguna",
         },
-        cancel: 'Cancelar',
-        submit: 'Guardar',
-        working: 'Guardando…',
-        invalid: 'Revisa los campos marcados.',
-        failed: 'No pudimos guardar. Inténtalo de nuevo.',
-        programTaken: 'Ya hay un programa con ese nombre.',
-        classTypeTaken: 'Este programa ya tiene una clase con ese nombre.',
-        range: { credit_cost: 'Entre 0 y 100 clases.' } as Record<string, string>,
+        cancel: "Cancelar",
+        submit: "Guardar",
+        working: "Guardando…",
+        invalid: "Revisa los campos marcados.",
+        failed: "No pudimos guardar. Inténtalo de nuevo.",
+        programTaken: "Ya hay un programa con ese nombre.",
+        classTypeTaken: "Este programa ya tiene una clase con ese nombre.",
+        range: { credit_cost: "Entre 0 y 100 clases." } as Record<
+          string,
+          string
+        >,
         value: {
-          unknown_program: 'Ese programa no existe.',
-          inactive_program: 'Ese programa está desactivado. Reactívalo o elige otro.',
+          unknown_program: "Ese programa no existe.",
+          inactive_program:
+            "Ese programa está desactivado. Reactívalo o elige otro.",
         } as Record<string, string>,
         programCreated: (name: string) => `Programa ${name} creado.`,
         programRenamed: (name: string) => `Programa renombrado a ${name}.`,
@@ -2106,1541 +2369,1739 @@ export const es = {
         programReactivated: (name: string) => `Programa ${name} reactivado.`,
         classTypeCreated: (name: string) => `Clase ${name} creada.`,
         classTypeSaved: (name: string) => `Clase ${name} guardada.`,
-        classTypeDeactivated: (name: string) => `Clase ${name} desactivada. Las clases ya dadas la mantienen.`,
+        classTypeDeactivated: (name: string) =>
+          `Clase ${name} desactivada. Las clases ya dadas la mantienen.`,
         classTypeReactivated: (name: string) => `Clase ${name} reactivada.`,
       },
       schedule: {
-        title: 'Horario',
+        title: "Horario",
         intro:
-          'Las clases fijas de cada semana. Rakin las crea con dos semanas de anticipación, así aparecen en Clases antes de empezar.',
-        error: 'No pudimos cargar el horario.',
-        empty: 'Todavía no hay clases fijas.',
-        add: 'Nueva clase fija',
-        edit: 'Editar',
-        delete: 'Eliminar',
-        deleteYes: 'Sí, eliminar',
+          "Las clases fijas de cada semana. Rakin las crea con dos semanas de anticipación, así aparecen en Clases antes de empezar.",
+        error: "No pudimos cargar el horario.",
+        empty: "Todavía no hay clases fijas.",
+        add: "Nueva clase fija",
+        edit: "Editar",
+        delete: "Eliminar",
+        deleteYes: "Sí, eliminar",
         deleteConfirm:
-          'Se borran las próximas clases de este horario que no tengan asistencia. Las que ya se hicieron quedan como clases sueltas.',
-        deleteFailed: 'No pudimos eliminarla. Inténtalo de nuevo.',
-        inactive: 'Tipo desactivado: no crea clases',
+          "Se borran las próximas clases de este horario que no tengan asistencia. Las que ya se hicieron quedan como clases sueltas.",
+        deleteFailed: "No pudimos eliminarla. Inténtalo de nuevo.",
+        inactive: "Tipo desactivado: no crea clases",
         // ISO weekdays, Monday first.
-        weekdays: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
-        row: (days: string, time: string, classType: string) => `${days} ${time} · ${classType}`,
-        detail: (program: string, coach: string, topic: string | null, tags: string[] = []) =>
-          [program, coach, topic, ...tags].filter(Boolean).join(' · '),
+        weekdays: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+        row: (days: string, time: string, classType: string) =>
+          `${days} ${time} · ${classType}`,
+        detail: (
+          program: string,
+          coach: string,
+          topic: string | null,
+          tags: string[] = [],
+        ) => [program, coach, topic, ...tags].filter(Boolean).join(" · "),
         validity: (from: string | null, to: string | null) =>
-          from && to ? `Del ${from} al ${to}` : from ? `Desde el ${from}` : to ? `Hasta el ${to}` : 'Todas las semanas',
-        created: (name: string) => `Clase fija de ${name} creada. Sus clases ya están en Clases.`,
+          from && to
+            ? `Del ${from} al ${to}`
+            : from
+              ? `Desde el ${from}`
+              : to
+                ? `Hasta el ${to}`
+                : "Todas las semanas",
+        created: (name: string) =>
+          `Clase fija de ${name} creada. Sus clases ya están en Clases.`,
         saved: (name: string) => `Horario de ${name} actualizado.`,
         deleted: (name: string) => `Clase fija de ${name} eliminada.`,
         form: {
-          create: 'Nueva clase fija',
+          create: "Nueva clase fija",
           edit: (name: string) => `Editar ${name}`,
-          classType: 'Tipo de clase',
+          classType: "Tipo de clase",
           inactiveType: (name: string) => `${name} (desactivado)`,
-          weekdays: 'Días',
-          noDays: 'Elige al menos un día.',
-          time: 'Hora',
-          duration: 'Duración (min)',
-          badDuration: 'La duración va de 1 a 1440 minutos.',
-          coach: 'Coach',
-          topic: 'Tema (opcional)',
-          topicHint: 'El tema con que parte cada clase; el coach lo puede cambiar.',
-          tags: 'Etiquetas (opcional)',
-          tagsHint: 'Las etiquetas con que parte cada clase; el coach las puede cambiar.',
-          archivedTag: 'Una de las etiquetas está archivada: quítala.',
-          validFrom: 'Desde',
-          fromDate: 'A partir de',
-          fromHint: 'Las clases antes de esta fecha, y las ya hechas o con asistencia, no cambian.',
-          validTo: 'Hasta (opcional)',
-          validToHint: 'Vacío: todas las semanas.',
-          endsTooSoon: 'Termina antes de empezar.',
-          noClassTypes: 'Primero crea un tipo de clase en Programas y clases.',
-          afterEnd: 'Esta clase fija ya terminó en esa fecha.',
+          weekdays: "Días",
+          noDays: "Elige al menos un día.",
+          time: "Hora",
+          duration: "Duración (min)",
+          badDuration: "La duración va de 1 a 1440 minutos.",
+          coach: "Coach",
+          topic: "Tema (opcional)",
+          topicHint:
+            "El tema con que parte cada clase; el coach lo puede cambiar.",
+          tags: "Etiquetas (opcional)",
+          tagsHint:
+            "Las etiquetas con que parte cada clase; el coach las puede cambiar.",
+          archivedTag: "Una de las etiquetas está archivada: quítala.",
+          validFrom: "Desde",
+          fromDate: "A partir de",
+          fromHint:
+            "Las clases antes de esta fecha, y las ya hechas o con asistencia, no cambian.",
+          validTo: "Hasta (opcional)",
+          validToHint: "Vacío: todas las semanas.",
+          endsTooSoon: "Termina antes de empezar.",
+          noClassTypes: "Primero crea un tipo de clase en Programas y clases.",
+          afterEnd: "Esta clase fija ya terminó en esa fecha.",
           openMatPlan:
-            'Un open mat es un solo bloque de sparring, y alguna de las próximas clases tiene otro registro en el timer. Corrígelo antes.',
-          cancel: 'Cancelar',
-          submit: 'Guardar',
-          working: 'Guardando…',
-          invalid: 'Revisa los campos.',
-          failed: 'No pudimos guardar. Inténtalo de nuevo.',
+            "Un open mat es un solo bloque de sparring, y alguna de las próximas clases tiene otro registro en el timer. Corrígelo antes.",
+          cancel: "Cancelar",
+          submit: "Guardar",
+          working: "Guardando…",
+          invalid: "Revisa los campos.",
+          failed: "No pudimos guardar. Inténtalo de nuevo.",
         },
         closed: {
-          title: 'Días cerrados',
-          intro: 'Feriados y otros días sin clases: ese día no se crea ninguna clase del horario.',
-          add: 'Cerrar día',
-          day: 'Fecha',
-          label: 'Motivo (opcional)',
-          labelPlaceholder: 'Ej.: Feriado',
-          past: 'Elige hoy o un día que venga.',
-          empty: 'No hay días cerrados próximos.',
-          error: 'No pudimos cargar los días cerrados.',
-          reopen: 'Abrir',
-          closedDone: (day: string) => `${day}: cerrado. Sus clases del horario se quitaron.`,
+          title: "Días cerrados",
+          intro:
+            "Feriados y otros días sin clases: ese día no se crea ninguna clase del horario.",
+          add: "Cerrar día",
+          day: "Fecha",
+          label: "Motivo (opcional)",
+          labelPlaceholder: "Ej.: Feriado",
+          past: "Elige hoy o un día que venga.",
+          empty: "No hay días cerrados próximos.",
+          error: "No pudimos cargar los días cerrados.",
+          reopen: "Abrir",
+          closedDone: (day: string) =>
+            `${day}: cerrado. Sus clases del horario se quitaron.`,
           reopened: (day: string) => `${day}: abierto otra vez.`,
-          failed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
+          failed: "No pudimos hacer el cambio. Inténtalo de nuevo.",
         },
       },
       blocks: {
-        title: 'Bloques de clase',
+        title: "Bloques de clase",
         get intro() {
-          return `Las partes en que ${w.theCoach} divide la clase con el cronómetro, en el orden en que se ofrecen. El tiempo de los bloques de sparring suma al sparring de cada ${w.member}.`
+          return `Las partes en que ${w.theCoach} divide la clase con el cronómetro, en el orden en que se ofrecen. El tiempo de los bloques de sparring suma al sparring de cada ${w.member}.`;
         },
-        error: 'No pudimos cargar los bloques.',
-        empty: 'Todavía no hay bloques.',
-        add: 'Nuevo bloque',
-        edit: 'Editar',
+        error: "No pudimos cargar los bloques.",
+        empty: "Todavía no hay bloques.",
+        add: "Nuevo bloque",
+        edit: "Editar",
         // Desactivar, as in Planes and Programas (#177).
-        archive: 'Desactivar',
-        restore: 'Reactivar',
-        delete: 'Eliminar',
-        archived: 'Inactivo',
-        sparring: 'Sparring',
-        upMark: '↑',
-        downMark: '↓',
+        archive: "Desactivar",
+        restore: "Reactivar",
+        delete: "Eliminar",
+        archived: "Inactivo",
+        sparring: "Sparring",
+        upMark: "↑",
+        downMark: "↓",
         up: (name: string) => `Subir ${name}`,
         down: (name: string) => `Bajar ${name}`,
         created: (name: string) => `Bloque ${name} creado.`,
         saved: (name: string) => `Bloque ${name} guardado.`,
         deleted: (name: string) => `Bloque ${name} eliminado.`,
-        archivedDone: (name: string) => `Bloque ${name} desactivado. El tiempo ya registrado se mantiene.`,
+        archivedDone: (name: string) =>
+          `Bloque ${name} desactivado. El tiempo ya registrado se mantiene.`,
         restored: (name: string) => `Bloque ${name} reactivado.`,
         inUse: (blocks: number) =>
-          `Ya se usó en ${blocks === 1 ? '1 bloque' : `${blocks} bloques`} de clases: desactívalo en vez de eliminarlo.`,
-        toggleFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
-        reorderFailed: 'No pudimos cambiar el orden. Inténtalo de nuevo.',
+          `Ya se usó en ${blocks === 1 ? "1 bloque" : `${blocks} bloques`} de clases: desactívalo en vez de eliminarlo.`,
+        toggleFailed: "No pudimos hacer el cambio. Inténtalo de nuevo.",
+        reorderFailed: "No pudimos cambiar el orden. Inténtalo de nuevo.",
         form: {
-          create: 'Nuevo bloque',
+          create: "Nuevo bloque",
           edit: (name: string) => `Editar ${name}`,
-          name: 'Nombre',
-          sparring: 'Es sparring',
+          name: "Nombre",
+          sparring: "Es sparring",
           get sparringHint() {
-            return `Un bloque de sparring se corre en rounds, y su tiempo suma al sparring ${w.ofTheMember}.`
+            return `Un bloque de sparring se corre en rounds, y su tiempo suma al sparring ${w.ofTheMember}.`;
           },
           sparringInUse: (blocks: number) =>
-            `Ya se usó en ${blocks === 1 ? '1 bloque' : `${blocks} bloques`} de clases, así que no puede cambiar si es sparring.`,
-          taken: 'Ya hay un bloque con ese nombre.',
-          cancel: 'Cancelar',
-          submit: 'Guardar',
-          working: 'Guardando…',
-          invalid: 'Revisa los campos marcados.',
-          failed: 'No pudimos guardar el bloque. Inténtalo de nuevo.',
+            `Ya se usó en ${blocks === 1 ? "1 bloque" : `${blocks} bloques`} de clases, así que no puede cambiar si es sparring.`,
+          taken: "Ya hay un bloque con ese nombre.",
+          cancel: "Cancelar",
+          submit: "Guardar",
+          working: "Guardando…",
+          invalid: "Revisa los campos marcados.",
+          failed: "No pudimos guardar el bloque. Inténtalo de nuevo.",
           range: {} as Record<string, string>,
           value: {} as Record<string, string>,
         },
       },
       tags: {
-        title: 'Etiquetas',
+        title: "Etiquetas",
         get intro() {
-          return `Los focos que se repiten de una clase a otra, como Pasaje de guardia o Fuerza. El coach los marca en cada clase, y suman las horas de cada ${w.member} y ${w.ofThePlace}.`
+          return `Los focos que se repiten de una clase a otra, como Pasaje de guardia o Fuerza. El coach los marca en cada clase, y suman las horas de cada ${w.member} y ${w.ofThePlace}.`;
         },
-        error: 'No pudimos cargar las etiquetas.',
-        empty: 'Todavía no hay etiquetas.',
-        add: 'Nueva etiqueta',
+        error: "No pudimos cargar las etiquetas.",
+        empty: "Todavía no hay etiquetas.",
+        add: "Nueva etiqueta",
         // Archivar, not Desactivar: it stays on the classes that have it.
-        archive: 'Archivar',
-        restore: 'Reactivar',
-        archived: 'Archivada',
-        archiveHint: 'Una etiqueta archivada sigue en las clases que la tienen y suma sus horas, pero no se puede poner en clases nuevas.',
-        restoreHint: 'Reactivada, se puede poner otra vez en las clases.',
+        archive: "Archivar",
+        restore: "Reactivar",
+        archived: "Archivada",
+        archiveHint:
+          "Una etiqueta archivada sigue en las clases que la tienen y suma sus horas, pero no se puede poner en clases nuevas.",
+        restoreHint: "Reactivada, se puede poner otra vez en las clases.",
         created: (name: string) => `Etiqueta ${name} creada.`,
         saved: (name: string) => `Etiqueta ${name} guardada.`,
-        archivedDone: (name: string) => `Etiqueta ${name} archivada. Sigue en sus clases y en sus horas.`,
+        archivedDone: (name: string) =>
+          `Etiqueta ${name} archivada. Sigue en sus clases y en sus horas.`,
         restored: (name: string) => `Etiqueta ${name} reactivada.`,
-        toggleFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
+        toggleFailed: "No pudimos hacer el cambio. Inténtalo de nuevo.",
         form: {
-          create: 'Nueva etiqueta',
+          create: "Nueva etiqueta",
           edit: (name: string) => `Editar ${name}`,
-          name: 'Nombre',
-          nameHint: 'Ej.: Pasaje de guardia, Fuerza, Fuerza de dedos.',
-          taken: 'Ya hay una etiqueta con ese nombre.',
-          cancel: 'Cancelar',
-          submit: 'Guardar',
-          working: 'Guardando…',
-          invalid: 'Revisa los campos marcados.',
-          failed: 'No pudimos guardar la etiqueta. Inténtalo de nuevo.',
+          name: "Nombre",
+          nameHint: "Ej.: Pasaje de guardia, Fuerza, Fuerza de dedos.",
+          taken: "Ya hay una etiqueta con ese nombre.",
+          cancel: "Cancelar",
+          submit: "Guardar",
+          working: "Guardando…",
+          invalid: "Revisa los campos marcados.",
+          failed: "No pudimos guardar la etiqueta. Inténtalo de nuevo.",
           range: {} as Record<string, string>,
           value: {} as Record<string, string>,
         },
       },
       staff: {
-        title: 'Equipo',
-        error: 'No pudimos cargar el equipo.',
+        title: "Equipo",
+        error: "No pudimos cargar el equipo.",
         get intro() {
-          return `Quienes llevan ${w.thePlace} contigo. Un admin ve los pagos y los ajustes; un coach toma asistencia y no ve los pagos.`
+          return `Quienes llevan ${w.thePlace} contigo. Un admin ve los pagos y los ajustes; un coach toma asistencia y no ve los pagos.`;
         },
-        roles: { owner: 'Dueño', admin: 'Admin', coach: 'Coach' } as Record<string, string>,
-        add: 'Invitar',
+        roles: { owner: "Dueño", admin: "Admin", coach: "Coach" } as Record<
+          string,
+          string
+        >,
+        add: "Invitar",
         form: {
-          title: 'Invitar al equipo',
-          name: 'Nombre',
-          rut: 'RUT (opcional)',
-          rutHint: 'Si no tiene RUT, el correo lo identifica.',
-          phone: 'Teléfono (opcional)',
-          email: 'Correo',
-          emailHint: 'Le enviamos un link para entrar. Siempre entra con este correo, sin contraseña.',
-          role: 'Rol',
-          adminOnlyHint: 'Solo el dueño invita admins.',
+          title: "Invitar al equipo",
+          name: "Nombre",
+          rut: "RUT (opcional)",
+          rutHint: "Si no tiene RUT, el correo lo identifica.",
+          phone: "Teléfono (opcional)",
+          email: "Correo",
+          emailHint:
+            "Le enviamos un link para entrar. Siempre entra con este correo, sin contraseña.",
+          role: "Rol",
+          adminOnlyHint: "Solo el dueño invita admins.",
         },
-        cancel: 'Cancelar',
-        submit: 'Enviar invitación',
-        working: 'Enviando…',
-        invalid: 'Revisa los campos marcados.',
-        failed: 'No pudimos enviar la invitación. Inténtalo de nuevo.',
-        alreadyStaff: 'Esa persona ya está en el equipo.',
+        cancel: "Cancelar",
+        submit: "Enviar invitación",
+        working: "Enviando…",
+        invalid: "Revisa los campos marcados.",
+        failed: "No pudimos enviar la invitación. Inténtalo de nuevo.",
+        alreadyStaff: "Esa persona ya está en el equipo.",
         get emailTaken() {
-          return `Ese correo ya es de otra persona ${w.ofThePlace}.`
+          return `Ese correo ya es de otra persona ${w.ofThePlace}.`;
         },
         range: {} as Record<string, string>,
         value: {
-          phone: 'Escribe un teléfono válido, como +56 9 1234 5678.',
-          rut: 'RUT no válido: revisa el dígito verificador.',
-          email: 'Correo no válido.',
+          phone: "Escribe un teléfono válido, como +56 9 1234 5678.",
+          rut: "RUT no válido: revisa el dígito verificador.",
+          email: "Correo no válido.",
         } as Record<string, string>,
-        invited: (name: string, email: string) => `Invitamos a ${name}. Le llegará un link a ${email}.`,
-        makeAdmin: 'Hacer admin',
-        makeCoach: 'Hacer coach',
-        roleChanged: (name: string, role: string) => `${name} ahora es ${role.toLowerCase()}.`,
-        revoke: 'Quitar acceso',
-        confirmRevoke: (name: string) => `¿Quitar el acceso de ${name}? Su ficha y sus clases se mantienen.`,
-        confirm: 'Sí, quitar',
+        invited: (name: string, email: string) =>
+          `Invitamos a ${name}. Le llegará un link a ${email}.`,
+        makeAdmin: "Hacer admin",
+        makeCoach: "Hacer coach",
+        roleChanged: (name: string, role: string) =>
+          `${name} ahora es ${role.toLowerCase()}.`,
+        revoke: "Quitar acceso",
+        confirmRevoke: (name: string) =>
+          `¿Quitar el acceso de ${name}? Su ficha y sus clases se mantienen.`,
+        confirm: "Sí, quitar",
         revoked: (name: string) => `${name} ya no está en el equipo.`,
-        actionFailed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
-        close: 'Cerrar',
+        actionFailed: "No pudimos hacer el cambio. Inténtalo de nuevo.",
+        close: "Cerrar",
         panelTitle: (name: string, role: string) => `${name} · ${role}`,
       },
       joinLink: {
-        title: 'Link de inscripción',
-        error: 'No pudimos cargar el link de inscripción.',
+        title: "Link de inscripción",
+        error: "No pudimos cargar el link de inscripción.",
         get intro() {
-          return `Un link para compartir por WhatsApp o donde quieras: cada persona llena sus datos y la solicitud te espera en Hoy y en ${w.Members} para aprobarla.`
+          return `Un link para compartir por WhatsApp o donde quieras: cada persona llena sus datos y la solicitud te espera en Hoy y en ${w.Members} para aprobarla.`;
         },
-        none: 'Todavía no tienes un link.',
-        needsPrivacy: 'Completa los datos de privacidad en Ajustes antes de activar el link.',
-        needsPrivacyLink: 'Ir a Datos de privacidad',
-        program: 'Programa',
-        programHint: 'Opcional: el programa al que se inscriben con este link.',
-        anyProgram: 'Ninguno en particular',
-        expiresOn: 'Válido hasta',
-        expiresOnHint: 'Opcional: el último día en que el link funciona.',
-        generate: 'Generar link',
-        working: 'Guardando…',
-        save: 'Guardar cambios',
-        saved: 'Cambios guardados.',
-        linkLabel: 'Link',
-        copy: 'Copiar',
-        copied: 'Link copiado.',
-        share: 'Compartir por WhatsApp',
-        shareText: (gym: string, url: string) => `Inscríbete en ${gym} llenando tus datos aquí: ${url}`,
-        expired: (day: string) => `Venció el ${day}: quien lo abra verá que ya no es válido.`,
+        none: "Todavía no tienes un link.",
+        needsPrivacy:
+          "Completa los datos de privacidad en Ajustes antes de activar el link.",
+        needsPrivacyLink: "Ir a Datos de privacidad",
+        program: "Programa",
+        programHint: "Opcional: el programa al que se inscriben con este link.",
+        anyProgram: "Ninguno en particular",
+        expiresOn: "Válido hasta",
+        expiresOnHint: "Opcional: el último día en que el link funciona.",
+        generate: "Generar link",
+        working: "Guardando…",
+        save: "Guardar cambios",
+        saved: "Cambios guardados.",
+        linkLabel: "Link",
+        copy: "Copiar",
+        copied: "Link copiado.",
+        share: "Compartir por WhatsApp",
+        shareText: (gym: string, url: string) =>
+          `Inscríbete en ${gym} llenando tus datos aquí: ${url}`,
+        expired: (day: string) =>
+          `Venció el ${day}: quien lo abra verá que ya no es válido.`,
         validUntil: (day: string) => `Válido hasta el ${day}.`,
-        regenerate: 'Generar otro link',
-        confirmRegenerate: 'El link actual dejará de funcionar. ¿Generar otro?',
-        regenerated: 'Listo: el link anterior ya no funciona.',
-        revoke: 'Desactivar link',
-        confirmRevoke: 'El link dejará de funcionar. Las solicitudes ya enviadas se mantienen. ¿Desactivarlo?',
-        revoked: 'Link desactivado.',
-        confirm: 'Sí',
-        cancel: 'Cancelar',
-        failed: 'No pudimos hacer el cambio. Inténtalo de nuevo.',
-        invalid: 'Revisa los campos marcados.',
+        regenerate: "Generar otro link",
+        confirmRegenerate: "El link actual dejará de funcionar. ¿Generar otro?",
+        regenerated: "Listo: el link anterior ya no funciona.",
+        revoke: "Desactivar link",
+        confirmRevoke:
+          "El link dejará de funcionar. Las solicitudes ya enviadas se mantienen. ¿Desactivarlo?",
+        revoked: "Link desactivado.",
+        confirm: "Sí",
+        cancel: "Cancelar",
+        failed: "No pudimos hacer el cambio. Inténtalo de nuevo.",
+        invalid: "Revisa los campos marcados.",
         range: {} as Record<string, string>,
-        value: { unknown_program: 'Ese programa ya no existe.' } as Record<string, string>,
+        value: { unknown_program: "Ese programa ya no existe." } as Record<
+          string,
+          string
+        >,
       },
       grading: {
-        title: 'Graduación',
-        error: 'No pudimos cargar el esquema de graduación.',
+        title: "Graduación",
+        error: "No pudimos cargar el esquema de graduación.",
         // With no activity that grades (#245): the screen says where to turn it on.
         get off() {
-          return `Ninguna actividad de tu ${w.place} usa grados, así que los cinturones y niveles no aparecen en la app.`
+          return `Ninguna actividad de tu ${w.place} usa grados, así que los cinturones y niveles no aparecen en la app.`;
         },
-        turnOn: 'Activa «Usa grados» en una actividad',
+        turnOn: "Activa «Usa grados» en una actividad",
         get activitiesError() {
-          return `No pudimos revisar las actividades de tu ${w.place}.`
+          return `No pudimos revisar las actividades de tu ${w.place}.`;
         },
         // One scheme for every activity that grades, for now.
         shared: (names: string[]) =>
-          `Este esquema es el mismo para ${names.slice(0, -1).join(', ')} y ${names.at(-1)}: cada ${w.member} tiene un solo grado.`,
-        stale: 'El esquema guardado ya no es válido. Vuelve a usar una escala para repararlo y guarda.',
-        presetsError: 'No pudimos cargar las escalas.',
-        start: 'Punto de partida',
-        preset: 'Escala',
-        presetHint: 'Reemplaza lo que estás editando. Nada cambia hasta que guardes.',
-        choosePreset: 'Elige una escala…',
-        apply: 'Usar esta escala',
-        reapply: 'Volver a usar una escala',
-        applied: (preset: string) => `Escala ${preset} aplicada. Revísala y guarda.`,
-        goalMetric: 'Cómo se mide el avance',
-        goalMetricHint: 'Lo que cuenta el objetivo de cada grado para la siguiente graduación.',
+          `Este esquema es el mismo para ${names.slice(0, -1).join(", ")} y ${names.at(-1)}: cada ${w.member} tiene un solo grado.`,
+        stale:
+          "El esquema guardado ya no es válido. Vuelve a usar una escala para repararlo y guarda.",
+        presetsError: "No pudimos cargar las escalas.",
+        start: "Punto de partida",
+        preset: "Escala",
+        presetHint:
+          "Reemplaza lo que estás editando. Nada cambia hasta que guardes.",
+        choosePreset: "Elige una escala…",
+        apply: "Usar esta escala",
+        reapply: "Volver a usar una escala",
+        applied: (preset: string) =>
+          `Escala ${preset} aplicada. Revísala y guarda.`,
+        goalMetric: "Cómo se mide el avance",
+        goalMetricHint:
+          "Lo que cuenta el objetivo de cada grado para la siguiente graduación.",
         goalMetrics: {
-          none: 'No medir',
-          classes_since_promotion: 'Clases desde la última graduación',
-          time_in_rank: 'Meses en el grado',
+          none: "No medir",
+          classes_since_promotion: "Clases desde la última graduación",
+          time_in_rank: "Meses en el grado",
         },
-        ladders: { ranks: 'Grados', kids_ladder: 'Escalera infantil' },
+        ladders: { ranks: "Grados", kids_ladder: "Escalera infantil" },
         laddersHint: {
-          ranks: 'Del más bajo al más alto.',
-          kids_ladder: 'Opcional: los grados de los niños, si tienen una escalera propia.',
+          ranks: "Del más bajo al más alto.",
+          kids_ladder:
+            "Opcional: los grados de los niños, si tienen una escalera propia.",
         },
-        emptyLadder: 'Sin grados.',
-        addRank: 'Agregar grado',
+        emptyLadder: "Sin grados.",
+        addRank: "Agregar grado",
         rank: (n: number) => `Grado ${n}`,
-        rankLabel: 'Nombre',
+        rankLabel: "Nombre",
         target: {
-          classes_since_promotion: 'Clases para la siguiente',
-          time_in_rank: 'Meses para la siguiente',
+          classes_since_promotion: "Clases para la siguiente",
+          time_in_rank: "Meses para la siguiente",
         },
-        targetHint: 'Opcional. Un subgrado sin objetivo propio usa el de su grado.',
+        targetHint:
+          "Opcional. Un subgrado sin objetivo propio usa el de su grado.",
         // The same, on a sub-rank's narrow row.
-        subTarget: { classes_since_promotion: 'Clases', time_in_rank: 'Meses' },
+        subTarget: { classes_since_promotion: "Clases", time_in_rank: "Meses" },
         // A closed rank's line (#177): what it takes to the next, and its sub-ranks.
         summary: {
-          classes_since_promotion: (n: number) => (n === 1 ? '1 clase para la siguiente' : `${n} clases para la siguiente`),
-          time_in_rank: (n: number) => (n === 1 ? '1 mes para la siguiente' : `${n} meses para la siguiente`),
+          classes_since_promotion: (n: number) =>
+            n === 1
+              ? "1 clase para la siguiente"
+              : `${n} clases para la siguiente`,
+          time_in_rank: (n: number) =>
+            n === 1
+              ? "1 mes para la siguiente"
+              : `${n} meses para la siguiente`,
         },
-        refusedRank: 'Revisa este grado.',
-        done: 'Listo',
-        subRanks: (n: number) => (n === 0 ? 'Sin subgrados' : n === 1 ? '1 subgrado' : `${n} subgrados`),
+        refusedRank: "Revisa este grado.",
+        done: "Listo",
+        subRanks: (n: number) =>
+          n === 0 ? "Sin subgrados" : n === 1 ? "1 subgrado" : `${n} subgrados`,
         subRank: (n: number) => `Subgrado ${n}`,
-        subRankLabel: 'Nombre del subgrado',
-        addSubRank: 'Agregar subgrado',
+        subRankLabel: "Nombre del subgrado",
+        addSubRank: "Agregar subgrado",
         // A rank's belt colours (#135); without them it shows as its name.
         belt: {
-          title: 'Cinturón',
-          none: 'Sin color: el grado se muestra con su nombre.',
-          add: 'Agregar color',
-          main: 'Color',
-          tone: 'Franja',
-          addTone: 'Agregar franja',
-          removeTone: 'Quitar franja',
-          remove: 'Quitar color',
+          title: "Cinturón",
+          none: "Sin color: el grado se muestra con su nombre.",
+          add: "Agregar color",
+          main: "Color",
+          tone: "Franja",
+          addTone: "Agregar franja",
+          removeTone: "Quitar franja",
+          remove: "Quitar color",
           preview: (label: string) => `Vista previa del cinturón ${label}`,
         },
         moveUp: (label: string) => `Subir ${label}`,
         moveDown: (label: string) => `Bajar ${label}`,
         remove: (label: string) => `Quitar ${label}`,
-        unnamed: 'grado sin nombre',
-        submit: 'Guardar esquema',
-        working: 'Guardando…',
-        saved: 'Esquema guardado.',
-        invalid: 'Revisa los campos marcados.',
-        schemeInvalid: 'El esquema no es válido: para medir el avance necesita al menos un grado.',
-        failed: 'No pudimos guardar el esquema. Inténtalo de nuevo.',
-        range: { target: 'Entre 1 y 10.000.' } as Record<string, string>,
+        unnamed: "grado sin nombre",
+        submit: "Guardar esquema",
+        working: "Guardando…",
+        saved: "Esquema guardado.",
+        invalid: "Revisa los campos marcados.",
+        schemeInvalid:
+          "El esquema no es válido: para medir el avance necesita al menos un grado.",
+        failed: "No pudimos guardar el esquema. Inténtalo de nuevo.",
+        range: { target: "Entre 1 y 10.000." } as Record<string, string>,
       },
       fields: {
-        title: 'Campos personalizados',
+        title: "Campos personalizados",
         get intro() {
-          return `Los datos que ${w.thePlace} anota de cada ${w.member}, además de los de siempre. Aparecen en la sección Datos de cada ${w.member}.`
+          return `Los datos que ${w.thePlace} anota de cada ${w.member}, además de los de siempre. Aparecen en la sección Datos de cada ${w.member}.`;
         },
-        error: 'No pudimos cargar los campos.',
-        empty: 'Todavía no hay campos personalizados.',
-        add: 'Nuevo campo',
-        edit: 'Editar',
+        error: "No pudimos cargar los campos.",
+        empty: "Todavía no hay campos personalizados.",
+        add: "Nuevo campo",
+        edit: "Editar",
         // Desactivar, as in Planes and Programas (#177).
-        archive: 'Desactivar',
-        restore: 'Reactivar',
-        archived: 'Inactivo',
-        sensitive: 'Sensible',
-        upMark: '↑',
-        downMark: '↓',
+        archive: "Desactivar",
+        restore: "Reactivar",
+        archived: "Inactivo",
+        sensitive: "Sensible",
+        upMark: "↑",
+        downMark: "↓",
         up: (label: string) => `Subir ${label}`,
         down: (label: string) => `Bajar ${label}`,
         row: (first: string, second: string) => `${first} · ${second}`,
-        types: { text: 'Texto', number: 'Número', date: 'Fecha', enum: 'Lista de opciones' },
-        visibleTo: { owner: 'Solo dueño', admin: 'Dueño y administradores', staff: 'Todo el staff' },
+        types: {
+          text: "Texto",
+          number: "Número",
+          date: "Fecha",
+          enum: "Lista de opciones",
+        },
+        visibleTo: {
+          owner: "Solo dueño",
+          admin: "Dueño y administradores",
+          staff: "Todo el staff",
+        },
         created: (label: string) => `Campo ${label} creado.`,
         saved: (label: string) => `Campo ${label} guardado.`,
-        archivedDone: (label: string) => `Campo ${label} desactivado. Sus datos se guardan, pero no se muestran.`,
+        archivedDone: (label: string) =>
+          `Campo ${label} desactivado. Sus datos se guardan, pero no se muestran.`,
         restored: (label: string) => `Campo ${label} reactivado.`,
-        toggleFailed: 'No pudimos cambiar el campo. Inténtalo de nuevo.',
-        reorderFailed: 'No pudimos cambiar el orden. Inténtalo de nuevo.',
+        toggleFailed: "No pudimos cambiar el campo. Inténtalo de nuevo.",
+        reorderFailed: "No pudimos cambiar el orden. Inténtalo de nuevo.",
         form: {
-          create: 'Nuevo campo',
+          create: "Nuevo campo",
           edit: (label: string) => `Editar ${label}`,
-          label: 'Nombre',
-          type: 'Tipo',
-          typeHint: 'El tipo no se puede cambiar después.',
-          options: 'Opciones',
-          optionsHint: 'Una opción por línea, en el orden en que se muestran.',
-          sensitive: 'Dato sensible',
-          sensitiveHint: 'Se guarda cifrado. Al marcarlo, por defecto solo lo ve el dueño.',
+          label: "Nombre",
+          type: "Tipo",
+          typeHint: "El tipo no se puede cambiar después.",
+          options: "Opciones",
+          optionsHint: "Una opción por línea, en el orden en que se muestran.",
+          sensitive: "Dato sensible",
+          sensitiveHint:
+            "Se guarda cifrado. Al marcarlo, por defecto solo lo ve el dueño.",
           // Shown once the owner marks a field sensitive (#384).
           get noHealth() {
-            return `No lo uses para datos de salud (lesiones, enfermedades, tratamientos, medicamentos): la ley no permite que ${w.aPlace} los guarde, ni con el consentimiento ${w.ofTheMember}.`
+            return `No lo uses para datos de salud (lesiones, enfermedades, tratamientos, medicamentos): la ley no permite que ${w.aPlace} los guarde, ni con el consentimiento ${w.ofTheMember}.`;
           },
-          visibleTo: 'Quién lo ve',
-          cancel: 'Cancelar',
-          submit: 'Guardar',
-          working: 'Guardando…',
-          invalid: 'Revisa los campos marcados.',
-          failed: 'No pudimos guardar el campo. Inténtalo de nuevo.',
+          visibleTo: "Quién lo ve",
+          cancel: "Cancelar",
+          submit: "Guardar",
+          working: "Guardando…",
+          invalid: "Revisa los campos marcados.",
+          failed: "No pudimos guardar el campo. Inténtalo de nuevo.",
           inUse: (options: Record<string, number>) =>
-            `No puedes quitar opciones que hay ${w.members} usando: ${Object.entries(options)
+            `No puedes quitar opciones que hay ${w.members} usando: ${Object.entries(
+              options,
+            )
               .map(([option, count]) => `${option} (${w.memberCount(count)})`)
-              .join(', ')}. Cambia esos datos primero.`,
+              .join(", ")}. Cambia esos datos primero.`,
           range: {} as Record<string, string>,
           value: {
-            options: 'Las opciones no se pueden repetir.',
+            options: "Las opciones no se pueden repetir.",
           } as Record<string, string>,
-          optionsRequired: 'Agrega al menos una opción.',
-          optionsTooMany: 'Hasta 50 opciones.',
-          optionTooLong: 'Cada opción tiene hasta 80 caracteres.',
+          optionsRequired: "Agrega al menos una opción.",
+          optionsTooMany: "Hasta 50 opciones.",
+          optionTooLong: "Cada opción tiene hasta 80 caracteres.",
         },
       },
     },
     session: {
-      back: 'Volver a Clases',
-      loading: 'Cargando clase…',
-      error: 'No pudimos cargar la clase.',
-      notFound: 'No encontramos esta clase.',
-      retry: 'Reintentar',
+      back: "Volver a Clases",
+      loading: "Cargando clase…",
+      error: "No pudimos cargar la clase.",
+      notFound: "No encontramos esta clase.",
+      retry: "Reintentar",
       eyebrow: (program: string, time: string) => `${program} · ${time}`,
       coach: (name: string) => `Coach: ${name}`,
       form: {
-        label: 'Tema y notas',
-        topic: 'Tema de la clase',
-        topicPlaceholder: 'Ej.: retención de guardia cerrada',
-        tags: 'Etiquetas',
+        label: "Tema y notas",
+        topic: "Tema de la clase",
+        topicPlaceholder: "Ej.: retención de guardia cerrada",
+        tags: "Etiquetas",
         // Where the gym's tags are made, for a class that has none to pick yet.
         get noTags() {
-          return `${w.ThePlace} todavía no tiene etiquetas. El dueño o un admin las crea en Ajustes, Etiquetas.`
+          return `${w.ThePlace} todavía no tiene etiquetas. El dueño o un admin las crea en Ajustes, Etiquetas.`;
         },
-        notes: 'Notas',
+        notes: "Notas",
         get notesHint() {
-          return `Solo las ve el equipo, nunca ${w.theMember}. ${NO_HEALTH}`
+          return `Solo las ve el equipo, nunca ${w.theMember}. ${NO_HEALTH}`;
         },
-        notesPlaceholder: 'Lo que conviene recordar de esta clase.',
-        submit: 'Guardar',
-        working: 'Guardando…',
-        saved: 'Guardado.',
-        failed: 'No pudimos guardar. Inténtalo de nuevo.',
+        notesPlaceholder: "Lo que conviene recordar de esta clase.",
+        submit: "Guardar",
+        working: "Guardando…",
+        saved: "Guardado.",
+        failed: "No pudimos guardar. Inténtalo de nuevo.",
         // What was typed when the session expired, back after signing in again (#212).
-        restored: 'Recuperamos lo que habías escrito antes de que venciera tu sesión. Guárdalo para no perderlo.',
+        restored:
+          "Recuperamos lo que habías escrito antes de que venciera tu sesión. Guárdalo para no perderlo.",
       },
       attendance: {
-        title: 'Asistencia',
+        title: "Asistencia",
         // Of the regulars: who came to this class type in the last 30 days.
         count: (present: number, total: number) => `${present} de ${total}`,
         get search() {
-          return `Buscar ${w.member}`
+          return `Buscar ${w.member}`;
         },
-        searchPlaceholder: 'Nombre o RUT',
-        noMatches: 'Nadie con ese nombre o RUT.',
+        searchPlaceholder: "Nombre o RUT",
+        noMatches: "Nadie con ese nombre o RUT.",
         others: (n: number, present: number) =>
-          present > 0 ? `${w.memberIs('Otros', 'Otras')} ${w.members} (${n}) · ${present} presentes` : `${w.memberIs('Otros', 'Otras')} ${w.members} (${n})`,
+          present > 0
+            ? `${w.memberIs("Otros", "Otras")} ${w.members} (${n}) · ${present} presentes`
+            : `${w.memberIs("Otros", "Otras")} ${w.members} (${n})`,
         get othersLabel() {
-          return `${w.memberIs('Otros', 'Otras')} ${w.members}`
+          return `${w.memberIs("Otros", "Otras")} ${w.members}`;
         },
-        hint: 'Toca un nombre para marcar presente. El punto naranja indica pago vencido: puede entrenar, pero conviene avisar.',
+        hint: "Toca un nombre para marcar presente. El punto naranja indica pago vencido: puede entrenar, pero conviene avisar.",
         get loading() {
-          return `Cargando ${w.members}…`
+          return `Cargando ${w.members}…`;
         },
         get error() {
-          return `No pudimos cargar ${w.theMembers}.`
+          return `No pudimos cargar ${w.theMembers}.`;
         },
-        empty: 'Nadie tiene un plan para esta clase todavía.',
-        overdue: 'Pago vencido',
-        left: (n: number) => (n === 1 ? 'queda 1' : `quedan ${n}`),
+        empty: "Nadie tiene un plan para esta clase todavía.",
+        overdue: "Pago vencido",
+        left: (n: number) => (n === 1 ? "queda 1" : `quedan ${n}`),
         absent: (days: number) => `${days} d sin venir`,
         save: (n: number) => `Guardar asistencia (${n})`,
         // Nothing left to save: what is marked is what is saved, a trial guest included (#213).
-        upToDate: (n: number) => (n === 1 ? '1 presente · guardado' : `${n} presentes · guardados`),
-        working: 'Guardando…',
-        done: 'Guardado ✓',
-        saved: 'Asistencia guardada.',
-        back: 'Volver a clases',
-        queued: 'Sin conexión: quedó en este teléfono. Se guardará cuando vuelva la señal.',
-        failed: 'No pudimos guardar la asistencia. Inténtalo de nuevo.',
-        dropped: 'La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.',
+        upToDate: (n: number) =>
+          n === 1 ? "1 presente · guardado" : `${n} presentes · guardados`,
+        working: "Guardando…",
+        done: "Guardado ✓",
+        saved: "Asistencia guardada.",
+        back: "Volver a clases",
+        queued:
+          "Sin conexión: quedó en este teléfono. Se guardará cuando vuelva la señal.",
+        failed: "No pudimos guardar la asistencia. Inténtalo de nuevo.",
+        dropped:
+          "La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.",
         guest: {
           get open() {
-            return `+ Agregar ${w.member} de prueba`
+            return `+ Agregar ${w.member} de prueba`;
           },
           get label() {
-            return `${w.Member} de prueba`
+            return `${w.Member} de prueba`;
           },
-          name: 'Nombre',
-          who: 'RUT o correo',
-          whoPlaceholder: '12.345.678-5',
-          phone: 'Celular (WhatsApp)',
-          phonePlaceholder: '9 1234 5678',
-          plan: 'Plan de prueba',
-          submit: 'Agregar y marcar presente',
-          working: 'Agregando…',
-          cancel: 'Cancelar',
+          name: "Nombre",
+          who: "RUT o correo",
+          whoPlaceholder: "12.345.678-5",
+          phone: "Celular (WhatsApp)",
+          phonePlaceholder: "9 1234 5678",
+          plan: "Plan de prueba",
+          submit: "Agregar y marcar presente",
+          working: "Agregando…",
+          cancel: "Cancelar",
           get noPlans() {
-            return `Para agregar ${w.members} de prueba, el dueño o un admin crea un plan de prueba.`
+            return `Para agregar ${w.members} de prueba, el dueño o un admin crea un plan de prueba.`;
           },
           done: (name: string) => `${name} quedó presente.`,
-          member: (name: string) => `${name} ya es ${w.member}: lo marcamos presente.`,
-          invalid: 'Revisa el RUT o el correo, y el celular: 9 dígitos, empezando por 9.',
-          offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
-          hasLeft: 'Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.',
-          failed: 'No pudimos agregarlo. Inténtalo de nuevo.',
+          member: (name: string) =>
+            `${name} ya es ${w.member}: lo marcamos presente.`,
+          invalid:
+            "Revisa el RUT o el correo, y el celular: 9 dígitos, empezando por 9.",
+          offline: "Sin conexión: agrégalo cuando vuelva la señal.",
+          hasLeft:
+            "Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.",
+          failed: "No pudimos agregarlo. Inténtalo de nuevo.",
         },
       },
       timer: {
-        open: 'Abrir timer',
-        resume: 'Volver al timer',
+        open: "Abrir timer",
+        resume: "Volver al timer",
       },
       cancelled: {
-        badge: 'Cancelada',
-        note: 'Esta clase está cancelada: no se toma asistencia ni cuenta para nadie.',
+        badge: "Cancelada",
+        note: "Esta clase está cancelada: no se toma asistencia ni cuenta para nadie.",
       },
       edit: {
-        open: 'Editar clase',
-        label: 'Editar clase',
-        day: 'Fecha',
-        time: 'Hora',
-        duration: 'Duración (min)',
-        badDuration: 'La duración va de 1 a 1440 minutos.',
+        open: "Editar clase",
+        label: "Editar clase",
+        day: "Fecha",
+        time: "Hora",
+        duration: "Duración (min)",
+        badDuration: "La duración va de 1 a 1440 minutos.",
         scope: {
-          label: '¿Qué cambias?',
-          one: 'Solo esta clase',
-          series: 'Esta y las siguientes',
+          label: "¿Qué cambias?",
+          one: "Solo esta clase",
+          series: "Esta y las siguientes",
           seriesHint:
-            'Cambia el horario desde esta fecha. Las clases ya hechas o con asistencia no cambian, y las canceladas siguen canceladas.',
+            "Cambia el horario desde esta fecha. Las clases ya hechas o con asistencia no cambian, y las canceladas siguen canceladas.",
         },
-        classType: 'Tipo de clase',
-        coach: 'Coach',
+        classType: "Tipo de clase",
+        coach: "Coach",
         inactive: (name: string) => `${name} (desactivado)`,
-        hint: 'La asistencia que ya se tomó se mantiene.',
-        submit: 'Guardar cambios',
-        working: 'Guardando…',
-        close: 'Volver',
-        saved: 'Clase actualizada.',
-        failed: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
+        hint: "La asistencia que ya se tomó se mantiene.",
+        submit: "Guardar cambios",
+        working: "Guardando…",
+        close: "Volver",
+        saved: "Clase actualizada.",
+        failed: "No pudimos guardar los cambios. Inténtalo de nuevo.",
         openMatPlan:
-          'Un open mat es un solo bloque de sparring. Corrige el registro del timer antes de cambiarle el tipo.',
+          "Un open mat es un solo bloque de sparring. Corrige el registro del timer antes de cambiarle el tipo.",
       },
       manage: {
-        title: 'Opciones de la clase',
-        cancel: 'Cancelar clase',
-        cancelConfirm: '¿Cancelar esta clase? Queda en la lista como cancelada y puedes reactivarla.',
-        cancelYes: 'Sí, cancelar',
+        title: "Opciones de la clase",
+        cancel: "Cancelar clase",
+        cancelConfirm:
+          "¿Cancelar esta clase? Queda en la lista como cancelada y puedes reactivarla.",
+        cancelYes: "Sí, cancelar",
         hasAttendance:
-          'Ya se tomó asistencia en esta clase, así que no se puede cancelar. Si se creó por error, elimínala.',
-        reactivate: 'Reactivar clase',
-        delete: 'Eliminar clase',
+          "Ya se tomó asistencia en esta clase, así que no se puede cancelar. Si se creó por error, elimínala.",
+        reactivate: "Reactivar clase",
+        delete: "Eliminar clase",
         deleteConfirm: (present: number, timer: boolean) => {
           const gone = [
-            present > 0 && (present === 1 ? '1 asistencia' : `${present} asistencias`),
-            timer && 'el registro del timer',
-          ].filter(Boolean)
-          if (gone.length === 0) return '¿Eliminar esta clase? No tiene asistencia ni registro del timer.'
-          const verb = gone.length > 1 || present > 1 ? 'Se borran' : 'Se borra'
-          return `¿Eliminar esta clase? ${verb} ${gone.join(' y ')}. No se puede deshacer.`
+            present > 0 &&
+              (present === 1 ? "1 asistencia" : `${present} asistencias`),
+            timer && "el registro del timer",
+          ].filter(Boolean);
+          if (gone.length === 0)
+            return "¿Eliminar esta clase? No tiene asistencia ni registro del timer.";
+          const verb =
+            gone.length > 1 || present > 1 ? "Se borran" : "Se borra";
+          return `¿Eliminar esta clase? ${verb} ${gone.join(" y ")}. No se puede deshacer.`;
         },
-        credits: 'Si alguien pagó la clase con créditos, se le devuelven.',
-        deleteYes: 'Sí, eliminar',
-        back: 'Volver',
-        working: 'Un momento…',
-        failed: 'No pudimos hacerlo. Inténtalo de nuevo.',
+        credits: "Si alguien pagó la clase con créditos, se le devuelven.",
+        deleteYes: "Sí, eliminar",
+        back: "Volver",
+        working: "Un momento…",
+        failed: "No pudimos hacerlo. Inténtalo de nuevo.",
       },
       record: {
-        title: 'Registro del timer',
-        empty: 'Sin registro del timer.',
-        edit: 'Editar registro',
-        label: 'Editar registro del timer',
-        hint: 'Corrige lo que quedó registrado: el tipo de cada bloque, los minutos que duró y, en sparring, las rondas hechas.',
+        title: "Registro del timer",
+        empty: "Sin registro del timer.",
+        edit: "Editar registro",
+        label: "Editar registro del timer",
+        hint: "Corrige lo que quedó registrado: el tipo de cada bloque, los minutos que duró y, en sparring, las rondas hechas.",
         block: (n: number) => `Bloque ${n}`,
-        kind: 'Tipo',
-        minutes: 'Minutos hechos',
-        rounds: 'Rondas',
-        roundMinutes: 'Min por ronda',
-        completed: 'Rondas hechas',
+        kind: "Tipo",
+        minutes: "Minutos hechos",
+        rounds: "Rondas",
+        roundMinutes: "Min por ronda",
+        completed: "Rondas hechas",
         remove: (n: number) => `Quitar bloque ${n}`,
-        add: '+ Agregar bloque',
+        add: "+ Agregar bloque",
         tooMany: (max: number) => `Una clase tiene hasta ${max} bloques.`,
-        noKinds: 'No hay tipos de bloque. El dueño o un admin los crea en Ajustes › Bloques.',
-        running: 'La clase está corriendo en el timer de este teléfono. Termínala para corregir el registro.',
-        pending: 'El timer de este teléfono tiene bloques sin enviar. Se podrá corregir cuando se guarden.',
-        invalid: 'Revisa los campos marcados. En sparring, los minutos no pueden pasar de las rondas hechas.',
-        submit: 'Guardar registro',
-        working: 'Guardando…',
-        close: 'Cancelar',
-        saved: 'Registro guardado.',
-        failed: 'No pudimos guardar el registro. Inténtalo de nuevo.',
+        noKinds:
+          "No hay tipos de bloque. El dueño o un admin los crea en Ajustes › Bloques.",
+        running:
+          "La clase está corriendo en el timer de este teléfono. Termínala para corregir el registro.",
+        pending:
+          "El timer de este teléfono tiene bloques sin enviar. Se podrá corregir cuando se guarden.",
+        invalid:
+          "Revisa los campos marcados. En sparring, los minutos no pueden pasar de las rondas hechas.",
+        submit: "Guardar registro",
+        working: "Guardando…",
+        close: "Cancelar",
+        saved: "Registro guardado.",
+        failed: "No pudimos guardar el registro. Inténtalo de nuevo.",
       },
     },
     timer: {
       // The browser tab's title (#177).
       pageTitle: (classType: string) => `Timer de ${classType}`,
-      back: 'Volver a la clase',
-      loading: 'Cargando el timer…',
-      error: 'No pudimos cargar el timer.',
-      retry: 'Reintentar',
-      notAllowed: 'Solo el coach de la clase, el dueño o un admin pueden usar el timer.',
+      back: "Volver a la clase",
+      loading: "Cargando el timer…",
+      error: "No pudimos cargar el timer.",
+      retry: "Reintentar",
+      notAllowed:
+        "Solo el coach de la clase, el dueño o un admin pueden usar el timer.",
       // An iPhone mutes the timer on silent, so it can beep over the music (#258).
-      silentSwitch: 'Con el iPhone en silencio, el timer no suena.',
+      silentSwitch: "Con el iPhone en silencio, el timer no suena.",
       editor: {
-        title: 'Bloques de la clase',
-        hint: 'Parte de la última clase de este tipo. Cambia lo que quieras antes de empezar.',
-        hintEmpty: 'Arma la clase bloque por bloque.',
-        hintOpenMat: 'Un open mat son rondas de sparring.',
-        hintRunning: 'Cambia los bloques que faltan o agrega uno. El timer sigue corriendo.',
+        title: "Bloques de la clase",
+        hint: "Parte de la última clase de este tipo. Cambia lo que quieras antes de empezar.",
+        hintEmpty: "Arma la clase bloque por bloque.",
+        hintOpenMat: "Un open mat son rondas de sparring.",
+        hintRunning:
+          "Cambia los bloques que faltan o agrega uno. El timer sigue corriendo.",
         label: (n: number) => `Bloque ${n}`,
-        kind: 'Tipo',
-        minutes: 'Minutos',
-        rounds: 'Rondas',
-        roundMinutes: 'Min por ronda',
-        restSeconds: 'Descanso (seg)',
+        kind: "Tipo",
+        minutes: "Minutos",
+        rounds: "Rondas",
+        roundMinutes: "Min por ronda",
+        restSeconds: "Descanso (seg)",
         up: (n: number) => `Subir bloque ${n}`,
         down: (n: number) => `Bajar bloque ${n}`,
         remove: (n: number) => `Quitar bloque ${n}`,
-        add: '+ Agregar bloque',
-        empty: 'Sin bloques todavía.',
-        noKinds: 'No hay tipos de bloque. El dueño o un admin los crea en Ajustes › Bloques.',
-        noSparring: 'No hay un tipo de bloque de sparring. El dueño o un admin lo marca en Ajustes › Bloques.',
+        add: "+ Agregar bloque",
+        empty: "Sin bloques todavía.",
+        noKinds:
+          "No hay tipos de bloque. El dueño o un admin los crea en Ajustes › Bloques.",
+        noSparring:
+          "No hay un tipo de bloque de sparring. El dueño o un admin lo marca en Ajustes › Bloques.",
         tooMany: (max: number) => `Una clase tiene hasta ${max} bloques.`,
-        invalid: 'Revisa los campos marcados.',
+        invalid: "Revisa los campos marcados.",
         total: (minutes: string) => `Total: ${minutes}`,
-        start: 'Comenzar',
-        save: 'Guardar cambios',
-        cancel: 'Cancelar',
+        start: "Comenzar",
+        save: "Guardar cambios",
+        cancel: "Cancelar",
       },
       running: {
         position: (n: number, total: number) => `Bloque ${n} de ${total}`,
-        round: (kind: string, round: number, rounds: number) => `${kind} · ronda ${round}/${rounds}`,
-        rest: (round: number, rounds: number) => `Descanso · sigue la ronda ${round}/${rounds}`,
-        paused: 'En pausa',
-        fightMode: 'RONDA',
-        restMode: 'DESCANSO',
+        round: (kind: string, round: number, rounds: number) =>
+          `${kind} · ronda ${round}/${rounds}`,
+        rest: (round: number, rounds: number) =>
+          `Descanso · sigue la ronda ${round}/${rounds}`,
+        paused: "En pausa",
+        fightMode: "RONDA",
+        restMode: "DESCANSO",
         next: (what: string) => `Sigue: ${what}`,
-        nextRound: (round: number, rounds: number) => `ronda ${round}/${rounds}`,
+        nextRound: (round: number, rounds: number) =>
+          `ronda ${round}/${rounds}`,
         nextRest: (duration: string) => `descanso de ${duration}`,
-        last: 'Último bloque',
-        countdown: 'Tiempo restante',
+        last: "Último bloque",
+        countdown: "Tiempo restante",
         mini: (phase: string, time: string) => `${phase} · ${time}`,
-        pause: 'Pausar',
-        resume: 'Reanudar',
-        skip: 'Saltar',
-        skipRound: 'Saltar ronda',
-        skipRest: 'Saltar descanso',
-        addMinute: '+1 min',
-        edit: 'Editar bloques',
-        end: 'Terminar clase',
-        endConfirm: '¿Terminar la clase? Se guarda lo que se hizo hasta ahora.',
-        endYes: 'Sí, terminar',
-        endNo: 'Seguir',
+        pause: "Pausar",
+        resume: "Reanudar",
+        skip: "Saltar",
+        skipRound: "Saltar ronda",
+        skipRest: "Saltar descanso",
+        addMinute: "+1 min",
+        edit: "Editar bloques",
+        end: "Terminar clase",
+        endConfirm: "¿Terminar la clase? Se guarda lo que se hizo hasta ahora.",
+        endYes: "Sí, terminar",
+        endNo: "Seguir",
         unseen: {
-          title: '¿Sigue la clase?',
-          detail: (time: string) => `El timer quedó sin mirar desde las ${time}. Lo pausamos ahí.`,
-          resume: 'Seguir',
+          title: "¿Sigue la clase?",
+          detail: (time: string) =>
+            `El timer quedó sin mirar desde las ${time}. Lo pausamos ahí.`,
+          resume: "Seguir",
           end: (time: string) => `Terminar a las ${time}`,
         },
         leave: {
-          title: 'La clase sigue corriendo. Puedes volver al timer desde la clase.',
-          yes: 'Salir',
-          no: 'Quedarme',
+          title:
+            "La clase sigue corriendo. Puedes volver al timer desde la clase.",
+          yes: "Salir",
+          no: "Quedarme",
         },
-        noWakeLock: 'Este teléfono no permite mantener la pantalla encendida: desactiva el bloqueo automático mientras corre el timer.',
-        noSound: 'Sin sonido en este teléfono: solo vibra y cambia de color.',
-        soundLocked: 'Sin sonido: toca la pantalla para activarlo.',
+        noWakeLock:
+          "Este teléfono no permite mantener la pantalla encendida: desactiva el bloqueo automático mientras corre el timer.",
+        noSound: "Sin sonido en este teléfono: solo vibra y cambia de color.",
+        soundLocked: "Sin sonido: toca la pantalla para activarlo.",
       },
       done: {
-        title: 'Clase terminada',
-        rounds: (done: number, planned: number, duration: string) => `${done} de ${planned} rondas · ${duration}`,
-        notRun: 'No se hizo',
-        back: 'Volver a la clase',
+        title: "Clase terminada",
+        rounds: (done: number, planned: number, duration: string) =>
+          `${done} de ${planned} rondas · ${duration}`,
+        notRun: "No se hizo",
+        back: "Volver a la clase",
       },
       sync: {
-        pending: 'Sin conexión: los bloques quedaron en este teléfono. Se guardan cuando vuelva la señal.',
-        saved: 'Bloques guardados.',
+        pending:
+          "Sin conexión: los bloques quedaron en este teléfono. Se guardan cuando vuelva la señal.",
+        saved: "Bloques guardados.",
       },
       blockSummary: (kind: string, duration: string) => `${kind} · ${duration}`,
-      roundsSummary: (kind: string, rounds: number, round: string, rest: string | null) =>
-        `${kind} · ${rounds} × ${round}` + (rest ? ` + ${rest} descanso` : ''),
+      roundsSummary: (
+        kind: string,
+        rounds: number,
+        round: string,
+        rest: string | null,
+      ) =>
+        `${kind} · ${rounds} × ${round}` + (rest ? ` + ${rest} descanso` : ""),
       minutes: (seconds: number) => {
-        const m = Math.floor(seconds / 60)
-        const s = seconds % 60
-        return s === 0 ? `${m} min` : m === 0 ? `${s} s` : `${m} min ${s} s`
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return s === 0 ? `${m} min` : m === 0 ? `${s} s` : `${m} min ${s} s`;
       },
     },
     payments: {
-      title: 'Pagos',
+      title: "Pagos",
       // What the screen shows, in one sentence (#357).
-      subtitle: 'Los cobros, pagos y ajustes del mes elegido.',
-      coachesOnly: 'Los coaches no ven esta sección.',
-      loading: 'Cargando los pagos…',
-      error: 'No pudimos cargar los pagos.',
-      retry: 'Reintentar',
-      month: 'Período',
+      subtitle: "Los cobros, pagos y ajustes del mes elegido.",
+      coachesOnly: "Los coaches no ven esta sección.",
+      loading: "Cargando los pagos…",
+      error: "No pudimos cargar los pagos.",
+      retry: "Reintentar",
+      month: "Período",
       // The month's ledger for the accountant (#40).
-      exportCsv: 'Exportar CSV',
-      exportXlsx: 'Exportar Excel',
+      exportCsv: "Exportar CSV",
+      exportXlsx: "Exportar Excel",
       // Cobros extra and the exports, out of the header's row (#357).
-      moreActions: 'Más',
-      kpisLabel: 'Resumen del mes',
+      moreActions: "Más",
+      kpisLabel: "Resumen del mes",
       kpis: {
-        collected: 'Cobrado',
+        collected: "Cobrado",
         collectedDetail: (n: number, refunded: string | null) =>
-          (n === 1 ? '1 pago validado' : `${n} pagos validados`) + (refunded ? ` · Devuelto ${refunded}` : ''),
-        pending: 'Por validar',
-        pendingDetail: (n: number) => (n === 1 ? '1 comprobante' : `${n} comprobantes`),
-        overdue: 'Vencido',
+          (n === 1 ? "1 pago validado" : `${n} pagos validados`) +
+          (refunded ? ` · Devuelto ${refunded}` : ""),
+        pending: "Por validar",
+        pendingDetail: (n: number) =>
+          n === 1 ? "1 comprobante" : `${n} comprobantes`,
+        overdue: "Vencido",
         overdueDetail: (members: number, days: string) =>
           `${w.memberCount(members)} · ${days} días promedio`,
-        expected: 'Esperado',
+        expected: "Esperado",
         expectedDetail: (active: number, frozen: number) =>
-          `${active === 1 ? '1 membresía activa' : `${active} membresías activas`}` +
-          (frozen ? ` · ${frozen === 1 ? '1 congelada' : `${frozen} congeladas`}` : ''),
+          `${active === 1 ? "1 membresía activa" : `${active} membresías activas`}` +
+          (frozen
+            ? ` · ${frozen === 1 ? "1 congelada" : `${frozen} congeladas`}`
+            : ""),
       },
-      filtersLabel: 'Filtrar movimientos',
-      filters: { all: 'Todos', pending: 'Por validar', overdue: 'Vencidos', kids: 'Kids' },
+      filtersLabel: "Filtrar movimientos",
+      filters: {
+        all: "Todos",
+        pending: "Por validar",
+        overdue: "Vencidos",
+        kids: "Kids",
+      },
       columns: {
-        date: 'Fecha',
+        date: "Fecha",
         get student() {
-          return `${w.Member}`
+          return `${w.Member}`;
         },
-        kind: 'Tipo',
-        period: 'Período',
-        detail: 'Detalle',
-        status: 'Estado',
-        amount: 'Monto',
+        kind: "Tipo",
+        period: "Período",
+        detail: "Detalle",
+        status: "Estado",
+        amount: "Monto",
       },
       // An adjustment voiding a charge (#256), and one restoring it (#278).
-      void: 'Anulación',
-      restore: 'Restauración',
-      kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
+      void: "Anulación",
+      restore: "Restauración",
+      kind: {
+        charge: "Cargo",
+        payment: "Pago",
+        adjustment: "Ajuste",
+        refund: "Devolución",
+        freeze: "Congelación",
+      },
       // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.
-      adjustment: { favor: 'Descuento', owed: 'Recargo' },
+      adjustment: { favor: "Descuento", owed: "Recargo" },
       // A debt outlives its plan (#207): what became of the membership, beside the plan.
-      membership: { lapsed: 'Plan caducado', cancelled: 'Dado de baja', frozen: 'Congelado' } as Statuses,
-      method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },
-      credit: 'A favor',
+      membership: {
+        lapsed: "Plan caducado",
+        cancelled: "Dado de baja",
+        frozen: "Congelado",
+      } as Statuses,
+      method: { transfer: "Transferencia", cash: "Efectivo", other: "Otro" },
+      credit: "A favor",
       status: {
-        pending: 'Por validar',
-        validated: 'Validado',
+        pending: "Por validar",
+        validated: "Validado",
         validatedBy: (name: string) => `Validado · ${name}`,
-        rejected: 'Rechazado',
-        voided: 'Anulado',
-        paid: 'Pagado',
+        rejected: "Rechazado",
+        voided: "Anulado",
+        paid: "Pagado",
         open: (day: string) => `Abierto · vence ${day}`,
         overdue: (days: number) => `Vencido ${days} d`,
-        freezeStart: 'Inicio',
-        freezeEnd: 'Fin',
+        freezeStart: "Inicio",
+        freezeEnd: "Fin",
       },
-      empty: 'No hay movimientos para mostrar.',
+      empty: "No hay movimientos para mostrar.",
       showing: (shown: number, total: number, month: string | null) =>
-        `Mostrando ${shown} de ${total} ${total === 1 ? 'movimiento' : 'movimientos'}${month ? ` de ${month}` : ''}`,
-      more: 'Cargar más',
-      review: (n: number) => (n === 1 ? 'Revisar 1 comprobante' : `Revisar ${n} comprobantes`),
-      searchLabel: 'Buscar en los pagos',
-      searchPlaceholder: 'Nombre, teléfono o RUT',
+        `Mostrando ${shown} de ${total} ${total === 1 ? "movimiento" : "movimientos"}${month ? ` de ${month}` : ""}`,
+      more: "Cargar más",
+      review: (n: number) =>
+        n === 1 ? "Revisar 1 comprobante" : `Revisar ${n} comprobantes`,
+      searchLabel: "Buscar en los pagos",
+      searchPlaceholder: "Nombre, teléfono o RUT",
       noMatch: (q: string) => `No hay movimientos de «${q}».`,
-      record: 'Registrar pago',
-      extra: 'Cobros extra',
+      record: "Registrar pago",
+      extra: "Cobros extra",
       kpiExtra: (amount: string) => ` · ${amount} de cobros extra`,
       picker: {
-        label: '¿Quién paga?',
+        label: "¿Quién paga?",
         get results() {
-          return `${w.Members} ${w.memberIs('encontrados', 'encontradas')}`
+          return `${w.Members} ${w.memberIs("encontrados", "encontradas")}`;
         },
-        none: 'Nadie coincide con esa búsqueda.',
+        none: "Nadie coincide con esa búsqueda.",
         get error() {
-          return `No pudimos cargar ${w.theMembers}.`
+          return `No pudimos cargar ${w.theMembers}.`;
         },
-        loading: 'Cargando…',
-        noPlan: 'No tiene plan: no hay nada que cobrarle.',
-        upToDate: 'Está al día: no tiene períodos por pagar.',
+        loading: "Cargando…",
+        noPlan: "No tiene plan: no hay nada que cobrarle.",
+        upToDate: "Está al día: no tiene períodos por pagar.",
         get change() {
-          return `Cambiar ${w.member}`
+          return `Cambiar ${w.member}`;
         },
-        cancel: 'Cancelar',
+        cancel: "Cancelar",
       },
     },
     // Cobros extra (#195): one-off charges, fixed or split across a group.
     extra: {
-      title: 'Cobros extra',
-      subtitle: 'Rifas, seminarios, equipamiento y gastos compartidos. No afectan el plan de nadie.',
-      back: 'Volver a Pagos',
-      open: 'Cobros extra',
-      ficha: 'Cobros extra pendientes',
-      create: 'Nuevo cobro',
-      loading: 'Cargando…',
-      error: 'No pudimos cargar los cobros extra.',
-      retry: 'Reintentar',
-      empty: 'Todavía no hay cobros extra.',
-      listLabel: 'Cobros extra',
+      title: "Cobros extra",
+      subtitle:
+        "Rifas, seminarios, equipamiento y gastos compartidos. No afectan el plan de nadie.",
+      back: "Volver a Pagos",
+      open: "Cobros extra",
+      ficha: "Cobros extra pendientes",
+      create: "Nuevo cobro",
+      loading: "Cargando…",
+      error: "No pudimos cargar los cobros extra.",
+      retry: "Reintentar",
+      empty: "Todavía no hay cobros extra.",
+      listLabel: "Cobros extra",
       // A title cut to two lines (#357).
-      titleMore: 'Ver título completo',
-      titleLess: 'Ver menos',
+      titleMore: "Ver título completo",
+      titleLess: "Ver menos",
       category: {
-        rifa: 'Rifa',
-        seminario: 'Seminario',
-        equipamiento: 'Equipamiento',
-        gasto_compartido: 'Gasto compartido',
-        otro: 'Otro',
+        rifa: "Rifa",
+        seminario: "Seminario",
+        equipamiento: "Equipamiento",
+        gasto_compartido: "Gasto compartido",
+        otro: "Otro",
       },
       due: (day: string) => `vence ${day}`,
       progress: (paid: number, lines: number, collected: string, due: string) =>
         `${paid} de ${lines} pagaron · ${collected} de ${due}`,
-      waived: (n: number) => (n === 1 ? '1 exento' : `${n} exentos`),
+      waived: (n: number) => (n === 1 ? "1 exento" : `${n} exentos`),
       status: {
-        open: 'Pendiente',
-        overdue: 'Vencido',
-        in_review: 'Comprobante enviado',
-        paid: 'Pagado',
-        waived: 'Exento',
-        cancelled: 'Anulado',
+        open: "Pendiente",
+        overdue: "Vencido",
+        in_review: "Comprobante enviado",
+        paid: "Pagado",
+        waived: "Exento",
+        cancelled: "Anulado",
       },
       groups: {
-        title: 'Grupos',
-        intro: 'Listas de personas para reutilizar en los cobros: un grupo es una foto, no se actualiza solo.',
-        create: 'Nuevo grupo',
-        empty: 'Todavía no hay grupos.',
-        size: (n: number) => (n === 1 ? '1 persona' : `${n} personas`),
-        option: (name: string, n: number) => `${name} (${n === 1 ? '1 persona' : `${n} personas`})`,
-        edit: 'Editar',
-        name: 'Nombre del grupo',
-        namePlaceholder: 'p. ej. Clasificados final',
-        filters: 'Agregar desde filtros',
-        program: 'Programa',
-        plan: 'Plan',
-        rank: 'Cinturón',
-        any: 'Todos',
-        addAll: (n: number) => (n === 1 ? 'Agregar a 1 persona' : `Agregar a las ${n} personas`),
-        loadingFilter: 'Buscando…',
-        search: 'Agregar a mano',
-        searchPlaceholder: 'Nombre, teléfono o RUT',
+        title: "Grupos",
+        intro:
+          "Listas de personas para reutilizar en los cobros: un grupo es una foto, no se actualiza solo.",
+        create: "Nuevo grupo",
+        empty: "Todavía no hay grupos.",
+        size: (n: number) => (n === 1 ? "1 persona" : `${n} personas`),
+        option: (name: string, n: number) =>
+          `${name} (${n === 1 ? "1 persona" : `${n} personas`})`,
+        edit: "Editar",
+        name: "Nombre del grupo",
+        namePlaceholder: "p. ej. Clasificados final",
+        filters: "Agregar desde filtros",
+        program: "Programa",
+        plan: "Plan",
+        rank: "Cinturón",
+        any: "Todos",
+        addAll: (n: number) =>
+          n === 1 ? "Agregar a 1 persona" : `Agregar a las ${n} personas`,
+        loadingFilter: "Buscando…",
+        search: "Agregar a mano",
+        searchPlaceholder: "Nombre, teléfono o RUT",
         add: (name: string) => `Agregar a ${name}`,
         remove: (name: string) => `Quitar a ${name}`,
-        removeShort: 'Quitar',
-        members: (n: number) => (n === 1 ? '1 persona en el grupo' : `${n} personas en el grupo`),
-        noMembers: 'Nadie en el grupo todavía.',
-        save: 'Guardar grupo',
-        saving: 'Guardando…',
-        cancel: 'Cancelar',
-        delete: 'Eliminar grupo',
-        deleteConfirm: 'Sí, eliminar',
-        deleteNote: 'Los cobros que ya lo usaron quedan como están.',
-        taken: 'Ya hay un grupo con ese nombre.',
-        nameNeeded: 'Ponle un nombre al grupo.',
-        failed: 'No pudimos guardar el grupo. Inténtalo de nuevo.',
+        removeShort: "Quitar",
+        members: (n: number) =>
+          n === 1 ? "1 persona en el grupo" : `${n} personas en el grupo`,
+        noMembers: "Nadie en el grupo todavía.",
+        save: "Guardar grupo",
+        saving: "Guardando…",
+        cancel: "Cancelar",
+        delete: "Eliminar grupo",
+        deleteConfirm: "Sí, eliminar",
+        deleteNote: "Los cobros que ya lo usaron quedan como están.",
+        taken: "Ya hay un grupo con ese nombre.",
+        nameNeeded: "Ponle un nombre al grupo.",
+        failed: "No pudimos guardar el grupo. Inténtalo de nuevo.",
         saved: (name: string) => `Grupo «${name}» guardado.`,
       },
       wizard: {
-        title: 'Nuevo cobro extra',
-        steps: ['Detalles', 'Para quién', 'Monto', 'Mensaje', 'Confirmar'] as readonly string[],
-        stepOf: (i: number, n: number, name: string) => `Paso ${i} de ${n}: ${name}`,
-        next: 'Siguiente',
-        previous: 'Atrás',
-        cancel: 'Cancelar',
-        titleLabel: 'Título',
-        titlePlaceholder: 'p. ej. Bencina final de Santiago',
-        titleNeeded: 'Ponle un título al cobro.',
-        categoryLabel: 'Tipo',
-        descriptionLabel: 'Descripción (opcional)',
-        dueLabel: 'Vence el',
-        dueNeeded: 'Elige hasta cuándo se puede pagar.',
-        targetLabel: '¿A quién se le cobra?',
+        title: "Nuevo cobro extra",
+        steps: [
+          "Detalles",
+          "Para quién",
+          "Monto",
+          "Mensaje",
+          "Confirmar",
+        ] as readonly string[],
+        stepOf: (i: number, n: number, name: string) =>
+          `Paso ${i} de ${n}: ${name}`,
+        next: "Siguiente",
+        previous: "Atrás",
+        cancel: "Cancelar",
+        titleLabel: "Título",
+        titlePlaceholder: "p. ej. Bencina final de Santiago",
+        titleNeeded: "Ponle un título al cobro.",
+        categoryLabel: "Tipo",
+        descriptionLabel: "Descripción (opcional)",
+        dueLabel: "Vence el",
+        dueNeeded: "Elige hasta cuándo se puede pagar.",
+        targetLabel: "¿A quién se le cobra?",
         target: {
-          active: 'A todos los activos',
-          program: 'A un programa',
-          group: 'A un grupo',
-          people: 'Elegir personas',
+          active: "A todos los activos",
+          program: "A un programa",
+          group: "A un grupo",
+          people: "Elegir personas",
         },
-        programLabel: 'Programa',
-        groupLabel: 'Grupo',
-        noGroups: 'No hay grupos: créalos en Cobros extra › Grupos, o elige personas.',
-        pickNeeded: 'Elige a quién se le cobra.',
-        modeLabel: '¿Cómo se cobra?',
+        programLabel: "Programa",
+        groupLabel: "Grupo",
+        noGroups:
+          "No hay grupos: créalos en Cobros extra › Grupos, o elige personas.",
+        pickNeeded: "Elige a quién se le cobra.",
+        modeLabel: "¿Cómo se cobra?",
         mode: {
-          fixed: 'Monto fijo por persona',
-          split: 'Total a dividir',
+          fixed: "Monto fijo por persona",
+          split: "Total a dividir",
         },
-        amountLabel: { fixed: 'Monto por persona (CLP)', split: 'Total a dividir (CLP)' },
-        amountNeeded: 'Escribe el monto.',
-        previewLabel: 'Cuánto paga cada uno',
-        previewLoading: 'Calculando…',
-        previewError: 'No pudimos calcular los montos.',
-        nobody: 'Ese grupo no tiene a nadie a quién cobrarle.',
-        tooSmall: 'El total no alcanza para un peso por persona.',
-        split: (share: string, n: number) => `${share} cada uno entre ${n === 1 ? '1 persona' : `${n} personas`}`,
+        amountLabel: {
+          fixed: "Monto por persona (CLP)",
+          split: "Total a dividir (CLP)",
+        },
+        amountNeeded: "Escribe el monto.",
+        previewLabel: "Cuánto paga cada uno",
+        previewLoading: "Calculando…",
+        previewError: "No pudimos calcular los montos.",
+        nobody: "Ese grupo no tiene a nadie a quién cobrarle.",
+        tooSmall: "El total no alcanza para un peso por persona.",
+        split: (share: string, n: number) =>
+          `${share} cada uno entre ${n === 1 ? "1 persona" : `${n} personas`}`,
         remainder: (n: number) =>
-          n === 1 ? 'El peso que sobra lo paga la primera persona por orden alfabético.' : `Los ${n} pesos que sobran los paga un peso más cada uno de los primeros ${n} por orden alfabético.`,
-        total: (amount: string, n: number) => `Total ${amount} · ${n === 1 ? '1 persona' : `${n} personas`}`,
+          n === 1
+            ? "El peso que sobra lo paga la primera persona por orden alfabético."
+            : `Los ${n} pesos que sobran los paga un peso más cada uno de los primeros ${n} por orden alfabético.`,
+        total: (amount: string, n: number) =>
+          `Total ${amount} · ${n === 1 ? "1 persona" : `${n} personas`}`,
         overrideLabel: (name: string) => `Monto de ${name}`,
-        overridden: 'Ajustado a mano',
-        undo: 'Deshacer',
+        overridden: "Ajustado a mano",
+        undo: "Deshacer",
         reset: (name: string) => `Volver al monto calculado para ${name}`,
         guardian: (name: string) => `aviso a ${name}`,
-        messageLabel: 'Mensaje del correo (opcional)',
-        messageHint: 'Va en el correo, sobre el monto que le toca a cada persona.',
-        notify: 'Enviar un correo a cada persona con su monto',
-        notifyHint: 'A los menores, el correo le llega a su apoderado.',
+        messageLabel: "Mensaje del correo (opcional)",
+        messageHint:
+          "Va en el correo, sobre el monto que le toca a cada persona.",
+        notify: "Enviar un correo a cada persona con su monto",
+        notifyHint: "A los menores, el correo le llega a su apoderado.",
         // The last look (#357): what is charged, to whom, how much and when, and the email.
         each: (amount: string) => `${amount} cada uno`,
         range: (low: string, high: string) => `De ${low} a ${high} por persona`,
         confirm: {
-          charge: 'Cobro',
-          who: 'Para quién',
-          whoIs: (n: number, rule: string) => `${n === 1 ? '1 persona' : `${n} personas`}: ${rule}`,
+          charge: "Cobro",
+          who: "Para quién",
+          whoIs: (n: number, rule: string) =>
+            `${n === 1 ? "1 persona" : `${n} personas`}: ${rule}`,
           rule: {
-            active: 'todos los activos',
+            active: "todos los activos",
             program: (name: string) => `el programa ${name}`,
             group: (name: string) => `el grupo ${name}`,
-            anyProgram: 'un programa',
-            anyGroup: 'un grupo',
-            people: 'elegidas a mano',
+            anyProgram: "un programa",
+            anyGroup: "un grupo",
+            people: "elegidas a mano",
           },
-          amount: 'Monto por persona',
-          adjusted: (n: number) => (n === 1 ? '1 ajustado a mano' : `${n} ajustados a mano`),
-          total: 'Total',
-          due: 'Vence',
-          message: 'El correo',
-          sampleFor: (name: string) => `Así le llega a ${name}; a cada uno, con su monto:`,
+          amount: "Monto por persona",
+          adjusted: (n: number) =>
+            n === 1 ? "1 ajustado a mano" : `${n} ajustados a mano`,
+          total: "Total",
+          due: "Vence",
+          message: "El correo",
+          sampleFor: (name: string) =>
+            `Así le llega a ${name}; a cada uno, con su monto:`,
           hello: (name: string) => `Hola, ${name}:`,
           sends: (gym: string, title: string, dependent: string | null) =>
-            `${gym} te envía un cobro: ${title}${dependent ? `, de ${dependent}` : ''}.`,
+            `${gym} te envía un cobro: ${title}${dependent ? `, de ${dependent}` : ""}.`,
           owes: (dependent: string | null, amount: string, due: string) =>
-            `${dependent ? `A ${dependent} le corresponde` : 'Te corresponde'} pagar ${amount}, hasta el ${due}.`,
-          noNotify: 'No se envía correo: el cobro queda en la página de cada uno.',
-          nobodyEmailed: 'Nadie tiene correo: no se envía ninguno.',
+            `${dependent ? `A ${dependent} le corresponde` : "Te corresponde"} pagar ${amount}, hasta el ${due}.`,
+          noNotify:
+            "No se envía correo: el cobro queda en la página de cada uno.",
+          nobodyEmailed: "Nadie tiene correo: no se envía ninguno.",
         },
         noEmail: (n: number) =>
-          n === 1 ? '1 persona no tiene correo: avísale por WhatsApp.' : `${n} personas no tienen correo: avísales por WhatsApp.`,
+          n === 1
+            ? "1 persona no tiene correo: avísale por WhatsApp."
+            : `${n} personas no tienen correo: avísales por WhatsApp.`,
         whatsapp: (name: string) => `Avisar a ${name} por WhatsApp`,
         personAmount: (name: string, amount: string) => `${name} · ${amount}`,
-        noWhatsapp: 'sin WhatsApp',
-        create: 'Crear cobro',
-        creating: 'Creando…',
-        failed: 'No pudimos crear el cobro. Inténtalo de nuevo.',
+        noWhatsapp: "sin WhatsApp",
+        create: "Crear cobro",
+        creating: "Creando…",
+        failed: "No pudimos crear el cobro. Inténtalo de nuevo.",
       },
       detail: {
-        loading: 'Cargando el cobro…',
-        error: 'No pudimos cargar el cobro.',
-        notFound: 'Ese cobro no existe.',
-        peopleLabel: 'Personas',
-        remind: 'Recordar a los pendientes',
-        reminding: 'Enviando…',
+        loading: "Cargando el cobro…",
+        error: "No pudimos cargar el cobro.",
+        notFound: "Ese cobro no existe.",
+        peopleLabel: "Personas",
+        remind: "Recordar a los pendientes",
+        reminding: "Enviando…",
         reminded: (sent: number, without: number) =>
-          (sent === 1 ? 'Enviamos 1 recordatorio.' : `Enviamos ${sent} recordatorios.`) +
-          (without ? ` ${without === 1 ? '1 persona no tiene' : `${without} personas no tienen`} correo.` : ''),
+          (sent === 1
+            ? "Enviamos 1 recordatorio."
+            : `Enviamos ${sent} recordatorios.`) +
+          (without
+            ? ` ${without === 1 ? "1 persona no tiene" : `${without} personas no tienen`} correo.`
+            : ""),
         guardianOf: (name: string) => `Apoderado: ${name}`,
         owes: (amount: string) => `debe ${amount}`,
         paidOf: (paid: string, due: string) => `pagó ${paid} de ${due}`,
-        overridden: 'monto ajustado',
+        overridden: "monto ajustado",
         actions: (name: string) => `Acciones para ${name}`,
-        more: 'Más',
+        more: "Más",
         moreFor: (name: string) => `Más acciones para ${name}`,
-        markPaid: 'Marcar pagado',
-        editAmount: 'Editar monto',
-        cancelLine: 'Anular',
-        notify: 'Reenviar aviso',
-        notified: 'Aviso reenviado.',
-        noEmail: 'No tiene correo: no se envió nada.',
+        markPaid: "Marcar pagado",
+        editAmount: "Editar monto",
+        cancelLine: "Anular",
+        notify: "Reenviar aviso",
+        notified: "Aviso reenviado.",
+        noEmail: "No tiene correo: no se envió nada.",
         whatsapp: (name: string) => `Recordar a ${name} por WhatsApp`,
-        whatsappShort: 'Recordar por WhatsApp',
-        review: 'Ver comprobante',
-        refund: 'Devolver',
-        amountLabel: 'Monto (CLP)',
-        methodLabel: 'Cómo pagó',
-        refundMethodLabel: 'Cómo se devolvió',
-        method: { transfer: 'Transferencia', cash: 'Efectivo', other: 'Otro' },
-        save: 'Guardar',
-        saving: 'Guardando…',
-        close: 'Cerrar',
-        cancelChecking: 'Revisando…',
-        cancelConfirm: 'Sí, anular',
-        cancelReason: 'Motivo',
-        cancelReasonNeeded: 'Escribe por qué se anula.',
+        whatsappShort: "Recordar por WhatsApp",
+        review: "Ver comprobante",
+        refund: "Devolver",
+        amountLabel: "Monto (CLP)",
+        methodLabel: "Cómo pagó",
+        refundMethodLabel: "Cómo se devolvió",
+        method: { transfer: "Transferencia", cash: "Efectivo", other: "Otro" },
+        save: "Guardar",
+        saving: "Guardando…",
+        close: "Cerrar",
+        cancelChecking: "Revisando…",
+        cancelConfirm: "Sí, anular",
+        cancelReason: "Motivo",
+        cancelReasonNeeded: "Escribe por qué se anula.",
         // A cancelled line, with why (#256).
         cancelledBecause: (reason: string) => `Anulado: ${reason}`,
-        resplit: 'Volver a dividir el total entre los que quedan',
+        resplit: "Volver a dividir el total entre los que quedan",
         resplitAmount: (name: string, amount: string) => `${name}: ${amount}`,
-        noResplit: 'El total no se vuelve a dividir: alguien ya pagó, o no es un total a dividir.',
-        refundOf: (amount: string, left: string) => `Pago de ${amount} · quedan ${left} por devolver`,
-        failed: 'No pudimos guardarlo. Inténtalo de nuevo.',
+        noResplit:
+          "El total no se vuelve a dividir: alguien ya pagó, o no es un total a dividir.",
+        refundOf: (amount: string, left: string) =>
+          `Pago de ${amount} · quedan ${left} por devolver`,
+        failed: "No pudimos guardarlo. Inténtalo de nuevo.",
         refused: {
-          paid: 'Esa persona ya pagó todo.',
-          belowPaid: 'No puede ser menos de lo que ya pagó.',
-          money: 'Tiene dinero o un comprobante pendiente: devuélvelo o revísalo primero.',
-          resplit: 'Ya no se puede volver a dividir el total.',
-          cancelled: 'Esta línea está anulada.',
+          paid: "Esa persona ya pagó todo.",
+          belowPaid: "No puede ser menos de lo que ya pagó.",
+          money:
+            "Tiene dinero o un comprobante pendiente: devuélvelo o revísalo primero.",
+          resplit: "Ya no se puede volver a dividir el total.",
+          cancelled: "Esta línea está anulada.",
         },
       },
     },
     review: {
-      title: 'Validar comprobante',
-      back: 'Volver a Hoy',
+      title: "Validar comprobante",
+      back: "Volver a Hoy",
       position: (i: number, n: number) => `Comprobante ${i} de ${n}`,
-      previous: 'Comprobante anterior',
-      next: 'Comprobante siguiente',
-      loading: 'Cargando comprobantes…',
-      error: 'No pudimos cargar los comprobantes.',
-      retry: 'Reintentar',
-      empty: 'No hay comprobantes por revisar.',
+      previous: "Comprobante anterior",
+      next: "Comprobante siguiente",
+      loading: "Cargando comprobantes…",
+      error: "No pudimos cargar los comprobantes.",
+      retry: "Reintentar",
+      empty: "No hay comprobantes por revisar.",
       get claimLabel() {
-        return `Lo que dice ${w.theMember}`
+        return `Lo que dice ${w.theMember}`;
       },
-      claimed: 'Dice haber pagado',
-      owes: 'Debe',
+      claimed: "Dice haber pagado",
+      owes: "Debe",
       claimedAt: (when: string, method: string) => `${when} · ${method}`,
-      method: { transfer: 'transferencia', cash: 'efectivo', other: 'otro' },
+      method: { transfer: "transferencia", cash: "efectivo", other: "otro" },
       periodDue: (month: string, due: string) => `${month} · vence ${due}`,
       match: {
-        matches: 'El monto coincide con lo que se debe',
+        matches: "El monto coincide con lo que se debe",
         over: (amount: string) => `Paga ${amount} de más: quedarán a favor`,
         short: (amount: string) => `Faltan ${amount} para cerrar el período`,
       },
       proofLabel: (name: string) => `Comprobante de ${name}`,
-      zoom: 'Toca para ampliar',
+      zoom: "Toca para ampliar",
       // With a mouse or trackpad, where nothing is tapped (#362).
-      zoomPointer: 'Ampliar',
-      zoomLabel: 'Ampliar comprobante',
-      close: 'Cerrar',
-      openFile: 'Abrir comprobante',
-      openPdf: 'Abrir PDF del comprobante',
-      missing: 'No encontramos el archivo del comprobante.',
+      zoomPointer: "Ampliar",
+      zoomLabel: "Ampliar comprobante",
+      close: "Cerrar",
+      openFile: "Abrir comprobante",
+      openPdf: "Abrir PDF del comprobante",
+      missing: "No encontramos el archivo del comprobante.",
       get sentByStudent() {
-        return `Enviada desde la página ${w.ofTheMember}`
+        return `Enviada desde la página ${w.ofTheMember}`;
       },
       sentBy: (name: string) => `Enviada por ${name}`,
-      extra: 'Cobro extra',
+      extra: "Cobro extra",
       extraDue: (category: string, due: string) => `${category} · vence ${due}`,
-      plan: 'Plan',
+      plan: "Plan",
       planDay: (plan: string, day: number) => `${plan} · día ${day}`,
-      priorBalance: 'Saldo antes',
-      lastPayments: 'Últimos 3 pagos',
-      noPayments: 'Ninguno',
-      attendance: 'Asistencia 30 d',
-      attendanceCount: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
+      priorBalance: "Saldo antes",
+      lastPayments: "Últimos 3 pagos",
+      noPayments: "Ninguno",
+      attendance: "Asistencia 30 d",
+      attendanceCount: (n: number) => (n === 1 ? "1 clase" : `${n} clases`),
       get noteLabel() {
-        return `Nota (obligatoria si rechazas; ${w.theMember} la ve)`
+        return `Nota (obligatoria si rechazas; ${w.theMember} la ve)`;
       },
-      notePlaceholder: 'p. ej. monto no coincide, falta $5.000',
+      notePlaceholder: "p. ej. monto no coincide, falta $5.000",
       get noteNeeded() {
-        return `Escribe una nota para ${w.theMember} antes de rechazar.`
+        return `Escribe una nota para ${w.theMember} antes de rechazar.`;
       },
-      reject: 'Rechazar',
+      reject: "Rechazar",
       confirm: (amount: string) => `Confirmar ${amount}`,
-      working: 'Guardando…',
-      validated: (name: string, amount: string) => `Validado: ${name}, ${amount}.`,
+      working: "Guardando…",
+      validated: (name: string, amount: string) =>
+        `Validado: ${name}, ${amount}.`,
       credit: (amount: string) => ` Quedan ${amount} a favor.`,
       rejected: (name: string) => `Rechazado: le avisamos a ${name}.`,
       refused: {
-        paid: 'Ese período ya está pagado. Rechaza el comprobante con una nota.',
-        reviewed: 'Otra persona ya revisó este comprobante.',
-        failed: 'No pudimos guardar la revisión. Inténtalo de nuevo.',
+        paid: "Ese período ya está pagado. Rechaza el comprobante con una nota.",
+        reviewed: "Otra persona ya revisó este comprobante.",
+        failed: "No pudimos guardar la revisión. Inténtalo de nuevo.",
       },
     },
   },
   // "Tiempo de entrenamiento" (#141, #226): the student page and the ficha read the same totals.
   matTime: {
-    mine: 'Tu tiempo de entrenamiento',
-    theirs: 'Tiempo de entrenamiento',
-    periods: 'Periodo',
-    month: 'Este mes',
-    allTime: 'Siempre',
-    classes: 'Clases',
+    mine: "Tu tiempo de entrenamiento",
+    theirs: "Tiempo de entrenamiento",
+    periods: "Periodo",
+    month: "Este mes",
+    allTime: "Siempre",
+    classes: "Clases",
     // The sparring kinds and the open mats together, so not the breakdown's own Sparring line.
-    sparring: 'Sparring en total',
-    byKind: 'Tiempo por bloque',
+    sparring: "Sparring en total",
+    byKind: "Tiempo por bloque",
     openMat: (n: number, time: string) => `Open mat: ${n} · ${time}`,
-    openMatNoteMine: 'Tu tiempo de open mat cuenta como sparring.',
-    openMatNoteTheirs: 'Su tiempo de open mat cuenta como sparring.',
+    openMatNoteMine: "Tu tiempo de open mat cuenta como sparring.",
+    openMatNoteTheirs: "Su tiempo de open mat cuenta como sparring.",
     // Seconds as `4 h 30 min`, `2 h` or `45 min`; under half a minute, but some, `< 1 min`.
     duration: (seconds: number) => {
-      const minutes = Math.round(seconds / 60)
-      if (minutes === 0) return seconds > 0 ? '< 1 min' : '0 min'
-      const hours = Math.floor(minutes / 60)
-      const rest = minutes % 60
-      if (hours === 0) return `${rest} min`
-      const h = `${hours.toLocaleString('es-CL')} h`
-      return rest === 0 ? h : `${h} ${rest} min`
+      const minutes = Math.round(seconds / 60);
+      if (minutes === 0) return seconds > 0 ? "< 1 min" : "0 min";
+      const hours = Math.floor(minutes / 60);
+      const rest = minutes % 60;
+      if (hours === 0) return `${rest} min`;
+      const h = `${hours.toLocaleString("es-CL")} h`;
+      return rest === 0 ? h : `${h} ${rest} min`;
     },
     get emptyMine() {
-      return `Todavía no hay clases con tiempo registrado. Aparecerá aquí cuando tu ${w.coach} use el cronómetro.`
+      return `Todavía no hay clases con tiempo registrado. Aparecerá aquí cuando tu ${w.coach} use el cronómetro.`;
     },
-    emptyTheirs: 'Todavía no hay clases con tiempo registrado.',
-    emptyMonth: 'Este mes todavía no hay tiempo registrado.',
-    loading: 'Cargando el tiempo de entrenamiento…',
-    error: 'No pudimos cargar el tiempo de entrenamiento.',
+    emptyTheirs: "Todavía no hay clases con tiempo registrado.",
+    emptyMonth: "Este mes todavía no hay tiempo registrado.",
+    loading: "Cargando el tiempo de entrenamiento…",
+    error: "No pudimos cargar el tiempo de entrenamiento.",
   },
   // Hours per tag (#243): on the student page, the ficha and Clases.
   tagHours: {
-    mine: 'Tus horas por etiqueta',
-    theirs: 'Horas por etiqueta',
-    gym: 'Horas por etiqueta',
-    gymNote: 'De las clases hechas, sin las canceladas.',
-    periods: 'Periodo',
-    month: 'Mes',
-    year: 'Año',
-    thisMonth: 'Este mes',
-    thisYear: 'Este año',
+    mine: "Tus horas por etiqueta",
+    theirs: "Horas por etiqueta",
+    gym: "Horas por etiqueta",
+    gymNote: "De las clases hechas, sin las canceladas.",
+    periods: "Periodo",
+    month: "Mes",
+    year: "Año",
+    thisMonth: "Este mes",
+    thisYear: "Este año",
     previous: (what: string) => `${what} anterior`,
     next: (what: string) => `${what} siguiente`,
     // `2026` or `noviembre 2026`.
     stretch: (year: number, month: number | null) =>
       month === null
         ? String(year)
-        : `${new Intl.DateTimeFormat('es-CL', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, 1)))} ${year}`,
+        : `${new Intl.DateTimeFormat("es-CL", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 1)))} ${year}`,
     // Minutes as `12,5 h`, `1 h` or `45 min`.
     hours: (minutes: number) =>
       minutes < 60
         ? `${minutes} min`
-        : `${(Math.round((minutes / 60) * 10) / 10).toLocaleString('es-CL')} h`,
-    classes: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
+        : `${(Math.round((minutes / 60) * 10) / 10).toLocaleString("es-CL")} h`,
+    classes: (n: number) => (n === 1 ? "1 clase" : `${n} clases`),
     // `4,5 h · 3 clases`, built from the two above.
     figure: (minutes: number, classes: number): string =>
       `${es.tagHours.hours(minutes)} · ${es.tagHours.classes(classes)}`,
-    archived: 'archivada',
-    archivedSuffix: ' · archivada',
+    archived: "archivada",
+    archivedSuffix: " · archivada",
     untagged: (hours: string) => `Sin etiqueta: ${hours}`,
     // Classes counted with no duration set add no minutes anywhere (#257).
     noDuration: (n: number) =>
-      n === 1 ? '1 clase sin duración, no suma horas' : `${n} clases sin duración, no suman horas`,
+      n === 1
+        ? "1 clase sin duración, no suma horas"
+        : `${n} clases sin duración, no suman horas`,
     noDurationLink: (day: string, classType: string) => `${day} · ${classType}`,
-    empty: 'No hay clases con etiqueta en este periodo.',
-    loading: 'Cargando las horas…',
-    error: 'No pudimos cargar las horas por etiqueta.',
+    empty: "No hay clases con etiqueta en este periodo.",
+    loading: "Cargando las horas…",
+    error: "No pudimos cargar las horas por etiqueta.",
   },
   me: {
     // "Autorización" (#370): a guardian's consent to the processing of each minor's data,
     // apart from the inscription.
     consent: {
-      title: 'Autorización de datos',
+      title: "Autorización de datos",
       // Around the link to the gym's privacy notice.
       get introBefore() {
-        return `${w.ThePlace} te pide tu consentimiento para tratar los datos de cada menor a tu cargo, según su `
+        return `${w.ThePlace} te pide tu consentimiento para tratar los datos de cada menor a tu cargo, según su `;
       },
-      link: 'política de privacidad',
+      link: "política de privacidad",
       introAfter:
-        '. Es aparte de la inscripción: puedes no darlo, o retirarlo cuando quieras, y la inscripción sigue igual.',
+        ". Es aparte de la inscripción: puedes no darlo, o retirarlo cuando quieras, y la inscripción sigue igual.",
       given: (day: string) => `Diste tu consentimiento el ${day}.`,
       withdrawn: (day: string) => `Retiraste tu consentimiento el ${day}.`,
-      missing: 'Falta tu consentimiento.',
-      give: 'Dar mi consentimiento',
-      withdraw: 'Retirar mi consentimiento',
-      working: 'Guardando…',
+      missing: "Falta tu consentimiento.",
+      give: "Dar mi consentimiento",
+      withdraw: "Retirar mi consentimiento",
+      working: "Guardando…",
       // The notice changed since the page was loaded: it is loaded again.
       get stale() {
-        return `${w.ThePlace} actualizó su política de privacidad. Revísala y vuelve a intentarlo.`
+        return `${w.ThePlace} actualizó su política de privacidad. Revísala y vuelve a intentarlo.`;
       },
-      failed: 'No pudimos guardar tu respuesta. Inténtalo de nuevo.',
+      failed: "No pudimos guardar tu respuesta. Inténtalo de nuevo.",
     },
     // From the student page back to the admin screens, for staff who also train (#214).
     get toAdmin() {
-      return `Ir al panel ${w.ofThePlace}`
+      return `Ir al panel ${w.ofThePlace}`;
     },
     // "Pedir congelamiento" (#270): a running plan, and a freeze asked for it.
     plans: {
-      title: 'Mi plan',
+      title: "Mi plan",
       theirs: (name: string) => `Plan de ${name}`,
-      status: { active: 'Activo', frozen: 'Congelado' },
+      status: { active: "Activo", frozen: "Congelado" },
       frozen: (day: string) => `Congelado. Vuelve el ${day}.`,
-      booked: (from: string, to: string) => `Congelación programada del ${from} al ${to}.`,
-      ask: 'Pedir congelamiento',
+      booked: (from: string, to: string) =>
+        `Congelación programada del ${from} al ${to}.`,
+      ask: "Pedir congelamiento",
       askLabel: (plan: string) => `Pedir congelamiento de ${plan}`,
-      formTitle: 'Pedir congelamiento',
+      formTitle: "Pedir congelamiento",
       get intro() {
-        return `${w.ThePlace} revisa tu solicitud. Mientras está congelado no se cobra: tu próximo pago se corre esos días.`
+        return `${w.ThePlace} revisa tu solicitud. Mientras está congelado no se cobra: tu próximo pago se corre esos días.`;
       },
-      from: 'Desde',
-      until: 'Vuelvo el',
-      reason: 'Motivo',
-      reasonPick: 'Elige un motivo',
-      reasons: { viaje: 'Viaje', personal: 'Motivo personal', otro: 'Otro' },
-      note: 'Detalle (opcional)',
+      from: "Desde",
+      until: "Vuelvo el",
+      reason: "Motivo",
+      reasonPick: "Elige un motivo",
+      reasons: { viaje: "Viaje", personal: "Motivo personal", otro: "Otro" },
+      note: "Detalle (opcional)",
       noteHint: NO_HEALTH,
-      noteOther: 'Cuéntanos el motivo',
-      fromNeeded: 'Elige hoy o un día después.',
-      untilNeeded: 'Elige el día en que vuelves (después de “Desde”).',
-      reasonNeeded: 'Elige un motivo.',
-      noteNeeded: 'Escribe el motivo.',
-      submit: 'Enviar solicitud',
-      cancel: 'Cancelar',
-      working: 'Enviando…',
-      pending: 'Solicitud enviada · pendiente',
-      pendingDates: (from: string, to: string) => `Del ${from}, vuelves el ${to}.`,
-      withdraw: 'Retirar',
-      withdrawLabel: 'Retirar la solicitud de congelamiento',
-      withdrawing: 'Retirando…',
-      approved: 'Tu solicitud de congelamiento fue aprobada.',
-      rejected: (from: string, to: string) => `Tu solicitud del ${from} al ${to} no fue aprobada.`,
+      noteOther: "Cuéntanos el motivo",
+      fromNeeded: "Elige hoy o un día después.",
+      untilNeeded: "Elige el día en que vuelves (después de “Desde”).",
+      reasonNeeded: "Elige un motivo.",
+      noteNeeded: "Escribe el motivo.",
+      submit: "Enviar solicitud",
+      cancel: "Cancelar",
+      working: "Enviando…",
+      pending: "Solicitud enviada · pendiente",
+      pendingDates: (from: string, to: string) =>
+        `Del ${from}, vuelves el ${to}.`,
+      withdraw: "Retirar",
+      withdrawLabel: "Retirar la solicitud de congelamiento",
+      withdrawing: "Retirando…",
+      approved: "Tu solicitud de congelamiento fue aprobada.",
+      rejected: (from: string, to: string) =>
+        `Tu solicitud del ${from} al ${to} no fue aprobada.`,
       rejectedNote: (note: string) => `Nota ${w.ofThePlace}: ${note}`,
       refused: {
-        not_active: 'Solo un plan activo se puede congelar.',
-        has_freeze: 'Este plan ya tiene una congelación en curso o programada.',
-        has_pending: 'Ya hay una solicitud pendiente para este plan.',
-        failed: 'No pudimos enviar la solicitud. Inténtalo de nuevo.',
+        not_active: "Solo un plan activo se puede congelar.",
+        has_freeze: "Este plan ya tiene una congelación en curso o programada.",
+        has_pending: "Ya hay una solicitud pendiente para este plan.",
+        failed: "No pudimos enviar la solicitud. Inténtalo de nuevo.",
       },
-      withdrawFailed: 'No pudimos retirar la solicitud. Inténtalo de nuevo.',
+      withdrawFailed: "No pudimos retirar la solicitud. Inténtalo de nuevo.",
     },
     home: {
-      title: 'Mi página',
+      title: "Mi página",
       hello: (firstName: string) => `Hola, ${firstName}`,
-      loading: 'Cargando tu página…',
-      error: 'No pudimos cargar tu página.',
-      retry: 'Reintentar',
-      signedIn: 'Entraste con un link de tu correo. No necesitas clave.',
+      loading: "Cargando tu página…",
+      error: "No pudimos cargar tu página.",
+      retry: "Reintentar",
+      signedIn: "Entraste con un link de tu correo. No necesitas clave.",
     },
     next: {
-      title: 'Próximo pago',
+      title: "Próximo pago",
       status: {
-        in_review: 'Comprobante en revisión',
-        overdue: 'Vencido',
-        due: 'Por pagar',
-        paid: 'Al día',
+        in_review: "Comprobante en revisión",
+        overdue: "Vencido",
+        due: "Por pagar",
+        paid: "Al día",
       },
       get inReview() {
-        return `Recibimos tu comprobante. ${w.ThePlace} lo está revisando.`
+        return `Recibimos tu comprobante. ${w.ThePlace} lo está revisando.`;
       },
       // `whose`: the dependent it is for, when it is not the student's own.
-      due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
-      paidUp: 'No tienes pagos pendientes.',
-      paidThrough: (day: string) => `No tienes pagos pendientes. Pagado hasta el ${day}.`,
-      bankLabel: 'Datos para transferir',
-      bank: 'Banco',
-      holder: 'Titular',
-      rut: 'RUT',
-      number: 'N.º cuenta',
+      due: (day: string, whose: string | null) =>
+        whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`,
+      paidUp: "No tienes pagos pendientes.",
+      paidThrough: (day: string) =>
+        `No tienes pagos pendientes. Pagado hasta el ${day}.`,
+      bankLabel: "Datos para transferir",
+      bank: "Banco",
+      holder: "Titular",
+      rut: "RUT",
+      number: "N.º cuenta",
       // `Cuenta Vista` → `Cta. Vista`, as the card writes it.
-      bankName: (bank: string, accountType: string) => `${bank} · ${accountType.replace(/^Cuenta\b/, 'Cta.')}`,
+      bankName: (bank: string, accountType: string) =>
+        `${bank} · ${accountType.replace(/^Cuenta\b/, "Cta.")}`,
       get noBank() {
-        return `${w.ThePlace} todavía no publica sus datos para transferir.`
+        return `${w.ThePlace} todavía no publica sus datos para transferir.`;
       },
-      copy: 'Copiar datos',
-      copied: 'Datos copiados',
-      copyFailed: 'No pudimos copiar. Mantén presionado para copiar a mano.',
+      copy: "Copiar datos",
+      copied: "Datos copiados",
+      copyFailed: "No pudimos copiar. Mantén presionado para copiar a mano.",
       // What "Copiar datos" puts on the clipboard, in full: the card masks the RUT
       // and account number, the transfer form needs them whole.
-      copyText: (a: { bank: string; account_type: string; holder: string; rut: string; number: string; email: string | null }) =>
-        [a.holder, `RUT ${a.rut}`, a.bank, a.account_type, `N.º ${a.number}`, a.email]
+      copyText: (a: {
+        bank: string;
+        account_type: string;
+        holder: string;
+        rut: string;
+        number: string;
+        email: string | null;
+      }) =>
+        [
+          a.holder,
+          `RUT ${a.rut}`,
+          a.bank,
+          a.account_type,
+          `N.º ${a.number}`,
+          a.email,
+        ]
           .filter(Boolean)
-          .join('\n'),
-      upload: 'Subir comprobante',
+          .join("\n"),
+      upload: "Subir comprobante",
       // With a proof already in review (#362).
-      uploadAnother: 'Enviar otro comprobante',
+      uploadAnother: "Enviar otro comprobante",
     },
     extra: {
-      title: 'Cobros extra',
-      due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
-      status: { open: 'Por pagar', overdue: 'Vencido', in_review: 'Comprobante en revisión' },
+      title: "Cobros extra",
+      due: (day: string, whose: string | null) =>
+        whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`,
+      status: {
+        open: "Por pagar",
+        overdue: "Vencido",
+        in_review: "Comprobante en revisión",
+      },
       upload: (title: string) => `Subir comprobante de ${title}`,
       left: (amount: string) => `quedan ${amount}`,
     },
     training: {
-      title: 'Mi entrenamiento',
+      title: "Mi entrenamiento",
       // A rank drawn as a belt is a belt; one with no colours (kyu, a level) is a grade.
-      belt: 'Cinturón',
-      rank: 'Grado',
+      belt: "Cinturón",
+      rank: "Grado",
       since: (day: string) => `desde ${day}`,
-      month: 'Este mes',
-      classes: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
+      month: "Este mes",
+      classes: (n: number) => (n === 1 ? "1 clase" : `${n} clases`),
       total: (n: number) => `${n} en total`,
       memberSince: (month: string) => `${w.Member} desde ${month}`,
     },
     // What each class attended was about (#243); never the coach's notes.
     classes: {
-      title: 'Mis clases',
+      title: "Mis clases",
       // A dependent's, on a guardian's page.
       theirs: (name: string) => `Clases de ${name}`,
-      empty: 'Todavía no hay clases con asistencia.',
-      when: (day: string, topic: string | null) => (topic ? `${day} · ${topic}` : day),
-      tags: 'Etiquetas',
+      empty: "Todavía no hay clases con asistencia.",
+      when: (day: string, topic: string | null) =>
+        topic ? `${day} · ${topic}` : day,
+      tags: "Etiquetas",
       more: (n: number) => `Ver ${n} más`,
-      hours: 'Tus horas por etiqueta',
+      hours: "Tus horas por etiqueta",
       // A dependent's.
       theirHours: (name: string) => `Horas por etiqueta de ${name}`,
-      error: 'No pudimos cargar tus clases.',
-      loading: 'Cargando tus clases…',
+      error: "No pudimos cargar tus clases.",
+      loading: "Cargando tus clases…",
     },
     history: {
-      title: 'Mis pagos',
-      empty: 'Todavía no hay pagos.',
-      payment: 'Pago',
-      month: (month: string, whose: string | null) => (whose ? `${month} · ${whose}` : month),
+      title: "Mis pagos",
+      empty: "Todavía no hay pagos.",
+      payment: "Pago",
+      month: (month: string, whose: string | null) =>
+        whose ? `${month} · ${whose}` : month,
       sent: (when: string) => `comprobante enviado ${when}`,
       validated: (when: string) => `validado ${when}`,
-      rejected: (when: string, note: string | null) => (note ? `rechazado ${when}: ${note}` : `rechazado ${when}`),
-      status: { pending: 'En revisión', rejected: 'Rechazado' },
+      rejected: (when: string, note: string | null) =>
+        note ? `rechazado ${when}: ${note}` : `rechazado ${when}`,
+      status: { pending: "En revisión", rejected: "Rechazado" },
       today: (time: string) => `hoy ${time}`,
       // The rest of what settles a period (#210), so the list adds up to "Próximo pago".
-      refund: 'Devolución',
+      refund: "Devolución",
       refunded: (when: string) => `te devolvieron ${when}`,
-      discount: 'Descuento',
+      discount: "Descuento",
       discounted: (when: string) => `se descuenta de lo que debes · ${when}`,
-      surcharge: 'Recargo',
+      surcharge: "Recargo",
       surcharged: (when: string) => `se suma a lo que debes · ${when}`,
-      credit: 'Saldo a favor',
+      credit: "Saldo a favor",
     },
     proof: {
-      title: 'Subir comprobante',
-      loading: 'Cargando tus pagos…',
-      error: 'No pudimos cargar tus pagos.',
-      none: 'No tienes pagos pendientes.',
-      periodLabel: 'Qué estás pagando',
-      period: (name: string, plan: string, due: string) => `${name} · ${plan} · vence el ${due}`,
-      line: (name: string, title: string, due: string) => `${name} · ${title} · vence el ${due}`,
+      title: "Subir comprobante",
+      loading: "Cargando tus pagos…",
+      error: "No pudimos cargar tus pagos.",
+      none: "No tienes pagos pendientes.",
+      periodLabel: "Qué estás pagando",
+      period: (name: string, plan: string, due: string) =>
+        `${name} · ${plan} · vence el ${due}`,
+      line: (name: string, title: string, due: string) =>
+        `${name} · ${title} · vence el ${due}`,
       outstanding: (amount: string) => `Por pagar: ${amount}`,
       inReview: (amount: string) => `Comprobante en revisión: ${amount}`,
-      amountLabel: 'Monto transferido (CLP)',
-      fileLabel: 'Comprobante',
-      camera: 'Tomar foto',
-      choose: 'Elegir archivo',
+      amountLabel: "Monto transferido (CLP)",
+      fileLabel: "Comprobante",
+      camera: "Tomar foto",
+      choose: "Elegir archivo",
       chosen: (name: string) => `Archivo: ${name}`,
-      fileHint: 'Foto o captura de la transferencia (JPG, PNG, HEIC) o PDF, hasta 10 MB.',
-      submit: 'Enviar comprobante',
-      sending: 'Enviando…',
-      sent: 'Recibimos tu comprobante. Te avisaremos por correo cuando lo revisemos.',
-      another: 'Subir otro',
+      fileHint:
+        "Foto o captura de la transferencia (JPG, PNG, HEIC) o PDF, hasta 10 MB.",
+      submit: "Enviar comprobante",
+      sending: "Enviando…",
+      sent: "Recibimos tu comprobante. Te avisaremos por correo cuando lo revisemos.",
+      another: "Subir otro",
       problem: {
-        type: 'Ese archivo no sirve: sube una foto (JPG, PNG, HEIC) o un PDF.',
-        size: 'El archivo pesa más de 10 MB. Prueba con una captura de pantalla.',
-        empty: 'El archivo está vacío.',
-        amount: 'Escribe el monto que transferiste.',
+        type: "Ese archivo no sirve: sube una foto (JPG, PNG, HEIC) o un PDF.",
+        size: "El archivo pesa más de 10 MB. Prueba con una captura de pantalla.",
+        empty: "El archivo está vacío.",
+        amount: "Escribe el monto que transferiste.",
       },
       refused: {
-        paid: 'Ese período ya está pagado.',
-        upload: 'No pudimos subir el archivo. Revisa tu conexión e inténtalo de nuevo.',
-        failed: 'No pudimos enviar el comprobante. Inténtalo de nuevo.',
+        paid: "Ese período ya está pagado.",
+        upload:
+          "No pudimos subir el archivo. Revisa tu conexión e inténtalo de nuevo.",
+        failed: "No pudimos enviar el comprobante. Inténtalo de nuevo.",
       },
     },
   },
   join: {
-    loading: 'Cargando…',
+    loading: "Cargando…",
     get invalid() {
-      return `Este link ya no es válido. Pídele uno nuevo ${w.toThePlace}.`
+      return `Este link ya no es válido. Pídele uno nuevo ${w.toThePlace}.`;
     },
-    error: 'No pudimos cargar el formulario. Inténtalo de nuevo.',
-    retry: 'Reintentar',
-    eyebrow: 'Inscripción',
+    error: "No pudimos cargar el formulario. Inténtalo de nuevo.",
+    retry: "Reintentar",
+    eyebrow: "Inscripción",
     title: (gym: string) => `Inscríbete en ${gym}`,
     program: (name: string) => `Programa: ${name}`,
     get intro() {
-      return `Llena tus datos y ${w.thePlace} confirmará tu inscripción.`
+      return `Llena tus datos y ${w.thePlace} confirmará tu inscripción.`;
     },
-    firstName: 'Nombre',
-    lastName: 'Apellido',
-    rut: 'RUT',
-    rutHint: 'Con su dígito verificador, como 12.345.678-5. Si no tienes RUT, déjalo en blanco.',
-    phone: 'Teléfono (WhatsApp)',
+    firstName: "Nombre",
+    lastName: "Apellido",
+    rut: "RUT",
+    rutHint:
+      "Con su dígito verificador, como 12.345.678-5. Si no tienes RUT, déjalo en blanco.",
+    phone: "Teléfono (WhatsApp)",
     get phoneHint() {
-      return `Un celular, como +56 9 1234 5678. ${w.ThePlace} te avisa por WhatsApp de clases y pagos.`
+      return `Un celular, como +56 9 1234 5678. ${w.ThePlace} te avisa por WhatsApp de clases y pagos.`;
     },
-    minorPhoneHint: 'Opcional, si tiene celular propio.',
-    noWhatsapp: 'No tengo WhatsApp',
-    email: 'Correo',
-    minorEmailHint: 'Opcional.',
-    dob: 'Fecha de nacimiento',
-    guardianTitle: 'Apoderado',
-    guardianIntro: 'Como es menor de edad, necesitamos los datos de su apoderado.',
-    guardianName: 'Nombre del apoderado',
-    guardianPhone: 'Teléfono del apoderado (WhatsApp)',
+    minorPhoneHint: "Opcional, si tiene celular propio.",
+    noWhatsapp: "No tengo WhatsApp",
+    email: "Correo",
+    minorEmailHint: "Opcional.",
+    dob: "Fecha de nacimiento",
+    guardianTitle: "Apoderado",
+    guardianIntro:
+      "Como es menor de edad, necesitamos los datos de su apoderado.",
+    guardianName: "Nombre del apoderado",
+    guardianPhone: "Teléfono del apoderado (WhatsApp)",
     get guardianPhoneHint() {
-      return `${w.ThePlace} le avisa por WhatsApp de clases y pagos.`
+      return `${w.ThePlace} le avisa por WhatsApp de clases y pagos.`;
     },
-    guardianNoWhatsapp: 'El apoderado no tiene WhatsApp',
-    guardianEmail: 'Correo del apoderado',
+    guardianNoWhatsapp: "El apoderado no tiene WhatsApp",
+    guardianEmail: "Correo del apoderado",
     // The checkbox's text, around the link to the gym's privacy notice.
     get consentBefore() {
-      return `Acepto que ${w.thePlace} trate estos datos para gestionar mi inscripción, según su `
+      return `Acepto que ${w.thePlace} trate estos datos para gestionar mi inscripción, según su `;
     },
-    consentLink: 'política de privacidad',
-    consentAfter: '.',
+    consentLink: "política de privacidad",
+    consentAfter: ".",
     // A minor's guardian's own box, around the same link (#370).
     get guardianConsentBefore() {
-      return `Como apoderado, autorizo que ${w.thePlace} trate los datos del menor según su `
+      return `Como apoderado, autorizo que ${w.thePlace} trate los datos del menor según su `;
     },
     guardianConsentAfter:
-      '. Es aparte de la inscripción: puedes no marcarla y darla después desde tu página, o retirarla cuando quieras.',
-    honeypot: 'No llenes este campo',
-    submit: 'Enviar inscripción',
-    working: 'Enviando…',
+      ". Es aparte de la inscripción: puedes no marcarla y darla después desde tu página, o retirarla cuando quieras.",
+    honeypot: "No llenes este campo",
+    submit: "Enviar inscripción",
+    working: "Enviando…",
     get done() {
-      return `Listo, ${w.thePlace} confirmará tu inscripción.`
+      return `Listo, ${w.thePlace} confirmará tu inscripción.`;
     },
-    invalidFields: 'Revisa los campos marcados.',
-    failed: 'No pudimos enviar tus datos. Inténtalo de nuevo.',
-    humanCheck: 'No pudimos comprobar que no eres un robot. Inténtalo de nuevo.',
-    tooMany: 'Hubo demasiados envíos desde aquí. Espera un rato e inténtalo de nuevo.',
+    invalidFields: "Revisa los campos marcados.",
+    failed: "No pudimos enviar tus datos. Inténtalo de nuevo.",
+    humanCheck:
+      "No pudimos comprobar que no eres un robot. Inténtalo de nuevo.",
+    tooMany:
+      "Hubo demasiados envíos desde aquí. Espera un rato e inténtalo de nuevo.",
     get staleNotice() {
-      return `${w.ThePlace} actualizó su política de privacidad. Revísala y vuelve a enviar.`
+      return `${w.ThePlace} actualizó su política de privacidad. Revísala y vuelve a enviar.`;
     },
     // A required field left empty: what to write in it. No `rut`: it is optional (#165).
     required: {
-      first_name: 'Escribe tu nombre.',
-      last_name: 'Escribe tu apellido.',
-      dob: 'Escribe tu fecha de nacimiento.',
-      phone: 'Escribe tu teléfono.',
-      email: 'Escribe tu correo.',
-      guardian_name: 'Escribe el nombre del apoderado.',
-      guardian_phone: 'Escribe el teléfono del apoderado.',
-      guardian_email: 'Escribe el correo del apoderado.',
+      first_name: "Escribe tu nombre.",
+      last_name: "Escribe tu apellido.",
+      dob: "Escribe tu fecha de nacimiento.",
+      phone: "Escribe tu teléfono.",
+      email: "Escribe tu correo.",
+      guardian_name: "Escribe el nombre del apoderado.",
+      guardian_phone: "Escribe el teléfono del apoderado.",
+      guardian_email: "Escribe el correo del apoderado.",
     } as Record<string, string>,
     refused: {
-      missing: 'Obligatorio.',
-      string_too_short: 'Obligatorio.',
-      string_too_long: 'Demasiado largo.',
-      rut: 'RUT no válido: revisa el dígito verificador.',
-      phone: 'Escribe un celular, como +56 9 1234 5678.',
-      guardian_phone: 'Escribe un celular, como +56 9 1234 5678.',
-      email: 'Correo no válido.',
-      guardian_email: 'Correo no válido.',
-      dob: 'Escribe una fecha pasada.',
-      consent: 'Necesitamos tu autorización para guardar tus datos.',
-      failed: 'Revisa este campo.',
+      missing: "Obligatorio.",
+      string_too_short: "Obligatorio.",
+      string_too_long: "Demasiado largo.",
+      rut: "RUT no válido: revisa el dígito verificador.",
+      phone: "Escribe un celular, como +56 9 1234 5678.",
+      guardian_phone: "Escribe un celular, como +56 9 1234 5678.",
+      email: "Correo no válido.",
+      guardian_email: "Correo no válido.",
+      dob: "Escribe una fecha pasada.",
+      consent: "Necesitamos tu autorización para guardar tus datos.",
+      failed: "Revisa este campo.",
     } as Record<string, string>,
   },
   // A gym's privacy notice (#168): this template, filled in with what the gym set in
   // Ajustes. A change to the text moves `TEMPLATE_UPDATED_ON` in `api/privacy.ts`.
   privacy: {
-    link: 'Privacidad',
-    eyebrow: 'Privacidad',
+    link: "Privacidad",
+    eyebrow: "Privacidad",
     title: (gym: string) => `Política de privacidad de ${gym}`,
     // With no gym named yet, and on Rakin's own host with none at all (#362).
-    heading: 'Política de privacidad',
-    loading: 'Cargando…',
+    heading: "Política de privacidad",
+    loading: "Cargando…",
     get missing() {
-      return `${w.placeIs('Este', 'Esta')} ${w.place} todavía no publica su política de privacidad.`
+      return `${w.placeIs("Este", "Esta")} ${w.place} todavía no publica su política de privacidad.`;
     },
     get noGym() {
-      return `Cada ${w.place} publica su propia política de privacidad. Ábrela desde el link de tu ${w.place}: el formulario de inscripción o tu página.`
+      return `Cada ${w.place} publica su propia política de privacidad. Ábrela desde el link de tu ${w.place}: el formulario de inscripción o tu página.`;
     },
-    error: 'No pudimos cargar la política de privacidad. Inténtalo de nuevo.',
-    retry: 'Reintentar',
+    error: "No pudimos cargar la política de privacidad. Inténtalo de nuevo.",
+    retry: "Reintentar",
     updated: (day: string) => `Última actualización: ${day}.`,
-    controllerTitle: '¿Quién es responsable de tus datos?',
+    controllerTitle: "¿Quién es responsable de tus datos?",
     controller: (legalName: string, rut: string, gym: string) =>
       `${legalName}, RUT ${rut}, que opera ${gym}, es responsable de tus datos personales.`,
     address: (address: string) => `Su domicilio es ${address}.`,
     // Around the gym's email, a link.
-    contactBefore: 'Para cualquier consulta o solicitud sobre tus datos, escribe a ',
-    contactAfter: '.',
-    dataTitle: '¿Qué datos guardamos?',
+    contactBefore:
+      "Para cualquier consulta o solicitud sobre tus datos, escribe a ",
+    contactAfter: ".",
+    dataTitle: "¿Qué datos guardamos?",
     get data() {
       return [
-        'Identificación: nombre, RUT y fecha de nacimiento.',
-        'Contacto: teléfono y correo.',
-        'Si eres menor de edad, los datos que entrega tu apoderado, y los suyos.',
+        "Identificación: nombre, RUT y fecha de nacimiento.",
+        "Contacto: teléfono y correo.",
+        "Si eres menor de edad, los datos que entrega tu apoderado, y los suyos.",
         `Tu actividad en ${w.thePlace}: asistencia a clases, grado o cinturón si ${w.thePlace} los usa, y tiempo de entrenamiento.`,
-        'Pagos: tu plan, tus cobros y pagos, y los comprobantes de transferencia que subas.',
+        "Pagos: tu plan, tus cobros y pagos, y los comprobantes de transferencia que subas.",
         `Los campos adicionales que pida ${w.thePlace}, como un contacto de emergencia.`,
-      ]
+      ];
     },
-    purposeTitle: '¿Para qué los usamos?',
+    purposeTitle: "¿Para qué los usamos?",
     purpose: [
-      'Administrar tu membresía y tus clases.',
-      'Cobrar y registrar tus pagos.',
-      'Contactarte por WhatsApp y correo: avisos, recordatorios de pago y links de acceso.',
-      'Tu seguridad mientras entrenas.',
+      "Administrar tu membresía y tus clases.",
+      "Cobrar y registrar tus pagos.",
+      "Contactarte por WhatsApp y correo: avisos, recordatorios de pago y links de acceso.",
+      "Tu seguridad mientras entrenas.",
     ],
-    purposeAfter: 'No vendemos tus datos ni los usamos para publicidad.',
-    basisTitle: '¿Con qué base legal?',
+    purposeAfter: "No vendemos tus datos ni los usamos para publicidad.",
+    basisTitle: "¿Con qué base legal?",
     get basis() {
-      return `Los tratamos porque los necesitamos para cumplir el contrato de membresía que tienes con ${w.thePlace}. Los datos de un menor de edad los tratamos con el consentimiento de su apoderado.`
+      return `Los tratamos porque los necesitamos para cumplir el contrato de membresía que tienes con ${w.thePlace}. Los datos de un menor de edad los tratamos con el consentimiento de su apoderado.`;
     },
-    processorsTitle: '¿Quién más los trata?',
+    processorsTitle: "¿Quién más los trata?",
     get processors() {
-      return `${w.ThePlace} usa Rakin, un sistema de gestión para ${w.places}, que trata tus datos por encargo ${w.ofThePlace} y solo para prestarle ese servicio. Rakin, a su vez, se apoya en estos proveedores:`
+      return `${w.ThePlace} usa Rakin, un sistema de gestión para ${w.places}, que trata tus datos por encargo ${w.ofThePlace} y solo para prestarle ese servicio. Rakin, a su vez, se apoya en estos proveedores:`;
     },
     // Every subprocessor, named by what it does: changing a provider is an edit here.
     subprocessors: [
-      'Alojamiento: los servidores y la base de datos.',
-      'Envío de correos.',
-      'Almacenamiento de archivos, como los comprobantes de pago.',
-      'Registro de errores, para corregir fallas del sistema.',
+      "Alojamiento: los servidores y la base de datos.",
+      "Envío de correos.",
+      "Almacenamiento de archivos, como los comprobantes de pago.",
+      "Registro de errores, para corregir fallas del sistema.",
     ],
     // Listed only where the instance checks the join form for humans (`HUMAN_CHECK`).
-    humanCheckProcessor: 'Verificación de que no eres un robot, solo en el formulario de inscripción.',
+    humanCheckProcessor:
+      "Verificación de que no eres un robot, solo en el formulario de inscripción.",
     processorsAfter:
-      'Algunos de estos proveedores pueden guardar los datos fuera de Chile, con medidas de seguridad adecuadas.',
-    retentionTitle: '¿Cuánto tiempo los guardamos?',
+      "Algunos de estos proveedores pueden guardar los datos fuera de Chile, con medidas de seguridad adecuadas.",
+    retentionTitle: "¿Cuánto tiempo los guardamos?",
     retention:
-      'Los registros contables, como tus pagos, se guardan por el plazo que exige la ley. Si dejas de entrenar, guardamos tu historial (inicio, pagos y grados) hasta que pidas que lo borremos. El resto de tus datos se elimina cuando lo pides.',
-    rightsTitle: 'Tus derechos',
+      "Los registros contables, como tus pagos, se guardan por el plazo que exige la ley. Si dejas de entrenar, guardamos tu historial (inicio, pagos y grados) hasta que pidas que lo borremos. El resto de tus datos se elimina cuando lo pides.",
+    rightsTitle: "Tus derechos",
     rights:
-      'Puedes pedir acceso a tus datos, rectificarlos, eliminarlos, oponerte a su tratamiento o recibirlos en un formato que puedas llevar a otro servicio (portabilidad).',
+      "Puedes pedir acceso a tus datos, rectificarlos, eliminarlos, oponerte a su tratamiento o recibirlos en un formato que puedas llevar a otro servicio (portabilidad).",
     // Around the gym's email, a link.
-    rightsHowBefore: 'Para hacerlo, escribe a ',
-    rightsHowAfter: '.',
+    rightsHowBefore: "Para hacerlo, escribe a ",
+    rightsHowAfter: ".",
     complaint:
-      'Si no quedas conforme con la respuesta, puedes reclamar ante la Agencia de Protección de Datos Personales.',
-    disclaimer: 'Este aviso se basa en una plantilla de Rakin y no constituye asesoría legal.',
+      "Si no quedas conforme con la respuesta, puedes reclamar ante la Agencia de Protección de Datos Personales.",
+    disclaimer:
+      "Este aviso se basa en una plantilla de Rakin y no constituye asesoría legal.",
   },
   common: {
-    loading: 'Cargando…',
+    loading: "Cargando…",
     // A back link that returns to where you came from (#250): named by the page when it
     // is one of these, else just "Volver".
-    back: 'Volver',
+    back: "Volver",
     backTo: (place: string) => `Volver a ${place}`,
     places: {
-      today: 'Hoy',
+      today: "Hoy",
       get students() {
-        return `${w.Members}`
+        return `${w.Members}`;
       },
-      member: 'la ficha',
-      classes: 'Clases',
-      session: 'la clase',
-      payments: 'Pagos',
-      proofs: 'los comprobantes',
-      extra: 'Cobros extra',
-      charge: 'el cobro',
-      settings: 'Ajustes',
-      me: 'Mi página',
+      member: "la ficha",
+      classes: "Clases",
+      session: "la clase",
+      payments: "Pagos",
+      proofs: "los comprobantes",
+      extra: "Cobros extra",
+      charge: "el cobro",
+      settings: "Ajustes",
+      me: "Mi página",
     },
-    comingSoon: 'Esta sección todavía no está lista.',
-    clp: (amount: number) => `$${amount.toLocaleString('es-CL')}`,
+    comingSoon: "Esta sección todavía no está lista.",
+    clp: (amount: number) => `$${amount.toLocaleString("es-CL")}`,
     // An amount that says which way it goes: `+$5.000` or `−$5.000`.
-    signedClp: (amount: number) => `${amount < 0 ? '−' : '+'}$${Math.abs(amount).toLocaleString('es-CL')}`,
+    signedClp: (amount: number) =>
+      `${amount < 0 ? "−" : "+"}$${Math.abs(amount).toLocaleString("es-CL")}`,
     // An adjustment by what it does to what is owed (#210): a discount, positive in the
     // member's favour, takes from it, `−$5.000`; a surcharge adds to it, `+$5.000`.
-    adjustmentClp: (amount: number) => `${amount > 0 ? '−' : '+'}$${Math.abs(amount).toLocaleString('es-CL')}`,
+    adjustmentClp: (amount: number) =>
+      `${amount > 0 ? "−" : "+"}$${Math.abs(amount).toLocaleString("es-CL")}`,
     // Where an amount would go on a line that moves no money.
-    noAmount: '—',
+    noAmount: "—",
     span: (from: string, to: string) => `${from} – ${to}`,
     // An ISO day, `2026-12-01`, as Chile writes it: `01-12-2026`.
-    day: (iso: string) => iso.split('-').reverse().join('-'),
+    day: (iso: string) => iso.split("-").reverse().join("-"),
     // An ISO day as a sentence says it: `10 de noviembre`.
-    longDay: (iso: string) => `${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]}`,
+    longDay: (iso: string) =>
+      `${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]}`,
     // An ISO day as a list row says it: `8 oct`.
-    shortDay: (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)}`,
+    shortDay: (iso: string) =>
+      `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)}`,
     // An ISO day as a sentence says it, with its year: `10 de noviembre de 2026`.
     longDayYear: (iso: string) =>
       `${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]} de ${iso.slice(0, 4)}`,
     // An ISO day with its year: `14 jun 2025`.
-    dayYear: (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)} ${iso.slice(0, 4)}`,
+    dayYear: (iso: string) =>
+      `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]!.slice(0, 3)} ${iso.slice(0, 4)}`,
     // The month an ISO day falls in, as a heading: `Noviembre`, or `Noviembre 2025` outside `year`.
     month: (iso: string, year: string) => {
-      const name = MONTHS[Number(iso.slice(5, 7)) - 1]!
-      const label = name[0]!.toUpperCase() + name.slice(1)
-      return iso.slice(0, 4) === year ? label : `${label} ${iso.slice(0, 4)}`
+      const name = MONTHS[Number(iso.slice(5, 7)) - 1]!;
+      const label = name[0]!.toUpperCase() + name.slice(1);
+      return iso.slice(0, 4) === year ? label : `${label} ${iso.slice(0, 4)}`;
     },
     // A normalised RUT, `76432109-K`, as Chile writes it: `76.432.109-K`.
     rut: (rut: string) => {
-      const [body = '', digit = ''] = rut.split('-')
-      return `${Number(body).toLocaleString('es-CL')}-${digit}`
+      const [body = "", digit = ""] = rut.split("-");
+      return `${Number(body).toLocaleString("es-CL")}-${digit}`;
     },
-    today: 'hoy',
+    today: "hoy",
   },
   // Any form, offline (#231): one that waits for the signal, and one that does not.
   offline: {
-    waiting: 'Sin conexión: se guardará cuando vuelva la señal.',
-    refused: 'Sin conexión: no se guardó. Inténtalo de nuevo cuando vuelva la señal.',
+    waiting: "Sin conexión: se guardará cuando vuelva la señal.",
+    refused:
+      "Sin conexión: no se guardó. Inténtalo de nuevo cuando vuelva la señal.",
     // A screen with nothing cached, in place of "Cargando…" (#362).
-    reading: 'Sin conexión. Lo mostramos apenas vuelva la señal.',
+    reading: "Sin conexión. Lo mostramos apenas vuelva la señal.",
     // A screen showing what it loaded before the signal went (#362).
-    stale: 'Sin conexión: lo que ves puede no estar al día.',
+    stale: "Sin conexión: lo que ves puede no estar al día.",
   },
   // iOS Safari, outside the installed app (#68): Compartir, then "Agregar a inicio".
   installHint: {
-    label: 'Agregar a inicio',
-    title: 'Agrega Rakin a tu pantalla de inicio',
-    before: 'Toca Compartir ',
-    after: ' y luego «Agregar a inicio». Se abre como una app.',
-    close: 'Cerrar',
+    label: "Agregar a inicio",
+    title: "Agrega Rakin a tu pantalla de inicio",
+    before: "Toca Compartir ",
+    after: " y luego «Agregar a inicio». Se abre como una app.",
+    close: "Cerrar",
   },
   notFound: {
-    title: 'Página no encontrada',
-    body: 'La dirección que abriste no existe.',
-    backToAdmin: 'Volver a Hoy',
+    title: "Página no encontrada",
+    body: "La dirección que abriste no existe.",
+    backToAdmin: "Volver a Hoy",
   },
-} as const
+} as const;
 
-export type Messages = typeof es
+export type Messages = typeof es;
 
-export const t: Messages = es
+export const t: Messages = es;
