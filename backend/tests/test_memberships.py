@@ -9,7 +9,7 @@ import json
 import random
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import asyncpg
@@ -675,6 +675,156 @@ def test_a_trial_cannot_be_cancelled(client: TestClient, sur: uuid.UUID) -> None
     # Per the state machine a trial converts or lapses; it is never cancelled.
     membership = started(client, sur, "trial")
     assert cancel(client, sur, membership["id"]).status_code == 409
+
+
+# --- trial conversion (#27) ---------------------------------------------------------
+
+
+def on_trial(client: TestClient, gym: uuid.UUID, **body: Any) -> dict[str, Any]:
+    """Someone new on a new trial plan, from `started_on` or today."""
+    response = start(client, gym, plan(client, gym, "trial"), **body)
+    assert response.status_code == 201, response.text
+    return dict(response.json())
+
+
+def paid(client: TestClient, gym: uuid.UUID, trial: dict[str, Any], key: str = "signup") -> Any:
+    """`trial`'s person on a new `key` plan."""
+    response = start(client, gym, plan(client, gym, key), trial["person_id"])
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def start_quote(client: TestClient, gym: uuid.UUID, person_id: str, plan_id: str) -> Any:
+    response = client.get(
+        "/api/memberships/start",
+        params={"person_id": person_id, "plan_id": plan_id},
+        headers=as_gym(gym),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@pytest.mark.parametrize("key", ["signup", "prepaid", "credits"])
+def test_a_paid_plan_converts_a_trial_running_and_ends_it(
+    client: TestClient, db: Database, sur: uuid.UUID, key: str
+) -> None:
+    trial = on_trial(client, sur)
+
+    converted = paid(client, sur, trial, key)
+
+    assert converted["converted_from"] == {
+        "id": trial["id"],
+        "plan_name": "Prueba",
+        "started_on": trial["started_on"],
+        "running": False,
+    }
+    ended = client.get(f"/api/memberships/{trial['id']}", headers=as_gym(sur)).json()
+    assert ended["status"] == "cancelled"
+    assert ended["cancel_reason"] == "pasó a un plan"
+    assert ended["cancelled_at"] is not None
+    assert ended["converted_from"] is None
+    assert stored(db, converted["id"])["converted_from"] == uuid.UUID(trial["id"])
+
+
+def test_a_lapsed_trial_is_converted_and_stays_lapsed(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    trial = on_trial(client, sur)
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE membership SET status = 'lapsed' WHERE id = $1", uuid.UUID(trial["id"])
+        ),
+    )
+
+    converted = paid(client, sur, trial)
+
+    assert converted["converted_from"]["id"] == trial["id"]
+    assert stored(db, trial["id"])["status"] == "lapsed"
+
+
+def test_a_trial_converts_once(client: TestClient, sur: uuid.UUID) -> None:
+    trial = on_trial(client, sur)
+    paid(client, sur, trial)
+
+    # A course beside the plan, months later: the trial was converted already.
+    assert paid(client, sur, trial, "credits")["converted_from"] is None
+
+
+@pytest.mark.parametrize("key", ["trial", "dropin"])
+def test_a_trial_or_a_drop_in_converts_nothing(
+    client: TestClient, db: Database, sur: uuid.UUID, key: str
+) -> None:
+    trial = on_trial(client, sur)
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE membership SET status = 'lapsed' WHERE id = $1", uuid.UUID(trial["id"])
+        ),
+    )
+    plan_id = plan(client, sur, key)
+
+    assert start_quote(client, sur, trial["person_id"], plan_id)["converts"] is None
+    if key == "trial":
+        again = start(client, sur, plan_id, trial["person_id"])
+        assert again.status_code == 201, again.text
+        assert again.json()["converted_from"] is None
+    # The paid plan after it converts the latest trial.
+    assert paid(client, sur, trial)["converted_from"] is not None
+
+
+def test_a_paid_plan_without_a_trial_converts_nothing(client: TestClient, sur: uuid.UUID) -> None:
+    assert started(client, sur, "signup")["converted_from"] is None
+
+
+def test_the_start_quote_names_the_trial_it_converts(client: TestClient, sur: uuid.UUID) -> None:
+    trial = on_trial(client, sur)
+    monthly = plan(client, sur, "signup")
+
+    assert start_quote(client, sur, trial["person_id"], monthly)["converts"] == {
+        "id": trial["id"],
+        "plan_name": "Prueba",
+        "started_on": trial["started_on"],
+        "running": True,
+    }
+    # Nothing saved.
+    got = client.get(f"/api/memberships/{trial['id']}", headers=as_gym(sur)).json()
+    assert got["status"] == "trial"
+
+
+def test_a_plan_voided_gives_its_trial_back(client: TestClient, sur: uuid.UUID) -> None:
+    trial = on_trial(client, sur)
+    mistake = paid(client, sur, trial)
+    voided = client.post(
+        f"/api/memberships/{mistake['id']}/void",
+        json={"reason": "plan equivocado"},
+        headers=as_gym(sur),
+    )
+    assert voided.status_code == 200, voided.text
+
+    assert paid(client, sur, trial)["converted_from"]["id"] == trial["id"]
+
+
+def test_trial_conversions_counts_the_last_90_days(client: TestClient, db: Database) -> None:
+    gym = seed_gym(db, f"pruebas-{uuid.uuid4().hex[:8]}")
+    today = seeded_today()
+    old = on_trial(client, gym, started_on=(today - timedelta(days=90)).isoformat())
+    paid(client, gym, old)
+    converted = on_trial(client, gym, started_on=(today - timedelta(days=89)).isoformat())
+    paid(client, gym, converted)
+    on_trial(client, gym)
+    lapsed = on_trial(client, gym)
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "UPDATE membership SET status = 'lapsed' WHERE id = $1", uuid.UUID(lapsed["id"])
+        ),
+    )
+
+    response = client.get("/api/memberships/trials", headers=as_gym(gym))
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"days": 90, "started": 3, "converted": 1, "running": 1}
 
 
 # --- roles --------------------------------------------------------------------------

@@ -579,6 +579,33 @@ def test_a_trial_converts_on_a_validated_payment() -> None:
     assert m.record_payment(trial, VALIDATED_PAYMENT, paid_through=NOV_30).status is S.ACTIVE
 
 
+@pytest.mark.parametrize(
+    "kind", [PlanKind.MONTHLY, PlanKind.PREPAID, PlanKind.FIXED_PERIOD, PlanKind.CREDITS]
+)
+def test_a_paid_plan_converts_a_trial(kind: PlanKind) -> None:
+    assert kind in m.CONVERTS
+
+
+@pytest.mark.parametrize("kind", [PlanKind.TRIAL, PlanKind.DROPIN])
+def test_a_trial_or_a_single_class_converts_nothing(kind: PlanKind) -> None:
+    assert kind not in m.CONVERTS
+
+
+def test_a_trial_running_ends_as_it_converts() -> None:
+    trial = m.create(PlanKind.TRIAL, credits_remaining=1)
+
+    ended = m.end_converted(trial)
+
+    assert ended.status is S.CANCELLED
+    assert ended.cancel_reason == m.CONVERTED_REASON
+
+
+@pytest.mark.parametrize("status", [S.ACTIVE, S.LAPSED, S.CANCELLED])
+def test_only_a_trial_running_ends_as_it_converts(status: MembershipStatus) -> None:
+    with pytest.raises(InvalidTransition):
+        m.end_converted(Membership(PlanKind.TRIAL, status))
+
+
 # --- a freeze's end moved, and ended early (#115) --------------------------------------
 
 

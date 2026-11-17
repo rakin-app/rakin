@@ -139,6 +139,7 @@ def test_a_lapsed_member_assigned_again_is_billed_the_month_once(
         "starts_on": next_first.isoformat(),
         "billed_through": period["period_end"],
         "debt_clp": 45_000,
+        "converts": None,
     }
     created = ok(start(client, gym, person, plan_id, first), 201)
     assert (created["started_on"], created["status"]) == (next_first.isoformat(), "active")
@@ -181,6 +182,7 @@ def test_a_quote_moves_nothing_without_a_lapsed_plan_or_for_a_pack(
         "starts_on": today.isoformat(),
         "billed_through": None,
         "debt_clp": 0,
+        "converts": None,
     }
     lapsed, _, _, _ = lapsed_member(client, db, gym)
     pack = plan(client, gym, "credits")
@@ -188,6 +190,7 @@ def test_a_quote_moves_nothing_without_a_lapsed_plan_or_for_a_pack(
         "starts_on": today.isoformat(),
         "billed_through": None,
         "debt_clp": 45_000,
+        "converts": None,
     }
     # A day past what the lapsed plan billed starts on that day.
     later = add_months(today.replace(day=1), 2)

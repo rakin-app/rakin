@@ -1,10 +1,11 @@
 """Membership state machine: trial, active, frozen, lapsed, cancelled.
 
-A membership moves right as time passes. A trial converts to Active on a validated
-payment; a lapsed one returns to Active only by hand, "Reactivar plan" (`reactivate`,
-#284). No payment brings it back on its own: a member paying an old debt may have left
-the gym. A freeze is a side trip that shifts the due date by the frozen days
-(`freeze`). Cancelled is terminal, and carries the reason it was cancelled for.
+A membership moves right as time passes. A trial converts when a paid plan starts for
+the person, which ends it if it is still running (`end_converted`, #27); a lapsed one
+returns to Active only by hand, "Reactivar plan" (`reactivate`, #284). No payment brings
+it back on its own: a member paying an old debt may have left the gym. A freeze is a
+side trip that shifts the due date by the frozen days (`freeze`). Cancelled is terminal,
+and carries the reason it was cancelled for.
 
 A plan change waits for the next period: the periods already billed keep the plan
 they were billed on, and the new one applies from the first period not yet billed
@@ -106,6 +107,10 @@ class PlanTerms:
 # fixed-period plan bills its one period and no more: its members move to the next
 # period's plan by a plan change.
 RECURRING = frozenset({PlanKind.MONTHLY, PlanKind.PREPAID, PlanKind.FIXED_PERIOD})
+
+# The kinds a trial converts to (#27): a plan the member pays for. A drop-in is one
+# class, not a decision to stay.
+CONVERTS = RECURRING | {PlanKind.CREDITS}
 
 
 def check_open(terms: PlanTerms, starts_on: date) -> None:
@@ -456,6 +461,19 @@ def cancel(membership: Membership, reason: str) -> Membership:
     if not reason.strip():
         raise ValueError("a cancellation needs a reason")
     return replace(membership, status=S.CANCELLED, cancel_reason=reason.strip())
+
+
+# The reason a trial still running carries when a paid plan converts it (#27).
+CONVERTED_REASON = "pasó a un plan"
+
+
+def end_converted(trial: Membership) -> Membership:
+    """A trial still running, converted by a paid plan starting (#27): its free classes
+    end with it, which `cancel` would refuse a trial. The paid plan is the one linked to
+    it; the trial ends here, never lapses."""
+    if trial.status is not S.TRIAL:
+        raise InvalidTransition(f"a {trial.status} membership is not a trial running")
+    return replace(trial, status=S.CANCELLED, cancel_reason=CONVERTED_REASON)
 
 
 # The reason a membership ended by its member leaving the gym carries (#157).
