@@ -112,9 +112,11 @@ CORRECTIONS = text(
     LEFT JOIN membership m ON m.id = (a.detail->>'membership_id')::uuid
     LEFT JOIN plan p ON p.id = m.plan_id
     -- History typed on the ficha, or removed from it, is not a correction of their
-    -- billing (#293, #295), nor a health reason cleared (0057, #384).
+    -- billing (#293, #295), nor a health reason cleared (0057, #384), nor attendance
+    -- marked on another day than its class's (0070, #407).
     WHERE a.person_id = :person
-      AND a.action NOT IN ('history_set', 'history_removed', 'health_reason_cleared')
+      AND a.action NOT IN ('history_set', 'history_removed', 'health_reason_cleared',
+                           'attendance_backfilled')
     -- A plan's voids share their transaction's time: the latest period first.
     ORDER BY a.at DESC, bp.period_start DESC NULLS LAST, a.id DESC
     LIMIT :limit

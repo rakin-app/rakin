@@ -1773,6 +1773,13 @@ export const es = {
         classType: 'Tipo de clase',
         duration: 'Duración (min)',
         badDuration: 'La duración va de 1 a 1440 minutos.',
+        // A class that already happened (#407): its day and time, today and now unless
+        // changed; an earlier day's time is chosen, never the clock's.
+        day: 'Día',
+        time: 'Hora',
+        chooseTime: 'Elige la hora a la que fue la clase.',
+        futureDay: 'Ese día todavía no llega: las clases futuras salen del horario.',
+        pastDay: 'La clase queda en ese día, con su asistencia, como si se hubiera registrado entonces.',
         submit: 'Crear clase',
         working: 'Creando…',
         get noClassTypes() {
