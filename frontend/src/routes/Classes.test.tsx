@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
@@ -7,7 +7,7 @@ import type { RosterMember } from '../api/attendance'
 import type { ClassTag, TagHours } from '../api/classTags'
 import type { ClassSession, ClassType, SessionDay } from '../api/sessions'
 import { App } from '../App'
-import { isoDay, shiftDay, toDate, weekdayDay } from '../format'
+import { isoDay, shiftDay, toDate, weekdayDay, zonedInstant } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { mondayOf, nowOrNext } from './Classes'
@@ -406,6 +406,68 @@ describe('Clases', () => {
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       { method: 'POST', path: '/api/sessions', body: { class_type_id: 'kids', duration_minutes: 50 } },
     ])
+  })
+
+  it('registers a class that already happened on the day and time chosen (#407)', async () => {
+    const calls = stubApi({ durations: { avanzado: 75 } })
+    renderAt('/admin/clases')
+    const today = isoDay(new Date().toISOString(), 'America/Santiago')
+    const earlier = shiftDay(today, -3)
+
+    const form = await openStart()
+    const day = within(form).getByLabelText(copy.start.day)
+    expect(day).toHaveValue(today)
+    expect(day).toHaveAttribute('max', today)
+    await userEvent.selectOptions(within(form).getByLabelText(copy.start.classType), 'Avanzado')
+    fireEvent.change(day, { target: { value: earlier } })
+    // An earlier day's time is chosen, never the clock's by accident.
+    const time = within(form).getByLabelText(copy.start.time)
+    expect(time).toHaveValue('')
+    expect(time).toHaveAccessibleDescription(copy.start.chooseTime)
+    expect(within(form).getByRole('button', { name: copy.start.submit })).toBeDisabled()
+    fireEvent.change(time, { target: { value: '07:30' } })
+    expect(within(form).queryByText(copy.start.chooseTime)).not.toBeInTheDocument()
+    expect(within(form).getByRole('button', { name: copy.start.submit })).toBeEnabled()
+    expect(within(form).getByText(copy.start.pastDay)).toBeInTheDocument()
+    // The type's duration as of that day.
+    await vi.waitFor(() =>
+      expect(calls.some((c) => c.path === `/api/sessions/duration?class_type_id=avanzado&date=${earlier}`)).toBe(true),
+    )
+    await vi.waitFor(() => expect(within(form).getByLabelText(copy.start.duration)).toHaveValue(75))
+    await userEvent.click(within(form).getByRole('button', { name: copy.start.submit }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Avanzado' })).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/sessions',
+        body: {
+          class_type_id: 'avanzado',
+          duration_minutes: 75,
+          starts_at: zonedInstant(earlier, '07:30', 'America/Santiago'),
+        },
+      },
+    ])
+  })
+
+  it('starts on the day shown, and refuses a day yet to come', async () => {
+    const calls = stubApi()
+    renderAt('/admin/clases')
+    const today = isoDay(new Date().toISOString(), 'America/Santiago')
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.days.previous }))
+    const form = await openStart()
+    const day = within(form).getByLabelText(copy.start.day)
+    expect(day).toHaveValue(shiftDay(today, -1))
+    expect(within(form).getByLabelText(copy.start.time)).toHaveValue('')
+    expect(within(form).getByText(copy.start.chooseTime)).toBeInTheDocument()
+    // Back on today, the time is now again, as it always was.
+    fireEvent.change(day, { target: { value: today } })
+    expect(within(form).getByLabelText(copy.start.time)).not.toHaveValue('')
+    fireEvent.change(day, { target: { value: shiftDay(today, 1) } })
+    expect(within(form).getByRole('alert')).toHaveTextContent(copy.start.futureDay)
+    expect(within(form).getByRole('button', { name: copy.start.submit })).toBeDisabled()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
   })
 
   it('says so when a class cannot be started', async () => {

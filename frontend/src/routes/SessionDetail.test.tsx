@@ -82,6 +82,8 @@ type Stub = {
   save?: Answer
   // A save waits for this before it is answered.
   hold?: Promise<void>
+  // The class, `SESSION` unless told: a class of an earlier day than today.
+  session?: ClassSession
 }
 
 function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_PLAN, MONTHLY_PLAN], ...answers }: Stub = {}) {
@@ -128,7 +130,7 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
       return { body: { date: '2026-11-09', timezone: 'America/Santiago', sessions: [SESSION] } }
     }
     if (path === '/api/sessions/s1' && method === 'PATCH' && stub.save) return stub.save
-    if (path === '/api/sessions/s1') return { body: SESSION }
+    if (path === '/api/sessions/s1') return { body: stub.session ?? SESSION }
     if (path === '/api/sessions/s1/roster') return { body: answer() }
     if (path === '/api/plans') return { body: plans }
     if (path === '/api/sessions/s1/attendance' && method === 'PATCH') {
@@ -593,6 +595,17 @@ describe('Asistencia', () => {
 })
 
 describe('Alumno de prueba', () => {
+  // A trial starts the day it is given: at a class of today (#407).
+  const stubToday = (stub: Stub = {}) => stubApi({ ...stub, session: { ...SESSION, starts_at: new Date().toISOString() } })
+
+  it('is not offered at a class of an earlier day, where a drop-in visitor still is', async () => {
+    stubApi()
+    renderClass()
+
+    expect(await screen.findByRole('button', { name: copy.visitor.open })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.guest.open })).not.toBeInTheDocument()
+  })
+
   async function addGuest(name: string, who: string, phone: string) {
     await userEvent.click(await screen.findByRole('button', { name: copy.guest.open }))
     const form = within(screen.getByRole('form', { name: copy.guest.label }))
@@ -603,7 +616,7 @@ describe('Alumno de prueba', () => {
   }
 
   it('adds someone by RUT, with their phone, on the trial plan, present at the class', async () => {
-    const api = stubApi()
+    const api = stubToday()
     renderClass()
 
     await addGuest('Camila Ortiz', '7.654.321-6', '9 1234 5678')
@@ -624,7 +637,7 @@ describe('Alumno de prueba', () => {
   })
 
   it('marks someone already a member instead', async () => {
-    const api = stubApi({
+    const api = stubToday({
       person: { status: 409, body: { detail: { code: 'email_in_gym', person_id: 'felipe' } } },
       trial: { status: 409, body: { detail: { code: 'already_member', membership_id: 'm-felipe' } } },
     })
@@ -643,7 +656,7 @@ describe('Alumno de prueba', () => {
   })
 
   it('sends someone dado de baja to Reactivar instead of a trial', async () => {
-    stubApi({
+    stubToday({
       person: { status: 409, body: { detail: { code: 'rut_in_gym', person_id: 'felipe' } } },
       trial: { status: 409, body: { detail: { code: 'has_left' } } },
     })
@@ -655,7 +668,7 @@ describe('Alumno de prueba', () => {
   })
 
   it('asks to check what the API refuses', async () => {
-    stubApi({ person: { status: 422, body: { detail: [] } } })
+    stubToday({ person: { status: 422, body: { detail: [] } } })
     renderClass()
 
     await addGuest('Camila Ortiz', '7.654.321-6', '12')
@@ -664,7 +677,7 @@ describe('Alumno de prueba', () => {
   })
 
   it('says to add them when the signal is back, when the browser knows it is offline (#215)', async () => {
-    stubApi({ person: 'offline' })
+    stubToday({ person: 'offline' })
     renderClass()
 
     await rosterList()
@@ -676,7 +689,7 @@ describe('Alumno de prueba', () => {
   })
 
   it('needs a trial plan', async () => {
-    stubApi({ plans: [MONTHLY_PLAN] })
+    stubToday({ plans: [MONTHLY_PLAN] })
     renderClass()
 
     await userEvent.click(await screen.findByRole('button', { name: copy.guest.open }))

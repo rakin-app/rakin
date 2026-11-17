@@ -285,7 +285,7 @@ staff_title                 -- an appointment (mandato)
 A term that ends on the day it starts grants nothing (it is current on no day). It is
 what an appointment ended on the day it was made, or before it began, becomes, and is
 kept rather than deleted so that Historial shows a same-day change of role too (#311,
-migration 0070).
+migration 0071).
 
 An appointment is **current** when `starts_on <= today < coalesce(ends_on, infinity)`,
 "today" in the gym's timezone (`gym.timezone`, as `v_monthly_income` uses). Writes to

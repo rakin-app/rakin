@@ -367,7 +367,7 @@ def test_a_term_never_ends_before_it_starts(
     today = seeded_today()
     with pytest.raises(asyncpg.CheckViolationError):
         person_in(db, gym, "coach", starts_on=today, ends_on=today - timedelta(days=1))
-    # One that ends on the day it starts was ended then, and granted nothing (0070).
+    # One that ends on the day it starts was ended then, and granted nothing (0071).
     person = person_in(db, gym, "coach", starts_on=today, ends_on=today)
     assert me(client, gym, person)["permissions"] is None
 

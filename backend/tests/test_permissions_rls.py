@@ -80,7 +80,7 @@ class Case:
 
 
 EXPENSE_ACTION = "expense_changed"
-# The team's actions (0070), read with `team_manage` alone.
+# The team's actions (0071), read with `team_manage` alone.
 TEAM_ACTIONS = (
     "('title_created', 'title_changed', 'appointment_started', 'appointment_ended',"
     " 'appointment_corrected')"
@@ -218,6 +218,20 @@ CASES = (
         lambda gym, actor: (gym.id, actor, gym.owner),
     ),
     Case(
+        "audit_event_backfill",
+        Permission.ATTENDANCE,
+        "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
+        " VALUES ($1, $2, 'class_backfilled', '{}')",
+        lambda gym, actor: (gym.id, actor),
+    ),
+    Case(
+        "audit_event_backfill",
+        Permission.ATTENDANCE,
+        "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
+        " VALUES ($1, $2, $3, 'attendance_backfilled', '{}')",
+        lambda gym, actor: (gym.id, actor, gym.owner),
+    ),
+    Case(
         "audit_event_import",
         Permission.GYM_SETUP,
         "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
@@ -318,7 +332,7 @@ def gym(db: Database) -> Gym:
         " VALUES ($1, $2, $2, 'ledger_corrected', '{}')",
         owner,
     )
-    # A team's row (0070), which only `team_manage` reads.
+    # A team's row (0071), which only `team_manage` reads.
     one(
         "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
         " VALUES ($1, $2, 'title_created', '{}')",

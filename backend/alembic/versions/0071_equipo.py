@@ -22,8 +22,8 @@ this adds what managing them needs:
 
 A downgrade deletes the team's log rows and every term that ends on its first day.
 
-Revision ID: 0070
-Revises: 0069
+Revision ID: 0071
+Revises: 0070
 Create Date: 2026-11-17
 
 """
@@ -35,8 +35,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0070"
-down_revision: str | Sequence[str] | None = "0069"
+revision: str = "0071"
+down_revision: str | Sequence[str] | None = "0070"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -65,8 +65,11 @@ M0067 = _migration("0067_rls_by_permission.py")
 _in = M0048._in
 
 
+M0070 = _migration("0070_backfilled_classes.py")
+
+
 def _actions(team: bool) -> tuple[str, ...]:
-    """The actions 0066 left `audit_event` taking, with the team's or without."""
+    """The actions 0070 left `audit_event` taking, with the team's or without."""
     m0055 = _migration("0055_history_payment.py")
     m0056 = _migration("0056_import_undone.py")
     m0057 = _migration("0057_no_health_reasons.py")
@@ -77,16 +80,17 @@ def _actions(team: bool) -> tuple[str, ...]:
         m0056.UNDONE,
         m0057.CLEARED,
         _migration("0066_discount_reason.py").CHANGED,
+        M0070.CLASS,
+        M0070.ATTENDANCE,
     )
     return (*actions, *TEAM_ACTIONS) if team else actions
 
 
 def _constraints(team: bool) -> None:
-    """0056's constraints, which 0057 and 0066 widened by an action about a person each,
-    with the team's or without: a role's rows, like a deletion's and an import's, name
-    nobody."""
+    """0070's constraints, with the team's actions or without: a role's rows, like a
+    deletion's, an import's and a back-filled class's, name nobody."""
     m0056 = _migration("0056_import_undone.py")
-    unnamed: tuple[str, ...] = ("person_deleted", m0056.IMPORTED, m0056.UNDONE)
+    unnamed: tuple[str, ...] = ("person_deleted", m0056.IMPORTED, m0056.UNDONE, M0070.CLASS)
     if team:
         unnamed = (*unnamed, *TITLE_ACTIONS)
     person = f"(action IN {_in(unnamed)}) = (person_id IS NULL)"

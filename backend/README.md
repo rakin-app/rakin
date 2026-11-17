@@ -357,8 +357,8 @@ One `session` row per class (migration `0020`, [spec](../docs/technical.md#domai
 | Method | Path | Does |
 | --- | --- | --- |
 | `GET` | `/api/sessions` | `{"date", "timezone", "sessions": […]}`: the sessions starting on `?date=` (an ISO day; default today), a calendar day in the gym's timezone, earliest first |
-| `POST` | `/api/sessions` | start one: `class_type_id`, and optionally `starts_at` (with its offset; default now), `duration_minutes` (default the class type's, as below), `coach_id` (default the person acting), `topic`, `notes`; 201 with the session |
-| `GET` | `/api/sessions/duration` | `{"class_type_id", "duration_minutes"}`: how long a new class of `?class_type_id=` lasts unless told: its schedule slot's in effect today, else its next one's, else the gym's last class of the type that has one, else 60. "Crear clase" prefills its duration with it |
+| `POST` | `/api/sessions` | start one: `class_type_id`, and optionally `starts_at` (with its offset; default now, any time today or an earlier day, see Clases pasadas), `duration_minutes` (default the class type's on its day, as below), `coach_id` (default the person acting), `topic`, `notes`; 201 with the session. A later day in the gym's timezone is the schedule's: 422 `future_day` on `starts_at` |
+| `GET` | `/api/sessions/duration` | `{"class_type_id", "duration_minutes"}`: how long a new class of `?class_type_id=` on `?date=` (default today) lasts unless told: its schedule slot's in effect that day, else its next one's, else the gym's last class of the type by that day that has one, else 60. "Crear clase" prefills its duration with it |
 | `GET` | `/api/sessions/unmarked` | `{"since", "timezone", "sessions": […]}`: the sessions already started since `since`, six days before today in the gym's timezone, that no one is marked at, latest first, open-access ones left out; owner and admin only, for the dashboard's "Sin asistencia" |
 | `GET` | `/api/sessions/{id}` | one session; 404 for another gym's |
 | `PATCH` | `/api/sessions/{id}` | change `topic`, `notes` or `coach_id`; only what is sent changes |
@@ -366,6 +366,12 @@ One `session` row per class (migration `0020`, [spec](../docs/technical.md#domai
 A session carries its `class_type_id`, `class_type_name` and `class_type_kind`, `program_id` and `program_name`, `starts_at`, `coach_id` and `coach_name` (the gym's record of them), `topic`, `notes`, `created_at` and `updated_at`, and `present`, how many are marked at it: 0 is a class whose attendance was never taken, which the Clases list flags. A topic is up to 200 characters and notes up to 4,000; a blank one, or `null`, is none. The class type must be one of the gym's active ones (422 `unknown_class_type` or `inactive_class_type` on `class_type_id`), and the coach on its staff in any role (422 `unknown_coach`) when a session is started or reassigned: a coach who leaves stays the coach of the sessions they taught, since the row references `gym_person`, not `staff`. Any staff role may read, start and edit sessions, coaches included, but only an owner or admin lists the unmarked ones; there is no delete, since attendance points at a session.
 
 An open-access class type (`kind: "open_access"`, #348) has no classes: its sessions are made by its first check-in of each day (Check-in API, below). Starting one, scheduling one or changing a class to or from one is a 422 `open_access` on `class_type_id`, moving its day's session one on `starts_at`, and its session takes no timer plan (422 `open_access_plan`).
+
+### Clases pasadas
+
+A gym that starts using Rakin partway through a month registers the classes it held before (#407): "Crear clase" takes a day (the day shown on Clases, never a later one) and a time (now), and sends `starts_at` only when either was changed, so today's flow is as it was. A class on an earlier day is a class like any other: its type, tags, coach, duration (the type's as of that day), topic, notes and timer blocks work as for today's, and members see nothing that tells it apart. Creating one takes the `attendance` permission, as starting any class does, and writes a `class_backfilled` row in the gym's log (`audit_event`, migration `0070`) with the session, its class type and its day, and no person. Moving a class to another day stays an owner's or admin's (`PATCH`).
+
+Its attendance is marked as on the day (Attendance API, below), and every count reads the class's own date, not when it was entered: a person's classes, the student page's month and total, the dashboard's unmarked classes (which keeps its seven-day window) and hours per tag.
 
 ## Weekly schedule API
 
@@ -406,6 +412,14 @@ Marking spends what the membership pays the class with (`app.domain.attendance`)
 `overdue` is whether the membership has a period in `v_overdue`. A coach reads no ledger entries (`0006`), so the roster asks `overdue_memberships()`, a `SECURITY DEFINER` function that returns the current gym's overdue membership ids and nothing else.
 
 A drop-in visit is a one-day membership on the drop-in plan, written Cancelled with the reason `clase suelta` (`app.domain.membership.drop_in`, [ADR 0002](../docs/adr/0002-drop-in-visits.md)): on no later roster, in no member count, billed and lapsed by no job, and refused as a mark at any other class (`cancelled_membership`). Its one period, the class's day, and its charge at the plan's price are written by `dropin_charge` (migration `0061`), a `SECURITY DEFINER` function, since a coach may add a visitor but not write the ledger. Unmarking it on the day it was added voids what the period owes and marks the membership voided, recorded among the corrections under the person acting (`dropin_void`); never a delete. It is a 409 `{"code", "message"}` with `paid` while the gym kept a payment for it, `pending` while a proof waits, and `past` once added on an earlier day: the payment book corrects it then. Deleting a class voids its unpaid visits the same way, and leaves a paid one's money where it is. Its other 422s are `not_a_dropin_plan`, `inactive_plan` and `not_in_program` on `plan_id`.
+
+A class of an earlier day, one registered after it happened included (Clases pasadas, above), is marked the same way, on the rules of the day it is marked (#407):
+
+- Each mark takes what the membership pays with now, credits from what is left of a pack, an unlimited plan just counting it, and touches no billing period or ledger entry: nothing in the ledger reads attendance, so a period already closed or paid is never rewritten, and nothing has to be reconciled.
+- The day a membership started does not limit the classes it is marked at: a gym that moves to Rakin mid-month adds its members as of today and fills in the classes they came to before, on the membership each has.
+- A drop-in visitor added to it is a visit on the class's day, as on any day; unmarking it is `past` from the day after it was added, as for any visit.
+- A trial guest is refused (409): a trial starts the day it is given, at the mat.
+- Marking at a class on any day other than its own, a visitor included, writes an `attendance_backfilled` row in the gym's log for each person marked (migration `0070`): the person, and in `detail` the session, the membership and the class's day. Unmarking writes none. These rows are not corrections of anyone's billing, and the ficha's "Correcciones" leaves them out.
 
 Any staff role may use it, coaches included; a coach may start a trial where only an owner or admin may start any other membership, since a trial charges nothing. A trial added at the mat sends no welcome. Members may not use it; the student page carries their own counts (`attendance` on `/api/me/page`).
 

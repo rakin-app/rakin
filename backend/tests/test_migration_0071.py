@@ -1,8 +1,8 @@
-"""Migration 0070: Equipo's same-day terms, first-run choice and team log (#311).
+"""Migration 0071: Equipo's same-day terms, first-run choice and team log (#311).
 
 The gyms already here have chosen how their team is organised; a downgrade drops the
 team's log rows and every term that ends on its first day, puts each policy and
-constraint back as 0069 left them, and an upgrade after it rewrites them again.
+constraint back as 0070 left them, and an upgrade after it rewrites them again.
 """
 
 import uuid
@@ -39,7 +39,7 @@ SCHEMA = (
 @pytest.fixture
 def db() -> Iterator[Database]:
     with throwaway_database(require_test_database_url()) as database:
-        migrate(database, "0069")
+        migrate(database, "0070")
         yield database
 
 
@@ -91,7 +91,7 @@ def test_a_downgrade_drops_what_0069_could_not_hold_and_an_upgrade_restores_the_
 
     run(db.owner_url, write)
 
-    command.downgrade(db.alembic(), "0069")
+    command.downgrade(db.alembic(), "0070")
 
     assert fetch(db, SCHEMA) == before
     assert fetch(db, "SELECT 1 FROM staff_title WHERE person_id = $1", coach) == []

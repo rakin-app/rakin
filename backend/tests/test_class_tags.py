@@ -544,7 +544,10 @@ def test_the_gym_s_hours_count_held_classes_and_never_cancelled_ones(
 def test_a_class_yet_to_begin_has_not_been_held(client: TestClient, gym: uuid.UUID) -> None:
     guard = tag(client, gym, "Pasaje de guardia")
     fundamentals = class_type(client, gym, program(client, gym, "Adultos"))
-    ahead = start(client, gym, fundamentals, local(date(today().year + 1, 1, 5)), minutes=60)
+    # A later day's class is the schedule's to make (#407): one made now, moved ahead.
+    ahead = start(client, gym, fundamentals, local(today()), minutes=60)
+    moved = {"starts_at": local(date(today().year + 1, 1, 5))}
+    ok(client.patch(f"/api/sessions/{ahead}", json=moved, headers=as_gym(gym)))
     ok(set_tags(client, gym, ahead, [guard]))
     upcoming = ok(
         client.get("/api/class-tags/hours", params={"year": today().year + 1}, headers=as_gym(gym))

@@ -35,6 +35,20 @@ so it has none to count. Deleting a class removes its attendance (`remove_attend
 giving back what each mark took, as unmarking would, and a drop-in's charge while
 nothing was paid on it.
 
+A class may be marked on a later day than its own, a class registered after it
+happened included (#407). It is marked as on the day: each mark takes what the
+membership pays the class with now, credits from what is left of a pack, an unlimited
+plan just counting it, and touches no billing period, so a period already closed or
+paid is never rewritten; nothing in the ledger reads attendance. Nor does the day a
+membership started limit the classes it is marked at: a gym that starts on Rakin
+mid-month adds its members as of today and fills in the classes they came to before, on
+the membership each has. A drop-in visitor added to it is a visit on the class's day,
+as on any day (#130). A trial guest is not: a trial starts the day it is
+given, at the mat, so adding one to a class of an earlier day is a 409. Marking at a
+class on another day than its own, a visitor included, writes an
+`attendance_backfilled` row in the gym's log (migration 0070) for each person it
+marks, so a month filled in afterwards is told apart from one taken live.
+
 Each person on the roster names the requirements they lack or whose record expired
 (`app.api.requirements.requirement_flags`, #350), those the caller's role sees: a
 warning, never a refusal, so marking them still works.
@@ -43,12 +57,12 @@ Any staff role may use it, coaches included; members may not. A member reads the
 counts on the student page (`/api/me/page`).
 """
 
+import json
 import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.exceptions import RequestValidationError
@@ -63,7 +77,7 @@ from app.api.people import in_gym, join_gym
 from app.api.requirements import requirement_flags
 from app.domain import membership as memberships
 from app.domain.attendance import credits_to_consume
-from app.domain.dates import gym_today, start_of_local_day
+from app.domain.dates import gym_today, local_date, start_of_local_day
 from app.domain.membership import Membership, MembershipStatus, PlanKind, PlanTerms
 from app.notices import Notices, get_notices
 from app.permissions import FORBIDDEN, AttendanceSession, Permission, StaffSession, holds
@@ -87,6 +101,21 @@ router = APIRouter(tags=["classes"])
 
 SESSION_NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
 CANCELLED = HTTPException(status.HTTP_409_CONFLICT, "the class is cancelled")
+# A trial starts the day it is given (#407).
+PAST_TRIAL = HTTPException(
+    status.HTTP_409_CONFLICT, "a trial starts at the mat: not at a class of an earlier day"
+)
+
+# The gym's log of classes registered after they happened and attendance marked on
+# another day (migration 0070).
+CLASS_BACKFILLED = "class_backfilled"
+ATTENDANCE_BACKFILLED = "attendance_backfilled"
+
+INSERT_BACKFILL = text(
+    "INSERT INTO audit_event (gym_id, at, actor_id, person_id, action, detail)"
+    " VALUES (current_setting('app.gym_id')::uuid, now(),"
+    " current_setting('app.person_id')::uuid, :person, :action, CAST(:detail AS jsonb))"
+)
 
 SELECT_SESSION = """
     SELECT s.id, s.starts_at, s.cancelled_at, s.class_type_id, c.program_id, c.credit_cost,
@@ -155,7 +184,7 @@ ORDER BY lower(name), person_id
 """
 
 LOCK_MEMBERSHIP = """
-    SELECT pl.kind, pl.program_id, m.status, m.credits_remaining
+    SELECT pl.kind, pl.program_id, m.status, m.credits_remaining, m.person_id
     FROM membership m JOIN plan pl ON pl.id = m.plan_id
     WHERE m.id = :id FOR UPDATE OF m
 """
@@ -213,6 +242,16 @@ class HeldClass:
     timezone: str
     settings: Any
 
+    @property
+    def day(self) -> date:
+        """The class's own day, in the gym's timezone."""
+        return local_date(self.starts_at, self.timezone)
+
+    @property
+    def other_day(self) -> bool:
+        """Whether today, in the gym's timezone, is not the class's own day."""
+        return self.day != gym_today(self.timezone)
+
 
 def _unprocessable(field: str, kind: str, msg: str) -> RequestValidationError:
     return RequestValidationError([{"type": kind, "msg": msg, "loc": ("body", field)}])
@@ -240,6 +279,30 @@ def require_open(held: HeldClass) -> None:
     """A 409 if the class is cancelled: it takes no attendance."""
     if held.cancelled_at is not None:
         raise CANCELLED
+
+
+async def record_backfill(
+    session: AsyncSession, action: str, person_id: uuid.UUID | None, **detail: Any
+) -> None:
+    """Write `action` in the gym's log, by the person acting, now (migration 0070)."""
+    await session.execute(
+        INSERT_BACKFILL, {"person": person_id, "action": action, "detail": json.dumps(detail)}
+    )
+
+
+async def _record_marked(
+    session: AsyncSession, held: HeldClass, membership_id: uuid.UUID, person_id: uuid.UUID
+) -> None:
+    """An `attendance_backfilled` row for a mark at a class of another day."""
+    if held.other_day:
+        await record_backfill(
+            session,
+            ATTENDANCE_BACKFILLED,
+            person_id,
+            session_id=str(held.id),
+            membership_id=str(membership_id),
+            day=held.day.isoformat(),
+        )
 
 
 async def _roster(session: AsyncSession, tenant: Tenant, held: HeldClass) -> Roster:
@@ -299,8 +362,10 @@ async def mark_present(
             "credits": credits,
         },
     )
-    if inserted:
-        await session.execute(text(SPEND), {"id": membership_id, "credits": inserted})
+    if inserted is not None:
+        if inserted:
+            await session.execute(text(SPEND), {"id": membership_id, "credits": inserted})
+        await _record_marked(session, held, membership_id, row.person_id)
 
 
 def _kept(code: DropinRefusal, message: str) -> HTTPException:
@@ -443,6 +508,8 @@ async def add_trial_guest(
     class is a 409 too."""
     held = await class_of(session, session_id, lock=True)
     require_open(held)
+    if held.day < gym_today(held.timezone):
+        raise PAST_TRIAL
     if not await in_gym(session, body.person_id):
         raise _unprocessable("person_id", "unknown_person", "no such person")
     plan = (
@@ -573,7 +640,7 @@ async def add_dropin_visitor(
         conflict = AlreadyMember(membership_id=listed)
         raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
 
-    day = held.starts_at.astimezone(ZoneInfo(held.timezone)).date()
+    day = held.day
     try:
         membership_id = await insert_membership(
             session,
@@ -594,6 +661,7 @@ async def add_dropin_visitor(
             "credits": 0,
         },
     )
+    await _record_marked(session, held, membership_id, person_id)
     due = await session.scalar(text(PERIOD_DUE), {"id": period_id})
     if body.paid is not None and due > 0:
         payment = PaymentRecord(
