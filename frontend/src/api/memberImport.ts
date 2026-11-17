@@ -67,6 +67,8 @@ export type Sheet = {
   file: SheetFile
   pagos: PaymentSheet | null
   grados: GradeSheet | null
+  /** A Grados tab the file has and a gym that grades in none of its activities does not read (#352); `grados` is then null. */
+  grados_ignored: boolean
 }
 
 export type RowErrorCode =

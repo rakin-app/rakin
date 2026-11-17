@@ -22,6 +22,7 @@ const SHEET: Sheet = {
   file: { name: 'alumnos.csv', sha256: 'a'.repeat(64) },
   pagos: null,
   grados: null,
+  grados_ignored: false,
 }
 
 // A workbook with a Pagos tab (#298), headers as a gym's own notebook has them.
@@ -161,7 +162,9 @@ function stubApi({
   role = 'owner',
   refuse,
   sheet = SHEET,
-}: { role?: string; refuse?: string; sheet?: Sheet } = {}): Sent {
+  // Whether an activity of the gym grades (#245, #352).
+  grades = true,
+}: { role?: string; refuse?: string; sheet?: Sheet; grades?: boolean } = {}): Sent {
   const sent: Sent = []
   vi.stubGlobal(
     'fetch',
@@ -169,7 +172,7 @@ function stubApi({
       const url = new URL(String(input), 'http://localhost')
       const json = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-      if (url.pathname === '/api/me/role') return json(asRole(role))
+      if (url.pathname === '/api/me/role') return json({ ...asRole(role), uses_grades: grades })
       if (url.pathname === '/api/plans') return json(PLANS)
       if (url.pathname === '/api/people') return json({ items: [], total: 0 })
       if (url.pathname === '/api/gym/grading-scheme') return json(SCHEME)
@@ -492,6 +495,30 @@ describe('Importar alumnos', () => {
 
     await screen.findByText(copy.fileSummary('alumnos.csv', 3, []))
     expect(uploadedTabs).toEqual(['grados'])
+  })
+
+  it('lists a Grados tab the gym does not grade for as ignored, and why (#352)', async () => {
+    const sent = stubApi({ sheet: { ...SHEET, grados_ignored: true }, grades: false })
+    renderAt('/admin/alumnos/importar')
+    // A CSV cannot be said to be one either.
+    const tabs = await screen.findByLabelText(copy.csvTab)
+    expect(within(tabs).queryByRole('option', { name: copy.tabs.grados })).not.toBeInTheDocument()
+    await chooseFile()
+
+    expect(await screen.findByText(copy.gradosIgnored)).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: copy.tabMappingTitle(copy.tabs.grados) })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: copy.check }))
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]?.grados).toBeUndefined()
+  })
+
+  it('has nothing to check in a file whose only tab is an ignored Grados', async () => {
+    stubApi({ sheet: { ...SHEET, headers: [], rows: [], mapping: {}, grados_ignored: true }, grades: false })
+    renderAt('/admin/alumnos/importar')
+    await chooseFile()
+
+    expect(await screen.findByText(copy.gradosIgnored)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: copy.check })).toBeDisabled()
   })
 
   it('says why a file was refused', async () => {

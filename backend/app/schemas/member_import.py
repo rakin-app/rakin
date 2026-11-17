@@ -87,6 +87,9 @@ class Sheet(BaseModel):
     file: SheetFile
     pagos: PaymentSheet | None = None
     grados: GradeSheet | None = None
+    # A Grados tab the file has and the gym, grading in none of its activities, does not
+    # read (#352): `grados` is then null.
+    grados_ignored: bool = False
 
 
 # `too_large`: over `MAX_UPLOAD_BYTES`. `unreadable`: neither a workbook nor text.

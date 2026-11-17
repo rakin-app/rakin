@@ -359,6 +359,17 @@ describe('Alumnos', () => {
     expect(screen.queryByRole('combobox', { name: copy.rankLabel })).not.toBeInTheDocument()
   })
 
+  it('drops a ?belt= while no activity of the gym grades (#352)', async () => {
+    const asked = stubApi(() => page([CAMILA]), undefined, undefined, 'admin', BJJ, false)
+    const router = renderAt('/admin/alumnos?belt=%22grey%22&beltUp=true')
+    await list()
+
+    await waitFor(() => expect(router.state.location.search).toEqual({}))
+    expect(asked.at(-1)?.get('rank_min')).toBeNull()
+    expect(asked.at(-1)?.getAll('rank')).toEqual([])
+    expect(screen.queryByRole('button', { name: copy.clearFilters })).not.toBeInTheDocument()
+  })
+
   it('opens with the belt in the URL', async () => {
     const asked = stubApi(() => page([CAMILA]), undefined, undefined, undefined, BJJ)
     renderAt('/admin/alumnos?belt=%22grey%22&beltUp=true')

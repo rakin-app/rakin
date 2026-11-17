@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useId, useMemo, useState, type ChangeEvent } from 'react'
+import { useGrades } from '../api/activities'
 import { gradingSchemeQuery, type SchemeRank } from '../api/grading'
 import {
   fold,
@@ -79,6 +80,8 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
   const [tooLarge, setTooLarge] = useState(false)
   // Which tab a CSV is: a workbook says by its tabs' names.
   const [csvTab, setCsvTab] = useState<SheetTab>('alumnos')
+  // A gym that grades in none of its activities reads no Grados tab (#352).
+  const grades = useGrades()
   const read = useSubmit({
     offline: 'refuse',
     mutationFn: (file: File) => uploadSheet(file, csvTab),
@@ -107,7 +110,7 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
         {copy.csvTab}
       </label>
       <Select id={tabId} value={csvTab} onChange={(event) => setCsvTab(event.target.value as SheetTab)}>
-        {SHEET_TABS.map((tab) => (
+        {SHEET_TABS.filter((tab) => grades || tab !== 'grados').map((tab) => (
           <option key={tab} value={tab}>
             {copy.tabs[tab]}
           </option>
@@ -285,6 +288,8 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
   const alumnosReady = !hasAlumnos || mapping.name !== undefined
   const pagosReady = pagos === null || paymentsReady(paymentMapping)
   const gradosReady = grados === null || gradesReady(gradeMapping)
+  // Only an ignored Grados tab: nothing to check.
+  const anything = hasAlumnos || pagos !== null || grados !== null
 
   if (report && !report.dry_run) {
     return <Done name={name} report={report} onOther={onOther} />
@@ -304,6 +309,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
             {copy.otherFile}
           </Button>
         </div>
+        {sheet.grados_ignored && <p className="import__note">{copy.gradosIgnored}</p>}
       </section>
 
       {report ? (
@@ -379,7 +385,7 @@ function SheetImport({ name, sheet, onOther }: { name: string; sheet: Sheet; onO
             )}
             <Button
               variant="primary"
-              disabled={!alumnosReady || !pagosReady || !gradosReady || check.isPending}
+              disabled={!anything || !alumnosReady || !pagosReady || !gradosReady || check.isPending}
               onClick={() => check.mutate()}
             >
               {check.isPending ? copy.checking : copy.check}
