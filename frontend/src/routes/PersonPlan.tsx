@@ -131,7 +131,7 @@ export function AssignForm({
   const [welcome, setWelcome] = useState(true)
   // Off every period from the first (#25), when ticked.
   const [discounted, setDiscounted] = useState(false)
-  const [discount, setDiscount] = useState<DiscountDraft>(NO_DISCOUNT)
+  const [discount, setDiscountDraft] = useState<DiscountDraft>(NO_DISCOUNT)
   // Theirs or their guardian's address, as the welcome goes.
   const access = useQuery(welcomeQuery(person.id))
   const canWelcome = Boolean(access.data?.to)
@@ -191,7 +191,7 @@ export function AssignForm({
         <input id={ids.discount} type="checkbox" checked={discounted} onChange={(e) => setDiscounted(e.target.checked)} />
         {form.discount}
       </CheckRow>
-      {discounted && <DiscountFields draft={discount} checked={checked} onChange={setDiscount} />}
+      {discounted && <DiscountFields draft={discount} checked={checked} onChange={setDiscountDraft} />}
       <CheckRow htmlFor={ids.welcome}>
         <input
           id={ids.welcome}

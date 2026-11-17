@@ -1699,6 +1699,12 @@ export const es = {
         dueDate: 'Cambió el vencimiento',
         reactivated: 'Reactivó el plan',
         cancelUndone: 'Deshizo la baja',
+        // A discount set, changed or taken off (#25): its percentage before → after, and from when.
+        discountSet: 'Puso descuento',
+        discountChanged: 'Cambió el descuento',
+        discountRemoved: 'Quitó el descuento',
+        discountPct: (before: number, after: number) => `${before}% → ${after}%`,
+        discountFrom: (day: string) => `desde el cobro del ${day}`,
         // What the period owed, before → after.
         owed: (before: string, after: string) => `${before} → ${after}`,
         balance: (before: string, after: string) => `Saldo ${before} → ${after}`,

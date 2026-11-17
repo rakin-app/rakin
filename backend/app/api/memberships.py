@@ -10,7 +10,8 @@ period the new plan bills from it (#249).
 A discount (#25) is a percentage off every period, with why: set as a plan starts, or
 later from the next period not yet billed, which `GET .../discount` quotes. Each period
 keeps the discount it was billed at (migration 0064), so the ledger says what each
-charge had and a change never reprices one already billed.
+charge had and a change never reprices one already billed. Each set, change or removal
+is recorded as a correction (`discount_changed`), for the ficha's "Correcciones".
 A freeze (#26) runs from its first day until the day it ends, with a reason, and moves
 the due date past the frozen days as it starts: the paid-through date, the billing
 periods not yet started and a pending plan change all move by them, and the nightly
@@ -70,7 +71,7 @@ from app.jobs import lapse
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
 from app.roles import AdminSession, SeesMoney, StaffSession
-from app.schemas.ledger import VoidConflict
+from app.schemas.ledger import DiscountFigures, DiscountShift, VoidConflict
 from app.schemas.memberships import (
     Cancellation,
     Discount,
@@ -327,6 +328,8 @@ async def start_membership(
     except PersonHasLeft:
         raise HAS_LEFT from None
     await bill_now(session, membership_id, gym_today(timezone))
+    if discount is not None:
+        await _record_discount(session, membership_id, NO_DISCOUNT, discount, started_on)
     return await _get(session, membership_id)
 
 
@@ -588,6 +591,38 @@ NOT_DISCOUNTED = HTTPException(
 )
 
 
+NO_DISCOUNT = DiscountFigures(pct=0, reason=None)
+
+DISCOUNT_CHANGED = "discount_changed"
+
+
+def _figures(discount: Discount | None) -> DiscountFigures:
+    return (
+        NO_DISCOUNT
+        if discount is None
+        else DiscountFigures(pct=discount.pct, reason=discount.reason)
+    )
+
+
+async def _record_discount(
+    session: AsyncSession,
+    membership_id: uuid.UUID,
+    before: DiscountFigures,
+    after: Discount | None,
+    starts_on: date,
+) -> None:
+    """Record the membership's discount changing from `before` to `after`, billed from
+    `starts_on`, with the reason it has, or had when taken off."""
+    shift = DiscountShift(before=before, after=_figures(after), starts_on=starts_on)
+    await record_audit(
+        session,
+        action=DISCOUNT_CHANGED,
+        membership_id=membership_id,
+        reason=shift.after.reason or shift.before.reason,
+        discount=shift.model_dump(mode="json"),
+    )
+
+
 async def _discountable(session: AsyncSession, membership_id: uuid.UUID, *, lock: bool) -> None:
     """A 409 unless the membership bills again: a monthly or prepaid one, Active or
     Frozen. A pack or a drop-in has billed its one charge; a new one is a new plan."""
@@ -604,9 +639,23 @@ async def set_discount(
     membership_id: uuid.UUID, body: DiscountChange, session: AdminSession
 ) -> Membership:
     """Set or take off the membership's discount, from the next period it bills; the
-    periods billed already keep theirs."""
+    periods billed already keep theirs. A change is recorded as a correction; asking
+    for the discount it has changes and records nothing."""
     await _discountable(session, membership_id, lock=True)
     discount = body.discount
+    held = (
+        await session.execute(
+            text("SELECT discount_pct, discount_reason FROM membership WHERE id = :id"),
+            {"id": membership_id},
+        )
+    ).one()
+    before = DiscountFigures(pct=held.discount_pct, reason=held.discount_reason)
+    if before == _figures(discount):
+        return await _get(session, membership_id)
+    billable = await billable_membership(await driver_connection(session), membership_id)
+    starts_on = None if billable is None else billing.first_unbilled(billable)
+    if starts_on is None:  # a recurring plan always bills again
+        raise NOT_DISCOUNTED
     await session.execute(
         text("UPDATE membership SET discount_pct = :pct, discount_reason = :reason WHERE id = :id"),
         {
@@ -615,6 +664,7 @@ async def set_discount(
             "id": membership_id,
         },
     )
+    await _record_discount(session, membership_id, before, discount, starts_on)
     return await _get(session, membership_id)
 
 

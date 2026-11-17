@@ -511,6 +511,52 @@ def test_a_discount_bills_from_the_next_period_and_keeps_the_billed_ones(
     ]
 
 
+def test_each_discount_set_changed_or_taken_off_is_a_correction(
+    client: TestClient, sur: uuid.UUID
+) -> None:
+    membership = started(client, sur, "signup", discount={"pct": 50, "reason": "Hermanos"})
+    member = membership["id"]
+    discount(client, sur, member, {"pct": 30, "reason": "Beca"})
+    # The discount it has: nothing changes, nothing is recorded.
+    discount(client, sur, member, {"pct": 30, "reason": "Beca"})
+    discount(client, sur, member, None)
+
+    response = client.get(
+        f"/api/ledger/people/{membership['person_id']}/corrections", headers=as_gym(sur)
+    )
+    assert response.status_code == 200, response.text
+    rows = response.json()["items"]
+    assert [r["action"] for r in rows] == ["discount_changed"] * 3
+    # Newest first: taken off, changed, set as the plan started.
+    assert [(r["reason"], r["discount"]) for r in rows] == [
+        (
+            "Beca",
+            {
+                "before": {"pct": 30, "reason": "Beca"},
+                "after": {"pct": 0, "reason": None},
+                "starts_on": "2026-12-15",
+            },
+        ),
+        (
+            "Beca",
+            {
+                "before": {"pct": 50, "reason": "Hermanos"},
+                "after": {"pct": 30, "reason": "Beca"},
+                "starts_on": "2026-12-15",
+            },
+        ),
+        (
+            "Hermanos",
+            {
+                "before": {"pct": 0, "reason": None},
+                "after": {"pct": 50, "reason": "Hermanos"},
+                "starts_on": NOV_15,
+            },
+        ),
+    ]
+    assert all(r["actor_name"] and r["plan_name"] == "Mensual" for r in rows)
+
+
 @pytest.mark.parametrize(
     "body",
     [

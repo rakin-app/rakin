@@ -262,7 +262,7 @@ export type Figures = { outstanding_clp: number; balance_clp: number }
 export type Correction = {
   id: string
   at: string
-  action: 'ledger_corrected' | 'due_date_changed' | 'membership_reactivated' | 'cancel_undone'
+  action: 'ledger_corrected' | 'due_date_changed' | 'membership_reactivated' | 'cancel_undone' | 'discount_changed'
   // The entry's: null for a plain adjustment, `void` for a void, `restore` (#278).
   purpose: string | null
   // One of the voids of a plan voided by mistake (#256).
@@ -273,7 +273,14 @@ export type Correction = {
   plan_name: string | null
   before: Figures | null
   after: Figures | null
+  // On a `discount_changed` row (#25): the discount before and after, and the first day billed at the new one.
+  discount?: DiscountShift | null
 }
+
+/** A discount at one moment: 0 and null with none (backend `DiscountFigures`). */
+export type DiscountFigures = { pct: number; reason: string | null }
+
+export type DiscountShift = { before: DiscountFigures; after: DiscountFigures; starts_on: string }
 
 export type Corrections = { total: number; items: Correction[] }
 

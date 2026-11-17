@@ -2421,11 +2421,18 @@ function Corrections({ personId }: { personId: string }) {
   )
 }
 
-/** `Anuló cargo noviembre` · `$45.000 → $0` · `duplicado · Mensual · por Ana · 2 nov`. */
+/** `Anuló cargo noviembre` · `$45.000 → $0` · `duplicado · Mensual · por Ana · 2 nov`;
+ * a discount's `Cambió el descuento` · `50% → 30%` · `Beca · desde el cobro del 15 dic · …` (#25). */
 function CorrectionLine({ correction: c }: { correction: Correction }) {
   const words = copy.corrections
-  const { before, after } = c
-  const detail = [c.reason, c.plan_name, c.actor_name ? words.by(c.actor_name) : null, shortDay(c.at)]
+  const { before, after, discount } = c
+  const detail = [
+    c.reason,
+    discount ? words.discountFrom(shortDay(discount.starts_on)) : null,
+    c.plan_name,
+    c.actor_name ? words.by(c.actor_name) : null,
+    shortDay(c.at),
+  ]
   return (
     <li className="member__entry member__entry--correction">
       <span className="member__dot" aria-hidden="true" />
@@ -2441,6 +2448,9 @@ function CorrectionLine({ correction: c }: { correction: Correction }) {
           {words.owed(clp(before.outstanding_clp), clp(after.outstanding_clp))}
         </span>
       )}
+      {discount && (
+        <span className="member__entry-amount">{words.discountPct(discount.before.pct, discount.after.pct)}</span>
+      )}
     </li>
   )
 }
@@ -2455,6 +2465,9 @@ function correctionTitle(c: Correction): string {
       return words.reactivated
     case 'cancel_undone':
       return words.cancelUndone
+    case 'discount_changed':
+      if (!c.discount?.before.pct) return words.discountSet
+      return c.discount.after.pct ? words.discountChanged : words.discountRemoved
     case 'ledger_corrected':
       if (c.purpose === 'void') return (c.plan_void ? words.planVoid : words.void)(month)
       if (c.purpose === 'restore') return words.restore(month)

@@ -248,6 +248,23 @@ class CorrectionAction(StrEnum):
     DUE_DATE_CHANGED = "due_date_changed"
     MEMBERSHIP_REACTIVATED = "membership_reactivated"
     CANCEL_UNDONE = "cancel_undone"
+    # A discount set, changed or taken off (#25), a plan started with one included.
+    DISCOUNT_CHANGED = "discount_changed"
+
+
+class DiscountFigures(BaseModel):
+    """A membership's discount at one moment: 0 and null with none."""
+
+    pct: int
+    reason: str | None
+
+
+class DiscountShift(BaseModel):
+    """A discount changed (#25): before and after, and the first day billed at `after`."""
+
+    before: DiscountFigures
+    after: DiscountFigures
+    starts_on: date
 
 
 class Correction(BaseModel):
@@ -267,6 +284,8 @@ class Correction(BaseModel):
     plan_name: str | None
     before: Figures | None
     after: Figures | None
+    # On a `discount_changed` row; null on every other.
+    discount: DiscountShift | None = None
 
 
 class Corrections(BaseModel):

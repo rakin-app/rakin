@@ -1706,6 +1706,33 @@ describe('Ficha de alumno', () => {
     expect(within(fixes).getAllByRole('listitem')).toHaveLength(3)
   })
 
+  it('lists each discount set, changed or taken off among the corrections (#25)', async () => {
+    const shift = (before: number, after: number, reason: string | null) =>
+      correction({
+        id: `d-${before}-${after}`,
+        action: 'discount_changed',
+        purpose: null,
+        period_start: null,
+        before: null,
+        after: null,
+        reason,
+        discount: {
+          before: { pct: before, reason: before ? 'Hermanos' : null },
+          after: { pct: after, reason: after ? reason : null },
+          starts_on: '2026-12-15',
+        },
+      })
+    stubApi({ corrections: [shift(30, 0, 'Beca'), shift(50, 30, 'Beca'), shift(0, 50, 'Hermanos')] })
+    renderAt(PATH)
+
+    const fixes = await screen.findByRole('region', { name: copy.corrections.title })
+    expect(within(fixes).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'Quitó el descuentoBeca · desde el cobro del 15 dic · Mensual adultos · por Ana · 2 nov30% → 0%',
+      'Cambió el descuentoBeca · desde el cobro del 15 dic · Mensual adultos · por Ana · 2 nov50% → 30%',
+      'Puso descuentoHermanos · desde el cobro del 15 dic · Mensual adultos · por Ana · 2 nov0% → 50%',
+    ])
+  })
+
   it('lists the corrections though the plan\'s ledger fails to load (#277)', async () => {
     stubApi({
       corrections: [correction({ id: 'void' })],
