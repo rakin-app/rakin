@@ -7,6 +7,11 @@ change waits for the next period: it is stored as pending, from the first day no
 paid for or billed, and billing applies it then (migration 0009). Proration is v2.
 `GET .../plan-change` quotes a change before it is saved: that day, and the first
 period the new plan bills from it (#249).
+A discount (#25) is a percentage off every period, with why: set as a plan starts, or
+later from the next period not yet billed, which `GET .../discount` quotes. Each period
+keeps the discount it was billed at (migration 0064), so the ledger says what each
+charge had and a change never reprices one already billed. Each set, change or removal
+is recorded as a correction (`discount_changed`), for the ficha's "Correcciones".
 A freeze (#26) runs from its first day until the day it ends, with a reason, and moves
 the due date past the frozen days as it starts: the paid-through date, the billing
 periods not yet started and a pending plan change all move by them, and the nightly
@@ -40,7 +45,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,9 +71,12 @@ from app.jobs import lapse
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
 from app.permissions import AdminSession, SeesMoney, StaffSession
-from app.schemas.ledger import VoidConflict
+from app.schemas.ledger import DiscountFigures, DiscountShift, VoidConflict
 from app.schemas.memberships import (
     Cancellation,
+    Discount,
+    DiscountChange,
+    DiscountQuote,
     Freeze,
     FreezeCreate,
     FreezeEdit,
@@ -103,7 +111,7 @@ NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "membership not found")
 SELECT_MEMBERSHIP = """
     SELECT m.id, m.person_id, m.plan_id, pl.name AS plan_name, pl.kind AS plan_kind,
            m.status, m.anchor_day, (m.started_at AT TIME ZONE g.timezone)::date AS started_on,
-           m.current_period_end, m.credits_remaining, m.discount_pct,
+           m.current_period_end, m.credits_remaining, m.discount_pct, m.discount_reason,
            m.next_plan_id, np.name AS next_plan_name, m.next_plan_from,
            m.cancel_reason, m.cancelled_at, m.voided_at, m.void_reason, m.created_at,
            fz.id AS freeze_id, fz.from_date AS freeze_from, fz.to_date AS freeze_to,
@@ -226,6 +234,7 @@ async def insert_membership(
     plan_id: uuid.UUID,
     started: domain.Membership,
     started_at: datetime,
+    discount: Discount | None = None,
 ) -> uuid.UUID:
     """Write `started`, a new membership of `person_id` on `plan_id`, in the current gym;
     one Cancelled already, a drop-in visit (`domain.drop_in`), with its reason and now.
@@ -239,11 +248,13 @@ async def insert_membership(
     result = await session.execute(
         text(
             "INSERT INTO membership (gym_id, person_id, plan_id, status, anchor_day,"
-            " started_at, current_period_end, credits_remaining, cancel_reason, cancelled_at)"
+            " started_at, current_period_end, credits_remaining, cancel_reason, cancelled_at,"
+            " discount_pct, discount_reason)"
             " VALUES (current_setting('app.gym_id')::uuid, :person_id, :plan_id, :status,"
             " :anchor_day, :started_at, :current_period_end, :credits_remaining,"
             " CAST(:cancel_reason AS text),"
-            " CASE WHEN CAST(:cancel_reason AS text) IS NULL THEN NULL ELSE now() END)"
+            " CASE WHEN CAST(:cancel_reason AS text) IS NULL THEN NULL ELSE now() END,"
+            " :discount_pct, :discount_reason)"
             " RETURNING id"
         ),
         {
@@ -255,6 +266,8 @@ async def insert_membership(
             "current_period_end": started.current_period_end,
             "credits_remaining": started.credits_remaining,
             "cancel_reason": started.cancel_reason,
+            "discount_pct": 0 if discount is None else discount.pct,
+            "discount_reason": None if discount is None else discount.reason,
         },
     )
     membership_id: uuid.UUID = result.scalar_one()
@@ -289,11 +302,16 @@ async def _starts_on(
 
 
 async def start_membership(
-    session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, body: MembershipStart
+    session: AsyncSession,
+    tenant: Tenant,
+    person_id: uuid.UUID,
+    body: MembershipStart,
+    discount: Discount | None = None,
 ) -> Membership:
     """Start `person_id`, someone in this gym, on `body`'s plan from its day, today in
     the gym's timezone when it has none, or after what a lapsed plan of theirs billed
-    (`_starts_on`); a 422 for a plan this gym cannot start."""
+    (`_starts_on`), with `discount` off every period; a 422 for a plan this gym cannot
+    start."""
     terms = await _plan_terms(session, body.plan_id)
     timezone = await session.scalar(
         text("SELECT timezone FROM gym WHERE id = :id"), {"id": tenant.gym_id}
@@ -308,11 +326,18 @@ async def start_membership(
 
     try:
         membership_id = await insert_membership(
-            session, person_id, body.plan_id, started, start_of_local_day(started_on, timezone)
+            session,
+            person_id,
+            body.plan_id,
+            started,
+            start_of_local_day(started_on, timezone),
+            discount,
         )
     except PersonHasLeft:
         raise HAS_LEFT from None
     await bill_now(session, membership_id, gym_today(timezone))
+    if discount is not None:
+        await _record_discount(session, membership_id, NO_DISCOUNT, discount, started_on)
     return await _get(session, membership_id)
 
 
@@ -387,7 +412,7 @@ async def create_membership(
     )
     if not known:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "person not found")
-    created = await start_membership(session, tenant, body.person_id, body)
+    created = await start_membership(session, tenant, body.person_id, body, body.discount)
     notice = await welcome_for(session, tenant, created) if body.send_welcome else None
     if notice is not None:
         # After the response, which is after the membership has committed.
@@ -567,6 +592,111 @@ async def plan_change_quote(
     return PlanChangeQuote(
         # A fixed-period plan's period may start before the change: it is due from then.
         starts_on=first.due_date,
+        period_end=first.period_end,
+        amount_due_clp=first.amount_due_clp,
+    )
+
+
+NOT_DISCOUNTED = HTTPException(
+    status.HTTP_409_CONFLICT,
+    "only a monthly or prepaid membership, active or frozen, takes a discount",
+)
+
+
+NO_DISCOUNT = DiscountFigures(pct=0, reason=None)
+
+DISCOUNT_CHANGED = "discount_changed"
+
+
+def _figures(discount: Discount | None) -> DiscountFigures:
+    return (
+        NO_DISCOUNT
+        if discount is None
+        else DiscountFigures(pct=discount.pct, reason=discount.reason)
+    )
+
+
+async def _record_discount(
+    session: AsyncSession,
+    membership_id: uuid.UUID,
+    before: DiscountFigures,
+    after: Discount | None,
+    starts_on: date,
+) -> None:
+    """Record the membership's discount changing from `before` to `after`, billed from
+    `starts_on`, with the reason it has, or had when taken off."""
+    shift = DiscountShift(before=before, after=_figures(after), starts_on=starts_on)
+    await record_audit(
+        session,
+        action=DISCOUNT_CHANGED,
+        membership_id=membership_id,
+        reason=shift.after.reason or shift.before.reason,
+        discount=shift.model_dump(mode="json"),
+    )
+
+
+async def _discountable(session: AsyncSession, membership_id: uuid.UUID, *, lock: bool) -> None:
+    """A 409 unless the membership bills again: a monthly or prepaid one, Active or
+    Frozen. A pack or a drop-in has billed its one charge; a new one is a new plan."""
+    current, _ = await locked_membership(session, membership_id, lock=lock)
+    if current.plan_kind not in RECURRING or current.status not in (
+        MembershipStatus.ACTIVE,
+        MembershipStatus.FROZEN,
+    ):
+        raise NOT_DISCOUNTED
+
+
+@router.put("/{membership_id}/discount")
+async def set_discount(
+    membership_id: uuid.UUID, body: DiscountChange, session: AdminSession
+) -> Membership:
+    """Set or take off the membership's discount, from the next period it bills; the
+    periods billed already keep theirs. A change is recorded as a correction; asking
+    for the discount it has changes and records nothing."""
+    await _discountable(session, membership_id, lock=True)
+    discount = body.discount
+    held = (
+        await session.execute(
+            text("SELECT discount_pct, discount_reason FROM membership WHERE id = :id"),
+            {"id": membership_id},
+        )
+    ).one()
+    before = DiscountFigures(pct=held.discount_pct, reason=held.discount_reason)
+    if before == _figures(discount):
+        return await _get(session, membership_id)
+    billable = await billable_membership(await driver_connection(session), membership_id)
+    starts_on = None if billable is None else billing.first_unbilled(billable)
+    if starts_on is None:  # a recurring plan always bills again
+        raise NOT_DISCOUNTED
+    await session.execute(
+        text("UPDATE membership SET discount_pct = :pct, discount_reason = :reason WHERE id = :id"),
+        {
+            "pct": 0 if discount is None else discount.pct,
+            "reason": None if discount is None else discount.reason,
+            "id": membership_id,
+        },
+    )
+    await _record_discount(session, membership_id, before, discount, starts_on)
+    return await _get(session, membership_id)
+
+
+@router.get("/{membership_id}/discount")
+async def discount_quote(
+    membership_id: uuid.UUID,
+    pct: Annotated[int, Query(ge=0, le=100)],
+    session: AdminSession,
+) -> DiscountQuote:
+    """What `PUT .../discount` of `pct` would bill, saving nothing: the next period not
+    yet billed, at that discount, as the nightly job will bill it."""
+    await _discountable(session, membership_id, lock=False)
+    billable = await billable_membership(await driver_connection(session), membership_id)
+    if billable is None:
+        raise NOT_FOUND
+    # A frozen membership bills again once the freeze ends, from the day it was billed to.
+    priced = replace(billable, discount_pct=pct, status=MembershipStatus.ACTIVE)
+    (first,) = billing.periods_ahead(priced, 1).periods
+    return DiscountQuote(
+        starts_on=first.period_start,
         period_end=first.period_end,
         amount_due_clp=first.amount_due_clp,
     )

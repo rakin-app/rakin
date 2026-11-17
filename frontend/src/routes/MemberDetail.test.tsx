@@ -1707,6 +1707,33 @@ describe('Ficha de alumno', () => {
     expect(within(fixes).getAllByRole('listitem')).toHaveLength(3)
   })
 
+  it('lists each discount set, changed or taken off among the corrections (#25)', async () => {
+    const shift = (before: number, after: number, reason: string | null) =>
+      correction({
+        id: `d-${before}-${after}`,
+        action: 'discount_changed',
+        purpose: null,
+        period_start: null,
+        before: null,
+        after: null,
+        reason,
+        discount: {
+          before: { pct: before, reason: before ? 'Hermanos' : null },
+          after: { pct: after, reason: after ? reason : null },
+          starts_on: '2026-12-15',
+        },
+      })
+    stubApi({ corrections: [shift(30, 0, 'Beca'), shift(50, 30, 'Beca'), shift(0, 50, 'Hermanos')] })
+    renderAt(PATH)
+
+    const fixes = await screen.findByRole('region', { name: copy.corrections.title })
+    expect(within(fixes).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'Quitó el descuentoBeca · desde el cobro del 15 dic · Mensual adultos · por Ana · 2 nov30% → 0%',
+      'Cambió el descuentoBeca · desde el cobro del 15 dic · Mensual adultos · por Ana · 2 nov50% → 30%',
+      'Puso descuentoHermanos · desde el cobro del 15 dic · Mensual adultos · por Ana · 2 nov0% → 50%',
+    ])
+  })
+
   it('lists the corrections though the plan\'s ledger fails to load (#277)', async () => {
     stubApi({
       corrections: [correction({ id: 'void' })],
@@ -2943,6 +2970,131 @@ describe('the plan from the ficha (#249)', () => {
     await within(await money()).findByRole('button', { name: copy.record })
     expect(screen.queryByRole('button', { name: copy.changePlan })).not.toBeInTheDocument()
   })
+
+  // --- "Descuento" (#25) ---
+
+  const discount = copy.discountForm
+  const DISCOUNT_QUOTE = { starts_on: '2026-11-30', period_end: '2026-12-29', amount_due_clp: 40500 }
+
+  /** An active member whose "Descuento" saves what it is sent, and the ficha then reads. */
+  function discounting(membership: Membership = MONTHLY) {
+    let members = [membership]
+    return stubApi({
+      memberships: members,
+      extra: (path, method, body) => {
+        if (path === '/api/memberships' && method === 'GET') return { body: members }
+        if (path === '/api/memberships/m-felipe/discount' && method === 'GET') return { body: DISCOUNT_QUOTE }
+        if (path === '/api/memberships/m-felipe/discount' && method === 'PUT') {
+          const asked = (body as { discount: { pct: number; reason: string } | null }).discount
+          members = [{ ...membership, discount_pct: asked?.pct ?? 0, discount_reason: asked?.reason ?? null }]
+          return { body: members[0] }
+        }
+        return undefined
+      },
+    })
+  }
+
+  it('sets a discount with its reason, saying first which charge it starts on', async () => {
+    const calls = discounting({ ...MONTHLY, discount_pct: 0, discount_reason: null })
+    renderAt(PATH)
+
+    await userEvent.click(await planAction(await money(), copy.discount))
+    const form = screen.getByRole('form', { name: discount.title })
+    await userEvent.type(within(form).getByLabelText(discount.pct), '10')
+    await userEvent.click(within(form).getByRole('button', { name: 'Beca' }))
+    expect(within(form).getByLabelText(discount.reason)).toHaveValue('Beca')
+    expect(
+      await within(form).findByText(discount.next(shortDay('2026-11-30'), '$40.500', shortDay('2026-12-29'))),
+    ).toBeInTheDocument()
+    expect(within(form).getByText(discount.billed)).toBeInTheDocument()
+    // Nothing to take off yet.
+    expect(within(form).queryByRole('button', { name: discount.remove })).not.toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: discount.submit }))
+
+    expect(await screen.findByText(discount.done(10, 'Beca'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/memberships/m-felipe/discount' && c.method === 'PUT')).toEqual([
+      { method: 'PUT', path: '/api/memberships/m-felipe/discount', body: { discount: { pct: 10, reason: 'Beca' } } },
+    ])
+    expect(await within(await money()).findByText(copy.discountLine(10, 'Beca'))).toBeInTheDocument()
+  })
+
+  it('asks for a percentage and a reason before saving a discount', async () => {
+    const calls = discounting()
+    renderAt(PATH)
+
+    await userEvent.click(await planAction(await money(), copy.discount))
+    const form = screen.getByRole('form', { name: discount.title })
+    await userEvent.type(within(form).getByLabelText(discount.pct), '150')
+    await userEvent.click(within(form).getByRole('button', { name: discount.submit }))
+
+    expect(within(form).getByText(discount.pctNeeded)).toBeInTheDocument()
+    expect(within(form).getByText(discount.reasonNeeded)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'PUT')).toEqual([])
+  })
+
+  it('shows the discount on the card and takes it off', async () => {
+    const calls = discounting({ ...MONTHLY, discount_pct: 50, discount_reason: 'Hermanos' })
+    renderAt(PATH)
+
+    const card = await money()
+    expect(await within(card).findByText(copy.discountLine(50, 'Hermanos'))).toBeInTheDocument()
+    await userEvent.click(await planAction(card, copy.discount))
+    const form = screen.getByRole('form', { name: discount.title })
+    expect(within(form).getByLabelText(discount.pct)).toHaveValue('50')
+    expect(within(form).getByLabelText(discount.reason)).toHaveValue('Hermanos')
+    await userEvent.click(within(form).getByRole('button', { name: discount.remove }))
+
+    expect(await screen.findByText(discount.removed)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'PUT').map((c) => c.body)).toEqual([{ discount: null }])
+    await waitFor(() => expect(within(card).queryByText(copy.discountLine(50, 'Hermanos'))).not.toBeInTheDocument())
+  })
+
+  it('says on each Libro charge the discount it was billed at', async () => {
+    stubApi({
+      ledger: {
+        ...LEDGER,
+        entries: [
+          entry({
+            id: 'c-oct',
+            kind: 'charge',
+            amount_clp: 22500,
+            billing_period_id: 'p-oct',
+            period_start: '2026-10-30',
+            discount_pct: 50,
+            discount_reason: 'Hermanos',
+          }),
+        ],
+      },
+    })
+    renderAt(PATH)
+
+    const ledger = await screen.findByRole('region', { name: copy.ledger.title })
+    expect(await within(ledger).findByText(new RegExp(copy.ledger.discounted(50, 'Hermanos').replace(/[()]/g, '\\$&')))).toBeInTheDocument()
+  })
+
+  it('offers no "Descuento" on a pack', async () => {
+    discounting({ ...MONTHLY, plan_kind: 'credits', anchor_day: null, plan_name: 'Pack 12' })
+    renderAt(PATH)
+    await within(await money()).findByRole('button', { name: copy.record })
+    expect(screen.queryByRole('button', { name: copy.discount })).not.toBeInTheDocument()
+  })
+
+  it('starts a plan with a discount from "Asignar plan"', async () => {
+    const calls = planless()
+    renderAt(PATH)
+
+    await userEvent.click(await screen.findByRole('button', { name: copy.assignPlan }))
+    const form = screen.getByRole('form', { name: assign.title })
+    await userEvent.selectOptions(await within(form).findByLabelText(assign.plan), 'plan-adults')
+    await userEvent.click(within(form).getByLabelText(assign.discount))
+    await userEvent.type(within(form).getByLabelText(discount.pct), '50')
+    await userEvent.click(within(form).getByRole('button', { name: 'Hermanos' }))
+    await userEvent.click(within(form).getByRole('button', { name: assign.submit }))
+
+    expect(await screen.findByText(assign.done('Mensual adultos'))).toBeInTheDocument()
+    const [posted] = calls.filter((c) => c.path === '/api/memberships' && c.method === 'POST')
+    expect(posted?.body).toMatchObject({ plan_id: 'plan-adults', discount: { pct: 50, reason: 'Hermanos' } })
+  })
 })
 
 describe('Volver, to where the ficha was opened from (#250)', () => {
@@ -3737,6 +3889,7 @@ describe('one main action on the plan card (#360)', () => {
     const rest = within(card).getByRole('group', { name: copy.moreActions })
     expect(within(rest).getAllByRole('button').map((b) => b.textContent)).toEqual([
       copy.changePlan,
+      copy.discount,
       copy.refund,
       copy.fix.plan,
     ])

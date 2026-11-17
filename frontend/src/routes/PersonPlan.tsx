@@ -3,13 +3,24 @@ import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { managesGym, type Access } from '../api/me'
-import { changePlan, planChangeQuery, startMembership, startQuery, type Membership, type Person } from '../api/member'
+import {
+  changePlan,
+  discountQuery,
+  planChangeQuery,
+  setDiscount,
+  startMembership,
+  startQuery,
+  type Discount,
+  type Membership,
+  type Person,
+} from '../api/member'
 import { welcomeQuery } from '../api/people'
 import { plansQuery } from '../api/plans'
 import { useGymToday } from '../api/sessions'
 import { useSubmit } from '../api/submit'
 import { Button } from '../components/Button'
-import { Select } from '../components/Field'
+import { Chip } from '../components/Chip'
+import { Input, Select } from '../components/Field'
 import { shortDay } from '../format'
 import { t } from '../i18n/es'
 import { useRefresh } from './PersonData'
@@ -114,10 +125,13 @@ export function AssignForm({
   const today = useGymToday()
   const refresh = useRefresh()
   const navigate = useNavigate()
-  const ids = { welcome: useId(), hint: useId() }
+  const ids = { welcome: useId(), hint: useId(), discount: useId() }
   const [plan, setPlan] = useState<PlanChoice>({ plan_id: '', started_on: '' })
   const [checked, setChecked] = useState(false)
   const [welcome, setWelcome] = useState(true)
+  // Off every period from the first (#25), when ticked.
+  const [discounted, setDiscounted] = useState(false)
+  const [discount, setDiscountDraft] = useState<DiscountDraft>(NO_DISCOUNT)
   // Theirs or their guardian's address, as the welcome goes.
   const access = useQuery(welcomeQuery(person.id))
   const canWelcome = Boolean(access.data?.to)
@@ -131,7 +145,7 @@ export function AssignForm({
   const start = useSubmit({
     offline: 'refuse',
     mutationFn: ({ sendWelcome }: { sendWelcome: boolean }) =>
-      startMembership(person.id, membershipOf(plan, today)!, sendWelcome),
+      startMembership(person.id, membershipOf(plan, today)!, sendWelcome, discounted ? discountOf(discount) : undefined),
     onSuccess: async (started, { sendWelcome }) => {
       onDone(form.done(started.plan_name))
       // "Acceso" waits for the welcome to be recorded, as it does after "Nuevo alumno".
@@ -150,7 +164,7 @@ export function AssignForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (plan.plan_id) start.mutate({ sendWelcome: canWelcome && welcome })
+    if (plan.plan_id && (!discounted || discountOf(discount))) start.mutate({ sendWelcome: canWelcome && welcome })
   }
 
   const missing = checked && !plan.plan_id
@@ -173,6 +187,11 @@ export function AssignForm({
           {form.planNeeded}
         </Banner>
       )}
+      <CheckRow htmlFor={ids.discount}>
+        <input id={ids.discount} type="checkbox" checked={discounted} onChange={(e) => setDiscounted(e.target.checked)} />
+        {form.discount}
+      </CheckRow>
+      {discounted && <DiscountFields draft={discount} checked={checked} onChange={setDiscountDraft} />}
       <CheckRow htmlFor={ids.welcome}>
         <input
           id={ids.welcome}
@@ -347,4 +366,175 @@ export function ChangePlanForm({
       </div>
     </form>
   )
+}
+
+/** A discount as its fields hold it: the percentage as typed, and the reason. */
+type DiscountDraft = { pct: string; reason: string }
+
+const NO_DISCOUNT: DiscountDraft = { pct: '', reason: '' }
+
+/** The percentage `draft` holds, 1 to 100; `null` for anything else. */
+function pctOf(draft: DiscountDraft): number | null {
+  const digits = draft.pct.trim()
+  if (!/^\d{1,3}$/.test(digits)) return null
+  const pct = Number(digits)
+  return pct >= 1 && pct <= 100 ? pct : null
+}
+
+/** What `draft` sends: `undefined` until it has a percentage and a reason. */
+function discountOf(draft: DiscountDraft): Discount | undefined {
+  const pct = pctOf(draft)
+  const reason = draft.reason.trim()
+  return pct !== null && reason ? { pct, reason } : undefined
+}
+
+/** A discount's percentage and reason, the usual reasons a tap away (#25). */
+function DiscountFields({
+  draft,
+  checked,
+  onChange,
+}: {
+  draft: DiscountDraft
+  checked: boolean
+  onChange: (draft: DiscountDraft) => void
+}) {
+  const form = copy.discountForm
+  const ids = { pct: useId(), reason: useId() }
+  const pctBad = checked && pctOf(draft) === null
+  const reasonBad = checked && draft.reason.trim() === ''
+  return (
+    <>
+      <label htmlFor={ids.pct} className="member__label">
+        {form.pct}
+      </label>
+      <Input
+        id={ids.pct}
+        inputMode="numeric"
+        value={draft.pct}
+        aria-invalid={pctBad}
+        onChange={(e) => onChange({ ...draft, pct: e.target.value.replace(/\D/g, '') })}
+      />
+      {pctBad && (
+        <Banner tone="error">
+          {form.pctNeeded}
+        </Banner>
+      )}
+      <label htmlFor={ids.reason} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={ids.reason}
+        type="text"
+        maxLength={500}
+        value={draft.reason}
+        aria-invalid={reasonBad}
+        onChange={(e) => onChange({ ...draft, reason: e.target.value })}
+      />
+      <div className="member__fix-choices" role="group" aria-label={form.reasonsLabel}>
+        {form.reasons.map((reason) => (
+          <Chip key={reason} pressed={draft.reason.trim() === reason} onClick={() => onChange({ ...draft, reason })}>
+            {reason}
+          </Chip>
+        ))}
+      </div>
+      {reasonBad && (
+        <Banner tone="error">
+          {form.reasonNeeded}
+        </Banner>
+      )}
+    </>
+  )
+}
+
+/** Whether "Descuento" is offered on `membership`: one that bills again, as "Cambiar plan" is. */
+export function takesDiscount(membership: Membership): boolean {
+  return changesPlan(membership)
+}
+
+/**
+ * "Descuento" (#25): a percentage off every period the plan bills, with why, from the
+ * next period not yet billed, which the API quotes before it is saved; the periods
+ * billed already keep theirs. With one set, "Quitar descuento" takes it off.
+ */
+export function DiscountForm({
+  membership,
+  onCancel,
+  onDone,
+}: {
+  membership: Membership
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const form = copy.discountForm
+  const queryClient = useQueryClient()
+  const current = membership.discount_pct ?? 0
+  const [draft, setDraft] = useState<DiscountDraft>(
+    current > 0 ? { pct: String(current), reason: membership.discount_reason ?? '' } : NO_DISCOUNT,
+  )
+  const [checked, setChecked] = useState(false)
+  const pct = pctOf(draft)
+  const quote = useQuery({ ...discountQuery(membership.id, pct ?? 0), enabled: pct !== null })
+  const full = useQuery({ ...discountQuery(membership.id, 0), enabled: current > 0 })
+
+  const save = useSubmit({
+    offline: 'refuse',
+    mutationFn: (discount: Discount | null) => setDiscount(membership.id, discount),
+    onSuccess: async (_saved: Membership, discount: Discount | null) => {
+      onDone(discount ? form.done(discount.pct, discount.reason) : form.removed)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['memberships'] }),
+        queryClient.invalidateQueries({ queryKey: ['ledger'] }),
+      ])
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    const discount = discountOf(draft)
+    if (discount) save.mutate(discount)
+  }
+
+  return (
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit} noValidate>
+      <p className="member__detail">{form.intro}</p>
+      <DiscountFields draft={draft} checked={checked} onChange={setDraft} />
+      {quote.isPending && pct !== null && <p className="member__note">{form.checking}</p>}
+      {quote.data && (
+        <div className="member__quote" role="status">
+          <p className="member__detail">
+            {form.next(shortDay(quote.data.starts_on), clp(quote.data.amount_due_clp), shortDay(quote.data.period_end))}
+          </p>
+          <p className="member__detail">{form.billed}</p>
+        </div>
+      )}
+      {(quote.error || save.error) && (
+        <Banner tone="error">
+          {discountRefusal(save.error ?? quote.error)}
+        </Banner>
+      )}
+      {current > 0 && full.data && (
+        <p className="member__detail">{form.full(shortDay(full.data.starts_on), clp(full.data.amount_due_clp))}</p>
+      )}
+      <div className="member__form-actions">
+        <Button disabled={save.isPending} onClick={onCancel}>
+          {form.cancel}
+        </Button>
+        {current > 0 && (
+          <Button disabled={save.isPending} onClick={() => save.mutate(null)}>
+            {form.remove}
+          </Button>
+        )}
+        <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
+          {save.isPending ? form.working : form.submit}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function discountRefusal(error: unknown): string {
+  const form = copy.discountForm
+  if (error instanceof ApiError && error.status === 409) return form.refused.conflict
+  return form.refused.failed
 }

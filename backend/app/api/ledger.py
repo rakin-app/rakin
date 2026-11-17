@@ -798,7 +798,8 @@ TIMELINE = text(
     f"""
     SELECT e.id, e.kind, e.status, e.amount_clp, e.method, e.billing_period_id,
            bp.period_start, e.note, e.created_at, vp.name AS validated_by_name,
-           e.validated_at, e.refund_of, {PURPOSE_COLUMNS}, {VOIDED_COLUMNS}
+           e.validated_at, e.refund_of, coalesce(bp.discount_pct, 0) AS discount_pct,
+           bp.discount_reason, {PURPOSE_COLUMNS}, {VOIDED_COLUMNS}
     FROM ledger_entry e
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
@@ -978,6 +979,7 @@ def book_rows(columns: str = "") -> str:
                AS outstanding_clp,
            CASE WHEN coalesce(paid.amount, 0) < bp.amount_due_clp
                 THEN greatest(t.today - bp.due_date, 0) ELSE 0 END AS days_overdue,
+           bp.discount_pct, bp.discount_reason,
            vp.name AS validated_by_name, {PURPOSE_COLUMNS}, {VOIDED_COLUMNS}
     FROM ledger_entry e
     CROSS JOIN ({GYM_CLOCK}) t
@@ -1211,6 +1213,8 @@ def book_entry(row: Any) -> BookEntry:
             due_date=row.due_date,
             outstanding_clp=row.outstanding_clp,
             days_overdue=row.days_overdue,
+            discount_pct=row.discount_pct,
+            discount_reason=row.discount_reason,
         ),
         validated_by_name=row.validated_by_name,
         extra=None

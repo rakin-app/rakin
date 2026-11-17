@@ -1284,7 +1284,39 @@ export const es = {
         debt: (amount: string) => `Debe ${amount} de un plan anterior. Queda como deuda anterior: se cobra aparte del nuevo plan.`,
         moved: (billed: string, starts: string) =>
           `El plan anterior ya cobró hasta el ${billed}: el nuevo empieza el ${starts}, para no cobrar dos veces los mismos días.`,
+        // Off every period from the first (#25): a sibling starting with one, say.
+        discount: 'Con descuento',
         failed: 'No pudimos asignar el plan. Inténtalo de nuevo.',
+      },
+      // A percentage off every period, and why (#25): on the plan card, and its form.
+      discountLine: (pct: number, reason: string | null) => `Descuento ${pct}%${reason ? ` · ${reason}` : ''}`,
+      discount: 'Descuento',
+      discountForm: {
+        title: 'Descuento',
+        intro: 'Un porcentaje menos en cada cobro del plan: por hermanos, una beca o lo que sea.',
+        pct: 'Porcentaje',
+        pctNeeded: 'Escribe un porcentaje entre 1 y 100.',
+        reason: 'Motivo',
+        // Offered as chips under the reason; any other is written in.
+        reasons: ['Hermanos', 'Beca'],
+        reasonsLabel: 'Motivos frecuentes',
+        reasonNeeded: 'Escribe el motivo del descuento.',
+        checking: 'Calculando…',
+        next: (from: string, amount: string, to: string) =>
+          `Se aplica desde el cobro del ${from}: ${amount} por el período hasta el ${to}.`,
+        // Taking it off: the next charge at full price.
+        full: (from: string, amount: string) => `Desde el cobro del ${from} se cobra el precio completo: ${amount}.`,
+        billed: 'Los cobros ya generados no cambian: para uno de ellos, usa «Cambiar monto» en el Libro.',
+        submit: 'Guardar descuento',
+        remove: 'Quitar descuento',
+        cancel: 'Cancelar',
+        working: 'Guardando…',
+        done: (pct: number, reason: string) => `Descuento guardado: ${pct}% por ${reason}.`,
+        removed: 'Descuento quitado.',
+        refused: {
+          conflict: 'Este plan ya no admite un descuento.',
+          failed: 'No pudimos guardar el descuento. Inténtalo de nuevo.',
+        },
       },
       changePlan: 'Cambiar plan',
       changeForm: {
@@ -1634,6 +1666,8 @@ export const es = {
         credit: 'Saldo a favor',
         refund: (month: string) => `Devolución ${month}`,
         generated: (day: string) => `generado ${day}`,
+        // The discount a charge was billed at (#25).
+        discounted: (pct: number, reason: string | null) => `descuento ${pct}%${reason ? ` (${reason})` : ''}`,
         unpaid: 'sin pago',
         // A charge partly paid: what has come in against it so far.
         partlyPaid: (amount: string) => `abonado ${amount}`,
@@ -1667,6 +1701,12 @@ export const es = {
         dueDate: 'Cambió el vencimiento',
         reactivated: 'Reactivó el plan',
         cancelUndone: 'Deshizo la baja',
+        // A discount set, changed or taken off (#25): its percentage before → after, and from when.
+        discountSet: 'Puso descuento',
+        discountChanged: 'Cambió el descuento',
+        discountRemoved: 'Quitó el descuento',
+        discountPct: (before: number, after: number) => `${before}% → ${after}%`,
+        discountFrom: (day: string) => `desde el cobro del ${day}`,
         // What the period owed, before → after.
         owed: (before: string, after: string) => `${before} → ${after}`,
         balance: (before: string, after: string) => `Saldo ${before} → ${after}`,

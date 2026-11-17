@@ -625,9 +625,9 @@ function periodLabel(entry: BookEntry): string {
     : shortMonth(period.period_start)
 }
 
-/** The "Detalle" column: how the money came; for a charge, the plan it bills, and what
- *  became of the membership once it is no longer active (#207); for an adjustment, its
- *  note. */
+/** The "Detalle" column: how the money came; for a charge, the plan it bills, the
+ *  discount it was billed at (#25), and what became of the membership once it is no
+ *  longer active (#207); for an adjustment, its note. */
 function detailLabel(entry: BookEntry): string {
   if (entry.voided) {
     const { reason, by_name, at } = entry.voided
@@ -636,7 +636,11 @@ function detailLabel(entry: BookEntry): string {
   if (entry.kind === 'charge') {
     const plan = entry.plan_name ?? '—'
     const membership = entry.membership_status && copy.membership[entry.membership_status]
-    return membership ? `${plan} · ${membership}` : plan
+    // The discount its period was billed at (#25).
+    const discount = entry.period?.discount_pct
+      ? t.admin.member.ledger.discounted(entry.period.discount_pct, entry.period.discount_reason ?? null)
+      : null
+    return [plan, discount, membership].filter(Boolean).join(' · ')
   }
   // A cobro extra, labelled by its category (#195), then how the money came.
   if (entry.extra) {

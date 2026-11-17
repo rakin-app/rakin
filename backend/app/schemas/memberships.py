@@ -13,7 +13,14 @@ from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.domain.dates import add_months
 from app.domain.membership import MembershipStatus, PlanKind
@@ -48,8 +55,38 @@ class MembershipStart(BaseModel):
         return value
 
 
+class Discount(BaseModel):
+    """A fixed percentage off every period a membership bills, and why: a sibling, a
+    scholarship, whatever the gym gives one for (#25)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pct: Annotated[int, Field(ge=1, le=100)]
+    reason: Reason
+
+
+class DiscountChange(BaseModel):
+    """A membership's new discount, from the next period it bills; `null` takes it off."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    discount: Discount | None
+
+
+class DiscountQuote(BaseModel):
+    """What a discount of `pct` would bill, before it is saved: the first period it
+    applies to, from `starts_on` until `period_end`, for `amount_due_clp`. The periods
+    billed already keep the discount they were billed at."""
+
+    starts_on: date
+    period_end: date
+    amount_due_clp: int
+
+
 class MembershipCreate(MembershipStart):
     person_id: uuid.UUID
+    # Off every period from the first: a sibling starting with one, say (#25).
+    discount: Discount | None = None
     # The welcome, when there is an email to send it to; "Asignar plan" on the ficha
     # may leave it out (#249).
     send_welcome: bool = True
@@ -236,7 +273,11 @@ class MembershipForCoach(BaseModel):
 
 class Membership(MembershipForCoach):
     discount_pct: int
+    # Why it has the discount (#25); null with none, and on one set before reasons were.
+    discount_reason: str | None = None
 
 
 def for_coach(membership: Membership) -> MembershipForCoach:
-    return MembershipForCoach.model_validate(membership.model_dump(exclude={"discount_pct"}))
+    return MembershipForCoach.model_validate(
+        membership.model_dump(exclude={"discount_pct", "discount_reason"})
+    )

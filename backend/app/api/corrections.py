@@ -5,8 +5,9 @@ who made it (`app.person_id`), when, the reason, whose billing it changed, what 
 touched, and the period and the membership's balance before and after it, read under
 the correction's locks (`app.api.ledger.locked_period`). A void, a restore and an
 adjustment write one each (`app.api.ledger`); a plan voided by mistake writes one per
-period it voids, each marked `plan_void`, and a lapsed plan reactivated one with its
-status before and after (`app.api.memberships`).
+period it voids, each marked `plan_void`, a lapsed plan reactivated one with its
+status before and after, and a discount set, changed or taken off one with the
+percentage and reason before and after (`app.api.memberships`, #25).
 
 `GET /api/ledger/people/{id}/corrections` reads a person's rows, newest first, for the
 ficha's "Correcciones". Owner and admin only (`LedgerSession`); RLS holds a coach to it
@@ -22,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.permissions import LedgerSession
-from app.schemas.ledger import Correction, Corrections, Figures
+from app.schemas.ledger import Correction, Corrections, DiscountShift, Figures
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 
@@ -143,6 +144,7 @@ def correction(row: Any) -> Correction:
         plan_name=row.plan_name,
         before=figures(detail.get("before")),
         after=figures(detail.get("after")),
+        discount=DiscountShift.model_validate(detail["discount"]) if "discount" in detail else None,
     )
 
 

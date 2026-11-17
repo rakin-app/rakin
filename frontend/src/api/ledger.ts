@@ -18,6 +18,9 @@ export type BookPeriod = {
   outstanding_clp: number
   // 0 on or before the due date, and once paid.
   days_overdue: number
+  // The discount it was billed at, and why (#25); 0 and null with none.
+  discount_pct?: number
+  discount_reason?: string | null
 }
 
 /** One ledger entry as the book lists it (backend `BookEntry`). */
