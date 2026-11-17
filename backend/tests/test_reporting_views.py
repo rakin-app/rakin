@@ -17,7 +17,16 @@ from alembic import command
 from app.seed import load
 from app.seed.build import GYM_ID, build
 from tests.conftest import require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
+from tests.pg import (
+    Database,
+    in_gym,
+    make_staff,
+    migrate,
+    run,
+    seed_gym,
+    seeded_owner,
+    throwaway_database,
+)
 from tests.test_seed import overdue
 
 pytestmark = pytest.mark.postgres
@@ -129,9 +138,7 @@ def add_person(db: Database, gym: uuid.UUID, *, role: str | None) -> uuid.UUID:
             person,
         )
         if role is not None:
-            await conn.execute(
-                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, $3)", gym, person, role
-            )
+            await make_staff(conn, gym, person, role)
             return
         membership = await conn.fetchval(
             "INSERT INTO membership (gym_id, person_id, plan_id, status)"
@@ -340,7 +347,8 @@ def test_a_coach_reads_nothing(db: Database, view: str) -> None:
 def test_staff_who_see_money_read_every_membership(db: Database, role: str) -> None:
     gym = new_gym(db)
     add_person(db, gym, role=None)
-    staff = add_person(db, gym, role=role)
+    # A gym has one owner, who holds its account (0062): the one `seed_gym` made.
+    staff = seeded_owner(gym) if role == "owner" else add_person(db, gym, role=role)
     assert len(read(db, gym, "v_balance", person=staff)) == 2
     assert len(read(db, gym, "v_overdue", person=staff)) == 2
 

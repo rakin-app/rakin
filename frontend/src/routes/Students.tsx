@@ -3,7 +3,7 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 import { useGrades } from '../api/activities'
 import { gradingSchemeQuery } from '../api/grading'
-import { myRoleQuery, readsLedger } from '../api/me'
+import { myAccessQuery, readsLedger } from '../api/me'
 import {
   MEMBERSHIP_STATUSES,
   membersQuery,
@@ -135,7 +135,7 @@ export function Students() {
   const grades = useGrades()
   const scheme = useQuery({ ...gradingSchemeQuery(), enabled: grades })
   // Importing starts memberships, and "Pagó" records money, which only an owner or admin may.
-  const role = useQuery(myRoleQuery())
+  const access = useQuery(myAccessQuery())
 
   const toggleStatus = (value: MembershipStatus) => {
     // In the chips' order, whatever the clicks', so a filter has one URL and one cache key.
@@ -313,7 +313,7 @@ export function Students() {
               {copy.clearFilters}
             </Button>
           )}
-          {readsLedger(role.data) && (
+          {readsLedger(access.data) && (
             <div className="students__links">
               <Link to="/admin/alumnos/nuevo" className={buttonClass({ variant: 'primary' })}>
                 {copy.newLink}
@@ -342,7 +342,7 @@ export function Students() {
             <EmptyState>{filtered ? copy.noMatches : copy.empty}</EmptyState>
           </Card>
         ) : (
-          <Card as="div" flush className={cx(readsLedger(role.data) && 'students__table--pays')}>
+          <Card as="div" flush className={cx(readsLedger(access.data) && 'students__table--pays')}>
             {/* The columns' labels, over a desktop's one-line rows; the list is still a list. */}
             <div className="students__columns" aria-hidden="true">
               <span>{copy.columns.name}</span>
@@ -353,7 +353,7 @@ export function Students() {
             </div>
             <PlainList className="students__list" aria-label={copy.title}>
               {rows.map((row) => (
-                <MemberItem key={row.id} row={row} pays={readsLedger(role.data)} />
+                <MemberItem key={row.id} row={row} pays={readsLedger(access.data)} />
               ))}
             </PlainList>
           </Card>

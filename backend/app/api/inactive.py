@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.contacts import contact_query
 from app.integrations.messenger import Message, wa_me_link
 from app.notices.whatsapp import INACTIVE_NUDGE, inactive_nudge
-from app.roles import LedgerSession
+from app.permissions import LedgerSession
 from app.schemas.gym import Channels
 from app.schemas.inactive import Bucket, InactiveMember, Nudged, PaymentStatus
 from app.tenancy import Tenant, current_tenant

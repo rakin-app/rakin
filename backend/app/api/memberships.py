@@ -65,7 +65,7 @@ from app.domain.membership import (
 from app.jobs import lapse
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
-from app.roles import AdminSession, SeesMoney, StaffSession
+from app.permissions import AdminSession, SeesMoney, StaffSession
 from app.schemas.ledger import VoidConflict
 from app.schemas.memberships import (
     Cancellation,

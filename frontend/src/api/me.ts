@@ -8,11 +8,33 @@ import type { OpenPeriod } from './proofs'
 import type { Theme } from '../theme'
 import type { Vocabulary } from '../i18n/vocabulary'
 
+/** The role a staff row still names (backend `app.roles.Role`), until #313. What a
+ * person may do is their permissions, never this. */
 export type StaffRole = 'owner' | 'admin' | 'coach'
 
-/** Who is signed in: their role here, and their name and email as the gym has them; and the gym's name. */
+/** What the gym's roles can let someone do (backend `app.permissions.Permission`). */
+export type Permission =
+  | 'money_read'
+  | 'money_write'
+  | 'expenses_read'
+  | 'expenses_write'
+  | 'members_manage'
+  | 'members_add'
+  | 'attendance'
+  | 'gym_setup'
+  | 'team_manage'
+
+/** What the signed-in person may do here: their permissions, and whether they hold the
+ * gym's account (the titular, who holds every permission). `null` for someone not on
+ * the team, a member. */
+export type Access = { permissions: Permission[]; account_holder: boolean }
+
+/** Who is signed in: what they may do here, and their name and email as the gym has them; and the gym's name. */
 export type MyRole = {
   role: StaffRole | null
+  // `null` for someone not on the team (#308).
+  permissions: Permission[] | null
+  account_holder: boolean
   person_id: string
   name: string | null
   email: string | null
@@ -31,18 +53,23 @@ export type MyRole = {
   vocabulary?: Vocabulary
 }
 
-/** The signed-in person's staff role in this gym; `null` for a member. */
-export function myRoleQuery() {
+/** What `me` may do here; `null` when they are not on the team. */
+export function accessOf(me: MyRole): Access | null {
+  return me.permissions === null ? null : { permissions: me.permissions, account_holder: me.account_holder }
+}
+
+/** What the signed-in person may do in this gym; `null` for a member. */
+export function myAccessQuery() {
   return queryOptions({
     queryKey: ['me', 'role'],
     queryFn: () => apiFetch<MyRole>('/api/me/role'),
-    select: (data) => data.role,
+    select: accessOf,
     // Who is signed in, which no screen shows as its content (#362).
     meta: { ambient: true },
   })
 }
 
-/** Who is signed in, and their role: the same answer as `myRoleQuery`, kept whole. */
+/** Who is signed in, and what they may do: the same answer as `myAccessQuery`, kept whole. */
 export function myselfQuery() {
   return queryOptions({
     queryKey: ['me', 'role'],
@@ -51,19 +78,31 @@ export function myselfQuery() {
   })
 }
 
-/** Who may run a class's timer: the backend's `_runs`, its coach or an owner or admin. */
+/** Whether `access` holds `permission`. The titular holds them all. */
+export function holds(access: Access | null | undefined, permission: Permission): boolean {
+  return access?.permissions.includes(permission) ?? false
+}
+
+/** Who sees money: the backend's `money_read` (`SeesMoney`). A coach never does. */
+export function readsLedger(access: Access | null | undefined): boolean {
+  return holds(access, 'money_read')
+}
+
+/** Who configures the gym, its settings and plans: the backend's `gym_setup` (`AdminSession`). */
+export function managesGym(access: Access | null | undefined): boolean {
+  return holds(access, 'gym_setup')
+}
+
+/** Who holds the gym's account, the titular (`OwnerSession`): deleting a member, say. */
+export function holdsAccount(access: Access | null | undefined): boolean {
+  return access?.account_holder ?? false
+}
+
+/** Who may run a class's timer: the backend's `_runs`, its coach or whoever sets up the gym. */
 export function runsSession(me: MyRole | undefined, coachId: string): boolean {
-  return me !== undefined && (managesGym(me.role) || (me.role !== null && me.person_id === coachId))
-}
-
-/** Who sees money: the backend's `LEDGER_ROLES`. A coach never does. */
-export function readsLedger(role: StaffRole | null | undefined): boolean {
-  return role === 'owner' || role === 'admin'
-}
-
-/** Who configures the gym, its settings and plans: the backend's `ADMIN_ROLES`. */
-export function managesGym(role: StaffRole | null | undefined): boolean {
-  return role === 'owner' || role === 'admin'
+  if (me === undefined) return false
+  const access = accessOf(me)
+  return managesGym(access) || (access !== null && me.person_id === coachId)
 }
 
 /** Where students transfer to, as the gym set it (`PATCH /api/gym/settings`). */

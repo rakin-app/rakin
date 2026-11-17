@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
-import { myRoleQuery, type StaffRole } from '../api/me'
+import { myAccessQuery, type Access } from '../api/me'
 import { duplicateOf } from '../api/people'
 import {
   changeStaffRole,
@@ -33,7 +33,7 @@ const copy = t.admin.settings.staff
  */
 export function StaffSettings() {
   const staff = useQuery(staffQuery)
-  const role = useQuery(myRoleQuery())
+  const access = useQuery(myAccessQuery())
   const [inviting, setInviting] = useState(false)
   // The one member open to act on (#177).
   const [opened, setOpened] = useState<string | null>(null)
@@ -71,13 +71,13 @@ export function StaffSettings() {
           {notice}
         </Banner>
       )}
-      {inviting && <InviteForm acting={role.data} onCancel={() => setInviting(false)} onDone={done} />}
+      {inviting && <InviteForm acting={access.data} onCancel={() => setInviting(false)} onDone={done} />}
       <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
         {staff.data.map((member) => (
           <StaffRow
             key={member.person_id}
             member={member}
-            acting={role.data}
+            acting={access.data}
             open={opened === member.person_id}
             onOpen={() => {
               setNotice(null)
@@ -106,7 +106,7 @@ function StaffRow({
   onDone,
 }: {
   member: StaffMember
-  acting: StaffRole | null | undefined
+  acting: Access | null | undefined
   open: boolean
   onOpen: () => void
   onClose: () => void
@@ -230,7 +230,7 @@ function InviteForm({
   onCancel,
   onDone,
 }: {
-  acting: StaffRole | null | undefined
+  acting: Access | null | undefined
   onCancel: () => void
   onDone: (message: string) => void
 }) {

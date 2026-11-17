@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from './client'
-import type { StaffRole } from './me'
+import { holdsAccount, managesGym, type Access, type StaffRole } from './me'
 
 /** The roles an invite or a change may give (backend `InvitableRole`): never owner. */
 export const INVITABLE_ROLES = ['admin', 'coach'] as const
@@ -44,8 +44,9 @@ export function revokeStaff(personId: string): Promise<void> {
   return apiFetch<void>(`/api/staff/${encodeURIComponent(personId)}`, { method: 'DELETE' })
 }
 
-/** Whether `acting` may give or take away `role`, as the API decides: an admin manages coaches only. */
-export function managesRole(acting: StaffRole | null | undefined, role: StaffRole): boolean {
+/** Whether `acting` may give or take away `role`, as the API decides: the titular
+ * manages everyone but themselves, whoever sets up the gym only its coaches. */
+export function managesRole(acting: Access | null | undefined, role: StaffRole): boolean {
   if (role === 'owner') return false
-  return acting === 'owner' || (acting === 'admin' && role === 'coach')
+  return holdsAccount(acting) || (managesGym(acting) && role === 'coach')
 }

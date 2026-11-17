@@ -9,6 +9,7 @@ import { clampOffset, cropOf, VIEW } from '../components/LogoCropper'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { DEFAULT_VOCABULARY } from '../i18n/vocabulary'
+import { asRole } from '../test/access'
 
 const copy = es.admin.settings.gym.logo
 
@@ -55,7 +56,7 @@ function stubApi({ logo = null, upload }: { logo?: string | null; upload?: Answe
     if (path === '/api/me/role') {
       return {
         body: {
-          role: 'owner',
+          ...asRole('owner'),
           person_id: 'me',
           name: 'Carla Soto',
           email: 'carla@example.cl',

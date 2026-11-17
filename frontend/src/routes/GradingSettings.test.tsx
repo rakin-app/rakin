@@ -7,6 +7,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const settings = es.admin.settings
 const copy = settings.grading
@@ -72,7 +73,7 @@ function stubApi({
       calls.push({ method, path: url.pathname, body })
       const answer: Answer =
         url.pathname === '/api/me/role'
-          ? { body: { role: 'admin', uses_grades: activities.some((a) => a.uses_grades) } }
+          ? { body: { ...asRole('admin'), uses_grades: activities.some((a) => a.uses_grades) } }
           : url.pathname === '/api/activities'
             ? { body: activities }
             : url.pathname === '/api/gym/grading-scheme/presets'

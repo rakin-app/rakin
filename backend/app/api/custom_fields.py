@@ -29,7 +29,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import NOT_FOUND, in_gym
 from app.domain import custom_fields as cf
-from app.roles import FORBIDDEN, AdminSession, Role, StaffSession, role_in_gym
+from app.permissions import (
+    FORBIDDEN,
+    AdminSession,
+    Permission,
+    StaffSession,
+    Standing,
+    standing_in_gym,
+)
 from app.schemas.custom_fields import (
     FieldCreate,
     FieldDefinition,
@@ -53,11 +60,24 @@ def field_cipher(request: Request) -> cf.FieldCipher:
     return cf.FieldCipher(request.app.state.settings.field_encryption_key)
 
 
-async def _role(session: AsyncSession, tenant: Tenant) -> Role:
-    role = await role_in_gym(session, tenant)
-    # The session dependency already refused anyone without a staff role.
-    assert role is not None
-    return role
+def reach_of(standing: Standing | None) -> cf.VisibleTo | None:
+    """The narrowest `visible_to` a reader reaches: the owner's fields for the titular,
+    the admins' for whoever manages the members (`members_manage`), the team's for
+    anyone else on it, and none for anyone not on it."""
+    if standing is None:
+        return None
+    if standing.account_holder:
+        return cf.VisibleTo.OWNER
+    if standing.holds(Permission.MEMBERS_MANAGE):
+        return cf.VisibleTo.ADMIN
+    return cf.VisibleTo.STAFF
+
+
+async def _reach(session: AsyncSession, tenant: Tenant) -> cf.VisibleTo:
+    reach = reach_of(await standing_in_gym(session, tenant))
+    # The session dependency already refused anyone not on the team.
+    assert reach is not None
+    return reach
 
 
 async def _definitions(
@@ -78,27 +98,27 @@ async def _store(session: AsyncSession, tenant: Tenant, defs: Sequence[dict[str,
     )
 
 
-def _answer(defs: Sequence[dict[str, Any]], role: Role) -> list[FieldDefinition]:
-    return [FieldDefinition.model_validate(d) for d in cf.visible(role, defs)]
+def _answer(defs: Sequence[dict[str, Any]], reach: cf.VisibleTo) -> list[FieldDefinition]:
+    return [FieldDefinition.model_validate(d) for d in cf.visible(reach, defs)]
 
 
-def _only_the_owner(role: Role, sent: set[str]) -> None:
-    if role is not Role.OWNER and sent & {"sensitive", "visible_to"}:
+def _only_the_owner(reach: cf.VisibleTo, sent: set[str]) -> None:
+    if reach is not cf.VisibleTo.OWNER and sent & {"sensitive", "visible_to"}:
         raise FORBIDDEN
 
 
 @router.get("/api/custom-fields")
 async def list_fields(tenant: CurrentTenant, session: StaffSession) -> list[FieldDefinition]:
     """The fields the caller sees, in order, archived ones included."""
-    return _answer(await _definitions(session, tenant), await _role(session, tenant))
+    return _answer(await _definitions(session, tenant), await _reach(session, tenant))
 
 
 @router.post("/api/custom-fields", status_code=status.HTTP_201_CREATED)
 async def create_field(
     body: FieldCreate, tenant: CurrentTenant, session: AdminSession
 ) -> FieldDefinition:
-    role = await _role(session, tenant)
-    _only_the_owner(role, body.model_fields_set)
+    reach = await _reach(session, tenant)
+    _only_the_owner(reach, body.model_fields_set)
     defs = await _definitions(session, tenant, lock="UPDATE")
     # Keys of fields the caller cannot see count too; the random suffix keeps a
     # clash with one from showing.
@@ -120,14 +140,14 @@ async def create_field(
 async def reorder_fields(
     body: FieldOrder, tenant: CurrentTenant, session: AdminSession
 ) -> list[FieldDefinition]:
-    role = await _role(session, tenant)
+    reach = await _reach(session, tenant)
     defs = await _definitions(session, tenant, lock="UPDATE")
     try:
-        defs = cf.reorder(defs, body.keys, role)
+        defs = cf.reorder(defs, body.keys, reach)
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from None
     await _store(session, tenant, defs)
-    return _answer(defs, role)
+    return _answer(defs, reach)
 
 
 @router.patch(
@@ -140,13 +160,13 @@ async def update_field(
     tenant: CurrentTenant,
     session: AdminSession,
 ) -> FieldDefinition:
-    role = await _role(session, tenant)
+    reach = await _reach(session, tenant)
     defs = await _definitions(session, tenant, lock="UPDATE")
-    found = next((d for d in defs if d["key"] == key and cf.sees(role, d)), None)
+    found = next((d for d in defs if d["key"] == key and cf.sees(reach, d)), None)
     if found is None:
         raise FIELD_NOT_FOUND
     changes = body.model_dump(exclude_unset=True)
-    _only_the_owner(role, set(changes))
+    _only_the_owner(reach, set(changes))
     if "options" in changes:
         if found["type"] is not cf.FieldType.ENUM:
             raise HTTPException(
@@ -217,8 +237,8 @@ async def _reseal(
 async def _person_fields(
     session: AsyncSession, tenant: Tenant, cipher: cf.FieldCipher, person_id: uuid.UUID
 ) -> list[PersonField]:
-    role = await _role(session, tenant)
-    shown = [d for d in cf.visible(role, await _definitions(session, tenant)) if not d["archived"]]
+    reach = await _reach(session, tenant)
+    shown = [d for d in cf.visible(reach, await _definitions(session, tenant)) if not d["archived"]]
     rows = await session.execute(
         text(
             "SELECT field_key, value, secret FROM person_field_value"
@@ -254,11 +274,11 @@ async def write_person_fields(
 ) -> None:
     """Write `sent`, values by field key, for the fields the caller may see; a 422
     naming each field it refuses, before anything is written."""
-    role = await _role(session, tenant)
+    reach = await _reach(session, tenant)
     # Held to the commit: whether a value is sealed is decided on settled definitions.
     writable = {
         d["key"]: d
-        for d in cf.visible(role, await _definitions(session, tenant, lock="SHARE"))
+        for d in cf.visible(reach, await _definitions(session, tenant, lock="SHARE"))
         if not d["archived"]
     }
     errors: dict[str, str] = {}

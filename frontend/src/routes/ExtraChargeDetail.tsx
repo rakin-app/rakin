@@ -14,7 +14,7 @@ import {
   type ExtraCharge,
   type Line,
 } from '../api/extraCharges'
-import { myRoleQuery, readsLedger } from '../api/me'
+import { myAccessQuery, readsLedger } from '../api/me'
 import type { Method } from '../api/member'
 import { Button, buttonClass } from '../components/Button'
 import { Banner, Card, CheckRow, PlainList, SectionHeader } from '../components/Card'
@@ -49,16 +49,16 @@ const route = getRouteApi('/admin/pagos/cobros/$chargeId')
  * so a cobro for the whole gym reads as a list of names (#357).
  */
 export function ExtraChargeDetail() {
-  const role = useQuery(myRoleQuery())
+  const access = useQuery(myAccessQuery())
   const { chargeId } = route.useParams()
-  const charge = useQuery({ ...chargeQuery(chargeId), enabled: readsLedger(role.data) })
+  const charge = useQuery({ ...chargeQuery(chargeId), enabled: readsLedger(access.data) })
   usePageTitle(charge.data?.title ?? copy.title)
 
-  if (!readsLedger(role.data)) {
+  if (!readsLedger(access.data)) {
     return (
       <PageContainer>
         <PageHeader title={copy.title} />
-        {role.isSuccess && <p className="extra__note">{t.admin.payments.coachesOnly}</p>}
+        {access.isSuccess && <p className="extra__note">{t.admin.payments.coachesOnly}</p>}
       </PageContainer>
     )
   }

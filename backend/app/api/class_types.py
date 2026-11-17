@@ -29,7 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.programs import execute_refusing, require_program
-from app.roles import AdminSession, StaffSession
+from app.permissions import AdminSession, StaffSession
 from app.schemas.classes import (
     ClassKind,
     ClassType,

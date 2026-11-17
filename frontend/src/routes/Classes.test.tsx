@@ -11,6 +11,7 @@ import { isoDay, shiftDay, toDate, weekdayDay } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { mondayOf, nowOrNext } from './Classes'
+import { asRole } from '../test/access'
 
 const copy = es.admin.classes
 const detail = es.admin.session
@@ -134,7 +135,7 @@ function stubApi({
 
   function route(path: string, method: string, body: unknown, date: string | null, query: URLSearchParams): Answer {
     // The class's own coach, unless told otherwise.
-    if (path === '/api/me/role') return { body: { role, person_id: 'coach' } }
+    if (path === '/api/me/role') return { body: { ...asRole(role), person_id: 'coach' } }
     if (path === '/api/class-types') return { body: classTypes }
     if (path === '/api/sessions' && method === 'GET' && week) {
       const on = date ?? isoDay(new Date().toISOString(), 'America/Santiago')

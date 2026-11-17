@@ -19,6 +19,8 @@ from app.domain.ledger import EntryKind, EntryStatus
 from app.domain.membership import MembershipStatus, PlanKind
 from app.domain.rut import check_digit
 from app.domain.schedule import HORIZON_DAYS, horizon
+from app.permissions import ACADEMIA, preset_title_id
+from app.roles import TITLE_OF, Role
 from app.seed.data import (
     ACTIVITY,
     ACTIVITY_PRESET,
@@ -85,6 +87,9 @@ class Seed:
     # Who pays for each kid (migration 0010).
     guardian_links: list[Row]
     staff: list[Row]
+    # The admin's and the coach's appointments to the Academia roles every gym is
+    # given; the owner holds the account instead (migration 0062).
+    staff_titles: list[Row]
     # What it teaches (migration 0043): one activity, graded, with every class type.
     activities: list[Row]
     # Programs and their class types (migration 0017).
@@ -113,6 +118,7 @@ class Seed:
         yield "gym_person", self.gym_people
         yield "guardian_link", self.guardian_links
         yield "staff", self.staff
+        yield "staff_title", self.staff_titles
         yield "gym_activity", self.activities
         yield "program", self.programs
         yield "class_type", self.class_types
@@ -596,9 +602,23 @@ def build(as_of: date) -> Seed:
                 "gym_id": GYM_ID,
                 "person_id": seed_id("person", s.key),
                 "role": s.role.value,
+                "account_holder": s.role is Role.OWNER,
                 "created_at": local(opened),
             }
             for s in STAFF
+        ],
+        staff_titles=[
+            {
+                "id": seed_id("staff_title", s.key),
+                "gym_id": GYM_ID,
+                "person_id": seed_id("person", s.key),
+                "title_id": preset_title_id(GYM_ID, ACADEMIA, TITLE_OF[s.role].key),
+                "title_name": TITLE_OF[s.role].name,
+                "starts_on": opened,
+                "created_at": local(opened),
+            }
+            for s in STAFF
+            if s.role in TITLE_OF
         ],
         activities=[
             {

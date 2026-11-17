@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import NOT_FOUND, add_to_gym, in_gym
 from app.domain.dates import gym_today, is_minor
-from app.roles import StaffSession
+from app.permissions import StaffSession
 from app.schemas.guardians import (
     ConflictCode,
     Family,

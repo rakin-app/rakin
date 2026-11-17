@@ -61,7 +61,7 @@ from app.domain.attendance import credits_to_consume
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.membership import Membership, MembershipStatus, PlanKind, PlanTerms
 from app.notices import Notices, get_notices
-from app.roles import FORBIDDEN, LEDGER_ROLES, StaffSession, role_in_gym
+from app.permissions import FORBIDDEN, Permission, StaffSession, holds
 from app.schemas.attendance import (
     AlreadyMember,
     AttendanceChange,
@@ -537,7 +537,7 @@ async def add_dropin_visitor(
     or admin; a coach sending it is a 403. A 409 names the membership of someone this
     roster already lists, to mark instead, or says `has_left` for someone dado de baja;
     a cancelled class is a 409 too."""
-    if body.paid is not None and await role_in_gym(session, tenant) not in LEDGER_ROLES:
+    if body.paid is not None and not await holds(session, tenant, Permission.MONEY_WRITE):
         raise FORBIDDEN
     held = await class_of(session, session_id, lock=True)
     require_open(held)

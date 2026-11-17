@@ -19,7 +19,7 @@ from app.main import create_app
 from app.notices import WELCOME, Notice, render
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, migrate, run, seed_gym, throwaway_database
+from tests.pg import Database, make_staff, migrate, run, seed_gym, throwaway_database
 
 RED, GREEN, BLUE = (255, 0, 0), (0, 160, 0), (0, 0, 255)
 
@@ -213,9 +213,7 @@ def coach_of(db: Database, gym: uuid.UUID) -> uuid.UUID:
         await conn.execute(
             "INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'x')", gym, coach
         )
-        await conn.execute(
-            "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')", gym, coach
-        )
+        await make_staff(conn, gym, coach, "coach")
 
     run(db.admin_url, query)
     return coach

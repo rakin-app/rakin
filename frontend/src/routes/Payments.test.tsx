@@ -10,6 +10,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.payments
 
@@ -206,7 +207,7 @@ function stubApi({
       const url = new URL(String(input), 'http://localhost')
       let body: unknown = { detail: 'Not Found' }
       let status = 200
-      if (url.pathname === '/api/me/role') body = { role }
+      if (url.pathname === '/api/me/role') body = asRole(role)
       else if (url.pathname === '/api/ledger/pending') body = { count: pending }
       else if (url.pathname === '/api/ledger/book') {
         asked.push(url.searchParams)

@@ -7,6 +7,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.extra
 
@@ -118,7 +119,7 @@ function stubApi(
   )
 
   function base(path: string, method: string): Answer {
-    if (path === '/api/me/role') return { body: { role, person_id: 'me', gym_name: 'Academia Sur' } }
+    if (path === '/api/me/role') return { body: { ...asRole(role), person_id: 'me', gym_name: 'Academia Sur' } }
     if (path === '/api/ledger/pending') return { body: { count: 0 } }
     if (path === '/api/extra-charges' && method === 'GET') return { body: [SUMMARY] }
     if (path === '/api/groups') return { body: [{ id: 'g-final', name: 'Clasificados final', size: 3 }] }
@@ -225,7 +226,7 @@ describe('Cobros extra: a group by belt', () => {
   it('adds everyone "Azul o superior", with a program or without', async () => {
     const user = userEvent.setup()
     const calls = stubApi('owner', (path, method) => {
-      if (path === '/api/me/role') return { body: { role: 'owner', person_id: 'me', uses_grades: true } }
+      if (path === '/api/me/role') return { body: { ...asRole('owner'), person_id: 'me', uses_grades: true } }
       if (path === '/api/gym/grading-scheme') return { body: scheme }
       if (path === '/api/people' && method === 'GET') {
         return { body: { items: [{ id: 'p-blue', name: 'Ana Azul', membership: null }], total: 1 } }
@@ -278,7 +279,7 @@ describe('Cobros extra: a group by belt', () => {
     const user = userEvent.setup()
     stubApi('owner', (path) =>
       path === '/api/me/role'
-        ? { body: { role: 'owner', person_id: 'me', uses_grades: true } }
+        ? { body: { ...asRole('owner'), person_id: 'me', uses_grades: true } }
         : path === '/api/gym/grading-scheme'
           ? { body: { ranks: [], kids_ladder: [], goal_metric: null } }
           : undefined,

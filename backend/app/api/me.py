@@ -29,7 +29,7 @@ from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.dates import gym_today, start_of_local_day
 from app.domain.ledger import EntryKind, EntryStatus
 from app.logos import logo_path
-from app.roles import role_in_gym
+from app.permissions import standing_in_gym
 from app.schemas.blocks import PersonTime
 from app.schemas.guardians import Balance, Dependent
 from app.schemas.me import (
@@ -122,6 +122,7 @@ PAYMENTS = """
 WHO = """
     SELECT g.name AS gym_name, g.theme, g.logo_version, gp.name, gp.email,
            g.settings -> 'vocabulary' AS vocabulary,
+           (SELECT s.role FROM staff s WHERE s.gym_id = g.id AND s.person_id = :me) AS role,
            (EXISTS (SELECT 1 FROM membership m WHERE m.gym_id = g.id AND m.person_id = :me)
             OR EXISTS (SELECT 1 FROM guardian_link l
                        WHERE l.gym_id = g.id AND l.guardian_person_id = :me)) AS student_page
@@ -186,10 +187,15 @@ async def my_role(
     and who they are, such as the class timer to the session's coach, Ajustes → Cuenta
     and the gym's name in the sidebar and the page titles; and whether the gym grades,
     for the belts and ranks every screen shows only then (#245); and what the gym calls
-    itself, its members and its coach (#344)."""
+    itself, its members and its coach (#344). What they may do here is `permissions`
+    and `account_holder` (#308), which the screens read; `role` is the name the staff
+    row still carries until #313."""
     who = (await session.execute(text(WHO), {"me": tenant.person_id, "gym": tenant.gym_id})).one()
+    standing = await standing_in_gym(session, tenant)
     return MyRole(
-        role=await role_in_gym(session, tenant),
+        role=None if standing is None else who.role,
+        permissions=None if standing is None else sorted(standing.permissions),
+        account_holder=standing is not None and standing.account_holder,
         person_id=tenant.person_id,
         name=who.name,
         email=who.email,

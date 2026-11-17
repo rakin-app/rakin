@@ -6,7 +6,7 @@ import { classTypesQuery } from '../api/classes'
 import { ApiError } from '../api/client'
 import { gymSettingsQuery } from '../api/gym'
 import { recordPayment, type Method } from '../api/member'
-import { myRoleQuery, myselfQuery, readsLedger } from '../api/me'
+import { myAccessQuery, myselfQuery, readsLedger } from '../api/me'
 import { memberCountQuery, missingGuardianQuery, plansQuery, type MemberRow } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
 import { isClass, todaySessionsQuery, unmarkedSessionsQuery, type ClassSession, type SessionDay } from '../api/sessions'
@@ -74,8 +74,8 @@ const OVERDUE_SHOWN = 3
  * student, Hoy is that checklist alone: no counters at zero, no "all good" cards (#358).
  */
 export function Today() {
-  const role = useQuery(myRoleQuery())
-  const money = readsLedger(role.data)
+  const access = useQuery(myAccessQuery())
+  const money = readsLedger(access.data)
   const gym = useGymName()
   usePageTitle(copy.title)
 
@@ -83,8 +83,8 @@ export function Today() {
     <div className="today">
       <PageContainer className="today__page">
         <PageHeader eyebrow={gym} title={copy.heading(weekdayDay(new Date()))} />
-        {role.isError && <Failed message={copy.roleError} retry={() => void role.refetch()} />}
-        {role.data === 'coach' && <CoachToday />}
+        {access.isError && <Failed message={copy.roleError} retry={() => void access.refetch()} />}
+        {access.data && !money && <CoachToday />}
         {money && <OwnerToday />}
       </PageContainer>
     </div>

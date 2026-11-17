@@ -10,6 +10,7 @@ import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { validateStudentsSearch } from './Students'
+import { asRole } from '../test/access'
 
 const copy = es.admin.students
 
@@ -94,7 +95,7 @@ function stubApi(
       } else if (url.pathname === '/api/gym/grading-scheme' && scheme) {
         answer = { body: scheme }
       } else if (url.pathname === '/api/me/role' && (role || grades)) {
-        answer = { body: { role: role ?? 'admin', person_id: 'me', uses_grades: grades } }
+        answer = { body: { ...asRole(role ?? 'admin'), person_id: 'me', uses_grades: grades } }
       } else {
         answer = { status: 404, body: { detail: 'Not Found' } }
       }

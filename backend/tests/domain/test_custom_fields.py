@@ -1,4 +1,4 @@
-"""Custom fields' rules: visibility by role, keys, ordering, typed values, sealing."""
+"""Custom fields' rules: visibility by reader, keys, ordering, typed values, sealing."""
 
 import uuid
 from typing import Any
@@ -9,6 +9,7 @@ from cryptography.exceptions import InvalidTag
 from app.domain.custom_fields import (
     FieldCipher,
     InvalidValue,
+    VisibleTo,
     definitions,
     key_for,
     normalize,
@@ -45,17 +46,16 @@ def test_a_sensitive_field_defaults_to_the_owner_alone() -> None:
     assert field("salud", "staff", sensitive=True)["visible_to"] == "staff"
 
 
+OWNER, ADMIN, STAFF = VisibleTo.OWNER, VisibleTo.ADMIN, VisibleTo.STAFF
+
+
 @pytest.mark.parametrize(
     ("visible_to", "seen_by"),
-    [
-        ("owner", {"owner"}),
-        ("admin", {"owner", "admin"}),
-        ("staff", {"owner", "admin", "coach"}),
-    ],
+    [("owner", {OWNER}), ("admin", {OWNER, ADMIN}), ("staff", {OWNER, ADMIN, STAFF})],
 )
-def test_who_sees_a_field(visible_to: str, seen_by: set[str]) -> None:
-    for role in ("owner", "admin", "coach", None):
-        assert sees(role, field("x", visible_to)) == (role in seen_by)
+def test_who_sees_a_field(visible_to: str, seen_by: set[VisibleTo]) -> None:
+    for reach in (OWNER, ADMIN, STAFF, None):
+        assert sees(reach, field("x", visible_to)) == (reach in seen_by)
 
 
 @pytest.mark.parametrize(
@@ -85,16 +85,16 @@ def test_a_key_is_suffixed_even_when_the_plain_one_is_free() -> None:
     assert made != "peso" and made.startswith("peso_") and len(made) == len("peso_") + 4
 
 
-def test_reorder_moves_what_the_role_sees_and_keeps_the_rest_in_place() -> None:
+def test_reorder_moves_what_the_reader_sees_and_keeps_the_rest_in_place() -> None:
     defs = [field("a"), field("secreto", "owner"), field("b"), field("c")]
-    out = reorder(defs, ["c", "a", "b"], "coach")
+    out = reorder(defs, ["c", "a", "b"], STAFF)
     assert [d["key"] for d in out] == ["c", "secreto", "a", "b"]
     with pytest.raises(ValueError):
-        reorder(defs, ["c", "a"], "coach")
+        reorder(defs, ["c", "a"], STAFF)
     with pytest.raises(ValueError):
-        reorder(defs, ["c", "a", "b", "secreto"], "coach")
+        reorder(defs, ["c", "a", "b", "secreto"], STAFF)
     with pytest.raises(ValueError):
-        reorder(defs, ["a", "a", "b"], "coach")
+        reorder(defs, ["a", "a", "b"], STAFF)
 
 
 ENUM = normalize({"key": "k", "label": "K", "type": "enum", "options": ["Gallo", "Pluma"]})

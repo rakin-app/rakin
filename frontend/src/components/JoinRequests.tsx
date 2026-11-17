@@ -9,7 +9,7 @@ import {
   rejectJoinRequest,
   type JoinRequest,
 } from '../api/join'
-import { managesGym, myRoleQuery } from '../api/me'
+import { managesGym, myAccessQuery } from '../api/me'
 import { plansQuery, type Plan } from '../api/plans'
 import { useGymTimeZone, useGymToday } from '../api/sessions'
 import { formatPhone, isoDay } from '../format'
@@ -32,8 +32,8 @@ const copy = t.admin.joinRequests
  */
 export function JoinRequests() {
   const requests = useQuery(joinRequestsQuery)
-  const role = useQuery(myRoleQuery())
-  const managers = managesGym(role.data)
+  const access = useQuery(myAccessQuery())
+  const managers = managesGym(access.data)
   const plans = useQuery({ ...plansQuery, enabled: managers })
   const [notice, setNotice] = useState<string | null>(null)
   const titleId = useId()

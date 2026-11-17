@@ -28,7 +28,7 @@ from app.api.people import NOT_FOUND as PERSON_NOT_FOUND
 from app.api.people import in_gym
 from app.api.programs import execute_refusing
 from app.domain.dates import gym_today, start_of_local_day
-from app.roles import AdminSession, StaffSession
+from app.permissions import AdminSession, StaffSession
 from app.schemas.class_tags import (
     ClassTag,
     ClassTagCreate,

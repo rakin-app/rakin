@@ -68,7 +68,7 @@ from app.domain.billing import settled_amount
 from app.domain.dates import gym_today, is_minor
 from app.domain.membership import MembershipStatus, PlanKind, current_first
 from app.notices import Notices, get_notices, mail_address
-from app.roles import AdminSession, OwnerSession
+from app.permissions import AdminSession, OwnerSession
 from app.schemas.guardians import FamilyConflict, FamilyRefused
 from app.schemas.people import (
     MINOR_NEEDS_GUARDIAN,

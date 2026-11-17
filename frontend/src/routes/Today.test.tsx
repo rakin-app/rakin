@@ -15,6 +15,7 @@ import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { ago, setupDoneKey } from './Today'
+import { asRole } from '../test/access'
 
 const copy = es.admin.today
 
@@ -264,7 +265,7 @@ function stubApi({
   )
 
   function route(path: string, method: string): Answer {
-    if (path === '/api/me/role') return roleFails ? { status: 500, body: { detail: 'boom' } } : { body: { role, person_id: 'owner-1' } }
+    if (path === '/api/me/role') return roleFails ? { status: 500, body: { detail: 'boom' } } : { body: { ...asRole(role), person_id: 'owner-1' } }
     if (setupFails && path === '/api/people') return { status: 500, body: { detail: 'boom' } }
     const configured = setupAnswer(path, setup ?? SET_UP)
     if (configured) return configured

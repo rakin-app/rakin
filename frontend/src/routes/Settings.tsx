@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect, useRef, type ComponentType } from 'react'
 import { useGrades } from '../api/activities'
-import { managesGym, myRoleQuery } from '../api/me'
+import { managesGym, myAccessQuery } from '../api/me'
 import { BackLink } from '../components/BackLink'
 import { Card, listRowClass, ListRowContent } from '../components/Card'
 import { ChevronRightIcon } from '../components/icons'
@@ -85,7 +85,7 @@ function sectionOf(pathname: string): Section | undefined {
  * From 960px the sections are tabs over the open one, the open tab scrolled into view.
  */
 export function Settings() {
-  const role = useQuery(myRoleQuery())
+  const access = useQuery(myAccessQuery())
   const desktop = useDesktop()
   const section = sectionOf(useRouterState({ select: (state) => state.location.pathname }))
   usePageTitle(section?.label ?? copy.title)
@@ -99,19 +99,19 @@ export function Settings() {
           title={inSection ? section.label : copy.title}
           back={inSection && <BackLink to="/admin/ajustes" label={copy.backLabel} />}
         />
-        {managesGym(role.data) ? (
+        {managesGym(access.data) ? (
           <>
             {desktop && <SectionTabs current={section} />}
             <div className="settings__body">
               <Outlet />
             </div>
           </>
-        ) : role.isError ? (
+        ) : access.isError ? (
           <p className="settings__note" role="alert">
             {copy.roleError}
           </p>
         ) : (
-          role.isSuccess && <AdminsOnly />
+          access.isSuccess && <AdminsOnly />
         )}
       </PageContainer>
     </div>

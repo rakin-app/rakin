@@ -1,0 +1,882 @@
+{
+  "DELETE /api/activities/{activity_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "DELETE /api/block-kinds/{kind_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "DELETE /api/check-in/{class_type_id}/{membership_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "DELETE /api/closed-days/{day}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "DELETE /api/groups/{group_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "DELETE /api/gym/logo": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "DELETE /api/join-link": {
+    "admin": 204,
+    "coach": 403,
+    "owner": 204
+  },
+  "DELETE /api/join-requests/{request_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "DELETE /api/me/consents/{dependent_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "DELETE /api/me/freeze-requests/{request_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "DELETE /api/people/{person_id}": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "DELETE /api/people/{person_id}/dependents/{dependent_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "DELETE /api/schedule/{slot_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "DELETE /api/sessions/{session_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "DELETE /api/staff/{person_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/activities": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/block-kinds": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/check-in": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/check-in/{class_type_id}/search": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/class-tags": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/class-tags/hours": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/class-types": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/class-types/{class_type_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/closed-days": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/custom-fields": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/extra-charges": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/extra-charges/{charge_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/extra-charges/{charge_id}/lines/{line_id}/cancel": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/freeze-requests": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/groups": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/groups/{group_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/gym/grading-scheme": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/gym/grading-scheme/presets": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/gym/settings": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/import/recent": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/import/template.xlsx": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/import/{import_id}/undo": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/inactive": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/join-link": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/join-requests": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/ledger/book": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/ledger/export": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/ledger/memberships/{membership_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/ledger/memberships/{membership_id}/ahead": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/ledger/overdue": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/ledger/pending": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/ledger/people/{person_id}/corrections": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/ledger/proofs": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/me/classes": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/me/consents": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/me/dependents": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/me/extra-lines": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/me/page": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/me/periods": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/me/role": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/me/time": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/memberships": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "GET /api/memberships/start": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "GET /api/memberships/{membership_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/memberships/{membership_id}/plan-change": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "GET /api/memberships/{membership_id}/reactivate": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/people": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/people/{person_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/attendance": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/consent": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/deletion": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/extra-lines": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/family": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/fields": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/grades": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/history/payments": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/tag-hours": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/time": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/people/{person_id}/welcome": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "GET /api/plans": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/plans/{plan_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/programs": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/programs/{program_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/reminders": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/schedule": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/sessions": {
+    "admin": 200,
+    "coach": 200,
+    "owner": 200
+  },
+  "GET /api/sessions/duration": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "GET /api/sessions/unmarked": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/sessions/{session_id}": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/sessions/{session_id}/blocks": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/sessions/{session_id}/blocks/suggested": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/sessions/{session_id}/roster": {
+    "admin": 404,
+    "coach": 404,
+    "owner": 404
+  },
+  "GET /api/staff": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
+  "PATCH /api/activities/{activity_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/block-kinds/{kind_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/class-tags/{tag_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/class-types/{class_type_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/custom-fields/{key}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/extra-charges/{charge_id}/lines/{line_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/gym/settings": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/join-link": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/memberships/{membership_id}/freeze": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/people/{person_id}": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "PATCH /api/people/{person_id}/fields": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "PATCH /api/plans/{plan_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/programs/{program_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/schedule/{slot_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/sessions/{session_id}": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "PATCH /api/sessions/{session_id}/attendance": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "PATCH /api/staff/{person_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/activities": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/block-kinds": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/check-in/{class_type_id}": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/class-tags": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/class-types": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/custom-fields": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/extra-charges": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/extra-charges/preview": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/extra-charges/{charge_id}/lines/{line_id}/adjustments": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/extra-charges/{charge_id}/lines/{line_id}/cancel": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/extra-charges/{charge_id}/lines/{line_id}/notify": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/extra-charges/{charge_id}/lines/{line_id}/payments": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/extra-charges/{charge_id}/remind": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/freeze-requests/{request_id}/approve": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/freeze-requests/{request_id}/reject": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/groups": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/import/members": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/import/sheet": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/import/{import_id}/undo": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/inactive/{person_id}/nudge": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/join-link": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/join-requests/{request_id}/approve": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/ledger/adjustments": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/ledger/payments": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/ledger/payments/ahead": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/ledger/proofs/{entry_id}/reject": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/ledger/proofs/{entry_id}/validate": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/ledger/refunds": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/ledger/restores": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/ledger/voids": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/me/consents/{dependent_id}": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/me/freeze-requests": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/me/payments": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/me/proofs": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/memberships": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/memberships/{membership_id}/cancel": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/memberships/{membership_id}/freeze": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/memberships/{membership_id}/freeze/end": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/memberships/{membership_id}/plan-change": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/memberships/{membership_id}/reactivate": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/memberships/{membership_id}/void": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/people": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/people/enrol": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/people/former": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/people/{person_id}/dependents": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/people/{person_id}/grades": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/people/{person_id}/history/payments": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/people/{person_id}/history/payments/{payment_id}/remove": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/people/{person_id}/leave": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/people/{person_id}/return": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/people/{person_id}/welcome": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/plans": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/programs": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/reminders/{billing_period_id}": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/reminders/{billing_period_id}/email": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/schedule": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/sessions": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/sessions/{session_id}/cancel": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/sessions/{session_id}/reactivate": {
+    "admin": 404,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/sessions/{session_id}/trials": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/sessions/{session_id}/visitors": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "POST /api/staff": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PUT /api/block-kinds/order": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PUT /api/closed-days/{day}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PUT /api/custom-fields/order": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PUT /api/groups/{group_id}": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PUT /api/gym/grading-scheme": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PUT /api/gym/logo": {
+    "admin": 415,
+    "coach": 403,
+    "owner": 415
+  },
+  "PUT /api/people/{person_id}/history": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "PUT /api/sessions/{session_id}/blocks": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  },
+  "PUT /api/sessions/{session_id}/blocks/{block_id}/actual": {
+    "admin": 422,
+    "coach": 422,
+    "owner": 422
+  }
+}

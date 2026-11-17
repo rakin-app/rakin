@@ -126,6 +126,53 @@ def seeded_today(tz: str = DEFAULT_TIMEZONE) -> date:
     return gym_today(tz)
 
 
+# A staff member as the API makes one since 0062: the owner holds the account, an admin
+# or coach holds the gym's Academia role from today. Before 0062, the row alone.
+STAFF_TITLE_FOR = {"admin": "administrador", "coach": "coach"}
+
+
+async def make_staff(
+    conn: asyncpg.Connection,
+    gym_id: uuid.UUID,
+    person_id: uuid.UUID,
+    role: str,
+    starts_on: date | None = None,
+    ends_on: date | None = None,
+) -> None:
+    """Make `person_id` staff of `gym_id` in `role`, in a transaction `conn` holds. An
+    admin's or coach's appointment runs from `starts_on` (today, in the gym's timezone,
+    unless given) until `ends_on`."""
+    if not await conn.fetchval("SELECT to_regclass('staff_title') IS NOT NULL"):
+        await conn.execute(
+            "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, $3)",
+            gym_id,
+            person_id,
+            role,
+        )
+        return
+    await conn.execute(
+        "INSERT INTO staff (gym_id, person_id, role, account_holder) VALUES ($1, $2, $3, $4)",
+        gym_id,
+        person_id,
+        role,
+        role == "owner",
+    )
+    if role == "owner":
+        return
+    await conn.execute(
+        "INSERT INTO staff_title (gym_id, person_id, title_id, title_name, starts_on, ends_on)"
+        " SELECT t.gym_id, $2, t.id, t.name,"
+        "        coalesce($4, (now() AT TIME ZONE g.timezone)::date), $5"
+        " FROM gym_title t JOIN gym g ON g.id = t.gym_id"
+        " WHERE t.id = gym_title_preset_id($1, 'academia', $3)",
+        gym_id,
+        person_id,
+        STAFF_TITLE_FOR[role],
+        starts_on,
+        ends_on,
+    )
+
+
 def seeded_owner(gym_id: uuid.UUID) -> uuid.UUID:
     """The owner `seed_gym` gives `gym_id`: derived from it, so callers need only the gym."""
     return uuid.uuid5(gym_id, "owner")
@@ -155,11 +202,7 @@ def seed_gym(db: Database, slug: str) -> uuid.UUID:
                 person_id,
                 f"owner of {slug}",
             )
-            await conn.execute(
-                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'owner')",
-                gym_id,
-                person_id,
-            )
+            await make_staff(conn, gym_id, person_id, "owner")
             plan_id = await conn.fetchval(
                 "INSERT INTO plan (gym_id, name, kind, price_clp, anchor)"
                 " VALUES ($1, 'Mensual', 'monthly', 45000, 'signup') RETURNING id",

@@ -25,7 +25,7 @@ import { ApiError } from '../api/client'
 import { useKeptDraft, useRestoredDraft } from '../api/drafts'
 import { useGrades } from '../api/activities'
 import { rankLabel } from '../api/grading'
-import { managesGym, myselfQuery, runsSession } from '../api/me'
+import { accessOf, managesGym, myselfQuery, runsSession } from '../api/me'
 import { isClass, sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
 import { Button, buttonClass } from '../components/Button'
@@ -111,7 +111,7 @@ export function SessionDetail() {
       {!cancelled && <Attendance key={`attendance-${data.id}`} sessionId={data.id} />}
       {runs ? <TopicForm key={data.id} session={data} /> : <TopicView session={data} />}
       {runs && begun && !cancelled && <TimerRecord key={`record-${data.id}`} session={data} />}
-      {managesGym(me.data?.role) && (
+      {managesGym(me.data && accessOf(me.data)) && (
         <>
           <ClassEdit key={`edit-${data.id}`} session={data} timeZone={timeZone} />
           <ClassActions key={`actions-${data.id}`} session={data} />
@@ -781,7 +781,7 @@ function Visitor({ sessionId, onMember }: { sessionId: string; onMember: (member
   const queryClient = useQueryClient()
   const plans = useQuery(dropinPlansQuery())
   const me = useQuery(myselfQuery())
-  const takesMoney = managesGym(me.data?.role)
+  const takesMoney = managesGym(me.data && accessOf(me.data))
   const ids = { name: useId(), phone: useId(), plan: useId(), paid: useId() }
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')

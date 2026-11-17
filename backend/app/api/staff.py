@@ -1,10 +1,16 @@
 """The gym's staff (`/api/staff`): who holds a role here, invite, change role, revoke.
 
-Roles are per gym, a `staff` row for the person and the gym (app.roles), so each of
-these is that row: an invite writes it, a change rewrites its role, a revoke deletes it.
-A revoked person keeps the gym's record of them and everything that names them, such
-as the classes they taught (migration 0020); with no membership either, their session
-here ends at once (migration 0005).
+Roles are per gym, a `staff` row for the person and the gym, and what they may do is
+their appointment to one of the gym's roles (`app.permissions`): the Academia preset's
+Administrador for an admin, its Coach for a coach. So each of these writes both: an
+invite writes the row and an appointment from today, a change rewrites the row's role
+and moves the appointment to the other role from today, a revoke ends the appointment
+and deletes the row. The row's role is still what the database's policies read, until
+#309. An appointment that began only today is deleted rather than ended, since it
+would end on the day it starts. A revoked person keeps the gym's record of them and
+everything that names them, such as the classes they taught (migration 0020) and the
+terms they held; with no membership either, their session here ends at once
+(migration 0005).
 
 An invite adds the person the way a member is added, through `join_gym`: by their RUT
 when given, so a RUT another gym knows attaches that person without the gym learning
@@ -17,9 +23,9 @@ A sign-in with an email reaches only the gyms whose own record holds it (migrati
 0029), so the invite's email signs in to this gym and no other, whoever else knows the
 person: it is always written, and the invite always goes to it.
 
-Owner and admin manage the staff, and an admin only its coaches: making, unmaking or
-revoking an admin is the owner's. The owner's own row is not changed here at all, so a
-gym always keeps its owner.
+Who sets up the gym (`AdminSession`) manages the staff, and only its coaches: making,
+unmaking or revoking an admin is the titular's, the owner who holds the account. The
+owner's own row is not changed here at all, so a gym always keeps its owner.
 """
 
 import uuid
@@ -31,7 +37,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.people import find_in_gym, give_identity, join_gym, refuse_email_in_gym
 from app.notices import STAFF_INVITE, Notice, Notices, get_notices
-from app.roles import AdminSession, Role, role_in_gym
+from app.permissions import ACADEMIA, AdminSession, Standing, preset_title_id, standing_in_gym
+from app.roles import TITLE_OF, Role
 from app.schemas.staff import (
     AlreadyStaff,
     StaffConflict,
@@ -60,15 +67,61 @@ SELECT_STAFF = """
 # The owner first, then admins, then coaches, each by name.
 ORDER = "array_position(ARRAY['owner', 'admin', 'coach'], s.role), lower(gp.name), s.person_id"
 
+# An appointment from today, in the gym's timezone, to the role `:title`, under the
+# name it has today.
+APPOINT = """
+    INSERT INTO staff_title (gym_id, person_id, title_id, title_name, starts_on, created_by)
+    SELECT t.gym_id, :id, t.id, t.name, (now() AT TIME ZONE g.timezone)::date, :by
+    FROM gym_title t JOIN gym g ON g.id = t.gym_id
+    WHERE t.id = :title
+    RETURNING id
+"""
+
+# The person's appointments that hold today or later, ended today: from today on they
+# hold none. One that began before today ends today; the rest never ran a day, and are
+# deleted, since a term ends after it starts.
+TODAY = "(SELECT (now() AT TIME ZONE timezone)::date FROM gym WHERE id = staff_title.gym_id)"
+END_APPOINTMENTS = f"""
+    UPDATE staff_title SET ends_on = {TODAY}, ended_by = :by, ended_at = now()
+    WHERE person_id = :id AND starts_on < {TODAY} AND (ends_on IS NULL OR ends_on > {TODAY})
+"""
+DROP_UNSTARTED = f"""
+    DELETE FROM staff_title
+    WHERE person_id = :id AND starts_on >= {TODAY} AND (ends_on IS NULL OR ends_on > {TODAY})
+"""
+
 Acting = Annotated[Tenant, Depends(current_tenant)]
 
 
-def _may_manage(acting: Role | None, role: Role) -> None:
+async def _acting(session: AsyncSession, tenant: Tenant) -> Standing:
+    standing = await standing_in_gym(session, tenant)
+    # `AdminSession` already refused anyone not on the team.
+    assert standing is not None
+    return standing
+
+
+def _may_manage(acting: Standing, role: Role) -> None:
     """A 403 unless `acting` may give or take away `role`."""
     if role is Role.OWNER:
         raise OWNER_FIXED
-    if role is Role.ADMIN and acting is not Role.OWNER:
+    if role is Role.ADMIN and not acting.account_holder:
         raise OWNERS_CALL
+
+
+async def _appoint(session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, role: Role) -> None:
+    """Appoint `person_id` from today to the Academia role `role` stands for."""
+    title = preset_title_id(tenant.gym_id, ACADEMIA, TITLE_OF[role].key)
+    appointed = await session.scalar(
+        text(APPOINT), {"id": person_id, "title": title, "by": tenant.person_id}
+    )
+    # Every gym is given its preset's roles when it is created (0062).
+    assert appointed is not None, f"gym {tenant.gym_id} has no {TITLE_OF[role].key} role"
+
+
+async def _end_appointments(session: AsyncSession, tenant: Tenant, person_id: uuid.UUID) -> None:
+    params = {"id": person_id, "by": tenant.person_id}
+    await session.execute(text(END_APPOINTMENTS), params)
+    await session.execute(text(DROP_UNSTARTED), {"id": person_id})
 
 
 async def _get(session: AsyncSession, person_id: uuid.UUID) -> StaffMember:
@@ -109,7 +162,7 @@ async def invite_staff(
     background: BackgroundTasks,
 ) -> StaffMember:
     role = Role(body.role)
-    _may_manage(await role_in_gym(session, tenant), role)
+    _may_manage(await _acting(session, tenant), role)
     # One invite of an email, and of a RUT, at a time: `find_in_gym` matches either, so a
     # second waits and finds the first's person, a 409, instead of creating another
     # (#204). Taken in one order, so two invites never wait on each other; released when
@@ -144,6 +197,7 @@ async def invite_staff(
         # Raised, so the transaction rolls back; nothing was written.
         conflict = StaffConflict(person_id=person_id)
         raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
+    await _appoint(session, tenant, person_id, role)
     # A record new here took the invite's email from `join_gym`; a known one did not.
     if not joined:
         await session.execute(
@@ -189,7 +243,7 @@ async def change_role(
     person_id: uuid.UUID, body: StaffRoleChange, tenant: Acting, session: AdminSession
 ) -> StaffMember:
     """Move someone between admin and coach; the role they have already is a no-op."""
-    acting = await role_in_gym(session, tenant)
+    acting = await _acting(session, tenant)
     current = await _role_of(session, person_id)
     role = Role(body.role)
     _may_manage(acting, current)
@@ -199,11 +253,14 @@ async def change_role(
             text("UPDATE staff SET role = :role WHERE person_id = :id"),
             {"id": person_id, "role": role.value},
         )
+        await _end_appointments(session, tenant, person_id)
+        await _appoint(session, tenant, person_id, role)
     return await _get(session, person_id)
 
 
 @router.delete("/{person_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_staff(person_id: uuid.UUID, tenant: Acting, session: AdminSession) -> Response:
-    _may_manage(await role_in_gym(session, tenant), await _role_of(session, person_id))
+    _may_manage(await _acting(session, tenant), await _role_of(session, person_id))
+    await _end_appointments(session, tenant, person_id)
     await session.execute(text("DELETE FROM staff WHERE person_id = :id"), {"id": person_id})
     return Response(status_code=status.HTTP_204_NO_CONTENT)

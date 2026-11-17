@@ -49,7 +49,7 @@ from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
 from app.integrations import Integrations, get_integrations
 from app.integrations.blobstore import BlobStore
 from app.notices import PROOF_REJECTED, Notice, Notices, get_notices
-from app.roles import LedgerSession
+from app.permissions import LedgerSession
 from app.schemas.ledger import Entry, RecordedPayment
 from app.schemas.proofs import (
     ProofRejection,

@@ -11,6 +11,7 @@ import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { DEFAULT_VOCABULARY, wearVocabulary } from '../i18n/vocabulary'
+import { asRole } from '../test/access'
 
 const copy = es.admin.settings
 const gym = copy.gym
@@ -120,7 +121,7 @@ function stubApi({
     if (path === '/api/me/role') {
       return {
         body: {
-          role,
+          ...asRole(role),
           person_id: 'me',
           name: 'Carla Soto',
           email: 'carla@example.cl',

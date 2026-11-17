@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
 import { useSignOut } from '../api/auth'
-import { myRoleQuery } from '../api/me'
+import { myAccessQuery } from '../api/me'
 import { Button } from '../components/Button'
 import { InstallHint } from '../components/InstallHint'
 import { t } from '../i18n/es'
@@ -15,8 +15,8 @@ import './MeLayout.css'
  */
 export function MeLayout() {
   const signOut = useSignOut()
-  const role = useQuery(myRoleQuery())
-  const staff = role.data !== undefined && role.data !== null
+  const access = useQuery(myAccessQuery())
+  const staff = access.data !== undefined && access.data !== null
   return (
     <div className="me-shell">
       <main className="me-main">

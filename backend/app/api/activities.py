@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.programs import execute_refusing
 from app.domain.vocabulary import stored, words_of
-from app.roles import AdminSession, StaffSession
+from app.permissions import AdminSession, StaffSession
 from app.schemas.activities import Activity, ActivityCreate, ActivityUpdate
 
 router = APIRouter(prefix="/api/activities", tags=["gym"])

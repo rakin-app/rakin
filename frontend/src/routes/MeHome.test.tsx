@@ -10,6 +10,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.me
 const YEAR = new Date().getFullYear()
@@ -111,7 +112,7 @@ function stubPage(
       if (url.pathname === '/api/me/time') return Response.json(time)
       if (url.pathname === '/api/me/classes') return Response.json(classes)
       if (url.pathname === '/api/me/role') {
-        return Response.json({ role: null, person_id: 'diego', gym_name: 'Academia Sur', uses_grades: grades })
+        return Response.json({ ...asRole(null), person_id: 'diego', gym_name: 'Academia Sur', uses_grades: grades })
       }
       return Response.json({ detail: 'Not Found' }, { status: 404 })
     }),

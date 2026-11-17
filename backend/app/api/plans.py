@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.programs import require_program
-from app.roles import AdminSession, SeesMoney, StaffSession
+from app.permissions import AdminSession, SeesMoney, StaffSession
 from app.schemas.plans import (
     COLUMNS,
     PLAN,

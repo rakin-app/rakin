@@ -31,6 +31,7 @@ from app.domain.membership import MembershipStatus
 from app.domain.phone import normalize_phone
 from app.domain.rut import normalize_rut
 from app.domain.vocabulary import DEFAULT, Vocabulary
+from app.permissions import Permission
 from app.roles import Role
 from app.schemas.memberships import MembershipStart
 from app.schemas.theme import Theme
@@ -403,9 +404,15 @@ class MyRole(BaseModel):
     who they are, for a screen that answers differently to the coach of a class; `name`
     and `email` as this gym has them (Ajustes → Cuenta), and the gym's own name.
     `student_page`: whether they hold a membership here or pay for a dependent, so the
-    admin shell links staff who also train to their student page (#214)."""
+    admin shell links staff who also train to their student page (#214).
+
+    `permissions` is what they may do here (`app.permissions`), `None` when they are not
+    on the team; `account_holder` whether they hold the gym's account, and with it every
+    permission (#308)."""
 
     role: Role | None
+    permissions: list[Permission] | None
+    account_holder: bool
     person_id: uuid.UUID
     name: str | None
     email: str | None

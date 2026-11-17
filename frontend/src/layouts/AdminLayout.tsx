@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useSignOut } from '../api/auth'
-import { managesGym, myRoleQuery, myselfQuery, readsLedger } from '../api/me'
+import { managesGym, myAccessQuery, myselfQuery, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
 import { useTimerSync } from '../api/sessionBlocks'
 import { GymMark } from '../components/GymMark'
@@ -52,12 +52,12 @@ const NAV_ITEMS: readonly NavItem[] = [
 export function AdminLayout() {
   // Proofs waiting for review, on the Pagos tab: asked for only by those who read
   // the ledger, so a coach never polls a request that would be refused.
-  const role = useQuery(myRoleQuery())
+  const access = useQuery(myAccessQuery())
   const studentPage = useQuery(myselfQuery()).data?.student_page ?? false
   const signOut = useSignOut()
   // A class timed without signal reaches the API from whichever screen is open.
   useTimerSync()
-  const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(role.data) })
+  const pending = useQuery({ ...pendingCountQuery(), enabled: readsLedger(access.data) })
   const badge = pending.data ?? 0
   const gym = useGymName()
   const logo = useQuery(myselfQuery()).data?.gym_logo
@@ -66,12 +66,12 @@ export function AdminLayout() {
   // is known to reach it, so a coach never sees either tab, not even while the role loads.
   const navItems = NAV_ITEMS.filter(
     (item) =>
-      (item.to !== '/admin/pagos' || readsLedger(role.data)) && (item.to !== '/admin/ajustes' || managesGym(role.data)),
+      (item.to !== '/admin/pagos' || readsLedger(access.data)) && (item.to !== '/admin/ajustes' || managesGym(access.data)),
   )
 
   // A coach's phone has no Ajustes: "Mi página" is a tab of their bar, and signing out is
   // in the top bar's account menu. Only once the role is known, so nothing flashes in.
-  const coach = role.isSuccess && !managesGym(role.data)
+  const coach = access.isSuccess && !managesGym(access.data)
   const myPageClass = coach ? 'admin-nav__end admin-nav__end--bar' : 'admin-nav__end'
 
   return (

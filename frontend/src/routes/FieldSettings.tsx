@@ -12,7 +12,7 @@ import {
   type FieldType,
   type VisibleTo,
 } from '../api/customFields'
-import { myRoleQuery } from '../api/me'
+import { holdsAccount, myAccessQuery } from '../api/me'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input, Select, Textarea } from '../components/Field'
@@ -52,7 +52,7 @@ function summary(field: FieldDefinition, owner: boolean): string {
 export function FieldSettings() {
   const queryClient = useQueryClient()
   const fields = useQuery(customFieldsQuery)
-  const owner = useQuery(myRoleQuery()).data === 'owner'
+  const owner = holdsAccount(useQuery(myAccessQuery()).data)
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 

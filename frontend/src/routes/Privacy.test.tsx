@@ -6,6 +6,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.privacy
 
@@ -33,7 +34,7 @@ function stubApi(notice: Answer = { body: NOTICE }) {
       asked.push(`${url.pathname}${url.search}`)
       let answer: Answer = { status: 404, body: { detail: 'Not Found' } }
       if (url.pathname === '/api/privacy') answer = notice
-      if (url.pathname === '/api/me/role') answer = { body: { role: 'member', person_id: 'me' } }
+      if (url.pathname === '/api/me/role') answer = { body: { ...asRole('member'), person_id: 'me' } }
       return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
         status: answer.status ?? 200,
         headers: { 'Content-Type': 'application/json' },

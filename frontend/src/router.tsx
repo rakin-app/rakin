@@ -10,7 +10,7 @@ import {
 import { appPath, hadSession, landingFor, markSignedIn, SIGN_IN_PATH } from './api/auth'
 import { ApiError, onUnauthorized } from './api/client'
 import { keepDrafts } from './api/drafts'
-import { myRoleQuery, myselfQuery, type MyRole } from './api/me'
+import { accessOf, myAccessQuery, myselfQuery, type MyRole } from './api/me'
 import { AdminLayout } from './layouts/AdminLayout'
 import { t } from './i18n/es'
 import { wearVocabulary } from './i18n/vocabulary'
@@ -78,7 +78,7 @@ async function requireSession({ queryClient, signIn }: AppContext, href: string)
   try {
     // No retries here: a shell that cannot reach the API still renders, and retries
     // the role itself.
-    const me = await queryClient.ensureQueryData({ ...myRoleQuery(), retry: false })
+    const me = await queryClient.ensureQueryData({ ...myAccessQuery(), retry: false })
     // The gym's words, before the shell's first screen reads them (#344).
     wearVocabulary(queryClient.getQueryData(myselfQuery().queryKey)?.vocabulary)
     markSignedIn()
@@ -103,7 +103,7 @@ const indexRoute = createRoute({
   path: '/',
   beforeLoad: async ({ context }) => {
     const me = await requireSession(context, '/')
-    throw redirect({ href: me ? landingFor(me.role) : '/admin', replace: true })
+    throw redirect({ href: me ? landingFor(accessOf(me)) : '/admin', replace: true })
   },
 })
 

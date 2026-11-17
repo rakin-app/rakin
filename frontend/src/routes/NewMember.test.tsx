@@ -10,6 +10,7 @@ import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { isMinor } from './NewMember'
+import { asRole } from '../test/access'
 
 const copy = es.admin.newMember
 
@@ -77,7 +78,7 @@ function stubApi(enrolled: Answer = { status: 201, body: CREATED }, former: Answ
   )
 
   function route(path: string, method: string): Answer {
-    if (path === '/api/me/role') return { body: { role: 'owner', person_id: 'me' } }
+    if (path === '/api/me/role') return { body: { ...asRole('owner'), person_id: 'me' } }
     if (path === '/api/sessions') return { body: { date: '2026-11-10', timezone: 'America/Santiago', sessions: [] } }
     if (path === '/api/ledger/pending') return { body: { count: 0 } }
     if (path === '/api/custom-fields') return { body: [TALLA] }

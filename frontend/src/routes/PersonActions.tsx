@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type FormEvent } from 'react'
-import type { StaffRole } from '../api/me'
+import { holdsAccount, managesGym, type Access } from '../api/me'
 import type { Person } from '../api/member'
 import { deletePerson, deletionQuery, deletionRefused, leaveGym, returnToGym } from '../api/people'
 import { useGymToday } from '../api/sessions'
@@ -25,10 +25,10 @@ type Open = 'leave' | 'return' | 'remove' | null
  * charged; "Eliminar" for the owner alone. A coach gets none of them. The record is
  * edited in "Datos" (`PersonData`).
  */
-export function PersonActions({ person, role }: { person: Person; role: StaffRole | null | undefined }) {
+export function PersonActions({ person, access }: { person: Person; access: Access | null | undefined }) {
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
-  const manages = role === 'owner' || role === 'admin'
+  const manages = managesGym(access)
   const toggle = (form: Open) => {
     setDone(null)
     setOpen(open === form ? null : form)
@@ -52,7 +52,7 @@ export function PersonActions({ person, role }: { person: Person; role: StaffRol
             {copy.leave}
           </Button>
         )}
-        {role === 'owner' && (
+        {holdsAccount(access) && (
           <Button variant="danger" aria-expanded={open === 'remove'} onClick={() => toggle('remove')}>
             {copy.remove}
           </Button>

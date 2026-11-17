@@ -28,7 +28,7 @@ from app.api.grading import stored_scheme
 from app.api.people import NOT_FOUND, in_gym
 from app.domain.dates import add_months, gym_today
 from app.domain.membership import current_first
-from app.roles import StaffSession
+from app.permissions import StaffSession
 from app.schemas.grades import GradeAward, GradeEvent, Grading, Rank
 from app.schemas.grading import GradingScheme
 from app.schemas.people import HISTORY_WINDOW_YEARS
