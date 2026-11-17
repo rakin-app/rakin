@@ -9,6 +9,7 @@ import { App } from '../App'
 import { isoDay } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.settings.schedule
 const form = copy.form
@@ -88,7 +89,7 @@ function stubApi({ save, closed = [] }: { save?: Answer; closed?: ClosedDay[] } 
   )
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
-    if (path === '/api/me/role') return { body: { role: 'owner' } }
+    if (path === '/api/me/role') return { body: asRole('owner') }
     if (path === '/api/sessions') return { body: { date: today(), timezone: 'America/Santiago', sessions: [] } }
     if (path === '/api/class-types') return { body: [FUNDAMENTALS] }
     if (path === '/api/staff') return { body: STAFF }

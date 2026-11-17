@@ -7,6 +7,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.import
 
@@ -168,7 +169,7 @@ function stubApi({
       const url = new URL(String(input), 'http://localhost')
       const json = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-      if (url.pathname === '/api/me/role') return json({ role })
+      if (url.pathname === '/api/me/role') return json(asRole(role))
       if (url.pathname === '/api/plans') return json(PLANS)
       if (url.pathname === '/api/people') return json({ items: [], total: 0 })
       if (url.pathname === '/api/gym/grading-scheme') return json(SCHEME)

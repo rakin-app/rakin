@@ -9,6 +9,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.me.proof
 
@@ -87,7 +88,7 @@ function stubApi(
     }
     if (url.pathname === '/api/me/payments') return answers.claim ?? { status: 201, body: {} }
     if (url.pathname === '/api/ledger/pending') return answers.pending ?? { body: { count: 0 } }
-    if (url.pathname === '/api/me/role') return { body: { role: answers.role === undefined ? 'owner' : answers.role } }
+    if (url.pathname === '/api/me/role') return { body: asRole(answers.role === undefined ? 'owner' : answers.role) }
     return { status: 404, body: { detail: 'Not Found' } }
   }
 

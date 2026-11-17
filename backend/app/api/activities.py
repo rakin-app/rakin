@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.programs import execute_refusing
 from app.domain.practice import KIND, Practice, practice_of
 from app.domain.vocabulary import stored, words_of
-from app.roles import AdminSession, StaffSession
+from app.permissions import AdminSession, StaffSession
 from app.schemas.activities import Activity, ActivityCreate, ActivityUpdate
 from app.schemas.people import PracticeNames
 

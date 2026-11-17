@@ -120,9 +120,10 @@ below, read in full, and from `docs/product.md` and `docs/technical.md`.
 ### Rowing club
 
 1. **Bill the season's dues** (annual, or March to December, the same dates for every
-   member). **Missing.** Prepaid 12 months runs from each member's own start date, so a
-   member who joins in June pays a different year. A late joiner's price is the club's
-   call; today nothing can express it.
+   member). **Works** (#351): a fixed-period plan, "Período fijo", bills the same dates to
+   every member; a late joiner owes the full price from their start, which an adjustment
+   on the period lowers. "Duplicar para el próximo período" copies it for the next season
+   and moves the members across.
 2. **Charge a regatta's travel to the crew going.** **Works**: a Cobro extra split across
    a saved group or hand-picked people. Paying it in two instalments is **missing**
    (later).
@@ -152,8 +153,8 @@ by the boatman and Rakin does not need to own them.
 1. **Parents pay and get the messages.** **Works** (`app.contacts`: the guardian).
 2. **Siblings with a family discount.** **Missing** in the screens (#25).
 3. **One transfer for two children.** **Missing** (#66).
-4. **Bill by term or school year.** **Missing**: the same fixed-period plan as the rowing
-   club's season.
+4. **Bill by term or school year.** **Works** (#351): the same fixed-period plan as the
+   rowing club's season.
 5. **A swimming or gymnastics level.** **Awkward**: the grading module can hold levels with
    no colours (they render as a plain label), but the filter says "Cinturón" and the
    editor "Franja" (section 3). Later.
@@ -164,7 +165,7 @@ by the boatman and Rakin does not need to own them.
 
 | Area | Martial arts | Climbing | Rowing | Fitness / yoga | Kids academy |
 |---|---|---|---|---|---|
-| Plans and billing | works | awkward: no day pass (#130), packs only spent at a session | missing: season dues | awkward: no drop-in | missing: term plan; sibling discount (#25) |
+| Plans and billing | works | awkward: no day pass (#130), packs only spent at a session | works | awkward: no drop-in | missing: sibling discount (#25) |
 | Attendance | works | missing: open-gym check-in | works | missing: booking, capacity | works |
 | Progression | works (per activity: #251) | not needed; levels awkward | not needed (categories are a custom field) | not needed | awkward: levels read as belts |
 | Requirements before taking part | not needed | missing: waiver, induction, belay check | missing: medical certificate, swim test | not needed | awkward: medical certificate for some |

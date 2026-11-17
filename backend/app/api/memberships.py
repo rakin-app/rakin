@@ -70,7 +70,7 @@ from app.domain.membership import (
 from app.jobs import lapse
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
-from app.roles import AdminSession, SeesMoney, StaffSession
+from app.permissions import AdminSession, SeesMoney, StaffSession
 from app.schemas.ledger import DiscountFigures, DiscountShift, VoidConflict
 from app.schemas.memberships import (
     Cancellation,
@@ -128,7 +128,8 @@ SELECT_MEMBERSHIP = """
 """
 
 SELECT_PLAN = """
-    SELECT kind, anchor, credits, credit_expiry_days, active FROM plan WHERE id = :id
+    SELECT kind, anchor, credits, credit_expiry_days, period_start, period_end, active
+    FROM plan WHERE id = :id
 """
 
 
@@ -174,7 +175,7 @@ SELECT_STATE = (
 )
 
 
-async def _locked(
+async def locked_membership(
     session: AsyncSession, membership_id: uuid.UUID, *, lock: bool = True
 ) -> tuple[domain.Membership, uuid.UUID]:
     """The membership's state and plan, its row locked until the request's transaction
@@ -201,7 +202,14 @@ async def _plan_terms(session: AsyncSession, plan_id: uuid.UUID) -> PlanTerms:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "plan not found")
     if not row.active:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "plan is deactivated")
-    return PlanTerms(PlanKind(row.kind), row.anchor, row.credits, row.credit_expiry_days)
+    return PlanTerms(
+        PlanKind(row.kind),
+        row.anchor,
+        row.credits,
+        row.credit_expiry_days,
+        row.period_start,
+        row.period_end,
+    )
 
 
 def _conflict(error: InvalidTransition) -> HTTPException:
@@ -513,7 +521,7 @@ async def change_plan(
     membership_id: uuid.UUID, body: PlanChange, session: AdminSession
 ) -> Membership:
     """Move to `plan_id` from the next period; the current plan withdraws the change."""
-    current, plan_id = await _locked(session, membership_id)
+    current, plan_id = await locked_membership(session, membership_id)
     if current.status is MembershipStatus.CANCELLED:
         raise HTTPException(status.HTTP_409_CONFLICT, "a cancelled membership cannot change plan")
     if body.plan_id == plan_id:
@@ -524,7 +532,7 @@ async def change_plan(
         return await _get(session, membership_id)
 
     terms = await _plan_terms(session, body.plan_id)
-    starts_on = await _change_starts(session, membership_id, current, terms.kind)
+    starts_on = await change_starts(session, membership_id, current, terms)
     await session.execute(
         text("UPDATE membership SET next_plan_id = :plan, next_plan_from = :from WHERE id = :id"),
         {"plan": body.plan_id, "from": starts_on, "id": membership_id},
@@ -532,17 +540,20 @@ async def change_plan(
     return await _get(session, membership_id)
 
 
-async def _change_starts(
-    session: AsyncSession, membership_id: uuid.UUID, current: domain.Membership, to: PlanKind
+async def change_starts(
+    session: AsyncSession, membership_id: uuid.UUID, current: domain.Membership, to: PlanTerms
 ) -> date:
-    """The day a change of `current` to a plan of kind `to` takes effect: a 409 for a
-    membership that cannot change plan, a 422 for a plan it cannot change to."""
+    """The day a change of `current` to a plan on `to` takes effect: a 409 for a
+    membership that cannot change plan, a 422 for a plan it cannot change to, a
+    fixed-period one whose period ended before then included."""
     billed_through = await session.scalar(
         text("SELECT max(period_end) FROM billing_period WHERE membership_id = :id"),
         {"id": membership_id},
     )
     try:
-        return domain.plan_change_starts(current, to, billed_through=billed_through)
+        starts_on = domain.plan_change_starts(current, to.kind, billed_through=billed_through)
+        domain.check_open(to, starts_on)
+        return starts_on
     except InvalidTransition as error:
         raise _conflict(error) from None
     except (ValueError, OverflowError) as error:
@@ -556,13 +567,13 @@ async def plan_change_quote(
     """What `POST .../plan-change` to `plan_id` would do, saving nothing (#249): the day
     it takes effect and the first period the new plan bills from it, as the nightly job
     will bill it. Refused as that request would be, and for the plan it is on."""
-    current, current_plan = await _locked(session, membership_id, lock=False)
+    current, current_plan = await locked_membership(session, membership_id, lock=False)
     if current.status is MembershipStatus.CANCELLED:
         raise HTTPException(status.HTTP_409_CONFLICT, "a cancelled membership cannot change plan")
     if plan_id == current_plan:
         raise HTTPException(status.HTTP_409_CONFLICT, "the membership is on this plan")
     terms = await _plan_terms(session, plan_id)
-    starts_on = await _change_starts(session, membership_id, current, terms.kind)
+    starts_on = await change_starts(session, membership_id, current, terms)
     row = (
         await session.execute(
             text(
@@ -579,7 +590,8 @@ async def plan_change_quote(
     except (ValueError, OverflowError) as error:
         raise _unprocessable(error) from None
     return PlanChangeQuote(
-        starts_on=first.period_start,
+        # A fixed-period plan's period may start before the change: it is due from then.
+        starts_on=first.due_date,
         period_end=first.period_end,
         amount_due_clp=first.amount_due_clp,
     )
@@ -626,7 +638,7 @@ async def _record_discount(
 async def _discountable(session: AsyncSession, membership_id: uuid.UUID, *, lock: bool) -> None:
     """A 409 unless the membership bills again: a monthly or prepaid one, Active or
     Frozen. A pack or a drop-in has billed its one charge; a new one is a new plan."""
-    current, _ = await _locked(session, membership_id, lock=lock)
+    current, _ = await locked_membership(session, membership_id, lock=lock)
     if current.plan_kind not in RECURRING or current.status not in (
         MembershipStatus.ACTIVE,
         MembershipStatus.FROZEN,
@@ -747,7 +759,7 @@ async def _gym_today(session: AsyncSession, tenant: Tenant) -> date:
 async def _current_freeze(
     session: AsyncSession, membership_id: uuid.UUID, current: domain.Membership
 ) -> tuple[domain.Membership, Any]:
-    """The freeze a membership `_locked` is in while Frozen, or has booked ahead while
+    """The freeze a membership `locked_membership` is in while Frozen, or has booked ahead while
     Active, its row locked; `None` for neither. The membership comes back with the
     freeze's days when it is in it."""
     row = (await session.execute(LATEST_FREEZE, {"id": membership_id})).one_or_none()
@@ -802,7 +814,7 @@ async def freeze(
 ) -> Membership:
     """`freeze_membership`'s work, for a request that freezes a membership another way:
     a freeze request approved (#270). Refusals are the endpoint's, as HTTP errors."""
-    current, _ = await _locked(session, membership_id)
+    current, _ = await locked_membership(session, membership_id)
     today = await _gym_today(session, tenant)
     from_date = body.from_date or today
     if from_date < today:
@@ -863,7 +875,7 @@ async def edit_freeze(
     """A new end or reason for the freeze running or booked. A running one ends after
     today (ending it today is `end`), and the due date moves by the days it gains or
     loses, as the freeze moved it as it started."""
-    current, _ = await _locked(session, membership_id)
+    current, _ = await locked_membership(session, membership_id)
     current, row = await _current_freeze(session, membership_id, current)
     if row is None:
         raise NO_FREEZE
@@ -894,7 +906,7 @@ async def end_freeze(
     """The freeze ends today: a running one returns the membership to Active, its due
     date moved back by the days it no longer lasts, with an `unfrozen` plan event
     recording whose request ended it; a booked one is called off."""
-    current, _ = await _locked(session, membership_id)
+    current, _ = await locked_membership(session, membership_id)
     current, row = await _current_freeze(session, membership_id, current)
     if row is None:
         raise NO_FREEZE
@@ -925,7 +937,7 @@ async def cancel_membership(
     membership_id: uuid.UUID, body: Cancellation, session: AdminSession
 ) -> Membership:
     """Terminal: a pending plan change goes with it, and a freeze booked ahead."""
-    current, _ = await _locked(session, membership_id)
+    current, _ = await locked_membership(session, membership_id)
     try:
         cancelled = domain.cancel(current, body.reason)
     except InvalidTransition as error:
@@ -1028,8 +1040,8 @@ async def void_membership(
 # anchor, whose it is and its gym's grace.
 REACTIVATION_STATE = text(
     f"""
-    SELECT m.status, pl.kind, pl.anchor, m.current_period_end, m.credits_remaining,
-           m.person_id, g.settings,
+    SELECT m.status, pl.kind, pl.anchor, pl.period_start, pl.period_end,
+           m.current_period_end, m.credits_remaining, m.person_id, g.settings,
            {lapse.unpaid_due(":day", ":validated", "CAST(:kinds AS text[])")},
            {lapse.NOT_DUE_BEFORE}
     FROM membership m JOIN plan pl ON pl.id = m.plan_id JOIN gym g ON g.id = m.gym_id
@@ -1084,7 +1096,7 @@ async def _reactivatable(
     person with `lock`; a 409 saying what to do first when it cannot be. Refused while a
     period past due plus grace is unpaid: the nightly job, which may run tonight or past
     midnight, would lapse it again, so tomorrow is the day it is judged on."""
-    current, _ = await _locked(session, membership_id, lock=lock)
+    current, _ = await locked_membership(session, membership_id, lock=lock)
     today = await _gym_today(session, tenant)
     tomorrow = today + timedelta(days=1)
     row = (
@@ -1106,6 +1118,16 @@ async def _reactivatable(
         raise _refused(
             ReactivationRefusal.NOT_RECURRING, "a pack or a trial is not reactivated: start one"
         )
+    terms = PlanTerms(
+        current.plan_kind, row.anchor, period_start=row.period_start, period_end=row.period_end
+    )
+    try:
+        domain.check_open(terms, today)
+    except ValueError:
+        raise _refused(
+            ReactivationRefusal.PERIOD_ENDED,
+            "the plan's period has ended: move the member to the next period's plan",
+        ) from None
     other = await session.scalar(LIVE_PLAN, {"person": row.person_id, "id": membership_id})
     if other is not None:
         raise _refused(
@@ -1123,7 +1145,7 @@ async def _reactivatable(
             period_start=owed.period_start,
             amount_clp=owed.owed,
         )
-    return current, PlanTerms(current.plan_kind, row.anchor), today
+    return current, terms, today
 
 
 async def _reactivation_bill(

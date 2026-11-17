@@ -22,8 +22,8 @@ whose `detail` has the percentage and reason before and after and the first day 
 at the new one, and which the ficha's "Correcciones" lists. An owner or admin writes it,
 under a policy of its own that holds it as `audit_event_correct` holds the others.
 
-Revision ID: 0064
-Revises: 0063
+Revision ID: 0066
+Revises: 0065
 Create Date: 2026-11-17
 
 """
@@ -35,8 +35,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0064"
-down_revision: str | Sequence[str] | None = "0063"
+revision: str = "0066"
+down_revision: str | Sequence[str] | None = "0065"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

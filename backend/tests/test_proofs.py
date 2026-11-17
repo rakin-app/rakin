@@ -453,6 +453,9 @@ def test_my_role_names_who_is_signed_in_and_the_gym(
     coach = client.get("/api/me/role", headers=as_gym(sur, add_staff(db, sur, "coach")))
     assert coach.json() | {"person_id": None} == {
         "role": "coach",
+        # What a coach may do: the Academia preset's Coach (#308).
+        "permissions": ["attendance", "members_add"],
+        "account_holder": False,
         "person_id": None,
         "name": "x",
         "email": None,

@@ -20,12 +20,13 @@ from sqlalchemy import text
 
 from alembic import command
 from app.main import create_app
-from app.roles import LedgerSession, StaffSession
+from app.permissions import LedgerSession, StaffSession
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import (
     Database,
     in_gym,
+    make_staff,
     migrate,
     run,
     seed_gym,
@@ -82,9 +83,7 @@ async def join(
             gym,
         )
     else:
-        await conn.execute(
-            "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, $3)", gym, person, role
-        )
+        await make_staff(conn, gym, person, role)
 
 
 @pytest.fixture(scope="module")

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { VISIBLE_TO, type VisibleTo } from '../api/customFields'
-import { myRoleQuery } from '../api/me'
+import { holdsAccount, myAccessQuery } from '../api/me'
 import {
   createRequirement,
   reorderRequirements,
@@ -46,7 +46,7 @@ function summary(requirement: Requirement, owner: boolean): string {
 export function RequirementSettings() {
   const queryClient = useQueryClient()
   const requirements = useQuery(requirementsQuery)
-  const owner = useQuery(myRoleQuery()).data === 'owner'
+  const owner = holdsAccount(useQuery(myAccessQuery()).data)
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 

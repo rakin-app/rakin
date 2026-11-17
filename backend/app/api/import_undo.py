@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import text
 
 from app.api.member_import import IMPORT_LOCK
-from app.roles import AdminSession, OwnerSession
+from app.permissions import AdminSession, OwnerSession
 from app.schemas.member_import import (
     ImportUndone,
     RecentImport,

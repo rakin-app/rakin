@@ -8,6 +8,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.me.plans
 
@@ -72,7 +73,7 @@ function stubApi(plans: MyPlan[], refuse?: { status: number; body: unknown }) {
       const body = typeof raw === 'string' ? JSON.parse(raw) : raw
       calls.push({ method, path: url.pathname, body })
       if (url.pathname === '/api/me/page') return Response.json(page(current))
-      if (url.pathname === '/api/me/role') return Response.json({ role: null, person_id: 'diego', gym_name: 'Academia Sur' })
+      if (url.pathname === '/api/me/role') return Response.json({ ...asRole(null), person_id: 'diego', gym_name: 'Academia Sur' })
       if (url.pathname === '/api/me/time' || url.pathname === '/api/me/classes') {
         return Response.json({ detail: 'Not Found' }, { status: 404 })
       }

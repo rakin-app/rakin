@@ -41,7 +41,7 @@ from app.api.people import people_matching
 from app.api.requirements import requirement_flags
 from app.api.sessions import gym_timezone
 from app.domain.dates import gym_today
-from app.roles import StaffSession
+from app.permissions import StaffSession
 from app.schemas.check_in import Arrival, Candidate, CheckIn, Door
 from app.tenancy import Tenant, current_tenant
 

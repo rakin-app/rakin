@@ -88,7 +88,7 @@ from app.logos import logo_path
 from app.magiclink.ratelimit import MemoryRateLimiter, RateLimiter
 from app.member_import.rows import Member, own_guardian
 from app.notices import JOIN_APPROVED, Notice, Notices, get_notices
-from app.roles import ADMIN_ROLES, AdminSession, StaffSession, role_in_gym
+from app.permissions import AdminSession, Permission, StaffSession, holds
 from app.schemas.join import (
     ADULT_AGE,
     JoinApproval,
@@ -538,7 +538,7 @@ async def approve_join_request(
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> JoinApproved:
-    if body.plan_id is not None and await role_in_gym(session, tenant) not in ADMIN_ROLES:
+    if body.plan_id is not None and not await holds(session, tenant, Permission.GYM_SETUP):
         raise PLAN_IS_MONEY
     # Deleted first: it was only ever a request, and a second approval at once waits
     # for this one and then finds nothing. Anything below that fails rolls it back.

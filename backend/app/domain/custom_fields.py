@@ -6,9 +6,11 @@ the member detail shows them: `{key, label, type, options?, sensitive, visible_t
 archived}` (docs/technical.md#sport-agnostic-design). A definition stored before
 `visible_to` existed reads as its default: `owner` when sensitive, else `staff`.
 
-`visible_to` is the narrowest role that sees the field. The owner sees every field; an
-admin sees `admin` and `staff` fields; a coach only `staff` ones. A field someone may
-not see is, to them, a field that does not exist.
+`visible_to` is the narrowest reader that sees the field, and a reader is given the
+narrowest one they reach (`app.api.custom_fields.reach_of`): the owner reaches `owner`
+and sees every field; an admin reaches `admin` and sees `admin` and `staff` fields; a
+coach reaches `staff` and sees only those. A field someone may not see is, to them, a
+field that does not exist.
 
 A sensitive field's value is encrypted with AES-GCM under a key derived from
 `FIELD_ENCRYPTION_KEY`, bound to the gym, person and field it belongs to, so a sealed value
@@ -45,11 +47,11 @@ class VisibleTo(StrEnum):
     STAFF = "staff"
 
 
-# The staff roles (`app.roles.Role`) that see a field at each `visible_to`.
-_SEEN_BY: dict[VisibleTo, frozenset[str]] = {
-    VisibleTo.OWNER: frozenset({"owner"}),
-    VisibleTo.ADMIN: frozenset({"owner", "admin"}),
-    VisibleTo.STAFF: frozenset({"owner", "admin", "coach"}),
+# The `visible_to` a reader sees, by the narrowest one they reach.
+_SEES: dict[VisibleTo, frozenset[VisibleTo]] = {
+    VisibleTo.OWNER: frozenset(VisibleTo),
+    VisibleTo.ADMIN: frozenset({VisibleTo.ADMIN, VisibleTo.STAFF}),
+    VisibleTo.STAFF: frozenset({VisibleTo.STAFF}),
 }
 
 TEXT_MAX_LENGTH = 1000
@@ -87,12 +89,13 @@ def definitions(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [normalize(d) for d in settings.get("custom_fields") or []]
 
 
-def sees(role: str | None, definition: Mapping[str, Any]) -> bool:
-    return role is not None and role in _SEEN_BY[VisibleTo(definition["visible_to"])]
+def sees(reach: VisibleTo | None, definition: Mapping[str, Any]) -> bool:
+    """Whether a reader reaching `reach` sees the field; `None` reaches nothing."""
+    return reach is not None and VisibleTo(definition["visible_to"]) in _SEES[reach]
 
 
-def visible(role: str | None, defs: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    return [dict(d) for d in defs if sees(role, d)]
+def visible(reach: VisibleTo | None, defs: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [dict(d) for d in defs if sees(reach, d)]
 
 
 def key_for(
@@ -116,15 +119,15 @@ def key_for(
             return key
 
 
-def reorder(defs: list[dict[str, Any]], keys: list[str], role: str) -> list[dict[str, Any]]:
-    """`defs` with the fields `role` sees put in the order of `keys`, which must name
-    each of them once. Fields `role` does not see keep their places."""
-    shown = [d["key"] for d in defs if sees(role, d)]
+def reorder(defs: list[dict[str, Any]], keys: list[str], reach: VisibleTo) -> list[dict[str, Any]]:
+    """`defs` with the fields a reader reaching `reach` sees put in the order of `keys`,
+    which must name each of them once. Fields they do not see keep their places."""
+    shown = [d["key"] for d in defs if sees(reach, d)]
     if sorted(keys) != sorted(shown):
         raise ValueError("keys must list every field once")
     by_key = {d["key"]: d for d in defs}
     order = iter(keys)
-    return [by_key[next(order)] if sees(role, d) else d for d in defs]
+    return [by_key[next(order)] if sees(reach, d) else d for d in defs]
 
 
 def validate_value(definition: Mapping[str, Any], raw: Any) -> Any:

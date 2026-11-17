@@ -1,4 +1,4 @@
-"""A gym's plans: five kinds, each with its own parameters.
+"""A gym's plans: six kinds, each with its own parameters.
 
 The body is told apart by `kind`, and each kind takes exactly its own parameters
 (docs/technical.md#sport-agnostic-design): a `period_months` on a monthly plan is a
@@ -9,10 +9,13 @@ The kind is set on create. An edit changes the name, the price or the kind's own
 parameters, the program, and `active`: a plan is deactivated, never deleted. Any kind
 may name the program it is for (`program_id`, migration 0016). A coach reads a plan
 without its price (`PlanForCoach`, #205).
+
+A fixed-period plan (#351) runs from `period_start` to `period_end`, the same days for
+every member on it, and is copied for the next period (`NextPeriod`).
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -21,8 +24,11 @@ from pydantic import (
     Field,
     StringConstraints,
     TypeAdapter,
+    ValidationInfo,
+    field_validator,
     model_validator,
 )
+from pydantic_core import PydanticCustomError
 
 from app.domain.membership import PlanKind
 
@@ -60,6 +66,22 @@ class _PrepaidTerms(_Plan):
     period_months: Count
 
 
+def period_ends_after_start(end: date, info: ValidationInfo) -> date:
+    """A period's `period_end`, refused when before its `period_start` (`period_order`)."""
+    start = info.data.get("period_start")
+    if start is not None and end < start:
+        raise PydanticCustomError("period_order", "period_end is before period_start")
+    return end
+
+
+class _FixedPeriodTerms(_Plan):
+    kind: Literal[PlanKind.FIXED_PERIOD]
+    period_start: date
+    period_end: date
+
+    check_order = field_validator("period_end")(period_ends_after_start)
+
+
 class _CreditsTerms(_Plan):
     kind: Literal[PlanKind.CREDITS]
     credits: Count
@@ -75,6 +97,10 @@ class MonthlyPlanCreate(_MonthlyTerms):
 
 
 class PrepaidPlanCreate(_PrepaidTerms):
+    price_clp: Price
+
+
+class FixedPeriodPlanCreate(_FixedPeriodTerms):
     price_clp: Price
 
 
@@ -102,7 +128,12 @@ class TrialPlanCreate(_Plan):
 
 
 PlanCreate = Annotated[
-    MonthlyPlanCreate | PrepaidPlanCreate | CreditsPlanCreate | DropinPlanCreate | TrialPlanCreate,
+    MonthlyPlanCreate
+    | PrepaidPlanCreate
+    | FixedPeriodPlanCreate
+    | CreditsPlanCreate
+    | DropinPlanCreate
+    | TrialPlanCreate,
     Field(discriminator="kind"),
 ]
 PLAN_CREATE: TypeAdapter[PlanCreate] = TypeAdapter(PlanCreate)
@@ -120,6 +151,8 @@ class PlanUpdate(BaseModel):
     price_clp: Price | None = None
     anchor: Anchor | None = None
     period_months: Count | None = None
+    period_start: date | None = None
+    period_end: date | None = None
     credits: Count | None = None
     credit_expiry_days: Count | None = None
     free_classes: Count | None = None
@@ -150,6 +183,10 @@ class PrepaidPlan(PrepaidPlanCreate, _Stored):
     pass
 
 
+class FixedPeriodPlan(FixedPeriodPlanCreate, _Stored):
+    pass
+
+
 class CreditsPlan(CreditsPlanCreate, _Stored):
     pass
 
@@ -163,7 +200,7 @@ class TrialPlan(TrialPlanCreate, _Stored):
 
 
 Plan = Annotated[
-    MonthlyPlan | PrepaidPlan | CreditsPlan | DropinPlan | TrialPlan,
+    MonthlyPlan | PrepaidPlan | FixedPeriodPlan | CreditsPlan | DropinPlan | TrialPlan,
     Field(discriminator="kind"),
 ]
 PLAN: TypeAdapter[Plan] = TypeAdapter(Plan)
@@ -174,6 +211,10 @@ class MonthlyPlanForCoach(_MonthlyTerms, _Stored):
 
 
 class PrepaidPlanForCoach(_PrepaidTerms, _Stored):
+    pass
+
+
+class FixedPeriodPlanForCoach(_FixedPeriodTerms, _Stored):
     pass
 
 
@@ -191,6 +232,7 @@ class DropinPlanForCoach(_DropinTerms, _Stored):
 PlanForCoach = Annotated[
     MonthlyPlanForCoach
     | PrepaidPlanForCoach
+    | FixedPeriodPlanForCoach
     | CreditsPlanForCoach
     | DropinPlanForCoach
     | TrialPlan,
@@ -206,6 +248,7 @@ def for_coach(plan: Plan) -> PlanForCoach:
 KIND_MODELS: dict[PlanKind, type[_Plan]] = {
     PlanKind.MONTHLY: MonthlyPlanCreate,
     PlanKind.PREPAID: PrepaidPlanCreate,
+    PlanKind.FIXED_PERIOD: FixedPeriodPlanCreate,
     PlanKind.CREDITS: CreditsPlanCreate,
     PlanKind.DROPIN: DropinPlanCreate,
     PlanKind.TRIAL: TrialPlanCreate,
@@ -220,6 +263,8 @@ COLUMNS = (
     "price_clp",
     "anchor",
     "period_months",
+    "period_start",
+    "period_end",
     "credits",
     "credit_expiry_days",
 )
@@ -242,3 +287,41 @@ def to_columns(plan: _Plan) -> dict[str, Any]:
         for field, column in TRIAL_COLUMNS.items():
             fields[column] = fields.pop(field)
     return {column: fields.get(column) for column in COLUMNS}
+
+
+# The most memberships one "Duplicar para el próximo período" moves.
+MAX_MOVED = 5_000
+
+
+class NextPeriod(BaseModel):
+    """A fixed-period plan copied for the period after its own (#351): the copy's
+    name, price and dates, and the memberships on the plan to move onto it, each from
+    the day after it is paid through (`app.domain.membership.plan_change_starts`).
+    `period_start` must come after the plan's `period_end` (`after_period`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Name
+    price_clp: Price
+    period_start: date
+    period_end: date
+    membership_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_MOVED)
+
+    check_order = field_validator("period_end")(period_ends_after_start)
+
+
+class NextPeriodResult(BaseModel):
+    plan: FixedPeriodPlan
+    # How many memberships now move to it.
+    moved: int
+
+
+class PlanMembership(BaseModel):
+    """A membership on a plan now, Active or Frozen, as the plan's list shows it."""
+
+    membership_id: uuid.UUID
+    person_id: uuid.UUID
+    name: str
+    status: Literal["active", "frozen"]
+    # A change to another plan already pending, which a move replaces.
+    next_plan_name: str | None

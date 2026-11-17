@@ -48,7 +48,7 @@ v1 is one gym (the pilot), v2 unlocks when five gyms are running it, v3 only whe
 | People | person (global), guardian ↔ dependent links | ✓ |  |  |
 | People | per-gym custom fields (text, number, date, enum) | ✓ |  |  |
 | People | waivers / consent signed on phone, stored as PDF |  | ✓ |  |
-| Plans | monthly recurring (anchor on signup day or 1st), prepaid N months, credit pack (N classes, expiry), drop-in, trial | ✓ |  |  |
+| Plans | monthly recurring (anchor on signup day or 1st), prepaid N months, fixed period (a season, year or term with the same dates for every member), credit pack (N classes, expiry), drop-in, trial | ✓ |  |  |
 | Plans | family / sibling discount, scholarships (fixed % off) | ✓ |  |  |
 | Plans | proration on mid-period changes |  | ✓ |  |
 | Ledger | charges generated nightly from memberships; append-only entries; pending → validated → rejected | ✓ |  |  |

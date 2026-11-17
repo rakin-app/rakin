@@ -7,6 +7,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.joinRequests
 
@@ -86,7 +87,7 @@ function stubApi({
       const body = init?.body ? JSON.parse(String(init.body)) : undefined
       calls.push({ method, path: url.pathname, body })
       let answer: { status?: number; body?: unknown } = { status: 404, body: { detail: 'Not Found' } }
-      if (url.pathname === '/api/me/role') answer = { body: { role, person_id: 'me' } }
+      if (url.pathname === '/api/me/role') answer = { body: { ...asRole(role), person_id: 'me' } }
       if (url.pathname === '/api/plans') answer = { body: PLANS }
       if (url.pathname === '/api/join-requests') answer = { body: { items: queue, total: queue.length } }
       const approved = /^\/api\/join-requests\/(\w+)\/approve$/.exec(url.pathname)

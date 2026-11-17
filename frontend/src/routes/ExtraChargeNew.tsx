@@ -16,7 +16,7 @@ import {
   type TargetKind,
 } from '../api/extraCharges'
 import type { PersonRef } from '../api/ledger'
-import { myRoleQuery, readsLedger } from '../api/me'
+import { myAccessQuery, readsLedger } from '../api/me'
 import { personQuery } from '../api/member'
 import { programsQuery } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
@@ -78,12 +78,12 @@ function useDebounced<T>(value: T, ms: number): T {
 export function ExtraChargeNew() {
   usePageTitle(words.title)
   const { person } = route.useSearch()
-  const role = useQuery(myRoleQuery())
-  if (!readsLedger(role.data)) {
+  const access = useQuery(myAccessQuery())
+  if (!readsLedger(access.data)) {
     return (
       <PageContainer>
         <PageHeader title={words.title} />
-        {role.isSuccess && <p className="extra__note">{t.admin.payments.coachesOnly}</p>}
+        {access.isSuccess && <p className="extra__note">{t.admin.payments.coachesOnly}</p>}
       </PageContainer>
     )
   }

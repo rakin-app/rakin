@@ -7,6 +7,7 @@ import type { StaffMember } from '../api/staff'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.settings.staff
 const form = copy.form
@@ -39,7 +40,7 @@ function stubApi({ role = 'owner', invite }: { role?: string; invite?: Answer } 
   )
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
-    if (path === '/api/me/role') return { body: { role } }
+    if (path === '/api/me/role') return { body: asRole(role) }
     if (path === '/api/staff' && method === 'GET') return { body: staff }
     if (path === '/api/staff' && method === 'POST') {
       if (invite) return invite

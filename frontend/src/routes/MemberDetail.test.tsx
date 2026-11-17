@@ -15,6 +15,7 @@ import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { firstMonthFrom, monthsBetween, paidOn } from './PersonHistory'
 import { yearsBefore } from './historyWindow'
+import { asRole } from '../test/access'
 
 const copy = es.admin.member
 
@@ -269,7 +270,7 @@ function stubApi({
     const path = url.pathname
     const answered = extra?.(path, method, calls.at(-1)?.body)
     if (answered) return answered
-    if (path === '/api/me/role') return { body: { role, uses_grades: graded } }
+    if (path === '/api/me/role') return { body: { ...asRole(role), uses_grades: graded } }
     if (path === '/api/sessions') return { body: { date: '2026-11-10', timezone: timeZone, sessions: [] } }
     if (path === '/api/ledger/pending') return { body: { count: 0 } }
     if (path === '/api/people/felipe') return person ?? { body: FELIPE }

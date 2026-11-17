@@ -217,12 +217,32 @@ def test_an_imported_pack_without_a_due_date_starts_as_new() -> None:
     [
         (m.PlanTerms(PlanKind.MONTHLY, anchor="signup"), None, "due date"),
         (m.PlanTerms(PlanKind.DROPIN), DEC_10, "drop-in"),
+        (
+            m.PlanTerms(
+                PlanKind.FIXED_PERIOD, period_start=NOV_15, period_end=DEC_10 - timedelta(days=1)
+            ),
+            DEC_10,
+            "ended",
+        ),
     ],
-    ids=["recurring-without-due", "dropin"],
+    ids=["recurring-without-due", "dropin", "fixed-period-ended"],
 )
 def test_an_import_refuses(terms: m.PlanTerms, due_on: date | None, match: str) -> None:
     with pytest.raises(ValueError, match=match):
         m.imported(terms, NOV_15, due_on)
+
+
+def test_a_fixed_period_starts_until_its_period_ends() -> None:
+    season = m.PlanTerms(
+        PlanKind.FIXED_PERIOD, period_start=date(2027, 3, 1), period_end=date(2027, 12, 31)
+    )
+
+    started = m.start(season, date(2027, 12, 31))
+    assert (started.status, started.current_period_end) == (S.ACTIVE, date(2027, 12, 30))
+    with pytest.raises(ValueError, match="ended"):
+        m.start(season, date(2028, 1, 1))
+    with pytest.raises(ValueError, match="ended"):
+        m.check_open(season, date(2028, 1, 1))
 
 
 def test_a_dropin_does_not_start() -> None:

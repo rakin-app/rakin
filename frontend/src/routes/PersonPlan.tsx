@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
-import type { StaffRole } from '../api/me'
+import { managesGym, type Access } from '../api/me'
 import {
   changePlan,
   discountQuery,
@@ -31,22 +31,22 @@ const copy = t.admin.member
 const clp = t.common.clp
 
 // The kinds that change plan, to each other: a pack or a trial ends instead (`plan_change_starts`).
-const RECURRING = new Set(['monthly', 'prepaid'])
+const RECURRING = new Set(['monthly', 'prepaid', 'fixed_period'])
 
 /** A membership the member is on now: what "Cambiar plan" changes, and what keeps "Asignar plan" away. */
 export function isLive(membership: Membership | undefined): membership is Membership {
   return membership !== undefined && ['trial', 'active', 'frozen'].includes(membership.status)
 }
 
-/** Whether "Cambiar plan" is offered on `membership`: a monthly or prepaid one, active or frozen. */
+/** Whether "Cambiar plan" is offered on `membership`: a monthly, prepaid or fixed-period one, active or frozen. */
 export function changesPlan(membership: Membership): boolean {
   return RECURRING.has(membership.plan_kind) && (membership.status === 'active' || membership.status === 'frozen')
 }
 
 /** Whether "Asignar plan" is offered: by the owner or an admin, to someone on the roster
  * with no plan running. */
-export function assignsPlan(person: Person, membership: Membership | undefined, role: StaffRole | null | undefined): boolean {
-  return (role === 'owner' || role === 'admin') && !person.left_on && !isLive(membership)
+export function assignsPlan(person: Person, membership: Membership | undefined, access: Access | null | undefined): boolean {
+  return managesGym(access) && !person.left_on && !isLive(membership)
 }
 
 /**
@@ -61,18 +61,18 @@ export function assignsPlan(person: Person, membership: Membership | undefined, 
 export function AssignPlan({
   person,
   membership,
-  role,
+  access,
   done,
   setDone,
 }: {
   person: Person
   membership: Membership | undefined
-  role: StaffRole | null | undefined
+  access: Access | null | undefined
   done: string | null
   setDone: (message: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  if ((role !== 'owner' && role !== 'admin') || person.left_on) return null
+  if (!managesGym(access) || person.left_on) return null
   // Started: the plan card has it now, and what was done.
   if (isLive(membership)) return null
 

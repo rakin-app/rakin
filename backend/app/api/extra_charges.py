@@ -67,7 +67,7 @@ from app.domain.money import format_clp
 from app.integrations.messenger import Message, wa_me_link
 from app.notices import EXTRA_CHARGE, RECEIPT, Notice, Notices, get_notices
 from app.notices.whatsapp import extra_charge_reminder
-from app.roles import LedgerSession
+from app.permissions import LedgerSession
 from app.schemas.extra_charges import (
     AmountDraft,
     CancelPreview,

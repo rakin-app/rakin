@@ -27,7 +27,7 @@ from app.magiclink.tokens import hash_token
 from app.main import create_app
 from app.notices import Notices
 from tests.conftest import require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import Database, in_gym, make_staff, migrate, run, seed_gym, throwaway_database
 from tests.test_tenancy import router as tenant_routes
 
 pytestmark = pytest.mark.postgres
@@ -527,11 +527,7 @@ def test_leaving_the_gym_ends_the_session(
             conn, person, {people.sur: ("Leaving", address)}, member=row == "membership"
         )
         if row == "staff":
-            await conn.execute(
-                "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')",
-                people.sur,
-                person,
-            )
+            await make_staff(conn, people.sur, person, "coach")
 
     run(db.admin_url, join)
     harness.sign_in(address)

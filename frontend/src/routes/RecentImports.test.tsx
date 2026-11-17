@@ -8,6 +8,7 @@ import { App } from '../App'
 import { shortDay } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.import
 const form = copy.undoForm
@@ -53,7 +54,7 @@ function stubApi({ role = 'owner', refuse }: { role?: string; refuse?: string } 
       const url = new URL(String(input), 'http://localhost')
       const json = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-      if (url.pathname === '/api/me/role') return json({ role })
+      if (url.pathname === '/api/me/role') return json(asRole(role))
       if (url.pathname === '/api/import/recent') return json(recent)
       if (url.pathname === '/api/import/imp-1/undo') {
         if (init?.method !== 'POST') return json({ payments: 240, grades: 18, people: 12, kept: 2 })

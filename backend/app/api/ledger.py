@@ -47,7 +47,7 @@ from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry, Purpose
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import RECEIPT, Notice, Notices, get_notices
-from app.roles import LedgerSession
+from app.permissions import LedgerSession
 from app.schemas.ledger import (
     AdjustmentRecord,
     AheadPeriod,

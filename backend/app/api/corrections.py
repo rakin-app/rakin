@@ -22,7 +22,7 @@ from fastapi import APIRouter
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.roles import LedgerSession
+from app.permissions import LedgerSession
 from app.schemas.ledger import Correction, Corrections, DiscountShift, Figures
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])

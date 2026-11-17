@@ -56,10 +56,11 @@ SELECT m.id, m.status, (m.started_at AT TIME ZONE g.timezone)::date AS started_o
        (SELECT max(b.period_end) FROM billing_period b WHERE b.membership_id = m.id)
            AS billed_through,
        pl.kind, pl.anchor, pl.credits, pl.credit_expiry_days, pl.price_clp,
-       pl.period_months,
+       pl.period_months, pl.period_start, pl.period_end,
        np.kind AS next_kind, np.anchor AS next_anchor, np.credits AS next_credits,
        np.credit_expiry_days AS next_credit_expiry_days, np.price_clp AS next_price_clp,
-       np.period_months AS next_period_months
+       np.period_months AS next_period_months, np.period_start AS next_period_start,
+       np.period_end AS next_period_end
 FROM membership m
 JOIN gym g ON g.id = m.gym_id
 JOIN plan pl ON pl.id = m.plan_id
@@ -105,6 +106,8 @@ def _plan(row: asyncpg.Record, prefix: str = "") -> Plan | None:
         row[f"{prefix}anchor"],
         row[f"{prefix}credits"],
         row[f"{prefix}credit_expiry_days"],
+        row[f"{prefix}period_start"],
+        row[f"{prefix}period_end"],
     )
     return Plan(terms, row[f"{prefix}price_clp"], row[f"{prefix}period_months"])
 

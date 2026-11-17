@@ -37,7 +37,7 @@ from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.dates import gym_today, is_minor
 from app.domain.ledger import EntryStatus
 from app.domain.membership import MembershipStatus, current_first
-from app.roles import SeesMoney, StaffSession
+from app.permissions import SeesMoney, StaffSession
 from app.schemas.people import (
     MINOR_NEEDS_GUARDIAN,
     PHONE_REQUIRED,

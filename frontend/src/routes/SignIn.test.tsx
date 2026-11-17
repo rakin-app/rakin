@@ -8,6 +8,7 @@ import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { storedTheme } from '../theme'
+import { asRole } from '../test/access'
 
 const copy = es.signIn
 
@@ -172,7 +173,7 @@ function stubCode(...codes: Answer[]) {
         return new Response(JSON.stringify(body ?? {}), { status, headers: { ...json, ...headers } })
       }
       if (path === '/api/me/role') {
-        const me = { role: null, person_id: 'p', name: 'Ana', email: null, gym_name: 'Sur', student_page: true }
+        const me = { ...asRole(null), person_id: 'p', name: 'Ana', email: null, gym_name: 'Sur', student_page: true }
         return new Response(JSON.stringify(me), { headers: json })
       }
       return new Response('{}', { status: 503, headers: json })

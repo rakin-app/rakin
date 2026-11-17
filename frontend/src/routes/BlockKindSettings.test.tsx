@@ -7,6 +7,7 @@ import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
+import { asRole } from '../test/access'
 
 const copy = es.admin.settings.blocks
 const form = copy.form
@@ -51,7 +52,7 @@ function stubApi({ role = 'owner', save, remove }: { role?: string; save?: Answe
   )
 
   function route(path: string, method: string, body: Record<string, unknown>): Answer {
-    if (path === '/api/me/role') return { body: { role } }
+    if (path === '/api/me/role') return { body: asRole(role) }
     if (path === '/api/block-kinds' && method === 'GET') return { body: kinds }
     if (path === '/api/block-kinds' && method === 'POST') {
       if (save) return save

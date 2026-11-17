@@ -1,16 +1,20 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
+import { ApiError } from '../api/client'
 import { programsQuery, type Program } from '../api/people'
 import {
   ANCHORS,
   createPlan,
+  nextPeriod,
   PLAN_KINDS,
+  planMembershipsQuery,
   plansQuery,
   updatePlan,
   type Plan,
   type PlanFields,
   type PlanKind,
 } from '../api/plans'
+import { nextYear, shortDate } from '../format'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
@@ -18,18 +22,31 @@ import { t } from '../i18n/es'
 import { EditRow, Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
-import { Banner, Card, cardClass, SectionTitle } from '../components/Card'
+import { Banner, Card, cardClass, CheckRow, SectionTitle } from '../components/Card'
 
 const copy = t.admin.settings.plans
 const form = copy.form
 const clp = t.common.clp
 
-type Param = 'price_clp' | 'anchor' | 'period_months' | 'credits' | 'credit_expiry_days' | 'free_classes' | 'free_days'
+type Param =
+  | 'price_clp'
+  | 'anchor'
+  | 'period_months'
+  | 'period_start'
+  | 'period_end'
+  | 'credits'
+  | 'credit_expiry_days'
+  | 'free_classes'
+  | 'free_days'
+
+// The parameters typed as a date, `2027-03-01`.
+const DATE_PARAMS = new Set<Param>(['period_start', 'period_end'])
 
 // Each kind's own parameters, in the order the form asks for them.
 const KIND_PARAMS: Record<PlanKind, readonly Param[]> = {
   monthly: ['price_clp', 'anchor'],
   prepaid: ['price_clp', 'period_months'],
+  fixed_period: ['price_clp', 'period_start', 'period_end'],
   credits: ['price_clp', 'credits', 'credit_expiry_days'],
   dropin: ['price_clp'],
   trial: ['free_classes', 'free_days'],
@@ -39,6 +56,8 @@ const PARAM_LABELS: Record<Param, string> = {
   price_clp: form.price,
   anchor: form.anchor,
   period_months: form.periodMonths,
+  period_start: form.periodStart,
+  period_end: form.periodEnd,
   credits: form.credits,
   credit_expiry_days: form.creditExpiryDays,
   free_classes: form.freeClasses,
@@ -58,6 +77,8 @@ function draftsOf(plan: Plan | undefined): Drafts {
     price_clp: value('price_clp'),
     anchor: plan ? value('anchor') : 'signup',
     period_months: value('period_months'),
+    period_start: value('period_start'),
+    period_end: value('period_end'),
     credits: value('credits'),
     credit_expiry_days: value('credit_expiry_days'),
     free_classes: value('free_classes'),
@@ -67,7 +88,7 @@ function draftsOf(plan: Plan | undefined): Drafts {
 
 /** A draft as the API takes it: a trial's limits may be left out, everything else is sent as typed. */
 function valueOf(param: Param, draft: string): PlanFields[Param] {
-  if (param === 'anchor') return draft
+  if (param === 'anchor' || DATE_PARAMS.has(param)) return draft
   if ((param === 'free_classes' || param === 'free_days') && draft.trim() === '') return null
   return integerOf(draft)
 }
@@ -78,6 +99,8 @@ function summary(plan: Plan): string {
       return copy.row(copy.summary.monthly(clp(plan.price_clp)), copy.anchors[plan.anchor])
     case 'prepaid':
       return copy.summary.prepaid(clp(plan.price_clp), plan.period_months)
+    case 'fixed_period':
+      return copy.summary.fixed_period(clp(plan.price_clp), shortDate(plan.period_start), shortDate(plan.period_end))
     case 'credits':
       return copy.summary.credits(clp(plan.price_clp), plan.credits, plan.credit_expiry_days)
     case 'dropin':
@@ -186,6 +209,8 @@ function PlanForm({
       await queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
     },
   })
+  // "Duplicar para el próximo período" open in place of the form (#351).
+  const [duplicating, setDuplicating] = useState(false)
   const [kind, setKind] = useState<PlanKind>(plan?.kind ?? 'monthly')
   const [initial] = useState(() => draftsOf(plan))
   const [drafts, setDrafts] = useState(initial)
@@ -227,6 +252,10 @@ function PlanForm({
       return
     }
     save.mutate()
+  }
+
+  if (duplicating && plan?.kind === 'fixed_period') {
+    return <NextPeriodForm plan={plan} onCancel={() => setDuplicating(false)} onDone={onDone} />
   }
 
   return (
@@ -284,7 +313,7 @@ function PlanForm({
         <Field
           key={param}
           label={PARAM_LABELS[param]}
-          hint={param === 'free_days' ? form.trialHint : undefined}
+          hint={param === 'free_days' ? form.trialHint : param === 'period_end' ? form.periodHint : undefined}
           error={errorOf(param)}
         >
           {(props) =>
@@ -300,6 +329,8 @@ function PlanForm({
                   </option>
                 ))}
               </Select>
+            ) : DATE_PARAMS.has(param) ? (
+              <Input {...props} type="date" value={drafts[param]} onChange={(e) => set(param, e.target.value)} />
             ) : (
               <Input
                 {...props}
@@ -330,6 +361,11 @@ function PlanForm({
           {save.isPending ? form.working : form.submit}
         </Button>
       </div>
+      {plan?.kind === 'fixed_period' && (
+        <Button disabled={save.isPending} onClick={() => setDuplicating(true)}>
+          {copy.nextPeriod.open}
+        </Button>
+      )}
       {plan && (
         <div className="settings__danger">
           {toggle.isError && (
@@ -346,6 +382,145 @@ function PlanForm({
           </Button>
         </div>
       )}
+    </form>
+  )
+}
+
+/** A plan's name for its next period: each year in it one on, `Temporada 2027` to `Temporada 2028`. */
+function nextName(name: string): string {
+  return name.replace(/\b(19|20)\d{2}\b/g, (year) => String(Number(year) + 1))
+}
+
+/**
+ * "Duplicar para el próximo período" (#351): a fixed-period plan does not renew itself.
+ * The owner copies it with the dates a year on, as they can change, and moves the
+ * members on its list across, every one ticked to begin with: each moves when what
+ * they paid for runs out.
+ */
+function NextPeriodForm({
+  plan,
+  onCancel,
+  onDone,
+}: {
+  plan: Extract<Plan, { kind: 'fixed_period' }>
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const words = copy.nextPeriod
+  const queryClient = useQueryClient()
+  const members = useQuery(planMembershipsQuery(plan.id))
+  const [drafts, setDrafts] = useState({
+    name: nextName(plan.name),
+    price_clp: String(plan.price_clp),
+    period_start: nextYear(plan.period_start),
+    period_end: nextYear(plan.period_end),
+  })
+  // Who does not move: everyone on the list moves unless unticked.
+  const [staying, setStaying] = useState<ReadonlySet<string>>(new Set())
+  const set = (field: keyof typeof drafts, value: string) => setDrafts({ ...drafts, [field]: value })
+
+  const save = useSubmit({
+    offline: 'refuse',
+    mutationFn: () =>
+      nextPeriod(plan.id, {
+        name: drafts.name,
+        price_clp: integerOf(drafts.price_clp),
+        period_start: drafts.period_start,
+        period_end: drafts.period_end,
+        membership_ids: (members.data ?? []).map((m) => m.membership_id).filter((id) => !staying.has(id)),
+      }),
+    onSuccess: async (answer) => {
+      onDone(words.done(answer.plan.name, answer.moved))
+      await queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
+    },
+  })
+  const errors = validationErrors(save.error)
+  const errorOf = (field: keyof typeof drafts) => {
+    if (!(field in errors)) return undefined
+    if (errors[field] === 'after_period') return words.afterPeriod(shortDate(plan.period_end))
+    return refusal(errors[field]!, field, form, drafts[field].trim() === '')
+  }
+  const notOnPlan =
+    save.error instanceof ApiError &&
+    save.error.status === 409 &&
+    (save.error.body as { detail?: { code?: string } } | undefined)?.detail?.code === 'not_on_plan'
+
+  const toggle = (id: string) => {
+    const next = new Set(staying)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setStaying(next)
+  }
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    save.mutate()
+  }
+
+  return (
+    <form className={cardClass({}, 'settings__card settings__form')} aria-label={words.title(plan.name)} onSubmit={submit} noValidate>
+      <SectionTitle className="settings__legend">{words.title(plan.name)}</SectionTitle>
+      <p className="settings__note">{words.intro}</p>
+      <Field label={form.name} error={errorOf('name')}>
+        {(props) => (
+          <Input {...props} type="text" maxLength={200} value={drafts.name} onChange={(e) => set('name', e.target.value)} />
+        )}
+      </Field>
+      <Field label={form.price} error={errorOf('price_clp')}>
+        {(props) => (
+          <Input {...props} type="text" inputMode="numeric" value={drafts.price_clp} onChange={(e) => set('price_clp', e.target.value)} />
+        )}
+      </Field>
+      <Field label={form.periodStart} error={errorOf('period_start')}>
+        {(props) => <Input {...props} type="date" value={drafts.period_start} onChange={(e) => set('period_start', e.target.value)} />}
+      </Field>
+      <Field label={form.periodEnd} error={errorOf('period_end')}>
+        {(props) => <Input {...props} type="date" value={drafts.period_end} onChange={(e) => set('period_end', e.target.value)} />}
+      </Field>
+      <fieldset className="settings__moves">
+        <legend className="settings__label">{words.members}</legend>
+        {members.isPending ? (
+          <Loading className="settings__note">{words.loading}</Loading>
+        ) : members.isError ? (
+          <Banner tone="error">{words.error}</Banner>
+        ) : members.data.length === 0 ? (
+          <p className="settings__note">{words.none}</p>
+        ) : (
+          members.data.map((member) => (
+            <CheckRow key={member.membership_id}>
+              <input
+                type="checkbox"
+                checked={!staying.has(member.membership_id)}
+                onChange={() => toggle(member.membership_id)}
+              />
+              {[
+                member.name,
+                member.status === 'frozen' ? words.frozen : null,
+                member.next_plan_name ? words.pending(member.next_plan_name) : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </CheckRow>
+          ))
+        )}
+      </fieldset>
+      {save.error && (
+        <Banner tone="error">
+          {notOnPlan ? words.notOnPlan : Object.keys(errors).length > 0 ? form.invalid : words.failed}
+        </Banner>
+      )}
+      <div className="settings__actions">
+        <Button disabled={save.isPending} onClick={onCancel}>
+          {form.cancel}
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={save.isPending || !members.isSuccess}
+          busy={save.isPending}
+        >
+          {save.isPending ? words.working : words.submit}
+        </Button>
+      </div>
     </form>
   )
 }

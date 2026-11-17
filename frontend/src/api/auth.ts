@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { apiFetch } from './client'
 import { forgetDrafts } from './drafts'
-import type { StaffRole } from './me'
+import type { Access } from './me'
 import { useSubmit } from './submit'
 
 export const SIGN_IN_PATH = '/ingresar'
@@ -94,7 +94,7 @@ export function hadSession(): boolean {
  * reach `/me` too, since a coach often trains at their own gym (#214); a member never
  * reaches `/admin`. The kept path is used once.
  */
-export function landingFor(role: StaffRole | null): string {
+export function landingFor(access: Access | null): string {
   let kept: string | undefined
   try {
     kept = appPath(localStorage.getItem(RETURN_KEY))
@@ -102,8 +102,8 @@ export function landingFor(role: StaffRole | null): string {
   } catch {
     kept = undefined
   }
-  const home = role === null ? '/me' : '/admin'
-  const reaches = role === null ? ['/me'] : ['/admin', '/me']
+  const home = access === null ? '/me' : '/admin'
+  const reaches = access === null ? ['/me'] : ['/admin', '/me']
   const within = (base: string) => kept === base || kept?.startsWith(`${base}/`) || kept?.startsWith(`${base}?`)
   return kept && reaches.some(within) ? kept : home
 }

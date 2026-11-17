@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
+from tests.pg import Database, make_staff, migrate, run, seed_gym, seeded_owner, throwaway_database
 
 pytestmark = pytest.mark.postgres
 
@@ -67,12 +67,7 @@ def staffed(db: Database, slug: str) -> Gym:
                 person,
             )
             if role:
-                await conn.execute(
-                    "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, $3)",
-                    gym,
-                    person,
-                    role,
-                )
+                await make_staff(conn, gym, person, role)
 
     run(db.admin_url, query)
     return Gym(gym, as_gym(gym), as_gym(gym, admin), as_gym(gym, coach), member)

@@ -32,7 +32,7 @@ export type Person = {
   created_at: string
 }
 
-export type PlanKind = 'monthly' | 'prepaid' | 'credits' | 'dropin' | 'trial'
+export type PlanKind = 'monthly' | 'prepaid' | 'fixed_period' | 'credits' | 'dropin' | 'trial'
 
 /** A freeze (backend `Freeze`): from its first day until `to_date`, the day it is Active again. */
 export type Freeze = {
@@ -362,7 +362,7 @@ export type ReactivationBill = { bills_from: string; periods: QuotedPeriod[]; to
 
 export type ReactivationQuote = Record<BillFrom, ReactivationBill>
 
-export type ReactivationRefusal = 'not_lapsed' | 'not_recurring' | 'unpaid' | 'live_plan'
+export type ReactivationRefusal = 'not_lapsed' | 'not_recurring' | 'period_ended' | 'unpaid' | 'live_plan'
 
 /** The refusal of a reactivation (backend `ReactivationConflict`), with what it is about. */
 export type ReactivationRefused = {
@@ -396,7 +396,14 @@ export function reactivationRefused(error: unknown): ReactivationRefused | null 
   if (!(error instanceof ApiError) || error.status !== 409) return null
   const detail = (error.body as { detail?: Record<string, unknown> } | undefined)?.detail
   const code = detail?.code
-  if (code !== 'not_lapsed' && code !== 'not_recurring' && code !== 'unpaid' && code !== 'live_plan') return null
+  if (
+    code !== 'not_lapsed' &&
+    code !== 'not_recurring' &&
+    code !== 'period_ended' &&
+    code !== 'unpaid' &&
+    code !== 'live_plan'
+  )
+    return null
   const text = (value: unknown) => (typeof value === 'string' ? value : null)
   return {
     code,

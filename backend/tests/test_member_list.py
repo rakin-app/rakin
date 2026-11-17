@@ -19,7 +19,15 @@ from app.schemas.grading import PRESETS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
-from tests.pg import Database, migrate, run, seed_gym, seeded_today, throwaway_database
+from tests.pg import (
+    Database,
+    make_staff,
+    migrate,
+    run,
+    seed_gym,
+    seeded_today,
+    throwaway_database,
+)
 
 pytestmark = pytest.mark.postgres
 
@@ -58,6 +66,10 @@ def as_owner(db: Database, gym: uuid.UUID, sql: str, *args: object) -> Any:
             return await conn.fetchval(sql, *args)
 
     return run(db.owner_url, query)
+
+
+def add_coach(db: Database, gym: uuid.UUID, person: uuid.UUID) -> None:
+    run(db.admin_url, lambda c: make_staff(c, gym, person, "coach"))
 
 
 def add_plan(db: Database, gym: uuid.UUID, name: str) -> uuid.UUID:
@@ -162,13 +174,7 @@ def test_staff_without_a_membership_are_not_members(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     coach = add_person(client, gym, "Coach Rivas")
-    as_owner(
-        db,
-        gym,
-        "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')",
-        gym,
-        uuid.UUID(coach),
-    )
+    add_coach(db, gym, uuid.UUID(coach))
     assert "Coach Rivas" not in names(client, gym)
 
     join(db, gym, coach, mensual(db, gym), "active")
@@ -472,9 +478,7 @@ def test_owes_is_a_period_not_settled_due_or_not(
 
     # A coach never sees money: nobody owes on their list.
     coach = uuid.UUID(add_person(client, gym, "Coach"))
-    as_owner(
-        db, gym, "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')", gym, coach
-    )
+    add_coach(db, gym, coach)
     assert not any(owing(client, gym, person_id=coach).values())
 
 
@@ -482,9 +486,7 @@ def test_coaches_may_list_and_members_may_not(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     coach = uuid.UUID(add_person(client, gym, "Coach"))
-    as_owner(
-        db, gym, "INSERT INTO staff (gym_id, person_id, role) VALUES ($1, $2, 'coach')", gym, coach
-    )
+    add_coach(db, gym, coach)
     member = uuid.UUID(add_person(client, gym, "Member"))
     assert client.get("/api/people", headers=as_gym(gym, coach)).status_code == 200
     assert client.get("/api/people", headers=as_gym(gym, member)).status_code == 403
