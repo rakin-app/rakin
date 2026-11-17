@@ -201,8 +201,10 @@ async def _may_manage_person(
 
 
 async def _lock_person(session: AsyncSession, tenant: Tenant, person_id: uuid.UUID) -> None:
-    """Writes to one person's appointments one after the other, until the transaction
-    ends: "do they hold this role then?" is a read before a write."""
+    """Writes to one person's appointments and their `staff` row one after the other,
+    until the transaction ends: "do they hold this role then?" is a read before a write.
+    The nightly `team` job takes it too (`app.jobs.team.LOCK_PERSON`, by the same name)
+    before it takes someone off the team."""
     await session.execute(
         text("SELECT pg_advisory_xact_lock(hashtext('rakin.appointment'), hashtext(:name))"),
         {"name": f"{tenant.gym_id}:{person_id}"},
@@ -242,13 +244,20 @@ async def titles_to_give(
     session: AsyncSession, acting: Standing, title_ids: list[uuid.UUID]
 ) -> list[Any]:
     """The gym's live roles `title_ids`, in that order, once `acting` may give each: a 404
-    for one the gym has not, or has archived; a 403 for one not strictly fewer."""
+    for one the gym has not, or has archived; a 403 for one not strictly fewer.
+
+    Each is share-locked until the request commits (`FOR SHARE`, which every update of
+    the role waits on, not `FOR KEY SHARE`, which an update of a column that is no key
+    does not), so an archive (`app.api.titles`) waits for the appointment and then sees
+    its holder, or, archived first, the role reads as archived here: an archived role
+    never gains one."""
     rows = {
         row.id: row
         for row in await session.execute(
             text(
                 "SELECT id, name, permissions FROM gym_title"
                 " WHERE id = ANY(:ids) AND archived_at IS NULL AND system IS NULL"
+                " FOR SHARE"
             ),
             {"ids": title_ids},
         )
@@ -267,6 +276,22 @@ def _term(today: date, starts_on: date | None, ends_on: date | None) -> tuple[da
     return starts, ends_on
 
 
+async def _join_team(
+    session: AsyncSession, tenant: Tenant, person_id: uuid.UUID, permissions: list[str]
+) -> None:
+    """Write `person_id`'s `staff` row, unless they have one, for an appointment to a role
+    with `permissions`. The caller holds the person's lock."""
+    # The column is still NOT NULL until #313; nothing reads it.
+    role = Role.ADMIN if Permission.GYM_SETUP in permissions else Role.COACH
+    await session.execute(
+        text(
+            "INSERT INTO staff (gym_id, person_id, role) VALUES (:gym, :id, :role)"
+            " ON CONFLICT DO NOTHING"
+        ),
+        {"gym": tenant.gym_id, "id": person_id, "role": role.value},
+    )
+
+
 async def _appoint(
     session: AsyncSession,
     tenant: Tenant,
@@ -279,15 +304,7 @@ async def _appoint(
     their first appointment. The caller holds the person's lock."""
     if await _overlaps(session, person_id, title.id, starts_on, ends_on):
         raise OVERLAPS
-    # The column is still NOT NULL until #313; nothing reads it.
-    role = Role.ADMIN if Permission.GYM_SETUP in title.permissions else Role.COACH
-    await session.execute(
-        text(
-            "INSERT INTO staff (gym_id, person_id, role) VALUES (:gym, :id, :role)"
-            " ON CONFLICT DO NOTHING"
-        ),
-        {"gym": tenant.gym_id, "id": person_id, "role": role.value},
-    )
+    await _join_team(session, tenant, person_id, title.permissions)
     appointment = await session.scalar(
         text(
             "INSERT INTO staff_title"
@@ -482,6 +499,8 @@ async def invite_staff(
         person_id, joined = await join_gym(
             session, name=body.name, rut=body.rut, email=body.email, phone=body.phone
         )
+    # Before their row is written, as every write to their appointments takes it first.
+    await _lock_person(session, tenant, person_id)
     # The insert is the check, so two invites of one person at once give a 409, not a 500.
     role = Role.ADMIN if any(Permission.GYM_SETUP in t.permissions for t in titles) else Role.COACH
     added = await session.scalar(
@@ -495,7 +514,6 @@ async def invite_staff(
         # Raised, so the transaction rolls back; nothing was written.
         conflict = StaffConflict(person_id=person_id)
         raise HTTPException(status.HTTP_409_CONFLICT, conflict.model_dump(mode="json"))
-    await _lock_person(session, tenant, person_id)
     for title in titles:
         await _appoint(session, tenant, person_id, title, starts_on, ends_on)
     # A record new here took the invite's email from `join_gym`; a known one did not.
@@ -668,7 +686,11 @@ async def correct_appointment(
         person_id,
     )
     today = await gym_today(session)
-    # A correction can make the term end before today, or start later: what they hold
-    # today or later decides whether they stay on the team.
+    # A correction can end the term before today, or open again one that had ended for
+    # someone the team no longer lists: what they hold today or later decides whether
+    # they are on it.
+    ends_on = after["ends_on"]
+    if ends_on is None or ends_on > max(after["starts_on"], today):
+        await _join_team(session, tenant, person_id, appointment.permissions)
     await _tidy(session, person_id, today)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -29,7 +29,7 @@ pytestmark = pytest.mark.postgres
 
 SCHEMA = (
     "SELECT 'policy', policyname, qual || '|' || coalesce(with_check, '') FROM pg_policies"
-    " WHERE tablename = 'audit_event'"
+    " WHERE tablename IN ('audit_event', 'gym_title', 'staff_title')"
     " UNION ALL SELECT 'constraint', conname, pg_get_constraintdef(oid) FROM pg_constraint"
     " WHERE conrelid IN ('audit_event'::regclass, 'staff_title'::regclass)"
     " ORDER BY 1, 2"

@@ -19,6 +19,12 @@ this adds what managing them needs:
   `money_read`'s and an expense's `expenses_read`'s.
 - `forget_gym_person` deletes a person's appointment rows with the rest of their log,
   as it did, and no longer counts them among the corrections of their billing.
+- `rakin_app` writes `gym_title` and `staff_title` only holding `team_manage` (section
+  7): restrictive policies, one per command it is granted, on top of the gym isolation
+  (0065). They are the database's floor; which person and which role someone may touch,
+  the strictly-fewer rule, stays the API's. The gym's own roles come with the gym, from
+  a trigger that runs as whoever creates it, and `forget_gym_person` runs as the owner,
+  so neither is held by them.
 
 A downgrade deletes the team's log rows and every term that ends on its first day.
 
@@ -164,6 +170,24 @@ SAME_DAY = """
 """
 
 
+# The commands `rakin_app` is granted on each (0065), each written with `team_manage`.
+TEAM_WRITES = {"gym_title": ("INSERT", "UPDATE"), "staff_title": ("INSERT", "UPDATE", "DELETE")}
+
+
+def _write_policy(table: str, command: str) -> str:
+    # A policy's expression in parentheses of its own, round `can`'s subquery.
+    can = f"({M0067.can('team_manage')})"
+    clause = {
+        "INSERT": f"WITH CHECK {can}",
+        "UPDATE": f"USING {can} WITH CHECK {can}",
+        "DELETE": f"USING {can}",
+    }[command]
+    return (
+        f"CREATE POLICY {table}_{command.lower()} ON {table} AS RESTRICTIVE FOR {command}"
+        f" TO {APP_ROLE} {clause}"
+    )
+
+
 def _term(same_day: bool) -> None:
     check = (
         "ends_on IS NULL OR ends_on >= starts_on"
@@ -188,9 +212,15 @@ def upgrade() -> None:
     )
     op.execute(f"ALTER POLICY audit_event_read ON audit_event USING {TEAM_READ}")
     op.execute(forget_gym_person(team=True))
+    for table, commands in TEAM_WRITES.items():
+        for command in commands:
+            op.execute(_write_policy(table, command))
 
 
 def downgrade() -> None:
+    for table, commands in TEAM_WRITES.items():
+        for command in commands:
+            op.execute(f"DROP POLICY {table}_{command.lower()} ON {table}")
     op.execute(forget_gym_person(team=False))
     op.execute(f"ALTER POLICY audit_event_read ON audit_event USING {M0067.AUDIT_READ}")
     op.execute("DROP POLICY audit_event_team ON audit_event")

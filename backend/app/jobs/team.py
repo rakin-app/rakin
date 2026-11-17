@@ -24,23 +24,41 @@ logger = logging.getLogger(__name__)
 
 NAME = "team"
 
-# RLS holds `staff` and `staff_title` to the gym in `app.gym_id`.
-OFF_THE_TEAM = """
-    DELETE FROM staff s
-    WHERE NOT s.account_holder
-      AND NOT EXISTS (
-          SELECT FROM staff_title st
-          WHERE st.gym_id = s.gym_id AND st.person_id = s.person_id
-            AND (st.ends_on IS NULL OR st.ends_on > greatest(st.starts_on, $1::date))
-      )
+# RLS holds `staff` and `staff_title` to the gym in `app.gym_id`. Whoever holds nothing
+# on `$1` or later, the titular aside.
+HOLDS_NOTHING = """
+    NOT s.account_holder
+    AND NOT EXISTS (
+        SELECT FROM staff_title st
+        WHERE st.gym_id = s.gym_id AND st.person_id = s.person_id
+          AND (st.ends_on IS NULL OR st.ends_on > greatest(st.starts_on, $1::date))
+    )
 """
+
+# The lock `app.api.staff` takes on a person before writing their appointments or their
+# row: the same name, `<gym>:<person>`, so an appointment made as the job runs is
+# either seen by the check under it or made after the row is gone, and writes it again.
+LOCK_PERSON = (
+    "SELECT pg_advisory_xact_lock(hashtext('rakin.appointment'),"
+    " hashtext(s.gym_id::text || ':' || s.person_id::text))"
+    " FROM staff s WHERE s.person_id = $1"
+)
 
 
 async def tidy_gym(conn: asyncpg.Connection, day: date) -> int:
     """Take off the team of the gym in `app.gym_id` whoever holds nothing on `day` or
-    later; how many."""
-    deleted: str = await conn.execute(OFF_THE_TEAM, day)
-    return int(deleted.split()[-1])
+    later; how many. Each under the person's lock, and checked again under it."""
+    candidates = await conn.fetch(f"SELECT s.person_id FROM staff s WHERE {HOLDS_NOTHING}", day)
+    deleted = 0
+    for candidate in candidates:
+        await conn.execute(LOCK_PERSON, candidate["person_id"])
+        result: str = await conn.execute(
+            f"DELETE FROM staff s WHERE s.person_id = $2 AND {HOLDS_NOTHING}",
+            day,
+            candidate["person_id"],
+        )
+        deleted += int(result.split()[-1])
+    return deleted
 
 
 async def tidy(conn: asyncpg.Connection, day: date) -> bool:

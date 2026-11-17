@@ -6,9 +6,11 @@ lists every appointment as it was; the `staff` row follows the appointments; and
 titular can never be locked out.
 """
 
+import asyncio
 import json
 import uuid
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any
 
@@ -16,6 +18,7 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db_bootstrap import to_dsn
 from app.jobs import team
 from app.main import create_app
 from app.permissions import (
@@ -412,6 +415,133 @@ def test_an_administrador_ends_only_what_they_may(
     listed = {m["person_id"]: m for m in client.get("/api/staff", headers=headers).json()}
     assert listed[str(other)]["manageable"] is False
     assert listed[str(seeded_owner(gym))]["manageable"] is False
+
+
+def test_a_correction_that_opens_a_term_again_puts_them_back_on_the_team(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    today = seeded_today()
+    person = person_in(
+        db, gym, "coach", starts_on=today - timedelta(days=60), ends_on=today - timedelta(days=30)
+    )
+    # Off the team since, as the nightly job leaves them.
+    assert run_team_job(db, today) is True
+    assert not on_team(db, person)
+    [(appointment, *_)] = appointments(db, person)
+
+    response = client.patch(
+        f"/api/staff/{person}/appointments/{appointment}",
+        json={"ends_on": None},
+        headers=as_gym(gym),
+    )
+
+    assert response.status_code == 204, response.text
+    assert on_team(db, person)
+    assert permissions(client, gym, person) == sorted(COACH.permissions)
+
+
+# --- one after the other ------------------------------------------------------------
+
+
+def while_held(
+    db: Database,
+    hold: Callable[[asyncpg.Connection], Awaitable[object]],
+    request: Callable[[], Any],
+) -> Any:
+    """`request`, run while another transaction holds what `hold` takes: it must wait for
+    that transaction, and answers once it commits."""
+
+    async def go() -> Any:
+        other = await asyncpg.connect(to_dsn(db.admin_url))
+        try:
+            await other.execute("BEGIN")
+            await hold(other)
+            with ThreadPoolExecutor(1) as pool:
+                waiting = asyncio.wrap_future(pool.submit(request))
+                await asyncio.sleep(0.5)
+                assert not waiting.done(), "it did not wait for the other transaction"
+                await other.execute("COMMIT")
+                return await waiting
+        finally:
+            await other.close()
+
+    return asyncio.run(go())
+
+
+def new_title(client: TestClient, gym: uuid.UUID) -> str:
+    created = client.post(
+        "/api/titles", json={"name": f"Ayudante {uuid.uuid4().hex[:4]}"}, headers=as_gym(gym)
+    )
+    assert created.status_code == 201, created.text
+    return str(created.json()["id"])
+
+
+def test_an_appointment_waits_for_an_archive_and_finds_the_role_gone(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    title, person = new_title(client, gym), person_in(db, gym)
+
+    async def archive(conn: asyncpg.Connection) -> None:
+        await conn.execute(
+            "UPDATE gym_title SET archived_at = now() WHERE id = $1", uuid.UUID(title)
+        )
+
+    response = while_held(db, archive, lambda: appoint(client, gym, person, title))
+
+    assert response.status_code == 404, response.text
+    assert appointments(db, person) == []
+
+
+def test_an_archive_waits_for_an_appointment_and_sees_its_holder(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    title, person = new_title(client, gym), person_in(db, gym)
+
+    async def appointing(conn: asyncpg.Connection) -> None:
+        # As `titles_to_give` reads the role, then the appointment it writes.
+        await conn.execute("SELECT FROM gym_title WHERE id = $1 FOR SHARE", uuid.UUID(title))
+        await conn.execute(
+            "INSERT INTO staff_title (gym_id, person_id, title_id, title_name, starts_on)"
+            " VALUES ($1, $2, $3, 'Ayudante', $4)",
+            gym,
+            person,
+            uuid.UUID(title),
+            seeded_today(),
+        )
+
+    response = while_held(
+        db, appointing, lambda: client.post(f"/api/titles/{title}/archive", headers=as_gym(gym))
+    )
+
+    assert response.status_code == 409, response.text
+    assert title in {t["id"] for t in titles(client, gym)}
+
+
+def test_the_job_waits_for_an_appointment_being_made_and_keeps_them(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    today = seeded_today()
+    person = person_in(db, gym, "coach", starts_on=today - timedelta(days=60), ends_on=today)
+
+    async def appointing(conn: asyncpg.Connection) -> None:
+        # As `app.api.staff` does: the person's lock, then their new term.
+        await conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('rakin.appointment'), hashtext($1))",
+            f"{gym}:{person}",
+        )
+        await conn.execute(
+            "INSERT INTO staff_title (gym_id, person_id, title_id, title_name, starts_on)"
+            " VALUES ($1, $2, $3, 'Coach', $4)",
+            gym,
+            person,
+            uuid.UUID(academia(gym, "coach")),
+            today,
+        )
+
+    assert while_held(db, appointing, lambda: run_team_job(db, today)) is True
+
+    assert on_team(db, person)
+    assert permissions(client, gym, person) == sorted(COACH.permissions)
 
 
 # --- Invitar ---------------------------------------------------------------------------

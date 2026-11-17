@@ -232,6 +232,33 @@ CASES = (
         lambda gym, actor: (gym.id, actor, gym.owner),
     ),
     Case(
+        "gym_title_insert",
+        Permission.TEAM_MANAGE,
+        "INSERT INTO gym_title (gym_id, name) VALUES ($1, 'Delegada')",
+    ),
+    Case(
+        "gym_title_update",
+        Permission.TEAM_MANAGE,
+        "UPDATE gym_title SET public = NOT public WHERE gym_id = $1",
+    ),
+    Case(
+        "staff_title_insert",
+        Permission.TEAM_MANAGE,
+        "INSERT INTO staff_title (gym_id, person_id, title_id, title_name, starts_on)"
+        " SELECT $1, $2, id, name, current_date FROM gym_title WHERE gym_id = $1 LIMIT 1",
+        lambda gym, actor: (gym.id, gym.newcomer),
+    ),
+    Case(
+        "staff_title_update",
+        Permission.TEAM_MANAGE,
+        "UPDATE staff_title SET public_contact = NULL WHERE gym_id = $1",
+    ),
+    Case(
+        "staff_title_delete",
+        Permission.TEAM_MANAGE,
+        "DELETE FROM staff_title WHERE gym_id = $1",
+    ),
+    Case(
         "audit_event_import",
         Permission.GYM_SETUP,
         "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
