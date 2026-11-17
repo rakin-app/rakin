@@ -562,7 +562,7 @@ A sensitive field's value is stored in `secret`, encrypted with AES-GCM under a 
 
 ## Requirements API
 
-"Requisitos para entrenar" (#349): what a gym asks before someone trains, a signed declaración de riesgos, a safety induction, a medical certificate, and the day each person did it ([design](../docs/design/sport-fit.md)). The gym's list is `requirement` (migration `0061`): a name, `valid_months` (`null` for one done once), `sensitive`, `visible_to` and `active`, in `position` order. A person's records are `person_requirement`, one row per time it was recorded, never changed or deleted: the latest recorded is their current one, and the ones before it are kept.
+"Requisitos para entrenar" (#349): what a gym asks before someone trains, a signed declaración de riesgos, a safety induction, a medical certificate, and the day each person did it ([design](../docs/design/sport-fit.md)). The gym's list is `requirement` (migration `0062`): a name, `valid_months` (`null` for one done once), `sensitive`, `visible_to` and `active`, in `position` order. A person's records are `person_requirement`, one row per time it was recorded, never changed or deleted: the latest recorded is their current one, and the ones before it are kept.
 
 | Method | Path | Does |
 | --- | --- | --- |

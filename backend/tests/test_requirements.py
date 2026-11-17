@@ -1,5 +1,5 @@
 """Requisitos over the API: the gym's list, a person's records, and the student page
-(#349, migration 0061). The states themselves are `tests/domain/test_requirements.py`.
+(#349, migration 0062). The states themselves are `tests/domain/test_requirements.py`.
 """
 
 import uuid

@@ -1,5 +1,5 @@
 """The gym's requirements and a person's records of them, as the API takes and answers
-them (migration 0061). The rules of a state live in `app.domain.requirements`."""
+them (migration 0062). The rules of a state live in `app.domain.requirements`."""
 
 import uuid
 from datetime import date, datetime

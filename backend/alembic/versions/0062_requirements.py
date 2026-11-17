@@ -22,8 +22,8 @@ by their foreign keys. RLS as every tenant table, and a record is inserted as th
 who records it (`recorded_by`). `forget_gym_person` deletes the person's records with
 the rest.
 
-Revision ID: 0061
-Revises: 0060
+Revision ID: 0062
+Revises: 0061
 Create Date: 2026-11-16
 
 """
@@ -35,8 +35,8 @@ from types import ModuleType
 
 from alembic import op
 
-revision: str = "0061"
-down_revision: str | Sequence[str] | None = "0060"
+revision: str = "0062"
+down_revision: str | Sequence[str] | None = "0061"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -1,6 +1,6 @@
 """What the gym asks before someone trains, and each person's records of it (#349).
 
-The list (`/api/requirements`, migration 0061): every staff role reads the ones it may
+The list (`/api/requirements`, migration 0062): every staff role reads the ones it may
 see; owner and admin (`AdminSession`) add, rename, reorder and deactivate them. Who
 sees a requirement (`visible_to`) and whether it is `sensitive` are the owner's alone,
 as for a custom field: an admin who sends either gets a 403. A requirement the caller
