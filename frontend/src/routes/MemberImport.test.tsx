@@ -157,14 +157,16 @@ type Sent = ImportRequest[]
 // The names the sheets were uploaded with, and the tab a CSV was said to be.
 let uploadedAs: (string | null)[] = []
 let uploadedTabs: (string | null)[] = []
+// Whether an activity of the gym grades (#245, #352), as `/api/me/role` answers now.
+let grading = true
 
 function stubApi({
   role = 'owner',
   refuse,
   sheet = SHEET,
-  // Whether an activity of the gym grades (#245, #352).
   grades = true,
 }: { role?: string; refuse?: string; sheet?: Sheet; grades?: boolean } = {}): Sent {
+  grading = grades
   const sent: Sent = []
   vi.stubGlobal(
     'fetch',
@@ -172,7 +174,7 @@ function stubApi({
       const url = new URL(String(input), 'http://localhost')
       const json = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-      if (url.pathname === '/api/me/role') return json({ ...asRole(role), uses_grades: grades })
+      if (url.pathname === '/api/me/role') return json({ ...asRole(role), uses_grades: grading })
       if (url.pathname === '/api/plans') return json(PLANS)
       if (url.pathname === '/api/people') return json({ items: [], total: 0 })
       if (url.pathname === '/api/gym/grading-scheme') return json(SCHEME)
@@ -197,6 +199,7 @@ function renderAt(path: string) {
   const queryClient = createQueryClient()
   const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries: [path] }))
   render(<App queryClient={queryClient} router={router} />)
+  return queryClient
 }
 
 async function chooseFile() {
@@ -510,6 +513,23 @@ describe('Importar alumnos', () => {
     await userEvent.click(screen.getByRole('button', { name: copy.check }))
     await waitFor(() => expect(sent).toHaveLength(1))
     expect(sent[0]?.grados).toBeUndefined()
+  })
+
+  it('reads a CSV picked as Grados as Alumnos once the gym stops grading', async () => {
+    stubApi()
+    const queryClient = renderAt('/admin/alumnos/importar')
+    const tabs = await screen.findByLabelText(copy.csvTab)
+    await within(tabs).findByRole('option', { name: copy.tabs.grados })
+    await userEvent.selectOptions(tabs, copy.tabs.grados)
+
+    grading = false
+    await queryClient.invalidateQueries({ queryKey: ['me', 'role'] })
+    await waitFor(() => expect(within(tabs).queryByRole('option', { name: copy.tabs.grados })).not.toBeInTheDocument())
+    expect(tabs).toHaveValue('alumnos')
+    await chooseFile()
+
+    await screen.findByText(copy.fileSummary('alumnos.csv', 3, []))
+    expect(uploadedTabs).toEqual(['alumnos'])
   })
 
   it('has nothing to check in a file whose only tab is an ignored Grados', async () => {

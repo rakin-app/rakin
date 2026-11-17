@@ -79,9 +79,11 @@ function SheetPicker({ onRead }: { onRead: (name: string, sheet: Sheet) => void 
   const tabId = useId()
   const [tooLarge, setTooLarge] = useState(false)
   // Which tab a CSV is: a workbook says by its tabs' names.
-  const [csvTab, setCsvTab] = useState<SheetTab>('alumnos')
-  // A gym that grades in none of its activities reads no Grados tab (#352).
+  const [chosenTab, setCsvTab] = useState<SheetTab>('alumnos')
+  // A gym that grades in none of its activities reads no Grados tab (#352): one picked
+  // before grading went off is Alumnos again, so the picker never holds an option it lacks.
   const grades = useGrades()
+  const csvTab = grades || chosenTab !== 'grados' ? chosenTab : 'alumnos'
   const read = useSubmit({
     offline: 'refuse',
     mutationFn: (file: File) => uploadSheet(file, csvTab),
