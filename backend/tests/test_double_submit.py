@@ -25,6 +25,7 @@ from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.idempotency import IdempotencyMiddleware, KeyScope
 from app.main import create_app
+from app.permissions import preset_title_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut
@@ -421,7 +422,11 @@ def test_two_imports_at_once_create_nobody_twice(
 
 
 def invite(client: TestClient, gym: uuid.UUID, key: str | None, email: str) -> Any:
-    body = {"name": "Coach Nuevo", "email": email, "role": "coach"}
+    body = {
+        "name": "Coach Nuevo",
+        "email": email,
+        "title_ids": [str(preset_title_id(gym, "academia", "coach"))],
+    }
     headers = as_gym(gym) if key is None else keyed(key, as_gym(gym))
     return client.post("/api/staff", json=body, headers=headers)
 
@@ -461,7 +466,12 @@ def test_two_invites_of_one_rut_at_once_make_one_person(
     rut, tag = random_rut(), uuid.uuid4().hex[:6]
 
     def invite_as(email: str) -> Any:
-        body = {"name": "Coach Nuevo", "email": email, "rut": rut, "role": "coach"}
+        body = {
+            "name": "Coach Nuevo",
+            "email": email,
+            "rut": rut,
+            "title_ids": [str(preset_title_id(gym, "academia", "coach"))],
+        }
         return client.post("/api/staff", json=body, headers=as_gym(gym))
 
     answers = at_once(
@@ -491,7 +501,10 @@ def test_an_invite_waits_for_another_invite_of_its_rut(
                     pool.submit(
                         client.post,
                         "/api/staff",
-                        json={**body, "role": "coach"},
+                        json={
+                            **body,
+                            "title_ids": [str(preset_title_id(gym, "academia", "coach"))],
+                        },
                         headers=as_gym(gym),
                     )
                 )

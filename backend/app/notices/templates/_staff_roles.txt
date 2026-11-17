@@ -1,0 +1,23 @@
+{#- The roles an invite names, "Tesorera y Coach", and what they let one do, in Ajustes' order. -#}
+{%- set can_words = {
+  "money_read": "ver los pagos",
+  "money_write": "registrar pagos",
+  "expenses_read": "ver los gastos",
+  "expenses_write": "registrar gastos",
+  "members_manage": "llevar a " ~ words.the_members,
+  "members_add": "agregar " ~ words.members,
+  "attendance": "tomar asistencia",
+  "gym_setup": "configurar " ~ words.the_place,
+  "team_manage": "gestionar el equipo",
+} -%}
+{%- macro joined(items) -%}
+{%- if items | length > 1 -%}{{ items[:-1] | join(", ") }} y {{ items[-1] }}{%- else -%}{{ items | first }}{%- endif -%}
+{%- endmacro -%}
+{%- set role_names = joined(roles) -%}
+{%- set can_list = [] -%}
+{#- Registrar pagos says seeing them, as the role stores it; so do the others. -#}
+{%- set implied = {"money_read": "money_write", "expenses_read": "expenses_write", "members_add": "members_manage"} -%}
+{%- for code in can if implied.get(code) not in can -%}
+{%- set _ = can_list.append(can_words[code]) -%}
+{%- endfor -%}
+{%- set can_text = joined(can_list) if can_list else "" -%}

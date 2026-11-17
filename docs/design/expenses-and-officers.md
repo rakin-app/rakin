@@ -279,8 +279,13 @@ staff_title                 -- an appointment (mandato)
   public_contact text NULL  -- 'email' | 'phone' | NULL (section 9)
   handover_id uuid NULL     -- the cambio de mando that started or ended it
   created_by, created_at, ended_by NULL, ended_at NULL
-  CHECK (ends_on IS NULL OR ends_on > starts_on)
+  CHECK (ends_on IS NULL OR ends_on >= starts_on)
 ```
+
+A term that ends on the day it starts grants nothing (it is current on no day). It is
+what an appointment ended on the day it was made, or before it began, becomes, and is
+kept rather than deleted so that Historial shows a same-day change of role too (#311,
+migration 0071).
 
 An appointment is **current** when `starts_on <= today < coalesce(ends_on, infinity)`,
 "today" in the gym's timezone (`gym.timezone`, as `v_monthly_income` uses). Writes to
@@ -305,11 +310,11 @@ stopped, whatever has or has not run.
 
 **The staff row follows the appointments**, as housekeeping. Writing a person's first
 appointment, current or future, creates their `staff` row in the same transaction, so
-there is nothing left to do when the appointment starts. Today revoking deletes the
-`staff` row and 0005 ends the session. Now: ending a person's last appointment by hand
-deletes the row at once unless they are the titular, and for terms that end on their
-date the nightly job (`app.jobs.daily`) deletes it afterwards, so 0005's session end
-still fires. Their requests are refused from the start of the day either way, because
+there is nothing left to do when the appointment starts. Ending a person's last
+appointment by hand deletes the row at once unless they are the titular, and for terms
+that end on their date the nightly `team` job deletes it afterwards. Since 0042 a
+session reaches anyone with a record in the gym, so without the row it reaches the gym
+as a member's does and never its staff screens. Their requests are refused from the start of the day either way, because
 the check reads the dates; the job only tidies up and ends the session. A future
 appointment's row makes the incoming person visible to the gym (0003) before their
 term, which it already is for anyone the gym invited.
