@@ -29,6 +29,14 @@ const MONTHS = [
 // (art. 16 bis, #384).
 const NO_HEALTH = 'Sin datos de salud: ni lesiones ni enfermedades.'
 
+// Where someone stands on a requirement (#349), on the ficha and the student page.
+const REQUIREMENT_STATES = {
+  ok: 'Al día',
+  expiring: 'Vence pronto',
+  expired: 'Vencido',
+  pending: 'Pendiente',
+} as const
+
 export const es = {
   app: {
     name: 'rakin',
@@ -1011,6 +1019,30 @@ export const es = {
       missingRut: 'Falta RUT: agrega su RUT (o su correo) en Editar datos para que no se confunda con otra persona del mismo nombre.',
       missingGuardian:
         'Falta apoderado: es menor de 18 años, y Rakin no le escribe hasta que tenga uno. En la ficha del apoderado, usa «Agregar a alguien a cargo» y vincúlalo.',
+      // "Requisitos" (#349): each of the gym's requirements, and where they stand on it.
+      requirements: {
+        title: 'Requisitos',
+        error: 'No pudimos cargar sus requisitos.',
+        state: REQUIREMENT_STATES,
+        done: (day: string) => `Hecho el ${day}`,
+        until: (day: string) => `vence el ${day}`,
+        expiredOn: (day: string) => `venció el ${day}`,
+        record: 'Registrar',
+        recordLabel: (name: string) => `Registrar ${name}`,
+        recorded: (name: string) => `Registrado: ${name}.`,
+        form: {
+          title: (name: string) => `Registrar ${name}`,
+          doneOn: 'Fecha',
+          doneOnHint: 'Hoy, o el día en que lo hizo.',
+          note: 'Nota (opcional)',
+          noteHint: NO_HEALTH,
+          cancel: 'Cancelar',
+          submit: 'Guardar',
+          working: 'Guardando…',
+          future: 'La fecha es hoy como máximo.',
+          failed: 'No pudimos registrarlo. Inténtalo de nuevo.',
+        },
+      },
       // "Privacidad" (#370): what their data rest on, and who accepted which notice when.
       consent: {
         title: 'Privacidad',
@@ -1744,6 +1776,7 @@ export const es = {
         blocks: 'Bloques',
         grading: 'Graduación',
         fields: 'Campos',
+        requirements: 'Requisitos',
         staff: 'Equipo',
         joinLink: 'Inscripción',
         schedule: 'Horario',
@@ -1764,6 +1797,7 @@ export const es = {
         get fields() {
           return `Datos extra en la ficha de cada ${w.member}.`
         },
+        requirements: 'Declaraciones de riesgos, inducciones y certificados, con su fecha.',
         staff: 'Admins y coaches, y quién tiene acceso.',
         joinLink: 'El link para que se inscriban solos.',
         account: 'Tu nombre, tu email y cerrar sesión.',
@@ -2468,6 +2502,50 @@ export const es = {
           optionTooLong: 'Cada opción tiene hasta 80 caracteres.',
         },
       },
+      // "Requisitos" (#349): what the gym asks before someone trains.
+      requirements: {
+        title: 'Requisitos',
+        get intro() {
+          return `Lo que ${w.thePlace} pide antes de entrenar, como una declaración de riesgos o un certificado. La ficha de cada ${w.member} dice cuándo lo hizo y si está al día.`
+        },
+        error: 'No pudimos cargar los requisitos.',
+        empty: 'Todavía no hay requisitos. Por ejemplo:',
+        examples: ['Declaración de riesgos firmada', 'Inducción de seguridad', 'Certificado médico (12 meses)', 'Prueba de natación'],
+        add: 'Nuevo requisito',
+        archive: 'Desactivar',
+        restore: 'Reactivar',
+        archived: 'Inactivo',
+        sensitive: 'Sensible',
+        up: (name: string) => `Subir ${name}`,
+        down: (name: string) => `Bajar ${name}`,
+        row: (first: string, second: string) => `${first} · ${second}`,
+        once: 'Una sola vez',
+        months: (n: number) => (n === 1 ? 'Vence al mes' : `Vence a los ${n} meses`),
+        visibleTo: { owner: 'Solo dueño', admin: 'Dueño y administradores', staff: 'Todo el staff' },
+        created: (name: string) => `Requisito ${name} creado.`,
+        saved: (name: string) => `Requisito ${name} guardado.`,
+        archivedDone: (name: string) => `Requisito ${name} desactivado. Sus registros se guardan, pero no se muestran.`,
+        restored: (name: string) => `Requisito ${name} reactivado.`,
+        toggleFailed: 'No pudimos cambiar el requisito. Inténtalo de nuevo.',
+        reorderFailed: 'No pudimos cambiar el orden. Inténtalo de nuevo.',
+        form: {
+          create: 'Nuevo requisito',
+          edit: (name: string) => `Editar ${name}`,
+          name: 'Nombre',
+          validMonths: 'Vigencia en meses',
+          validMonthsHint: 'En blanco si se hace una sola vez, como una declaración de riesgos.',
+          sensitive: 'Dato sensible',
+          sensitiveHint: 'Su nota se guarda cifrada. Al marcarlo, por defecto solo lo ve el dueño.',
+          visibleTo: 'Quién lo ve',
+          cancel: 'Cancelar',
+          submit: 'Guardar',
+          working: 'Guardando…',
+          invalid: 'Revisa los campos marcados.',
+          failed: 'No pudimos guardar el requisito. Inténtalo de nuevo.',
+          range: { valid_months: 'Entre 1 y 120 meses.' } as Record<string, string>,
+          value: {} as Record<string, string>,
+        },
+      },
     },
     session: {
       back: 'Volver a Clases',
@@ -2533,6 +2611,12 @@ export const es = {
         queued: 'Sin conexión: quedó en este teléfono. Se guardará cuando vuelva la señal.',
         failed: 'No pudimos guardar la asistencia. Inténtalo de nuevo.',
         dropped: 'La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.',
+        // Unmarking a drop-in visit gives its charge back only while nothing was paid, the day it was added (#130).
+        visitKept: {
+          paid: 'La clase suelta ya está pagada: sigue presente. El dueño o un admin la devuelve en Pagos.',
+          pending: 'Hay un comprobante esperando por esa clase suelta: sigue presente. Se revisa en Pagos.',
+          past: 'Esa clase suelta se agregó otro día: sigue presente. El dueño o un admin la anula en Pagos.',
+        },
         guest: {
           get open() {
             return `+ Agregar ${w.member} de prueba`
@@ -2555,6 +2639,30 @@ export const es = {
           done: (name: string) => `${name} quedó presente.`,
           member: (name: string) => `${name} ya es ${w.member}: lo marcamos presente.`,
           invalid: 'Revisa el RUT o el correo, y el celular: 9 dígitos, empezando por 9.',
+          offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
+          hasLeft: 'Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.',
+          failed: 'No pudimos agregarlo. Inténtalo de nuevo.',
+        },
+        // "Clase suelta": someone paying for this one class (#130).
+        visitor: {
+          open: '+ Agregar visitante',
+          label: 'Visitante',
+          name: 'Nombre',
+          phone: 'Celular (WhatsApp)',
+          phonePlaceholder: '9 1234 5678',
+          plan: 'Clase suelta',
+          paid: 'Pago',
+          unpaid: 'Pendiente',
+          cash: 'Pagó en efectivo',
+          transfer: 'Pagó por transferencia',
+          submit: 'Agregar y marcar presente',
+          working: 'Agregando…',
+          cancel: 'Cancelar',
+          noPlans: 'Para agregar visitantes, el dueño o un admin crea un plan de clase suelta.',
+          done: (name: string) => `${name} quedó presente. La clase suelta queda en Pagos.`,
+          paidDone: (name: string) => `${name} quedó presente, con la clase suelta pagada.`,
+          member: (name: string) => `${name} ya está en la lista: lo marcamos presente.`,
+          invalid: 'Revisa el nombre y el celular: 9 dígitos, empezando por 9.',
           offline: 'Sin conexión: agrégalo cuando vuelva la señal.',
           hasLeft: 'Fue dado de baja: el dueño o un admin puede reactivarlo desde su ficha.',
           failed: 'No pudimos agregarlo. Inténtalo de nuevo.',
@@ -3221,6 +3329,15 @@ export const es = {
     // From the student page back to the admin screens, for staff who also train (#214).
     get toAdmin() {
       return `Ir al panel ${w.ofThePlace}`
+    },
+    // "Requisitos" (#349): what the gym asks before training, and where each stands.
+    requirements: {
+      title: 'Mis requisitos',
+      theirs: (name: string) => `Requisitos de ${name}`,
+      state: REQUIREMENT_STATES,
+      done: (day: string) => `Hecho el ${day}`,
+      until: (day: string) => `vence el ${day}`,
+      expiredOn: (day: string) => `venció el ${day}`,
     },
     // "Pedir congelamiento" (#270): a running plan, and a freeze asked for it.
     plans: {
