@@ -527,12 +527,16 @@ def test_a_guardian_sees_each_dependents_balance(
                 "plan_name": "Mensual",
             },
             "balance": {"owed_clp": 25000, "pending_clp": 25000},
+            "rank": None,
+            "attendance": {"this_month": 0, "total": 0},
         },
         {
             "id": juan,
             "name": "Juan",
             "membership": response.json()[1]["membership"],
             "balance": {"owed_clp": 20000, "pending_clp": 0},
+            "rank": None,
+            "attendance": {"this_month": 0, "total": 0},
         },
     ]
 
@@ -548,6 +552,8 @@ def test_a_dependent_without_a_membership_owes_nothing(client: TestClient, sur: 
             "name": "Recién Llegado",
             "membership": None,
             "balance": {"owed_clp": 0, "pending_clp": 0},
+            "rank": None,
+            "attendance": {"this_month": 0, "total": 0},
         }
     ]
 

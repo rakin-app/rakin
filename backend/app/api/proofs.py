@@ -3,7 +3,9 @@
 Proofs never pass through the API process. The browser asks for an upload URL
 (`POST /api/me/proofs`), PUTs the file straight to object storage, and then claims the
 payment (`POST /api/me/payments`): a `pending` transfer for one billing period, pointing
-at the proof, which an admin later validates or rejects (#36). The claim checks that the
+at the proof, which an admin later validates or rejects (#36). One transfer may pay
+several periods, a family's (`POST /api/me/payments/split`, #66): a pending entry on
+each, all pointing at the same proof, reviewed one by one. The claim checks that the
 file is really there, so a failed upload never leaves a pending entry with nothing to
 look at.
 
@@ -24,6 +26,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.entries import ENTRY_COLUMNS
 from app.api.extra_charges import ONE_LINE, open_lines
@@ -36,7 +39,13 @@ from app.integrations.blobstore import ALLOWED_CONTENT_TYPES, MAX_UPLOAD_BYTES
 from app.notices import PROOF_RECEIVED, Notice, Notices, get_notices
 from app.schemas.extra_charges import MyExtraLine
 from app.schemas.ledger import Entry, Method
-from app.schemas.proofs import OpenPeriod, ProofClaim, ProofUpload, ProofUploadRequest
+from app.schemas.proofs import (
+    OpenPeriod,
+    ProofClaim,
+    ProofUpload,
+    ProofUploadRequest,
+    SplitClaim,
+)
 from app.tenancy import Tenant, TenantSession, current_tenant
 
 logger = logging.getLogger(__name__)
@@ -129,6 +138,77 @@ def to_open_period(row: Any) -> OpenPeriod:
     )
 
 
+ALREADY_CLAIMED = HTTPException(status.HTTP_409_CONFLICT, "this proof is already claimed")
+
+# Whether the upload already backs a payment. Under a lock on the key, so two claims of
+# it at once, one for one period and one for another, take it once (0067).
+CLAIMED = text(
+    "SELECT pg_advisory_xact_lock(hashtextextended(:key, 0)),"
+    " EXISTS (SELECT FROM ledger_entry WHERE proof_object_key = :key) AS claimed"
+)
+
+
+async def _usable_proof(
+    tenant: Tenant, key: str, integrations: Integrations, session: AsyncSession
+) -> None:
+    """Refuse a key that is not the person's, a file that never landed, or a proof
+    already claimed: one upload backs one claim, of one period or of several (#66)."""
+    if not is_own_proof(tenant, key):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "not one of your uploads")
+    stored = await integrations.blob_store.stat(key)
+    # The store already refused anything else at upload; checked again, since an
+    # upload URL is only as strict as the store that signed it.
+    if (
+        stored is None
+        or stored.content_type not in ALLOWED_CONTENT_TYPES
+        or stored.size > MAX_UPLOAD_BYTES
+    ):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "proof not uploaded")
+    if (await session.execute(CLAIMED, {"key": key})).one().claimed:
+        raise ALREADY_CLAIMED
+
+
+async def _claim(
+    session: AsyncSession, claimed: dict[str, Any], amount_clp: int, proof_key: str
+) -> Entry:
+    """Insert the pending transfer for one period or cobro line."""
+    try:
+        # A savepoint, so a refusal leaves the request's transaction usable for the 409.
+        async with session.begin_nested():
+            result = await session.execute(
+                CLAIM,
+                {
+                    **claimed,
+                    "amount_clp": amount_clp,
+                    "kind": EntryKind.PAYMENT.value,
+                    "status": EntryStatus.PENDING.value,
+                    "method": Method.TRANSFER.value,
+                    "proof_key": proof_key,
+                },
+            )
+    except IntegrityError as error:
+        constraint = getattr(getattr(error.orig, "__cause__", None), "constraint_name", None)
+        if constraint == "ledger_entry_line_open":
+            # Cancelled after it was read above, by an admin who held the cobro's lock.
+            raise CANCELLED from None
+        if constraint != "ledger_entry_proof_object_key":
+            raise
+        raise ALREADY_CLAIMED from None
+    return Entry.model_validate(dict(result.one()._mapping))
+
+
+async def _open_period(session: AsyncSession, tenant: Tenant, period_id: uuid.UUID) -> Any:
+    """One of the person's periods, or their dependents', still owing something."""
+    row = (
+        await session.execute(text(ONE_PERIOD), payable_params(tenant, id=period_id))
+    ).one_or_none()
+    if row is None:
+        raise NOT_FOUND
+    if row.paid_clp >= row.amount_due_clp:
+        raise HTTPException(status.HTTP_409_CONFLICT, "billing period is already paid in full")
+    return row
+
+
 @router.get("/periods")
 async def open_periods(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
@@ -178,17 +258,7 @@ async def claim_payment(
 ) -> Entry:
     """Record a pending transfer for one period or cobro line, backed by an uploaded
     proof."""
-    if not is_own_proof(tenant, body.proof_key):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "not one of your uploads")
-    stored = await integrations.blob_store.stat(body.proof_key)
-    # The store already refused anything else at upload; checked again, since an
-    # upload URL is only as strict as the store that signed it.
-    if (
-        stored is None
-        or stored.content_type not in ALLOWED_CONTENT_TYPES
-        or stored.size > MAX_UPLOAD_BYTES
-    ):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "proof not uploaded")
+    await _usable_proof(tenant, body.proof_key, integrations, session)
 
     if body.extra_line_id is not None:
         line = (
@@ -203,15 +273,8 @@ async def claim_payment(
         claimed = {"membership_id": None, "billing_period_id": None, "extra_line_id": line.id}
         about = line
     else:
-        row = (
-            await session.execute(
-                text(ONE_PERIOD), payable_params(tenant, id=body.billing_period_id)
-            )
-        ).one_or_none()
-        if row is None:
-            raise NOT_FOUND
-        if row.paid_clp >= row.amount_due_clp:
-            raise HTTPException(status.HTTP_409_CONFLICT, "billing period is already paid in full")
+        assert body.billing_period_id is not None
+        row = await _open_period(session, tenant, body.billing_period_id)
         claimed = {
             "membership_id": row.membership_id,
             "billing_period_id": row.id,
@@ -219,29 +282,7 @@ async def claim_payment(
         }
         about = row
 
-    try:
-        # A savepoint, so a refusal leaves the request's transaction usable for the 409.
-        async with session.begin_nested():
-            result = await session.execute(
-                CLAIM,
-                {
-                    **claimed,
-                    "amount_clp": body.amount_clp,
-                    "kind": EntryKind.PAYMENT.value,
-                    "status": EntryStatus.PENDING.value,
-                    "method": Method.TRANSFER.value,
-                    "proof_key": body.proof_key,
-                },
-            )
-    except IntegrityError as error:
-        constraint = getattr(getattr(error.orig, "__cause__", None), "constraint_name", None)
-        if constraint == "ledger_entry_line_open":
-            # Cancelled after it was read above, by an admin who held the cobro's lock.
-            raise CANCELLED from None
-        if constraint != "ledger_entry_proof_object_key":
-            raise
-        raise HTTPException(status.HTTP_409_CONFLICT, "this proof is already claimed") from None
-    entry = Entry.model_validate(dict(result.one()._mapping))
+    entry = await _claim(session, claimed, body.amount_clp, body.proof_key)
 
     contact = await contact_for(session, about.person_id)
     gym_name = await session.scalar(
@@ -279,6 +320,70 @@ async def claim_payment(
     # typed wrong is a failed send in `message_log`, and must not cost the claim.
     background.add_task(notices.send, notice)
     return entry
+
+
+@router.post("/payments/split", status_code=status.HTTP_201_CREATED)
+async def claim_split_payment(
+    body: SplitClaim,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: TenantSession,
+    integrations: Annotated[Integrations, Depends(get_integrations)],
+    notices: Annotated[Notices, Depends(get_notices)],
+    background: BackgroundTasks,
+) -> list[Entry]:
+    """Record one transfer for several periods, theirs and their dependents' (#66): a
+    pending payment on each, every one backed by the same proof, all or none. Whoever
+    is told about them gets one "proof received" listing theirs."""
+    await _usable_proof(tenant, body.proof_key, integrations, session)
+    rows = [await _open_period(session, tenant, item.billing_period_id) for item in body.items]
+    entries = [
+        await _claim(
+            session,
+            {
+                "membership_id": row.membership_id,
+                "billing_period_id": row.id,
+                "extra_line_id": None,
+            },
+            item.amount_clp,
+            body.proof_key,
+        )
+        for row, item in zip(rows, body.items, strict=True)
+    ]
+
+    gym_name = str(
+        await session.scalar(text("SELECT name FROM gym WHERE id = :id"), {"id": tenant.gym_id})
+    )
+    told: dict[uuid.UUID, tuple[Contact, list[dict[str, Any]]]] = {}
+    for row, entry in zip(rows, entries, strict=True):
+        contact = await contact_for(session, row.person_id)
+        if contact is None or not contact.email:
+            logger.info("proof received: no email to send it to", extra={"entry_id": str(entry.id)})
+            continue
+        _, items = told.setdefault(contact.person_id, (contact, []))
+        items.append(
+            {
+                "dependent_name": row.person_name if contact.on_behalf_of else None,
+                "period_start": row.period_start,
+                "period_end": row.period_end,
+                "amount_clp": entry.amount_clp,
+            }
+        )
+    for contact, items in told.values():
+        assert contact.email is not None
+        notice = Notice(
+            PROOF_RECEIVED,
+            to=contact.email,
+            person_id=contact.person_id,
+            gym_id=tenant.gym_id,
+            context={
+                "name": contact.name,
+                "gym": gym_name,
+                "amount_clp": sum(item["amount_clp"] for item in items),
+                "items": items,
+            },
+        )
+        background.add_task(notices.send, notice)
+    return entries
 
 
 def proof_received(

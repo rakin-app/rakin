@@ -270,3 +270,11 @@
     margin: 0 var(--space-8);
   }
 }
+
+/* One transfer split over several periods (#66). */
+.review__shared-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  font-variant-numeric: tabular-nums;
+}

@@ -3303,6 +3303,12 @@ export const es = {
       noPayments: 'Ninguno',
       attendance: 'Asistencia 30 d',
       attendanceCount: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
+      // One transfer split over several periods (#66).
+      shared: {
+        intro: (total: string) => `Este comprobante es una transferencia de ${total} que también paga:`,
+        claim: (name: string, amount: string, status: string) => `${name}: ${amount} · ${status}`,
+        status: { pending: 'por revisar', validated: 'validado', rejected: 'rechazado' },
+      },
       get noteLabel() {
         return `Nota (obligatoria si rechazas; ${w.theMember} la ve)`
       },
@@ -3327,6 +3333,8 @@ export const es = {
   matTime: {
     mine: 'Tu tiempo de entrenamiento',
     theirs: 'Tiempo de entrenamiento',
+    // A dependent's, on their guardian's student page (#66).
+    ofDependent: (name: string) => `Tiempo de entrenamiento de ${name}`,
     periods: 'Periodo',
     month: 'Este mes',
     allTime: 'Siempre',
@@ -3527,6 +3535,12 @@ export const es = {
       // With a proof already in review (#362).
       uploadAnother: 'Enviar otro comprobante',
     },
+    // A guardian's periods and their dependents', paid in one transfer (#66).
+    together: {
+      title: 'Pagar todo junto',
+      who: (names: string) => `De ${names}, en una sola transferencia.`,
+      upload: 'Subir un comprobante por todo',
+    },
     extra: {
       title: 'Cobros extra',
       due: (day: string, whose: string | null) => (whose ? `vence el ${day} · de ${whose}` : `vence el ${day}`),
@@ -3536,6 +3550,8 @@ export const es = {
     },
     training: {
       title: 'Mi entrenamiento',
+      // A dependent's, on their guardian's student page (#66).
+      theirs: (name: string) => `Entrenamiento de ${name}`,
       // A rank drawn as a belt is a belt; one with no colours (kyu, a level) is a grade.
       belt: 'Cinturón',
       rank: 'Grado',
@@ -3609,6 +3625,13 @@ export const es = {
         paid: 'Ese período ya está pagado.',
         upload: 'No pudimos subir el archivo. Revisa tu conexión e inténtalo de nuevo.',
         failed: 'No pudimos enviar el comprobante. Inténtalo de nuevo.',
+      },
+      // One transfer for several periods, a guardian's and their dependents' (#66).
+      together: {
+        periodsLabel: 'Qué paga esta transferencia',
+        total: 'Total a transferir',
+        pickTwo: 'Marca al menos dos para pagarlos en una transferencia.',
+        submit: (amount: string) => `Enviar comprobante por ${amount}`,
       },
     },
   },

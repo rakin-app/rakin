@@ -2,6 +2,13 @@
 {% block title %}Recibimos tu comprobante{% endblock %}
 {% block body %}
 <p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+{% if items is defined and items %}
+<p style="margin:0 0 8px;">Recibimos tu comprobante de <strong>{{ amount_clp | clp }}</strong> en {{ gym }}, que paga:</p>
+<ul style="margin:0 0 16px;padding-left:20px;">
+{% for item in items %}<li>{% if item.dependent_name %}{{ item.dependent_name }}, el período{% else %}Tu período{% endif %} del {{ item.period_start | fecha }} al {{ item.period_end | fecha }}: <strong>{{ item.amount_clp | clp }}</strong></li>
+{% endfor %}</ul>
+{% else %}
 <p style="margin:0 0 16px;">Recibimos tu comprobante de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %} en {{ gym }}, {% if charge_title is defined and charge_title %}por {{ charge_title }}{% else %}por el período del {{ period_start | fecha }} al {{ period_end | fecha }}{% endif %}.</p>
+{% endif %}
 <p style="margin:0;">Lo revisaremos y te avisaremos cuando el pago quede validado.</p>
 {% endblock %}

@@ -21,7 +21,7 @@ from app.schemas.grading import PRESETS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
-from tests.test_guardians import add_person, bill
+from tests.test_guardians import add_person, bill, new_kid
 from tests.test_member_roll import count, forget
 from tests.test_plans import add_staff
 
@@ -509,6 +509,29 @@ def test_the_student_page_shows_the_rank(client: TestClient, db: Database) -> No
         "sub_rank_label": "1 grado",
         "awarded_on": "2025-06-14",
         "belt": {"colors": ["#6b2d8f"], "stripes": 1, "max_stripes": 4},
+    }
+
+
+@pg
+def test_a_guardian_sees_each_dependents_rank(client: TestClient, db: Database) -> None:
+    gym = gym_with(client, db)
+    parent = add_person(client, gym, "Marta Díaz")
+    juan = new_kid(client, gym, parent, "Juan")
+    new_kid(client, gym, parent, "Eva")
+    award(client, gym, juan, rank_key="blue", sub_rank="2", awarded_on="2026-03-02")
+
+    response = client.get("/api/me/dependents", headers=as_gym(gym, uuid.UUID(parent)))
+
+    assert response.status_code == 200, response.text
+    ranks = {d["name"]: d["rank"] for d in response.json()}
+    assert ranks["Eva"] is None
+    assert ranks["Juan"] == {
+        "rank_key": "blue",
+        "rank_label": "Azul",
+        "sub_rank": "2",
+        "sub_rank_label": "2 grados",
+        "awarded_on": "2026-03-02",
+        "belt": {"colors": ["#1f4fa3"], "stripes": 2, "max_stripes": 4},
     }
 
 

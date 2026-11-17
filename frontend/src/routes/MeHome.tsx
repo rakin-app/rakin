@@ -3,12 +3,22 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { myClassesQuery, type PersonClasses } from '../api/classTags'
 import { useGrades } from '../api/activities'
 import { rankLabel } from '../api/grading'
-import { myPageQuery, myselfQuery, type BankAccount, type MyPage, type MyPayment } from '../api/me'
+import {
+  myDependentsQuery,
+  myPageQuery,
+  myselfQuery,
+  type BankAccount,
+  type Dependent,
+  type MyPage,
+  type MyPayment,
+} from '../api/me'
+import { openPeriodsQuery } from '../api/proofs'
+import type { Rank } from '../api/grading'
 import { RankBelt } from '../components/Belt'
 import { Button } from '../components/Button'
 import { GymMark } from '../components/GymMark'
 import { Grid, PageContainer } from '../components/Layout'
-import { MyMatTime } from '../components/MatTime'
+import { DependentMatTime, MyMatTime } from '../components/MatTime'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { TagHoursNow } from '../components/TagHours'
@@ -20,9 +30,9 @@ import './MeHome.css'
 import { MyConsents } from './MyConsents'
 import { MyPlans } from './MyPlans'
 import { MyRequirements } from './MyRequirements'
-import { ProofUpload } from './ProofUpload'
+import { isFamily, payableTogether, ProofUpload } from './ProofUpload'
 import { Loading } from '../components/Loading'
-import { Card, PlainList, Section } from '../components/Card'
+import { Card, PlainList, Section, SectionHeader } from '../components/Card'
 import { scrollBehavior } from '../motion'
 
 const copy = t.me
@@ -32,8 +42,10 @@ const copy = t.me
  * the proof upload, their belt and classes, their time on the mat, what their classes
  * were about and their hours per tag (theirs and each dependent's, #243), their plans
  * with "Pedir congelamiento" (#270), the payments already sent with how each was reviewed,
- * and for a guardian, their consent for each minor in their care (#370). From 1024px it is two columns: the payment
- * and its upload, and beside them the rest.
+ * and for a guardian, their consent for each minor in their care (#370), what they and
+ * their dependents owe in one transfer, and each dependent's rank, classes and time on
+ * the mat (#66). From 1024px it is two columns: the payment and its upload, and beside
+ * them the rest.
  */
 export function MeHome() {
   const page = useQuery(myPageQuery())
@@ -72,6 +84,7 @@ export function MeHome() {
           <div className="me-home__column">
             <MyConsents />
             <NextPayment page={page.data} />
+            <Together />
             <ExtraCharges page={page.data} />
             <MyPlans page={page.data} />
             <MyRequirements mine={page.data.person_id} />
@@ -79,6 +92,7 @@ export function MeHome() {
           <div className="me-home__column">
             <Training page={page.data} />
             <MyMatTime />
+            <DependentsTraining />
             <MyClasses mine={page.data.person_id} />
             <History page={page.data} />
           </div>
@@ -150,6 +164,38 @@ function NextPayment({ page }: { page: MyPage }) {
       </section>
       <div id={uploadId} ref={uploadRef} hidden={!uploading}>
         {uploading && <ProofUpload />}
+      </div>
+    </>
+  )
+}
+
+/**
+ * "Pagar todo junto" (#66): with periods owed by more than one person, a guardian's and
+ * their dependents', what they come to in one transfer, and the upload that pays them all.
+ */
+function Together() {
+  const words = copy.together
+  const periods = useQuery(openPeriodsQuery())
+  const [uploading, setUploading] = useState(false)
+  const uploadId = useId()
+  const together = payableTogether(periods.data ?? [])
+  if (!isFamily(together)) return null
+  const total = together.reduce((sum, p) => sum + p.outstanding_clp, 0)
+  const names = new Intl.ListFormat('es', { type: 'conjunction' }).format([
+    ...new Set(together.map((p) => p.person_name)),
+  ])
+  return (
+    <>
+      <Card className="together" aria-labelledby="together-title">
+        <SectionHeader id="together-title" title={words.title} />
+        <span className="together__total">{t.common.clp(total)}</span>
+        <p className="together__who">{words.who(names)}</p>
+        <Button aria-expanded={uploading} aria-controls={uploadId} onClick={() => setUploading((open) => !open)}>
+          {words.upload}
+        </Button>
+      </Card>
+      <div id={uploadId} hidden={!uploading}>
+        {uploading && <ProofUpload together />}
       </div>
     </>
   )
@@ -257,25 +303,67 @@ function CopyBank({ account }: { account: BankAccount }) {
 /** "Mi entrenamiento": the rank, once the gym has recorded one and while one of its
  * activities grades (#245), and the classes attended. */
 function Training({ page }: { page: MyPage }) {
+  return (
+    <section className="training" aria-label={copy.training.title}>
+      <TrainingCards rank={page.rank} attendance={page.attendance} memberSince={page.member_since} />
+    </section>
+  )
+}
+
+/** A rank and the classes attended, the student's own or a dependent's. */
+function TrainingCards({
+  rank,
+  attendance,
+  memberSince,
+}: {
+  rank: Rank | null
+  attendance: MyPage['attendance']
+  memberSince?: string
+}) {
   const words = copy.training
   const grades = useGrades()
   return (
-    <section className="training" aria-label={words.title}>
-      {grades && page.rank && (
+    <>
+      {grades && rank && (
         <Card as="div" className="training__card">
-          <span className="training__eyebrow">{page.rank.belt ? words.belt : words.rank}</span>
-          <RankBelt rank={page.rank} />
-          <span className="training__figure">{rankLabel(page.rank)}</span>
-          <span className="training__detail">{words.since(t.common.dayYear(page.rank.awarded_on))}</span>
+          <span className="training__eyebrow">{rank.belt ? words.belt : words.rank}</span>
+          <RankBelt rank={rank} />
+          <span className="training__figure">{rankLabel(rank)}</span>
+          <span className="training__detail">{words.since(t.common.dayYear(rank.awarded_on))}</span>
         </Card>
       )}
       <Card as="div" className="training__card">
         <span className="training__eyebrow">{words.month}</span>
-        <span className="training__figure">{words.classes(page.attendance.this_month)}</span>
-        <span className="training__detail">{words.total(page.attendance.total)}</span>
-        <span className="training__detail">{words.memberSince(monthYear(page.member_since))}</span>
+        <span className="training__figure">{words.classes(attendance.this_month)}</span>
+        <span className="training__detail">{words.total(attendance.total)}</span>
+        {memberSince && <span className="training__detail">{words.memberSince(monthYear(memberSince))}</span>}
       </Card>
-    </section>
+    </>
+  )
+}
+
+/** For a guardian, each dependent's rank, classes and time on the mat (#66). Nothing
+ * while they load or for someone who is nobody's guardian: the page's own come first. */
+function DependentsTraining() {
+  const dependents = useQuery(myDependentsQuery())
+  return (
+    <>
+      {(dependents.data ?? []).map((dependent) => (
+        <DependentTraining key={dependent.id} dependent={dependent} />
+      ))}
+    </>
+  )
+}
+
+function DependentTraining({ dependent }: { dependent: Dependent }) {
+  const titleId = useId()
+  return (
+    <Section id={titleId} title={copy.training.theirs(dependent.name)}>
+      <div className="training">
+        <TrainingCards rank={dependent.rank} attendance={dependent.attendance} />
+      </div>
+      <DependentMatTime personId={dependent.id} name={dependent.name} />
+    </Section>
   )
 }
 

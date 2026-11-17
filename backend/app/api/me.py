@@ -1,9 +1,10 @@
 """The signed-in person's own side of the gym: what the student page (/me) reads.
 
 Any session in a gym may use it, staff or member, since it answers only about the
-person acting: their staff role, if any, a guardian's dependents (migration 0010), and
-the student page itself (#65), their time on the mat (#141), and the classes they and
-their dependents attended, with hours per tag (#243). Asking for a freeze is
+person acting: their staff role, if any, a guardian's dependents (migration 0010) with
+each one's rank, classes and time on the mat (#66), and the student page itself (#65),
+their time on the mat (#141), and the classes they and their dependents attended, with
+hours per tag (#243). Asking for a freeze is
 `app.api.freeze_requests` (#270).
 """
 
@@ -11,7 +12,7 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -213,27 +214,60 @@ async def my_role(
 async def my_dependents(
     tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
 ) -> list[Dependent]:
-    """Whom the signed-in person pays for in this gym, each with their balance."""
+    """Whom the signed-in person pays for in this gym, each with their balance, their
+    rank and their classes (#66)."""
+    gym = (
+        await session.execute(
+            text("SELECT timezone, settings FROM gym WHERE id = :id"), {"id": tenant.gym_id}
+        )
+    ).one()
+    today = gym_today(str(gym.timezone))
+    month = start_of_local_day(today.replace(day=1), str(gym.timezone))
+    scheme = readable_scheme(gym.settings)
     rows = await session.execute(
         text(DEPENDENTS),
         {
             "guardian": tenant.person_id,
-            "today": await _today(session, tenant.gym_id),
+            "today": today,
             "validated": EntryStatus.VALIDATED.value,
             "pending": EntryStatus.PENDING.value,
             "payment": EntryKind.PAYMENT.value,
             "settling": sorted(k.value for k in SETTLING_KINDS),
         },
     )
-    return [
-        Dependent(
-            id=row.id,
-            name=row.name,
-            membership=shown_membership(row),
-            balance=Balance(owed_clp=row.owed_clp, pending_clp=row.pending_clp),
+    dependents = []
+    for row in rows.all():
+        total, this_month, _ = await attended(session, row.id, recent=month, since=None)
+        dependents.append(
+            Dependent(
+                id=row.id,
+                name=row.name,
+                membership=shown_membership(row),
+                balance=Balance(owed_clp=row.owed_clp, pending_clp=row.pending_clp),
+                rank=await current_rank(session, row.id, scheme),
+                attendance=MyAttendance(this_month=this_month, total=total),
+            )
         )
-        for row in rows
-    ]
+    return dependents
+
+
+IS_DEPENDENT = text(
+    "SELECT EXISTS (SELECT FROM guardian_link"
+    " WHERE guardian_person_id = :me AND dependent_person_id = :id)"
+)
+
+
+@router.get("/dependents/{person_id}/time")
+async def my_dependent_time(
+    person_id: uuid.UUID,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: TenantSession,
+) -> PersonTime:
+    """A dependent's time on the mat, as `GET /api/me/time` gives the guardian's own:
+    for one the guardian is linked to, and no one else (#66)."""
+    if not await session.scalar(IS_DEPENDENT, {"me": tenant.person_id, "id": person_id}):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "dependent not found")
+    return await person_time_of(session, tenant.gym_id, person_id)
 
 
 @router.get("/time")

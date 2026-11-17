@@ -89,3 +89,18 @@
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
+
+/* "Pagar todo junto" (#66): what to transfer for every period ticked. */
+.proof__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.proof__total-amount {
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}

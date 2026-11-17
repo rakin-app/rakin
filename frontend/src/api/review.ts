@@ -46,6 +46,16 @@ export type ProofReview = {
   last_payments: { amount_clp: number; paid_at: string }[]
   // Classes the person attended in the last 30 days: today and the 29 before it.
   attendance_30d: number
+  // The other payments the same proof claims, when one transfer paid several periods (#66).
+  shared_with?: SharedClaim[]
+}
+
+/** Another payment claimed with the same proof: the transfer is the sum of them all. */
+export type SharedClaim = {
+  id: string
+  person_name: string
+  amount_clp: number
+  status: 'pending' | 'validated' | 'rejected'
 }
 
 export type Validated = {
