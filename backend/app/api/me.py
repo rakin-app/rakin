@@ -20,6 +20,7 @@ from app.api.activities import gym_uses_grades, practice_names
 from app.api.attendance import attended
 from app.api.class_tags import month_of, tag_hours, tags_of_session, year_of
 from app.api.extra_charges import open_lines
+from app.api.extra_lines import line_title_sql
 from app.api.freeze_requests import my_plans
 from app.api.grades import current_rank, readable_scheme
 from app.api.people import SHOWN_MEMBERSHIP, shown_membership
@@ -79,10 +80,10 @@ DEPENDENTS = f"""
 # entries recorded at the same moment go by the period they pay, latest first. Only the
 # notes written for the student are shown: a rejection's, and a carried credit's
 # ("Pagó $X, quedan $Y a favor"); an admin's note on anything else is theirs.
-PAYMENTS = """
+PAYMENTS = f"""
     WITH mine AS (
         SELECT e.id, e.kind, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
-               bp.period_start, pl.name AS plan_name, x.title AS charge_title,
+               bp.period_start, pl.name AS plan_name, {line_title_sql("x", "l")} AS charge_title,
                e.claimed_at, e.validated_at,
                CASE WHEN e.status = :rejected
                       OR (e.kind = :adjustment AND e.billing_period_id IS NULL

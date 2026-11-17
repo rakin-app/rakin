@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.attendance import recent_from
 from app.api.entries import CURRENT_PERSON, ENTRY_COLUMNS
 from app.api.extra_charges import line_facts, settled_line
-from app.api.extra_lines import locked_line_by_id
+from app.api.extra_lines import line_title_sql, locked_line_by_id
 from app.api.ledger import (
     locked_period,
     period_facts,
@@ -130,7 +130,8 @@ QUEUE_ORDER = " ORDER BY e.claimed_at, e.id"
 EXTRA_QUEUE = f"""
     SELECT e.id, l.person_id, gp.name AS person_name, e.amount_clp, e.method, e.claimed_at,
            cg.name AS claimed_by_name, e.proof_object_key,
-           l.id AS line_id, x.id AS charge_id, x.title, x.category, x.due_date,
+           l.id AS line_id, x.id AS charge_id, {line_title_sql("x", "l")} AS title, x.category,
+           l.due_date,
            l.amount_due_clp, coalesce(paid.amount, 0) AS paid_clp, att.classes AS attendance_30d
     FROM ledger_entry e
     JOIN extra_line l ON l.id = e.extra_line_id

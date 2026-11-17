@@ -9,7 +9,7 @@ import {
   groupsQuery,
   progress,
   saveGroup,
-  type ExtraChargeSummary,
+  type Counted,
 } from '../api/extraCharges'
 import { useGrades } from '../api/activities'
 import { gradingSchemeQuery, isLevels } from '../api/grading'
@@ -149,7 +149,9 @@ function ChargeList() {
           >
             <ListRowContent
               title={charge.title}
-              detail={`${copy.category[charge.category]} · ${copy.due(shortDay(charge.due_date))}`}
+              detail={[copy.category[charge.category], copy.due(shortDay(charge.due_date))]
+                .concat(charge.instalments > 1 ? [copy.instalments(charge.instalments)] : [])
+                .join(' · ')}
               trailing={<Progress charge={charge} />}
             />
           </Link>
@@ -159,8 +161,8 @@ function ChargeList() {
   )
 }
 
-/** "7 de 9 pagaron · $140.000 de $180.000", with a bar. */
-export function Progress({ charge }: { charge: ExtraChargeSummary }) {
+/** "7 de 9 pagaron · $140.000 de $180.000": a cobro's, or one of its instalments' (#356), with a bar. */
+export function Progress({ charge }: { charge: Counted }) {
   const label = copy.progress(charge.paid_lines, charge.lines, clp(charge.collected_clp), clp(charge.due_clp))
   return (
     <span className="extra__progress">

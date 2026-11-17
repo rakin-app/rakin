@@ -35,16 +35,26 @@ REFUND = f"'{EntryKind.REFUND.value}'"
 SETTLING = ", ".join(f"'{k.value}'" for k in sorted(SETTLING_KINDS))
 
 LOCK_CHARGE = text(
-    "SELECT amount_mode, amount_clp, due_date FROM extra_charge WHERE id = :id FOR UPDATE"
+    "SELECT amount_mode, amount_clp, instalments FROM extra_charge WHERE id = :id FOR UPDATE"
 )
 LOCK_LINE = text(
-    "SELECT l.id, l.extra_charge_id, l.person_id, l.amount_due_clp, l.cancelled_at"
+    "SELECT l.id, l.extra_charge_id, l.person_id, l.amount_due_clp, l.due_date, l.cancelled_at"
     " FROM extra_line l WHERE l.id = :line AND l.extra_charge_id = :charge FOR UPDATE"
 )
 SETTLED = text(
     f"SELECT coalesce(sum({settled_amount('ledger_entry')}), 0)::bigint FROM ledger_entry"
     f" WHERE extra_line_id = :id AND status = {VALIDATED} AND kind IN ({SETTLING})"
 )
+
+
+def line_title_sql(charge: str, line: str) -> str:
+    """The SQL for what a line is called, its cobro's title and, for a cobro in
+    instalments (#356), which of them: `app.domain.extra_charges.line_title`."""
+    return (
+        f"({charge}.title || CASE WHEN {charge}.instalments > 1"
+        f" THEN ' · cuota ' || {line}.instalment || ' de ' || {charge}.instalments"
+        " ELSE '' END)"
+    )
 
 
 async def locked_line(
@@ -60,10 +70,10 @@ async def locked_line(
         raise NO_LINE
     paid = await session.scalar(SETTLED, {"id": line_id})
     period = BillingPeriod(
-        period_start=charge.due_date,
-        period_end=charge.due_date,
+        period_start=line.due_date,
+        period_end=line.due_date,
         amount_due_clp=line.amount_due_clp,
-        due_date=charge.due_date,
+        due_date=line.due_date,
         paid_clp=paid,
         closed=paid >= line.amount_due_clp,
     )

@@ -30,17 +30,25 @@ export type Draft = {
   description: string
   message: string
   category: Category
+  // The first instalment's, in instalments.
   due_date: string
   target: Target
   amount_mode: AmountMode
   amount_clp: number
   overrides: Override[]
+  // "En cuotas" (#356): 1, or each person's amount in 2 to 12, monthly from the due date.
+  instalments: number
   notify: boolean
 }
+
+/** A cobro is paid at once, or in 2 to this many instalments. */
+export const MAX_INSTALMENTS = 12
 
 export type PreviewLine = {
   person: PersonRef
   amount_clp: number
+  // What each instalment is, the first carrying the remainder; `[amount_clp]` at once.
+  instalments_clp: number[]
   overridden: boolean
   // Whom the notice goes to: them, or their guardian.
   contact_name: string
@@ -56,6 +64,8 @@ export type Preview = {
   // A split's remainder: a peso more each for the first `remainder_clp` people.
   remainder_clp: number
   share_clp: number | null
+  // When each instalment is due, once the draft has a due date.
+  due_dates: string[]
 }
 
 export type RefundableLinePayment = {
@@ -69,6 +79,9 @@ export type RefundableLinePayment = {
 export type Line = {
   id: string
   person: PersonRef
+  // Which instalment, from 1; 1 in a cobro paid at once.
+  instalment: number
+  due_date: string
   guardian: PersonRef | null
   amount_due_clp: number
   overridden: boolean
@@ -93,10 +106,24 @@ export type ExtraChargeSummary = {
   due_date: string
   amount_mode: AmountMode
   amount_clp: number
+  // 1, or how many instalments each person pays it in.
+  instalments: number
   target_kind: TargetKind
   target_label: string | null
   created_at: string
-  // Lines owing something, and of them those paid: "7 de 9 pagaron". Exentos apart.
+  // People owing something, and of them those paid (every instalment): "7 de 9
+  // pagaron". Exentos apart.
+  lines: number
+  paid_lines: number
+  waived_lines: number
+  due_clp: number
+  collected_clp: number
+}
+
+/** One instalment across everyone: "Cuota 2 · 3 de 9 pagaron · $100.000 de $300.000". */
+export type InstalmentProgress = {
+  instalment: number
+  due_date: string
   lines: number
   paid_lines: number
   waived_lines: number
@@ -107,7 +134,10 @@ export type ExtraChargeSummary = {
 export type ExtraCharge = ExtraChargeSummary & {
   description: string | null
   message: string | null
+  // Each person's lines, by name, then instalment.
   people: Line[]
+  // Paid and owed per instalment; one entry for a cobro paid at once.
+  schedule: InstalmentProgress[]
 }
 
 export type CancelPreview = { resplit_allowed: boolean; amounts: Record<string, number> }
@@ -144,6 +174,7 @@ export function previewBody(draft: Draft) {
     amount_mode: draft.amount_mode,
     amount_clp: draft.amount_clp,
     overrides: draft.overrides,
+    instalments: draft.instalments,
     title: draft.title.trim() || null,
     due_date: draft.due_date || null,
   }
@@ -246,7 +277,10 @@ export function deleteGroup(id: string): Promise<void> {
   return apiFetch<void>(`/api/groups/${enc(id)}`, { method: 'DELETE' })
 }
 
-/** "7 de 9 pagaron": how far along a cobro is. */
-export function progress(charge: ExtraChargeSummary): number {
+/** What "7 de 9 pagaron" counts: a cobro's, or one instalment's. */
+export type Counted = Pick<ExtraChargeSummary, 'lines' | 'paid_lines' | 'waived_lines' | 'due_clp' | 'collected_clp'>
+
+/** "7 de 9 pagaron": how far along a cobro, or an instalment, is. */
+export function progress(charge: Counted): number {
   return charge.lines === 0 ? 1 : charge.paid_lines / charge.lines
 }

@@ -15,10 +15,15 @@ the gym received, adjusts the line or refunds a payment of it (`app.api.ledger`)
 money counts in Cobrado and the ledger book. It never touches a membership: an unpaid
 line lapses no plan and is not "Vencido".
 
+A cobro may be paid in instalments (#356): each person's amount divided into N lines,
+the remainder on the first, due monthly from the cobro's due date. Each instalment is
+a line like any other: paid, proved, corrected and cancelled on its own.
+
 An admin may change a person's amount (an override), cancel a line that has no money
-on it, and, while nobody has paid any line of a split, divide the total again among the
-lines left. "Recordar a los pendientes" emails again everyone who still owes and has no
-proof waiting.
+on it, and, while nobody has paid any line of a split paid at once, divide the total
+again among the lines left. "Recordar a los pendientes" emails again everyone who still
+owes and has no proof waiting: each person the instalments already due, or else the
+next one (`to_remind`).
 
 Owner and admin only (`LedgerSession`): coaches never see money, and RLS holds them to
 it (migration 0037). Each person reads their own lines and their dependents' on the
@@ -46,6 +51,7 @@ from app.api.extra_lines import (
     SETTLING,
     VALIDATED,
     line_after,
+    line_title_sql,
     locked_line,
 )
 from app.contacts import Contact, contact_for, contact_query
@@ -58,7 +64,10 @@ from app.domain.extra_charges import (
     Person,
     TargetKind,
     amounts,
+    instalment_dates,
+    instalments,
     line_status,
+    line_title,
     settled_paid,
     split,
 )
@@ -75,6 +84,7 @@ from app.schemas.extra_charges import (
     ExtraChargeCreate,
     ExtraChargePreview,
     ExtraChargeSummary,
+    InstalmentProgress,
     Line,
     LineAdjustment,
     LineAmountChange,
@@ -195,23 +205,28 @@ async def targeted(session: AsyncSession, draft: AmountDraft) -> tuple[list[Any]
     return rows, label
 
 
-def shares(draft: AmountDraft, rows: list[Any]) -> dict[uuid.UUID, int]:
-    """Each person's amount, as the domain says; a split too small for everyone, or an
+def shares(draft: AmountDraft, rows: list[Any]) -> dict[uuid.UUID, list[int]]:
+    """Each person's amount, as the domain says, in each of the draft's instalments; a
+    split too small for everyone, an amount too small for its instalments, or an
     override for someone not targeted, is a 422."""
     try:
-        return amounts(
+        owed = amounts(
             draft.amount_mode,
             draft.amount_clp,
             [Person(row.person_id, row.name) for row in rows],
             {o.person_id: o.amount_clp for o in draft.overrides},
         )
+        return {person: instalments(amount, draft.instalments) for person, amount in owed.items()}
     except ValueError as refused:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(refused)) from None
 
 
 # --- the gym, and what it tells people --------------------------------------------
 
-GYM = text("SELECT id, name, settings FROM gym WHERE id = current_setting('app.gym_id')::uuid")
+GYM = text(
+    "SELECT id, name, settings, (now() AT TIME ZONE timezone)::date AS today"
+    " FROM gym WHERE id = current_setting('app.gym_id')::uuid"
+)
 
 
 def whatsapp(
@@ -242,11 +257,12 @@ def charge_notice(
     charge: Any,
     contact: Contact,
     *,
-    person_name: str,
+    line: Any,
     amount_clp: int,
     reminder: bool,
 ) -> Notice:
-    """The cobro's email to one person, or their guardian: their own amount."""
+    """The cobro's email about one line to its person, or their guardian: their own
+    amount, and, in instalments, which one and when it is due."""
     assert contact.email is not None
     return Notice(
         EXTRA_CHARGE,
@@ -256,12 +272,12 @@ def charge_notice(
         context={
             "name": contact.name,
             "gym": gym.name,
-            "title": charge.title,
+            "title": line_title(charge.title, line.instalment, charge.instalments),
             "message": charge.message,
             "amount_clp": amount_clp,
-            "due_date": charge.due_date,
+            "due_date": line.due_date,
             "bank_account": (gym.settings or {}).get("bank_account"),
-            "dependent_name": person_name if contact.on_behalf_of else None,
+            "dependent_name": line.person_name if contact.on_behalf_of else None,
             "reminder": reminder,
             "extra_charge_id": str(charge.id),
         },
@@ -314,7 +330,7 @@ async def notify(
             gym,
             charge,
             contact,
-            person_name=row.person_name,
+            line=row,
             amount_clp=owed if reminder else row.amount_due_clp,
             reminder=reminder,
         )
@@ -324,10 +340,33 @@ async def notify(
     return Reminded(sent=sent, without_email=without)
 
 
-async def open_rows(session: AsyncSession, charge_id: uuid.UUID) -> list[Any]:
-    """The cobro's lines still owed with no proof waiting: who a notice is for."""
-    rows = await session.execute(text(LINES + LINES_ORDER), {"id": charge_id, "line": None})
-    return [row for row in rows if row_status(row) is LineStatus.OPEN]
+def to_remind(rows: list[Any], today: date) -> list[Any]:
+    """Of the lines `rows` (`LINES`), those a reminder is for: of each person's lines
+    still owed with no proof waiting, the instalments due by `today`, or, with none due
+    yet, their next one. A cobro paid at once has one line each, so whoever still owes
+    it."""
+    owing: dict[uuid.UUID, list[Any]] = defaultdict(list)
+    for row in rows:
+        if row_status(row) is LineStatus.OPEN:
+            owing[row.person_id].append(row)
+    chosen = []
+    for lines in owing.values():
+        lines.sort(key=lambda row: (row.due_date, row.instalment))
+        chosen += [row for row in lines if row.due_date <= today] or lines[:1]
+    return chosen
+
+
+async def charge_rows(session: AsyncSession, charge_id: uuid.UUID) -> list[Any]:
+    """The cobro's lines (`LINES`), in the order the cobro lists them."""
+    return list(await session.execute(text(LINES + LINES_ORDER), {"id": charge_id, "line": None}))
+
+
+async def open_rows(session: AsyncSession, charge_id: uuid.UUID, today: date) -> list[Any]:
+    """The cobro's lines a reminder is for (`to_remind`), in the order the cobro lists
+    them."""
+    rows = await charge_rows(session, charge_id)
+    chosen = {row.id for row in to_remind(rows, today)}
+    return [row for row in rows if row.id in chosen]
 
 
 # --- the preview and creating a cobro ---------------------------------------------
@@ -344,11 +383,13 @@ async def preview(body: ExtraChargePreview, session: LedgerSession) -> Preview:
     share = remainder = None
     if body.amount_mode is AmountMode.SPLIT:
         share, remainder = divmod(body.amount_clp, len(rows))
+    title = None if body.title is None else line_title(body.title, 1, body.instalments)
     return Preview(
         lines=[
             PreviewLine(
                 person=PersonRef(id=row.person_id, name=row.name),
-                amount_clp=owed[row.person_id],
+                amount_clp=sum(owed[row.person_id]),
+                instalments_clp=owed[row.person_id],
                 overridden=row.person_id in overridden,
                 contact_name=row.contact_name or row.name,
                 on_behalf=row.on_behalf_of is not None,
@@ -359,35 +400,43 @@ async def preview(body: ExtraChargePreview, session: LedgerSession) -> Preview:
                     gym,
                     row,
                     name=row.name,
-                    title=body.title,
-                    amount_clp=owed[row.person_id],
+                    title=title,
+                    amount_clp=owed[row.person_id][0],
                     due=body.due_date,
                 ),
             )
             for row in rows
         ],
-        total_clp=sum(owed.values()),
+        total_clp=sum(map(sum, owed.values())),
         remainder_clp=remainder or 0,
         share_clp=share,
+        due_dates=[]
+        if body.due_date is None
+        else instalment_dates(body.due_date, body.instalments),
     )
 
 
 INSERT_CHARGE = text(
     f"""
     INSERT INTO extra_charge (gym_id, title, description, message, category, due_date,
-                              amount_mode, amount_clp, target_kind, target_label, created_by)
+                              amount_mode, amount_clp, instalments, target_kind, target_label,
+                              created_by)
     VALUES (current_setting('app.gym_id')::uuid, :title, :description, :message, :category,
-            :due_date, :amount_mode, :amount_clp, :target_kind, :target_label, {CURRENT_PERSON})
+            :due_date, :amount_mode, :amount_clp, :instalments, :target_kind, :target_label,
+            {CURRENT_PERSON})
     RETURNING id
     """
 )
 
 INSERT_LINES = text(
     """
-    INSERT INTO extra_line (gym_id, extra_charge_id, person_id, amount_due_clp, overridden)
-    SELECT current_setting('app.gym_id')::uuid, :charge, p, a, o
-    FROM unnest(CAST(:people AS uuid[]), CAST(:amounts AS bigint[]), CAST(:overridden AS boolean[]))
-        AS t (p, a, o)
+    INSERT INTO extra_line (gym_id, extra_charge_id, person_id, instalment, due_date,
+                            amount_due_clp, overridden)
+    SELECT current_setting('app.gym_id')::uuid, :charge, p, i, d, a, o
+    FROM unnest(CAST(:people AS uuid[]), CAST(:instalments AS smallint[]),
+                CAST(:due_dates AS date[]), CAST(:amounts AS bigint[]),
+                CAST(:overridden AS boolean[]))
+        AS t (p, i, d, a, o)
     """
 )
 
@@ -399,7 +448,8 @@ async def create(
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> ExtraCharge:
-    """Charge everyone the target names their amount, and, with `notify`, email each."""
+    """Charge everyone the target names their amount, a line for each instalment, and,
+    with `notify`, email each about the first they owe."""
     rows, label = await targeted(session, body)
     owed = shares(body, rows)
     overridden = {o.person_id for o in body.overrides}
@@ -413,54 +463,90 @@ async def create(
             "due_date": body.due_date,
             "amount_mode": body.amount_mode.value,
             "amount_clp": body.amount_clp,
+            "instalments": body.instalments,
             "target_kind": body.target.kind.value,
             "target_label": label,
         },
     )
-    people = [row.person_id for row in rows]
+    dates = instalment_dates(body.due_date, body.instalments)
+    lines = [
+        (row.person_id, i + 1, dates[i], amount)
+        for row in rows
+        for i, amount in enumerate(owed[row.person_id])
+    ]
     await session.execute(
         INSERT_LINES,
         {
             "charge": charge_id,
-            "people": people,
-            "amounts": [owed[p] for p in people],
-            "overridden": [p in overridden for p in people],
+            "people": [line[0] for line in lines],
+            "instalments": [line[1] for line in lines],
+            "due_dates": [line[2] for line in lines],
+            "amounts": [line[3] for line in lines],
+            "overridden": [line[0] in overridden for line in lines],
         },
     )
     if body.notify:
         facts = await charge_facts(session, charge_id)
-        # Someone let off it, at nothing, is not told to pay nothing.
-        owing = await open_rows(session, charge_id)
+        # The first instalment alone, whenever it falls due; someone let off it, at
+        # nothing, is not told to pay nothing.
+        owing = [
+            row
+            for row in await charge_rows(session, charge_id)
+            if row.instalment == 1 and row_status(row) is LineStatus.OPEN
+        ]
         await notify(session, facts, owing, notices, background, reminder=False)
     return await read_charge(session, charge_id)
 
 
 # --- reading cobros ---------------------------------------------------------------
 
-SUMMARY = f"""
-    SELECT x.id, x.title, x.category, x.due_date, x.amount_mode, x.amount_clp, x.target_kind,
-           x.target_label, x.created_at, x.description, x.message,
-           count(l.id) FILTER (WHERE l.cancelled_at IS NULL AND l.amount_due_clp > 0) AS lines,
-           count(l.id) FILTER (
-               WHERE l.cancelled_at IS NULL AND l.amount_due_clp > 0
-                 AND coalesce(s.paid, 0) >= l.amount_due_clp
-           ) AS paid_lines,
-           count(l.id) FILTER (WHERE l.cancelled_at IS NULL AND l.amount_due_clp = 0)
-               AS waived_lines,
-           coalesce(sum(l.amount_due_clp) FILTER (WHERE l.cancelled_at IS NULL), 0)::bigint
-               AS due_clp,
-           coalesce(sum(least(greatest(coalesce(s.paid, 0), 0), l.amount_due_clp))
-               FILTER (WHERE l.cancelled_at IS NULL), 0)::bigint AS collected_clp
-    FROM extra_charge x
-    LEFT JOIN extra_line l ON l.extra_charge_id = x.id
+# Of lines `p` that owe `due` and have been paid `collected`, as many owe something,
+# are paid in full, or are let off at nothing; and what they owe and have been paid.
+PROGRESS = """
+           count(*) FILTER (WHERE p.due > 0) AS lines,
+           count(*) FILTER (WHERE p.due > 0 AND p.collected >= p.due) AS paid_lines,
+           count(*) FILTER (WHERE p.due = 0) AS waived_lines,
+           coalesce(sum(p.due), 0)::bigint AS due_clp,
+           coalesce(sum(p.collected), 0)::bigint AS collected_clp
+"""
+
+# What a line not cancelled owes, and of it what it has been paid.
+LINE_PROGRESS = f"""
+    SELECT l.person_id, l.instalment, l.due_date, l.amount_due_clp AS due,
+           least(greatest(coalesce(s.paid, 0), 0), l.amount_due_clp) AS collected
+    FROM extra_line l
     {LINE_SUMS}
+    WHERE l.extra_charge_id = x.id AND l.cancelled_at IS NULL
+"""
+
+# A cobro, counted by person: someone in instalments has paid once every instalment is.
+SUMMARY = f"""
+    SELECT x.id, x.title, x.category, x.due_date, x.amount_mode, x.amount_clp, x.instalments,
+           x.target_kind, x.target_label, x.created_at, x.description, x.message,
+           {PROGRESS}
+    FROM extra_charge x
+    LEFT JOIN LATERAL (
+        SELECT sum(t.due)::bigint AS due, sum(t.collected)::bigint AS collected
+        FROM ({LINE_PROGRESS}) t GROUP BY t.person_id
+    ) p ON true
 """
 
 SUMMARIES = text(f"{SUMMARY} GROUP BY x.id ORDER BY x.created_at DESC, x.id")
 ONE_SUMMARY = text(f"{SUMMARY} WHERE x.id = :id GROUP BY x.id")
 
+# Each instalment of the cobro, counted by line.
+SCHEDULE = text(
+    f"""
+    SELECT p.instalment, min(p.due_date) AS due_date, {PROGRESS}
+    FROM extra_charge x CROSS JOIN LATERAL ({LINE_PROGRESS}) p
+    WHERE x.id = :id
+    GROUP BY p.instalment ORDER BY p.instalment
+    """
+)
+
 LINES = f"""
-    SELECT l.id, l.person_id, gp.name AS person_name, l.amount_due_clp, l.overridden,
+    SELECT l.id, l.person_id, gp.name AS person_name, l.instalment, l.due_date,
+           l.amount_due_clp, l.overridden,
            l.cancelled_at, l.cancel_reason, coalesce(s.paid, 0) AS paid,
            coalesce(s.pending, 0) AS pending,
            s.pending_id, coalesce(s.kept, 0) AS kept, s.money_entries,
@@ -476,7 +562,7 @@ LINES = f"""
     WHERE l.extra_charge_id = :id AND (CAST(:line AS uuid) IS NULL OR l.id = :line)
 """
 
-LINES_ORDER = " ORDER BY lower(gp.name), l.id"
+LINES_ORDER = " ORDER BY lower(gp.name), l.person_id, l.instalment"
 
 # The charge's validated payments with something left to give back, newest first;
 # one line's, with `:line`.
@@ -515,6 +601,8 @@ def to_line(row: Any, gym: Any, charge: Any, refundable: list[RefundableLinePaym
     return Line(
         id=row.id,
         person=PersonRef(id=row.person_id, name=row.person_name),
+        instalment=row.instalment,
+        due_date=row.due_date,
         guardian=None
         if row.guardian_id is None
         else PersonRef(id=row.guardian_id, name=row.guardian_name),
@@ -531,9 +619,9 @@ def to_line(row: Any, gym: Any, charge: Any, refundable: list[RefundableLinePaym
             gym,
             row,
             name=row.person_name,
-            title=charge.title,
+            title=line_title(charge.title, row.instalment, charge.instalments),
             amount_clp=outstanding,
-            due=charge.due_date,
+            due=row.due_date,
         )
         if state is LineStatus.OPEN
         else None,
@@ -546,7 +634,7 @@ async def charge_facts(session: AsyncSession, charge_id: uuid.UUID) -> Any:
     found = (
         await session.execute(
             text(
-                "SELECT id, title, message, due_date, amount_mode, amount_clp"
+                "SELECT id, title, message, due_date, amount_mode, amount_clp, instalments"
                 " FROM extra_charge WHERE id = :id"
             ),
             {"id": charge_id},
@@ -568,11 +656,13 @@ async def read_charge(session: AsyncSession, charge_id: uuid.UUID) -> ExtraCharg
             RefundableLinePayment.model_validate(payment, from_attributes=True)
         )
     lines = await session.execute(text(LINES + LINES_ORDER), {"id": charge_id, "line": None})
+    schedule = await session.execute(SCHEDULE, {"id": charge_id})
     return ExtraCharge(
         **summary(row).model_dump(),
         description=row.description,
         message=row.message,
         people=[to_line(line, gym, row, refundable[line.id]) for line in lines],
+        schedule=[InstalmentProgress.model_validate(i, from_attributes=True) for i in schedule],
     )
 
 
@@ -625,11 +715,12 @@ async def resplit(
     session: AsyncSession, charge: Any, charge_id: uuid.UUID, without: uuid.UUID
 ) -> dict[uuid.UUID, int] | None:
     """Each other line's amount once the total is divided again without `without`, the
-    overrides kept: `None` when it cannot be, for a cobro that is not a split, one
-    someone has paid, claimed or been refunded on, or one with nobody left. An
+    overrides kept: `None` when it cannot be, for a cobro that is not a split or is in
+    instalments, one someone has paid, claimed or been refunded on, or one with nobody
+    left. An
     adjustment moves no money and does not stand in the way. Run under the cobro's lock,
     which every entry on its lines waits for (`app.api.extra_lines`)."""
-    if AmountMode(charge.amount_mode) is not AmountMode.SPLIT:
+    if AmountMode(charge.amount_mode) is not AmountMode.SPLIT or charge.instalments > 1:
         return None
     rows = (await session.execute(text(LINES + LINES_ORDER), {"id": charge_id, "line": None})).all()
     if any(row.money_entries for row in rows):
@@ -647,7 +738,9 @@ async def resplit(
     }
 
 
-SHARE_CHARGE = text("SELECT amount_mode, amount_clp FROM extra_charge WHERE id = :id FOR SHARE")
+SHARE_CHARGE = text(
+    "SELECT amount_mode, amount_clp, instalments FROM extra_charge WHERE id = :id FOR SHARE"
+)
 
 
 @router.get("/{charge_id}/lines/{line_id}/cancel")
@@ -706,8 +799,9 @@ async def cancel_line(
 # --- money on a line --------------------------------------------------------------
 
 LINE_FACTS = text(
-    """
-    SELECT l.person_id, gp.name AS person_name, x.title, g.id AS gym_id, g.name AS gym_name
+    f"""
+    SELECT l.person_id, gp.name AS person_name, {line_title_sql("x", "l")} AS title,
+           g.id AS gym_id, g.name AS gym_name
     FROM extra_line l
     JOIN extra_charge x ON x.id = l.extra_charge_id
     JOIN gym_person gp ON gp.gym_id = l.gym_id AND gp.person_id = l.person_id
@@ -849,9 +943,11 @@ async def remind(
     background: BackgroundTasks,
 ) -> Reminded:
     """Recordar a los pendientes: email everyone who still owes and has no proof
-    waiting what is left of their amount."""
+    waiting what is left of their amount: in instalments, of each one already due, or
+    else of the next."""
     facts = await charge_facts(session, charge_id)
-    owing = await open_rows(session, charge_id)
+    gym = (await session.execute(GYM)).one()
+    owing = await open_rows(session, charge_id, gym.today)
     return await notify(session, facts, owing, notices, background, reminder=True)
 
 
@@ -861,7 +957,8 @@ async def remind(
 # Everything is held to the current gym by RLS, and a member to their own lines and
 # their dependents' (`extra_line_own`, 0037).
 PERSON_LINES = f"""
-    SELECT l.id, l.extra_charge_id, x.title, x.category, x.message, x.due_date, l.person_id,
+    SELECT l.id, l.extra_charge_id, {line_title_sql("x", "l")} AS title, x.category, x.message,
+           l.due_date, l.person_id,
            gp.name AS person_name, l.amount_due_clp, coalesce(s.paid, 0) AS paid,
            coalesce(s.pending, 0) AS pending
     FROM extra_line l
@@ -874,7 +971,7 @@ PERSON_LINES = f"""
 # Not yet paid in full.
 OWED = " AND coalesce(s.paid, 0) < l.amount_due_clp"
 
-PERSON_ORDER = " ORDER BY x.due_date, lower(gp.name), l.id"
+PERSON_ORDER = " ORDER BY l.due_date, lower(gp.name), l.id"
 
 # The person's own and their dependents'.
 MINE = (

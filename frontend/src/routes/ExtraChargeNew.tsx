@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import {
   CATEGORIES,
+  MAX_INSTALMENTS,
   createCharge,
   groupsQuery,
   previewBody,
@@ -38,6 +39,8 @@ const clp = t.common.clp
 
 const TARGETS: TargetKind[] = ['active', 'program', 'group', 'people']
 const MODES: AmountMode[] = ['fixed', 'split']
+// "En cuotas": 2 to 12, monthly from the due date (#356).
+const INSTALMENT_COUNTS = Array.from({ length: MAX_INSTALMENTS - 1 }, (_, i) => i + 2)
 const LAST = words.steps.length - 1
 // The preview waits this long after the last keystroke.
 const PREVIEW_DEBOUNCE_MS = 300
@@ -72,7 +75,7 @@ function useDebounced<T>(value: T, ms: number): T {
 /**
  * "Nuevo cobro extra" (#195): the details, whom it is for, how much with each person's
  * amount previewed live (a split's share and remainder, and any amount set by hand),
- * the message, and a last look that lists who has no email, with a WhatsApp link each.
+ * whether it is paid in instalments and how many (#356), the message, and a last look that lists who has no email, with a WhatsApp link each.
  * Opened from a ficha's "Corregir plan" › "Cobro extra", for that person (#279).
  */
 export function ExtraChargeNew() {
@@ -115,6 +118,8 @@ function Wizard({ person }: { person?: PersonRef }) {
   const [mode, setMode] = useState<AmountMode>('fixed')
   const [amount, setAmount] = useState('')
   const [overrides, setOverrides] = useState<Record<string, number>>({})
+  const [inInstalments, setInInstalments] = useState(false)
+  const [count, setCount] = useState(2)
   const [message, setMessage] = useState('')
   const [notify, setNotify] = useState(true)
 
@@ -133,6 +138,7 @@ function Wizard({ person }: { person?: PersonRef }) {
     amount_mode: mode,
     amount_clp: amountClp,
     overrides: Object.entries(overrides).map(([person_id, amount_clp]) => ({ person_id, amount_clp })),
+    instalments: inInstalments ? count : 1,
     notify,
   }
   const settled = useDebounced(draft, PREVIEW_DEBOUNCE_MS)
@@ -254,6 +260,11 @@ function Wizard({ person }: { person?: PersonRef }) {
               loading={preview.isFetching}
               error={tried || amount ? problem : null}
               overrides={overrides}
+              instalments={inInstalments ? count : 1}
+              onInstalments={(value) => {
+                setInInstalments(value > 1)
+                if (value > 1) setCount(value)
+              }}
               onMode={(value) => {
                 setMode(value)
                 setOverrides({})
@@ -338,6 +349,7 @@ function previewProblem(error: unknown): string {
   const detail = error instanceof ApiError ? (error.body as { detail?: unknown } | undefined)?.detail : undefined
   if (detail === 'the target names nobody') return words.nobody
   if (detail === 'a split leaves everyone at least a peso') return words.tooSmall
+  if (detail === 'each instalment is at least a peso') return words.instalmentsTooSmall
   return words.previewError
 }
 
@@ -432,6 +444,8 @@ function AmountStep({
   loading,
   error,
   overrides,
+  instalments,
+  onInstalments,
   onMode,
   onAmount,
   onOverride,
@@ -442,6 +456,9 @@ function AmountStep({
   loading: boolean
   error: string | null
   overrides: Record<string, number>
+  // 1, or how many instalments.
+  instalments: number
+  onInstalments: (instalments: number) => void
   onMode: (mode: AmountMode) => void
   onAmount: (amount: string) => void
   onOverride: (person: string, amount: number | null) => void
@@ -460,6 +477,26 @@ function AmountStep({
       <Field label={words.amountLabel[mode]} error={error ?? undefined}>
         {(props) => <Input {...props} inputMode="numeric" value={amount} onChange={(e) => onAmount(digits(e.target.value))} />}
       </Field>
+      <CheckRow start>
+        <input type="checkbox" checked={instalments > 1} onChange={(e) => onInstalments(e.target.checked ? 2 : 1)} />
+        <span>
+          {words.inInstalments}
+          <span className="extra__hint">{words.inInstalmentsHint}</span>
+        </span>
+      </CheckRow>
+      {instalments > 1 && (
+        <Field label={words.instalmentsLabel}>
+          {(props) => (
+            <Select {...props} value={String(instalments)} onChange={(e) => onInstalments(Number(e.target.value))}>
+              {INSTALMENT_COUNTS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      )}
       {preview && (
         <section className="extra__preview" aria-label={words.previewLabel} aria-busy={loading}>
           <SectionHeader as="h3" title={words.previewLabel} trailing={words.total(clp(preview.total_clp), preview.lines.length)} />
@@ -467,6 +504,9 @@ function AmountStep({
             <p className="extra__hint">{words.split(clp(preview.share_clp), preview.lines.length)}</p>
           )}
           {preview.remainder_clp > 0 && <p className="extra__hint">{words.remainder(preview.remainder_clp)}</p>}
+          {preview.lines.some((line) => new Set(line.instalments_clp).size > 1) && (
+            <p className="extra__hint">{words.instalmentsRemainder}</p>
+          )}
           <PlainList className="extra__preview-list">
             {preview.lines.map((line) => (
               <li key={line.person.id} className="extra__preview-row">
@@ -474,6 +514,9 @@ function AmountStep({
                   {line.person.name}
                   {line.on_behalf && <span className="extra__hint">{words.guardian(line.contact_name)}</span>}
                   {line.overridden && <span className="extra__hint">{words.overridden}</span>}
+                  {line.instalments_clp.length > 1 && line.amount_clp > 0 && (
+                    <span className="extra__hint">{words.instalmentsOf(line.instalments_clp.map(clp).join(' + '))}</span>
+                  )}
                 </span>
                 <Input
                   className="extra__preview-amount"
@@ -530,6 +573,10 @@ function Confirm({
         ? words.each(clp(low))
         : words.range(clp(low), clp(high))
   const sample = preview.lines.find((line) => line.has_email && line.amount_clp > 0)
+  // In instalments, the email is about the first, as the backend sends it (`line_title`).
+  const count = preview.due_dates.length
+  const emailTitle = count > 1 ? `${title.trim()} · ${copy.instalmentOf(1, count).toLowerCase()}` : title.trim()
+  const firstDue = preview.due_dates[0] ?? dueDate
   return (
     <>
       <dl className="extra__confirm">
@@ -552,10 +599,23 @@ function Confirm({
           <dt>{words.confirm.total}</dt>
           <dd className="extra__confirm-total">{clp(preview.total_clp)}</dd>
         </div>
-        <div>
-          <dt>{words.confirm.due}</dt>
-          <dd>{longDay(dueDate)}</dd>
-        </div>
+        {count > 1 ? (
+          <div>
+            <dt>{words.confirm.instalments}</dt>
+            <dd>
+              <PlainList>
+                {preview.due_dates.map((day, i) => (
+                  <li key={day}>{words.confirm.instalmentDue(i + 1, longDay(day))}</li>
+                ))}
+              </PlainList>
+            </dd>
+          </div>
+        ) : (
+          <div>
+            <dt>{words.confirm.due}</dt>
+            <dd>{longDay(dueDate)}</dd>
+          </div>
+        )}
       </dl>
       <section className="extra__email" aria-labelledby="extra-email">
         <h3 id="extra-email" className="extra__legend">
@@ -568,13 +628,13 @@ function Confirm({
             <p className="extra__hint">{words.confirm.sampleFor(sample.contact_name)}</p>
             <div className="extra__email-body">
               <p>{words.confirm.hello(sample.contact_name)}</p>
-              <p>{words.confirm.sends(gym, title.trim(), sample.on_behalf ? sample.person.name : null)}</p>
+              <p>{words.confirm.sends(gym, emailTitle, sample.on_behalf ? sample.person.name : null)}</p>
               {message.trim() && <p className="extra__message">{message.trim()}</p>}
               <p>
                 {words.confirm.owes(
                   sample.on_behalf ? sample.person.name : null,
-                  clp(sample.amount_clp),
-                  emailDay(dueDate),
+                  clp(sample.instalments_clp[0] ?? sample.amount_clp),
+                  emailDay(firstDue),
                 )}
               </p>
             </div>

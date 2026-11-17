@@ -6,6 +6,10 @@ pesos, the remainder a peso more for each of the first people alphabetically, so
 lines always add up to the total (`split`). An admin may then override any person's
 amount (a scholarship, someone who pays less), which a later re-split keeps.
 
+A cobro may be paid in instalments (#356): each person's amount is then divided into
+N lines, evenly in whole pesos with the remainder on the first (`instalments`), due
+monthly from the cobro's due date (`instalment_dates`).
+
 A line settles as a billing period does (`app.domain.billing`): validated payments and
 adjustments less refunds. Its status is what the screens show (`line_status`): a line
 at nothing is exento, not pagado. Nothing
@@ -16,7 +20,13 @@ import unicodedata
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
+
+from app.domain.dates import add_months
+
+# A cobro is paid at once, or in 2 to this many instalments.
+MAX_INSTALMENTS = 12
 
 
 class Category(StrEnum):
@@ -101,6 +111,31 @@ def amounts(
             raise ValueError("an override is not below zero")
         base[person_id] = amount
     return base
+
+
+def instalments(amount_clp: int, count: int) -> list[int]:
+    """`amount_clp` in `count` instalments of whole pesos: each the same, and the
+    remainder on the first. Nothing stays nothing in each; anything else leaves every
+    instalment at least a peso."""
+    if not 1 <= count <= MAX_INSTALMENTS:
+        raise ValueError(f"a cobro is paid in 1 to {MAX_INSTALMENTS} instalments")
+    if 0 < amount_clp < count:
+        raise ValueError("each instalment is at least a peso")
+    share, remainder = divmod(amount_clp, count)
+    return [share + remainder] + [share] * (count - 1)
+
+
+def instalment_dates(first: date, count: int) -> list[date]:
+    """When each of `count` instalments is due: `first`, then monthly after it, on the
+    same day of the month or the last of a shorter one."""
+    return [add_months(first, i) for i in range(count)]
+
+
+def line_title(title: str, instalment: int, count: int) -> str:
+    """What a line is called: its cobro's title and, in instalments, which of them,
+    "Viaje a la regata · cuota 2 de 3". `app.api.extra_lines.line_title_sql` says it in
+    SQL."""
+    return title if count == 1 else f"{title} · cuota {instalment} de {count}"
 
 
 def settled_paid(paid_clp: int, amount_due_clp: int) -> int:
