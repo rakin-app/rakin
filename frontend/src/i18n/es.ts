@@ -37,6 +37,15 @@ const REQUIREMENT_STATES = {
   pending: 'Pendiente',
 } as const
 
+// A requirement someone is short on, where they are marked and on Hoy (#350), name first
+// so the state need not agree with it: "Certificado médico: vencido".
+const requirementFlag = (flag: { name: string; state: keyof typeof REQUIREMENT_STATES; expires_on: string | null }) =>
+  `${flag.name}: ${
+    flag.state === 'expiring' && flag.expires_on !== null
+      ? `vence el ${es.common.longDay(flag.expires_on)}`
+      : REQUIREMENT_STATES[flag.state].toLowerCase()
+  }`
+
 export const es = {
   app: {
     name: 'rakin',
@@ -190,6 +199,16 @@ export const es = {
         title: 'Falta apoderado',
         count: (n: number) => (n === 1 ? '1 menor' : `${n} menores`),
         hint: 'Son menores de 18 años sin apoderado: Rakin no les escribe. Vincula a su apoderado desde la ficha de este, con «Agregar a alguien a cargo».',
+        open: 'Ver ficha',
+        openLabel: (name: string) => `Ver la ficha de ${name}`,
+      },
+      // "Requisitos" (#350): who lacks one or whose one expired, then whose one expires soon.
+      requirements: {
+        title: 'Requisitos',
+        count: (n: number) => w.memberCount(n),
+        hint: 'Pendientes o vencidos, y los que vencen en los próximos 30 días. Se registran en su ficha.',
+        flag: requirementFlag,
+        showAll: (n: number) => `Ver los ${n}`,
         open: 'Ver ficha',
         openLabel: (name: string) => `Ver la ficha de ${name}`,
       },
@@ -1670,6 +1689,8 @@ export const es = {
       overdue: 'Pago vencido',
       // A warning, never a refusal: the staff at the door decides.
       warning: { lapsed: 'Plan vencido', frozen: 'Plan congelado', noCredits: 'Sin clases en su paquete' },
+      // A requirement they lack or whose record expired (#350): a warning too.
+      requirement: requirementFlag,
       search: {
         label: (door: string) => `Buscar para ${door}`,
         placeholder: 'Nombre o RUT',
@@ -2590,7 +2611,8 @@ export const es = {
         get othersLabel() {
           return `${w.memberIs('Otros', 'Otras')} ${w.members}`
         },
-        hint: 'Toca un nombre para marcar presente. El punto naranja indica pago vencido: puede entrenar, pero conviene avisar.',
+        hint: 'Toca un nombre para marcar presente. El punto naranja indica pago vencido, y un requisito pendiente o vencido aparece bajo el nombre: puede entrenar igual, pero conviene avisar.',
+        requirement: requirementFlag,
         get loading() {
           return `Cargando ${w.members}…`
         },

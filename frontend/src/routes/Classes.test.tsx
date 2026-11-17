@@ -534,6 +534,7 @@ const onRoster = (id: string, name: string, present: boolean, regular = true): R
   regular,
   rank: null,
   present,
+  unmet_requirements: [],
 })
 
 describe('Clases on a desktop', () => {

@@ -601,6 +601,11 @@ function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boo
           {belt && <RankBelt rank={belt} compact />}
           {detail}
         </span>
+        {member.unmet_requirements.length > 0 && (
+          <span className="attendance__requirements">
+            {member.unmet_requirements.map(words.requirement).join(' · ')}
+          </span>
+        )}
       </span>
       {member.overdue && <span className="attendance__overdue" role="img" aria-label={words.overdue} />}
     </button>

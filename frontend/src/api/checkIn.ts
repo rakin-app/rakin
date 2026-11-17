@@ -2,6 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import type { PlanKind } from './attendance'
 import { apiFetch } from './client'
 import type { MembershipStatus } from './people'
+import type { RequirementFlag } from './requirements'
 
 /** Someone at the door, by the membership a check-in marks (backend `Visitor`). */
 export type Visitor = {
@@ -18,8 +19,9 @@ export type Visitor = {
   overdue: boolean
 }
 
-/** A search result: when they came in today, null if they have not (backend `Candidate`). */
-export type Candidate = Visitor & { checked_in_at: string | null }
+/** A search result: when they came in today, null if they have not, and what they lack
+ * or whose record expired, of the requirements the role sees (backend `Candidate`, #350). */
+export type Candidate = Visitor & { checked_in_at: string | null; unmet_requirements: RequirementFlag[] }
 
 /** A visit today (backend `Arrival`). */
 export type Arrival = Visitor & { marked_at: string; credits_consumed: number }

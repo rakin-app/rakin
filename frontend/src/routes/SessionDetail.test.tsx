@@ -49,6 +49,7 @@ const member = (id: string, name: string, over: Partial<RosterMember> = {}): Ros
   regular: true,
   rank: null,
   present: false,
+  unmet_requirements: [],
   ...over,
 })
 
@@ -305,6 +306,29 @@ describe('Asistencia', () => {
     expect(felipe).toHaveTextContent(/^Felipe Díaz/)
     expect(paula).toHaveTextContent(/^Paula Contreras/)
     expect(document.querySelector('.belt')).toBeNull()
+  })
+
+  it('names a requirement someone lacks or whose record expired, and still marks them (#350)', async () => {
+    const lacking = member('felipe', 'Felipe Díaz', {
+      unmet_requirements: [
+        { id: 'r1', name: 'Inducción', state: 'pending', expires_on: null },
+        { id: 'r2', name: 'Certificado médico', state: 'expired', expires_on: '2026-11-01' },
+      ],
+    })
+    const api = stubApi({ members: [ANTONIA, lacking] })
+    renderClass()
+
+    const list = await rosterList()
+    const felipe = list.getByRole('button', { name: /Felipe Díaz/ })
+    expect(felipe).toHaveTextContent('Inducción: pendiente · Certificado médico: vencido')
+    expect(list.getByRole('button', { name: /Antonia Rojas/ })).not.toHaveTextContent('pendiente')
+    await userEvent.click(felipe)
+    await userEvent.click(screen.getByRole('button', { name: copy.save(2) }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.saved)
+    expect(writes(api.calls)).toEqual([
+      { method: 'PATCH', path: '/api/sessions/s1/attendance', body: { mark: ['m-felipe'], unmark: [] } },
+    ])
   })
 
   it('counts each tap and saves what changed', async () => {

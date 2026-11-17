@@ -86,6 +86,28 @@ export function recordRequirement(
   )
 }
 
+// --- where people are marked, and Hoy (#350) -------------------------------------------
+
+/** A requirement someone stands short on (backend `RequirementFlag`): pendiente or
+ * vencido on the roster and Entrada, and vence pronto too on Hoy. A warning, never a refusal. */
+export type RequirementFlag = {
+  id: string
+  name: string
+  state: RequirementState
+  // The last day it is in force; `null` while never done.
+  expires_on: string | null
+}
+
+/** Someone with a live membership short on a requirement (backend `RequirementsDue`). */
+export type RequirementsDue = { person_id: string; name: string; requirements: RequirementFlag[] }
+
+/** Hoy's "Requisitos": who lacks one or whose one expired, by name, then whose one
+ * expires within 30 days, soonest first. Only the requirements the role sees. */
+export const requirementsDueQuery = queryOptions({
+  queryKey: ['requirements', 'due'],
+  queryFn: () => apiFetch<RequirementsDue[]>('/api/requirements/due'),
+})
+
 // --- the student page ------------------------------------------------------------------
 
 /** A requirement as the student page shows it (backend `MyRequirement`): no note. */

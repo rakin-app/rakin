@@ -9,6 +9,7 @@ import { recordPayment, type Method } from '../api/member'
 import { myRoleQuery, myselfQuery, readsLedger } from '../api/me'
 import { memberCountQuery, missingGuardianQuery, plansQuery, type MemberRow } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
+import { requirementsDueQuery, type RequirementsDue } from '../api/requirements'
 import { isClass, todaySessionsQuery, unmarkedSessionsQuery, type ClassSession, type SessionDay } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
@@ -38,6 +39,9 @@ const clp = t.common.clp
 // The overdue list shows this many until "Ver los N vencidos".
 const OVERDUE_SHOWN = 3
 
+// "Requisitos" shows this many until "Ver los N".
+const REQUIREMENTS_SHOWN = 5
+
 /**
  * "Hoy": the owner's day at a glance. How many periods are overdue, how many proofs
  * wait for review, how many classes went without attendance and how many members
@@ -65,6 +69,11 @@ const OVERDUE_SHOWN = 3
  *
  * "Falta apoderado", when there is anyone: the minors with no guardian, to whom Rakin
  * sends nothing until the gym adds one (#368), each a tap from their ficha.
+ *
+ * "Requisitos", when there is anyone (#350): people with a live membership who lack one
+ * of the gym's requirements or whose one expired, then those whose one expires within 30
+ * days, each a tap from their ficha. A coach's Hoy has it too, with the requirements a
+ * coach sees.
  *
  * A phone stacks it all; from 1024px the counters run across the top and the lists sit
  * in a grid of two.
@@ -106,6 +115,7 @@ function CoachToday() {
       <EntradaCard />
       {!(entrada && noClass) && <CoachClasses day={day} />}
       <JoinRequests />
+      <RequirementsDueCard />
     </>
   )
 }
@@ -223,6 +233,7 @@ function OwnerToday() {
         <JoinRequests />
         <FreezeRequests />
         <MissingGuardians />
+        <RequirementsDueCard />
         <Card id="validar" className="today__section" aria-labelledby="validar-title">
           <SectionHead
             id="validar-title"
@@ -591,6 +602,54 @@ function MissingGuardianRow({ member }: { member: MemberRow }) {
         </span>
         <span className={buttonClass()} aria-hidden="true">
           {copy.missingGuardian.open}
+        </span>
+      </Link>
+    </li>
+  )
+}
+
+/** "Requisitos" (#350): shown only when someone is short on one, as a request is. */
+function RequirementsDueCard() {
+  const due = useQuery(requirementsDueQuery)
+  const [all, setAll] = useState(false)
+  const people = due.data ?? []
+  if (people.length === 0) return null
+  const words = copy.requirements
+  const shown = all ? people : people.slice(0, REQUIREMENTS_SHOWN)
+  return (
+    <Card id="requisitos" className="today__section" aria-labelledby="requisitos-title">
+      <SectionHead id="requisitos-title" title={words.title} aside={words.count(people.length)} />
+      <p className="today__note">{words.hint}</p>
+      <PlainList className="today__list">
+        {shown.map((person) => (
+          <RequirementsDueRow key={person.person_id} person={person} />
+        ))}
+      </PlainList>
+      {!all && people.length > REQUIREMENTS_SHOWN && (
+        <Button variant="ghost" onClick={() => setAll(true)}>
+          {words.showAll(people.length)}
+        </Button>
+      )}
+    </Card>
+  )
+}
+
+function RequirementsDueRow({ person }: { person: RequirementsDue }) {
+  const words = copy.requirements
+  return (
+    <li>
+      <Link
+        to="/admin/alumnos/$personId"
+        params={{ personId: person.person_id }}
+        className="today__row today__row--link"
+        aria-label={words.openLabel(person.name)}
+      >
+        <span className="today__row-text">
+          <span className="today__name">{person.name}</span>
+          <span className="today__detail">{person.requirements.map(words.flag).join(' · ')}</span>
+        </span>
+        <span className={buttonClass()} aria-hidden="true">
+          {words.open}
         </span>
       </Link>
     </li>
