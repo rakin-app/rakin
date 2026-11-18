@@ -16,6 +16,9 @@ from typing import Any
 import asyncpg
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app import gyms
 from app.db_bootstrap import to_dsn
@@ -276,6 +279,67 @@ def test_two_creations_of_one_slug_at_once_make_one_gym(panel: Panel) -> None:
         statuses = asyncio.run(go())
     assert sorted(statuses) == [201, 422]
     assert gyms_with(panel, slug) == 1
+
+
+def a_unique_violation(panel: Panel, constraint_slug: str) -> IntegrityError:
+    """What SQLAlchemy raises when an insert trips the gym slug's UNIQUE: the real
+    wrapper, `orig.__cause__` the driver's error naming the constraint."""
+
+    async def go() -> IntegrityError:
+        engine = create_async_engine(panel.db.owner_url)
+        try:
+            async with engine.connect() as conn, conn.begin():
+                gym_id = uuid.uuid4()
+                await conn.execute(
+                    text("SELECT set_config('app.gym_id', :g, true)"), {"g": str(gym_id)}
+                )
+                await conn.execute(
+                    text(
+                        "INSERT INTO gym (id, name, slug, timezone)"
+                        " VALUES (:g, 'x', :slug, 'America/Santiago')"
+                    ),
+                    {"g": gym_id, "slug": constraint_slug},
+                )
+        except IntegrityError as error:
+            return error
+        finally:
+            await engine.dispose()
+        raise AssertionError("the insert did not trip the slug's UNIQUE")
+
+    return asyncio.run(go())
+
+
+def test_a_unique_violation_on_the_slug_is_a_422_and_any_other_is_not(
+    panel: Panel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lock leaves nothing to trip the slug's UNIQUE; were something to, the route
+    reads the constraint through the wrapper SQLAlchemy really raises."""
+    violation = a_unique_violation(panel, panel.slug_a)
+    cause = violation.orig.__cause__ if violation.orig is not None else None
+    assert getattr(cause, "constraint_name", None) == "gym_slug_key"
+    execute = AsyncSession.execute
+    raised: list[IntegrityError] = [violation]
+
+    async def tripping(self: AsyncSession, statement: Any, *args: Any, **kwargs: Any) -> Any:
+        if "platform_create_gym" in str(statement):
+            raise raised[0]
+        return await execute(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, "execute", tripping)
+    _, signing_in = signed_in(panel)
+    slug = new_slug()
+    with signing_in as client:
+        response = client.post("/api/platform/gyms", json=body(slug))
+        assert response.status_code == 422, response.text
+        assert [(e["loc"], e["type"]) for e in response.json()["detail"]] == [
+            (["body", "slug"], "slug_taken")
+        ]
+
+        # Another constraint is no taken slug: it goes up as it came.
+        cause.constraint_name = "gym_pkey"  # type: ignore[union-attr]
+        with pytest.raises(IntegrityError):
+            client.post("/api/platform/gyms", json=body(new_slug()))
+    assert gyms_with(panel, slug) == 0
 
 
 # --- the owner's link ------------------------------------------------------------------

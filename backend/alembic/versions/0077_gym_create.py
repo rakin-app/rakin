@@ -26,6 +26,11 @@ command line calls it, and to `rakin_platform`, never to `rakin_app`.
   owner did not go, for the list to say so and offer to send it again. `rakin_platform`
   reads those three columns of `platform_event` for it.
 
+`platform_gyms` is rebuilt from 0076's own text, patched by string replacement
+(`platform_gyms(links=...)`), as 0049 rebuilds 0048's function. Each patch asserts it
+matches once, so 0076's `platform_gyms` body must not be reformatted or edited: a
+change there makes this migration fail when it is loaded.
+
 Revision ID: 0077
 Revises: 0076
 Create Date: 2026-11-18
