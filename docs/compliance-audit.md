@@ -219,20 +219,23 @@ Gap: #369 (runbook, blocker) and #374 (logs that can scope an incident).
 | Proofs | Cloudflare R2 (`S3_REGION=auto`) | R2 picks the location; no jurisdiction is set |
 | Backups | R2, a separate bucket | as above |
 | Email (names, amounts, sign-in links) | Resend, through SMTP | United States |
-| Errors | Sentry (`*.ingest.sentry.io`) | United States, unless the organisation is on the EU region |
+| Errors | Sentry, EU region (`*.ingest.de.sentry.io`) | Germany (#373) |
 | Join form human check | Cloudflare Turnstile, only when `HUMAN_CHECK` is set | global |
 | DNS and TLS | Cloudflare DNS (grey cloud), Let's Encrypt | no personal data |
 
-**What Sentry receives.** `init_sentry` passes nothing beyond the DSN and environment (`backend/app/sentry.py:23-28`), so the SDK's defaults apply:
+**What Sentry receives.** When audited, `init_sentry` passed nothing beyond the DSN and environment, so the SDK's defaults applied: request bodies and stack-frame local variables were attached to errors, and a Postgres error carried the row's values, such as a unique violation's `Key (rut)=(…)`. An error while saving a member could send their name, RUT, birth date or custom fields.
 
-- `send_default_pii` is off, so no cookies or IPs are sent.
-- **Request bodies are attached to errors.**
-- **Local variables in stack frames are attached.**
-- Every `ERROR` log record becomes an event, with the message text.
+Since #373, `backend/app/sentry.py` sends none of that:
 
-So an error while saving a member can send the member's name, RUT, birth date or custom fields. Postgres errors can too, since they carry the row's values, such as a unique violation's `Key (rut)=(…)`. The SPA has no Sentry, though `technical.md` says it does.
+- no user data, cookies, IPs or query strings (`data_collection`, the SDK's successor to `send_default_pii=False`);
+- no request bodies (`max_request_body_size="never"`) and no local variables (`include_local_variables=False`);
+- `before_send` drops what is left anyway: the request's `data`, `query_string`, cookies and `Cookie` header, and the query string of every URL in a breadcrumb (httpx's log line `HTTP Request: GET https://…?…` included);
+- an exception from asyncpg or SQLAlchemy keeps its type but not its text: it becomes `sqlstate=23505 constraint=person_rut_key (message withheld)`. A pydantic `ValidationError`, whose text quotes the `input_value`, becomes the fields that failed and why (`Person: rut int_parsing (message withheld)`);
+- the same text is withheld where a log record quotes the exception, with `%s` or in an f-string: in the event's message and parameters, and in the breadcrumb the record leaves for later events (`before_breadcrumb`).
 
-Gap: #373.
+`tests/test_sentry_privacy.py` sends an error with a RUT in the body, the query string, a cookie and a local; a unique violation through SQLAlchemy and through asyncpg; and a validation error logged every way above. It fails if the RUT reaches the transport. Every `ERROR` log record still becomes an event, with its message and `extra`: the code logs ids there, never names, RUTs or emails. The organisation is on the EU region, in Germany. That is still a transfer under art. 27 (no country is declared adequate), so Sentry's data processing terms go in the DPA's annex (#367). The SPA has no Sentry.
+
+Gap: #373 (closed).
 
 ### A member's request that reaches the company
 
@@ -255,7 +258,7 @@ Gap: #375.
 | Consent record kept past approval, with the notice version, the guardian, and the basis for staff-added members | before paid launch | #370 |
 | The member's own data view and JSON export on `/me` | before paid launch | #371 |
 | Deletion for a member who paid: anonymise instead of refusing, and remove what `forget_gym_person` leaves behind | before paid launch | #372 |
-| Sentry: no request bodies, locals or row values; choose the region | before paid launch | #373 |
+| Sentry: no request bodies, locals or row values; choose the region (done: EU) | before paid launch | #373 |
 | Logs that can scope an incident: gym, person and IP on requests; reads and exports recorded; kept long enough | before paid launch | #374 |
 | A member's request that reaches the company by email | before paid launch | #375 |
 | Sensitive fields: explicit consent and the per-gym off switch | before paid launch | #376 |
