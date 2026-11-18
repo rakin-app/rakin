@@ -185,14 +185,27 @@ docker compose run --rm api python -m app.gyms sign-terms --slug meta \
   --processor-terms 2026-11-16 --signed-on <YYYY-MM-DD>
 ```
 
-Run again with a version the gym already signed, it changes nothing and says so. To see which gyms have not signed the current version, by slug:
+Run again with a version the gym already signed, it changes nothing and says so, keeping the date first recorded. `create` on a slug a gym already has records no terms either, and says to use `sign-terms`.
+
+A wrong `--signed-on` is corrected by hand, with the date on the signed copy:
 
 ```sh
-docker compose exec -T postgres psql -U rakin rakin -c "SELECT g.slug FROM gym g
-  WHERE NOT EXISTS (SELECT FROM processor_terms t WHERE t.gym_id = g.id AND t.version = '2026-11-16')"
+docker compose exec -T postgres psql -U rakin rakin -v slug=meta -v v=2026-11-16 -v d=<YYYY-MM-DD> <<'SQL'
+UPDATE processor_terms SET signed_on = :'d'
+WHERE version = :'v' AND gym_id = (SELECT id FROM gym WHERE slug = :'slug');
+SQL
 ```
 
-On a gym listed there, load nothing more until it signs.
+To see which gyms have not signed the current version, by slug:
+
+```sh
+docker compose exec -T postgres psql -U rakin rakin -v v=2026-11-16 <<'SQL'
+SELECT g.slug FROM gym g
+WHERE NOT EXISTS (SELECT FROM processor_terms t WHERE t.gym_id = g.id AND t.version = :'v');
+SQL
+```
+
+On a gym listed there, load nothing more until it signs. In these commands and the ones above, `2026-11-16` is the current version: it moves with `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py) and the terms' **Versión** line. psql fills in `:'v'` only from stdin, not from `-c`, so the SQL goes in a heredoc.
 
 ## Day to day
 

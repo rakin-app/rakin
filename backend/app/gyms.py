@@ -33,9 +33,10 @@ signature for a gym that already exists: one from before #367, or a new version 
 terms, as a new subprocessor in their Anexo A makes.
 
 Running it again with a slug a gym already has changes nothing, whatever else it is
-given, and says so; so does `sign-terms` with a version the gym already signed. It
-connects as the table owner, as the seed does: RLS holds it to the new gym once
-`app.gym_id` names it.
+given, and says so, and points terms given at `sign-terms`, which records them. A
+`sign-terms` with a version the gym already signed changes nothing either: the first
+date stays. It connects as the table owner, as the seed does: RLS holds it to the new
+gym once `app.gym_id` names it.
 """
 
 import argparse
@@ -358,6 +359,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(f"{created.name} created ({created.gym_id}), at {url}")
     else:
         print(f"{gym.slug} is already {created.name} ({created.gym_id}): nothing changed")
+        if gym.processor_terms is not None:
+            print(
+                f"the Términos de encargo were not recorded either: for a gym that exists,"
+                f" use sign-terms --slug {gym.slug}"
+            )
 
 
 if __name__ == "__main__":

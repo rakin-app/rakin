@@ -16,6 +16,7 @@ from typing import Any
 import asyncpg
 import pytest
 
+from app import gyms
 from app.db_bootstrap import to_dsn
 from app.domain.dates import gym_today
 from app.gyms import PROCESSOR_TERMS_VERSION, SIGNED_IN, Signing, sign_terms
@@ -199,3 +200,35 @@ def test_the_app_cannot_read_them(db: Database) -> None:
 
     with pytest.raises(asyncpg.InsufficientPrivilegeError):
         run(db.api_url, query)
+
+
+def run_main(
+    argv: list[str], done: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> str:
+    """`main`'s output, with `done` as what the database gave back."""
+
+    async def fake_run(command: Any) -> Any:
+        return done
+
+    monkeypatch.setattr(gyms, "run", fake_run)
+    gyms.main(argv)
+    return capsys.readouterr().out
+
+
+def test_create_on_a_slug_taken_says_the_terms_were_not_recorded(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    taken = gyms.Created(uuid.uuid4(), "Meta", created=False)
+    out = run_main([*WITHOUT_TERMS, *SIGNED], taken, monkeypatch, capsys)
+    assert "nothing changed" in out
+    assert "not recorded" in out
+    assert "sign-terms --slug meta" in out
+
+
+def test_create_on_a_slug_taken_without_terms_says_nothing_of_them(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    taken = gyms.Created(uuid.uuid4(), "Meta", created=False)
+    out = run_main([*WITHOUT_TERMS, "--no-processor-terms"], taken, monkeypatch, capsys)
+    assert "nothing changed" in out
+    assert "sign-terms" not in out
