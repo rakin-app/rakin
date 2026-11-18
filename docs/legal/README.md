@@ -8,16 +8,20 @@ Borradores escritos para las primeras academias, que son conocidas y entran a un
 
 - `[ABOGADO: …]`: un punto abierto para el abogado.
 - `[PENDIENTE: …]`: algo que depende de una función aún no construida.
-- **[entre corchetes]**: un dato que se completa: el nombre de la empresa, el de la academia, una ciudad.
+- **[entre corchetes]**: un dato que se completa: el nombre de la academia, su RUT, una ciudad.
+
+## La Empresa, mientras no hay empresa
+
+> **BORRADOR: mientras Rakin no sea una empresa.** Rakin es hoy un proyecto en etapa de prueba, todavía sin lanzamiento oficial: no hay una empresa constituida y el servicio no se vende ni se cobra. Mientras sea así, **la Empresa** de los Términos de encargo, **Rakin** como parte de los Términos de servicio y el responsable del aviso de Rakin son la persona que lleva el proyecto, con contacto en hola@rakin.app. Ningún texto nombra una empresa, un RUT, un representante ni un domicilio para Rakin. Cuando Rakin se constituya como empresa, cada texto lleva esos datos en una versión nueva, que las academias firman de nuevo.
 
 ## Los documentos
 
 | Documento | Qué es | Quién lo acepta | Cuándo |
 | --- | --- | --- | --- |
-| [Términos de encargo](terminos-de-encargo.md) | el contrato de encargo (DPA) del art. 15 bis: cómo trata Rakin los datos de los alumnos por cuenta de cada academia | el representante de la academia y el de la empresa, firmando | antes de que los datos de la academia entren a Rakin, y de nuevo con cada versión nueva. La copia firmada queda en los archivos de la empresa; la versión y la fecha, en Rakin ([Crear una academia](../deploy.md#creating-a-gym)) |
+| [Términos de encargo](terminos-de-encargo.md) | el contrato de encargo (DPA) del art. 15 bis: cómo trata Rakin los datos de los alumnos por cuenta de cada academia | el representante de la academia y la Empresa, firmando | antes de que los datos de la academia entren a Rakin, y de nuevo con cada versión nueva. La copia firmada queda en los archivos de la Empresa; la versión y la fecha, en Rakin ([Crear una academia](../deploy.md#creating-a-gym)) |
 | [Términos de servicio](terminos-de-servicio.md) | el contrato del servicio: beta gratuita, soporte, término; los términos pagados van en su sección 12 | los mismos, firmando, junto con los Términos de encargo | igual |
 | [Aviso de privacidad de cada academia](aviso-de-privacidad-gimnasio.md) | lo que la academia, como responsable, informa a sus alumnos y apoderados (art. 14 ter) | nadie lo firma: la academia lo publica en `/privacidad` y lo enlaza desde la inscripción. Para los menores de 18 años, el apoderado da su consentimiento sobre él | cuando la academia completa Ajustes, antes de abrir su formulario de inscripción |
-| [Aviso de privacidad de Rakin](aviso-de-privacidad-rakin.md) | lo que la empresa, como responsable, informa sobre sus propios datos: quienes administran una academia, quienes le escriben, quienes visitan rakin.app | nadie lo firma: se publica | en `rakin.app/privacidad`, en la página de inicio (#343), y en `/privacidad` cuando la dirección no es de una academia |
+| [Aviso de privacidad de Rakin](aviso-de-privacidad-rakin.md) | lo que quien lleva Rakin, como responsable, informa sobre sus propios datos: quienes administran una academia, quienes le escriben, quienes visitan rakin.app | nadie lo firma: se publica | en `rakin.app/privacidad`, en la página de inicio (#343), y en `/privacidad` cuando la dirección no es de una academia |
 
 ## Lo que queda para el abogado
 
@@ -29,7 +33,7 @@ Las cinco confirmaciones de la [investigación](../legal-research.md#for-the-law
    - (a) subencargados autorizados uno por uno;
    - (b) transferencias a Estados Unidos con las cláusulas de cada proveedor;
    - (c) 24 horas de la Empresa a la Academia, 72 de la Academia a la Agencia, y la Empresa puede avisar a los alumnos en nombre de la Academia.
-4. **Identidad por RUT** compartida entre academias, descrita en los Términos de encargo, sin que la empresa pase a ser responsable.
+4. **Identidad por RUT** compartida entre academias, descrita en los Términos de encargo, sin que la Empresa pase a ser responsable.
 5. **Datos de salud** en un gimnasio (art. 16 bis): ¿están prohibidos aun con consentimiento? Rakin hoy los recoge (#384).
 
 Más los puntos propios de estos textos, marcados `[ABOGADO: …]`:
@@ -67,3 +71,4 @@ Ningún texto se publica ni se firma como versión final hasta cerrar estos issu
 | 2026-11-16 | El registro de consentimiento (#370) cumple la promesa del aviso de cada academia: el apoderado de todo menor de 18 años da o retira su consentimiento, aparte de la membresía, en la inscripción o en su página, y queda registrado con la fecha, quién y la versión del aviso; los inscritos a mano o por planilla se lo piden en el correo de bienvenida. Sale de la lista de promesas pendientes. |
 | 2026-11-18 | Los Términos de encargo tienen versión (2026-11-18, inicialmente 2026-11-16, en su encabezado). Ninguna academia se crea en Rakin sin registrar la versión que firmó y la fecha; las que ya existen, como Meta, registran su firma aparte. Una versión nueva, como al agregar un subencargado, se firma de nuevo (#367). |
 | 2026-11-18 | Dónde están los datos (#430): el servidor y la base de datos están en Hetzner, en Ashburn, Virginia (Estados Unidos), y Sentry en su región de Estados Unidos, no en Alemania. Lo dicen el Anexo A de los Términos de encargo (versión 2026-11-18), el aviso de Rakin (versión 2) y el aviso de cada academia. Como el Anexo A nombra ahora al proveedor del servidor, que antes era un espacio por completar, y cambia el país de Sentry, cada academia firma la versión 2026-11-18, también la que firmó la anterior. El texto del aviso que muestra la aplicación no nombra países, así que no cambia. |
+| 2026-11-18 | Sin empresa (#434): Rakin es un proyecto en etapa de prueba, sin empresa constituida y sin cobro, y ningún texto nombra una empresa para Rakin ([la Empresa, mientras no hay empresa](#la-empresa-mientras-no-hay-empresa)). El aviso de Rakin (versión 3, vigente desde el 18 de noviembre de 2026) lo dice en «¿Quién es responsable?», tiene hola@rakin.app como contacto y nombra el proveedor de la casilla del proyecto a la que Cloudflare reenvía los correos. La página `rakin.app/privacidad` no se construye si le queda un dato `[entre corchetes]` sin completar. |
