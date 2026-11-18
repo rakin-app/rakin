@@ -30,6 +30,8 @@ CONFLICT_KEYS = {
     "gym_person": "(gym_id, person_id)",
     "guardian_link": "(gym_id, dependent_person_id)",
     "attendance": "(session_id, membership_id)",
+    "schedule_slot_tag": "(slot_id, tag_id)",
+    "session_tag": "(session_id, tag_id)",
     # A class of the schedule the API made again, deleted and refilled, has a new id.
     "session": "",
 }

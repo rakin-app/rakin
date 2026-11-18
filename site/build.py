@@ -13,8 +13,16 @@ Writes, under `--out` (default `site/dist`):
 * `privacidad/index.html`: Rakin's own privacy notice,
   `docs/legal/aviso-de-privacidad-rakin.md`, rendered from its policy on, with
   its drafting notes left out;
-* `img/`, the screenshots (`site/screenshots.py` takes them), `fonts/` and the
-  icons and link preview the app also serves (`frontend/public/`).
+* `img/` and `video/`, the captures and loops `site/screenshots.py` takes, each named
+  for its content (`hoy-390-2x.1a2b3c4d.webp`), so a capture taken again is never
+  served from a browser's cache under its old name; `fonts/` and the icons and link
+  preview the app also serves (`frontend/public/`).
+
+The page names its captures by shot, never by file: `<img data-shot="hoy-390" …>`
+becomes the shot's `src`, its 1× and 2× `srcset`, its `width` and `height`, and lazy
+loading unless the tag says how to load; `<video data-loop="validar" …>` gets its
+poster and its WebM and MP4 sources. A shot or loop the page names that is not there
+fails the build.
 
 `--fonts` is the `@fontsource` directory holding Figtree and Bricolage
 Grotesque; by default, the one `npm install` puts under `frontend/node_modules`.
@@ -22,6 +30,7 @@ The web image runs this in its own stage (deploy/web.Dockerfile).
 """
 
 import argparse
+import hashlib
 import html
 import re
 import shutil
@@ -133,6 +142,73 @@ def notice_html() -> str:
     return rendered
 
 
+def webp_size(data: bytes) -> tuple[int, int]:
+    """A WebP's width and height, from its header."""
+    if data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+        raise ValueError("not a WebP")
+    chunk = data[12:16]
+    if chunk == b"VP8X":
+        return 1 + int.from_bytes(data[24:27], "little"), 1 + int.from_bytes(data[27:30], "little")
+    if chunk == b"VP8 ":
+        width = int.from_bytes(data[26:28], "little") & 0x3FFF
+        return width, int.from_bytes(data[28:30], "little") & 0x3FFF
+    if chunk == b"VP8L":
+        bits = int.from_bytes(data[21:25], "little")
+        return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+    raise ValueError(f"unknown WebP chunk {chunk!r}")
+
+
+def fingerprint(source: Path, out: Path) -> dict[str, str]:
+    """Copies each file under `source` to `out` as `<stem>.<hash8><suffix>`; the new
+    name of each, by the old."""
+    out.mkdir(parents=True, exist_ok=True)
+    names: dict[str, str] = {}
+    for file in sorted(source.iterdir()):
+        if not file.is_file() or file.name.startswith("."):
+            continue
+        digest = hashlib.sha256(file.read_bytes()).hexdigest()[:8]
+        names[file.name] = f"{file.stem}.{digest}{file.suffix}"
+        shutil.copy2(file, out / names[file.name])
+    return names
+
+
+SHOT = re.compile(r"<img\b([^>]*?)\sdata-shot=\"([\w-]+)\"([^>]*)>")
+LOOP = re.compile(r"<video\b([^>]*?)\sdata-loop=\"([\w-]+)\"([^>]*)>\s*</video>")
+
+
+def shots(page: str, images: dict[str, str], videos: dict[str, str]) -> str:
+    """`page` with each `data-shot` and `data-loop` filled in from `images` and `videos`."""
+
+    def image(name: str) -> str:
+        if name not in images:
+            raise SystemExit(f"build: the page shows {name}, which site/img does not have")
+        return f"/img/{images[name]}"
+
+    def shot(match: re.Match[str]) -> str:
+        before, name, after = match.groups()
+        width, height = webp_size((SITE / "img" / f"{name}-1x.webp").read_bytes())
+        one, two = image(f"{name}-1x.webp"), image(f"{name}-2x.webp")
+        attrs = f' src="{one}" srcset="{one} 1x, {two} 2x" width="{width}" height="{height}"'
+        if "loading=" not in before + after:
+            attrs += ' loading="lazy" decoding="async"'
+        return f"<img{before}{attrs}{after}>"
+
+    def loop(match: re.Match[str]) -> str:
+        before, name, after = match.groups()
+        for ext in ("webm", "mp4"):
+            if f"{name}.{ext}" not in videos:
+                raise SystemExit(f"build: the page plays {name}, which site/video has no {ext} of")
+        width, height = webp_size((SITE / "img" / f"{name}-poster-1x.webp").read_bytes())
+        poster = image(f"{name}-poster-1x.webp")
+        return (
+            f'<video{before} poster="{poster}" width="{width}" height="{height}"{after}>'
+            f'<source src="/video/{videos[name + ".webm"]}" type="video/webm" />'
+            f'<source src="/video/{videos[name + ".mp4"]}" type="video/mp4" /></video>'
+        )
+
+    return LOOP.sub(loop, SHOT.sub(shot, page))
+
+
 def build(out: Path, fonts: Path) -> None:
     if out.exists():
         shutil.rmtree(out)
@@ -144,10 +220,12 @@ def build(out: Path, fonts: Path) -> None:
         "CONTACT_EMAIL": html.escape(CONTACT_EMAIL),
     }
 
-    (out / "index.html").write_text(fill((SITE / "index.html").read_text(), **common))
+    images = fingerprint(SITE / "img", out / "img")
+    videos = fingerprint(SITE / "video", out / "video")
+    page = shots(fill((SITE / "index.html").read_text(), **common), images, videos)
+    (out / "index.html").write_text(page)
     (out / "privacidad" / "index.html").write_text(fill(NOTICE_PAGE, BODY=notice_html(), **common))
 
-    shutil.copytree(SITE / "img", out / "img")
     (out / "fonts").mkdir()
     for font in FONTS:
         shutil.copy2(fonts / font, out / "fonts")

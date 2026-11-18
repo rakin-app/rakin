@@ -15,8 +15,9 @@ from zoneinfo import ZoneInfo
 
 from app.domain.billing import GENERATE_AHEAD_DAYS, discounted, overpayment_note
 from app.domain.dates import add_months
+from app.domain.extra_charges import instalment_dates, instalments
 from app.domain.ledger import EntryKind, EntryStatus
-from app.domain.membership import MembershipStatus, PlanKind
+from app.domain.membership import CONVERTED_REASON, MembershipStatus, PlanKind
 from app.domain.rut import check_digit
 from app.domain.schedule import HORIZON_DAYS, horizon
 from app.permissions import ACADEMIA, preset_title_id
@@ -27,6 +28,7 @@ from app.seed.data import (
     BANK_ACCOUNT,
     CLASS_DAYS,
     CLASS_PLANS,
+    CLASS_TAGS,
     CLASS_TYPES,
     COACH,
     CUSTOM_FIELDS,
@@ -35,12 +37,19 @@ from app.seed.data import (
     GYM_NAME,
     GYM_SLUG,
     HISTORY_PERIODS,
+    INSTALMENT_CHARGES,
+    MEDICAL_EXPIRING_AT,
+    MEDICAL_EXPIRING_DAYS,
+    MEDICAL_PENDING_EVERY,
     MEMBERS,
     OPEN_MAT_PLAN,
+    PERSON_REQUIREMENTS,
     PLANS,
     PRIVACY,
     PROGRAMS,
     RANKS,
+    REQUIREMENTS,
+    SLOT_TAGS,
     SLOTS,
     STAFF,
     TIMEZONE,
@@ -101,8 +110,15 @@ class Seed:
     ledger_entries: list[Row]
     # The frozen members' freezes (migration 0017).
     freezes: list[Row]
-    # Each member's current rank (migration 0018).
+    # Each member's current rank (migration 0018), and the promotions before it of
+    # those who list them.
     grade_events: list[Row]
+    # What the gym asks before someone trains, and when it was done for whom (0062).
+    requirements: list[Row]
+    person_requirements: list[Row]
+    # Cobros extra in cuotas (0072), one line per person and cuota.
+    extra_charges: list[Row]
+    extra_lines: list[Row]
     # The adults' weekly schedule (migration 0035), the classes it made (0020): those of
     # the last weeks, who was at each (0023) and the blocks each ran (0028), of the kinds
     # every gym is given, and those from the seed date through the schedule's horizon.
@@ -110,6 +126,10 @@ class Seed:
     sessions: list[Row]
     attendance: list[Row]
     session_blocks: list[Row]
+    # The gym's class tags, each slot's, and those on the classes held (0041).
+    class_tags: list[Row]
+    slot_tags: list[Row]
+    session_tags: list[Row]
 
     def tables(self) -> Iterator[tuple[str, list[Row]]]:
         """Each table's rows, in an order the foreign keys accept."""
@@ -117,6 +137,8 @@ class Seed:
         yield "person", self.people
         yield "gym_person", self.gym_people
         yield "guardian_link", self.guardian_links
+        yield "requirement", self.requirements
+        yield "person_requirement", self.person_requirements
         yield "staff", self.staff
         yield "staff_title", self.staff_titles
         yield "gym_activity", self.activities
@@ -126,12 +148,17 @@ class Seed:
         yield "membership", self.memberships
         yield "grade_event", self.grade_events
         yield "billing_period", self.billing_periods
+        yield "extra_charge", self.extra_charges
+        yield "extra_line", self.extra_lines
         yield "ledger_entry", self.ledger_entries
         yield "membership_freeze", self.freezes
         yield "schedule_slot", self.schedule_slots
         yield "session", self.sessions
         yield "attendance", self.attendance
         yield "session_block", self.session_blocks
+        yield "class_tag", self.class_tags
+        yield "schedule_slot_tag", self.slot_tags
+        yield "session_tag", self.session_tags
 
 
 def local(day: date, hour: int = 0, minute: int = 0) -> datetime:
@@ -212,6 +239,7 @@ class _Builder:
         )
         self.joined[spec.key] = local(since)
         cancelled = spec.status is MembershipStatus.CANCELLED
+        trial_id = self._trial(spec, since) if spec.trial_before is not None else None
         credits = spec.credits_remaining
         if plan.kind is PlanKind.TRIAL:
             credits = plan.credits if credits is None else credits
@@ -232,14 +260,64 @@ class _Builder:
                 # On the due date of the period they did not pay.
                 "cancel_reason": CANCEL_REASON if cancelled else None,
                 "cancelled_at": local(self.day(spec.due_in), 20) if cancelled else None,
+                "converted_from": trial_id,
             }
         )
         if spec.status is MembershipStatus.FROZEN:
             self._freeze(spec, membership_id)
+        self.grades += self._promotions(spec, membership_id)
         self.grades.append(self._grade(spec, membership_id, since))
         amount = discounted(plan.price_clp, spec.discount_pct)
         for index, period in enumerate(periods):
             self._period(spec, membership_id, payer, index, period, amount)
+
+    def _trial(self, spec: MemberSpec, since: date) -> uuid.UUID:
+        """The trial `spec` came in on, `trial_before` days before their plan started: its
+        free classes taken, ended by the plan as `domain.end_converted` ends one. Its id,
+        for the plan's `converted_from`."""
+        assert spec.trial_before is not None
+        plan = self.plans["trial"]
+        assert plan.credit_expiry_days is not None
+        trial_id = seed_id("membership", spec.key, "trial")
+        start = since - timedelta(days=spec.trial_before)
+        self.memberships.append(
+            {
+                "id": trial_id,
+                "gym_id": GYM_ID,
+                "person_id": seed_id("person", spec.key),
+                "plan_id": seed_id("plan", plan.key),
+                "status": MembershipStatus.CANCELLED.value,
+                "anchor_day": None,
+                "started_at": local(start),
+                "current_period_end": start + timedelta(days=plan.credit_expiry_days - 1),
+                "credits_remaining": 0,
+                "discount_pct": 0,
+                "discount_reason": None,
+                "created_at": local(start),
+                "cancel_reason": CONVERTED_REASON,
+                "cancelled_at": local(since),
+                "converted_from": None,
+            }
+        )
+        return trial_id
+
+    def _promotions(self, spec: MemberSpec, membership_id: uuid.UUID) -> list[Row]:
+        """The promotions `spec` lists before their current rank, each that night."""
+        return [
+            {
+                "id": seed_id("grade_event", spec.key, rank, str(sub_rank)),
+                "gym_id": GYM_ID,
+                "person_id": seed_id("person", spec.key),
+                "membership_id": membership_id,
+                "rank_key": rank,
+                "sub_rank": str(sub_rank),
+                "awarded_on": self.day(offset),
+                "awarded_by": seed_id("person", COACH),
+                "note": None,
+                "created_at": local(self.day(offset), 21, 15),
+            }
+            for rank, sub_rank, offset in spec.promotions
+        ]
 
     def _frozen(
         self, periods: list[_Period], paid_through: date, anchor_day: int | None
@@ -374,6 +452,7 @@ class _Builder:
             "validated_at": None,
             "proof_object_key": None,
             "note": None,
+            "extra_line_id": None,
         }
         self.entries.append(
             {
@@ -500,6 +579,20 @@ def _classes(as_of: date, memberships: list[Row]) -> dict[str, list[Row]]:
     sessions: list[Row] = []
     attendance: list[Row] = []
     blocks: list[Row] = []
+    tags = [
+        {"id": seed_id("class_tag", name), "gym_id": GYM_ID, "name": name, "created_at": written}
+        for name in CLASS_TAGS
+    ]
+    slot_tags = [
+        {
+            "gym_id": GYM_ID,
+            "slot_id": seed_id("schedule_slot", key),
+            "tag_id": seed_id("class_tag", n),
+        }
+        for key, names in SLOT_TAGS.items()
+        for n in names
+    ]
+    session_tags: list[Row] = []
     for slot in SLOTS:
         slots.append(
             {
@@ -541,6 +634,10 @@ def _classes(as_of: date, memberships: list[Row]) -> dict[str, list[Row]]:
             if day >= as_of:
                 continue
             rng = _rng("session", session_id)
+            session_tags += [
+                {"gym_id": GYM_ID, "session_id": session_id, "tag_id": seed_id("class_tag", n)}
+                for n in SLOT_TAGS.get(slot.key, ())
+            ]
             alternate = CLASS_PLANS[len(sessions) % 2]
             plan = OPEN_MAT_PLAN if slot.class_type in open_mats else alternate
             blocks += [_block(session_id, i, block, rng) for i, block in enumerate(plan)]
@@ -561,7 +658,125 @@ def _classes(as_of: date, memberships: list[Row]) -> dict[str, list[Row]]:
         "sessions": sessions,
         "attendance": attendance,
         "session_blocks": blocks,
+        "class_tags": tags,
+        "slot_tags": slot_tags,
+        "session_tags": session_tags,
     }
+
+
+def _requirements(as_of: date, joined: dict[str, datetime]) -> dict[str, list[Row]]:
+    """`REQUIREMENTS`, in their order, and each member's records as the validator
+    recorded them on the day each was done: the waiver on the day they `joined`, the
+    certificate as `MEDICAL_PENDING_EVERY` has it, then `PERSON_REQUIREMENTS`."""
+    validator = seed_id("person", VALIDATOR)
+    opened = local(add_months(as_of, -60))
+    requirements = [
+        {
+            "id": seed_id("requirement", r.key),
+            "gym_id": GYM_ID,
+            "name": r.name,
+            "valid_months": r.valid_months,
+            "position": position,
+            "created_at": opened,
+        }
+        for position, r in enumerate(REQUIREMENTS)
+    ]
+    done: dict[tuple[str, str], tuple[date, str | None]] = {}
+    for index, member in enumerate(MEMBERS):
+        first = joined[member.key].astimezone(ZONE).date()
+        done[member.key, "waiver"] = (first, None)
+        if index % MEDICAL_PENDING_EVERY == MEDICAL_PENDING_EVERY - 1:
+            continue
+        if index % MEDICAL_PENDING_EVERY == MEDICAL_EXPIRING_AT:
+            medical = as_of + timedelta(days=MEDICAL_EXPIRING_DAYS)
+        else:
+            medical = as_of - timedelta(days=_rng("medical", member.key).randrange(1, 300))
+        done[member.key, "medical"] = (max(medical, first), None)
+    for who, key, offset, note in PERSON_REQUIREMENTS:
+        done[who, key] = (as_of + timedelta(days=offset), note)
+    records = [
+        {
+            "id": seed_id("person_requirement", who, key),
+            "gym_id": GYM_ID,
+            "person_id": seed_id("person", who),
+            "requirement_id": seed_id("requirement", key),
+            "done_on": day,
+            "note": note,
+            "recorded_by": validator,
+            "recorded_at": local(day, 19, 30),
+        }
+        for (who, key), (day, note) in done.items()
+    ]
+    return {"requirements": requirements, "person_requirements": records}
+
+
+def _extra_charges(as_of: date) -> tuple[list[Row], list[Row], list[Row]]:
+    """`INSTALMENT_CHARGES`: each cobro, its lines, and the cash payments of the first
+    cuotas paid, the day before they fell due."""
+    validator = seed_id("person", VALIDATOR)
+    charges: list[Row] = []
+    lines: list[Row] = []
+    payments: list[Row] = []
+    for c in INSTALMENT_CHARGES:
+        first = as_of + timedelta(days=c.due_in)
+        created = local(first - timedelta(days=20), 18)
+        charge_id = seed_id("extra_charge", c.key)
+        charges.append(
+            {
+                "id": charge_id,
+                "gym_id": GYM_ID,
+                "title": c.title,
+                "category": c.category,
+                "due_date": first,
+                "amount_mode": "fixed",
+                "amount_clp": c.amount_clp,
+                "target_kind": "people",
+                "instalments": c.instalments,
+                "created_by": validator,
+                "created_at": created,
+            }
+        )
+        amounts = instalments(c.amount_clp, c.instalments)
+        dates = instalment_dates(first, c.instalments)
+        for who in c.people:
+            for n, (amount, due) in enumerate(zip(amounts, dates, strict=True), start=1):
+                line_id = seed_id("extra_line", c.key, who, str(n))
+                lines.append(
+                    {
+                        "id": line_id,
+                        "gym_id": GYM_ID,
+                        "extra_charge_id": charge_id,
+                        "person_id": seed_id("person", who),
+                        "amount_due_clp": amount,
+                        "instalment": n,
+                        "due_date": due,
+                        "created_at": created,
+                    }
+                )
+                if n != 1 or who not in c.paid_first:
+                    continue
+                paid = local(due - timedelta(days=1), 19, 45)
+                payments.append(
+                    {
+                        "id": seed_id("ledger_entry", "extra_line", str(line_id), "payment"),
+                        "gym_id": GYM_ID,
+                        "membership_id": None,
+                        "billing_period_id": None,
+                        "extra_line_id": line_id,
+                        "amount_clp": amount,
+                        "kind": EntryKind.PAYMENT.value,
+                        "status": EntryStatus.VALIDATED.value,
+                        "method": "cash",
+                        "claimed_by": validator,
+                        "claimed_at": paid,
+                        "validated_by": validator,
+                        "validated_at": paid,
+                        "proof_object_key": None,
+                        "note": None,
+                        "created_at": paid,
+                    }
+                )
+    return charges, lines, payments
 
 
 def build(as_of: date) -> Seed:
@@ -571,6 +786,7 @@ def build(as_of: date) -> Seed:
         builder.member(spec)
 
     opened = add_months(as_of, -60)
+    extra_charges, extra_lines, extra_payments = _extra_charges(as_of)
     staff_people = [_person(s.key, s.name, joined=opened, kid=False) for s in STAFF]
     people = [*staff_people, *builder.people]
     return Seed(
@@ -693,8 +909,11 @@ def build(as_of: date) -> Seed:
         ],
         memberships=builder.memberships,
         billing_periods=builder.periods,
-        ledger_entries=builder.entries,
+        ledger_entries=[*builder.entries, *extra_payments],
         freezes=builder.freezes,
         grade_events=builder.grades,
+        **_requirements(as_of, builder.joined),
+        extra_charges=extra_charges,
+        extra_lines=extra_lines,
         **_classes(as_of, builder.memberships),
     )

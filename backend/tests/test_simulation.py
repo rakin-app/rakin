@@ -306,7 +306,8 @@ def check_balances(state: State) -> None:
     sums: dict[uuid.UUID, int] = defaultdict(int)
     charged: dict[uuid.UUID, int] = defaultdict(int)
     for e in state.entries:
-        if e.status != "validated":
+        # A cobro extra's entries are on its line (the seed's cuotas), not a membership.
+        if e.status != "validated" or e.membership_id is None:
             continue
         sign = {"charge": 1, "refund": 1, "payment": -1}.get(e.kind)
         if sign is None:  # an adjustment settles a period; with none it is carried credit

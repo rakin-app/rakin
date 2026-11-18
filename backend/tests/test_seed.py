@@ -15,7 +15,13 @@ import pytest
 
 from app.domain.billing import GENERATE_AHEAD_DAYS
 from app.domain.dates import add_months
-from app.domain.membership import Membership, MembershipStatus, PlanKind, is_due_to_lapse
+from app.domain.membership import (
+    CONVERTED_REASON,
+    Membership,
+    MembershipStatus,
+    PlanKind,
+    is_due_to_lapse,
+)
 from app.domain.phone import normalize_phone
 from app.domain.rut import is_valid_rut
 from app.domain.schedule import HORIZON_DAYS, horizon
@@ -70,7 +76,7 @@ def plan_kinds(seed: Seed) -> dict[object, PlanKind]:
 def validated_payments(seed: Seed) -> dict[object, list[Row]]:
     paid = defaultdict(list)
     for e in seed.ledger_entries:
-        if e["kind"] == "payment" and e["status"] == "validated":
+        if e["kind"] == "payment" and e["status"] == "validated" and e["membership_id"]:
             paid[e["billing_period_id"]].append(e)
     return paid
 
@@ -98,10 +104,11 @@ def test_build_is_deterministic() -> None:
 
 def test_roster(seed: Seed) -> None:
     statuses = Counter(m["status"] for m in seed.memberships)
-    # "64 membresías activas · 2 congeladas"
-    assert statuses == {"active": 64, "frozen": 2, "trial": 2, "lapsed": 2, "cancelled": 1}
+    # "64 membresías activas · 2 congeladas", and a trial converted (`test_a_trial_converted`).
+    assert statuses == {"active": 64, "frozen": 2, "trial": 2, "lapsed": 2, "cancelled": 2}
     assert {m["person_id"] for m in seed.memberships} <= {p["id"] for p in seed.people}
-    assert len({m["person_id"] for m in seed.memberships}) == len(seed.memberships)
+    current = [m for m in seed.memberships if m["cancel_reason"] != CONVERTED_REASON]
+    assert len({m["person_id"] for m in current}) == len(current) == len(MEMBERS)
     assert Counter(s["role"] for s in seed.staff) == {"owner": 1, "admin": 1, "coach": 1}
 
 
@@ -159,8 +166,12 @@ def test_grading_scheme() -> None:
 
 def test_each_member_holds_their_rank_by_a_promotion(seed: Seed) -> None:
     memberships = by_id(seed.memberships)
-    grades = {g["membership_id"]: g for g in seed.grade_events}
-    assert len(grades) == len(seed.grade_events) == len(MEMBERS)
+    # The latest of each member's promotions is their rank.
+    grades = {
+        g["membership_id"]: g for g in sorted(seed.grade_events, key=lambda g: g["awarded_on"])
+    }
+    assert len(grades) == len(MEMBERS)
+    assert len(seed.grade_events) == len(MEMBERS) + sum(len(m.promotions) for m in MEMBERS)
     for member in MEMBERS:
         membership = memberships[seed_id("membership", member.key)]
         grade = grades[membership["id"]]
@@ -172,11 +183,89 @@ def test_each_member_holds_their_rank_by_a_promotion(seed: Seed) -> None:
 
 
 def test_design_rank_dates() -> None:
-    grades = {g["membership_id"]: g for g in build(DESIGN_DAY).grade_events}
-    diego = grades[seed_id("membership", "diego-morales")]
+    grades = {g["id"]: g for g in build(DESIGN_DAY).grade_events}
+    diego = grades[seed_id("grade_event", "diego-morales")]
     # "Morada · 1 grado, desde 14 jun 2025" on his student page.
     assert (diego["rank_key"], diego["sub_rank"]) == ("purple", "1")
     assert diego["awarded_on"] == date(2025, 6, 14)
+
+
+def test_a_promotion_history(seed: Seed) -> None:
+    """Diego Morales's ficha lists the way to his rank, one promotion after another."""
+    diego = seed_id("person", "diego-morales")
+    started = next(m for m in seed.memberships if m["person_id"] == diego)["started_at"]
+    history = sorted(
+        (g["awarded_on"], g["rank_key"], g["sub_rank"])
+        for g in seed.grade_events
+        if g["person_id"] == diego
+    )
+    assert [(rank, sub) for _, rank, sub in history] == [
+        ("blue", "0"),
+        ("blue", "4"),
+        ("purple", "0"),
+        ("purple", "1"),
+    ]
+    assert started.astimezone(ZONE).date() < history[0][0]
+
+
+def test_a_trial_converted(seed: Seed) -> None:
+    """One adult came in on a trial and stayed: the trial ended as a conversion ends it,
+    the day the plan started, which names it."""
+    kinds = plan_kinds(seed)
+    trials = {m["id"]: m for m in seed.memberships if m["cancel_reason"] == CONVERTED_REASON}
+    assert len(trials) == 1
+    trial = next(iter(trials.values()))
+    plan = next(m for m in seed.memberships if m["converted_from"] == trial["id"])
+    assert kinds[trial["plan_id"]] is PlanKind.TRIAL
+    assert kinds[plan["plan_id"]] is PlanKind.MONTHLY
+    assert trial["person_id"] == plan["person_id"]
+    assert trial["started_at"] < plan["started_at"] == trial["cancelled_at"]
+    # Within the days Hoy's "Pruebas" counts.
+    assert seed.as_of - trial["started_at"].astimezone(ZONE).date() < timedelta(days=90)
+    assert [m["converted_from"] for m in seed.memberships if m["converted_from"]] == [trial["id"]]
+
+
+def test_requirements_and_their_notes(seed: Seed) -> None:
+    names_of = {r["id"]: r["name"] for r in seed.requirements}
+    assert set(names_of.values()) == {"Certificado médico", "Autorización firmada"}
+    diego = seed_id("person", "diego-morales")
+    own = {
+        names_of[r["requirement_id"]] for r in seed.person_requirements if r["person_id"] == diego
+    }
+    assert own == set(names_of.values())
+    assert any(r["note"] for r in seed.person_requirements)
+    # Most are up to date: a few have no certificate yet, a few more see theirs expire.
+    medical = seed_id("requirement", "medical")
+    certified = {r["person_id"] for r in seed.person_requirements if r["requirement_id"] == medical}
+    signed = {r["person_id"] for r in seed.person_requirements if r["requirement_id"] != medical}
+    assert len(signed) == len(MEMBERS)
+    assert 0 < len(MEMBERS) - len(certified) <= len(MEMBERS) // 10
+    for r in seed.person_requirements:
+        assert r["done_on"] <= seed.as_of
+        assert r["recorded_by"] == seed_id("person", "martin")
+
+
+def test_a_cobro_in_cuotas(seed: Seed) -> None:
+    """Each person's amount in three monthly lines; two paid their first in cash."""
+    (charge,) = seed.extra_charges
+    assert charge["instalments"] == 3
+    lines = [line for line in seed.extra_lines if line["extra_charge_id"] == charge["id"]]
+    by_person: dict[object, list[Row]] = defaultdict(list)
+    for line in lines:
+        by_person[line["person_id"]].append(line)
+    assert seed_id("person", "diego-morales") in by_person
+    for own in by_person.values():
+        assert sorted(line["instalment"] for line in own) == [1, 2, 3]
+        assert sum(line["amount_due_clp"] for line in own) == charge["amount_clp"]
+        assert sorted(line["due_date"] for line in own)[0] == charge["due_date"]
+    line_ids = {line["id"]: line for line in lines}
+    paid = [e for e in seed.ledger_entries if e["extra_line_id"] is not None]
+    assert len(paid) == 2
+    for e in paid:
+        line = line_ids[e["extra_line_id"]]
+        assert line["instalment"] == 1
+        assert e["amount_clp"] == line["amount_due_clp"]
+        assert (e["membership_id"], e["billing_period_id"]) == (None, None)
 
 
 def test_design_overdue(seed: Seed) -> None:
@@ -464,3 +553,18 @@ def test_a_rerun_keeps_a_class_the_schedule_made_again(db: Database) -> None:
     run(db.owner_url, remake)
     again = load_as_owner(db, None)
     assert again.inserted["session"] == 0
+
+
+def test_classes_held_carry_their_slots_tags(seed: Seed) -> None:
+    """A member's hours per tag count something: each class held has its slot's tags."""
+    slot_tags = defaultdict(set)
+    for t in seed.slot_tags:
+        slot_tags[t["slot_id"]].add(t["tag_id"])
+    on_class = defaultdict(set)
+    for t in seed.session_tags:
+        on_class[t["session_id"]].add(t["tag_id"])
+    assert on_class
+    for s in seed.sessions:
+        held = s["slot_date"] < seed.as_of
+        assert on_class.get(s["id"], set()) == (slot_tags[s["slot_id"]] if held else set())
+    assert {t["tag_id"] for t in seed.session_tags} <= {t["id"] for t in seed.class_tags}
