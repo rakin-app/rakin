@@ -21,8 +21,16 @@ Writes, under `--out` (default `site/dist`):
 The page names its captures by shot, never by file: `<img data-shot="hoy-390" …>`
 becomes the shot's `src`, its 1× and 2× `srcset`, its `width` and `height`, and lazy
 loading unless the tag says how to load; `<video data-loop="validar" …>` gets its
-poster and its WebM and MP4 sources. A shot or loop the page names that is not there
-fails the build.
+WebM and MP4 sources and its poster as `data-poster`, which the page's script sets
+once the page has loaded (a poster is fetched at once, lazy or not, #461); with no
+script, a `<noscript>` still of it stands in for the loop, which would never play. A
+shot or loop the page names that is not there fails the build.
+
+A shot whose tag gives `sizes` gets, instead of 1× and 2×, every width of it on disk
+(`hoy-1280-1.5x.webp` too) as a `srcset` of widths, and, when it has them in AVIF, a
+`<source type="image/avif">` before it, so its tag must sit in a `<picture>`. That is
+the hero's LCP image (#461), which `<link data-shot="…" imagesizes="…">` also
+preloads: the link gets `rel="preload"`, `as`, `type` and the same `imagesrcset`.
 
 `--fonts` is the `@fontsource` directory holding Figtree and Bricolage
 Grotesque; by default, the one `npm install` puts under `frontend/node_modules`.
@@ -173,7 +181,12 @@ def fingerprint(source: Path, out: Path) -> dict[str, str]:
 
 
 SHOT = re.compile(r"<img\b([^>]*?)\sdata-shot=\"([\w-]+)\"([^>]*)>")
+PRELOAD = re.compile(r"<link\b([^>]*?)\sdata-shot=\"([\w-]+)\"([^>]*)>")
 LOOP = re.compile(r"<video\b([^>]*?)\sdata-loop=\"([\w-]+)\"([^>]*)>\s*</video>")
+
+
+# What follows a shot's name in the file of one of its widths: `-1.5x.webp`.
+WIDTH = re.compile(r"-\d+(?:\.\d+)?x\.webp")
 
 
 def shots(page: str, images: dict[str, str], videos: dict[str, str]) -> str:
@@ -184,14 +197,52 @@ def shots(page: str, images: dict[str, str], videos: dict[str, str]) -> str:
             raise SystemExit(f"build: the page shows {name}, which site/img does not have")
         return f"/img/{images[name]}"
 
+    def widths(name: str, ext: str) -> str:
+        """Every width of `name` on disk, as a `srcset` of `ext` files."""
+        files = [
+            f
+            for f in (SITE / "img").glob(f"{name}-*x.webp")
+            if WIDTH.fullmatch(f.name[len(name) :])
+        ]
+        if not files:
+            raise SystemExit(f"build: the page shows {name}, which site/img does not have")
+        found = sorted((webp_size(f.read_bytes())[0], f.name) for f in files)
+        return ", ".join(
+            f"{image(file.removesuffix('.webp') + '.' + ext)} {w}w" for w, file in found
+        )
+
+    def avif(name: str) -> bool:
+        return any((SITE / "img").glob(f"{name}-*x.avif"))
+
     def shot(match: re.Match[str]) -> str:
         before, name, after = match.groups()
         width, height = webp_size((SITE / "img" / f"{name}-1x.webp").read_bytes())
         one, two = image(f"{name}-1x.webp"), image(f"{name}-2x.webp")
-        attrs = f' src="{one}" srcset="{one} 1x, {two} 2x" width="{width}" height="{height}"'
+        srcset, source = f"{one} 1x, {two} 2x", ""
+        if sizes := re.search(r'\ssizes="([^"]*)"', before + after):
+            srcset = widths(name, "webp")
+            if avif(name):
+                start = match.start()
+                if page.rfind("<picture", 0, start) <= page.rfind("</picture>", 0, start):
+                    raise SystemExit(
+                        f"build: {name} has AVIF, so the page must show it in a <picture>"
+                    )
+                source = (
+                    f'<source type="image/avif" srcset="{widths(name, "avif")}"'
+                    f' sizes="{sizes.group(1)}" />'
+                )
+        attrs = f' src="{one}" srcset="{srcset}" width="{width}" height="{height}"'
         if "loading=" not in before + after:
             attrs += ' loading="lazy" decoding="async"'
-        return f"<img{before}{attrs}{after}>"
+        return f"{source}<img{before}{attrs}{after}>"
+
+    def preload(match: re.Match[str]) -> str:
+        before, name, after = match.groups()
+        ext = "avif" if avif(name) else "webp"
+        return (
+            f'<link{before} rel="preload" as="image" type="image/{ext}"'
+            f' imagesrcset="{widths(name, ext)}"{after}>'
+        )
 
     def loop(match: re.Match[str]) -> str:
         before, name, after = match.groups()
@@ -200,13 +251,18 @@ def shots(page: str, images: dict[str, str], videos: dict[str, str]) -> str:
                 raise SystemExit(f"build: the page plays {name}, which site/video has no {ext} of")
         width, height = webp_size((SITE / "img" / f"{name}-poster-1x.webp").read_bytes())
         poster = image(f"{name}-poster-1x.webp")
+        label = re.search(r'\saria-label="([^"]*)"', before + after)
+        if not label:
+            raise SystemExit(f"build: the loop {name} has no aria-label to describe its poster")
         return (
-            f'<video{before} poster="{poster}" width="{width}" height="{height}"{after}>'
+            f'<video{before} data-poster="{poster}" width="{width}" height="{height}"{after}>'
             f'<source src="/video/{videos[name + ".webm"]}" type="video/webm" />'
             f'<source src="/video/{videos[name + ".mp4"]}" type="video/mp4" /></video>'
+            f'<noscript><img src="{poster}" width="{width}" height="{height}"'
+            f' alt="{label.group(1)}" loading="lazy" decoding="async" /></noscript>'
         )
 
-    return LOOP.sub(loop, SHOT.sub(shot, page))
+    return LOOP.sub(loop, PRELOAD.sub(preload, SHOT.sub(shot, page)))
 
 
 def build(out: Path, fonts: Path) -> None:

@@ -132,6 +132,9 @@ served() { # served <path> <content type>
 }
 [[ $page =~ /img/[A-Za-z0-9.-]+\.webp ]]
 served "${BASH_REMATCH[0]}" image/webp
+# The hero's image is AVIF too (#461): Caddy has to name it as such.
+[[ $page =~ /img/[A-Za-z0-9.-]+\.avif ]]
+served "${BASH_REMATCH[0]}" image/avif
 [[ $page =~ /video/[A-Za-z0-9.-]+\.webm ]]
 served "${BASH_REMATCH[0]}" video/webm
 [ "$(landing www.landing.localhost '/x?y=1' -o /dev/null -w '%{http_code} %{redirect_url}')" = "301 https://landing.localhost/x?y=1" ]
