@@ -844,7 +844,7 @@ describe('Clases on a desktop', () => {
     expect(await screen.findByRole('region', { name: copy.week.title })).toBeInTheDocument()
   })
 
-  it('marks a public holiday in the month, its name in the day and its title, and in the week (#426)', async () => {
+  it('marks a public holiday in the month in red only, its name in the day and its title, and in the week (#426, #457)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-09-16T15:00:00Z'))
     wide(true)
@@ -856,9 +856,12 @@ describe('Clases on a desktop', () => {
       name: copy.month.cell('viernes', '2026-09-18', 0, 0, 0, 'Día de la Independencia'),
     })
     expect(independence).toHaveClass('month__day--holiday')
+    // Not by its red alone: the day's name and its title name it; the cell has room for the number only (#457).
     expect(independence).toHaveAttribute('title', 'Día de la Independencia')
-    // Not by its red alone: the name is written in the cell too.
-    expect(independence).toHaveTextContent('Día de la Independencia')
+    expect(independence).not.toHaveTextContent('Independencia')
+    for (const cell of within(month).getAllByRole('button', { name: /^(lunes|martes|miércoles|jueves|viernes|sábado|domingo) / })) {
+      expect(cell.textContent).not.toMatch(/Día|Glorias|Independencia/)
+    }
     expect(within(month).getByRole('button', { name: copy.month.cell('jueves', '2026-09-17', 0, 0, 0) })).not.toHaveClass(
       'month__day--holiday',
     )
