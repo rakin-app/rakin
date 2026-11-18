@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Activity } from '../api/activities'
@@ -301,6 +301,37 @@ describe('Ajustes', () => {
 
     await userEvent.click(within(sections).getByRole('link', { name: copy.sections.plans }))
     expect(await screen.findByRole('region', { name: plans.title })).toBeInTheDocument()
+  })
+
+  it('fades the tab row where more tabs follow, under an arrow that scrolls (#418)', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({ matches: true, media: query, addEventListener: () => {}, removeEventListener: () => {} })),
+    )
+    stubApi({ role: 'admin' })
+    renderAt('/admin/ajustes')
+    const sections = await screen.findByRole('navigation', { name: copy.sectionsLabel })
+    expect(sections).not.toHaveAttribute('data-more-end')
+
+    // jsdom lays nothing out: twelve tabs needing 1070px in a row 953px wide, at 1280.
+    Object.defineProperty(sections, 'clientWidth', { configurable: true, value: 953 })
+    Object.defineProperty(sections, 'scrollWidth', { configurable: true, value: 1070 })
+    fireEvent.scroll(sections)
+    expect(sections).toHaveAttribute('data-more-end')
+    expect(sections).not.toHaveAttribute('data-more-start')
+
+    // A mouse cannot swipe, and macOS hides the scrollbar: an arrow over the faded edge scrolls.
+    expect(screen.queryByRole('button', { name: copy.tabsBack })).not.toBeInTheDocument()
+    const scrollBy = vi.fn()
+    sections.scrollBy = scrollBy
+    await userEvent.click(screen.getByRole('button', { name: copy.tabsMore }))
+    expect(scrollBy).toHaveBeenCalledWith(expect.objectContaining({ left: expect.any(Number) }))
+    expect(scrollBy.mock.calls[0]?.[0].left).toBeGreaterThan(0)
+
+    sections.scrollLeft = 117
+    fireEvent.scroll(sections)
+    expect(screen.getByRole('button', { name: copy.tabsBack })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.tabsMore })).not.toBeInTheDocument()
   })
 
   it('has Cuenta: who is signed in, and Cerrar sesión', async () => {

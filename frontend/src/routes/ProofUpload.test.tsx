@@ -365,8 +365,9 @@ describe('pending badge', () => {
     expect(await within(nav).findByRole('link', { name: es.nav.payments })).toHaveTextContent(/^Pagos$/)
   })
 
-  it.each([['coach'], [null]])('never asks for the count as %s, who cannot read the ledger', async (role) => {
-    const calls = stubApi([], { pending: { body: { count: 3 } }, role })
+  // A member never reaches the shell at all (#418).
+  it('never asks for the count as a coach, who cannot read the ledger', async () => {
+    const calls = stubApi([], { pending: { body: { count: 3 } }, role: 'coach' })
     renderAt('/admin')
 
     const nav = await screen.findByRole('navigation', { name: es.nav.label })

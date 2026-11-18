@@ -15,6 +15,25 @@
   scrollbar-width: none;
 }
 
+/* The tabs and, over a faded edge with more past it, an arrow that scrolls that way (#418). */
+.settings__tabs {
+  position: relative;
+}
+
+.settings__tabs-arrow {
+  position: absolute;
+  top: 0;
+  box-shadow: var(--shadow-card);
+}
+
+.settings__tabs-arrow--start {
+  left: 0;
+}
+
+.settings__tabs-arrow--end {
+  right: 0;
+}
+
 .settings__section-link {
   display: flex;
   flex: none;

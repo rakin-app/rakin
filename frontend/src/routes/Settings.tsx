@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router'
-import { useEffect, useRef, type ComponentType } from 'react'
+import { useEffect, type ComponentType } from 'react'
 import { useGrades } from '../api/activities'
 import { managesGym, myAccessQuery } from '../api/me'
 import { BackLink } from '../components/BackLink'
+import { Button } from '../components/Button'
 import { Card, listRowClass, ListRowContent } from '../components/Card'
-import { ChevronRightIcon } from '../components/icons'
+import { useEdgeFade } from '../components/edgeFade'
+import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
 import { PageContainer, useDesktop } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { t } from '../i18n/es'
@@ -120,10 +122,16 @@ export function Settings() {
   )
 }
 
-/** The sections as tabs, on a desktop: a row that scrolls sideways if they do not fit, and keeps the open one in view. */
+/**
+ * The sections as tabs, on a desktop: a row that scrolls sideways if they do not fit, and
+ * keeps the open one in view. Where more tabs lie past an edge it fades, under an arrow
+ * that scrolls that way (#418): at 1280 twelve tabs do not fit, and a mouse cannot swipe,
+ * nor count on a scrollbar macOS hides. Keyboard focus scrolls the row by itself, so the
+ * arrows stay out of the tab order.
+ */
 function SectionTabs({ current }: { current: Section | undefined }) {
   const sections = useSections()
-  const nav = useRef<HTMLElement>(null)
+  const { ref: nav, attrs, overflow } = useEdgeFade<HTMLElement>()
   useEffect(() => {
     const active = nav.current?.querySelector<HTMLElement>('[aria-current="page"]')
     // `scrollIntoView` on the row's own axis only, so the page itself does not jump.
@@ -134,15 +142,46 @@ function SectionTabs({ current }: { current: Section | undefined }) {
         row.scrollTo({ left: left - (row.clientWidth - active.offsetWidth) / 2 })
       }
     }
-  }, [current])
+  }, [current, nav])
+  // Most of a row's width at a time, so the tab at the edge stays in sight.
+  const scroll = (direction: 1 | -1) => {
+    const row = nav.current
+    if (row && typeof row.scrollBy === 'function') {
+      row.scrollBy({ left: direction * row.clientWidth * 0.7, behavior: 'smooth' })
+    }
+  }
   return (
-    <nav ref={nav} className="settings__sections" aria-label={copy.sectionsLabel}>
-      {sections.map((section) => (
-        <Link key={section.path} to={`/admin/ajustes/${section.path}`} className="settings__section-link">
-          {section.label}
-        </Link>
-      ))}
-    </nav>
+    <div className="settings__tabs">
+      <nav ref={nav} className="settings__sections edge-fade" aria-label={copy.sectionsLabel} {...attrs}>
+        {sections.map((section) => (
+          <Link key={section.path} to={`/admin/ajustes/${section.path}`} className="settings__section-link">
+            {section.label}
+          </Link>
+        ))}
+      </nav>
+      {overflow.start && (
+        <Button
+          icon
+          tabIndex={-1}
+          className="settings__tabs-arrow settings__tabs-arrow--start"
+          aria-label={copy.tabsBack}
+          onClick={() => scroll(-1)}
+        >
+          <ChevronLeftIcon />
+        </Button>
+      )}
+      {overflow.end && (
+        <Button
+          icon
+          tabIndex={-1}
+          className="settings__tabs-arrow settings__tabs-arrow--end"
+          aria-label={copy.tabsMore}
+          onClick={() => scroll(1)}
+        >
+          <ChevronRightIcon />
+        </Button>
+      )}
+    </div>
   )
 }
 

@@ -330,6 +330,43 @@ describe('staff who also train (#214)', () => {
   })
 })
 
+describe('someone on no team at /admin (#418)', () => {
+  const signedInAs = (role: string | null, studentPage: boolean) =>
+    stubApi((path) =>
+      path === '/api/me/role'
+        ? { status: 200, body: { ...asRole(role), person_id: 'me', name: 'Ana', email: null, gym_name: 'Academia Sur', student_page: studentPage } }
+        : { status: 404 },
+    )
+
+  it.each(['/admin', '/admin/alumnos', '/admin/x'])('lands a student who opens %s on /me, with no staff shell', async (path) => {
+    signedInAs(null, true)
+    const router = renderAt(path)
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/me')
+    expect(screen.queryByRole('navigation', { name: es.nav.label })).not.toBeInTheDocument()
+  })
+
+  it('sends someone with no student page either to sign in, saying why and keeping the page', async () => {
+    signedInAs(null, false)
+    const router = renderAt('/admin/alumnos')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.signIn.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/ingresar')
+    expect(router.state.location.search).toEqual({ redirect: '/admin/alumnos', noPanel: true })
+    expect(screen.getByText(es.signIn.noPanel)).toBeInTheDocument()
+    expect(screen.queryByText(es.signIn.expired)).not.toBeInTheDocument()
+  })
+
+  it.each(['owner', 'coach'])('leaves a %s who also trains in /admin', async (role) => {
+    signedInAs(role, true)
+    const router = renderAt('/admin/alumnos')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.admin.students.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/admin/alumnos')
+  })
+})
+
 describe('one trip to sign in', () => {
   // The handler's navigations to /ingresar, counted on `router.navigate`; `hold` keeps
   // the router where it is, as if the first navigation had not landed yet.

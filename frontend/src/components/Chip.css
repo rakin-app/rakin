@@ -8,19 +8,6 @@
   padding: var(--space-1);
 }
 
-/* More chips past an edge: that edge fades out (#358). */
-.chip-group[data-more-end] {
-  mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
-}
-
-.chip-group[data-more-start] {
-  mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent);
-}
-
-.chip-group[data-more-start][data-more-end] {
-  mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
-}
-
 .chip {
   flex: none;
   min-height: var(--control-height);
