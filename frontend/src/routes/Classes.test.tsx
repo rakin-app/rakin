@@ -87,6 +87,13 @@ const hoursFor = (first: string, last: string, minutes: number): TagHours => ({
   no_duration: [],
 })
 
+// Chile's, as the API names them (#426).
+const HOLIDAYS = [
+  { date: '2026-09-18', name: 'Día de la Independencia' },
+  { date: '2026-09-19', name: 'Día de las Glorias del Ejército' },
+  { date: '2026-12-08', name: 'La Inmaculada Concepción' },
+]
+
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 type Stub = {
@@ -141,6 +148,9 @@ function stubApi({
       const on = date ?? isoDay(new Date().toISOString(), 'America/Santiago')
       return { body: { ...day, date: on, sessions: week.filter((s) => isoDay(s.starts_at, 'America/Santiago') === on) } }
     }
+    if (path === '/api/sessions' && method === 'GET' && date) {
+      return { body: { ...day, date, holidays: HOLIDAYS.filter((h) => h.date === date) } }
+    }
     if (path === '/api/sessions' && method === 'GET') return { body: day }
     if (path === '/api/sessions/range') {
       const from = query.get('from')!
@@ -150,7 +160,8 @@ function stubApi({
         const on = isoDay(s.starts_at, 'America/Santiago')
         return from <= on && on <= to
       })
-      return { body: { from, to, timezone: 'America/Santiago', sessions: within } }
+      const holidays = HOLIDAYS.filter((h) => from <= h.date && h.date <= to)
+      return { body: { from, to, timezone: 'America/Santiago', sessions: within, holidays } }
     }
     if (path === '/api/sessions/duration') {
       const id = query.get('class_type_id')!
@@ -283,6 +294,15 @@ describe('Clases', () => {
     fireEvent.change(within(today).getByLabelText(copy.days.jump), { target: { value: '2026-10-03' } })
     expect(router.state.location.search).toEqual({ day: '2026-10-03' })
     expect(await screen.findByRole('region', { name: weekdayDay(toDate('2026-10-03')) })).toBeInTheDocument()
+  })
+
+  it('names a public holiday after the day (#426)', async () => {
+    stubApi()
+    renderAt('/admin/clases?day=2026-12-08')
+
+    expect(
+      await screen.findByRole('region', { name: copy.days.holiday(weekdayDay(toDate('2026-12-08')), 'La Inmaculada Concepción') }),
+    ).toBeInTheDocument()
   })
 
   it('takes only a real day and the first of a month from the URL', () => {
@@ -822,6 +842,33 @@ describe('Clases on a desktop', () => {
     await userEvent.click(within(screen.getByRole('region', { name: copy.month.title('2026-10-01') })).getByRole('button', { name: copy.days.today }))
     expect(router.state.location.search).toEqual({})
     expect(await screen.findByRole('region', { name: copy.week.title })).toBeInTheDocument()
+  })
+
+  it('marks a public holiday in the month, its name in the day and its title, and in the week (#426)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-16T15:00:00Z'))
+    wide(true)
+    stubApi({ week: [] })
+    renderAt('/admin/clases?month=2026-09-01')
+
+    const month = await screen.findByRole('region', { name: copy.month.title('2026-09-01') })
+    const independence = await within(month).findByRole('button', {
+      name: copy.month.cell('viernes', '2026-09-18', 0, 0, 0, 'Día de la Independencia'),
+    })
+    expect(independence).toHaveClass('month__day--holiday')
+    expect(independence).toHaveAttribute('title', 'Día de la Independencia')
+    // Not by its red alone: the name is written in the cell too.
+    expect(independence).toHaveTextContent('Día de la Independencia')
+    expect(within(month).getByRole('button', { name: copy.month.cell('jueves', '2026-09-17', 0, 0, 0) })).not.toHaveClass(
+      'month__day--holiday',
+    )
+
+    // The week names it in its day's heading.
+    await userEvent.click(within(month).getByRole('button', { name: copy.view.week }))
+    const week = await screen.findByRole('region', { name: copy.week.title })
+    expect(
+      await within(week).findByRole('heading', { name: copy.days.holiday(weekdayDay(toDate('2026-09-19')), 'Día de las Glorias del Ejército') }),
+    ).toBeInTheDocument()
   })
 
   it('shows the month in place of the day on a phone, a day tapped leaving it (#426)', async () => {

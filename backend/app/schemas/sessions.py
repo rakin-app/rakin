@@ -125,16 +125,26 @@ class DefaultDuration(BaseModel):
     duration_minutes: int
 
 
+class Holiday(BaseModel):
+    """A public holiday of the gym's country, named in Spanish (#426)."""
+
+    date: date
+    name: str
+
+
 class Day(BaseModel):
-    """A day's sessions in the gym's timezone, earliest first."""
+    """A day's sessions in the gym's timezone, earliest first, and the public holiday it
+    is, if any (#426)."""
 
     date: date
     timezone: str
     sessions: list[Session]
+    holidays: list[Holiday] = []
 
 
 class Range(BaseModel):
-    """The sessions of the gym days `from` to `to`, both included, earliest first (#426)."""
+    """The sessions of the gym days `from` to `to`, both included, earliest first, and the
+    public holidays among them (#426)."""
 
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -142,6 +152,8 @@ class Range(BaseModel):
     to: date
     timezone: str
     sessions: list[Session]
+    # The public holidays among those days, earliest first.
+    holidays: list[Holiday] = []
 
 
 class Unmarked(BaseModel):

@@ -1875,6 +1875,8 @@ export const es = {
         next: 'Semana siguiente →',
       },
       days: {
+        // A public holiday's name after the day's (#426): `lun 8 dic · La Inmaculada Concepción`.
+        holiday: (day: string, name: string) => `${day} · ${name}`,
         label: 'Cambiar de día',
         previous: '← Anterior',
         next: 'Siguiente →',
@@ -1902,9 +1904,18 @@ export const es = {
         classes: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
         unmarked: (n: number) => `${n} sin asistencia`,
         cancelled: (n: number) => (n === 1 ? '1 cancelada' : `${n} canceladas`),
-        // `miércoles 4 de noviembre: 3 clases, 2 sin asistencia, 1 cancelada`.
-        cell: (weekday: string, iso: string, classes: number, unmarked: number, cancelled: number) => {
-          const day = `${weekday} ${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]}`
+        // `miércoles 4 de noviembre: 3 clases, 2 sin asistencia, 1 cancelada`; a public
+        // holiday's name after the day: `martes 8 de diciembre, La Inmaculada Concepción: sin clases`.
+        cell: (
+          weekday: string,
+          iso: string,
+          classes: number,
+          unmarked: number,
+          cancelled: number,
+          holiday: string | null = null,
+        ) => {
+          const date = `${weekday} ${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]}`
+          const day = holiday === null ? date : `${date}, ${holiday}`
           const parts = [
             classes === 0 ? 'sin clases' : classes === 1 ? '1 clase' : `${classes} clases`,
             unmarked > 0 ? `${unmarked} sin asistencia` : null,

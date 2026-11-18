@@ -292,6 +292,29 @@ def test_a_range_refuses(client: TestClient, gym: uuid.UUID, start: str, end: st
 
 
 @pg
+def test_a_range_and_a_day_name_chiles_public_holidays(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    september = sessions_range(client, gym, "2026-09-14", "2026-09-20").json()
+    assert september["holidays"] == [
+        {"date": "2026-09-18", "name": "Día de la Independencia"},
+        {"date": "2026-09-19", "name": "Día de las Glorias del Ejército"},
+    ]
+    december = sessions_range(client, gym, "2026-11-30", "2027-01-10").json()
+    assert {"date": "2026-12-08", "name": "La Inmaculada Concepción"} in december["holidays"]
+    # Across the year's end, both years'.
+    assert [h["date"] for h in december["holidays"]] == ["2026-12-08", "2026-12-25", "2027-01-01"]
+    assert day(client, gym, date="2026-12-08")["holidays"] == [
+        {"date": "2026-12-08", "name": "La Inmaculada Concepción"}
+    ]
+    assert day(client, gym, date="2026-12-09")["holidays"] == []
+
+    # A gym in a zone with no country mapped keeps none.
+    run(db.admin_url, lambda c: c.execute("UPDATE gym SET timezone = 'UTC' WHERE id = $1", gym))
+    assert sessions_range(client, gym, "2026-09-14", "2026-09-20").json()["holidays"] == []
+
+
+@pg
 def test_a_range_of_42_days_is_a_month_grid(client: TestClient, gym: uuid.UUID) -> None:
     assert sessions_range(client, gym, "2026-10-26", "2026-12-06").status_code == 200
 

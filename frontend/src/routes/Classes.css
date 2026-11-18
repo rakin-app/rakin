@@ -572,3 +572,17 @@
     flex: none;
   }
 }
+
+/* A public holiday (#426): its number in the calendar's red; from 1024px its name under it. */
+.month__day--holiday .month__number {
+  color: var(--color-holiday);
+}
+
+.month__holiday {
+  color: var(--color-holiday);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+  /* A long name breaks where Spanish does, not at any letter. */
+  hyphens: auto;
+  overflow-wrap: break-word;
+}

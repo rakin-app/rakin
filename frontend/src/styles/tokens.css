@@ -25,6 +25,8 @@
  * - success, warning, danger: paid or present; overdue, and only that; errors,
  *   refusals and buttons that delete. Success stays green in every theme, so a paid
  *   row never reads like an overdue one.
+ * - holiday: a public holiday's day number on Clases's month (#426), the calendar's
+ *   red; its name is always there too, in text or the day's accessible name.
  */
 :root,
 [data-theme='bosque'] {
@@ -69,6 +71,7 @@
   --color-warning-strong: #43260a;
   --color-danger: #bd321b;
   --color-danger-soft: #f6e6e0;
+  --color-holiday: #bd321b;
   --gradient-hero: linear-gradient(160deg, #0f3620 0%, #072014 100%);
   --shadow-card: 0 1px 2px rgb(16 39 25 / 0.06), 0 8px 24px -12px rgb(16 39 25 / 0.18);
 }
@@ -115,6 +118,7 @@
   --color-warning-strong: #43260a;
   --color-danger: #bd321b;
   --color-danger-soft: #f4e6e5;
+  --color-holiday: #bd321b;
   --gradient-hero: linear-gradient(160deg, #0f304a 0%, #091c2c 100%);
   --shadow-card: 0 1px 2px rgb(16 35 52 / 0.06), 0 8px 24px -12px rgb(16 35 52 / 0.18);
 }
@@ -161,6 +165,7 @@
   --color-warning-strong: #43260a;
   --color-danger: #bd321b;
   --color-danger-soft: #f9e5e2;
+  --color-holiday: #bd321b;
   --gradient-hero: linear-gradient(160deg, #472022 0%, #2b1213 100%);
   --shadow-card: 0 1px 2px rgb(50 25 26 / 0.06), 0 8px 24px -12px rgb(50 25 26 / 0.18);
 }

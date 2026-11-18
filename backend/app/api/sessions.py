@@ -56,6 +56,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.attendance import CLASS_BACKFILLED, record_backfill, remove_attendance
 from app.api.class_tags import require_tags, set_tags, tags_of_session
 from app.domain.dates import gym_today, local_date, start_of_local_day
+from app.domain.public_holidays import holidays_between
 from app.permissions import (
     FORBIDDEN,
     AdminSession,
@@ -68,6 +69,7 @@ from app.schemas.classes import ClassKind
 from app.schemas.sessions import (
     Day,
     DefaultDuration,
+    Holiday,
     Range,
     Session,
     SessionCreate,
@@ -195,7 +197,8 @@ async def list_sessions(
     session: StaffSession,
     day: Annotated[date | None, Query(alias="date")] = None,
 ) -> Day:
-    """`?date=` (an ISO day, default today in the gym's timezone): that day's sessions."""
+    """`?date=` (an ISO day, default today in the gym's timezone): that day's sessions,
+    and the public holiday it is, if any (#426)."""
     zone = await gym_timezone(session, tenant)
     day = day or gym_today(zone)
     result = await session.execute(
@@ -209,7 +212,7 @@ async def list_sessions(
         },
     )
     sessions = [Session.model_validate(row, from_attributes=True) for row in result]
-    return Day(date=day, timezone=zone, sessions=sessions)
+    return Day(date=day, timezone=zone, sessions=sessions, holidays=public_holidays(day, day, zone))
 
 
 @router.get("/range")
@@ -247,7 +250,18 @@ async def range_sessions(
         },
     )
     sessions = [Session.model_validate(row, from_attributes=True) for row in result]
-    return Range(from_=start, to=end, timezone=zone, sessions=sessions)
+    return Range(
+        from_=start,
+        to=end,
+        timezone=zone,
+        sessions=sessions,
+        holidays=public_holidays(start, end, zone),
+    )
+
+
+def public_holidays(start: date, end: date, zone: str) -> list[Holiday]:
+    """The gym's country's public holidays from `start` to `end`, both included."""
+    return [Holiday(date=h.date, name=h.name) for h in holidays_between(start, end, zone)]
 
 
 @router.get("/unmarked")

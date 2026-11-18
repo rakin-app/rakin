@@ -15,6 +15,7 @@ import {
   useGymToday,
   type ClassSession,
   type ClassType,
+  type Holiday,
 } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
 import { Banner, Card, listRowClass, ListRowContent, PlainList, SectionHeader, SectionTitle } from '../components/Card'
@@ -141,7 +142,7 @@ export function Classes() {
             <section className="classes__section" aria-labelledby="classes-day">
               <div className="classes__section-head">
                 <SectionTitle id="classes-day">
-                  {isToday ? copy.today.title : weekdayDay(toDate(shown))}
+                  {withHoliday(isToday ? copy.today.title : weekdayDay(toDate(shown)), day.data?.holidays?.[0])}
                 </SectionTitle>
                 {day.data && day.data.sessions.length > 0 && (
                   <span className="classes__aside">{copy.today.count(day.data.sessions.length)}</span>
@@ -231,11 +232,12 @@ function useWeek(day: string | null, today: string, timeZone: string) {
   const all = range.data?.sessions ?? []
   const zone = range.data?.timezone ?? timeZone
   const onDay = (d: string) => all.filter((session) => isoDay(session.starts_at, zone) === d)
+  const holidayOn = (d: string) => range.data?.holidays.find((holiday) => holiday.date === d)
   const now = new Date()
   const selected =
     all.find((session) => session.id === picked) ??
     all.filter((session) => isoDay(session.starts_at, zone) === today && new Date(session.starts_at) <= now).at(-1)
-  return { monday, days, range, onDay, selected, setPicked }
+  return { monday, days, range, onDay, holidayOn, selected, setPicked }
 }
 
 /** "Semana": the week `useWeek` read, and the class picked in it; `now` when that is the class now. */
@@ -256,7 +258,7 @@ function Week({
   view: ReactNode
 }) {
   const words = copy.week
-  const { days, range, onDay, selected, setPicked, monday } = week
+  const { days, range, onDay, holidayOn, selected, setPicked, monday } = week
 
   return (
     <div className="classes__column">
@@ -291,7 +293,7 @@ function Week({
             return (
               <li key={d} className={d === today ? 'week__day week__day--today' : 'week__day'}>
                 <h3 id={headingId} className="week__title">
-                  {weekdayDay(toDate(d))}
+                  {withHoliday(weekdayDay(toDate(d)), holidayOn(d))}
                 </h3>
                 {sessions.length === 0 ? (
                   <p className="classes__note">{words.empty}</p>
@@ -339,6 +341,11 @@ function ViewSwitch({ value, wide, onChange }: { value: 'day' | 'month'; wide: b
       onChange={onChange}
     />
   )
+}
+
+/** A day's title, and the public holiday it is (#426): `lun 8 dic · La Inmaculada Concepción`. */
+function withHoliday(title: string, holiday: Holiday | undefined): string {
+  return holiday ? copy.days.holiday(title, holiday.name) : title
 }
 
 /** "Ir a fecha": straight to any day, past or to come. */
@@ -407,6 +414,7 @@ function Month({
     const d = isoDay(session.starts_at, zone)
     byDay.set(d, [...(byDay.get(d) ?? []), session])
   }
+  const holidays = new Map((range.data?.holidays ?? []).map((holiday) => [holiday.date, holiday.name]))
   const weeks = Array.from({ length: MONTH_DAYS / 7 }, (_, i) => days.slice(i * 7, i * 7 + 7))
   const atHome = month === `${today.slice(0, 7)}-01` && shown === today
 
@@ -443,17 +451,30 @@ function Month({
                 {week.map((d, i) => {
                   const counts = dayCounts(byDay.get(d) ?? [], now)
                   const outside = d.slice(0, 7) !== month.slice(0, 7)
+                  // A public holiday's number is red, its name in the title and the day's name.
+                  const holiday = holidays.get(d) ?? null
                   return (
                     <td key={d} className="month__cell">
                       <button
                         type="button"
-                        className={outside ? 'month__day month__day--outside' : 'month__day'}
-                        aria-label={words.cell(words.weekdayNames[i]!, d, counts.classes, counts.unmarked, counts.cancelled)}
+                        className={['month__day', outside && 'month__day--outside', holiday !== null && 'month__day--holiday']
+                          .filter(Boolean)
+                          .join(' ')}
+                        aria-label={words.cell(
+                          words.weekdayNames[i]!,
+                          d,
+                          counts.classes,
+                          counts.unmarked,
+                          counts.cancelled,
+                          holiday,
+                        )}
+                        title={holiday ?? undefined}
                         aria-current={d === today ? 'date' : undefined}
                         aria-pressed={d === shown}
                         onClick={() => pick(d)}
                       >
                         <span className="month__number">{Number(d.slice(8, 10))}</span>
+                        {holiday !== null && <span className="month__holiday month__long">{holiday}</span>}
                         {counts.classes > 0 && (
                           <span className="month__count">
                             <span className="month__short">{counts.classes}</span>
