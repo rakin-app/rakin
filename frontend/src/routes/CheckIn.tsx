@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { candidatesQuery, checkIn, doorsQuery, undoCheckIn, warning, type Door, type Visitor } from '../api/checkIn'
+import { managesGym, myAccessQuery } from '../api/me'
 import type { RequirementFlag } from '../api/requirements'
 import { useSubmit } from '../api/submit'
 import { Button, buttonClass } from '../components/Button'
@@ -47,6 +48,8 @@ export function CheckIn() {
   const [picked, setPicked] = useState<string | null>(null)
   const door = doors.data?.find((d) => d.class_type_id === picked) ?? doors.data?.[0]
   useNewDay(door)
+  // Who can make an open-access class is told to, and how (#418).
+  const setsUp = managesGym(useQuery(myAccessQuery()).data)
 
   return (
     <div className="check-in">
@@ -61,7 +64,19 @@ export function CheckIn() {
           </Banner>
         ) : door === undefined ? (
           <Card>
-            <EmptyState>{copy.none}</EmptyState>
+            {setsUp ? (
+              <EmptyState
+                action={
+                  <Link to="/admin/ajustes/programas" className={buttonClass({ variant: 'primary' })}>
+                    {copy.toPrograms}
+                  </Link>
+                }
+              >
+                {copy.noneSetup}
+              </EmptyState>
+            ) : (
+              <EmptyState>{copy.none}</EmptyState>
+            )}
           </Card>
         ) : (
           <>

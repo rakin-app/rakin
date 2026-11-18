@@ -36,7 +36,7 @@ const route = getRouteApi(SIGN_IN_PATH)
  * the two keep separate sessions. The code signs in right here.
  */
 export function SignIn() {
-  const { redirect, expired } = route.useSearch()
+  const { redirect, expired, noPanel } = route.useSearch()
   const gym = useQuery(hostQuery()).data?.gym ?? null
   useDocumentTitle(copy.tab, gym?.name ?? RAKIN)
   const [email, setEmail] = useState('')
@@ -155,6 +155,7 @@ export function SignIn() {
                 {copy.expired}
               </Banner>
             )}
+            {noPanel && <Banner tone="warning">{copy.noPanel}</Banner>}
             <p className="signin__intro">{copy.intro}</p>
             <label htmlFor={emailId} className="signin__label">
               {copy.emailLabel}

@@ -105,6 +105,8 @@ export const es = {
     failed: 'No pudimos enviar el link. Revisa tu conexión e inténtalo de nuevo.',
     // Why they are here, when the session ended rather than never began (#212).
     expired: 'Tu sesión venció. Entra de nuevo para seguir.',
+    // Signed in, but on no team and with no student page here (#418).
+    noPanel: 'Este correo no tiene acceso al panel. Entra con el correo con que te registraron.',
   },
   signOut: {
     label: 'Cerrar sesión',
@@ -1760,6 +1762,9 @@ export const es = {
       get none() {
         return `${w.placeIs('Este', 'Esta')} ${w.place} no tiene acceso libre. Un dueño o admin lo crea en Ajustes › Programas y clases, como una clase de tipo Acceso libre.`
       },
+      // The same, said to who can make one (#418), with the way there.
+      noneSetup: 'Todavía no tienes acceso libre. Créalo como una clase de tipo Acceso libre.',
+      toPrograms: 'Ir a Programas y clases',
       pick: 'Acceso',
       cancelled: 'La entrada de hoy está cancelada: no se puede marcar a nadie hasta que un dueño o admin la reactive.',
       openDay: 'Ver el día',

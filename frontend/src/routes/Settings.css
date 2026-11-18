@@ -15,6 +15,13 @@
   scrollbar-width: none;
 }
 
+/* A mouse cannot swipe: it gets a thin scrollbar, shown only while the tabs overflow (#418). */
+@media (hover: hover) and (pointer: fine) {
+  .settings__sections {
+    scrollbar-width: thin;
+  }
+}
+
 .settings__section-link {
   display: flex;
   flex: none;

@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router'
-import { useEffect, useRef, type ComponentType } from 'react'
+import { useEffect, type ComponentType } from 'react'
 import { useGrades } from '../api/activities'
 import { managesGym, myAccessQuery } from '../api/me'
 import { BackLink } from '../components/BackLink'
 import { Card, listRowClass, ListRowContent } from '../components/Card'
+import { useEdgeFade } from '../components/edgeFade'
 import { ChevronRightIcon } from '../components/icons'
 import { PageContainer, useDesktop } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -120,10 +121,14 @@ export function Settings() {
   )
 }
 
-/** The sections as tabs, on a desktop: a row that scrolls sideways if they do not fit, and keeps the open one in view. */
+/**
+ * The sections as tabs, on a desktop: a row that scrolls sideways if they do not fit, and
+ * keeps the open one in view. Where more tabs lie past an edge it fades, and a mouse has
+ * a thin scrollbar to reach them (#418): at 1280 twelve tabs do not fit.
+ */
 function SectionTabs({ current }: { current: Section | undefined }) {
   const sections = useSections()
-  const nav = useRef<HTMLElement>(null)
+  const { ref: nav, attrs } = useEdgeFade<HTMLElement>()
   useEffect(() => {
     const active = nav.current?.querySelector<HTMLElement>('[aria-current="page"]')
     // `scrollIntoView` on the row's own axis only, so the page itself does not jump.
@@ -134,9 +139,9 @@ function SectionTabs({ current }: { current: Section | undefined }) {
         row.scrollTo({ left: left - (row.clientWidth - active.offsetWidth) / 2 })
       }
     }
-  }, [current])
+  }, [current, nav])
   return (
-    <nav ref={nav} className="settings__sections" aria-label={copy.sectionsLabel}>
+    <nav ref={nav} className="settings__sections edge-fade" aria-label={copy.sectionsLabel} {...attrs}>
       {sections.map((section) => (
         <Link key={section.path} to={`/admin/ajustes/${section.path}`} className="settings__section-link">
           {section.label}

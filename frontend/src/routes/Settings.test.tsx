@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Activity } from '../api/activities'
@@ -301,6 +301,24 @@ describe('Ajustes', () => {
 
     await userEvent.click(within(sections).getByRole('link', { name: copy.sections.plans }))
     expect(await screen.findByRole('region', { name: plans.title })).toBeInTheDocument()
+  })
+
+  it('fades the tab row where more tabs follow (#418)', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({ matches: true, media: query, addEventListener: () => {}, removeEventListener: () => {} })),
+    )
+    stubApi({ role: 'admin' })
+    renderAt('/admin/ajustes')
+    const sections = await screen.findByRole('navigation', { name: copy.sectionsLabel })
+    expect(sections).not.toHaveAttribute('data-more-end')
+
+    // jsdom lays nothing out: twelve tabs needing 1070px in a row 953px wide, at 1280.
+    Object.defineProperty(sections, 'clientWidth', { configurable: true, value: 953 })
+    Object.defineProperty(sections, 'scrollWidth', { configurable: true, value: 1070 })
+    fireEvent.scroll(sections)
+    expect(sections).toHaveAttribute('data-more-end')
+    expect(sections).not.toHaveAttribute('data-more-start')
   })
 
   it('has Cuenta: who is signed in, and Cerrar sesión', async () => {
