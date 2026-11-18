@@ -852,6 +852,30 @@ describe('Un cobro extra', () => {
     }
   })
 
+  it('counts a cancelled cuota out of what the person owes (#417)', async () => {
+    const days = ['2026-12-15', '2027-01-15', '2027-02-15', '2027-03-15', '2027-04-15', '2027-05-15', '2027-06-15']
+    const lines = days.map((day, i) =>
+      line(`ana-${i + 1}`, 'Ana Rojas', {
+        person: ANA,
+        instalment: i + 1,
+        due_date: day,
+        amount_due_clp: 10000,
+        ...(i < 2
+          ? { status: 'paid' as const, paid_clp: 10000, outstanding_clp: 0 }
+          : i === 6
+            ? { status: 'cancelled' as const, outstanding_clp: 0, cancel_reason: 'se retiró' }
+            : { outstanding_clp: 10000 }),
+      }),
+    )
+    const CANCELLED: ExtraCharge = { ...CHARGE, instalments: 7, due_date: days[0]!, people: lines }
+    stubApi('owner', (path) => (path === `/api/extra-charges/${CHARGE.id}` ? { body: CANCELLED } : undefined))
+    renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
+
+    const ana = (await screen.findByRole('link', { name: 'Ana Rojas' })).closest('li')!
+    expect(within(ana).getByText(copy.detail.instalmentsPaid(2, 6))).toBeInTheDocument()
+    expect(within(ana).getByText(copy.detail.paidOf('$20.000', '$60.000'))).toBeInTheDocument()
+  })
+
   it('lists a cobro paid at once as one row per line, as before (#417)', async () => {
     stubApi('owner')
     renderAt(`/admin/pagos/cobros/${CHARGE.id}`)

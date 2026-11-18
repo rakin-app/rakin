@@ -3382,7 +3382,7 @@ export const es = {
         // The split, said once under the total, and on a person's row only where theirs differs (#417).
         splitEven: (n: number, amount: string) => `${n} cuotas de ${amount}`,
         splitFirst: (n: number, first: string, rest: string) =>
-          `${n} cuotas: la primera de ${first} y ${n - 1 === 1 ? `1 de ${rest}` : `${n - 1} de ${rest}`}`,
+          `${n} cuotas: la primera de ${first} y ${n - 1} de ${rest}`,
         split: (share: string, n: number) => `${share} cada uno entre ${n === 1 ? '1 persona' : `${n} personas`}`,
         remainder: (n: number) =>
           n === 1 ? 'El peso que sobra lo paga la primera persona por orden alfabético.' : `Los ${n} pesos que sobran los paga un peso más cada uno de los primeros ${n} por orden alfabético.`,
