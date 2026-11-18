@@ -1,4 +1,4 @@
-> **BORRADOR: pendiente de revisión por abogado.** 16 de noviembre de 2026.
+> **BORRADOR: pendiente de revisión por abogado.** 18 de noviembre de 2026.
 
 # Aviso de privacidad de cada academia
 
@@ -76,17 +76,17 @@ Rakin cuenta tu asistencia para mostrarle al equipo si dejaste de venir [Según 
 
 **Rakin.** La academia usa Rakin, un sistema de gestión para academias. Rakin trata tus datos por encargo de la academia, solo para prestarle ese servicio, según un contrato que lo obliga a protegerlos. Rakin se apoya en estos proveedores:
 
-- Alojamiento: los servidores y la base de datos, en [Brasil o Estados Unidos].
+- Alojamiento: los servidores y la base de datos, en Estados Unidos.
 - Envío de correos, en Estados Unidos.
 - Almacenamiento de archivos, como los comprobantes de pago.
-- Registro de errores, para corregir fallas del sistema, en Alemania.
+- Registro de errores, para corregir fallas del sistema, en Estados Unidos.
 - [Según configuración: Verificación de que no eres un robot, solo en el formulario de inscripción.]
 
 Puedes pedirnos el nombre de cada proveedor.
 
 [Según configuración: **WhatsApp.** El equipo de la academia te escribe por WhatsApp desde sus propios teléfonos. Esos mensajes pasan por WhatsApp, de Meta, en Estados Unidos ([pregunta 13](../legal-research.md#13-whatsapp-from-staff-phones)).]
 
-**Datos fuera de Chile.** Algunos de estos servicios guardan o procesan datos fuera de Chile, en Estados Unidos [y Brasil]. Hoy ningún país ha sido declarado con un nivel adecuado de protección por la Agencia de Protección de Datos Personales. Por eso cada proveedor se obliga por contrato a proteger los datos con garantías equivalentes a las de la ley chilena ([pregunta 9](../legal-research.md#9-subprocessors-abroad)). `[ABOGADO: ítem 3 (b).]`
+**Datos fuera de Chile.** Algunos de estos servicios guardan o procesan datos fuera de Chile, en Estados Unidos. Hoy ningún país ha sido declarado con un nivel adecuado de protección por la Agencia de Protección de Datos Personales. Por eso cada proveedor se obliga por contrato a proteger los datos con garantías equivalentes a las de la ley chilena ([pregunta 9](../legal-research.md#9-subprocessors-abroad)). `[ABOGADO: ítem 3 (b).]`
 
 ### ¿Cuánto tiempo los guardamos?
 

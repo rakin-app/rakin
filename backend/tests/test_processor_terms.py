@@ -18,16 +18,20 @@ import pytest
 
 from app import gyms
 from app.db_bootstrap import to_dsn
-from app.domain.dates import gym_today
-from app.gyms import PROCESSOR_TERMS_VERSION, SIGNED_IN, Signing, sign_terms
+from app.gyms import PROCESSOR_TERMS_VERSION, Signing, sign_terms
 from app.gyms import parse as parse_command
 from tests.conftest import require_test_database_url
 from tests.pg import Database, migrate, run, throwaway_database
-from tests.test_gym_hosts import ARGS, create, new_gym, parse_gym
+from tests.test_gym_hosts import ARGS, SIGNED_TODAY, create, new_gym, parse_gym
 
 TERMS = Path(__file__).parents[2] / "docs" / "legal" / "terminos-de-encargo.md"
 SIGNED = ["--processor-terms", PROCESSOR_TERMS_VERSION, "--signed-on", PROCESSOR_TERMS_VERSION]
 WITHOUT_TERMS = ARGS[: ARGS.index("--processor-terms")]
+
+
+@pytest.fixture(autouse=True)
+def _terms_signed_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gyms, "gym_today", lambda tz: SIGNED_TODAY)
 
 
 def test_the_version_is_the_terms_own() -> None:
@@ -145,7 +149,7 @@ def test_a_gym_that_exists_signs_them_once(db: Database) -> None:
     signing = Signing(slug=gym.slug, processor_terms=PROCESSOR_TERMS_VERSION, signed_on=SIGNED_ON)
 
     first = sign(db, signing)
-    again = sign(db, signing.model_copy(update={"signed_on": gym_today(SIGNED_IN)}))
+    again = sign(db, signing.model_copy(update={"signed_on": SIGNED_TODAY}))
 
     assert (first.gym_id, first.name, first.recorded) == (created.gym_id, gym.name, True)
     assert (again.gym_id, again.recorded) == (created.gym_id, False)

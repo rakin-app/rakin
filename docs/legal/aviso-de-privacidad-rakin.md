@@ -1,4 +1,4 @@
-> **BORRADOR: pendiente de revisión por abogado.** 16 de noviembre de 2026.
+> **BORRADOR: pendiente de revisión por abogado.** 18 de noviembre de 2026.
 
 # Aviso de privacidad de Rakin
 
@@ -10,7 +10,7 @@ Los datos de los alumnos **no** están en este aviso: de ellos es responsable ca
 
 ## Política de privacidad de Rakin
 
-Versión 1, vigente desde [fecha].
+Versión 2, vigente desde [fecha].
 
 ### ¿Quién es responsable?
 
@@ -42,8 +42,8 @@ No vendemos datos ni los usamos para publicidad.
 
 - **Envío de correos**: Resend, en Estados Unidos.
 - **Recepción de correos** a hola@ y soporte@: Cloudflare, que los reenvía a [buzón de la empresa y su proveedor].
-- **Alojamiento**: [Proveedor del servidor], en [Brasil o Estados Unidos].
-- **Registro de errores**: Sentry, en Alemania.
+- **Alojamiento**: Hetzner, en Estados Unidos.
+- **Registro de errores**: Sentry, en Estados Unidos.
 
 Hoy ningún país ha sido declarado con un nivel adecuado de protección por la Agencia de Protección de Datos Personales. Cada proveedor se obliga por contrato a protegerlos ([pregunta 9](../legal-research.md#9-subprocessors-abroad)). `[ABOGADO: ítem 3 (b).]`
 

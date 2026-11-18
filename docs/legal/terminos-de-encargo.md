@@ -1,8 +1,8 @@
-> **BORRADOR: pendiente de revisión por abogado.** 16 de noviembre de 2026.
+> **BORRADOR: pendiente de revisión por abogado.** 18 de noviembre de 2026.
 
 # Términos de encargo de tratamiento de datos personales
 
-**Versión: 2026-11-16.** Cada academia firma esta versión antes de que sus datos entren a Rakin, y vuelve a firmar cuando cambia, como al agregarse un subencargado al [Anexo A](#anexo-a-subencargados) ([cláusula 9](#9-subencargados)). La Empresa registra la versión y la fecha de cada firma, y guarda la copia firmada en sus archivos.
+**Versión: 2026-11-18.** Cada academia firma esta versión antes de que sus datos entren a Rakin, y vuelve a firmar cuando cambia, como al agregarse un subencargado al [Anexo A](#anexo-a-subencargados) ([cláusula 9](#9-subencargados)). La Empresa registra la versión y la fecha de cada firma, y guarda la copia firmada en sus archivos.
 
 Contrato entre la empresa que presta Rakin y cada academia que lo usa, exigido por el artículo 15 bis de la ley N° 19.628, modificada por la ley N° 21.719. Se basa en la [investigación legal](../legal-research.md). Donde una cláusula descansa en una de sus respuestas, la enlaza.
 
@@ -172,10 +172,10 @@ Ver [pregunta 9](../legal-research.md#9-subprocessors-abroad). La firma de este 
 
 | Subencargado | Para qué | Qué datos | Dónde |
 | --- | --- | --- | --- |
-| [Proveedor del servidor] | servidor y base de datos | todos | [São Paulo, Brasil; o Estados Unidos] |
+| Hetzner | servidor y base de datos | todos | Estados Unidos (Ashburn, Virginia) |
 | Cloudflare (R2) | archivos (comprobantes, logos) y respaldos cifrados | comprobantes; respaldos de todo, cifrados con una llave que el proveedor no tiene | Cloudflare elige la ubicación; no hay jurisdicción fijada `[ABOGADO: ¿basta, o se debe fijar una región?]` |
 | Resend | envío de correos | nombre, correo, contenido del aviso (montos, links de acceso) | Estados Unidos |
-| Sentry | registro de errores | el tipo de error, dónde ocurrió y la ruta de la solicitud; sin el contenido de la solicitud, variables ni valores de la base de datos (#373) | Alemania (región europea de Sentry) |
+| Sentry | registro de errores | el tipo de error, dónde ocurrió y la ruta de la solicitud; sin el contenido de la solicitud, variables ni valores de la base de datos (#373) | Estados Unidos (región de Sentry en EE. UU.) |
 | Cloudflare (Turnstile) | verificar que quien llena el formulario de inscripción no es un robot; solo si la Academia lo activa | datos técnicos del navegador | global |
 
 Cloudflare DNS y Let's Encrypt dan nombres y certificados, sin datos personales. Se listan para que la lista sea completa.

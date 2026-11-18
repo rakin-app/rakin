@@ -222,7 +222,7 @@ Adequate guarantees are those that "otorguen derechos exigibles y acciones legal
 
 - #367: the DPA's annex names every subprocessor (VPS host, Cloudflare R2, Resend, Sentry, Turnstile where on), what it does, the data it gets, and its country. The gym's signature is the specific written authorisation. Adding or replacing one needs a signed annex update from each gym, with a right to leave.
 - Each transfer rests on the provider's own data processing terms and contractual clauses, recorded in the annex.
-- The notice names the countries (United States; Brazil if the VPS is in São Paulo) and says no adequacy decision exists yet, with the guarantee relied on.
+- The notice names the countries (the United States: the VPS is Hetzner in Ashburn, Virginia, and Sentry is on its US region, #430) and says no adequacy decision exists yet, with the guarantee relied on.
 - #373: sending Sentry less data reduces what crosses.
 
 **Confidence:** reasonable on "específica"; open on whether the providers' clauses count as adequate guarantees before the Agencia approves any. **Needs the lawyer:** yes, [item 3](#for-the-lawyer).
