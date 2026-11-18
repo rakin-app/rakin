@@ -116,6 +116,9 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
             JOIN pg_namespace n ON n.oid = c.relnamespace
             LEFT JOIN pg_policy p ON p.polrelid = c.oid
             WHERE n.nspname = 'public' AND c.relkind = 'r'
+              -- The platform's log names a gym but is none's: the API has no
+              -- privilege on it at all (0076, tests/test_migration_0076.py).
+              AND c.relname <> 'platform_event'
               AND (c.relname = 'gym' OR EXISTS (
                   SELECT FROM information_schema.columns col
                   WHERE col.table_schema = 'public' AND col.table_name = c.relname

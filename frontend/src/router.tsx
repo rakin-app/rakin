@@ -3,6 +3,7 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  notFound,
   Outlet,
   redirect,
   type RouterHistory,
@@ -10,11 +11,14 @@ import {
 import { appPath, hadSession, landingFor, markSignedIn, SIGN_IN_PATH } from './api/auth'
 import { ApiError, onUnauthorized } from './api/client'
 import { keepDrafts } from './api/drafts'
+import { hostQuery } from './api/host'
 import { accessOf, myAccessQuery, myselfQuery, type MyRole } from './api/me'
+import { PLATFORM_PATH, PLATFORM_SIGN_IN_PATH, platformMeQuery } from './api/platform'
 import { AdminLayout } from './layouts/AdminLayout'
 import { t } from './i18n/es'
 import { wearPractice, wearVocabulary } from './i18n/vocabulary'
 import { MeLayout } from './layouts/MeLayout'
+import { PlatformLayout } from './layouts/PlatformLayout'
 import { CheckIn } from './routes/CheckIn'
 import { Classes, validateClassesSearch } from './routes/Classes'
 import { ExtraChargeDetail } from './routes/ExtraChargeDetail'
@@ -28,6 +32,8 @@ import { MemberImport } from './routes/MemberImport'
 import { NewMember } from './routes/NewMember'
 import { NotFound, NotFoundBody } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
+import { PlatformGyms } from './routes/PlatformGyms'
+import { PlatformSignIn } from './routes/PlatformSignIn'
 import { Privacy, validatePrivacySearch } from './routes/Privacy'
 import { SessionDetail } from './routes/SessionDetail'
 import { SignIn } from './routes/SignIn'
@@ -296,6 +302,54 @@ const meHomeRoute = createRoute({
   component: MeHome,
 })
 
+/**
+ * The platform's panel (#436) is the base host's alone: on a gym's own address it is not
+ * found, as the API answers there. Whether this is a gym's address is asked once; if
+ * that fails, the panel's own calls still answer 404 there.
+ */
+async function requireBaseHost({ queryClient }: AppContext) {
+  const host = await queryClient.ensureQueryData({ ...hostQuery(), retry: false }).catch(() => undefined)
+  if (host?.gym) throw notFound()
+}
+
+// "Entrar a la plataforma": an operator's sign-in, apart from a gym's `/ingresar`.
+const platformSignInRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: PLATFORM_SIGN_IN_PATH,
+  beforeLoad: ({ context }) => requireBaseHost(context),
+  component: PlatformSignIn,
+})
+
+// /plataforma/*: the platform's operators (#433), beside /admin and never inside a gym.
+// No operator session (a 401) goes to its own sign-in; any other failure renders the
+// shell, whose screens say what did not load.
+const platformRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: PLATFORM_PATH,
+  beforeLoad: async ({ context }) => {
+    await requireBaseHost(context)
+    // This check redirects on its own 401, as `requireSession` does.
+    context.signIn.checking += 1
+    try {
+      await context.queryClient.ensureQueryData({ ...platformMeQuery(), retry: false })
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        throw redirect({ to: PLATFORM_SIGN_IN_PATH, replace: true })
+      }
+    } finally {
+      context.signIn.checking -= 1
+    }
+  },
+  component: PlatformLayout,
+})
+
+// "Gimnasios": every gym Rakin hosts.
+const platformGymsRoute = createRoute({
+  getParentRoute: () => platformRoute,
+  path: '/',
+  component: PlatformGyms,
+})
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
@@ -319,6 +373,8 @@ const routeTree = rootRoute.addChildren([
     adminSettingsRoute.addChildren([adminSettingsIndexRoute, ...adminSettingsSectionRoutes]),
   ]),
   meRoute.addChildren([meHomeRoute]),
+  platformSignInRoute,
+  platformRoute.addChildren([platformGymsRoute]),
 ])
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
@@ -340,6 +396,14 @@ export function createAppRouter(context: RouterContext, history?: RouterHistory)
   // a signed-out visitor does, saying it expired; what it had loaded is forgotten.
   onUnauthorized(() => {
     const { pathname, href } = router.state.location
+    // The panel's session is its own (#436): it ends into the panel's sign-in, and
+    // keeps no gym's drafts.
+    if (pathname === PLATFORM_PATH || pathname.startsWith(`${PLATFORM_PATH}/`)) {
+      if (pathname === PLATFORM_SIGN_IN_PATH || signIn.checking > 0) return
+      context.queryClient.clear()
+      void router.navigate({ to: PLATFORM_SIGN_IN_PATH, replace: true })
+      return
+    }
     if (signIn.redirecting || signIn.checking > 0 || pathname === SIGN_IN_PATH) return
     signIn.redirecting = true
     // What the open screen held unsaved, kept for after signing in again (#212).

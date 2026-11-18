@@ -198,6 +198,7 @@ Caddy terminates TLS and serves the built SPA; FastAPI is the only thing that ta
 | --- | --- | --- |
 | Tenancy | shared schema, `gym_id` on every tenant table, Postgres RLS with `SET LOCAL app.gym_id` per request | a missed `WHERE` returns nothing instead of another gym's ledger; schema-per-tenant breaks global identity |
 | API | FastAPI, SQLAlchemy 2, Alembic, Pydantic v2 schemas separate from ORM models | boring and known; async where I/O-bound |
+| Platform operators | the people who run the hosted gyms sign in at `/plataforma` on the base host only, with their own magic links, `__Host-platform` cookie and 8-hour sessions; everything they read goes through `SECURITY DEFINER` functions owned by `rakin_platform`, each checking the operator's session itself ([ADR 0003](adr/0003-platform-operators.md), #436) | the one cross-gym view never lifts RLS for the API, and a gym's session never reaches it |
 | Auth | magic links to a session cookie (`HttpOnly`, `Secure`, `SameSite=Lax`; on an `http://` base URL, local dev only, a plain `session` cookie without `Secure`), asked for at `/ingresar`; API and SPA on one origin | no passwords for students, no CORS |
 | Frontend | one Vite SPA, `/admin` and `/me` route trees, TanStack Query, `vite-plugin-pwa`, Spanish strings in one i18n file | one build, PWA for free, English later |
 | Installed app | `public/site.webmanifest` (`start_url` `/`, which sends staff to `/admin` and a member to `/me`) and a Workbox service worker from `vite-plugin-pwa` that precaches the app shell only; pages from the network, with the shell as the fallback when it fails; `/api/*` and `/healthz` never cached; the new worker takes over once installed; on iOS Safari a hint to add it to the home screen, once (#68) | a screen opens with no signal (the Clase screen, #44) while a deploy still shows at the next load; data and offline saves stay React Query's and `localStorage`'s (#231) |
@@ -209,6 +210,23 @@ Caddy terminates TLS and serves the built SPA; FastAPI is the only thing that ta
 | Money | integer CLP, no decimals | CLP has no cents; avoids float bugs |
 | Reporting | SQL views (`v_overdue`, `v_balance`, `v_inactive`, `v_monthly_income`) | no warehouse, no dbt, no DuckDB in year one |
 | Integrations | `PaymentRail`, `BankFeed`, `Messenger`, `Mailer`, `BlobStore` interfaces with local defaults | plugins stay optional; OSS self-host works offline |
+
+### Platform operators
+
+The panel at `/plataforma` (#433) is for the people who run the gyms Rakin hosts, not
+for any gym. It is served on the base host only; `/api/platform/*` answers 404 on a
+gym's host. Operators are granted and revoked from the host's shell (`python -m
+app.operators`, [runbook](deploy.md#platform-operators)), sign in with a link or its
+code as anyone does, and get a `__Host-platform` cookie good for 8 hours from sign-in.
+A gym's session and an operator's never stand in for each other.
+
+Tenancy holds for them too: the API's role has no privilege on the platform's tables
+(`platform_operator`, `operator_link`, `operator_session`, `platform_event`, migration
+0076) and never reads across gyms itself. The panel reads through `platform_*`
+functions owned by `rakin_platform`, each of which takes the operator's session hash
+and refuses unless it is live. Every sign-in, sign-out, grant, revoke and later every
+write is a row of `platform_event`, append-only. [ADR 0003](adr/0003-platform-operators.md)
+has the reasons.
 
 ## Infrastructure and operations
 

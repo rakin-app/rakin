@@ -12,8 +12,9 @@
 import { takeSubmissionKey } from './submit'
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-// The sign-in routes set cookies, which a replayed answer would not carry (`app.idempotency`).
-const UNKEYED_PREFIX = '/api/auth/'
+// The sign-in routes set cookies, which a replayed answer would not carry (`app.idempotency`):
+// a gym's and the platform's (#436).
+const UNKEYED_PREFIXES = ['/api/auth/', '/api/platform/auth/']
 
 export type ApiInit = RequestInit & {
   /** The key for a step a submission makes after an `await`: `<submissionKey()>:<step>`. */
@@ -55,7 +56,7 @@ export async function apiFetch<T>(path: string, { idempotencyKey, ...init }: Api
   }
 
   const headers = new Headers(init.headers)
-  if (MUTATING.has((init.method ?? 'GET').toUpperCase()) && !path.startsWith(UNKEYED_PREFIX)) {
+  if (MUTATING.has((init.method ?? 'GET').toUpperCase()) && !UNKEYED_PREFIXES.some((prefix) => path.startsWith(prefix))) {
     // Read now, synchronously: after the first `await` the submission is no longer running.
     const key = idempotencyKey ?? takeSubmissionKey()
     if (key !== undefined) headers.set('Idempotency-Key', key)
