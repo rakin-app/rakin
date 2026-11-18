@@ -24,7 +24,7 @@ from app.auth import MailSender, bind_session
 from app.blob_cors import cors_rule
 from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
-from app.gyms import NewGym, create_gym, parse
+from app.gyms import PROCESSOR_TERMS_VERSION, NewGym, create_gym, parse
 from app.hosts import GymLookup, HostGym, Hosts, host_name, slug_problem
 from app.integrations.blobstore import LocalBlobStore
 from app.integrations.mailer import Email
@@ -209,11 +209,22 @@ ARGS = [
     "Dueño Meta",
     "--owner-phone",
     "+56 9 1234 5678",
+    "--processor-terms",
+    PROCESSOR_TERMS_VERSION,
+    "--signed-on",
+    PROCESSOR_TERMS_VERSION,
 ]
 
 
+def parse_gym(argv: list[str]) -> NewGym:
+    """`create`'s arguments, as `parse` reads them."""
+    gym = parse(argv)
+    assert isinstance(gym, NewGym)
+    return gym
+
+
 def test_the_command_reads_its_arguments() -> None:
-    gym = parse(ARGS)
+    gym = parse_gym(ARGS)
     assert (gym.slug, gym.name, gym.timezone) == ("meta", "Meta", "America/Santiago")
     assert gym.owner_phone == "+56912345678"
     assert gym.owner_rut is None
@@ -221,12 +232,12 @@ def test_the_command_reads_its_arguments() -> None:
 
 
 def test_the_command_starts_from_a_grading_preset_when_asked() -> None:
-    assert parse([*ARGS, "--grading", "bjj"]).grading == "bjj"
+    assert parse_gym([*ARGS, "--grading", "bjj"]).grading == "bjj"
 
 
 def test_the_owner_phone_is_optional_and_the_rut_normalised() -> None:
     args = [a for a in ARGS if a not in ("--owner-phone", "+56 9 1234 5678")]
-    gym = parse([*args, "--owner-rut", "7.654.321-6"])
+    gym = parse_gym([*args, "--owner-rut", "7.654.321-6"])
     assert (gym.owner_phone, gym.owner_rut) == (None, "7654321-6")
 
 
@@ -239,6 +250,9 @@ def test_the_owner_phone_is_optional_and_the_rut_normalised() -> None:
         ("--owner-rut", "7.654.321-0"),
         ("--timezone", "Mars/Base"),
         ("--grading", "ajedrez"),
+        ("--processor-terms", "2026-01-01"),
+        ("--signed-on", "2026-01-01"),
+        ("--signed-on", "2999-01-01"),
     ],
 )
 def test_the_command_refuses_bad_arguments(
