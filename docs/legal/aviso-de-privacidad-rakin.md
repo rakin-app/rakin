@@ -43,7 +43,7 @@ No vendemos datos ni los usamos para publicidad.
 - **Envío de correos**: Resend, en Estados Unidos.
 - **Recepción de correos** a hola@ y soporte@: Cloudflare, que los reenvía a [buzón de la empresa y su proveedor].
 - **Alojamiento**: [Proveedor del servidor], en [Brasil o Estados Unidos].
-- **Registro de errores**: Sentry, en Estados Unidos.
+- **Registro de errores**: Sentry, en Alemania.
 
 Hoy ningún país ha sido declarado con un nivel adecuado de protección por la Agencia de Protección de Datos Personales. Cada proveedor se obliga por contrato a protegerlos ([pregunta 9](../legal-research.md#9-subprocessors-abroad)). `[ABOGADO: ítem 3 (b).]`
 

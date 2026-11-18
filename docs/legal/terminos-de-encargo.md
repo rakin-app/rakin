@@ -173,7 +173,7 @@ Ver [pregunta 9](../legal-research.md#9-subprocessors-abroad). La firma de este 
 | [Proveedor del servidor] | servidor y base de datos | todos | [São Paulo, Brasil; o Estados Unidos] |
 | Cloudflare (R2) | archivos (comprobantes, logos) y respaldos cifrados | comprobantes; respaldos de todo, cifrados con una llave que el proveedor no tiene | Cloudflare elige la ubicación; no hay jurisdicción fijada `[ABOGADO: ¿basta, o se debe fijar una región?]` |
 | Resend | envío de correos | nombre, correo, contenido del aviso (montos, links de acceso) | Estados Unidos |
-| Sentry | registro de errores | datos que acompañan un error, que pueden incluir datos de una persona (se está reduciendo: #373) | Estados Unidos, salvo que la cuenta use la región europea |
+| Sentry | registro de errores | el tipo de error, dónde ocurrió y la ruta de la solicitud; sin el contenido de la solicitud, variables ni valores de la base de datos (#373) | Alemania (región europea de Sentry) |
 | Cloudflare (Turnstile) | verificar que quien llena el formulario de inscripción no es un robot; solo si la Academia lo activa | datos técnicos del navegador | global |
 
 Cloudflare DNS y Let's Encrypt dan nombres y certificados, sin datos personales. Se listan para que la lista sea completa.
@@ -196,11 +196,11 @@ Detalle técnico en la [auditoría](../compliance-audit.md).
   - actualizaciones de seguridad automáticas;
   - la base de datos no es accesible desde internet.
 - **Registros**: los registros de solicitudes no guardan nombres, RUT ni correos.
+- **Registro de errores**: los errores enviados a Sentry no llevan el contenido de las solicitudes, sus parámetros, cookies, variables del programa ni los valores que muestra la base de datos (#373).
 - **Registro de mensajes y validaciones**: cada correo enviado y quién validó cada pago quedan registrados.
 
 **En curso**, con su issue:
 
 - ensayo de restauración de respaldos antes de la segunda academia (ops#2);
 - [protocolo de respuesta a vulneraciones](../incident-response.md): escrito, falta su primer ensayo (#369);
-- registros que permitan acotar un incidente (#374);
-- menos datos enviados a Sentry (#373).
+- registros que permitan acotar un incidente (#374).

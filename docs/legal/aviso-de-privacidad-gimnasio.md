@@ -79,7 +79,7 @@ Rakin cuenta tu asistencia para mostrarle al equipo si dejaste de venir [Según 
 - Alojamiento: los servidores y la base de datos, en [Brasil o Estados Unidos].
 - Envío de correos, en Estados Unidos.
 - Almacenamiento de archivos, como los comprobantes de pago.
-- Registro de errores, para corregir fallas del sistema, en Estados Unidos.
+- Registro de errores, para corregir fallas del sistema, en Alemania.
 - [Según configuración: Verificación de que no eres un robot, solo en el formulario de inscripción.]
 
 Puedes pedirnos el nombre de cada proveedor.
