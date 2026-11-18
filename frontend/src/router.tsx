@@ -33,6 +33,7 @@ import { NewMember } from './routes/NewMember'
 import { NotFound, NotFoundBody } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { PlatformGyms } from './routes/PlatformGyms'
+import { PlatformNewGym } from './routes/PlatformNewGym'
 import { PlatformSignIn } from './routes/PlatformSignIn'
 import { Privacy, validatePrivacySearch } from './routes/Privacy'
 import { SessionDetail } from './routes/SessionDetail'
@@ -350,6 +351,13 @@ const platformGymsRoute = createRoute({
   component: PlatformGyms,
 })
 
+// "Nuevo gimnasio" (#437): an operator adds a gym.
+const platformNewGymRoute = createRoute({
+  getParentRoute: () => platformRoute,
+  path: 'nuevo',
+  component: PlatformNewGym,
+})
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
@@ -374,7 +382,7 @@ const routeTree = rootRoute.addChildren([
   ]),
   meRoute.addChildren([meHomeRoute]),
   platformSignInRoute,
-  platformRoute.addChildren([platformGymsRoute]),
+  platformRoute.addChildren([platformGymsRoute, platformNewGymRoute]),
 ])
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {

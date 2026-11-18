@@ -45,6 +45,8 @@ from app.schemas.theme import Theme
 DEFAULT_REMINDER_EVERY_DAYS = 3
 
 _TIMEZONES = frozenset(available_timezones())
+# In order, for a select of them (the platform's panel, #437).
+TIMEZONES = tuple(sorted(_TIMEZONES))
 
 
 def _timezone(value: str) -> str:

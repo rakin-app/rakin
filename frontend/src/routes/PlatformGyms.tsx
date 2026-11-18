@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { platformGymsQuery, type PlatformGym } from '../api/platform'
+import { Link } from '@tanstack/react-router'
+import { PLATFORM_NEW_GYM_PATH, platformGymsQuery, type PlatformGym } from '../api/platform'
+import { buttonClass } from '../components/Button'
 import { Card } from '../components/Card'
 import { Loading } from '../components/Loading'
 import { PageHeader } from '../components/PageHeader'
@@ -24,6 +26,11 @@ export function PlatformGyms() {
   return (
     <>
       <PageHeader title={copy.title} eyebrow={gyms.data && copy.count(gyms.data.length)} />
+      <p className="platform-gyms__actions">
+        <Link to={PLATFORM_NEW_GYM_PATH} className={buttonClass({ variant: 'primary' })}>
+          {copy.add}
+        </Link>
+      </p>
       {gyms.isPending ? (
         <Loading className="platform-gyms__note" role="status">
           {copy.loading}

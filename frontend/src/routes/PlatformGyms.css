@@ -54,3 +54,7 @@
 .platform-gyms__note {
   color: var(--color-text-muted);
 }
+
+.platform-gyms__actions {
+  margin: 0 0 var(--space-4);
+}

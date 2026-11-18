@@ -21,6 +21,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Literal
 from urllib.parse import urlsplit
 
 from sqlalchemy import text
@@ -71,14 +72,24 @@ GYM_TTL_SECONDS = 60.0
 Sessionmaker = Callable[[], async_sessionmaker[AsyncSession]]
 
 
+def slug_refusal(slug: str) -> Literal["format", "reserved"] | None:
+    """Which way `slug` cannot be a gym's, or None when it can."""
+    if not SLUG.match(slug):
+        return "format"
+    if slug in RESERVED:
+        return "reserved"
+    return None
+
+
 def slug_problem(slug: str) -> str | None:
     """Why `slug` cannot be a gym's, or None when it can."""
-    if not SLUG.match(slug):
+    refusal = slug_refusal(slug)
+    if refusal == "format":
         return (
             "a slug is lower-case letters, digits and hyphens, at most 63, and does not"
             " start or end with a hyphen"
         )
-    if slug in RESERVED:
+    if refusal == "reserved":
         return f"{slug!r} is reserved"
     return None
 

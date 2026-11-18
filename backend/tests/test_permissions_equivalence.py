@@ -40,10 +40,12 @@ NOBODY = "00000000-0000-4000-8000-000000000000"
 
 
 def operations(app: FastAPI) -> list[tuple[str, str, str]]:
-    """Each operation outside `PUBLIC_PATHS`: its key, method and placeholder URL."""
+    """Each operation outside `PUBLIC_PATHS` and the platform's panel: its key, method
+    and placeholder URL. The panel's routes answer no gym role at all, only an operator
+    (#433), so a gym's roles have nothing to answer the same there."""
     found = []
     for path, ops in app.openapi()["paths"].items():
-        if path in PUBLIC_PATHS:
+        if path in PUBLIC_PATHS or path.startswith("/api/platform/"):
             continue
         for method, op in ops.items():
             formats = {
