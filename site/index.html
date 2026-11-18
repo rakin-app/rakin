@@ -493,11 +493,15 @@
           if (!e.isIntersecting) return
           reveals.forEach((r) => r.getBoundingClientRect().top < innerHeight && r.classList.add('is-visible'))
         }, { rootMargin: '0px 0px -8% 0px' })
-        // The loops play while on screen, never under reduced motion.
+        // The loops play while on screen, never under reduced motion; one on the sticky
+        // phone only while its step is the one showing.
+        const shown = (video) => !video.dataset.layer || video.classList.contains('is-active')
+        const run = (video, on) => (on && !calm.matches && shown(video) ? video.play().catch(() => {}) : video.pause())
+        const onScreen = new Set()
         seen(document.querySelectorAll('video[data-autoplay]'), (e) => {
-          const video = e.target
-          if (e.isIntersecting && !calm.matches && video.offsetParent) video.play().catch(() => {})
-          else video.pause()
+          if (e.isIntersecting && e.target.offsetParent) onScreen.add(e.target)
+          else onScreen.delete(e.target)
+          run(e.target, onScreen.has(e.target))
         }, { threshold: 0.4 })
         // Para ti: the sticky phone shows the step in the middle of the screen.
         const story = document.querySelector('[data-story]')
@@ -506,7 +510,10 @@
         seen(story.querySelectorAll('[data-step]'), (e) => {
           if (!e.isIntersecting) return
           const step = e.target.dataset.step
-          layers.forEach((layer) => layer.classList.toggle('is-active', layer.dataset.layer === step))
+          layers.forEach((layer) => {
+            layer.classList.toggle('is-active', layer.dataset.layer === step)
+            if (layer.tagName === 'VIDEO') run(layer, onScreen.has(layer))
+          })
         }, { rootMargin: '-45% 0px -45% 0px' })
       })()
     </script>
