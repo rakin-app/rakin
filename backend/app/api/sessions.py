@@ -68,6 +68,7 @@ from app.schemas.classes import ClassKind
 from app.schemas.sessions import (
     Day,
     DefaultDuration,
+    Range,
     Session,
     SessionCreate,
     SessionUpdate,
@@ -79,6 +80,8 @@ router = APIRouter(prefix="/api/sessions", tags=["classes"])
 
 # The dashboard looks this many gym days back, today included, for classes nobody marked.
 UNMARKED_DAYS = 7
+# A range asks for at most this many gym days: a month's calendar, six weeks of seven.
+RANGE_MAX_DAYS = 42
 
 # A class's minutes when neither its type's slot nor an earlier class of it says.
 DEFAULT_DURATION = 60
@@ -207,6 +210,44 @@ async def list_sessions(
     )
     sessions = [Session.model_validate(row, from_attributes=True) for row in result]
     return Day(date=day, timezone=zone, sessions=sessions)
+
+
+@router.get("/range")
+async def range_sessions(
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: StaffSession,
+    start: Annotated[date, Query(alias="from")],
+    end: Annotated[date, Query(alias="to")],
+) -> Range:
+    """`?from=&to=` (ISO days, both included, in the gym's timezone): the sessions of every
+    day between, ordered as a day's are (#426). At most `RANGE_MAX_DAYS` days."""
+    if end < start:
+        raise RequestValidationError(
+            [{"type": "range_reversed", "msg": "to is before from", "loc": ("query", "to")}]
+        )
+    if (end - start).days + 1 > RANGE_MAX_DAYS:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "range_too_long",
+                    "msg": f"at most {RANGE_MAX_DAYS} days",
+                    "loc": ("query", "to"),
+                }
+            ]
+        )
+    zone = await gym_timezone(session, tenant)
+    result = await session.execute(
+        text(
+            f"{SELECT_SESSION} WHERE s.starts_at >= :start AND s.starts_at < :end"
+            " ORDER BY s.starts_at, lower(c.name), s.created_at"
+        ),
+        {
+            "start": start_of_local_day(start, zone),
+            "end": start_of_local_day(end + timedelta(days=1), zone),
+        },
+    )
+    sessions = [Session.model_validate(row, from_attributes=True) for row in result]
+    return Range(from_=start, to=end, timezone=zone, sessions=sessions)
 
 
 @router.get("/unmarked")

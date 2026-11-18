@@ -91,6 +91,23 @@ export function daySessionsQuery(day: string) {
   })
 }
 
+/** The sessions of the gym days `from` to `to`, both included, earliest first (backend `Range`, #426). */
+export type SessionRange = {
+  from: string
+  to: string
+  timezone: string
+  sessions: ClassSession[]
+}
+
+/** The sessions of the days `from` to `to`, both included, in the gym's timezone: a week, or a month's calendar. */
+export function rangeSessionsQuery(from: string, to: string) {
+  return queryOptions({
+    queryKey: ['sessions', 'range', from, to],
+    queryFn: () =>
+      apiFetch<SessionRange>(`/api/sessions/range?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  })
+}
+
 /** The gym's timezone, from today's sessions, which every staff role reads; this
  * device's until they arrive. */
 export function useGymTimeZone(): string {

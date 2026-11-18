@@ -133,6 +133,17 @@ class Day(BaseModel):
     sessions: list[Session]
 
 
+class Range(BaseModel):
+    """The sessions of the gym days `from` to `to`, both included, earliest first (#426)."""
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    from_: date = Field(alias="from")
+    to: date
+    timezone: str
+    sessions: list[Session]
+
+
 class Unmarked(BaseModel):
     """The sessions since `since`, a day in the gym's timezone, with no one marked and
     not cancelled."""

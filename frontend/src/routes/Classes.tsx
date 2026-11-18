@@ -1,6 +1,6 @@
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useId, useState, type FormEvent } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
 import { rosterQuery } from '../api/attendance'
 import { gymTagHoursQuery } from '../api/classTags'
 import {
@@ -8,6 +8,7 @@ import {
   daySessionsQuery,
   defaultDurationQuery,
   isClass,
+  rangeSessionsQuery,
   startSession,
   todaySessionsQuery,
   useGymTimeZone,
@@ -17,13 +18,14 @@ import {
 } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
 import { Banner, Card, listRowClass, ListRowContent, PlainList, SectionHeader, SectionTitle } from '../components/Card'
+import { SegmentedControl } from '../components/Chip'
 import { Input, Select } from '../components/Field'
 import { EntradaCard } from '../components/EntradaCard'
 import { ChevronRightIcon } from '../components/icons'
 import { Grid, PageContainer, useWide } from '../components/Layout'
 import { PageHeader, PageTitle } from '../components/PageHeader'
 import { TagHoursCard } from '../components/TagHours'
-import { clockTime, isoDay, shiftDay, shortDay, timeRange, toDate, weekdayDay, zonedInstant } from '../format'
+import { clockTime, isoDay, shiftDay, shiftMonth, shortDay, timeRange, toDate, weekdayDay, zonedInstant } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import './Classes.css'
@@ -32,6 +34,28 @@ import { TimerLink } from './SessionDetail'
 import { Loading } from '../components/Loading'
 
 const copy = t.admin.classes
+
+// The day shown and the month view live in the URL (#426), so a reload, the back button
+// and coming back from a class find them as they were.
+export type ClassesSearch = {
+  // The day shown, `2026-11-04`; today when absent.
+  day?: string
+  // The month view, its first day `2026-11-01`; absent is the day (and, wide, its week).
+  month?: string
+}
+
+/** Whether `value` is a real ISO day: `2026-02-30` is not. */
+function isDay(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && shiftDay(value, 0) === value
+}
+
+export function validateClassesSearch(search: Record<string, unknown>): ClassesSearch {
+  const day = isDay(search.day) ? search.day : undefined
+  const month = isDay(search.month) && search.month.endsWith('-01') ? search.month : undefined
+  return { day, month }
+}
+
+const route = getRouteApi('/admin/clases')
 
 /**
  * "Clases": the class on now or next, a day's classes, today's first, and creating one. The weekly schedule
@@ -52,6 +76,11 @@ const copy = t.admin.classes
  * class now is on the page once (#416): picked on the right, it is the card there, "Ahora"
  * or "Siguiente", and the left drops its own.
  *
+ * The day and the month live in the URL (#426): "Ir a fecha" jumps to any day, the week
+ * has arrows of its own, and "Mes" shows the month the day is in as a calendar, each day
+ * with its classes and those unmarked or cancelled. A phone shows the month in place of
+ * the day; from 1024px it takes the week's place, beside the day.
+ *
  * Under the day, "Horas por etiqueta" (#243): the gym's classes held in a month or a
  * year, hours per tag.
  *
@@ -64,13 +93,24 @@ export function Classes() {
   const gymToday = useGymToday()
   const timeZone = useGymTimeZone()
   const wide = useWide()
-  // The day shown, in the gym's timezone; null follows today.
-  const [chosen, setChosen] = useState<string | null>(null)
-  const shown = chosen ?? gymToday
+  const search = route.useSearch()
+  const navigate = route.useNavigate()
+  // The day shown, in the gym's timezone; absent from the URL follows today.
+  const shown = search.day ?? gymToday
   const isToday = shown === gymToday
+  const month = search.month ?? null
   const day = useQuery(dayQuery(shown, gymToday))
-  const go = (to: string) => setChosen(to === gymToday ? null : to)
-  const week = useWeek(wide ? shown : null, gymToday, timeZone)
+  // Each a step back can undo: pushed, never replaced.
+  const show = (next: ClassesSearch) => void navigate({ search: next })
+  // To the day `to`, today written as no day; `keepMonth` stays in the month view.
+  const go = (to: string, keepMonth = true) =>
+    show({ day: to === gymToday ? undefined : to, month: keepMonth ? search.month : undefined })
+  const home = () => show({})
+  const setView = (view: 'day' | 'month') =>
+    show({ day: search.day, month: view === 'month' ? `${shown.slice(0, 7)}-01` : undefined })
+  // A phone shows the month in place of the day; wide, the day stays beside it.
+  const pick = (to: string) => go(to, wide)
+  const week = useWeek(wide && month === null ? shown : null, gymToday, timeZone)
   const now = useNow()
   const found = day.data && isToday ? nowOrNext(day.data.sessions, now) : null
   // Picked on the right, the class now is the card there.
@@ -85,6 +125,19 @@ export function Classes() {
             {found && !nowPicked && <NowCard found={found} timeZone={day.data!.timezone} />}
             <EntradaCard />
             <StartSession day={shown} today={gymToday} timeZone={timeZone} />
+            {!wide && month !== null ? (
+              <Month
+                month={month}
+                shown={shown}
+                today={gymToday}
+                timeZone={timeZone}
+                showMonth={(to) => show({ day: search.day, month: to })}
+                pick={pick}
+                home={home}
+                view={<ViewSwitch value="month" wide={false} onChange={setView} />}
+                jump={<JumpTo day={shown} onJump={(to) => go(to, false)} />}
+              />
+            ) : (
             <section className="classes__section" aria-labelledby="classes-day">
               <div className="classes__section-head">
                 <SectionTitle id="classes-day">
@@ -93,12 +146,14 @@ export function Classes() {
                 {day.data && day.data.sessions.length > 0 && (
                   <span className="classes__aside">{copy.today.count(day.data.sessions.length)}</span>
                 )}
+                {!wide && <ViewSwitch value="day" wide={false} onChange={setView} />}
               </div>
               <nav className="classes__days" aria-label={copy.days.label}>
                 <Button onClick={() => go(shiftDay(shown, -1))}>{copy.days.previous}</Button>
-                {!isToday && <Button onClick={() => go(gymToday)}>{copy.days.today}</Button>}
+                {(!isToday || month !== null) && <Button onClick={home}>{copy.days.today}</Button>}
                 <Button onClick={() => go(shiftDay(shown, 1))}>{copy.days.next}</Button>
               </nav>
+              <JumpTo day={shown} onJump={(to) => go(to, wide)} />
               {day.isPending ? (
                 <Loading className="classes__note">{copy.loading}</Loading>
               ) : day.isError ? (
@@ -113,6 +168,7 @@ export function Classes() {
                 </PlainList>
               )}
             </section>
+            )}
             <TagHoursCard
               title={t.tagHours.gym}
               note={t.tagHours.gymNote}
@@ -120,7 +176,30 @@ export function Classes() {
               query={gymTagHoursQuery}
             />
           </div>
-          {wide && <Week week={week} today={gymToday} timeZone={timeZone} now={nowPicked ? found : null} />}
+          {wide &&
+            (month === null ? (
+              <Week
+                week={week}
+                today={gymToday}
+                timeZone={timeZone}
+                now={nowPicked ? found : null}
+                shift={(days) => go(shiftDay(shown, days))}
+                view={<ViewSwitch value="day" wide onChange={setView} />}
+              />
+            ) : (
+              <div className="classes__column">
+                <Month
+                  month={month}
+                  shown={shown}
+                  today={gymToday}
+                  timeZone={timeZone}
+                  showMonth={(to) => show({ day: search.day, month: to })}
+                  pick={pick}
+                  home={home}
+                  view={<ViewSwitch value="month" wide onChange={setView} />}
+                />
+              </div>
+            ))}
         </Grid>
       </PageContainer>
     </div>
@@ -140,21 +219,23 @@ export function mondayOf(day: string): string {
 type NowOrNext = { session: ClassSession; on: boolean }
 
 /**
- * The seven days of the week `day` is in, Monday first, as the schedule made them, and
- * the class picked in it, today's last begun one until another is. No `day`, no week:
- * a phone never asks for it.
+ * The seven days of the week `day` is in, Monday first, as the schedule made them, in one
+ * request (#426), and the class picked in it, today's last begun one until another is.
+ * No `day`, no week: a phone never asks for it, nor a desktop showing the month.
  */
 function useWeek(day: string | null, today: string, timeZone: string) {
-  const monday = day === null ? null : mondayOf(day)
-  const days = monday === null ? [] : Array.from({ length: 7 }, (_, i) => shiftDay(monday, i))
-  const answers = useQueries({ queries: days.map((d) => dayQuery(d, today)) })
+  const monday = mondayOf(day ?? today)
+  const days = Array.from({ length: 7 }, (_, i) => shiftDay(monday, i))
+  const range = useQuery({ ...rangeSessionsQuery(monday, days[6]!), enabled: day !== null })
   const [picked, setPicked] = useState<string | null>(null)
-  const all = answers.flatMap((answer) => answer.data?.sessions ?? [])
+  const all = range.data?.sessions ?? []
+  const zone = range.data?.timezone ?? timeZone
+  const onDay = (d: string) => all.filter((session) => isoDay(session.starts_at, zone) === d)
   const now = new Date()
   const selected =
     all.find((session) => session.id === picked) ??
-    all.filter((session) => isoDay(session.starts_at, timeZone) === today && new Date(session.starts_at) <= now).at(-1)
-  return { monday, days, answers, selected, setPicked }
+    all.filter((session) => isoDay(session.starts_at, zone) === today && new Date(session.starts_at) <= now).at(-1)
+  return { monday, days, range, onDay, selected, setPicked }
 }
 
 /** "Semana": the week `useWeek` read, and the class picked in it; `now` when that is the class now. */
@@ -163,15 +244,19 @@ function Week({
   today,
   timeZone,
   now,
+  shift,
+  view,
 }: {
   week: ReturnType<typeof useWeek>
   today: string
   timeZone: string
   now: NowOrNext | null
+  // A week back (-7) or on (7): the day moves with it.
+  shift: (days: number) => void
+  view: ReactNode
 }) {
   const words = copy.week
-  const { days, answers, selected, setPicked } = week
-  const monday = week.monday!
+  const { days, range, onDay, selected, setPicked, monday } = week
 
   return (
     <div className="classes__column">
@@ -188,25 +273,31 @@ function Week({
             {words.title}
           </SectionTitle>
           <span className="classes__aside">{words.range(shortDay(monday), shortDay(shiftDay(monday, 6)))}</span>
+          {view}
         </div>
+        <nav className="classes__days" aria-label={words.label}>
+          <Button onClick={() => shift(-7)}>{words.previous}</Button>
+          <Button onClick={() => shift(7)}>{words.next}</Button>
+        </nav>
+        {range.isPending ? (
+          <Loading className="classes__note">{copy.loading}</Loading>
+        ) : range.isError ? (
+          <Failed message={words.error} retry={() => void range.refetch()} />
+        ) : (
         <PlainList ordered className="week">
-          {days.map((d, i) => {
-            const answer = answers[i]!
+          {days.map((d) => {
+            const sessions = onDay(d)
             const headingId = `week-${d}`
             return (
               <li key={d} className={d === today ? 'week__day week__day--today' : 'week__day'}>
                 <h3 id={headingId} className="week__title">
                   {weekdayDay(toDate(d))}
                 </h3>
-                {answer.isPending ? (
-                  <Loading className="classes__note">{copy.loading}</Loading>
-                ) : answer.isError ? (
-                  <Failed message={words.error} retry={() => void answer.refetch()} />
-                ) : answer.data.sessions.length === 0 ? (
+                {sessions.length === 0 ? (
                   <p className="classes__note">{words.empty}</p>
                 ) : (
                   <Card as="ul" flush className="week__list" aria-labelledby={headingId}>
-                    {answer.data.sessions.map((session) => (
+                    {sessions.map((session) => (
                       <li key={session.id}>
                         <button
                           type="button"
@@ -228,8 +319,169 @@ function Week({
             )
           })}
         </PlainList>
+        )}
       </section>
     </div>
+  )
+}
+
+/** "Día" (a phone) or "Semana" (from 1024px), or "Mes". */
+function ViewSwitch({ value, wide, onChange }: { value: 'day' | 'month'; wide: boolean; onChange: (view: 'day' | 'month') => void }) {
+  const words = copy.view
+  return (
+    <SegmentedControl
+      label={words.label}
+      options={[
+        { value: 'day', label: wide ? words.week : words.day },
+        { value: 'month', label: words.month },
+      ]}
+      value={value}
+      onChange={onChange}
+    />
+  )
+}
+
+/** "Ir a fecha": straight to any day, past or to come. */
+function JumpTo({ day, onJump }: { day: string; onJump: (day: string) => void }) {
+  const id = useId()
+  return (
+    <div className="classes__jump">
+      <label htmlFor={id} className="classes__label">
+        {copy.days.jump}
+      </label>
+      <Input
+        id={id}
+        type="date"
+        value={day}
+        onChange={(event) => {
+          if (isDay(event.target.value)) onJump(event.target.value)
+        }}
+      />
+    </div>
+  )
+}
+
+// A month's calendar is always six weeks, so it never changes height from month to month.
+const MONTH_DAYS = 42
+
+/** What a day of the month shows: its classes (never the door's day, nor a cancelled one),
+ * those no one is marked at, and those cancelled. */
+export function dayCounts(sessions: readonly ClassSession[], now: Date) {
+  return {
+    classes: sessions.filter((session) => session.cancelled_at === null && isClass(session.class_type_kind)).length,
+    unmarked: sessions.filter((session) => isUnmarked(session, now)).length,
+    cancelled: sessions.filter((session) => session.cancelled_at !== null).length,
+  }
+}
+
+/** "Mes": the month as a calendar, Monday first, each day a tap to it (#426). */
+function Month({
+  month,
+  shown,
+  today,
+  timeZone,
+  showMonth,
+  pick,
+  home,
+  view,
+  jump,
+}: {
+  month: string
+  shown: string
+  today: string
+  timeZone: string
+  showMonth: (month: string) => void
+  pick: (day: string) => void
+  home: () => void
+  view: ReactNode
+  jump?: ReactNode
+}) {
+  const words = copy.month
+  const first = mondayOf(month)
+  const days = Array.from({ length: MONTH_DAYS }, (_, i) => shiftDay(first, i))
+  const range = useQuery(rangeSessionsQuery(first, days[MONTH_DAYS - 1]!))
+  const zone = range.data?.timezone ?? timeZone
+  const now = new Date()
+  const byDay = new Map<string, ClassSession[]>()
+  for (const session of range.data?.sessions ?? []) {
+    const d = isoDay(session.starts_at, zone)
+    byDay.set(d, [...(byDay.get(d) ?? []), session])
+  }
+  const weeks = Array.from({ length: MONTH_DAYS / 7 }, (_, i) => days.slice(i * 7, i * 7 + 7))
+  const atHome = month === `${today.slice(0, 7)}-01` && shown === today
+
+  return (
+    <section className="classes__section" aria-labelledby="classes-month">
+      <div className="classes__section-head">
+        <SectionTitle id="classes-month">{words.title(month)}</SectionTitle>
+        {view}
+      </div>
+      <nav className="classes__days" aria-label={words.label}>
+        <Button onClick={() => showMonth(shiftMonth(month, -1))}>{words.previous}</Button>
+        {!atHome && <Button onClick={home}>{copy.days.today}</Button>}
+        <Button onClick={() => showMonth(shiftMonth(month, 1))}>{words.next}</Button>
+      </nav>
+      {jump}
+      {range.isPending ? (
+        <Loading className="classes__note">{copy.loading}</Loading>
+      ) : range.isError ? (
+        <Failed message={words.error} retry={() => void range.refetch()} />
+      ) : (
+        <table className="month">
+          <thead>
+            <tr>
+              {words.weekdays.map((initial, i) => (
+                <th key={initial + i} scope="col" className="month__weekday">
+                  <abbr title={words.weekdayNames[i]}>{initial}</abbr>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {weeks.map((week) => (
+              <tr key={week[0]}>
+                {week.map((d, i) => {
+                  const counts = dayCounts(byDay.get(d) ?? [], now)
+                  const outside = d.slice(0, 7) !== month.slice(0, 7)
+                  return (
+                    <td key={d} className="month__cell">
+                      <button
+                        type="button"
+                        className={outside ? 'month__day month__day--outside' : 'month__day'}
+                        aria-label={words.cell(words.weekdayNames[i]!, d, counts.classes, counts.unmarked, counts.cancelled)}
+                        aria-current={d === today ? 'date' : undefined}
+                        aria-pressed={d === shown}
+                        onClick={() => pick(d)}
+                      >
+                        <span className="month__number">{Number(d.slice(8, 10))}</span>
+                        {counts.classes > 0 && (
+                          <span className="month__count">
+                            <span className="month__short">{counts.classes}</span>
+                            <span className="month__long">{words.classes(counts.classes)}</span>
+                          </span>
+                        )}
+                        {counts.unmarked > 0 && (
+                          <span className="month__unmarked">
+                            <span className="month__dot" />
+                            <span className="month__long">{words.unmarked(counts.unmarked)}</span>
+                          </span>
+                        )}
+                        {counts.cancelled > 0 && (
+                          <span className="month__cancelled">
+                            <span className="month__short">{counts.cancelled}</span>
+                            <span className="month__long">{words.cancelled(counts.cancelled)}</span>
+                          </span>
+                        )}
+                      </button>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   )
 }
 
@@ -239,8 +491,19 @@ function WeekCount({ session }: { session: ClassSession }) {
     return <span className="classes__flag classes__flag--cancelled">{copy.today.cancelled}</span>
   }
   if (session.present > 0) return <span className="classes__aside">{copy.today.present(session.present)}</span>
-  if (isClass(session.class_type_kind) && new Date(session.starts_at) <= new Date()) return <span className="classes__flag">{copy.today.unmarked}</span>
+  if (isUnmarked(session, new Date())) return <span className="classes__flag">{copy.today.unmarked}</span>
   return null
+}
+
+/** A class that has begun with no one marked at it. A class yet to start has no attendance
+ * to take, a cancelled one never has, and the door's day (#348) is no class. */
+export function isUnmarked(session: ClassSession, now: Date): boolean {
+  return (
+    session.cancelled_at === null &&
+    isClass(session.class_type_kind) &&
+    session.present === 0 &&
+    new Date(session.starts_at) <= now
+  )
 }
 
 /** The class picked in the week: what it is, who came of those who usually do, and a tap to its attendance.
@@ -382,11 +645,9 @@ function Failed({ message, retry }: { message: string; retry: () => void }) {
 }
 
 function SessionRow({ session, timeZone }: { session: ClassSession; timeZone: string }) {
-  // A class yet to start has no attendance to take: no flag until it has. A cancelled
-  // one never has: it says so instead.
+  // A cancelled class says so instead of any flag.
   const cancelled = session.cancelled_at !== null
-  const unmarked =
-    !cancelled && isClass(session.class_type_kind) && session.present === 0 && new Date(session.starts_at) <= new Date()
+  const unmarked = isUnmarked(session, new Date())
   const name = copy.today.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)
   const detail = copy.today.detail(session.program_name, session.coach_name)
   const topic = session.topic ?? copy.today.noTopic
@@ -505,6 +766,7 @@ function StartForm({ classTypes, ...props }: { classTypes: ClassType[] } & Start
       queryClient.setQueryData(['sessions', 'detail', session.id], session)
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'day', isoDay(session.starts_at, timeZone)] })
+      void queryClient.invalidateQueries({ queryKey: ['sessions', 'range'] })
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
       await navigate({ to: '/admin/clases/$sessionId', params: { sessionId: session.id } })
     },

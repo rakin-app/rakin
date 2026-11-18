@@ -236,6 +236,66 @@ def test_a_day_is_the_gyms_calendar_day_earliest_first(client: TestClient, gym: 
     assert day(client, gym, date="2026-11-11")["sessions"] == []
 
 
+def sessions_range(
+    client: TestClient, gym: uuid.UUID, start: str, end: str, person: uuid.UUID | None = None
+) -> Any:
+    return client.get(
+        "/api/sessions/range", params={"from": start, "to": end}, headers=as_gym(gym, person)
+    )
+
+
+@pg
+def test_a_range_is_the_gyms_days_both_included_ordered_as_a_day(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    fundamentals, advanced = class_type(client, gym), class_type(client, gym, "Avanzado")
+    started(client, gym, {"class_type_id": advanced["id"], "starts_at": at("2026-11-01 23:59")})
+    first = started(
+        client, gym, {"class_type_id": fundamentals["id"], "starts_at": at("2026-11-02 19:00")}
+    )
+    morning = started(
+        client, gym, {"class_type_id": advanced["id"], "starts_at": at("2026-11-04 07:00")}
+    )
+    # 23:30 in Santiago on the last day is already the next day in UTC: still in.
+    late = started(
+        client, gym, {"class_type_id": advanced["id"], "starts_at": at("2026-11-08 23:30")}
+    )
+    started(client, gym, {"class_type_id": advanced["id"], "starts_at": at("2026-11-09 00:30")})
+
+    response = sessions_range(client, gym, "2026-11-02", "2026-11-08")
+    assert response.status_code == 200, response.text
+    week = response.json()
+    assert (week["from"], week["to"], week["timezone"]) == (
+        "2026-11-02",
+        "2026-11-08",
+        "America/Santiago",
+    )
+    assert [s["id"] for s in week["sessions"]] == [first["id"], morning["id"], late["id"]]
+    # One day is a range too, the same as `?date=`.
+    single = sessions_range(client, gym, "2026-11-04", "2026-11-04").json()
+    assert single["sessions"] == day(client, gym, date="2026-11-04")["sessions"]
+
+    coach = add_staff(db, gym, "coach")
+    by_coach = sessions_range(client, gym, "2026-11-02", "2026-11-08", person=coach)
+    assert by_coach.status_code == 200, by_coach.text
+    assert len(by_coach.json()["sessions"]) == 3
+
+
+@pg
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [("2026-11-08", "2026-11-02"), ("2026-11-01", "2026-12-13"), ("noviembre", "2026-11-08")],
+    ids=["reversed", "over-42-days", "not-a-day"],
+)
+def test_a_range_refuses(client: TestClient, gym: uuid.UUID, start: str, end: str) -> None:
+    assert sessions_range(client, gym, start, end).status_code == 422
+
+
+@pg
+def test_a_range_of_42_days_is_a_month_grid(client: TestClient, gym: uuid.UUID) -> None:
+    assert sessions_range(client, gym, "2026-10-26", "2026-12-06").status_code == 200
+
+
 @pg
 def test_the_day_follows_the_gyms_timezone(
     client: TestClient, db: Database, gym: uuid.UUID

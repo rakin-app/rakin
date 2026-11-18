@@ -1869,6 +1869,10 @@ export const es = {
         presentLabel: 'Presentes',
         take: 'Tomar asistencia',
         open: 'Ver clase',
+        // The week before or after, the day moving with it (#426).
+        label: 'Cambiar de semana',
+        previous: '← Semana anterior',
+        next: 'Semana siguiente →',
       },
       days: {
         label: 'Cambiar de día',
@@ -1876,6 +1880,38 @@ export const es = {
         next: 'Siguiente →',
         today: 'Hoy',
         empty: 'No hay clases este día.',
+        jump: 'Ir a fecha',
+      },
+      // The day (on a phone) or its week (from 1024px), or the month the day is in (#426).
+      view: {
+        label: 'Vista',
+        day: 'Día',
+        week: 'Semana',
+        month: 'Mes',
+      },
+      // The month's calendar: each day's classes, unmarked and cancelled ones (#426).
+      month: {
+        title: (iso: string) => `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`,
+        label: 'Cambiar de mes',
+        previous: '← Mes anterior',
+        next: 'Mes siguiente →',
+        error: 'No pudimos cargar este mes.',
+        // Monday first.
+        weekdays: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+        weekdayNames: ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'],
+        classes: (n: number) => (n === 1 ? '1 clase' : `${n} clases`),
+        unmarked: (n: number) => `${n} sin asistencia`,
+        cancelled: (n: number) => (n === 1 ? '1 cancelada' : `${n} canceladas`),
+        // `miércoles 4 de noviembre: 3 clases, 2 sin asistencia, 1 cancelada`.
+        cell: (weekday: string, iso: string, classes: number, unmarked: number, cancelled: number) => {
+          const day = `${weekday} ${Number(iso.slice(8, 10))} de ${MONTHS[Number(iso.slice(5, 7)) - 1]}`
+          const parts = [
+            classes === 0 ? 'sin clases' : classes === 1 ? '1 clase' : `${classes} clases`,
+            unmarked > 0 ? `${unmarked} sin asistencia` : null,
+            cancelled > 0 ? (cancelled === 1 ? '1 cancelada' : `${cancelled} canceladas`) : null,
+          ]
+          return `${day}: ${parts.filter(Boolean).join(', ')}`
+        },
       },
     },
     settings: {
