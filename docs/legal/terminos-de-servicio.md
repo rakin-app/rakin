@@ -2,9 +2,9 @@
 
 # Términos de servicio de Rakin
 
-Entre la empresa que presta Rakin y cada academia que lo usa en la versión alojada en rakin.app. Por ahora es una **beta gratuita** para academias conocidas. Lo que cambiará cuando haya precio está en la [sección 12](#12-cuando-rakin-tenga-precio).
+Entre quien presta Rakin y cada academia que lo usa en la versión alojada en rakin.app. Por ahora es una **beta gratuita** para academias conocidas. Lo que cambiará cuando haya precio está en la [sección 12](#12-cuando-rakin-tenga-precio).
 
-Entre **[Razón social de la empresa]**, RUT [RUT de la empresa], en adelante **Rakin**, y **[Razón social del gimnasio]**, RUT [RUT del gimnasio], que opera **[Nombre del gimnasio]**, en adelante **la Academia**.
+Entre **quien lleva Rakin**, un proyecto en etapa de prueba que todavía no se lanza oficialmente ([la Empresa, antes del lanzamiento](README.md#la-empresa-antes-del-lanzamiento)), en adelante **Rakin**, y **[Razón social del gimnasio]**, RUT [RUT del gimnasio], que opera **[Nombre del gimnasio]**, en adelante **la Academia**.
 
 ## 1. Qué es Rakin
 

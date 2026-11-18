@@ -101,7 +101,7 @@ def notice_html() -> str:
     """The notice from its policy on, with no drafting notes.
 
     The draft line the file opens with ("BORRADOR: pendiente de revisión por abogado.
-    <fecha>") and the policy's own "Versión 1, vigente desde [fecha]" become one line
+    <fecha>") and the policy's own "Versión N, vigente desde <fecha>" become one line
     under the title: a preliminary version, and the date it was last updated. The text
     before the policy says where the notice is published, for the repo's readers."""
     text = NOTICE.read_text()
@@ -123,7 +123,14 @@ def notice_html() -> str:
         r"\]\(\.\./([\w-]+\.md)", r"](https://github.com/rakin-app/rakin/blob/main/docs/\1", body
     )
     body = re.sub(r"\]\(([\w-]+\.md)", rf"]({DOCS_URL}\1", body)
-    return markdown.markdown(body, extensions=["tables", "toc"], output_format="html")
+    rendered = markdown.markdown(body, extensions=["tables", "toc"], output_format="html")
+    # Links are rendered by now, so a bracket left in the page is a datum still to fill
+    # in, such as "[fecha]" (docs/legal/README.md): never published as is.
+    if placeholders := re.findall(r"\[[^\]]*\]", rendered):
+        raise SystemExit(
+            f"build: {NOTICE.name} has unfilled placeholders: {', '.join(placeholders)}"
+        )
+    return rendered
 
 
 def build(out: Path, fonts: Path) -> None:

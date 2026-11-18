@@ -4,11 +4,11 @@
 
 **Versión: 2026-11-18.** Cada academia firma esta versión antes de que sus datos entren a Rakin, y vuelve a firmar cuando cambia, como al agregarse un subencargado al [Anexo A](#anexo-a-subencargados) ([cláusula 9](#9-subencargados)). La Empresa registra la versión y la fecha de cada firma, y guarda la copia firmada en sus archivos.
 
-Contrato entre la empresa que presta Rakin y cada academia que lo usa, exigido por el artículo 15 bis de la ley N° 19.628, modificada por la ley N° 21.719. Se basa en la [investigación legal](../legal-research.md). Donde una cláusula descansa en una de sus respuestas, la enlaza.
+Contrato entre quien presta Rakin y cada academia que lo usa, exigido por el artículo 15 bis de la ley N° 19.628, modificada por la ley N° 21.719. Se basa en la [investigación legal](../legal-research.md). Donde una cláusula descansa en una de sus respuestas, la enlaza.
 
 Entre:
 
-- **[Razón social de la empresa]**, RUT [RUT de la empresa], con domicilio en [domicilio de la empresa], representada por [nombre del representante], en adelante **la Empresa**. Es la **encargada** del tratamiento.
+- **Quien lleva Rakin**, un proyecto en etapa de prueba que todavía no se lanza oficialmente ([la Empresa, antes del lanzamiento](README.md#la-empresa-antes-del-lanzamiento)), en adelante **la Empresa**. Es la **encargada** del tratamiento.
 - **[Razón social del gimnasio]**, RUT [RUT del gimnasio], que opera **[Nombre del gimnasio]**, con domicilio en [domicilio del gimnasio], representada por [nombre del representante], en adelante **la Academia**. Es la **responsable** del tratamiento.
 
 ## 1. Objeto

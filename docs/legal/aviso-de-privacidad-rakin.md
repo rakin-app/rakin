@@ -2,7 +2,7 @@
 
 # Aviso de privacidad de Rakin
 
-El aviso de la empresa que presta Rakin, para lo que ella decide por sí misma. Se publica en `rakin.app/privacidad`, en la página de inicio (#343), y es lo que `/privacidad` debe mostrar cuando la dirección no es la de una academia. Hoy esa página sale en blanco (UX QA, run 1).
+El aviso de quien lleva Rakin, para los datos que decide por su cuenta. Hasta el lanzamiento no lleva razón social ([la Empresa, antes del lanzamiento](README.md#la-empresa-antes-del-lanzamiento)). Se publica en `rakin.app/privacidad`, en la página de inicio (#343), y es lo que `/privacidad` debe mostrar cuando la dirección no es la de una academia. Hoy esa página sale en blanco (UX QA, run 1).
 
 Los datos de los alumnos **no** están en este aviso: de ellos es responsable cada academia, y Rakin los trata por encargo ([Términos de encargo](terminos-de-encargo.md)). Cada academia los explica en su propio aviso ([plantilla](aviso-de-privacidad-gimnasio.md)).
 
@@ -10,11 +10,11 @@ Los datos de los alumnos **no** están en este aviso: de ellos es responsable ca
 
 ## Política de privacidad de Rakin
 
-Versión 2, vigente desde [fecha].
+Versión 3, vigente desde el 18 de noviembre de 2026.
 
 ### ¿Quién es responsable?
 
-[Razón social de la empresa], RUT [RUT de la empresa], representada por [nombre del representante legal], con domicilio en [domicilio de la empresa], que presta el servicio Rakin. Contacto: hola@rakin.app.
+Rakin está en etapa de prueba y todavía no se lanza oficialmente: no se vende ni se cobra el servicio. Contacto: hola@rakin.app. `[ABOGADO: el art. 14 ter pide identificar al responsable. Al lanzamiento, aquí van su razón social, RUT, representante legal y domicilio, en una versión nueva del aviso.]`
 
 ### ¿De qué datos es responsable Rakin?
 
@@ -41,7 +41,7 @@ No vendemos datos ni los usamos para publicidad.
 ### ¿Quién más los trata?
 
 - **Envío de correos**: Resend, en Estados Unidos.
-- **Recepción de correos** a hola@ y soporte@: Cloudflare, que los reenvía a [buzón de la empresa y su proveedor].
+- **Recepción de correos** a hola@ y soporte@: Cloudflare, que los reenvía a la casilla de correo del proyecto, en Google (Gmail), Estados Unidos.
 - **Alojamiento**: Hetzner, en Estados Unidos.
 - **Registro de errores**: Sentry, en Estados Unidos.
 
