@@ -151,15 +151,20 @@ If a release's migration is the problem, roll forward instead: fix it in a new m
 
 ## Creating a gym
 
-Each gym is served on its own host, `<slug>.<BASE_DOMAIN>`: Meta at `meta.staging.rakin.app` on staging, `meta.rakin.app` once production's `BASE_DOMAIN` is `rakin.app`. There is no self-service sign-up yet; a gym is made on the host:
+Each gym is served on its own host, `<slug>.<BASE_DOMAIN>`: Meta at `meta.staging.rakin.app` on staging, `meta.rakin.app` once production's `BASE_DOMAIN` is `rakin.app`. There is no self-service sign-up yet; a gym is made on the host.
+
+**First, the gym signs the [Términos de encargo](legal/terminos-de-encargo.md)** (#367), together with the [Términos de servicio](legal/terminos-de-servicio.md), before any of its data is loaded. Send the current version (its **Versión** line, also `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py)) with the blanks filled in, including the gym's breach contacts (clause 12), which also go in the password manager ([incident response](incident-response.md)). Keep the signed PDF with the company's records, never in a repo, named `<slug>-terminos-de-encargo-<version>.pdf`. Then create the gym, giving the version and the date on the signed copy:
 
 ```sh
 cd /srv/rakin
 docker compose run --rm api python -m app.gyms create --slug meta --name "Meta" \
   --timezone America/Santiago \
   --owner-email <owner@example.com> --owner-name "<Owner's name>" --owner-rut "<12.345.678-5>" \
-  --grading bjj
+  --grading bjj \
+  --processor-terms 2026-11-16 --signed-on <YYYY-MM-DD>
 ```
+
+`create` refuses to run without `--processor-terms` and `--signed-on`, and refuses a version that is not the current one or a date to come. It records both in `processor_terms`, with the gym. `--no-processor-terms` instead is only for an instance the company does not host, whose operator processes no gym's data for the company.
 
 It creates the gym with the programs Adultos and Niños and the default block kinds and no members, plans or classes, and makes the person with that RUT its owner (found if another gym already has them, created otherwise), with that email on Meta's record of them. Without `--owner-rut` the owner is someone new, keyed by the email in this gym. `--owner-phone` is optional: staff need no phone. Grading is optional: `--grading` starts the gym on a preset (`bjj`, `judo-karate`, `muay-thai`), as Meta, a BJJ academy, is above; without it the gym has no grades and shows no belts until its owner sets them up in Ajustes › Graduación. Run again with the same slug, it changes nothing and says so. The slug is the host: lower-case letters, digits and hyphens, and not a name the app keeps (`www`, `app`, `api`, `staging`, `admin`, `mail` and others, in [`app/hosts.py`](../backend/app/hosts.py)).
 
@@ -172,6 +177,35 @@ Then the owner opens `https://meta.staging.rakin.app`, which shows Meta's name, 
 `https://staging.rakin.app` itself works as before.
 
 **Certificates.** Caddy gets each gym host's certificate from Let's Encrypt at its first visit (on-demand TLS, [`deploy/Caddyfile`](../deploy/Caddyfile)), after asking the api's `/internal/tls-allowed?domain=` whether a gym has that host. It says yes only for an existing gym's slug, so no name anyone invents reaches Let's Encrypt, and there is no wildcard certificate or DNS plugin. That `ask` is the rate limit: Caddy 2.8 dropped on-demand TLS's own `interval` and `burst`. The first visit to a new gym's host waits a few seconds for its certificate.
+
+**A gym that already exists** signs the Términos de encargo the same way: one made before #367, such as Meta, and every gym again when the terms get a new version, as a new subprocessor in their Anexo A does (clause 9). Record each signature:
+
+```sh
+docker compose run --rm api python -m app.gyms sign-terms --slug meta \
+  --processor-terms 2026-11-16 --signed-on <YYYY-MM-DD>
+```
+
+Run again with a version the gym already signed, it changes nothing and says so, keeping the date first recorded. `create` on a slug a gym already has records no terms either, and says to use `sign-terms`.
+
+A wrong `--signed-on` is corrected by hand, with the date on the signed copy:
+
+```sh
+docker compose exec -T postgres psql -U rakin rakin -v slug=meta -v v=2026-11-16 -v d=<YYYY-MM-DD> <<'SQL'
+UPDATE processor_terms SET signed_on = :'d'
+WHERE version = :'v' AND gym_id = (SELECT id FROM gym WHERE slug = :'slug');
+SQL
+```
+
+To see which gyms have not signed the current version, by slug:
+
+```sh
+docker compose exec -T postgres psql -U rakin rakin -v v=2026-11-16 <<'SQL'
+SELECT g.slug FROM gym g
+WHERE NOT EXISTS (SELECT FROM processor_terms t WHERE t.gym_id = g.id AND t.version = :'v');
+SQL
+```
+
+On a gym listed there, load nothing more until it signs. In these commands and the ones above, `2026-11-16` is the current version: it moves with `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py) and the terms' **Versión** line. psql fills in `:'v'` only from stdin, not from `-c`, so the SQL goes in a heredoc.
 
 ## Day to day
 

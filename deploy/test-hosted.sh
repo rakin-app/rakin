@@ -131,7 +131,8 @@ echo "ok   - with COMPOSE_PROFILES=backup, up starts the backup service"
 
 # Backup and restore: a gym's rows go into a backup, and come back out of it.
 compose run --rm api python -m app.gyms create --slug meta --name Meta \
-	--owner-email owner@example.com --owner-name Owner --owner-phone "+56 9 1234 5678"
+	--owner-email owner@example.com --owner-name Owner --owner-phone "+56 9 1234 5678" \
+	--processor-terms 2026-11-16 --signed-on 2026-11-16
 compose run --rm backup python -m app.backup run
 compose run --rm backup python -m app.backup status
 out=$(cd "$dir" && "$root/deploy/restore.sh" latest <<<"$identity")

@@ -3,7 +3,10 @@
     uv run python -m app.gyms create --slug meta --name "Meta" \\
         --timezone America/Santiago \\
         --owner-email … --owner-name … [--owner-rut …] [--owner-phone …] \\
-        [--grading <preset key>]
+        [--grading <preset key>] \\
+        (--processor-terms <version> --signed-on <date> | --no-processor-terms)
+    uv run python -m app.gyms sign-terms --slug meta \\
+        --processor-terms <version> --signed-on <date>
 
 The gym gets what the demo seed's has before anyone trains there (`app.seed.data`):
 its programs and the block kinds every gym is given (0028); a grading scheme only when
@@ -21,9 +24,19 @@ Its free-practice block kind (0028's Sparring) takes the activity's name for it,
 "Práctica libre" with none (#346, `app.domain.practice`), so a new gym does not start
 as a dojo.
 
+A hosted gym signs the Términos de encargo (`docs/legal/terminos-de-encargo.md`, #367)
+before its data goes in: `create` takes the version signed, which must be the current
+one, `PROCESSOR_TERMS_VERSION`, and the date on the signed copy, and records them in
+`processor_terms` (0075) with the gym. `--no-processor-terms` is for an instance the
+company does not host, whose operator is not processing for it. `sign-terms` records a
+signature for a gym that already exists: one from before #367, or a new version of the
+terms, as a new subprocessor in their Anexo A makes.
+
 Running it again with a slug a gym already has changes nothing, whatever else it is
-given, and says so. It connects as the table owner, as the seed does: RLS holds it to
-the new gym once `app.gym_id` names it.
+given, and says so, and points terms given at `sign-terms`, which records them. A
+`sign-terms` with a version the gym already signed changes nothing either: the first
+date stays. It connects as the table owner, as the seed does: RLS holds it to the new
+gym once `app.gym_id` names it.
 """
 
 import argparse
@@ -34,12 +47,14 @@ import sys
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 
 import asyncpg
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
 
 from app.db_bootstrap import to_dsn
 from app.domain import practice, vocabulary
+from app.domain.dates import gym_today
 from app.domain.grading import PRESETS
 from app.hosts import Hosts, slug_problem
 from app.roles import Role
@@ -61,9 +76,45 @@ ACTIVITIES = {
 }
 
 
-class NewGym(BaseModel):
+# The "Versión" line of `docs/legal/terminos-de-encargo.md`; a test holds them equal.
+# A change to the terms a gym must sign again for gets a new one.
+PROCESSOR_TERMS_VERSION = "2026-11-16"
+SIGNED_IN = "America/Santiago"
+
+
+class TermsSigned(BaseModel):
+    """The Términos de encargo a gym signed, and the date on the signed copy."""
+
     model_config = ConfigDict(extra="forbid")
 
+    processor_terms: str | None = None
+    signed_on: date | None = None
+
+    @field_validator("processor_terms")
+    @classmethod
+    def _the_current_terms(cls, value: str | None) -> str | None:
+        if value is not None and value != PROCESSOR_TERMS_VERSION:
+            raise ValueError(f"not the current terms, {PROCESSOR_TERMS_VERSION}")
+        return value
+
+    @field_validator("signed_on")
+    @classmethod
+    def _signed_since_they_exist(cls, value: date | None) -> date | None:
+        # The terms are signed in Chile, so a date to come is one past Chile's today.
+        if value is not None and value > gym_today(SIGNED_IN):
+            raise ValueError("a date to come")
+        if value is not None and value < date.fromisoformat(PROCESSOR_TERMS_VERSION):
+            raise ValueError(f"before the terms' version, {PROCESSOR_TERMS_VERSION}")
+        return value
+
+    @model_validator(mode="after")
+    def _both_or_neither(self) -> "TermsSigned":
+        if (self.processor_terms is None) != (self.signed_on is None):
+            raise ValueError("--processor-terms and --signed-on go together")
+        return self
+
+
+class NewGym(TermsSigned):
     slug: str
     name: Name
     timezone: Timezone
@@ -87,6 +138,12 @@ class NewGym(BaseModel):
         if value not in SCHEMES:
             raise ValueError(f"not a grading preset: one of {', '.join(SCHEMES)}")
         return value
+
+
+class Signing(TermsSigned):
+    slug: str
+    processor_terms: str
+    signed_on: date
 
 
 @dataclass(frozen=True)
@@ -159,18 +216,70 @@ async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
             person_id,
             Role.OWNER.value,
         )
+        if gym.processor_terms is not None:
+            await record_terms(conn, gym_id, gym.processor_terms, gym.signed_on)
     return Created(gym_id, gym.name, created=True)
 
 
-async def run(gym: NewGym) -> Created:
+async def record_terms(
+    conn: asyncpg.Connection, gym_id: uuid.UUID, version: str, signed_on: date | None
+) -> bool:
+    """Record that the gym `app.gym_id` names signed `version`; `False` if it had."""
+    recorded = await conn.fetchval(
+        "INSERT INTO processor_terms (gym_id, version, signed_on) VALUES ($1, $2, $3)"
+        " ON CONFLICT (gym_id, version) DO NOTHING RETURNING true",
+        gym_id,
+        version,
+        signed_on,
+    )
+    return bool(recorded)
+
+
+@dataclass(frozen=True)
+class Signed:
+    gym_id: uuid.UUID
+    name: str
+    # False when the gym had signed this version already, and nothing was written.
+    recorded: bool
+
+
+async def sign_terms(conn: asyncpg.Connection, signing: Signing) -> Signed | None:
+    """Record `signing` for the gym with its slug; `None` if no gym has it."""
+    async with conn.transaction():
+        found = await conn.fetchrow("SELECT id, name FROM auth_gym_by_slug($1)", signing.slug)
+        if found is None:
+            return None
+        await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(found["id"]))
+        recorded = await record_terms(conn, found["id"], signing.processor_terms, signing.signed_on)
+    return Signed(found["id"], found["name"], recorded)
+
+
+async def run(command: NewGym | Signing) -> Created | Signed | None:
     conn = await asyncpg.connect(to_dsn(get_settings().migration_database_url))
     try:
-        return await create_gym(conn, gym)
+        if isinstance(command, Signing):
+            return await sign_terms(conn, command)
+        return await create_gym(conn, command)
     finally:
         await conn.close()
 
 
-def parse(argv: Sequence[str] | None = None) -> NewGym:
+def _add_terms(parser: argparse.ArgumentParser, *, required: bool) -> None:
+    parser.add_argument(
+        "--processor-terms",
+        required=required,
+        metavar="VERSION",
+        help=f"the Términos de encargo signed: their version, {PROCESSOR_TERMS_VERSION}",
+    )
+    parser.add_argument(
+        "--signed-on",
+        required=required,
+        metavar="YYYY-MM-DD",
+        help="the date on the signed copy",
+    )
+
+
+def parse(argv: Sequence[str] | None = None) -> NewGym | Signing:
     parser = argparse.ArgumentParser(description="Manage real gyms.")
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create", help="create an empty gym and its owner")
@@ -186,8 +295,29 @@ def parse(argv: Sequence[str] | None = None) -> NewGym:
         default="none",
         help=f"a grading preset to start from: {', '.join(SCHEMES)}",
     )
+    _add_terms(create, required=False)
+    create.add_argument(
+        "--no-processor-terms",
+        action="store_true",
+        help="on an instance the company does not host: no Términos de encargo to sign",
+    )
+    sign = commands.add_parser(
+        "sign-terms", help="record that a gym signed the Términos de encargo"
+    )
+    sign.add_argument("--slug", required=True)
+    _add_terms(sign, required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command == "sign-terms":
+            return Signing(
+                slug=args.slug, processor_terms=args.processor_terms, signed_on=args.signed_on
+            )
+        if args.no_processor_terms == (args.processor_terms is not None):
+            create.error(
+                "a hosted gym signs the Términos de encargo before its data goes in:"
+                " give --processor-terms and --signed-on, or --no-processor-terms"
+                " on an instance the company does not host"
+            )
         return NewGym(
             slug=args.slug,
             name=args.name,
@@ -197,22 +327,43 @@ def parse(argv: Sequence[str] | None = None) -> NewGym:
             owner_rut=args.owner_rut,
             owner_phone=args.owner_phone,
             grading=args.grading,
+            processor_terms=args.processor_terms,
+            signed_on=args.signed_on,
         )
     except ValidationError as error:
         for problem in error.errors():
             field = "--" + "-".join(str(p) for p in problem["loc"]).replace("_", "-")
-            print(f"{field}: {problem['msg']}", file=sys.stderr)
+            # A model-level problem has no field: its message names the flags.
+            message = f"{field}: {problem['msg']}" if problem["loc"] else problem["msg"]
+            print(message, file=sys.stderr)
         raise SystemExit(2) from None
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     gym = parse(argv)
-    created = asyncio.run(run(gym))
+    done = asyncio.run(run(gym))
+    if isinstance(gym, Signing):
+        if done is None:
+            print(f"no gym has the slug {gym.slug}", file=sys.stderr)
+            raise SystemExit(1)
+        assert isinstance(done, Signed)
+        if done.recorded:
+            print(f"{done.name} signed the Términos de encargo {gym.processor_terms}")
+        else:
+            print(f"{done.name} had signed {gym.processor_terms}: nothing changed")
+        return
+    assert isinstance(done, Created)
+    created = done
     url = Hosts.of(get_settings()).base_url(gym.slug)
     if created.created:
         print(f"{created.name} created ({created.gym_id}), at {url}")
     else:
         print(f"{gym.slug} is already {created.name} ({created.gym_id}): nothing changed")
+        if gym.processor_terms is not None:
+            print(
+                f"the Términos de encargo were not recorded either: for a gym that exists,"
+                f" use sign-terms --slug {gym.slug}"
+            )
 
 
 if __name__ == "__main__":
