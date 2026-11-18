@@ -147,6 +147,7 @@ def test_a_found_gym_is_kept_a_while_and_a_missing_one_is_asked_again() -> None:
                         "name": found.name,
                         "theme": found.theme,
                         "logo_version": found.logo_version,
+                        "suspended": found.suspended,
                     },
                 )
             )
@@ -651,6 +652,7 @@ def test_the_host_names_its_gym_for_the_sign_in_page(site: Site) -> None:
                 "theme": "bosque",
                 "logo": None,
                 "vocabulary": {"place": "academia", "members": "alumnos", "coach": "profe"},
+                "suspended": False,
             }
         }
     with site.client(None) as client:

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PlatformGym } from '../api/platform'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
+import { shortDate } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 
@@ -52,6 +53,7 @@ const GYMS: PlatformGym[] = [
     last_activity: '2026-11-17T20:00:00Z',
     status: 'active',
     owner_link_failed: false,
+    suspended_at: null,
   },
   {
     id: 'b',
@@ -68,8 +70,9 @@ const GYMS: PlatformGym[] = [
     members: 0,
     staff: 1,
     last_activity: null,
-    status: 'active',
+    status: 'suspended',
     owner_link_failed: false,
+    suspended_at: '2026-11-15T12:00:00Z',
   },
 ]
 
@@ -126,6 +129,9 @@ describe('/plataforma', () => {
     expect(within(sur!).getByText(copy.gyms.noTitular)).toBeInTheDocument()
     expect(within(sur!).getByText(copy.gyms.termsOutdated)).toBeInTheDocument()
     expect(within(sur!).getByText(copy.gyms.noActivity)).toBeInTheDocument()
+    // Suspended (#439), and since when.
+    expect(within(sur!).getByText(copy.gyms.status.suspended)).toBeInTheDocument()
+    expect(within(sur!).getByText(copy.gyms.suspendedSince(shortDate('2026-11-15T12:00:00Z')))).toBeInTheDocument()
   })
 
   it('says when the titular’s link did not go, and sends it again', async () => {

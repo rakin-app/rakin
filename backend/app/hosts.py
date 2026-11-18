@@ -151,6 +151,8 @@ class HostGym:
     theme: Theme = DEFAULT_THEME
     # Its logo's version (#223, `app.logos`), None with no logo; for the same pages.
     logo_version: str | None = None
+    # Suspended from the platform's panel (#439): its host shows only a notice.
+    suspended: bool = False
 
     @property
     def logo(self) -> str | None:
@@ -161,11 +163,13 @@ class HostGym:
 async def gym_by_slug(session: AsyncSession, slug: str) -> HostGym | None:
     row = (
         await session.execute(
-            text("SELECT id, name, theme, logo_version FROM auth_gym_by_slug(:slug)"),
+            text("SELECT id, name, theme, logo_version, suspended FROM auth_gym_by_slug(:slug)"),
             {"slug": slug},
         )
     ).one_or_none()
-    return None if row is None else HostGym(row.id, slug, row.name, row.theme, row.logo_version)
+    if row is None:
+        return None
+    return HostGym(row.id, slug, row.name, row.theme, row.logo_version, row.suspended)
 
 
 async def alias_of(session: AsyncSession, slug: str) -> str | None:

@@ -4195,6 +4195,11 @@ export const es = {
   },
   // The platform's panel (#436), at /plataforma on the base host: who runs the gyms
   // Rakin hosts, apart from any gym's screens.
+  // What a suspended gym's address shows on every path (#439).
+  suspended: {
+    tab: 'Suspendido',
+    notice: 'Este gimnasio está suspendido por ahora. Si eres parte del equipo, escribe a soporte.',
+  },
   platform: {
     brand: 'Rakin · Plataforma',
     // The browser tab: `Gimnasios · Plataforma`.
@@ -4252,7 +4257,8 @@ export const es = {
       // The version and the date on the signed copy: `2026-11-18, firmado el 19 nov 2026`.
       signedOn: (date: string) => `firmado el ${date}`,
       noActivity: 'Sin actividad',
-      status: { active: 'Activo' },
+      status: { active: 'Activo', suspended: 'Suspendido' },
+      suspendedSince: (date: string) => `desde el ${date}`,
       add: 'Nuevo gimnasio',
       // The titular's sign-in link, when the latest one did not go (#437).
       linkFailed: 'Enlace no enviado',
@@ -4394,6 +4400,43 @@ export const es = {
       cancel: 'Cancelar',
       renamed: (address: string) => `Listo: el gimnasio está en ${address}.`,
       renameFailed: 'No pudimos cambiar la dirección. Inténtalo de nuevo.',
+      // Suspending, resuming and removing (#439).
+      suspension: 'Suspensión',
+      active: 'El gimnasio está activo.',
+      suspendedSince: (date: string) => `Suspendido desde el ${date}.`,
+      suspendedReason: (reason: string) => `Motivo: ${reason}`,
+      suspendEffects:
+        'Mientras está suspendido, su dirección muestra solo un aviso, nadie puede entrar, las sesiones abiertas se cierran y no se envían correos automáticos. Sus datos se mantienen.',
+      reason: 'Motivo',
+      reasonHint: 'Queda registrado. No escribas datos de personas.',
+      reasonRequired: 'Escribe el motivo.',
+      suspend: 'Suspender',
+      suspending: 'Suspendiendo…',
+      confirmSuspendTitle: 'Suspender el gimnasio',
+      confirmSuspend: (address: string) => `${address} mostrará solo un aviso, y nadie podrá entrar hasta que lo reanudes.`,
+      resume: 'Reanudar',
+      resuming: 'Reanudando…',
+      confirmResumeTitle: 'Reanudar el gimnasio',
+      confirmResume:
+        'Su gente vuelve a entrar. En la próxima corrida nocturna se ponen al día los cobros, congelamientos y vencimientos de los días suspendido; los correos de esos días no se envían.',
+      suspendedDone: 'Gimnasio suspendido.',
+      resumedDone: 'Gimnasio reanudado.',
+      alreadySo: 'Ya estaba así: no cambió nada.',
+      suspendFailed: 'No pudimos suspender el gimnasio. Inténtalo de nuevo.',
+      resumeFailed: 'No pudimos reanudar el gimnasio. Inténtalo de nuevo.',
+      remove: 'Eliminar',
+      removeHint: 'Solo un gimnasio suspendido se puede eliminar.',
+      removeTitle: 'Eliminar el gimnasio',
+      // The end of service of the Términos de encargo, clause 14; the numbers come from the API.
+      removeIntro: 'Eliminar sigue los Términos de encargo (cláusula 14, «Al terminar»): nunca se borra de inmediato. Si empezara hoy:',
+      removeExport: (days: number, date: string) =>
+        `Primero, ${days} días para que el gimnasio pida una copia completa de sus datos y archivos, hasta el ${date}. Mientras no exista esa copia, se le entrega la exportación del libro de pagos.`,
+      removeDelete: (days: number, date: string) =>
+        `Después, sus datos y archivos se borran dentro de ${days} días, a más tardar el ${date}. Antes, solo si el gimnasio lo pide por escrito.`,
+      removeBackups: (days: number, date: string) =>
+        `Las copias de respaldo se renuevan dentro de ${days} días más: desde el ${date} ninguna lo contiene.`,
+      removeUnavailable: 'Todavía no está disponible: falta definir cómo se borran los datos de un gimnasio.',
+      close: 'Cerrar',
     },
     // Asked before an action that needs a recent proof of who is signed in (#438).
     reauth: {

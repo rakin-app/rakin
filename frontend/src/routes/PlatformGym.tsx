@@ -11,6 +11,8 @@ import {
   recordTerms,
   renameCheckQuery,
   renameGym,
+  resumeGym,
+  suspendGym,
   type GymEdit,
   type PlatformGymDetail,
 } from '../api/platform'
@@ -41,7 +43,8 @@ const REFUSALS = { range: {}, value: copy.refusals as Record<string, string> }
  * a new signature of the Términos de encargo, and its address. The titular is never
  * changed here, and their email only before their first sign-in: after it, that is the
  * handover (#321). A new address asks the operator to confirm by typing it, and, if
- * they have not proved who they are in the last 10 minutes, for a code.
+ * they have not proved who they are in the last 10 minutes, for a code. So do suspending
+ * and resuming the gym (#439), each after a confirm; removing one is only explained.
  */
 export function PlatformGym() {
   const { gymId } = route.useParams()
@@ -66,6 +69,7 @@ export function PlatformGym() {
           <Contact key={`${gym.data.name}|${gym.data.titular_name}|${gym.data.titular_phone}|${gym.data.titular_email}`} gym={gym.data} />
           <Terms gym={gym.data} />
           <Address key={gym.data.slug} gym={gym.data} />
+          <Suspension gym={gym.data} />
         </div>
       )}
     </>
@@ -371,6 +375,172 @@ function Address({ gym }: { gym: PlatformGymDetail }) {
                 </div>
               </form>
             )}
+          </section>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+type Dialog = 'suspend' | 'resume' | 'remove' | null
+
+/**
+ * Suspending and resuming the gym (#439), each confirmed, and on a suspended gym what
+ * removing it would take: the end of service of the Términos de encargo, with the dates a
+ * removal started today would keep. Removing is not available yet (#377), so that dialog
+ * only explains, and never asks the API.
+ */
+function Suspension({ gym }: { gym: PlatformGymDetail }) {
+  const refresh = useRefresh(gym.id)
+  const [reason, setReason] = useState('')
+  const [dialog, setDialog] = useState<Dialog>(null)
+  const [reauthing, setReauthing] = useState(false)
+  const [missing, setMissing] = useState(false)
+  const dialogId = useId()
+  const host = new URL(gym.address).host
+  const suspended = gym.suspended_at !== null
+
+  const change = useSubmit({
+    offline: 'refuse',
+    mutationFn: (to: 'suspend' | 'resume') => (to === 'suspend' ? suspendGym(gym.id, reason.trim()) : resumeGym(gym.id)),
+    onError: (error) => {
+      if (needsReauth(error)) setReauthing(true)
+    },
+    onSuccess: () => {
+      setDialog(null)
+      setReason('')
+      return refresh()
+    },
+  })
+
+  const open = (to: Dialog) => {
+    change.reset()
+    setReauthing(false)
+    setDialog(to)
+  }
+  const close = () => {
+    setDialog(null)
+    setReauthing(false)
+    change.reset()
+  }
+  const askToSuspend = (event: FormEvent) => {
+    event.preventDefault()
+    if (reason.trim() === '') {
+      setMissing(true)
+      return
+    }
+    setMissing(false)
+    open('suspend')
+  }
+
+  const done = change.isSuccess
+    ? change.data.changed
+      ? change.variables === 'suspend'
+        ? copy.suspendedDone
+        : copy.resumedDone
+      : copy.alreadySo
+    : null
+  const failed = change.isError && !needsReauth(change.error)
+
+  return (
+    <Section id={useId()} title={copy.suspension}>
+      <div className={cardClass({}, 'platform-gym__card')}>
+        {suspended ? (
+          <>
+            <p className="platform-gym__address">
+              <StatusPill status="suspended">{t.platform.gyms.status.suspended}</StatusPill>{' '}
+              {copy.suspendedSince(shortDate(gym.suspended_at!))}
+            </p>
+            {gym.suspended_reason && <p className="platform-gym__note">{copy.suspendedReason(gym.suspended_reason)}</p>}
+          </>
+        ) : (
+          <p className="platform-gym__note">{copy.active}</p>
+        )}
+        <p className="platform-gym__note">{copy.suspendEffects}</p>
+        {done && <Banner tone="done">{done}</Banner>}
+        {suspended ? (
+          dialog === null && (
+            <div className="platform-gym__actions">
+              <Button onClick={() => open('remove')}>{copy.remove}</Button>
+              <Button variant="primary" onClick={() => open('resume')}>
+                {copy.resume}
+              </Button>
+            </div>
+          )
+        ) : (
+          <form className="platform-gym__inline" onSubmit={askToSuspend} noValidate>
+            <Field label={copy.reason} hint={copy.reasonHint} error={missing ? copy.reasonRequired : undefined}>
+              {(props) => (
+                <Input
+                  {...props}
+                  type="text"
+                  maxLength={500}
+                  autoComplete="off"
+                  value={reason}
+                  readOnly={dialog !== null}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              )}
+            </Field>
+            {dialog === null && <Button type="submit">{copy.suspend}</Button>}
+          </form>
+        )}
+        {!suspended && <p className="platform-gym__note">{copy.removeHint}</p>}
+        {(dialog === 'suspend' || dialog === 'resume') && (
+          <section role="dialog" aria-labelledby={dialogId} className="platform-gym__confirm">
+            <h3 id={dialogId} className="section-header__title">
+              {dialog === 'suspend' ? copy.confirmSuspendTitle : copy.confirmResumeTitle}
+            </h3>
+            <p>{dialog === 'suspend' ? copy.confirmSuspend(host) : copy.confirmResume}</p>
+            {reauthing ? (
+              <PlatformReauth
+                onFresh={() => {
+                  setReauthing(false)
+                  change.mutate(dialog)
+                }}
+                onCancel={close}
+              />
+            ) : (
+              <>
+                {failed && (
+                  <Banner tone="error">{dialog === 'suspend' ? copy.suspendFailed : copy.resumeFailed}</Banner>
+                )}
+                <div className="platform-gym__actions">
+                  <Button onClick={close}>{copy.cancel}</Button>
+                  <Button
+                    variant={dialog === 'suspend' ? 'danger' : 'primary'}
+                    disabled={change.isPending}
+                    busy={change.isPending}
+                    onClick={() => change.mutate(dialog)}
+                  >
+                    {dialog === 'suspend'
+                      ? change.isPending
+                        ? copy.suspending
+                        : copy.suspend
+                      : change.isPending
+                        ? copy.resuming
+                        : copy.resume}
+                  </Button>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+        {dialog === 'remove' && gym.removal && (
+          <section role="dialog" aria-labelledby={dialogId} className="platform-gym__confirm">
+            <h3 id={dialogId} className="section-header__title">
+              {copy.removeTitle}
+            </h3>
+            <p>{copy.removeIntro}</p>
+            <PlainList className="platform-gym__list">
+              <li>{copy.removeExport(gym.removal.export_days, shortDate(gym.removal.export_until))}</li>
+              <li>{copy.removeDelete(gym.removal.deletion_days, shortDate(gym.removal.deleted_by))}</li>
+              <li>{copy.removeBackups(gym.removal.backup_days, shortDate(gym.removal.backups_gone_by))}</li>
+            </PlainList>
+            <Banner tone="warning">{copy.removeUnavailable}</Banner>
+            <div className="platform-gym__actions">
+              <Button onClick={close}>{copy.close}</Button>
+            </div>
           </section>
         )}
       </div>

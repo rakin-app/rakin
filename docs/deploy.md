@@ -228,9 +228,33 @@ WHERE a.until > now() ORDER BY a.until;
 SQL
 ```
 
+## Suspending a gym
+
+From the gym's screen in the panel (#439), section **Suspensión**. Suspending asks for a reason, a confirm, and a session proved in the last 10 minutes, as a rename does; so does resuming. Each is a row of `platform_event`: `gym_suspended` with `{slug, reason}`, or `gym_resumed`. Suspending a suspended gym, or resuming an active one, changes nothing and logs nothing. The list shows **Suspendido** and since when.
+
+What suspension does (migration 0079):
+
+- Every path on the gym's address shows only its name and "Este gimnasio está suspendido por ahora. Si eres parte del equipo, escribe a soporte." The address keeps its certificate, so the notice is served over HTTPS.
+- Nobody gets a sign-in link into it, and no session starts there. A session that was live answers 401 from the next request. Someone who is also in an active gym still signs in to that one.
+- The nightly jobs leave it out: no statements, no overdue emails, no billing periods, lapses, freezes or classes for it.
+- Its data stays, every row and file. The Resend webhook, which belongs to no gym, keeps suppressing bounced addresses; Rakin takes no payment webhook yet.
+
+What resuming does: its people sign in again, and on the next nightly run the `catch_up` job runs `freezes`, `billing_periods` and `lapse` for it on each day it missed, in order, before any other job takes it back. Its ledger then holds what it would have held had it never been suspended: the periods that fell due are billed, a plan that would have lapsed in the suspension lapses on that day and is not billed after it, and a freeze booked into it starts and ends on its own dates. The statements and overdue emails of those days are never sent; from the run date on, they go out as for any gym. Classes are made from the run date on. A payment recorded during the suspension counts on the days before it too, so it can save a plan from lapsing.
+
+**Removing a gym** is offered only for a suspended one, and is not possible yet: the panel's **Eliminar** explains the end of service of the Términos de encargo (clause 14), with the dates a removal started today would keep, and `DELETE /api/platform/gyms/{id}` answers `409 removal_unavailable` (`not_suspended` for an active gym). Nothing is deleted until #377 defines how. The schedule, whose numbers live in [`app/platform/removal.py`](../backend/app/platform/removal.py): 30 days for the gym to ask for a full copy of its data and files (deletion does not start sooner unless it asks for it in writing), its rows and files deleted within 30 days after that, and its backups gone within 60 days after the deletion.
+
+To see which gyms are suspended, and which the jobs still owe days:
+
+```sh
+docker compose exec -T postgres psql -U rakin rakin <<'SQL'
+SELECT slug, suspended_at, suspended_reason, jobs_owed_since FROM gym
+WHERE suspended_at IS NOT NULL OR jobs_owed_since IS NOT NULL ORDER BY slug;
+SQL
+```
+
 ## Platform operators
 
-The panel at `https://<base host>/plataforma` (#436) lists every gym Rakin hosts, for the people who run them, creates new ones ([Creating a gym](#creating-a-gym), #437) and edits them ([Editing a gym](#editing-a-gym), #438). Who may sign in there is granted on the host, never from a screen:
+The panel at `https://<base host>/plataforma` (#436) lists every gym Rakin hosts, for the people who run them, creates new ones ([Creating a gym](#creating-a-gym), #437), edits them ([Editing a gym](#editing-a-gym), #438) and suspends them ([Suspending a gym](#suspending-a-gym), #439). Who may sign in there is granted on the host, never from a screen:
 
 ```sh
 cd /srv/rakin

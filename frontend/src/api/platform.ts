@@ -31,9 +31,12 @@ export type PlatformGym = {
   members: number
   staff: number
   last_activity: string | null
-  status: 'active'
+  // Suspended from the panel (#439): nobody signs in there, and its jobs do not run.
+  status: 'active' | 'suspended'
   // Whether the latest sign-in link to its titular did not go: the list offers it again.
   owner_link_failed: boolean
+  // Since when it is suspended; `null` for an active gym.
+  suspended_at: string | null
 }
 
 export const platformMeQuery = () =>
@@ -137,6 +140,24 @@ export type PlatformGymDetail = {
   terms_version: string
   // The slugs it had that still redirect to it, and until when.
   aliases: { slug: string; address: string; until: string }[]
+  // Since when it is suspended (#439), and why; both `null` for an active gym.
+  suspended_at: string | null
+  suspended_reason: string | null
+  // For a suspended gym, the dates a removal started today would keep; `null` otherwise.
+  removal: RemovalDates | null
+}
+
+/**
+ * The end of service of the Términos de encargo, clause 14 (backend `app.platform.removal`):
+ * the days each step takes, and the dates a removal started today would keep.
+ */
+export type RemovalDates = {
+  export_days: number
+  deletion_days: number
+  backup_days: number
+  export_until: string
+  deleted_by: string
+  backups_gone_by: string
 }
 
 /** What changes; a field left out stays as it is. */
@@ -189,6 +210,24 @@ export function renameGym(gymId: string, slug: string): Promise<Renamed> {
   return apiFetch<Renamed>(`/api/platform/gyms/${encodeURIComponent(gymId)}/slug`, {
     method: 'POST',
     body: JSON.stringify({ slug }),
+  })
+}
+
+/**
+ * Suspends the gym (#439); `changed` false if it was already. A session not proved recently
+ * is a 401 `reauth` (`needsReauth`).
+ */
+export function suspendGym(gymId: string, reason: string): Promise<{ changed: boolean }> {
+  return apiFetch<{ changed: boolean }>(`/api/platform/gyms/${encodeURIComponent(gymId)}/suspend`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+}
+
+/** Resumes the gym; `changed` false if it was active. A stale session is a 401 `reauth`. */
+export function resumeGym(gymId: string): Promise<{ changed: boolean }> {
+  return apiFetch<{ changed: boolean }>(`/api/platform/gyms/${encodeURIComponent(gymId)}/resume`, {
+    method: 'POST',
   })
 }
 

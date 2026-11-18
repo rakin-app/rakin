@@ -134,7 +134,7 @@ Rules the diagram does not show:
 - Rejecting a proof notifies the student with the admin's note and keeps the period open.
 - Nothing is ever deleted: cancellation and rejection are terminal states, corrections are new entries. Two exceptions: a join request, someone's details before the gym has agreed to keep them, which is deleted once approved or rejected, or after 30 days; and a person added by mistake or asking to be erased, whose records the owner can delete (#157) once nothing of theirs holds money: no payment the gym kept (refunded first), no proof waiting, no charge owed (voided first). Their ledger entries go with them, and the gym's `audit_event` log keeps who deleted, when and why, without their data (#256).
 - A member who leaves (dado de baja) has every membership cancelled with the reason `dado de baja`, a trial or a frozen one too; what they owe stays owed, nothing starts them on a plan again until they are reactivated, and reactivating them starts a new membership if they need one.
-- The nightly job starts the freezes booked for the day and ends the freezes due (Frozen → Active on to\_date), generates billing periods 7 days ahead (a membership starting, or a member paying months ahead, is billed by the request instead, and the job bills on after it), flips Active → Lapsed after grace, and expires credits. It is idempotent per date via `job_run`.
+- The nightly job starts the freezes booked for the day and ends the freezes due (Frozen → Active on to\_date), generates billing periods 7 days ahead (a membership starting, or a member paying months ahead, is billed by the request instead, and the job bills on after it), flips Active → Lapsed after grace, and expires credits. It is idempotent per date via `job_run`. A suspended gym is left out, and once resumed its missed days are run for it first (`catch_up`, #439).
 - A freeze starts the day it is recorded, or is booked for a later day and starts then, and moves the due date past the frozen days as it starts, so a frozen member always reads the day they next pay. Ended early or given a new end, the due date moves again by the days it no longer lasts or gains. What was owed before the freeze is still owed.
 - A period due on day D is in grace through D + grace days and lapses the membership on the day after, if validated payments still leave it short. Each lapse writes a `lapsed` plan event. A membership created after D (a start backdated past its due date) is not due before the day it was created, so it lapses after `max(D, created on) + grace` (#271). A lapsed plan reactivated by hand is not due before the day it was reactivated either: it lapses after `max(D, created on, reactivated on) + grace` (#284).
 - A trial converts when the person starts a paid plan (monthly, prepaid, fixed period or a pack, not a drop-in; #27): the new membership names the trial in `converted_from`, their latest trial not voided and not converted already, with no paid plan of theirs started since, running or lapsed. A trial still running ends then, cancelled with the reason `pasó a un plan`, its free classes with it. On a trial's card "Asignar plan" is the way, and says before saving that the trial ends. An import row with a paid plan converts the same way: a trial of theirs does not keep it from starting, as any other plan does. Each trial converts once; a plan voided as started by mistake gives its trial back. Hoy's "Pruebas" counts the trials started in the last 90 days, how many converted and how many still run (`GET /api/memberships/trials`).
@@ -229,6 +229,20 @@ write is a row of `platform_event`, append-only. A gym created from the panel (#
 goes through `gym_create` (migration 0077), the same owner-owned function `app.gyms
 create` calls, so FORCEd RLS holds it to the new gym and the two cannot drift. [ADR 0003](adr/0003-platform-operators.md)
 has the reasons.
+
+A gym suspended from the panel (#439, migration 0079) keeps its data and is left out
+where sign-in decides belonging (`auth_people_by_email`, `auth_gyms_of`,
+`auth_live_session`), so no link, no new session and no live one reach it; its host
+still resolves (`auth_gym_by_slug` says `suspended`) and serves only a notice.
+`jobs_gym_ids()` leaves it out of every nightly job. The runner marks a day done for
+all gyms at once, so a resumed gym's missed days are never run for it again by the
+jobs themselves: `platform_resume_gym` sets `gym.jobs_owed_since`, and the first job of
+each day, `catch_up`, runs `freezes`, `billing_periods` and `lapse` for that gym on each
+missed day, in order, before `jobs_gym_ids()` takes it back. Billing alone would
+catch up, but would bill a plan for the whole suspension that should have lapsed in it.
+The emails of those days are not sent. A gym is never removed at once: the end of
+service follows the Términos de encargo, clause 14 (`app.platform.removal`), and
+removing is refused until #377 defines the deletion.
 
 ## Infrastructure and operations
 

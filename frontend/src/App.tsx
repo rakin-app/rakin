@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { hostQuery } from './api/host'
 import { myselfQuery } from './api/me'
 import { OfflineNotice } from './components/OfflineNotice'
+import { Suspended } from './routes/Suspended'
 import type { createAppRouter } from './router'
 import { logoIcon } from './logo'
 import { setTabIcon } from './tabIcon'
@@ -21,10 +22,17 @@ export function App({ queryClient, router }: Props) {
       <GymTheme />
       <GymVocabulary />
       <GymTabIcon />
-      <RouterProvider router={router} />
+      <Routes router={router} />
       <OfflineNotice />
     </QueryClientProvider>
   )
+}
+
+/** Every route, or on a suspended gym's address (#439) its notice on every path instead. */
+function Routes({ router }: Pick<Props, 'router'>) {
+  const gym = useQuery(hostQuery()).data?.gym
+  if (gym?.suspended) return <Suspended name={gym.name} />
+  return <RouterProvider router={router} />
 }
 
 /** Wears the gym's theme: the signed-in gym's, as `/api/me/role` says once a screen has

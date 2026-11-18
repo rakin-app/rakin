@@ -1,8 +1,8 @@
 import uuid
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 from pydantic_core import PydanticCustomError
 
 from app.gyms import SCHEMES, NewGym, signing_problem, terms_problem
@@ -56,10 +56,12 @@ class PlatformGym(BaseModel):
     staff: int
     # The latest attendance, ledger entry or sign-in there; None for a gym with none.
     last_activity: datetime | None
-    # Suspension comes with #439.
-    status: Literal["active"]
+    # Suspended from the panel (#439): nobody signs in there, and its jobs do not run.
+    status: Literal["active", "suspended"]
     # Whether the latest sign-in link to its owner did not go (`owner_link_failed`).
     owner_link_failed: bool
+    # Since when it is suspended; None for an active gym.
+    suspended_at: datetime | None
 
 
 class SlugCheck(BaseModel):
@@ -147,6 +149,17 @@ class SlugAlias(BaseModel):
     until: datetime
 
 
+class RemovalDates(BaseModel):
+    """The end of service of the Términos de encargo, clause 14 (`app.platform.removal`)."""
+
+    export_days: int
+    deletion_days: int
+    backup_days: int
+    export_until: date
+    deleted_by: date
+    backups_gone_by: date
+
+
 class PlatformGymDetail(BaseModel):
     """One gym as its edit screen shows it (#438)."""
 
@@ -164,6 +177,12 @@ class PlatformGymDetail(BaseModel):
     terms: list[TermsSignature]
     terms_version: str
     aliases: list[SlugAlias]
+    # Since when it is suspended (#439), and why; both None for an active gym.
+    suspended_at: datetime | None
+    suspended_reason: str | None
+    # For a suspended gym, the dates a removal started today would keep
+    # (`app.platform.removal`); None for an active one, which cannot be removed.
+    removal: RemovalDates | None
 
 
 class GymEdit(BaseModel):
@@ -213,6 +232,19 @@ class Renamed(BaseModel):
     # was the gym's already and nothing changed.
     old_slug: str
     until: datetime | None
+
+
+class Suspension(BaseModel):
+    """Why the gym is suspended (#439): the operator's words, kept with it and logged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+
+
+class Suspended(BaseModel):
+    # False when the gym was so already: nothing changed, and nothing was logged.
+    changed: bool
 
 
 class ReauthCode(BaseModel):

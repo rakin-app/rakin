@@ -19,6 +19,7 @@ from app.db_bootstrap import to_dsn
 from app.integrations.mailer import Email, MailDeliveryError
 from app.jobs import (
     billing,
+    catch_up,
     daily,
     freezes,
     join_requests,
@@ -294,6 +295,7 @@ def test_statements_run_nightly_after_billing() -> None:
     notices = Notices(Outbox(), lambda: None, base_url="https://x", secret_key="s" * 32)  # type: ignore[arg-type, return-value]
 
     assert [job.name for job in daily.jobs(notices)] == [
+        catch_up.NAME,
         freezes.NAME,
         billing.NAME,
         lapse.NAME,

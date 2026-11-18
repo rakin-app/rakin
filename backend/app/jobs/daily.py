@@ -23,6 +23,7 @@ from app.domain.dates import gym_today
 from app.integrations import build_mailer
 from app.jobs import (
     billing,
+    catch_up,
     freezes,
     join_requests,
     lapse,
@@ -41,6 +42,8 @@ logger = logging.getLogger(__name__)
 
 # In the order they run on each day: a later job may rely on an earlier one's work.
 JOBS: tuple[Job, ...] = (
+    # A resumed gym's missed days first: the others leave it out until they are run.
+    catch_up.JOB,
     freezes.JOB,
     billing.JOB,
     lapse.JOB,
