@@ -120,6 +120,9 @@ PER_IP = (20, 3600.0)
 PER_LINK = (100, 3600.0)
 
 INVALID_LINK = HTTPException(status.HTTP_404_NOT_FOUND, "invalid_link")
+# The link's gym is suspended from the platform's panel (#439): the form neither shows
+# nor takes anything until it is resumed.
+GYM_SUSPENDED = HTTPException(status.HTTP_410_GONE, {"code": "gym_suspended"})
 # What `new_token` makes, give or take; anything else is no link of ours.
 TOKEN_LENGTHS = range(20, 65)
 NO_LINK = HTTPException(status.HTTP_404_NOT_FOUND, "no join link")
@@ -264,7 +267,8 @@ FORM = f"""
            pr.id AS program_id, pr.name AS program,
            l.expires_on, {HAS_PRIVACY} AS has_privacy,
            (g.settings -> 'privacy' ->> 'updated_on')::date AS privacy_updated_on,
-           g.settings -> 'vocabulary' AS vocabulary
+           g.settings -> 'vocabulary' AS vocabulary,
+           g.suspended_at IS NOT NULL AS suspended
     FROM join_link l
     JOIN gym g ON g.id = l.gym_id
     LEFT JOIN program pr ON pr.gym_id = l.gym_id AND pr.id = l.program_id
@@ -289,7 +293,8 @@ class _OpenLink:
 
 @asynccontextmanager
 async def _open(request: Request, token: str) -> AsyncIterator[_OpenLink]:
-    """The link's gym, in a transaction acting there; a 404 when it does not work."""
+    """The link's gym, in a transaction acting there; a 404 when it does not work, and a
+    410 `gym_suspended` while its gym is suspended (#439), so nothing is written."""
     if len(token) not in TOKEN_LENGTHS:
         raise INVALID_LINK
     async with request.app.state.sessionmaker() as lookup:
@@ -298,6 +303,8 @@ async def _open(request: Request, token: str) -> AsyncIterator[_OpenLink]:
         raise INVALID_LINK
     async with in_gym(request, gym_id) as session:
         row = (await session.execute(text(FORM), {"token": token})).one_or_none()
+        if row is not None and row.suspended:
+            raise GYM_SUSPENDED
         # Revoked or regenerated between the two, past its last day, or with no
         # privacy notice to consent to.
         if (

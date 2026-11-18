@@ -9,7 +9,7 @@ export type StatusTone = 'success' | 'accent' | 'warning' | 'danger' | 'neutral'
  * (`active`…`cancelled`), a payment's (`pending`, `validated`, `rejected`) and a period's
  * (`paid`, `open`, `due`, `overdue`, `in_review`); `none` is a member with no plan. A
  * requirement's (#349) is `done`, `expiring`, `overdue` once past its date, or `required`,
- * never done.
+ * never done. A gym the platform's panel suspended (#439) is `suspended`.
  */
 export type Status =
   | 'active'
@@ -30,6 +30,7 @@ export type Status =
   | 'done'
   | 'expiring'
   | 'required'
+  | 'suspended'
 
 /**
  * The one mapping from status to colour: green is settled, blue waits on the gym, orange is
@@ -55,6 +56,7 @@ export const STATUS_TONE: Record<Status, StatusTone> = {
   done: 'success',
   expiring: 'accent',
   required: 'neutral',
+  suspended: 'neutral',
 }
 
 /** A status, not a control: it never looks tappable. `inverse` on a dark surface. */

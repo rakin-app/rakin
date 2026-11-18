@@ -12,6 +12,8 @@ class HostGymInfo(BaseModel):
     logo: str | None = None
     # What the gym calls itself, its members and its coach (#344).
     vocabulary: Vocabulary = DEFAULT
+    # Suspended from the platform's panel (#439): every page shows only a notice.
+    suspended: bool = False
 
 
 class HostInfo(BaseModel):

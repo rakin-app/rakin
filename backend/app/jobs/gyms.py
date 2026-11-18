@@ -3,6 +3,10 @@
 A gym that fails is rolled back and logged with its id, and with the membership's when
 the work raised `MembershipFailed`, which Sentry receives; the other gyms' work still
 commits, and the job returns `False` so the runner fails the day and retries it.
+
+The gyms are `jobs_gym_ids()`'s (0011, 0079): a suspended gym is left out, and so is
+a resumed one until `app.jobs.catch_up` has caught up the days it missed, which works
+on `jobs_resumed_gym_ids()`'s instead.
 """
 
 import logging
@@ -10,6 +14,9 @@ from collections.abc import Awaitable, Callable
 from datetime import date
 
 import asyncpg
+
+# The gyms the jobs work on: neither suspended nor owed a catch-up.
+GYMS = "SELECT jobs_gym_ids()"
 
 
 class MembershipFailed(Exception):
@@ -28,11 +35,12 @@ async def each_gym(
     job: str,
     logger: logging.Logger,
     failure: str,
+    gyms: str = GYMS,
 ) -> bool:
-    """Run `work` for every gym with `app.gym_id` set to it; `False` if any failed,
-    whose work alone is rolled back and logged as `failure` on `logger`."""
+    """Run `work` for every gym `gyms` lists, with `app.gym_id` set to it; `False` if
+    any failed, whose work alone is rolled back and logged as `failure` on `logger`."""
     complete = True
-    for gym_id in [r[0] for r in await conn.fetch("SELECT jobs_gym_ids()")]:
+    for gym_id in [r[0] for r in await conn.fetch(gyms)]:
         try:
             async with conn.transaction():  # a savepoint in the runner's transaction
                 # Transaction-local, so it goes with the savepoint.

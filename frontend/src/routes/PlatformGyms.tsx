@@ -125,6 +125,11 @@ function GymRow({ gym }: { gym: PlatformGym }) {
       </td>
       <td>
         <StatusPill status={gym.status}>{copy.status[gym.status]}</StatusPill>
+        {gym.suspended_at && (
+          <span className="platform-gyms__muted platform-gyms__line">
+            {copy.suspendedSince(shortDate(gym.suspended_at))}
+          </span>
+        )}
       </td>
     </tr>
   )

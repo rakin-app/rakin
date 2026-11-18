@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PlatformGym, PlatformGymDetail, SlugCheck } from '../api/platform'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
+import { shortDate } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 
@@ -53,6 +54,9 @@ function detail(changes: Partial<PlatformGymDetail> = {}): PlatformGymDetail {
     terms: [{ version: '2026-11-18', signed_on: '2026-11-19' }],
     terms_version: '2026-11-18',
     aliases: [],
+    suspended_at: null,
+    suspended_reason: null,
+    removal: null,
     ...changes,
   }
 }
@@ -74,6 +78,7 @@ const LISTED: PlatformGym = {
   last_activity: null,
   status: 'active',
   owner_link_failed: false,
+  suspended_at: null,
 }
 
 function slugCheck(slug: string): SlugCheck {
@@ -260,5 +265,109 @@ describe('/plataforma/$gymId', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(calls.filter((c) => c.path === RENAME)).toHaveLength(2)
     expect(router.state.location.pathname).toBe(`/plataforma/${GYM_ID}`)
+  })
+
+  describe('suspension (#439)', () => {
+    const SUSPEND = `/api/platform/gyms/${GYM_ID}/suspend`
+    const RESUME = `/api/platform/gyms/${GYM_ID}/resume`
+    const SUSPENDED = detail({
+      suspended_at: '2026-11-18T15:00:00Z',
+      suspended_reason: 'Impago',
+      removal: {
+        export_days: 30,
+        deletion_days: 30,
+        backup_days: 60,
+        export_until: '2026-12-18',
+        deleted_by: '2027-01-17',
+        backups_gone_by: '2027-03-18',
+      },
+    })
+
+    it('suspends only with a reason, after a confirm, and shows it suspended', async () => {
+      let suspended = false
+      const calls = stubApi((call) => {
+        if (call.path === SUSPEND) {
+          suspended = true
+          return { status: 200, body: { changed: true } }
+        }
+        if (call.path === `/api/platform/gyms/${GYM_ID}` && call.method === 'GET') {
+          return { status: 200, body: suspended ? SUSPENDED : detail() }
+        }
+        return undefined
+      })
+      renderAt(`/plataforma/${GYM_ID}`)
+
+      expect(await screen.findByText(copy.active)).toBeInTheDocument()
+      // Not on an active gym: only a suspended one can be removed.
+      expect(screen.queryByRole('button', { name: copy.remove })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: copy.suspend }))
+      expect(screen.getByText(copy.reasonRequired)).toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+      await userEvent.type(screen.getByLabelText(copy.reason), 'Impago')
+      await userEvent.click(screen.getByRole('button', { name: copy.suspend }))
+      const dialog = screen.getByRole('dialog', { name: copy.confirmSuspendTitle })
+      expect(within(dialog).getByText(copy.confirmSuspend('norte.rakin.app'))).toBeInTheDocument()
+      expect(calls.filter((c) => c.path === SUSPEND)).toHaveLength(0)
+      await userEvent.click(within(dialog).getByRole('button', { name: copy.suspend }))
+
+      expect(await screen.findByText(copy.suspendedDone)).toBeInTheDocument()
+      expect(await screen.findByText(copy.suspendedSince(shortDate('2026-11-18T15:00:00Z')))).toBeInTheDocument()
+      expect(screen.getByText(copy.suspendedReason('Impago'))).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: copy.resume })).toBeInTheDocument()
+      expect(calls.filter((c) => c.path === SUSPEND).map((c) => c.body)).toEqual([{ reason: 'Impago' }])
+    })
+
+    it('asks a stale session for a code, then resumes', async () => {
+      let fresh = false
+      const calls = stubApi((call) => {
+        if (call.path === RESUME) {
+          return fresh ? { status: 200, body: { changed: true } } : { status: 401, body: { detail: { code: 'reauth' } } }
+        }
+        if (call.path === `/api/platform/gyms/${GYM_ID}` && call.method === 'GET') {
+          return { status: 200, body: fresh ? detail() : SUSPENDED }
+        }
+        if (call.path === '/api/platform/reauth/send') return { status: 202 }
+        if (call.path === '/api/platform/reauth') {
+          fresh = true
+          return { status: 204 }
+        }
+        return undefined
+      })
+      renderAt(`/plataforma/${GYM_ID}`)
+
+      await userEvent.click(await screen.findByRole('button', { name: copy.resume }))
+      const dialog = screen.getByRole('dialog', { name: copy.confirmResumeTitle })
+      expect(within(dialog).getByText(copy.confirmResume)).toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: copy.resume }))
+
+      const prompt = await screen.findByRole('dialog', { name: reauthCopy.title })
+      await userEvent.type(within(prompt).getByLabelText(reauthCopy.codeLabel), '123456')
+      await userEvent.click(within(prompt).getByRole('button', { name: reauthCopy.submit }))
+
+      expect(await screen.findByText(copy.resumedDone)).toBeInTheDocument()
+      expect(await screen.findByText(copy.active)).toBeInTheDocument()
+      expect(calls.filter((c) => c.path === RESUME)).toHaveLength(2)
+    })
+
+    it('explains removing a suspended gym, with its dates, and never asks the API to', async () => {
+      const calls = stubApi((call) =>
+        call.path === `/api/platform/gyms/${GYM_ID}` && call.method === 'GET'
+          ? { status: 200, body: SUSPENDED }
+          : undefined,
+      )
+      renderAt(`/plataforma/${GYM_ID}`)
+
+      await userEvent.click(await screen.findByRole('button', { name: copy.remove }))
+      const dialog = screen.getByRole('dialog', { name: copy.removeTitle })
+      expect(within(dialog).getByText(copy.removeExport(30, shortDate('2026-12-18')))).toBeInTheDocument()
+      expect(within(dialog).getByText(copy.removeDelete(30, shortDate('2027-01-17')))).toBeInTheDocument()
+      expect(within(dialog).getByText(copy.removeBackups(60, shortDate('2027-03-18')))).toBeInTheDocument()
+      expect(within(dialog).getByText(copy.removeUnavailable)).toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: copy.close }))
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(0)
+    })
   })
 })

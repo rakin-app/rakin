@@ -4,7 +4,8 @@ whether a host may have a certificate.
 Both answer before anyone signs in. `GET /api/host` says only what the address bar
 already does, the gym's name for its slug, and the theme its pages wear (#199) and
 its logo (#223), and what the gym calls itself and its members (#344), for the join form
-and the privacy page.
+and the privacy page; and whether it is suspended (#439), for every page to show a
+notice instead.
 `GET /internal/tls-allowed?domain=` is Caddy's on-demand TLS `ask` (deploy/Caddyfile):
 200 for a gym's host, and for the host of a slug that still redirects to one (#438),
 as the redirect is answered after the TLS handshake; 404 for any other, so a
@@ -41,6 +42,7 @@ async def this_host(request: Request) -> HostInfo:
             theme=gym.theme,
             logo=gym.logo,
             vocabulary=vocabulary.read(words),
+            suspended=gym.suspended,
         )
     )
 

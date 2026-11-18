@@ -16,11 +16,18 @@ A gym is edited (#438) through 0078's functions: its name and its titular's cont
 for 90 days (`app.hosts`). The slug asks for a session proved in the last 10 minutes
 (`require_fresh`); a stale one gets `401 {"code": "reauth"}`, and the panel asks for a
 code by `/reauth/send` and spends it at `/reauth`, then tries again.
+
+A gym is suspended and resumed (#439) through 0079's `platform_suspend_gym` and
+`platform_resume_gym`, with a fresh session too. While it is suspended its host shows
+only a notice, nobody signs in there, a live session there stops, and the nightly jobs
+leave it out; its data stays. Removing one is offered only for a suspended gym, and
+refused until #377 defines how a gym is deleted (`app.platform.removal`).
 """
 
 import logging
 import math
 import uuid
+from datetime import date
 from typing import Literal
 
 from fastapi import (
@@ -37,10 +44,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.dates import gym_today
 from app.domain.grading import PRESETS
 from app.gyms import PROCESSOR_TERMS_VERSION, gym_create_values
 from app.hosts import GymLookup, Hosts, slug_refusal
 from app.magiclink import RateLimited
+from app.platform import removal
 from app.platform.session import FRESH, Operator, OperatorSession, require_fresh
 from app.platform.web import OperatorLinks
 from app.schemas.gym import TIMEZONES
@@ -57,9 +66,12 @@ from app.schemas.platform import (
     PlatformGymDetail,
     PresetOption,
     ReauthCode,
+    RemovalDates,
     Renamed,
     SlugAlias,
     SlugCheck,
+    Suspended,
+    Suspension,
     TermsRecorded,
     TermsSignature,
     TermsToRecord,
@@ -256,6 +268,24 @@ async def gym_detail(
             SlugAlias(slug=a["slug"], address=hosts.base_url(a["slug"]), until=a["until"])
             for a in row.aliases
         ],
+        suspended_at=row.suspended_at,
+        suspended_reason=row.suspended_reason,
+        removal=None
+        if row.suspended_at is None
+        else removal_dates(gym_today(request.app.state.settings.jobs_timezone)),
+    )
+
+
+def removal_dates(today: date) -> RemovalDates:
+    """The dates a removal started `today` would keep, with the numbers they follow."""
+    dates = removal.schedule(today)
+    return RemovalDates(
+        export_days=removal.EXPORT_DAYS,
+        deletion_days=removal.DELETION_DAYS,
+        backup_days=removal.BACKUP_DAYS,
+        export_until=dates.export_until,
+        deleted_by=dates.deleted_by,
+        backups_gone_by=dates.backups_gone_by,
     )
 
 
@@ -371,6 +401,85 @@ async def rename_gym(
     lookup.forget(body.slug)
     return Renamed(
         slug=body.slug, address=hosts.base_url(body.slug), old_slug=row.old_slug, until=row.until
+    )
+
+
+# --- suspending, resuming and removing a gym (#439) ------------------------------------
+
+
+async def change_suspension(
+    request: Request, operator: Operator, sql: str, params: dict[str, object]
+) -> Suspended:
+    """Suspend or resume through `sql`, with a fresh session; its host shows it at once."""
+    require_fresh(operator)
+    try:
+        row = (
+            await operator.db.execute(
+                text(sql),
+                {"h": operator.session_hash, **params},
+            )
+        ).one_or_none()
+    except DBAPIError as error:
+        # Proved in time to the API's clock, not to the database's.
+        if not_fresh(error):
+            raise REAUTH from None
+        raise
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such gym")
+    lookup: GymLookup = request.app.state.gym_lookup
+    lookup.forget(row.slug)
+    return Suspended(changed=row.changed)
+
+
+@router.post("/gyms/{gym_id}/suspend")
+async def suspend_gym(
+    gym_id: uuid.UUID, body: Suspension, operator: OperatorSession, request: Request
+) -> Suspended:
+    """Suspend the gym, with a session proved in the last 10 minutes: its host shows
+    only a notice, nobody signs in there, a live session there stops and the nightly
+    jobs leave it out. Its data stays. A suspended gym stays as it is."""
+    return await change_suspension(
+        request,
+        operator,
+        "SELECT slug, changed FROM platform_suspend_gym(:h, :g, :reason)",
+        {"g": gym_id, "reason": body.reason},
+    )
+
+
+@router.post("/gyms/{gym_id}/resume")
+async def resume_gym(gym_id: uuid.UUID, operator: OperatorSession, request: Request) -> Suspended:
+    """Resume the gym, with a session proved in the last 10 minutes: its people sign in
+    again, and the next nightly run catches up the days it missed (`app.jobs.catch_up`).
+    An active gym stays as it is."""
+    return await change_suspension(
+        request,
+        operator,
+        "SELECT slug, changed FROM platform_resume_gym(:h, :g)",
+        {"g": gym_id},
+    )
+
+
+@router.delete(
+    "/gyms/{gym_id}",
+    status_code=status.HTTP_409_CONFLICT,
+    responses={status.HTTP_409_CONFLICT: {"description": "Not suspended, or not yet possible"}},
+)
+async def remove_gym(gym_id: uuid.UUID, operator: OperatorSession) -> Response:
+    """Refused, always, and nothing is deleted: `not_suspended` for an active gym, and
+    `removal_unavailable` for a suspended one until #377 defines how a gym is deleted."""
+    row = (
+        await operator.db.execute(
+            text("SELECT suspended_at FROM platform_gym(:h, :g)"),
+            {"h": operator.session_hash, "g": gym_id},
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such gym")
+    if row.suspended_at is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "not_suspended"})
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        {"code": "removal_unavailable", "issue": removal.DELETION_ISSUE},
     )
 
 
