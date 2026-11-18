@@ -24,7 +24,8 @@ import html
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Annotated, Any
+from datetime import timedelta
+from typing import Annotated, Any, Protocol
 from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Response, status
@@ -102,6 +103,30 @@ class Site:
     logo: str | None = None
 
 
+class Links(Protocol):
+    """What the router asks of the links it serves: `MagicLinks`, or an application's
+    own issuer of the same links and codes, for accounts kept apart from its others."""
+
+    callback_url: str
+    session_ttl: timedelta
+
+    def admit(self, address: str, ip: str) -> None: ...
+
+    def admit_code(self, address: str, ip: str) -> None: ...
+
+    async def send_links(self, address: str, *, base_url: str | None = None) -> object: ...
+
+    def looks_valid(self, token: str) -> bool: ...
+
+    async def redeem(self, token: str, *, within: str | None = None) -> str | None: ...
+
+    async def redeem_code(
+        self, address: str, code: str, *, base_url: str | None = None, within: str | None = None
+    ) -> str | None: ...
+
+    async def end_session(self, session_token: str) -> None: ...
+
+
 class LinkRequest(BaseModel):
     email: Annotated[str, Field(min_length=3, max_length=254)]
 
@@ -145,7 +170,7 @@ def callback_url(base_url: str, prefix: str) -> str:
 
 
 def build_router(
-    links: MagicLinks,
+    links: Links,
     *,
     prefix: str,
     base_url: str,

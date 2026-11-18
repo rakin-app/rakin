@@ -192,12 +192,14 @@ def test_rls_hides_the_ledger_from_an_endpoint_that_forgot_the_role(
 def test_every_gym_operation_refuses_a_member(client: TestClient, sur: Sur) -> None:
     # A member's session has a gym but no staff role: every staff endpoint is a 403, so
     # one added without a role-checked session fails here. `/api/me` is the member's
-    # own page, which answers only about the person acting.
+    # own page, which answers only about the person acting. The platform's panel is no
+    # gym's: it takes an operator's session, and a gym's is a 401 there
+    # (tests/test_platform_auth.py).
     allowed = []
     app: FastAPI = client.app  # type: ignore[assignment]
     member = as_gym(sur.gym, sur.by_role["member"])
     for path, operations in app.openapi()["paths"].items():
-        if path in PUBLIC_PATHS or path.startswith(("/test/", "/api/me/")):
+        if path in PUBLIC_PATHS or path.startswith(("/test/", "/api/me/", "/api/platform/")):
             continue
         url = re.sub(r"\{[^}]+\}", "x", path)
         for method in operations:

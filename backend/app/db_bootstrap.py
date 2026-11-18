@@ -23,6 +23,11 @@ It also creates `rakin_auth`, which cannot log in and does bypass RLS. It owns t
 so the migration can hand it those functions; that also lets the owner
 `SET ROLE rakin_auth`, a deliberate step past RLS like disabling it on a table.
 
+And `rakin_platform`, the same kind of role for the platform's operators (#436): it
+owns the `platform_*` functions (migration 0076), which look across every gym for the
+panel at `/plataforma`, each only once it has checked the operator's session. The owner
+is made a member of it too, for the same reason.
+
 Re-running is safe: missing roles are created, existing ones get their password and
 attributes reset to the above.
 """
@@ -37,10 +42,11 @@ from app.settings import Settings, get_settings
 
 APP_ROLE = "rakin_app"
 AUTH_ROLE = "rakin_auth"
+PLATFORM_ROLE = "rakin_platform"
 
 # Attributes every role here must have; Postgres takes them on CREATE and ALTER alike.
 SAFE = "NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION"
-# The sign-in lookups' owner: RLS-exempt, and nothing else.
+# The sign-in lookups' owner, and the platform functions': RLS-exempt, and nothing else.
 AUTH = "NOLOGIN NOSUPERUSER BYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION"
 
 
@@ -88,6 +94,7 @@ async def bootstrap(admin_url: str | None, settings: Settings) -> None:
             await ensure_login(conn, owner, owner_password)
             await ensure_role(conn, APP_ROLE, f"NOLOGIN {SAFE}")
             await ensure_role(conn, AUTH_ROLE, AUTH)
+            await ensure_role(conn, PLATFORM_ROLE, AUTH)
             await ensure_login(conn, api, api_password)
             owner_ident, api_ident, database = await conn.fetchrow(
                 "SELECT quote_ident($1), quote_ident($2), quote_ident(current_database())",
@@ -96,6 +103,7 @@ async def bootstrap(admin_url: str | None, settings: Settings) -> None:
             )
             await conn.execute(f"GRANT {APP_ROLE} TO {api_ident}")
             await conn.execute(f"GRANT {AUTH_ROLE} TO {owner_ident}")
+            await conn.execute(f"GRANT {PLATFORM_ROLE} TO {owner_ident}")
             # The database owner owns `public` too (via pg_database_owner, Postgres 15+).
             await conn.execute(f"ALTER DATABASE {database} OWNER TO {owner_ident}")
             await conn.execute(f"GRANT ALL ON SCHEMA public TO {owner_ident}")

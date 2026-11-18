@@ -29,6 +29,7 @@ from app.notices import (
     FREEZE_REQUESTED,
     JOIN_APPROVED,
     MAGIC_LINK,
+    PLATFORM_LINK,
     PROOF_RECEIVED,
     PROOF_REJECTED,
     RECEIPT,
@@ -76,6 +77,7 @@ def proof_notice(template: Template = PROOF_RECEIVED, **context: Any) -> Notice:
 
 TEMPLATES = [
     MAGIC_LINK,
+    PLATFORM_LINK,
     WELCOME,
     STATEMENT,
     PROOF_RECEIVED,
