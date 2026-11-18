@@ -230,9 +230,10 @@ Since #373, `backend/app/sentry.py` sends none of that:
 - no user data, cookies, IPs or query strings (`data_collection`, the SDK's successor to `send_default_pii=False`);
 - no request bodies (`max_request_body_size="never"`) and no local variables (`include_local_variables=False`);
 - `before_send` drops what is left anyway: the request's `data`, `query_string`, cookies and `Cookie` header, and the query string of every URL in a breadcrumb (httpx's log line `HTTP Request: GET https://…?…` included);
-- an exception from asyncpg or SQLAlchemy keeps its type but not its text: it becomes `sqlstate=23505 constraint=person_rut_key (message withheld)`.
+- an exception from asyncpg or SQLAlchemy keeps its type but not its text: it becomes `sqlstate=23505 constraint=person_rut_key (message withheld)`. A pydantic `ValidationError`, whose text quotes the `input_value`, becomes the fields that failed and why (`Person: rut int_parsing (message withheld)`);
+- the same text is withheld where a log record quotes the exception, with `%s` or in an f-string: in the event's message and parameters, and in the breadcrumb the record leaves for later events (`before_breadcrumb`).
 
-`tests/test_sentry_privacy.py` sends an error with a RUT in the body, the query string, a cookie and a local, and a unique violation through SQLAlchemy and through asyncpg, and fails if any of them reaches the transport. Every `ERROR` log record still becomes an event, with its message and `extra`: the code logs ids there, never names, RUTs or emails. The organisation is on the EU region, in Germany. That is still a transfer under art. 27 (no country is declared adequate), so Sentry's data processing terms go in the DPA's annex (#367). The SPA has no Sentry.
+`tests/test_sentry_privacy.py` sends an error with a RUT in the body, the query string, a cookie and a local; a unique violation through SQLAlchemy and through asyncpg; and a validation error logged every way above. It fails if the RUT reaches the transport. Every `ERROR` log record still becomes an event, with its message and `extra`: the code logs ids there, never names, RUTs or emails. The organisation is on the EU region, in Germany. That is still a transfer under art. 27 (no country is declared adequate), so Sentry's data processing terms go in the DPA's annex (#367). The SPA has no Sentry.
 
 Gap: #373 (closed).
 
