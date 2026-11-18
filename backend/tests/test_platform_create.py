@@ -6,8 +6,10 @@ The app runs as in production, a base domain and gyms on their own hosts
 (`test_platform_auth`'s panel), against a real database; mail lands in an outbox.
 """
 
+import asyncio
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import Any
 
@@ -16,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import gyms
+from app.db_bootstrap import to_dsn
 from app.domain.grading import PRESETS
 from app.gyms import PROCESSOR_TERMS_VERSION
 from tests.pg import run
@@ -45,6 +48,7 @@ NEW_ROUTES = (
     ("GET", "/api/platform/slug?slug=nuevo"),
     ("GET", "/api/platform/presets"),
     ("POST", "/api/platform/gyms"),
+    ("POST", f"/api/platform/gyms/{uuid.uuid4()}/owner-link"),
 )
 
 
@@ -237,6 +241,97 @@ def test_a_taken_slug_writes_nothing(panel: Panel) -> None:
     assert counts(panel.db, panel.gym_a) == before
     assert gym_events(panel, panel.gym_a) == []
     assert panel.outbox.sent == []
+
+
+def test_two_creations_of_one_slug_at_once_make_one_gym(panel: Panel) -> None:
+    """Both wait on the slug's lock, held here, and both pass the look for the slug
+    before it; once it is let go, the second finds the first's gym: a 422, not a 500."""
+    _, signing_in = signed_in(panel)
+    slug = new_slug()
+    with signing_in as client:
+
+        def create(owner: str) -> Any:
+            return client.post("/api/platform/gyms", json=body(slug, owner_email=owner))
+
+        async def go() -> list[int]:
+            holder = await asyncpg.connect(to_dsn(panel.db.admin_url))
+            try:
+                await holder.execute("BEGIN")
+                await holder.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", f"gym_slug:{slug}"
+                )
+                with ThreadPoolExecutor(2) as pool:
+                    running = [
+                        asyncio.wrap_future(pool.submit(create, owner))
+                        for owner in ("una@example.cl", "otra@example.cl")
+                    ]
+                    await asyncio.sleep(0.5)
+                    assert not any(r.done() for r in running), "a creation did not wait"
+                    await holder.execute("COMMIT")
+                    responses = await asyncio.gather(*running)
+            finally:
+                await holder.close()
+            return [r.status_code for r in responses]
+
+        statuses = asyncio.run(go())
+    assert sorted(statuses) == [201, 422]
+    assert gyms_with(panel, slug) == 1
+
+
+# --- the owner's link ------------------------------------------------------------------
+
+
+def listed(client: TestClient, gym_id: uuid.UUID) -> dict[str, Any]:
+    [gym] = [g for g in client.get("/api/platform/gyms").json() if g["id"] == str(gym_id)]
+    return dict(gym)
+
+
+def test_a_link_that_did_not_go_shows_in_the_list_and_goes_again(
+    panel: Panel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    operator_id, signing_in = signed_in(panel)
+    slug = new_slug()
+    owner = f"{slug}@example.cl"
+    links = panel.app.state.magic_links
+
+    async def fails(address: str, *, base_url: str | None = None) -> list[Any]:
+        raise ConnectionError("the mail server is down")
+
+    with signing_in as client:
+        with monkeypatch.context() as down:
+            down.setattr(links, "send_links", fails)
+            response = client.post("/api/platform/gyms", json=body(slug))
+        assert response.status_code == 201, response.text
+        gym_id = uuid.UUID(response.json()["id"])
+        assert panel.outbox.links_to(owner) == []
+        assert listed(client, gym_id)["owner_link_failed"] is True
+
+        again = client.post(f"/api/platform/gyms/{gym_id}/owner-link")
+        assert again.status_code == 200, again.text
+        assert again.json() == {"sent": True}
+        [link] = panel.outbox.links_to(owner)
+        assert link.startswith(f"https://{slug}.{BASE}/api/auth/callback?")
+        assert listed(client, gym_id)["owner_link_failed"] is False
+
+        # A send that answers no link is a failure too, and shows again.
+        with monkeypatch.context() as empty:
+
+            async def none(address: str, *, base_url: str | None = None) -> list[Any]:
+                return []
+
+            empty.setattr(links, "send_links", none)
+            assert client.post(f"/api/platform/gyms/{gym_id}/owner-link").json() == {"sent": False}
+        assert listed(client, gym_id)["owner_link_failed"] is True
+
+        assert client.post(f"/api/platform/gyms/{uuid.uuid4()}/owner-link").status_code == 404
+
+    assert [action for action, _, _ in gym_events(panel, gym_id)] == [
+        "gym_created",
+        "owner_link_failed",
+        "owner_link_sent",
+        "owner_link_failed",
+    ]
+    assert {who for _, who, _ in gym_events(panel, gym_id)} == {operator_id}
 
 
 # --- the slug, as typed ----------------------------------------------------------------

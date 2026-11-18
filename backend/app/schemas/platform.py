@@ -40,6 +40,8 @@ class PlatformGym(BaseModel):
     last_activity: datetime | None
     # Suspension comes with #439.
     status: Literal["active"]
+    # Whether the latest sign-in link to its owner did not go (`owner_link_failed`).
+    owner_link_failed: bool
 
 
 class SlugCheck(BaseModel):
@@ -111,3 +113,8 @@ class CreatedGym(BaseModel):
     slug: str
     # Where it is served, at once: `https://<slug>.<BASE_DOMAIN>`.
     address: str
+
+
+class OwnerLink(BaseModel):
+    # Whether the link went: False when the mail did not, which the list keeps showing.
+    sent: bool

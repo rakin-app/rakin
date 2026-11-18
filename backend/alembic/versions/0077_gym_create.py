@@ -4,7 +4,9 @@
 from Python until now: the gym, its programs, its activity when a grading preset brings
 one, the name of its free-practice block kind, its owner (`join_gym`, 0036) as the
 staff that holds the account, and the Términos de encargo when they were signed (0075).
-A slug a gym already has writes nothing and answers that gym, `created = false`. The
+A slug a gym already has writes nothing and answers that gym, `created = false`; two
+creations of one slug at once wait on a lock on it, so the second finds the first's
+gym rather than failing on the slug's UNIQUE. The
 values come computed from `app.gyms`, which knows the presets; the function only writes
 them, so the two callers cannot drift.
 
@@ -16,8 +18,13 @@ command line calls it, and to `rakin_platform`, never to `rakin_app`.
   `platform_*` function is (0076). It checks the operator's session, calls `gym_create`
   and logs `gym_created` when it created one.
 - `platform_slug_taken`: whether a gym has the slug, for the panel's live check.
-- `platform_owner_link_sent`: logs `owner_link_sent`, once the new gym's owner was
-  emailed a sign-in link on its host.
+- `platform_owner_link`: logs `owner_link_sent`, or `owner_link_failed`, once the API
+  tried to email the gym's owner a sign-in link on its host.
+- `platform_titular`: the slug and the titular's address of one gym, to send the link
+  again.
+- `platform_gyms` (0076) gains `owner_link_failed`: whether the latest link to the
+  owner did not go, for the list to say so and offer to send it again. `rakin_platform`
+  reads those three columns of `platform_event` for it.
 
 Revision ID: 0077
 Revises: 0076
@@ -25,7 +32,10 @@ Create Date: 2026-11-18
 
 """
 
+import importlib.util
 from collections.abc import Sequence
+from pathlib import Path
+from types import ModuleType
 
 from alembic import op
 
@@ -41,7 +51,7 @@ PLATFORM_ROLE = "rakin_platform"
 PRACTICE_KIND = "sparring"
 
 ACTIONS = ("operator_granted", "operator_revoked", "operator_signed_in", "operator_signed_out")
-NEW_ACTIONS = ("gym_created", "owner_link_sent")
+NEW_ACTIONS = ("gym_created", "owner_link_sent", "owner_link_failed")
 
 
 def _in(values: Sequence[str]) -> str:
@@ -67,7 +77,15 @@ ARGUMENTS = (
 GYM_CREATE = f"gym_create({TYPES})"
 PLATFORM_CREATE = f"platform_create_gym(bytea, text, {TYPES})"
 SLUG_TAKEN = "platform_slug_taken(bytea, text)"
-LINK_SENT = "platform_owner_link_sent(bytea, uuid)"
+LINK = "platform_owner_link(bytea, uuid, boolean)"
+TITULAR = "platform_titular(bytea, uuid)"
+GYMS = "platform_gyms(bytea, text)"
+
+EVENT_GRANT = "GRANT SELECT (gym_id, action, at) ON platform_event TO {role}"
+EVENT_INDEX = (
+    "CREATE INDEX platform_event_gym_idx ON platform_event (gym_id, at DESC)"
+    " WHERE gym_id IS NOT NULL"
+)
 
 # `public` on the path, as `join_gym`'s: the trigger that gives a gym its block kinds
 # (0028) names its tables unqualified, and runs with the caller's path.
@@ -81,6 +99,10 @@ DECLARE
     found_name text;
     owner_id uuid;
 BEGIN
+    -- One creation of a slug at a time, to the end of the transaction. The look below is
+    -- a statement of its own, so it reads what a creation that held the lock committed.
+    PERFORM pg_advisory_xact_lock(hashtextextended('gym_slug:' || p_slug, 0));
+    -- Live slugs only: #438's renamed slugs, kept 90 days, are to be taken here too.
     SELECT g.id, g.name INTO found_id, found_name FROM auth_gym_by_slug(p_slug) g;
     IF found_id IS NOT NULL THEN
         id := found_id;
@@ -155,12 +177,13 @@ RETURNS boolean
 LANGUAGE plpgsql STABLE {DEFINER} AS $$
 BEGIN
     PERFORM public.platform_operator_of(session);
+    -- Live slugs only: #438 extends this to the renamed ones it keeps.
     RETURN EXISTS (SELECT FROM public.gym g WHERE g.slug = wanted);
 END
 $$
 """,
-    LINK_SENT: f"""
-CREATE FUNCTION platform_owner_link_sent(session bytea, gym uuid)
+    LINK: f"""
+CREATE FUNCTION platform_owner_link(session bytea, gym uuid, sent boolean)
 RETURNS void
 LANGUAGE plpgsql VOLATILE {DEFINER} AS $$
 DECLARE
@@ -170,11 +193,83 @@ BEGIN
     found_operator := public.platform_operator_of(session);
     SELECT g.slug INTO STRICT found_slug FROM public.gym g WHERE g.id = gym;
     INSERT INTO public.platform_event (operator_id, action, gym_id, detail)
-    VALUES (found_operator, 'owner_link_sent', gym, jsonb_build_object('slug', found_slug));
+    VALUES (
+        found_operator,
+        CASE WHEN sent THEN 'owner_link_sent' ELSE 'owner_link_failed' END,
+        gym,
+        jsonb_build_object('slug', found_slug)
+    );
+END
+$$
+""",
+    TITULAR: f"""
+CREATE FUNCTION platform_titular(session bytea, gym uuid)
+RETURNS TABLE (slug text, email text)
+LANGUAGE plpgsql STABLE {DEFINER} AS $$
+#variable_conflict use_column
+BEGIN
+    PERFORM public.platform_operator_of(session);
+    RETURN QUERY
+    SELECT g.slug, holder.email
+    FROM public.gym g
+    LEFT JOIN LATERAL (
+        SELECT gp.email
+        FROM public.staff s
+        JOIN public.gym_person gp ON gp.gym_id = s.gym_id AND gp.person_id = s.person_id
+        WHERE s.gym_id = g.id AND s.account_holder
+        LIMIT 1
+    ) holder ON true
+    WHERE g.id = gym;
 END
 $$
 """,
 }
+
+
+def _migration(name: str) -> ModuleType:
+    path = Path(__file__).with_name(name)
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# What the latest link to the gym's owner came to, sent or not.
+LATEST_LINK = """    LEFT JOIN LATERAL (
+        SELECT e.action = 'owner_link_failed' AS failed
+        FROM public.platform_event e
+        WHERE e.gym_id = g.id AND e.action IN ('owner_link_sent', 'owner_link_failed')
+        ORDER BY e.at DESC
+        LIMIT 1
+    ) link ON true
+    ORDER BY g.name, g.slug;"""
+
+
+def platform_gyms(*, links: bool) -> str:
+    """0076's `platform_gyms`; with `links`, each gym's `owner_link_failed` too."""
+    sql: str = _migration("0076_platform_operators.py").FUNCTIONS[GYMS]
+    if not links:
+        return sql
+    for before, after in (
+        ("    status text\n)", "    status text,\n    owner_link_failed boolean\n)"),
+        (
+            "           'active'::text\n",
+            "           'active'::text,\n           coalesce(link.failed, false)\n",
+        ),
+        ("    ORDER BY g.name, g.slug;", LATEST_LINK),
+    ):
+        assert sql.count(before) == 1, before
+        sql = sql.replace(before, after)
+    return sql
+
+
+def _gyms(*, links: bool) -> None:
+    op.execute(f"DROP FUNCTION {GYMS}")
+    op.execute(platform_gyms(links=links))
+    op.execute(f"REVOKE ALL ON FUNCTION {GYMS} FROM PUBLIC")
+    op.execute(f"GRANT EXECUTE ON FUNCTION {GYMS} TO {APP_ROLE}")
+    op.execute(f"ALTER FUNCTION {GYMS} OWNER TO {PLATFORM_ROLE}")
 
 
 def _actions(actions: Sequence[str], *, valid: bool = True) -> None:
@@ -187,6 +282,8 @@ def _actions(actions: Sequence[str], *, valid: bool = True) -> None:
 
 def upgrade() -> None:
     _actions((*ACTIONS, *NEW_ACTIONS))
+    op.execute(EVENT_GRANT.format(role=PLATFORM_ROLE))
+    op.execute(EVENT_INDEX)
 
     # Owned by whoever runs the migrations, the table owner, as `join_gym` is.
     op.execute(CREATE)
@@ -201,11 +298,21 @@ def upgrade() -> None:
         op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION {signature} TO {APP_ROLE}")
         op.execute(f"ALTER FUNCTION {signature} OWNER TO {PLATFORM_ROLE}")
+    _gyms(links=True)
     op.execute(f"REVOKE CREATE ON SCHEMA public FROM {PLATFORM_ROLE}")
 
 
 def downgrade() -> None:
+    op.execute(f"GRANT CREATE ON SCHEMA public TO {PLATFORM_ROLE}")
+    _gyms(links=False)
+    op.execute(f"REVOKE CREATE ON SCHEMA public FROM {PLATFORM_ROLE}")
     for signature in (*FUNCTIONS, GYM_CREATE):
         op.execute(f"DROP FUNCTION {signature}")
+    op.execute("DROP INDEX platform_event_gym_idx")
+    op.execute(
+        EVENT_GRANT.replace("GRANT", "REVOKE", 1)
+        .replace(" TO ", " FROM ")
+        .format(role=PLATFORM_ROLE)
+    )
     # The log keeps its rows, these included: the old CHECK holds new rows only.
     _actions(ACTIONS, valid=False)

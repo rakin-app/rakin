@@ -4254,6 +4254,11 @@ export const es = {
       noActivity: 'Sin actividad',
       status: { active: 'Activo' },
       add: 'Nuevo gimnasio',
+      // The titular's sign-in link, when the latest one did not go (#437).
+      linkFailed: 'Enlace no enviado',
+      resend: 'Reenviar enlace',
+      resending: 'Enviando…',
+      resendFailed: 'No pudimos enviarlo. Inténtalo de nuevo.',
     },
     newGym: {
       title: 'Nuevo gimnasio',

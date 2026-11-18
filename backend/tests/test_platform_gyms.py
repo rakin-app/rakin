@@ -132,6 +132,8 @@ def test_each_gym_has_its_titular_counts_terms_and_activity(
     )
     assert datetime.fromisoformat(a["last_activity"]) == MARKED_AT
     assert a["status"] == "active"
+    # Seeded, not created from the panel: no link to its owner was tried.
+    assert a["owner_link_failed"] is False
 
 
 def test_a_gym_as_seeded_has_no_terms_and_its_ledger_for_activity(

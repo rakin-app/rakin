@@ -32,6 +32,8 @@ export type PlatformGym = {
   staff: number
   last_activity: string | null
   status: 'active'
+  // Whether the latest sign-in link to its titular did not go: the list offers it again.
+  owner_link_failed: boolean
 }
 
 export const platformMeQuery = () =>
@@ -107,4 +109,11 @@ export const newGymChoicesQuery = () =>
 /** Creates the gym; a 422 names each field refused, the slug `slug_taken` when a gym has it. */
 export function createGym(gym: NewGym): Promise<CreatedGym> {
   return apiFetch<CreatedGym>('/api/platform/gyms', { method: 'POST', body: JSON.stringify(gym) })
+}
+
+/** Emails the gym's titular a sign-in link on its host again; `sent` false if it did not go. */
+export function resendOwnerLink(gymId: string): Promise<{ sent: boolean }> {
+  return apiFetch<{ sent: boolean }>(`/api/platform/gyms/${encodeURIComponent(gymId)}/owner-link`, {
+    method: 'POST',
+  })
 }
