@@ -17,7 +17,8 @@ requests do not reach here over HTTPS.
 
 A slug a gym had before a rename (#438) redirects for 90 days: when no gym has the
 host's slug, `auth_gym_alias` (0078) is asked for the gym's current one, and the
-request is answered with a 301 to the same path and query there, never reaching the
+request is answered with a 301 to the same path and query there, or a 308 for any
+method but GET and HEAD, which keeps the method and its body; it never reaches the
 app. A live alias is kept for a minute too, as a found gym is; `GymLookup.forget` drops
 both, and a rename forgets the old slug and the new.
 """
@@ -229,7 +230,8 @@ class GymLookup:
 
 class HostMiddleware:
     """Puts the gym the request's host names, or None, on `request.state.host_gym`; on
-    the host of a slug that redirects (`alias`), answers a 301 to the gym's own."""
+    the host of a slug that redirects (`alias`), answers a 301 to the gym's own, or a
+    308 for any method but GET and HEAD."""
 
     def __init__(
         self,
@@ -251,7 +253,9 @@ class HostMiddleware:
             if slug is not None and gym is None and self.alias is not None:
                 current = await self.alias(slug)
                 if current is not None:
-                    response = RedirectResponse(self.moved(scope, current), status_code=301)
+                    # 308 keeps a POST a POST, with its body; a 301 may turn it into a GET.
+                    code = 301 if scope["method"] in ("GET", "HEAD") else 308
+                    response = RedirectResponse(self.moved(scope, current), status_code=code)
                     await response(scope, receive, send)
                     return
             scope.setdefault("state", {})["host_gym"] = gym

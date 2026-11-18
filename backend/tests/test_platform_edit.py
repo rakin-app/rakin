@@ -325,6 +325,18 @@ def test_a_renamed_gyms_old_address_redirects_for_90_days(panel: Panel) -> None:
         response = host.get("/alumnos?x=1")
         assert response.status_code == 301
         assert response.headers["location"] == f"https://{new}.{BASE}/alumnos?x=1"
+        head = host.head("/alumnos?x=1")
+        assert (head.status_code, head.headers["location"]) == (
+            301,
+            f"https://{new}.{BASE}/alumnos?x=1",
+        )
+        # Any other method keeps itself and its body on the new host.
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            sent = host.request(method, "/api/people?y=2", json={"a": 1})
+            assert (sent.status_code, sent.headers["location"]) == (
+                308,
+                f"https://{new}.{BASE}/api/people?y=2",
+            ), method
         moved = host.get("/api/host")
         assert moved.status_code == 301
         assert moved.headers["location"] == f"https://{new}.{BASE}/api/host"
