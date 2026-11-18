@@ -133,6 +133,16 @@ describe('Validar comprobante', () => {
     expect(screen.getByRole('button', { name: copy.confirm('$45.000') })).toBeInTheDocument()
   })
 
+  it('labels its back link, apart from the queue\'s arrows (#419)', async () => {
+    stubApi([DIEGO, JUAN])
+    renderAt(PATH)
+
+    const back = await screen.findByRole('link', { name: copy.back })
+    expect(back).toHaveTextContent(es.common.places.today)
+    expect(back).toHaveClass('button--ghost')
+    expect(screen.getByRole('button', { name: copy.previous })).toHaveClass('button--icon')
+  })
+
   it('says what else a transfer split over several periods pays, and its total (#66)', async () => {
     const shared: ProofReview = {
       ...JUAN,

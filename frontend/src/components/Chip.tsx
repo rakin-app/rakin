@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react'
 import { cx } from './classNames'
 import './Chip.css'
 
@@ -19,10 +19,9 @@ export function Chip({ pressed, className, ...rest }: ChipProps) {
 /** Which ends of a sideways scroller have more past them. */
 type Overflow = { start: boolean; end: boolean }
 
-/** A row of chips that scrolls sideways on a phone instead of wrapping. Where more chips
- * lie past an edge, that edge fades, so the row never seems to end at a chip (#358). */
-export function ChipGroup({ label, children }: { label: string; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null)
+/** A sideways scroller's edge fade (#358): spread the result on the scroller, which also
+ * takes the `edge-fade` class, and an edge with more past it fades out. */
+export function useEdgeFade(ref: RefObject<HTMLElement | null>) {
   const [overflow, setOverflow] = useState<Overflow>({ start: false, end: false })
 
   useEffect(() => {
@@ -43,17 +42,18 @@ export function ChipGroup({ label, children }: { label: string; children: ReactN
       row.removeEventListener('scroll', measure)
       resized?.disconnect()
     }
-  }, [])
+  }, [ref])
 
+  return { 'data-more-start': overflow.start || undefined, 'data-more-end': overflow.end || undefined }
+}
+
+/** A row of chips that scrolls sideways on a phone instead of wrapping. Where more chips
+ * lie past an edge, that edge fades, so the row never seems to end at a chip (#358). */
+export function ChipGroup({ label, children }: { label: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const fade = useEdgeFade(ref)
   return (
-    <div
-      ref={ref}
-      role="group"
-      aria-label={label}
-      className="chip-group"
-      data-more-start={overflow.start || undefined}
-      data-more-end={overflow.end || undefined}
-    >
+    <div ref={ref} role="group" aria-label={label} className="chip-group edge-fade" {...fade}>
       {children}
     </div>
   )

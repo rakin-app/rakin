@@ -71,12 +71,14 @@ Every main screen, at **390×844** and **1280×800**. Keep this list current: wh
 | Importar: Alumnos, Grados, Pagos tabs, recent imports and Deshacer importación | `/admin/alumnos/importar` (try `backend/app/seed/demo_import.csv`) | owner |
 | Ficha: plan, data, family, grades and Grados anteriores, history, Pagos anteriores, custom fields, the Libro and Corregir | `/admin/alumnos/<id>` | owner, coach |
 | Clases | `/admin/clases` | owner, coach |
+| Entrada: checking people in at the door | `/admin/entrada` | owner, coach |
 | A class: roster and attendance | `/admin/clases/<id>` | coach |
 | The class timer | `/admin/clases/<id>/timer` | coach |
 | Pagos and the Libro | `/admin/pagos` | owner |
 | Validar comprobante | `/admin/pagos/comprobantes` | owner |
 | Cobros extra, a new one, one cobro | `/admin/pagos/cobros`, `…/nuevo`, `…/<id>` | owner |
-| Ajustes, every section: Gimnasio (theme, logo), Planes, Programas, Horario, Etiquetas, Bloques, Graduación, Campos, Equipo, Inscripción, Cuenta | `/admin/ajustes/<section>` | owner |
+| Ajustes, every section: Gimnasio (theme, logo), Planes, Programas, Horario, Etiquetas, Bloques, Graduación, Campos, Requisitos, Equipo, Inscripción, Cuenta | `/admin/ajustes/<section>` | owner |
+| Ajustes › Requisitos: making one, and how it reads on a ficha | `/admin/ajustes/requisitos` | owner |
 | Mi página: plans, paying and sending a proof, grades | `/me` | student |
 | The join form | `/unirse/<token>` (the link from Ajustes › Inscripción) | signed out |
 | Política de privacidad | `/privacidad` | signed out |

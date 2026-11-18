@@ -115,7 +115,10 @@ describe('Importaciones recientes', () => {
     await userEvent.click(await screen.findByRole('button', { name: copy.undo }))
 
     const undo = await screen.findByRole('form', { name: form.title })
+    // It takes focus, so a phone scrolls to it below the fold (#419).
+    expect(undo).toHaveFocus()
     expect(await within(undo).findByText(form.removes(240, 18, 12))).toBeInTheDocument()
+    expect(undo).toHaveFocus()
     expect(within(undo).getByText(form.kept(2))).toBeInTheDocument()
     expect(within(undo).getByText(form.stays)).toBeInTheDocument()
 

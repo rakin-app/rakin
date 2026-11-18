@@ -365,7 +365,8 @@ export function NewMember() {
           <p className="member__detail">{minor ? copy.guardianMinor : copy.guardianOptional}</p>
           {checked && problems.guardian && <Needed text={copy.needed.guardian} />}
           {guardian.kind === 'none' ? (
-            <div className="member__actions">
+            // Stacked at 390, so "Ya está en la academia" keeps to one line (#419).
+            <div className="member__actions member__actions--wrap">
               <Button
                 onClick={() => setGuardian({ kind: 'existing', picked: null })}
               >

@@ -68,11 +68,12 @@ textarea {
   outline-offset: 2px;
 }
 
-/* A link on a line of its own (a setup step's, the footer's): a 44px target, though it
-   reads as text. */
+/* A link on a line of its own (a setup step's, the footer's): a 44px target both ways,
+   though it reads as text, so a one-word "Invitar" is no narrower (#419). */
 .tap-link {
   display: inline-flex;
   align-items: center;
+  min-width: var(--control-height);
   min-height: var(--control-height);
 }
 
@@ -81,6 +82,7 @@ textarea {
 .tap-link--inline {
   display: inline;
   position: relative;
+  min-width: 0;
   min-height: 0;
 }
 

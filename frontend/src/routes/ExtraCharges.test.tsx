@@ -333,6 +333,10 @@ describe('Nuevo cobro extra', () => {
     const router = renderAt('/admin/pagos/cobros/nuevo')
     const words = copy.wizard
 
+    // Cancelar on the left, Siguiente on the right, as Nuevo alumno's footer (#419).
+    const footer = (await screen.findByRole('button', { name: words.next })).parentElement!
+    expect([...footer.children].map((el) => el.textContent)).toEqual([words.cancel, words.next])
+
     await user.click(await screen.findByRole('button', { name: words.next }))
     expect(screen.getByText(words.titleNeeded)).toBeInTheDocument()
     // The field to fix takes focus, and says why (#362).

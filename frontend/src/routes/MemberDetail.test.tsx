@@ -925,7 +925,9 @@ describe('Ficha de alumno', () => {
     const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
 
     // Voided, it can only be restored.
-    expect(within(fixes).getByRole('button', { name: copy.fix.restoreCharge, pressed: true })).toBeInTheDocument()
+    expect(
+      within(fixes).getByText(copy.fix.only(copy.fix.charge('octubre', null), copy.fix.restoreCharge)),
+    ).toBeInTheDocument()
     expect(within(fixes).queryByRole('button', { name: copy.fix.changeAmount })).not.toBeInTheDocument()
     const form = within(fixes).getByRole('form', { name: copy.restoreForm.title })
     expect(within(form).getByText(copy.fix.owed('octubre', '$0', '$45.000'))).toBeInTheDocument()
@@ -1185,7 +1187,9 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
 
-    expect(within(fixes).getByRole('button', { name: copy.fix.refund })).toHaveAttribute('aria-pressed', 'true')
+    // Its one fix is the title, not a one-chip choice (#419).
+    expect(within(fixes).getByText(copy.fix.only(copy.fix.payment('septiembre'), copy.fix.refund))).toBeInTheDocument()
+    expect(within(fixes).queryByRole('button', { name: copy.fix.refund })).toBeNull()
     const form = within(fixes).getByRole('form', { name: copy.refundForm.title })
     const amount = within(form).getByLabelText(copy.refundForm.amount)
     await userEvent.clear(amount)

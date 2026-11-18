@@ -60,7 +60,13 @@
 }
 
 .extra__actions,
-.extra__form-actions,
+/* As Nuevo alumno's footer: back or cancel on the left, forward on the right (#419). */
+.extra__form-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
 .extra__line-actions {
   display: flex;
   flex-wrap: wrap;

@@ -8,16 +8,16 @@
   padding: var(--space-1);
 }
 
-/* More chips past an edge: that edge fades out (#358). */
-.chip-group[data-more-end] {
+/* More past an edge of a sideways scroller (`useEdgeFade`): that edge fades out (#358). */
+.edge-fade[data-more-end] {
   mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
 }
 
-.chip-group[data-more-start] {
+.edge-fade[data-more-start] {
   mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent);
 }
 
-.chip-group[data-more-start][data-more-end] {
+.edge-fade[data-more-start][data-more-end] {
   mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
 }
 
