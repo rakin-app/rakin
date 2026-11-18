@@ -18,7 +18,7 @@ CI boots this exact stack from each PR's images (`deploy/test-hosted.sh`), smoke
 
 ## 1. Provision the VPS
 
-Ubuntu 24.04 LTS, 2 vCPU / 4 GB, in São Paulo if the provider has it, otherwise US East. As root, once:
+Ubuntu 24.04 LTS, 2 vCPU / 4 GB. Staging and production run on Hetzner in Ashburn, Virginia (US East), the location the DPA's Anexo A and the privacy notices name (#430): a host elsewhere changes those texts first. As root, once:
 
 ```sh
 # Docker Engine and the Compose plugin, from Docker's apt repository.
@@ -61,7 +61,7 @@ Generate the deploy key on your machine, not the host: `ssh-keygen -t ed25519 -f
 - **The landing page** ([below](#the-landing-page-rakinapp)): an `A` (and `AAAA`) record for the apex `rakin.app` and one for `www` → the VPS, DNS only, like `staging`, unless production's wildcard `*.rakin.app` already covers `www`. Caddy gets both certificates itself.
 - **Resend**: add and verify `rakin.app` (its DKIM, SPF and return-path records in Cloudflare, DNS only), then create an API key with sending access for that domain. It goes in `SMTP_PASSWORD`; `SMTP_HOST=smtp.resend.com`, `SMTP_USERNAME=resend`, and port 587 with `SMTP_SECURITY=starttls`, as `deploy/.env.example` has them. There is no sandbox to leave: a verified domain sends to anyone. Then add a webhook (Webhooks → Add endpoint) to `https://<PUBLIC_BASE_URL's host>/api/webhooks/resend` with the `email.bounced` and `email.complained` events, and put its signing secret (`whsec_…`) in `RESEND_WEBHOOK_SECRET`: a hard bounce or a spam complaint then stops all mail to that address, and the ficha says why. Without it the endpoint is a 404 and bounced addresses go on being mailed.
 - **Object storage**: a bucket in R2 (or S3), with object versioning on where the provider offers it. Create a key scoped to that bucket with object read and write for the api (`S3_*` in `.env`), and separately an admin token for the one-off CORS step below.
-- **Sentry**: an organisation on the **EU region** (chosen at sign-up and fixed after; its DSNs end in `ingest.de.sentry.io`), since the DPA's annex and the privacy notices say Germany (#373). A project for the api; its DSN goes in `SENTRY_DSN`. The api and the jobs both report there. What an event leaves out is in `backend/app/sentry.py`.
+- **Sentry**: an organisation on the **US region** (chosen at sign-up and fixed after; its DSNs end in `ingest.us.sentry.io`), as the DPA's annex and the privacy notices say (#430). The EU region was considered for #373 and not kept: the database and the email provider are in the United States already, and an event carries no personal data (#373), so moving Sentry to Germany would not keep anything out of the United States. A project for the api; its DSN goes in `SENTRY_DSN`. The api and the jobs both report there. What an event leaves out is in `backend/app/sentry.py`.
 
 ## 3. The host's `.env`
 
@@ -161,7 +161,7 @@ docker compose run --rm api python -m app.gyms create --slug meta --name "Meta" 
   --timezone America/Santiago \
   --owner-email <owner@example.com> --owner-name "<Owner's name>" --owner-rut "<12.345.678-5>" \
   --grading bjj \
-  --processor-terms 2026-11-16 --signed-on <YYYY-MM-DD>
+  --processor-terms 2026-11-18 --signed-on <YYYY-MM-DD>
 ```
 
 `create` refuses to run without `--processor-terms` and `--signed-on`, and refuses a version that is not the current one or a date to come. It records both in `processor_terms`, with the gym. `--no-processor-terms` instead is only for an instance the company does not host, whose operator processes no gym's data for the company.
@@ -182,7 +182,7 @@ Then the owner opens `https://meta.staging.rakin.app`, which shows Meta's name, 
 
 ```sh
 docker compose run --rm api python -m app.gyms sign-terms --slug meta \
-  --processor-terms 2026-11-16 --signed-on <YYYY-MM-DD>
+  --processor-terms 2026-11-18 --signed-on <YYYY-MM-DD>
 ```
 
 Run again with a version the gym already signed, it changes nothing and says so, keeping the date first recorded. `create` on a slug a gym already has records no terms either, and says to use `sign-terms`.
@@ -190,7 +190,7 @@ Run again with a version the gym already signed, it changes nothing and says so,
 A wrong `--signed-on` is corrected by hand, with the date on the signed copy:
 
 ```sh
-docker compose exec -T postgres psql -U rakin rakin -v slug=meta -v v=2026-11-16 -v d=<YYYY-MM-DD> <<'SQL'
+docker compose exec -T postgres psql -U rakin rakin -v slug=meta -v v=2026-11-18 -v d=<YYYY-MM-DD> <<'SQL'
 UPDATE processor_terms SET signed_on = :'d'
 WHERE version = :'v' AND gym_id = (SELECT id FROM gym WHERE slug = :'slug');
 SQL
@@ -199,13 +199,13 @@ SQL
 To see which gyms have not signed the current version, by slug:
 
 ```sh
-docker compose exec -T postgres psql -U rakin rakin -v v=2026-11-16 <<'SQL'
+docker compose exec -T postgres psql -U rakin rakin -v v=2026-11-18 <<'SQL'
 SELECT g.slug FROM gym g
 WHERE NOT EXISTS (SELECT FROM processor_terms t WHERE t.gym_id = g.id AND t.version = :'v');
 SQL
 ```
 
-On a gym listed there, load nothing more until it signs. In these commands and the ones above, `2026-11-16` is the current version: it moves with `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py) and the terms' **Versión** line. psql fills in `:'v'` only from stdin, not from `-c`, so the SQL goes in a heredoc.
+On a gym listed there, load nothing more until it signs. In these commands and the ones above, `2026-11-18` is the current version: it moves with `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py) and the terms' **Versión** line. psql fills in `:'v'` only from stdin, not from `-c`, so the SQL goes in a heredoc.
 
 ## Day to day
 
