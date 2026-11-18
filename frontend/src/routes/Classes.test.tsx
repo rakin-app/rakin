@@ -678,6 +678,34 @@ describe('Clases on a desktop', () => {
     expect(await screen.findByText(copy.week.upcoming)).toBeInTheDocument()
   })
 
+  // 19:30 in Santiago: the 19:00 class is on, and it is the one picked in the week.
+  it('shows the class on now once, picked in the week, with one "Tomar asistencia" (#416)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-09T22:30:00Z'))
+    wide(true)
+    stubApi({ week: [MORNING, EVENING], roster: [onRoster('ana', 'Ana Soto', true)] })
+    renderAt('/admin/clases')
+
+    await screen.findByText(copy.week.present(1, 1))
+    const picked = screen.getByRole('region', { name: copy.week.picked })
+    const name = copy.today.row('19:00', 'Fundamentos')
+    expect(within(picked).getByText(copy.now.on)).toBeInTheDocument()
+    expect(within(picked).getByRole('link', { name: detail.timer.open })).toHaveAttribute('href', '/admin/clases/s-evening/timer')
+    // Once on the page: the left column drops its card.
+    const takes = screen.getAllByRole('link', { name: copy.now.takeLabel(name) })
+    expect(takes).toHaveLength(1)
+    expect(picked).toContainElement(takes[0]!)
+    expect(screen.queryByRole('region', { name })).not.toBeInTheDocument()
+    expect(screen.getAllByText(copy.now.on)).toHaveLength(1)
+
+    // Another class picked, the class now is the left column's card again.
+    const week = screen.getByRole('region', { name: copy.week.title })
+    await userEvent.click(within(week).getByRole('button', { name: new RegExp(copy.today.row('07:00', 'Kids 8 a 12')) }))
+    const card = (await screen.findByText(copy.now.on)).closest('section')!
+    expect(within(card).getByRole('link', { name: copy.now.takeLabel(name) })).toHaveAttribute('href', '/admin/clases/s-evening')
+    expect(within(screen.getByRole('region', { name: copy.week.picked })).getByRole('link', { name: copy.week.take })).toBeInTheDocument()
+  })
+
   it('never asks for the week on a phone', async () => {
     wide(false)
     const calls = stubApi()

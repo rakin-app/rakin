@@ -2898,7 +2898,7 @@ export const es = {
         get othersLabel() {
           return `${w.memberIs('Otros', 'Otras')} ${w.members}`
         },
-        hint: 'Toca un nombre para marcar presente. El punto naranja indica pago vencido, y un requisito pendiente o vencido aparece bajo el nombre: puede entrenar igual, pero conviene avisar.',
+        hint: 'Toca un nombre para marcar presente. «Debe» es un pago vencido y «Requisito», uno pendiente o vencido, detallado bajo el nombre: puede entrenar igual, pero conviene avisar.',
         requirement: requirementFlag,
         get loading() {
           return `Cargando ${w.members}…`
@@ -2907,7 +2907,11 @@ export const es = {
           return `No pudimos cargar ${w.theMembers}.`
         },
         empty: 'Nadie tiene un plan para esta clase todavía.',
+        // The two marks on a row (#416): a word to see, a name to hear.
+        owes: 'Debe',
         overdue: 'Pago vencido',
+        requirementMark: 'Requisito',
+        requirementName: 'Requisito pendiente o vencido',
         left: (n: number) => (n === 1 ? 'queda 1' : `quedan ${n}`),
         absent: (days: number) => `${days} d sin venir`,
         save: (n: number) => `Guardar asistencia (${n})`,
@@ -2920,6 +2924,9 @@ export const es = {
         queued: 'Sin conexión: quedó en este teléfono. Se guardará cuando vuelva la señal.',
         failed: 'No pudimos guardar la asistencia. Inténtalo de nuevo.',
         dropped: 'La asistencia que quedó pendiente no se pudo guardar. Revisa la lista y vuelve a marcar.',
+        // Taps left unsaved when the roster was last open, given back (#416).
+        kept: (n: number) => (n === 1 ? 'Tienes 1 marca sin guardar.' : `Tienes ${n} marcas sin guardar.`),
+        discard: 'Descartar',
         // Unmarking a drop-in visit gives its charge back only while nothing was paid, the day it was added (#130).
         visitKept: {
           paid: 'La clase suelta ya está pagada: sigue presente. El dueño o un admin la devuelve en Pagos.',

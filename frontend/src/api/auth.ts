@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { apiFetch } from './client'
+import { forgetKeptTaps } from './attendance'
 import { forgetDrafts } from './drafts'
 import type { Access } from './me'
 import { useSubmit } from './submit'
@@ -109,8 +110,8 @@ export function landingFor(access: Access | null): string {
 }
 
 /**
- * "Cerrar sesión": ends the session, forgets what this browser had loaded and any text
- * kept from an expired session, back to sign in.
+ * "Cerrar sesión": ends the session, forgets what this browser had loaded, any text
+ * kept from an expired session and any unsaved attendance taps, back to sign in.
  */
 export function useSignOut() {
   const queryClient = useQueryClient()
@@ -121,6 +122,7 @@ export function useSignOut() {
       queryClient.clear()
       forgetSignedIn()
       forgetDrafts()
+      forgetKeptTaps()
       await navigate({ to: SIGN_IN_PATH, replace: true })
     },
   })

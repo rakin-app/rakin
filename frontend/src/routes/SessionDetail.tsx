@@ -8,9 +8,12 @@ import {
   changeAttendance,
   clearQueuedChange,
   dropinKept,
+  dropKeptTaps,
   dropinPlansQuery,
   isOffline,
   isRefusal,
+  keepTaps,
+  keptTaps,
   queueChange,
   queuedChange,
   rosterQuery,
@@ -28,6 +31,7 @@ import { rankLabel } from '../api/grading'
 import { accessOf, managesGym, myselfQuery, runsSession } from '../api/me'
 import { isClass, sessionQuery, updateSession, useGymTimeZone, useGymToday, type ClassSession } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
+import { StatusPill } from '../components/StatusPill'
 import { Button, buttonClass } from '../components/Button'
 import { BackLink } from '../components/BackLink'
 import { Input, SearchInput, Select, Textarea } from '../components/Field'
@@ -324,6 +328,10 @@ type Save = { change: AttendanceChange; replay: boolean }
  * not resent forever: the coach sees the roster as saved and marks again. Any other
  * failure keeps it queued, for the next flush.
  *
+ * Taps not saved yet outlive the roster (#416): opening the timer, another tab or going
+ * back keeps them for this class (`keepTaps`), and the roster gives them back when it
+ * opens again, saying how many, with "Descartar" to let them go.
+ *
  * A class of an earlier day, one registered after it happened included (#407), is marked
  * the same way, and takes a drop-in visitor on its own day; not a trial guest, whose trial
  * starts the day it is given.
@@ -332,8 +340,10 @@ function Attendance({ sessionId, earlierDay }: { sessionId: string; earlierDay: 
   const words = copy.attendance
   const queryClient = useQueryClient()
   const roster = useQuery(rosterQuery(sessionId))
-  const [taps, setTaps] = useState<Taps>(() => tapsOf(queuedChange(sessionId)))
+  const [taps, setTaps] = useState<Taps>(() => tapsOf(queuedChange(sessionId) ?? keptTaps(sessionId)))
   const [queued, setQueued] = useState(() => queuedChange(sessionId) !== null)
+  // Taps an earlier visit left unsaved, given back: said so until saved or discarded.
+  const [restored, setRestored] = useState(() => queuedChange(sessionId) === null && keptTaps(sessionId) !== null)
   const [saved, setSaved] = useState(false)
   const [dropped, setDropped] = useState(false)
   const [search, setSearch] = useState('')
@@ -345,6 +355,15 @@ function Attendance({ sessionId, earlierDay }: { sessionId: string; earlierDay: 
     latestTaps.current = taps
   }, [taps])
   const mutationKey = ['attendance', 'save', sessionId]
+
+  // What differs from the roster as saved is kept for this class, and nothing once it is saved.
+  const rosterData = roster.data
+  useEffect(() => {
+    if (!rosterData) return
+    const change = changeOf(rosterData, taps)
+    if (change.mark.length + change.unmark.length > 0) keepTaps(sessionId, change)
+    else dropKeptTaps(sessionId)
+  }, [rosterData, taps, sessionId])
 
   /** Keep `current` on the phone while a change waits for signal; none left, none kept. */
   const persist = (current: Taps) => {
@@ -441,8 +460,11 @@ function Attendance({ sessionId, earlierDay }: { sessionId: string; earlierDay: 
   const restOpen = othersOpen || searching
   const change = changeOf(roster.data, taps)
   const changed = change.mark.length + change.unmark.length > 0
+  // Saved, or tapped back to as saved: what was given back is gone, and a later tap is new.
+  if (restored && !changed) setRestored(false)
   // "Guardado ✓" until the next tap.
   const done = saved && !changed && !queued && !save.isPending
+  const unsaved = change.mark.length + change.unmark.length
   // A drop-in visit unmarking could not give back: paid, a proof waiting, or another day's.
   const visitKept = save.isError ? dropinKept(save.error) : null
 
@@ -518,6 +540,19 @@ function Attendance({ sessionId, earlierDay }: { sessionId: string; earlierDay: 
       <Visitor sessionId={sessionId} onMember={markMember} />
       {/* Sticky at the foot of the screen, so what a save did is in view however far down the list is. */}
       <div className="attendance__bar">
+        {restored && changed && !queued && !save.isPending && (
+          <Banner tone="warning" as="div" className="attendance__kept">
+            <p role="status">{words.kept(unsaved)}</p>
+            <Button
+              onClick={() => {
+                setTaps(new Map())
+                setRestored(false)
+              }}
+            >
+              {words.discard}
+            </Button>
+          </Banner>
+        )}
         {save.isError && !isOffline(save.error) && !dropped && (
           <Banner tone="error">
             {visitKept ? words.visitKept[visitKept] : words.failed}
@@ -617,8 +652,25 @@ function RosterRow({ member, here, onToggle }: { member: RosterMember; here: boo
           </span>
         )}
       </span>
-      {member.overdue && <span className="attendance__overdue" role="img" aria-label={words.overdue} />}
+      {(member.overdue || member.unmet_requirements.length > 0) && (
+        <span className="attendance__marks">
+          {member.overdue && <Mark status="overdue" word={words.owes} name={words.overdue} />}
+          {member.unmet_requirements.length > 0 && (
+            <Mark status="required" word={words.requirementMark} name={words.requirementName} />
+          )}
+        </span>
+      )}
     </button>
+  )
+}
+
+/** A roster row's mark: a short word to see, `name` to hear (#416). */
+function Mark({ status, word, name }: { status: 'overdue' | 'required'; word: string; name: string }) {
+  return (
+    <StatusPill status={status}>
+      <span aria-hidden="true">{word}</span>
+      <span className="visually-hidden">{name}</span>
+    </StatusPill>
   )
 }
 

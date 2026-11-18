@@ -125,7 +125,7 @@ Membership moves right as time passes and only moves back to Active when a payme
 
 Rules the diagram does not show:
 
-- Grace period is per gym (default 5 days). Overdue and lapsed students can still be marked present; the roster shows an orange dot on anyone with a period overdue, so the coach can nudge, and never the amount.
+- Grace period is per gym (default 5 days). Overdue and lapsed students can still be marked present; the roster marks anyone with a period overdue "Debe", so the coach can nudge, and never the amount; a missing or expired requirement is marked "Requisito", a different mark.
 - A `credits` membership also lapses when `credits_remaining` reaches 0 or the pack expires.
 - Validating a payment against a billing period closes that period; an overpayment creates a credit adjustment against the next one.
 - An adjustment on a period is positive in the member's favour, counting towards it, or negative, owed on top; a note says why. A refund gives back part or all of a validated payment and no longer counts towards its period.

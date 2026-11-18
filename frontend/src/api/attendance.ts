@@ -242,3 +242,50 @@ export function clearQueuedChange(sessionId: string): void {
     // Nothing to clear.
   }
 }
+
+// Taps a coach made and has not saved yet, per session (#416): leaving the roster for the
+// timer, another tab or back keeps them, given back when it opens again. Saved, discarded
+// or a day old, they are gone, and "Cerrar sesión" forgets them all.
+const TAPS_PREFIX = 'rakin:attendance-taps:'
+const TAPS_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+type KeptTaps = { at: number; change: AttendanceChange }
+
+export function keptTaps(sessionId: string): AttendanceChange | null {
+  try {
+    const raw = localStorage.getItem(TAPS_PREFIX + sessionId)
+    if (!raw) return null
+    const kept = JSON.parse(raw) as Partial<KeptTaps>
+    const change = kept.change
+    if (typeof kept.at !== 'number' || Date.now() - kept.at > TAPS_MAX_AGE_MS) return null
+    if (!change || !Array.isArray(change.mark) || !Array.isArray(change.unmark)) return null
+    return { mark: change.mark.map(String), unmark: change.unmark.map(String) }
+  } catch {
+    return null
+  }
+}
+
+export function keepTaps(sessionId: string, change: AttendanceChange): void {
+  try {
+    localStorage.setItem(TAPS_PREFIX + sessionId, JSON.stringify({ at: Date.now(), change } satisfies KeptTaps))
+  } catch {
+    // Storage off or full: the taps last as long as the screen does, as they did before.
+  }
+}
+
+export function dropKeptTaps(sessionId: string): void {
+  try {
+    localStorage.removeItem(TAPS_PREFIX + sessionId)
+  } catch {
+    // Nothing kept.
+  }
+}
+
+/** "Cerrar sesión": no unsaved tap outlives it. */
+export function forgetKeptTaps(): void {
+  try {
+    for (const key of Object.keys(localStorage)) if (key.startsWith(TAPS_PREFIX)) localStorage.removeItem(key)
+  } catch {
+    // Storage off: nothing was kept.
+  }
+}

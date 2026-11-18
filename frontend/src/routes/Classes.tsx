@@ -48,7 +48,9 @@ const copy = t.admin.classes
  *
  * From 1024px the page has two columns (#178): the class now, "Crear clase" and the day on the left,
  * and on the right the week the day is in, with the class picked in it: who came, of
- * those who usually do. A phone keeps the one column, and never asks for the week.
+ * those who usually do. A phone keeps the one column, and never asks for the week. The
+ * class now is on the page once (#416): picked on the right, it is the card there, "Ahora"
+ * or "Siguiente", and the left drops its own.
  *
  * Under the day, "Horas por etiqueta" (#243): the gym's classes held in a month or a
  * year, hours per tag.
@@ -68,6 +70,11 @@ export function Classes() {
   const isToday = shown === gymToday
   const day = useQuery(dayQuery(shown, gymToday))
   const go = (to: string) => setChosen(to === gymToday ? null : to)
+  const week = useWeek(wide ? shown : null, gymToday, timeZone)
+  const now = useNow()
+  const found = day.data && isToday ? nowOrNext(day.data.sessions, now) : null
+  // Picked on the right, the class now is the card there.
+  const nowPicked = found !== null && week.selected?.id === found.session.id
 
   return (
     <div className="classes">
@@ -75,7 +82,7 @@ export function Classes() {
         <PageHeader title={copy.title} eyebrow={weekdayDay(toDate(gymToday))} />
         <Grid>
           <div className="classes__column">
-            {day.data && isToday && <NowCard sessions={day.data.sessions} timeZone={day.data.timezone} />}
+            {found && !nowPicked && <NowCard found={found} timeZone={day.data!.timezone} />}
             <EntradaCard />
             <StartSession day={shown} today={gymToday} timeZone={timeZone} />
             <section className="classes__section" aria-labelledby="classes-day">
@@ -113,7 +120,7 @@ export function Classes() {
               query={gymTagHoursQuery}
             />
           </div>
-          {wide && <Week day={shown} today={gymToday} timeZone={timeZone} />}
+          {wide && <Week week={week} today={gymToday} timeZone={timeZone} now={nowPicked ? found : null} />}
         </Grid>
       </PageContainer>
     </div>
@@ -130,14 +137,16 @@ export function mondayOf(day: string): string {
   return shiftDay(day, -((toDate(day).getDay() + 6) % 7))
 }
 
+type NowOrNext = { session: ClassSession; on: boolean }
+
 /**
- * "Semana": the seven days of the week `day` is in, Monday first, as the schedule made
- * them, and the class picked in it, today's last begun one until another is.
+ * The seven days of the week `day` is in, Monday first, as the schedule made them, and
+ * the class picked in it, today's last begun one until another is. No `day`, no week:
+ * a phone never asks for it.
  */
-function Week({ day, today, timeZone }: { day: string; today: string; timeZone: string }) {
-  const words = copy.week
-  const monday = mondayOf(day)
-  const days = Array.from({ length: 7 }, (_, i) => shiftDay(monday, i))
+function useWeek(day: string | null, today: string, timeZone: string) {
+  const monday = day === null ? null : mondayOf(day)
+  const days = monday === null ? [] : Array.from({ length: 7 }, (_, i) => shiftDay(monday, i))
   const answers = useQueries({ queries: days.map((d) => dayQuery(d, today)) })
   const [picked, setPicked] = useState<string | null>(null)
   const all = answers.flatMap((answer) => answer.data?.sessions ?? [])
@@ -145,11 +154,29 @@ function Week({ day, today, timeZone }: { day: string; today: string; timeZone: 
   const selected =
     all.find((session) => session.id === picked) ??
     all.filter((session) => isoDay(session.starts_at, timeZone) === today && new Date(session.starts_at) <= now).at(-1)
+  return { monday, days, answers, selected, setPicked }
+}
+
+/** "Semana": the week `useWeek` read, and the class picked in it; `now` when that is the class now. */
+function Week({
+  week,
+  today,
+  timeZone,
+  now,
+}: {
+  week: ReturnType<typeof useWeek>
+  today: string
+  timeZone: string
+  now: NowOrNext | null
+}) {
+  const words = copy.week
+  const { days, answers, selected, setPicked } = week
+  const monday = week.monday!
 
   return (
     <div className="classes__column">
       {selected ? (
-        <Picked key={selected.id} session={selected} timeZone={timeZone} />
+        <Picked key={selected.id} session={selected} timeZone={timeZone} now={now} />
       ) : (
         <Card aria-label={words.picked}>
           <p className="classes__note">{words.pick}</p>
@@ -216,8 +243,9 @@ function WeekCount({ session }: { session: ClassSession }) {
   return null
 }
 
-/** The class picked in the week: what it is, who came of those who usually do, and a tap to its attendance. */
-function Picked({ session, timeZone }: { session: ClassSession; timeZone: string }) {
+/** The class picked in the week: what it is, who came of those who usually do, and a tap to its attendance.
+ * The class now (`now`) says so, as the left column's card would, with its timer. */
+function Picked({ session, timeZone, now }: { session: ClassSession; timeZone: string; now: NowOrNext | null }) {
   const words = copy.week
   const cancelled = session.cancelled_at !== null
   const begun = new Date(session.starts_at) <= new Date()
@@ -228,6 +256,7 @@ function Picked({ session, timeZone }: { session: ClassSession; timeZone: string
 
   return (
     <Card aria-label={words.picked}>
+      {now && <span className="classes__eyebrow">{now.on ? copy.now.on : copy.now.next}</span>}
       <SectionHeader title={weekdayDay(toDate(isoDay(session.starts_at, timeZone)))} trailing={session.program_name} />
       <div className="classes__row-text">
         <PageTitle as="span" tight>
@@ -258,20 +287,34 @@ function Picked({ session, timeZone }: { session: ClassSession; timeZone: string
           )}
         </>
       )}
-      <Link
-        to="/admin/clases/$sessionId"
-        params={{ sessionId: session.id }}
-        className={buttonClass()}
-      >
-        {cancelled ? words.open : words.take}
-      </Link>
+      {now ? (
+        <div className="classes__now-actions">
+          <Link
+            to="/admin/clases/$sessionId"
+            params={{ sessionId: session.id }}
+            className={buttonClass({ variant: 'primary' })}
+            aria-label={copy.now.takeLabel(name)}
+          >
+            {copy.now.take}
+          </Link>
+          <TimerLink session={session} />
+        </div>
+      ) : (
+        <Link
+          to="/admin/clases/$sessionId"
+          params={{ sessionId: session.id }}
+          className={buttonClass()}
+        >
+          {cancelled ? words.open : words.take}
+        </Link>
+      )}
     </Card>
   )
 }
 
 /** The class on now, else the next one today: neither cancelled, nor the open-access day.
  * Null once today's are over. */
-export function nowOrNext(sessions: readonly ClassSession[], now: Date): { session: ClassSession; on: boolean } | null {
+export function nowOrNext(sessions: readonly ClassSession[], now: Date): NowOrNext | null {
   const standing = sessions.filter((session) => session.cancelled_at === null && isClass(session.class_type_kind))
   const on = standing.find((session) => {
     const start = new Date(session.starts_at).getTime()
@@ -301,10 +344,8 @@ function useNow(): Date {
 
 /** "Ahora" or "Siguiente": the class a coach at the mat came for, its attendance and timer.
  * Clases left open on the mat moves from one class to the next as the minutes pass. */
-function NowCard({ sessions, timeZone }: { sessions: readonly ClassSession[]; timeZone: string }) {
+function NowCard({ found, timeZone }: { found: NowOrNext; timeZone: string }) {
   const words = copy.now
-  const found = nowOrNext(sessions, useNow())
-  if (!found) return null
   const { session, on } = found
   const name = copy.today.row(timeRange(session.starts_at, session.duration_minutes, timeZone), session.class_type_name)
   return (
