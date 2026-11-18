@@ -4193,6 +4193,68 @@ export const es = {
     after: ' y luego «Agregar a inicio». Se abre como una app.',
     close: 'Cerrar',
   },
+  // The platform's panel (#436), at /plataforma on the base host: who runs the gyms
+  // Rakin hosts, apart from any gym's screens.
+  platform: {
+    brand: 'Rakin · Plataforma',
+    // The browser tab: `Gimnasios · Plataforma`.
+    tab: 'Plataforma',
+    signIn: {
+      tab: 'Entrar',
+      title: 'Entrar a la plataforma',
+      intro: 'Escribe tu correo de operador y te enviamos un link y un código para entrar.',
+      emailLabel: 'Correo',
+      submit: 'Enviarme el link',
+      sending: 'Enviando…',
+      // The same whatever the address: it never says who is an operator.
+      sent: (email: string) =>
+        `Si ${email} es de un operador, te llegará un link y un código. Vencen en 15 minutos y sirven una sola vez.`,
+      sentTitle: 'Revisa tu correo',
+      codeLabel: 'Código del correo',
+      codeHint: 'Escríbelo aquí para entrar en esta ventana, o toca el link del correo.',
+      codeSubmit: 'Entrar',
+      codeChecking: 'Entrando…',
+      codeInvalid: 'Ese código no sirve: no es el del correo, venció o ya se usó. Pide otro si hace falta.',
+      codeFailed: 'No pudimos entrar. Revisa tu conexión e inténtalo de nuevo.',
+      another: 'Usar otro correo',
+      tooMany: (minutes: number | null) =>
+        minutes === null
+          ? 'Demasiados intentos. Inténtalo de nuevo en unos minutos.'
+          : `Demasiados intentos. Inténtalo de nuevo en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`}.`,
+      invalid: 'Revisa el correo: no parece una dirección válida.',
+      failed: 'No pudimos enviar el link. Revisa tu conexión e inténtalo de nuevo.',
+    },
+    signOut: 'Cerrar sesión',
+    signingOut: 'Cerrando sesión…',
+    signOutFailed: 'No pudimos cerrar la sesión. Inténtalo de nuevo.',
+    gyms: {
+      title: 'Gimnasios',
+      tab: 'Gimnasios',
+      loading: 'Cargando gimnasios…',
+      failed: 'No pudimos cargar los gimnasios.',
+      empty: 'Todavía no hay gimnasios.',
+      count: (n: number) => (n === 1 ? '1 gimnasio' : `${n} gimnasios`),
+      columns: {
+        name: 'Nombre',
+        address: 'Dirección',
+        titular: 'Titular',
+        created: 'Creado',
+        terms: 'Términos de encargo',
+        members: 'Miembros',
+        staff: 'Equipo',
+        lastActivity: 'Última actividad',
+        status: 'Estado',
+      },
+      noTitular: 'Sin titular',
+      noTerms: 'Sin firmar',
+      termsCurrent: 'vigente',
+      termsOutdated: 'desactualizado',
+      // The version and the date on the signed copy: `2026-11-18, firmado el 19 nov 2026`.
+      signedOn: (date: string) => `firmado el ${date}`,
+      noActivity: 'Sin actividad',
+      status: { active: 'Activo' },
+    },
+  },
   notFound: {
     title: 'Página no encontrada',
     body: 'La dirección que abriste no existe.',

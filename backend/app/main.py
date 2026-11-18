@@ -36,6 +36,7 @@ from app.api import (
     memberships,
     people,
     plans,
+    platform,
     privacy,
     programs,
     proof_review,
@@ -67,6 +68,7 @@ from app.integrations import build_integrations
 from app.logging import configure_logging
 from app.magiclink import SessionMiddleware, build_router, session_cookie_name
 from app.middleware import RequestIdMiddleware
+from app.platform.web import build_operator_links, build_platform_router
 from app.sentry import init_sentry
 from app.settings import Settings, get_settings
 
@@ -94,6 +96,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings, app.state.integrations.mailer, lambda: app.state.sessionmaker
     )
     app.state.magic_links = links
+    # The platform's operators sign in apart from every gym (#436).
+    app.state.platform_links = build_operator_links(
+        settings, app.state.integrations.mailer, lambda: app.state.sessionmaker
+    )
     app.state.join_limits = join.build_join_limits()
     app.state.hosts = Hosts.of(settings)
     # Inside SessionMiddleware, so a key is scoped to the tenant it sets.
@@ -171,6 +177,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stylesheet=STYLESHEET,
         )
     )
+    app.include_router(platform.router)
+    app.include_router(build_platform_router(app.state.platform_links, settings))
     if settings.blob_store == "local":
         app.include_router(blobs.router)
     return app

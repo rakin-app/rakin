@@ -30,6 +30,7 @@ from app.magiclink.service import (
 from app.magiclink.web import (
     COOKIE_NAME,
     DEV_COOKIE_NAME,
+    Links,
     SessionMiddleware,
     Site,
     Texts,
@@ -45,6 +46,7 @@ __all__ = [
     "CodeLink",
     "Directory",
     "Link",
+    "Links",
     "MagicLinks",
     "MemoryRateLimiter",
     "Pending",

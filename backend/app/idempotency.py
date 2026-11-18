@@ -23,7 +23,8 @@ is told apart by its `created_at`, so a request that was taken over stores and
 releases nothing of the new one's.
 
 A request without the header runs as before. So do the sign-in routes under
-`/api/auth`, whose answers set cookies that a replay would not carry.
+`/api/auth` and `/api/platform/auth`, whose answers set cookies that a replay would
+not carry.
 
 It runs inside the session middleware, which sets the tenant, and each of its steps is
 a short transaction of its own, outside the endpoint's: the claim commits before the
@@ -49,7 +50,8 @@ from app.tenancy import Tenant
 HEADER = b"idempotency-key"
 REPLAYED_HEADER = b"idempotent-replayed"
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-EXCLUDED_PREFIX = "/api/auth/"
+# The platform's sign-in sets its own cookie (#436).
+EXCLUDED_PREFIXES = ("/api/auth/", "/api/platform/auth/")
 TTL = timedelta(hours=24)
 # Well past the longest request: an import of the largest sheet takes a few seconds.
 STALE = timedelta(seconds=60)
@@ -246,7 +248,7 @@ def _key_of(scope: Scope) -> str | None:
     """The request's key, if this request is one the middleware acts on."""
     if scope["type"] != "http" or scope["method"] not in MUTATING:
         return None
-    if scope["path"].startswith(EXCLUDED_PREFIX):
+    if scope["path"].startswith(EXCLUDED_PREFIXES):
         return None
     raw = dict(scope["headers"]).get(HEADER)
     if raw is None:

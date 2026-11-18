@@ -44,7 +44,7 @@ defined as one another, so narrowing one later narrows only it
 
 import hashlib
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated
@@ -262,11 +262,13 @@ async def holds(session: AsyncSession, tenant: Tenant, *needed: Permission) -> b
     return standing is not None and standing.holds(*needed)
 
 
-Gate = Callable[..., Awaitable[AsyncSession]]
+Gate = Callable[..., Awaitable[AsyncSession] | AsyncIterator[object]]
 
 # Each session dependency that refuses whoever may not use an endpoint, and what it asks:
-# the permissions it needs (none: being on the team), or `TITULAR`.
+# the permissions it needs (none: being on the team), `TITULAR`, or `OPERATOR`: a
+# platform operator, on the base host, in no gym (`app.platform.session`, #436).
 TITULAR = "titular"
+OPERATOR = "operator"
 GATES: dict[Gate, frozenset[Permission] | str] = {}
 
 

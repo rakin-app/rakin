@@ -1,0 +1,56 @@
+/* Wide on purpose: the operator works from a desktop, and a phone scrolls the table. */
+.platform-gyms__scroll {
+  overflow-x: auto;
+}
+
+.platform-gyms__table {
+  width: 100%;
+  min-width: 960px;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.platform-gyms__table th[scope='col'] {
+  padding: var(--space-2-5) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+}
+
+.platform-gyms__table th[scope='row'],
+.platform-gyms__table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+  font-weight: inherit;
+  text-align: left;
+  vertical-align: top;
+}
+
+.platform-gyms__table th[scope='row'] {
+  color: var(--color-heading);
+  font-weight: var(--font-weight-semibold);
+}
+
+.platform-gyms__table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.platform-gyms__table .platform-gyms__count {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.platform-gyms__muted {
+  color: var(--color-text-muted);
+}
+
+.platform-gyms__line {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.platform-gyms__note {
+  color: var(--color-text-muted);
+}

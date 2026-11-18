@@ -1,0 +1,13 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+Para entrar a la plataforma de Rakin, abre este enlace:
+
+{{ url }}
+
+{% set sign_in_code = code %}
+{% include "_code.txt" %}
+
+El enlace y el código vencen en 15 minutos y sirven una sola vez: usar uno gasta el otro. Si no lo pediste, ignora este correo.
+{% endblock %}

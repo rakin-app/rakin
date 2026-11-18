@@ -207,6 +207,32 @@ SQL
 
 On a gym listed there, load nothing more until it signs. In these commands and the ones above, `2026-11-18` is the current version: it moves with `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py) and the terms' **Versión** line. psql fills in `:'v'` only from stdin, not from `-c`, so the SQL goes in a heredoc.
 
+## Platform operators
+
+The panel at `https://<base host>/plataforma` (#436) lists every gym Rakin hosts, for the people who run them. Who may sign in there is granted on the host, never from a screen:
+
+```sh
+cd /srv/rakin
+docker compose run --rm api python -m app.operators grant --email <operator@example.com> --name "<Their name>"
+docker compose run --rm api python -m app.operators list
+```
+
+They then open `/plataforma` on the base host (`https://staging.rakin.app/plataforma` on staging), give that email, and sign in with the link or the code it brings. The session lasts 8 hours from sign-in; after that they sign in again. The panel does not exist on a gym's host. `grant` on someone who already is an operator changes nothing.
+
+To take it away:
+
+```sh
+docker compose run --rm api python -m app.operators revoke --email <operator@example.com>
+```
+
+`revoke` ends their open sessions at once and says how many. Granted again later, they sign in as before. Every grant, revoke, sign-in and sign-out is a row of `platform_event`, which nothing can change or delete:
+
+```sh
+docker compose exec -T postgres psql -U rakin rakin <<'SQL'
+SELECT at, action, operator_id, detail FROM platform_event ORDER BY at DESC LIMIT 20;
+SQL
+```
+
 ## Day to day
 
 ```sh

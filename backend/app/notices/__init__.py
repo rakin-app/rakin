@@ -111,6 +111,9 @@ class Template:
 
 
 MAGIC_LINK = Template("magic_link", redact=frozenset({"url", "code"}), page_link=False)
+# A platform operator's sign-in link (#436, `app.platform`), with its code. Sent as it is
+# rendered, never through `Notices.send`: an operator is no gym's person.
+PLATFORM_LINK = Template("platform_link", redact=frozenset({"url", "code"}), page_link=False)
 WELCOME = Template("welcome", page_code=True)
 STATEMENT = Template("statement")
 # A period past due (#260), from the nightly job or "Enviar recordatorio". Essential,
