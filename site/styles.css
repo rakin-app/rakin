@@ -136,11 +136,100 @@ figure {
   top: 12px;
 }
 
-/* The hero: Rakin's dark green, the logo and the promise, and Hoy on a phone. */
+/* Depth: three steps of shadow, so the layers read as nearer or further. */
+:root {
+  --shadow-1: 0 1px 2px rgb(16 39 25 / 0.06), 0 6px 16px -10px rgb(16 39 25 / 0.2);
+  --shadow-2: 0 2px 6px rgb(16 39 25 / 0.08), 0 18px 40px -20px rgb(16 39 25 / 0.32);
+  --shadow-3: 0 4px 12px rgb(4 18 10 / 0.18), 0 40px 80px -30px rgb(4 18 10 / 0.55);
+  --header: 64px;
+}
+
+html {
+  scroll-padding-top: calc(var(--header) + 8px);
+}
+
+/* The slim header: over the hero it is the hero; past it, solid. */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--header);
+  background: var(--color-sidebar);
+  color: var(--color-inverse-text);
+  transition: box-shadow 0.2s;
+}
+.js .top {
+  background: transparent;
+  margin-bottom: calc(-1 * var(--header));
+}
+.js .top.is-solid {
+  background: var(--color-sidebar);
+  box-shadow: 0 6px 20px -12px rgb(4 18 10 / 0.6);
+}
+.top :focus-visible {
+  outline-color: var(--color-focus-on-inverse);
+}
+.top__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+}
+.logo {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  flex: none;
+}
+.logo svg {
+  height: 30px;
+  width: auto;
+}
+.top__nav {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.top__nav ul {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.top__nav a,
+.top__cta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 10px;
+  color: var(--color-inverse-text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.top__nav a:hover {
+  color: var(--color-moss);
+}
+.top__cta {
+  display: none;
+  border-radius: 10px;
+  background: var(--color-moss);
+  color: var(--color-moss-text);
+  padding: 0 16px;
+  min-height: 40px;
+}
+.top__cta:hover {
+  background: var(--color-moss-hover);
+  color: var(--color-moss-text);
+}
+
+/* The hero: what Rakin is, and Hoy as it shows on a computer and a phone. */
 .hero {
   background: var(--gradient-hero);
   color: var(--color-inverse-text);
-  padding: 24px 0 0;
+  padding: calc(var(--header) + 24px) 0 0;
   overflow: hidden;
 }
 .hero :focus-visible {
@@ -148,107 +237,330 @@ figure {
 }
 .hero h1 {
   color: var(--color-inverse-text);
-  margin-top: 40px;
+  font-size: clamp(2.125rem, 6.4vw, 3.75rem);
+  max-width: 14em;
 }
 .hero .lead {
   color: var(--color-inverse-text-muted);
   font-size: 1.1875rem;
-  max-width: 36em;
-}
-.logo {
-  display: inline-flex;
-  min-height: 44px;
-  align-items: center;
-}
-.logo svg {
-  height: 40px;
-  width: auto;
+  max-width: 34em;
 }
 .hero__grid {
   display: grid;
-  gap: 40px;
+  gap: 32px;
 }
-.hero__text {
-  padding-bottom: 8px;
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
 }
-/* The phone stands on the hero's lower edge, its bottom cut off by it. */
-.hero__shot {
-  justify-self: center;
-  align-self: end;
-  width: min(300px, 78vw);
-  height: 400px;
-  overflow: hidden;
-}
-.hero__shot .phone {
-  border-bottom: 0;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-.button {
+.chips a {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 52px;
-  padding: 0 28px;
-  border-radius: 12px;
-  background: var(--color-moss);
-  color: var(--color-moss-text);
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid rgb(160 199 155 / 0.45);
+  color: var(--color-inverse-text);
   font-weight: 600;
   text-decoration: none;
 }
-.button:hover {
-  background: var(--color-moss-hover);
+.chips a:hover {
+  background: rgb(160 199 155 / 0.14);
+  color: var(--color-inverse-text);
+}
+.chips li:first-child a {
+  background: var(--color-moss);
+  border-color: var(--color-moss);
   color: var(--color-moss-text);
 }
+.hero__stage {
+  position: relative;
+}
+.hero__desktop,
+.hero__phone .hero__phone-proof {
+  display: none;
+}
+/* On a phone the phone stands on the hero's lower edge, cut off by it. */
+.hero__phone {
+  width: min(320px, 82vw);
+  height: 460px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  padding-bottom: 0;
+}
 
-/* Screenshots: a phone has the device's rounded corners, a desktop a card's. */
+/* Frames, drawn: a phone with its notch, a browser window with its three dots. */
 .phone {
-  border-radius: 28px;
-  border: 6px solid var(--color-sidebar);
-  background: var(--color-sidebar);
-  box-shadow: var(--shadow-shot);
+  position: relative;
+  border-radius: 34px;
+  padding: 9px;
+  background: #0a1d11;
+  box-shadow: var(--shadow-3), inset 0 0 0 1px rgb(255 255 255 / 0.08);
 }
-.desktop {
-  border-radius: 12px;
+.phone img,
+.phone video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 26px;
+  background: var(--color-bg);
+}
+.phone--full {
+  padding-top: 30px;
+}
+.phone--full::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 50%;
+  width: 26%;
+  height: 22px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #0a1d11;
+}
+.hero__phone img {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.browser {
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-3);
+  border: 1px solid rgb(255 255 255 / 0.12);
+}
+.browser__bar {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  height: 30px;
+  padding: 0 14px;
+  background: #e4e9de;
+}
+.browser__bar span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #c3cbbd;
+}
+.browser img {
+  width: 100%;
+}
+/* A crop of a screen, lifted off the page. */
+.cutout {
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-2);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-shot);
+}
+.cutout img {
+  width: 100%;
 }
 
-/* The three pillars, each its text and its screenshots. */
-.pillar {
-  padding: 56px 0;
+/* Section heads. */
+.section-head {
+  max-width: 44em;
+  margin-bottom: 40px;
 }
-.pillar--alt {
-  background: var(--color-surface-sunken);
+.section-head__lead {
+  color: var(--color-text-muted);
+  font-size: 1.1875rem;
 }
 .eyebrow {
   margin: 0 0 8px;
-  color: var(--color-text-muted);
+  color: var(--color-accent);
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.pillar__grid {
+
+/* Para ti: steps, each its text and its screen; on a wide screen, one sticky phone. */
+.story,
+.crew,
+.members,
+.more,
+.any {
+  padding: 72px 0;
+}
+.story__steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.step {
+  counter-increment: step;
+  display: grid;
+  gap: 24px;
+  margin-bottom: 56px;
+}
+.step__text h3::before {
+  content: counter(step);
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-right: 10px;
+  border-radius: 8px;
+  background: var(--color-sidebar);
+  color: var(--color-moss);
+  font-size: 1rem;
+  vertical-align: 3px;
+}
+.step__text p,
+.row__text p {
+  color: var(--color-text-muted);
+  font-size: 1.0625rem;
+}
+.step__shot,
+.row__shot {
+  width: min(320px, 86vw);
+  justify-self: center;
+}
+.story__frame {
+  display: none;
+}
+
+/* Para tus profes: text and its capture, side by side on a wide screen. */
+.crew {
+  background: var(--color-surface-sunken);
+}
+.row {
+  display: grid;
+  gap: 28px;
+  align-items: center;
+  margin-bottom: 64px;
+}
+.row:last-child,
+.step:last-child {
+  margin-bottom: 0;
+}
+.row__shot--wide {
+  width: min(500px, 100%);
+}
+
+/* Para tus alumnos: a row of phones, each cropped to one point. */
+.members__phones,
+.any__fan {
   display: grid;
   gap: 32px;
-  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.pillar ul,
+.members__phones figure,
+.any__fan figure {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+.members__phones .phone,
+.any__fan .phone {
+  width: min(300px, 82vw);
+}
+.members__phones figcaption {
+  max-width: 300px;
+  color: var(--color-text-muted);
+}
+.members__phones strong {
+  color: var(--color-heading);
+}
+
+/* Y además: tiles of two sizes. */
+.more {
+  background: var(--color-surface-sunken);
+}
+.bento {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bento__tile {
+  padding: 24px;
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-1);
+}
+.bento__tile svg {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 14px;
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.bento__tile h3 {
+  margin-bottom: 6px;
+}
+.bento__tile p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+.bento__tile--wide {
+  background: var(--color-sidebar);
+  border-color: var(--color-sidebar);
+}
+.bento__tile--wide h3 {
+  color: var(--color-inverse-text);
+}
+.bento__tile--wide p {
+  color: var(--color-inverse-text-muted);
+}
+.bento__tile--wide svg {
+  stroke: var(--color-moss);
+}
+
+/* Para cualquier actividad: the same screen three times; a row to swipe on a phone. */
+.any__fan {
+  grid-auto-flow: column;
+  grid-auto-columns: min(300px, 78vw);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 8px var(--gutter) 24px;
+  margin: 0 calc(-1 * var(--gutter));
+}
+.any__fan li {
+  scroll-snap-align: center;
+}
+.any__fan figcaption {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.25rem;
+  color: var(--color-heading);
+}
+
+/* Privacy and contact, as they were. */
+.privacy,
+.contact {
+  padding: 56px 0;
+}
 .privacy ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.pillar li,
 .privacy li {
   position: relative;
   padding-left: 28px;
   margin-bottom: 12px;
 }
 /* The bullet is the logo's centre mat. */
-.pillar li::before,
 .privacy li::before {
   content: '';
   position: absolute;
@@ -259,61 +571,7 @@ figure {
   border-radius: 2px;
   background: var(--color-focus);
 }
-.pillar__shots {
-  position: relative;
-}
-.pillar__shots .phone--over {
-  position: absolute;
-  right: 0;
-  bottom: -32px;
-  width: 34%;
-  max-width: 220px;
-}
-.pillar__shots:has(.phone--over) {
-  padding-right: 12%;
-  padding-bottom: 32px;
-}
-
-/* The rest, as short cards, with the student's page on a phone. */
-.more {
-  padding: 56px 0;
-}
-.more__grid {
-  display: grid;
-  gap: 32px;
-  align-items: center;
-}
-.cards {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 12px;
-}
-.cards li {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-card);
-  padding: 20px;
-}
-.cards h3 {
-  margin-bottom: 4px;
-}
-.cards p {
-  margin: 0;
-  color: var(--color-text-muted);
-}
-.more__shot {
-  justify-self: center;
-  width: min(280px, 72vw);
-}
-
-.privacy,
 .contact {
-  padding: 56px 0;
-}
-.privacy {
   background: var(--color-surface-sunken);
 }
 .contact h3 {
@@ -401,40 +659,69 @@ figure {
   outline-color: var(--color-focus-on-inverse);
 }
 
+
+@media (min-width: 640px) {
+  .top__cta {
+    display: inline-flex;
+  }
+  .members__phones {
+    grid-template-columns: 1fr 1fr;
+  }
+  .bento {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .bento__tile--wide {
+    grid-column: span 2;
+  }
+}
+
 @media (min-width: 880px) {
   :root {
     --gutter: 32px;
   }
-  .hero {
-    padding-top: 32px;
+  .story,
+  .crew,
+  .members,
+  .more,
+  .any {
+    padding: 112px 0;
   }
-  .hero__grid {
-    grid-template-columns: 1.2fr 1fr;
-    align-items: center;
-  }
-  .hero__text {
-    padding-bottom: 64px;
-  }
-  .hero__shot {
-    width: 320px;
-    height: 520px;
-  }
-  .pillar {
-    padding: 96px 0;
-  }
-  .pillar__grid {
-    grid-template-columns: 5fr 7fr;
+  .row {
+    grid-template-columns: 5fr 6fr;
     gap: 64px;
   }
-  .pillar--alt .pillar__text {
+  .row--flip .row__text {
     order: 2;
   }
-  .more__grid {
-    grid-template-columns: 7fr 4fr;
-    gap: 64px;
+  .row__shot {
+    justify-self: center;
   }
-  .cards {
-    grid-template-columns: 1fr 1fr;
+  .bento {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .bento__tile--wide {
+    grid-column: span 2;
+  }
+  .bento__tile--wide:last-child {
+    grid-column: span 3;
+  }
+  .any__fan {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(3, 1fr);
+    overflow: visible;
+    padding: 24px 0 0;
+    margin: 0;
+  }
+  /* Fanned: the two outside lean back. */
+  .any__fan li:first-child {
+    transform: rotate(-4deg) translateY(28px);
+  }
+  .any__fan li:last-child {
+    transform: rotate(4deg) translateY(28px);
+  }
+  .any__fan li:nth-child(2) {
+    position: relative;
+    z-index: 1;
   }
   .privacy,
   .contact {
@@ -447,8 +734,168 @@ figure {
   }
 }
 
+@media (min-width: 1024px) {
+  .hero {
+    padding-top: calc(var(--header) + 48px);
+  }
+  .hero__grid {
+    grid-template-columns: 5fr 7fr;
+    align-items: end;
+    gap: 40px;
+  }
+  .hero__text {
+    padding-bottom: 96px;
+    align-self: center;
+  }
+  /* The computer behind, its bottom cut off by the hero's edge; the phone in front. */
+  .hero__stage {
+    height: 560px;
+  }
+  .hero__desktop {
+    display: block;
+    position: absolute;
+    left: 14%;
+    top: 0;
+    width: 900px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .hero__phone {
+    position: absolute;
+    left: 0;
+    bottom: -150px;
+    width: 280px;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    border-bottom: initial;
+    border-radius: 34px;
+    padding: 30px 9px 9px;
+  }
+  .hero__phone img {
+    border-radius: 26px;
+  }
+  .hero__phone .hero__phone-today {
+    display: none;
+  }
+  .hero__phone .hero__phone-proof {
+    display: block;
+  }
+  .members__phones {
+    grid-template-columns: repeat(4, 1fr);
+    align-items: start;
+  }
+  .members__phones .phone {
+    width: 100%;
+  }
+  .step {
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: 48px;
+  }
+  /* With the script: the steps' own screens give way to one phone that stays. */
+  .story__grid.is-sticky {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 64px;
+  }
+  .is-sticky .step {
+    grid-template-columns: 1fr;
+    min-height: 70vh;
+    align-content: center;
+    margin: 0;
+  }
+  .is-sticky .step__shot {
+    display: none;
+  }
+  .is-sticky .story__frame {
+    display: block;
+  }
+  .story__phone {
+    position: sticky;
+    top: calc(50vh - 340px + var(--header) / 2);
+    width: 330px;
+  }
+  .story__phone .story__layer {
+    position: absolute;
+    top: 30px;
+    left: 9px;
+    width: calc(100% - 18px);
+    opacity: 0;
+    transition: opacity 0.45s ease;
+  }
+  .story__phone .story__layer:first-child {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+  }
+  .story__phone .story__layer.is-active {
+    opacity: 1;
+  }
+}
+
+/* Motion: reveals as a section comes in, and the hero's two layers apart as it goes.
+ * Only once the script has run, so nothing is ever hidden without it, and never under
+ * reduced motion. */
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+@keyframes drift {
+  to {
+    transform: translateY(-48px);
+  }
+}
+@keyframes drift-back {
+  to {
+    transform: translateY(-12px);
+  }
+}
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;
+  }
+  @supports (animation-timeline: view()) {
+    .js .reveal {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 60%;
+    }
+    @media (min-width: 1024px) {
+      .js .hero__phone {
+        animation: drift linear both;
+        animation-timeline: scroll(root);
+        animation-range: 0 80vh;
+      }
+      .js .hero__desktop {
+        animation: drift-back linear both;
+        animation-timeline: scroll(root);
+        animation-range: 0 80vh;
+      }
+    }
+  }
+  @supports not (animation-timeline: view()) {
+    .js .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition:
+        opacity 0.6s ease,
+        transform 0.6s ease;
+    }
+    .js .reveal.is-visible {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .story__phone .story__layer {
+    transition: none;
+  }
+  .top {
+    transition: none;
   }
 }

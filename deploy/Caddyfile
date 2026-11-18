@@ -60,11 +60,12 @@
 	redir @www {scheme}://{$LANDING_HOST}{uri} permanent
 
 	root * /srv/site
-	# Screenshots and fonts change rarely and keep their names: a week. The
-	# pages are revalidated, so a deploy shows on the next load.
-	@static path /img/* /fonts/*
+	# Captures, loops and fonts: a week. site/build.py names each capture and
+	# loop for its content, so one taken again has a new name. The pages are
+	# revalidated, so a deploy shows on the next load.
+	@static path /img/* /video/* /fonts/*
 	header @static Cache-Control "public, max-age=604800"
-	@pages not path /img/* /fonts/*
+	@pages not path /img/* /video/* /fonts/*
 	header @pages Cache-Control "no-cache"
 	file_server
 }

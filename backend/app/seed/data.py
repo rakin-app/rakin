@@ -18,7 +18,7 @@ import copy
 import random
 import unicodedata
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
@@ -91,6 +91,16 @@ SLOTS = (
 )
 # How many days of the schedule before the seed date were held.
 CLASS_DAYS = 21
+
+# The gym's class tags (migration 0041), and each slot's: the classes held carry them,
+# so a member's hours per tag have something to count (#449).
+CLASS_TAGS = ("Técnica", "Fuerza", "Movilidad")
+SLOT_TAGS = {
+    "morning": ("Técnica",),
+    "weekend": ("Técnica", "Movilidad"),
+    "fundamentals": ("Técnica",),
+    "advanced": ("Fuerza", "Técnica"),
+}
 
 # A class's blocks (migration 0028), by default block kind key: seconds, or for
 # sparring (rounds, round seconds, rest seconds). Classes alternate the two plans.
@@ -256,6 +266,12 @@ class MemberSpec:
     # Default: their first day for a first rank with no sub-rank, else a day drawn from
     # their time here.
     ranked_in: int | None = None
+    # The promotions before `rank`, oldest first: (rank key, sub-rank, days from the
+    # seed date), each recorded as a `grade_event` of its own.
+    promotions: tuple[tuple[str, int, int], ...] = ()
+    # Days before the membership started that the trial it converted from began (#27);
+    # none for a member who came straight onto their plan.
+    trial_before: int | None = None
 
     @property
     def is_kid(self) -> bool:
@@ -292,6 +308,8 @@ NAMED = (
         at=(0, 14, 12),
         # "desde 14 jun 2025" on his student page, the design's 8 November 2026.
         ranked_in=-512,
+        # The way there, which his ficha and student page list (#449).
+        promotions=(("blue", 0, -1150), ("blue", 4, -820), ("purple", 0, -700)),
     ),
     MemberSpec(
         "catalina-reyes",
@@ -467,7 +485,72 @@ def _filler() -> tuple[MemberSpec, ...]:
                     discount_reason="Beca" if guardian == families[-1][0] else None,
                 )
             )
+    # One adult came in on a trial last month and stayed, so Hoy's "Pruebas" has a
+    # conversion to count (#27). Set after the draws, so the roster is as it was.
+    members[1] = replace(members[1], since_months=1, trial_before=10)
     return tuple(members)
 
 
 MEMBERS: tuple[MemberSpec, ...] = (*NAMED, *_filler())
+
+
+@dataclass(frozen=True)
+class RequirementSpec:
+    """What the gym asks before someone trains (migration 0062)."""
+
+    key: str
+    name: str
+    # How long one lasts; none for one done once.
+    valid_months: int | None = None
+
+
+REQUIREMENTS = (
+    RequirementSpec("medical", "Certificado médico", valid_months=12),
+    RequirementSpec("waiver", "Autorización firmada"),
+)
+
+# Most members are up to date: the waiver signed the day they joined, the certificate
+# brought in within the year. Every `MEDICAL_PENDING_EVERY`th has none yet, and from
+# `MEDICAL_EXPIRING_AT` on, every one as many apart brought it nearly a year ago, so
+# Hoy's "Requisitos" lists a few and not the whole gym.
+MEDICAL_PENDING_EVERY = 16
+MEDICAL_EXPIRING_AT = 11
+MEDICAL_EXPIRING_DAYS = -350
+
+# The records the screens show with a note, in days from the seed date; each takes the
+# place of the one above for the same person and requirement.
+PERSON_REQUIREMENTS = (
+    ("diego-morales", "medical", -40, "Entregado en recepción, vigente hasta el próximo año"),
+    ("diego-morales", "waiver", -1200, None),
+    ("felipe-diaz", "waiver", -960, "Firmada en papel, archivada en la carpeta de inscripciones"),
+)
+
+
+@dataclass(frozen=True)
+class InstalmentChargeSpec:
+    """A cobro extra paid in cuotas (migration 0072): `amount_clp` from each person,
+    in `instalments` monthly lines, the first due `due_in` days from the seed date."""
+
+    key: str
+    title: str
+    category: str
+    amount_clp: int
+    instalments: int
+    due_in: int
+    # Who it charges, and who has paid their first cuota (in cash, to the validator).
+    people: tuple[str, ...]
+    paid_first: tuple[str, ...] = ()
+
+
+INSTALMENT_CHARGES = (
+    InstalmentChargeSpec(
+        "poleron",
+        "Polerón oficial",
+        "equipamiento",
+        36_000,
+        3,
+        due_in=-10,
+        people=("diego-morales", "catalina-reyes", "valentina-soto"),
+        paid_first=("diego-morales", "valentina-soto"),
+    ),
+)

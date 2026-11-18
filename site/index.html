@@ -6,7 +6,7 @@
     <title>Rakin · Membresías y pagos para academias</title>
     <meta
       name="description"
-      content="Rakin lleva cada pago de tu academia, avisa a quien está atrasado y te muestra cómo va tu equipo. Para academias, gimnasios y clubes."
+      content="La app para llevar tu academia, gimnasio o club: cobros, clases y el progreso de cada alumno en un solo lugar."
     />
     <meta name="theme-color" content="#0f2e1b" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Rakin · Membresías y pagos para academias" />
     <meta
       property="og:description"
-      content="Cada pago, claro. Los atrasados, avisados. Tu equipo, al día."
+      content="La app para llevar tu academia, gimnasio o club: cobros, clases y el progreso de cada alumno."
     />
     <meta property="og:url" content="https://rakin.app/" />
     <meta property="og:image" content="https://rakin.app/og-image.png" />
@@ -28,163 +28,411 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preload" href="/fonts/bricolage-grotesque-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/figtree-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <script>document.documentElement.classList.add('js')</script>
     <style>{{STYLES}}</style>
   </head>
   <body>
     <a class="skip" href="#contenido">Saltar al contenido</a>
 
-    <header class="hero">
-      <div class="wrap hero__grid">
-        <div class="hero__text">
-          <a class="logo" href="/" aria-label="Rakin, inicio">{{LOCKUP_DARK}}</a>
-          <h1>Cada pago claro, los atrasados avisados y tu equipo al día.</h1>
-          <p class="lead">
-            Rakin es la app de tu academia, gimnasio o club para llevar las mensualidades sin planilla:
-            registra cada pago, avisa por ti a quien se atrasó y te muestra quién viene y quién dejó de venir.
-          </p>
-          <a class="button" href="#contacto">Quiero probarlo</a>
-        </div>
-        <figure class="hero__shot">
-          <img
-            class="phone"
-            src="/img/hoy-390.webp"
-            width="780"
-            height="1688"
-            fetchpriority="high"
-            alt="La pantalla Hoy en un teléfono: 8 vencidos, 3 comprobantes por validar, 1 clase sin asistencia y 20 alumnos sin venir en 14 días."
-          />
-        </figure>
+    <header class="top" data-top>
+      <div class="wrap top__bar">
+        <a class="logo" href="/" aria-label="Rakin, inicio">{{LOCKUP_DARK}}</a>
+        <nav class="top__nav" aria-label="Secciones">
+          <ul>
+            <li><a href="#para-ti">Para ti</a></li>
+            <li><a href="#profes">Profes</a></li>
+            <li><a href="#alumnos">Alumnos</a></li>
+            <li><a href="#contacto">Contacto</a></li>
+          </ul>
+        </nav>
+        <a class="top__cta" href="#contacto">Escríbenos</a>
       </div>
     </header>
 
     <main id="contenido">
-      <section class="pillar" aria-labelledby="pagos">
-        <div class="wrap pillar__grid">
-          <div class="pillar__text">
-            <p class="eyebrow">1 · Pagos</p>
-            <h2 id="pagos">Cada pago, claro</h2>
-            <ul>
-              <li>Cada cobro y cada pago queda en el libro de cada alumno: cuánto se esperaba, cuánto entró y qué falta.</li>
-              <li>El alumno sube su comprobante de transferencia y tú lo validas con un toque: Rakin te dice si el monto coincide.</li>
-              <li>A fin de mes, exportas todo para tu contador en una planilla.</li>
+      <section class="hero" aria-labelledby="que-es" data-hero>
+        <div class="wrap hero__grid">
+          <div class="hero__text">
+            <h1 id="que-es">La app para llevar tu academia, gimnasio o club.</h1>
+            <p class="lead">
+              Cobros, clases y el progreso de cada alumno en un solo lugar. Rakin avisa a quien se atrasa, y tu
+              equipo pasa lista desde el teléfono.
+            </p>
+            <ul class="chips" aria-label="Lo que hace, según quién lo usa">
+              <li><a href="#para-ti">Para ti</a></li>
+              <li><a href="#profes">Para tus profes</a></li>
+              <li><a href="#alumnos">Para tus alumnos</a></li>
             </ul>
           </div>
-          <div class="pillar__shots">
-            <img
-              class="desktop"
-              src="/img/pagos-1280.webp"
-              width="1280"
-              height="800"
-              loading="lazy"
-              decoding="async"
-              alt="Pagos en el computador: Cobrado, Por validar, Vencido y Esperado del mes, sobre el libro de cobros y pagos."
-            />
-            <img
-              class="phone phone--over"
-              src="/img/comprobante-390.webp"
-              width="780"
-              height="1688"
-              loading="lazy"
-              decoding="async"
-              alt="Validar un comprobante en el teléfono: el monto coincide con lo que se debe, y el botón Confirmar."
-            />
+          <div class="hero__stage">
+            <figure class="browser hero__desktop">
+              <div class="browser__bar" aria-hidden="true"><span></span><span></span><span></span></div>
+              <img
+                data-shot="hoy-1280"
+                alt="Hoy en el computador: 8 vencidos, 3 comprobantes por validar, 1 clase sin asistencia y 20 alumnos sin venir en 14 días, sobre los requisitos pendientes y los comprobantes por revisar."
+              />
+            </figure>
+            <figure class="phone phone--full hero__phone">
+              <img
+                class="hero__phone-today"
+                data-shot="hoy-390"
+                loading="eager"
+                fetchpriority="high"
+                alt="Hoy en el teléfono: 8 vencidos, 3 comprobantes por validar, 1 clase sin asistencia y 20 alumnos sin venir en 14 días."
+              />
+              <img
+                class="hero__phone-proof"
+                data-shot="comprobante-390"
+                alt="Un comprobante por validar en el teléfono: dice haber pagado 45.000 pesos, debe 45.000, el monto coincide con lo que se debe, y el botón Confirmar."
+              />
+            </figure>
           </div>
         </div>
       </section>
 
-      <section class="pillar pillar--alt" aria-labelledby="atrasados">
-        <div class="wrap pillar__grid">
-          <div class="pillar__text">
-            <p class="eyebrow">2 · Recordatorios</p>
-            <h2 id="atrasados">Los atrasados, avisados</h2>
-            <ul>
-              <li>Al abrir Rakin ves quién está atrasado, desde cuándo y cuánto debe.</li>
-              <li>Le recuerdas por WhatsApp desde tu propio teléfono, con el mensaje ya escrito, o por correo.</li>
-              <li>Y Rakin le escribe por correo mientras siga atrasado, con un recordatorio automático firmado por tu academia.</li>
-            </ul>
-          </div>
-          <div class="pillar__shots">
-            <img
-              class="desktop"
-              src="/img/hoy-1280.webp"
-              width="1280"
-              height="800"
-              loading="lazy"
-              decoding="async"
-              alt="Hoy en el computador: los comprobantes por validar junto a los vencidos, cada uno con su aviso por WhatsApp y por correo."
-            />
+      <section class="story" id="para-ti" aria-labelledby="para-ti-titulo">
+        <div class="wrap">
+          <header class="section-head reveal">
+            <p class="eyebrow">Para ti</p>
+            <h2 id="para-ti-titulo">Abres Rakin y sabes qué te necesita hoy</h2>
+            <p class="section-head__lead">Los pagos, los atrasados y quién dejó de venir, sin planilla.</p>
+          </header>
+          <div class="story__grid" data-story>
+            <ol class="story__steps">
+              <li class="step" data-step="0">
+                <div class="step__text">
+                  <h3>Lo que te necesita hoy</h3>
+                  <p>
+                    Cuántos están atrasados, cuántos comprobantes esperan tu revisión, qué clase no tiene asistencia y
+                    a quién conviene llamar. Todo en la primera pantalla.
+                  </p>
+                </div>
+                <figure class="phone phone--full step__shot">
+                  <img
+                    data-shot="hoy-390"
+                    alt="Hoy en el teléfono: los vencidos, los comprobantes por validar, las clases sin asistencia y quién no viene hace 14 días, y debajo los requisitos pendientes."
+                  />
+                </figure>
+              </li>
+              <li class="step" data-step="1">
+                <div class="step__text">
+                  <h3>Cada pago, en su libro</h3>
+                  <p>
+                    Lo cobrado, lo que espera validación, lo vencido y lo esperado del mes, y el libro con cada cobro y
+                    cada pago. A fin de mes lo exportas para tu contador.
+                  </p>
+                </div>
+                <figure class="phone phone--full step__shot">
+                  <img
+                    data-shot="pagos-390"
+                    alt="Pagos en el teléfono: cobrado, por validar, vencido y esperado del mes, sobre el libro de cobros filtrado por estado."
+                  />
+                </figure>
+              </li>
+              <li class="step" data-step="2">
+                <div class="step__text">
+                  <h3>Un comprobante, un toque</h3>
+                  <p>
+                    El alumno sube la foto de su transferencia. Rakin te dice si el monto coincide con lo que debe, y tú
+                    confirmas.
+                  </p>
+                </div>
+                <figure class="phone phone--full step__shot">
+                  <video
+                    data-loop="validar"
+                    data-autoplay
+                    muted
+                    loop
+                    playsinline
+                    preload="none"
+                    aria-label="Validar un comprobante: el monto coincide con lo que se debe, se toca Confirmar y Rakin pasa al siguiente."
+                  ></video>
+                </figure>
+              </li>
+              <li class="step" data-step="3">
+                <div class="step__text">
+                  <h3>Los atrasados, avisados</h3>
+                  <p>
+                    Ves quién se atrasó, desde cuándo y cuánto debe. Le escribes por WhatsApp desde tu teléfono, con el
+                    mensaje ya escrito, o por correo. Y mientras siga atrasado, Rakin le recuerda por correo, firmado
+                    por tu academia.
+                  </p>
+                </div>
+                <figure class="phone phone--full step__shot">
+                  <img
+                    data-shot="vencidos-390"
+                    alt="Los vencidos en el teléfono: cada uno con los días de atraso y el monto, y botones para avisar por WhatsApp o por correo y para registrar que pagó."
+                  />
+                </figure>
+              </li>
+              <li class="step" data-step="4">
+                <div class="step__text">
+                  <h3>Quién se queda, y quién se va</h3>
+                  <p>
+                    Cuántas clases de prueba terminaron en un plan, quién no viene hace semanas para llamarlo a tiempo,
+                    y qué clase quedó sin pasar lista.
+                  </p>
+                </div>
+                <figure class="phone phone--full step__shot">
+                  <img
+                    data-shot="pruebas-390"
+                    alt="A quién llamar, las pruebas de los últimos 90 días (1 de 3 pasaron a un plan) y una clase sin asistencia, en el teléfono."
+                  />
+                </figure>
+              </li>
+            </ol>
+            <div class="story__frame">
+              <figure class="phone phone--full story__phone">
+                <img class="story__layer is-active" data-layer="0" data-shot="hoy-390" alt="Hoy en el teléfono: vencidos, comprobantes por validar, clases sin asistencia y quién no viene." />
+                <img class="story__layer" data-layer="1" data-shot="pagos-390" alt="Pagos en el teléfono: el resumen del mes sobre el libro de cobros." />
+                <video
+                  class="story__layer"
+                  data-layer="2"
+                  data-loop="validar"
+                  data-autoplay
+                  muted
+                  loop
+                  playsinline
+                  preload="none"
+                  aria-label="Validar un comprobante: el monto coincide, se toca Confirmar y Rakin pasa al siguiente."
+                ></video>
+                <img class="story__layer" data-layer="3" data-shot="vencidos-390" alt="Los vencidos, con su aviso por WhatsApp y por correo." />
+                <img class="story__layer" data-layer="4" data-shot="pruebas-390" alt="A quién llamar, las pruebas que pasaron a un plan y una clase sin asistencia." />
+              </figure>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="pillar" aria-labelledby="equipo">
-        <div class="wrap pillar__grid">
-          <div class="pillar__text">
-            <p class="eyebrow">3 · Tu equipo</p>
-            <h2 id="equipo">Tu equipo, al día</h2>
-            <ul>
-              <li>Pasas lista desde el teléfono, un toque por alumno, y ves cuántas clases lleva cada uno.</li>
-              <li>Quién dejó de venir, para llamarlo antes de que se vaya.</li>
-              <li>La ficha de cada alumno, con su plan, sus pagos y su asistencia, y sus grados si tu academia los usa. Cada alumno tiene además su propia página.</li>
-            </ul>
+      <section class="crew" id="profes" aria-labelledby="profes-titulo">
+        <div class="wrap">
+          <header class="section-head reveal">
+            <p class="eyebrow">Para tus profes</p>
+            <h2 id="profes-titulo">Tu equipo pasa lista, y cada alumno avanza a la vista</h2>
+            <p class="section-head__lead">Cada profe entra con su propio acceso y ve lo que le toca.</p>
+          </header>
+
+          <div class="row reveal">
+            <div class="row__text">
+              <h3>Asistencia desde el teléfono, con o sin señal</h3>
+              <p>
+                Un toque por persona. Si no hay señal, la lista queda en el teléfono y se guarda sola cuando vuelve.
+                Cada uno ve cuántas clases lleva.
+              </p>
+            </div>
+            <figure class="phone phone--full row__shot">
+              <video
+                data-loop="asistencia"
+                data-autoplay
+                muted
+                loop
+                playsinline
+                preload="none"
+                aria-label="Pasar lista sin señal: se marcan tres personas, se toca Guardar asistencia y Rakin avisa que quedó en el teléfono y se guardará cuando vuelva la señal."
+              ></video>
+            </figure>
           </div>
-          <div class="pillar__shots">
-            <img
-              class="desktop"
-              src="/img/ficha-1280.webp"
-              width="1280"
-              height="800"
-              loading="lazy"
-              decoding="async"
-              alt="La ficha de un alumno en el computador: su plan al día, el libro de pagos y su asistencia de los últimos 30 días."
-            />
-            <img
-              class="phone phone--over"
-              src="/img/llamar-390.webp"
-              width="780"
-              height="1688"
-              loading="lazy"
-              decoding="async"
-              alt="A quién llamar, en el teléfono: alumnos que no vienen hace semanas, cada uno con un botón de WhatsApp."
-            />
+
+          <div class="row row--flip reveal">
+            <div class="row__text">
+              <h3>El calendario de clases</h3>
+              <p>
+                El mes o la semana de un vistazo, con los feriados en rojo. Vuelves a una clase pasada para ver quién
+                vino, y cada clase guarda su tema y sus notas.
+              </p>
+            </div>
+            <figure class="cutout row__shot row__shot--wide">
+              <img
+                data-shot="mes-1280"
+                alt="El calendario de noviembre: cuántas clases hay cada día, los feriados en rojo y hoy marcado, con una clase sin asistencia."
+              />
+            </figure>
           </div>
+
+          <div class="row reveal">
+            <div class="row__text">
+              <h3>Grados y progreso</h3>
+              <p>
+                Si tu disciplina usa grados, cinturones o niveles, el profe registra cada graduación en la ficha y
+                queda el camino completo: cuándo, quién la dio y cuántas clases lleva desde la última.
+              </p>
+            </div>
+            <figure class="cutout row__shot row__shot--wide">
+              <img
+                data-shot="graduacion-1280"
+                alt="La graduación en la ficha de un alumno: su grado actual, desde cuándo y cuántas clases lleva desde la última, y la lista de sus graduaciones anteriores con quién las registró."
+              />
+            </figure>
+          </div>
+
+          <div class="row row--flip reveal">
+            <div class="row__text">
+              <h3>Requisitos, con sus notas</h3>
+              <p>
+                Certificado médico, autorización firmada o lo que pida tu academia: en la ficha de cada uno, con su
+                fecha, su vencimiento y una nota. Al pasar lista, el profe ve a quién le falta algo.
+              </p>
+            </div>
+            <figure class="cutout row__shot row__shot--wide">
+              <img
+                data-shot="requisitos-1280"
+                alt="Los requisitos en la ficha de un alumno: el certificado médico al día, con su vencimiento y una nota, y la autorización firmada."
+              />
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="members" id="alumnos" aria-labelledby="alumnos-titulo">
+        <div class="wrap">
+          <header class="section-head reveal">
+            <p class="eyebrow">Para tus alumnos</p>
+            <h2 id="alumnos-titulo">Cada alumno sigue lo suyo en su teléfono</h2>
+            <p class="section-head__lead">
+              Su propia página, que se instala desde el navegador como una app. Sin contraseña: entra con un link a su
+              correo.
+            </p>
+          </header>
+          <ul class="members__phones">
+            <li class="reveal">
+              <figure>
+                <div class="phone">
+                  <img
+                    data-shot="me-pago-390"
+                    alt="La página del alumno: su próximo pago con el comprobante en revisión, los datos para transferir, y un cobro extra en cuotas con el botón Subir comprobante."
+                  />
+                </div>
+                <figcaption><strong>Su próximo pago.</strong> Paga y sube el comprobante, también de sus cuotas.</figcaption>
+              </figure>
+            </li>
+            <li class="reveal">
+              <figure>
+                <div class="phone">
+                  <img
+                    data-shot="me-clases-390"
+                    alt="Sus clases: las últimas a las que vino, cada una con sus etiquetas, y sus horas por etiqueta este mes."
+                  />
+                </div>
+                <figcaption><strong>Sus clases y su asistencia.</strong> Y sus horas por etiqueta, este mes o este año.</figcaption>
+              </figure>
+            </li>
+            <li class="reveal">
+              <figure>
+                <div class="phone">
+                  <img
+                    data-shot="me-grado-390"
+                    alt="Su plan activo, sus requisitos al día, su grado actual desde cuándo y las clases de este mes."
+                  />
+                </div>
+                <figcaption><strong>Su plan, sus requisitos y su grado.</strong> Cuántas clases lleva y desde cuándo.</figcaption>
+              </figure>
+            </li>
+            <li class="reveal">
+              <figure>
+                <div class="phone">
+                  <img
+                    data-shot="me-familia-390"
+                    alt="La página de una apoderada: su próximo pago y Pagar todo junto, el de sus dos hijos en una sola transferencia."
+                  />
+                </div>
+                <figcaption><strong>Una familia, una transferencia.</strong> El apoderado sigue a cada hijo y paga todo junto.</figcaption>
+              </figure>
+            </li>
+          </ul>
         </div>
       </section>
 
       <section class="more" aria-labelledby="ademas">
-        <div class="wrap more__grid">
-          <div>
-            <h2 id="ademas">Además</h2>
-            <ul class="cards">
-              <li>
-                <h3>Clases y asistencia</h3>
-                <p>Tu horario, quién enseña cada clase y la lista para marcar asistencia durante la clase.</p>
-              </li>
-              <li>
-                <h3>Trae tu planilla</h3>
-                <p>Importa tus alumnos y sus pagos desde la planilla que usas hoy, con su historial.</p>
-              </li>
-              <li>
-                <h3>Una app en el teléfono del alumno</h3>
-                <p>Alumnos y apoderados ven su próximo pago y sus clases, y suben su comprobante. Se instala desde el navegador.</p>
-              </li>
-              <li>
-                <h3>Con el logo de tu academia</h3>
-                <p>Elige entre tres temas de color y sube tu logo: tus alumnos ven tu academia.</p>
-              </li>
-            </ul>
-          </div>
-          <figure class="more__shot">
-            <img
-              class="phone"
-              src="/img/me-390.webp"
-              width="780"
-              height="1688"
-              loading="lazy"
-              decoding="async"
-              alt="La página del alumno en su teléfono: su próximo pago, el comprobante en revisión y su plan."
-            />
-          </figure>
+        <div class="wrap">
+          <header class="section-head reveal">
+            <p class="eyebrow">Y además</p>
+            <h2 id="ademas">Lo que necesita una academia de verdad</h2>
+          </header>
+          <ul class="bento">
+            <li class="bento__tile bento__tile--wide reveal">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3M8 17h6" /></svg>
+              <h3>Planes a tu medida</h3>
+              <p>
+                Mensual, packs de clases, temporadas, matrícula, cobros extra en cuotas, descuentos con su motivo y el
+                pago de toda una familia.
+              </p>
+            </li>
+            <li class="bento__tile reveal">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 21a7 7 0 0 1 14 0M9 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM16 4a4 4 0 0 1 0 8M22 21a7 7 0 0 0-5-6.7" /></svg>
+              <h3>Tu equipo, con sus roles</h3>
+              <p>Dueño, administración y profes, cada uno con su cargo y lo que puede ver.</p>
+            </li>
+            <li class="bento__tile reveal">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7M12.5 10v10" /></svg>
+              <h3>Trae tu planilla</h3>
+              <p>Importa a tus alumnos y sus pagos desde la planilla que usas hoy, con su historial.</p>
+            </li>
+            <li class="bento__tile reveal">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.3-1.7-.4-1.2.3-2.3 1.6-2.3H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10zM7.5 11.5h0M10 7.5h0M14.5 7.5h0" /></svg>
+              <h3>Con tu logo y tus colores</h3>
+              <p>Sube tu logo y elige un tema: tus alumnos ven tu academia, no la nuestra.</p>
+            </li>
+            <li class="bento__tile reveal">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 4.2-2.6M19 12.9a10 10 0 0 0-2.4-1.7M2 9a15 15 0 0 1 4.6-2.9M22 9a15 15 0 0 0-11.2-4M12 20h0" /></svg>
+              <h3>Funciona sin señal</h3>
+              <p>La asistencia se guarda en el teléfono y se envía cuando vuelve la conexión.</p>
+            </li>
+            <li class="bento__tile bento__tile--wide reveal">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6zM9 12l2 2 4-4" /></svg>
+              <h3>Tus datos son tuyos</h3>
+              <p>
+                Cada academia ve solo a los suyos, y Rakin no los usa para nada más.
+              </p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="any" aria-labelledby="cualquiera">
+        <div class="wrap">
+          <header class="section-head reveal">
+            <p class="eyebrow">Para cualquier actividad</p>
+            <h2 id="cualquiera">Habla como habla tu lugar</h2>
+            <p class="section-head__lead">
+              Alumnos o socios, profe, coach o entrenador, y la práctica libre con su propio nombre. Eliges la
+              actividad y Rakin usa sus palabras. Los grados, solo si los usas.
+            </p>
+          </header>
+          <ul class="any__fan">
+            <li>
+              <figure>
+                <div class="phone">
+                  <img
+                    data-shot="actividad-academia-390"
+                    alt="En una academia de BJJ: el cinturón morado con un grado, alumno desde julio de 2023, y el tiempo de entrenamiento con sparring y open mat."
+                  />
+                </div>
+                <figcaption>Academia</figcaption>
+              </figure>
+            </li>
+            <li>
+              <figure>
+                <div class="phone">
+                  <img
+                    data-shot="actividad-escalada-390"
+                    alt="En un gimnasio de escalada: socio desde julio de 2023, sin grados, y el tiempo de entrenamiento con escalada libre."
+                  />
+                </div>
+                <figcaption>Escalada</figcaption>
+              </figure>
+            </li>
+            <li>
+              <figure>
+                <div class="phone">
+                  <img
+                    data-shot="actividad-remo-390"
+                    alt="En un club de remo: socio desde julio de 2023, sin grados, y el tiempo de entrenamiento con remo libre."
+                  />
+                </div>
+                <figcaption>Remo</figcaption>
+              </figure>
+            </li>
+          </ul>
         </div>
       </section>
 
@@ -205,7 +453,7 @@
 
       <section class="contact" id="contacto" aria-labelledby="probar">
         <div class="wrap narrow">
-          <h2 id="probar">¿Quieres probarlo en tu academia?</h2>
+          <h2 id="probar">¿Quieres probarlo en tu academia, gimnasio o club?</h2>
           <p>
             Escríbenos a <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a> y te contamos cómo empezar.
           </p>
@@ -224,5 +472,42 @@
         <p><a href="/privacidad/">Privacidad</a> · <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a></p>
       </div>
     </footer>
+
+    <script>
+      // Progressive: with no script every step, capture and loop shows as it is.
+      ;(() => {
+        const calm = matchMedia('(prefers-reduced-motion: reduce)')
+        const seen = (els, act, options) => {
+          const io = new IntersectionObserver((entries) => entries.forEach((e) => act(e)), options)
+          els.forEach((el) => io.observe(el))
+        }
+        // The header turns solid once the hero has scrolled away.
+        const top = document.querySelector('[data-top]')
+        seen([document.querySelector('[data-hero]')], (e) => top.classList.toggle('is-solid', !e.isIntersecting), {
+          rootMargin: '-64px 0px 0px 0px',
+        })
+        // Reveals, where scroll-driven animations are not supported.
+        if (!CSS.supports('animation-timeline: view()')) {
+          seen(document.querySelectorAll('.reveal'), (e) => {
+            if (e.isIntersecting) e.target.classList.add('is-visible')
+          }, { rootMargin: '0px 0px -10% 0px' })
+        }
+        // The loops play while on screen, never under reduced motion.
+        seen(document.querySelectorAll('video[data-autoplay]'), (e) => {
+          const video = e.target
+          if (e.isIntersecting && !calm.matches && video.offsetParent) video.play().catch(() => {})
+          else video.pause()
+        }, { threshold: 0.4 })
+        // Para ti: the sticky phone shows the step in the middle of the screen.
+        const story = document.querySelector('[data-story]')
+        const layers = story.querySelectorAll('[data-layer]')
+        story.classList.add('is-sticky')
+        seen(story.querySelectorAll('[data-step]'), (e) => {
+          if (!e.isIntersecting) return
+          const step = e.target.dataset.step
+          layers.forEach((layer) => layer.classList.toggle('is-active', layer.dataset.layer === step))
+        }, { rootMargin: '-45% 0px -45% 0px' })
+      })()
+    </script>
   </body>
 </html>
