@@ -486,20 +486,27 @@
   padding: 0;
 }
 
+/* Every day the same size whatever it holds (#457): a fixed height, one line per mark,
+   cut with an ellipsis rather than wrapped; the full sentence is the day's name. */
 .month__day {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-0-5);
   width: 100%;
-  min-height: 3.5rem;
-  padding: var(--space-1) 0;
+  height: 3.5rem;
+  /* A table cell cannot be a size container; the button inside it can. */
+  container: month-day / inline-size;
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--space-1) var(--space-0-5);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   color: var(--color-text);
   font: inherit;
   font-size: var(--text-xs);
+  line-height: 1.25;
   cursor: pointer;
 }
 
@@ -524,6 +531,26 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* A phone: the marks side by side under the number, `3 • 1`. */
+.month__marks {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.month__count,
+.month__unmarked,
+.month__cancelled {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .month__count {
   color: var(--color-text-muted);
 }
@@ -536,6 +563,7 @@
 }
 
 .month__dot {
+  flex: none;
   width: 0.5rem;
   height: 0.5rem;
   background: var(--color-warning);
@@ -548,16 +576,23 @@
 }
 
 /* A phone has room for the numbers only; from 1024px each says what it counts. */
-.month__long {
+.month__long,
+.month__narrow {
   display: none;
 }
 
 @media (--wide) {
   .month__day {
     align-items: flex-start;
-    min-height: 5rem;
+    height: 5.5rem;
     padding: var(--space-1-5) var(--space-2);
     text-align: left;
+  }
+
+  .month__marks {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-0-5);
   }
 
   .month__short {
@@ -566,23 +601,27 @@
 
   .month__long {
     display: inline;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .month__unmarked .month__dot {
-    flex: none;
+  /* A day too narrow for `1 sin asistencia` (the month beside the day at 1280px) says the
+     unmarked and cancelled ones as numbers, `• 1` and a struck `1`, as a phone does. */
+  @container month-day (max-width: 8rem) {
+    .month__unmarked .month__long,
+    .month__cancelled .month__long {
+      display: none;
+    }
+
+    .month__narrow,
+    .month__cancelled .month__short {
+      display: inline;
+    }
   }
 }
 
-/* A public holiday (#426): its number in the calendar's red; from 1024px its name under it. */
+/* A public holiday (#426): its number in the calendar's red, and nothing more in the cell
+   (#457); its name is in the day's name and its title. */
 .month__day--holiday .month__number {
   color: var(--color-holiday);
-}
-
-.month__holiday {
-  color: var(--color-holiday);
-  font-weight: var(--font-weight-semibold);
-  line-height: 1.2;
-  /* A long name breaks where Spanish does, not at any letter. */
-  hyphens: auto;
-  overflow-wrap: break-word;
 }

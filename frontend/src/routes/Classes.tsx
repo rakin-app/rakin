@@ -451,7 +451,7 @@ function Month({
                 {week.map((d, i) => {
                   const counts = dayCounts(byDay.get(d) ?? [], now)
                   const outside = d.slice(0, 7) !== month.slice(0, 7)
-                  // A public holiday's number is red, its name in the title and the day's name.
+                  // A public holiday's number is red, its name in the title and the day's name only (#457).
                   const holiday = holidays.get(d) ?? null
                   return (
                     <td key={d} className="month__cell">
@@ -474,25 +474,27 @@ function Month({
                         onClick={() => pick(d)}
                       >
                         <span className="month__number">{Number(d.slice(8, 10))}</span>
-                        {holiday !== null && <span className="month__holiday month__long">{holiday}</span>}
-                        {counts.classes > 0 && (
-                          <span className="month__count">
-                            <span className="month__short">{counts.classes}</span>
-                            <span className="month__long">{words.classes(counts.classes)}</span>
-                          </span>
-                        )}
-                        {counts.unmarked > 0 && (
-                          <span className="month__unmarked">
-                            <span className="month__dot" />
-                            <span className="month__long">{words.unmarked(counts.unmarked)}</span>
-                          </span>
-                        )}
-                        {counts.cancelled > 0 && (
-                          <span className="month__cancelled">
-                            <span className="month__short">{counts.cancelled}</span>
-                            <span className="month__long">{words.cancelled(counts.cancelled)}</span>
-                          </span>
-                        )}
+                        <span className="month__marks">
+                          {counts.classes > 0 && (
+                            <span className="month__count">
+                              <span className="month__short">{counts.classes}</span>
+                              <span className="month__long">{words.classes(counts.classes)}</span>
+                            </span>
+                          )}
+                          {counts.unmarked > 0 && (
+                            <span className="month__unmarked">
+                              <span className="month__dot" />
+                              <span className="month__narrow">{counts.unmarked}</span>
+                              <span className="month__long">{words.unmarked(counts.unmarked)}</span>
+                            </span>
+                          )}
+                          {counts.cancelled > 0 && (
+                            <span className="month__cancelled">
+                              <span className="month__short">{counts.cancelled}</span>
+                              <span className="month__long">{words.cancelled(counts.cancelled)}</span>
+                            </span>
+                          )}
+                        </span>
                       </button>
                     </td>
                   )
