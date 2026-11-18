@@ -51,6 +51,9 @@ function line(id: string, name: string, extra: Partial<Line> = {}): Line {
   }
 }
 
+// One person's instalments, each a line of its own.
+const ANA = { id: 'p-ana', name: 'Ana Rojas' }
+
 const CHARGE: ExtraCharge = {
   ...SUMMARY,
   description: null,
@@ -378,7 +381,7 @@ describe('Nuevo cobro extra', () => {
     expect(email).toHaveTextContent(words.confirm.hello('Ana Rojas'))
     expect(email).toHaveTextContent(words.confirm.sends('Academia Sur', 'Bencina final', null))
     expect(email).toHaveTextContent('Nos vamos el sábado.')
-    expect(email).toHaveTextContent(words.confirm.owes(null, '$33.334', '30-11-2026'))
+    expect(email).toHaveTextContent(words.confirm.owes(null, '$33.334', '30 de noviembre de 2026'))
     expect(screen.getByText(words.noEmail(1))).toBeInTheDocument()
     expect(screen.getByRole('link', { name: words.whatsapp('Marta Pérez') })).toHaveAttribute(
       'href',
@@ -449,7 +452,7 @@ describe('Nuevo cobro extra', () => {
     await user.click(screen.getByRole('checkbox', { name: new RegExp(words.inInstalments) }))
     await user.selectOptions(screen.getByLabelText(words.instalmentsLabel), '3')
     const preview = await screen.findByRole('region', { name: words.previewLabel })
-    expect(await within(preview).findByText(words.instalmentsOf('$33.335 + $33.333 + $33.333'))).toBeInTheDocument()
+    expect(await within(preview).findByText(words.splitFirst(3, '$33.335', '$33.333'))).toBeInTheDocument()
     expect(within(preview).getByText(words.instalmentsRemainder)).toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: words.next }))
     await user.click(screen.getByRole('button', { name: words.next }))
@@ -458,16 +461,94 @@ describe('Nuevo cobro extra', () => {
     const terms = within(look).getAllByRole('term').map((term) => term.textContent)
     expect(terms).toContain(words.confirm.instalments)
     expect(terms).not.toContain(words.confirm.due)
-    expect(look).toHaveTextContent(words.confirm.instalmentDue(1, '15 de diciembre de 2026'))
-    expect(look).toHaveTextContent(words.confirm.instalmentDue(3, '15 de febrero de 2027'))
+    expect(look).toHaveTextContent(words.confirm.instalmentDue(1, '$33.335', '15 de diciembre de 2026'))
+    expect(look).toHaveTextContent(words.confirm.instalmentDue(3, '$33.333', '15 de febrero de 2027'))
     const email = within(look).getByRole('region', { name: words.confirm.message })
     expect(email).toHaveTextContent(words.confirm.sends('Academia Sur', 'Viaje a la regata · cuota 1 de 3', null))
-    expect(email).toHaveTextContent(words.confirm.owes(null, '$33.335', '15-12-2026'))
+    // The email writes the date as the screen does (#417).
+    expect(email).toHaveTextContent(words.confirm.owes(null, '$33.335', '15 de diciembre de 2026'))
     await user.click(screen.getByRole('button', { name: words.create }))
 
     await screen.findByRole('heading', { name: 'Bencina final' })
     const created = writes(calls).find((c) => c.path === '/api/extra-charges')
     expect(created!.body).toMatchObject({ amount_clp: 100001, instalments: 3, due_date: DATES[0] })
+  })
+})
+
+describe('Nuevo cobro extra, in instalments for a programme (#417)', () => {
+  // A seven-term split, said once: $89.990 in 7 is $12.860 and six of $12.855.
+  const SPLIT = [12860, 12855, 12855, 12855, 12855, 12855, 12855]
+  const DATES = ['2026-12-15', '2027-01-15', '2027-02-15', '2027-03-15', '2027-04-15', '2027-05-15', '2027-06-15']
+  const kid = (i: number, amount: number, split: number[]): PreviewLine => ({
+    person: { id: `p-kid-${i}`, name: `Kid ${String(i).padStart(2, '0')}` },
+    amount_clp: amount,
+    instalments_clp: split,
+    overridden: amount !== 89990,
+    contact_name: `Kid ${String(i).padStart(2, '0')}`,
+    on_behalf: false,
+    has_email: true,
+    whatsapp_url: null,
+  })
+
+  async function toAmount(lines: PreviewLine[]) {
+    const user = userEvent.setup()
+    stubApi('owner', (path) => {
+      if (path !== '/api/extra-charges/preview') return undefined
+      return {
+        body: {
+          lines,
+          total_clp: lines.reduce((sum, line) => sum + line.amount_clp, 0),
+          remainder_clp: 0,
+          share_clp: null,
+          due_dates: DATES,
+        } satisfies Preview,
+      }
+    })
+    renderAt('/admin/pagos/cobros/nuevo')
+    const words = copy.wizard
+    await user.type(await screen.findByLabelText(words.titleLabel), 'Campeonato')
+    await user.type(screen.getByLabelText(words.dueLabel), DATES[0]!)
+    await user.click(screen.getByRole('button', { name: words.next }))
+    await user.click(screen.getByRole('radio', { name: words.target.program }))
+    await user.selectOptions(await screen.findByLabelText(words.programLabel), 'pr-kids')
+    await user.click(screen.getByRole('button', { name: words.next }))
+    await user.type(screen.getByLabelText(words.amountLabel.fixed), '89990')
+    await user.click(screen.getByRole('checkbox', { name: new RegExp(words.inInstalments) }))
+    await user.selectOptions(screen.getByLabelText(words.instalmentsLabel), '7')
+    const preview = await screen.findByRole('region', { name: words.previewLabel })
+    await within(preview).findByText(words.splitFirst(7, '$12.860', '$12.855'))
+    return { user, preview }
+  }
+
+  it('says the split once when everyone pays the same, and gives each cuota its amount', async () => {
+    const words = copy.wizard
+    const { user, preview } = await toAmount(Array.from({ length: 20 }, (_, i) => kid(i + 1, 89990, SPLIT)))
+
+    expect(within(preview).getAllByText(words.splitFirst(7, '$12.860', '$12.855'))).toHaveLength(1)
+    expect(within(preview).getAllByRole('textbox')).toHaveLength(20)
+
+    await user.click(await screen.findByRole('button', { name: words.next }))
+    await user.click(screen.getByRole('button', { name: words.next }))
+    const look = screen.getByRole('region', { name: words.stepOf(5, 5, words.steps[4]!) })
+    expect(look).toHaveTextContent(words.confirm.instalmentDue(1, '$12.860', '15 de diciembre de 2026'))
+    expect(look).toHaveTextContent(words.confirm.instalmentDue(2, '$12.855', '15 de enero de 2027'))
+  })
+
+  it("shows a person's own split only where it differs, and each cuota's total then", async () => {
+    const words = copy.wizard
+    const theirs = [10000, 10000, 10000, 10000, 10000, 10000, 10000]
+    const { user, preview } = await toAmount([kid(1, 89990, SPLIT), kid(2, 70000, theirs), kid(3, 89990, SPLIT)])
+
+    expect(within(preview).getAllByText(words.splitFirst(7, '$12.860', '$12.855'))).toHaveLength(1)
+    const odd = within(preview).getByLabelText(words.overrideLabel('Kid 02')).closest('li')!
+    expect(within(odd).getByText(words.splitEven(7, '$10.000'))).toBeInTheDocument()
+
+    await user.click(await screen.findByRole('button', { name: words.next }))
+    await user.click(screen.getByRole('button', { name: words.next }))
+    const look = screen.getByRole('region', { name: words.stepOf(5, 5, words.steps[4]!) })
+    expect(look).toHaveTextContent(
+      words.confirm.instalmentDue(1, words.confirm.inAll('$35.720'), '15 de diciembre de 2026'),
+    )
   })
 })
 
@@ -682,9 +763,9 @@ describe('Un cobro extra', () => {
       due_clp: 100001,
       collected_clp: 33335,
       people: [
-        line('ana-1', 'Ana Rojas', { instalment: 1, due_date: '2026-11-15', amount_due_clp: 33335, status: 'paid', paid_clp: 33335, outstanding_clp: 0 }),
-        line('ana-2', 'Ana Rojas', { instalment: 2, due_date: '2026-12-15', amount_due_clp: 33333, outstanding_clp: 33333 }),
-        line('ana-3', 'Ana Rojas', { instalment: 3, due_date: '2027-01-15', amount_due_clp: 33333, outstanding_clp: 33333 }),
+        line('ana-1', 'Ana Rojas', { person: ANA, instalment: 1, due_date: '2026-11-15', amount_due_clp: 33335, status: 'paid', paid_clp: 33335, outstanding_clp: 0 }),
+        line('ana-2', 'Ana Rojas', { person: ANA, instalment: 2, due_date: '2026-12-15', amount_due_clp: 33333, outstanding_clp: 33333 }),
+        line('ana-3', 'Ana Rojas', { person: ANA, instalment: 3, due_date: '2027-01-15', amount_due_clp: 33333, outstanding_clp: 33333 }),
       ],
       schedule: [
         { instalment: 1, due_date: '2026-11-15', lines: 1, paid_lines: 1, waived_lines: 0, due_clp: 33335, collected_clp: 33335 },
@@ -702,12 +783,84 @@ describe('Un cobro extra', () => {
       copy.progress(0, 1, '$0', '$33.333'),
     ])
     const people = screen.getByRole('region', { name: copy.detail.peopleLabel })
-    // One person, three lines, each with its own date and actions.
-    expect(within(people).getAllByRole('link', { name: 'Ana Rojas' })).toHaveLength(3)
-    const second = within(people).getByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 2) }).closest('li')!
-    expect(within(second).getByText(copy.detail.instalmentDue(2, 3, '15 dic'), { exact: false })).toBeInTheDocument()
+    // One row for the person (#417): how far along, the next cuota and its one action.
+    expect(within(people).getAllByRole('link', { name: 'Ana Rojas' })).toHaveLength(1)
+    const ana = within(people).getByRole('link', { name: 'Ana Rojas' }).closest('li')!
+    expect(within(ana).getByText(copy.detail.instalmentsPaid(1, 3))).toBeInTheDocument()
+    expect(within(ana).getByText(copy.detail.paidOf('$33.335', '$100.001'))).toBeInTheDocument()
+    expect(within(ana).getByText(copy.detail.nextDue(2, 3, '15 dic', '$33.333'))).toBeInTheDocument()
+    expect(within(ana).getByRole('button', { name: copy.detail.markPaidInstalment(2) })).toBeInTheDocument()
+    expect(within(people).queryByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 2) })).not.toBeInTheDocument()
+
+    // "Ver cuotas": each cuota with its own date and actions.
+    const user = userEvent.setup()
+    await user.click(within(ana).getByRole('button', { name: copy.detail.showInstalmentsOf('Ana Rojas') }))
+    const cuotas = within(ana).getByRole('list', { name: copy.detail.instalmentsOfPerson('Ana Rojas') })
+    expect(within(cuotas).getAllByRole('listitem')).toHaveLength(3)
+    const second = within(cuotas).getByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 2) }).closest('li')!
+    expect(within(second).getByText(copy.detail.instalmentDue(2, 3, '15 dic'))).toBeInTheDocument()
     expect(within(second).getByText(copy.status.open)).toBeInTheDocument()
-    expect(within(people).queryByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 1) })).toBeInTheDocument()
+    expect(within(cuotas).getByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 1) })).toBeInTheDocument()
+  })
+
+  it('lists a 20-person, 7-cuota cobro as 20 rows, each reaching every cuota (#417)', async () => {
+    const user = userEvent.setup()
+    const days = ['2026-12-15', '2027-01-15', '2027-02-15', '2027-03-15', '2027-04-15', '2027-05-15', '2027-06-15']
+    const split = [12860, 12855, 12855, 12855, 12855, 12855, 12855]
+    const name = (k: number) => `Kid ${String(k).padStart(2, '0')}`
+    const people = Array.from({ length: 20 }, (_, k) =>
+      split.map((amount, i) =>
+        line(`k${k + 1}-${i + 1}`, name(k + 1), {
+          person: { id: `p-k${k + 1}`, name: name(k + 1) },
+          instalment: i + 1,
+          due_date: days[i]!,
+          amount_due_clp: amount,
+          // The first two cuotas of the first child are paid.
+          ...(k === 0 && i < 2 ? { status: 'paid' as const, paid_clp: amount, outstanding_clp: 0 } : { outstanding_clp: amount }),
+        }),
+      ),
+    ).flat()
+    const KIDS: ExtraCharge = { ...CHARGE, title: 'Campeonato', instalments: 7, due_date: days[0]!, people }
+    const calls = stubApi('owner', (path, method) => {
+      if (path === `/api/extra-charges/${CHARGE.id}`) return { body: KIDS }
+      if (path.endsWith('/payments') && method === 'POST') return { status: 201, body: {} }
+      return undefined
+    })
+    renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
+
+    const list = (await screen.findByRole('region', { name: copy.detail.peopleLabel })).querySelector('ul')!
+    expect(list.children).toHaveLength(20)
+    const first = within(list).getByRole('link', { name: 'Kid 01' }).closest('li')!
+    expect(within(first).getByText(copy.detail.instalmentsPaid(2, 7))).toBeInTheDocument()
+    expect(within(first).getByText(copy.detail.paidOf('$25.715', '$89.990'))).toBeInTheDocument()
+
+    // The main action pays the next cuota.
+    await user.click(within(first).getByRole('button', { name: copy.detail.markPaidInstalment(3) }))
+    expect(within(first).getByLabelText(copy.detail.amountLabel)).toHaveValue('12855')
+    await user.click(within(first).getByRole('button', { name: copy.detail.save }))
+    await vi.waitFor(() =>
+      expect(writes(calls)).toEqual([
+        { method: 'POST', path: '/api/extra-charges/x-final/lines/k1-3/payments', body: { amount_clp: 12855, method: 'transfer' } },
+      ]),
+    )
+
+    // Every cuota of the last child is a click away, with its own "Más".
+    const last = within(list).getByRole('link', { name: 'Kid 20' }).closest('li')!
+    await user.click(within(last).getByRole('button', { name: copy.detail.showInstalmentsOf('Kid 20') }))
+    for (let i = 1; i <= 7; i++) {
+      expect(within(last).getByRole('group', { name: copy.detail.actionsOf('Kid 20', i) })).toBeInTheDocument()
+    }
+  })
+
+  it('lists a cobro paid at once as one row per line, as before (#417)', async () => {
+    stubApi('owner')
+    renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
+
+    await screen.findByRole('link', { name: 'Ana Rojas' })
+    expect(screen.queryByRole('button', { name: copy.detail.showInstalmentsOf('Ana Rojas') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: copy.detail.scheduleLabel })).not.toBeInTheDocument()
+    const ana = screen.getByRole('link', { name: 'Ana Rojas' }).closest('li')!
+    expect(within(ana).getByText('$20.000')).toBeInTheDocument()
   })
 
   it("reads an instalment due today as owed, not late, in the gym's evening (#356)", async () => {
@@ -718,8 +871,8 @@ describe('Un cobro extra', () => {
       ...CHARGE,
       instalments: 2,
       people: [
-        line('ana-1', 'Ana Rojas', { instalment: 1, due_date: '2026-11-19' }),
-        line('ana-2', 'Ana Rojas', { instalment: 2, due_date: '2026-11-20' }),
+        line('ana-1', 'Ana Rojas', { person: ANA, instalment: 1, due_date: '2026-11-19' }),
+        line('ana-2', 'Ana Rojas', { person: ANA, instalment: 2, due_date: '2026-11-20' }),
       ],
     }
     stubApi('owner', (path) => {
@@ -731,6 +884,7 @@ describe('Un cobro extra', () => {
 
     const row = (i: number) =>
       screen.getByRole('group', { name: copy.detail.actionsOf('Ana Rojas', i) }).closest('li')!
+    await user.click(await screen.findByRole('button', { name: copy.detail.showInstalmentsOf('Ana Rojas') }))
     await screen.findByRole('group', { name: copy.detail.actionsOf('Ana Rojas', 2) })
     await vi.waitFor(() => expect(within(row(2)).getByText(copy.status.open)).toBeInTheDocument())
     expect(within(row(1)).getByText(copy.status.overdue)).toBeInTheDocument()

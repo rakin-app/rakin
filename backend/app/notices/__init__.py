@@ -163,6 +163,27 @@ def _fecha(value: date) -> str:
     return f"{value:%d-%m-%Y}"
 
 
+_MESES = (
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+)
+
+
+def _fecha_larga(value: date) -> str:
+    """A day in full, as the app writes it (`longDay`): 15 de diciembre de 2026."""
+    return f"{value.day} de {_MESES[value.month - 1]} de {value.year}"
+
+
 def _code(value: str) -> str:
     """A sign-in code as the email shows it: "123 456"."""
     return f"{value[:3]} {value[3:]}"
@@ -191,6 +212,7 @@ def environment(directory: Path = TEMPLATES_DIR) -> Environment:
     )
     env.filters["clp"] = _defined(format_clp)
     env.filters["fecha"] = _defined(_fecha)
+    env.filters["fecha_larga"] = _defined(_fecha_larga)
     env.filters["code"] = _defined(_code)
     return env
 

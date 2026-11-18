@@ -463,6 +463,7 @@ function AmountStep({
   onAmount: (amount: string) => void
   onOverride: (person: string, amount: number | null) => void
 }) {
+  const usual = preview && usualSplit(preview)
   return (
     <>
       <fieldset className="extra__choices">
@@ -504,6 +505,7 @@ function AmountStep({
             <p className="extra__hint">{words.split(clp(preview.share_clp), preview.lines.length)}</p>
           )}
           {preview.remainder_clp > 0 && <p className="extra__hint">{words.remainder(preview.remainder_clp)}</p>}
+          {usual && <p className="extra__hint">{splitSentence(usual)}</p>}
           {preview.lines.some((line) => new Set(line.instalments_clp).size > 1) && (
             <p className="extra__hint">{words.instalmentsRemainder}</p>
           )}
@@ -514,8 +516,9 @@ function AmountStep({
                   {line.person.name}
                   {line.on_behalf && <span className="extra__hint">{words.guardian(line.contact_name)}</span>}
                   {line.overridden && <span className="extra__hint">{words.overridden}</span>}
-                  {line.instalments_clp.length > 1 && line.amount_clp > 0 && (
-                    <span className="extra__hint">{words.instalmentsOf(line.instalments_clp.map(clp).join(' + '))}</span>
+                  {/* Their own split only where it is not everyone's (#417). */}
+                  {usual && line.amount_clp > 0 && !sameSplit(line.instalments_clp, usual) && (
+                    <span className="extra__hint">{splitSentence(line.instalments_clp)}</span>
                   )}
                 </span>
                 <Input
@@ -577,6 +580,13 @@ function Confirm({
   const count = preview.due_dates.length
   const emailTitle = count > 1 ? `${title.trim()} · ${copy.instalmentOf(1, count).toLowerCase()}` : title.trim()
   const firstDue = preview.due_dates[0] ?? dueDate
+  // Each instalment's amount: what each pays when everyone pays the same, else the total.
+  const usual = usualSplit(preview)
+  const shared = usual !== null && preview.lines.every((line) => line.amount_clp === 0 || sameSplit(line.instalments_clp, usual))
+  const instalmentAmount = (i: number) =>
+    shared
+      ? clp(usual[i] ?? 0)
+      : words.confirm.inAll(clp(preview.lines.reduce((sum, line) => sum + (line.instalments_clp[i] ?? 0), 0)))
   return (
     <>
       <dl className="extra__confirm">
@@ -605,7 +615,7 @@ function Confirm({
             <dd>
               <PlainList>
                 {preview.due_dates.map((day, i) => (
-                  <li key={day}>{words.confirm.instalmentDue(i + 1, longDay(day))}</li>
+                  <li key={day}>{words.confirm.instalmentDue(i + 1, instalmentAmount(i), longDay(day))}</li>
                 ))}
               </PlainList>
             </dd>
@@ -634,7 +644,7 @@ function Confirm({
                 {words.confirm.owes(
                   sample.on_behalf ? sample.person.name : null,
                   clp(sample.instalments_clp[0] ?? sample.amount_clp),
-                  emailDay(firstDue),
+                  longDay(firstDue),
                 )}
               </p>
             </div>
@@ -666,8 +676,33 @@ function Confirm({
   )
 }
 
-/** `30-11-2026`, the email's own way of writing the due date. */
-function emailDay(iso: string): string {
-  const [year, month, day] = iso.split('-')
-  return `${day}-${month}-${year}`
+/**
+ * The split most people pay in, said once on the amount step (#417): the split of the
+ * amount most people owe. Null for a cobro paid at once, or one nobody owes anything of.
+ */
+function usualSplit(preview: Preview): number[] | null {
+  const owing = preview.lines.filter((line) => line.amount_clp > 0 && line.instalments_clp.length > 1)
+  if (owing.length === 0) return null
+  const counts = new Map<string, number>()
+  for (const line of owing) {
+    const key = line.instalments_clp.join(',')
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  let best = owing[0]!.instalments_clp
+  let most = 0
+  for (const line of owing) {
+    const n = counts.get(line.instalments_clp.join(','))!
+    if (n > most) [best, most] = [line.instalments_clp, n]
+  }
+  return best
+}
+
+function sameSplit(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((amount, i) => amount === b[i])
+}
+
+/** `7 cuotas: la primera de $12.860 y 6 de $12.855`; the remainder is on the first. */
+function splitSentence(split: number[]): string {
+  const [first, rest] = [split[0]!, split[split.length - 1]!]
+  return first === rest ? words.splitEven(split.length, clp(rest)) : words.splitFirst(split.length, clp(first), clp(rest))
 }

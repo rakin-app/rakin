@@ -3379,7 +3379,10 @@ export const es = {
         instalmentsLabel: 'Número de cuotas',
         instalmentsTooSmall: 'Cada cuota tiene que ser de al menos un peso.',
         instalmentsRemainder: 'Lo que no se divide parejo se suma a la primera cuota.',
-        instalmentsOf: (amounts: string) => `en cuotas de ${amounts}`,
+        // The split, said once under the total, and on a person's row only where theirs differs (#417).
+        splitEven: (n: number, amount: string) => `${n} cuotas de ${amount}`,
+        splitFirst: (n: number, first: string, rest: string) =>
+          `${n} cuotas: la primera de ${first} y ${n - 1 === 1 ? `1 de ${rest}` : `${n - 1} de ${rest}`}`,
         split: (share: string, n: number) => `${share} cada uno entre ${n === 1 ? '1 persona' : `${n} personas`}`,
         remainder: (n: number) =>
           n === 1 ? 'El peso que sobra lo paga la primera persona por orden alfabético.' : `Los ${n} pesos que sobran los paga un peso más cada uno de los primeros ${n} por orden alfabético.`,
@@ -3413,7 +3416,9 @@ export const es = {
           total: 'Total',
           due: 'Vence',
           instalments: 'Cuotas',
-          instalmentDue: (i: number, day: string) => `Cuota ${i}: ${day}`,
+          instalmentDue: (i: number, amount: string, day: string) => `Cuota ${i}: ${amount} · ${day}`,
+          // An instalment's amount when not everyone pays the same (#417).
+          inAll: (amount: string) => `${amount} en total`,
           message: 'El correo',
           sampleFor: (name: string) => `Así le llega a ${name}; a cada uno, con su monto:`,
           hello: (name: string) => `Hola, ${name}:`,
@@ -3442,6 +3447,13 @@ export const es = {
         scheduleLabel: 'Cuotas',
         instalmentDue: (i: number, n: number, day: string) => `Cuota ${i} de ${n} · vence ${day}`,
         firstDue: (n: number, day: string) => `${n} cuotas · la primera vence ${day}`,
+        // One row per person in a cobro in instalments (#417); their instalments under "Ver cuotas".
+        instalmentsPaid: (paid: number, n: number) => `${paid} de ${n} cuotas pagadas`,
+        nextDue: (i: number, n: number, day: string, amount: string) => `Cuota ${i} de ${n}: ${amount}, vence ${day}`,
+        markPaidInstalment: (i: number) => `Marcar pagada la cuota ${i}`,
+        showInstalments: 'Ver cuotas',
+        showInstalmentsOf: (name: string) => `Ver cuotas de ${name}`,
+        instalmentsOfPerson: (name: string) => `Cuotas de ${name}`,
         remind: 'Recordar a los pendientes',
         reminding: 'Enviando…',
         reminded: (sent: number, without: number) =>

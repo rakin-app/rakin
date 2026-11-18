@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from app.db_bootstrap import to_dsn
 from app.domain.extra_charges import instalment_dates, instalments, line_title
 from app.main import create_app
+from app.notices import _fecha_larga as long_day
 from app.schemas.extra_charges import Target
 from app.schemas.proofs import ProofClaim
 from tests.auth import FakeAuth, as_gym
@@ -1114,7 +1115,7 @@ def test_a_cobro_in_three_instalments_gives_each_person_three_lines(
     email = next(e for e in mailer.sent if e.to == "ana@example.cl")
     assert "Viaje a la regata · cuota 1 de 3" in email.text
     assert "$33.335" in email.text
-    assert f"hasta el {first:%d-%m-%Y}" in email.text
+    assert f"hasta el {long_day(first)}" in email.text
 
     # The ficha and the student page list each instalment, earliest due first.
     owed = ok(client.get(f"/api/people/{ana}/extra-lines", headers=as_gym(sur)))
@@ -1157,7 +1158,7 @@ def test_paying_the_first_instalment_leaves_the_others_owed_and_reminded_on_thei
     [email] = mailer.sent
     assert "cuota 2 de 3" in email.text
     assert "$33.333" in email.text
-    assert f"hasta el {date.fromisoformat(second['due_date']):%d-%m-%Y}" in email.text
+    assert f"hasta el {long_day(date.fromisoformat(second['due_date']))}" in email.text
 
     # Once both others are due, both are reminded, each on its own.
     run(
@@ -1241,7 +1242,7 @@ def test_a_cobro_whose_instalments_are_already_due_is_announced_by_its_first(
     # Two instalments are due already; the notice is still one, about the first.
     [email] = mailer.sent
     assert "cuota 1 de 3" in email.text
-    assert f"hasta el {first:%d-%m-%Y}" in email.text
+    assert f"hasta el {long_day(first)}" in email.text
 
 
 def test_an_instalment_in_review_does_not_hide_the_next_one_owed(
@@ -1258,4 +1259,4 @@ def test_an_instalment_in_review_does_not_hide_the_next_one_owed(
 
     [email] = mailer.sent
     assert "cuota 2 de 3" in email.text
-    assert f"hasta el {date.fromisoformat(second['due_date']):%d-%m-%Y}" in email.text
+    assert f"hasta el {long_day(date.fromisoformat(second['due_date']))}" in email.text

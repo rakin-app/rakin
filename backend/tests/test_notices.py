@@ -23,6 +23,7 @@ from app.db import create_engine, create_sessionmaker
 from app.integrations.mailer import Email, MailDeliveryError
 from app.main import create_app
 from app.notices import (
+    EXTRA_CHARGE,
     FREEZE_APPROVED,
     FREEZE_REJECTED,
     FREEZE_REQUESTED,
@@ -105,6 +106,34 @@ def test_a_notice_renders_as_spanish_text_and_html() -> None:
     assert email.html is not None
     assert '<html lang="es">' in email.html
     assert "<strong>$45.000</strong>" in email.html
+
+
+def test_a_cobro_extra_writes_its_due_date_in_full() -> None:
+    # As the wizard's Confirmar says it (#417), not "15-12-2026".
+    email = render(
+        Notice(
+            EXTRA_CHARGE,
+            "ana@example.cl",
+            PERSON,
+            GYM,
+            {
+                "name": "Ana",
+                "gym": "Academia Sur",
+                "title": "Viaje a la regata · cuota 1 de 7",
+                "dependent_name": None,
+                "message": None,
+                "amount_clp": 12860,
+                "due_date": date(2026, 12, 15),
+                "reminder": False,
+                "bank_account": None,
+            },
+        )
+    )
+
+    assert email.subject.endswith(": $12.860 hasta el 15 de diciembre de 2026")
+    assert "pagar $12.860, hasta el 15 de diciembre de 2026." in email.text
+    assert email.html is not None
+    assert "hasta el <strong>15 de diciembre de 2026</strong>" in email.html
 
 
 def test_values_are_escaped_in_html_and_left_alone_in_text() -> None:

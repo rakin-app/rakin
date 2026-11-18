@@ -298,6 +298,16 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A person's instalments, opened under their row (#417): set in, the last with no rule. */
+.extra__cuotas {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-divider);
+}
+
+.extra__cuotas > .extra__line:last-child {
+  border-bottom: none;
+}
+
 @media (--desktop) {
   .extra__filters {
     grid-template-columns: 1fr 1fr auto;
@@ -309,3 +319,4 @@
     grid-template-columns: 1fr 1fr 1fr auto;
   }
 }
+
