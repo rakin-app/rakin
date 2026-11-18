@@ -109,6 +109,9 @@ const indexRoute = createRoute({
   },
 })
 
+// A search flag, as the URL or a navigation gives it.
+const flag = (value: unknown): true | undefined => (value === true || value === 'true' ? true : undefined)
+
 // "Entrar": open to a signed-out visitor, as is the join form.
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -116,9 +119,11 @@ const signInRoute = createRoute({
   // Set even when it is no path of ours: the root passes the raw query through, and
   // only an explicit `undefined` overrides it.
   // `expired`: the session ended rather than never began, which the page says (#212).
-  validateSearch: (search: Record<string, unknown>): { redirect?: string; expired?: true } => ({
+  // `noPanel`: signed in, with neither a place on the team nor a student page (#418).
+  validateSearch: (search: Record<string, unknown>): { redirect?: string; expired?: true; noPanel?: true } => ({
     redirect: appPath(search.redirect),
-    expired: search.expired === true || search.expired === 'true' ? true : undefined,
+    expired: flag(search.expired),
+    noPanel: flag(search.noPanel),
   }),
   component: SignIn,
 })
@@ -139,12 +144,17 @@ const privacyRoute = createRoute({
   component: Privacy,
 })
 
-// /admin/*: gym owners and coaches.
+// /admin/*: gym owners and coaches. Someone on no team, from an old bookmark or after
+// leaving it, goes to their student page, or with none to sign in with another email
+// (#418); staff who also train still reach /me from the nav.
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'admin',
   beforeLoad: async ({ context, location }) => {
-    await requireSession(context, location.href)
+    const me = await requireSession(context, location.href)
+    if (me === undefined || accessOf(me) !== null) return
+    if (me.student_page) throw redirect({ to: '/me', replace: true })
+    throw redirect({ to: SIGN_IN_PATH, search: { redirect: appPath(location.href), noPanel: true }, replace: true })
   },
   component: AdminLayout,
   // An unknown /admin path stays in the shell (#362).

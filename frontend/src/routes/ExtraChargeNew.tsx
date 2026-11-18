@@ -23,7 +23,7 @@ import { programsQuery } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
 import { Card, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { Field, Input, Select, Textarea } from '../components/Field'
-import { useEdgeFade } from '../components/Chip'
+import { useEdgeFade } from '../components/edgeFade'
 import { useFocusFirstInvalid } from '../components/focusInvalid'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -183,8 +183,7 @@ function Wizard({ person }: { person?: PersonRef }) {
   ][step] ?? null
 
   const formRef = useRef<HTMLFormElement>(null)
-  const stepsRef = useRef<HTMLOListElement>(null)
-  const stepsFade = useEdgeFade(stepsRef)
+  const { ref: stepsRef, attrs: stepsFade } = useEdgeFade<HTMLOListElement>()
   const [refusedAttempts, setRefusedAttempts] = useState(0)
   useFocusFirstInvalid(formRef, refusedAttempts)
 

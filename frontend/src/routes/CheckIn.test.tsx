@@ -51,7 +51,8 @@ function stubApi({
   people = [PAULA, TOMAS, ANA],
   // What `GET /api/check-in` answers from its second ask on: the next day, say.
   later,
-}: { doors?: Door[]; people?: Candidate[]; later?: Door[] } = {}) {
+  role = 'coach',
+}: { doors?: Door[]; people?: Candidate[]; later?: Door[]; role?: string } = {}) {
   const calls: Call[] = []
   let day = doors
   vi.stubGlobal(
@@ -67,7 +68,7 @@ function stubApi({
       const arrivals = () => day[0]?.arrivals ?? []
       const withArrivals = (next: Arrival[]): Door[] =>
         day.map((d, i) => (i === 0 ? { ...d, session_id: 's-day', arrivals: next } : d))
-      if (path === '/api/me/role') return answer(200, { ...asRole('coach'), person_id: 'coach' })
+      if (path === '/api/me/role') return answer(200, { ...asRole(role), person_id: role })
       if (path === '/api/check-in' && method === 'GET') {
         const asked = calls.filter((c) => c.path === '/api/check-in').length
         if (later && asked > 1) day = later
@@ -233,6 +234,16 @@ describe('Entrada', () => {
 
     expect(await screen.findByText(copy.none)).toBeInTheDocument()
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: copy.toPrograms })).not.toBeInTheDocument()
+  })
+
+  it.each(['owner', 'admin'])('tells an %s with no open access to make one, with the way there (#418)', async (role) => {
+    stubApi({ doors: [], role })
+    renderEntrada()
+
+    expect(await screen.findByText(copy.noneSetup)).toBeInTheDocument()
+    expect(screen.queryByText(copy.none)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: copy.toPrograms })).toHaveAttribute('href', '/admin/ajustes/programas')
   })
 
   it('refuses no one, and never asks for a pack a free entry does not spend', () => {
