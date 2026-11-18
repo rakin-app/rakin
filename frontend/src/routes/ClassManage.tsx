@@ -23,11 +23,12 @@ import { Banner, Card, cardClass, SectionTitle } from '../components/Card'
 
 const copy = t.admin.session
 
-/** Every list a class is on: the day's, the dashboard's unmarked, and its own. */
+/** Every list a class is on: the day's, the week's and month's, the dashboard's unmarked, and its own. */
 export function refreshSession(queryClient: QueryClient, session: ClassSession) {
   queryClient.setQueryData(['sessions', 'detail', session.id], session)
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'day'] })
+  void queryClient.invalidateQueries({ queryKey: ['sessions', 'range'] })
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
 }
 
@@ -308,6 +309,7 @@ export function ClassActions({ session }: { session: ClassSession }) {
       queryClient.removeQueries({ queryKey: ['sessions', 'detail', session.id] })
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'day'] })
+      void queryClient.invalidateQueries({ queryKey: ['sessions', 'range'] })
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
       // Credits given back, classes and time on the mat changed for whoever was marked.
       void queryClient.invalidateQueries({ queryKey: ['attendance'] })

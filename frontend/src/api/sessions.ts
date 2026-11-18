@@ -57,11 +57,19 @@ export type ClassSession = {
   tags: TagOn[]
 }
 
-/** A day's sessions in the gym's timezone, earliest first (backend `Day`). */
+/** A public holiday of the gym's country, named in Spanish (backend `Holiday`, #426). */
+export type Holiday = {
+  date: string
+  name: string
+}
+
+/** A day's sessions in the gym's timezone, earliest first, and the public holiday it is,
+ * if any (backend `Day`). */
 export type SessionDay = {
   date: string
   timezone: string
   sessions: ClassSession[]
+  holidays?: Holiday[]
 }
 
 /** The gym's active class types, by program and name. */
@@ -88,6 +96,26 @@ export function daySessionsQuery(day: string) {
   return queryOptions({
     queryKey: ['sessions', 'day', day],
     queryFn: () => apiFetch<SessionDay>(`/api/sessions?date=${encodeURIComponent(day)}`),
+  })
+}
+
+/** The sessions of the gym days `from` to `to`, both included, earliest first, and the
+ * public holidays among them (backend `Range`, #426). */
+export type SessionRange = {
+  from: string
+  to: string
+  timezone: string
+  sessions: ClassSession[]
+  // The public holidays among those days, earliest first.
+  holidays: Holiday[]
+}
+
+/** The sessions of the days `from` to `to`, both included, in the gym's timezone: a week, or a month's calendar. */
+export function rangeSessionsQuery(from: string, to: string) {
+  return queryOptions({
+    queryKey: ['sessions', 'range', from, to],
+    queryFn: () =>
+      apiFetch<SessionRange>(`/api/sessions/range?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   })
 }
 

@@ -446,3 +446,143 @@
 .attendance__search .control {
   width: 100%;
 }
+
+/* The view switch sits at the end of a section's head, wrapping under a long title (#426). */
+.classes__section-head {
+  flex-wrap: wrap;
+}
+
+.classes__section-head > .segmented {
+  margin-left: auto;
+}
+
+/* "Ir a fecha": its label over the date, as the form's fields are. */
+.classes__jump {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* "Mes": six weeks of seven days, Monday first, each day a button the width of its column. */
+.month {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: var(--space-0-5);
+}
+
+.month__weekday {
+  padding-bottom: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.month__weekday abbr {
+  text-decoration: none;
+}
+
+.month__cell {
+  padding: 0;
+}
+
+.month__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-0-5);
+  width: 100%;
+  min-height: 3.5rem;
+  padding: var(--space-1) 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.month__day--outside {
+  background: none;
+  color: var(--color-text-muted);
+}
+
+.month__day[aria-current='date'] .month__number {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.month__day[aria-pressed='true'] {
+  background: var(--color-surface-sunken);
+  border-color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--color-text);
+}
+
+.month__number {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.month__count {
+  color: var(--color-text-muted);
+}
+
+.month__unmarked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-warning-strong);
+}
+
+.month__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--color-warning);
+  border-radius: 50%;
+}
+
+.month__cancelled {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+/* A phone has room for the numbers only; from 1024px each says what it counts. */
+.month__long {
+  display: none;
+}
+
+@media (--wide) {
+  .month__day {
+    align-items: flex-start;
+    min-height: 5rem;
+    padding: var(--space-1-5) var(--space-2);
+    text-align: left;
+  }
+
+  .month__short {
+    display: none;
+  }
+
+  .month__long {
+    display: inline;
+  }
+
+  .month__unmarked .month__dot {
+    flex: none;
+  }
+}
+
+/* A public holiday (#426): its number in the calendar's red; from 1024px its name under it. */
+.month__day--holiday .month__number {
+  color: var(--color-holiday);
+}
+
+.month__holiday {
+  color: var(--color-holiday);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+  /* A long name breaks where Spanish does, not at any letter. */
+  hyphens: auto;
+  overflow-wrap: break-word;
+}

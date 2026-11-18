@@ -16,7 +16,7 @@ import { t } from './i18n/es'
 import { wearPractice, wearVocabulary } from './i18n/vocabulary'
 import { MeLayout } from './layouts/MeLayout'
 import { CheckIn } from './routes/CheckIn'
-import { Classes } from './routes/Classes'
+import { Classes, validateClassesSearch } from './routes/Classes'
 import { ExtraChargeDetail } from './routes/ExtraChargeDetail'
 import { ExtraChargeNew, validateExtraChargeNewSearch } from './routes/ExtraChargeNew'
 import { ExtraCharges } from './routes/ExtraCharges'
@@ -201,6 +201,7 @@ const adminMemberRoute = createRoute({
 const adminClassesRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'clases',
+  validateSearch: validateClassesSearch,
   component: Classes,
 })
 

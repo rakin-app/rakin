@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPhone, formatRut, longDay, nextYear, shiftDay, timeRange, zonedInstant } from './format'
+import { formatPhone, formatRut, longDay, nextYear, shiftDay, shiftMonth, timeRange, zonedInstant } from './format'
 
 describe('zonedInstant', () => {
   it("is the wall time in the gym's timezone, not the device's", () => {
@@ -46,6 +46,14 @@ describe('shiftDay', () => {
   it('is calendar days, whatever the clock change', () => {
     expect(shiftDay('2027-09-04', 1)).toBe('2027-09-05')
     expect(shiftDay('2027-04-04', -1)).toBe('2027-04-03')
+  })
+})
+
+describe('shiftMonth', () => {
+  it('moves to the first of a month across years', () => {
+    expect(shiftMonth('2026-12-01', 1)).toBe('2027-01-01')
+    expect(shiftMonth('2027-01-01', -1)).toBe('2026-12-01')
+    expect(shiftMonth('2026-11-01', -12)).toBe('2025-11-01')
   })
 })
 

@@ -114,6 +114,12 @@ export function shiftDay(day: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
+/** The first day of the month `months` after `month`'s (earlier, if negative): `2026-12-01` and 1 is `2027-01-01`. */
+export function shiftMonth(month: string, months: number): string {
+  const [y, m] = month.split('-').map(Number) as [number, number]
+  return new Date(Date.UTC(y, m - 1 + months, 1)).toISOString().slice(0, 10)
+}
+
 // Phones and RUTs as every screen shows them.
 
 /** `+56987654321` as `+56 9 8765 4321`; any other number as stored. */

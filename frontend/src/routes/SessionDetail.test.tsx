@@ -171,8 +171,7 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
   }
 }
 
-function renderClass() {
-  const queryClient = createQueryClient()
+function renderClass(queryClient = createQueryClient()) {
   const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries: ['/admin/clases/s1'] }))
   render(<App queryClient={queryClient} router={router} />)
   return router
@@ -504,6 +503,22 @@ describe('Asistencia', () => {
       expect((await rosterList()).getByRole('button', { name: /Felipe Díaz/ })).toHaveAttribute('aria-pressed', 'false')
       expect(screen.queryByText(copy.kept(1))).not.toBeInTheDocument()
     })
+  })
+
+  // Marked after the fact (#407): Clases's earlier day, week and month drop their flag (#426).
+  it("refreshes the day, week and month lists a class is on once its attendance is saved", async () => {
+    stubApi()
+    const queryClient = createQueryClient()
+    const lists = [['sessions', 'day', '2026-11-04'], ['sessions', 'range', '2026-10-26', '2026-12-06']]
+    for (const key of lists) queryClient.setQueryData(key, { sessions: [] })
+    renderClass(queryClient)
+
+    const list = await rosterList()
+    await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Guardar asistencia/ }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.saved)
+    for (const key of lists) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
   })
 
   it('counts each tap and saves what changed', async () => {
@@ -957,7 +972,7 @@ describe('Visitante (#130)', () => {
 
     const list = await rosterList()
     await userEvent.click(list.getByRole('button', { name: /Tomás Vidal/ }))
-    await userEvent.click(screen.getByRole('button', { name: copy.save(1) }))
+    await userEvent.click(screen.getByRole('button', { name: /^Guardar asistencia/ }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
   })

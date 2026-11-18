@@ -10,7 +10,7 @@ import { App } from '../App'
 import { isoDay, shiftDay, toDate, weekdayDay, zonedInstant } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
-import { mondayOf, nowOrNext } from './Classes'
+import { mondayOf, nowOrNext, validateClassesSearch } from './Classes'
 import { asRole } from '../test/access'
 
 const copy = es.admin.classes
@@ -87,6 +87,13 @@ const hoursFor = (first: string, last: string, minutes: number): TagHours => ({
   no_duration: [],
 })
 
+// Chile's, as the API names them (#426).
+const HOLIDAYS = [
+  { date: '2026-09-18', name: 'Día de la Independencia' },
+  { date: '2026-09-19', name: 'Día de las Glorias del Ejército' },
+  { date: '2026-12-08', name: 'La Inmaculada Concepción' },
+]
+
 type Call = { method: string; path: string; body: unknown }
 type Answer = { status?: number; body?: unknown }
 type Stub = {
@@ -141,7 +148,21 @@ function stubApi({
       const on = date ?? isoDay(new Date().toISOString(), 'America/Santiago')
       return { body: { ...day, date: on, sessions: week.filter((s) => isoDay(s.starts_at, 'America/Santiago') === on) } }
     }
+    if (path === '/api/sessions' && method === 'GET' && date) {
+      return { body: { ...day, date, holidays: HOLIDAYS.filter((h) => h.date === date) } }
+    }
     if (path === '/api/sessions' && method === 'GET') return { body: day }
+    if (path === '/api/sessions/range') {
+      const from = query.get('from')!
+      const to = query.get('to')!
+      const all = week ?? day.sessions
+      const within = all.filter((s) => {
+        const on = isoDay(s.starts_at, 'America/Santiago')
+        return from <= on && on <= to
+      })
+      const holidays = HOLIDAYS.filter((h) => from <= h.date && h.date <= to)
+      return { body: { from, to, timezone: 'America/Santiago', sessions: within, holidays } }
+    }
     if (path === '/api/sessions/duration') {
       const id = query.get('class_type_id')!
       return { body: { class_type_id: id, duration_minutes: durations[id] ?? 60 } }
@@ -241,6 +262,53 @@ describe('Clases', () => {
 
     await userEvent.click(within(next).getByRole('button', { name: copy.days.today }))
     expect(await screen.findByRole('region', { name: copy.today.title })).toBeInTheDocument()
+  })
+
+  it('keeps the day in the URL: a reload finds it, back steps through it, "Hoy" clears it (#426)', async () => {
+    const calls = stubApi()
+    const today = isoDay(new Date().toISOString(), 'America/Santiago')
+    const past = shiftDay(today, -20)
+    const router = renderAt(`/admin/clases?day=${past}`)
+
+    const shown = await screen.findByRole('region', { name: weekdayDay(toDate(past)) })
+    await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain(`/api/sessions?date=${past}`))
+    const days = within(shown).getByRole('navigation', { name: copy.days.label })
+    await userEvent.click(within(days).getByRole('button', { name: copy.days.previous }))
+    await userEvent.click(within(screen.getByRole('navigation', { name: copy.days.label })).getByRole('button', { name: copy.days.previous }))
+    expect(router.state.location.search).toEqual({ day: shiftDay(past, -2) })
+
+    act(() => router.history.back())
+    act(() => router.history.back())
+    expect(await screen.findByRole('region', { name: weekdayDay(toDate(past)) })).toBeInTheDocument()
+
+    await userEvent.click(within(screen.getByRole('navigation', { name: copy.days.label })).getByRole('button', { name: copy.days.today }))
+    expect(router.state.location.search).toEqual({})
+    expect(await screen.findByRole('region', { name: copy.today.title })).toBeInTheDocument()
+  })
+
+  it('jumps to the date typed (#426)', async () => {
+    stubApi()
+    const router = renderAt('/admin/clases')
+
+    const today = await screen.findByRole('region', { name: copy.today.title })
+    fireEvent.change(within(today).getByLabelText(copy.days.jump), { target: { value: '2026-10-03' } })
+    expect(router.state.location.search).toEqual({ day: '2026-10-03' })
+    expect(await screen.findByRole('region', { name: weekdayDay(toDate('2026-10-03')) })).toBeInTheDocument()
+  })
+
+  it('names a public holiday after the day (#426)', async () => {
+    stubApi()
+    renderAt('/admin/clases?day=2026-12-08')
+
+    expect(
+      await screen.findByRole('region', { name: copy.days.holiday(weekdayDay(toDate('2026-12-08')), 'La Inmaculada Concepción') }),
+    ).toBeInTheDocument()
+  })
+
+  it('takes only a real day and the first of a month from the URL', () => {
+    expect(validateClassesSearch({ day: '2026-11-04', month: '2026-11-01' })).toEqual({ day: '2026-11-04', month: '2026-11-01' })
+    expect(validateClassesSearch({ day: '2026-02-30', month: '2026-11-04' })).toEqual({ day: undefined, month: undefined })
+    expect(validateClassesSearch({ day: 'ayer', month: 202611 })).toEqual({ day: undefined, month: undefined })
   })
 
   it('shows how many came on each class of the day', async () => {
@@ -661,9 +729,10 @@ describe('Clases on a desktop', () => {
     // Once the gym's timezone is in: a device in another zone has its own week until then.
     for (const day of days) {
       expect(await within(week).findByRole('heading', { name: weekdayDay(toDate(day)) })).toBeInTheDocument()
-      const asked = day === today ? '/api/sessions' : `/api/sessions?date=${day}`
-      await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain(asked))
     }
+    // The whole week in one request (#426), not one a day.
+    await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain(`/api/sessions/range?from=${monday}&to=${days[6]}`))
+    expect(calls.filter((c) => c.path.startsWith('/api/sessions?date='))).toEqual([])
 
     // Today's class that has begun is picked to start with: two came, and two are regulars.
     await screen.findByText(copy.week.present(2, 2))
@@ -714,6 +783,112 @@ describe('Clases on a desktop', () => {
     await screen.findByRole('region', { name: copy.today.title })
     expect(screen.queryByRole('region', { name: copy.week.title })).not.toBeInTheDocument()
     expect(calls.filter((c) => c.path.startsWith('/api/sessions?date='))).toEqual([])
+    expect(calls.filter((c) => c.path.startsWith('/api/sessions/range'))).toEqual([])
+  })
+
+  it('walks the week back and on, the day moving with it (#426)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-11T15:00:00Z'))
+    wide(true)
+    const calls = stubApi({ week: [] })
+    const router = renderAt('/admin/clases')
+
+    const week = await screen.findByRole('region', { name: copy.week.title })
+    const arrows = within(week).getByRole('navigation', { name: copy.week.label })
+    await userEvent.click(within(arrows).getByRole('button', { name: copy.week.previous }))
+    expect(router.state.location.search).toEqual({ day: '2026-11-04' })
+    expect(await screen.findByRole('region', { name: weekdayDay(toDate('2026-11-04')) })).toBeInTheDocument()
+    await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain('/api/sessions/range?from=2026-11-02&to=2026-11-08'))
+    await userEvent.click(within(screen.getByRole('navigation', { name: copy.week.label })).getByRole('button', { name: copy.week.next }))
+    // Back on today's week, today is no day in the URL.
+    expect(router.state.location.search).toEqual({})
+  })
+
+  it('shows the month beside the day, each day a tap that keeps it (#426)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // Wednesday 11 November, midday in Santiago.
+    vi.setSystemTime(new Date('2026-11-11T15:00:00Z'))
+    wide(true)
+    const cancelled: ClassSession = { ...EVENING, id: 's-cancelled', starts_at: onDay('2026-11-04', '19:00'), cancelled_at: '2026-11-04T12:00:00Z', present: 0 }
+    const unmarked: ClassSession = { ...MORNING, id: 's-unmarked', starts_at: onDay('2026-11-04', '07:00') }
+    const marked: ClassSession = { ...EVENING, id: 's-marked', starts_at: onDay('2026-11-04', '20:00') }
+    const door: ClassSession = { ...MORNING, id: 's-door', class_type_kind: 'open_access', starts_at: onDay('2026-11-04', '06:00') }
+    const calls = stubApi({ week: [cancelled, unmarked, marked, door] })
+    const router = renderAt('/admin/clases')
+
+    const week = await screen.findByRole('region', { name: copy.week.title })
+    await userEvent.click(within(week).getByRole('button', { name: copy.view.month }))
+    expect(router.state.location.search).toEqual({ month: '2026-11-01' })
+    const month = await screen.findByRole('region', { name: copy.month.title('2026-11-01') })
+    // Six weeks, Monday 26 October to Sunday 6 December.
+    await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain('/api/sessions/range?from=2026-10-26&to=2026-12-06'))
+    // The door's day is no class; a cancelled one is said apart.
+    const fourth = await within(month).findByRole('button', { name: copy.month.cell('miércoles', '2026-11-04', 2, 1, 1) })
+    expect(within(month).getByRole('button', { name: copy.month.cell('miércoles', '2026-11-11', 0, 0, 0) })).toHaveAttribute('aria-current', 'date')
+    expect(within(month).getAllByRole('button', { name: /^(lunes|martes|miércoles|jueves|viernes|sábado|domingo) / })).toHaveLength(42)
+
+    await userEvent.click(fourth)
+    expect(router.state.location.search).toEqual({ day: '2026-11-04', month: '2026-11-01' })
+    expect(await screen.findByRole('region', { name: weekdayDay(toDate('2026-11-04')) })).toBeInTheDocument()
+    expect(fourth).toHaveAttribute('aria-pressed', 'true')
+
+    // Another month leaves the day where it is.
+    await userEvent.click(within(month).getByRole('button', { name: copy.month.previous }))
+    expect(router.state.location.search).toEqual({ day: '2026-11-04', month: '2026-10-01' })
+    expect(await screen.findByRole('region', { name: copy.month.title('2026-10-01') })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: weekdayDay(toDate('2026-11-04')) })).toBeInTheDocument()
+
+    // "Hoy" is today's day and week again.
+    await userEvent.click(within(screen.getByRole('region', { name: copy.month.title('2026-10-01') })).getByRole('button', { name: copy.days.today }))
+    expect(router.state.location.search).toEqual({})
+    expect(await screen.findByRole('region', { name: copy.week.title })).toBeInTheDocument()
+  })
+
+  it('marks a public holiday in the month, its name in the day and its title, and in the week (#426)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-16T15:00:00Z'))
+    wide(true)
+    stubApi({ week: [] })
+    renderAt('/admin/clases?month=2026-09-01')
+
+    const month = await screen.findByRole('region', { name: copy.month.title('2026-09-01') })
+    const independence = await within(month).findByRole('button', {
+      name: copy.month.cell('viernes', '2026-09-18', 0, 0, 0, 'Día de la Independencia'),
+    })
+    expect(independence).toHaveClass('month__day--holiday')
+    expect(independence).toHaveAttribute('title', 'Día de la Independencia')
+    // Not by its red alone: the name is written in the cell too.
+    expect(independence).toHaveTextContent('Día de la Independencia')
+    expect(within(month).getByRole('button', { name: copy.month.cell('jueves', '2026-09-17', 0, 0, 0) })).not.toHaveClass(
+      'month__day--holiday',
+    )
+
+    // The week names it in its day's heading.
+    await userEvent.click(within(month).getByRole('button', { name: copy.view.week }))
+    const week = await screen.findByRole('region', { name: copy.week.title })
+    expect(
+      await within(week).findByRole('heading', { name: copy.days.holiday(weekdayDay(toDate('2026-09-19')), 'Día de las Glorias del Ejército') }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the month in place of the day on a phone, a day tapped leaving it (#426)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-11T15:00:00Z'))
+    wide(false)
+    stubApi({ week: [] })
+    const router = renderAt('/admin/clases')
+
+    const today = await screen.findByRole('region', { name: copy.today.title })
+    await userEvent.click(within(today).getByRole('button', { name: copy.view.month }))
+    const month = await screen.findByRole('region', { name: copy.month.title('2026-11-01') })
+    expect(screen.queryByRole('region', { name: copy.today.title })).not.toBeInTheDocument()
+    await userEvent.click(await within(month).findByRole('button', { name: copy.month.cell('lunes', '2026-11-02', 0, 0, 0) }))
+    expect(router.state.location.search).toEqual({ day: '2026-11-02' })
+    expect(await screen.findByRole('region', { name: weekdayDay(toDate('2026-11-02')) })).toBeInTheDocument()
+
+    // Back is the month again.
+    act(() => router.history.back())
+    expect(await screen.findByRole('region', { name: copy.month.title('2026-11-01') })).toBeInTheDocument()
   })
 
   // At 22:00 on the year's last day in Santiago it is already next year in UTC (#330).

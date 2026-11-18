@@ -674,11 +674,14 @@ function Mark({ status, word, name }: { status: 'overdue' | 'required'; word: st
   )
 }
 
-/** The Clases list and the dashboard flag a class no one is marked at: refetch both, and
- * the session itself, whose `present` the change made stale. */
+/** The Clases lists and the dashboard flag a class no one is marked at: refetch them, and
+ * the session itself, whose `present` the change made stale. A past day's too, marked
+ * after the fact (#407), and the week and month it is in (#426). */
 function refreshFlags(queryClient: QueryClient, sessionId: string) {
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'detail', sessionId] })
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'today'] })
+  void queryClient.invalidateQueries({ queryKey: ['sessions', 'day'] })
+  void queryClient.invalidateQueries({ queryKey: ['sessions', 'range'] })
   void queryClient.invalidateQueries({ queryKey: ['sessions', 'unmarked'] })
 }
 

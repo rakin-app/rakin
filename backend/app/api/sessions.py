@@ -56,6 +56,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.attendance import CLASS_BACKFILLED, record_backfill, remove_attendance
 from app.api.class_tags import require_tags, set_tags, tags_of_session
 from app.domain.dates import gym_today, local_date, start_of_local_day
+from app.domain.public_holidays import holidays_between
 from app.permissions import (
     FORBIDDEN,
     AdminSession,
@@ -68,6 +69,8 @@ from app.schemas.classes import ClassKind
 from app.schemas.sessions import (
     Day,
     DefaultDuration,
+    Holiday,
+    Range,
     Session,
     SessionCreate,
     SessionUpdate,
@@ -79,6 +82,8 @@ router = APIRouter(prefix="/api/sessions", tags=["classes"])
 
 # The dashboard looks this many gym days back, today included, for classes nobody marked.
 UNMARKED_DAYS = 7
+# A range asks for at most this many gym days: a month's calendar, six weeks of seven.
+RANGE_MAX_DAYS = 42
 
 # A class's minutes when neither its type's slot nor an earlier class of it says.
 DEFAULT_DURATION = 60
@@ -192,7 +197,8 @@ async def list_sessions(
     session: StaffSession,
     day: Annotated[date | None, Query(alias="date")] = None,
 ) -> Day:
-    """`?date=` (an ISO day, default today in the gym's timezone): that day's sessions."""
+    """`?date=` (an ISO day, default today in the gym's timezone): that day's sessions,
+    and the public holiday it is, if any (#426)."""
     zone = await gym_timezone(session, tenant)
     day = day or gym_today(zone)
     result = await session.execute(
@@ -206,7 +212,56 @@ async def list_sessions(
         },
     )
     sessions = [Session.model_validate(row, from_attributes=True) for row in result]
-    return Day(date=day, timezone=zone, sessions=sessions)
+    return Day(date=day, timezone=zone, sessions=sessions, holidays=public_holidays(day, day, zone))
+
+
+@router.get("/range")
+async def range_sessions(
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: StaffSession,
+    start: Annotated[date, Query(alias="from")],
+    end: Annotated[date, Query(alias="to")],
+) -> Range:
+    """`?from=&to=` (ISO days, both included, in the gym's timezone): the sessions of every
+    day between, ordered as a day's are (#426). At most `RANGE_MAX_DAYS` days."""
+    if end < start:
+        raise RequestValidationError(
+            [{"type": "range_reversed", "msg": "to is before from", "loc": ("query", "to")}]
+        )
+    if (end - start).days + 1 > RANGE_MAX_DAYS:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "range_too_long",
+                    "msg": f"at most {RANGE_MAX_DAYS} days",
+                    "loc": ("query", "to"),
+                }
+            ]
+        )
+    zone = await gym_timezone(session, tenant)
+    result = await session.execute(
+        text(
+            f"{SELECT_SESSION} WHERE s.starts_at >= :start AND s.starts_at < :end"
+            " ORDER BY s.starts_at, lower(c.name), s.created_at"
+        ),
+        {
+            "start": start_of_local_day(start, zone),
+            "end": start_of_local_day(end + timedelta(days=1), zone),
+        },
+    )
+    sessions = [Session.model_validate(row, from_attributes=True) for row in result]
+    return Range(
+        from_=start,
+        to=end,
+        timezone=zone,
+        sessions=sessions,
+        holidays=public_holidays(start, end, zone),
+    )
+
+
+def public_holidays(start: date, end: date, zone: str) -> list[Holiday]:
+    """The gym's country's public holidays from `start` to `end`, both included."""
+    return [Holiday(date=h.date, name=h.name) for h in holidays_between(start, end, zone)]
 
 
 @router.get("/unmarked")
