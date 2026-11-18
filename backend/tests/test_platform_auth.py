@@ -281,6 +281,21 @@ def test_revoke_ends_the_live_session(panel: Panel) -> None:
         assert client.get("/api/platform/me").status_code == 200
 
 
+def test_a_regrant_revives_no_link_from_before_the_revoke(panel: Panel) -> None:
+    email = operator_email()
+    grant(panel.db, email)
+    with panel.client() as client:
+        assert panel.ask(client, email) == 202
+        link, code = panel.link_to(email), panel.code_to(email)
+        cli(panel.db, Revoke(email=email))
+        grant(panel.db, email)
+        # Both within their 15 minutes, and spent by the revoke.
+        assert panel.open(client, link).status_code == 400
+        typed = client.post("/api/platform/auth/code", json={"email": email, "code": code})
+        assert typed.status_code == 400
+        assert client.get("/api/platform/me").status_code == 401
+
+
 def test_the_command_line_grants_once_and_lists(panel: Panel) -> None:
     email = operator_email()
     operator_id = grant(panel.db, email, "Primera")

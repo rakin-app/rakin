@@ -158,9 +158,8 @@ class OperatorLinks:
     async def _start(self, link_hash: bytes | None, code_hash: bytes | None) -> str | None:
         session_token = new_session_token()
         started = await self._fetch(
-            "SELECT platform_redeem_link(CAST(:h AS bytea), CAST(:c AS bytea), :s, :now)"
-            " AS started",
-            {"h": link_hash, "c": code_hash, "s": hash_token(session_token), "now": self._clock()},
+            "SELECT platform_redeem_link(CAST(:h AS bytea), CAST(:c AS bytea), :s) AS started",
+            {"h": link_hash, "c": code_hash, "s": hash_token(session_token)},
         )
         return session_token if started is not None and started.started else None
 

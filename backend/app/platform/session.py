@@ -80,9 +80,9 @@ async def operator_session(request: Request) -> AsyncIterator[Operator]:
             await db.execute(
                 text(
                     "SELECT operator_id, email, name, fresh_at, expires_at"
-                    " FROM platform_live_session(:h, :now)"
+                    " FROM platform_live_session(:h)"
                 ),
-                {"h": session_hash, "now": datetime.now(UTC)},
+                {"h": session_hash},
             )
         ).one_or_none()
         if row is None:

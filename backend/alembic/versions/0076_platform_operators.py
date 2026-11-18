@@ -31,6 +31,9 @@ the API's role alone reads no gym but the one `app.gym_id` names.
   operator, a fresh proof by code, signing out.
 - `platform_gyms`: one row per gym, counts and dates only, for the list.
 
+Every time these functions read or write is the database's `now()`, never one the API
+passes: one clock, so a session cannot be live to one function and dead to the next.
+
 Run `python -m app.db_bootstrap` before this migration: it creates `rakin_platform`.
 
 Revision ID: 0076
@@ -200,9 +203,9 @@ BEGIN
 END
 $$
 """,
-    "platform_redeem_link(bytea, bytea, bytea, timestamptz)": f"""
+    "platform_redeem_link(bytea, bytea, bytea)": f"""
 CREATE FUNCTION platform_redeem_link(
-    link_hash bytea, code bytea, session bytea, at timestamptz
+    link_hash bytea, code bytea, session bytea
 )
 RETURNS boolean
 LANGUAGE plpgsql VOLATILE {DEFINER} AS $$
@@ -218,7 +221,7 @@ BEGIN
     FROM public.operator_link l
     JOIN public.platform_operator o ON o.id = l.operator_id
     WHERE (l.token_hash = link_hash OR l.code_hash = code)
-      AND l.used_at IS NULL AND l.expires_at > at AND o.revoked_at IS NULL
+      AND l.used_at IS NULL AND l.expires_at > now() AND o.revoked_at IS NULL
     ORDER BY l.created_at DESC
     LIMIT 1
     FOR UPDATE OF l;
@@ -226,17 +229,17 @@ BEGIN
         RETURN false;
     END IF;
     -- Spending the link spends its code, and the other way round.
-    UPDATE public.operator_link SET used_at = at, code_hash = NULL WHERE token_hash = spent;
+    UPDATE public.operator_link SET used_at = now(), code_hash = NULL WHERE token_hash = spent;
     INSERT INTO public.operator_session (token_hash, operator_id, created_at, fresh_at, expires_at)
-    VALUES (session, found_operator, at, at, at + interval '{SESSION_HOURS} hours');
+    VALUES (session, found_operator, now(), now(), now() + interval '{SESSION_HOURS} hours');
     INSERT INTO public.platform_event (operator_id, action)
     VALUES (found_operator, 'operator_signed_in');
     RETURN true;
 END
 $$
 """,
-    "platform_live_session(bytea, timestamptz)": f"""
-CREATE FUNCTION platform_live_session(session bytea, at timestamptz)
+    "platform_live_session(bytea)": f"""
+CREATE FUNCTION platform_live_session(session bytea)
 RETURNS TABLE (
     operator_id uuid, email text, name text, fresh_at timestamptz, expires_at timestamptz
 )
@@ -244,13 +247,13 @@ LANGUAGE sql STABLE {DEFINER} AS $$
     SELECT o.id, o.email, o.name, s.fresh_at, s.expires_at
     FROM public.operator_session s
     JOIN public.platform_operator o ON o.id = s.operator_id
-    WHERE s.token_hash = session AND s.ended_at IS NULL AND s.expires_at > at
+    WHERE s.token_hash = session AND s.ended_at IS NULL AND s.expires_at > now()
       -- Revoked, the operator loses the session at once, not in 8 hours.
       AND o.revoked_at IS NULL
 $$
 """,
-    "platform_refresh(bytea, bytea, timestamptz)": f"""
-CREATE FUNCTION platform_refresh(session bytea, code bytea, at timestamptz)
+    "platform_refresh(bytea, bytea)": f"""
+CREATE FUNCTION platform_refresh(session bytea, code bytea)
 RETURNS boolean
 LANGUAGE plpgsql VOLATILE {DEFINER} AS $$
 DECLARE
@@ -261,15 +264,15 @@ BEGIN
     SELECT l.token_hash INTO spent
     FROM public.operator_link l
     WHERE l.code_hash = code AND l.operator_id = found_operator
-      AND l.used_at IS NULL AND l.expires_at > at
+      AND l.used_at IS NULL AND l.expires_at > now()
     ORDER BY l.created_at DESC
     LIMIT 1
     FOR UPDATE OF l;
     IF spent IS NULL THEN
         RETURN false;
     END IF;
-    UPDATE public.operator_link SET used_at = at, code_hash = NULL WHERE token_hash = spent;
-    UPDATE public.operator_session SET fresh_at = at WHERE token_hash = session;
+    UPDATE public.operator_link SET used_at = now(), code_hash = NULL WHERE token_hash = spent;
+    UPDATE public.operator_session SET fresh_at = now() WHERE token_hash = session;
     RETURN true;
 END
 $$

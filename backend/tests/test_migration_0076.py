@@ -56,9 +56,7 @@ def signed_in(db: Database, email: str = "ops@example.cl") -> bytes:
             link,
             now + timedelta(minutes=15),
         )
-        assert await conn.fetchval(
-            "SELECT platform_redeem_link($1, NULL, $2, $3)", link, session, now
-        )
+        assert await conn.fetchval("SELECT platform_redeem_link($1, NULL, $2)", link, session)
 
     run(db.api_url, query)
     return session
@@ -122,8 +120,8 @@ def test_a_session_past_its_hours_or_of_a_revoked_operator_is_dead(db: Database)
             expired,
         ),
     )
-    assert as_app(db, "SELECT * FROM platform_live_session($1, now())", expired) == []
-    assert len(as_app(db, "SELECT * FROM platform_live_session($1, now())", revoked)) == 1
+    assert as_app(db, "SELECT * FROM platform_live_session($1)", expired) == []
+    assert len(as_app(db, "SELECT * FROM platform_live_session($1)", revoked)) == 1
 
     run(
         db.owner_url,
@@ -131,7 +129,7 @@ def test_a_session_past_its_hours_or_of_a_revoked_operator_is_dead(db: Database)
             "UPDATE platform_operator SET revoked_at = now() WHERE id = $1", operator_id
         ),
     )
-    assert as_app(db, "SELECT * FROM platform_live_session($1, now())", revoked) == []
+    assert as_app(db, "SELECT * FROM platform_live_session($1)", revoked) == []
     with pytest.raises(asyncpg.InsufficientPrivilegeError):
         as_app(db, "SELECT * FROM platform_gyms($1, $2)", revoked, TERMS)
 
@@ -185,9 +183,9 @@ def test_a_link_and_its_code_are_spent_together(db: Database) -> None:
         code,
         now + timedelta(minutes=15),
     )
-    redeem = "SELECT platform_redeem_link($1, $2, $3, $4) AS ok"
-    assert as_app(db, redeem, None, code, digest("s1"), now) == [(True,)]
-    assert as_app(db, redeem, link, None, digest("s2"), now) == [(False,)]
+    redeem = "SELECT platform_redeem_link($1, $2, $3) AS ok"
+    assert as_app(db, redeem, None, code, digest("s1")) == [(True,)]
+    assert as_app(db, redeem, link, None, digest("s2")) == [(False,)]
 
 
 def test_asking_again_ends_the_earlier_code(db: Database) -> None:
@@ -202,9 +200,9 @@ def test_asking_again_ends_the_earlier_code(db: Database) -> None:
             digest(f"code {word}"),
             now + timedelta(minutes=15),
         )
-    redeem = "SELECT platform_redeem_link(NULL, $1, $2, $3) AS ok"
-    assert as_app(db, redeem, digest("code first"), digest("s1"), now) == [(False,)]
-    assert as_app(db, redeem, digest("code second"), digest("s2"), now) == [(True,)]
+    redeem = "SELECT platform_redeem_link(NULL, $1, $2) AS ok"
+    assert as_app(db, redeem, digest("code first"), digest("s1")) == [(False,)]
+    assert as_app(db, redeem, digest("code second"), digest("s2")) == [(True,)]
 
 
 def test_an_expired_link_starts_nothing(db: Database) -> None:
@@ -217,10 +215,16 @@ def test_an_expired_link_starts_nothing(db: Database) -> None:
         digest("old"),
         now + timedelta(minutes=15),
     )
-    later = now + timedelta(minutes=16)
-    assert as_app(
-        db, "SELECT platform_redeem_link($1, NULL, $2, $3)", digest("old"), digest("s"), later
-    ) == [(False,)]
+    redeem = "SELECT platform_redeem_link($1, NULL, $2) AS ok"
+    run(
+        db.owner_url,
+        lambda c: c.execute(
+            "UPDATE operator_link SET expires_at = now() - interval '1 second'"
+            " WHERE token_hash = $1",
+            digest("old"),
+        ),
+    )
+    assert as_app(db, redeem, digest("old"), digest("s")) == [(False,)]
 
 
 def test_refresh_spends_a_code_of_the_sessions_operator(db: Database) -> None:
@@ -237,13 +241,25 @@ def test_refresh_spends_a_code_of_the_sessions_operator(db: Database) -> None:
             digest(code),
             now + timedelta(minutes=15),
         )
-    later = now + timedelta(minutes=5)
-    refresh = "SELECT platform_refresh($1, $2, $3) AS ok"
-    assert as_app(db, refresh, session, digest("theirs"), later) == [(False,)]
-    assert as_app(db, refresh, session, digest("mine"), later) == [(True,)]
-    assert as_app(db, refresh, session, digest("mine"), later) == [(False,)]
-    [row] = as_app(db, "SELECT fresh_at FROM platform_live_session($1, $2)", session, later)
-    assert row["fresh_at"] == later
+    # Signed in a while ago: the proof is stale until a code renews it.
+    run(
+        db.owner_url,
+        lambda c: c.execute(
+            "UPDATE operator_session SET fresh_at = now() - interval '1 hour'"
+            " WHERE token_hash = $1",
+            session,
+        ),
+    )
+    refresh = "SELECT platform_refresh($1, $2) AS ok"
+    assert as_app(db, refresh, session, digest("theirs")) == [(False,)]
+    assert as_app(db, refresh, session, digest("mine")) == [(True,)]
+    assert as_app(db, refresh, session, digest("mine")) == [(False,)]
+    [row] = as_app(
+        db,
+        "SELECT fresh_at > now() - interval '1 minute' AS fresh FROM platform_live_session($1)",
+        session,
+    )
+    assert row["fresh"]
 
 
 def test_signing_in_and_out_is_logged(db: Database) -> None:
@@ -303,3 +319,17 @@ def test_a_downgrade_removes_it_all(db: Database) -> None:
     )
     assert names == []
     migrate(db)
+
+
+def test_the_functions_keep_one_clock_the_databases(db: Database) -> None:
+    # No gate takes a time from the API: a skewed API clock cannot make a session live
+    # to one function and dead to the next.
+    timed = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT proname FROM pg_proc WHERE proname LIKE 'platform%'"
+            " AND 'timestamptz'::regtype = ANY (proargtypes::regtype[])"
+        ),
+    )
+    # Only the link's own expiry, which the API signs into the token, is given.
+    assert [r["proname"] for r in timed] == ["platform_issue_link"]

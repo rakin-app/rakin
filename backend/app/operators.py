@@ -10,9 +10,9 @@ ever grants or revokes. It connects as the table owner, as `app.gyms` does: the 
 role has no privilege on `platform_operator` (migration 0076).
 
 `grant` makes an address an operator, or one revoked an operator again; for one who
-already is, it changes nothing. `revoke` ends them, and ends every session they have
-at once. Both write their `platform_event`, with no operator (`detail.by = 'cli'`).
-An address is kept lower-case.
+already is, it changes nothing. `revoke` ends them, every session they have and every
+link still unused, at once. Both write their `platform_event`, with no operator
+(`detail.by = 'cli'`). An address is kept lower-case.
 """
 
 import argparse
@@ -111,6 +111,12 @@ async def revoke(conn: asyncpg.Connection, command: Revoke) -> Done:
             "UPDATE operator_session SET ended_at = now()"
             " WHERE operator_id = $1 AND ended_at IS NULL AND expires_at > now()"
             " RETURNING 1",
+            found["id"],
+        )
+        # Its open links too: granted again, an old one must not work again.
+        await conn.execute(
+            "UPDATE operator_link SET used_at = now(), code_hash = NULL"
+            " WHERE operator_id = $1 AND used_at IS NULL",
             found["id"],
         )
         await conn.execute(
