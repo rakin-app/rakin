@@ -15,16 +15,31 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.dates import gym_today
+from app import gyms
 from app.domain.grading import PRESETS
-from app.gyms import PROCESSOR_TERMS_VERSION, SIGNED_IN
+from app.gyms import PROCESSOR_TERMS_VERSION
 from tests.pg import run
-from tests.test_gym_hosts import BASE, HOSTS, address, counts, person_in, programs
+from tests.test_gym_hosts import (
+    BASE,
+    HOSTS,
+    SIGNED_TODAY,
+    address,
+    counts,
+    person_in,
+    programs,
+)
 from tests.test_platform_auth import Panel, as_gym_site, grant, operator_email
 from tests.test_platform_auth import db as db
 from tests.test_platform_auth import panel as panel
 
 pytestmark = pytest.mark.postgres
+
+
+@pytest.fixture(autouse=True)
+def _terms_signed_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Chile's today, whatever the host's clock says: see `SIGNED_TODAY`.
+    monkeypatch.setattr(gyms, "gym_today", lambda tz: SIGNED_TODAY)
+
 
 NEW_ROUTES = (
     ("GET", "/api/platform/slug?slug=nuevo"),
@@ -171,7 +186,7 @@ def test_with_no_preset_the_gym_has_no_activity(panel: Panel) -> None:
         ({"slug": "admin"}, "slug", "slug_reserved"),
         ({"processor_terms": "2026-01-01"}, "processor_terms", "terms_version"),
         (
-            {"signed_on": (gym_today(SIGNED_IN) + timedelta(days=2)).isoformat()},
+            {"signed_on": (SIGNED_TODAY + timedelta(days=1)).isoformat()},
             "signed_on",
             "signed_on_future",
         ),
