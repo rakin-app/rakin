@@ -305,6 +305,8 @@ describe('Ajustes', () => {
 
   it('has Cuenta: who is signed in, and Cerrar sesión', async () => {
     const calls = stubApi({ role: 'admin' })
+    // Taps a coach left unsaved on a roster (#416): not the next person's on this phone.
+    localStorage.setItem('rakin:attendance-taps:s1', JSON.stringify({ at: Date.now(), change: { mark: ['m-1'], unmark: [] } }))
     const router = renderAt('/admin/ajustes/cuenta')
 
     const account = await screen.findByRole('region', { name: copy.account.title })
@@ -314,6 +316,7 @@ describe('Ajustes', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/ingresar'))
     expect(calls.some((c) => c.method === 'POST' && c.path === '/api/auth/logout')).toBe(true)
+    expect(localStorage.getItem('rakin:attendance-taps:s1')).toBeNull()
   })
 
   it('has "Mi página" in Cuenta for an owner who also trains, the way to it on a phone (#214)', async () => {

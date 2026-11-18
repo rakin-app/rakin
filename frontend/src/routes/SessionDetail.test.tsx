@@ -175,6 +175,7 @@ function renderClass() {
   const queryClient = createQueryClient()
   const router = createAppRouter({ queryClient }, createMemoryHistory({ initialEntries: ['/admin/clases/s1'] }))
   render(<App queryClient={queryClient} router={router} />)
+  return router
 }
 
 async function rosterList() {
@@ -200,7 +201,7 @@ function goOffline() {
 }
 
 describe('Asistencia', () => {
-  it('lists the roster by name, with who is present, the count and the overdue dot', async () => {
+  it('lists the roster by name, with who is present, the count and who owes', async () => {
     stubApi()
     renderClass()
 
@@ -208,8 +209,9 @@ describe('Asistencia', () => {
     const rows = list.getAllByRole('button')
     expect(rows.map((r) => r.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false'])
     expect(rows[0]).toHaveTextContent('Antonia RojasAzul · Sin grados · Mensual adultos')
-    expect(within(rows[1]!).getByRole('img', { name: copy.overdue })).toBeInTheDocument()
-    expect(within(rows[0]!).queryByRole('img', { name: copy.overdue })).not.toBeInTheDocument()
+    expect(rows[1]).toHaveTextContent(copy.owes)
+    expect(rows[1]).toHaveAccessibleName(new RegExp(copy.overdue))
+    expect(rows[0]).not.toHaveAccessibleName(new RegExp(copy.overdue))
     expect(rows[2]).toHaveTextContent('Pack 12 clases · quedan 4')
     expect(rows[3]).toHaveTextContent('Mensual adultos · Caducado · 16 d sin venir')
     expect(screen.getByText(copy.count(1, 4))).toBeInTheDocument()
@@ -332,6 +334,146 @@ describe('Asistencia', () => {
     expect(writes(api.calls)).toEqual([
       { method: 'PATCH', path: '/api/sessions/s1/attendance', body: { mark: ['m-felipe'], unmark: [] } },
     ])
+  })
+
+  it('marks who owes and who lacks a requirement each its own way, seen and heard (#416)', async () => {
+    const lacking = member('rosa', 'Rosa Soto', {
+      unmet_requirements: [{ id: 'r1', name: 'Inducción', state: 'pending', expires_on: null }],
+    })
+    const both = member('tomas', 'Tomás Pérez', {
+      overdue: true,
+      unmet_requirements: [{ id: 'r1', name: 'Inducción', state: 'pending', expires_on: null }],
+    })
+    stubApi({ members: [ANTONIA, FELIPE, lacking, both] })
+    renderClass()
+
+    const list = await rosterList()
+    const owes = list.getByRole('button', { name: /Felipe Díaz/ })
+    const lacks = list.getByRole('button', { name: /Rosa Soto/ })
+    expect(within(owes).getByText(copy.owes)).toBeInTheDocument()
+    expect(within(owes).queryByText(copy.requirementMark)).not.toBeInTheDocument()
+    expect(owes).toHaveAccessibleName(new RegExp(copy.overdue))
+    expect(owes).not.toHaveAccessibleName(new RegExp(copy.requirementName))
+    expect(within(lacks).getByText(copy.requirementMark)).toBeInTheDocument()
+    expect(within(lacks).queryByText(copy.owes)).not.toBeInTheDocument()
+    expect(lacks).toHaveAccessibleName(new RegExp(copy.requirementName))
+    expect(lacks).not.toHaveAccessibleName(new RegExp(copy.overdue))
+    // Both, both marks.
+    const tomas = list.getByRole('button', { name: /Tomás Pérez/ })
+    expect(tomas).toHaveAccessibleName(new RegExp(`${copy.overdue}.*${copy.requirementName}`))
+    // The hint names each.
+    expect(screen.getByText(copy.hint)).toHaveTextContent(`«${copy.owes}»`)
+    expect(screen.getByText(copy.hint)).toHaveTextContent(`«${copy.requirementMark}»`)
+  })
+
+  describe('taps not saved yet (#416)', () => {
+    const kept = () => JSON.parse(localStorage.getItem('rakin:attendance-taps:s1') ?? 'null') as { change: unknown } | null
+
+    async function markTwo() {
+      const list = await rosterList()
+      await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
+      await userEvent.click(list.getByRole('button', { name: /Paula Contreras/ }))
+      expect(screen.getByRole('button', { name: copy.save(3) })).toBeEnabled()
+    }
+
+    async function expectTwoBack() {
+      const list = await rosterList()
+      expect(list.getByRole('button', { name: /Felipe Díaz/ })).toHaveAttribute('aria-pressed', 'true')
+      expect(list.getByRole('button', { name: /Paula Contreras/ })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: copy.save(3) })).toBeEnabled()
+      expect(screen.getByText(copy.kept(2))).toBeInTheDocument()
+    }
+
+    it('keeps them across the timer, back to the roster', async () => {
+      stubApi()
+      const router = renderClass()
+      await markTwo()
+      expect(kept()).toEqual({ at: expect.any(Number), change: { mark: ['m-felipe', 'm-paula'], unmark: [] } })
+
+      await userEvent.click(screen.getByRole('link', { name: es.admin.session.timer.open }))
+      await vi.waitFor(() => expect(router.state.location.pathname).toBe('/admin/clases/s1/timer'))
+      await act(async () => {
+        router.history.back()
+      })
+      await expectTwoBack()
+    })
+
+    it('keeps them across the back arrow and the tab bar', async () => {
+      stubApi()
+      const router = renderClass()
+      await markTwo()
+
+      await userEvent.click(screen.getAllByRole('link', { name: es.admin.session.back })[0]!)
+      await vi.waitFor(() => expect(router.state.location.pathname).toBe('/admin/clases'))
+      await act(async () => {
+        await router.navigate({ to: '/admin/clases/$sessionId', params: { sessionId: 's1' } })
+      })
+      await expectTwoBack()
+
+      const tabs = screen.getByRole('navigation', { name: es.nav.label })
+      await userEvent.click(within(tabs).getByRole('link', { name: es.nav.today }))
+      await vi.waitFor(() => expect(router.state.location.pathname).toBe('/admin'))
+      await act(async () => {
+        router.history.back()
+      })
+      await expectTwoBack()
+    })
+
+    it('forgets them once saved', async () => {
+      const api = stubApi()
+      const router = renderClass()
+      await markTwo()
+      await userEvent.click(screen.getByRole('button', { name: copy.save(3) }))
+      expect(await screen.findByText(copy.saved)).toBeInTheDocument()
+      expect(kept()).toBeNull()
+      expect(writes(api.calls)).toHaveLength(1)
+
+      await act(async () => {
+        await router.navigate({ to: '/admin/clases' })
+      })
+      await act(async () => {
+        await router.navigate({ to: '/admin/clases/$sessionId/timer', params: { sessionId: 's1' } })
+      })
+      expect(kept()).toBeNull()
+    })
+
+    it('lets them go with "Descartar"', async () => {
+      localStorage.setItem(
+        'rakin:attendance-taps:s1',
+        JSON.stringify({ at: Date.now(), change: { mark: ['m-felipe', 'm-paula'], unmark: [] } }),
+      )
+      const api = stubApi()
+      renderClass()
+      await expectTwoBack()
+
+      await userEvent.click(screen.getByRole('button', { name: copy.discard }))
+      const list = await rosterList()
+      expect(list.getByRole('button', { name: /Felipe Díaz/ })).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByRole('button', { name: copy.upToDate(1) })).toBeDisabled()
+      expect(screen.queryByText(copy.kept(2))).not.toBeInTheDocument()
+      expect(kept()).toBeNull()
+      expect(writes(api.calls)).toEqual([])
+    })
+
+    it('never gives one class’s taps to another, nor a day-old one', async () => {
+      localStorage.setItem('rakin:attendance-taps:s2', JSON.stringify({ at: Date.now(), change: { mark: ['m-felipe'], unmark: [] } }))
+      stubApi()
+      renderClass()
+      const list = await rosterList()
+      expect(list.getByRole('button', { name: /Felipe Díaz/ })).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByRole('button', { name: copy.upToDate(1) })).toBeDisabled()
+      cleanup()
+
+      localStorage.clear()
+      localStorage.setItem(
+        'rakin:attendance-taps:s1',
+        JSON.stringify({ at: Date.now() - 25 * 60 * 60 * 1000, change: { mark: ['m-felipe'], unmark: [] } }),
+      )
+      stubApi()
+      renderClass()
+      expect((await rosterList()).getByRole('button', { name: /Felipe Díaz/ })).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.queryByText(copy.kept(1))).not.toBeInTheDocument()
+    })
   })
 
   it('counts each tap and saves what changed', async () => {
