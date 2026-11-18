@@ -1188,3 +1188,30 @@ def test_approving_onto_a_plan_with_a_fee_charges_its_matricula(
     [line] = matriculas(db, gym, answer["person_id"])
     assert (line["amount_due_clp"], line["due_date"]) == (30_000, seeded_today())
     assert str(line["membership_id"]) == answer["membership_id"]
+
+
+def test_a_suspended_gyms_form_neither_shows_nor_takes_anything(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # Suspended from the platform's panel (#439); resumed, the same link works again.
+    token = token_of(client, gym)
+
+    def suspended(on: bool) -> None:
+        run(
+            db.admin_url,
+            lambda c: c.execute(
+                "UPDATE gym SET suspended_at = CASE WHEN $2 THEN now() END WHERE id = $1",
+                gym,
+                on,
+            ),
+        )
+
+    suspended(True)
+    for response in (client.get(f"/api/join/{token}"), submit(client, token, adult())):
+        assert response.status_code == 410
+        assert response.json() == {"detail": {"code": "gym_suspended"}}
+    suspended(False)
+    assert queue(client, gym) == []
+    assert client.get(f"/api/join/{token}").status_code == 200
+    submitted(client, token, adult())
+    assert len(queue(client, gym)) == 1

@@ -20,6 +20,7 @@ from app.api.webhooks import RESEND_PATH
 from app.domain.dates import gym_today
 from app.magiclink import COOKIE_NAME
 from app.magiclink.tokens import hash_token
+from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
 from app.platform import removal
 from app.platform.session import COOKIE_NAME as PLATFORM_COOKIE
 from tests.pg import run, seed_gym
@@ -144,6 +145,26 @@ def test_a_suspended_gym_shuts_everyone_out_and_keeps_its_data(panel: Panel) -> 
         tls = base.get("/internal/tls-allowed", params={"domain": f"{panel.slug_a}.{BASE}"})
         assert tls.status_code == 200
     assert gym_rows(panel, panel.gym_a) == before
+
+
+def test_check_in_stops_with_the_session_and_unsubscribe_stays_open(panel: Panel) -> None:
+    # Check-in is the staff's, behind a session: it stops when the session does. The
+    # unsubscribe link stays open, so anyone can always stop the gym's email.
+    site = two_gyms(panel)
+    email = address()
+    person = person_in(site, [panel.gym_a], email)
+    with site.client(panel.slug_a) as member:
+        assert site.open(member, site.ask_link(member, email)).status_code == 303
+        token = member.cookies[COOKIE_NAME]
+        assert member.get("/api/check-in").status_code != 401
+    link = UnsubscribeSigner(panel.app.state.settings.secret_key).sign(panel.gym_a, person)
+
+    suspended(panel, panel.gym_a)
+
+    with site.client(panel.slug_a) as member:
+        member.cookies.set(COOKIE_NAME, token)
+        assert member.get("/api/check-in").status_code == 401
+        assert member.post(f"{UNSUBSCRIBE_PATH}/{link}").status_code == 200
 
 
 def test_someone_in_a_suspended_gym_and_an_active_one_signs_in_to_the_active_one(
