@@ -313,7 +313,7 @@ function Wizard({ person }: { person?: PersonRef }) {
           </p>
         )}
         {/* Back, or Cancelar, on the left and the step forward on the right, as every form footer (#419). */}
-        <div className="extra__form-actions">
+        <div className="extra__form-actions extra__form-actions--split">
           {step === 0 ? (
             <Link to="/admin/pagos/cobros" className={buttonClass()}>
               {words.cancel}

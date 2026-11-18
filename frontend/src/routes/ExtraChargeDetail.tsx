@@ -408,11 +408,12 @@ function Actions({ busy, error, onClose }: { busy: boolean; error: unknown; onCl
           {refusal(error)}
         </p>
       ) : null}
+      {/* Cerrar first, then the save, as every form footer (#419). */}
       <div className="extra__form-actions">
+        <Button onClick={onClose}>{words.close}</Button>
         <Button type="submit" variant="primary" disabled={busy} busy={busy}>
           {busy ? words.saving : words.save}
         </Button>
-        <Button onClick={onClose}>{words.close}</Button>
       </div>
     </>
   )
@@ -567,10 +568,10 @@ function CancelForm({ charge, line, onDone, onClose }: FormProps) {
         </p>
       ) : null}
       <div className="extra__form-actions">
+        <Button onClick={onClose}>{words.close}</Button>
         <Button type="submit" variant="danger" disabled={preview.isPending} busy={cancel.isPending}>
           {cancel.isPending ? words.saving : words.cancelConfirm}
         </Button>
-        <Button onClick={onClose}>{words.close}</Button>
       </div>
     </form>
   )

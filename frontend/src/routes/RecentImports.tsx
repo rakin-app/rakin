@@ -115,12 +115,18 @@ function UndoForm({ item, onCancel, onDone }: { item: RecentImport; onCancel: ()
     },
   })
   const undoneMeanwhile = alreadyUndone(undo.error)
-  // The form opens where the button was, often below a phone's fold: take focus so it
-  // scrolls into view and a screen reader reads it (#419), as `useFocusFirstInvalid` does.
+  // The form opens where the button was, often below a phone's fold: take focus so a
+  // screen reader reads it (#419), as `useFocusFirstInvalid` does, and once what it undoes
+  // has loaded and the form has grown, bring the whole of it into view.
   const formRef = useRef<HTMLFormElement>(null)
   useEffect(() => {
     formRef.current?.focus()
   }, [])
+  const loaded = !counts.isPending
+  useEffect(() => {
+    // Not in every test environment.
+    if (loaded) formRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [loaded])
 
   const submit = (event: FormEvent) => {
     event.preventDefault()

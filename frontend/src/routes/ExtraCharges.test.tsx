@@ -212,6 +212,9 @@ describe('Cobros extra', () => {
     renderAt('/admin/pagos/cobros')
 
     await user.click(await screen.findByRole('button', { name: copy.groups.create }))
+    // Cancelar first, then the save, as every form footer (#419).
+    const footer = screen.getByRole('button', { name: copy.groups.save }).parentElement!
+    expect([...footer.children].map((el) => el.textContent)).toEqual([copy.groups.cancel, copy.groups.save])
     await user.type(screen.getByLabelText(copy.groups.name), 'Kids final')
     await user.selectOptions(screen.getByLabelText(copy.groups.program), 'pr-kids')
     await user.click(await screen.findByRole('button', { name: copy.groups.addAll(1) }))
