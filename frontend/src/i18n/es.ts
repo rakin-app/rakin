@@ -1878,6 +1878,9 @@ export const es = {
       },
       roleError: 'No pudimos cargar los ajustes.',
       sectionsLabel: 'Secciones de ajustes',
+      // The arrows over the tabs' faded edges, on a desktop where they do not all fit (#418).
+      tabsBack: 'Ver secciones anteriores',
+      tabsMore: 'Ver más secciones',
       sections: {
         get gym() {
           return w.Place

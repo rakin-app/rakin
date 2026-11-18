@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
@@ -113,6 +113,27 @@ describe('Chip and SegmentedControl', () => {
     fireEvent.scroll(row)
     expect(row).toHaveAttribute('data-more-start')
     expect(row).not.toHaveAttribute('data-more-end')
+  })
+
+  it('a chip row measures again when its chips change, with no scroll (#418)', async () => {
+    const { rerender } = render(
+      <ChipGroup label="Estado">
+        <Chip pressed={false}>Activo</Chip>
+      </ChipGroup>,
+    )
+    const row = screen.getByRole('group', { name: 'Estado' })
+    Object.defineProperty(row, 'clientWidth', { configurable: true, value: 300 })
+    Object.defineProperty(row, 'scrollWidth', { configurable: true, value: 500 })
+    expect(row).not.toHaveAttribute('data-more-end')
+
+    rerender(
+      <ChipGroup label="Estado">
+        <Chip pressed={false}>Activo</Chip>
+        <Chip pressed={false}>Prueba</Chip>
+      </ChipGroup>,
+    )
+
+    await waitFor(() => expect(row).toHaveAttribute('data-more-end'))
   })
 
   it('a segmented control presses one option at a time', async () => {

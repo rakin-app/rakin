@@ -303,7 +303,7 @@ describe('Ajustes', () => {
     expect(await screen.findByRole('region', { name: plans.title })).toBeInTheDocument()
   })
 
-  it('fades the tab row where more tabs follow (#418)', async () => {
+  it('fades the tab row where more tabs follow, under an arrow that scrolls (#418)', async () => {
     vi.stubGlobal(
       'matchMedia',
       vi.fn((query: string) => ({ matches: true, media: query, addEventListener: () => {}, removeEventListener: () => {} })),
@@ -319,6 +319,19 @@ describe('Ajustes', () => {
     fireEvent.scroll(sections)
     expect(sections).toHaveAttribute('data-more-end')
     expect(sections).not.toHaveAttribute('data-more-start')
+
+    // A mouse cannot swipe, and macOS hides the scrollbar: an arrow over the faded edge scrolls.
+    expect(screen.queryByRole('button', { name: copy.tabsBack })).not.toBeInTheDocument()
+    const scrollBy = vi.fn()
+    sections.scrollBy = scrollBy
+    await userEvent.click(screen.getByRole('button', { name: copy.tabsMore }))
+    expect(scrollBy).toHaveBeenCalledWith(expect.objectContaining({ left: expect.any(Number) }))
+    expect(scrollBy.mock.calls[0]?.[0].left).toBeGreaterThan(0)
+
+    sections.scrollLeft = 117
+    fireEvent.scroll(sections)
+    expect(screen.getByRole('button', { name: copy.tabsBack })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.tabsMore })).not.toBeInTheDocument()
   })
 
   it('has Cuenta: who is signed in, and Cerrar sesión', async () => {

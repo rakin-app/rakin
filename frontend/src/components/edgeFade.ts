@@ -24,15 +24,28 @@ export function useEdgeFade<T extends HTMLElement>() {
     }
     measure()
     row.addEventListener('scroll', measure, { passive: true })
-    // Not in every test environment; a resize is then simply not followed.
+    // Not in every test environment; a resize is then simply not followed. Each item is
+    // watched too: a late font widens them with the row's own width unchanged.
     const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
-    resized?.observe(row)
+    const watch = () => {
+      resized?.disconnect()
+      resized?.observe(row)
+      for (const item of row.children) resized?.observe(item)
+    }
+    watch()
+    // Items added or taken away after mount (#418): Graduación, once the gym's activities answer.
+    const changed = new MutationObserver(() => {
+      watch()
+      measure()
+    })
+    changed.observe(row, { childList: true })
     return () => {
       row.removeEventListener('scroll', measure)
       resized?.disconnect()
+      changed.disconnect()
     }
   }, [])
 
   const attrs = { 'data-more-start': overflow.start || undefined, 'data-more-end': overflow.end || undefined }
-  return { ref, attrs }
+  return { ref, attrs, overflow }
 }
