@@ -596,3 +596,12 @@ describe('Alumnos', () => {
     expect(screen.queryByRole('link', { name: es.admin.students.importLink })).toBeNull()
   })
 })
+
+describe('Importar counts', () => {
+  it('names guardians in the people count when the sheet links any (#419)', () => {
+    expect(copy.created(35, 3, 34)).toBe(
+      '35 personas nuevas, contando apoderados; 3 vínculos de apoderado, 34 membresías.',
+    )
+    expect(copy.created(1, 0, 1)).toBe('1 persona nueva; 0 vínculos de apoderado, 1 membresía.')
+  })
+})

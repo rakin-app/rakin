@@ -23,6 +23,7 @@ import { programsQuery } from '../api/people'
 import { Button, buttonClass } from '../components/Button'
 import { Card, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { Field, Input, Select, Textarea } from '../components/Field'
+import { useEdgeFade } from '../components/edgeFade'
 import { useFocusFirstInvalid } from '../components/focusInvalid'
 import { PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
@@ -182,6 +183,7 @@ function Wizard({ person }: { person?: PersonRef }) {
   ][step] ?? null
 
   const formRef = useRef<HTMLFormElement>(null)
+  const { ref: stepsRef, attrs: stepsFade } = useEdgeFade<HTMLOListElement>()
   const [refusedAttempts, setRefusedAttempts] = useState(0)
   useFocusFirstInvalid(formRef, refusedAttempts)
 
@@ -207,13 +209,14 @@ function Wizard({ person }: { person?: PersonRef }) {
   return (
     <PageContainer className="extra">
       <SubHeader title={words.title} back="cobros" />
-      <PlainList ordered className="extra__steps" aria-label={words.title}>
+      {/* At 390 "Confirmar" lies past the right edge: the edge fades, as a chip row's (#419). */}
+      <ol ref={stepsRef} className="plain-list extra__steps edge-fade" aria-label={words.title} {...stepsFade}>
         {words.steps.map((name, i) => (
           <li key={name} className="extra__step" aria-current={i === step ? 'step' : undefined}>
             {name}
           </li>
         ))}
-      </PlainList>
+      </ol>
       <form ref={formRef} className="extra__wizard" onSubmit={next} noValidate>
         <Card aria-labelledby="extra-step">
           <SectionHeader id="extra-step" title={words.stepOf(step + 1, words.steps.length, words.steps[step]!)} />
@@ -308,8 +311,15 @@ function Wizard({ person }: { person?: PersonRef }) {
             {words.failed}
           </p>
         )}
-        <div className="extra__form-actions">
-          {step > 0 && <Button onClick={() => setStep(step - 1)}>{words.previous}</Button>}
+        {/* Back, or Cancelar, on the left and the step forward on the right, as every form footer (#419). */}
+        <div className="extra__form-actions extra__form-actions--split">
+          {step === 0 ? (
+            <Link to="/admin/pagos/cobros" className={buttonClass()}>
+              {words.cancel}
+            </Link>
+          ) : (
+            <Button onClick={() => setStep(step - 1)}>{words.previous}</Button>
+          )}
           <Button type="submit" variant="primary" disabled={create.isPending || waiting} busy={create.isPending}>
             {waiting
               ? words.previewLoading
@@ -319,11 +329,6 @@ function Wizard({ person }: { person?: PersonRef }) {
                   : words.create
                 : words.next}
           </Button>
-          {step === 0 && (
-            <Link to="/admin/pagos/cobros" className={buttonClass({ variant: 'ghost' })}>
-              {words.cancel}
-            </Link>
-          )}
         </div>
       </form>
     </PageContainer>

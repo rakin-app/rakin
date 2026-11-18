@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useId, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { holdsAccount, myAccessQuery } from '../api/me'
 import {
   alreadyUndone,
@@ -115,8 +115,18 @@ function UndoForm({ item, onCancel, onDone }: { item: RecentImport; onCancel: ()
     },
   })
   const undoneMeanwhile = alreadyUndone(undo.error)
-
-  if (counts.isPending) return <p className="import__note">{form.checking}</p>
+  // The form opens where the button was, often below a phone's fold: take focus so a
+  // screen reader reads it (#419), as `useFocusFirstInvalid` does, and once what it undoes
+  // has loaded and the form has grown, bring the whole of it into view.
+  const formRef = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    formRef.current?.focus()
+  }, [])
+  const loaded = !counts.isPending
+  useEffect(() => {
+    // Not in every test environment.
+    if (loaded) formRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [loaded])
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -125,44 +135,50 @@ function UndoForm({ item, onCancel, onDone }: { item: RecentImport; onCancel: ()
   }
 
   return (
-    <form className="import__undo" aria-label={form.title} onSubmit={submit}>
-      {counts.data && (
+    <form ref={formRef} tabIndex={-1} className="import__undo" aria-label={form.title} onSubmit={submit}>
+      {counts.isPending ? (
+        <p className="import__note">{form.checking}</p>
+      ) : (
         <>
-          <p className="import__note">
-            {form.removes(counts.data.payments, counts.data.grades, counts.data.people)}
-          </p>
-          {counts.data.kept > 0 && <p className="import__note">{form.kept(counts.data.kept)}</p>}
+          {counts.data && (
+            <>
+              <p className="import__note">
+                {form.removes(counts.data.payments, counts.data.grades, counts.data.people)}
+              </p>
+              {counts.data.kept > 0 && <p className="import__note">{form.kept(counts.data.kept)}</p>}
+            </>
+          )}
+          <p className="import__note">{form.stays}</p>
+          <label htmlFor={reasonId} className="import__label">
+            {form.reason}
+          </label>
+          <Input
+            id={reasonId}
+            maxLength={500}
+            value={reason}
+            aria-invalid={checked && !reasonOk}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          {checked && !reasonOk && (
+            <Banner tone="error">
+              {form.reasonNeeded}
+            </Banner>
+          )}
+          {(counts.isError || undo.error) && (
+            <Banner tone="error">
+              {undoneMeanwhile ? form.alreadyUndone : form.failed}
+            </Banner>
+          )}
+          <div className="import__actions">
+            <Button disabled={undo.isPending} onClick={onCancel}>
+              {form.cancel}
+            </Button>
+            <Button type="submit" variant="danger" disabled={undo.isPending || counts.isError} busy={undo.isPending}>
+              {undo.isPending ? form.working : form.submit}
+            </Button>
+          </div>
         </>
       )}
-      <p className="import__note">{form.stays}</p>
-      <label htmlFor={reasonId} className="import__label">
-        {form.reason}
-      </label>
-      <Input
-        id={reasonId}
-        maxLength={500}
-        value={reason}
-        aria-invalid={checked && !reasonOk}
-        onChange={(e) => setReason(e.target.value)}
-      />
-      {checked && !reasonOk && (
-        <Banner tone="error">
-          {form.reasonNeeded}
-        </Banner>
-      )}
-      {(counts.isError || undo.error) && (
-        <Banner tone="error">
-          {undoneMeanwhile ? form.alreadyUndone : form.failed}
-        </Banner>
-      )}
-      <div className="import__actions">
-        <Button disabled={undo.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="danger" disabled={undo.isPending || counts.isError} busy={undo.isPending}>
-          {undo.isPending ? form.working : form.submit}
-        </Button>
-      </div>
     </form>
   )
 }

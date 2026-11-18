@@ -212,6 +212,9 @@ describe('Cobros extra', () => {
     renderAt('/admin/pagos/cobros')
 
     await user.click(await screen.findByRole('button', { name: copy.groups.create }))
+    // Cancelar first, then the save, as every form footer (#419).
+    const footer = screen.getByRole('button', { name: copy.groups.save }).parentElement!
+    expect([...footer.children].map((el) => el.textContent)).toEqual([copy.groups.cancel, copy.groups.save])
     await user.type(screen.getByLabelText(copy.groups.name), 'Kids final')
     await user.selectOptions(screen.getByLabelText(copy.groups.program), 'pr-kids')
     await user.click(await screen.findByRole('button', { name: copy.groups.addAll(1) }))
@@ -332,6 +335,10 @@ describe('Nuevo cobro extra', () => {
     })
     const router = renderAt('/admin/pagos/cobros/nuevo')
     const words = copy.wizard
+
+    // Cancelar on the left, Siguiente on the right, as Nuevo alumno's footer (#419).
+    const footer = (await screen.findByRole('button', { name: words.next })).parentElement!
+    expect([...footer.children].map((el) => el.textContent)).toEqual([words.cancel, words.next])
 
     await user.click(await screen.findByRole('button', { name: words.next }))
     expect(screen.getByText(words.titleNeeded)).toBeInTheDocument()

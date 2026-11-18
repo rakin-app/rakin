@@ -363,11 +363,12 @@ function GroupForm({
           {error}
         </p>
       )}
+      {/* Cancelar first, then the save, as every form footer (#419); deleting last, apart. */}
       <div className="extra__form-actions">
+        <Button onClick={() => onClose()}>{words.cancel}</Button>
         <Button type="submit" variant="primary" disabled={save.isPending} busy={save.isPending}>
           {save.isPending ? words.saving : words.save}
         </Button>
-        <Button onClick={() => onClose()}>{words.cancel}</Button>
         {groupId &&
           (confirmDelete ? (
             <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>

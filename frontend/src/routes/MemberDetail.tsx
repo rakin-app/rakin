@@ -820,7 +820,8 @@ function Actions({
 }
 
 /** A line's fixes, opened in place under it (#279): one chip per fix that applies to it,
- * then the chosen one's form, the first to begin with. */
+ * then the chosen one's form, the first to begin with. A lone fix is no choice: it is
+ * named in the title, with no chip (#419). */
 function Fixes<F extends string>({
   title,
   fixes,
@@ -836,14 +837,16 @@ function Fixes<F extends string>({
   const fix = fixes.includes(picked) ? picked : fixes[0]
   return (
     <div className="member__fix" role="group" aria-label={title}>
-      <span className="member__fix-title">{title}</span>
-      <div className="member__fix-choices">
-        {fixes.map((f) => (
-          <Chip key={f} pressed={f === fix} onClick={() => setPicked(f)}>
-            {label(f)}
-          </Chip>
-        ))}
-      </div>
+      <span className="member__fix-title">{fixes.length === 1 ? copy.fix.only(title, label(fix)) : title}</span>
+      {fixes.length > 1 && (
+        <div className="member__fix-choices">
+          {fixes.map((f) => (
+            <Chip key={f} pressed={f === fix} onClick={() => setPicked(f)}>
+              {label(f)}
+            </Chip>
+          ))}
+        </div>
+      )}
       {children(fix)}
     </div>
   )

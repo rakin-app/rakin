@@ -744,9 +744,13 @@ export const es = {
           refused === 1 ? '1 con errores' : `${refused} con errores`
         }.`,
       created: (people: number, links: number, memberships: number) =>
-        `Nuevos: ${people} ${people === 1 ? 'persona' : 'personas'}, ${links} ${
-          links === 1 ? 'vínculo de apoderado' : 'vínculos de apoderado'
-        }, ${memberships} ${memberships === 1 ? 'membresía' : 'membresías'}.`,
+        // `people` counts the guardians the sheet creates too, so it can pass the row
+        // count: say so whenever the sheet links any (#419).
+        `${people === 1 ? '1 persona nueva' : `${people} personas nuevas`}${
+          links > 0 ? ', contando apoderados' : ''
+        }; ${links} ${links === 1 ? 'vínculo de apoderado' : 'vínculos de apoderado'}, ${memberships} ${
+          memberships === 1 ? 'membresía' : 'membresías'
+        }.`,
       nothingNew: 'No hay nada nuevo: todo lo de la planilla ya estaba.',
       history: (people: number, former: number) =>
         [
@@ -786,8 +790,9 @@ export const es = {
       },
       // Importar's recent imports, and "Deshacer importación" (#300).
       recentTitle: 'Importaciones recientes',
-      recentHint:
-        'Si una importación quedó mal (una columna corrida, una fecha equivocada), deshazla, corrige la planilla e impórtala de nuevo.',
+      get recentHint() {
+        return `Deshacer una importación quita los pagos anteriores y grados que trajo, y devuelve el historial a como estaba. Las personas y planes que creó se mantienen, y al importar de nuevo no se actualizan: si una columna corrida dejó mal sus datos (un teléfono en el RUT), corrígelos en su ficha, o elimina desde su ficha ${w.memberIs('los', 'las')} ${w.formerMembers} que creó.`
+      },
       unnamedFile: 'Planilla sin nombre',
       recentWho: (by: string | null, day: string) => (by ? `${by} · ${day}` : day),
       recentCounts: (people: number, history: number, payments: number, grades: number) =>
@@ -1400,6 +1405,8 @@ export const es = {
         refund: 'Reembolsar',
         plan: 'Corregir plan',
         extraCharge: 'Cobro extra',
+        // A line with one fix names it in the title, with no chip (#419).
+        only: (title: string, fix: string) => `${title}: ${fix.toLowerCase()}`,
         // What the fix does as it is typed: the period's debt and the plan's balance.
         owed: (month: string, before: string, after: string) => `Debe en ${month}: ${before} → ${after}`,
         balance: (before: string, after: string) => `Saldo: ${before} → ${after}`,
@@ -2874,7 +2881,8 @@ export const es = {
       form: {
         label: 'Tema y notas',
         topic: 'Tema de la clase',
-        topicPlaceholder: 'Ej.: retención de guardia cerrada',
+        // Seen by every activity, so it names no sport's technique (#419).
+        topicPlaceholder: 'Ej.: repaso de la técnica de la semana',
         tags: 'Etiquetas',
         // Where the gym's tags are made, for a class that has none to pick yet.
         get noTags() {
@@ -3596,7 +3604,8 @@ export const es = {
   },
   // "Tiempo de entrenamiento" (#141, #226): the student page and the ficha read the same totals.
   matTime: {
-    mine: 'Tu tiempo de entrenamiento',
+    // Headings on /me speak as the member does, as "Mi plan" and "Mis clases" (#419).
+    mine: 'Mi tiempo de entrenamiento',
     theirs: 'Tiempo de entrenamiento',
     // A dependent's, on their guardian's student page (#66).
     ofDependent: (name: string) => `Tiempo de entrenamiento de ${name}`,
@@ -3637,7 +3646,7 @@ export const es = {
   },
   // Hours per tag (#243): on the student page, the ficha and Clases.
   tagHours: {
-    mine: 'Tus horas por etiqueta',
+    mine: 'Mis horas por etiqueta',
     theirs: 'Horas por etiqueta',
     gym: 'Horas por etiqueta',
     gymNote: 'De las clases hechas, sin las canceladas.',
@@ -3837,7 +3846,7 @@ export const es = {
       when: (day: string, topic: string | null) => (topic ? `${day} · ${topic}` : day),
       tags: 'Etiquetas',
       more: (n: number) => `Ver ${n} más`,
-      hours: 'Tus horas por etiqueta',
+      hours: 'Mis horas por etiqueta',
       // A dependent's.
       theirHours: (name: string) => `Horas por etiqueta de ${name}`,
       error: 'No pudimos cargar tus clases.',

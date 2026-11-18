@@ -12,7 +12,7 @@ import {
   type Validated,
 } from '../api/review'
 import { remindersQuery, type PaymentReminder } from '../api/reminders'
-import { Button } from '../components/Button'
+import { Button, buttonClass } from '../components/Button'
 import { BackLink } from '../components/BackLink'
 import { Input } from '../components/Field'
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons'
@@ -64,7 +64,15 @@ export function ValidateProof() {
   return (
     <div className="review">
       <header className="review__header">
-        <BackLink to="/admin" label={copy.back} />
+        {/* Labelled, "‹ Hoy", so it reads apart from the queue's own arrows (#419). */}
+        <BackLink to="/admin" label={copy.back} className={buttonClass({ variant: 'ghost', className: 'review__back' })}>
+          {(back) => (
+            <>
+              <ChevronLeftIcon />
+              {back.previous ? (back.place ?? t.common.back) : t.common.places.today}
+            </>
+          )}
+        </BackLink>
         <div className="review__heading">
           <span className="review__eyebrow">{item ? copy.position(at + 1, items.length) : copy.title}</span>
           <PageTitle tight>{item ? item.person_name : copy.title}</PageTitle>
