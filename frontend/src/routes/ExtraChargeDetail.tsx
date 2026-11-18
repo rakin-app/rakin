@@ -45,8 +45,9 @@ const route = getRouteApi('/admin/pagos/cobros/$chargeId')
  * total again while nobody has paid), give back a payment, re-send the notice, or
  * remind them on WhatsApp. "Recordar a los pendientes" emails everyone still owing.
  *
- * A cobro in instalments (#356) lists each person's instalments as lines of their own,
- * each with its due date, and how far along each instalment is across everyone.
+ * A cobro in instalments (#356) shows how far along each instalment is across everyone,
+ * and one row per person (#417): how many of their instalments are paid, the next one
+ * due and its one action, and under "Ver cuotas" each instalment as a line of its own.
  *
  * A row shows one action, the one its line most needs: "Ver comprobante" while a proof
  * waits, else "Marcar pagado" while it is owed; every other action is under its "Más",
@@ -133,9 +134,11 @@ function Detail({ charge }: { charge: ExtraCharge }) {
       <Card aria-labelledby="extra-people">
         <SectionHeader id="extra-people" title={words.peopleLabel} trailing={String(people)} />
         <PlainList className="extra__lines">
-          {charge.people.map((line) => (
-            <LineRow key={line.id} charge={charge} line={line} onDone={setDone} />
-          ))}
+          {charge.instalments > 1
+            ? byPerson(charge.people).map((lines) => (
+                <PersonRow key={lines[0]!.person.id} charge={charge} lines={lines} onDone={setDone} />
+              ))
+            : charge.people.map((line) => <LineRow key={line.id} charge={charge} line={line} onDone={setDone} />)}
         </PlainList>
       </Card>
     </PageContainer>
@@ -159,9 +162,122 @@ function lineStatus(line: Line, today: string): { status: Status; label: string 
   return { status: status[line.status], label: copy.status[line.status] }
 }
 
-function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; onDone: (message: string) => void }) {
-  const [panel, setPanel] = useState<Panel>(null)
+/** Each person's lines, in the order the cobro lists them (by name, then instalment). */
+function byPerson(lines: Line[]): Line[][] {
+  const people = new Map<string, Line[]>()
+  for (const line of lines) {
+    const theirs = people.get(line.person.id)
+    if (theirs) theirs.push(line)
+    else people.set(line.person.id, [line])
+  }
+  return [...people.values()]
+}
+
+/** Closes a line's panel once its change is saved, and reloads what it touched. */
+function useSettled(setPanel: (panel: Panel) => void, onDone: (message: string) => void) {
   const queryClient = useQueryClient()
+  return async (message?: string) => {
+    setPanel(null)
+    await queryClient.invalidateQueries({ queryKey: ['extra'] })
+    await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    if (message) onDone(message)
+  }
+}
+
+/**
+ * One person in a cobro in instalments (#417): "2 de 7 cuotas pagadas · $25.715 de
+ * $89.990", the next instalment owed with its one action, and "Ver cuotas" for each
+ * instalment's own row, where every other action is.
+ */
+function PersonRow({ charge, lines, onDone }: { charge: ExtraCharge; lines: Line[]; onDone: (message: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [panel, setPanel] = useState<Panel>(null)
+  const today = useGymToday()
+  const settled = useSettled(setPanel, onDone)
+  const first = lines[0]!
+  // What they owe: neither cancelled nor exento ($0).
+  const owed = lines.filter((line) => line.status !== 'cancelled' && line.status !== 'waived')
+  const paid = owed.filter((line) => line.status === 'paid').length
+  const due = owed.reduce((sum, line) => sum + line.amount_due_clp, 0)
+  const collected = owed.reduce((sum, line) => sum + line.paid_clp, 0)
+  // The earliest instalment still owed; none once every one is settled.
+  const next = owed.find((line) => line.status === 'open' || line.status === 'in_review')
+  const shown: { status: Status; label: string } = next
+    ? lineStatus(next, today)
+    : owed.length > 0
+      ? { status: 'paid', label: copy.status.paid }
+      : lines.some((line) => line.status === 'waived')
+        ? { status: 'none', label: copy.status.waived }
+        : { status: 'cancelled', label: copy.status.cancelled }
+  const listId = `extra-cuotas-${first.person.id}`
+
+  return (
+    <li className="extra__line">
+      <div className="extra__line-top">
+        <span className="extra__line-name">
+          <Link to="/admin/alumnos/$personId" params={{ personId: first.person.id }}>
+            {first.person.name}
+          </Link>
+          {first.guardian && <span className="extra__hint">{words.guardianOf(first.guardian.name)}</span>}
+        </span>
+        <StatusPill status={shown.status}>{shown.label}</StatusPill>
+      </div>
+      <div className="extra__line-money">
+        <span className="extra__line-amount">{words.instalmentsPaid(paid, owed.length)}</span>
+        <span className="extra__hint">{words.paidOf(clp(collected), clp(due))}</span>
+      </div>
+      {next && (
+        <p className="extra__hint">
+          {words.nextDue(next.instalment, charge.instalments, shortDay(next.due_date), clp(next.outstanding_clp))}
+        </p>
+      )}
+      <div className="extra__line-actions" role="group" aria-label={words.actions(first.person.name)}>
+        {next?.status === 'in_review' ? (
+          <Link to="/admin/pagos/comprobantes" className={buttonClass()}>
+            {words.review}
+          </Link>
+        ) : (
+          next && (
+            <Button aria-expanded={panel === 'pay'} onClick={() => setPanel(panel === 'pay' ? null : 'pay')}>
+              {words.markPaidInstalment(next.instalment)}
+            </Button>
+          )
+        )}
+        <Button
+          variant="ghost"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-label={words.showInstalmentsOf(first.person.name)}
+          onClick={() => setOpen(!open)}
+        >
+          {words.showInstalments}
+        </Button>
+      </div>
+      {panel === 'pay' && next && <PayForm charge={charge} line={next} onDone={settled} onClose={() => setPanel(null)} />}
+      {open && (
+        <PlainList id={listId} className="extra__lines extra__cuotas" aria-label={words.instalmentsOfPerson(first.person.name)}>
+          {lines.map((line) => (
+            <LineRow key={line.id} charge={charge} line={line} onDone={onDone} nested />
+          ))}
+        </PlainList>
+      )}
+    </li>
+  )
+}
+
+/** A line: a person in a cobro paid at once, or, `nested` under its person, one instalment. */
+function LineRow({
+  charge,
+  line,
+  onDone,
+  nested = false,
+}: {
+  charge: ExtraCharge
+  line: Line
+  onDone: (message: string) => void
+  nested?: boolean
+}) {
+  const [panel, setPanel] = useState<Panel>(null)
   const notify = useSubmit({
     mutationFn: () => notifyLine(charge.id, line.id),
     onSuccess: (r) => onDone(r.sent ? words.notified : words.noEmail),
@@ -170,28 +286,24 @@ function LineRow({ charge, line, onDone }: { charge: ExtraCharge; line: Line; on
   const instalments = charge.instalments > 1
   const live = line.status !== 'cancelled'
   const payable = line.status === 'open' || line.status === 'in_review'
-  const settled = async (message?: string) => {
-    setPanel(null)
-    await queryClient.invalidateQueries({ queryKey: ['extra'] })
-    await queryClient.invalidateQueries({ queryKey: ['ledger'] })
-    if (message) onDone(message)
-  }
+  const settled = useSettled(setPanel, onDone)
   const toggle = (next: Panel) => setPanel(panel === next ? null : next)
 
   return (
     <li className="extra__line">
       <div className="extra__line-top">
-        <span className="extra__line-name">
-          <Link to="/admin/alumnos/$personId" params={{ personId: line.person.id }}>
-            {line.person.name}
-          </Link>
-          {line.guardian && <span className="extra__hint">{words.guardianOf(line.guardian.name)}</span>}
-          {instalments && (
-            <span className="extra__hint">
-              {words.instalmentDue(line.instalment, charge.instalments, shortDay(line.due_date))}
-            </span>
-          )}
-        </span>
+        {nested ? (
+          <span className="extra__line-name">
+            {words.instalmentDue(line.instalment, charge.instalments, shortDay(line.due_date))}
+          </span>
+        ) : (
+          <span className="extra__line-name">
+            <Link to="/admin/alumnos/$personId" params={{ personId: line.person.id }}>
+              {line.person.name}
+            </Link>
+            {line.guardian && <span className="extra__hint">{words.guardianOf(line.guardian.name)}</span>}
+          </span>
+        )}
         <StatusPill status={shown.status}>{shown.label}</StatusPill>
       </div>
       <div className="extra__line-money">

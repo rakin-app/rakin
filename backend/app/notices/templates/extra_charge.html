@@ -6,7 +6,7 @@
 {% if message %}
 <p style="margin:0 0 16px;white-space:pre-line;">{{ message }}</p>
 {% endif %}
-<p style="margin:0 0 16px;">{% if dependent_name %}A {{ dependent_name }} le corresponde{% else %}Te corresponde{% endif %} pagar <strong>{{ amount_clp | clp }}</strong>, hasta el <strong>{{ due_date | fecha }}</strong>.</p>
+<p style="margin:0 0 16px;">{% if dependent_name %}A {{ dependent_name }} le corresponde{% else %}Te corresponde{% endif %} pagar <strong>{{ amount_clp | clp }}</strong>, hasta el <strong>{{ due_date | fecha_larga }}</strong>.</p>
 <p style="margin:0 0 16px;">Para pagar, {% if bank_account %}transfiere a esta cuenta y sube el comprobante desde tu página.{% else %}transfiere y sube el comprobante desde tu página, donde están los datos de la cuenta.{% endif %}</p>
 {% include "_bank_account.html" %}
 {% endblock %}
