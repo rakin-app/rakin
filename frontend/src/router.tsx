@@ -32,6 +32,7 @@ import { MemberImport } from './routes/MemberImport'
 import { NewMember } from './routes/NewMember'
 import { NotFound, NotFoundBody } from './routes/NotFound'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
+import { PlatformGym } from './routes/PlatformGym'
 import { PlatformGyms } from './routes/PlatformGyms'
 import { PlatformNewGym } from './routes/PlatformNewGym'
 import { PlatformSignIn } from './routes/PlatformSignIn'
@@ -358,6 +359,13 @@ const platformNewGymRoute = createRoute({
   component: PlatformNewGym,
 })
 
+// One gym's edit screen (#438), opened from the list.
+const platformGymRoute = createRoute({
+  getParentRoute: () => platformRoute,
+  path: '$gymId',
+  component: PlatformGym,
+})
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
@@ -382,7 +390,7 @@ const routeTree = rootRoute.addChildren([
   ]),
   meRoute.addChildren([meHomeRoute]),
   platformSignInRoute,
-  platformRoute.addChildren([platformGymsRoute, platformNewGymRoute]),
+  platformRoute.addChildren([platformGymsRoute, platformNewGymRoute, platformGymRoute]),
 ])
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {

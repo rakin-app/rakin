@@ -169,17 +169,20 @@ class OperatorLinks:
             return None
         return await self._start(hash_token(token), None)
 
+    def code_hash(self, address: str, code: str) -> bytes | None:
+        """What `code`, as typed for `address`, is kept as; None for one that is no code."""
+        digits = normalize_code(code)
+        if digits is None:
+            return None
+        return self._codes.hash(digits, normalize_address(address), self._origin)
+
     async def redeem_code(
         self, address: str, code: str, *, base_url: str | None = None, within: str | None = None
     ) -> str | None:
         """Spend the link `code` came with at `address` on a new session; its token, or
         None for a wrong, spent or expired code alike."""
-        digits = normalize_code(code)
-        if digits is None:
-            return None
-        return await self._start(
-            None, self._codes.hash(digits, normalize_address(address), self._origin)
-        )
+        code_hash = self.code_hash(address, code)
+        return None if code_hash is None else await self._start(None, code_hash)
 
     async def end_session(self, session_token: str) -> None:
         await self._fetch("SELECT platform_end_session(:h)", {"h": hash_token(session_token)})

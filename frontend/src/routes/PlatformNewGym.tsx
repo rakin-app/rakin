@@ -57,7 +57,7 @@ const EMPTY: Drafts = {
 const REFUSALS = { range: {}, value: copy.refusals as Record<string, string> }
 
 /** `value`, once it has stayed the same for `delay` ms. */
-function useSettled<T>(value: T, delay: number): T {
+export function useSettled<T>(value: T, delay: number): T {
   const [settled, setSettled] = useState(value)
   useEffect(() => {
     const timer = setTimeout(() => setSettled(value), delay)

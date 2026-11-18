@@ -14,6 +14,12 @@ for a minute, since a gym's slug and name hardly change and every request on its
 asks. A slug that names no gym is asked again each time: a gym just created is found
 at once, and a host no gym has never gets a certificate (`app.api.tls`), so its
 requests do not reach here over HTTPS.
+
+A slug a gym had before a rename (#438) redirects for 90 days: when no gym has the
+host's slug, `auth_gym_alias` (0078) is asked for the gym's current one, and the
+request is answered with a 301 to the same path and query there, never reaching the
+app. A live alias is kept for a minute too, as a found gym is; `GymLookup.forget` drops
+both, and a rename forgets the old slug and the new.
 """
 
 import re
@@ -26,7 +32,8 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from starlette.datastructures import Headers
+from starlette.datastructures import URL, Headers
+from starlette.responses import RedirectResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.logos import logo_path
@@ -160,8 +167,17 @@ async def gym_by_slug(session: AsyncSession, slug: str) -> HostGym | None:
     return None if row is None else HostGym(row.id, slug, row.name, row.theme, row.logo_version)
 
 
+async def alias_of(session: AsyncSession, slug: str) -> str | None:
+    """The current slug of the gym that had `slug` before a rename, while it redirects."""
+    current: str | None = await session.scalar(
+        text("SELECT slug FROM auth_gym_alias(:slug)"), {"slug": slug}
+    )
+    return current
+
+
 class GymLookup:
-    """Gyms by slug through the app's database, each one found kept `ttl` seconds."""
+    """Gyms by slug through the app's database, each one found kept `ttl` seconds; and
+    the slugs that redirect to a gym (`alias`), each one live kept as long."""
 
     def __init__(
         self,
@@ -174,6 +190,7 @@ class GymLookup:
         self._ttl = ttl
         self._clock = clock
         self._found: dict[str, tuple[float, HostGym]] = {}
+        self._aliases: dict[str, tuple[float, str]] = {}
 
     async def __call__(self, slug: str) -> HostGym | None:
         now = self._clock()
@@ -188,15 +205,31 @@ class GymLookup:
             self._found[slug] = (now + self._ttl, gym)
         return gym
 
+    async def alias(self, slug: str) -> str | None:
+        """The slug `slug` redirects to, or None when it redirects nowhere."""
+        now = self._clock()
+        kept = self._aliases.get(slug)
+        if kept is not None and kept[0] > now:
+            return kept[1]
+        async with self._sessionmaker()() as session:
+            current = await alias_of(session, slug)
+        if current is None:
+            self._aliases.pop(slug, None)
+        else:
+            self._aliases[slug] = (now + self._ttl, current)
+        return current
+
     def forget(self, slug: str) -> None:
         """Drops what is kept for `slug`, so the next request reads it afresh: after a
-        change to what a host shows, such as the gym's theme or logo. The API runs as one
-        process (backend/Dockerfile), so this is every copy there is."""
+        change to what a host shows, such as the gym's theme or logo, or its slug. The
+        API runs as one process (backend/Dockerfile), so this is every copy there is."""
         self._found.pop(slug, None)
+        self._aliases.pop(slug, None)
 
 
 class HostMiddleware:
-    """Puts the gym the request's host names, or None, on `request.state.host_gym`."""
+    """Puts the gym the request's host names, or None, on `request.state.host_gym`; on
+    the host of a slug that redirects (`alias`), answers a 301 to the gym's own."""
 
     def __init__(
         self,
@@ -204,17 +237,31 @@ class HostMiddleware:
         *,
         hosts: Hosts,
         lookup: Callable[[str], Awaitable[HostGym | None]],
+        alias: Callable[[str], Awaitable[str | None]] | None = None,
     ) -> None:
         self.app = app
         self.hosts = hosts
         self.lookup = lookup
+        self.alias = alias
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             slug = self.hosts.slug_of(Headers(scope=scope).get("host", ""))
             gym = None if slug is None else await self.lookup(slug)
+            if slug is not None and gym is None and self.alias is not None:
+                current = await self.alias(slug)
+                if current is not None:
+                    response = RedirectResponse(self.moved(scope, current), status_code=301)
+                    await response(scope, receive, send)
+                    return
             scope.setdefault("state", {})["host_gym"] = gym
         await self.app(scope, receive, send)
+
+    def moved(self, scope: Scope, slug: str) -> str:
+        """The request's path and query, on the host of the gym's slug `slug`."""
+        url = URL(scope=scope)
+        query = f"?{url.query}" if url.query else ""
+        return f"{self.hosts.base_url(slug)}{url.path}{query}"
 
 
 def host_gym(state: object) -> HostGym | None:

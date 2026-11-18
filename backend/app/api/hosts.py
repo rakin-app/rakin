@@ -6,9 +6,10 @@ already does, the gym's name for its slug, and the theme its pages wear (#199) a
 its logo (#223), and what the gym calls itself and its members (#344), for the join form
 and the privacy page.
 `GET /internal/tls-allowed?domain=` is Caddy's on-demand TLS `ask` (deploy/Caddyfile):
-200 for a gym's host, 404 for any other, so a certificate is only ever requested for a
-gym that exists. Caddy reaches it on the api's own port; the public site proxies only
-`/api/*` and `/healthz`.
+200 for a gym's host, and for the host of a slug that still redirects to one (#438),
+as the redirect is answered after the TLS handshake; 404 for any other, so a
+certificate is only ever requested for a gym that exists. Caddy reaches it on the
+api's own port; the public site proxies only `/api/*` and `/healthz`.
 """
 
 from typing import Annotated
@@ -18,7 +19,7 @@ from sqlalchemy import text
 
 from app.api.unsubscribe import in_gym
 from app.domain import vocabulary
-from app.hosts import Hosts, gym_by_slug, host_gym
+from app.hosts import Hosts, alias_of, gym_by_slug, host_gym
 from app.schemas.hosts import HostGymInfo, HostInfo
 
 router = APIRouter(tags=["hosts"])
@@ -58,5 +59,7 @@ async def tls_allowed(
         # Asked afresh, not through the middleware's lookup: a new gym is at once.
         async with request.app.state.sessionmaker() as session:
             if await gym_by_slug(session, slug) is not None:
+                return Response(status_code=status.HTTP_200_OK)
+            if await alias_of(session, slug) is not None:
                 return Response(status_code=status.HTTP_200_OK)
     raise HTTPException(status.HTTP_404_NOT_FOUND, "no gym is served there")
