@@ -114,7 +114,7 @@ for _ in $(seq 30); do landing landing.localhost / -o /dev/null 2>/dev/null && b
 # Into a variable first: `grep -q` stops reading at its match, and under
 # pipefail curl's write error (23) would fail the test.
 page=$(landing landing.localhost /)
-grep -q 'Cada pago, claro' <<<"$page"
+grep -q 'La app para llevar tu academia, gimnasio o club' <<<"$page"
 notice=$(landing landing.localhost /privacidad/)
 grep -q 'Política de privacidad de Rakin' <<<"$notice"
 grep -q 'Versión preliminar, en revisión' <<<"$notice"
@@ -123,9 +123,19 @@ if grep -q -E 'ABOGADO|PENDIENTE|BORRADOR' <<<"$notice"; then
 	echo "test-hosted: /privacidad/ shows a drafting note" >&2
 	exit 1
 fi
-[ "$(landing landing.localhost /img/hoy-390.webp -o /dev/null -w '%{http_code} %{content_type}')" = "200 image/webp" ]
+# A capture and a loop, by the names site/build.py gave them for their content, each
+# served as itself and cached for a week.
+served() { # served <path> <content type>
+	[ "$(landing landing.localhost "$1" -o /dev/null -w '%{http_code} %{content_type}')" = "200 $2" ]
+	headers=$(landing landing.localhost "$1" -o /dev/null -D -)
+	grep -qi '^cache-control: public, max-age=604800' <<<"$headers"
+}
+[[ $page =~ /img/[A-Za-z0-9.-]+\.webp ]]
+served "${BASH_REMATCH[0]}" image/webp
+[[ $page =~ /video/[A-Za-z0-9.-]+\.webm ]]
+served "${BASH_REMATCH[0]}" video/webm
 [ "$(landing www.landing.localhost '/x?y=1' -o /dev/null -w '%{http_code} %{redirect_url}')" = "301 https://landing.localhost/x?y=1" ]
-echo "ok   - the landing page, its privacy notice (no drafting notes) and screenshots, and www redirecting to it"
+echo "ok   - the landing page, its privacy notice (no drafting notes), a capture and a loop cached for a week, and www redirecting to it"
 compose ps --services --status running | grep -qx backup
 echo "ok   - with COMPOSE_PROFILES=backup, up starts the backup service"
 
