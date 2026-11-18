@@ -6,17 +6,19 @@ its staff. The day's sessions are those starting on that day in the gym's timezo
 
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import asyncpg
 import pytest
 from fastapi.testclient import TestClient
+from freezegun import freeze_time
 from pydantic import ValidationError
 
 from alembic import command
 from app.api.sessions import DEFAULT_DURATION
+from app.domain.dates import start_of_local_day
 from app.main import create_app
 from app.schemas.sessions import MAX_NOTES, MAX_TOPIC, SessionCreate, SessionUpdate
 from tests.auth import FakeAuth, as_gym
@@ -422,11 +424,23 @@ def test_a_session_says_how_many_are_marked_at_it(client: TestClient, gym: uuid.
 
 
 @pg
+@pytest.mark.parametrize(
+    ("at", "zone"),
+    [(time(12), SANTIAGO), (time(23, 30), SANTIAGO), (time(0, 30), SANTIAGO), (time(23, 30), UTC)],
+    ids=["midday", "late-santiago", "after-midnight-santiago", "late-utc"],
+)
 def test_the_dashboard_lists_the_last_weeks_classes_nobody_marked(
-    client: TestClient, gym: uuid.UUID
+    client: TestClient, gym: uuid.UUID, at: time, zone: ZoneInfo
 ) -> None:
+    """At any hour (#424): the clock is pinned to today at `at` in `zone`."""
+    with freeze_time(datetime.combine(datetime.now(zone).date(), at, zone), real_asyncio=True):
+        unmarked_at_the_pinned_hour(client, gym)
+
+
+def unmarked_at_the_pinned_hour(client: TestClient, gym: uuid.UUID) -> None:
     fundamentals = class_type(client, gym)["id"]
-    today = datetime.now(SANTIAGO).replace(minute=0, second=0, microsecond=0)
+    now = datetime.now(SANTIAGO)
+    today = now.replace(minute=0, second=0, microsecond=0)
 
     def held(days_ago: int, hours_ago: int = 1) -> dict[str, Any]:
         starts = today - timedelta(days=days_ago, hours=hours_ago)
@@ -437,8 +451,10 @@ def test_the_dashboard_lists_the_last_weeks_classes_nobody_marked(
     marked = held(1)
     mark_owner(client, gym, marked)
     held(8)  # before the week
-    later = (today + timedelta(hours=2)).isoformat()
-    started(client, gym, {"class_type_id": fundamentals, "starts_at": later})  # not started yet
+    # Not started yet, and still today: a later day's class is refused (#407).
+    tomorrow = start_of_local_day(now.date() + timedelta(days=1), SANTIAGO)
+    later = min(now + timedelta(hours=2), tomorrow - timedelta(minutes=1)).isoformat()
+    started(client, gym, {"class_type_id": fundamentals, "starts_at": later})
 
     listed = unmarked(client, gym)
     assert listed["timezone"] == "America/Santiago"
