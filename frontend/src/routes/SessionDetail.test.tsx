@@ -455,6 +455,36 @@ describe('Asistencia', () => {
       expect(writes(api.calls)).toEqual([])
     })
 
+    it('says nothing of kept taps once they are saved, or tapped back, and tapped again', async () => {
+      const keep = () =>
+        localStorage.setItem(
+          'rakin:attendance-taps:s1',
+          JSON.stringify({ at: Date.now(), change: { mark: ['m-felipe', 'm-paula'], unmark: [] } }),
+        )
+      keep()
+      stubApi()
+      renderClass()
+      await expectTwoBack()
+      await userEvent.click(screen.getByRole('button', { name: copy.save(3) }))
+      expect(await screen.findByText(copy.saved)).toBeInTheDocument()
+      await userEvent.click((await rosterList()).getByRole('button', { name: /Ignacio Vera/ }))
+      expect(screen.getByRole('button', { name: copy.save(4) })).toBeEnabled()
+      expect(screen.queryByText(copy.kept(1))).not.toBeInTheDocument()
+      cleanup()
+
+      // Tapped back to the roster as saved, then tapped again.
+      keep()
+      stubApi()
+      renderClass()
+      await expectTwoBack()
+      const list = await rosterList()
+      await userEvent.click(list.getByRole('button', { name: /Felipe Díaz/ }))
+      await userEvent.click(list.getByRole('button', { name: /Paula Contreras/ }))
+      await userEvent.click(list.getByRole('button', { name: /Ignacio Vera/ }))
+      expect(screen.getByRole('button', { name: copy.save(2) })).toBeEnabled()
+      expect(screen.queryByText(copy.kept(1))).not.toBeInTheDocument()
+    })
+
     it('never gives one class’s taps to another, nor a day-old one', async () => {
       localStorage.setItem('rakin:attendance-taps:s2', JSON.stringify({ at: Date.now(), change: { mark: ['m-felipe'], unmark: [] } }))
       stubApi()

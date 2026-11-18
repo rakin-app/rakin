@@ -460,6 +460,8 @@ function Attendance({ sessionId, earlierDay }: { sessionId: string; earlierDay: 
   const restOpen = othersOpen || searching
   const change = changeOf(roster.data, taps)
   const changed = change.mark.length + change.unmark.length > 0
+  // Saved, or tapped back to as saved: what was given back is gone, and a later tap is new.
+  if (restored && !changed) setRestored(false)
   // "Guardado ✓" until the next tap.
   const done = saved && !changed && !queued && !save.isPending
   const unsaved = change.mark.length + change.unmark.length
