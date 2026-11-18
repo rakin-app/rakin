@@ -155,7 +155,7 @@
                   <p>
                     Ves quién se atrasó, desde cuándo y cuánto debe. Le escribes por WhatsApp desde tu teléfono, con el
                     mensaje ya escrito, o por correo. Y mientras siga atrasado, Rakin le recuerda por correo, firmado
-                    por tu academia.
+                    con tu nombre.
                   </p>
                 </div>
                 <figure class="phone phone--full step__shot">
@@ -269,7 +269,7 @@
             <div class="row__text">
               <h3>Requisitos, con sus notas</h3>
               <p>
-                Certificado médico, autorización firmada o lo que pida tu academia: en la ficha de cada uno, con su
+                Certificado médico, autorización firmada o lo que tú pidas: en la ficha de cada uno, con su
                 fecha, su vencimiento y una nota. Al pasar lista, el profe ve a quién le falta algo.
               </p>
             </div>
@@ -346,7 +346,7 @@
         <div class="wrap">
           <header class="section-head reveal">
             <p class="eyebrow">Y además</p>
-            <h2 id="ademas">Lo que necesita una academia de verdad</h2>
+            <h2 id="ademas">Lo que necesita tu academia, gimnasio o club</h2>
           </header>
           <ul class="bento">
             <li class="bento__tile bento__tile--wide reveal">
@@ -370,7 +370,7 @@
             <li class="bento__tile reveal">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.3-1.7-.4-1.2.3-2.3 1.6-2.3H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10zM7.5 11.5h0M10 7.5h0M14.5 7.5h0" /></svg>
               <h3>Con tu logo y tus colores</h3>
-              <p>Sube tu logo y elige un tema: tus alumnos ven tu academia, no la nuestra.</p>
+              <p>Sube tu logo y elige un tema: tus alumnos te ven a ti, no a nosotros.</p>
             </li>
             <li class="bento__tile reveal">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 4.2-2.6M19 12.9a10 10 0 0 0-2.4-1.7M2 9a15 15 0 0 1 4.6-2.9M22 9a15 15 0 0 0-11.2-4M12 20h0" /></svg>
@@ -381,7 +381,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6zM9 12l2 2 4-4" /></svg>
               <h3>Tus datos son tuyos</h3>
               <p>
-                Cada academia ve solo a los suyos, y Rakin no los usa para nada más.
+                Cada lugar ve solo a los suyos, y Rakin no los usa para nada más.
               </p>
             </li>
           </ul>
@@ -438,9 +438,9 @@
 
       <section class="privacy" aria-labelledby="privacidad">
         <div class="wrap narrow">
-          <h2 id="privacidad">Los datos de tu academia son tuyos</h2>
+          <h2 id="privacidad">Los datos de tu academia, gimnasio o club son tuyos</h2>
           <ul>
-            <li>Cada academia ve solo a sus alumnos, y Rakin no usa sus datos para nada más.</li>
+            <li>Cada academia, gimnasio o club ve solo a los suyos, y Rakin no usa sus datos para nada más.</li>
             <li>
               Rakin trata los datos de tus alumnos por encargo tuyo, como pide la ley 21.719 de protección de datos
               personales.
@@ -481,17 +481,18 @@
           const io = new IntersectionObserver((entries) => entries.forEach((e) => act(e)), options)
           els.forEach((el) => io.observe(el))
         }
-        // The header turns solid once the hero has scrolled away.
+        // The header casts a shadow once the hero has scrolled away.
         const top = document.querySelector('[data-top]')
         seen([document.querySelector('[data-hero]')], (e) => top.classList.toggle('is-solid', !e.isIntersecting), {
           rootMargin: '-64px 0px 0px 0px',
         })
-        // Reveals, where scroll-driven animations are not supported.
-        if (!CSS.supports('animation-timeline: view()')) {
-          seen(document.querySelectorAll('.reveal'), (e) => {
-            if (e.isIntersecting) e.target.classList.add('is-visible')
-          }, { rootMargin: '0px 0px -10% 0px' })
-        }
+        // Reveals: each fades in once it is on screen, and stays. One already above the
+        // screen (a reload halfway down, a jump to an anchor) shows at once.
+        const reveals = [...document.querySelectorAll('.reveal')]
+        seen(reveals, (e) => {
+          if (!e.isIntersecting) return
+          reveals.forEach((r) => r.getBoundingClientRect().top < innerHeight && r.classList.add('is-visible'))
+        }, { rootMargin: '0px 0px -8% 0px' })
         // The loops play while on screen, never under reduced motion.
         seen(document.querySelectorAll('video[data-autoplay]'), (e) => {
           const video = e.target

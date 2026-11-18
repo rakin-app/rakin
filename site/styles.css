@@ -145,25 +145,25 @@ figure {
 }
 
 html {
-  scroll-padding-top: calc(var(--header) + 8px);
+  scroll-padding-top: calc(var(--header) + 16px);
+}
+/* An anchor's heading never lands under the header. */
+[id] {
+  scroll-margin-top: calc(var(--header) + 16px);
 }
 
-/* The slim header: over the hero it is the hero; past it, solid. */
+/* The slim header: solid from the start, in the hero's own green, so nothing it
+ * passes over shows through; past the hero it casts a shadow. */
 .top {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20;
   height: var(--header);
   background: var(--color-sidebar);
   color: var(--color-inverse-text);
   transition: box-shadow 0.2s;
 }
-.js .top {
-  background: transparent;
-  margin-bottom: calc(-1 * var(--header));
-}
-.js .top.is-solid {
-  background: var(--color-sidebar);
+.top.is-solid {
   box-shadow: 0 6px 20px -12px rgb(4 18 10 / 0.6);
 }
 .top :focus-visible {
@@ -229,7 +229,7 @@ html {
 .hero {
   background: var(--gradient-hero);
   color: var(--color-inverse-text);
-  padding: calc(var(--header) + 24px) 0 0;
+  padding: 24px 0 0;
   overflow: hidden;
 }
 .hero :focus-visible {
@@ -736,7 +736,7 @@ html {
 
 @media (min-width: 1024px) {
   .hero {
-    padding-top: calc(var(--header) + 48px);
+    padding-top: 48px;
   }
   .hero__grid {
     grid-template-columns: 5fr 7fr;
@@ -835,15 +835,10 @@ html {
   }
 }
 
-/* Motion: reveals as a section comes in, and the hero's two layers apart as it goes.
- * Only once the script has run, so nothing is ever hidden without it, and never under
- * reduced motion. */
-@keyframes reveal {
-  from {
-    opacity: 0;
-    transform: translateY(28px);
-  }
-}
+/* Motion: a section fades in once it is on screen, and the hero's two layers drift
+ * apart as it scrolls away. A reveal runs on time, never on the scroll position, so
+ * nothing ever rests half-faded; it waits for the script (`.js`), so nothing is hidden
+ * without it, and none of it runs under reduced motion. */
 @keyframes drift {
   to {
     transform: translateY(-48px);
@@ -858,12 +853,18 @@ html {
   html {
     scroll-behavior: smooth;
   }
-  @supports (animation-timeline: view()) {
-    .js .reveal {
-      animation: reveal linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 60%;
-    }
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      opacity 0.6s ease,
+      transform 0.6s ease;
+  }
+  .js .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+  @supports (animation-timeline: scroll()) {
     @media (min-width: 1024px) {
       .js .hero__phone {
         animation: drift linear both;
@@ -875,19 +876,6 @@ html {
         animation-timeline: scroll(root);
         animation-range: 0 80vh;
       }
-    }
-  }
-  @supports not (animation-timeline: view()) {
-    .js .reveal {
-      opacity: 0;
-      transform: translateY(28px);
-      transition:
-        opacity 0.6s ease,
-        transform 0.6s ease;
-    }
-    .js .reveal.is-visible {
-      opacity: 1;
-      transform: none;
     }
   }
 }
