@@ -8,7 +8,7 @@ import json
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import ValidationError
 
+from app import gyms
 from app.auth import MailSender, bind_session
 from app.blob_cors import cors_rule
 from app.db import create_engine, create_sessionmaker
@@ -195,6 +196,17 @@ def test_a_session_in_another_gym_acts_in_none_on_a_gyms_host() -> None:
 
 
 # --- the command ------------------------------------------------------------------------
+
+
+# Chile's today, for the terms' "a date to come" check: the day after their version,
+# whatever the host's clock says. `backend-midnight` runs at 00:30 UTC, the evening
+# before in Santiago, when a version dated today is still to come.
+SIGNED_TODAY = date.fromisoformat(PROCESSOR_TERMS_VERSION) + timedelta(days=1)
+
+
+@pytest.fixture(autouse=True)
+def _terms_signed_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gyms, "gym_today", lambda tz: SIGNED_TODAY)
 
 
 ARGS = [
