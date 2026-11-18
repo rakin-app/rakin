@@ -180,7 +180,7 @@ Then the owner opens `https://meta.staging.rakin.app`, which shows Meta's name, 
 
 `https://staging.rakin.app` itself works as before.
 
-**Certificates.** Caddy gets each gym host's certificate from Let's Encrypt at its first visit (on-demand TLS, [`deploy/Caddyfile`](../deploy/Caddyfile)), after asking the api's `/internal/tls-allowed?domain=` whether a gym has that host. It says yes only for an existing gym's slug, so no name anyone invents reaches Let's Encrypt, and there is no wildcard certificate or DNS plugin. That `ask` is the rate limit: Caddy 2.8 dropped on-demand TLS's own `interval` and `burst`. The first visit to a new gym's host waits a few seconds for its certificate.
+**Certificates.** Caddy gets each gym host's certificate from Let's Encrypt at its first visit (on-demand TLS, [`deploy/Caddyfile`](../deploy/Caddyfile)), after asking the api's `/internal/tls-allowed?domain=` whether a gym has that host. It says yes only for an existing gym's slug, or a slug a gym had that still redirects to it ([Editing a gym](#editing-a-gym)), so no name anyone invents reaches Let's Encrypt, and there is no wildcard certificate or DNS plugin. That `ask` is the rate limit: Caddy 2.8 dropped on-demand TLS's own `interval` and `burst`. The first visit to a new gym's host waits a few seconds for its certificate.
 
 **A gym that already exists** signs the Términos de encargo the same way: one made before #367, such as Meta, and every gym again when the terms get a new version, as a new subprocessor in their Anexo A does (clause 9). Record each signature:
 
@@ -211,9 +211,26 @@ SQL
 
 On a gym listed there, load nothing more until it signs. In these commands and the ones above, `2026-11-18` is the current version: it moves with `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py) and the terms' **Versión** line. psql fills in `:'v'` only from stdin, not from `-c`, so the SQL goes in a heredoc.
 
+## Editing a gym
+
+From the panel (#438): **Gimnasios**, then the gym's name, at `https://<base host>/plataforma/<gym id>`. Every change is a row of `platform_event`, which names the fields changed and never their values.
+
+- **Nombre y contacto**: the gym's name, which its host shows at once, and its titular's name, phone and email, in that gym's record of them only (a titular of two gyms keeps their other gym's record). The email changes only while the titular has never signed in to the gym, to fix a typo at creation; after their first sign-in it is refused (`titular_handover`), because a new address there hands the account over. The titular is never changed here: that is the handover of #321, once it exists. Logged as `gym_edited`.
+- **Términos de encargo**: every signature, and **Registrar firma** for the current version, with the date on the signed copy, as `sign-terms` records it: a version already signed changes nothing and keeps its first date. Logged as `terms_recorded` when it recorded one.
+- **Dirección**: a new slug. The operator types it again to confirm, and must have proved who they are in the last 10 minutes, or the panel emails them a code first. The old address then answers every request with a **301** to the same path on the new one (a **308** for a method other than GET or HEAD, so a form sent there keeps its method and body) for **90 days** (`gym_slug_alias`, migration 0078), and keeps its certificate meanwhile; no other gym, from the panel or `create`, can take it in that time. Renaming back to the old slug takes it again and ends its redirect. Sessions are per host, so whoever was signed in on the old address signs in again on the new one, and links in emails sent before the change go through the redirect. Logged as `gym_renamed`, with `{from, to}`.
+
+To see which old slugs still redirect, and where:
+
+```sh
+docker compose exec -T postgres psql -U rakin rakin <<'SQL'
+SELECT a.slug, g.slug AS now, a.until FROM gym_slug_alias a JOIN gym g ON g.id = a.gym_id
+WHERE a.until > now() ORDER BY a.until;
+SQL
+```
+
 ## Platform operators
 
-The panel at `https://<base host>/plataforma` (#436) lists every gym Rakin hosts, for the people who run them, and creates new ones ([Creating a gym](#creating-a-gym), #437). Who may sign in there is granted on the host, never from a screen:
+The panel at `https://<base host>/plataforma` (#436) lists every gym Rakin hosts, for the people who run them, creates new ones ([Creating a gym](#creating-a-gym), #437) and edits them ([Editing a gym](#editing-a-gym), #438). Who may sign in there is granted on the host, never from a screen:
 
 ```sh
 cd /srv/rakin
@@ -229,7 +246,7 @@ To take it away:
 docker compose run --rm api python -m app.operators revoke --email <operator@example.com>
 ```
 
-`revoke` ends their open sessions at once and says how many. Granted again later, they sign in as before. Every grant, revoke, sign-in, sign-out and gym created is a row of `platform_event`, which nothing can change or delete:
+`revoke` ends their open sessions at once and says how many. Granted again later, they sign in as before. Every grant, revoke, sign-in, sign-out, gym created and edit is a row of `platform_event`, which nothing can change or delete:
 
 ```sh
 docker compose exec -T postgres psql -U rakin rakin <<'SQL'

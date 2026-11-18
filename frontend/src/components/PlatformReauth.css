@@ -1,0 +1,21 @@
+/* The panel's "confirma que eres tú" (#438): a card under the action that asked for it. */
+.platform-reauth {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.platform-reauth p {
+  margin: 0;
+}
+
+.platform-reauth__form {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 24rem;
+}
+
+.platform-reauth__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}

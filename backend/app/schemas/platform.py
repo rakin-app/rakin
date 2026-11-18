@@ -2,11 +2,29 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_core import PydanticCustomError
 
 from app.gyms import SCHEMES, NewGym, signing_problem, terms_problem
 from app.hosts import slug_problem, slug_refusal
+from app.schemas.people import Email, Name, Phone
+
+
+def host_label(value: str) -> str:
+    """`value`, if a gym may have it as its slug; else a refusal of its own type,
+    `slug_format` or `slug_reserved`, for the form to say why."""
+    refusal = slug_refusal(value)
+    if refusal is not None:
+        raise PydanticCustomError(f"slug_{refusal}", slug_problem(value) or refusal)
+    return value
+
+
+def signed_since_they_exist(value: date | None) -> date | None:
+    """`value`, if the current terms can have been signed then; else why not."""
+    problem = None if value is None else signing_problem(value)
+    if problem is not None:
+        raise PydanticCustomError(*problem)
+    return value
 
 
 class OperatorMe(BaseModel):
@@ -79,10 +97,7 @@ class PanelNewGym(NewGym):
     @field_validator("slug")
     @classmethod
     def _a_host_label(cls, value: str) -> str:
-        refusal = slug_refusal(value)
-        if refusal is not None:
-            raise PydanticCustomError(f"slug_{refusal}", slug_problem(value) or refusal)
-        return value
+        return host_label(value)
 
     @field_validator("processor_terms")
     @classmethod
@@ -95,10 +110,7 @@ class PanelNewGym(NewGym):
     @field_validator("signed_on")
     @classmethod
     def _signed_since_they_exist(cls, value: date | None) -> date | None:
-        problem = None if value is None else signing_problem(value)
-        if problem is not None:
-            raise PydanticCustomError(*problem)
-        return value
+        return signed_since_they_exist(value)
 
     @field_validator("grading")
     @classmethod
@@ -118,3 +130,92 @@ class CreatedGym(BaseModel):
 class OwnerLink(BaseModel):
     # Whether the link went: False when the mail did not, which the list keeps showing.
     sent: bool
+
+
+class TermsSignature(BaseModel):
+    """One signature of the Términos de encargo: their version, and the date on the copy."""
+
+    version: str
+    signed_on: date
+
+
+class SlugAlias(BaseModel):
+    """A slug the gym had, and until when its address redirects to the gym's own."""
+
+    slug: str
+    address: str
+    until: datetime
+
+
+class PlatformGymDetail(BaseModel):
+    """One gym as its edit screen shows it (#438)."""
+
+    id: uuid.UUID
+    slug: str
+    name: str
+    address: str
+    titular_name: str | None
+    titular_email: str | None
+    titular_phone: str | None
+    # Whether the titular ever signed in there: once they have, their address is
+    # changed only through a handover (#321), never here.
+    titular_signed_in: bool
+    # Every signature, the latest first, and the version current today.
+    terms: list[TermsSignature]
+    terms_version: str
+    aliases: list[SlugAlias]
+
+
+class GymEdit(BaseModel):
+    """What the panel changes of a gym (#438); a field left out, or null, stays as it is.
+    The titular's email only while they have never signed in to the gym."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Name | None = None
+    owner_name: Name | None = None
+    owner_phone: Phone | None = None
+    owner_email: Email | None = None
+
+
+class GymEdited(BaseModel):
+    # The fields that changed; none when every value was the one it had.
+    fields: list[str]
+
+
+class TermsToRecord(BaseModel):
+    """A new signature of the current Términos de encargo: the date on the signed copy."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    signed_on: date
+
+    _signed_since_they_exist = field_validator("signed_on")(signed_since_they_exist)
+
+
+class TermsRecorded(BaseModel):
+    # False when the gym had signed this version already: its first date stays.
+    recorded: bool
+
+
+class NewSlug(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str
+
+    _a_host_label = field_validator("slug")(host_label)
+
+
+class Renamed(BaseModel):
+    slug: str
+    address: str
+    # The slug it had, and until when its address redirects here; None when the slug
+    # was the gym's already and nothing changed.
+    old_slug: str
+    until: datetime | None
+
+
+class ReauthCode(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str

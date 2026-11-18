@@ -114,7 +114,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # Kept on the state too, so a change to what it keeps (the theme) can drop the entry.
     app.state.gym_lookup = GymLookup(lambda: app.state.sessionmaker)
-    app.add_middleware(HostMiddleware, hosts=app.state.hosts, lookup=app.state.gym_lookup)
+    app.add_middleware(
+        HostMiddleware,
+        hosts=app.state.hosts,
+        lookup=app.state.gym_lookup,
+        alias=app.state.gym_lookup.alias,
+    )
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
     app.include_router(hosts.router)

@@ -1,0 +1,55 @@
+/* A gym's edit screen (#438): its sections one under the other, as wide as a form reads well. */
+.platform-gym {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 40rem;
+}
+
+.platform-gym__card {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.platform-gym__note {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.platform-gym__list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.platform-gym__address {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A field and its button, the button under it on a phone. */
+.platform-gym__inline {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+}
+
+.platform-gym__inline > .field {
+  justify-self: stretch;
+}
+
+.platform-gym__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.platform-gym__confirm {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.platform-gym__confirm p {
+  margin: 0;
+}

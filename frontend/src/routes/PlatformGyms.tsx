@@ -1,6 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { PLATFORM_NEW_GYM_PATH, platformGymsQuery, resendOwnerLink, type PlatformGym } from '../api/platform'
+import {
+  PLATFORM_GYM_PATH,
+  PLATFORM_NEW_GYM_PATH,
+  platformGymsQuery,
+  resendOwnerLink,
+  type PlatformGym,
+} from '../api/platform'
 import { useSubmit } from '../api/submit'
 import { Button, buttonClass } from '../components/Button'
 import { Card } from '../components/Card'
@@ -75,7 +81,11 @@ export function PlatformGyms() {
 function GymRow({ gym }: { gym: PlatformGym }) {
   return (
     <tr>
-      <th scope="row">{gym.name}</th>
+      <th scope="row">
+        <Link to={PLATFORM_GYM_PATH} params={{ gymId: gym.id }}>
+          {gym.name}
+        </Link>
+      </th>
       <td>
         <a href={gym.address} target="_blank" rel="noreferrer">
           {new URL(gym.address).host}

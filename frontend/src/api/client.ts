@@ -70,10 +70,17 @@ export async function apiFetch<T>(path: string, { idempotencyKey, ...init }: Api
   const body: unknown = response.status === 204 ? undefined : await readBody(response)
 
   if (!response.ok) {
-    if (response.status === 401) unauthorizedHandler?.()
+    // A 401 `reauth` asks for a recent proof (#438): still signed in, so no sign-in.
+    if (response.status === 401 && !isReauth(body)) unauthorizedHandler?.()
     throw new ApiError(response.status, body, response.headers)
   }
   return body as T
+}
+
+/** Whether a 401's body asks for a new proof of who is signed in (`{"code": "reauth"}`). */
+export function isReauth(body: unknown): boolean {
+  const detail = (body as { detail?: unknown } | undefined)?.detail
+  return typeof detail === 'object' && detail !== null && (detail as { code?: unknown }).code === 'reauth'
 }
 
 async function readBody(response: Response): Promise<unknown> {

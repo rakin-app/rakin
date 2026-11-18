@@ -149,7 +149,7 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # tests/test_consent.py `consent_event` (0058), tests/test_requirements.py
     # `requirement` and `person_requirement` (0062), tests/test_permissions.py
     # `gym_title` and `staff_title` (0065), and tests/test_processor_terms.py
-    # `processor_terms` (0075).
+    # `processor_terms` (0075), and tests/test_platform_edit.py `gym_slug_alias` (0078).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "audit_event",
@@ -167,6 +167,7 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
         "grade_event",
         "guardian_link",
         "gym_activity",
+        "gym_slug_alias",
         "gym_title",
         "history_payment",
         "idempotency_key",
