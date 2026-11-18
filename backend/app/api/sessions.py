@@ -45,7 +45,7 @@ schedule is not made again by the nightly run (migration 0035, `generated_until`
 """
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -220,14 +220,15 @@ async def unmarked_sessions(
     """
     zone = await gym_timezone(session, tenant)
     since = gym_today(zone) - timedelta(days=UNMARKED_DAYS - 1)
+    # "Already started" off the clock `since` came from, not the database's (#424).
     result = await session.execute(
         text(
-            f"{SELECT_SESSION} WHERE s.starts_at >= :start AND s.starts_at <= now()"
+            f"{SELECT_SESSION} WHERE s.starts_at >= :start AND s.starts_at <= :now"
             " AND s.cancelled_at IS NULL AND c.kind <> 'open_access'"
             " AND NOT EXISTS (SELECT FROM attendance a WHERE a.session_id = s.id)"
             " ORDER BY s.starts_at DESC, lower(c.name), s.created_at"
         ),
-        {"start": start_of_local_day(since, zone)},
+        {"start": start_of_local_day(since, zone), "now": datetime.now(UTC)},
     )
     sessions = [Session.model_validate(row, from_attributes=True) for row in result]
     return Unmarked(since=since, timezone=zone, sessions=sessions)
