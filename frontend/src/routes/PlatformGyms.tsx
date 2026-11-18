@@ -1,5 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
-import { platformGymsQuery, type PlatformGym } from '../api/platform'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { PLATFORM_NEW_GYM_PATH, platformGymsQuery, resendOwnerLink, type PlatformGym } from '../api/platform'
+import { useSubmit } from '../api/submit'
+import { Button, buttonClass } from '../components/Button'
 import { Card } from '../components/Card'
 import { Loading } from '../components/Loading'
 import { PageHeader } from '../components/PageHeader'
@@ -24,6 +27,11 @@ export function PlatformGyms() {
   return (
     <>
       <PageHeader title={copy.title} eyebrow={gyms.data && copy.count(gyms.data.length)} />
+      <p className="platform-gyms__actions">
+        <Link to={PLATFORM_NEW_GYM_PATH} className={buttonClass({ variant: 'primary' })}>
+          {copy.add}
+        </Link>
+      </p>
       {gyms.isPending ? (
         <Loading className="platform-gyms__note" role="status">
           {copy.loading}
@@ -76,6 +84,7 @@ function GymRow({ gym }: { gym: PlatformGym }) {
       <td>
         {gym.titular_name ?? <span className="platform-gyms__muted">{copy.noTitular}</span>}
         {gym.titular_email && <span className="platform-gyms__muted platform-gyms__line">{gym.titular_email}</span>}
+        {gym.owner_link_failed && <ResendLink gym={gym} />}
       </td>
       <td>{shortDate(gym.created_at)}</td>
       <td>
@@ -108,5 +117,32 @@ function GymRow({ gym }: { gym: PlatformGym }) {
         <StatusPill status={gym.status}>{copy.status[gym.status]}</StatusPill>
       </td>
     </tr>
+  )
+}
+
+/**
+ * The titular's sign-in link did not go when the gym was created, or when last sent
+ * (#437): said so, with the button that sends it again.
+ */
+function ResendLink({ gym }: { gym: PlatformGym }) {
+  const queryClient = useQueryClient()
+  const resend = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => resendOwnerLink(gym.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: platformGymsQuery().queryKey }),
+  })
+  const failed = resend.isError || resend.data?.sent === false
+  return (
+    <span className="platform-gyms__line platform-gyms__link">
+      <StatusPill status="overdue">{copy.linkFailed}</StatusPill>
+      <Button disabled={resend.isPending} busy={resend.isPending} onClick={() => resend.mutate()}>
+        {resend.isPending ? copy.resending : copy.resend}
+      </Button>
+      {failed && (
+        <span className="platform-gyms__muted" role="alert">
+          {copy.resendFailed}
+        </span>
+      )}
+    </span>
   )
 }

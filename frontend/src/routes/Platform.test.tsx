@@ -51,6 +51,7 @@ const GYMS: PlatformGym[] = [
     staff: 3,
     last_activity: '2026-11-17T20:00:00Z',
     status: 'active',
+    owner_link_failed: false,
   },
   {
     id: 'b',
@@ -68,6 +69,7 @@ const GYMS: PlatformGym[] = [
     staff: 1,
     last_activity: null,
     status: 'active',
+    owner_link_failed: false,
   },
 ]
 
@@ -124,6 +126,39 @@ describe('/plataforma', () => {
     expect(within(sur!).getByText(copy.gyms.noTitular)).toBeInTheDocument()
     expect(within(sur!).getByText(copy.gyms.termsOutdated)).toBeInTheDocument()
     expect(within(sur!).getByText(copy.gyms.noActivity)).toBeInTheDocument()
+  })
+
+  it('says when the titular’s link did not go, and sends it again', async () => {
+    let failed = true
+    let answers = [{ sent: false }, { sent: true }]
+    const calls = stubApi((path, method) => {
+      if (path === '/api/host') return BASE_HOST
+      if (path === '/api/platform/me') return ME
+      if (path === '/api/platform/gyms') {
+        return { status: 200, body: [{ ...GYMS[0]!, owner_link_failed: failed }, GYMS[1]!] }
+      }
+      if (path === '/api/platform/gyms/a/owner-link' && method === 'POST') {
+        const [answer, ...rest] = answers
+        answers = rest
+        failed = !answer!.sent
+        return { status: 200, body: answer }
+      }
+      return { status: 404 }
+    })
+    renderAt('/plataforma')
+
+    const table = await screen.findByRole('table')
+    const [, meta, sur] = within(table).getAllByRole('row')
+    expect(within(sur!).queryByText(copy.gyms.linkFailed)).not.toBeInTheDocument()
+    expect(within(meta!).getByText(copy.gyms.linkFailed)).toBeInTheDocument()
+
+    // It did not go again: said so, and the button stays.
+    await userEvent.click(within(meta!).getByRole('button', { name: copy.gyms.resend }))
+    expect(await within(meta!).findByRole('alert')).toHaveTextContent(copy.gyms.resendFailed)
+
+    await userEvent.click(within(meta!).getByRole('button', { name: copy.gyms.resend }))
+    await waitFor(() => expect(within(table).queryByText(copy.gyms.linkFailed)).not.toBeInTheDocument())
+    expect(calls.filter((c) => c.path === '/api/platform/gyms/a/owner-link')).toHaveLength(2)
   })
 
   it('signs out into the panel’s sign-in', async () => {

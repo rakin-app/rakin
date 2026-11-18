@@ -37,6 +37,10 @@ given, and says so, and points terms given at `sign-terms`, which records them. 
 `sign-terms` with a version the gym already signed changes nothing either: the first
 date stays. It connects as the table owner, as the seed does: RLS holds it to the new
 gym once `app.gym_id` names it.
+
+`create` writes through `gym_create` (0077), which the platform's panel calls too
+(`app.api.platform`, #437): what the presets make of the gym is computed here
+(`gym_create_values`), and the function only writes it, so the two cannot drift.
 """
 
 import argparse
@@ -57,7 +61,6 @@ from app.domain import practice, vocabulary
 from app.domain.dates import gym_today
 from app.domain.grading import PRESETS
 from app.hosts import Hosts, slug_problem
-from app.roles import Role
 from app.schemas.gym import Timezone
 from app.schemas.people import Email, Name, Phone, Rut
 from app.settings import get_settings
@@ -82,6 +85,23 @@ PROCESSOR_TERMS_VERSION = "2026-11-18"
 SIGNED_IN = "America/Santiago"
 
 
+def terms_problem(version: str) -> tuple[str, str] | None:
+    """Why `version` cannot be signed, as a code and a message, or None when it can."""
+    if version != PROCESSOR_TERMS_VERSION:
+        return "terms_version", f"not the current terms, {PROCESSOR_TERMS_VERSION}"
+    return None
+
+
+def signing_problem(signed_on: date) -> tuple[str, str] | None:
+    """Why the terms cannot have been signed on `signed_on`, as a code and a message."""
+    # The terms are signed in Chile, so a date to come is one past Chile's today.
+    if signed_on > gym_today(SIGNED_IN):
+        return "signed_on_future", "a date to come"
+    if signed_on < date.fromisoformat(PROCESSOR_TERMS_VERSION):
+        return "signed_on_early", f"before the terms' version, {PROCESSOR_TERMS_VERSION}"
+    return None
+
+
 class TermsSigned(BaseModel):
     """The Términos de encargo a gym signed, and the date on the signed copy."""
 
@@ -93,18 +113,17 @@ class TermsSigned(BaseModel):
     @field_validator("processor_terms")
     @classmethod
     def _the_current_terms(cls, value: str | None) -> str | None:
-        if value is not None and value != PROCESSOR_TERMS_VERSION:
-            raise ValueError(f"not the current terms, {PROCESSOR_TERMS_VERSION}")
+        problem = None if value is None else terms_problem(value)
+        if problem is not None:
+            raise ValueError(problem[1])
         return value
 
     @field_validator("signed_on")
     @classmethod
     def _signed_since_they_exist(cls, value: date | None) -> date | None:
-        # The terms are signed in Chile, so a date to come is one past Chile's today.
-        if value is not None and value > gym_today(SIGNED_IN):
-            raise ValueError("a date to come")
-        if value is not None and value < date.fromisoformat(PROCESSOR_TERMS_VERSION):
-            raise ValueError(f"before the terms' version, {PROCESSOR_TERMS_VERSION}")
+        problem = None if value is None else signing_problem(value)
+        if problem is not None:
+            raise ValueError(problem[1])
         return value
 
     @model_validator(mode="after")
@@ -163,62 +182,38 @@ def settings_of(grading: str) -> dict[str, object]:
     return settings
 
 
+def gym_create_values(gym: NewGym, gym_id: uuid.UUID) -> tuple[object, ...]:
+    """`gym`'s arguments to `gym_create` (0077), in its order: what the presets make of
+    it computed here, so the command line and the panel write the same gym."""
+    preset = vocabulary.GRADING_PRESETS.get(gym.grading)
+    return (
+        gym_id,
+        gym.slug,
+        gym.name,
+        gym.timezone,
+        json.dumps(settings_of(gym.grading)),
+        list(PROGRAMS),
+        ACTIVITIES.get(gym.grading),
+        preset,
+        # The practice's kind, as its activity names it, else "Práctica libre" (#346).
+        practice.practice_of([preset]).block,
+        gym.owner_email,
+        gym.owner_name,
+        gym.owner_rut,
+        gym.owner_phone,
+        gym.processor_terms,
+        gym.signed_on,
+    )
+
+
 async def create_gym(conn: asyncpg.Connection, gym: NewGym) -> Created:
     """Write `gym` and its owner in one transaction, unless its slug is taken."""
-    async with conn.transaction():
-        found = await conn.fetchrow("SELECT id, name FROM auth_gym_by_slug($1)", gym.slug)
-        if found is not None:
-            return Created(found["id"], found["name"], created=False)
-        gym_id = uuid.uuid4()
-        # RLS is forced, so the owner writes only in the gym `app.gym_id` names.
-        await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
-        # The block kinds come with the row (0028's trigger).
-        await conn.execute(
-            "INSERT INTO gym (id, name, slug, timezone, settings)"
-            " VALUES ($1, $2, $3, $4, $5::jsonb)",
-            gym_id,
-            gym.name,
-            gym.slug,
-            gym.timezone,
-            json.dumps(settings_of(gym.grading)),
-        )
-        await conn.executemany(
-            "INSERT INTO program (gym_id, name) VALUES ($1, $2)",
-            [(gym_id, name) for name in PROGRAMS],
-        )
-        preset = vocabulary.GRADING_PRESETS.get(gym.grading)
-        if gym.grading in ACTIVITIES:
-            await conn.execute(
-                "INSERT INTO gym_activity (gym_id, name, uses_grades, preset)"
-                " VALUES ($1, $2, true, $3)",
-                gym_id,
-                ACTIVITIES[gym.grading],
-                preset,
-            )
-        # The practice's kind, as its activity names it, else "Práctica libre" (#346).
-        await conn.execute(
-            "UPDATE block_kind SET name = $2 WHERE id = block_kind_default_id($1, $3)",
-            gym_id,
-            practice.practice_of([preset]).block,
-            practice.KIND,
-        )
-        person_id = await conn.fetchval(
-            "SELECT person_id FROM join_gym($1, $2, $3, $4, NULL)",
-            gym.owner_rut,
-            gym.owner_email,
-            gym.owner_name,
-            gym.owner_phone,
-        )
-        # The owner holds the account (0065); the gym's roles came with its row.
-        await conn.execute(
-            "INSERT INTO staff (gym_id, person_id, role, account_holder) VALUES ($1, $2, $3, true)",
-            gym_id,
-            person_id,
-            Role.OWNER.value,
-        )
-        if gym.processor_terms is not None:
-            await record_terms(conn, gym_id, gym.processor_terms, gym.signed_on)
-    return Created(gym_id, gym.name, created=True)
+    row = await conn.fetchrow(
+        "SELECT id, name, created FROM gym_create("
+        "$1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+        *gym_create_values(gym, uuid.uuid4()),
+    )
+    return Created(row["id"], row["name"], created=row["created"])
 
 
 async def record_terms(

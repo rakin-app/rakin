@@ -151,9 +151,13 @@ If a release's migration is the problem, roll forward instead: fix it in a new m
 
 ## Creating a gym
 
-Each gym is served on its own host, `<slug>.<BASE_DOMAIN>`: Meta at `meta.staging.rakin.app` on staging, `meta.rakin.app` once production's `BASE_DOMAIN` is `rakin.app`. There is no self-service sign-up yet; a gym is made on the host.
+Each gym is served on its own host, `<slug>.<BASE_DOMAIN>`: Meta at `meta.staging.rakin.app` on staging, `meta.rakin.app` once production's `BASE_DOMAIN` is `rakin.app`. There is no self-service sign-up yet; an operator makes each gym, from the panel or on the host.
 
-**First, the gym signs the [Términos de encargo](legal/terminos-de-encargo.md)** (#367), together with the [Términos de servicio](legal/terminos-de-servicio.md), before any of its data is loaded. Send the current version (its **Versión** line, also `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py)) with the blanks filled in, including the gym's breach contacts (clause 12), which also go in the password manager ([incident response](incident-response.md)). Keep the signed PDF with the company's records, never in a repo, named `<slug>-terminos-de-encargo-<version>.pdf`. Then create the gym, giving the version and the date on the signed copy:
+**First, the gym signs the [Términos de encargo](legal/terminos-de-encargo.md)** (#367), together with the [Términos de servicio](legal/terminos-de-servicio.md), before any of its data is loaded. Send the current version (its **Versión** line, also `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py)) with the blanks filled in, including the gym's breach contacts (clause 12), which also go in the password manager ([incident response](incident-response.md)). Keep the signed PDF with the company's records, never in a repo, named `<slug>-terminos-de-encargo-<version>.pdf`.
+
+**From the panel** (#437), signed in as an [operator](#platform-operators): **Gimnasios › Nuevo gimnasio** at `https://<base host>/plataforma/nuevo`. It asks what `create` below takes: the gym's name, its slug (checked as it is typed, with the address it makes), its time zone, a grading preset if any, the owner's email and name (RUT and phone optional), and the date on the signed copy of the terms, whose version it shows. The terms are always required there. Once created, the address works at once and the owner is emailed a link and a code that sign in on it, good for 15 minutes; if they lapse, the owner asks for another at the address. The panel and the command write the gym through the same database function, `gym_create` (migration 0077), so the two make the same gym; the panel's are logged in `platform_event` as `gym_created`, then `owner_link_sent`, or `owner_link_failed` when the mail did not go. A gym whose latest link did not go says **Enlace no enviado** in the list, beside its titular, with **Reenviar enlace**, which sends a fresh one to the titular's address.
+
+**From the host**, giving the version and the date on the signed copy:
 
 ```sh
 cd /srv/rakin
@@ -209,7 +213,7 @@ On a gym listed there, load nothing more until it signs. In these commands and t
 
 ## Platform operators
 
-The panel at `https://<base host>/plataforma` (#436) lists every gym Rakin hosts, for the people who run them. Who may sign in there is granted on the host, never from a screen:
+The panel at `https://<base host>/plataforma` (#436) lists every gym Rakin hosts, for the people who run them, and creates new ones ([Creating a gym](#creating-a-gym), #437). Who may sign in there is granted on the host, never from a screen:
 
 ```sh
 cd /srv/rakin
@@ -225,7 +229,7 @@ To take it away:
 docker compose run --rm api python -m app.operators revoke --email <operator@example.com>
 ```
 
-`revoke` ends their open sessions at once and says how many. Granted again later, they sign in as before. Every grant, revoke, sign-in and sign-out is a row of `platform_event`, which nothing can change or delete:
+`revoke` ends their open sessions at once and says how many. Granted again later, they sign in as before. Every grant, revoke, sign-in, sign-out and gym created is a row of `platform_event`, which nothing can change or delete:
 
 ```sh
 docker compose exec -T postgres psql -U rakin rakin <<'SQL'

@@ -225,7 +225,9 @@ Tenancy holds for them too: the API's role has no privilege on the platform's ta
 0076) and never reads across gyms itself. The panel reads through `platform_*`
 functions owned by `rakin_platform`, each of which takes the operator's session hash
 and refuses unless it is live. Every sign-in, sign-out, grant, revoke and later every
-write is a row of `platform_event`, append-only. [ADR 0003](adr/0003-platform-operators.md)
+write is a row of `platform_event`, append-only. A gym created from the panel (#437)
+goes through `gym_create` (migration 0077), the same owner-owned function `app.gyms
+create` calls, so FORCEd RLS holds it to the new gym and the two cannot drift. [ADR 0003](adr/0003-platform-operators.md)
 has the reasons.
 
 ## Infrastructure and operations
