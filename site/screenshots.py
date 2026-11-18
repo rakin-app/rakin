@@ -7,12 +7,18 @@
     docker compose up -d --wait && make seed
     uv run --with playwright==1.65.2 playwright install chromium   # once
     uv run site/screenshots.py [--scene NAME]... [--only NAME]...
+    uv run site/screenshots.py --hero   # the hero's widths again, from the 2× on disk
 
 Writes, for each shot, `site/img/<name>-2x.webp` and `<name>-1x.webp`, the screen
 taken at 2× (a phone at 390×844, a computer at 1280×800) and cropped to what the shot
 proves; and for each loop `site/video/<name>.webm` and `.mp4` with its last frame as
 `site/img/<name>-poster-2x.webp`. Loops need `ffmpeg`, to take them only: the site's
 build never runs it.
+
+The hero's two screens are the page's LCP image (#461), so each also comes in the
+widths its frame shows it at between and around 1× and 2× (`hoy-1280-1.5x.webp`), and
+in AVIF beside every WebP. `--hero` writes those again from the 2× captures on disk,
+with no stack.
 
 It signs in as the seed's people, the way UX QA does (.claude/commands/ux-qa.md): it
 asks the API for a sign-in link and reads it back out of the API's log, since no mail
@@ -66,6 +72,10 @@ PHONE = {
     "has_touch": True,
 }
 DESKTOP = {"viewport": {"width": 1280, "height": 800}, "device_scale_factor": 2}
+
+# The hero's captures (#461), and the scales each comes in beside 1× and 2×: the
+# computer's shows 900 CSS pixels wide, the phone's 302.
+HERO = {"hoy-1280": (0.75, 1.5), "hoy-390": (1.5,)}
 
 # Words that would make the page read as a martial-arts app. In the neutral scene a
 # shot whose screen holds one of them fails, so a seed or screen change cannot slip
@@ -559,12 +569,31 @@ class Checks:
 
 
 def save(image: Image.Image, name: str) -> None:
-    """`<name>-2x.webp` as taken, and `<name>-1x.webp` at half its size."""
+    """`<name>-2x.webp` as taken, and `<name>-1x.webp` at half its size; the hero's
+    widths too, for a hero shot."""
     IMG.mkdir(parents=True, exist_ok=True)
     image.save(IMG / f"{name}-2x.webp", "WEBP", quality=80, method=6)
     half = image.resize((image.width // 2, image.height // 2), Image.Resampling.LANCZOS)
     half.save(IMG / f"{name}-1x.webp", "WEBP", quality=82, method=6)
     print(f"ok   - {name} ({half.width}×{half.height})")
+    if name in HERO:
+        hero(image, name)
+
+
+def hero(image: Image.Image, name: str) -> None:
+    """The hero's widths of the 2× capture `image`: WebP at the scales `save` does not
+    write, and AVIF at every one."""
+    scales = sorted({1, 2, *HERO[name]})
+    for scale in scales:
+        size = (round(image.width * scale / 2), round(image.height * scale / 2))
+        scaled = image if scale == 2 else image.resize(size, Image.Resampling.LANCZOS)
+        if scale not in (1, 2):
+            scaled.save(IMG / f"{name}-{scale:g}x.webp", "WEBP", quality=80, method=6)
+        # 4:4:4 keeps small coloured text as sharp as the WebP.
+        scaled.save(
+            IMG / f"{name}-{scale:g}x.avif", "AVIF", quality=60, speed=0, subsampling="4:4:4"
+        )
+    print(f"ok   - {name}: {', '.join(f'{s:g}x' for s in scales)}, also in AVIF")
 
 
 def take(page: Page, base: str, shot: Shot, check: Checks) -> None:
@@ -640,7 +669,14 @@ def main() -> None:
     )
     parser.add_argument("--scene", action="append", help="run only this scene (repeatable)")
     parser.add_argument("--only", action="append", help="take only this shot or loop (repeatable)")
+    parser.add_argument(
+        "--hero", action="store_true", help="write the hero's widths from the 2× on disk; no stack"
+    )
     args = parser.parse_args()
+    if args.hero:
+        for name in HERO:
+            hero(Image.open(IMG / f"{name}-2x.webp").convert("RGB"), name)
+        return
     scenes = [s for s in SCENES if not args.scene or s.name in args.scene]
 
     def wanted(name: str) -> bool:

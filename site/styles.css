@@ -280,6 +280,11 @@ html {
 .hero__stage {
   position: relative;
 }
+/* The hero's screens sit in a picture element that skips them where they are hidden (#461);
+ * it lays out as if the image were there alone. */
+.hero picture {
+  display: contents;
+}
 .hero__desktop,
 .hero__phone .hero__phone-proof {
   display: none;
@@ -311,6 +316,10 @@ html {
   height: auto;
   border-radius: 26px;
   background: var(--color-bg);
+}
+/* With no script a loop never plays, and its still shows in its place. */
+html:not(.js) video[data-poster] {
+  display: none;
 }
 .phone--full {
   padding-top: 30px;

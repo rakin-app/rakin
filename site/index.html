@@ -26,6 +26,8 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="El logo de Rakin: cuatro tatamis alrededor de un cuadrado." />
     <meta name="twitter:card" content="summary_large_image" />
+    <link data-shot="hoy-390" media="(max-width: 1023px)" imagesizes="(min-width: 391px) 302px, calc(82vw - 18px)" fetchpriority="high" />
+    <link data-shot="hoy-1280" media="(min-width: 1024px)" imagesizes="900px" fetchpriority="high" />
     <link rel="preload" href="/fonts/bricolage-grotesque-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/figtree-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <script>document.documentElement.classList.add('js')</script>
@@ -67,19 +69,29 @@
           <div class="hero__stage">
             <figure class="browser hero__desktop">
               <div class="browser__bar" aria-hidden="true"><span></span><span></span><span></span></div>
-              <img
-                data-shot="hoy-1280"
-                alt="Hoy en el computador: 8 vencidos, 3 comprobantes por validar, 1 clase sin asistencia y 20 alumnos sin venir en 14 días, sobre los requisitos pendientes y los comprobantes por revisar."
-              />
+              <picture>
+                <source media="(max-width: 1023px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
+                <img
+                  data-shot="hoy-1280"
+                  sizes="900px"
+                  loading="eager"
+                  fetchpriority="high"
+                  alt="Hoy en el computador: 8 vencidos, 3 comprobantes por validar, 1 clase sin asistencia y 20 alumnos sin venir en 14 días, sobre los requisitos pendientes y los comprobantes por revisar."
+                />
+              </picture>
             </figure>
             <figure class="phone phone--full hero__phone">
-              <img
-                class="hero__phone-today"
-                data-shot="hoy-390"
-                loading="eager"
-                fetchpriority="high"
-                alt="Hoy en el teléfono: 8 vencidos, 3 comprobantes por validar, 1 clase sin asistencia y 20 alumnos sin venir en 14 días."
-              />
+              <picture>
+                <source media="(min-width: 1024px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
+                <img
+                  class="hero__phone-today"
+                  data-shot="hoy-390"
+                  sizes="(min-width: 391px) 302px, calc(82vw - 18px)"
+                  loading="eager"
+                  fetchpriority="high"
+                  alt="Hoy en el teléfono: 8 vencidos, 3 comprobantes por validar, 1 clase sin asistencia y 20 alumnos sin venir en 14 días."
+                />
+              </picture>
               <img
                 class="hero__phone-proof"
                 data-shot="comprobante-390"
@@ -108,10 +120,13 @@
                   </p>
                 </div>
                 <figure class="phone phone--full step__shot">
-                  <img
-                    data-shot="hoy-390"
-                    alt="Hoy en el teléfono: los vencidos, los comprobantes por validar, las clases sin asistencia y quién no viene hace 14 días, y debajo los requisitos pendientes."
-                  />
+                  <picture>
+                    <img
+                      data-shot="hoy-390"
+                      sizes="(min-width: 373px) 302px, calc(86vw - 18px)"
+                      alt="Hoy en el teléfono: los vencidos, los comprobantes por validar, las clases sin asistencia y quién no viene hace 14 días, y debajo los requisitos pendientes."
+                    />
+                  </picture>
                 </figure>
               </li>
               <li class="step" data-step="1">
@@ -476,6 +491,11 @@
     <script>
       // Progressive: with no script every step, capture and loop shows as it is.
       ;(() => {
+        // A poster loads as soon as its video is parsed, lazy or not, so the loops get
+        // theirs once the page has loaded: never alongside the hero's image (#461).
+        addEventListener('load', () =>
+          document.querySelectorAll('video[data-poster]').forEach((video) => (video.poster = video.dataset.poster)),
+        )
         const calm = matchMedia('(prefers-reduced-motion: reduce)')
         const seen = (els, act, options) => {
           const io = new IntersectionObserver((entries) => entries.forEach((e) => act(e)), options)
