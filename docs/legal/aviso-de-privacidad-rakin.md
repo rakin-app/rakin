@@ -2,7 +2,7 @@
 
 # Aviso de privacidad de Rakin
 
-El aviso de quien lleva Rakin, para los datos que decide por su cuenta. Mientras Rakin no sea una empresa, no nombra a ninguna ([la Empresa, mientras no hay empresa](README.md#la-empresa-mientras-no-hay-empresa)). Se publica en `rakin.app/privacidad`, en la página de inicio (#343), y es lo que `/privacidad` debe mostrar cuando la dirección no es la de una academia. Hoy esa página sale en blanco (UX QA, run 1).
+El aviso de quien lleva Rakin, para los datos que decide por su cuenta. Hasta el lanzamiento no lleva razón social ([la Empresa, antes del lanzamiento](README.md#la-empresa-antes-del-lanzamiento)). Se publica en `rakin.app/privacidad`, en la página de inicio (#343), y es lo que `/privacidad` debe mostrar cuando la dirección no es la de una academia. Hoy esa página sale en blanco (UX QA, run 1).
 
 Los datos de los alumnos **no** están en este aviso: de ellos es responsable cada academia, y Rakin los trata por encargo ([Términos de encargo](terminos-de-encargo.md)). Cada academia los explica en su propio aviso ([plantilla](aviso-de-privacidad-gimnasio.md)).
 
@@ -14,7 +14,7 @@ Versión 3, vigente desde el 18 de noviembre de 2026.
 
 ### ¿Quién es responsable?
 
-Rakin es un proyecto en etapa de prueba, todavía sin lanzamiento oficial: no hay una empresa constituida ni se vende ni se cobra el servicio. Contacto: hola@rakin.app. `[ABOGADO: el art. 14 ter pide identificar al responsable. Mientras Rakin no sea una empresa, el aviso no nombra ninguna; cuando se constituya, aquí van su razón social, RUT, representante legal y domicilio, en una versión nueva del aviso.]`
+Rakin está en etapa de prueba y todavía no se lanza oficialmente: no se vende ni se cobra el servicio. Contacto: hola@rakin.app. `[ABOGADO: el art. 14 ter pide identificar al responsable. Al lanzamiento, aquí van su razón social, RUT, representante legal y domicilio, en una versión nueva del aviso.]`
 
 ### ¿De qué datos es responsable Rakin?
 

@@ -8,7 +8,7 @@ Contrato entre quien presta Rakin y cada academia que lo usa, exigido por el art
 
 Entre:
 
-- **Quien lleva Rakin**, un proyecto en etapa de prueba sin empresa constituida ([la Empresa, mientras no hay empresa](README.md#la-empresa-mientras-no-hay-empresa)), en adelante **la Empresa**. Es la **encargada** del tratamiento.
+- **Quien lleva Rakin**, un proyecto en etapa de prueba que todavía no se lanza oficialmente ([la Empresa, antes del lanzamiento](README.md#la-empresa-antes-del-lanzamiento)), en adelante **la Empresa**. Es la **encargada** del tratamiento.
 - **[Razón social del gimnasio]**, RUT [RUT del gimnasio], que opera **[Nombre del gimnasio]**, con domicilio en [domicilio del gimnasio], representada por [nombre del representante], en adelante **la Academia**. Es la **responsable** del tratamiento.
 
 ## 1. Objeto
