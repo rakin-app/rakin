@@ -8,7 +8,17 @@ from app.db_bootstrap import to_dsn
 from app.integrations import build_blob_store
 from app.seed import Loaded, load, store_proofs
 from app.seed.data import GYM_NAME
-from app.settings import get_settings
+from app.settings import Settings, get_settings
+
+
+def refusal(settings: Settings) -> str | None:
+    """Why the demo gym may not be loaded here, or None when it may."""
+    if settings.environment == "production" and not settings.seed_only:
+        return (
+            "refusing to load the demo gym on ENVIRONMENT=production: set SEED_ONLY=1"
+            " in this host's .env if it only ever holds seed data (staging)"
+        )
+    return None
 
 
 async def run(today: date | None) -> tuple[Loaded, int]:
@@ -29,7 +39,10 @@ def main() -> None:
         type=date.fromisoformat,
         help="the gym-local date the data depicts, YYYY-MM-DD (default: today)",
     )
-    loaded, proofs = asyncio.run(run(parser.parse_args().today))
+    args = parser.parse_args()
+    if (problem := refusal(get_settings())) is not None:
+        parser.exit(2, f"{problem}\n")
+    loaded, proofs = asyncio.run(run(args.today))
     if loaded.ignored_today:
         print(
             f"{GYM_NAME} was seeded as of {loaded.seed.as_of};"

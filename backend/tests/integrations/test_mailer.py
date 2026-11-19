@@ -17,7 +17,14 @@ from email.message import EmailMessage
 import pytest
 
 from app.integrations import build_mailer
-from app.integrations.mailer import ConsoleMailer, Email, MailDeliveryError, Mailer, SmtpMailer
+from app.integrations.mailer import (
+    AllowListMailer,
+    ConsoleMailer,
+    Email,
+    MailDeliveryError,
+    Mailer,
+    SmtpMailer,
+)
 from tests.conftest import make_settings
 
 
@@ -212,3 +219,53 @@ def test_mailer_is_selected_by_settings() -> None:
     smtp = build_mailer(make_settings(mailer="smtp", smtp_host="mail.example.cl", smtp_port=465))
     assert isinstance(smtp, SmtpMailer)
     assert (smtp.host, smtp.port) == ("mail.example.cl", 465)
+
+
+class Recorder:
+    def __init__(self) -> None:
+        self.sent: list[Email] = []
+
+    async def send(self, email: Email) -> None:
+        self.sent.append(email)
+
+
+def test_an_allow_list_sends_only_to_its_addresses_and_domains(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="app.integrations.mailer")
+    inner = Recorder()
+    mailer = AllowListMailer(inner, ["equipo@rakin.example", "@pruebas.example"])
+    for to in (
+        "Equipo <EQUIPO@rakin.example>",
+        "ana@pruebas.example",
+        "otra@rakin.example",
+        "ana@sub.pruebas.example",
+        "ana@example.com",
+    ):
+        asyncio.run(mailer.send(Email(to=to, subject="Hola", text="x")))
+
+    assert [e.to for e in inner.sent] == ["Equipo <EQUIPO@rakin.example>", "ana@pruebas.example"]
+    unsent = [r for r in caplog.records if r.getMessage() == "mail (not allowed, not sent)"]
+    assert [r.__dict__["mail_to"] for r in unsent] == [
+        "otra@rakin.example",
+        "ana@sub.pruebas.example",
+        "ana@example.com",
+    ]
+    assert [r.__dict__["mail_subject"] for r in unsent] == ["Hola"] * 3
+
+
+def test_mail_allow_wraps_smtp_only_when_set() -> None:
+    smtp = make_settings(mailer="smtp", smtp_host="mail.example.cl")
+    assert isinstance(build_mailer(smtp), SmtpMailer)
+    allowed = build_mailer(smtp.model_copy(update={"mail_allow": " A@Rakin.example, @x.example ,"}))
+    assert isinstance(allowed, AllowListMailer)
+    assert isinstance(allowed.inner, SmtpMailer)
+    assert allowed.allowed == {"a@rakin.example", "@x.example"}
+    # The console mailer sends nothing anyway.
+    assert isinstance(build_mailer(make_settings(mail_allow="a@rakin.example")), ConsoleMailer)
+
+
+@pytest.mark.parametrize("value", ["rakin.example", "a@", "@", "a b@x.example", "<a@x.example>"])
+def test_mail_allow_takes_only_addresses_and_domains(value: str) -> None:
+    with pytest.raises(ValueError, match="not an address or @domain"):
+        make_settings(mail_allow=value)

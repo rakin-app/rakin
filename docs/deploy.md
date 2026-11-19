@@ -111,7 +111,7 @@ The backup runs against the `backup` service **already running** on the host, un
 Production is only offered once staging passed for that tag. On each host, `deploy-host.yml`:
 
 1. checks the host is the environment's (`SEED_ONLY`, [above](#4-github));
-2. copies that tag's `docker-compose.yml`, `deploy.sh`, `smoke.sh`, `restore.sh` and `verify.sh` to `/srv/rakin`;
+2. copies that tag's `docker-compose.yml`, `deploy.sh`, `smoke.sh`, `restore.sh`, `verify.sh` and `reset-staging.sh` to `/srv/rakin`;
 3. runs `./deploy.sh v0.1.0` there: `docker compose pull`, then `docker compose run --rm migrate` (`python -m app.db_bootstrap && alembic upgrade head`), and only once that succeeds `docker compose up -d --wait`. A failed migration leaves the running release untouched;
 4. runs `./verify.sh <environment> v0.1.0` there ([`deploy/verify.sh`](../deploy/verify.sh)): caddy, api and jobs run, every rakin-app image is `:v0.1.0`, `alembic current` is the image's `alembic heads`, and the api and jobs logged no `ERROR` in the last 5 minutes (it prints how many and from which loggers, never the lines: read those on the host);
 5. runs `deploy/smoke.sh <DEPLOY_URL>`. On a first deploy Caddy may still be waiting for its Let's Encrypt certificate, so while `/healthz` fails to connect, handshake or answer in time, the smoke test waits up to 90 s (`SMOKE_TLS_WAIT`) before checking. An HTTP failure such as a 503 is never waited for.
@@ -321,6 +321,60 @@ docker compose exec -T postgres psql -U rakin rakin < deploy/minors-without-guar
 ```
 
 It lists each gym's members under 18 with no guardian, by id, never by name. Nothing is sent to them until the gym adds one, and the gym sees each on Hoy and on the ficha, so ask the gym to add the guardian there.
+
+## The staging host
+
+The Nuremberg host (#464) holds **seed data only**, never a gym's data: the seed's gym, the team's own operator accounts and the team's allowed mail addresses. It is provisioned like §1 and deployed by the `staging` environment of `deploy.yml`.
+
+### Its `.env`
+
+From [`deploy/.env.example`](../deploy/.env.example), with **every secret generated afresh**: none is copied from production. Where it differs:
+
+| Setting | Staging |
+| --- | --- |
+| `SITE_ADDRESS`, `PUBLIC_BASE_URL` | `staging.rakin.app`, `https://staging.rakin.app` |
+| `BASE_DOMAIN` | `staging.rakin.app` (the seed's gym at `academia-sur.staging.rakin.app`) |
+| `LANDING_HOST` | `sitio.staging.rakin.app`, a preview of the next landing |
+| `MOVED_FROM_DOMAIN` | empty |
+| `ENVIRONMENT`, `SENTRY_ENVIRONMENT` | `production` (secure cookies, secret checks), `staging` (so Sentry tells the hosts apart); same `SENTRY_DSN` |
+| `SECRET_KEY`, `FIELD_ENCRYPTION_KEY`, every `POSTGRES_*_PASSWORD` | its own |
+| `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | bucket `rakin-staging-seed`, and a token scoped to it alone. Apply its CORS rule once (`app.blob_cors --apply`, [above](#first-deploy-only-the-buckets-cors-rule)) |
+| `SMTP_PASSWORD` | a Resend API key of its own, named for staging |
+| `MAIL_ALLOW` | the team's own addresses: any other recipient is logged (`mail (not allowed, not sent)`), never sent. The seed's people have `example.com` addresses, which would bounce |
+| `RESEND_WEBHOOK_SECRET` | empty |
+| `SEED_ONLY` | `1`: `app.seed` runs, and the nightly reset below does |
+| `STAGING_OPERATORS` | the PM's and the owner's addresses, comma-separated: made operators again after each reset |
+| `COMPOSE_PROFILES`, `BACKUP_*` | unset: nothing on it is worth a backup |
+
+No production key of any kind: no production S3, SMTP, backup or deploy key.
+
+### Seeding it
+
+After its first deploy, as `deploy` in `/srv/rakin`:
+
+```sh
+docker compose run --rm api python -m app.seed
+docker compose run --rm api python -m app.operators grant --email <address> --name <name>   # the PM, the owner
+./reset-staging.sh --install-cron
+```
+
+### The nightly reset
+
+[`deploy/reset-staging.sh`](../deploy/reset-staging.sh), copied to `/srv/rakin` by every deploy, puts the host back to fresh seed data every night at 05:00 America/Santiago: the seed's dates stay current and the day's tests are undone. It stops `api`, `jobs` and `caddy`, drops and recreates the database, runs the `migrate` one-shot (bootstrap and migrations), loads the seed, grants operator to each address in `STAGING_OPERATORS`, starts everything and runs `smoke.sh` on `PUBLIC_BASE_URL`. Staging is down for those few seconds.
+
+It **refuses** unless `.env` has `SEED_ONLY=1`, and refuses if the database holds any gym that is not the seed's (`academia-sur`), so on production, or on a staging that somehow got a real gym, it drops nothing. A database that is missing or has no `gym` table yet (a reset that failed halfway) holds no gym, so the next run goes ahead.
+
+`./reset-staging.sh --install-cron` adds it to the `deploy` user's crontab, once. Cron runs in the host's zone (UTC) and Ubuntu's cron has no `CRON_TZ`, so the line runs it hourly with `--cron`, and the script resets only in the 05:00 hour of Santiago time, which follows Chile's clock changes. Re-running `--install-cron` keeps a single line.
+
+Every run, refusals included, is appended to `/srv/rakin/reset.log`: the cron line discards the script's output, so the log is the only place a refused night shows. A failure says which step it stopped at; read the lines above it, then run `./reset-staging.sh` by hand. **If the seed's dates on staging look stale, read `reset.log` first:** a gym that is not the seed's (someone created one on staging) makes every night refuse, and the log names it. Staging never holds a gym's real data, so once the PM has checked that gym is a test, drop the database by hand (`docker compose exec postgres dropdb -U rakin --force rakin`) and run `./reset-staging.sh`: a missing database holds no gym, so it goes ahead, and so does every night after.
+
+A reset and a deploy never run together: both take `/srv/rakin/deploy.lock` (`flock`), and each waits up to 10 minutes for the other. A deploy that lands at 05:00 waits out the reset, which takes seconds.
+
+```sh
+./reset-staging.sh          # reset now
+tail -n 20 reset.log
+crontab -l                  # 0 * * * * /srv/rakin/reset-staging.sh --cron ...
+```
 
 ## Backups
 

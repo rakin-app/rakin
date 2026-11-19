@@ -147,6 +147,7 @@ jobs:
       - run: deploy/test-deploy.sh
       - run: deploy/test-verify.sh
       - run: .github/scripts/test-release-changes.sh
+      - run: deploy/test-reset-staging.sh
       - run: deploy/test-hosted.sh
 
   dco:

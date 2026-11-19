@@ -51,8 +51,20 @@ def test_compose_defaults_match_env_example() -> None:
         and default != listed[name]
         and not listed[name].startswith("<")
         and not (name.startswith("BACKUP_") and default == "")
+        # Caddy's stand-in for "no old domain", checked below.
+        and (name, default) != ("MOVED_FROM_DOMAIN", "moved.invalid")
     }
     assert mismatched == {}
+
+
+def test_caddy_reads_no_old_domain_as_a_name_nobody_resolves() -> None:
+    # Caddy reads an empty variable as is, not as its `{$VAR:default}`, and the
+    # old domain's site would be `*.` (#466): so Compose gives Caddy the stand-in,
+    # while the api, which reads empty as none, gets the value as set.
+    blocks = services(COMPOSE_FILE)
+    assert "MOVED_FROM_DOMAIN: ${MOVED_FROM_DOMAIN:-moved.invalid}" in blocks["caddy"]
+    assert "MOVED_FROM_DOMAIN: ${MOVED_FROM_DOMAIN:-}" in compose_text(COMPOSE_FILE)
+    assert "{$MOVED_FROM_DOMAIN:moved.invalid}" in (DEPLOY / "Caddyfile").read_text()
 
 
 def test_secrets_have_no_default() -> None:

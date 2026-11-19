@@ -9,8 +9,11 @@ notice instead.
 `GET /internal/tls-allowed?domain=` is Caddy's on-demand TLS `ask` (deploy/Caddyfile):
 200 for a gym's host, and for the host of a slug that still redirects to one (#438),
 as the redirect is answered after the TLS handshake; 404 for any other, so a
-certificate is only ever requested for a gym that exists. Caddy reaches it on the
-api's own port; the public site proxies only `/api/*` and `/healthz`.
+certificate is only ever requested for a gym that exists. With `MOVED_FROM_DOMAIN` set
+(#464), also 200 for that domain itself and for `<slug>.<it>` when the slug is a gym's
+or still redirects to one, which Caddy redirects to the gym's host on the base domain.
+Caddy reaches it on the api's own port; the public site proxies only `/api/*` and
+`/healthz`.
 """
 
 from typing import Annotated
@@ -56,7 +59,9 @@ async def tls_allowed(
     request: Request, domain: Annotated[str, Query(max_length=253)] = ""
 ) -> Response:
     hosts: Hosts = request.app.state.hosts
-    slug = hosts.slug_of(domain)
+    if hosts.is_moved_base(domain):
+        return Response(status_code=status.HTTP_200_OK)
+    slug = hosts.slug_of(domain) or hosts.moved_slug_of(domain)
     if slug is not None:
         # Asked afresh, not through the middleware's lookup: a new gym is at once.
         async with request.app.state.sessionmaker() as session:

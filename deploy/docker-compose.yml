@@ -35,7 +35,14 @@ x-backend: &backend
     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?the URL browsers reach the app at}
     # Each gym at <slug>.BASE_DOMAIN; caddy gets each one's certificate on demand.
     BASE_DOMAIN: ${BASE_DOMAIN:?staging.rakin.app}
+    # Where the gyms were before (#464): their old names get certificates, and
+    # caddy redirects them. Empty on a host that moved nothing.
+    MOVED_FROM_DOMAIN: ${MOVED_FROM_DOMAIN:-}
+    # `app.seed` refuses on production unless set: staging, seed data only.
+    SEED_ONLY: ${SEED_ONLY:-false}
     SENTRY_DSN: ${SENTRY_DSN:-}
+    # `staging` on the staging host; empty reports ENVIRONMENT.
+    SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
     JOBS_TIMEZONE: ${JOBS_TIMEZONE:-America/Santiago}
     # Resend over SMTP: smtp.resend.com, user `resend`, an API key as the password.
     MAILER: ${MAILER:-smtp}
@@ -46,6 +53,8 @@ x-backend: &backend
     SMTP_USERNAME: ${SMTP_USERNAME:?resend}
     SMTP_PASSWORD: ${SMTP_PASSWORD:?a Resend API key with sending access}
     SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10.0}
+    # Staging: only these addresses and @domains get mail; the rest is logged.
+    MAIL_ALLOW: ${MAIL_ALLOW:-}
     # The signing secret of Resend's webhook to /api/webhooks/resend (bounces and
     # complaints); empty turns it off, so a host without one still deploys.
     RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
@@ -81,6 +90,11 @@ services:
       # Every gym's host, *.BASE_DOMAIN: a wildcard DNS record, unproxied too.
       # Certificates one host at a time, on demand, for gyms the api knows.
       BASE_DOMAIN: ${BASE_DOMAIN:?staging.rakin.app}
+      # The gyms' old domain, redirected to BASE_DOMAIN (#464). Unset, a name no
+      # one can resolve: Caddy reads an empty value as is, and `*.` is no site.
+      MOVED_FROM_DOMAIN: ${MOVED_FROM_DOMAIN:-moved.invalid}
+      # Where the old base host redirects: the base host, with its scheme.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?the URL browsers reach the app at}
       # The landing page (#343), and www, which redirects to it: an A record
       # each, unproxied too.
       LANDING_HOST: ${LANDING_HOST:-rakin.app}
@@ -157,6 +171,7 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
       JOBS_TIMEZONE: ${JOBS_TIMEZONE:-America/Santiago}
       # The superuser: several tables force RLS even on their owner.
       PGHOST: postgres

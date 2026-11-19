@@ -107,7 +107,7 @@ jobs:
           fi
       - name: Copy the release's Compose file and scripts
         if: steps.secrets.outputs.enabled == 'true'
-        run: scp deploy/docker-compose.yml deploy/deploy.sh deploy/smoke.sh deploy/restore.sh deploy/verify.sh "deploy:$DEPLOY_DIR/"
+        run: scp deploy/docker-compose.yml deploy/deploy.sh deploy/smoke.sh deploy/restore.sh deploy/verify.sh deploy/reset-staging.sh "deploy:$DEPLOY_DIR/"
       - name: Run it on the host
         id: deploy
         if: steps.secrets.outputs.enabled == 'true'

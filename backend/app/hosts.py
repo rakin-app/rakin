@@ -21,6 +21,10 @@ request is answered with a 301 to the same path and query there, or a 308 for an
 method but GET and HEAD, which keeps the method and its body; it never reaches the
 app. A live alias is kept for a minute too, as a found gym is; `GymLookup.forget` drops
 both, and a rename forgets the old slug and the new.
+
+A domain the gyms were served under before (`MOVED_FROM_DOMAIN`, #464) is Caddy's to
+redirect: `<slug>.<it>` to the gym's host, `<it>` itself to the base host. The app only
+says which of its names may have a certificate (`moved_slug_of`, `app.api.hosts`).
 """
 
 import re
@@ -64,6 +68,8 @@ RESERVED = frozenset(
         "prod",
         "production",
         "rakin",
+        "send",  # Resend's return path, `send.<domain>`, has records of its own
+        "sitio",  # staging's landing page
         "smtp",
         "soporte",
         "staging",
@@ -110,27 +116,44 @@ def host_name(host: str) -> str:
     return host.rpartition(":")[0].rstrip(".") if ":" in host else host.rstrip(".")
 
 
+def slug_under(host: str, domain: str) -> str | None:
+    """The slug `host` names as one label under `domain`; None with no `domain`, for
+    `domain` itself, a reserved name or any other host."""
+    if not domain:
+        return None
+    label, dot, rest = host_name(host).partition(".")
+    if not dot or rest != domain:
+        return None
+    return label if slug_problem(label) is None else None
+
+
 @dataclass(frozen=True)
 class Hosts:
     """Where each gym is served: `public_base_url`'s scheme and port, on
-    `<slug>.<base_domain>`. With no `base_domain`, every gym is on `public_base_url`."""
+    `<slug>.<base_domain>`. With no `base_domain`, every gym is on `public_base_url`.
+    `moved_from_domain`, when set, is where they were served before."""
 
     public_base_url: str
     base_domain: str = ""
+    moved_from_domain: str = ""
 
     @classmethod
     def of(cls, settings: Settings) -> "Hosts":
-        return cls(settings.public_base_url, settings.base_domain)
+        return cls(settings.public_base_url, settings.base_domain, settings.moved_from_domain)
 
     def slug_of(self, host: str) -> str | None:
         """The gym slug a host names, from a `Host` header or a bare name; None for
         the base host, a reserved name or a host outside the base domain."""
-        if not self.base_domain:
-            return None
-        label, dot, rest = host_name(host).partition(".")
-        if not dot or rest != self.base_domain:
-            return None
-        return label if slug_problem(label) is None else None
+        return slug_under(host, self.base_domain)
+
+    def moved_slug_of(self, host: str) -> str | None:
+        """The slug a host names under `moved_from_domain`, as `slug_of` does under
+        the base domain; None for every host when it is not set."""
+        return slug_under(host, self.moved_from_domain)
+
+    def is_moved_base(self, host: str) -> bool:
+        """Whether `host` is `moved_from_domain` itself, the old base host."""
+        return bool(self.moved_from_domain) and host_name(host) == self.moved_from_domain
 
     def base_url(self, slug: str | None) -> str:
         """Where browsers reach the gym with `slug`, or the base host for None."""

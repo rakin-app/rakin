@@ -26,6 +26,12 @@ is_tag "$tag" || { echo "deploy: bad tag '$tag'" >&2; exit 2; }
 cd "$(dirname "$0")"
 [ -f .env ] || { echo "deploy: no .env in $PWD (see deploy/.env.example)" >&2; exit 1; }
 docker=${DOCKER:-docker}
+# One at a time with staging's nightly reset-staging.sh, which takes the same
+# lock: a deploy mid-reset would migrate a database being dropped. It waits
+# out a reset (seconds) rather than fail.
+exec 9>>deploy.lock
+"${FLOCK:-flock}" -w "${LOCK_WAIT_SECONDS:-600}" 9 \
+	|| { echo "deploy: $PWD/deploy.lock is still held (reset-staging.sh?); nothing changed" >&2; exit 1; }
 
 previous=$(sed -n 's/^RAKIN_TAG=//p' .env | tail -n 1)
 # Before the first deploy it is still .env.example's `<placeholder>`: no release.
