@@ -300,7 +300,7 @@ def test_filters_by_belt_exactly_and_at_least(
 def test_belt_order_is_the_schemes_for_any_sport(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    use_scheme(client, gym, "judo-karate")
+    use_scheme(client, gym, "karate")
     monthly = mensual(db, gym)
     for name, rank in [
         ("Ana", "kyu-10"),

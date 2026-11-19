@@ -29,6 +29,8 @@ export const ACTIVITY_PRESETS = [
   { key: 'judo', name: 'Judo', usesGrades: true },
   { key: 'karate', name: 'Karate', usesGrades: true },
   { key: 'taekwondo', name: 'Taekwondo', usesGrades: true },
+  { key: 'kenpo', name: 'Kenpo', usesGrades: true },
+  { key: 'aikido', name: 'Aikido', usesGrades: true },
   { key: 'muay_thai', name: 'Muay Thai', usesGrades: true },
   { key: 'boxeo', name: 'Boxeo', usesGrades: false },
   { key: 'mma', name: 'MMA', usesGrades: false },

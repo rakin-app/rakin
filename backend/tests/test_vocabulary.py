@@ -7,8 +7,10 @@ no activity changes them again. Every screen reads them: `/api/me/role` signed i
 `/api/host`, the join form and the privacy notice before.
 """
 
+import re
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any, get_args
 
 import asyncpg
@@ -16,8 +18,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from alembic import command
-from app.domain.vocabulary import PRESETS, PresetKey
+from app.domain.vocabulary import DEFAULT_GRADING, GRADING_PRESETS, PRESETS, PresetKey
 from app.main import create_app
+from app.schemas.grading import PRESETS as grading_presets
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import unique_slug
@@ -27,6 +30,7 @@ pg = pytest.mark.postgres
 
 TODAY = {"place": "academia", "members": "alumnos", "coach": "profe"}
 CLUB = {"place": "club", "members": "socios", "coach": "entrenador"}
+FRONTEND = Path(__file__).parents[2] / "frontend" / "src" / "api"
 
 
 @pytest.fixture(scope="module")
@@ -74,6 +78,28 @@ def pick(client: TestClient, gym: uuid.UUID, vocabulary: Any) -> Any:
 
 def test_every_preset_key_is_one_the_api_takes() -> None:
     assert set(get_args(PresetKey)) == set(PRESETS)
+
+
+def test_every_graded_activity_reads_by_a_belt_preset() -> None:
+    # A graded art's empty scheme reads as belts, not levels (#353, #411).
+    belts = {p.key: p.scheme.belts for p in grading_presets}
+    graded = {key for key, preset in PRESETS.items() if preset.uses_grades}
+    assert set(DEFAULT_GRADING) == graded
+    assert all(belts[DEFAULT_GRADING[key]] for key in graded)
+    # Each grading preset with ranks starts its own art's activity, and back again.
+    assert all(GRADING_PRESETS[DEFAULT_GRADING[key]] == key for key in graded)
+    assert set(GRADING_PRESETS) == {key for key, has in belts.items() if has}
+
+
+def test_the_spa_lists_the_same_activities_and_their_grading() -> None:
+    activities = (FRONTEND / "activities.ts").read_text()
+    keys = re.findall(r"\{ key: '(\w+)', name: '([^']+)', usesGrades: (true|false) \}", activities)
+    assert {k: (name, graded == "true") for k, name, graded in keys} == {
+        key: (p.name, p.uses_grades) for key, p in PRESETS.items()
+    }
+    of = (FRONTEND / "grading.ts").read_text()
+    body = of[of.index("GRADING_PRESET_OF") :].split("}", 1)[0]
+    assert dict(re.findall(r"(\w+): '([\w-]+)'", body)) == DEFAULT_GRADING
 
 
 @pg

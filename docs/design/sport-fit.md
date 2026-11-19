@@ -72,14 +72,15 @@ below, read in full, and from `docs/product.md` and `docs/technical.md`.
   nothing reads them to warn or block. Files on a person: none (proofs and the logo
   only).
 - **Grading** (`app.api.grading`, `app.api.grades`): one scheme per gym in
-  `gym.settings.grading`, presets BJJ, judo/karate, muay thai and none. The gate is
+  `gym.settings.grading`, presets BJJ, judo, karate (generic, Shotokan, Kyokushin, Goju-ryu), taekwondo, kenpo,
+  aikido, muay thai, levels and none. The gate is
   `gym_uses_grades()` (`app.api.activities`): any activity with "Usa grados". It is read
   in the frontend through `useGrades()`; the backend serves grades either way.
 - **New gym** (`app.gyms create`): the gym, programs Adultos and Niños (#347), block
   kinds Calentamiento, Técnica, Drilling, Juegos, Sparring and Otro (0028's trigger), a
   graded activity only if `--grading` names one, and the owner. No plans, class types or
   fields. Activity presets in Ajustes (`frontend/src/api/activities.ts`): BJJ, Judo,
-  Karate, Taekwondo, Muay Thai (graded); Boxeo, MMA, Lucha, Ballet, Danza, Música, Piano,
+  Karate, Taekwondo, Kenpo, Aikido, Muay Thai (graded); Boxeo, MMA, Lucha, Ballet, Danza, Música, Piano,
   Escalada, Natación, Fútbol, Fuerza / CrossFit, Yoga; Otra.
 - **Club officers** are designed in `expenses-and-officers.md` (#307) and not built:
   #308 to #322 are open.
@@ -198,7 +199,7 @@ fixed in the copy and the email templates (`backend/app/notices/templates/`).
 | **grado**, **graduación** | the ficha, Ajustes › Graduación, Importar | **only when grading is on**; fine words for levels |
 
 No "tatami", "dojo", "kimono", "sensei" or "profesor" appears in the product's copy. The
-grading presets' names (BJJ, judo / karate, muay thai) are seen only when chosen.
+grading presets' names (BJJ, judo, the karate styles, taekwondo, kenpo, aikido, muay thai) are seen only when chosen.
 
 ### Logic
 

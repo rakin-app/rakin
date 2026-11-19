@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { goalProgress, monthsBetween, type GradingScheme, type Rank } from './grading'
+import {
+  beltsByActivity,
+  goalProgress,
+  monthsBetween,
+  type GradingPreset,
+  type GradingScheme,
+  type Rank,
+} from './grading'
 
 const stripes = (target?: number) =>
   ['0', '1', '2'].map((key) => ({ key, label: `${key} grados`, target: key === '1' ? (target ?? null) : null }))
@@ -68,5 +75,34 @@ describe('the goal copy', () => {
     expect(goal(62, 80, 'classes_since_promotion', 'Morada')).toBe('62 / 80 clases para Morada')
     expect(goal(5, 12, 'time_in_rank', 'Azul · 3 grados')).toBe('5 / 12 meses para Azul · 3 grados')
     expect(goal(1, 1, 'time_in_rank', null)).toBe('1 / 1 mes para la próxima graduación')
+  })
+})
+
+describe('beltsByActivity', () => {
+  const belt = (key: string): GradingPreset => ({
+    key,
+    label: key,
+    scheme: {
+      ranks: [{ key: 'white', label: 'Blanco', colors: ['#f4f4f1'], sub_ranks: [] }],
+      kids_ladder: [],
+      goal_metric: null,
+    },
+  })
+  const presets = ['bjj', 'judo', 'karate', 'karate-shotokan', 'taekwondo', 'kenpo', 'aikido', 'muay-thai'].map(belt)
+
+  it.each(['taekwondo', 'judo', 'karate', 'kenpo', 'aikido'] as const)(
+    'reads a %s gym with no scheme as belts, by its own preset (#411)',
+    (preset) => {
+      expect(beltsByActivity([{ uses_grades: true, preset }], presets)).toBe(true)
+    },
+  )
+
+  it('reads levels for a free name, an ungraded activity, or a preset with no belts', () => {
+    expect(beltsByActivity([{ uses_grades: true, preset: null }], presets)).toBe(false)
+    expect(beltsByActivity([{ uses_grades: false, preset: 'karate' }], presets)).toBe(false)
+    expect(beltsByActivity([{ uses_grades: true, preset: 'escalada' }], presets)).toBe(false)
+    // Karate reads by its own preset, not the key it once shared with judo.
+    const withoutKarate = presets.filter((p) => p.key !== 'karate')
+    expect(beltsByActivity([{ uses_grades: true, preset: 'karate' }], withoutKarate)).toBe(false)
   })
 })

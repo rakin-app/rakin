@@ -59,7 +59,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, mo
 from app.db_bootstrap import to_dsn
 from app.domain import practice, vocabulary
 from app.domain.dates import gym_today
-from app.domain.grading import PRESETS
+from app.domain.grading import PRESETS, resolve
 from app.hosts import Hosts, slug_problem
 from app.schemas.gym import Timezone
 from app.schemas.people import Email, Name, Phone, Rut
@@ -70,10 +70,11 @@ from app.settings import get_settings
 PROGRAMS = ("Adultos", "Niños")
 
 # A preset's key, as `--grading` takes it, to the scheme the gym starts with, and the
-# graded activity it starts with: none for the preset with no ranks.
+# graded activity it starts with, named as Ajustes offers it whatever the style the
+# preset grades: none for the preset with no ranks.
 SCHEMES = {preset["key"]: preset["scheme"] for preset in PRESETS}
 ACTIVITIES = {
-    preset["key"]: preset["label"]
+    preset["key"]: vocabulary.PRESETS[vocabulary.GRADING_PRESETS[preset["key"]]].name
     for preset in PRESETS
     if preset["scheme"]["ranks"] or preset["scheme"]["kids_ladder"]
 }
@@ -154,6 +155,7 @@ class NewGym(TermsSigned):
     @field_validator("grading")
     @classmethod
     def _a_preset(cls, value: str) -> str:
+        value = resolve(value)
         if value not in SCHEMES:
             raise ValueError(f"not a grading preset: one of {', '.join(SCHEMES)}")
         return value
