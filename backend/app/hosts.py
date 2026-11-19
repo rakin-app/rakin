@@ -68,6 +68,7 @@ RESERVED = frozenset(
         "prod",
         "production",
         "rakin",
+        "rsend",  # Resend's own record, `rsend.<domain>`, a CNAME in the zone
         "send",  # Resend's return path, `send.<domain>`, has records of its own
         "sitio",  # staging's landing page
         "smtp",
