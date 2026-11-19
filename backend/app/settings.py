@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # scheme and port: `staging.rakin.app` serves `meta.staging.rakin.app`. Empty
     # serves every gym on PUBLIC_BASE_URL alone.
     base_domain: str = ""
+    # Where the gyms were served before (#464), `staging.rakin.app` on production:
+    # Caddy redirects `<slug>.<it>` to the gym's host and `<it>` to the base host, and
+    # the api allows those names a certificate. Empty redirects nothing.
+    moved_from_domain: str = ""
+    # `python -m app.seed` refuses on `ENVIRONMENT=production` unless this is set: a
+    # host that only ever holds the demo gym (staging).
+    seed_only: bool = False
 
     # Integrations (`app/integrations`): each picks an implementation by name. The
     # defaults need no network and no account, so a fresh instance works offline.
@@ -60,6 +67,9 @@ class Settings(BaseSettings):
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_timeout_seconds: float = Field(default=10.0, gt=0)
+    # Comma-separated addresses or `@domain`s: when set, SMTP sends only to these,
+    # and every other message is logged and not sent (staging). Empty sends to all.
+    mail_allow: str = ""
     # Resend's webhook signing secret (`whsec_…`), for its bounces and complaints
     # (`app.api.webhooks`). Empty turns the webhook off.
     resend_webhook_secret: str = ""
@@ -89,6 +99,9 @@ class Settings(BaseSettings):
     jobs_timezone: str = "America/Santiago"
     # Failed jobs are reported to Sentry when set (`app.sentry`); empty sends nothing.
     sentry_dsn: str = ""
+    # The environment Sentry reports, when not `ENVIRONMENT`: `staging` on the
+    # staging host, which runs `ENVIRONMENT=production` too.
+    sentry_environment: str = ""
 
     @field_validator("jobs_timezone")
     @classmethod
@@ -109,13 +122,30 @@ class Settings(BaseSettings):
             signing_key(value)
         return value
 
-    @field_validator("base_domain")
+    @field_validator("base_domain", "moved_from_domain")
     @classmethod
     def _host_name(cls, value: str) -> str:
         value = value.strip().lower().rstrip(".")
         if value and not HOST_NAME.fullmatch(value):
             raise ValueError(f"not a host name: {value!r} (no scheme, port or path)")
         return value
+
+    @field_validator("mail_allow")
+    @classmethod
+    def _addresses_or_domains(cls, value: str) -> str:
+        for entry in allowed_recipients(value):
+            local, at, domain = entry.rpartition("@")
+            if not at or not HOST_NAME.fullmatch(domain) or any(c in local for c in " <>,"):
+                raise ValueError(f"not an address or @domain: {entry!r}")
+        return value
+
+    @model_validator(mode="after")
+    def _moved_from_another_domain(self) -> "Settings":
+        if self.moved_from_domain and not self.base_domain:
+            raise ValueError("moved_from_domain: set BASE_DOMAIN, where the gyms are now")
+        if self.moved_from_domain == self.base_domain and self.base_domain:
+            raise ValueError("moved_from_domain: must differ from BASE_DOMAIN")
+        return self
 
     @model_validator(mode="after")
     def _turnstile_has_its_keys(self) -> "Settings":
@@ -139,6 +169,11 @@ class Settings(BaseSettings):
                 "field_encryption_key: set FIELD_ENCRYPTION_KEY; the local default is public"
             )
         return self
+
+
+def allowed_recipients(mail_allow: str) -> list[str]:
+    """`MAIL_ALLOW`'s entries, lower-case: addresses, and domains as `@domain`."""
+    return [entry.strip().lower() for entry in mail_allow.split(",") if entry.strip()]
 
 
 @lru_cache
