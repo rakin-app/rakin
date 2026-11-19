@@ -1,0 +1,157 @@
+name: deploy-host
+
+# One environment's host deploy, called by deploy.yml for staging and for
+# production, so the two cannot drift. In order: check the secrets, pin the
+# host key, check the host is this environment's (verify.sh --check-host),
+# back up if asked (production), copy the tag's Compose file and scripts,
+# deploy.sh, verify.sh, smoke.sh. Any failure after the deploy writes the
+# rollback line to the job summary.
+#
+# Secrets come from the environment, same names in each: DEPLOY_HOST,
+# DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS. While any of the first
+# three is unset the job skips every step and passes (forks stay green);
+# with those set, an unset DEPLOY_KNOWN_HOSTS is an error. Variables, also
+# per environment: DEPLOY_URL (else the `url` input) and DEPLOY_DIR.
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: staging or production
+        type: string
+        required: true
+      url:
+        description: The environment's base URL, unless its DEPLOY_URL variable says otherwise
+        type: string
+        required: true
+      tag:
+        description: The release tag to run
+        type: string
+        required: true
+      rollback:
+        description: Restart on the tag, no migrations
+        type: boolean
+        default: false
+      backup:
+        description: Take a backup first, and stop unless it reports `backup uploaded`
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.DEPLOY_URL || inputs.url }}
+    env:
+      ENVIRONMENT_NAME: ${{ inputs.environment }}
+      TAG: ${{ inputs.tag }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/srv/rakin' }}
+      DEPLOY_URL: ${{ vars.DEPLOY_URL || inputs.url }}
+      ROLLBACK: ${{ inputs.rollback && '--rollback' || '' }}
+    steps:
+      - name: Check the secrets
+        id: secrets
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          [[ $TAG =~ ^v[0-9A-Za-z._-]+$ ]] || { echo "::error::'$TAG' is not a v* tag"; exit 1; }
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::notice::DEPLOY_HOST, DEPLOY_USER or DEPLOY_SSH_KEY is unset in $ENVIRONMENT_NAME: $TAG is not deployed there"
+            echo "enabled=false" >>"$GITHUB_OUTPUT"
+          elif [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
+            echo "::error::DEPLOY_KNOWN_HOSTS is unset in $ENVIRONMENT_NAME: set it to the host's \`ssh-keyscan -H\` output (no host key is trusted unpinned)"
+            exit 1
+          else
+            echo "enabled=true" >>"$GITHUB_OUTPUT"
+          fi
+      - if: steps.secrets.outputs.enabled == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: Set up SSH
+        if: steps.secrets.outputs.enabled == 'true'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" >~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >~/.ssh/known_hosts
+          printf 'Host deploy\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/deploy\n  StrictHostKeyChecking yes\n' \
+            "$DEPLOY_HOST" "$DEPLOY_USER" >~/.ssh/config
+      # Before anything is copied or run there: staging's .env has
+      # SEED_ONLY=1 and production's does not. A secret that fell back to
+      # the repository's value, or a swapped .env, stops the job here.
+      - name: Check the host is ${{ inputs.environment }}'s
+        if: steps.secrets.outputs.enabled == 'true'
+        run: |
+          # shellcheck disable=SC2029  # expanded here on purpose
+          ssh deploy "cd '$DEPLOY_DIR' && bash -s -- --check-host '$ENVIRONMENT_NAME'" <deploy/verify.sh
+      - name: Back up
+        if: steps.secrets.outputs.enabled == 'true' && inputs.backup
+        run: |
+          # shellcheck disable=SC2029  # expanded here on purpose
+          out=$(ssh deploy "cd '$DEPLOY_DIR' && docker compose exec -T backup python -m app.backup run" 2>&1) || status=$?
+          printf '%s\n' "$out"
+          if [ "${status:-0}" != 0 ] || [[ $out != *'backup uploaded'* ]]; then
+            echo "::error::the backup did not report \"backup uploaded\": nothing was deployed"
+            exit 1
+          fi
+      - name: Copy the release's Compose file and scripts
+        if: steps.secrets.outputs.enabled == 'true'
+        run: scp deploy/docker-compose.yml deploy/deploy.sh deploy/smoke.sh deploy/restore.sh deploy/verify.sh "deploy:$DEPLOY_DIR/"
+      - name: Run it on the host
+        id: deploy
+        if: steps.secrets.outputs.enabled == 'true'
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # shellcheck disable=SC2029  # expanded here on purpose
+          # The token reaches the host on stdin only, and is logged out again.
+          printf '%s\n' "$GHCR_TOKEN" | ssh deploy "
+            set -e
+            docker login ghcr.io -u '$GHCR_USER' --password-stdin >/dev/null
+            trap 'docker logout ghcr.io >/dev/null' EXIT
+            '$DEPLOY_DIR/deploy.sh' $ROLLBACK '$TAG'
+          "
+      - name: Verify
+        if: steps.secrets.outputs.enabled == 'true'
+        run: |
+          # shellcheck disable=SC2029  # expanded here on purpose
+          ssh deploy "'$DEPLOY_DIR/verify.sh' $ROLLBACK '$ENVIRONMENT_NAME' '$TAG'"
+      - name: Smoke test
+        if: steps.secrets.outputs.enabled == 'true'
+        run: deploy/smoke.sh "$DEPLOY_URL"
+      - name: How to roll back
+        if: failure() && steps.deploy.outcome != 'skipped' && steps.deploy.outcome != ''
+        env:
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+        run: |
+          # shellcheck disable=SC2029  # expanded here on purpose
+          {
+            echo "## $TAG failed on $ENVIRONMENT_NAME"
+            echo
+            if [ "$DEPLOY_OUTCOME" = failure ]; then
+              echo "\`deploy.sh\` failed: its log above says whether the old release still runs, and how to go back if not."
+            else
+              line=$(ssh deploy "'$DEPLOY_DIR/verify.sh' --rollback-line '$TAG'" || echo "rollback: could not read releases.log on the host")
+              echo "$TAG is live on $ENVIRONMENT_NAME but failed a check (the Verify or Smoke test step above)."
+              echo
+              echo "On the host, in \`$DEPLOY_DIR\`:"
+              echo
+              echo '```'
+              echo "${line#rollback: }"
+              echo '```'
+              echo
+              echo "or run the deploy workflow by hand with that tag, **rollback** ticked and **target** \`$ENVIRONMENT_NAME\`."
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"

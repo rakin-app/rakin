@@ -103,6 +103,11 @@ compose run --rm garage-init
 compose run --rm migrate
 compose up -d --wait --wait-timeout 180
 "$root/deploy/smoke.sh" http://localhost
+# What the deploy workflow runs after deploy.sh, against the real Compose,
+# Alembic and logs. It runs from the directory with .env, as on a host.
+cp "$root/deploy/verify.sh" "$dir/"
+"$dir/verify.sh" production "$RAKIN_TAG"
+echo "ok   - verify.sh passes the booted stack"
 
 # The landing page (#343), on its own host. A .localhost name gets a certificate
 # from Caddy's own CA, so this is HTTPS as in production, with -k.
@@ -146,7 +151,10 @@ echo "ok   - with COMPOSE_PROFILES=backup, up starts the backup service"
 compose run --rm api python -m app.gyms create --slug meta --name Meta \
 	--owner-email owner@example.com --owner-name Owner --owner-phone "+56 9 1234 5678" \
 	--processor-terms 2026-11-18 --signed-on 2026-11-18
-compose run --rm backup python -m app.backup run
+# The production deploy's backup, as deploy-host.yml runs it: in the running
+# service, and it must say "backup uploaded".
+out=$(compose exec -T backup python -m app.backup run 2>&1)
+grep -q 'backup uploaded' <<<"$out"
 compose run --rm backup python -m app.backup status
 out=$(cd "$dir" && "$root/deploy/restore.sh" latest <<<"$identity")
 echo "$out"

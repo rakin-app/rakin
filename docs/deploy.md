@@ -7,11 +7,11 @@ What lives where:
 | Piece | Where |
 | --- | --- |
 | Images | `ghcr.io/rakin-app/rakin-api` (api, jobs, migrate) and `ghcr.io/rakin-app/rakin-web` (Caddy plus the built SPA), built by [`images.yml`](../.github/workflows/images.yml) for every commit on `main`, tagged `sha-<commit>` and `main` |
-| Releases | a `v*` git tag; [`deploy.yml`](../.github/workflows/deploy.yml) tags that commit's images with it and runs it on the host |
+| Releases | a `v*` git tag; [`deploy.yml`](../.github/workflows/deploy.yml) tags that commit's images with it, runs it on staging, and on production once the owner approves |
 | The stack | [`deploy/docker-compose.yml`](../deploy/docker-compose.yml): `caddy`, `api`, `jobs`, `postgres`, the one-shot `migrate`, and `backup` when enabled. No Garage, no Vite, no source mounts |
 | Settings | `/srv/rakin/.env` on the host only, from [`deploy/.env.example`](../deploy/.env.example). Never in the repo, the image or a CI secret |
 | Deploy and rollback | [`deploy/deploy.sh`](../deploy/deploy.sh), on the host beside the Compose file |
-| Post-deploy check | [`deploy/smoke.sh`](../deploy/smoke.sh) `<url>` |
+| Post-deploy check | [`deploy/verify.sh`](../deploy/verify.sh) on the host (images, schema, error log), then [`deploy/smoke.sh`](../deploy/smoke.sh) `<url>` |
 | Backups | the opt-in `backup` service ([`app/backup.py`](../backend/app/backup.py)), nightly to a bucket of their own; [`deploy/restore.sh`](../deploy/restore.sh) restores one into a scratch database ([below](#backups)) |
 
 CI boots this exact stack from each PR's images (`deploy/test-hosted.sh`), smoke-tests it, and backs it up and restores the backup, so a release is never the first time the images, the Caddyfile and the Compose file meet.
@@ -69,16 +69,25 @@ As `deploy`, copy [`deploy/.env.example`](../deploy/.env.example) to `/srv/rakin
 
 ## 4. GitHub
 
-Repository **secrets** (Settings → Secrets and variables → Actions). Repository level, not an environment's: the workflow checks them before it enters the `staging` environment, and skips the deploy (passing) while any of the first three is unset.
+Two **environments** (Settings → Environments), each with its own host's secrets and nothing at repository level. An environment missing a secret would fall back to a repository secret of the same name, so a staging deploy could reach production's host: keep none there.
+
+- `staging`: no reviewers.
+- `production`: **required reviewer: the owner**, "prevent self-review" off, deployment branches and tags limited to tags `v*` and the branch `main`. A tag push runs on the tag; a run by hand (a rollback) runs on `main`, so without `main` the environment would refuse every rollback.
+
+Secrets, the same names in each:
 
 | Secret | Value |
 | --- | --- |
-| `DEPLOY_HOST` | the VPS's address |
+| `DEPLOY_HOST` | that environment's VPS address |
 | `DEPLOY_USER` | `deploy` |
-| `DEPLOY_SSH_KEY` | the private half of the deploy key |
-| `DEPLOY_KNOWN_HOSTS` | the `ssh-keyscan -H` output. Optional, but without it the workflow trusts whatever key answers |
+| `DEPLOY_SSH_KEY` | the private half of that host's own deploy key |
+| `DEPLOY_KNOWN_HOSTS` | that host's `ssh-keyscan -H` output. Required: no host key is trusted unpinned |
 
-Optional repository **variables**: `DEPLOY_URL` (default `https://staging.rakin.app`) and `DEPLOY_DIR` (default `/srv/rakin`).
+While any of the first three is unset in an environment, its job skips the deploy and passes (a fork stays green); with those set and `DEPLOY_KNOWN_HOSTS` unset, the job fails.
+
+Variables, per environment too: `DEPLOY_URL` (`https://staging.rakin.app`, `https://app.rakin.app`; the workflow passes these as defaults) and, optionally, `DEPLOY_DIR` (default `/srv/rakin`).
+
+Every deploy first checks it reached the right host: staging's `.env` has `SEED_ONLY=1` and production's does not (`verify.sh --check-host`). A host without that line is taken for production, so the staging job refuses it before copying or running anything.
 
 The images are pulled with the workflow's own token, logged in for the deploy and out again. To pull by hand on the host (a rollback with no CI), either make the two packages public (Packages → package settings → visibility; the code is public anyway), or `docker login ghcr.io` with a token that has only `read:packages`.
 
@@ -92,10 +101,20 @@ git tag -s v0.1.0 -m v0.1.0 && git push origin v0.1.0
 
 `deploy.yml` then:
 
-1. tags `rakin-api:sha-<commit>` and `rakin-web:sha-<commit>` as `v0.1.0` (no rebuild: what ran in CI is what ships), waiting for `images.yml` if the tag beat it;
-2. copies that tag's `docker-compose.yml`, `deploy.sh`, `smoke.sh` and `restore.sh` to `/srv/rakin`;
+1. **release**: tags `rakin-api:sha-<commit>` and `rakin-web:sha-<commit>` as `v0.1.0` (no rebuild: what ran in CI is what ships), waiting for `images.yml` if the tag beat it;
+2. **staging**: deploys it to the staging host ([`deploy-host.yml`](../.github/workflows/deploy-host.yml), below);
+3. **changes**: writes the run's job summary, the page the owner approves from: the tag's notes, the tag production runs now (its latest successful deployment), the commits between the two and the migrations among them, flagged when there are any;
+4. **production**: waits for the owner's approval, then backs up (`docker compose exec -T backup python -m app.backup run`, and stops unless it reports `backup uploaded`) and deploys to the production host the same way.
+
+Production is only offered once staging passed for that tag. On each host, `deploy-host.yml`:
+
+1. checks the host is the environment's (`SEED_ONLY`, [above](#4-github));
+2. copies that tag's `docker-compose.yml`, `deploy.sh`, `smoke.sh`, `restore.sh` and `verify.sh` to `/srv/rakin`;
 3. runs `./deploy.sh v0.1.0` there: `docker compose pull`, then `docker compose run --rm migrate` (`python -m app.db_bootstrap && alembic upgrade head`), and only once that succeeds `docker compose up -d --wait`. A failed migration leaves the running release untouched;
-4. runs `deploy/smoke.sh https://staging.rakin.app`. On a first deploy Caddy may still be waiting for its Let's Encrypt certificate, so while `/healthz` fails to connect, handshake or answer in time, the smoke test waits up to 90 s (`SMOKE_TLS_WAIT`) before checking. An HTTP failure such as a 503 is never waited for.
+4. runs `./verify.sh <environment> v0.1.0` there ([`deploy/verify.sh`](../deploy/verify.sh)): caddy, api and jobs run, every rakin-app image is `:v0.1.0`, `alembic current` is the image's `alembic heads`, and the api and jobs logged no `ERROR` in the last 5 minutes (it prints how many and from which loggers, never the lines: read those on the host);
+5. runs `deploy/smoke.sh <DEPLOY_URL>`. On a first deploy Caddy may still be waiting for its Let's Encrypt certificate, so while `/healthz` fails to connect, handshake or answer in time, the smoke test waits up to 90 s (`SMOKE_TLS_WAIT`) before checking. An HTTP failure such as a 503 is never waited for.
+
+If a check fails after the deploy, the job's summary prints the rollback line for that host (`./deploy.sh --rollback <previous tag>`, from `releases.log`).
 
 `deploy.sh` records the live tag as `RAKIN_TAG` in `.env`, so `docker compose ps`, `logs`, `exec` and so on in `/srv/rakin` target the live release, and appends each run to `/srv/rakin/releases.log`.
 
@@ -145,7 +164,7 @@ Any earlier tag, restart only:
 cd /srv/rakin && ./deploy.sh --rollback v0.0.9
 ```
 
-or, from GitHub, run the **deploy** workflow by hand with that tag and **rollback** ticked. A rollback never migrates: migrations are additive within a release, so the previous image runs on the newer schema, while its Alembic would refuse a revision it does not know. Under the hood it is `RAKIN_TAG=v0.0.9 docker compose up -d`, which also works by hand. `releases.log` lists what ran before.
+or, from GitHub, run the **deploy** workflow by hand with that tag, **rollback** ticked and **target** `staging`, `production` or `both`. A production rollback skips staging, still waits for the owner's approval, and takes no backup (nothing migrates). `target: production` without **rollback** is refused: a forward deploy always goes through staging. After the restart `verify.sh --rollback` checks the images and the logs, not `alembic current`: the schema stays the newer one. A rollback never migrates: migrations are additive within a release, so the previous image runs on the newer schema, while its Alembic would refuse a revision it does not know. Under the hood it is `RAKIN_TAG=v0.0.9 docker compose up -d`, which also works by hand. `releases.log` lists what ran before.
 
 A rollback runs the Compose file currently in `/srv/rakin`. The workflow copies the earlier tag's one first; by hand, if `deploy/docker-compose.yml` changed between the two releases, fetch the older one with `git show v0.0.9:deploy/docker-compose.yml`.
 
