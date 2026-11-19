@@ -104,6 +104,14 @@ compose run --rm garage-init
 compose run --rm migrate
 compose up -d --wait --wait-timeout 180
 "$root/deploy/smoke.sh" http://localhost
+# What the deploy workflow runs after deploy.sh, against the real Compose,
+# Alembic and logs. It runs from the directory with .env, as on a host.
+cp "$root/deploy/verify.sh" "$dir/"
+# The hosts and CI have util-linux's flock; a laptop may not, and the lock
+# has nothing to guard against here.
+command -v flock >/dev/null || export FLOCK=true
+"$dir/verify.sh" production "$RAKIN_TAG"
+echo "ok   - verify.sh passes the booted stack"
 
 # The landing page (#343), on its own host. A .localhost name gets a certificate
 # from Caddy's own CA, so this is HTTPS as in production, with -k.
@@ -147,9 +155,6 @@ echo "ok   - with COMPOSE_PROFILES=backup, up starts the backup service"
 # data only, so it drops the database and reseeds it. The seed's proof files go
 # to a local store here, since S3 is never reached.
 cp "$root/deploy/reset-staging.sh" "$root/deploy/smoke.sh" "$dir/"
-# The hosts and CI have util-linux's flock; a laptop may not, and the lock
-# has nothing to guard against here.
-command -v flock >/dev/null || export FLOCK=true
 sed -i.bak -e 's|^SEED_ONLY=.*|SEED_ONLY=1|' -e 's|^BLOB_STORE=.*|BLOB_STORE=local|' "$dir/.env"
 rm "$dir/.env.bak"
 echo 'STAGING_OPERATORS=pm@example.com' >>"$dir/.env"
@@ -202,7 +207,10 @@ if landing nadie.moved.localhost / -o /dev/null 2>/dev/null; then
 fi
 echo "ok   - the old domain's ask allows a gym and the old base host, and 404s a slug no gym has (no certificate)"
 
-compose run --rm backup python -m app.backup run
+# The production deploy's backup, as deploy-host.yml runs it: in the running
+# service, and it must say "backup uploaded".
+out=$(compose exec -T backup python -m app.backup run 2>&1)
+grep -q 'backup uploaded' <<<"$out"
 compose run --rm backup python -m app.backup status
 out=$(cd "$dir" && "$root/deploy/restore.sh" latest <<<"$identity")
 echo "$out"
