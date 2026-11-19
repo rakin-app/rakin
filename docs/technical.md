@@ -254,13 +254,13 @@ One VPS running Docker Compose carries the first 20 gyms; the only non-negotiabl
 | EC2 t4g.small + RDS db.t4g.micro | 30–40 | familiar; RDS does PITR | \~3× the cost for nothing a gym notices |
 | Fly.io or Railway + managed Postgres | 15–30 | deploy from git, São Paulo region | less control, pricing creep |
 
-**Chosen:** VPS + Compose, on Hetzner in Ashburn, Virginia (US East, ≈130 ms from Chile). São Paulo (≈40 ms) was the first choice when the provider was open, and Europe (≈250 ms) was avoided for a mobile-first CRUD app.
+**Chosen:** VPS + Compose, on Hetzner in Ashburn, Virginia (US East, ≈130 ms from Chile), for production: the gyms' data, on `rakin.app` names. São Paulo (≈40 ms) was the first choice when the provider was open, and Europe (≈250 ms) was avoided for a mobile-first CRUD app. Staging is a second, smaller VPS on Hetzner in Nuremberg (#464): it holds seed data only, never a gym's, so neither its latency nor its location matters, and the cheaper region wins. A release reaches staging first and production only once the owner approves it ([runbook](deploy.md#5-release)).
 
 **Compose services:** `caddy`, `api`, `jobs`, `postgres`, plus [Garage](https://garagehq.deuxfleurs.fr/) only in the self-host profile (hosted uses real S3-compatible storage). Garage rather than MinIO because MinIO stopped publishing public container images.
 
 **Backups:** nightly `pg_dump`, encrypted with age, to its own object-storage bucket, keeping 14 daily and 8 weekly ([runbook](deploy.md#backups)); later, continuous WAL archiving with `pgbackrest` or `wal-g` for point-in-time recovery. A restore is rehearsed before the second gym onboards and quarterly after. Proof images are already in object storage with versioning on.
 
-**Deploy:** GitHub Actions builds one image per commit on `main`; a tagged release triggers `docker compose pull && up -d` over SSH, migrations run as a one-shot container before `api` restarts. Rollback is `compose up` on the previous tag; migrations are always additive within a release so the previous image keeps working. The runbook is [deploy.md](deploy.md).
+**Deploy:** GitHub Actions builds one image per commit on `main`; a tagged release triggers `docker compose pull && up -d` over SSH, on staging and then, after the owner's approval and a checked backup, on production, migrations run as a one-shot container before `api` restarts. Rollback is `compose up` on the previous tag; migrations are always additive within a release so the previous image keeps working. The runbook is [deploy.md](deploy.md).
 
 **Observability:** structured JSON logs to stdout, Sentry free tier (US region, #430) for the api and the jobs, with no request bodies, local variables or database messages in an event (`backend/app/sentry.py`); the SPA reports nothing, an external uptime ping every 5 minutes on `/healthz`, a weekly email with `v_monthly_income` deltas per gym so silent breakage in the nightly job is noticed.
 
