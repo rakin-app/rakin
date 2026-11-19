@@ -229,6 +229,18 @@ for _ in $(seq 30); do landing "meta.$base" / -o /dev/null 2>/dev/null && break;
 grep -q '<div id="root">' <<<"$(landing "meta-nueva.$base" /)"
 echo "ok   - a renamed gym's old host redirects a page load to its new one (301, path and query kept; 308 for POST), and the new host serves it"
 
+# The check fails open: with the api stopped, as while a deploy restarts it, a
+# gym's pages are served (the old host's too, unredirected) and only /api fails.
+compose stop api >/dev/null 2>&1
+for host in "meta.$base" "meta-nueva.$base"; do
+	[ "$(landing "$host" '/alumnos?x=1' -o /dev/null -w '%{http_code}')" = 200 ]
+	grep -q '<div id="root">' <<<"$(landing "$host" /)"
+done
+[ "$(landing "meta-nueva.$base" /api/host -o /dev/null -w '%{http_code}')" = 502 ]
+compose up -d --wait --wait-timeout 180 api >/dev/null 2>&1
+[ "$(redirect "meta.$base" /)" = "301 http://meta-nueva.$base/" ]
+echo "ok   - with the api stopped, a gym's pages are still served (the check fails open), and redirect again once it is back"
+
 # The production deploy's backup, as deploy-host.yml runs it: in the running
 # service, and it must say "backup uploaded".
 out=$(compose exec -T backup python -m app.backup run 2>&1)

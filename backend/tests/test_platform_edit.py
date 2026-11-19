@@ -358,7 +358,7 @@ def test_a_renamed_gyms_old_address_redirects_for_90_days(panel: Panel) -> None:
 
 
 def test_caddy_asks_before_serving_a_page_on_an_old_address(panel: Panel) -> None:
-    # Caddy's forward_auth (deploy/Caddyfile, #472): the api's own host, and the page's
+    # Caddy's check before a page (deploy/Caddyfile, #472): the api's own host, and the page's
     # host, method and URI in X-Forwarded-*.
     _, signing_in = signed_in(panel)
     old, new = new_slug(), new_slug()
@@ -382,6 +382,10 @@ def test_caddy_asks_before_serving_a_page_on_an_old_address(panel: Panel) -> Non
     # with no host said at all.
     for host in (f"{new}.{BASE}", BASE, f"{new_slug()}.{BASE}", ""):
         assert page(host) == (200, ""), host
+    # A host or method no request has is no redirect, never a validation error.
+    assert page(f"{'a' * 300}.{BASE}") == (200, "")
+    assert page(f"{'a' * 300}.{old}.{BASE}") == (200, "")
+    assert page(f"{old}.{BASE}", method="X" * 100) == (308, f"https://{new}.{BASE}/alumnos?x=1&y=2")
 
     # Once its 90 days are past, the old host's pages are served, as its API's are.
     set_alias_until(panel, old, "-1 second")

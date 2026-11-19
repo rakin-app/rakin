@@ -17,49 +17,89 @@
 	}
 }
 
+# The SPA, under /srv; its caller adds `file_server`.
+(spa) {
+	root * /srv
+	# Vite fingerprints everything under /assets. The rest (index.html, on
+	# every client-side route) is revalidated, so a deploy reaches the
+	# browser on its next load. `header` runs before `try_files`, so it
+	# matches the path the browser asked for.
+	#
+	# The service worker (sw.js, registerSW.js, workbox-*.js, #68) is in
+	# that rest, at the root: it must never move under /assets, where a
+	# year's cache would keep every browser on the old worker for good.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	@pages not path /assets/*
+	header @pages Cache-Control "no-cache"
+	# Client-side routes (the router owns every other path) get the SPA.
+	try_files {path} /index.html
+}
+
 (app) {
 	encode zstd gzip
-
-	# A renamed gym's old host redirects for 90 days (#438), and the api answers it
-	# on /api. The SPA's pages are served here without the api, so on a gym's host
-	# a page asks it first (#472): `/internal/host` answers the same 301 (308 for a
-	# method other than GET and HEAD), path and query kept, which Caddy returns; or
-	# 200, and the page is served. Host is the api's own, so its middleware does not
-	# redirect the check itself; the request's host goes in X-Forwarded-Host, and
-	# forward_auth adds its method and URI. /assets is only ever asked for by a
-	# page, so it is left out, as /api is, which redirects on its own.
-	@gym_page {
-		host *.{$BASE_DOMAIN}
-		not path /api/* /healthz /assets/*
-	}
-	forward_auth @gym_page api:8000 {
-		uri /internal/host
-		header_up Host {upstream_hostport}
-		header_up X-Forwarded-Host {host}
-	}
 
 	@api path /api/* /healthz
 	handle @api {
 		reverse_proxy api:8000
 	}
 
+	# A renamed gym's old host redirects for 90 days (#438), and the api answers it
+	# on /api. The SPA's pages are served here without the api, so on a gym's host
+	# a page asks it first (#472): `/internal/host` answers the same 301 (308 for a
+	# method other than GET and HEAD), path and query kept, which Caddy returns.
+	# Any other answer serves the page. Host is the api's own, so its middleware
+	# does not redirect the check itself; the request's host, method and URI go in
+	# X-Forwarded-*. /assets is only ever asked for by a page, so it is left out.
+	@gym_page {
+		host *.{$BASE_DOMAIN}
+		not path /assets/*
+	}
 	handle {
-		root * /srv
-		# Vite fingerprints everything under /assets. The rest (index.html, on
-		# every client-side route) is revalidated, so a deploy reaches the
-		# browser on its next load. `header` runs before `try_files`, so it
-		# matches the path the browser asked for.
-		#
-		# The service worker (sw.js, registerSW.js, workbox-*.js, #68) is in
-		# that rest, at the root: it must never move under /assets, where a
-		# year's cache would keep every browser on the old worker for good.
-		@assets path /assets/*
-		header @assets Cache-Control "public, max-age=31536000, immutable"
-		@pages not path /assets/*
-		header @pages Cache-Control "no-cache"
-		# Client-side routes (the router owns every other path) get the SPA.
-		try_files {path} /index.html
-		file_server
+		# In this order: the check before `try_files` makes every page /index.html.
+		route {
+			reverse_proxy @gym_page api:8000 {
+				method GET
+				rewrite /internal/host
+				header_up Host {upstream_hostport}
+				header_up X-Forwarded-Host {host}
+				header_up X-Forwarded-Method {method}
+				header_up X-Forwarded-Uri {uri}
+				transport http {
+					dial_timeout 2s
+					response_header_timeout 3s
+				}
+				@moved status 301 308
+				handle_response @moved {
+					copy_response_headers {
+						include Location
+					}
+					copy_response
+				}
+				# Anything else, a 5xx or a 422 included, serves the page.
+				handle_response {
+					vars
+				}
+			}
+			import spa
+			file_server
+		}
+	}
+
+	# The check fails open: with the api down or slow (every deploy restarts it),
+	# the page is served as before the check, and no redirect is lost for long.
+	# Only the check is proxied off /api, so these errors are its own.
+	@page_check_failed {
+		host *.{$BASE_DOMAIN}
+		not path /api/* /healthz
+	}
+	handle_errors 502 503 504 {
+		handle @page_check_failed {
+			import spa
+			file_server {
+				status 200
+			}
+		}
 	}
 }
 
