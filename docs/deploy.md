@@ -103,8 +103,10 @@ git tag -s v0.1.0 -m v0.1.0 && git push origin v0.1.0
 
 1. **release**: tags `rakin-api:sha-<commit>` and `rakin-web:sha-<commit>` as `v0.1.0` (no rebuild: what ran in CI is what ships), waiting for `images.yml` if the tag beat it;
 2. **staging**: deploys it to the staging host ([`deploy-host.yml`](../.github/workflows/deploy-host.yml), below);
-3. **changes**: writes the run's job summary, the page the owner approves from: the tag's notes, the tag production runs now (its latest successful deployment), the commits between the two and the migrations among them, flagged when there are any;
+3. **changes**: writes the run's job summary, the page the owner approves from: the tag's notes, production's **last successful deploy** (the newest `production` deployment whose job ran `deploy.sh` and passed every check; a job that skipped for unset secrets deployed nothing and does not count), the commits between the two and the migrations among them, flagged when there are any. If a newer production deploy reached the host and then failed, the summary warns that its tag may be what production runs, since a failed check leaves the new release live: check `releases.log` on the host before approving;
 4. **production**: waits for the owner's approval, then backs up (`docker compose exec -T backup python -m app.backup run`, and stops unless it reports `backup uploaded`) and deploys to the production host the same way.
+
+The backup runs against the `backup` service **already running** on the host, under its current Compose file: the new one is copied after it. So production's `.env` needs `COMPOSE_PROFILES=backup` and the service up before its first deploy through this workflow (the production host has it today). Without it the job stops at the backup, before anything is deployed.
 
 Production is only offered once staging passed for that tag. On each host, `deploy-host.yml`:
 
@@ -114,7 +116,7 @@ Production is only offered once staging passed for that tag. On each host, `depl
 4. runs `./verify.sh <environment> v0.1.0` there ([`deploy/verify.sh`](../deploy/verify.sh)): caddy, api and jobs run, every rakin-app image is `:v0.1.0`, `alembic current` is the image's `alembic heads`, and the api and jobs logged no `ERROR` in the last 5 minutes (it prints how many and from which loggers, never the lines: read those on the host);
 5. runs `deploy/smoke.sh <DEPLOY_URL>`. On a first deploy Caddy may still be waiting for its Let's Encrypt certificate, so while `/healthz` fails to connect, handshake or answer in time, the smoke test waits up to 90 s (`SMOKE_TLS_WAIT`) before checking. An HTTP failure such as a 503 is never waited for.
 
-If a check fails after the deploy, the job's summary prints the rollback line for that host (`./deploy.sh --rollback <previous tag>`, from `releases.log`).
+If a check fails after the deploy, the job's summary prints the rollback line for that host (`./deploy.sh --rollback <previous tag>`, from `releases.log`). After a failed **rollback** to a tag, that line names the release the rollback started from (the one before it in `releases.log`), so it goes forward again, restart only.
 
 `deploy.sh` records the live tag as `RAKIN_TAG` in `.env`, so `docker compose ps`, `logs`, `exec` and so on in `/srv/rakin` target the live release, and appends each run to `/srv/rakin/releases.log`.
 

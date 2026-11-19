@@ -37,7 +37,8 @@ check "refuses a tag that does not exist" bash -c "! '$script' v9 >/dev/null 2>&
 
 run v2 v1
 check "names the tag" said '# Release v2 to production'
-check "names what production runs" said '| Production runs now | `v1` |'
+check "names production's last successful deploy" said "| Production's last successful deploy | \`v1\` |"
+check "no warning without --maybe-live" not_said "Warning"
 check "prints the tag's notes" said "Migration 0002."
 check "lists the commits since production's tag" said "add a table (#2)"
 check "lists the migrations" said '- `backend/alembic/versions/0002_x.py`'
@@ -66,5 +67,13 @@ run --rollback v1 v3
 check "a rollback says so" said "# Roll production back to v1"
 check "lists the commits leaving production" said "Commits leaving production (v1..v3)"
 check "and the migrations that stay applied" said "These migrations stay applied"
+
+run --maybe-live v3 v3 v1
+check "--maybe-live warns that a failed tag may be live" said 'production may be running `v3` rather than `v1`'
+check "and still counts from the last successful deploy" said "Commits (v1..v3)"
+run --rollback --maybe-live v3 v1 v2
+check "--rollback and --maybe-live combine" said "# Roll production back to v1"
+check "(with the warning)" said "Warning"
+check "--maybe-live without a tag is refused" bash -c "! '$script' --maybe-live >/dev/null 2>&1"
 
 exit "$fails"

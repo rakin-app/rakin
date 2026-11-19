@@ -153,5 +153,9 @@ jobs:
               echo '```'
               echo
               echo "or run the deploy workflow by hand with that tag, **rollback** ticked and **target** \`$ENVIRONMENT_NAME\`."
+              if [ -n "$ROLLBACK" ]; then
+                echo
+                echo "This run was itself a rollback to $TAG, so that line names the release it rolled back from (the one before $TAG in \`releases.log\`): it goes forward again, restart only, to what ran before this run."
+              fi
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"

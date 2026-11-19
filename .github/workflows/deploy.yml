@@ -139,26 +139,40 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The latest successful production deployment, and the tag its run
-          # deployed (from the run-name: a dispatch's ref is a branch).
-          previous=
+          # Production's deployments, newest first. Each one's job says what
+          # happened on the host: "Run it on the host" skipped (secrets unset,
+          # or a failure before it) deployed nothing, so it does not count. The
+          # first job that deployed and passed gives the previous tag. One that
+          # deployed and then failed (verify, smoke, or deploy.sh mid-restart)
+          # may have left its tag live: the newest such tag is named as a
+          # warning. The tag comes from the run-name: a dispatch's ref is a branch.
+          previous='' maybe_live=''
           for id in $(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=production&per_page=30" --jq '.[].id'); do
-            status=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=1" \
-              --jq '.[0] | "\(.state) \(.log_url // .target_url // "")"')
-            [ "${status%% *}" = success ] || continue
-            run=$(sed -n 's#.*/actions/runs/\([0-9][0-9]*\).*#\1#p' <<<"$status")
-            [ -n "$run" ] || continue
-            candidate=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.display_title' | awk '{ print $2 }')
-            if [[ $candidate =~ ^v[0-9A-Za-z._-]+$ ]]; then previous=$candidate; break; fi
+            log=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=1" --jq '.[0] | .log_url // .target_url // ""') || continue
+            job=$(sed -n 's#.*/job/\([0-9][0-9]*\).*#\1#p' <<<"$log")
+            [ -n "$job" ] || continue
+            read -r run conclusion deployed < <(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$job" \
+              --jq '"\(.run_id) \(.conclusion) \([.steps[] | select(.name == "Run it on the host") | .conclusion][0] // "none")"') || continue
+            case $deployed in success | failure | cancelled) ;; *) continue ;; esac
+            tag=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.display_title' | awk '{ print $2 }') || continue
+            [[ $tag =~ ^v[0-9A-Za-z._-]+$ ]] || continue
+            if [ "$deployed" = success ] && [ "$conclusion" = success ]; then
+              previous=$tag
+              break
+            fi
+            [ -n "$maybe_live" ] || maybe_live=$tag
           done
           echo "previous=$previous" >>"$GITHUB_OUTPUT"
+          echo "maybe_live=$maybe_live" >>"$GITHUB_OUTPUT"
       - name: Write the summary
         env:
           PREVIOUS: ${{ steps.previous.outputs.previous }}
+          MAYBE_LIVE: ${{ steps.previous.outputs.maybe_live }}
           ROLLBACK: ${{ inputs.rollback && '--rollback' || '' }}
         run: |
           # shellcheck disable=SC2086  # ROLLBACK is empty or one word
-          .github/scripts/release-changes.sh $ROLLBACK "$TAG" $PREVIOUS | tee -a "$GITHUB_STEP_SUMMARY"
+          .github/scripts/release-changes.sh $ROLLBACK ${MAYBE_LIVE:+--maybe-live "$MAYBE_LIVE"} "$TAG" $PREVIOUS \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
   production:
     needs: [release, staging, changes]

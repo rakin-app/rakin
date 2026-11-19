@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
-# Usage: release-changes.sh [--rollback] <tag> [<previous tag>]
+# Usage: release-changes.sh [--rollback] [--maybe-live <tag>] <tag> [<previous tag>]
 #
 # Prints, as Markdown, what deploying <tag> to production changes: the tag's
-# notes (its annotation), the commits since <previous tag> (what production
-# runs now) and the migrations among them. deploy.yml writes it to the run's
-# job summary, which is the page the owner reads before approving. With no
-# previous tag, or one git does not know, the changes cannot be listed and it
-# says so. With --rollback, the commits listed are the ones leaving production.
+# notes (its annotation), the commits since <previous tag> (production's last
+# successful deploy) and the migrations among them. deploy.yml writes it to
+# the run's job summary, which is the page the owner reads before approving.
+# With no previous tag, or one git does not know, the changes cannot be
+# listed and it says so. With --rollback, the commits listed are the ones
+# leaving production. --maybe-live names a newer tag that deployed and then
+# failed its checks, so it may be what production runs instead.
 set -euo pipefail
 
-rollback=0
-if [ "${1:-}" = "--rollback" ]; then rollback=1; shift; fi
-if [ $# -lt 1 ] || [ $# -gt 2 ]; then
-  echo "usage: $0 [--rollback] <tag> [<previous tag>]" >&2
+usage() {
+  echo "usage: $0 [--rollback] [--maybe-live <tag>] <tag> [<previous tag>]" >&2
   exit 2
-fi
+}
+rollback=0 maybe_live=''
+while [ $# -gt 0 ]; do
+  case $1 in
+    --rollback) rollback=1; shift ;;
+    --maybe-live) [ $# -ge 2 ] || usage; maybe_live=$2; shift 2 ;;
+    *) break ;;
+  esac
+done
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then usage; fi
 tag=$1 previous=${2:-} unknown=
 migrations_dir=backend/alembic/versions
 rollback_docs=${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-rakin-app/rakin}/blob/main/docs/deploy.md#6-rollback
@@ -35,8 +44,12 @@ echo
 echo "| | |"
 echo "| --- | --- |"
 echo "| Tag | \`$tag\` ($(git log -1 --format=%h "$sha")) |"
-echo "| Production runs now | ${previous:+\`$previous\`}${unknown:+\`$unknown\` (not a tag in this repository)}$([ -n "$previous$unknown" ] || echo 'none recorded') |"
+echo "| Production's last successful deploy | ${previous:+\`$previous\`}${unknown:+\`$unknown\` (not a tag in this repository)}$([ -n "$previous$unknown" ] || echo 'none recorded') |"
 echo
+if [ -n "$maybe_live" ]; then
+  echo "> **Warning:** a later production deploy of \`$maybe_live\` reached the host and then failed (its checks, or \`deploy.sh\` while restarting), so production may be running \`$maybe_live\` rather than ${previous:+\`$previous\`}${previous:-the tag above}. The changes below are counted from ${previous:+\`$previous\`}${previous:-nothing}: check \`releases.log\` on the host before approving."
+  echo
+fi
 
 echo "## Notes"
 echo

@@ -34,6 +34,7 @@ docker=${DOCKER:-docker}
 
 # The line that takes this host back to the release before <tag>, from the
 # releases.log deploy.sh appends to (time, kind, tag, previous).
+# After a rollback to <tag>, that is the release it rolled back from.
 rollback_line() {
 	local previous
 	previous=$(awk -F '\t' -v tag="$1" '$3 == tag { prev = $4 } END { print prev }' releases.log 2>/dev/null || true)
