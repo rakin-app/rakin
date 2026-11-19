@@ -104,7 +104,9 @@ The example holds **production's** values. Staging's differ in the names, the ma
 | `MAIL_ALLOW` | empty: mail goes to everyone | the team's own addresses; every other recipient is logged, not sent |
 | `SEED_ONLY` | unset or `false`: `app.seed` refuses | `1`: `app.seed` and the nightly reset run |
 | `STAGING_OPERATORS` | unset | who the nightly reset makes an operator again |
-| `COMPOSE_PROFILES`, `BACKUP_*` | `backup`, set ([Backups](#backups)) | unset | `SECRET_KEY` signs sign-in and unsubscribe links and can be rotated after a leak. That does not sign anyone out, and it breaks the unsubscribe links in emails already sent ([incident response](incident-response.md#5-rotating-secrets)). `FIELD_ENCRYPTION_KEY` encrypts sensitive custom fields: a backup restored under another key has those values unreadable, so never change it without re-encrypting them. `RAKIN_TAG` can stay a placeholder: `deploy.sh` writes it.
+| `COMPOSE_PROFILES`, `BACKUP_*` | `backup`, set ([Backups](#backups)) | unset |
+
+`SECRET_KEY` signs sign-in and unsubscribe links and can be rotated after a leak. That does not sign anyone out, and it breaks the unsubscribe links in emails already sent ([incident response](incident-response.md#5-rotating-secrets)). `FIELD_ENCRYPTION_KEY` encrypts sensitive custom fields: a backup restored under another key has those values unreadable, so never change it without re-encrypting them. `RAKIN_TAG` can stay a placeholder: `deploy.sh` writes it.
 
 ## 4. GitHub
 
