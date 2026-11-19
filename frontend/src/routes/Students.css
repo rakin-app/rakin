@@ -336,15 +336,43 @@
  * "Familia". What says more about them (family, "Falta teléfono") goes under the name.
  */
 @media (--wide) {
-  .students__row,
-  .students__columns {
+  /* One grid for the whole table, which the header and every row take as a subgrid:
+     a column sized by its widest cell ("Sin plan: solo la persona") is that width in
+     every row, so each cell sits under its header (#488). */
+  .students__table {
     display: grid;
     grid-template-columns:
       minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(max-content, 0.8fr);
-    align-items: center;
     column-gap: var(--space-4);
+  }
+
+  .students__columns,
+  .students__list,
+  .students__item,
+  .students__row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    /* The table's gap, not the phone row's own. */
+    column-gap: normal;
+  }
+
+  /* "Pagó"'s confirmation and its form run the row's width. */
+  .students__item > :not(.students__row) {
+    grid-column: 1 / -1;
+  }
+
+  /* One height for every row: a control's, so a row with "Pagó" is no taller than one
+     without, and a name with a line under it still fits (#488). */
+  .students__row {
+    grid-template-rows: minmax(var(--control-height), auto);
+    align-items: center;
     min-height: 0;
-    padding-block: var(--space-0-5);
+    padding-block: var(--space-1-5);
+  }
+
+  .students__columns {
+    align-items: center;
   }
 
   .students__columns {
@@ -382,8 +410,7 @@
   }
 
   /* An owner's or admin's rows may have "Pagó": a column for it. */
-  .students__table--pays .students__row,
-  .students__table--pays .students__columns {
+  .students__table--pays {
     grid-template-columns:
       minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(max-content, 0.8fr)
       5.5rem;
