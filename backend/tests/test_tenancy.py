@@ -49,6 +49,7 @@ PUBLIC_PATHS = {
     "/api/privacy",
     "/api/logos/{gym_id}/{version}/{variant}",
     "/internal/tls-allowed",
+    "/internal/host",
 }
 
 TENANT_TABLES = (

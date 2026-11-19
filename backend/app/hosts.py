@@ -19,7 +19,9 @@ A slug a gym had before a rename (#438) redirects for 90 days: when no gym has t
 host's slug, `auth_gym_alias` (0078) is asked for the gym's current one, and the
 request is answered with a 301 to the same path and query there, or a 308 for any
 method but GET and HEAD, which keeps the method and its body; it never reaches the
-app. A live alias is kept for a minute too, as a found gym is; `GymLookup.forget` drops
+app. Caddy serves the SPA's pages without the app, so on a gym's host it asks
+`GET /internal/host` (`app.api.hosts`) first (#472), which answers the same redirect.
+A live alias is kept for a minute too, as a found gym is; `GymLookup.forget` drops
 both, and a rename forgets the old slug and the new.
 
 A domain the gyms were served under before (`MOVED_FROM_DOMAIN`, #464) is Caddy's to
@@ -281,19 +283,21 @@ class HostMiddleware:
             if slug is not None and gym is None and self.alias is not None:
                 current = await self.alias(slug)
                 if current is not None:
-                    # 308 keeps a POST a POST, with its body; a 301 may turn it into a GET.
-                    code = 301 if scope["method"] in ("GET", "HEAD") else 308
-                    response = RedirectResponse(self.moved(scope, current), status_code=code)
+                    url = URL(scope=scope)
+                    query = f"?{url.query}" if url.query else ""
+                    response = moved(self.hosts, current, scope["method"], f"{url.path}{query}")
                     await response(scope, receive, send)
                     return
             scope.setdefault("state", {})["host_gym"] = gym
         await self.app(scope, receive, send)
 
-    def moved(self, scope: Scope, slug: str) -> str:
-        """The request's path and query, on the host of the gym's slug `slug`."""
-        url = URL(scope=scope)
-        query = f"?{url.query}" if url.query else ""
-        return f"{self.hosts.base_url(slug)}{url.path}{query}"
+
+def moved(hosts: Hosts, slug: str, method: str, uri: str) -> RedirectResponse:
+    """A redirect to `uri`, a path and query, on the host of the gym's slug `slug`: a
+    301 for GET and HEAD, a 308 for any other method."""
+    # 308 keeps a POST a POST, with its body; a 301 may turn it into a GET.
+    code = 301 if method in ("GET", "HEAD") else 308
+    return RedirectResponse(f"{hosts.base_url(slug)}{uri}", status_code=code)
 
 
 def host_gym(state: object) -> HostGym | None:

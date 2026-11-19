@@ -20,6 +20,24 @@
 (app) {
 	encode zstd gzip
 
+	# A renamed gym's old host redirects for 90 days (#438), and the api answers it
+	# on /api. The SPA's pages are served here without the api, so on a gym's host
+	# a page asks it first (#472): `/internal/host` answers the same 301 (308 for a
+	# method other than GET and HEAD), path and query kept, which Caddy returns; or
+	# 200, and the page is served. Host is the api's own, so its middleware does not
+	# redirect the check itself; the request's host goes in X-Forwarded-Host, and
+	# forward_auth adds its method and URI. /assets is only ever asked for by a
+	# page, so it is left out, as /api is, which redirects on its own.
+	@gym_page {
+		host *.{$BASE_DOMAIN}
+		not path /api/* /healthz /assets/*
+	}
+	forward_auth @gym_page api:8000 {
+		uri /internal/host
+		header_up Host {upstream_hostport}
+		header_up X-Forwarded-Host {host}
+	}
+
 	@api path /api/* /healthz
 	handle @api {
 		reverse_proxy api:8000
