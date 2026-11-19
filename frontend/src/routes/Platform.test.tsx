@@ -45,7 +45,7 @@ const GYMS: PlatformGym[] = [
     created_at: '2026-11-10T12:00:00Z',
     titular_name: 'Titular de Meta',
     titular_email: 'titular@meta.cl',
-    terms_version: '2026-11-18',
+    terms_version: '2026-11-19',
     terms_signed_on: '2026-11-19',
     terms_current: true,
     members: 42,

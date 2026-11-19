@@ -230,7 +230,7 @@ docker compose run --rm api python -m app.gyms create --slug meta --name "Meta" 
   --timezone America/Santiago \
   --owner-email <owner@example.com> --owner-name "<Owner's name>" --owner-rut "<12.345.678-5>" \
   --grading bjj \
-  --processor-terms 2026-11-18 --signed-on <YYYY-MM-DD>
+  --processor-terms 2026-11-19 --signed-on <YYYY-MM-DD>
 ```
 
 `create` refuses to run without `--processor-terms` and `--signed-on`, and refuses a version that is not the current one or a date to come. It records both in `processor_terms`, with the gym. `--no-processor-terms` instead is only for an instance the company does not host, whose operator processes no gym's data for the company.
@@ -251,7 +251,7 @@ The base host itself, `https://app.rakin.app`, serves sign-in for anyone in any 
 
 ```sh
 docker compose run --rm api python -m app.gyms sign-terms --slug meta \
-  --processor-terms 2026-11-18 --signed-on <YYYY-MM-DD>
+  --processor-terms 2026-11-19 --signed-on <YYYY-MM-DD>
 ```
 
 Run again with a version the gym already signed, it changes nothing and says so, keeping the date first recorded. `create` on a slug a gym already has records no terms either, and says to use `sign-terms`.
@@ -259,7 +259,7 @@ Run again with a version the gym already signed, it changes nothing and says so,
 A wrong `--signed-on` is corrected by hand, with the date on the signed copy:
 
 ```sh
-docker compose exec -T postgres psql -U rakin rakin -v slug=meta -v v=2026-11-18 -v d=<YYYY-MM-DD> <<'SQL'
+docker compose exec -T postgres psql -U rakin rakin -v slug=meta -v v=2026-11-19 -v d=<YYYY-MM-DD> <<'SQL'
 UPDATE processor_terms SET signed_on = :'d'
 WHERE version = :'v' AND gym_id = (SELECT id FROM gym WHERE slug = :'slug');
 SQL
@@ -268,13 +268,13 @@ SQL
 To see which gyms have not signed the current version, by slug:
 
 ```sh
-docker compose exec -T postgres psql -U rakin rakin -v v=2026-11-18 <<'SQL'
+docker compose exec -T postgres psql -U rakin rakin -v v=2026-11-19 <<'SQL'
 SELECT g.slug FROM gym g
 WHERE NOT EXISTS (SELECT FROM processor_terms t WHERE t.gym_id = g.id AND t.version = :'v');
 SQL
 ```
 
-On a gym listed there, load nothing more until it signs. In these commands and the ones above, `2026-11-18` is the current version: it moves with `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py) and the terms' **Versión** line. psql fills in `:'v'` only from stdin, not from `-c`, so the SQL goes in a heredoc.
+On a gym listed there, load nothing more until it signs. In these commands and the ones above, `2026-11-19` is the current version: it moves with `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py) and the terms' **Versión** line. psql fills in `:'v'` only from stdin, not from `-c`, so the SQL goes in a heredoc.
 
 ## Editing a gym
 
