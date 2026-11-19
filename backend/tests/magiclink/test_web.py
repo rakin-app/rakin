@@ -5,7 +5,7 @@ Rakin's Postgres store and directory have their own tests in `tests/test_auth.py
 
 import asyncio
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -31,6 +31,7 @@ from app.magiclink import (
     Texts,
     build_router,
     callback_url,
+    is_secure,
     session_cookie_name,
 )
 from app.magiclink.tokens import hash_token
@@ -79,6 +80,7 @@ class Store:
     sessions: dict[bytes, tuple[Session, bool]] = field(default_factory=dict)
     # A link's working code: its hash, and the misses counted against it.
     codes: dict[bytes, tuple[bytes, int]] = field(default_factory=dict)
+    renewals: int = 0  # sessions' expiries written since sign-in
 
     async def add_link(
         self,
@@ -134,6 +136,14 @@ class Store:
     async def session(self, token_hash: bytes, now: datetime) -> Session | None:
         session, ended = self.sessions.get(token_hash, (None, True))
         return session if session and not ended and now < session.expires_at else None
+
+    async def renew_session(self, token_hash: bytes, now: datetime, expires_at: datetime) -> bool:
+        session = await self.session(token_hash, now)
+        if session is None or expires_at <= session.expires_at:
+            return False
+        self.sessions[token_hash] = (replace(session, expires_at=expires_at), False)
+        self.renewals += 1
+        return True
 
     async def end_session(self, token_hash: bytes, now: datetime) -> None:
         if token_hash in self.sessions:
@@ -226,6 +236,7 @@ def make_app(
         links=links,
         bind=bind,
         cookie_name=cookie_name or session_cookie_name(base_url),
+        secure=is_secure(base_url),
     )
     app.add_middleware(ClientAddress)
     return app
@@ -394,13 +405,17 @@ def test_the_button_signs_in_with_a_30_day_session_cookie(harness: Harness) -> N
     attributes = {a.strip().split("=")[0].lower() for a in cookie.split(";")}
     assert cookie.startswith(f"{COOKIE_NAME}=")
     assert {"httponly", "secure", "path", "max-age"} <= attributes
-    assert "Max-Age=2592000" in cookie
+    assert "Max-Age=3024000" in cookie
     assert "SameSite=lax" in cookie
     assert "Path=/" in cookie
     assert "domain" not in attributes
     [(session, _)] = harness.store.sessions.values()
     assert session == Session(
-        "ana", "ana@example.cl", "gym-of-ana", harness.clock.now + timedelta(days=30)
+        "ana",
+        "ana@example.cl",
+        "gym-of-ana",
+        harness.clock.now + timedelta(days=35),
+        harness.clock.now,
     )
 
 
@@ -596,11 +611,106 @@ def test_a_form_posted_from_another_site_is_refused(harness: Harness) -> None:
 # --- sessions ---------------------------------------------------------------------
 
 
-def test_a_session_lasts_30_days(harness: Harness) -> None:
+SIGNED_IN = Clock().now
+
+
+def whoami_on(harness: Harness, day: float) -> Any:
+    """Who a request on `day` after sign-in is from: a use of the session."""
+    harness.clock.now = SIGNED_IN + timedelta(days=day)
+    return harness.client.get("/whoami").json()["subject"]
+
+
+def live_on(harness: Harness, day: float) -> bool:
+    """Whether the session is live on `day`, without using it."""
+    harness.clock.now = SIGNED_IN + timedelta(days=day)
+    token = harness.client.cookies[COOKIE_NAME]
+    return asyncio.run(harness.links.session(token)) is not None
+
+
+def test_an_unused_session_lasts_35_days(harness: Harness) -> None:
     harness.sign_in(ANA)
-    harness.clock.now += timedelta(days=30) - timedelta(seconds=1)
+    assert live_on(harness, 35 - 1 / 86400)
+    assert whoami_on(harness, 35) is None
+
+
+def test_a_session_ends_35_days_after_its_last_use(harness: Harness) -> None:
+    harness.sign_in(ANA)
+    assert whoami_on(harness, 20) == "ana"
+    assert live_on(harness, 50)
+    assert live_on(harness, 55 - 1 / 86400)
+    assert not live_on(harness, 55)
+    assert not live_on(harness, 56)
+    assert whoami_on(harness, 56) is None
+
+
+def test_a_session_used_every_day_ends_180_days_after_sign_in(harness: Harness) -> None:
+    harness.sign_in(ANA)
+    for day in range(1, 180):
+        assert whoami_on(harness, day) == "ana", day
+    assert whoami_on(harness, 180 - 1 / 86400) == "ana"
+    assert not live_on(harness, 180)
+    assert whoami_on(harness, 180) is None
+
+
+def test_a_session_used_at_odd_hours_still_reaches_its_last_day(harness: Harness) -> None:
+    # Renewals less than a day apart are skipped, but not the one up to the limit.
+    harness.sign_in(ANA)
+    for day in range(1, 180):
+        assert whoami_on(harness, day - 0.25 * (day % 3)) == "ana", day
+    [(session, _)] = harness.store.sessions.values()
+    assert session.expires_at == SIGNED_IN + timedelta(days=180)
+
+
+def test_a_session_is_renewed_at_most_once_a_day(harness: Harness) -> None:
+    harness.sign_in(ANA)
+    harness.clock.now += timedelta(days=3)
+    for _ in range(3):
+        assert harness.client.get("/whoami").json() == {"subject": "ana"}
+        harness.clock.now += timedelta(hours=6)
+    assert harness.store.renewals == 1
+    harness.clock.now += timedelta(hours=6)
     assert harness.client.get("/whoami").json() == {"subject": "ana"}
-    harness.clock.now += timedelta(seconds=1)
+    assert harness.store.renewals == 2
+
+
+def test_a_renewed_session_sets_its_cookie_again_with_the_new_expiry(harness: Harness) -> None:
+    harness.sign_in(ANA)
+    token = harness.client.cookies[COOKIE_NAME]
+    harness.clock.now += timedelta(hours=12)
+    assert "set-cookie" not in harness.client.get("/whoami").headers
+
+    harness.clock.now += timedelta(days=10)
+    response = harness.client.get("/whoami")
+    cookie = response.headers["set-cookie"]
+    assert cookie.startswith(f"{COOKIE_NAME}={token};")
+    assert "Max-Age=3024000" in cookie  # 35 days from now
+    assert "HttpOnly" in cookie and "Secure" in cookie and "SameSite=lax" in cookie
+    assert "Path=/" in cookie
+
+    # Near the 180-day limit, the cookie ends with the session, not 35 days on.
+    for day in (40, 74, 108, 130):
+        assert whoami_on(harness, day) == "ana"
+    harness.clock.now = SIGNED_IN + timedelta(days=150)
+    cookie = harness.client.get("/whoami").headers["set-cookie"]
+    assert f"Max-Age={30 * 86400}" in cookie
+
+
+def test_an_http_base_url_renews_with_a_plain_cookie() -> None:
+    for harness in make_harness("http://localhost:8080"):
+        harness.sign_in(ANA)
+        harness.clock.now += timedelta(days=2)
+        cookie = harness.client.get("/whoami").headers["set-cookie"]
+    assert cookie.startswith(f"{DEV_COOKIE_NAME}=")
+    assert "Secure" not in cookie
+
+
+def test_logging_out_is_not_undone_by_a_renewal(harness: Harness) -> None:
+    harness.sign_in(ANA)
+    harness.clock.now += timedelta(days=2)
+    response = harness.client.post(f"{PREFIX}/logout")
+    # Only the logout's own cookie, which clears it.
+    [cookie] = response.headers.get_list("set-cookie")
+    assert "Max-Age=0" in cookie
     assert harness.client.get("/whoami").json() == {"subject": None}
 
 
@@ -766,10 +876,14 @@ def test_a_code_signs_in_as_the_link_does(harness: Harness) -> None:
     cookie = response.headers["set-cookie"]
     assert cookie.startswith(f"{COOKIE_NAME}=")
     assert "HttpOnly" in cookie and "Secure" in cookie and "SameSite=lax" in cookie
-    assert "Max-Age=2592000" in cookie
+    assert "Max-Age=3024000" in cookie
     [(session, _)] = harness.store.sessions.values()
     assert session == Session(
-        "ana", "ana@example.cl", "gym-of-ana", harness.clock.now + timedelta(days=30)
+        "ana",
+        "ana@example.cl",
+        "gym-of-ana",
+        harness.clock.now + timedelta(days=35),
+        harness.clock.now,
     )
     assert harness.client.get("/whoami").json() == {"subject": "ana"}
 

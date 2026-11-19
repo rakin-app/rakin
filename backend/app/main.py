@@ -66,7 +66,7 @@ from app.hosts import GymLookup, HostMiddleware, Hosts
 from app.idempotency import IdempotencyMiddleware
 from app.integrations import build_integrations
 from app.logging import configure_logging
-from app.magiclink import SessionMiddleware, build_router, session_cookie_name
+from app.magiclink import SessionMiddleware, build_router, is_secure, session_cookie_name
 from app.middleware import RequestIdMiddleware
 from app.platform.web import build_operator_links, build_platform_router
 from app.sentry import init_sentry
@@ -111,6 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         links=links,
         bind=bind_session,
         cookie_name=session_cookie_name(settings.public_base_url),
+        secure=is_secure(settings.public_base_url),
     )
     # Kept on the state too, so a change to what it keeps (the theme) can drop the entry.
     app.state.gym_lookup = GymLookup(lambda: app.state.sessionmaker)

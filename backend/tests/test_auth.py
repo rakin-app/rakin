@@ -430,7 +430,7 @@ def test_a_code_asked_for_replaces_the_persons_earlier_ones_at_that_address(
 def test_a_spent_or_expired_code_counts_no_misses(db: Database, people: People) -> None:
     now = datetime.now(UTC)
     link, code = hash_token(uuid.uuid4().hex), hash_token(uuid.uuid4().hex)
-    session = Session(str(people.ana), ANA, str(people.sur), now + timedelta(days=30))
+    session = Session(str(people.ana), ANA, str(people.sur), now + timedelta(days=30), now)
 
     async def check(store: PostgresStore) -> None:
         await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15), code)
@@ -451,7 +451,7 @@ def test_a_spent_or_expired_code_counts_no_misses(db: Database, people: People) 
 
 def test_of_concurrent_redemptions_exactly_one_wins(db: Database, people: People) -> None:
     link, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
-    session = Session(str(people.ana), ANA, str(people.sur), now + timedelta(days=30))
+    session = Session(str(people.ana), ANA, str(people.sur), now + timedelta(days=30), now)
 
     async def race(store: PostgresStore) -> list[bool]:
         await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15))
@@ -466,7 +466,7 @@ def test_a_session_that_cannot_be_stored_leaves_the_link_unspent(
 ) -> None:
     link, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
     # A gym that does not exist: the session insert fails on its foreign key.
-    broken = Session(str(people.ana), ANA, str(uuid.uuid4()), now + timedelta(days=30))
+    broken = Session(str(people.ana), ANA, str(uuid.uuid4()), now + timedelta(days=30), now)
 
     async def check(store: PostgresStore) -> None:
         await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15))
@@ -480,8 +480,8 @@ def test_a_session_that_cannot_be_stored_leaves_the_link_unspent(
 def test_a_link_redeems_only_for_its_own_person_and_address(db: Database, people: People) -> None:
     link, now = hash_token(uuid.uuid4().hex), datetime.now(UTC)
     later = now + timedelta(days=30)
-    someone_else = Session(str(people.shared), ANA, None, later)
-    another_address = Session(str(people.ana), "shared@example.cl", None, later)
+    someone_else = Session(str(people.shared), ANA, None, later, now)
+    another_address = Session(str(people.ana), "shared@example.cl", None, later, now)
 
     async def check(store: PostgresStore) -> None:
         await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15))
@@ -501,14 +501,43 @@ def test_an_expired_link_or_session_is_not_found(db: Database, people: People) -
         later = now + timedelta(minutes=15)
         assert await store.pending_link(link, later) is None
         assert not await store.redeem_link(
-            link, later, session, Session(str(people.ana), ANA, None, later + day)
+            link, later, session, Session(str(people.ana), ANA, None, later + day, later)
         )
         assert await store.redeem_link(
-            link, now, session, Session(str(people.ana), ANA, str(people.sur), now + day)
+            link, now, session, Session(str(people.ana), ANA, str(people.sur), now + day, now)
         )
 
         assert await store.session(session, now) is not None
         assert await store.session(session, now + day) is None
+
+    with_store(db, check)
+
+
+def test_a_session_keeps_its_sign_in_and_renews_forward_only(db: Database, people: People) -> None:
+    now, day = datetime.now(UTC), timedelta(days=1)
+    link, session = hash_token(uuid.uuid4().hex), hash_token(uuid.uuid4().hex)
+    signed_in = now - 3 * day
+
+    async def check(store: PostgresStore) -> None:
+        await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15))
+        started = Session(str(people.ana), ANA, str(people.sur), now + day, signed_in)
+        assert await store.redeem_link(link, now, session, started)
+        assert await store.session(session, now) == started
+
+        assert await store.renew_session(session, now, now + 35 * day)
+        renewed = await store.session(session, now)
+        assert renewed is not None
+        assert renewed.expires_at == now + 35 * day
+        assert renewed.signed_in_at == signed_in
+        # Never back, and the same expiry writes nothing.
+        assert not await store.renew_session(session, now, now + 2 * day)
+        assert not await store.renew_session(session, now, now + 35 * day)
+        assert (await store.session(session, now)) == renewed
+
+        # An ended or expired session is not renewed.
+        assert not await store.renew_session(session, now + 35 * day, now + 70 * day)
+        await store.end_session(session, now)
+        assert not await store.renew_session(session, now, now + 40 * day)
 
     with_store(db, check)
 
@@ -615,6 +644,7 @@ def test_the_lookups_belong_to_rakin_auth_and_only_the_api_may_call_them(db: Dat
         "auth_people_by_email",
         "auth_gyms_of",
         "auth_live_session",
+        "auth_renew_session",
         "auth_end_session",
         "auth_gym_by_slug",
         "auth_gym_alias",

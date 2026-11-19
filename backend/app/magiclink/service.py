@@ -24,11 +24,16 @@ site, expires with it and is spent with it, either way round. Asking for links a
 unasked, in a welcome, ends none, so it never undoes the one just asked for. A code is
 good for `CODE_TRIES` wrong codes typed at its address; then it is spent too, and the
 link still works.
+
+A session lasts while it is used: it ends `SESSION_IDLE` after its last use, and
+`SESSION_MAX` after sign-in however often it is used. Using it carries its expiry on
+(`renew`), at most once every `RENEW_EVERY`, so a busy session is not written on every
+request.
 """
 
 import logging
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from urllib.parse import urlencode, urlsplit
@@ -46,7 +51,11 @@ from app.magiclink.tokens import (
 logger = logging.getLogger(__name__)
 
 LINK_TTL = timedelta(minutes=15)
-SESSION_TTL = timedelta(days=30)
+# A session ends this long after its last use, and this long after sign-in regardless.
+SESSION_IDLE = timedelta(days=35)
+SESSION_MAX = timedelta(days=180)
+# How far a use must carry a session's expiry before it is written.
+RENEW_EVERY = timedelta(days=1)
 # Wrong codes typed at an address before its codes are spent.
 CODE_TRIES = 5
 
@@ -90,6 +99,7 @@ class Session:
     address: str  # the address its link was sent to
     scope: str | None
     expires_at: datetime
+    signed_in_at: datetime
 
 
 class Directory(Protocol):
@@ -149,6 +159,11 @@ class Store(Protocol):
         """The live session with this hash: not expired, not ended."""
         ...
 
+    async def renew_session(self, token_hash: bytes, now: datetime, expires_at: datetime) -> bool:
+        """Move the expiry of the live session with this hash on to `expires_at`, never
+        back; False if no such session moved."""
+        ...
+
     async def end_session(self, token_hash: bytes, now: datetime) -> None: ...
 
 
@@ -190,7 +205,8 @@ class MagicLinks:
         code_per_address: RateLimiter | None = None,
         code_per_ip: RateLimiter | None = None,
         link_ttl: timedelta = LINK_TTL,
-        session_ttl: timedelta = SESSION_TTL,
+        session_idle: timedelta = SESSION_IDLE,
+        session_max: timedelta = SESSION_MAX,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self.callback_url = callback_url
@@ -207,7 +223,10 @@ class MagicLinks:
             limit=60, window_seconds=LINK_TTL.total_seconds()
         )
         self.link_ttl = link_ttl
-        self.session_ttl = session_ttl
+        self.session_idle = session_idle
+        self.session_max = session_max
+        # What a new session lasts, and its cookie.
+        self.session_ttl = min(session_idle, session_max)
         self._signer = LinkSigner(secret_key)
         self._codes = CodeHasher(secret_key)
         self._clock = clock
@@ -375,13 +394,33 @@ class MagicLinks:
         scope = await self.directory.scope(pending.subject, pending.address, within)
         if within is not None and scope != within:
             raise Unreachable
-        session = Session(pending.subject, pending.address, scope, now + self.session_ttl)
+        session = Session(pending.subject, pending.address, scope, now + self.session_ttl, now)
         if not await self.store.redeem_link(link_hash, now, hash_token(session_token), session):
             return None
         return session_token
 
+    def now(self) -> datetime:
+        return self._clock()
+
     async def session(self, session_token: str) -> Session | None:
         return await self.store.session(hash_token(session_token), self._clock())
+
+    async def renew(self, session_token: str, session: Session) -> Session | None:
+        """`session`, just used, carried on to `session_idle` from now, and never past
+        `session_max` from its sign-in; None if that is not due, or it is gone.
+
+        Due once it moves the expiry by `RENEW_EVERY`, or on to the last it may reach.
+        """
+        now = self._clock()
+        last = session.signed_in_at + self.session_max
+        until = min(now + self.session_idle, last)
+        if until <= session.expires_at:
+            return None
+        if until - session.expires_at < RENEW_EVERY and until != last:
+            return None
+        if not await self.store.renew_session(hash_token(session_token), now, until):
+            return None
+        return replace(session, expires_at=until)
 
     async def end_session(self, session_token: str) -> None:
         await self.store.end_session(hash_token(session_token), self._clock())
