@@ -10,6 +10,8 @@ any browser tab, JavaScript or not.
 The middleware never refuses a request. It reads the session cookie, and if the
 session is live hands it to `bind`, which puts what the application needs on
 `request.state`; deciding what an anonymous request may do is left to the routes.
+Using a session carries it on (`MagicLinks.renew`), and when it does, the response
+sets the cookie again with the session's new expiry.
 
 An application serving several sites (a tenant per host) passes `site`, which says
 for each request where its links point and what a session started from it must start
@@ -33,7 +35,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 from starlette.datastructures import Headers
 from starlette.requests import cookie_parser
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.magiclink.service import CodeExpired, MagicLinks, RateLimited, Session, Unreachable
 
@@ -166,6 +168,21 @@ def session_cookie_name(base_url: str) -> str:
     return COOKIE_NAME if is_secure(base_url) else DEV_COOKIE_NAME
 
 
+def session_cookie(name: str, session_token: str, max_age: int, *, secure: bool) -> str:
+    """The `Set-Cookie` value that keeps a session in this browser for `max_age` seconds."""
+    response = Response()
+    response.set_cookie(
+        name,
+        session_token,
+        max_age=max_age,
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite="lax",
+    )
+    return response.headers["set-cookie"]
+
+
 def callback_url(base_url: str, prefix: str) -> str:
     """Where links point, for `MagicLinks(callback_url=...)` and a router on `prefix`."""
     return f"{base_url.rstrip('/')}{prefix}{CALLBACK}"
@@ -259,14 +276,9 @@ def build_router(
         )
 
     def start_session(response: Response, session_token: str) -> None:
-        response.set_cookie(
-            cookie_name,
-            session_token,
-            max_age=int(links.session_ttl.total_seconds()),
-            path="/",
-            secure=secure,
-            httponly=True,
-            samesite="lax",
+        max_age = int(links.session_ttl.total_seconds())
+        response.headers.append(
+            "set-cookie", session_cookie(cookie_name, session_token, max_age, secure=secure)
         )
 
     def client_ip(request: Request) -> str:
@@ -401,7 +413,10 @@ def build_router(
 
 
 class SessionMiddleware:
-    """Hands a request's live session to `bind(session, request.state)`."""
+    """Hands a request's live session to `bind(session, request.state)`, and renews it.
+
+    `secure` must be what the router's cookie is: `is_secure` of its base URL.
+    """
 
     def __init__(
         self,
@@ -410,17 +425,38 @@ class SessionMiddleware:
         links: MagicLinks,
         bind: Callable[[Session, dict[str, Any]], None],
         cookie_name: str = COOKIE_NAME,
+        secure: bool = True,
     ) -> None:
         self.app = app
         self.links = links
         self.bind = bind
         self.cookie_name = cookie_name
+        self.secure = secure
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http":
-            token = cookie_parser(Headers(scope=scope).get("cookie", "")).get(self.cookie_name)
-            if token:
-                session = await self.links.session(token)
-                if session is not None:
-                    self.bind(session, scope.setdefault("state", {}))
-        await self.app(scope, receive, send)
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        token = cookie_parser(Headers(scope=scope).get("cookie", "")).get(self.cookie_name)
+        session = None if not token else await self.links.session(token)
+        if token is None or session is None:
+            await self.app(scope, receive, send)
+            return
+        renewed = await self.links.renew(token, session)
+        self.bind(renewed or session, scope.setdefault("state", {}))
+        if renewed is None:
+            await self.app(scope, receive, send)
+            return
+        max_age = int((renewed.expires_at - self.links.now()).total_seconds())
+        cookie = session_cookie(self.cookie_name, token, max_age, secure=self.secure).encode()
+        own = f"{self.cookie_name}=".encode()
+
+        async def send_renewed(message: Message) -> None:
+            # Unless the response sets the cookie itself, as signing in or out does.
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                if not any(k == b"set-cookie" and v.startswith(own) for k, v in headers):
+                    message = {**message, "headers": [*headers, (b"set-cookie", cookie)]}
+            await send(message)
+
+        await self.app(scope, receive, send_renewed)

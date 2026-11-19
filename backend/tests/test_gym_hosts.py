@@ -248,7 +248,11 @@ def test_a_found_gym_is_kept_a_while_and_a_missing_one_is_asked_again() -> None:
 def session_in(scope: uuid.UUID | None) -> Session:
     expires = datetime.now(UTC) + timedelta(days=1)
     return Session(
-        str(uuid.uuid4()), "a@example.cl", None if scope is None else str(scope), expires
+        str(uuid.uuid4()),
+        "a@example.cl",
+        None if scope is None else str(scope),
+        expires,
+        expires - timedelta(days=35),
     )
 
 

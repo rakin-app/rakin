@@ -284,8 +284,8 @@ class PostgresStore:
     """`auth_link` and `auth_session`, keyed by token hash (0005), and a link's code
     (0047).
 
-    A session is read and ended before any gym is set, so through the lookups 0005
-    defines rather than the RLS-scoped table.
+    A session is read, renewed and ended before any gym is set, so through the lookups
+    0005 and 0080 define rather than the RLS-scoped table.
     """
 
     def __init__(self, sessionmaker: Sessionmaker) -> None:
@@ -388,8 +388,9 @@ class PostgresStore:
             # Fails with the link: the transaction rolls both back.
             await db.execute(
                 text(
-                    "INSERT INTO auth_session (token_hash, person_id, email, gym_id, expires_at)"
-                    " VALUES (:h, :p, :a, :g, :e)"
+                    "INSERT INTO auth_session"
+                    " (token_hash, person_id, email, gym_id, expires_at, created_at)"
+                    " VALUES (:h, :p, :a, :g, :e, :c)"
                 ),
                 {
                     "h": session_hash,
@@ -397,19 +398,28 @@ class PostgresStore:
                     "a": session.address,
                     "g": None if session.scope is None else uuid.UUID(session.scope),
                     "e": session.expires_at,
+                    "c": session.signed_in_at,
                 },
             )
         return True
 
     async def session(self, token_hash: bytes, now: datetime) -> Session | None:
         row = await self._fetch(
-            "SELECT person_id, email, gym_id, expires_at FROM auth_live_session(:h, :now)",
+            "SELECT person_id, email, gym_id, expires_at, created_at"
+            " FROM auth_live_session(:h, :now)",
             {"h": token_hash, "now": now},
         )
         if row is None:
             return None
         gym = None if row.gym_id is None else str(row.gym_id)
-        return Session(str(row.person_id), row.email, gym, row.expires_at)
+        return Session(str(row.person_id), row.email, gym, row.expires_at, row.created_at)
+
+    async def renew_session(self, token_hash: bytes, now: datetime, expires_at: datetime) -> bool:
+        row = await self._fetch(
+            "SELECT auth_renew_session(:h, :e, :now) AS renewed",
+            {"h": token_hash, "e": expires_at, "now": now},
+        )
+        return bool(row.renewed)
 
     async def end_session(self, token_hash: bytes, now: datetime) -> None:
         await self._execute("SELECT auth_end_session(:h, :now)", {"h": token_hash, "now": now})

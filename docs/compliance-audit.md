@@ -105,7 +105,7 @@ Gap: #378.
 | --- | --- | --- |
 | TLS only | implemented | Caddy redirects HTTP to HTTPS and gets certificates per host (`deploy/Caddyfile`). `.app` is HSTS-preloaded. Cookies are `Secure` off a non-`http` base URL. Postgres is reachable only on the Compose network |
 | RLS | implemented | see [section 2](#2-tenant-isolation) |
-| Magic links expire | implemented | 15 minutes for a requested link and code, 7 days for one in a notice, 30-day sessions, single use (`backend/app/magiclink/service.py:46-47`); `backend/tests/magiclink/test_web.py:488`, `:786`, `backend/tests/test_auth.py:278`, `:323` |
+| Magic links expire | implemented | 15 minutes for a requested link and code, 7 days for one in a notice, sessions that end 35 days after their last use and 180 days after sign-in (#491), single use (`backend/app/magiclink/service.py:46-47`); `backend/tests/magiclink/test_web.py:488`, `:786`, `backend/tests/test_auth.py:278`, `:323` |
 | Audit via `message_log` and `validated_by` | partial | both exist and are append-only. Not enough to scope an incident: see [section 5](#breach-response) |
 | Backups encrypted | implemented | `pg_dump` piped through `age` to a public key, so the host cannot read its own backups (`backend/app/backup.py:198-211`); `backend/tests/test_backup.py:238` |
 
