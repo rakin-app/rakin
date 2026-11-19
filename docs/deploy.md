@@ -85,7 +85,7 @@ Each host has its own deploy key, never shared. Generate it on your machine, not
 
   A wildcard never answers for a name that has records of its own, so `app`, `www`, `staging`, Resend's `send`, `rsend` and `resend._domainkey`, `_dmarc` and Email Routing's MX all keep theirs, and `meta.staging` beats `*.staging`. That is also why each name with records is a reserved slug ([`app/hosts.py`](../backend/app/hosts.py)): a gym by that name would never resolve. Caddy gets every certificate itself.
 - **Resend**: add and verify `rakin.app` (its DKIM, SPF and return-path records in Cloudflare, DNS only), then create an API key with sending access for that domain, **one per host**, named for it. It goes in `SMTP_PASSWORD`; `SMTP_HOST=smtp.resend.com`, `SMTP_USERNAME=resend`, and port 587 with `SMTP_SECURITY=starttls`, as `deploy/.env.example` has them. There is no sandbox to leave: a verified domain sends to anyone, which is why staging sends only to `MAIL_ALLOW` ([below](#the-staging-host)). Then, for production only, add a webhook (Webhooks → Add endpoint) to `https://app.rakin.app/api/webhooks/resend` with the `email.bounced` and `email.complained` events, and put its signing secret (`whsec_…`) in `RESEND_WEBHOOK_SECRET`: a hard bounce or a spam complaint then stops all mail to that address, and the ficha says why. Without it the endpoint is a 404 and bounced addresses go on being mailed. The URL must be the base host itself: Resend does not follow a redirect.
-- **Object storage**: a bucket in R2 (or S3) per host, with object versioning on where the provider offers it. Production's is named `rakin-staging`, for the days when its host was called staging, and holds the gyms' proofs; renaming it would buy nothing and put those files at risk, so it keeps the name. Staging's is `rakin-staging-seed`. For each, create a key scoped to that bucket alone with object read and write for the api (`S3_*` in `.env`), and separately an admin token for the one-off CORS step below.
+- **Object storage**: a bucket in R2 (or S3) per host, with object versioning on where the provider offers it. Production's is `rakin-production` and holds the gyms' proofs; staging's is `rakin-staging`, which held production's files until 2026-11-19 and now holds the seed's alone. For each, create a key scoped to that bucket alone with object read and write for the api (`S3_*` in `.env`), and separately an admin token for the one-off CORS step below.
 - **Sentry**: an organisation on the **US region** (chosen at sign-up and fixed after; its DSNs end in `ingest.us.sentry.io`), as the DPA's annex and the privacy notices say (#430). The EU region was considered for #373 and not kept: the database and the email provider are in the United States already, and an event carries no personal data (#373), so moving Sentry to Germany would not keep anything out of the United States. A project for the api; its DSN goes in `SENTRY_DSN`, the same on both hosts. The api and the jobs both report there. Both hosts run `ENVIRONMENT=production`, so staging sets `SENTRY_ENVIRONMENT=staging` and its events say so; production leaves it empty and reports `production`. What an event leaves out is in `backend/app/sentry.py`.
 
 ## 3. The host's `.env`
@@ -164,7 +164,7 @@ If a check fails after the deploy, the job's summary prints the rollback line fo
 
 ### First deploy only: the bucket's CORS rule
 
-The browser PUTs proofs straight to the bucket, another origin than the app's, so the bucket must answer its preflight. After the first deploy on each host, on that host, with the **admin** token for this one run:
+The browser PUTs proofs straight to the bucket, another origin than the app's, so the bucket must answer its preflight. The rule is set once per bucket, either in the R2 dashboard (the bucket's Settings → CORS policy) or with `app.blob_cors --apply` and an admin key. With the command, after the first deploy on each host, on that host, with the **admin** token for this one run:
 
 ```sh
 cd /srv/rakin
@@ -176,7 +176,7 @@ unset S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY
 docker compose run --rm api python -m app.blob_cors --check   # the browser's preflight, PUT and GET
 ```
 
-The rule allows `PUT` and `GET` with a `Content-Type` header from `PUBLIC_BASE_URL`'s origin, and from every gym's host as `https://*.<BASE_DOMAIN>` ([`app/blob_cors.py`](../backend/app/blob_cors.py)). Re-run `--apply` if `PUBLIC_BASE_URL` or `BASE_DOMAIN` changes; a bucket set before `BASE_DOMAIN` existed needs it once, or proofs cannot be uploaded from a gym's host. Then the browser check: sign in on a gym's host as a student with an owed period (on staging, the seed's), upload a transfer proof from a phone, and see it in the admin's Validar comprobante queue. A CORS failure shows in the browser console as a blocked `PUT` to the bucket's host.
+The rule allows `PUT` and `GET` with a `Content-Type` header from `PUBLIC_BASE_URL`'s origin, and from every gym's host as `https://*.<BASE_DOMAIN>` ([`app/blob_cors.py`](../backend/app/blob_cors.py)). Re-run `--apply` if `PUBLIC_BASE_URL` or `BASE_DOMAIN` changes; a bucket set before `BASE_DOMAIN` existed needs it once, or proofs cannot be uploaded from a gym's host. `--apply` replaces the bucket's rules with that host's two origins. Production's bucket was set in the dashboard and allows four: `https://app.rakin.app`, `https://*.rakin.app`, `https://staging.rakin.app` and `https://*.staging.rakin.app`. Staging's allows its own two names only. Check with the dry run before you run `--apply` on production. Then the browser check: sign in on a gym's host as a student with an owed period (on staging, the seed's), upload a transfer proof from a phone, and see it in the admin's Validar comprobante queue. A CORS failure shows in the browser console as a blocked `PUT` to the bucket's host.
 
 ### The landing page: rakin.app
 
@@ -395,7 +395,7 @@ From [`deploy/.env.example`](../deploy/.env.example), with **every secret genera
 | `MOVED_FROM_DOMAIN` | empty |
 | `ENVIRONMENT`, `SENTRY_ENVIRONMENT` | `production` (secure cookies, secret checks), `staging` (so Sentry tells the hosts apart); same `SENTRY_DSN` |
 | `SECRET_KEY`, `FIELD_ENCRYPTION_KEY`, every `POSTGRES_*_PASSWORD` | its own |
-| `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | bucket `rakin-staging-seed`, and a token scoped to it alone. Apply its CORS rule once (`app.blob_cors --apply`, [above](#first-deploy-only-the-buckets-cors-rule)) |
+| `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | bucket `rakin-staging`, and a token scoped to it alone (production's is `rakin-production`). Apply its CORS rule once (`app.blob_cors --apply`, [above](#first-deploy-only-the-buckets-cors-rule)) |
 | `SMTP_PASSWORD` | a Resend API key of its own, named for staging |
 | `MAIL_ALLOW` | the team's own addresses: any other recipient is logged (`mail (not allowed, not sent)`), never sent. The seed's people have `example.com` addresses, which would bounce |
 | `RESEND_WEBHOOK_SECRET` | empty |
