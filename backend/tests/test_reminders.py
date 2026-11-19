@@ -25,6 +25,7 @@ from app.notices.whatsapp import (
 )
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_guardians import add_person, bill, new_kid
 from tests.test_plans import add_staff
@@ -114,7 +115,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia"))
 
 
 def listed(client: TestClient, gym: uuid.UUID, person: str | None = None) -> Any:
@@ -431,7 +432,7 @@ def test_only_a_period_on_the_list_is_reminded(
 def test_another_gyms_periods_are_not_listed_or_reminded(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("norte"))
     bill(db, norte, add_person(client, norte, "Bea Soto"), [(-1, 30000, 0, 0)])
     [theirs] = listed(client, norte)
 

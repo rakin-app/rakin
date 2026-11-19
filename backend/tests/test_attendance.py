@@ -21,7 +21,7 @@ from app.main import create_app
 from app.schemas.attendance import AttendanceChange
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_rut, unique_slug
 from tests.pg import (
     Database,
     in_gym,
@@ -87,7 +87,7 @@ def client(db: Database) -> Iterator[TestClient]:
 def gym(db: Database) -> uuid.UUID:
     """A gym of its own per test. Its seeded owner has a membership on a plan open to
     every class, so is on every roster."""
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def created(response: Any) -> Any:
@@ -330,7 +330,7 @@ def test_overdue_members_are_flagged_and_still_marked_even_for_a_coach(
 def test_the_overdue_lookup_is_the_current_gyms_only(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     bill(db, other, add_person(client, other, "Felipe Díaz"), [(-3, 45_000, 0, 0)])
     ours = run(db.api_url, in_gym(gym, "SELECT * FROM overdue_memberships()"))
     theirs = run(db.api_url, in_gym(other, "SELECT * FROM overdue_memberships()"))
@@ -413,7 +413,7 @@ def test_unknown_marks_and_sessions(client: TestClient, db: Database, gym: uuid.
     assert refused.json()["detail"][0]["type"] == "unknown_membership"
     assert change(client, gym, session, unmark=[SOMEONE]).status_code == 200
 
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     theirs = run(db.api_url, in_gym(other, "SELECT id FROM membership"))[0]["id"]
     assert change(client, gym, session, mark=[str(theirs)]).status_code == 422
     assert client.get(f"/api/sessions/{session}/roster", headers=as_gym(other)).status_code == 404
@@ -450,7 +450,7 @@ def test_another_gyms_attendance_is_invisible(
     session = session_of(client, gym, class_type(client, gym, program(client, gym, "Adultos")))
     membership = run(db.api_url, in_gym(gym, "SELECT id FROM membership"))[0]["id"]
     changed(client, gym, session, mark=[str(membership)])
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     assert len(run(db.api_url, in_gym(gym, "SELECT FROM attendance"))) == 1
     assert run(db.api_url, in_gym(other, "SELECT FROM attendance")) == []
     assert run(db.api_url, in_gym(None, "SELECT FROM attendance")) == []

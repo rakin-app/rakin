@@ -20,6 +20,7 @@ from app.main import create_app
 from app.seed.build import default_block_kind_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 from tests.test_attendance import join, plan
 from tests.test_class_timer import classes, ok
@@ -69,7 +70,7 @@ RENAME = "UPDATE block_kind SET name = $2 WHERE id = block_kind_default_id($1, '
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
     """A gym as `app.gyms create` makes one with no activity: its practice neutral."""
-    gym_id = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    gym_id = seed_gym(db, unique_slug("gym"))
     run(db.admin_url, in_gym(gym_id, RENAME, gym_id, NEUTRAL.block))
     return gym_id
 

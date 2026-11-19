@@ -26,6 +26,7 @@ from app.jobs import billing
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     Database,
     in_gym,
@@ -85,7 +86,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"sur-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("sur"))
 
 
 def ok(response: Any, code: int = 200) -> Any:
@@ -263,7 +264,7 @@ def test_a_void_needs_a_reason_and_a_period_with_no_money_on_it(
     waiting = void(client, gym, membership, second)
     assert (waiting.status_code, waiting.json()["detail"]["code"]) == (409, "pending")
 
-    elsewhere = seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}")
+    elsewhere = seed_gym(db, unique_slug("norte"))
     assert void(client, elsewhere, membership, second).status_code == 404
 
 

@@ -19,6 +19,7 @@ from app.main import create_app
 from app.notices import WELCOME, Notice, render
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, make_staff, migrate, run, seed_gym, throwaway_database
 
 RED, GREEN, BLUE = (255, 0, 0), (0, 160, 0), (0, 0, 255)
@@ -296,7 +297,7 @@ def test_what_is_no_logo_is_refused_and_changes_nothing(
     status: int,
     code: str,
 ) -> None:
-    gym = seed_gym(db, f"logo-no-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("logo-no"))
     got, body = upload(client, gym, data, content_type, query)
     assert (got, body["detail"]) == (status, code)
     assert client.get("/api/gym/settings", headers=as_gym(gym)).json()["logo"] is None

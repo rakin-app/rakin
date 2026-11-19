@@ -18,7 +18,7 @@ from app.main import create_app
 from app.schemas.grading import PRESETS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_phone, random_rut
+from tests.ids import random_phone, random_rut, unique_slug
 from tests.pg import (
     Database,
     make_staff,
@@ -49,7 +49,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def new_phone() -> str:
@@ -385,7 +385,7 @@ def test_bad_parameters_are_refused(
 def test_another_gyms_members_are_not_listed(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("other"))
     phone = new_phone()
     shared = add_person(client, other, "Pedro de Norte", phone=phone, rut="7.654.321-6")
     join(db, other, shared, mensual(db, other), "active")

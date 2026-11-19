@@ -23,6 +23,7 @@ from app.main import create_app
 from app.schemas.sessions import MAX_NOTES, MAX_TOPIC, SessionCreate, SessionUpdate
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_plans import add_staff
 from tests.test_schedule import add_slot
@@ -101,7 +102,7 @@ def client(db: Database) -> Iterator[TestClient]:
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
     """A gym of its own per test, so a day holds exactly what the test started."""
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def class_type(client: TestClient, gym: uuid.UUID, name: str = "Fundamentos") -> dict[str, Any]:
@@ -388,7 +389,7 @@ def test_the_coach_may_be_someone_else_on_staff(
         )
 
     run(db.admin_url, add_member)
-    elsewhere = add_staff(db, seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}"), "coach")
+    elsewhere = add_staff(db, seed_gym(db, unique_slug("gym")), "coach")
     for person in (member, elsewhere, uuid.uuid4()):
         refused = start(client, gym, {"class_type_id": fundamentals["id"], "coach_id": str(person)})
         assert refused.status_code == 422, refused.text
@@ -427,7 +428,7 @@ def test_a_coach_who_left_stays_the_coach_of_their_sessions(
 def test_a_session_needs_one_of_the_gyms_active_class_types(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    theirs = class_type(client, seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}"))
+    theirs = class_type(client, seed_gym(db, unique_slug("gym")))
     old = class_type(client, gym, "Viejo")
     client.patch(f"/api/class-types/{old['id']}", json={"active": False}, headers=as_gym(gym))
 
@@ -447,7 +448,7 @@ def test_a_session_needs_one_of_the_gyms_active_class_types(
 def test_another_gyms_sessions_are_not_found(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     session = started(client, gym, {"class_type_id": class_type(client, gym)["id"]})
     path = f"/api/sessions/{session['id']}"
     assert client.get(path, headers=as_gym(other)).status_code == 404
@@ -569,7 +570,7 @@ def test_another_gyms_unmarked_classes_are_not_listed(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     started(client, gym, {"class_type_id": class_type(client, gym)["id"]})
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     assert len(unmarked(client, gym)["sessions"]) == 1
     assert unmarked(client, other)["sessions"] == []
 
@@ -581,7 +582,7 @@ def test_another_gyms_unmarked_classes_are_not_listed(
 def test_a_row_cannot_name_another_gyms_class_type_or_coach(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     ours, theirs = class_type(client, gym), class_type(client, other)
     insert = (
         "INSERT INTO session (gym_id, class_type_id, starts_at, coach_id)"

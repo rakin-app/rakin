@@ -46,6 +46,7 @@ from app.permissions import (
 from app.tenancy import TenantSession
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     Database,
     make_staff,
@@ -189,7 +190,7 @@ def client(db: Database) -> Iterator[TestClient]:
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
     """A gym with the Academia roles, and the Club federado ones beside them."""
-    gym_id = seed_gym(db, f"club-{uuid.uuid4().hex[:6]}")
+    gym_id = seed_gym(db, unique_slug("club"))
 
     async def query(conn: asyncpg.Connection) -> None:
         for sort, title in enumerate((PRESIDENTE, TESORERO, SECRETARIO, DIRECTOR, DELEGADO)):

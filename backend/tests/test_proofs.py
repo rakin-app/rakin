@@ -27,6 +27,7 @@ from app.schemas.plans import MAX_PRICE_CLP
 from app.schemas.proofs import MAX_SPLIT, ProofClaim, ProofUploadRequest, SplitClaim
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 from tests.test_guardians import add_person, bill, new_kid
 from tests.test_plans import add_staff
@@ -158,7 +159,7 @@ def client(
 
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-sur-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia-sur"))
 
 
 def me(person: str) -> uuid.UUID:
@@ -228,7 +229,7 @@ def test_an_upload_from_a_gyms_subdomain_stays_on_that_host(
         )
     )
     app.add_middleware(FakeAuth)
-    slug = f"academia-sur-{uuid.uuid4().hex[:6]}"
+    slug = unique_slug("academia-sur")
     gym = seed_gym(db, slug)
     with TestClient(app, base_url=f"http://{slug}.localhost:8094") as on_gym:
         ana = add_person(on_gym, gym, "Ana")
@@ -397,7 +398,7 @@ def test_another_persons_period_is_not_found(
 
 @pg
 def test_another_gyms_period_is_not_found(client: TestClient, db: Database, sur: uuid.UUID) -> None:
-    norte = seed_gym(db, f"dojo-norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("dojo-norte"))
     ana = add_person(client, norte, "Ana")
     bill(db, norte, ana, [(0, 30000, 0, 0)])
     [theirs] = periods(client, norte, ana)

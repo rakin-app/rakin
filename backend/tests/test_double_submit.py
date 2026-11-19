@@ -28,7 +28,7 @@ from app.main import create_app
 from app.permissions import preset_title_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_rut, unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_guardians import add_person
 from tests.test_join import adult, roomy_limits, with_privacy
@@ -77,7 +77,7 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def keyed(key: str, headers: dict[str, str] | None = None) -> dict[str, str]:
@@ -222,7 +222,7 @@ def test_a_key_is_the_gyms_and_the_persons(
 ) -> None:
     """The same key from another gym, or another person, is another submission."""
     key = str(uuid.uuid4())
-    other_gym = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other_gym = seed_gym(db, unique_slug("gym"))
     admin = add_staff(db, gym, "admin")
     for where in (gym, other_gym):
         assert pay(client, where, new_period(db, where), key).status_code == 201
@@ -356,7 +356,7 @@ def test_a_scope_sees_only_its_own_keys(db: Database, gym: uuid.UUID) -> None:
 
 @pytest.fixture
 def importing(client: TestClient, db: Database) -> uuid.UUID:
-    gym_id = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    gym_id = seed_gym(db, unique_slug("gym"))
     for plan in PLANS:
         response = client.post("/api/plans", json=plan, headers=as_gym(gym_id))
         assert response.status_code == 201, response.text

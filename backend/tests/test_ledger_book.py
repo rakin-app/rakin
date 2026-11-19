@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     Database,
     migrate,
@@ -57,7 +58,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-sur-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia-sur"))
 
 
 def book(client: TestClient, gym: uuid.UUID, person: uuid.UUID | None = None, **params: Any) -> Any:
@@ -495,7 +496,7 @@ def test_a_coach_cannot_read_it(client: TestClient, db: Database, sur: uuid.UUID
 def test_another_gyms_entries_are_not_in_it(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    norte = seed_gym(db, f"academia-norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("academia-norte"))
     bill(db, norte, add_person(client, norte, "Bea"), [(-5, 30000, 0, 9000)])
 
     found = read(client, sur)

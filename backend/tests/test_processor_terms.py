@@ -21,6 +21,7 @@ from app.db_bootstrap import to_dsn
 from app.gyms import PROCESSOR_TERMS_VERSION, Signing, sign_terms
 from app.gyms import parse as parse_command
 from tests.conftest import require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, throwaway_database
 from tests.test_gym_hosts import ARGS, SIGNED_TODAY, create, new_gym, parse_gym
 
@@ -129,7 +130,7 @@ SIGNED_ON = date.fromisoformat(PROCESSOR_TERMS_VERSION)
 
 @pytest.mark.postgres
 def test_a_gym_created_with_the_terms_has_them_recorded(db: Database) -> None:
-    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(
+    gym = new_gym(unique_slug("meta")).model_copy(
         update={"processor_terms": PROCESSOR_TERMS_VERSION, "signed_on": SIGNED_ON}
     )
     created = create(db, gym)
@@ -138,13 +139,13 @@ def test_a_gym_created_with_the_terms_has_them_recorded(db: Database) -> None:
 
 @pytest.mark.postgres
 def test_a_gym_created_without_them_has_none(db: Database) -> None:
-    created = create(db, new_gym(f"meta-{uuid.uuid4().hex[:6]}"))
+    created = create(db, new_gym(unique_slug("meta")))
     assert signatures(db, created.gym_id) == []
 
 
 @pytest.mark.postgres
 def test_a_gym_that_exists_signs_them_once(db: Database) -> None:
-    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}")
+    gym = new_gym(unique_slug("meta"))
     created = create(db, gym)
     signing = Signing(slug=gym.slug, processor_terms=PROCESSOR_TERMS_VERSION, signed_on=SIGNED_ON)
 
@@ -159,7 +160,7 @@ def test_a_gym_that_exists_signs_them_once(db: Database) -> None:
 @pytest.mark.postgres
 def test_no_gym_with_the_slug_signs_nothing(db: Database) -> None:
     signing = Signing(
-        slug=f"nadie-{uuid.uuid4().hex[:6]}",
+        slug=unique_slug("nadie"),
         processor_terms=PROCESSOR_TERMS_VERSION,
         signed_on=SIGNED_ON,
     )
@@ -170,11 +171,11 @@ def test_no_gym_with_the_slug_signs_nothing(db: Database) -> None:
 def test_a_gym_sees_only_its_own_signatures(db: Database) -> None:
     ours = create(
         db,
-        new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(
+        new_gym(unique_slug("meta")).model_copy(
             update={"processor_terms": PROCESSOR_TERMS_VERSION, "signed_on": SIGNED_ON}
         ),
     )
-    other = create(db, new_gym(f"otro-{uuid.uuid4().hex[:6]}"))
+    other = create(db, new_gym(unique_slug("otro")))
 
     async def seen_from(conn: asyncpg.Connection, gym_id: uuid.UUID) -> int:
         async with conn.transaction():

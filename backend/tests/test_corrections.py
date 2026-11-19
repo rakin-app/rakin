@@ -26,6 +26,7 @@ from app.main import create_app
 from app.schemas.ledger import Figures
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_member_roll import count, forget
 from tests.test_plans import add_staff
@@ -51,7 +52,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"sur-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("sur"))
 
 
 def audit_rows(db: Database, gym: uuid.UUID, person: str) -> list[Any]:
@@ -193,7 +194,7 @@ def test_the_ficha_lists_corrections_newest_first(
     # Another person's are not theirs; another gym sees none.
     other, _ = member(client, gym)
     assert ok(corrections(client, gym, other)) == {"total": 0, "items": []}
-    elsewhere = seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}")
+    elsewhere = seed_gym(db, unique_slug("norte"))
     assert ok(corrections(client, elsewhere, person))["total"] == 0
 
 
@@ -235,7 +236,7 @@ def test_an_admin_writes_a_correction_only_as_themselves_in_their_gym(
     with pytest.raises(refused):
         run(db.api_url, in_gym(gym, insert_sql(), other_admin, them, person=admin))
     # In another gym, where they are not staff, or of a person not of this gym.
-    elsewhere = seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}")
+    elsewhere = seed_gym(db, unique_slug("norte"))
     other_gym = (
         "INSERT INTO audit_event (gym_id, actor_id, person_id, action, reason)"
         " VALUES ($1, $2, $3, 'ledger_corrected', 'x')"

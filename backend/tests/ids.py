@@ -59,3 +59,13 @@ def random_email() -> str:
 
 def random_phone() -> str:
     return f"+569{next(_phones):08d}"
+
+
+def unique_slug(prefix: str) -> str:
+    """A gym slug no other gym in the run holds: `prefix` and a full `uuid4().hex`.
+
+    The whole 128 bits, not a few hex digits: a run seeds hundreds of gyms into one
+    database, and six hex digits (24 bits) met there, which `gym_slug_key` refuses
+    (#335). A prefix of up to 30 characters keeps it a host label (63 at most).
+    """
+    return f"{prefix}-{uuid.uuid4().hex}"

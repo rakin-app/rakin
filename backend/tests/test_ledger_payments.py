@@ -24,6 +24,7 @@ from app.schemas.ledger import PaymentRecord
 from app.schemas.plans import MAX_PRICE_CLP
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_plans import add_staff
 from tests.test_proofs import RecordingMailer, sent_notices
@@ -136,7 +137,7 @@ def entries(db: Database, period: dict[str, str]) -> list[dict[str, Any]]:
 
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-sur-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia-sur"))
 
 
 @pg
@@ -268,7 +269,7 @@ def test_a_period_already_paid_in_full_is_a_conflict(
 
 @pg
 def test_another_gyms_period_is_not_found(client: TestClient, db: Database, sur: uuid.UUID) -> None:
-    norte = seed_gym(db, f"dojo-norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("dojo-norte"))
     theirs = new_period(db, norte)
 
     response = record(client, sur, {**theirs, "amount_clp": 45_000, "method": "cash"})

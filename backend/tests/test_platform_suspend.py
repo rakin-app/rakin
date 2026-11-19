@@ -23,6 +23,7 @@ from app.magiclink.tokens import hash_token
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
 from app.platform import removal
 from app.platform.session import COOKIE_NAME as PLATFORM_COOKIE
+from tests.ids import unique_slug
 from tests.pg import run, seed_gym
 from tests.test_gym_hosts import BASE, SIGNED_TODAY, Site, address, person_in
 from tests.test_platform_auth import Panel, as_gym_site
@@ -73,7 +74,7 @@ def resumed(panel: Panel, gym_id: uuid.UUID) -> None:
 
 def two_gyms(panel: Panel) -> Site:
     """The panel's gym, and another, as a gym's site sees them."""
-    slug_b = f"sur-{uuid.uuid4().hex[:6]}"
+    slug_b = unique_slug("sur")
     gym_b = seed_gym(panel.db, slug_b)
     return Site(panel.db, panel.app, panel.outbox, panel.gym_a, gym_b, panel.slug_a, slug_b)
 

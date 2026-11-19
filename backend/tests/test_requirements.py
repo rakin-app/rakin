@@ -15,6 +15,7 @@ from app.domain.dates import add_months
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_custom_fields import Gym, staffed
 
@@ -108,7 +109,7 @@ def test_the_owner_defines_requirements_with_their_defaults(
 def test_a_requirement_needs_a_name_and_a_length(
     client: TestClient, db: Database, body: Any
 ) -> None:
-    gym = staffed(db, f"rq-bad-{uuid.uuid4().hex[:6]}")
+    gym = staffed(db, unique_slug("rq-bad"))
     assert client.post(LIST, json=body, headers=gym.owner).status_code == 422
 
 

@@ -23,6 +23,7 @@ from app.jobs import billing, lapse
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_member_roll import enrolled, memberships, plan
 
@@ -46,7 +47,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"sur-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("sur"))
 
 
 def ok(response: Any, code: int = 200) -> Any:
@@ -201,7 +202,7 @@ def test_a_quote_for_someone_not_in_the_gym_is_a_404(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     plan_id = plan(client, gym, "first")
-    elsewhere = enrolled(client, seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}"), name="Luis Mora")
+    elsewhere = enrolled(client, seed_gym(db, unique_slug("norte")), name="Luis Mora")
     for person in (elsewhere["id"], str(uuid.uuid4())):
         params = {"person_id": person, "plan_id": plan_id}
         response = client.get("/api/memberships/start", params=params, headers=as_gym(gym))
