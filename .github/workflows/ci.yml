@@ -145,6 +145,7 @@ jobs:
       - uses: actions/checkout@v7
       - run: shellcheck deploy/*.sh
       - run: deploy/test-deploy.sh
+      - run: deploy/test-reset-staging.sh
       - run: deploy/test-hosted.sh
 
   dco:
