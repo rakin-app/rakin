@@ -142,15 +142,39 @@ echo "ok   - the landing page, its privacy notice (no drafting notes), a capture
 compose ps --services --status running | grep -qx backup
 echo "ok   - with COMPOSE_PROFILES=backup, up starts the backup service"
 
+# Staging's nightly reset (#469), on this stack as on the staging host: seed
+# data only, so it drops the database and reseeds it. The seed's proof files go
+# to a local store here, since S3 is never reached.
+cp "$root/deploy/reset-staging.sh" "$root/deploy/smoke.sh" "$dir/"
+sed -i.bak -e 's|^SEED_ONLY=.*|SEED_ONLY=1|' -e 's|^BLOB_STORE=.*|BLOB_STORE=local|' "$dir/.env"
+rm "$dir/.env.bak"
+echo 'STAGING_OPERATORS=pm@example.com' >>"$dir/.env"
+(cd "$dir" && ./reset-staging.sh)
+gyms() { compose exec -T postgres psql -U rakin -d rakin -tA -c 'SELECT slug FROM gym ORDER BY slug'; }
+[ "$(gyms)" = academia-sur ]
+[ "$(compose exec -T postgres psql -U rakin -d rakin -tA -c 'SELECT email FROM platform_operator')" = pm@example.com ]
+grep -q 'reset: done: academia-sur reseeded, 1 operator(s) granted' "$dir/reset.log"
+echo "ok   - reset-staging.sh drops, migrates and reseeds a seed-only database, and grants its operators"
+
 # Backup and restore: a gym's rows go into a backup, and come back out of it.
 compose run --rm api python -m app.gyms create --slug meta --name Meta \
 	--owner-email owner@example.com --owner-name Owner --owner-phone "+56 9 1234 5678" \
 	--processor-terms 2026-11-18 --signed-on 2026-11-18
+# With a gym that is not the seed's, the reset refuses and the gym stays.
+if (cd "$dir" && ./reset-staging.sh) >/dev/null 2>&1; then
+	echo "test-hosted: reset-staging.sh dropped a database holding meta" >&2
+	exit 1
+fi
+grep -qx meta <<<"$(gyms)"
+grep -q "reset: refusing: the database holds gyms that are not the seed's: meta" "$dir/reset.log"
+echo "ok   - reset-staging.sh refuses a database holding a gym that is not the seed's"
+
 compose run --rm backup python -m app.backup run
 compose run --rm backup python -m app.backup status
 out=$(cd "$dir" && "$root/deploy/restore.sh" latest <<<"$identity")
 echo "$out"
-grep -q '^ok   - public.gym: 1 rows$' <<<"$out"
+# The seed's gym, from the reset above, and meta.
+grep -q '^ok   - public.gym: 2 rows$' <<<"$out"
 grep -q 'every count matches$' <<<"$out"
 echo "ok   - a backup restores into a scratch database, every row accounted for"
 
