@@ -15,8 +15,9 @@
 # real gym. Then it stops api, jobs and caddy, drops and recreates the
 # database, bootstraps and migrates it (the `migrate` one-shot), loads the
 # seed, grants platform operator to every address in STAGING_OPERATORS
-# (comma-separated, in .env), starts everything and runs smoke.sh. Every run
-# is appended to reset.log.
+# (comma-separated, in .env), starts everything and runs smoke.sh. Every run,
+# refusals included, is appended to reset.log. It holds deploy.lock, as
+# deploy.sh does, so a reset and a deploy never run together.
 set -Eeuo pipefail
 
 # The seed's gyms (backend/app/seed/data.py, GYM_SLUG); test-reset-staging.sh
@@ -29,50 +30,58 @@ RESET_TZ=America/Santiago
 RESET_HOUR=05
 CRON_LINE="0 * * * * $(cd "$(dirname "$0")" && pwd)/$(basename "$0") --cron >/dev/null 2>&1"
 
-usage() { echo "usage: $0 [--cron | --install-cron]" >&2; exit 2; }
 mode=now
 case ${1:-} in
 	"") ;;
 	--cron) mode=cron ;;
 	--install-cron) mode=install ;;
-	*) usage ;;
+	*) mode=bad ;;
 esac
-[ $# -le 1 ] || usage
+[ $# -le 1 ] || mode=bad
 
 cd "$(dirname "$0")"
 docker=${DOCKER:-docker}
 crontab=${CRONTAB:-crontab}
+flock=${FLOCK:-flock}
 
-[ -f .env ] || { echo "reset: no .env in $PWD" >&2; exit 1; }
-# .env is read, never sourced: values such as MAIL_FROM hold `<` and spaces.
-env_of() { sed -n "s/^$1=//p" .env | tail -n 1; }
-seed_only=$(env_of SEED_ONLY | tr '[:upper:]' '[:lower:]')
-case $seed_only in
-	1 | true | yes | on) ;;
-	*)
-		echo "reset: refusing: .env has no SEED_ONLY=1, so this is not the staging host" >&2
-		exit 1
-		;;
-esac
-
-if [ $mode = install ]; then
-	{ "$crontab" -l 2>/dev/null | grep -vF "$(basename "$0") --cron" || true; echo "$CRON_LINE"; } | "$crontab" -
-	echo "reset: crontab runs $CRON_LINE"
-	exit 0
-fi
+# The other 23 hourly runs are not runs at all: nothing to log.
 if [ $mode = cron ] && [ "$(TZ=$RESET_TZ date +%H)" != $RESET_HOUR ]; then
 	exit 0
 fi
 
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) reset: $*"; }
+# A refusal goes to reset.log like everything else: --cron sends stdout and
+# stderr to /dev/null, so the log is the only place a refused night shows.
+refuse() { log "refusing: $*"; exit "${refusal_status:-1}"; }
+# .env is read, never sourced: values such as MAIL_FROM hold `<` and spaces.
+env_of() { sed -n "s/^$1=//p" .env | tail -n 1; }
 
 reset() {
+	[ $mode != bad ] || { refusal_status=2; refuse "usage: $0 [--cron | --install-cron]"; }
+	[ -f .env ] || refuse "no .env in $PWD"
+	seed_only=$(env_of SEED_ONLY | tr '[:upper:]' '[:lower:]')
+	case $seed_only in
+		1 | true | yes | on) ;;
+		*) refuse ".env has no SEED_ONLY=1, so this is not the staging host" ;;
+	esac
+
+	if [ $mode = install ]; then
+		{ "$crontab" -l 2>/dev/null | grep -vF "$(basename "$0") --cron" || true; echo "$CRON_LINE"; } | "$crontab" -
+		log "crontab runs $CRON_LINE"
+		return 0
+	fi
+
+	# One at a time with deploy.sh, which takes the same lock: a deploy that
+	# lands mid-reset would migrate a database being dropped.
+	exec 9>>deploy.lock
+	"$flock" -w "${LOCK_WAIT_SECONDS:-600}" 9 || refuse "a deploy holds $PWD/deploy.lock"
+
 	ident='^[A-Za-z_][A-Za-z0-9_]{0,62}$'
 	pg_user=$(env_of POSTGRES_USER); pg_user=${pg_user:-rakin}
 	pg_db=$(env_of POSTGRES_DB); pg_db=${pg_db:-rakin}
-	[[ $pg_user =~ $ident && $pg_db =~ $ident ]] || { log "refusing: odd POSTGRES_USER or POSTGRES_DB in .env"; exit 1; }
+	[[ $pg_user =~ $ident && $pg_db =~ $ident ]] || refuse "odd POSTGRES_USER or POSTGRES_DB in .env"
 	base_url=$(env_of PUBLIC_BASE_URL)
-	[ -n "$base_url" ] || { log "refusing: .env has no PUBLIC_BASE_URL to smoke-test"; exit 1; }
+	[ -n "$base_url" ] || refuse ".env has no PUBLIC_BASE_URL to smoke-test"
 	operators=$(env_of STAGING_OPERATORS | tr -d ' ')
 
 	compose() { "$docker" compose "$@"; }
@@ -107,10 +116,7 @@ reset() {
 		for s in "${SEED_SLUGS[@]}"; do [ "$slug" = "$s" ] && seed=1; done
 		[ $seed = 1 ] || foreign="$foreign $slug"
 	done
-	if [ -n "$foreign" ]; then
-		log "refusing: the database holds gyms that are not the seed's:$foreign"
-		exit 1
-	fi
+	[ -z "$foreign" ] || refuse "the database holds gyms that are not the seed's:$foreign"
 
 	stage=stopping
 	compose stop api jobs caddy

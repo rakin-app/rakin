@@ -146,6 +146,9 @@ echo "ok   - with COMPOSE_PROFILES=backup, up starts the backup service"
 # data only, so it drops the database and reseeds it. The seed's proof files go
 # to a local store here, since S3 is never reached.
 cp "$root/deploy/reset-staging.sh" "$root/deploy/smoke.sh" "$dir/"
+# The hosts and CI have util-linux's flock; a laptop may not, and the lock
+# has nothing to guard against here.
+command -v flock >/dev/null || export FLOCK=true
 sed -i.bak -e 's|^SEED_ONLY=.*|SEED_ONLY=1|' -e 's|^BLOB_STORE=.*|BLOB_STORE=local|' "$dir/.env"
 rm "$dir/.env.bak"
 echo 'STAGING_OPERATORS=pm@example.com' >>"$dir/.env"

@@ -32,11 +32,17 @@ tab=$(dirname "$0")/tab
 if [ "$1" = -l ]; then cat "$tab" 2>/dev/null; else cat >"$tab.new" && mv "$tab.new" "$tab"; fi
 SH
 mkdir "$dir/bin"
+# flock: records its call, and fails as a held lock would while LOCK_HELD is set.
+cat >"$dir/bin/flock" <<'SH'
+#!/usr/bin/env bash
+echo "flock $*" >>"$(dirname "$0")/../calls"
+[ -z "${LOCK_HELD:-}" ]
+SH
 cat >"$dir/bin/date" <<'SH'
 #!/usr/bin/env bash
 if [ "$*" = +%H ]; then echo "${HOUR:?}"; else exec /bin/date "$@"; fi
 SH
-chmod +x "$dir/docker" "$dir/smoke.sh" "$dir/crontab" "$dir/bin/date"
+chmod +x "$dir/docker" "$dir/smoke.sh" "$dir/crontab" "$dir/bin/flock" "$dir/bin/date"
 export DOCKER=$dir/docker CRONTAB=$dir/crontab PATH="$dir/bin:$PATH"
 
 fails=0
@@ -49,6 +55,7 @@ refused() { ! run "$@"; }
 called() { grep -q -- "$1" "$dir/calls"; }
 not_called() { ! called "$1"; }
 nothing_called() { [ ! -s "$dir/calls" ]; }
+no_docker_called() { ! grep -qv '^flock ' "$dir/calls"; }
 line_of() { grep -n -- "$1" "$dir/calls" | head -n 1 | cut -d: -f1; }
 in_order() { # in_order <call>...: each first appears after the one before
   local prev=0 n
@@ -64,14 +71,28 @@ check "the seed slugs are the seed's (backend/app/seed/data.py)" \
   [ "$(sed -n 's/^SEED_SLUGS=(\(.*\))$/\1/p' "$src/reset-staging.sh")" = \
     "$(sed -n 's/^GYM_SLUG = "\(.*\)"$/\1/p' "$src/../backend/app/seed/data.py")" ]
 
+# Every refusal reaches reset.log: --cron sends stdout and stderr to /dev/null.
 check "refuses to run without .env" refused
+check "and logs it" logged "refusing: no .env in"
+check "refuses an unknown argument" refused --now
+check "and logs it" logged "refusing: usage:"
+check "exits 2 for it" [ "$("$dir/reset-staging.sh" --now >/dev/null 2>&1; echo $?)" = 2 ]
 env_file
 check "refuses without SEED_ONLY" refused
 check "says why" said "SEED_ONLY=1"
+check "and logs it" logged "refusing: .env has no SEED_ONLY=1"
 check "touches nothing then" nothing_called
+HOUR=05 check "--cron refuses without SEED_ONLY too" refused --cron
+check "and logs it, its only trace" logged "refusing: .env has no SEED_ONLY=1"
 env_file SEED_ONLY=false
 check "refuses with SEED_ONLY=false" refused
-check "refuses an unknown argument" refused --now
+printf '%s\n' SEED_ONLY=1 >"$dir/.env"
+check "refuses without PUBLIC_BASE_URL" refused
+check "and logs it" logged "refusing: .env has no PUBLIC_BASE_URL"
+env_file SEED_ONLY=1
+LOCK_HELD=1 check "refuses while a deploy holds the lock" refused
+check "and logs it" logged "refusing: a deploy holds"
+check "and runs no docker" no_docker_called
 env_file SEED_ONLY=1 'STAGING_OPERATORS=pm@rakin.app, owner@rakin.app'
 
 GYMS="academia-sur meta" check "refuses when a gym is not the seed's" refused
@@ -84,6 +105,8 @@ check "and drops nothing" not_called "DROP DATABASE"
 check "and says nothing was stopped" said "nothing was stopped or dropped"
 
 check "resets a seed-only database" run
+check "the lock is taken before any docker call" [ "$(line_of flock)" = 1 ]
+check "on the deploy's lock file" called "flock -w 600 9"
 check "the steps run in order" in_order "up -d --wait postgres" "stop api jobs caddy" \
   'DROP DATABASE IF EXISTS "rakin" WITH (FORCE)' 'CREATE DATABASE "rakin"' \
   "compose --profile migrate run --rm migrate" "run --rm api python -m app.seed" \
@@ -110,6 +133,7 @@ SMOKE_FAILS=1 check "a failed smoke fails the reset" refused
 
 HOUR=14 run --cron
 check "--cron outside the 05:00 hour does nothing" nothing_called
+check "and logs nothing" [ ! -s "$dir/reset.log" ]
 HOUR=05 run --cron
 check "--cron in the 05:00 hour resets" called "smoke https://stage.test"
 

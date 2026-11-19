@@ -14,7 +14,14 @@ echo "RAKIN_TAG=$RAKIN_TAG $*" >>"$(dirname "$0")/calls"
 if [ -n "${FAIL_ON:-}" ] && [[ "$*" == *"$FAIL_ON"* ]]; then exit 1; fi
 SH
 chmod +x "$dir/docker"
-export DOCKER=$dir/docker
+# flock: records its call, and fails as a held lock would while LOCK_HELD is set.
+cat >"$dir/flock" <<'SH'
+#!/usr/bin/env bash
+echo "flock $*" >>"$(dirname "$0")/calls"
+[ -z "${LOCK_HELD:-}" ]
+SH
+chmod +x "$dir/flock"
+export DOCKER=$dir/docker FLOCK=$dir/flock
 
 fails=0
 check() { # check <description> <command...>
@@ -73,6 +80,15 @@ check "a first deploy's failure names no placeholder" not_said "<v0.1.0>"
 run v1
 check "a first deploy replaces the placeholder" tag_in_env v1
 check "a first deploy is logged with no previous tag" last_release_is "$(printf 'deploy\tv1\t-')"
+
+LOCK_HELD=1 run v3 || true
+check "a deploy waits for the lock reset-staging.sh takes" called "flock -w 600 9"
+check "a deploy that never gets it changes nothing" not_called "compose"
+check "and leaves .env on the live tag" tag_in_env v1
+check "and says so" said "deploy.lock is still held"
+run v3
+check "the lock is taken before any docker call" [ "$(line_of flock)" = 1 ]
+run --rollback v1
 
 FAIL_ON="image prune" check "a failed image prune does not fail the deploy" run v2
 check "a failed image prune still records the release" tag_in_env v2
