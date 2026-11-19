@@ -15,6 +15,7 @@
 #  3. `alembic current` in the api equals that image's `alembic heads` (not
 #     after a rollback: an older image does not know the newer revisions);
 #  4. the api and jobs logged no ERROR in the last VERIFY_LOG_SINCE (5m).
+# They run under deploy.lock, as deploy.sh does, so never during a reset.
 # Any failure exits non-zero and ends with the rollback line for this host.
 # The workflow runs check 1 alone before it backs up or deploys, by piping
 # this script to `bash -s` in /srv/rakin.
@@ -88,6 +89,13 @@ if [ "${1:-}" = "--rollback" ]; then rollback=1; shift; fi
 environment=$1 tag=$2
 case $environment in staging | production) ;; *) usage ;; esac
 is_tag "$tag" || { echo "verify: bad tag '$tag'" >&2; exit 2; }
+
+# The lock deploy.sh and staging's nightly reset-staging.sh take: a reset
+# that started after deploy.sh let go would stop the api under these checks.
+# It waits out a reset (seconds), which leaves the stack up on this release.
+exec 9>>deploy.lock
+"${FLOCK:-flock}" -w "${LOCK_WAIT_SECONDS:-600}" 9 \
+	|| { echo "verify: $PWD/deploy.lock is still held (reset-staging.sh?); nothing checked" >&2; exit 1; }
 
 check_host "$environment"
 

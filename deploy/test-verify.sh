@@ -21,8 +21,14 @@ case "$*" in
   *) exit 1 ;;
 esac
 SH
-chmod +x "$dir/docker"
-export DOCKER=$dir/docker
+# flock: records its call, and fails as a held lock would while LOCK_HELD is set.
+cat >"$dir/flock" <<'SH'
+#!/usr/bin/env bash
+echo "flock $*" >>"$(dirname "$0")/calls"
+[ -z "${LOCK_HELD:-}" ]
+SH
+chmod +x "$dir/docker" "$dir/flock"
+export DOCKER=$dir/docker FLOCK=$dir/flock
 
 healthy() {
   export PS='caddy ghcr.io/rakin-app/rakin-web:v2\napi ghcr.io/rakin-app/rakin-api:v2\njobs ghcr.io/rakin-app/rakin-api:v2\npostgres postgres:17\n'
@@ -55,6 +61,19 @@ check "production passes a healthy release" run production v2
 check "names each check it passed" said "ok   - alembic current is the release's head (0079)"
 staging_env
 check "staging passes a healthy release" run staging v2
+
+# The lock deploy.sh and reset-staging.sh take.
+line_of() { grep -n -- "$1" "$dir/calls" | head -n 1 | cut -d: -f1; }
+production_env
+run production v2
+check "verify waits for the lock reset-staging.sh takes" grep -qxF "flock -w 600 9" "$dir/calls"
+check "the lock is taken before any docker call" [ "$(line_of flock)" = 1 ]
+LOCK_HELD=1 check "refuses while the lock is held" refused production v2
+check "and says so" said "deploy.lock is still held"
+check "and checks nothing" [ "$(cat "$dir/calls")" = "flock -w 600 9" ]
+LOCK_WAIT_SECONDS=5 run production v2
+check "the wait is LOCK_WAIT_SECONDS" grep -qxF "flock -w 5 9" "$dir/calls"
+check "--check-host takes no lock" sh -c "cd '$dir' && : >calls && ./verify.sh --check-host production >/dev/null && ! grep -q flock calls"
 
 # 1. The host is the environment's.
 production_env

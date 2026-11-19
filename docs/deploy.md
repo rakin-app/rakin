@@ -368,7 +368,7 @@ It **refuses** unless `.env` has `SEED_ONLY=1`, and refuses if the database hold
 
 Every run, refusals included, is appended to `/srv/rakin/reset.log`: the cron line discards the script's output, so the log is the only place a refused night shows. A failure says which step it stopped at; read the lines above it, then run `./reset-staging.sh` by hand. **If the seed's dates on staging look stale, read `reset.log` first:** a gym that is not the seed's (someone created one on staging) makes every night refuse, and the log names it. Staging never holds a gym's real data, so once the PM has checked that gym is a test, drop the database by hand (`docker compose exec postgres dropdb -U rakin --force rakin`) and run `./reset-staging.sh`: a missing database holds no gym, so it goes ahead, and so does every night after.
 
-A reset and a deploy never run together: both take `/srv/rakin/deploy.lock` (`flock`), and each waits up to 10 minutes for the other. A deploy that lands at 05:00 waits out the reset, which takes seconds.
+A reset and a deploy never run together: both take `/srv/rakin/deploy.lock` (`flock`), and each waits up to 10 minutes for the other. A deploy that lands at 05:00 waits out the reset, which takes seconds. `verify.sh` takes the same lock, so a reset that starts after `deploy.sh` finishes never runs under its checks: they wait for it and then check the stack the reset left up.
 
 ```sh
 ./reset-staging.sh          # reset now
