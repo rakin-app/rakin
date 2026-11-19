@@ -351,7 +351,11 @@ export function Students() {
             <EmptyState>{filtered ? copy.noMatches : copy.empty}</EmptyState>
           </Card>
         ) : (
-          <Card as="div" flush className={cx(readsLedger(access.data) && 'students__table--pays')}>
+          <Card
+            as="div"
+            flush
+            className={cx('students__table', readsLedger(access.data) && 'students__table--pays')}
+          >
             {/* The columns' labels, over a desktop's one-line rows; the list is still a list. */}
             <div className="students__columns" aria-hidden="true">
               <span>{copy.columns.name}</span>
