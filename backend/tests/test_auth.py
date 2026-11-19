@@ -387,14 +387,13 @@ def test_a_code_works_until_its_misses_run_out(db: Database, people: People) -> 
 
     async def check(store: PostgresStore) -> None:
         await store.add_link(link, str(people.ana), ANA, expires_at, code)
-        found = await store.code_link(code)
-        assert found is not None
+        [found] = await store.code_links(code)
         assert (found.token_hash, found.subject, found.address) == (link, str(people.ana), ANA)
         for _ in range(4):
             await store.miss_code("ana@example.cl", now, 5)
-        assert await store.code_link(code) is not None
+        assert await store.code_links(code)
         await store.miss_code("ANA@EXAMPLE.CL", now, 5)
-        assert await store.code_link(code) is None
+        assert not await store.code_links(code)
         # The link itself still works.
         assert await store.pending_link(link, now) == Pending(str(people.ana), ANA)
 
@@ -414,14 +413,14 @@ def test_a_code_asked_for_replaces_the_persons_earlier_ones_at_that_address(
         await store.add_link(first, both, "both@example.cl", later, codes[0], replace_codes=True)
         # One sent unasked, in a welcome, leaves the asked-for one working.
         await store.add_link(unasked, both, "both@example.cl", later, codes[1])
-        assert await store.code_link(codes[0]) is not None
+        assert await store.code_links(codes[0])
         # Someone else at the address keeps theirs, as a parent and child each do.
         await store.add_link(other, str(people.shared), "Both@Example.cl", later, codes[3])
         await store.add_link(second, both, "Both@Example.cl", later, codes[2], replace_codes=True)
-        assert await store.code_link(codes[0]) is None
-        assert await store.code_link(codes[1]) is None
-        assert await store.code_link(codes[2]) is not None
-        assert await store.code_link(codes[3]) is not None
+        assert not await store.code_links(codes[0])
+        assert not await store.code_links(codes[1])
+        assert await store.code_links(codes[2])
+        assert await store.code_links(codes[3])
         # The earlier link still works; only its code does not.
         assert await store.pending_link(first, now) is not None
 
@@ -435,10 +434,10 @@ def test_a_spent_or_expired_code_counts_no_misses(db: Database, people: People) 
 
     async def check(store: PostgresStore) -> None:
         await store.add_link(link, str(people.ana), ANA, now + timedelta(minutes=15), code)
-        found = await store.code_link(code)
-        assert found is not None and found.expires_at == now + timedelta(minutes=15)
+        [found] = await store.code_links(code)
+        assert found.expires_at == now + timedelta(minutes=15)
         assert await store.redeem_link(link, now, hash_token(uuid.uuid4().hex), session)
-        assert await store.code_link(code) is None
+        assert not await store.code_links(code)
 
     with_store(db, check)
     select = "SELECT code_misses FROM auth_link WHERE token_hash = $1"

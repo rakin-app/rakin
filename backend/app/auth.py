@@ -332,16 +332,19 @@ class PostgresStore:
                 params,
             )
 
-    async def code_link(self, code_hash: bytes) -> CodeLink | None:
-        row = await self._fetch(
-            "SELECT token_hash, person_id, email, expires_at FROM auth_link"
-            " WHERE code_hash = :c AND used_at IS NULL AND email IS NOT NULL"
-            " ORDER BY created_at DESC LIMIT 1",
-            {"c": code_hash},
-        )
-        if row is None:
-            return None
-        return CodeLink(bytes(row.token_hash), str(row.person_id), row.email, row.expires_at)
+    async def code_links(self, code_hash: bytes) -> Sequence[CodeLink]:
+        async with self._sessionmaker()() as session, session.begin():
+            rows = await session.execute(
+                text(
+                    "SELECT token_hash, person_id, email, expires_at FROM auth_link"
+                    " WHERE code_hash = :c AND used_at IS NULL AND email IS NOT NULL"
+                    " ORDER BY created_at DESC"
+                ),
+                {"c": code_hash},
+            )
+            return [
+                CodeLink(bytes(r.token_hash), str(r.person_id), r.email, r.expires_at) for r in rows
+            ]
 
     async def miss_code(self, address: str, now: datetime, tries: int) -> None:
         await self._execute(

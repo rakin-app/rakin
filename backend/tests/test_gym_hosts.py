@@ -5,6 +5,7 @@ import asyncio
 import dataclasses
 import io
 import json
+import re
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -627,6 +628,14 @@ class Outbox:
             if path in word and word.startswith("https://")
         ]
 
+    def codes_to(self, address: str) -> list[str]:
+        return [
+            code
+            for email in self.sent
+            if email.to.lower() == address.lower()
+            for code in re.findall(r"código: (\d{3} \d{3})", email.text)
+        ]
+
 
 @dataclass
 class Site:
@@ -650,6 +659,9 @@ class Site:
     def open(self, client: TestClient, link: str) -> Any:
         token = parse_qs(urlsplit(link).query)["token"][0]
         return client.post("/api/auth/callback", data={"token": token})
+
+    def type_code(self, client: TestClient, address: str, code: str) -> Any:
+        return client.post("/api/auth/code", json={"email": address, "code": code})
 
     def gym_of_session(self, client: TestClient) -> str | None:
         response = client.get("/test/setting")
@@ -936,6 +948,68 @@ def test_someone_not_in_the_hosts_gym_is_told_so(site: Site) -> None:
         assert f"no tiene acceso a {site.slug_a}" in response.text
         assert COOKIE_NAME not in client.cookies
         assert site.gym_of_session(client) is None
+
+
+@pytest.mark.postgres
+def test_someone_not_in_the_hosts_gym_is_told_so_by_code_too(site: Site) -> None:
+    email = address()
+    person_in(site, [site.b], email)
+
+    with site.client(site.slug_a) as client:
+        site.ask_link(client, email)
+        [code] = site.outbox.codes_to(email)
+        response = site.type_code(client, email, code)
+        assert response.status_code == 403
+        assert response.json() == {"detail": "unreachable"}
+        assert site.gym_of_session(client) is None
+
+
+@pytest.mark.postgres
+def test_one_address_with_an_account_in_each_gym_signs_in_on_each_host(site: Site) -> None:
+    """Two records, one per gym, at one address (#487): a coach in two gyms."""
+    email = address()
+    person_in(site, [site.a], email)
+    person_in(site, [site.b], email)
+
+    for slug, gym in ((site.slug_a, site.a), (site.slug_b, site.b)):
+        with site.client(slug) as client:
+            # One email, the account that reaches this host's gym.
+            site.ask_link(client, email)
+            [code] = site.outbox.codes_to(email)
+            response = site.type_code(client, email, code)
+            assert response.status_code == 200, response.text
+            assert site.gym_of_session(client) == str(gym)
+        # The link from another email, tapped on another device.
+        with site.client(slug) as other:
+            link = site.ask_link(other, email)
+            assert site.open(other, link).status_code == 303
+            assert site.gym_of_session(other) == str(gym)
+
+
+@pytest.mark.postgres
+def test_two_pending_codes_each_work_on_their_own_host_only(site: Site) -> None:
+    email = address()
+    person_in(site, [site.a], email)
+    person_in(site, [site.b], email)
+
+    codes = {}
+    for slug in (site.slug_a, site.slug_b):
+        with site.client(slug) as client:
+            site.ask_link(client, email)
+            [codes[slug]] = site.outbox.codes_to(email)
+
+    # Each client in its own `with`, one at a time: each runs its own event loop.
+    for slug, other, gym in (
+        (site.slug_a, site.slug_b, site.a),
+        (site.slug_b, site.slug_a, site.b),
+    ):
+        with site.client(slug) as client:
+            if codes[other] != codes[slug]:  # one in a million they are the same
+                refused = site.type_code(client, email, codes[other])
+                assert refused.json() == {"detail": "invalid"}
+            response = site.type_code(client, email, codes[slug])
+            assert response.status_code == 200, response.text
+            assert site.gym_of_session(client) == str(gym)
 
 
 @pytest.mark.postgres
