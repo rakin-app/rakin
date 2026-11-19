@@ -106,7 +106,7 @@ green() { # green <workflow file>
   local workflow=$1 i state
   for ((i = 1; i <= polls; i++)); do
     state=$($GH run list --workflow "$workflow" --commit "$sha" --event push --limit 1 \
-      --json status,conclusion,url --jq '.[0] // empty | "\(.status) \(.conclusion) \(.url)"') \
+      --json status,conclusion,url --jq '.[0] // empty | "\(.status) \(.conclusion // "none") \(.url)"') \
       || refuse "could not ask GitHub for $workflow's runs"
     case $state in
       "completed success "*) ok "$workflow passed for ${sha:0:12} (${state##* })"; return ;;
@@ -122,15 +122,18 @@ green() { # green <workflow file>
 green ci.yml
 green images.yml
 
+# The tag is signed, so the key must be set up once (RELEASING.md).
+$GIT config --get user.signingkey >/dev/null \
+  || refuse "no signing key: set git's user.signingkey (RELEASING.md, before the first release)"
+ok "git has a signing key"
+
 if [ $dry_run = 1 ]; then
   echo "dry run: every check passed; $version was not tagged"
   exit 0
 fi
 
-# The tag. Signed, so the key must be set up once (RELEASING.md).
-$GIT config --get user.signingkey >/dev/null \
-  || refuse "no signing key: set git's user.signingkey (RELEASING.md, before the first release)"
-printf '%s\n\n%s\n' "$version" "$(cat "$notes")" | $GIT tag -s "$version" -F - "$sha" \
+# Verbatim: the default cleanup would drop the notes' "#" lines as comments.
+printf '%s\n\n%s\n' "$version" "$(cat "$notes")" | $GIT tag -s --cleanup=verbatim "$version" -F - "$sha" \
   || refuse "git could not make the signed tag $version"
 ok "tagged ${sha:0:12} as $version (signed)"
 $GIT push --quiet origin "refs/tags/$version" \

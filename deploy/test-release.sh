@@ -27,7 +27,7 @@ case "$*" in
   "ls-remote --tags origin refs/tags/"*) ! has "$REMOTE_TAGS" "$tag" || echo "abc	$last" ;;
   "tag --list v*") printf '%s\n' $TAGS ;;
   "config --get user.signingkey") [ -n "$SIGNINGKEY" ] && echo "$SIGNINGKEY" ;;
-  "tag -s "*) cat >"$d/tagmsg"; [ -z "${TAG_FAILS:-}" ] ;;
+  "tag -s --cleanup=verbatim "*) cat >"$d/tagmsg"; [ -z "${TAG_FAILS:-}" ] ;;
   "push "*) [ -z "${PUSH_FAILS:-}" ] ;;
   *) echo "fake git: unexpected $*" >&2; exit 99 ;;
 esac
@@ -60,7 +60,7 @@ chmod +x "$dir/git" "$dir/gh" "$dir/sleep"
 export GIT=$dir/git GH=$dir/gh SLEEP=$dir/sleep RELEASE_POLL_SECONDS=7 RELEASE_POLLS=4
 
 sha=0123456789abcdef0123456789abcdef01234567
-printf 'Pagos: el comprobante se puede subir desde el teléfono.\n' >"$dir/notes"
+printf '# Pagos\n\nEl comprobante se puede subir desde el teléfono.\n' >"$dir/notes"
 : >"$dir/empty"
 
 run_doc() { # run_doc <status> <conclusion>
@@ -138,6 +138,9 @@ TAGS='' REMOTE_TAGS='' check "the first release needs no earlier tag" run --dry-
 queue list.ci.yml "$(run_doc completed failure)"
 check "refuses a red ci" refused --dry-run v0.1.49
 check "and names the run" said "ci.yml concluded 'failure' for 0123456789ab: https://github.test/runs/1"
+green; queue list.ci.yml '[{"status":"completed","conclusion":null,"url":"https://github.test/runs/1"}]'
+check "refuses a completed ci with no conclusion" refused --dry-run v0.1.49
+check "and calls it none" said "ci.yml concluded 'none' for 0123456789ab: https://github.test/runs/1"
 green; queue list.images.yml "$(run_doc completed cancelled)"
 check "refuses a cancelled images" refused --dry-run v0.1.49
 green; queue list.ci.yml '[]' "$(run_doc queued '')" "$(run_doc in_progress '')" "$(run_doc completed success)"
@@ -162,13 +165,15 @@ check "and says the notes are needed for real" said "skip - notes"
 check "and tags nothing" not_tagged
 check "and never looks for a deploy" not_called "deploy.yml"
 check "a dry run checks notes it is given" refused --dry-run --notes "$dir/empty" v0.1.49
+SIGNINGKEY='' check "a dry run refuses without a signing key" refused --dry-run v0.1.49
+check "after the checks" said "ok   - images.yml passed"
 
 # The release.
 green
 check "a release passes on a green main" run --notes "$dir/notes" v0.1.49
-check "makes a signed annotated tag on HEAD" called "git tag -s v0.1.49 -F - $sha"
-check "whose message is the version, then the notes" \
-  [ "$(cat "$dir/tagmsg")" = "$(printf 'v0.1.49\n\nPagos: el comprobante se puede subir desde el teléfono.')" ]
+check "makes a signed annotated tag on HEAD, kept verbatim" called "git tag -s --cleanup=verbatim v0.1.49 -F - $sha"
+check "whose message is the version, then the notes, # lines and blank lines kept" \
+  [ "$(cat "$dir/tagmsg")" = "$(printf 'v0.1.49\n\n# Pagos\n\nEl comprobante se puede subir desde el teléfono.')" ]
 check "pushes only that tag" called "git push --quiet origin refs/tags/v0.1.49"
 check "says production waits for the owner" said "Production now waits for the owner's approval"
 check "at the run's URL" said "https://github.test/runs/7"
@@ -176,7 +181,7 @@ check "tags only after both checks" \
   [ "$(grep -n 'images.yml' "$dir/calls" | tail -n 1 | cut -d: -f1)" -lt "$(grep -n 'git tag -s' "$dir/calls" | cut -d: -f1)" ]
 check "never connects to a host" not_called "ssh"
 check "never dispatches a workflow" not_called "workflow run"
-SIGNINGKEY='' check "refuses without a signing key" refused --notes "$dir/notes" v0.1.49
+SIGNINGKEY='' check "a release refuses without a signing key" refused --notes "$dir/notes" v0.1.49
 check "before tagging" not_tagged
 green; TAG_FAILS=1 check "refuses when git cannot sign" refused --notes "$dir/notes" v0.1.49
 check "and pushes nothing" not_called "git push"
