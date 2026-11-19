@@ -33,6 +33,9 @@ class SentryConfig(Protocol):
     @property
     def environment(self) -> str: ...
 
+    @property
+    def sentry_environment(self) -> str: ...
+
 
 def init_sentry(settings: SentryConfig, **options: Any) -> bool:
     """Start the Sentry client if a DSN is configured; whether it did.
@@ -46,7 +49,8 @@ def init_sentry(settings: SentryConfig, **options: Any) -> bool:
     before_breadcrumb = then(scrub_breadcrumb, options.pop("before_breadcrumb", None))
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
-        environment=settings.environment,
+        # `SENTRY_ENVIRONMENT` tells staging from production, both `production` here.
+        environment=settings.sentry_environment or settings.environment,
         # `send_default_pii=False`, in the form that replaces it (it warns since 2.74).
         data_collection={
             "user_info": False,

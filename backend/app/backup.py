@@ -89,6 +89,7 @@ class ReportingSettings(BaseSettings):
     environment: str = "local"
     log_level: str = "INFO"
     sentry_dsn: str = ""
+    sentry_environment: str = ""
 
 
 class BackupSettings(ReportingSettings):

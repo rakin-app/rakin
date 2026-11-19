@@ -2,7 +2,9 @@
 
 `ConsoleMailer` writes each message to the log and sends nothing; `SmtpMailer` hands it
 to any SMTP server. Hosted Rakin sends through Resend's SMTP relay; self-hosters point it
-at their own. What the messages say, and the record of each, is `app.notices`.
+at their own. `AllowListMailer` (`MAIL_ALLOW`, staging) sends only to the addresses and
+domains it is given, and logs every other message instead, as `ConsoleMailer` does.
+What the messages say, and the record of each, is `app.notices`.
 """
 
 import asyncio
@@ -56,19 +58,42 @@ class Mailer(Protocol):
         ...
 
 
+def log_unsent(email: Email, why: str) -> None:
+    logger.info(
+        f"mail ({why}, not sent)",
+        extra={
+            "mail_to": email.to,
+            "mail_subject": email.subject,
+            "mail_text": email.text,
+            "mail_headers": dict(email.headers),
+        },
+    )
+
+
 class ConsoleMailer:
     """Logs every message instead of sending it: the offline default."""
 
     async def send(self, email: Email) -> None:
-        logger.info(
-            "mail (console, not sent)",
-            extra={
-                "mail_to": email.to,
-                "mail_subject": email.subject,
-                "mail_text": email.text,
-                "mail_headers": dict(email.headers),
-            },
-        )
+        log_unsent(email, "console")
+
+
+class AllowListMailer:
+    """Hands to `inner` only the messages to an address in `allowed`, or on a domain
+    in it as `@domain`; logs every other one and sends nothing, which is no failure."""
+
+    def __init__(self, inner: Mailer, allowed: list[str]) -> None:
+        self.inner = inner
+        self.allowed = frozenset(entry.lower() for entry in allowed)
+
+    def allows(self, to: str) -> bool:
+        address = parseaddr(to)[1].lower()
+        return address in self.allowed or f"@{address.rpartition('@')[2]}" in self.allowed
+
+    async def send(self, email: Email) -> None:
+        if self.allows(email.to):
+            await self.inner.send(email)
+        else:
+            log_unsent(email, "not allowed")
 
 
 class SmtpMailer:

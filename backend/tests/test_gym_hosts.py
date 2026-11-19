@@ -62,7 +62,9 @@ def test_a_slug_that_is_no_host_label_is_refused(slug: str) -> None:
     assert slug_problem(slug) is not None
 
 
-@pytest.mark.parametrize("slug", ["www", "app", "api", "staging", "admin", "mail"])
+@pytest.mark.parametrize(
+    "slug", ["www", "app", "api", "staging", "admin", "mail", "status", "sitio", "send"]
+)
 def test_reserved_names_are_refused(slug: str) -> None:
     assert slug_problem(slug) == f"{slug!r} is reserved"
 
@@ -112,6 +114,61 @@ def test_the_base_domain_setting_is_a_host_name() -> None:
     for bad in ("https://staging.rakin.app", "staging.rakin.app:443", "staging.rakin.app/x"):
         with pytest.raises(ValidationError):
             make_settings(base_domain=bad)
+
+
+# Production after #464: gyms on rakin.app, their old names under staging.rakin.app.
+MOVED = Hosts("https://app.rakin.app", "rakin.app", BASE)
+
+
+@pytest.mark.parametrize(
+    ("host", "slug"),
+    [
+        ("meta.staging.rakin.app", "meta"),
+        ("META.Staging.Rakin.App:443", "meta"),
+        ("staging.rakin.app", None),  # the old base host, not a gym's
+        ("www.staging.rakin.app", None),  # reserved
+        ("a.meta.staging.rakin.app", None),
+        ("meta.rakin.app", None),  # the new domain is `slug_of`'s
+        ("meta.evilstaging.rakin.app", None),
+        ("", None),
+    ],
+)
+def test_the_slug_a_host_names_under_the_old_domain(host: str, slug: str | None) -> None:
+    assert MOVED.moved_slug_of(host) == slug
+
+
+def test_the_new_domain_still_names_its_gyms_beside_the_old() -> None:
+    assert MOVED.slug_of("meta.rakin.app") == "meta"
+    assert MOVED.slug_of("staging.rakin.app") is None  # reserved: never a gym
+    assert MOVED.slug_of("meta.staging.rakin.app") is None
+    assert MOVED.base_url("meta") == "https://meta.rakin.app"
+
+
+def test_the_old_base_host_is_the_old_domain_itself() -> None:
+    assert MOVED.is_moved_base("staging.rakin.app")
+    assert MOVED.is_moved_base("Staging.Rakin.App.:443")
+    assert not MOVED.is_moved_base("meta.staging.rakin.app")
+    assert not MOVED.is_moved_base("rakin.app")
+
+
+def test_without_an_old_domain_no_host_is_moved() -> None:
+    assert HOSTS.moved_slug_of("meta.staging.rakin.app") is None
+    assert not HOSTS.is_moved_base("")
+    assert not HOSTS.is_moved_base("staging.rakin.app")
+
+
+def test_the_old_domain_setting_is_a_host_name_other_than_the_base_domain() -> None:
+    settings = make_settings(base_domain="rakin.app", moved_from_domain=" Staging.Rakin.App. ")
+    assert settings.moved_from_domain == BASE
+    assert Hosts.of(settings).moved_from_domain == BASE
+    assert make_settings().moved_from_domain == ""
+    for bad in ("https://staging.rakin.app", "staging.rakin.app:443", "staging.rakin.app/x"):
+        with pytest.raises(ValidationError, match="not a host name"):
+            make_settings(base_domain="rakin.app", moved_from_domain=bad)
+    with pytest.raises(ValidationError, match="must differ from BASE_DOMAIN"):
+        make_settings(base_domain="rakin.app", moved_from_domain="Rakin.App")
+    with pytest.raises(ValidationError, match="set BASE_DOMAIN"):
+        make_settings(moved_from_domain=BASE)
 
 
 def test_the_bucket_allows_every_gyms_host() -> None:
@@ -633,6 +690,41 @@ def test_the_ask_endpoint_allows_only_gyms_hosts(site: Site) -> None:
         created = create(site.db, new_gym(f"nuevo-{uuid.uuid4().hex[:6]}"))
         assert created.created
         assert ask(f"{new_gym_slug(site, created.gym_id)}.{BASE}") == 200
+
+
+@pytest.mark.postgres
+def test_the_ask_endpoint_allows_the_old_domains_names_only_when_it_is_set(site: Site) -> None:
+    old = f"viejo-{uuid.uuid4().hex[:6]}"
+    run(
+        site.db.admin_url,
+        lambda c: c.execute(
+            "INSERT INTO gym_slug_alias (slug, gym_id, until)"
+            " VALUES ($1, $2, now() + interval '1 day')",
+            old,
+            site.a,
+        ),
+    )
+    moved_from = "antes.rakin.example"
+
+    def ask(domain: str) -> int:
+        with site.client(None) as client:
+            return int(client.get("/internal/tls-allowed", params={"domain": domain}).status_code)
+
+    # Unset: none of the old domain's names.
+    for domain in (moved_from, f"{site.slug_a}.{moved_from}", f"{old}.{moved_from}"):
+        assert ask(domain) == 404
+    assert ask(f"{old}.{BASE}") == 200  # the alias on the current domain, as #438
+
+    site.app.state.hosts = dataclasses.replace(site.app.state.hosts, moved_from_domain=moved_from)
+    assert ask(moved_from) == 200  # the old base host
+    assert ask(moved_from.upper()) == 200
+    assert ask(f"{site.slug_a}.{moved_from}") == 200  # a gym
+    assert ask(f"{old}.{moved_from}") == 200  # a slug that still redirects
+    assert ask(f"nadie-{uuid.uuid4().hex[:6]}.{moved_from}") == 404
+    assert ask(f"www.{moved_from}") == 404
+    assert ask(f"x.{site.slug_a}.{moved_from}") == 404
+    assert ask(f"{site.slug_a}.{BASE}") == 200  # the current domain as before
+    assert ask("") == 404
 
 
 def new_gym_slug(site: Site, gym_id: uuid.UUID) -> str:

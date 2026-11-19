@@ -15,10 +15,10 @@ from fastapi import Request
 from app.integrations.bankfeed import BankFeed, NoBankFeed
 from app.integrations.blobstore import BlobStore, LocalBlobStore, S3BlobStore
 from app.integrations.humancheck import HumanCheck, NoHumanCheck, TurnstileCheck
-from app.integrations.mailer import ConsoleMailer, Mailer, SmtpMailer
+from app.integrations.mailer import AllowListMailer, ConsoleMailer, Mailer, SmtpMailer
 from app.integrations.messenger import Messenger, WaMeMessenger
 from app.integrations.payments import NoPaymentRail, PaymentRail
-from app.settings import Settings
+from app.settings import Settings, allowed_recipients
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,7 @@ def build_mailer(settings: Settings) -> Mailer:
         case "console":
             return ConsoleMailer()
         case "smtp":
-            return SmtpMailer(
+            smtp = SmtpMailer(
                 host=settings.smtp_host,
                 port=settings.smtp_port,
                 sender=settings.mail_from,
@@ -45,6 +45,8 @@ def build_mailer(settings: Settings) -> Mailer:
                 password=settings.smtp_password,
                 timeout=settings.smtp_timeout_seconds,
             )
+            allowed = allowed_recipients(settings.mail_allow)
+            return AllowListMailer(smtp, allowed) if allowed else smtp
 
 
 def build_blob_store(settings: Settings) -> BlobStore:
