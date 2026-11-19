@@ -31,7 +31,20 @@ NONE: dict[str, Any] = {"ranks": [], "kids_ladder": [], "goal_metric": None}
 
 def test_the_presets_are_the_spec_table() -> None:
     by_key = {p.key: p.scheme for p in PRESETS}
-    assert list(by_key) == ["bjj", "judo-karate", "muay-thai", "levels", "none"]
+    assert list(by_key) == [
+        "bjj",
+        "judo",
+        "karate",
+        "karate-shotokan",
+        "karate-kyokushin",
+        "karate-goju-ryu",
+        "taekwondo",
+        "kenpo",
+        "aikido",
+        "muay-thai",
+        "levels",
+        "none",
+    ]
 
     bjj = by_key["bjj"]
     assert [r.key for r in bjj.ranks] == ["white", "blue", "purple", "brown", "black"]
@@ -45,18 +58,18 @@ def test_the_presets_are_the_spec_table() -> None:
     assert by_rank["green-black"] == [by_rank["green"][0], bjj.ranks[-1].colors[0]]
     assert bjj.goal_metric == "classes_since_promotion"
 
-    judo = by_key["judo-karate"]
-    keys = [r.key for r in judo.ranks]
+    karate = by_key["karate"]
+    keys = [r.key for r in karate.ranks]
     assert keys[0] == "kyu-10" and keys[9:11] == ["kyu-1", "dan-1"] and keys[-1] == "dan-10"
-    assert all(not r.sub_ranks for r in judo.ranks)
+    assert all(not r.sub_ranks for r in karate.ranks)
     # Kyu and dan are belts (#353): white first, black from 1.º dan, red at 10.º.
-    assert all(r.colors for r in judo.ranks) and judo.belts
-    by_judo = {r.key: r.colors for r in judo.ranks}
-    assert by_judo["kyu-10"] == bjj.ranks[0].colors
-    assert by_judo["dan-1"] == bjj.ranks[-1].colors
-    assert len(by_judo["dan-6"]) == 2 and by_judo["dan-10"] == by_judo["dan-6"][:1]
-    assert judo.kids_ladder == []  # kids climb the same ladder
-    assert judo.goal_metric == "time_in_rank"
+    assert all(r.colors for r in karate.ranks) and karate.belts
+    by_karate = {r.key: r.colors for r in karate.ranks}
+    assert by_karate["kyu-10"] == bjj.ranks[0].colors
+    assert by_karate["dan-1"] == bjj.ranks[-1].colors
+    assert len(by_karate["dan-6"]) == 2 and by_karate["dan-10"] == by_karate["dan-6"][:1]
+    assert karate.kids_ladder == []  # kids climb the same ladder
+    assert karate.goal_metric == "time_in_rank"
 
     muay_thai = by_key["muay-thai"]
     assert muay_thai.ranks and muay_thai.kids_ladder == []
@@ -73,9 +86,82 @@ def test_the_presets_are_the_spec_table() -> None:
     assert by_key["none"].model_dump() == NONE
 
 
+def _belts(key: str) -> list[tuple[str, list[str]]]:
+    """A preset's ranks, by key, and the names of their colours."""
+    names = {colour: name for name, colour in grading._BELT.items()}
+    scheme = next(p.scheme for p in PRESETS if p.key == key)
+    return [(r.key, [names[c] for c in r.colors]) for r in scheme.ranks]
+
+
+def test_each_art_has_its_own_ladder() -> None:
+    # Judo (#411): six kyu, white to brown, then the dan, no longer karate's ten kyu.
+    judo = dict(_belts("judo"))
+    assert list(judo)[:7] == ["kyu-6", "kyu-5", "kyu-4", "kyu-3", "kyu-2", "kyu-1", "dan-1"]
+    assert [judo[f"kyu-{n}"][0] for n in range(6, 0, -1)] == [
+        "white",
+        "yellow",
+        "orange",
+        "green",
+        "blue",
+        "brown",
+    ]
+    assert judo["dan-1"] == ["black"] and judo["dan-6"] == ["red", "white"]
+    assert judo["dan-10"] == ["red"]
+
+    # Shotokan, nine kyu to three of brown; black to 10.º dan.
+    shotokan = dict(_belts("karate-shotokan"))
+    assert next(iter(shotokan)) == "kyu-9"
+    assert [shotokan[f"kyu-{n}"] for n in (3, 2, 1)] == [["brown"]] * 3
+    assert all(shotokan[f"dan-{n}"] == ["black"] for n in range(1, 11))
+
+    # Kyokushin: mukyu, then each colour twice, the second with the next one's stripe.
+    kyokushin = _belts("karate-kyokushin")
+    assert kyokushin[:4] == [
+        ("mukyu", ["white"]),
+        ("kyu-10", ["orange"]),
+        ("kyu-9", ["orange", "blue"]),
+        ("kyu-8", ["blue"]),
+    ]
+    assert dict(kyokushin)["kyu-1"] == ["brown", "black"]
+
+    # Goju-ryu: ten kyu, white first and brown last, then black.
+    goju = dict(_belts("karate-goju-ryu"))
+    assert goju["kyu-10"] == ["white"] and goju["kyu-1"] == ["brown"]
+    assert goju["dan-1"] == ["black"]
+
+    # Taekwondo, WT: ten gup, the steps between colours tipped with the next, 9 dan.
+    taekwondo = _belts("taekwondo")
+    assert [k for k, _ in taekwondo][:2] == ["gup-10", "gup-9"]
+    assert [c for _, c in taekwondo][:3] == [["white"], ["white", "yellow"], ["yellow"]]
+    assert dict(taekwondo)["gup-1"] == ["red", "black"]
+    assert [k for k, _ in taekwondo][-1] == "dan-9"
+    assert next(p.label for p in PRESETS if p.key == "taekwondo") == "Taekwondo (WT)"
+
+    # American Kenpo: white to green, brown counting down, then black's ten degrees.
+    kenpo = _belts("kenpo")
+    assert [c[0] for _, c in kenpo][:6] == ["white", "yellow", "orange", "purple", "blue", "green"]
+    assert [k for k, _ in kenpo][6:10] == ["brown-3", "brown-2", "brown-1", "black-1"]
+    assert len(kenpo) == 19 and kenpo[-1] == ("black-10", ["black"])
+
+    # Aikido, Aikikai: six white kyu, then black.
+    aikido = dict(_belts("aikido"))
+    assert [aikido[f"kyu-{n}"] for n in range(6, 0, -1)] == [["white"]] * 6
+    assert aikido["dan-1"] == ["black"]
+
+
+def test_the_old_judo_karate_key_is_judo() -> None:
+    assert grading.resolve("judo-karate") == "judo"
+    assert grading.resolve("bjj") == "bjj"
+    assert "judo-karate" not in {p.key for p in PRESETS}
+
+
 @pytest.mark.parametrize(
     ("key", "belts"),
-    [("bjj", True), ("judo-karate", True), ("muay-thai", True), ("levels", False), ("none", False)],
+    [
+        *((p.key, True) for p in PRESETS if p.key not in ("levels", "none")),
+        ("levels", False),
+        ("none", False),
+    ],
 )
 def test_a_preset_reads_as_belts_only_when_its_ranks_have_colours(key: str, belts: bool) -> None:
     # A belt or arm-band sport says "Cinturón"; levels and no grades say "Nivel" (#353).
@@ -110,7 +196,7 @@ def test_a_rank_or_sub_rank_carries_an_optional_target() -> None:
     assert [s.target for s in scheme.ranks[0].sub_ranks] == [None, None, 80, None, None]
     assert scheme.ranks[1].target is None
     # Months in rank count the same way.
-    judo = next(p.scheme.model_dump() for p in PRESETS if p.key == "judo-karate")
+    judo = next(p.scheme.model_dump() for p in PRESETS if p.key == "judo")
     judo["ranks"][0]["target"] = 6
     assert GradingScheme.model_validate(judo).ranks[0].target == 6
 
@@ -165,7 +251,9 @@ def test_a_scheme_is_refused(scheme: dict[str, Any]) -> None:
 
 def test_no_code_outside_the_presets_names_a_sport() -> None:
     # Sport lives in configuration: the presets are data, and nothing branches on them.
-    sports = re.compile(r"\b(bjj|jiu-?jitsu|judo|karate|muay|thai|boxing|mma)\b", re.I)
+    sports = re.compile(
+        r"\b(bjj|jiu-?jitsu|judo|karate|taekwondo|kenpo|aikido|muay|thai|boxing|mma)\b", re.I
+    )
     allowed = {
         APP / "domain" / "grading.py",
         APP / "domain" / "vocabulary.py",
@@ -235,14 +323,22 @@ def test_the_presets_are_listed(client: TestClient, db: Database) -> None:
     gym = seed_gym(db, "dojo-presets")
     response = client.get(f"{URL}/presets", headers=as_gym(gym))
     assert response.status_code == 200
-    assert [p["key"] for p in response.json()] == [
-        "bjj",
-        "judo-karate",
-        "muay-thai",
-        "levels",
-        "none",
-    ]
+    assert [p["key"] for p in response.json()] == [p.key for p in PRESETS]
+    assert "karate-shotokan" in [p["key"] for p in response.json()]
     assert response.json()[0]["scheme"] == BJJ
+
+
+@pg
+@pytest.mark.parametrize("key", [p.key for p in PRESETS if p.scheme.belts])
+def test_each_belt_preset_applies_and_reads_back(
+    client: TestClient, db: Database, key: str
+) -> None:
+    gym = seed_gym(db, f"dojo-{key}-{uuid.uuid4().hex[:6]}")
+    scheme = next(p.scheme.model_dump() for p in PRESETS if p.key == key)
+    assert client.put(URL, json=scheme, headers=as_gym(gym)).status_code == 200
+    stored = client.get(URL, headers=as_gym(gym)).json()
+    assert stored == scheme
+    assert GradingScheme.model_validate(stored).belts
 
 
 @pg

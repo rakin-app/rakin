@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 from pydantic_core import PydanticCustomError
 
+from app.domain.grading import resolve
 from app.gyms import SCHEMES, NewGym, signing_problem, terms_problem
 from app.hosts import slug_problem, slug_refusal
 from app.schemas.people import Email, Name, Phone
@@ -117,6 +118,7 @@ class PanelNewGym(NewGym):
     @field_validator("grading")
     @classmethod
     def _a_preset(cls, value: str) -> str:
+        value = resolve(value)
         if value not in SCHEMES:
             raise PydanticCustomError("unknown_preset", "not a grading preset")
         return value

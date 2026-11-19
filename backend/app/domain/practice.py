@@ -33,6 +33,8 @@ PRACTICES: dict[str, Practice] = {
     "judo": Practice("Randori"),
     "karate": Practice("Kumite"),
     "taekwondo": Practice("Combate"),
+    "kenpo": Practice("Sparring"),
+    "aikido": Practice("Randori"),
     "muay_thai": Practice("Sparring"),
     "boxeo": Practice("Sparring"),
     "mma": Practice("Sparring", "Open mat"),

@@ -66,6 +66,8 @@ PRESETS: dict[str, Preset] = {
     "judo": Preset("Judo", True, _words("dojo", "alumnos", "sensei")),
     "karate": Preset("Karate", True, _words("dojo", "alumnos", "sensei")),
     "taekwondo": Preset("Taekwondo", True, _words("academia", "alumnos", "profe")),
+    "kenpo": Preset("Kenpo", True, _words("dojo", "alumnos", "sensei")),
+    "aikido": Preset("Aikido", True, _words("dojo", "alumnos", "sensei")),
     "muay_thai": Preset("Muay Thai", True, _words("academia", "alumnos", "profe")),
     "boxeo": Preset("Boxeo", False, _words("club", "alumnos", "entrenador")),
     "mma": Preset("MMA", False, _words("academia", "alumnos", "coach")),
@@ -87,6 +89,8 @@ PresetKey = Literal[
     "judo",
     "karate",
     "taekwondo",
+    "kenpo",
+    "aikido",
     "muay_thai",
     "boxeo",
     "mma",
@@ -104,8 +108,31 @@ PresetKey = Literal[
 ]
 
 
-# The activity each graded preset of `app.gyms create --grading` starts the gym with.
-GRADING_PRESETS = {"bjj": "bjj", "judo-karate": "judo", "muay-thai": "muay_thai"}
+# The activity each graded preset of `app.gyms create --grading` starts the gym with:
+# one per art, the karate styles all karate (#411).
+GRADING_PRESETS = {
+    "bjj": "bjj",
+    "judo": "judo",
+    "karate": "karate",
+    "karate-shotokan": "karate",
+    "karate-kyokushin": "karate",
+    "karate-goju-ryu": "karate",
+    "taekwondo": "taekwondo",
+    "kenpo": "kenpo",
+    "aikido": "aikido",
+    "muay-thai": "muay_thai",
+}
+# The other way round: the grading preset a graded activity's scheme reads by while the
+# gym has none of its own (#353), its belts. The SPA holds the same (`GRADING_PRESET_OF`).
+DEFAULT_GRADING = {
+    "bjj": "bjj",
+    "judo": "judo",
+    "karate": "karate",
+    "taekwondo": "taekwondo",
+    "kenpo": "kenpo",
+    "aikido": "aikido",
+    "muay_thai": "muay-thai",
+}
 
 
 def words_of(preset: str | None) -> Vocabulary:

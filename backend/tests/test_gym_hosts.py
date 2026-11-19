@@ -25,7 +25,15 @@ from app.auth import MailSender, bind_session
 from app.blob_cors import cors_rule
 from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
-from app.gyms import PROCESSOR_TERMS_VERSION, NewGym, create_gym, parse
+from app.gyms import (
+    ACTIVITIES,
+    PROCESSOR_TERMS_VERSION,
+    SCHEMES,
+    NewGym,
+    create_gym,
+    parse,
+    settings_of,
+)
 from app.hosts import GymLookup, HostGym, Hosts, host_name, slug_problem, slug_refusal
 from app.integrations.blobstore import LocalBlobStore
 from app.integrations.mailer import Email
@@ -309,6 +317,23 @@ def test_the_command_reads_its_arguments() -> None:
 
 def test_the_command_starts_from_a_grading_preset_when_asked() -> None:
     assert parse_gym([*ARGS, "--grading", "bjj"]).grading == "bjj"
+    assert parse_gym([*ARGS, "--grading", "karate-shotokan"]).grading == "karate-shotokan"
+    # The one ladder judo and karate shared (#411) starts a judo gym, as it did.
+    assert parse_gym([*ARGS, "--grading", "judo-karate"]).grading == "judo"
+
+
+def test_a_style_starts_its_arts_activity() -> None:
+    # One activity per art, named as Ajustes offers it: the style is the scheme (#411).
+    assert ACTIVITIES["karate-kyokushin"] == ACTIVITIES["karate"] == "Karate"
+    assert (ACTIVITIES["taekwondo"], ACTIVITIES["kenpo"]) == ("Taekwondo", "Kenpo")
+    settings = settings_of("kenpo")
+    assert settings["grading"] == SCHEMES["kenpo"]
+    assert settings["vocabulary"] == {
+        "place": "dojo",
+        "members": "alumnos",
+        "coach": "sensei",
+        "by_hand": False,
+    }
 
 
 def test_the_owner_phone_is_optional_and_the_rut_normalised() -> None:
@@ -471,14 +496,12 @@ def test_create_with_a_grading_preset_starts_the_gym_on_it(db: Database) -> None
         )
 
     # An activity that grades, named as the preset is, so its belts show (#245).
-    assert [tuple(r) for r in run(db.admin_url, activities)] == [
-        ("Jiu-jitsu brasileño", True, "bjj")
-    ]
+    assert [tuple(r) for r in run(db.admin_url, activities)] == [("BJJ", True, "bjj")]
 
 
 @pytest.mark.postgres
 def test_a_judo_gym_starts_as_a_dojo(db: Database) -> None:
-    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"grading": "judo-karate"})
+    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"grading": "judo"})
 
     created = create(db, gym)
 

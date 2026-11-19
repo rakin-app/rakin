@@ -28,7 +28,7 @@ from tests.test_plans import add_staff
 pg = pytest.mark.postgres
 
 BJJ = next(p.scheme.model_dump() for p in PRESETS if p.key == "bjj")
-JUDO = next(p.scheme.model_dump() for p in PRESETS if p.key == "judo-karate")
+JUDO = next(p.scheme.model_dump() for p in PRESETS if p.key == "karate")
 
 
 @pytest.fixture(scope="module")

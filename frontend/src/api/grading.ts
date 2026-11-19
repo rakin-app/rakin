@@ -38,12 +38,16 @@ export function isLevels(scheme: { ranks: { colors?: string[] }[]; kids_ladder: 
 
 /**
  * The grading preset of each activity preset that has one (backend
- * `app.domain.vocabulary.GRADING_PRESETS`, read the other way, with karate beside judo).
+ * `app.domain.vocabulary.DEFAULT_GRADING`): karate's is its generic ladder, and
+ * Graduación offers its styles beside it (#411).
  */
 export const GRADING_PRESET_OF: Partial<Record<ActivityPreset, string>> = {
   bjj: 'bjj',
-  judo: 'judo-karate',
-  karate: 'judo-karate',
+  judo: 'judo',
+  karate: 'karate',
+  taekwondo: 'taekwondo',
+  kenpo: 'kenpo',
+  aikido: 'aikido',
   muay_thai: 'muay-thai',
 }
 

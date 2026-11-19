@@ -143,7 +143,8 @@ def test_an_operator_creates_a_gym_that_works_at_once(panel: Panel) -> None:
 
     row = run(panel.db.admin_url, gym)
     assert (row["name"], row["timezone"]) == ("Gimnasio Nuevo", "America/Santiago")
-    assert (row["activity"], row["practice"]) == ("Judo / karate", "Randori")
+    # The old judo-karate key is judo's now (#411).
+    assert (row["activity"], row["practice"]) == ("Judo", "Randori")
     assert row["titular"] == "Dueña Nueva"
     assert row["terms"] == [f"{PROCESSOR_TERMS_VERSION} {PROCESSOR_TERMS_VERSION}"]
 
@@ -151,7 +152,7 @@ def test_an_operator_creates_a_gym_that_works_at_once(panel: Panel) -> None:
         (
             "gym_created",
             operator_id,
-            {"slug": slug, "grading": "judo-karate", "terms_version": PROCESSOR_TERMS_VERSION},
+            {"slug": slug, "grading": "judo", "terms_version": PROCESSOR_TERMS_VERSION},
         ),
         ("owner_link_sent", operator_id, {"slug": slug}),
     ]
