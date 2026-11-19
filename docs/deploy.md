@@ -1,6 +1,15 @@
-# Deploying Rakin: staging.rakin.app
+# Deploying Rakin
 
-The hosted instance is one VPS running Docker Compose ([design](technical.md#infrastructure-and-operations)). Staging becomes production for the pilot, so everything here is written for a box that holds real gyms' ledgers.
+Hosted Rakin is two VPSs, each running the same Docker Compose stack ([design](technical.md#infrastructure-and-operations)) from the same images:
+
+| Host | Where | Names | Holds |
+| --- | --- | --- | --- |
+| **Production** | Hetzner, Ashburn, Virginia (US East) | `rakin.app` (the landing page), `app.rakin.app` (the base host: sign-in, `/plataforma`), `<slug>.rakin.app` (each gym); the old `staging.rakin.app` names redirect to these ([Old addresses](#old-addresses)) | the gyms' data |
+| **Staging** | Hetzner, Nuremberg, Germany | `sitio.staging.rakin.app` (the next landing page), `staging.rakin.app` (its base host), `<slug>.staging.rakin.app` (the seed's gym) | seed data only, never a gym's ([The staging host](#the-staging-host)) |
+
+A tag deploys to staging first, and to production only once staging passed and the owner approved it ([§5](#5-release)). Everything written here for "the host" holds for both, unless it names one.
+
+Until the switch (#464, [run sheet](#the-switch-464)) the Ashburn host still answers on the staging names, with `BASE_DOMAIN=staging.rakin.app`; the settings that make it production are harmless there until then.
 
 What lives where:
 
@@ -18,7 +27,12 @@ CI boots this exact stack from each PR's images (`deploy/test-hosted.sh`), smoke
 
 ## 1. Provision the VPS
 
-Ubuntu 24.04 LTS, 2 vCPU / 4 GB. Staging and production run on Hetzner in Ashburn, Virginia (US East), the location the DPA's Anexo A and the privacy notices name (#430): a host elsewhere changes those texts first. As root, once:
+Both hosts are provisioned the same way: Ubuntu 24.04 LTS, 2 vCPU / 4 GB.
+
+- **Production** runs on Hetzner in Ashburn, Virginia (US East), the location the DPA's Anexo A and the privacy notices name (#430). It holds the gyms' data, so a production host elsewhere changes those texts first. In the Hetzner console the owner turns on **delete protection and rebuild protection** for the server and for its primary IPs, so neither the server nor the addresses the DNS points at can go by a slip.
+- **Staging** runs on Hetzner in Nuremberg, Germany, a smaller CX-class server. It holds seed data only, never a gym's or a member's, so its location is in no legal text ([below](#the-staging-host)) and its latency does not matter. Protection is optional there.
+
+As root, once on each:
 
 ```sh
 # Docker Engine and the Compose plugin, from Docker's apt repository.
@@ -53,19 +67,46 @@ systemctl reload ssh
 
 Docker publishes ports by writing its own iptables rules, ahead of ufw's. That is harmless here because the Compose file publishes only 80 and 443; never publish Postgres or the api on this host.
 
-Generate the deploy key on your machine, not the host: `ssh-keygen -t ed25519 -f rakin-deploy -C rakin-deploy -N ""`. Record the host key for CI with `ssh-keyscan -H <host>` (compare its fingerprint with the provider's console first).
+Each host has its own deploy key, never shared. Generate it on your machine, not the host: `ssh-keygen -t ed25519 -f rakin-deploy-<staging|production> -C rakin-deploy-<staging|production> -N ""`. Record each host key for CI with `ssh-keyscan -H <host>` (compare its fingerprint with the provider's console first).
 
 ## 2. DNS, mail and storage
 
-- **DNS** (Cloudflare): an `A` (and `AAAA`) record `staging` → the VPS, **DNS only** (grey cloud), so Caddy terminates TLS and gets its certificate from Let's Encrypt over port 80. And for the gyms' own hosts ([below](#creating-a-gym)), a wildcard `A` (and `AAAA`) record `*.staging` → the VPS, DNS only too. Production's will be `rakin.app` and `*.rakin.app`.
-- **The landing page** ([below](#the-landing-page-rakinapp)): an `A` (and `AAAA`) record for the apex `rakin.app` and one for `www` → the VPS, DNS only, like `staging`, unless production's wildcard `*.rakin.app` already covers `www`. Caddy gets both certificates itself.
-- **Resend**: add and verify `rakin.app` (its DKIM, SPF and return-path records in Cloudflare, DNS only), then create an API key with sending access for that domain. It goes in `SMTP_PASSWORD`; `SMTP_HOST=smtp.resend.com`, `SMTP_USERNAME=resend`, and port 587 with `SMTP_SECURITY=starttls`, as `deploy/.env.example` has them. There is no sandbox to leave: a verified domain sends to anyone. Then add a webhook (Webhooks → Add endpoint) to `https://<PUBLIC_BASE_URL's host>/api/webhooks/resend` with the `email.bounced` and `email.complained` events, and put its signing secret (`whsec_…`) in `RESEND_WEBHOOK_SECRET`: a hard bounce or a spam complaint then stops all mail to that address, and the ficha says why. Without it the endpoint is a 404 and bounced addresses go on being mailed.
-- **Object storage**: a bucket in R2 (or S3), with object versioning on where the provider offers it. Create a key scoped to that bucket with object read and write for the api (`S3_*` in `.env`), and separately an admin token for the one-off CORS step below.
-- **Sentry**: an organisation on the **US region** (chosen at sign-up and fixed after; its DSNs end in `ingest.us.sentry.io`), as the DPA's annex and the privacy notices say (#430). The EU region was considered for #373 and not kept: the database and the email provider are in the United States already, and an event carries no personal data (#373), so moving Sentry to Germany would not keep anything out of the United States. A project for the api; its DSN goes in `SENTRY_DSN`. The api and the jobs both report there. What an event leaves out is in `backend/app/sentry.py`.
+- **DNS** (Cloudflare): every record **DNS only** (grey cloud), so Caddy terminates TLS and gets its certificates from Let's Encrypt over port 80. Each is an `A` and an `AAAA` record:
+
+  | Name | Points at | For |
+  | --- | --- | --- |
+  | `rakin.app` (apex), `www` | production | the landing page ([below](#the-landing-page-rakinapp)) |
+  | `app` | production | production's base host |
+  | `*` | production | production's gyms, `<slug>.rakin.app` ([below](#creating-a-gym)) |
+  | `meta.staging` | production | each gym that existed before the switch keeps its old name on production ([Old addresses](#old-addresses)); today only Meta |
+  | `staging` | staging | staging's base host |
+  | `*.staging` | staging | staging's gyms, and `sitio.staging`, its landing page |
+  | `www.sitio.staging` | staging | the `www.` of staging's landing, which redirects to it |
+
+  A wildcard never answers for a name that has records of its own, so `app`, `www`, `staging`, Resend's `send` and `resend._domainkey`, `_dmarc` and Email Routing's MX all keep theirs, and `meta.staging` beats `*.staging`. That is also why each name with records is a reserved slug ([`app/hosts.py`](../backend/app/hosts.py)): a gym by that name would never resolve. Caddy gets every certificate itself.
+- **Resend**: add and verify `rakin.app` (its DKIM, SPF and return-path records in Cloudflare, DNS only), then create an API key with sending access for that domain, **one per host**, named for it. It goes in `SMTP_PASSWORD`; `SMTP_HOST=smtp.resend.com`, `SMTP_USERNAME=resend`, and port 587 with `SMTP_SECURITY=starttls`, as `deploy/.env.example` has them. There is no sandbox to leave: a verified domain sends to anyone, which is why staging sends only to `MAIL_ALLOW` ([below](#the-staging-host)). Then, for production only, add a webhook (Webhooks → Add endpoint) to `https://app.rakin.app/api/webhooks/resend` with the `email.bounced` and `email.complained` events, and put its signing secret (`whsec_…`) in `RESEND_WEBHOOK_SECRET`: a hard bounce or a spam complaint then stops all mail to that address, and the ficha says why. Without it the endpoint is a 404 and bounced addresses go on being mailed. The URL must be the base host itself: Resend does not follow a redirect.
+- **Object storage**: a bucket in R2 (or S3) per host, with object versioning on where the provider offers it. Production's is named `rakin-staging`, for the days when its host was called staging, and holds the gyms' proofs; renaming it would buy nothing and put those files at risk, so it keeps the name. Staging's is `rakin-staging-seed`. For each, create a key scoped to that bucket alone with object read and write for the api (`S3_*` in `.env`), and separately an admin token for the one-off CORS step below.
+- **Sentry**: an organisation on the **US region** (chosen at sign-up and fixed after; its DSNs end in `ingest.us.sentry.io`), as the DPA's annex and the privacy notices say (#430). The EU region was considered for #373 and not kept: the database and the email provider are in the United States already, and an event carries no personal data (#373), so moving Sentry to Germany would not keep anything out of the United States. A project for the api; its DSN goes in `SENTRY_DSN`, the same on both hosts. The api and the jobs both report there. Both hosts run `ENVIRONMENT=production`, so staging sets `SENTRY_ENVIRONMENT=staging` and its events say so; production leaves it empty and reports `production`. What an event leaves out is in `backend/app/sentry.py`.
 
 ## 3. The host's `.env`
 
-As `deploy`, copy [`deploy/.env.example`](../deploy/.env.example) to `/srv/rakin/.env`, `chmod 600` it, and fill in every `<...>`: `openssl rand -hex 32` for each password, `SECRET_KEY` and `FIELD_ENCRYPTION_KEY`. Keep a copy in the team's password manager; the host is the only other place it exists. `SECRET_KEY` signs sign-in and unsubscribe links and can be rotated after a leak. That does not sign anyone out, and it breaks the unsubscribe links in emails already sent ([incident response](incident-response.md#5-rotating-secrets)). `FIELD_ENCRYPTION_KEY` encrypts sensitive custom fields: a backup restored under another key has those values unreadable, so never change it without re-encrypting them. `RAKIN_TAG` can stay a placeholder: `deploy.sh` writes it.
+As `deploy`, copy [`deploy/.env.example`](../deploy/.env.example) to `/srv/rakin/.env`, `chmod 600` it, and fill in every `<...>`: `openssl rand -hex 32` for each password, `SECRET_KEY` and `FIELD_ENCRYPTION_KEY`. Each host gets its own, generated afresh: no secret is ever copied from one host to the other. Keep a copy of each in the team's password manager; the host is the only other place it exists.
+
+The example holds **production's** values. Staging's differ in the names, the mail allow list and `SEED_ONLY`, as [The staging host](#the-staging-host) lists. The settings that tell the two apart:
+
+| Setting | Production | Staging |
+| --- | --- | --- |
+| `SITE_ADDRESS`, `PUBLIC_BASE_URL` | `app.rakin.app`, `https://app.rakin.app` | `staging.rakin.app`, `https://staging.rakin.app` |
+| `BASE_DOMAIN` | `rakin.app` | `staging.rakin.app` |
+| `LANDING_HOST` | `rakin.app` | `sitio.staging.rakin.app` |
+| `MOVED_FROM_DOMAIN` | `staging.rakin.app`: its names redirect to `BASE_DOMAIN`'s ([Old addresses](#old-addresses)) | empty |
+| `SENTRY_ENVIRONMENT` | empty (reports `production`) | `staging` |
+| `MAIL_ALLOW` | empty: mail goes to everyone | the team's own addresses; every other recipient is logged, not sent |
+| `SEED_ONLY` | unset or `false`: `app.seed` refuses | `1`: `app.seed` and the nightly reset run |
+| `STAGING_OPERATORS` | unset | who the nightly reset makes an operator again |
+| `COMPOSE_PROFILES`, `BACKUP_*` | `backup`, set ([Backups](#backups)) | unset |
+
+`SECRET_KEY` signs sign-in and unsubscribe links and can be rotated after a leak. That does not sign anyone out, and it breaks the unsubscribe links in emails already sent ([incident response](incident-response.md#5-rotating-secrets)). `FIELD_ENCRYPTION_KEY` encrypts sensitive custom fields: a backup restored under another key has those values unreadable, so never change it without re-encrypting them. `RAKIN_TAG` can stay a placeholder: `deploy.sh` writes it.
 
 ## 4. GitHub
 
@@ -91,13 +132,14 @@ Every deploy first checks it reached the right host: staging's `.env` has `SEED_
 
 The images are pulled with the workflow's own token, logged in for the deploy and out again. To pull by hand on the host (a rollback with no CI), either make the two packages public (Packages → package settings → visibility; the code is public anyway), or `docker login ghcr.io` with a token that has only `read:packages`.
 
+**Rulesets** (Settings → Rules), so that a release can only come one way:
+
+- **Tags `refs/tags/v*`**: only admins create them, and nobody updates or deletes one. A tag is a release, and what a tag names never changes.
+- **`main`**: a pull request before merging (no approvals required: the owner cannot approve their own PRs, and the review agent comments rather than approves), and the checks `backend`, `frontend`, `dco` and the hosted-stack job green.
+
 ## 5. Release
 
-Releases are tags on a commit of `main` whose images exist (`images.yml` has run):
-
-```sh
-git tag -s v0.1.0 -m v0.1.0 && git push origin v0.1.0
-```
+Releases are signed tags on a commit of `main` whose `ci` and `images` runs passed, and there is one way to make one: [`scripts/release.sh`](../scripts/release.sh) `vX.Y.Z`, as [`RELEASING.md`](../RELEASING.md) explains in plain words for the owner and the PM. It checks the commit, tags it, pushes the tag and follows the run; it never reaches a host itself. Never tag by hand, and never tag a commit that is not on `main`.
 
 `deploy.yml` then:
 
@@ -122,7 +164,7 @@ If a check fails after the deploy, the job's summary prints the rollback line fo
 
 ### First deploy only: the bucket's CORS rule
 
-The browser PUTs proofs straight to the bucket, another origin than the app's, so the bucket must answer its preflight. After the first deploy, on the host, with the **admin** token for this one run:
+The browser PUTs proofs straight to the bucket, another origin than the app's, so the bucket must answer its preflight. After the first deploy on each host, on that host, with the **admin** token for this one run:
 
 ```sh
 cd /srv/rakin
@@ -134,11 +176,11 @@ unset S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY
 docker compose run --rm api python -m app.blob_cors --check   # the browser's preflight, PUT and GET
 ```
 
-The rule allows `PUT` and `GET` with a `Content-Type` header from `PUBLIC_BASE_URL`'s origin, and from every gym's host as `https://*.<BASE_DOMAIN>` ([`app/blob_cors.py`](../backend/app/blob_cors.py)). Re-run `--apply` if `PUBLIC_BASE_URL` or `BASE_DOMAIN` changes; a bucket set before `BASE_DOMAIN` existed needs it once, or proofs cannot be uploaded from a gym's host. Then the browser check: sign in on staging as a student with an owed period, upload a transfer proof from a phone, and see it in the admin's Validar comprobante queue. A CORS failure shows in the browser console as a blocked `PUT` to the bucket's host.
+The rule allows `PUT` and `GET` with a `Content-Type` header from `PUBLIC_BASE_URL`'s origin, and from every gym's host as `https://*.<BASE_DOMAIN>` ([`app/blob_cors.py`](../backend/app/blob_cors.py)). Re-run `--apply` if `PUBLIC_BASE_URL` or `BASE_DOMAIN` changes; a bucket set before `BASE_DOMAIN` existed needs it once, or proofs cannot be uploaded from a gym's host. Then the browser check: sign in on a gym's host as a student with an owed period (on staging, the seed's), upload a transfer proof from a phone, and see it in the admin's Validar comprobante queue. A CORS failure shows in the browser console as a blocked `PUT` to the bucket's host.
 
 ### The landing page: rakin.app
 
-`rakin.app` is a static page about Rakin (#343), with Rakin's privacy notice at `/privacidad/`. Its source is [`site/`](../site/): `index.html` and `styles.css`, the screenshots in `site/img/`, and [`site/build.py`](../site/build.py), which inlines the styles and the logo, renders [`docs/legal/aviso-de-privacidad-rakin.md`](legal/aviso-de-privacidad-rakin.md) and copies the fonts and icons. The `rakin-web` image runs it in a stage of its own and Caddy serves the result from `/srv/site` on `LANDING_HOST` (default `rakin.app`), with `www.` redirecting to it. So it ships with every release, and a change to the notice reaches the page on the next one.
+`rakin.app` is a static page about Rakin (#343), served by production; staging serves the next release's at `sitio.staging.rakin.app`, with Rakin's privacy notice at `/privacidad/`. Its source is [`site/`](../site/): `index.html` and `styles.css`, the screenshots in `site/img/`, and [`site/build.py`](../site/build.py), which inlines the styles and the logo, renders [`docs/legal/aviso-de-privacidad-rakin.md`](legal/aviso-de-privacidad-rakin.md) and copies the fonts and icons. The `rakin-web` image runs it in a stage of its own and Caddy serves the result from `/srv/site` on `LANDING_HOST` (default `rakin.app`), with `www.` redirecting to it. So it ships with every release, and a change to the notice reaches the page on the next one.
 
 To see it locally: `cd frontend && npm install` (the fonts), then `uv run site/build.py` and open `site/dist/` with any static server, e.g. `python3 -m http.server -d site/dist`.
 
@@ -156,7 +198,7 @@ The contact address is `CONTACT_EMAIL` in `site/build.py`.
 
 ### Uptime
 
-Point an external monitor (UptimeRobot, Better Stack, or Cloudflare's health checks) at `https://staging.rakin.app/healthz` every 5 minutes, alerting on anything but a 200. It answers 503 when the api cannot reach Postgres.
+Point an external monitor (UptimeRobot, Better Stack, or Cloudflare's health checks) at `https://app.rakin.app/healthz` every 5 minutes, alerting on anything but a 200. It answers 503 when the api cannot reach Postgres. A second, lower-priority one watches `https://staging.rakin.app/healthz`; staging is down for a few seconds every night at its reset.
 
 ## 6. Rollback
 
@@ -174,7 +216,7 @@ If a release's migration is the problem, roll forward instead: fix it in a new m
 
 ## Creating a gym
 
-Each gym is served on its own host, `<slug>.<BASE_DOMAIN>`: Meta at `meta.staging.rakin.app` on staging, `meta.rakin.app` once production's `BASE_DOMAIN` is `rakin.app`. There is no self-service sign-up yet; an operator makes each gym, from the panel or on the host.
+Each gym is served on its own host, `<slug>.<BASE_DOMAIN>`: Meta at `meta.rakin.app` on production. Real gyms are created on production only; staging holds the seed's gym alone, and never one named like a production gym, whose old `<slug>.staging.rakin.app` name may still point at production ([Old addresses](#old-addresses)). There is no self-service sign-up yet; an operator makes each gym, from the panel or on the host.
 
 **First, the gym signs the [Términos de encargo](legal/terminos-de-encargo.md)** (#367), together with the [Términos de servicio](legal/terminos-de-servicio.md), before any of its data is loaded. Send the current version (its **Versión** line, also `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py)) with the blanks filled in, including the gym's breach contacts (clause 12), which also go in the password manager ([incident response](incident-response.md)). Keep the signed PDF with the company's records, never in a repo, named `<slug>-terminos-de-encargo-<version>.pdf`.
 
@@ -193,15 +235,15 @@ docker compose run --rm api python -m app.gyms create --slug meta --name "Meta" 
 
 `create` refuses to run without `--processor-terms` and `--signed-on`, and refuses a version that is not the current one or a date to come. It records both in `processor_terms`, with the gym. `--no-processor-terms` instead is only for an instance the company does not host, whose operator processes no gym's data for the company.
 
-It creates the gym with the programs Adultos and Niños and the default block kinds and no members, plans or classes, and makes the person with that RUT its owner (found if another gym already has them, created otherwise), with that email on Meta's record of them. Without `--owner-rut` the owner is someone new, keyed by the email in this gym. `--owner-phone` is optional: staff need no phone. Grading is optional: `--grading` starts the gym on a preset (`bjj`, `judo-karate`, `muay-thai`), as Meta, a BJJ academy, is above; without it the gym has no grades and shows no belts until its owner sets them up in Ajustes › Graduación. Run again with the same slug, it changes nothing and says so. The slug is the host: lower-case letters, digits and hyphens, and not a name the app keeps (`www`, `app`, `api`, `staging`, `admin`, `mail` and others, in [`app/hosts.py`](../backend/app/hosts.py)).
+It creates the gym with the programs Adultos and Niños and the default block kinds and no members, plans or classes, and makes the person with that RUT its owner (found if another gym already has them, created otherwise), with that email on Meta's record of them. Without `--owner-rut` the owner is someone new, keyed by the email in this gym. `--owner-phone` is optional: staff need no phone. Grading is optional: `--grading` starts the gym on a preset (`bjj`, `judo-karate`, `muay-thai`), as Meta, a BJJ academy, is above; without it the gym has no grades and shows no belts until its owner sets them up in Ajustes › Graduación. Run again with the same slug, it changes nothing and says so. The slug is the host: lower-case letters, digits and hyphens, and not a name the app keeps (`www`, `app`, `api`, `staging`, `sitio`, `send`, `admin`, `mail` and others, in [`app/hosts.py`](../backend/app/hosts.py)), which are the names that have DNS records of their own or may one day.
 
-Then the owner opens `https://meta.staging.rakin.app`, which shows Meta's name, and signs in with that email. On a gym's host:
+Then the owner opens `https://meta.rakin.app`, which shows Meta's name, and signs in with that email. On a gym's host:
 
 - a sign-in link points back to that host, and signs in to that gym, even for someone in several; someone whose address Meta does not have is told so, and not signed in;
 - the gym's emails (welcome, statements, receipts, invites) link to it too;
 - the session cookie is that host's alone (`__Host-session`), so each gym's host has its own sign-in.
 
-`https://staging.rakin.app` itself works as before.
+The base host itself, `https://app.rakin.app`, serves sign-in for anyone in any gym, and the operators' panel.
 
 **Certificates.** Caddy gets each gym host's certificate from Let's Encrypt at its first visit (on-demand TLS, [`deploy/Caddyfile`](../deploy/Caddyfile)), after asking the api's `/internal/tls-allowed?domain=` whether a gym has that host. It says yes only for an existing gym's slug, or a slug a gym had that still redirects to it ([Editing a gym](#editing-a-gym)), so no name anyone invents reaches Let's Encrypt, and there is no wildcard certificate or DNS plugin. That `ask` is the rate limit: Caddy 2.8 dropped on-demand TLS's own `interval` and `burst`. The first visit to a new gym's host waits a few seconds for its certificate.
 
@@ -251,6 +293,21 @@ WHERE a.until > now() ORDER BY a.until;
 SQL
 ```
 
+## Old addresses
+
+Until the switch (#464) production's host was called staging, and its gyms lived at `<slug>.staging.rakin.app`. Those names keep working on production, so that nothing already sent or bookmarked breaks.
+
+**The redirect.** With `MOVED_FROM_DOMAIN=staging.rakin.app`, production's Caddy ([`deploy/Caddyfile`](../deploy/Caddyfile)) answers `<slug>.staging.rakin.app` with a redirect to `<slug>.rakin.app`, and `staging.rakin.app` itself with one to `app.rakin.app`, path and query kept: **301** for GET and HEAD, **308** for any other method, which keeps the method and the body. It is done in Caddy and not in the api because Caddy serves the SPA's pages itself, without asking the api. Each old name gets its certificate on demand, and the api's `ask` allows only `staging.rakin.app` and `<slug>.staging.rakin.app` for a gym's slug or a live alias's, so no name anyone invents reaches Let's Encrypt. A gym renamed since goes through two hops, the old domain's and then its alias's ([Editing a gym](#editing-a-gym)). With the setting empty, as on staging, nothing redirects.
+
+**The DNS record that keeps it alive.** At the switch `staging` and `*.staging` moved to the staging host, so on their own the old names would reach staging instead of the redirect. Each gym that existed before the switch keeps an explicit record, `<slug>.staging` → production (today only `meta.staging`), which beats the wildcard. `staging.rakin.app` itself does not: it is staging's base host now. So:
+
+- **Links in emails already sent** to a gym's old host work, because they go through the redirect: unsubscribe links (signed by `SECRET_KEY`, unchanged, and a person must always be able to stop a gym's email), statements, receipts and invites, which then ask to sign in on the new host. A sign-in link still unused redeems on the new host, since the redirect keeps its token.
+- **Links to the old base host** (`staging.rakin.app/plataforma`, a sign-in asked for there) stopped redirecting once the switch moved its DNS. They were 15-minute links or operators' bookmarks: nothing lasting points there.
+- **Sessions do not move.** The session cookie is host-only (`__Host-session`), so everyone signed in again, once, on the new host. Nothing carries a session across, and nothing should.
+- **The installed app** on a phone keeps the old origin's icon. Opening it follows the 301 to the new host, outside the installed app's scope, so a browser bar shows. Its users reinstall from `<slug>.rakin.app`.
+
+**When it can go.** Never by a date: while the redirect is used, it stays. Caddy writes no access log for that site, so its use cannot be read off the host as it is: the redirect goes 12 months after the switch, or sooner if a `log` directive added to that block for a month shows nobody using it. Then a ticket removes the `<slug>.staging` records, the redirect block and `MOVED_FROM_DOMAIN`. Until then, staging never creates a gym named like a production one.
+
 ## Suspending a gym
 
 From the gym's screen in the panel (#439), section **Suspensión**. Suspending asks for a reason, a confirm, and a session proved in the last 10 minutes, as a rename does; so does resuming. Each is a row of `platform_event`: `gym_suspended` with `{slug, reason}`, or `gym_resumed`. Suspending a suspended gym, or resuming an active one, changes nothing and logs nothing. The list shows **Suspendido** and since when.
@@ -286,7 +343,7 @@ docker compose run --rm api python -m app.operators grant --email <operator@exam
 docker compose run --rm api python -m app.operators list
 ```
 
-They then open `/plataforma` on the base host (`https://staging.rakin.app/plataforma` on staging), give that email, and sign in with the link or the code it brings. The session lasts 8 hours from sign-in; after that they sign in again. The panel does not exist on a gym's host. `grant` on someone who already is an operator changes nothing.
+They then open `/plataforma` on the base host (`https://app.rakin.app/plataforma` on production, `https://staging.rakin.app/plataforma` on staging), give that email, and sign in with the link or the code it brings. The session lasts 8 hours from sign-in; after that they sign in again. The panel does not exist on a gym's host. `grant` on someone who already is an operator changes nothing.
 
 To take it away:
 
@@ -401,7 +458,7 @@ docker compose logs backup                               # "backup uploaded" lin
    ```
 
    Store the whole file in the team's password manager, then delete it from the laptop. The `age1...` public key goes in `BACKUP_AGE_RECIPIENT`. Losing the private key loses every backup; anyone who has it can read them all.
-3. **`.env`:** the `BACKUP_*` lines from [`deploy/.env.example`](../deploy/.env.example), `BACKUP_ENV` being `staging` or `production`, and uncomment `COMPOSE_PROFILES=backup` to turn the service on.
+3. **`.env`:** the `BACKUP_*` lines from [`deploy/.env.example`](../deploy/.env.example), and uncomment `COMPOSE_PROFILES=backup` to turn the service on. Production's `BACKUP_ENV` is `staging`, for the days when its host was called that, so its backups are under `rakin/staging/`; moving them would put the backups at risk for a folder name, so it stays. The staging host takes no backups: nothing on it is worth one.
 4. Run `docker compose up -d --wait` (or the next deploy, which runs the same), and `docker compose logs backup` shows the first `backup uploaded`; then rehearse a restore, below.
 
 **Backups are opt-in.** The `backup` service sits behind the Compose profile `backup`, so a host whose `.env` has no `COMPOSE_PROFILES=backup` runs and deploys everything else without it, `BACKUP_*` unset. Turned on with a `BACKUP_*` setting missing or invalid, the service does not back up: it logs `backups are enabled but not configured`, naming each variable (never its value), at `ERROR`, so Sentry reports it, and again every day until it is fixed. It stays running rather than exit, so the deploy and the other services go on as normal.
@@ -412,7 +469,7 @@ docker compose logs backup                               # "backup uploaded" lin
 
 ```sh
 ssh deploy@<host> 'cd /srv/rakin && ./restore.sh latest' <rakin-backup.key
-ssh deploy@<host> 'cd /srv/rakin && ./restore.sh rakin/production/20261110T060000Z.dump.age' <rakin-backup.key
+ssh deploy@<host> 'cd /srv/rakin && ./restore.sh rakin/staging/20261110T060000Z.dump.age' <rakin-backup.key
 ```
 
 It downloads and decrypts the backup in the `backup` service's image, into a Docker volume; restores it with `pg_restore --exit-on-error` into a throwaway `postgres` container with no network (the roles the schema names are created first, without logins); then compares every table's row count with the rows the dump holds, one `ok` or `FAIL` line per table, and exits non-zero on any difference. **The decrypted dump does land on the host's disk while it runs:** in a Docker volume named `rakin-restore-<pid>` (under `/var/lib/docker/volumes/`), readable by root and by anyone in the `docker` group, along with the scratch database restored from it. A `trap` on exit removes the container and the volume, the decrypted dump with them, whether the restore succeeds, fails or is interrupted (they are deleted, not shredded). Only `kill -9` or a crash of the host skips the trap; then `docker rm -f -v rakin-restore-<pid>` and `docker volume rm rakin-restore-<pid>` clean up, and `docker volume ls | grep rakin-restore` shows whether anything was left. So "the host cannot read its backups" holds between rehearsals, not during one. The key itself is never written: it goes from stdin straight into `age`.
@@ -434,7 +491,7 @@ From your laptop, decrypt the backup into it, the key over SSH as for `restore.s
 
 ```sh
 ssh deploy@<host> 'cd /srv/rakin && docker compose run --rm -T -v $HOME/restore:/restore backup sh -c \
-  "python -m app.backup fetch rakin/production/20261110T060000Z.dump.age /restore/b.age && age -d -i - -o /restore/b.dump /restore/b.age"' \
+  "python -m app.backup fetch rakin/staging/20261110T060000Z.dump.age /restore/b.age && age -d -i - -o /restore/b.dump /restore/b.age"' \
   <rakin-backup.key
 ```
 
@@ -453,3 +510,35 @@ docker compose up -d --wait
 The dump carries the schema at its release's migration. If the running release is newer, run `docker compose --profile migrate run --rm migrate` before `up`. The restored database needs the same `FIELD_ENCRYPTION_KEY` it was written under, or the sensitive custom fields stay unreadable. The key only passes through the host's memory; the decrypted dump in `$HOME/restore` does land on its disk, which is why it goes as soon as the restore is done.
 
 Point-in-time recovery (WAL archiving) is not set up; a nightly dump loses up to a day. See the [design](technical.md#infrastructure-and-operations).
+
+## The switch (#464)
+
+Run once, by the PM: the Ashburn host, until then called staging, becomes production on the `rakin.app` names, and the Nuremberg host becomes staging. This is the record of how; after it, every release goes through [§5](#5-release).
+
+**The quiet hour:** a weekday, 22:00–23:00 America/Santiago, after Meta's last class and clear of the nightly jobs and the 03:00 backup. The owner confirms the day with Meta's owner.
+
+**What Meta's owner sees:** the old address sends them to `meta.rakin.app`; everyone signs in again, once; the app icon is installed again. No data moves. The owner sends Meta's owner this two days before, adapted as they see fit:
+
+> El [día] entre 22:00 y 23:00 Rakin cambia de dirección: Meta pasa a meta.rakin.app. La dirección antigua seguirá funcionando y llevará a la nueva. Ese día todos (equipo y alumnos) deben volver a entrar con su correo, una sola vez, y quien tenga el ícono instalado en el teléfono debe instalarlo de nuevo desde meta.rakin.app. No se pierde ningún dato.
+
+**Before the day:**
+
+- Every build ticket of #464 merged and released to the current host, where it is harmless (`MOVED_FROM_DOMAIN` unset).
+- The staging host deployed through the `staging` environment, seeded, smoke-tested ([The staging host](#the-staging-host)).
+- **Step 0, on staging:** release the current `main` with `scripts/release.sh`; roll it back to the previous tag by a dispatch (`target: staging`, **rollback** ticked); `verify.sh` passes on it; release again. Production is not approved in this rehearsal, or only as a rollback restart of its live tag, which is harmless.
+- The owner has turned on Hetzner's delete and rebuild protection for production ([§1](#1-provision-the-vps)).
+- At least a day earlier, TTL 60 s on `staging`, `*.staging`, the apex and `www` (Cloudflare's Auto is 300 s), so a way back over DNS is quick.
+
+| # | Step | Check | Way back |
+| --- | --- | --- | --- |
+| 1 | Backup: `docker compose exec -T backup python -m app.backup run`, then `./restore.sh latest` with the key from the password manager. Copy `/srv/rakin/.env` to `.env.pre-464` (mode 600). | `backup uploaded`; every table `ok`. | Nothing changed yet. |
+| 2 | Reserved names: every record name under `rakin.app` in Cloudflare is reserved in [`app/hosts.py`](../backend/app/hosts.py) or is a gym; no gym has `sitio` or `send` (`SELECT slug FROM gym WHERE slug IN ('sitio','send')`). | All accounted for; the query returns nothing. | — |
+| 3 | DNS add: `app`, `*` and `meta.staging` → production (A + AAAA). `meta.staging` already resolves there through `*.staging`, so this changes nothing yet. | `dig +short` for `app.rakin.app`, `x.rakin.app` and `meta.staging.rakin.app` gives production's IPs. | Delete the three records. |
+| 4 | `.env`: `SITE_ADDRESS=app.rakin.app`, `PUBLIC_BASE_URL=https://app.rakin.app`, `BASE_DOMAIN=rakin.app`, `MOVED_FROM_DOMAIN=staging.rakin.app`; then `docker compose up -d --wait`. | `./smoke.sh https://app.rakin.app` passes (it waits for the new certificate); `curl -sI https://meta.rakin.app` is a 200 once its certificate is issued; `curl -sI 'https://meta.staging.rakin.app/alumnos?x=1'` is a 301 to `https://meta.rakin.app/alumnos?x=1`, and the same with `-X POST` a 308; `curl -sI https://staging.rakin.app/plataforma` is a 301 to `https://app.rakin.app/plataforma`; `https://rakin.app` is still the landing page; `docker compose logs caddy` shows no ACME errors. | `cp .env.pre-464 .env && docker compose up -d --wait`, then `./smoke.sh https://staging.rakin.app`. |
+| 5 | Bucket CORS: `app.blob_cors --apply` with the owner's admin token, then `--check` ([§5](#first-deploy-only-the-buckets-cors-rule)). | `--check` passes for `https://app.rakin.app` and `https://meta.rakin.app`. | `--apply` again under the `.env.pre-464` values. |
+| 6 | Resend: the webhook's URL → `https://app.rakin.app/api/webhooks/resend`, then send Resend's test event. | A 200 in Resend's log. | Set the URL back. |
+| 7 | Browser checks: sign in at `meta.rakin.app` with the owner's own test account; upload a proof at a phone's width; sign in at `app.rakin.app/plataforma` as an operator; an old unsubscribe link from a real email follows the redirect and shows its page. | All work; no CORS error in the console. | Step 4's way back, then 5's and 6's. |
+| 8 | GitHub ([§4](#4-github)): create the `production` environment (required reviewer the owner; deployments from tags `v*` and the branch `main`, which a rollback dispatch runs on) and copy the four repository-level `DEPLOY_*` values into it, with `DEPLOY_URL=https://app.rakin.app`. The `staging` environment gets the new host's four values and `DEPLOY_URL=https://staging.rakin.app`. **Delete the repository-level `DEPLOY_*`.** Add the rulesets. Then a dispatch with the current tag, `target: both`, **rollback** ticked. | Staging's job deploys to the new host; production's waits for approval and, approved, restarts and passes its checks on `https://app.rakin.app`. | Re-add the repository-level secrets from the password manager; delete the environments. |
+| 9 | DNS move: `staging` and `*.staging` → the staging host (A + AAAA), and add `www.sitio.staging` → the staging host. `meta.staging` stays on production. | `dig` shows the split; `https://staging.rakin.app` is staging's sign-in page, with no Meta; `https://academia-sur.staging.rakin.app` serves the seed's gym; `https://meta.staging.rakin.app` still 301s to `meta.rakin.app`. | Point `staging` and `*.staging` back at production (the 60 s TTL makes it quick). |
+| 10 | Uptime monitors moved ([Uptime](#uptime)); after a test error on each host, Sentry shows `production` from production and `staging` from staging. The owner tells Meta's owner it is done. | Monitors green; the two environments apart in Sentry. | — |
+| 11 | A day later: TTLs back to Auto; the PM updates its own notes on the servers. | — | — |

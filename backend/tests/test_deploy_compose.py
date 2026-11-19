@@ -51,8 +51,9 @@ def test_compose_defaults_match_env_example() -> None:
         and default != listed[name]
         and not listed[name].startswith("<")
         and not (name.startswith("BACKUP_") and default == "")
-        # Caddy's stand-in for "no old domain", checked below.
-        and (name, default) != ("MOVED_FROM_DOMAIN", "moved.invalid")
+        # The example holds production's old domain, while unset means none: the
+        # api's empty default and Caddy's stand-in for it, both checked below.
+        and not (name == "MOVED_FROM_DOMAIN" and default in ("", "moved.invalid"))
     }
     assert mismatched == {}
 

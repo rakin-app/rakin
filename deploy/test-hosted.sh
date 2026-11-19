@@ -184,10 +184,12 @@ echo "ok   - reset-staging.sh refuses a database holding a gym that is not the s
 redirect() { # redirect <host> <path> [curl options]: "<code> <location>"
 	landing "$1" "$2" -o /dev/null -w '%{http_code} %{redirect_url}' "${@:3}"
 }
+# The gym's new host is under .env.example's BASE_DOMAIN, production's (rakin.app).
+base=$(sed -n 's/^BASE_DOMAIN=//p' "$dir/.env")
 for _ in $(seq 30); do landing meta.moved.localhost / -o /dev/null 2>/dev/null && break; sleep 1; done
-[ "$(redirect meta.moved.localhost '/alumnos?x=1&y=2')" = "301 https://meta.staging.rakin.app/alumnos?x=1&y=2" ]
-[ "$(redirect meta.moved.localhost /alumnos -I)" = "301 https://meta.staging.rakin.app/alumnos" ]
-[ "$(redirect meta.moved.localhost '/api/x?y=1' -X POST -d z=1)" = "308 https://meta.staging.rakin.app/api/x?y=1" ]
+[ "$(redirect meta.moved.localhost '/alumnos?x=1&y=2')" = "301 https://meta.$base/alumnos?x=1&y=2" ]
+[ "$(redirect meta.moved.localhost /alumnos -I)" = "301 https://meta.$base/alumnos" ]
+[ "$(redirect meta.moved.localhost '/api/x?y=1' -X POST -d z=1)" = "308 https://meta.$base/api/x?y=1" ]
 [ "$(redirect moved.localhost '/plataforma?a=b')" = "301 http://localhost/plataforma?a=b" ]
 [ "$(redirect moved.localhost /api/auth -X POST -d z=1)" = "308 http://localhost/api/auth" ]
 echo "ok   - the old domain redirects: a gym's host to its new one (301, path and query kept; 308 for POST), the old base host to the base host"
