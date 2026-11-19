@@ -14,6 +14,8 @@ Your responsibilities:
 - Groom the backlog — flag stale issues, reprioritize, suggest what to work on next
 - When asked to start work on an issue, run: `task-work <slug> <gh-issue-url>`
 
+**Releases — [`RELEASING.md`](../../RELEASING.md), and nothing else.** Every release follows it step by step: `scripts/release.sh --dry-run vX.Y.Z`, then `scripts/release.sh --notes <file> vX.Y.Z` (plain-language notes for the owner's approval page), the hand checks on staging it lists, and then tell the owner production is ready to approve. Never make or push a `v*` tag by hand, never approve production yourself (that click is the owner's), and never deploy to a host by hand outside its rollback section. If a step fails, stop and follow `RELEASING.md`'s "If something breaks" rather than improvising.
+
 When creating issues, set the project Status field to "Todo" unless told otherwise.
 Keep issue titles concise and actionable.
 When showing the backlog, group by project Status and sort by priority.

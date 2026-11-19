@@ -1,16 +1,24 @@
 name: deploy
 
-# A release: push a `v*` tag on a commit of `main`, e.g.
-#   git tag -s v0.1.0 -m v0.1.0 && git push origin v0.1.0
-# `release` gives that commit's images (built by images.yml) the tag, and
-# `deploy` runs it on the host over SSH: deploy/deploy.sh pulls, migrates,
-# restarts, and deploy/smoke.sh checks the result. Rollback is a manual run
-# of this workflow with an earlier tag and `rollback` ticked, or
-# `./deploy.sh --rollback <tag>` on the host. See docs/deploy.md.
+# A release: push a signed `v*` tag on a commit of `main`. Then, in order:
+#   release     gives that commit's images (built by images.yml) the tag;
+#   staging     deploys it to the staging host and checks it (deploy-host.yml);
+#   changes     writes the job summary the owner reads before approving: the
+#               tag's notes, the commits and migrations since production's tag;
+#   production  waits for the owner's approval (the `production` environment's
+#               required reviewer), backs up, deploys and checks.
+# Production is only offered for a tag that passed on staging.
 #
-# The host comes from repository secrets DEPLOY_HOST, DEPLOY_USER and
-# DEPLOY_SSH_KEY (DEPLOY_KNOWN_HOSTS too, to pin the host key). While any of
-# the first three is unset, `deploy` is skipped and the run still passes.
+# By hand (workflow_dispatch): a tag, `rollback` (restart only, no migrations,
+# no backup) and `target`. A forward deploy always goes through staging, so
+# `target: production` is refused unless `rollback` is ticked. See
+# docs/deploy.md.
+#
+# Each environment holds its own secrets (DEPLOY_HOST, DEPLOY_USER,
+# DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS) and variables (DEPLOY_URL, DEPLOY_DIR);
+# none at repository level, since an environment missing one would fall back
+# to it. While an environment's host secrets are unset its job passes without
+# deploying.
 on:
   push:
     tags: ['v*']
@@ -23,14 +31,17 @@ on:
         description: Roll back to it (restart only, no migrations)
         type: boolean
         default: false
+      target:
+        description: Where (production alone only with rollback)
+        type: choice
+        options: [both, staging, production]
+        default: both
+
+# The changes job reads production's tag back from this: "<verb> <tag> ...".
+run-name: ${{ inputs.rollback && 'rollback' || 'deploy' }} ${{ inputs.tag || github.ref_name }} to ${{ inputs.target || 'both' }}
 
 permissions:
   contents: read
-
-# One deploy at a time, and never cancel one halfway.
-concurrency:
-  group: deploy-staging
-  cancel-in-progress: false
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
@@ -41,10 +52,19 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: ${{ env.TAG }}
     steps:
-      - name: Check the tag
+      - name: Check the tag and the target
+        env:
+          TARGET: ${{ inputs.target }}
+          ROLLBACK: ${{ inputs.rollback }}
         run: |
           [[ $TAG =~ ^v[0-9A-Za-z._-]+$ ]] || { echo "::error::'$TAG' is not a v* tag"; exit 1; }
+          if [ "$TARGET" = production ] && [ "$ROLLBACK" != true ]; then
+            echo "::error::a deploy to production goes through staging first: use target both, or tick rollback"
+            exit 1
+          fi
       - uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ env.TAG }}
@@ -77,73 +97,98 @@ jobs:
             docker buildx imagetools create -t "ghcr.io/rakin-app/$image:$TAG" "$source"
           done
 
-  config:
-    runs-on: ubuntu-latest
-    outputs:
-      enabled: ${{ steps.check.outputs.enabled }}
-    steps:
-      - id: check
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          if [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_USER" ] && [ -n "$DEPLOY_SSH_KEY" ]; then
-            echo "enabled=true" >>"$GITHUB_OUTPUT"
-          else
-            echo "::notice::DEPLOY_HOST, DEPLOY_USER or DEPLOY_SSH_KEY is unset: $TAG is tagged, not deployed"
-            echo "enabled=false" >>"$GITHUB_OUTPUT"
-          fi
-
-  deploy:
-    needs: [release, config]
-    if: needs.config.outputs.enabled == 'true'
-    runs-on: ubuntu-latest
+  staging:
+    needs: release
+    if: inputs.target != 'production'
     permissions:
       contents: read
       packages: read
-    environment:
-      name: staging
-      url: ${{ vars.DEPLOY_URL || 'https://staging.rakin.app' }}
-    env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/srv/rakin' }}
-      DEPLOY_URL: ${{ vars.DEPLOY_URL || 'https://staging.rakin.app' }}
+    # One deploy per host at a time, and never cancel one halfway.
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    uses: ./.github/workflows/deploy-host.yml
+    with:
+      environment: staging
+      url: https://staging.rakin.app
+      tag: ${{ needs.release.outputs.tag }}
+      rollback: ${{ inputs.rollback == true }}
+    secrets: inherit
+
+  # No environment and no secrets: it only reads the repository, so it runs
+  # before the approval and its summary is on the page the owner approves from.
+  changes:
+    needs: [release, staging]
+    if: >-
+      always() && needs.release.result == 'success' && inputs.target != 'staging' &&
+      (needs.staging.result == 'success' ||
+       (needs.staging.result == 'skipped' && inputs.target == 'production' && inputs.rollback))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: read
+      actions: read
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: refs/tags/${{ env.TAG }}
-      - name: Set up SSH
+          fetch-depth: 0
+      # Checking out a tag can leave it lightweight; fetch them all as they are.
+      - run: git fetch --force --tags origin
+      - name: Find what production runs
+        id: previous
         env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" >~/.ssh/deploy
-          chmod 600 ~/.ssh/deploy
-          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >~/.ssh/known_hosts
-          else
-            echo "::warning::DEPLOY_KNOWN_HOSTS is unset; trusting the host key ssh-keyscan sees"
-            ssh-keyscan -H "$DEPLOY_HOST" >~/.ssh/known_hosts
-          fi
-          printf 'Host deploy\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/deploy\n  StrictHostKeyChecking yes\n' \
-            "$DEPLOY_HOST" "$DEPLOY_USER" >~/.ssh/config
-      - name: Copy the release's Compose file and scripts
-        run: scp deploy/docker-compose.yml deploy/deploy.sh deploy/smoke.sh deploy/restore.sh "deploy:$DEPLOY_DIR/"
-      - name: Run it on the host
+          # Production's deployments, newest first. Each one's job says what
+          # happened on the host: "Run it on the host" skipped (secrets unset,
+          # or a failure before it) deployed nothing, so it does not count. The
+          # first job that deployed and passed gives the previous tag. One that
+          # deployed and then failed (verify, smoke, or deploy.sh mid-restart)
+          # may have left its tag live: the newest such tag is named as a
+          # warning. The tag comes from the run-name: a dispatch's ref is a branch.
+          previous='' maybe_live=''
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=production&per_page=30" --jq '.[].id'); do
+            log=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=1" --jq '.[0] | .log_url // .target_url // ""') || continue
+            job=$(sed -n 's#.*/job/\([0-9][0-9]*\).*#\1#p' <<<"$log")
+            [ -n "$job" ] || continue
+            read -r run conclusion deployed < <(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$job" \
+              --jq '"\(.run_id) \(.conclusion) \([.steps[] | select(.name == "Run it on the host") | .conclusion][0] // "none")"') || continue
+            case $deployed in success | failure | cancelled) ;; *) continue ;; esac
+            tag=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.display_title' | awk '{ print $2 }') || continue
+            [[ $tag =~ ^v[0-9A-Za-z._-]+$ ]] || continue
+            if [ "$deployed" = success ] && [ "$conclusion" = success ]; then
+              previous=$tag
+              break
+            fi
+            [ -n "$maybe_live" ] || maybe_live=$tag
+          done
+          echo "previous=$previous" >>"$GITHUB_OUTPUT"
+          echo "maybe_live=$maybe_live" >>"$GITHUB_OUTPUT"
+      - name: Write the summary
         env:
+          PREVIOUS: ${{ steps.previous.outputs.previous }}
+          MAYBE_LIVE: ${{ steps.previous.outputs.maybe_live }}
           ROLLBACK: ${{ inputs.rollback && '--rollback' || '' }}
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # The token reaches the host on stdin only, and is logged out again.
-          printf '%s\n' "$GHCR_TOKEN" | ssh deploy "
-            set -e
-            docker login ghcr.io -u '$GHCR_USER' --password-stdin >/dev/null
-            trap 'docker logout ghcr.io >/dev/null' EXIT
-            '$DEPLOY_DIR/deploy.sh' $ROLLBACK '$TAG'
-          "
-      - name: Smoke test
-        run: deploy/smoke.sh "$DEPLOY_URL"
+          # shellcheck disable=SC2086  # ROLLBACK is empty or one word
+          .github/scripts/release-changes.sh $ROLLBACK ${MAYBE_LIVE:+--maybe-live "$MAYBE_LIVE"} "$TAG" $PREVIOUS \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+  production:
+    needs: [release, staging, changes]
+    if: always() && needs.changes.result == 'success'
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    uses: ./.github/workflows/deploy-host.yml
+    with:
+      environment: production
+      url: https://app.rakin.app
+      tag: ${{ needs.release.outputs.tag }}
+      rollback: ${{ inputs.rollback == true }}
+      # A rollback migrates nothing, so it takes no backup.
+      backup: ${{ inputs.rollback != true }}
+    secrets: inherit

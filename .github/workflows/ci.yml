@@ -143,8 +143,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: shellcheck deploy/*.sh
+      - run: shellcheck deploy/*.sh .github/scripts/*.sh scripts/release.sh
       - run: deploy/test-deploy.sh
+      - run: deploy/test-verify.sh
+      - run: deploy/test-release.sh
+      - run: .github/scripts/test-release-changes.sh
+      - run: deploy/test-reset-staging.sh
       - run: deploy/test-hosted.sh
 
   dco:

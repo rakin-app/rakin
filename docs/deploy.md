@@ -16,11 +16,11 @@ What lives where:
 | Piece | Where |
 | --- | --- |
 | Images | `ghcr.io/rakin-app/rakin-api` (api, jobs, migrate) and `ghcr.io/rakin-app/rakin-web` (Caddy plus the built SPA), built by [`images.yml`](../.github/workflows/images.yml) for every commit on `main`, tagged `sha-<commit>` and `main` |
-| Releases | a `v*` git tag; [`deploy.yml`](../.github/workflows/deploy.yml) tags that commit's images with it and runs it on the host |
+| Releases | a `v*` git tag; [`deploy.yml`](../.github/workflows/deploy.yml) tags that commit's images with it, runs it on staging, and on production once the owner approves |
 | The stack | [`deploy/docker-compose.yml`](../deploy/docker-compose.yml): `caddy`, `api`, `jobs`, `postgres`, the one-shot `migrate`, and `backup` when enabled. No Garage, no Vite, no source mounts |
 | Settings | `/srv/rakin/.env` on the host only, from [`deploy/.env.example`](../deploy/.env.example). Never in the repo, the image or a CI secret |
 | Deploy and rollback | [`deploy/deploy.sh`](../deploy/deploy.sh), on the host beside the Compose file |
-| Post-deploy check | [`deploy/smoke.sh`](../deploy/smoke.sh) `<url>` |
+| Post-deploy check | [`deploy/verify.sh`](../deploy/verify.sh) on the host (images, schema, error log), then [`deploy/smoke.sh`](../deploy/smoke.sh) `<url>` |
 | Backups | the opt-in `backup` service ([`app/backup.py`](../backend/app/backup.py)), nightly to a bucket of their own; [`deploy/restore.sh`](../deploy/restore.sh) restores one into a scratch database ([below](#backups)) |
 
 CI boots this exact stack from each PR's images (`deploy/test-hosted.sh`), smoke-tests it, and backs it up and restores the backup, so a release is never the first time the images, the Caddyfile and the Compose file meet.
@@ -110,16 +110,25 @@ The example holds **production's** values. Staging's differ in the names, the ma
 
 ## 4. GitHub
 
-Repository **secrets** (Settings → Secrets and variables → Actions). Repository level, not an environment's: the workflow checks them before it enters the `staging` environment, and skips the deploy (passing) while any of the first three is unset.
+Two **environments** (Settings → Environments), each with its own host's secrets and nothing at repository level. An environment missing a secret would fall back to a repository secret of the same name, so a staging deploy could reach production's host: keep none there.
+
+- `staging`: no reviewers.
+- `production`: **required reviewer: the owner**, "prevent self-review" off, deployment branches and tags limited to tags `v*` and the branch `main`. A tag push runs on the tag; a run by hand (a rollback) runs on `main`, so without `main` the environment would refuse every rollback.
+
+Secrets, the same names in each:
 
 | Secret | Value |
 | --- | --- |
-| `DEPLOY_HOST` | the VPS's address |
+| `DEPLOY_HOST` | that environment's VPS address |
 | `DEPLOY_USER` | `deploy` |
-| `DEPLOY_SSH_KEY` | the private half of the deploy key |
-| `DEPLOY_KNOWN_HOSTS` | the `ssh-keyscan -H` output. Optional, but without it the workflow trusts whatever key answers |
+| `DEPLOY_SSH_KEY` | the private half of that host's own deploy key |
+| `DEPLOY_KNOWN_HOSTS` | that host's `ssh-keyscan -H` output. Required: no host key is trusted unpinned |
 
-Optional repository **variables**: `DEPLOY_URL` (default `https://staging.rakin.app`) and `DEPLOY_DIR` (default `/srv/rakin`).
+While any of the first three is unset in an environment, its job skips the deploy and passes (a fork stays green); with those set and `DEPLOY_KNOWN_HOSTS` unset, the job fails.
+
+Variables, per environment too: `DEPLOY_URL` (`https://staging.rakin.app`, `https://app.rakin.app`; the workflow passes these as defaults) and, optionally, `DEPLOY_DIR` (default `/srv/rakin`).
+
+Every deploy first checks it reached the right host: staging's `.env` has `SEED_ONLY=1` and production's does not (`verify.sh --check-host`). A host without that line is taken for production, so the staging job refuses it before copying or running anything.
 
 The images are pulled with the workflow's own token, logged in for the deploy and out again. To pull by hand on the host (a rollback with no CI), either make the two packages public (Packages → package settings → visibility; the code is public anyway), or `docker login ghcr.io` with a token that has only `read:packages`.
 
@@ -134,10 +143,22 @@ Releases are signed tags on a commit of `main` whose `ci` and `images` runs pass
 
 `deploy.yml` then:
 
-1. tags `rakin-api:sha-<commit>` and `rakin-web:sha-<commit>` as `v0.1.0` (no rebuild: what ran in CI is what ships), waiting for `images.yml` if the tag beat it;
-2. copies that tag's `docker-compose.yml`, `deploy.sh`, `smoke.sh` and `restore.sh` to `/srv/rakin`;
+1. **release**: tags `rakin-api:sha-<commit>` and `rakin-web:sha-<commit>` as `v0.1.0` (no rebuild: what ran in CI is what ships), waiting for `images.yml` if the tag beat it;
+2. **staging**: deploys it to the staging host ([`deploy-host.yml`](../.github/workflows/deploy-host.yml), below);
+3. **changes**: writes the run's job summary, the page the owner approves from: the tag's notes, production's **last successful deploy** (the newest `production` deployment whose job ran `deploy.sh` and passed every check; a job that skipped for unset secrets deployed nothing and does not count), the commits between the two and the migrations among them, flagged when there are any. If a newer production deploy reached the host and then failed, the summary warns that its tag may be what production runs, since a failed check leaves the new release live: check `releases.log` on the host before approving;
+4. **production**: waits for the owner's approval, then backs up (`docker compose exec -T backup python -m app.backup run`, and stops unless it reports `backup uploaded`) and deploys to the production host the same way.
+
+The backup runs against the `backup` service **already running** on the host, under its current Compose file: the new one is copied after it. So production's `.env` needs `COMPOSE_PROFILES=backup` and the service up before its first deploy through this workflow (the production host has it today). Without it the job stops at the backup, before anything is deployed.
+
+Production is only offered once staging passed for that tag. On each host, `deploy-host.yml`:
+
+1. checks the host is the environment's (`SEED_ONLY`, [above](#4-github));
+2. copies that tag's `docker-compose.yml`, `deploy.sh`, `smoke.sh`, `restore.sh`, `verify.sh` and `reset-staging.sh` to `/srv/rakin`;
 3. runs `./deploy.sh v0.1.0` there: `docker compose pull`, then `docker compose run --rm migrate` (`python -m app.db_bootstrap && alembic upgrade head`), and only once that succeeds `docker compose up -d --wait`. A failed migration leaves the running release untouched;
-4. runs `deploy/smoke.sh https://staging.rakin.app`. On a first deploy Caddy may still be waiting for its Let's Encrypt certificate, so while `/healthz` fails to connect, handshake or answer in time, the smoke test waits up to 90 s (`SMOKE_TLS_WAIT`) before checking. An HTTP failure such as a 503 is never waited for.
+4. runs `./verify.sh <environment> v0.1.0` there ([`deploy/verify.sh`](../deploy/verify.sh)): caddy, api and jobs run, every rakin-app image is `:v0.1.0`, `alembic current` is the image's `alembic heads`, and the api and jobs logged no `ERROR` in the last 5 minutes (it prints how many and from which loggers, never the lines: read those on the host);
+5. runs `deploy/smoke.sh <DEPLOY_URL>`. On a first deploy Caddy may still be waiting for its Let's Encrypt certificate, so while `/healthz` fails to connect, handshake or answer in time, the smoke test waits up to 90 s (`SMOKE_TLS_WAIT`) before checking. An HTTP failure such as a 503 is never waited for.
+
+If a check fails after the deploy, the job's summary prints the rollback line for that host (`./deploy.sh --rollback <previous tag>`, from `releases.log`). After a failed **rollback** to a tag, that line names the release the rollback started from (the one before it in `releases.log`), so it goes forward again, restart only.
 
 `deploy.sh` records the live tag as `RAKIN_TAG` in `.env`, so `docker compose ps`, `logs`, `exec` and so on in `/srv/rakin` target the live release, and appends each run to `/srv/rakin/releases.log`.
 
@@ -187,7 +208,7 @@ Any earlier tag, restart only:
 cd /srv/rakin && ./deploy.sh --rollback v0.0.9
 ```
 
-or, from GitHub, run the **deploy** workflow by hand with that tag and **rollback** ticked. A rollback never migrates: migrations are additive within a release, so the previous image runs on the newer schema, while its Alembic would refuse a revision it does not know. Under the hood it is `RAKIN_TAG=v0.0.9 docker compose up -d`, which also works by hand. `releases.log` lists what ran before.
+or, from GitHub, run the **deploy** workflow by hand with that tag, **rollback** ticked and **target** `staging`, `production` or `both`. A production rollback skips staging, still waits for the owner's approval, and takes no backup (nothing migrates). `target: production` without **rollback** is refused: a forward deploy always goes through staging. After the restart `verify.sh --rollback` checks the images and the logs, not `alembic current`: the schema stays the newer one. A rollback never migrates: migrations are additive within a release, so the previous image runs on the newer schema, while its Alembic would refuse a revision it does not know. Under the hood it is `RAKIN_TAG=v0.0.9 docker compose up -d`, which also works by hand. `releases.log` lists what ran before.
 
 A rollback runs the Compose file currently in `/srv/rakin`. The workflow copies the earlier tag's one first; by hand, if `deploy/docker-compose.yml` changed between the two releases, fetch the older one with `git show v0.0.9:deploy/docker-compose.yml`.
 
@@ -357,6 +378,60 @@ docker compose exec -T postgres psql -U rakin rakin < deploy/minors-without-guar
 ```
 
 It lists each gym's members under 18 with no guardian, by id, never by name. Nothing is sent to them until the gym adds one, and the gym sees each on Hoy and on the ficha, so ask the gym to add the guardian there.
+
+## The staging host
+
+The Nuremberg host (#464) holds **seed data only**, never a gym's data: the seed's gym, the team's own operator accounts and the team's allowed mail addresses. It is provisioned like §1 and deployed by the `staging` environment of `deploy.yml`.
+
+### Its `.env`
+
+From [`deploy/.env.example`](../deploy/.env.example), with **every secret generated afresh**: none is copied from production. Where it differs:
+
+| Setting | Staging |
+| --- | --- |
+| `SITE_ADDRESS`, `PUBLIC_BASE_URL` | `staging.rakin.app`, `https://staging.rakin.app` |
+| `BASE_DOMAIN` | `staging.rakin.app` (the seed's gym at `academia-sur.staging.rakin.app`) |
+| `LANDING_HOST` | `sitio.staging.rakin.app`, a preview of the next landing |
+| `MOVED_FROM_DOMAIN` | empty |
+| `ENVIRONMENT`, `SENTRY_ENVIRONMENT` | `production` (secure cookies, secret checks), `staging` (so Sentry tells the hosts apart); same `SENTRY_DSN` |
+| `SECRET_KEY`, `FIELD_ENCRYPTION_KEY`, every `POSTGRES_*_PASSWORD` | its own |
+| `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | bucket `rakin-staging-seed`, and a token scoped to it alone. Apply its CORS rule once (`app.blob_cors --apply`, [above](#first-deploy-only-the-buckets-cors-rule)) |
+| `SMTP_PASSWORD` | a Resend API key of its own, named for staging |
+| `MAIL_ALLOW` | the team's own addresses: any other recipient is logged (`mail (not allowed, not sent)`), never sent. The seed's people have `example.com` addresses, which would bounce |
+| `RESEND_WEBHOOK_SECRET` | empty |
+| `SEED_ONLY` | `1`: `app.seed` runs, and the nightly reset below does |
+| `STAGING_OPERATORS` | the PM's and the owner's addresses, comma-separated: made operators again after each reset |
+| `COMPOSE_PROFILES`, `BACKUP_*` | unset: nothing on it is worth a backup |
+
+No production key of any kind: no production S3, SMTP, backup or deploy key.
+
+### Seeding it
+
+After its first deploy, as `deploy` in `/srv/rakin`:
+
+```sh
+docker compose run --rm api python -m app.seed
+docker compose run --rm api python -m app.operators grant --email <address> --name <name>   # the PM, the owner
+./reset-staging.sh --install-cron
+```
+
+### The nightly reset
+
+[`deploy/reset-staging.sh`](../deploy/reset-staging.sh), copied to `/srv/rakin` by every deploy, puts the host back to fresh seed data every night at 05:00 America/Santiago: the seed's dates stay current and the day's tests are undone. It stops `api`, `jobs` and `caddy`, drops and recreates the database, runs the `migrate` one-shot (bootstrap and migrations), loads the seed, grants operator to each address in `STAGING_OPERATORS`, starts everything and runs `smoke.sh` on `PUBLIC_BASE_URL`. Staging is down for those few seconds.
+
+It **refuses** unless `.env` has `SEED_ONLY=1`, and refuses if the database holds any gym that is not the seed's (`academia-sur`), so on production, or on a staging that somehow got a real gym, it drops nothing. A database that is missing or has no `gym` table yet (a reset that failed halfway) holds no gym, so the next run goes ahead.
+
+`./reset-staging.sh --install-cron` adds it to the `deploy` user's crontab, once. Cron runs in the host's zone (UTC) and Ubuntu's cron has no `CRON_TZ`, so the line runs it hourly with `--cron`, and the script resets only in the 05:00 hour of Santiago time, which follows Chile's clock changes. Re-running `--install-cron` keeps a single line.
+
+Every run, refusals included, is appended to `/srv/rakin/reset.log`: the cron line discards the script's output, so the log is the only place a refused night shows. A failure says which step it stopped at; read the lines above it, then run `./reset-staging.sh` by hand. **If the seed's dates on staging look stale, read `reset.log` first:** a gym that is not the seed's (someone created one on staging) makes every night refuse, and the log names it. Staging never holds a gym's real data, so once the PM has checked that gym is a test, drop the database by hand (`docker compose exec postgres dropdb -U rakin --force rakin`) and run `./reset-staging.sh`: a missing database holds no gym, so it goes ahead, and so does every night after.
+
+A reset and a deploy never run together: both take `/srv/rakin/deploy.lock` (`flock`), and each waits up to 10 minutes for the other. A deploy that lands at 05:00 waits out the reset, which takes seconds. `verify.sh` takes the same lock, so a reset that starts after `deploy.sh` finishes never runs under its checks: they wait for it and then check the stack the reset left up.
+
+```sh
+./reset-staging.sh          # reset now
+tail -n 20 reset.log
+crontab -l                  # 0 * * * * /srv/rakin/reset-staging.sh --cron ...
+```
 
 ## Backups
 
