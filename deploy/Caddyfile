@@ -76,3 +76,29 @@
 	}
 	import app
 }
+
+# The gyms' old domain (#464): MOVED_FROM_DOMAIN, staging.rakin.app on production.
+# <slug>.<it> redirects to <slug>.BASE_DOMAIN and <it> itself to the base host,
+# path and query kept: 301 for GET and HEAD, 308 for the rest, which keeps the
+# method and body (as the api's alias redirects, app/hosts.py). Both names are on
+# demand, so production asks Let's Encrypt only for the names the api's `ask`
+# allows (a gym's or an alias's slug, and the old base host), and a host with the
+# setting empty (Compose passes moved.invalid) asks for nothing. It only
+# redirects: no encode, no file_server, and no access log.
+{$MOVED_FROM_DOMAIN:moved.invalid}, *.{$MOVED_FROM_DOMAIN:moved.invalid} {
+	tls {
+		on_demand
+	}
+
+	# The site's wildcard is one label, so the slug is the host's first label,
+	# however many labels the old domain has. The old base host is matched first,
+	# as it would pass for a slug too.
+	map {host} {moved_to} {
+		{$MOVED_FROM_DOMAIN:moved.invalid} {$PUBLIC_BASE_URL}
+		~^([^.]+)\. "https://${1}.{$BASE_DOMAIN}"
+	}
+	@get method GET HEAD
+	@other not method GET HEAD
+	redir @get {moved_to}{uri} 301
+	redir @other {moved_to}{uri} 308
+}

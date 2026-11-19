@@ -58,6 +58,7 @@ sed \
 	-e 's|^SITE_ADDRESS=.*|SITE_ADDRESS=:80|' \
 	-e 's|^LANDING_HOST=.*|LANDING_HOST=landing.localhost|' \
 	-e 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=http://localhost|' \
+	-e 's|^MOVED_FROM_DOMAIN=.*|MOVED_FROM_DOMAIN=moved.localhost|' \
 	-e 's|^SENTRY_DSN=.*|SENTRY_DSN=|' \
 	-e 's|^RESEND_WEBHOOK_SECRET=.*|RESEND_WEBHOOK_SECRET=whsec_dGVzdC1vbmx5IHNpZ25pbmcgc2VjcmV0|' \
 	-e 's|^# COMPOSE_PROFILES=backup$|COMPOSE_PROFILES=backup|' \
@@ -171,6 +172,35 @@ fi
 grep -qx meta <<<"$(gyms)"
 grep -q "reset: refusing: the database holds gyms that are not the seed's: meta" "$dir/reset.log"
 echo "ok   - reset-staging.sh refuses a database holding a gym that is not the seed's"
+
+# The gyms' old domain (#464): its names redirect, path and query kept, 301 for
+# GET and HEAD and 308 for the rest. Their certificates are on demand, as in
+# production, from Caddy's own CA for a .localhost name.
+redirect() { # redirect <host> <path> [curl options]: "<code> <location>"
+	landing "$1" "$2" -o /dev/null -w '%{http_code} %{redirect_url}' "${@:3}"
+}
+for _ in $(seq 30); do landing meta.moved.localhost / -o /dev/null 2>/dev/null && break; sleep 1; done
+[ "$(redirect meta.moved.localhost '/alumnos?x=1&y=2')" = "301 https://meta.staging.rakin.app/alumnos?x=1&y=2" ]
+[ "$(redirect meta.moved.localhost /alumnos -I)" = "301 https://meta.staging.rakin.app/alumnos" ]
+[ "$(redirect meta.moved.localhost '/api/x?y=1' -X POST -d z=1)" = "308 https://meta.staging.rakin.app/api/x?y=1" ]
+[ "$(redirect moved.localhost '/plataforma?a=b')" = "301 http://localhost/plataforma?a=b" ]
+[ "$(redirect moved.localhost /api/auth -X POST -d z=1)" = "308 http://localhost/api/auth" ]
+echo "ok   - the old domain redirects: a gym's host to its new one (301, path and query kept; 308 for POST), the old base host to the base host"
+
+# Caddy's ask: the old domain's names are allowed only for a gym, and for the
+# old base host; no certificate, so no handshake, for any other.
+ask() { # ask <domain>: the api's status code, from inside the stack
+	compose exec -T caddy wget -q -S -O /dev/null "http://api:8000/internal/tls-allowed?domain=$1" 2>&1 |
+		sed -n 's/^ *HTTP\/[0-9.]* \([0-9]*\).*/\1/p' | tail -1
+}
+[ "$(ask meta.moved.localhost)" = 200 ]
+[ "$(ask moved.localhost)" = 200 ]
+[ "$(ask nadie.moved.localhost)" = 404 ]
+if landing nadie.moved.localhost / -o /dev/null 2>/dev/null; then
+	echo "test-hosted: a host no gym has under the old domain got a certificate" >&2
+	exit 1
+fi
+echo "ok   - the old domain's ask allows a gym and the old base host, and 404s a slug no gym has (no certificate)"
 
 compose run --rm backup python -m app.backup run
 compose run --rm backup python -m app.backup status

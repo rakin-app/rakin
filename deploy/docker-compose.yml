@@ -90,8 +90,11 @@ services:
       # Every gym's host, *.BASE_DOMAIN: a wildcard DNS record, unproxied too.
       # Certificates one host at a time, on demand, for gyms the api knows.
       BASE_DOMAIN: ${BASE_DOMAIN:?staging.rakin.app}
-      # The gyms' old domain, redirected to BASE_DOMAIN (#464); empty, none.
-      MOVED_FROM_DOMAIN: ${MOVED_FROM_DOMAIN:-}
+      # The gyms' old domain, redirected to BASE_DOMAIN (#464). Unset, a name no
+      # one can resolve: Caddy reads an empty value as is, and `*.` is no site.
+      MOVED_FROM_DOMAIN: ${MOVED_FROM_DOMAIN:-moved.invalid}
+      # Where the old base host redirects: the base host, with its scheme.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?the URL browsers reach the app at}
       # The landing page (#343), and www, which redirects to it: an A record
       # each, unproxied too.
       LANDING_HOST: ${LANDING_HOST:-rakin.app}
