@@ -12,7 +12,9 @@ on which one it signed in with. `Directory.scope` is asked with both.
 One application may serve several sites, each at its own base URL and each its own
 scope (a tenant on its own host). A link can then point at the site it was asked for
 from (`base_url=`), and be redeemed `within` that site's scope: the session starts
-there, or not at all (`Unreachable`).
+there, or not at all (`Unreachable`). Asked for `within` a scope, links go only to the
+accounts at the address that may start a session there, when any may: one address may
+hold an account in each of two tenants, and the email must be the one for this site.
 
 A link may come with a six-digit code (`issue(code=True)`), for whoever cannot open the
 link in the window they asked from: an app installed to an iPhone's home screen, which
@@ -116,8 +118,10 @@ class Store(Protocol):
         earlier code of `subject`'s at `address` (case ignored) stops working."""
         ...
 
-    async def code_link(self, code_hash: bytes) -> CodeLink | None:
-        """The unused link whose code has this hash, while the code works; else None."""
+    async def code_links(self, code_hash: bytes) -> Sequence[CodeLink]:
+        """The unused links whose code has this hash, while the code works, newest
+        first; empty if none. Codes are random, so two links at one address on one
+        site can share one."""
         ...
 
     async def miss_code(self, address: str, now: datetime, tries: int) -> None:
@@ -221,16 +225,28 @@ class MagicLinks:
         whoever is at the address, as `admit` is."""
         _admit(((self.code_per_ip, ip), (self.code_per_address, normalize_address(address))))
 
-    async def send_links(self, address: str, *, base_url: str | None = None) -> list[Link]:
+    async def send_links(
+        self, address: str, *, base_url: str | None = None, within: str | None = None
+    ) -> list[Link]:
         """Issue and send a link, with a code, to every account at `address`; returns
         those sent.
 
-        The links point at `base_url`'s origin when given, as `issue` does. Run it
-        after answering the request: it is all the work a known address costs and an
+        The links point at `base_url`'s origin when given, as `issue` does. With
+        `within`, only the accounts that may start a session in it get one; if none
+        may, all do, and their links say so when opened (`Unreachable`). Run it after
+        answering the request: it is all the work a known address costs and an
         unknown one does not.
         """
+        recipients = list(await self.directory.recipients(address))
+        if within is not None:
+            reaching = [
+                r
+                for r in recipients
+                if await self.directory.scope(r.subject, r.address, within) == within
+            ]
+            recipients = reaching or recipients
         sent = []
-        for recipient in await self.directory.recipients(address):
+        for recipient in recipients:
             # One failure must not cost the others theirs (a parent and child share an
             # address). The log names the account, never the link.
             try:
@@ -320,27 +336,35 @@ class MagicLinks:
         or None for a code that is wrong at `address` on `base_url`'s site, spent or
         unknown, which counts as a miss.
 
-        Raises `CodeExpired` for a right code whose link has expired, and `Unreachable`
-        as `redeem` does, leaving the code unspent.
+        Of several unexpired links the code fits, the newest whose account may start a
+        session `within` is spent; with no `within`, the newest. Raises `CodeExpired`
+        for a right code whose links have all expired, and `Unreachable` as `redeem`
+        does when none of them may start a session `within`, leaving the code unspent.
         """
         now = self._clock()
         address = normalize_address(address)
         digits = normalize_code(code)
         found = (
-            None
+            []
             if digits is None
-            else await self.store.code_link(
+            else await self.store.code_links(
                 self._codes.hash(digits, address, _origin(self.callback_on(base_url)))
             )
         )
-        if found is None:
+        if not found:
             await self.store.miss_code(address, now, CODE_TRIES)
             return None
-        if now >= found.expires_at:
+        live = [link for link in found if now < link.expires_at]
+        if not live:
             raise CodeExpired
-        return await self._spend(
-            found.token_hash, Pending(found.subject, found.address), now, within
-        )
+        for link in live:
+            try:
+                return await self._spend(
+                    link.token_hash, Pending(link.subject, link.address), now, within
+                )
+            except Unreachable:
+                continue
+        raise Unreachable
 
     async def _spend(
         self, link_hash: bytes, pending: Pending, now: datetime, within: str | None

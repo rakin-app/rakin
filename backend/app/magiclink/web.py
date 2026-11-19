@@ -114,7 +114,9 @@ class Links(Protocol):
 
     def admit_code(self, address: str, ip: str) -> None: ...
 
-    async def send_links(self, address: str, *, base_url: str | None = None) -> object: ...
+    async def send_links(
+        self, address: str, *, base_url: str | None = None, within: str | None = None
+    ) -> object: ...
 
     def looks_valid(self, token: str) -> bool: ...
 
@@ -294,7 +296,8 @@ def build_router(
     async def request_link(
         body: LinkRequest, request: Request, background: BackgroundTasks
     ) -> Response:
-        """Email a sign-in link to every account at this address.
+        """Email a sign-in link to every account at this address; on a site with a
+        scope, to those of them that may sign in there, if any may.
 
         The answer is the same whether or not anyone is at the address.
         """
@@ -304,7 +307,8 @@ def build_router(
             raise too_many(exc) from exc
         # Looking the address up, storing and sending all wait until after the
         # response, so a known address takes no longer to answer than an unknown one.
-        background.add_task(links.send_links, body.email, base_url=site_of(request).base_url)
+        here = site_of(request)
+        background.add_task(links.send_links, body.email, base_url=here.base_url, within=here.scope)
         return Response(status_code=status.HTTP_202_ACCEPTED)
 
     @router.get(CALLBACK, response_class=HTMLResponse)

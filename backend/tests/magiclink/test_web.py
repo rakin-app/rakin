@@ -100,12 +100,13 @@ class Store:
         pending = self.links[token_hash][0]
         return pending.address.lower() == address.lower() and subject in (None, pending.subject)
 
-    async def code_link(self, code_hash: bytes) -> CodeLink | None:
+    async def code_links(self, code_hash: bytes) -> list[CodeLink]:
+        found = []
         for token_hash, (hashed, _) in self.codes.items():
             pending, expires_at, used = self.links[token_hash]
             if hashed == code_hash and not used:
-                return CodeLink(token_hash, pending.subject, pending.address, expires_at)
-        return None
+                found.append(CodeLink(token_hash, pending.subject, pending.address, expires_at))
+        return found[::-1]
 
     async def miss_code(self, address: str, now: datetime, tries: int) -> None:
         for token_hash, (hashed, misses) in list(self.codes.items()):
@@ -645,12 +646,17 @@ def test_the_router_refuses_links_that_point_elsewhere() -> None:
 
 
 TENANT_URL = "https://sur.app.example"
+# `gym-of-mateo`'s: Mateo shares an address with Camila, who reaches no site's scope.
+NORTE_URL = "https://norte.app.example"
 
 
 def tenant_site(request: Request) -> Site:
-    """`sur.app.example` is `gym-of-ana`'s site; any other host is the base one."""
+    """`sur.app.example` is `gym-of-ana`'s site, `norte.app.example` `gym-of-mateo`'s;
+    any other host is the base one."""
     if request.url.hostname == "sur.app.example":
         return Site(TENANT_URL, "gym-of-ana", "Sur")
+    if request.url.hostname == "norte.app.example":
+        return Site(NORTE_URL, "gym-of-mateo", "Norte")
     return Site(BASE_URL)
 
 
@@ -689,6 +695,26 @@ def test_a_site_whose_scope_the_account_cannot_reach_says_so_and_spends_nothing(
         assert "This address has no access to Sur." in response.text
     assert tenant.store.sessions == {}
     assert COOKIE_NAME not in tenant.client.cookies
+
+
+def test_on_a_site_only_the_accounts_that_reach_it_get_a_link(tenant: Harness) -> None:
+    with TestClient(tenant.client.app, base_url=NORTE_URL) as norte:
+        assert norte.post(f"{PREFIX}/link", json={"email": CAMILA.address}).status_code == 202
+    [link] = tenant.outbox.sent
+    assert link.recipient == MATEO
+    assert link.url.startswith(f"{NORTE_URL}{PREFIX}/callback?token=")
+
+
+def test_on_a_site_none_reach_every_account_gets_a_link_as_before(tenant: Harness) -> None:
+    """None of them may sign in there, and opening the link says so."""
+    tenant.request_link(CAMILA.address)
+    assert [link.recipient for link in tenant.outbox.sent] == [CAMILA, MATEO]
+
+
+def test_the_base_site_sends_every_account_at_the_address_a_link(tenant: Harness) -> None:
+    with TestClient(tenant.client.app, base_url=BASE_URL) as base:
+        assert base.post(f"{PREFIX}/link", json={"email": CAMILA.address}).status_code == 202
+    assert [link.recipient for link in tenant.outbox.sent] == [CAMILA, MATEO]
 
 
 def test_a_sites_form_is_the_only_one_that_signs_in_there(tenant: Harness) -> None:
@@ -894,6 +920,46 @@ def test_a_code_for_an_account_the_site_cannot_reach_says_so_and_spends_nothing(
         assert response.json() == {"detail": "unreachable"}
     assert tenant.store.sessions == {}
     assert COOKIE_NAME not in tenant.client.cookies
+
+
+def test_a_code_two_links_share_signs_in_to_the_one_that_reaches_the_site(
+    tenant: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Codes are random: two pending at one address on one site can be the same."""
+    monkeypatch.setattr("app.magiclink.service.new_code", lambda: "123456")
+    for recipient in (MATEO, CAMILA):  # Camila's, which reaches no site, the newest
+        asyncio.run(tenant.links.issue(recipient, base_url=NORTE_URL, code=True))
+
+    with TestClient(tenant.client.app, base_url=NORTE_URL) as norte:
+        body = {"email": CAMILA.address, "code": "123456"}
+        assert norte.post(f"{PREFIX}/code", json=body).status_code == 200
+    [(session, _)] = tenant.store.sessions.values()
+    assert (session.subject, session.scope) == ("mateo", "gym-of-mateo")
+
+
+def test_a_code_no_link_of_which_reaches_the_site_says_so(
+    tenant: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.magiclink.service.new_code", lambda: "123456")
+    for recipient in (MATEO, CAMILA):
+        asyncio.run(tenant.links.issue(recipient, base_url=TENANT_URL, code=True))
+
+    response = tenant.type_code(CAMILA.address, "123456")
+    assert response.status_code == 403
+    assert response.json() == {"detail": "unreachable"}
+    assert tenant.store.sessions == {}
+
+
+def test_on_the_base_site_a_shared_code_signs_in_to_the_newest_link(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.magiclink.service.new_code", lambda: "123456")
+    for recipient in (CAMILA, MATEO):
+        asyncio.run(harness.links.issue(recipient, code=True))
+
+    assert harness.type_code(CAMILA.address, "123456").status_code == 200
+    [(session, _)] = harness.store.sessions.values()
+    assert session.subject == "mateo"
 
 
 def test_a_link_issued_unasked_has_no_code_unless_asked(harness: Harness) -> None:

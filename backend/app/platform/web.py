@@ -106,9 +106,12 @@ class OperatorLinks:
         async with self._sessionmaker()() as session, session.begin():
             return (await session.execute(text(sql), params)).one_or_none()
 
-    async def send_links(self, address: str, *, base_url: str | None = None) -> list[Link]:
+    async def send_links(
+        self, address: str, *, base_url: str | None = None, within: str | None = None
+    ) -> list[Link]:
         """Issue and send a link, with a code, if `address` is a live operator's; the
-        links sent. Always on the base host, whatever `base_url` the router names."""
+        links sent. Always on the base host, whatever `base_url` or `within` the router
+        names."""
         address = normalize_address(address)
         expires_at = self._clock() + self._link_ttl
         token = self._signer.issue(expires_at)
