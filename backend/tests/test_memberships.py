@@ -23,7 +23,7 @@ from app.main import create_app
 from app.schemas.memberships import STARTED_ON_WINDOW_YEARS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_phone, random_rut
+from tests.ids import random_phone, random_rut, unique_slug
 from tests.pg import (
     Database,
     in_gym,
@@ -805,7 +805,7 @@ def test_a_plan_voided_gives_its_trial_back(client: TestClient, sur: uuid.UUID) 
 
 
 def test_trial_conversions_counts_the_last_90_days(client: TestClient, db: Database) -> None:
-    gym = seed_gym(db, f"pruebas-{uuid.uuid4().hex[:8]}")
+    gym = seed_gym(db, unique_slug("pruebas"))
     today = seeded_today()
     old = on_trial(client, gym, started_on=(today - timedelta(days=90)).isoformat())
     paid(client, gym, old)
@@ -986,7 +986,7 @@ BANK = {
 def test_starting_a_membership_welcomes_the_member(
     client: TestClient, db: Database, mailer: RecordingMailer
 ) -> None:
-    gym = seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("academia"))
     run(
         db.admin_url,
         lambda c: c.execute(
@@ -1019,7 +1019,7 @@ def test_starting_a_membership_welcomes_the_member(
 def test_a_dependents_welcome_goes_to_the_guardian(
     client: TestClient, db: Database, mailer: RecordingMailer
 ) -> None:
-    gym = seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("academia"))
     marta = add_person(client, gym, "Marta")
     juan = new_kid(client, gym, marta, "Juan")
     mailer.sent.clear()
@@ -1047,7 +1047,7 @@ def test_the_welcome_can_be_left_out(
     client: TestClient, db: Database, mailer: RecordingMailer
 ) -> None:
     # "Asignar plan" on the ficha, with the welcome unticked (#249).
-    gym = seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("academia"))
     ana = add_person(client, gym, "Ana")
     mailer.sent.clear()
 

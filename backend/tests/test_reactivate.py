@@ -22,6 +22,7 @@ from app.domain.dates import add_months, start_of_local_day
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     DEFAULT_TIMEZONE,
     Database,
@@ -59,7 +60,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"sur-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("sur"))
 
 
 def lapsed_plan(
@@ -411,7 +412,7 @@ def test_unknown_or_another_gyms_membership_is_a_404(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     _, membership, _ = lapsed_plan(client, db, gym)
-    elsewhere = seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}")
+    elsewhere = seed_gym(db, unique_slug("norte"))
     assert quote(client, elsewhere, membership).status_code == 404
     assert reactivate(client, elsewhere, membership).status_code == 404
     assert reactivate(client, gym, str(uuid.uuid4())).status_code == 404

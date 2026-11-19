@@ -5,7 +5,6 @@ drops the fee and the column that tied it to its membership; an upgrade after it
 them back.
 """
 
-import uuid
 from collections.abc import Iterator
 from typing import Any
 
@@ -14,6 +13,7 @@ import pytest
 
 from alembic import command
 from tests.conftest import require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 
 pytestmark = pytest.mark.postgres
@@ -47,7 +47,7 @@ def test_a_downgrade_keeps_each_matricula_as_otro_and_an_upgrade_restores_the_re
     before = fetch(db, SCHEMA)
     migrate(db)
     after = fetch(db, SCHEMA)
-    gym = seed_gym(db, f"matricula-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("matricula"))
     [(membership, person)] = run(db.owner_url, in_gym(gym, "SELECT id, person_id FROM membership"))
     run(
         db.owner_url,

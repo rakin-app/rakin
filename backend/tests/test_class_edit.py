@@ -19,6 +19,7 @@ from app.domain.dates import gym_today
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_attendance import (
     SANTIAGO,
@@ -58,7 +59,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def start(
@@ -187,7 +188,7 @@ def test_a_new_type_must_be_one_of_the_gyms_active_ones(
     old = class_type(client, gym, adults, "Viejo")
     session = start(client, gym, {"class_type_id": old})["id"]
     client.patch(f"/api/class-types/{old}", json={"active": False}, headers=as_gym(gym))
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     theirs = class_type(client, other, program(client, other, "Adultos"))
 
     for class_type_id, kind in (
@@ -380,7 +381,7 @@ def test_a_coach_neither_cancels_nor_deletes(
 def test_another_gyms_class_is_not_found(client: TestClient, db: Database, gym: uuid.UUID) -> None:
     fundamentals = class_type(client, gym, program(client, gym, "Adultos"))
     session = start(client, gym, {"class_type_id": fundamentals})["id"]
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     assert edit(client, other, session, {"starts_at": at(yesterday())}).status_code == 404
     for what in ("cancel", "reactivate"):
         assert act(client, other, session, what).status_code == 404
@@ -401,7 +402,7 @@ def test_only_an_owner_or_admin_deletes_a_session_at_the_database(
     for person in (coach, None, uuid.uuid4()):
         assert run(db.api_url, in_gym(gym, delete_sql, ids[0], person=person)) == []
     # An admin of another gym is no admin here.
-    elsewhere = add_staff(db, seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}"), "admin")
+    elsewhere = add_staff(db, seed_gym(db, unique_slug("gym")), "admin")
     assert run(db.api_url, in_gym(gym, delete_sql, ids[0], person=elsewhere)) == []
     # Reads and other writes are the gym's alone, as before.
     assert len(run(db.api_url, in_gym(gym, "SELECT id FROM session", person=coach))) == 3

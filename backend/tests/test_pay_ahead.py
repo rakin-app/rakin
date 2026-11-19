@@ -23,6 +23,7 @@ from app.jobs import billing
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_guardians import add_person
 from tests.test_proofs import RecordingMailer
@@ -63,7 +64,7 @@ def client(db: Database, mailer: RecordingMailer) -> Iterator[TestClient]:
 
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-sur-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia-sur"))
 
 
 def ok(response: Any, code: int = 200) -> Any:
@@ -372,7 +373,7 @@ def test_a_pack_does_not_pay_ahead(client: TestClient, sur: uuid.UUID) -> None:
 def test_another_gyms_membership_is_not_found(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    norte = seed_gym(db, f"dojo-norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("dojo-norte"))
     _, membership = paid_up(client, sur)
 
     url = f"/api/ledger/memberships/{membership}/ahead"

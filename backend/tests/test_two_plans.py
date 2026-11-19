@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, seed_gym, seeded_today, throwaway_database
 from tests.test_attendance import changed, class_type, credits_left, program, roster, row
 from tests.test_attendance import session_of as class_session
@@ -48,7 +49,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"muro-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("muro"))
 
 
 def on_both(client: TestClient, gym: uuid.UUID, credits: int = 8) -> tuple[str, str, str, str, str]:

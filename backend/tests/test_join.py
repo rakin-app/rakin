@@ -28,7 +28,7 @@ from app.main import create_app
 from app.schemas.privacy import TEMPLATE_UPDATED_ON
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_rut, unique_slug
 from tests.pg import (
     DEFAULT_TIMEZONE,
     Database,
@@ -99,7 +99,7 @@ def with_privacy(client: TestClient, gym: uuid.UUID) -> uuid.UUID:
 
 @pytest.fixture
 def gym(db: Database, client: TestClient) -> uuid.UUID:
-    return with_privacy(client, seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}"))
+    return with_privacy(client, seed_gym(db, unique_slug("academia")))
 
 
 def new_rut() -> str:
@@ -275,7 +275,7 @@ def test_generating_a_link_gives_a_url_to_the_form_on_the_gyms_host(
 
 
 def test_no_link_until_the_privacy_details_are_set(client: TestClient, db: Database) -> None:
-    gym = seed_gym(db, f"sin-datos-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("sin-datos"))
 
     refused = client.post("/api/join-link", json={}, headers=as_gym(gym))
 
@@ -377,7 +377,7 @@ def test_a_link_may_pre_select_a_program(client: TestClient, gym: uuid.UUID) -> 
 def test_a_link_refuses_another_gyms_program(
     client: TestClient, gym: uuid.UUID, db: Database
 ) -> None:
-    other = program(client, seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}"))
+    other = program(client, seed_gym(db, unique_slug("otra")))
 
     response = client.post("/api/join-link", json={"program_id": other}, headers=as_gym(gym))
 
@@ -594,7 +594,7 @@ def test_sending_is_rate_limited_per_ip(client: TestClient, gym: uuid.UUID, db: 
     assert int(refused.headers["Retry-After"]) > 0
     assert len(queue(client, gym)) == 3
     # Per IP, whichever link it is for: another gym's too.
-    elsewhere = with_privacy(client, seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}"))
+    elsewhere = with_privacy(client, seed_gym(db, unique_slug("otra")))
     assert submit(client, token_of(client, elsewhere), adult()).status_code == 429
 
 
@@ -761,7 +761,7 @@ def test_nothing_in_the_answers_says_who_is_known(
     here = adult()
     add_person(client, gym, "Ana Pérez", phone=here["phone"])
     elsewhere = adult()
-    add_person(client, seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}"), "Ana", elsewhere["phone"])
+    add_person(client, seed_gym(db, unique_slug("otra")), "Ana", elsewhere["phone"])
     token = token_of(client, gym)
 
     answers = [submit(client, token, body) for body in (here, elsewhere, adult())]
@@ -790,7 +790,7 @@ def test_the_queue_warns_of_a_rut_or_email_already_in_this_gym(
     ).json()["id"]
     # Known to another gym only: this gym's queue says nothing of it.
     other_rut = new_rut()
-    add_person(client, seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}"), "Ana", rut=other_rut)
+    add_person(client, seed_gym(db, unique_slug("otra")), "Ana", rut=other_rut)
 
     submitted(client, token, adult(phone=phone))
     submitted(client, token, adult(rut=format_rut(rut)))
@@ -852,7 +852,7 @@ def test_coaches_see_the_queue_and_members_do_not(
 def test_another_gyms_requests_are_not_here(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other = with_privacy(client, seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}"))
+    other = with_privacy(client, seed_gym(db, unique_slug("otra")))
     theirs = one_request(client, other, token_of(client, other), adult())
 
     assert queue(client, gym) == []
@@ -904,7 +904,7 @@ def test_approving_someone_another_gym_knows_attaches_that_person(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     rut = new_rut()
-    other = seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("otra"))
     known = add_person(client, other, "Ana Otra", rut=rut)
     body = adult(rut=rut, email="ana.aqui@example.cl")
     request = one_request(client, gym, token_of(client, gym), body)
@@ -1138,7 +1138,7 @@ def start_of_day(day: date) -> datetime:
 
 def test_the_tables_are_this_gyms(client: TestClient, db: Database, gym: uuid.UUID) -> None:
     submitted(client, token_of(client, gym), adult())
-    other = seed_gym(db, f"otra-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("otra"))
 
     seen = run(db.api_url, in_gym(other, "SELECT * FROM join_request"))
     links = run(db.api_url, in_gym(other, "SELECT * FROM join_link"))

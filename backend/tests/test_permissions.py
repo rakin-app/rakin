@@ -31,6 +31,7 @@ from app.permissions import (
 from app.roles import TITLE_OF, Role
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     Database,
     in_gym,
@@ -184,7 +185,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia"))
 
 
 def person_in(db: Database, gym: uuid.UUID, role: str | None = None, **term: Any) -> uuid.UUID:
@@ -374,7 +375,7 @@ def test_a_term_never_ends_before_it_starts(
 
 @pg
 def test_the_roles_and_appointments_are_the_gyms_own(db: Database, gym: uuid.UUID) -> None:
-    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("dojo"))
     person_in(db, gym, "coach")
     for table in ("gym_title", "staff_title"):
         rows = run(db.api_url, in_gym(other, f"SELECT gym_id FROM {table}"))

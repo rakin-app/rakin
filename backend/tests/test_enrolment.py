@@ -23,6 +23,7 @@ from app.schemas.extra_charges import ExtraChargeCreate
 from app.schemas.plans import PLAN, PLAN_CREATE, PlanUpdate, for_coach
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_member_roll import enrolled, leave
 from tests.test_memberships import PLANS, add_staff, change, person, start
@@ -102,7 +103,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("academia"))
 
 
 def ok(response: Any, code: int = 200) -> Any:

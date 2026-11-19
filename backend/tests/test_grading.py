@@ -20,6 +20,7 @@ from app.main import create_app
 from app.schemas.grading import PRESETS, GradingScheme
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, make_staff, migrate, run, seed_gym, throwaway_database
 
 APP = Path(__file__).parent.parent / "app"
@@ -333,7 +334,7 @@ def test_the_presets_are_listed(client: TestClient, db: Database) -> None:
 def test_each_belt_preset_applies_and_reads_back(
     client: TestClient, db: Database, key: str
 ) -> None:
-    gym = seed_gym(db, f"dojo-{key}-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug(f"dojo-{key}"))
     scheme = next(p.scheme.model_dump() for p in PRESETS if p.key == key)
     assert client.put(URL, json=scheme, headers=as_gym(gym)).status_code == 200
     stored = client.get(URL, headers=as_gym(gym)).json()

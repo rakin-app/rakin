@@ -13,6 +13,7 @@ import asyncpg
 import pytest
 
 from app.gyms import PROCESSOR_TERMS_VERSION
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, make_staff, run, seed_gym, seeded_owner
 from tests.test_gym_hosts import HOSTS
 from tests.test_platform_auth import Panel, grant, operator_email
@@ -100,7 +101,7 @@ def add_people(db: Database, gym: uuid.UUID, slug: str) -> None:
 @pytest.fixture
 def listed(panel: Panel) -> Iterator[tuple[Panel, dict[str, Any], dict[str, Any]]]:
     add_people(panel.db, panel.gym_a, panel.slug_a)
-    slug_b = f"sur-{uuid.uuid4().hex[:6]}"
+    slug_b = unique_slug("sur")
     gym_b = seed_gym(panel.db, slug_b)
     email = operator_email()
     grant(panel.db, email)

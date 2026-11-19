@@ -17,7 +17,7 @@ from app.main import create_app
 from app.permissions import ACADEMIA, preset_title_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_rut, unique_slug
 from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_guardians import add_person
 from tests.test_people import new_phone
@@ -50,7 +50,7 @@ def client(db: Database, mailer: RecordingMailer) -> Iterator[TestClient]:
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
     """A fresh gym per test, so each one's staff list is its own."""
-    return seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia"))
 
 
 # Today's admin and coach: the Academia preset's roles every gym is created with (0065).
@@ -186,7 +186,7 @@ def signs_in_with(db: Database, address: str) -> list[uuid.UUID]:
 def test_someone_known_to_another_gym_gets_the_role_and_the_invites_email(
     client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:
-    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("dojo"))
     rut = random_rut()
     elsewhere = add_person(client, other, "Ana", rut=rut)
     address = f"{uuid.uuid4().hex[:8]}@example.cl"
@@ -213,7 +213,7 @@ def test_someone_known_to_another_gym_gets_the_role_and_the_invites_email(
 def test_a_member_known_elsewhere_takes_the_invites_email_and_is_invited_there(
     client: TestClient, db: Database, gym: uuid.UUID, mailer: RecordingMailer
 ) -> None:
-    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("dojo"))
     rut = random_rut()
     add_person(client, other, "Ana", rut=rut)
     ana = add_person(client, gym, "Ana", rut=rut)
@@ -327,7 +327,7 @@ def test_someone_not_on_the_staff_is_not_found(client: TestClient, gym: uuid.UUI
 
 
 def test_another_gyms_staff_is_not_found(client: TestClient, db: Database, gym: uuid.UUID) -> None:
-    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("dojo"))
     theirs = invited(client, other)
 
     assert client.delete(f"/api/staff/{theirs}", headers=as_gym(gym)).status_code == 404

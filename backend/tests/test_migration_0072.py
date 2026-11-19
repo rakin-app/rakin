@@ -14,6 +14,7 @@ import pytest
 
 from alembic import command
 from tests.conftest import require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
 
 pytestmark = pytest.mark.postgres
@@ -58,7 +59,7 @@ def fetch(db: Database, sql: str) -> list[tuple[Any, ...]]:
 
 
 def test_every_line_is_one_instalment_due_with_its_cobro(db: Database) -> None:
-    charge = a_cobro(db, seed_gym(db, f"sur-{uuid.uuid4().hex[:6]}"))
+    charge = a_cobro(db, seed_gym(db, unique_slug("sur")))
     migrate(db)
     [(instalments, instalment, due)] = fetch(
         db,
@@ -69,7 +70,7 @@ def test_every_line_is_one_instalment_due_with_its_cobro(db: Database) -> None:
 
 
 def test_a_downgrade_refuses_while_a_cobro_is_in_instalments(db: Database) -> None:
-    charge = a_cobro(db, seed_gym(db, f"sur-{uuid.uuid4().hex[:6]}"))
+    charge = a_cobro(db, seed_gym(db, unique_slug("sur")))
     migrate(db)
     fetch(db, f"UPDATE extra_charge SET instalments = 3 WHERE id = '{charge}' RETURNING id")
     with pytest.raises(Exception, match="in instalments"):

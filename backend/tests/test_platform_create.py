@@ -24,6 +24,7 @@ from app import gyms
 from app.db_bootstrap import to_dsn
 from app.domain.grading import PRESETS
 from app.gyms import PROCESSOR_TERMS_VERSION
+from tests.ids import unique_slug
 from tests.pg import run
 from tests.test_gym_hosts import (
     BASE,
@@ -56,7 +57,7 @@ NEW_ROUTES = (
 
 
 def new_slug() -> str:
-    return f"nuevo-{uuid.uuid4().hex[:6]}"
+    return unique_slug("nuevo")
 
 
 def body(slug: str, **changes: Any) -> dict[str, Any]:

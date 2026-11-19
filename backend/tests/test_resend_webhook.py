@@ -25,6 +25,7 @@ from app.main import create_app
 from app.notices import MAGIC_LINK, Notice, Notices, Outcome
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import UNREACHABLE_DB, make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, seed_gym, throwaway_database
 from tests.test_member_roll import enrolled, welcome
 from tests.test_proofs import RecordingMailer, sent_notices
@@ -237,7 +238,7 @@ def client(db: Database, mailer: RecordingMailer) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def deliver(client: TestClient, event: dict[str, Any]) -> int:

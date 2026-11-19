@@ -19,6 +19,7 @@ from app.main import create_app
 from app.notices.whatsapp import inactive_nudge
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     Database,
     in_gym,
@@ -88,7 +89,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia"))
 
 
 def listed(client: TestClient, gym: uuid.UUID) -> Any:
@@ -366,7 +367,7 @@ def test_only_someone_on_the_list_is_nudged(client: TestClient, gym: uuid.UUID) 
 def test_another_gyms_members_are_not_listed_or_nudged(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("norte"))
     bea = a_member(client, norte, "Bea Soto", 20)
 
     assert listed(client, gym) == []

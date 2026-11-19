@@ -21,6 +21,7 @@ from app.main import create_app
 from app.schemas.privacy import TEMPLATE_UPDATED_ON
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_guardians import add_dependent, add_person
 from tests.test_join import (
@@ -78,7 +79,7 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database, client: TestClient) -> uuid.UUID:
-    return with_privacy(client, seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}"))
+    return with_privacy(client, seed_gym(db, unique_slug("academia")))
 
 
 def consent(client: TestClient, gym: uuid.UUID, person: str) -> dict[str, Any]:
@@ -480,7 +481,7 @@ def test_another_gym_sees_none_of_it(client: TestClient, db: Database, gym: uuid
     person = approved(client, gym, one_request(client, gym, token_of(client, gym), adult()))[
         "person_id"
     ]
-    other = seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("academia"))
 
     assert client.get(f"/api/people/{person}/consent", headers=as_gym(other)).status_code == 404
     seen = run(db.api_url, in_gym(other, "SELECT count(*) FROM consent_event"))

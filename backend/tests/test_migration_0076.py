@@ -16,6 +16,7 @@ import pytest
 
 from alembic import command
 from tests.conftest import require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 
 pytestmark = pytest.mark.postgres
@@ -96,7 +97,7 @@ def test_the_app_cannot_call_the_gate_itself(db: Database) -> None:
 
 
 def test_the_gyms_need_a_live_operator_session(db: Database) -> None:
-    seed_gym(db, f"g-{uuid.uuid4().hex[:6]}")
+    seed_gym(db, unique_slug("g"))
     operator(db)
     session = signed_in(db)
     assert len(as_app(db, "SELECT * FROM platform_gyms($1, $2)", session, TERMS)) == 1

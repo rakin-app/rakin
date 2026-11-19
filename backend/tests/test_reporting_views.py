@@ -17,6 +17,7 @@ from alembic import command
 from app.seed import load
 from app.seed.build import GYM_ID, build
 from tests.conftest import require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     Database,
     in_gym,
@@ -54,7 +55,7 @@ def today(db: Database) -> date:
 
 def new_gym(db: Database) -> uuid.UUID:
     """seed_gym, its charge validated as the billing job writes one."""
-    gym = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    gym = seed_gym(db, unique_slug("gym"))
     run(
         db.admin_url,
         lambda c: c.execute(

@@ -27,6 +27,7 @@ from app.main import create_app
 from app.schemas.schedule import SlotCreate, SlotUpdate
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_attendance import SANTIAGO, changed, class_type, program
 from tests.test_class_timer import ok
@@ -104,7 +105,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 @pytest.fixture
@@ -672,7 +673,7 @@ def test_another_gym_s_schedule_is_invisible(
     slot = add_slot(client, gym, fundamentals)
     holiday = (today() + timedelta(days=1)).isoformat()
     client.put(f"/api/closed-days/{holiday}", json={"label": "Feriado"}, headers=as_gym(gym))
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     assert ok(client.get("/api/schedule", headers=as_gym(other))) == []
     assert ok(client.get("/api/closed-days", headers=as_gym(other))) == []
     assert change_slot(client, other, slot["id"], {"start_time": "08:00"}).status_code == 404
