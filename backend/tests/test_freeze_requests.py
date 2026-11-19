@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_freezes import freeze, periods, today
 from tests.test_guardians import add_person, new_kid
@@ -52,7 +53,7 @@ def client(db: Database, mailer: RecordingMailer) -> Iterator[TestClient]:
 
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"sur-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("sur"))
 
 
 def give_email(db: Database, gym: uuid.UUID, person: uuid.UUID, email: str) -> None:
@@ -461,7 +462,7 @@ def test_each_owner_and_admin_with_an_email_is_told_once(
 def test_another_gyms_requests_are_not_seen_or_answered(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}")
+    norte = seed_gym(db, unique_slug("norte"))
     now = today(db, sur)
     ana = add_person(client, sur, "Ana")
     started = membership(client, sur, ana, now - 3 * DAY)

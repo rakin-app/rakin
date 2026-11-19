@@ -23,6 +23,7 @@ from app.schemas.class_tags import MAX_TAGS
 from app.schemas.sessions import SessionUpdate
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 from tests.test_attendance import SANTIAGO, changed, class_type, join, plan, program
 from tests.test_class_timer import ok
@@ -66,7 +67,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def tag(client: TestClient, gym: uuid.UUID, name: str) -> str:
@@ -164,7 +165,7 @@ def test_a_tag_s_name_is_unique_in_its_gym_case_ignored(
     other = tag(client, gym, "Movilidad")
     assert edit_tag(client, gym, other, {"name": "FUERZA"}).status_code == 409
     # Another gym has its own.
-    norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("norte"))
     tag(client, norte, "Fuerza")
     assert client.post("/api/class-tags", json={"name": ""}, headers=as_gym(gym)).status_code == 422
 
@@ -188,7 +189,7 @@ def test_a_coach_reads_tags_and_changes_none_and_a_member_reads_none(
 @pg
 def test_tags_stay_in_their_gym(client: TestClient, db: Database, gym: uuid.UUID) -> None:
     strength = tag(client, gym, "Fuerza")
-    norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("norte"))
     assert ok(client.get("/api/class-tags", headers=as_gym(norte))) == []
     assert edit_tag(client, norte, strength, {"name": "x"}).status_code == 404
     # Nor on another gym's class, even past the API.
@@ -579,7 +580,7 @@ def test_the_ficha_s_hours_are_the_member_s_attended_classes(
     )
 
     assert hours(ficha) == {"Pasaje de guardia": 90}
-    norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("norte"))
     assert client.get(f"/api/people/{ana}/tag-hours", headers=as_gym(norte)).status_code == 404
 
 

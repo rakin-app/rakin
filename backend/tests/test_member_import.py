@@ -23,7 +23,7 @@ from app.main import create_app
 from app.seed.build import GYM_ID, seed_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_rut, unique_slug
 from tests.pg import (
     Database,
     in_gym,
@@ -88,7 +88,7 @@ def client(db: Database) -> Iterator[TestClient]:
 @pytest.fixture
 def gym(db: Database, client: TestClient) -> uuid.UUID:
     """A fresh gym with the pilot's plans, so each test imports the sheet anew."""
-    gym_id = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    gym_id = seed_gym(db, unique_slug("gym"))
     for plan in PLANS:
         response = client.post("/api/plans", json=plan, headers=as_gym(gym_id))
         assert response.status_code == 201, response.text
@@ -485,7 +485,7 @@ def test_someone_already_in_the_gym_is_found_by_rut_and_left_as_they_are(
 def test_another_gyms_member_joins_this_gym_with_what_the_sheet_says(
     client: TestClient, gym: uuid.UUID, db: Database
 ) -> None:
-    other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("other"))
     rut, phone = random_rut(), new_phone()
     body = {"rut": rut, "phone": new_phone(), "name": "Nombre en otro gimnasio"}
     known = client.post("/api/people", json=body, headers=as_gym(other)).json()["id"]
@@ -740,7 +740,7 @@ def test_a_guardian_named_alone_is_found_in_this_gym_by_name_and_phone(
 def test_a_name_never_finds_anyone_in_another_gym(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("other"))
     theirs = imported(
         client, other, sheet_with(["Lucía Rojas", "", ""], mapping=NAME_DOB_PHONE), dry_run=False
     )["rows"][0]
@@ -756,7 +756,7 @@ def test_a_name_never_finds_anyone_in_another_gym(
 def test_a_rut_given_later_becomes_who_they_are_and_says_nothing_of_other_gyms(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("other"))
     taken = random_rut()
     elsewhere = client.post(
         "/api/people", json={"rut": taken, "name": "Otra"}, headers=as_gym(other)
@@ -790,7 +790,7 @@ def test_a_rut_given_later_becomes_who_they_are_and_says_nothing_of_other_gyms(
 def test_a_rut_typed_on_the_ficha_becomes_who_they_are_when_nobody_has_it(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other = seed_gym(db, f"other-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("other"))
     taken = random_rut()
     client.post("/api/people", json={"rut": taken, "name": "Otra"}, headers=as_gym(other))
     imported(

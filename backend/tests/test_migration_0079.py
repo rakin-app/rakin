@@ -6,7 +6,6 @@ drops the columns and puts 0042's lookups, 0040's `auth_gym_by_slug`, 0011's
 its `gym_suspended` and `gym_resumed` rows.
 """
 
-import uuid
 from collections.abc import Iterator
 
 import asyncpg
@@ -14,6 +13,7 @@ import pytest
 
 from alembic import command
 from tests.conftest import require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, seed_gym, throwaway_database
 
 pytestmark = pytest.mark.postgres
@@ -48,7 +48,7 @@ def gym_columns(db: Database) -> set[str]:
 
 
 def test_the_gyms_here_stay_active(db: Database) -> None:
-    slug = f"norte-{uuid.uuid4().hex[:6]}"
+    slug = unique_slug("norte")
     gym = seed_gym(db, slug)
     migrate(db)
 
@@ -68,7 +68,7 @@ def test_the_gyms_here_stay_active(db: Database) -> None:
 
 
 def test_a_reason_comes_only_with_a_suspension(db: Database) -> None:
-    gym = seed_gym(db, f"norte-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("norte"))
     migrate(db)
     with pytest.raises(asyncpg.CheckViolationError, match="gym_suspended_reason_when"):
         run(
@@ -78,7 +78,7 @@ def test_a_reason_comes_only_with_a_suspension(db: Database) -> None:
 
 
 def test_a_downgrade_puts_everything_back(db: Database) -> None:
-    gym = seed_gym(db, f"norte-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("norte"))
     before = {
         name: columns(db, name) for name in ("auth_gym_by_slug", "platform_gyms", "platform_gym")
     }

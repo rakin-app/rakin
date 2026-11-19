@@ -33,7 +33,7 @@ from app.notices import Notices
 from app.permissions import preset_title_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_rut, unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 from tests.test_tenancy import router as tenant_routes
 
@@ -75,9 +75,7 @@ class Gyms:
 
 @pytest.fixture
 def gyms(db: Database) -> Gyms:
-    return Gyms(
-        seed_gym(db, f"gym-a-{uuid.uuid4().hex[:6]}"), seed_gym(db, f"gym-b-{uuid.uuid4().hex[:6]}")
-    )
+    return Gyms(seed_gym(db, unique_slug("gym-a")), seed_gym(db, unique_slug("gym-b")))
 
 
 @dataclass

@@ -19,6 +19,7 @@ from app.main import create_app
 from app.schemas.classes import MAX_CREDIT_COST, ClassTypeCreate, ClassTypeUpdate, ProgramUpdate
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 from tests.test_plans import DROPIN, MONTHLY, add_staff
 
@@ -89,7 +90,7 @@ def client(db: Database) -> Iterator[TestClient]:
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
     """A gym of its own per test, so a list holds exactly what the test made."""
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def program(client: TestClient, gym: uuid.UUID, name: str = "Kids") -> dict[str, Any]:
@@ -140,7 +141,7 @@ def test_a_program_name_is_unique_in_the_gym_case_ignored(
     renamed = patch(client, gym, f"/api/programs/{adults['id']}", {"name": "kids"})
     assert renamed.status_code == 409
     # Another gym may have its own "Kids".
-    program(client, seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}"), "Kids")
+    program(client, seed_gym(db, unique_slug("gym")), "Kids")
 
 
 @pg
@@ -218,7 +219,7 @@ def test_a_class_type_name_is_unique_within_its_program(client: TestClient, gym:
 def test_a_class_type_needs_one_of_the_gyms_programs(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other_gym = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other_gym = seed_gym(db, unique_slug("gym"))
     theirs = program(client, other_gym, "Kids")
     ours = program(client, gym, "Kids")
     mine = class_type(client, gym, {"name": "Fundamentos", "program_id": ours["id"]}).json()
@@ -235,7 +236,7 @@ def test_a_class_type_needs_one_of_the_gyms_programs(
 def test_another_gyms_programs_and_class_types_are_not_found(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    other_gym = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other_gym = seed_gym(db, unique_slug("gym"))
     kids = program(client, gym, "Kids")
     fundamentals = class_type(client, gym, {"name": "F", "program_id": kids["id"]}).json()
     for path in (f"/api/programs/{kids['id']}", f"/api/class-types/{fundamentals['id']}"):
@@ -326,7 +327,7 @@ def test_a_plan_names_its_program_and_can_leave_it(client: TestClient, gym: uuid
 def test_a_plan_needs_one_of_the_gyms_programs(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    theirs = program(client, seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}"), "Kids")
+    theirs = program(client, seed_gym(db, unique_slug("gym")), "Kids")
     plan = client.post("/api/plans", json=DROPIN, headers=as_gym(gym)).json()
     for program_id in (theirs["id"], str(uuid.uuid4())):
         body = {**DROPIN, "program_id": program_id}
@@ -346,7 +347,7 @@ def test_a_row_cannot_name_another_gyms_program(
     client: TestClient, db: Database, gym: uuid.UUID, table: str
 ) -> None:
     # As the superuser, past RLS: the foreign key alone holds it to the gym.
-    theirs = uuid.UUID(program(client, seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}"))["id"])
+    theirs = uuid.UUID(program(client, seed_gym(db, unique_slug("gym")))["id"])
     insert = {
         "class_type": "INSERT INTO class_type (gym_id, program_id, name) VALUES ($1, $2, 'x')",
         "plan": "INSERT INTO plan (gym_id, program_id, name, kind, price_clp)"

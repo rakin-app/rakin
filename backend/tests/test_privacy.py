@@ -14,6 +14,7 @@ from app.integrations.humancheck import TurnstileCheck
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import DEFAULT_TIMEZONE, Database, migrate, seed_gym, throwaway_database
 from tests.test_gym_settings import PRIVACY
 
@@ -47,7 +48,7 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 
 
 def new_gym(db: Database) -> tuple[uuid.UUID, str]:
-    slug = f"dojo-{uuid.uuid4().hex[:6]}"
+    slug = unique_slug("dojo")
     return seed_gym(db, slug), slug
 
 

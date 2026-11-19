@@ -24,6 +24,7 @@ from app import ledger_export
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import DEFAULT_TIMEZONE, Database, migrate, run, seed_gym, throwaway_database
 from tests.test_guardians import add_person
 from tests.test_plans import add_staff
@@ -56,7 +57,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-sur-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia-sur"))
 
 
 def insert(db: Database, gym: uuid.UUID, table: str, **columns: Any) -> uuid.UUID:
@@ -452,7 +453,7 @@ def test_a_validated_payment_with_no_validation_time_is_filed_by_the_day_it_was_
 def test_rls_keeps_it_to_the_gym_and_a_coach_gets_403(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    other = seed_gym(db, f"academia-norte-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("academia-norte"))
     seed_month(client, db, other)
     entries, pending, totals = sections(csv_rows(client, sur))
     assert (entries[1:], pending) == ([], [])

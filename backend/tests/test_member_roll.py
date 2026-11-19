@@ -24,6 +24,7 @@ from app.jobs import billing
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_memberships import PLANS, add_staff
 from tests.test_people import new_phone, new_rut
@@ -56,7 +57,7 @@ def client(db: Database, mailer: RecordingMailer) -> Iterator[TestClient]:
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
     """A gym of its own per test, so lists hold only what the test put there."""
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def plan(client: TestClient, gym: uuid.UUID, key: str = "signup") -> str:
@@ -260,7 +261,7 @@ def test_a_rut_already_here_is_refused_on_an_edit_too(client: TestClient, gym: u
 def test_a_rut_another_gym_has_is_the_same_person(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}")
+    norte = seed_gym(db, unique_slug("norte"))
     rut = new_rut()
     theirs = enrolled(client, norte, rut=rut, name="Ana N.", email="ana@norte.cl")
     ours = enrolled(client, gym, rut=rut, name="Ana Soto")
@@ -660,7 +661,7 @@ def test_deleting_is_refused_with_a_charge_owed_or_staff_or_dependents(
 def test_deleting_reaches_only_this_gyms_records(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
-    norte = seed_gym(db, f"norte-{uuid.uuid4().hex[:8]}")
+    norte = seed_gym(db, unique_slug("norte"))
     rut = new_rut()
     theirs = enrolled(client, norte, rut=rut, name="Ana N.")
     enrolled(client, gym, rut=rut, name="Ana Soto")

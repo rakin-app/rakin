@@ -22,6 +22,7 @@ from app.schemas.classes import ClassTypeCreate
 from app.seed.build import default_block_kind_id
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
 from tests.test_attendance import (
     SANTIAGO,
@@ -89,7 +90,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def ok(response: Any) -> Any:
@@ -290,7 +291,7 @@ def test_a_coach_reads_block_kinds_and_changes_none(
 
 @pg
 def test_block_kinds_stay_in_their_gym(client: TestClient, db: Database, gym: uuid.UUID) -> None:
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     theirs = kinds(client, other)["Técnica"]["id"]
     assert (
         client.patch(
@@ -623,7 +624,7 @@ def test_a_session_and_its_blocks_stay_in_their_gym(
     blocks = ok(put_plan(client, gym, session, technique_and_sparring(kinds(client, gym))))[
         "blocks"
     ]
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     headers = as_gym(other)
     assert client.get(f"/api/sessions/{session}/blocks", headers=headers).status_code == 404
     assert put_plan(client, other, session, []).status_code == 404
@@ -819,7 +820,7 @@ def test_a_session_counts_once_and_coaches_read_time(
     totals = ok(client.get(f"/api/people/{ana}/time", headers=as_gym(gym, coach)))["all_time"]
     assert (totals["classes"], totals["by_kind"][0]["seconds"]) == (1, 600)
 
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     assert client.get(f"/api/people/{ana}/time", headers=as_gym(other)).status_code == 404
     nobody = client.get(f"/api/people/{uuid.uuid4()}/time", headers=as_gym(gym))
     assert nobody.status_code == 404

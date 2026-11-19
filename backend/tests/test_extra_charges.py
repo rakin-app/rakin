@@ -25,7 +25,7 @@ from app.schemas.extra_charges import Target
 from app.schemas.proofs import ProofClaim
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_rut, unique_slug
 from tests.pg import (
     Database,
     in_gym,
@@ -107,7 +107,7 @@ def client(
 
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-sur-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia-sur"))
 
 
 def ok(response: Any, code: int = 200) -> Any:

@@ -33,6 +33,7 @@ from app.permissions import (
 )
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     Database,
     in_gym,
@@ -65,7 +66,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"equipo-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("equipo"))
 
 
 def admin(db: Database, sql: str, *args: object) -> list[Any]:
@@ -783,7 +784,7 @@ def test_a_new_gym_may_start_with_no_roles(
     assert response.status_code == 200, response.text
     assert response.json()["titles"] == []
     # And keeps the Academia roles when it picks them.
-    other = seed_gym(db, f"equipo-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("equipo"))
     kept = client.post("/api/titles/setup", json={"preset": ACADEMIA}, headers=as_gym(other))
     assert [t["name"] for t in kept.json()["titles"]] == ["Administrador", "Coach"]
 

@@ -39,6 +39,7 @@ from app.platform.session import (
 )
 from tests.auth import FakeAuth
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, seed_gym, throwaway_database
 from tests.test_gym_hosts import BASE, BASE_URL, HOSTS, Outbox, address, person_in
 from tests.test_gym_hosts import Site as GymSite
@@ -135,7 +136,7 @@ def panel(db: Database) -> Iterator[Panel]:
             secret_key=settings.secret_key,
         )
     )
-    slug = f"norte-{uuid.uuid4().hex[:6]}"
+    slug = unique_slug("norte")
     with TestClient(app):
         yield Panel(db, app, outbox, seed_gym(db, slug), slug)
 

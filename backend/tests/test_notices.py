@@ -46,6 +46,7 @@ from app.notices import (
 )
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
 from tests.conftest import require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
 
 BASE_URL = "https://rakin.test"
@@ -468,7 +469,7 @@ def db() -> Iterator[Database]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia"))
 
 
 def send(db: Database, notice: Notice, outbox: Outbox, *, links: bool = True) -> Outcome:
@@ -627,7 +628,7 @@ def test_a_notice_whose_link_cannot_be_issued_is_recorded_as_failed(
 
 @pg
 def test_another_gym_never_reads_the_record(db: Database, gym: uuid.UUID) -> None:
-    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("dojo"))
     send(db, to_owner(gym), Outbox())
 
     assert logged(db, other) == []
@@ -686,7 +687,7 @@ def test_the_record_is_append_only_for_the_api(db: Database, gym: uuid.UUID) -> 
 
 @pg
 def test_the_api_cannot_log_into_another_gym(db: Database, gym: uuid.UUID) -> None:
-    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("dojo"))
     sql = (
         "INSERT INTO message_log (gym_id, person_id, channel, template, to_address, status)"
         " VALUES ($1, $2, 'email', 'x', 'a@example.cl', 'sent')"
@@ -762,7 +763,7 @@ def test_one_click_unsubscribes_from_optional_notices_only(
 def test_an_unsubscribe_holds_for_its_gym_alone(
     db: Database, gym: uuid.UUID, client: TestClient
 ) -> None:
-    other = seed_gym(db, f"dojo-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("dojo"))
     owner = seeded_owner(gym)
     # The same person in a second gym, so only the gym differs.
     run(

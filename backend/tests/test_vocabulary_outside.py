@@ -31,6 +31,7 @@ from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
 from app.permissions import ADMINISTRADOR, Permission
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, seed_gym, seeded_owner, throwaway_database
 from tests.test_notices import Outbox
 
@@ -227,7 +228,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def club(db: Database, client: TestClient) -> uuid.UUID:
-    gym = seed_gym(db, f"club-{uuid.uuid4().hex[:8]}")
+    gym = seed_gym(db, unique_slug("club"))
     response = client.patch("/api/gym/settings", json={"vocabulary": CLUB}, headers=as_gym(gym))
     assert response.status_code == 200, response.text
     return gym

@@ -24,6 +24,7 @@ from app.jobs import billing
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_former_students import added
 from tests.test_member_roll import count, enrolled, forget, memberships, plan
@@ -51,7 +52,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    return seed_gym(db, unique_slug("gym"))
 
 
 def month(year: int, number: int, day: int = 5) -> dict[str, Any]:
@@ -254,7 +255,7 @@ def test_a_coach_neither_reads_nor_writes_them(
                 person=admin,
             ),
         )
-    other = seed_gym(db, f"gym-{uuid.uuid4().hex[:8]}")
+    other = seed_gym(db, unique_slug("gym"))
     assert read(client, other, ana["id"]).status_code == 404
 
 

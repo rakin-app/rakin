@@ -24,6 +24,7 @@ from app.main import create_app
 from app.member_import.template import GRADE_COLUMNS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, throwaway_database
 from tests.test_grades import BJJ, gym_with
 from tests.test_gym_hosts import create, new_gym
@@ -72,7 +73,7 @@ def graded_off(client: TestClient, db: Database) -> tuple[uuid.UUID, dict[str, s
     """A gym created on the BJJ preset, its only activity then set not to grade: its
     scheme keeps the preset's ranks. With the headers that act as its owner."""
     gym_id = create(
-        db, new_gym(f"apagado-{uuid.uuid4().hex[:6]}").model_copy(update={"grading": "bjj"})
+        db, new_gym(unique_slug("apagado")).model_copy(update={"grading": "bjj"})
     ).gym_id
     owner = run(
         db.owner_url,

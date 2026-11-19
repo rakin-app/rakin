@@ -14,6 +14,7 @@ import pytest
 
 from alembic import command
 from tests.conftest import require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     Database,
     make_staff,
@@ -55,9 +56,9 @@ def fetch(db: Database, sql: str, *args: object) -> list[tuple[Any, ...]]:
 
 
 def test_a_gym_already_here_has_chosen_and_a_new_one_has_not(db: Database) -> None:
-    before = seed_gym(db, f"antes-{uuid.uuid4().hex[:6]}")
+    before = seed_gym(db, unique_slug("antes"))
     migrate(db)
-    after = seed_gym(db, f"despues-{uuid.uuid4().hex[:6]}")
+    after = seed_gym(db, unique_slug("despues"))
 
     chosen = dict(fetch(db, "SELECT id, roles_chosen_at IS NOT NULL FROM gym"))
     assert (chosen[before], chosen[after]) == (True, False)
@@ -69,7 +70,7 @@ def test_a_downgrade_drops_what_0069_could_not_hold_and_an_upgrade_restores_the_
     before = fetch(db, SCHEMA)
     migrate(db)
     after = fetch(db, SCHEMA)
-    gym = seed_gym(db, f"equipo-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("equipo"))
     coach, today = uuid.uuid4(), seeded_today()
 
     async def write(conn: asyncpg.Connection) -> None:

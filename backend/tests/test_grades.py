@@ -20,6 +20,7 @@ from app.main import create_app
 from app.schemas.grading import PRESETS
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_guardians import add_person, bill, new_kid
 from tests.test_member_roll import count, forget
@@ -47,7 +48,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 
 def gym_with(client: TestClient, db: Database, scheme: dict[str, Any] | None = BJJ) -> uuid.UUID:
-    gym = seed_gym(db, f"academia-{uuid.uuid4().hex[:8]}")
+    gym = seed_gym(db, unique_slug("academia"))
     if scheme is not None:
         response = client.put("/api/gym/grading-scheme", json=scheme, headers=as_gym(gym))
         assert response.status_code == 200, response.text

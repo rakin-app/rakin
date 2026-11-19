@@ -26,6 +26,7 @@ from app.main import create_app
 from app.notices import PAYMENT_OVERDUE, Notice, render
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.jobgym import Gym
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_today, throwaway_database
 from tests.test_guardians import add_person, bill, new_kid
@@ -344,7 +345,7 @@ def client(db: Database, mailer: RecordingMailer) -> Iterator[TestClient]:
 
 @pytest.fixture
 def gym(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia"))
 
 
 def reminder_of(client: TestClient, gym: uuid.UUID, person: str) -> Any:
@@ -411,7 +412,7 @@ def test_the_button_keys_its_day_as_the_job_does(db: Database, mailer: Recording
     )
     app.state.integrations = dataclasses.replace(app.state.integrations, mailer=mailer)
     app.add_middleware(FakeAuth)
-    gym = seed_gym(db, f"academia-{uuid.uuid4().hex[:6]}")
+    gym = seed_gym(db, unique_slug("academia"))
     run(
         db.admin_url, lambda c: c.execute("UPDATE gym SET timezone = $2 WHERE id = $1", gym, gym_tz)
     )

@@ -22,6 +22,7 @@ from app.schemas.ledger import AdjustmentRecord, RefundRecord
 from app.schemas.plans import MAX_PRICE_CLP
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, seed_gym, throwaway_database
 from tests.test_ledger_payments import entries, new_period, record
 from tests.test_plans import add_staff
@@ -100,7 +101,7 @@ def client(db: Database) -> Iterator[TestClient]:
 
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-sur-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia-sur"))
 
 
 def adjust(client: TestClient, gym: uuid.UUID, body: dict[str, Any], **kw: Any) -> Any:
@@ -289,7 +290,7 @@ def test_an_adjustment_needs_a_note(client: TestClient, db: Database, sur: uuid.
 def test_an_adjustment_to_another_gyms_period_is_not_found(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    norte = seed_gym(db, f"dojo-norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("dojo-norte"))
     theirs = new_period(db, norte)
     assert adjust(client, sur, {**theirs, "amount_clp": -5_000, "note": "x"}).status_code == 404
     assert entries(db, theirs) == []
@@ -468,7 +469,7 @@ def test_only_a_validated_payment_is_refunded(
 def test_another_gyms_payment_is_not_refunded(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    norte = seed_gym(db, f"dojo-norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("dojo-norte"))
     theirs = new_period(db, norte)
     payment = pay(client, norte, theirs, 45_000)
     body = {"payment_id": payment, "amount_clp": 5_000, "method": "cash"}
@@ -543,7 +544,7 @@ def test_the_table_keeps_refund_of_to_refunds_of_the_same_membership(
     with pytest.raises(asyncpg.CheckViolationError):
         insert(db, sur, period, kind="payment", amount_clp=1, refund_of=payment)
 
-    norte = seed_gym(db, f"dojo-norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("dojo-norte"))
     theirs = new_period(db, norte)
     # `ledger_entry_refund_target` runs before the foreign key, and finds no payment on
     # the refund's period.

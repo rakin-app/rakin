@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import Database, make_staff, migrate, run, seed_gym, seeded_owner, throwaway_database
 
 pytestmark = pytest.mark.postgres
@@ -173,7 +174,7 @@ def test_a_new_key_says_nothing_of_a_field_the_admin_cannot_see(
     ids=str,
 )
 def test_an_invalid_definition_is_a_422(client: TestClient, db: Database, body: Any) -> None:
-    gym = staffed(db, f"cf-bad-{uuid.uuid4().hex[:8]}")
+    gym = staffed(db, unique_slug("cf-bad"))
     assert client.post(FIELDS, json=body, headers=gym.owner).status_code == 422
 
 

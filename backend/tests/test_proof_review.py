@@ -23,6 +23,7 @@ from app.main import create_app
 from app.schemas.proofs import ProofRejection
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
+from tests.ids import unique_slug
 from tests.pg import (
     Database,
     migrate,
@@ -97,7 +98,7 @@ def client(
 
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
-    return seed_gym(db, f"academia-sur-{uuid.uuid4().hex[:6]}")
+    return seed_gym(db, unique_slug("academia-sur"))
 
 
 def claimed(
@@ -281,7 +282,7 @@ def test_the_queue_is_oldest_first_and_holds_only_pending_proofs(
     first = claimed(client, sur, ana, 10000)
     second = claimed(client, sur, bea, 30000)
     third = claimed(client, sur, ana, 5000)
-    other = seed_gym(db, f"dojo-norte-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("dojo-norte"))
 
     assert [i["id"] for i in queue(client, sur)] == [first["id"], second["id"], third["id"]]
     assert validate(client, sur, second["id"]).status_code == 200
@@ -598,7 +599,7 @@ def test_only_a_pending_proof_is_found(client: TestClient, db: Database, sur: uu
         },
         headers=as_gym(sur),
     ).json()["payment"]
-    norte = seed_gym(db, f"dojo-norte-{uuid.uuid4().hex[:6]}")
+    norte = seed_gym(db, unique_slug("dojo-norte"))
     entry = claimed(client, sur, ana, 10000)
 
     for gym, entry_id in ((sur, recorded["id"]), (sur, str(uuid.uuid4())), (norte, entry["id"])):

@@ -36,7 +36,7 @@ from app.permissions import preset_title_id
 from app.seed.data import GRADING
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.ids import random_rut
+from tests.ids import random_rut, unique_slug
 from tests.pg import Database, migrate, run, seed_gym, throwaway_database
 from tests.test_email_identity import member_of
 from tests.test_people import new_phone
@@ -405,7 +405,7 @@ def programs(db: Database, gym_id: uuid.UUID) -> list[str]:
 
 @pytest.mark.postgres
 def test_create_makes_an_empty_gym_with_its_owner(db: Database) -> None:
-    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}")
+    gym = new_gym(unique_slug("meta"))
 
     created = create(db, gym)
 
@@ -447,7 +447,7 @@ def test_create_makes_an_empty_gym_with_its_owner(db: Database) -> None:
 
 @pytest.mark.postgres
 def test_create_with_a_grading_preset_starts_the_gym_on_it(db: Database) -> None:
-    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"grading": "bjj"})
+    gym = new_gym(unique_slug("meta")).model_copy(update={"grading": "bjj"})
 
     created = create(db, gym)
 
@@ -478,7 +478,7 @@ def test_create_with_a_grading_preset_starts_the_gym_on_it(db: Database) -> None
 
 @pytest.mark.postgres
 def test_a_judo_gym_starts_as_a_dojo(db: Database) -> None:
-    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"grading": "judo-karate"})
+    gym = new_gym(unique_slug("meta")).model_copy(update={"grading": "judo-karate"})
 
     created = create(db, gym)
 
@@ -500,7 +500,7 @@ def test_a_judo_gym_starts_as_a_dojo(db: Database) -> None:
 
 @pytest.mark.postgres
 def test_a_gym_with_no_grading_has_no_words_yet(db: Database) -> None:
-    created = create(db, new_gym(f"meta-{uuid.uuid4().hex[:6]}"))
+    created = create(db, new_gym(unique_slug("meta")))
 
     async def practice(conn: asyncpg.Connection) -> Any:
         return await conn.fetchval(
@@ -520,7 +520,7 @@ def test_a_gym_with_no_grading_has_no_words_yet(db: Database) -> None:
 
 @pytest.mark.postgres
 def test_create_again_with_the_slug_changes_nothing(db: Database) -> None:
-    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}")
+    gym = new_gym(unique_slug("meta"))
     first = create(db, gym)
     before = counts(db, first.gym_id)
 
@@ -532,7 +532,7 @@ def test_create_again_with_the_slug_changes_nothing(db: Database) -> None:
 
 @pytest.mark.postgres
 def test_a_person_known_elsewhere_becomes_the_owner(db: Database) -> None:
-    other = seed_gym(db, f"otro-{uuid.uuid4().hex[:6]}")
+    other = seed_gym(db, unique_slug("otro"))
     rut = random_rut()
 
     async def known(conn: asyncpg.Connection) -> uuid.UUID:
@@ -548,9 +548,7 @@ def test_a_person_known_elsewhere_becomes_the_owner(db: Database) -> None:
             )
 
     person = run(db.owner_url, known)
-    created = create(
-        db, new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"owner_rut": rut})
-    )
+    created = create(db, new_gym(unique_slug("meta")).model_copy(update={"owner_rut": rut}))
 
     async def owner(conn: asyncpg.Connection) -> Any:
         return await conn.fetchval("SELECT person_id FROM staff WHERE gym_id = $1", created.gym_id)
@@ -560,7 +558,7 @@ def test_a_person_known_elsewhere_becomes_the_owner(db: Database) -> None:
 
 @pytest.mark.postgres
 def test_an_owner_needs_no_phone_and_no_rut(db: Database) -> None:
-    gym = new_gym(f"meta-{uuid.uuid4().hex[:6]}").model_copy(update={"owner_phone": None})
+    gym = new_gym(unique_slug("meta")).model_copy(update={"owner_phone": None})
     created = create(db, gym)
 
     async def owner(conn: asyncpg.Connection) -> Any:
@@ -651,7 +649,7 @@ def site(db: Database) -> Iterator[Site]:
             secret_key=settings.secret_key,
         )
     )
-    slug_a, slug_b = (f"{n}-{uuid.uuid4().hex[:6]}" for n in ("norte", "sur"))
+    slug_a, slug_b = (unique_slug(n) for n in ("norte", "sur"))
     # Started here, so every client below shares the app's one lifespan.
     with TestClient(app):
         yield Site(db, app, outbox, seed_gym(db, slug_a), seed_gym(db, slug_b), slug_a, slug_b)
@@ -686,21 +684,21 @@ def test_the_ask_endpoint_allows_only_gyms_hosts(site: Site) -> None:
 
         assert ask(f"{site.slug_a}.{BASE}") == 200
         assert ask(f"{site.slug_a.upper()}.{BASE}") == 200
-        assert ask(f"nadie-{uuid.uuid4().hex[:6]}.{BASE}") == 404
+        assert ask(f"{unique_slug('nadie')}.{BASE}") == 404
         assert ask(BASE) == 404
         assert ask(f"www.{BASE}") == 404
         assert ask(f"{site.slug_a}.example.com") == 404
         assert ask(f"x.{site.slug_a}.{BASE}") == 404
         assert ask("") == 404
 
-        created = create(site.db, new_gym(f"nuevo-{uuid.uuid4().hex[:6]}"))
+        created = create(site.db, new_gym(unique_slug("nuevo")))
         assert created.created
         assert ask(f"{new_gym_slug(site, created.gym_id)}.{BASE}") == 200
 
 
 @pytest.mark.postgres
 def test_the_ask_endpoint_allows_the_old_domains_names_only_when_it_is_set(site: Site) -> None:
-    old = f"viejo-{uuid.uuid4().hex[:6]}"
+    old = unique_slug("viejo")
     run(
         site.db.admin_url,
         lambda c: c.execute(
@@ -726,7 +724,7 @@ def test_the_ask_endpoint_allows_the_old_domains_names_only_when_it_is_set(site:
     assert ask(moved_from.upper()) == 200
     assert ask(f"{site.slug_a}.{moved_from}") == 200  # a gym
     assert ask(f"{old}.{moved_from}") == 200  # a slug that still redirects
-    assert ask(f"nadie-{uuid.uuid4().hex[:6]}.{moved_from}") == 404
+    assert ask(f"{unique_slug('nadie')}.{moved_from}") == 404
     assert ask(f"www.{moved_from}") == 404
     assert ask(f"x.{site.slug_a}.{moved_from}") == 404
     assert ask(f"{site.slug_a}.{BASE}") == 200  # the current domain as before
@@ -755,7 +753,7 @@ def test_the_host_names_its_gym_for_the_sign_in_page(site: Site) -> None:
         }
     with site.client(None) as client:
         assert client.get("/api/host").json() == {"gym": None}
-    with site.client(f"nadie-{uuid.uuid4().hex[:6]}") as client:
+    with site.client(unique_slug("nadie")) as client:
         assert client.get("/api/host").json() == {"gym": None}
 
 
