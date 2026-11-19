@@ -26,7 +26,7 @@ from app.blob_cors import cors_rule
 from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.gyms import PROCESSOR_TERMS_VERSION, NewGym, create_gym, parse
-from app.hosts import GymLookup, HostGym, Hosts, host_name, slug_problem
+from app.hosts import GymLookup, HostGym, Hosts, host_name, slug_problem, slug_refusal
 from app.integrations.blobstore import LocalBlobStore
 from app.integrations.mailer import Email
 from app.magiclink import COOKIE_NAME, Session
@@ -63,10 +63,16 @@ def test_a_slug_that_is_no_host_label_is_refused(slug: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "slug", ["www", "app", "api", "staging", "admin", "mail", "status", "sitio", "send"]
+    "slug",
+    ["www", "app", "api", "staging", "admin", "mail", "status", "sitio", "send", "rsend"],
 )
 def test_reserved_names_are_refused(slug: str) -> None:
     assert slug_problem(slug) == f"{slug!r} is reserved"
+
+
+def test_resends_own_record_is_reserved() -> None:
+    # `rsend.rakin.app` is a CNAME of Resend's: a wildcard never answers for it (#480)
+    assert slug_refusal("rsend") == "reserved"
 
 
 @pytest.mark.parametrize(
