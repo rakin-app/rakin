@@ -58,6 +58,7 @@ sed \
 	-e 's|^SITE_ADDRESS=.*|SITE_ADDRESS=:80|' \
 	-e 's|^LANDING_HOST=.*|LANDING_HOST=landing.localhost|' \
 	-e 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=http://localhost|' \
+	-e 's|^BASE_DOMAIN=.*|BASE_DOMAIN=gyms.localhost|' \
 	-e 's|^MOVED_FROM_DOMAIN=.*|MOVED_FROM_DOMAIN=moved.localhost|' \
 	-e 's|^SENTRY_DSN=.*|SENTRY_DSN=|' \
 	-e 's|^RESEND_WEBHOOK_SECRET=.*|RESEND_WEBHOOK_SECRET=whsec_dGVzdC1vbmx5IHNpZ25pbmcgc2VjcmV0|' \
@@ -184,7 +185,7 @@ echo "ok   - reset-staging.sh refuses a database holding a gym that is not the s
 redirect() { # redirect <host> <path> [curl options]: "<code> <location>"
 	landing "$1" "$2" -o /dev/null -w '%{http_code} %{redirect_url}' "${@:3}"
 }
-# The gym's new host is under .env.example's BASE_DOMAIN, production's (rakin.app).
+# The gym's new host, under BASE_DOMAIN: gyms.localhost, so it has a certificate here too.
 base=$(sed -n 's/^BASE_DOMAIN=//p' "$dir/.env")
 for _ in $(seq 30); do landing meta.moved.localhost / -o /dev/null 2>/dev/null && break; sleep 1; done
 [ "$(redirect meta.moved.localhost '/alumnos?x=1&y=2')" = "301 https://meta.$base/alumnos?x=1&y=2" ]
@@ -208,6 +209,37 @@ if landing nadie.moved.localhost / -o /dev/null 2>/dev/null; then
 	exit 1
 fi
 echo "ok   - the old domain's ask allows a gym and the old base host, and 404s a slug no gym has (no certificate)"
+
+# A renamed gym's old host (#472): a page on it redirects, not only /api. Caddy
+# serves the SPA's pages itself, so it asks the api first. Renamed by hand, as
+# platform_rename_gym (0078) does, without an operator's session. Locations are
+# on PUBLIC_BASE_URL's scheme, http here.
+compose exec -T postgres psql -U rakin -d rakin -q -v ON_ERROR_STOP=1 -c "
+	UPDATE gym SET slug = 'meta-nueva' WHERE slug = 'meta';
+	INSERT INTO gym_slug_alias (slug, gym_id, until)
+	SELECT 'meta', id, now() + interval '90 days' FROM gym WHERE slug = 'meta-nueva';"
+for _ in $(seq 30); do landing "meta.$base" / -o /dev/null 2>/dev/null && break; sleep 1; done
+[ "$(redirect "meta.$base" /)" = "301 http://meta-nueva.$base/" ]
+[ "$(redirect "meta.$base" '/alumnos?x=1&y=2')" = "301 http://meta-nueva.$base/alumnos?x=1&y=2" ]
+[ "$(redirect "meta.$base" /alumnos -I)" = "301 http://meta-nueva.$base/alumnos" ]
+[ "$(redirect "meta.$base" '/alumnos?y=1' -X POST -d z=1)" = "308 http://meta-nueva.$base/alumnos?y=1" ]
+[ "$(redirect "meta.$base" '/api/host?y=1')" = "301 http://meta-nueva.$base/api/host?y=1" ]
+# The new host, and a gym's host under its own slug, serve the page.
+[ "$(landing "meta-nueva.$base" '/alumnos?x=1' -o /dev/null -w '%{http_code}')" = 200 ]
+grep -q '<div id="root">' <<<"$(landing "meta-nueva.$base" /)"
+echo "ok   - a renamed gym's old host redirects a page load to its new one (301, path and query kept; 308 for POST), and the new host serves it"
+
+# The check fails open: with the api stopped, as while a deploy restarts it, a
+# gym's pages are served (the old host's too, unredirected) and only /api fails.
+compose stop api >/dev/null 2>&1
+for host in "meta.$base" "meta-nueva.$base"; do
+	[ "$(landing "$host" '/alumnos?x=1' -o /dev/null -w '%{http_code}')" = 200 ]
+	grep -q '<div id="root">' <<<"$(landing "$host" /)"
+done
+[ "$(landing "meta-nueva.$base" /api/host -o /dev/null -w '%{http_code}')" = 502 ]
+compose up -d --wait --wait-timeout 180 api >/dev/null 2>&1
+[ "$(redirect "meta.$base" /)" = "301 http://meta-nueva.$base/" ]
+echo "ok   - with the api stopped, a gym's pages are still served (the check fails open), and redirect again once it is back"
 
 # The production deploy's backup, as deploy-host.yml runs it: in the running
 # service, and it must say "backup uploaded".

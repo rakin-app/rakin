@@ -12,18 +12,22 @@ as the redirect is answered after the TLS handshake; 404 for any other, so a
 certificate is only ever requested for a gym that exists. With `MOVED_FROM_DOMAIN` set
 (#464), also 200 for that domain itself and for `<slug>.<it>` when the slug is a gym's
 or still redirects to one, which Caddy redirects to the gym's host on the base domain.
-Caddy reaches it on the api's own port; the public site proxies only `/api/*` and
-`/healthz`.
+`GET /internal/host` is Caddy's check before it serves a page of the SPA on a gym's
+host (#472), with the request's host, method and URI in `X-Forwarded-*`: the same 301
+or 308 `HostMiddleware` answers on the host of a slug that still redirects, and 200
+for any other host. Caddy serves the page on any answer but a redirect, and when the
+api cannot answer: the check fails open. Caddy reaches both on the api's own port;
+the public site proxies only `/api/*` and `/healthz`.
 """
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import text
 
 from app.api.unsubscribe import in_gym
 from app.domain import vocabulary
-from app.hosts import Hosts, alias_of, gym_by_slug, host_gym
+from app.hosts import GymLookup, Hosts, alias_of, gym_by_slug, host_gym, moved
 from app.schemas.hosts import HostGymInfo, HostInfo
 
 router = APIRouter(tags=["hosts"])
@@ -70,3 +74,30 @@ async def tls_allowed(
             if await alias_of(session, slug) is not None:
                 return Response(status_code=status.HTTP_200_OK)
     raise HTTPException(status.HTTP_404_NOT_FOUND, "no gym is served there")
+
+
+@router.get(
+    "/internal/host",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_301_MOVED_PERMANENTLY: {"description": "A GET or HEAD, on an old slug"},
+        status.HTTP_308_PERMANENT_REDIRECT: {"description": "Any other method, on an old slug"},
+    },
+)
+async def page_host(
+    request: Request,
+    x_forwarded_host: Annotated[str, Header()] = "",
+    x_forwarded_method: Annotated[str, Header()] = "GET",
+    x_forwarded_uri: Annotated[str, Header()] = "/",
+) -> Response:
+    # No length limits: a header the check refused would reach the browser as the
+    # page. A host that is no gym's, however long, is no redirect.
+    hosts: Hosts = request.app.state.hosts
+    lookup: GymLookup = request.app.state.gym_lookup
+    slug = hosts.slug_of(x_forwarded_host)
+    if slug is not None and await lookup(slug) is None:
+        current = await lookup.alias(slug)
+        if current is not None:
+            uri = x_forwarded_uri if x_forwarded_uri.startswith("/") else "/"
+            return moved(hosts, current, x_forwarded_method.upper(), uri)
+    return Response(status_code=status.HTTP_200_OK)
