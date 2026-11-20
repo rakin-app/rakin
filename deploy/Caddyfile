@@ -7,7 +7,14 @@
 # certificates are on demand: one per gym's host, obtained at its first TLS
 # handshake, and only once the api's `ask` endpoint says a gym is there
 # (backend/app/api/hosts.py). So there is no wildcard certificate and no DNS
-# plugin, and a name no gym has never reaches Let's Encrypt. Caddy 2.8 dropped
+# plugin, and a name no gym has never reaches Let's Encrypt. That wildcard site
+# covers the sites below that are one label under BASE_DOMAIN, app.rakin.app and
+# www.rakin.app on production (#495), and Caddy manages no name of its own that
+# a managed wildcard covers. So each of those sites says `tls force_automate`
+# (Caddy 2.9 or later, deploy/web.Dockerfile), for a certificate of its own,
+# obtained and renewed as a named site's, without `ask`. Without it their
+# handshakes fail (`tlsv1 alert internal error`): the wildcard's on-demand
+# policy is not theirs. Caddy 2.8 dropped
 # on_demand_tls's own `interval` and `burst`: `ask` is the rate limit, and
 # Let's Encrypt's per-domain limits apply beyond it.
 {
@@ -104,6 +111,8 @@
 }
 
 {$SITE_ADDRESS} {
+	# app.rakin.app is under *.rakin.app: see the top of this file.
+	tls force_automate
 	import app
 }
 
@@ -112,6 +121,9 @@
 # wildcard below, so `www` (a reserved slug, app/hosts.py) never reaches the app.
 # Caddy writes no access log here: the privacy notice says the site keeps none.
 {$LANDING_HOST}, www.{$LANDING_HOST} {
+	# www.rakin.app is under *.rakin.app, sitio.staging.rakin.app under
+	# *.staging.rakin.app: see the top of this file.
+	tls force_automate
 	encode zstd gzip
 
 	@www host www.{$LANDING_HOST}
