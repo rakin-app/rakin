@@ -17,7 +17,15 @@ import pytest
 
 from app import gyms
 from app.db_bootstrap import to_dsn
-from app.gyms import PROCESSOR_TERMS_VERSION, SERVICE_TERMS_VERSION, Signing, sign_terms
+from app.gyms import (
+    PROCESSOR_TERMS_VERSION,
+    SERVICE_TERMS_VERSION,
+    Exempted,
+    Exemption,
+    Signing,
+    set_exempt,
+    sign_terms,
+)
 from app.gyms import parse as parse_command
 from tests.conftest import require_test_database_url
 from tests.ids import unique_slug
@@ -81,6 +89,13 @@ def test_sign_terms_needs_the_version_and_the_date(
         parse_command(args)
     assert exit_.value.code == 2
     assert missing in capsys.readouterr().err
+
+
+def test_terms_exempt_reads_its_arguments() -> None:
+    assert parse_command(["terms-exempt", "--slug", "propio"]) == Exemption("propio", True)
+    assert parse_command(["terms-exempt", "--slug", "propio", "--off"]) == Exemption(
+        "propio", False
+    )
 
 
 # --- with Postgres ----------------------------------------------------------------------
@@ -263,3 +278,81 @@ def test_create_on_a_slug_taken_says_nothing_changed(
     out = run_main(ARGS, taken, monkeypatch, capsys)
     assert "nothing changed" in out
     assert "terms" not in out
+
+
+def exempting(db: Database, exemption: Exemption) -> Exempted | None:
+    async def go() -> Exempted | None:
+        conn = await asyncpg.connect(to_dsn(db.owner_url))
+        try:
+            return await set_exempt(conn, exemption)
+        finally:
+            await conn.close()
+
+    return asyncio.run(go())
+
+
+@pytest.mark.postgres
+def test_an_existing_gym_is_marked_exempt_and_back(db: Database) -> None:
+    """A self-hosted instance's gym from before 0081 (#499): pending after the upgrade,
+    exempt by hand, and back to accepting the terms."""
+    gym = new_gym(unique_slug("propio"))
+    created = create(db, gym, accepted=False)
+    assert state(db, created.gym_id) == "pending"
+
+    made = exempting(db, Exemption(gym.slug, True))
+    assert made == Exempted(created.gym_id, gym.name, changed=True)
+    assert state(db, created.gym_id) == "current"
+    again = exempting(db, Exemption(gym.slug, True))
+    assert again is not None and not again.changed
+
+    back = exempting(db, Exemption(gym.slug, False))
+    assert back is not None and back.changed
+    assert state(db, created.gym_id) == "pending"
+    assert not exempting(db, Exemption(gym.slug, False)).changed  # type: ignore[union-attr]
+
+
+@pytest.mark.postgres
+def test_a_gym_with_no_row_is_marked_exempt(db: Database) -> None:
+    """A gym from before 0081 has no `gym_terms` row: exempting it writes one."""
+    gym = new_gym(unique_slug("antiguo"))
+    created = create(db, gym, accepted=False)
+    run(
+        db.admin_url, lambda c: c.execute("DELETE FROM gym_terms WHERE gym_id = $1", created.gym_id)
+    )
+    assert not exempting(db, Exemption(gym.slug, False)).changed  # type: ignore[union-attr]
+    assert exempting(db, Exemption(gym.slug, True)).changed  # type: ignore[union-attr]
+    assert exempt(db, created.gym_id)
+
+
+@pytest.mark.postgres
+def test_a_gym_that_signed_or_accepted_is_never_exempt(db: Database) -> None:
+    gym = new_gym(unique_slug("alojado"))
+    created = create(db, gym, accepted=False)
+    sign(db, Signing(slug=gym.slug, processor_terms=PROCESSOR_TERMS_VERSION, signed_on=SIGNED_ON))
+    refused = exempting(db, Exemption(gym.slug, True))
+    assert refused == Exempted(created.gym_id, gym.name, changed=False, refused=True)
+    assert not exempt(db, created.gym_id)
+
+
+@pytest.mark.postgres
+def test_no_gym_with_the_slug_is_exempted(db: Database) -> None:
+    assert exempting(db, Exemption(unique_slug("nadie"), True)) is None
+
+
+def test_terms_exempt_says_what_it_did(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    gym_id = uuid.uuid4()
+    out = run_main(
+        ["terms-exempt", "--slug", "propio"], Exempted(gym_id, "Propio", True), monkeypatch, capsys
+    )
+    assert out == "Propio is exempt from the terms\n"
+    with pytest.raises(SystemExit) as exit_:
+        run_main(
+            ["terms-exempt", "--slug", "propio"],
+            Exempted(gym_id, "Propio", False, refused=True),
+            monkeypatch,
+            capsys,
+        )
+    assert exit_.value.code == 1
+    assert "never exempt" in capsys.readouterr().err

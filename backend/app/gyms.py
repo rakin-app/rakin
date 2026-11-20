@@ -6,6 +6,7 @@
         [--grading <preset key>] [--no-processor-terms]
     uv run python -m app.gyms sign-terms --slug meta \\
         --processor-terms <version> --signed-on <date>
+    uv run python -m app.gyms terms-exempt --slug meta [--off]
 
 The gym gets what the demo seed's has before anyone trains there (`app.seed.data`):
 its programs and the block kinds every gym is given (0028); a grading scheme only when
@@ -35,6 +36,12 @@ that exists: the current Términos de encargo, `PROCESSOR_TERMS_VERSION`, and th
 on the signed copy. It is an `outside` row of `terms_acceptance` (0081) covering both
 texts, the current Términos de servicio with them, and a row of `processor_terms`
 (0075), as before. It is no longer the normal path.
+
+`terms-exempt` marks a gym that exists exempt, or with `--off` no longer so: for an
+operator who hosts their own instance and upgrades past migration 0081, whose gyms
+created before it, with no signature and no acceptance, are pending their terms after
+the upgrade (on purpose: on the company's host such a gym must accept them). It refuses
+to exempt a gym that has signed or accepted the terms: that gym is hosted.
 
 Running `create` again with a slug a gym already has changes nothing, whatever else it
 is given, and says so. A `sign-terms` with a version the gym already signed changes
@@ -278,11 +285,64 @@ async def sign_terms(conn: asyncpg.Connection, signing: Signing) -> Signed | Non
     return Signed(found["id"], found["name"], recorded)
 
 
-async def run(command: NewGym | Signing) -> Created | Signed | None:
+@dataclass(frozen=True)
+class Exemption:
+    """Mark the gym with `slug` exempt from the terms, or not with `exempt` False."""
+
+    slug: str
+    exempt: bool
+
+
+@dataclass(frozen=True)
+class Exempted:
+    gym_id: uuid.UUID
+    name: str
+    # False when the gym was so already, or `refused`, and nothing was written.
+    changed: bool
+    # True when asked to exempt a gym that signed or accepted the terms.
+    refused: bool = False
+
+
+async def set_exempt(conn: asyncpg.Connection, exemption: Exemption) -> Exempted | None:
+    """Mark the gym with its slug exempt, or not; `None` if no gym has it."""
+    async with conn.transaction():
+        found = await conn.fetchrow("SELECT id, name FROM auth_gym_by_slug($1)", exemption.slug)
+        if found is None:
+            return None
+        gym_id = found["id"]
+        await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
+        if exemption.exempt and await conn.fetchval(
+            "SELECT EXISTS (SELECT FROM terms_acceptance WHERE gym_id = $1)"
+            " OR EXISTS (SELECT FROM processor_terms WHERE gym_id = $1)",
+            gym_id,
+        ):
+            return Exempted(gym_id, found["name"], changed=False, refused=True)
+        if exemption.exempt:
+            changed = await conn.fetchval(
+                "INSERT INTO gym_terms (gym_id, exempt) VALUES ($1, true)"
+                " ON CONFLICT (gym_id) DO UPDATE SET exempt = true"
+                " WHERE NOT gym_terms.exempt RETURNING true",
+                gym_id,
+            )
+        else:
+            # A gym with no row was never exempt.
+            changed = await conn.fetchval(
+                "UPDATE gym_terms SET exempt = false WHERE gym_id = $1 AND exempt RETURNING true",
+                gym_id,
+            )
+    return Exempted(gym_id, found["name"], changed=bool(changed))
+
+
+Command = NewGym | Signing | Exemption
+
+
+async def run(command: Command) -> Created | Signed | Exempted | None:
     conn = await asyncpg.connect(to_dsn(get_settings().migration_database_url))
     try:
         if isinstance(command, Signing):
             return await sign_terms(conn, command)
+        if isinstance(command, Exemption):
+            return await set_exempt(conn, command)
         return await create_gym(conn, command)
     finally:
         await conn.close()
@@ -303,7 +363,7 @@ def _add_terms(parser: argparse.ArgumentParser, *, required: bool) -> None:
     )
 
 
-def parse(argv: Sequence[str] | None = None) -> NewGym | Signing:
+def parse(argv: Sequence[str] | None = None) -> Command:
     parser = argparse.ArgumentParser(description="Manage real gyms.")
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create", help="create an empty gym and its owner")
@@ -329,7 +389,15 @@ def parse(argv: Sequence[str] | None = None) -> NewGym | Signing:
     )
     sign.add_argument("--slug", required=True)
     _add_terms(sign, required=True)
+    exempt = commands.add_parser(
+        "terms-exempt",
+        help="mark a gym exempt from the terms, on an instance the company does not host",
+    )
+    exempt.add_argument("--slug", required=True)
+    exempt.add_argument("--off", action="store_true", help="no longer exempt: it accepts them")
     args = parser.parse_args(argv)
+    if args.command == "terms-exempt":
+        return Exemption(slug=args.slug, exempt=not args.off)
     try:
         if args.command == "sign-terms":
             return Signing(
@@ -358,6 +426,20 @@ def parse(argv: Sequence[str] | None = None) -> NewGym | Signing:
 def main(argv: Sequence[str] | None = None) -> None:
     gym = parse(argv)
     done = asyncio.run(run(gym))
+    if isinstance(gym, Exemption):
+        if done is None:
+            print(f"no gym has the slug {gym.slug}", file=sys.stderr)
+            raise SystemExit(1)
+        assert isinstance(done, Exempted)
+        if done.refused:
+            print(
+                f"{done.name} has signed or accepted the terms: a hosted gym is never exempt",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        state = "exempt from the terms" if gym.exempt else "to accept the terms"
+        print(f"{done.name} is {state}" + ("" if done.changed else " already: nothing changed"))
+        return
     if isinstance(gym, Signing):
         if done is None:
             print(f"no gym has the slug {gym.slug}", file=sys.stderr)

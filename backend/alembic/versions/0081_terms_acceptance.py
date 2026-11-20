@@ -22,6 +22,9 @@ each one is kept whole, as #500 lists it (docs/legal-research.md, "Requirements 
   instance the company does not host, `--no-processor-terms`), and the address it was
   created with and the operator who did. A table of its own, not columns of `gym`,
   which `rakin_app` may update.
+- No backfill: a gym already here with neither a signature nor an acceptance is
+  `pending` after the upgrade, as it should be on the company's host. A self-hosting
+  operator marks theirs exempt with `app.gyms terms-exempt`.
 - The terms state, `pending` (no acceptance and no signature ever), `outdated` (some
   before, not both current versions) or `current` (both, or exempt), is one SQL
   expression (`terms_state`), in `app_terms_state` for the API and inline in the
@@ -688,6 +691,11 @@ def upgrade() -> None:
         op.execute(statement)
     for grant in PLATFORM_GRANTS:
         op.execute(grant.format(role=PLATFORM_ROLE))
+    # No backfill of `gym_terms`, on purpose: a gym already here with no signature and
+    # no acceptance is `pending` after this. On the company's host that is right, as for
+    # a gym suspended before it ever signed, which accepts the terms when it opens. An
+    # operator who hosts their own instance marks each of their gyms exempt by hand:
+    # `python -m app.gyms terms-exempt --slug <slug>` (docs/deploy.md).
 
     # Owned by whoever runs the migrations, the table owner, held to the gym by RLS.
     for signature, statement in APP_FUNCTIONS.items():

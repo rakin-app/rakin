@@ -7,6 +7,7 @@ gym already here with a signature counts as having accepted before, and a downgr
 0077's, 0078's and 0079's functions back.
 """
 
+import asyncio
 import hashlib
 import uuid
 from collections.abc import Iterator
@@ -16,6 +17,8 @@ import asyncpg
 import pytest
 
 from alembic import command
+from app.db_bootstrap import to_dsn
+from app.gyms import Exemption, set_exempt
 from tests.conftest import require_test_database_url
 from tests.ids import unique_slug
 from tests.pg import Database, in_gym, migrate, run, seed_gym, seeded_owner, throwaway_database
@@ -172,3 +175,25 @@ def test_a_gym_signed_before_is_outdated_and_the_downgrade_restores_the_panel() 
         assert tables[0]["t"] is None
         command.upgrade(db.alembic(), "head")
         assert state(db, gym) == "outdated"
+
+
+def test_a_gym_with_no_terms_is_pending_after_the_upgrade_until_marked_exempt() -> None:
+    """No backfill (#499): a gym from before 0081 with neither a signature nor an
+    acceptance is pending, as on the company's host it must be; a self-hosting operator
+    marks it exempt with `app.gyms terms-exempt`, and it is current."""
+    with throwaway_database(require_test_database_url()) as db:
+        migrate(db, "0080")
+        slug = unique_slug("propio")
+        gym = seed_gym(db, slug)
+        migrate(db)
+        assert state(db, gym) == "pending"
+
+        async def go() -> Any:
+            conn = await asyncpg.connect(to_dsn(db.owner_url))
+            try:
+                return await set_exempt(conn, Exemption(slug, True))
+            finally:
+                await conn.close()
+
+        assert asyncio.run(go()).changed
+        assert state(db, gym) == "current"

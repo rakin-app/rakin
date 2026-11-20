@@ -238,6 +238,14 @@ docker compose run --rm api python -m app.gyms create --slug meta --name "Meta" 
 
 The gym is pending its terms, as from the panel; `create` sends no email, so its owner signs in at the gym's address, which shows them the acceptance page. `--no-processor-terms` instead is only for an instance the company does not host, whose operator processes no gym's data for the company: the gym is exempt (`gym_terms.exempt`), and nothing waits on its terms.
 
+**Upgrading past migration 0081** (#499). A gym created before it with neither a signature of the terms nor an acceptance is **pending** after the upgrade: its writes are refused and its titular sees the acceptance page. That is on purpose, and on the company's host nothing is run: there every gym signed the terms at creation (#367) except one suspended before it did, which accepts them when it opens. An operator who hosts their own instance, where no gym owes the company any terms, marks each of their gyms exempt once after upgrading:
+
+```sh
+docker compose run --rm api python -m app.gyms terms-exempt --slug <slug>
+```
+
+`--off` makes a gym accept the terms again. It refuses to exempt a gym that has signed or accepted them: that gym is hosted.
+
 It creates the gym with the programs Adultos and Niños and the default block kinds and no members, plans or classes, and makes the person with that RUT its owner (found if another gym already has them, created otherwise), with that email on Meta's record of them. Without `--owner-rut` the owner is someone new, keyed by the email in this gym. `--owner-phone` is optional: staff need no phone. Grading is optional: `--grading` starts the gym on a preset (`bjj`, `judo`, `karate`, `karate-shotokan`, `karate-kyokushin`, `karate-goju-ryu`, `taekwondo`, `kenpo`, `aikido`, `muay-thai`), and with one graded activity named for its art (a karate style's is Karate), as Meta, a BJJ academy, is above; `judo-karate`, the one ladder judo and karate shared until #411, still works and starts a judo gym (`judo`); without it the gym has no grades and shows no belts until its owner sets them up in Ajustes › Graduación. Run again with the same slug, it changes nothing and says so. The slug is the host: lower-case letters, digits and hyphens, and not a name the app keeps (`www`, `app`, `api`, `staging`, `sitio`, `send`, `rsend`, `admin`, `mail` and others, in [`app/hosts.py`](../backend/app/hosts.py)), which are the names that have DNS records of their own or may one day.
 
 Then the owner opens `https://meta.rakin.app`, which shows Meta's name, and signs in with that email. On a gym's host:
