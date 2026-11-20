@@ -169,7 +169,7 @@ echo "ok   - reset-staging.sh drops, migrates and reseeds a seed-only database, 
 # Backup and restore: a gym's rows go into a backup, and come back out of it.
 compose run --rm api python -m app.gyms create --slug meta --name Meta \
 	--owner-email owner@example.com --owner-name Owner --owner-phone "+56 9 1234 5678" \
-	--processor-terms 2026-11-18 --signed-on 2026-11-18
+	--processor-terms 2026-11-19 --signed-on 2026-11-19
 # With a gym that is not the seed's, the reset refuses and the gym stays.
 if (cd "$dir" && ./reset-staging.sh) >/dev/null 2>&1; then
 	echo "test-hosted: reset-staging.sh dropped a database holding meta" >&2

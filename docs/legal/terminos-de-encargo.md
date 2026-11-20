@@ -1,8 +1,8 @@
-> **BORRADOR: pendiente de revisión por abogado.** 18 de noviembre de 2026.
+> **BORRADOR: pendiente de revisión por abogado.** 19 de noviembre de 2026.
 
 # Términos de encargo de tratamiento de datos personales
 
-**Versión: 2026-11-18.** Cada academia firma esta versión antes de que sus datos entren a Rakin, y vuelve a firmar cuando cambia, como al agregarse un subencargado al [Anexo A](#anexo-a-subencargados) ([cláusula 9](#9-subencargados)). La Empresa registra la versión y la fecha de cada firma, y guarda la copia firmada en sus archivos.
+**Versión: 2026-11-19.** Cada academia firma esta versión antes de que sus datos entren a Rakin, y vuelve a firmar cuando cambia, como al agregarse un subencargado al [Anexo A](#anexo-a-subencargados) ([cláusula 9](#9-subencargados)). La Empresa registra la versión y la fecha de cada firma, y guarda la copia firmada en sus archivos.
 
 Contrato entre quien presta Rakin y cada academia que lo usa, exigido por el artículo 15 bis de la ley N° 19.628, modificada por la ley N° 21.719. Se basa en la [investigación legal](../legal-research.md). Donde una cláusula descansa en una de sus respuestas, la enlaza.
 
@@ -190,7 +190,7 @@ Detalle técnico en la [auditoría](../compliance-audit.md).
 - **Campos sensibles**: cifrados en la aplicación (AES-GCM), ligados a la academia, la persona y el campo. Por defecto solo los ve el dueño, excluidos de las exportaciones.
 - **Acceso sin contraseñas para alumnos**:
   - links de acceso de un solo uso: 15 minutos si se piden, 7 días si van en un aviso;
-  - sesiones de 30 días;
+  - sesiones que vencen tras 35 días sin uso y, en todo caso, a los 180 días del ingreso;
   - cada persona ve solo lo que su rol permite.
 - **Respaldos**: diarios, cifrados con una llave pública (`age`), de modo que ni el servidor puede leerlos. Se guardan 14 días y 8 domingos.
 - **Servidor**:

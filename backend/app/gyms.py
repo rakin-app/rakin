@@ -82,7 +82,7 @@ ACTIVITIES = {
 
 # The "Versión" line of `docs/legal/terminos-de-encargo.md`; a test holds them equal.
 # A change to the terms a gym must sign again for gets a new one.
-PROCESSOR_TERMS_VERSION = "2026-11-18"
+PROCESSOR_TERMS_VERSION = "2026-11-19"
 SIGNED_IN = "America/Santiago"
 
 

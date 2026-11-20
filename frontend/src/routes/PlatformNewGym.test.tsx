@@ -40,7 +40,7 @@ const CHOICES: NewGymChoices = {
     { key: 'bjj', label: 'Jiu-jitsu brasileño' },
     { key: 'none', label: 'Sin grados' },
   ],
-  terms_version: '2026-11-18',
+  terms_version: '2026-11-19',
   timezones: ['America/Santiago', 'Europe/Madrid'],
 }
 
@@ -122,8 +122,8 @@ describe('/plataforma/nuevo', () => {
     await userEvent.selectOptions(screen.getByLabelText(copy.grading), 'bjj')
     await userEvent.type(screen.getByLabelText(copy.ownerEmail), 'duena@example.cl')
     await userEvent.type(screen.getByLabelText(copy.ownerName), 'Dueña')
-    expect(screen.getByLabelText(copy.termsVersion)).toHaveValue('2026-11-18')
-    await userEvent.type(screen.getByLabelText(copy.signedOn), '2026-11-18')
+    expect(screen.getByLabelText(copy.termsVersion)).toHaveValue('2026-11-19')
+    await userEvent.type(screen.getByLabelText(copy.signedOn), '2026-11-19')
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 
     await screen.findByRole('heading', { name: copy.created })
@@ -143,8 +143,8 @@ describe('/plataforma/nuevo', () => {
       owner_rut: null,
       owner_phone: null,
       grading: 'bjj',
-      processor_terms: '2026-11-18',
-      signed_on: '2026-11-18',
+      processor_terms: '2026-11-19',
+      signed_on: '2026-11-19',
     })
 
     const write = vi.fn<(text: string) => Promise<void>>(async () => {})

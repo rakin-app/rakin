@@ -51,8 +51,8 @@ function detail(changes: Partial<PlatformGymDetail> = {}): PlatformGymDetail {
     titular_email: 'duena@example.cl',
     titular_phone: '+56911111111',
     titular_signed_in: false,
-    terms: [{ version: '2026-11-18', signed_on: '2026-11-19' }],
-    terms_version: '2026-11-18',
+    terms: [{ version: '2026-11-19', signed_on: '2026-11-19' }],
+    terms_version: '2026-11-19',
     aliases: [],
     suspended_at: null,
     suspended_reason: null,
@@ -70,7 +70,7 @@ const LISTED: PlatformGym = {
   created_at: '2026-11-18T12:00:00Z',
   titular_name: 'Dueña',
   titular_email: 'duena@example.cl',
-  terms_version: '2026-11-18',
+  terms_version: '2026-11-19',
   terms_signed_on: '2026-11-19',
   terms_current: true,
   members: 0,
@@ -169,8 +169,8 @@ describe('/plataforma/$gymId', () => {
     )
     renderAt(`/plataforma/${GYM_ID}`)
 
-    expect(await screen.findByText(/2026-11-18, firmado el/)).toBeInTheDocument()
-    expect(screen.getByText(copy.recordVersion('2026-11-18'))).toBeInTheDocument()
+    expect(await screen.findByText(/2026-11-19, firmado el/)).toBeInTheDocument()
+    expect(screen.getByText(copy.recordVersion('2026-11-19'))).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText(copy.signedOn), '2026-11-20')
     await userEvent.click(screen.getByRole('button', { name: copy.record }))
     expect(await screen.findByText(copy.recorded)).toBeInTheDocument()

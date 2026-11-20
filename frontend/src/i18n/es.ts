@@ -4254,7 +4254,7 @@ export const es = {
       noTerms: 'Sin firmar',
       termsCurrent: 'vigente',
       termsOutdated: 'desactualizado',
-      // The version and the date on the signed copy: `2026-11-18, firmado el 19 nov 2026`.
+      // The version and the date on the signed copy: `2026-11-19, firmado el 19 nov 2026`.
       signedOn: (date: string) => `firmado el ${date}`,
       noActivity: 'Sin actividad',
       status: { active: 'Activo', suspended: 'Suspendido' },
@@ -4364,7 +4364,7 @@ export const es = {
       },
       terms: 'Términos de encargo',
       noTerms: 'Todavía no ha firmado los Términos de encargo.',
-      // One signature: `2026-11-18, firmado el 19 nov 2026`.
+      // One signature: `2026-11-19, firmado el 19 nov 2026`.
       signature: (version: string, date: string) => `${version}, firmado el ${date}`,
       current: 'vigente',
       record: 'Registrar firma',
