@@ -168,9 +168,9 @@ grep -q 'reset: done: academia-sur reseeded, 1 operator(s) granted' "$dir/reset.
 echo "ok   - reset-staging.sh drops, migrates and reseeds a seed-only database, and grants its operators"
 
 # Backup and restore: a gym's rows go into a backup, and come back out of it.
+# Pending its terms, as every gym is created since #499: its owner accepts them in the app.
 compose run --rm api python -m app.gyms create --slug meta --name Meta \
-	--owner-email owner@example.com --owner-name Owner --owner-phone "+56 9 1234 5678" \
-	--processor-terms 2026-11-19 --signed-on 2026-11-19
+	--owner-email owner@example.com --owner-name Owner --owner-phone "+56 9 1234 5678"
 # With a gym that is not the seed's, the reset refuses and the gym stays.
 if (cd "$dir" && ./reset-staging.sh) >/dev/null 2>&1; then
 	echo "test-hosted: reset-staging.sh dropped a database holding meta" >&2
