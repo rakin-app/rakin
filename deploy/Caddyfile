@@ -10,10 +10,11 @@
 # plugin, and a name no gym has never reaches Let's Encrypt. That wildcard site
 # covers the sites below that are one label under BASE_DOMAIN, app.rakin.app and
 # www.rakin.app on production (#495), and Caddy manages no name of its own that
-# a managed wildcard covers. So each of those sites says `tls force_automate`,
-# for a certificate of its own, obtained and renewed as a named site's, without
-# `ask`. Without it their handshakes fail (`tlsv1 alert internal error`): the
-# wildcard's on-demand policy is not theirs. Caddy 2.8 dropped
+# a managed wildcard covers. So each of those sites says `tls force_automate`
+# (Caddy 2.9 or later, deploy/web.Dockerfile), for a certificate of its own,
+# obtained and renewed as a named site's, without `ask`. Without it their
+# handshakes fail (`tlsv1 alert internal error`): the wildcard's on-demand
+# policy is not theirs. Caddy 2.8 dropped
 # on_demand_tls's own `interval` and `burst`: `ask` is the rate limit, and
 # Let's Encrypt's per-domain limits apply beyond it.
 {

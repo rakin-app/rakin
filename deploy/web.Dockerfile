@@ -20,6 +20,8 @@ COPY frontend/public/ frontend/public/
 COPY --from=build /app/node_modules/@fontsource /fontsource
 RUN python site/build.py --fonts /fontsource --out /site
 
+# Caddy 2.9 or later: the Caddyfile's `tls force_automate` (#495) fails to load
+# on an older one. Never pin below it.
 FROM caddy:2
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/dist /srv
