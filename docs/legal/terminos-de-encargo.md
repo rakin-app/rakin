@@ -1,8 +1,8 @@
-> **BORRADOR: pendiente de revisión por abogado.** 19 de noviembre de 2026.
+> **BORRADOR: pendiente de revisión por abogado.** 20 de noviembre de 2026.
 
 # Términos de encargo de tratamiento de datos personales
 
-**Versión: 2026-11-19.** Cada academia firma esta versión antes de que sus datos entren a Rakin, y vuelve a firmar cuando cambia, como al agregarse un subencargado al [Anexo A](#anexo-a-subencargados) ([cláusula 9](#9-subencargados)). La Empresa registra la versión y la fecha de cada firma, y guarda la copia firmada en sus archivos.
+**Versión: 2026-11-20.** Cada academia acepta esta versión en la aplicación antes de que sus datos entren a Rakin, y vuelve a aceptarla cuando cambia, como al agregarse un subencargado al [Anexo A](#anexo-a-subencargados) ([cláusula 9](#9-subencargados)). La Empresa registra cada aceptación como dice la [cláusula 17](#17-aceptación-electrónica), y guarda una copia de lo aceptado.
 
 Contrato entre quien presta Rakin y cada academia que lo usa, exigido por el artículo 15 bis de la ley N° 19.628, modificada por la ley N° 21.719. Se basa en la [investigación legal](../legal-research.md). Donde una cláusula descansa en una de sus respuestas, la enlaza.
 
@@ -82,9 +82,9 @@ La Empresa aplica las medidas del [Anexo B](#anexo-b-medidas-de-seguridad) y las
 
 ## 9. Subencargados
 
-La Academia autoriza en forma **específica y por escrito**, con la firma de este contrato, a cada subencargado del [Anexo A](#anexo-a-subencargados), para lo que ahí se indica ([pregunta 9](../legal-research.md#9-subprocessors-abroad)).
+La Academia autoriza en forma **específica y por escrito**, con su aceptación de este contrato, a cada subencargado del [Anexo A](#anexo-a-subencargados), para lo que ahí se indica ([pregunta 9](../legal-research.md#9-subprocessors-abroad)).
 
-Para agregar o cambiar un subencargado, la Empresa avisa a la Academia con al menos **30 días** de anticipación y le pide una nueva autorización escrita. Si la Academia no la da, puede terminar el servicio sin costo antes del cambio.
+Para agregar o cambiar un subencargado, la Empresa avisa a la Academia con al menos **30 días** de anticipación y le pide una nueva autorización, que la Academia da en la aplicación, nombrando al subencargado. La Empresa no trata datos de la Academia por medio de un subencargado nuevo antes de esa autorización. Si la Academia no la da, puede terminar el servicio sin costo antes del cambio.
 
 La Empresa exige a cada subencargado obligaciones de protección iguales a las de este contrato, y sigue respondiendo solidariamente por lo que haga (art. 15 bis).
 
@@ -114,7 +114,7 @@ Si la Empresa sabe de una vulneración que afecte datos de la Academia, se lo av
 - las posibles consecuencias;
 - lo que ya se hizo.
 
-La Empresa lo completa a medida que sepa más. Lo envía al contacto para vulneraciones que la Academia indica al firmar, por correo y por teléfono. La Academia avisa a la Empresa si ese contacto cambia.
+La Empresa lo completa a medida que sepa más. Lo envía al contacto para vulneraciones que la Academia indica al aceptar, por correo y por teléfono. La Academia avisa a la Empresa si ese contacto cambia.
 
 Además, la Empresa:
 
@@ -152,23 +152,23 @@ Cada parte responde por sus propios incumplimientos. Si la Empresa trata los dat
 
 `[ABOGADO: límite de responsabilidad durante la beta gratuita, y su relación con los Términos de servicio.]`
 
-## 17. Ley y tribunales
+## 17. Aceptación electrónica
 
-Rige la ley chilena. Las partes se someten a los tribunales de [ciudad].
+Estos términos se aceptan en la aplicación de Rakin. Quien los acepta lo hace en nombre de la Academia y declara tener facultades para representarla. Ingresa con un link o código enviado a su correo, revisa el texto, que puede descargar o imprimir antes de aceptar, y marca la casilla de aceptación. Esa aceptación es una firma electrónica según la ley N° 19.799, y obliga a la Academia igual que un contrato firmado en papel. Rakin registra quién aceptó, el correo con que ingresó, la fecha y hora, la versión, una huella (SHA-256) del texto exacto que se mostró y la dirección IP y el navegador desde los que se aceptó. Rakin envía a ese correo una copia íntegra de lo aceptado, y la Academia puede descargarla en cualquier momento desde la administración de su academia.
 
-Firmas:
+Una versión nueva rige solo desde que la Academia la acepta. Mientras no la acepte, sigue rigiendo la anterior, y la Academia puede llevarse sus datos y terminar el servicio ([cláusula 14](#14-al-terminar)).
 
-| La Empresa | La Academia |
-| --- | --- |
-| [nombre, firma, fecha] | [nombre, firma, fecha] |
+## 18. Ley y tribunales
 
-Contacto de la Academia para vulneraciones ([cláusula 12](#12-vulneraciones-de-seguridad)): [nombre y cargo], [correo], [teléfono]. Un segundo contacto, con otro correo: [nombre y cargo], [correo], [teléfono].
+Rige la ley chilena. Las partes se someten a los tribunales de Puerto Montt.
+
+Contacto de la Academia para vulneraciones ([cláusula 12](#12-vulneraciones-de-seguridad)): [nombre y cargo], [correo], [teléfono]. Un segundo contacto, con otro correo: [segundo contacto].
 
 ---
 
 ## Anexo A: subencargados
 
-Ver [pregunta 9](../legal-research.md#9-subprocessors-abroad). La firma de este contrato es la autorización específica de cada uno.
+Ver [pregunta 9](../legal-research.md#9-subprocessors-abroad). La aceptación de este contrato es la autorización específica de cada uno.
 
 | Subencargado | Para qué | Qué datos | Dónde |
 | --- | --- | --- | --- |
@@ -206,3 +206,20 @@ Detalle técnico en la [auditoría](../compliance-audit.md).
 - ensayo de restauración de respaldos antes de la segunda academia (ops#2);
 - [protocolo de respuesta a vulneraciones](../incident-response.md): escrito, falta su primer ensayo (#369);
 - registros que permitan acotar un incidente (#374).
+
+## Cambios de versión
+
+### 2026-11-20
+
+- Se acepta en la aplicación de Rakin, ya no se firma en papel: la nueva [cláusula 17](#17-aceptación-electrónica) dice cómo, qué registra Rakin de cada aceptación y que la Academia recibe una copia íntegra en su correo.
+- Una versión nueva rige solo desde que la Academia la acepta; mientras tanto rige la anterior, y la Academia puede llevarse sus datos y terminar.
+- Un subencargado nuevo se autoriza en la aplicación, por su nombre, y no trata datos de la Academia antes de esa autorización ([cláusula 9](#9-subencargados)).
+- Los tribunales son los de Puerto Montt. "Ley y tribunales" pasa a ser la cláusula 18.
+
+### 2026-11-19
+
+- Sesiones: vencen tras 35 días sin uso y, en todo caso, a los 180 días del ingreso ([Anexo B](#anexo-b-medidas-de-seguridad)).
+
+### 2026-11-18
+
+- El Anexo A nombra el proveedor del servidor, Hetzner, en Ashburn (Estados Unidos), y Sentry pasa a su región de Estados Unidos.

@@ -339,3 +339,45 @@ button.admin-nav__link {
     text-align: left;
   }
 }
+
+/* Over the terms' page (#499): the dark bar alone, at every width, with no nav. */
+.admin-shell--gate {
+  flex-direction: column;
+}
+
+.admin-top--gate {
+  display: flex;
+}
+
+.admin-main--gate {
+  padding-bottom: var(--space-10);
+}
+
+.admin-top__sign-out {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  margin-left: auto;
+  padding: 0 var(--space-3);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-top__sign-out:hover {
+  background: var(--color-sidebar-raised);
+}
+
+@media (--desktop) {
+  .admin-shell--gate {
+    flex-direction: column;
+  }
+
+  .admin-top--gate {
+    display: flex;
+  }
+}

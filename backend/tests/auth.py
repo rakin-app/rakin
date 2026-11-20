@@ -5,14 +5,18 @@ that gym.
 """
 
 import uuid
+from datetime import UTC, datetime
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.tenancy import Tenant
+from app.tenancy import SignIn, Tenant
 from tests.pg import seeded_owner
 
 GYM_HEADER = b"x-test-gym"
 PERSON_HEADER = b"x-test-person"
+
+# How every fake session began, for what records it (`app.api.terms`).
+SIGNED_IN = SignIn("signed-in@example.com", datetime(2026, 11, 20, 12, 0, tzinfo=UTC))
 
 
 class FakeAuth:
@@ -29,7 +33,9 @@ class FakeAuth:
                 gym_id = uuid.UUID(gym.decode())
                 person = headers.get(PERSON_HEADER)
                 person_id = seeded_owner(gym_id) if person is None else uuid.UUID(person.decode())
-                scope.setdefault("state", {})["tenant"] = Tenant(gym_id, person_id)
+                state = scope.setdefault("state", {})
+                state["tenant"] = Tenant(gym_id, person_id)
+                state["sign_in"] = SIGNED_IN
         await self.app(scope, receive, send)
 
 

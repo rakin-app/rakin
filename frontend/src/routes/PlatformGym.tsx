@@ -9,12 +9,14 @@ import {
   platformGymQuery,
   platformGymsQuery,
   recordTerms,
+  resendOwnerLink,
   renameCheckQuery,
   renameGym,
   resumeGym,
   suspendGym,
   type GymEdit,
   type PlatformGymDetail,
+  type TermsSignature,
 } from '../api/platform'
 import { useSubmit } from '../api/submit'
 import { validationErrors } from '../api/validation'
@@ -40,7 +42,8 @@ const REFUSALS = { range: {}, value: copy.refusals as Record<string, string> }
 
 /**
  * A gym's edit screen (#438), opened from the list: its name and its titular's contact,
- * a new signature of the Términos de encargo, and its address. The titular is never
+ * the terms it accepted (#499), with the invitation to accept them sent again and an
+ * acceptance made outside the app recorded, and its address. The titular is never
  * changed here, and their email only before their first sign-in: after it, that is the
  * handover (#321). A new address asks the operator to confirm by typing it, and, if
  * they have not proved who they are in the last 10 minutes, for a code. So do suspending
@@ -200,8 +203,14 @@ function Terms({ gym }: { gym: PlatformGymDetail }) {
     mutationFn: (date: string) => recordTerms(gym.id, date),
     onSuccess: () => refresh(),
   })
+  const resend = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => resendOwnerLink(gym.id),
+    onSuccess: () => refresh(),
+  })
   const errors = validationErrors(record.error)
   const error = 'signed_on' in errors ? refusal(errors.signed_on!, 'signed_on', REFUSALS, signedOn === '') : undefined
+  const waiting = gym.terms_state !== 'current'
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -209,22 +218,49 @@ function Terms({ gym }: { gym: PlatformGymDetail }) {
   }
 
   return (
-    <Section id={useId()} title={copy.terms}>
+    <Section id={useId()} title={copy.terms} trailing={<StatusPill status={waiting ? 'overdue' : 'done'}>{copy.termsState[gym.terms_state]}</StatusPill>}>
       <div className={cardClass({}, 'platform-gym__card')}>
         {gym.terms.length === 0 ? (
           <p className="platform-gym__note">{copy.noTerms}</p>
         ) : (
           <PlainList className="platform-gym__list">
             {gym.terms.map((signature) => (
-              <li key={signature.version}>
-                {copy.signature(signature.version, shortDate(signature.signed_on))}{' '}
-                {signature.version === gym.terms_version && <StatusPill status="done">{copy.current}</StatusPill>}
+              <li key={`${signature.channel}-${signature.accepted_at}`}>
+                <Signature signature={signature} />
+                {signature.processor_version === gym.terms_version &&
+                  signature.service_version === gym.service_terms_version && (
+                    <>
+                      {' '}
+                      <StatusPill status="done">{copy.current}</StatusPill>
+                    </>
+                  )}
               </li>
             ))}
           </PlainList>
         )}
+        {gym.titular_email && (
+          <div className="platform-gym__inline">
+            <Button disabled={resend.isPending} busy={resend.isPending} onClick={() => resend.mutate()}>
+              {resend.isPending ? copy.sending : waiting ? copy.resendInvite : copy.resendLink}
+            </Button>
+            {resend.isSuccess && (
+              <span className="platform-gym__note" role="status">
+                {resend.data.sent ? copy.sent(gym.titular_email) : copy.sendFailed}
+              </span>
+            )}
+            {resend.isError && (
+              <span className="platform-gym__note" role="alert">
+                {copy.sendFailed}
+              </span>
+            )}
+          </div>
+        )}
         <form className="platform-gym__inline" onSubmit={submit} noValidate>
-          <Field label={copy.signedOn} hint={copy.recordVersion(gym.terms_version)} error={error}>
+          <Field
+            label={copy.signedOn}
+            hint={copy.recordVersion(gym.service_terms_version, gym.terms_version)}
+            error={error}
+          >
             {(props) => <Input {...props} type="date" value={signedOn} onChange={(e) => setSignedOn(e.target.value)} />}
           </Field>
           <Button type="submit" disabled={record.isPending} busy={record.isPending}>
@@ -238,6 +274,16 @@ function Terms({ gym }: { gym: PlatformGymDetail }) {
       </div>
     </Section>
   )
+}
+
+/** One acceptance: in the app, when and by whom, or outside it, signed on its date; and
+ * which versions. One from before #499 names the Términos de encargo alone. */
+function Signature({ signature }: { signature: TermsSignature }) {
+  const when =
+    signature.channel === 'in_app'
+      ? copy.inApp(shortDate(signature.accepted_at), signature.accepted_by_name)
+      : copy.outside(signature.signed_on ? shortDate(signature.signed_on) : null)
+  return <>{`${when} · ${copy.versions(signature.service_version, signature.processor_version)}`}</>
 }
 
 function Address({ gym }: { gym: PlatformGymDetail }) {

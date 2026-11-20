@@ -1,0 +1,19 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+{{ gym }} ya está en Rakin, el sistema para llevar {{ words.members }}, planes, pagos y clases.
+
+Antes de cargar a {{ words.the_members }}, {{ words.the_place }} acepta los Términos de servicio y los Términos de encargo de tratamiento de datos. Los revisas y los aceptas en la aplicación, en nombre de {{ words.the_place }}.
+{% endblock %}
+{% block page_link %}
+
+Revisar y aceptar: {{ page_url }}
+
+{% if page_code %}
+{% set sign_in_code = page_code %}
+{% include "_code.txt" %}
+{% endif %}
+
+El enlace y el código te dejan entrar sin contraseña. Sirven una sola vez, y usar uno gasta el otro; vencen en {{ page_link_days }} días. Después, pide uno nuevo con este correo.
+{% endblock %}

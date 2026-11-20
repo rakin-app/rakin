@@ -56,7 +56,7 @@ from email.utils import parseaddr
 from pathlib import Path
 from typing import Any
 
-from fastapi import Request
+from fastapi import FastAPI, Request
 from jinja2 import (
     Environment,
     FileSystemLoader,
@@ -73,7 +73,7 @@ from app.domain import vocabulary
 from app.domain.money import format_clp
 from app.domain.vocabulary import DEFAULT_WORDS, Words
 from app.hosts import Hosts
-from app.integrations.mailer import Email, MailDeliveryError, Mailer, check_recipient
+from app.integrations.mailer import Attachment, Email, MailDeliveryError, Mailer, check_recipient
 from app.logos import EMAIL_VARIANT, logo_path
 from app.magiclink import Link, MagicLinks, Recipient
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
@@ -136,6 +136,11 @@ JOIN_APPROVED = Template("join_approved", page_code=True)
 FREEZE_REQUESTED = Template("freeze_requested", page_link=False)
 FREEZE_APPROVED = Template("freeze_approved")
 FREEZE_REJECTED = Template("freeze_rejected")
+# The terms (#499): to a new gym's titular, the invitation to accept them, with the
+# sign-in link that lands on the acceptance page; and once accepted, the confirmation
+# with a full copy of both texts attached (#500, requirement 13).
+TERMS_INVITE = Template("terms_invite", landing=None, page_code=True)
+TERMS_ACCEPTED = Template("terms_accepted", page_link=False)
 
 
 @dataclass(frozen=True)
@@ -145,6 +150,10 @@ class Notice:
     person_id: uuid.UUID  # whom it is addressed to: the guardian, for a dependent
     gym_id: uuid.UUID | None  # None only for what belongs to no gym: sign-in links
     context: Mapping[str, Any] = field(default_factory=dict)
+    # Files sent with it, never written to `message_log`: the copy of the terms (#499).
+    attachments: tuple[Attachment, ...] = ()
+    # Its `Message-ID`, for a caller that records which message it was.
+    message_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.template.essential and self.gym_id is None:
@@ -260,12 +269,15 @@ def render(
             ("List-Unsubscribe", f"<{unsubscribe_url}>"),
             ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
         )
+    if notice.message_id is not None:
+        headers = (*headers, ("Message-ID", notice.message_id))
     return Email(
         to=notice.to,
         subject=subject,
         text=env.get_template(f"{name}.txt").render(context),
         html=env.get_template(f"{name}.html").render(context),
         headers=headers,
+        attachments=notice.attachments,
     )
 
 
@@ -498,14 +510,19 @@ def _error(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
 
 
-def get_notices(request: Request) -> Notices:
-    """FastAPI dependency: notices through the app's mailer, database and settings."""
-    settings = request.app.state.settings
+def notices_of(app: FastAPI) -> Notices:
+    """Notices through `app`'s mailer, database and settings."""
+    settings = app.state.settings
     return Notices(
-        request.app.state.integrations.mailer,
-        lambda: request.app.state.sessionmaker,
+        app.state.integrations.mailer,
+        lambda: app.state.sessionmaker,
         base_url=settings.public_base_url,
         secret_key=settings.secret_key,
-        links=request.app.state.magic_links,
-        hosts=request.app.state.hosts,
+        links=app.state.magic_links,
+        hosts=app.state.hosts,
     )
+
+
+def get_notices(request: Request) -> Notices:
+    """FastAPI dependency: notices through the app's mailer, database and settings."""
+    return notices_of(request.app)

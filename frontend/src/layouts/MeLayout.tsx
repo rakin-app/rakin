@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
 import { useSignOut } from '../api/auth'
-import { myAccessQuery } from '../api/me'
+import { myAccessQuery, myselfQuery } from '../api/me'
 import { Button } from '../components/Button'
 import { InstallHint } from '../components/InstallHint'
 import { t } from '../i18n/es'
+import { TermsPending } from '../routes/TermsPending'
 import './MeLayout.css'
 
 /**
@@ -17,11 +18,14 @@ export function MeLayout() {
   const signOut = useSignOut()
   const access = useQuery(myAccessQuery())
   const staff = access.data !== undefined && access.data !== null
+  const me = useQuery(myselfQuery()).data
+  // A gym that never accepted its terms has no one's data yet (#499): nothing to show.
+  const pending = me?.terms === 'pending'
   return (
     <div className="me-shell">
       <main className="me-main">
         <InstallHint />
-        <Outlet />
+        {pending ? <TermsPending gym={me.gym_name} titular={me.titular_name ?? null} /> : <Outlet />}
       </main>
       <footer className="me-footer">
         {signOut.isError && (

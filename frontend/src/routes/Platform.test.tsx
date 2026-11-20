@@ -45,9 +45,9 @@ const GYMS: PlatformGym[] = [
     created_at: '2026-11-10T12:00:00Z',
     titular_name: 'Titular de Meta',
     titular_email: 'titular@meta.cl',
-    terms_version: '2026-11-19',
-    terms_signed_on: '2026-11-19',
-    terms_current: true,
+    terms_version: '2026-11-20',
+    terms_accepted_at: '2026-11-20T15:00:00Z',
+    terms_state: 'current',
     members: 42,
     staff: 3,
     last_activity: '2026-11-17T20:00:00Z',
@@ -65,8 +65,8 @@ const GYMS: PlatformGym[] = [
     titular_name: null,
     titular_email: null,
     terms_version: '2026-01-01',
-    terms_signed_on: '2026-01-05',
-    terms_current: false,
+    terms_accepted_at: '2026-01-05T12:00:00Z',
+    terms_state: 'outdated',
     members: 0,
     staff: 1,
     last_activity: null,
@@ -123,11 +123,11 @@ describe('/plataforma', () => {
     const [, meta, sur] = within(table).getAllByRole('row')
     expect(within(meta!).getByRole('link', { name: 'meta.rakin.app' })).toHaveAttribute('href', 'https://meta.rakin.app')
     expect(within(meta!).getByText('Titular de Meta')).toBeInTheDocument()
-    expect(within(meta!).getByText(copy.gyms.termsCurrent)).toBeInTheDocument()
+    expect(within(meta!).getByText(copy.gyms.terms.current)).toBeInTheDocument()
     expect(within(meta!).getByText('42')).toBeInTheDocument()
     expect(within(meta!).getByText(copy.gyms.status.active)).toBeInTheDocument()
     expect(within(sur!).getByText(copy.gyms.noTitular)).toBeInTheDocument()
-    expect(within(sur!).getByText(copy.gyms.termsOutdated)).toBeInTheDocument()
+    expect(within(sur!).getByText(copy.gyms.terms.outdated)).toBeInTheDocument()
     expect(within(sur!).getByText(copy.gyms.noActivity)).toBeInTheDocument()
     // Suspended (#439), and since when.
     expect(within(sur!).getByText(copy.gyms.status.suspended)).toBeInTheDocument()

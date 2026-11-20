@@ -45,11 +45,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.tenancy import Tenant
+from app.tenancy import MUTATING, Tenant
 
 HEADER = b"idempotency-key"
 REPLAYED_HEADER = b"idempotent-replayed"
-MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # The platform's sign-in sets its own cookie (#436).
 EXCLUDED_PREFIXES = ("/api/auth/", "/api/platform/auth/")
 TTL = timedelta(hours=24)

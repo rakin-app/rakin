@@ -51,8 +51,19 @@ function detail(changes: Partial<PlatformGymDetail> = {}): PlatformGymDetail {
     titular_email: 'duena@example.cl',
     titular_phone: '+56911111111',
     titular_signed_in: false,
-    terms: [{ version: '2026-11-19', signed_on: '2026-11-19' }],
-    terms_version: '2026-11-19',
+    terms: [
+      {
+        accepted_at: '2026-11-19T15:00:00Z',
+        channel: 'outside',
+        service_version: null,
+        processor_version: '2026-11-19',
+        accepted_by_name: null,
+        signed_on: '2026-11-19',
+      },
+    ],
+    terms_version: '2026-11-20',
+    service_terms_version: '2026-11-20',
+    terms_state: 'outdated',
     aliases: [],
     suspended_at: null,
     suspended_reason: null,
@@ -71,8 +82,8 @@ const LISTED: PlatformGym = {
   titular_name: 'Dueña',
   titular_email: 'duena@example.cl',
   terms_version: '2026-11-19',
-  terms_signed_on: '2026-11-19',
-  terms_current: true,
+  terms_accepted_at: '2026-11-19T15:00:00Z',
+  terms_state: 'outdated',
   members: 0,
   staff: 1,
   last_activity: null,
@@ -162,15 +173,16 @@ describe('/plataforma/$gymId', () => {
     expect(await screen.findByText(copy.handover)).toBeInTheDocument()
   })
 
-  it('records a signature of the terms, or says that version was signed', async () => {
+  it('records an acceptance made outside the app, or says those versions were signed', async () => {
     let recorded = true
     const calls = stubApi((call) =>
       call.path.endsWith('/terms') ? { status: 200, body: { recorded } } : undefined,
     )
     renderAt(`/plataforma/${GYM_ID}`)
 
-    expect(await screen.findByText(/2026-11-19, firmado el/)).toBeInTheDocument()
-    expect(screen.getByText(copy.recordVersion('2026-11-19'))).toBeInTheDocument()
+    expect(await screen.findByText(/Fuera de la app, firmada el .* · Encargo 2026-11-19/)).toBeInTheDocument()
+    expect(screen.getByText(copy.termsState.outdated)).toBeInTheDocument()
+    expect(screen.getByText(copy.recordVersion('2026-11-20', '2026-11-20'))).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText(copy.signedOn), '2026-11-20')
     await userEvent.click(screen.getByRole('button', { name: copy.record }))
     expect(await screen.findByText(copy.recorded)).toBeInTheDocument()
@@ -179,6 +191,37 @@ describe('/plataforma/$gymId', () => {
     recorded = false
     await userEvent.click(screen.getByRole('button', { name: copy.record }))
     expect(await screen.findByText(copy.alreadySigned)).toBeInTheDocument()
+  })
+
+  it('lists each acceptance in the app, and sends the invitation again while one waits', async () => {
+    const calls = stubApi((call) => {
+      if (call.path === `/api/platform/gyms/${GYM_ID}`)
+        return {
+          status: 200,
+          body: detail({
+            terms: [
+              {
+                accepted_at: '2026-11-20T15:00:00Z',
+                channel: 'in_app',
+                service_version: '2026-11-20',
+                processor_version: '2026-11-20',
+                accepted_by_name: 'Dueña',
+                signed_on: null,
+              },
+            ],
+            terms_state: 'current',
+          }),
+        }
+      if (call.path.endsWith('/owner-link')) return { status: 200, body: { sent: true, invite: false } }
+      return undefined
+    })
+    renderAt(`/plataforma/${GYM_ID}`)
+
+    expect(await screen.findByText(/en la app, por Dueña · Servicio 2026-11-20 · Encargo 2026-11-20/)).toBeInTheDocument()
+    expect(screen.getByText(copy.current)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: copy.resendLink }))
+    expect(await screen.findByText(copy.sent('duena@example.cl'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.path.endsWith('/owner-link'))).toHaveLength(1)
   })
 
   it('renames only once the new address is typed again, and says what changes', async () => {

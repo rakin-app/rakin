@@ -47,6 +47,7 @@ from app.api import (
     session_blocks,
     sessions,
     staff,
+    terms,
     titles,
     unsubscribe,
     webhooks,
@@ -170,6 +171,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(join.public)
     app.include_router(join.router)
     app.include_router(privacy.router)
+    app.include_router(terms.router)
     app.include_router(logos.router)
     app.include_router(
         build_router(

@@ -40,6 +40,13 @@ nothing, until #313.
 Each permission is its own literal: two that hold the same people today are never
 defined as one another, so narrowing one later narrows only it
 (`tests/test_permissions.py` holds them apart).
+
+The gates also hold the titular to the gym's terms (#499): while the gym has not
+accepted their current versions (`outdated`, `app.tenancy`), the titular's writes are a
+`409 terms_outdated`, and they read only, so the acceptance page loads, until they
+accept. Everyone else in the gym keeps working meanwhile: the earlier version governs
+until then. `TermsSession` is the titular's session that does not wait on the terms,
+for accepting them (`app.api.terms`).
 """
 
 import hashlib
@@ -49,11 +56,18 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.tenancy import Tenant, TenantSession, current_tenant
+from app.tenancy import (
+    MUTATING,
+    TERMS_OUTDATED,
+    Tenant,
+    TenantSession,
+    current_tenant,
+    ungated_session,
+)
 
 
 class Permission(StrEnum):
@@ -189,6 +203,19 @@ def may_change_role(
 
 
 FORBIDDEN = HTTPException(status.HTTP_403_FORBIDDEN, "not allowed for your role in this gym")
+OUTDATED = HTTPException(status.HTTP_409_CONFLICT, {"code": TERMS_OUTDATED})
+
+
+def hold_to_terms(request: Request, standing: Standing) -> None:
+    """Refuse a write by the titular while the gym has not accepted the current terms:
+    they accept them first. `tenant_session` read the state for a write."""
+    if (
+        standing.account_holder
+        and request.method in MUTATING
+        and getattr(request.state, "terms_state", None) == "outdated"
+    ):
+        raise OUTDATED
+
 
 # An appointment `st` is current today in the gym's timezone (`g`): half-open, so the
 # day it ends on is the first without it.
@@ -277,11 +304,14 @@ def requires(*needed: Permission) -> Gate:
     holds every one of `needed` (with none, being on the team is enough)."""
 
     async def session_for(
-        tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
+        request: Request,
+        tenant: Annotated[Tenant, Depends(current_tenant)],
+        session: TenantSession,
     ) -> AsyncSession:
         standing = await standing_in_gym(session, tenant)
         if standing is None or not standing.holds(*needed):
             raise FORBIDDEN
+        hold_to_terms(request, standing)
         return session
 
     GATES[session_for] = frozenset(needed)
@@ -289,17 +319,32 @@ def requires(*needed: Permission) -> Gate:
 
 
 async def account_holder_session(
-    tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
+    request: Request, tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
 ) -> AsyncSession:
     """The request's `TenantSession`, once its person holds the account. Not a
     permission: no role carries it (section 1 of the design)."""
     standing = await standing_in_gym(session, tenant)
     if standing is None or not standing.account_holder:
         raise FORBIDDEN
+    hold_to_terms(request, standing)
     return session
 
 
 GATES[account_holder_session] = TITULAR
+
+
+async def terms_session(
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+    session: Annotated[AsyncSession, Depends(ungated_session, scope="function")],
+) -> AsyncSession:
+    """The titular's session whatever the gym's terms, for reading and accepting them."""
+    standing = await standing_in_gym(session, tenant)
+    if standing is None or not standing.account_holder:
+        raise FORBIDDEN
+    return session
+
+
+GATES[terms_session] = TITULAR
 
 StaffSession = Annotated[AsyncSession, Depends(requires())]
 LedgerReadSession = Annotated[AsyncSession, Depends(requires(Permission.MONEY_READ))]
@@ -310,6 +355,7 @@ AttendanceSession = Annotated[AsyncSession, Depends(requires(Permission.ATTENDAN
 AdminSession = Annotated[AsyncSession, Depends(requires(Permission.GYM_SETUP))]
 TeamSession = Annotated[AsyncSession, Depends(requires(Permission.TEAM_MANAGE))]
 OwnerSession = Annotated[AsyncSession, Depends(account_holder_session)]
+TermsSession = Annotated[AsyncSession, Depends(terms_session)]
 
 
 async def sees_money(

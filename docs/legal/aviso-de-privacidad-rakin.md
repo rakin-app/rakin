@@ -1,4 +1,4 @@
-> **BORRADOR: pendiente de revisión por abogado.** 18 de noviembre de 2026.
+> **BORRADOR: pendiente de revisión por abogado.** 20 de noviembre de 2026.
 
 # Aviso de privacidad de Rakin
 
@@ -10,7 +10,7 @@ Los datos de los alumnos **no** están en este aviso: de ellos es responsable ca
 
 ## Política de privacidad de Rakin
 
-Versión 3, vigente desde el 18 de noviembre de 2026.
+Versión 4, vigente desde el 20 de noviembre de 2026.
 
 ### ¿Quién es responsable?
 
@@ -50,6 +50,7 @@ Hoy ningún país ha sido declarado con un nivel adecuado de protección por la 
 ### ¿Cuánto tiempo?
 
 - **Datos de quienes administran una academia**: mientras la academia use Rakin, y 12 meses después, por si vuelve o surge una consulta.
+- **Registro de cada aceptación de los términos**: quién aceptó, el correo con que ingresó, la fecha y hora, la versión, la huella del texto aceptado, y la dirección IP y el navegador desde los que se aceptó, solo en ese registro. Se guarda mientras rija el contrato con la academia y 5 años después, el plazo para reclamar por él.
 - **Correos que nos escriben**: 2 años desde la última respuesta.
 - **Registros del sitio**: unos días; se borran solos por tamaño.
 

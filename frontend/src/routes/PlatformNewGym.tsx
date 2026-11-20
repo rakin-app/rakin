@@ -39,7 +39,6 @@ type Drafts = {
   owner_name: string
   owner_rut: string
   owner_phone: string
-  signed_on: string
 }
 
 const EMPTY: Drafts = {
@@ -51,7 +50,6 @@ const EMPTY: Drafts = {
   owner_name: '',
   owner_rut: '',
   owner_phone: '',
-  signed_on: '',
 }
 
 const REFUSALS = { range: {}, value: copy.refusals as Record<string, string> }
@@ -68,9 +66,9 @@ export function useSettled<T>(value: T, delay: number): T {
 
 /**
  * "Nuevo gimnasio" (#437): an operator adds a gym, with the same fields `python -m
- * app.gyms create` takes and the Términos de encargo always. The slug is checked as it
- * is typed, with the address it makes; once created, that address works at once and its
- * titular has been emailed a link to sign in there.
+ * app.gyms create` takes. The slug is checked as it is typed, with the address it makes;
+ * once created, that address works at once, and its titular has been emailed an
+ * invitation to accept the terms there (#499), before any of its data goes in.
  */
 export function PlatformNewGym() {
   useDocumentTitle(copy.tab, t.platform.tab)
@@ -123,10 +121,6 @@ function NewGymForm({
   const errorOf = (field: keyof Drafts) =>
     field in errors ? refusal(errors[field]!, field, REFUSALS, drafts[field].trim() === '') : undefined
 
-  // Read-only, so refused only when the terms changed while the form was open.
-  const termsError =
-    'processor_terms' in errors ? refusal(errors.processor_terms!, 'processor_terms', REFUSALS, false) : undefined
-
   // The live check's problem until the form is sent; then the API's refusal, if any.
   const slugError =
     errorOf('slug') ?? (checked?.problem && drafts.slug !== '' ? copy.problems[checked.problem] : undefined)
@@ -145,8 +139,6 @@ function NewGymForm({
       owner_rut: optional(drafts.owner_rut),
       owner_phone: optional(drafts.owner_phone),
       grading: drafts.grading,
-      processor_terms: choices.terms_version,
-      signed_on: drafts.signed_on || null,
     })
   }
 
@@ -254,19 +246,7 @@ function NewGymForm({
         </Field>
       </fieldset>
 
-      <fieldset className={cardClass({}, 'platform-new__card')}>
-        <SectionTitle as="legend" className="platform-new__legend">
-          {copy.terms}
-        </SectionTitle>
-        <Field label={copy.termsVersion} error={termsError}>
-          {(props) => <Input {...props} type="text" value={choices.terms_version} readOnly />}
-        </Field>
-        <Field label={copy.signedOn} hint={copy.signedOnHint} error={errorOf('signed_on')}>
-          {(props) => (
-            <Input {...props} type="date" value={drafts.signed_on} onChange={(e) => set('signed_on', e.target.value)} />
-          )}
-        </Field>
-      </fieldset>
+      <p className="platform-new__note">{copy.termsNote}</p>
 
       {save.error && <Banner tone="error">{Object.keys(errors).length > 0 ? copy.invalid : copy.failed}</Banner>}
       <div className="platform-new__actions">

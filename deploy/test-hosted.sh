@@ -13,7 +13,8 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 export RAKIN_TAG=test
-docker build -q -t "ghcr.io/rakin-app/rakin-api:$RAKIN_TAG" "$root/backend" >/dev/null
+docker build -q -t "ghcr.io/rakin-app/rakin-api:$RAKIN_TAG" \
+  --build-context legal="$root/docs/legal" "$root/backend" >/dev/null
 docker build -q -t "ghcr.io/rakin-app/rakin-web:$RAKIN_TAG" -f "$root/deploy/web.Dockerfile" "$root" >/dev/null
 
 dir=$(mktemp -d)

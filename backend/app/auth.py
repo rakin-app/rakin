@@ -44,7 +44,7 @@ from app.magiclink import (
 )
 from app.notices import MAGIC_LINK, STUDENT_PAGE, Notice, Notices
 from app.settings import Settings
-from app.tenancy import Tenant
+from app.tenancy import SignIn, Tenant
 
 PREFIX = "/api/auth"
 
@@ -448,6 +448,7 @@ class MailSender:
 def bind_session(session: Session, state: dict[str, Any]) -> None:
     person_id = uuid.UUID(session.subject)
     state["person_id"] = person_id
+    state["sign_in"] = SignIn(session.address, session.signed_in_at)
     if session.scope is None:
         return
     # A gym's host is that gym's alone; the base host (None) takes any session's gym.

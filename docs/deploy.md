@@ -218,22 +218,25 @@ If a release's migration is the problem, roll forward instead: fix it in a new m
 
 Each gym is served on its own host, `<slug>.<BASE_DOMAIN>`: Meta at `meta.rakin.app` on production. Real gyms are created on production only; staging holds the seed's gym alone, and never one named like a production gym, whose old `<slug>.staging.rakin.app` name may still point at production ([Old addresses](#old-addresses)). There is no self-service sign-up yet; an operator makes each gym, from the panel or on the host.
 
-**First, the gym signs the [Términos de encargo](legal/terminos-de-encargo.md)** (#367), together with the [Términos de servicio](legal/terminos-de-servicio.md), before any of its data is loaded. Send the current version (its **Versión** line, also `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py)) with the blanks filled in, including the gym's breach contacts (clause 12), which also go in the password manager ([incident response](incident-response.md)). Keep the signed PDF with the company's records, never in a repo, named `<slug>-terminos-de-encargo-<version>.pdf`.
+**The gym accepts its terms in the app** (#499): the [Términos de servicio](legal/terminos-de-servicio.md) and the [Términos de encargo](legal/terminos-de-encargo.md), before any of its data goes in. A gym is created **pending its terms**, and its titular is emailed an invitation, whose link (or code) signs them in on the gym's host and lands on the acceptance page: both texts in full, rendered for the gym from `docs/legal/`, with a button to download or print them; the gym's razón social, RUT, domicilio, representative and contact for breaches (clause 12) to fill in; one unticked box per text, in the gym's name; and **Aceptar y empezar**. Until then the gym's API takes no data from anyone (`409 terms_pending`), its join link refuses sign-ups, and the rest of its team sees a notice naming who has to accept. Each acceptance is a row of `terms_acceptance` (migration 0081), never changed: who accepted, the address and time of their sign-in, the address the gym was created with and by which operator, both versions, the exact HTML shown and its SHA-256, what each box said, the values filled in, and the IP and browser of that request alone ([the legal research](legal-research.md#requirements-for-499)). A full copy of both texts goes to the address that accepted, attached, and to the breach contact; the titular downloads it again from **Ajustes › Gimnasio › Términos aceptados**. The breach contacts also go in the password manager ([incident response](incident-response.md)).
 
-**From the panel** (#437), signed in as an [operator](#platform-operators): **Gimnasios › Nuevo gimnasio** at `https://<base host>/plataforma/nuevo`. It asks what `create` below takes: the gym's name, its slug (checked as it is typed, with the address it makes), its time zone, a grading preset if any, the owner's email and name (RUT and phone optional), and the date on the signed copy of the terms, whose version it shows. The terms are always required there. Once created, the address works at once and the owner is emailed a link and a code that sign in on it, good for 15 minutes; if they lapse, the owner asks for another at the address. The panel and the command write the gym through the same database function, `gym_create` (migration 0077), so the two make the same gym; the panel's are logged in `platform_event` as `gym_created`, then `owner_link_sent`, or `owner_link_failed` when the mail did not go. A gym whose latest link did not go says **Enlace no enviado** in the list, beside its titular, with **Reenviar enlace**, which sends a fresh one to the titular's address.
+When either text gets a new version (its **Versión** line, `SERVICE_TERMS_VERSION` and `PROCESSOR_TERMS_VERSION` in [`app/legal/__init__.py`](../backend/app/legal/__init__.py)), the titular sees the page again at their next request, with what changed first (each text's `## Cambios de versión`), and their own writes wait on it (`409 terms_outdated`); the earlier version governs meanwhile, so the rest of the team and the students keep working, and the gym can still read and take its data. A new subprocessor in Anexo A is named in the box; route none of a gym's data through it before that gym accepts.
 
-**From the host**, giving the version and the date on the signed copy:
+The texts reach the API through the image: `backend/Dockerfile` copies them from the `legal` build context (`docs/legal`), and `LEGAL_DIR` points elsewhere only to try a text out.
+
+**From the panel** (#437), signed in as an [operator](#platform-operators): **Gimnasios › Nuevo gimnasio** at `https://<base host>/plataforma/nuevo`. It asks what `create` below takes: the gym's name, its slug (checked as it is typed, with the address it makes), its time zone, a grading preset if any, and the owner's email and name (RUT and phone optional). No signature date: the titular accepts the terms in the app. Once created, the address works at once and the owner is emailed the invitation, whose link and code are good for 7 days. The panel and the command write the gym through the same database function, `gym_create` (migration 0077), so the two make the same gym; the panel's are logged in `platform_event` as `gym_created`, then `terms_invite_sent`, or `terms_invite_failed` when the mail did not go. A gym whose latest link did not go says **Enlace no enviado** in the list, beside its titular, with **Reenviar invitación**, which sends the invitation again while the gym has not accepted the current terms, and a plain sign-in link (`owner_link_sent`) once it has; the gym's page sends either at any time. The list says each gym's terms (**Vigentes**, **Términos desactualizados**, **Términos pendientes**), and **Sin los términos vigentes** keeps only those still waiting.
+
+**From the host:**
 
 ```sh
 cd /srv/rakin
 docker compose run --rm api python -m app.gyms create --slug meta --name "Meta" \
   --timezone America/Santiago \
   --owner-email <owner@example.com> --owner-name "<Owner's name>" --owner-rut "<12.345.678-5>" \
-  --grading bjj \
-  --processor-terms 2026-11-19 --signed-on <YYYY-MM-DD>
+  --grading bjj
 ```
 
-`create` refuses to run without `--processor-terms` and `--signed-on`, and refuses a version that is not the current one or a date to come. It records both in `processor_terms`, with the gym. `--no-processor-terms` instead is only for an instance the company does not host, whose operator processes no gym's data for the company.
+The gym is pending its terms, as from the panel; `create` sends no email, so its owner signs in at the gym's address, which shows them the acceptance page. `--no-processor-terms` instead is only for an instance the company does not host, whose operator processes no gym's data for the company: the gym is exempt (`gym_terms.exempt`), and nothing waits on its terms.
 
 It creates the gym with the programs Adultos and Niños and the default block kinds and no members, plans or classes, and makes the person with that RUT its owner (found if another gym already has them, created otherwise), with that email on Meta's record of them. Without `--owner-rut` the owner is someone new, keyed by the email in this gym. `--owner-phone` is optional: staff need no phone. Grading is optional: `--grading` starts the gym on a preset (`bjj`, `judo`, `karate`, `karate-shotokan`, `karate-kyokushin`, `karate-goju-ryu`, `taekwondo`, `kenpo`, `aikido`, `muay-thai`), and with one graded activity named for its art (a karate style's is Karate), as Meta, a BJJ academy, is above; `judo-karate`, the one ladder judo and karate shared until #411, still works and starts a judo gym (`judo`); without it the gym has no grades and shows no belts until its owner sets them up in Ajustes › Graduación. Run again with the same slug, it changes nothing and says so. The slug is the host: lower-case letters, digits and hyphens, and not a name the app keeps (`www`, `app`, `api`, `staging`, `sitio`, `send`, `rsend`, `admin`, `mail` and others, in [`app/hosts.py`](../backend/app/hosts.py)), which are the names that have DNS records of their own or may one day.
 
@@ -247,41 +250,38 @@ The base host itself, `https://app.rakin.app`, serves sign-in for anyone in any 
 
 **Certificates.** Caddy gets each gym host's certificate from Let's Encrypt at its first visit (on-demand TLS, [`deploy/Caddyfile`](../deploy/Caddyfile)), after asking the api's `/internal/tls-allowed?domain=` whether a gym has that host. It says yes only for an existing gym's slug, or a slug a gym had that still redirects to it ([Editing a gym](#editing-a-gym)), so no name anyone invents reaches Let's Encrypt, and there is no wildcard certificate or DNS plugin. The gyms' site, `*.<BASE_DOMAIN>`, also covers the names served by a site of their own one label under it: `app.rakin.app` and `www.rakin.app` on production, `sitio.staging.rakin.app` on staging. Caddy manages no name a managed wildcard covers, so those sites say `tls force_automate` and get certificates of their own at start, without the `ask` (#495). Without it their handshakes fail with `tlsv1 alert internal error`, and Caddy's log has no `obtain` line for them. That `ask` is the rate limit: Caddy 2.8 dropped on-demand TLS's own `interval` and `burst`. The first visit to a new gym's host waits a few seconds for its certificate.
 
-**A gym that already exists** signs the Términos de encargo the same way: one made before #367, such as Meta, and every gym again when the terms get a new version, as a new subprocessor in their Anexo A does (clause 9). Record each signature:
+**An acceptance outside the app.** A gym that signed the terms on paper, such as Meta before #499, keeps that signature as history (`processor_terms`), and counts as having accepted an earlier version: it is `outdated`, not `pending`, and its titular accepts the current version in the app like any gym. That is the normal path. For an acceptance that really is made outside the app, signed on paper, record it with the date on the signed copy:
 
 ```sh
 docker compose run --rm api python -m app.gyms sign-terms --slug meta \
-  --processor-terms 2026-11-19 --signed-on <YYYY-MM-DD>
+  --processor-terms 2026-11-20 --signed-on <YYYY-MM-DD>
 ```
 
-Run again with a version the gym already signed, it changes nothing and says so, keeping the date first recorded. `create` on a slug a gym already has records no terms either, and says to use `sign-terms`.
+It records an `outside` row of `terms_acceptance` covering both texts, the current Términos de servicio with them, and a row of `processor_terms`. Run again with versions the gym already signed, it changes nothing and says so, keeping the date first recorded. Keep the signed PDF with the company's records, never in a repo, named `<slug>-terminos-<version>.pdf`. The panel's gym page records the same (**Registrar una aceptación fuera de la app**).
 
-A wrong `--signed-on` is corrected by hand, with the date on the signed copy:
+To see which gyms have not accepted the current versions, by slug and state:
 
 ```sh
-docker compose exec -T postgres psql -U rakin rakin -v slug=meta -v v=2026-11-19 -v d=<YYYY-MM-DD> <<'SQL'
-UPDATE processor_terms SET signed_on = :'d'
-WHERE version = :'v' AND gym_id = (SELECT id FROM gym WHERE slug = :'slug');
+docker compose exec -T postgres psql -U rakin rakin -v s=2026-11-20 -v p=2026-11-20 <<'SQL'
+SELECT g.slug,
+       CASE WHEN EXISTS (SELECT FROM terms_acceptance a WHERE a.gym_id = g.id)
+              OR EXISTS (SELECT FROM processor_terms t WHERE t.gym_id = g.id)
+            THEN 'outdated' ELSE 'pending' END AS state
+FROM gym g
+WHERE NOT coalesce((SELECT exempt FROM gym_terms t WHERE t.gym_id = g.id), false)
+  AND NOT (EXISTS (SELECT FROM terms_acceptance a WHERE a.gym_id = g.id AND a.service_version = :'s')
+           AND EXISTS (SELECT FROM terms_acceptance a WHERE a.gym_id = g.id AND a.processor_version = :'p'));
 SQL
 ```
 
-To see which gyms have not signed the current version, by slug:
-
-```sh
-docker compose exec -T postgres psql -U rakin rakin -v v=2026-11-19 <<'SQL'
-SELECT g.slug FROM gym g
-WHERE NOT EXISTS (SELECT FROM processor_terms t WHERE t.gym_id = g.id AND t.version = :'v');
-SQL
-```
-
-On a gym listed there, load nothing more until it signs. In these commands and the ones above, `2026-11-19` is the current version: it moves with `PROCESSOR_TERMS_VERSION` in [`app/gyms.py`](../backend/app/gyms.py) and the terms' **Versión** line. psql fills in `:'v'` only from stdin, not from `-c`, so the SQL goes in a heredoc.
+The panel's list says the same. In these commands `2026-11-20` is the current version of each text: they move with the constants in [`app/legal/__init__.py`](../backend/app/legal/__init__.py) and the texts' **Versión** lines. psql fills in `:'s'` only from stdin, not from `-c`, so the SQL goes in a heredoc. An acceptance is never corrected in place: the table refuses every change. A wrong date is a new, correct acceptance beside it.
 
 ## Editing a gym
 
 From the panel (#438): **Gimnasios**, then the gym's name, at `https://<base host>/plataforma/<gym id>`. Every change is a row of `platform_event`, which names the fields changed and never their values.
 
 - **Nombre y contacto**: the gym's name, which its host shows at once, and its titular's name, phone and email, in that gym's record of them only (a titular of two gyms keeps their other gym's record). The email changes only while the titular has never signed in to the gym, to fix a typo at creation; after their first sign-in it is refused (`titular_handover`), because a new address there hands the account over. The titular is never changed here: that is the handover of #321, once it exists. Logged as `gym_edited`.
-- **Términos de encargo**: every signature, and **Registrar firma** for the current version, with the date on the signed copy, as `sign-terms` records it: a version already signed changes nothing and keeps its first date. Logged as `terms_recorded` when it recorded one.
+- **Términos**: the gym's state, every acceptance (in the app, when and by whom; outside it, on the date of its copy; and the versions of each), **Reenviar invitación** while the gym has not accepted the current terms (a plain sign-in link once it has), and **Registrar una aceptación fuera de la app**, with the date on the signed copy, as `sign-terms` records it: versions already signed change nothing and keep their first date. Logged as `terms_recorded` when it recorded one.
 - **Dirección**: a new slug. The operator types it again to confirm, and must have proved who they are in the last 10 minutes, or the panel emails them a code first. The old address then answers every request with a **301** to the same path on the new one (a **308** for a method other than GET or HEAD, so a form sent there keeps its method and body) for **90 days** (`gym_slug_alias`, migration 0078), a page of the app as much as the API: Caddy asks the api's `/internal/host` before it serves a page on a gym's host (#472). That check fails open: while the api is down or slow to answer, as during a deploy, the page is served and the old address does not redirect it. It keeps its certificate meanwhile; no other gym, from the panel or `create`, can take it in that time. Renaming back to the old slug takes it again and ends its redirect. Sessions are per host, so whoever was signed in on the old address signs in again on the new one, and links in emails sent before the change go through the redirect. Logged as `gym_renamed`, with `{from, to}`.
 
 To see which old slugs still redirect, and where:

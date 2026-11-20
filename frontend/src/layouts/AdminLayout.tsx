@@ -13,6 +13,8 @@ import { t } from '../i18n/es'
 import { useRise } from '../motion'
 import { useGymName } from '../pageTitle'
 import { PlainList } from '../components/Card'
+import { TermsAcceptance } from '../routes/TermsAcceptance'
+import { TermsPending } from '../routes/TermsPending'
 import './AdminLayout.css'
 
 type NavItem = {
@@ -50,6 +52,63 @@ const NAV_ITEMS: readonly NavItem[] = [
  * coach's.
  */
 export function AdminLayout() {
+  const me = useQuery(myselfQuery()).data
+  // Until the gym accepts its current terms (#499), its titular sees only the page to
+  // accept them, on every path; while it never has, the rest of the team a notice.
+  if (me && me.terms !== undefined && me.terms !== 'current') {
+    if (me.account_holder) {
+      return (
+        <TermsGate>
+          <TermsAcceptance />
+        </TermsGate>
+      )
+    }
+    if (me.terms === 'pending') {
+      return (
+        <TermsGate>
+          <TermsPending gym={me.gym_name} titular={me.titular_name ?? null} />
+        </TermsGate>
+      )
+    }
+  }
+  return <AdminShell />
+}
+
+/** The admin's bar with no nav, over the terms' page: the gym, and a way to sign out. */
+function TermsGate({ children }: { children: ReactNode }) {
+  const gym = useGymName()
+  const logo = useQuery(myselfQuery()).data?.gym_logo
+  const signOut = useSignOut()
+  return (
+    <div className="admin-shell admin-shell--gate">
+      <header className="admin-top admin-top--gate">
+        <span className="admin-top__brand">
+          <RakinLogo surface="dark" />
+        </span>
+        {gym && (
+          <span className="admin-top__gym">
+            <GymMark name={gym} logo={logo} />
+            <span className="admin-top__gym-name">{gym}</span>
+          </span>
+        )}
+        <button type="button" className="admin-top__sign-out" disabled={signOut.isPending} onClick={() => signOut.mutate()}>
+          <SignOutIcon />
+          <span>{signOut.isPending ? t.signOut.working : t.signOut.label}</span>
+        </button>
+      </header>
+      <main className="admin-main admin-main--gate">
+        {signOut.isError && (
+          <p className="admin-nav__error" role="alert">
+            {t.signOut.failed}
+          </p>
+        )}
+        {children}
+      </main>
+    </div>
+  )
+}
+
+function AdminShell() {
   // Proofs waiting for review, on the Pagos tab: asked for only by those who read
   // the ledger, so a coach never polls a request that would be refused.
   const access = useQuery(myAccessQuery())

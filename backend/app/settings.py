@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     s3_access_key_id: str = "GKd06e218c3fa3bb3f69e9d09e"
     s3_secret_access_key: str = "af635cf10ca8d78993f886624767e63600cb52fa8e7730c15d026ace93a3f341"
 
+    # Where the Términos de servicio and de encargo are read from (`app.legal`): the
+    # image's `/app/legal`, built from `docs/legal/`, else the repo's `docs/legal/`.
+    legal_dir: Path | None = None
+
     payment_rail: Literal["none"] = "none"
     bank_feed: Literal["none"] = "none"
     # The join link's public form (`app.integrations.humancheck`): `turnstile` checks
@@ -102,6 +106,11 @@ class Settings(BaseSettings):
     # The environment Sentry reports, when not `ENVIRONMENT`: `staging` on the
     # staging host, which runs `ENVIRONMENT=production` too.
     sentry_environment: str = ""
+
+    @field_validator("legal_dir", mode="before")
+    @classmethod
+    def _empty_is_default(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("jobs_timezone")
     @classmethod

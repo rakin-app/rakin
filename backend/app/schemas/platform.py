@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 from pydantic_core import PydanticCustomError
 
 from app.domain.grading import resolve
-from app.gyms import SCHEMES, NewGym, signing_problem, terms_problem
+from app.gyms import SCHEMES, NewGym, signing_problem
 from app.hosts import slug_problem, slug_refusal
 from app.schemas.people import Email, Name, Phone
 
@@ -48,10 +48,12 @@ class PlatformGym(BaseModel):
     # Who holds the account, from the gym's own record of them; None for a gym with none.
     titular_name: str | None
     titular_email: str | None
-    # The Términos de encargo in force: the latest signed, and whether it is the current.
+    # The Términos de encargo in force, the latest accepted, and when (#499).
     terms_version: str | None
-    terms_signed_on: date | None
-    terms_current: bool
+    terms_accepted_at: datetime | None
+    # Whether it accepted the current versions of both texts: `pending` never accepted
+    # any, and takes no data; `outdated` accepted earlier ones.
+    terms_state: Literal["pending", "outdated", "current"]
     # People with a plan active or frozen.
     members: int
     staff: int
@@ -78,42 +80,28 @@ class PresetOption(BaseModel):
 
 
 class NewGymChoices(BaseModel):
-    """What the panel's new-gym form offers: the grading presets, the Términos de
-    encargo's current version, and the time zones a gym may be in."""
+    """What the panel's new-gym form offers: the grading presets, and the time zones a
+    gym may be in."""
 
     grading: list[PresetOption]
-    terms_version: str
     timezones: list[str]
 
 
 class PanelNewGym(NewGym):
-    """A gym as the panel creates it (#437): `app.gyms.NewGym`, with the Términos de
-    encargo required, and each refusal its own type for the form to say why.
+    """A gym as the panel creates it (#437): `app.gyms.NewGym`, pending its terms, which
+    its titular accepts in the app (#499), and each refusal its own type for the form
+    to say why.
 
-    The panel never creates a gym without the terms: `--no-processor-terms` is the
-    command line's, for an instance the company does not host.
+    The panel never creates an exempt gym: `--no-processor-terms` is the command
+    line's, for an instance the company does not host.
     """
 
-    processor_terms: str
-    signed_on: date
+    terms_exempt: Literal[False] = False
 
     @field_validator("slug")
     @classmethod
     def _a_host_label(cls, value: str) -> str:
         return host_label(value)
-
-    @field_validator("processor_terms")
-    @classmethod
-    def _the_current_terms(cls, value: str | None) -> str | None:
-        problem = None if value is None else terms_problem(value)
-        if problem is not None:
-            raise PydanticCustomError(*problem)
-        return value
-
-    @field_validator("signed_on")
-    @classmethod
-    def _signed_since_they_exist(cls, value: date | None) -> date | None:
-        return signed_since_they_exist(value)
 
     @field_validator("grading")
     @classmethod
@@ -134,13 +122,21 @@ class CreatedGym(BaseModel):
 class OwnerLink(BaseModel):
     # Whether the link went: False when the mail did not, which the list keeps showing.
     sent: bool
+    # Whether it was the invitation to accept the terms (#499), for a gym that has not
+    # accepted the current ones, rather than the plain sign-in link.
+    invite: bool = False
 
 
 class TermsSignature(BaseModel):
-    """One signature of the Términos de encargo: their version, and the date on the copy."""
+    """One acceptance of the terms (#499): in the app, by whom, or signed outside it,
+    on the date of its copy. One from before #499 names no Términos de servicio."""
 
-    version: str
-    signed_on: date
+    accepted_at: datetime
+    channel: Literal["in_app", "outside"]
+    service_version: str | None
+    processor_version: str
+    accepted_by_name: str | None
+    signed_on: date | None
 
 
 class SlugAlias(BaseModel):
@@ -175,9 +171,11 @@ class PlatformGymDetail(BaseModel):
     # Whether the titular ever signed in there: once they have, their address is
     # changed only through a handover (#321), never here.
     titular_signed_in: bool
-    # Every signature, the latest first, and the version current today.
+    # Every acceptance, the latest first, the versions current today, and the state.
     terms: list[TermsSignature]
     terms_version: str
+    service_terms_version: str
+    terms_state: Literal["pending", "outdated", "current"]
     aliases: list[SlugAlias]
     # Since when it is suspended (#439), and why; both None for an active gym.
     suspended_at: datetime | None
@@ -205,7 +203,8 @@ class GymEdited(BaseModel):
 
 
 class TermsToRecord(BaseModel):
-    """A new signature of the current Términos de encargo: the date on the signed copy."""
+    """An acceptance of the current terms made outside the app: the date on the copy
+    signed, which records both texts."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -215,7 +214,7 @@ class TermsToRecord(BaseModel):
 
 
 class TermsRecorded(BaseModel):
-    # False when the gym had signed this version already: its first date stays.
+    # False when the gym had signed these versions already: its first date stays.
     recorded: bool
 
 

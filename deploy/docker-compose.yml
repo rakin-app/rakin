@@ -69,6 +69,8 @@ x-backend: &backend
     # which needs the CORS rule from `python -m app.blob_cors --apply`.
     BLOB_STORE: ${BLOB_STORE:-s3}
     BLOB_LOCAL_DIR: ${BLOB_LOCAL_DIR:-var/blobs}
+    # The terms gyms accept (#499); empty reads the image's /app/legal.
+    LEGAL_DIR: ${LEGAL_DIR:-}
     BLOB_URL_TTL_SECONDS: ${BLOB_URL_TTL_SECONDS:-900}
     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:?https://<account>.r2.cloudflarestorage.com}
     S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:?usually S3_ENDPOINT_URL}

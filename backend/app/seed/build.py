@@ -134,6 +134,8 @@ class Seed:
     def tables(self) -> Iterator[tuple[str, list[Row]]]:
         """Each table's rows, in an order the foreign keys accept."""
         yield "gym", [self.gym]
+        # A demo, no one's: it has no terms to accept (#499), and nothing waits on them.
+        yield "gym_terms", [{"gym_id": self.gym["id"], "exempt": True}]
         yield "person", self.people
         yield "gym_person", self.gym_people
         yield "guardian_link", self.guardian_links
