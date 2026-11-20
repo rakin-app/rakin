@@ -40,7 +40,6 @@ const CHOICES: NewGymChoices = {
     { key: 'bjj', label: 'Jiu-jitsu brasileño' },
     { key: 'none', label: 'Sin grados' },
   ],
-  terms_version: '2026-11-19',
   timezones: ['America/Santiago', 'Europe/Madrid'],
 }
 
@@ -110,7 +109,7 @@ describe('/plataforma/nuevo', () => {
     expect(await screen.findByText(copy.problems.reserved)).toBeInTheDocument()
   })
 
-  it('creates the gym with the terms, and shows its address and the link sent', async () => {
+  it('creates the gym pending its terms, and shows its address and the invitation sent', async () => {
     const calls = panelApi(() => ({
       status: 201,
       body: { id: 'g', slug: 'nuevo', address: 'https://nuevo.rakin.app' },
@@ -122,8 +121,9 @@ describe('/plataforma/nuevo', () => {
     await userEvent.selectOptions(screen.getByLabelText(copy.grading), 'bjj')
     await userEvent.type(screen.getByLabelText(copy.ownerEmail), 'duena@example.cl')
     await userEvent.type(screen.getByLabelText(copy.ownerName), 'Dueña')
-    expect(screen.getByLabelText(copy.termsVersion)).toHaveValue('2026-11-19')
-    await userEvent.type(screen.getByLabelText(copy.signedOn), '2026-11-19')
+    // No date to give: the titular accepts the terms in the app (#499).
+    expect(screen.queryByLabelText(/firma/i)).not.toBeInTheDocument()
+    expect(screen.getByText(copy.termsNote)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 
     await screen.findByRole('heading', { name: copy.created })
@@ -143,8 +143,6 @@ describe('/plataforma/nuevo', () => {
       owner_rut: null,
       owner_phone: null,
       grading: 'bjj',
-      processor_terms: '2026-11-19',
-      signed_on: '2026-11-19',
     })
 
     const write = vi.fn<(text: string) => Promise<void>>(async () => {})
@@ -160,7 +158,7 @@ describe('/plataforma/nuevo', () => {
       body: {
         detail: [
           { type: 'slug_taken', loc: ['body', 'slug'], msg: 'a gym has this slug' },
-          { type: 'signed_on_future', loc: ['body', 'signed_on'], msg: 'a date to come' },
+          { type: 'value_error', loc: ['body', 'owner_rut'], msg: 'not a RUT' },
         ],
       },
     }))
@@ -169,7 +167,7 @@ describe('/plataforma/nuevo', () => {
     await userEvent.type(await screen.findByLabelText(copy.slug), 'nuevo')
     await userEvent.click(screen.getByRole('button', { name: copy.submit }))
 
-    expect(await screen.findByText(copy.refusals.signed_on_future)).toBeInTheDocument()
+    expect(await screen.findByText(copy.refusals.owner_rut)).toBeInTheDocument()
     expect(screen.getByText(copy.refusals.slug_taken)).toBeInTheDocument()
     expect(screen.getByText(copy.invalid)).toBeInTheDocument()
     await waitFor(() => expect(screen.getByLabelText(copy.slug)).toHaveFocus())

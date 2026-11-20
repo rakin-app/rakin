@@ -5,6 +5,7 @@ import type { MyExtraLine } from './extraCharges'
 import type { FreezeRequest } from './freezeRequests'
 import type { Freeze } from './member'
 import type { OpenPeriod } from './proofs'
+import type { TermsState } from './terms'
 import type { Theme } from '../theme'
 import type { PracticeNames, Vocabulary } from '../i18n/vocabulary'
 
@@ -54,6 +55,11 @@ export type MyRole = {
   // What the gym calls its free practice and its open mat (#346); `wearPractice` puts
   // them on every screen.
   practice?: PracticeNames
+  // Whether the gym accepted the current terms (#499): until it does, its titular sees
+  // only the page to accept them, and while it never has, the team a notice.
+  terms?: TermsState
+  // Who accepts them for the gym, for that notice.
+  titular_name?: string | null
 }
 
 /** What `me` may do here; `null` when they are not on the team. */

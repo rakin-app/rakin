@@ -1,8 +1,7 @@
-"""Términos de encargo (#367): a hosted gym signs them before its data goes in.
-
-`app.gyms create` records the version signed and the date on the signed copy, or is told
-the instance is not hosted; `app.gyms sign-terms` records a signature for a gym that
-exists. The version is the terms' own "Versión" line.
+"""The terms on the command line (#367, #499): `app.gyms create` makes a gym pending its
+terms, which its titular accepts in the app, or exempt on an instance the company does
+not host; `app.gyms sign-terms` records an acceptance signed outside the app. Each
+text's version is its own "Versión" line.
 """
 
 import asyncio
@@ -18,16 +17,23 @@ import pytest
 
 from app import gyms
 from app.db_bootstrap import to_dsn
-from app.gyms import PROCESSOR_TERMS_VERSION, Signing, sign_terms
+from app.gyms import (
+    PROCESSOR_TERMS_VERSION,
+    SERVICE_TERMS_VERSION,
+    Exempted,
+    Exemption,
+    Signing,
+    set_exempt,
+    sign_terms,
+)
 from app.gyms import parse as parse_command
 from tests.conftest import require_test_database_url
 from tests.ids import unique_slug
 from tests.pg import Database, migrate, run, throwaway_database
 from tests.test_gym_hosts import ARGS, SIGNED_TODAY, create, new_gym, parse_gym
 
-TERMS = Path(__file__).parents[2] / "docs" / "legal" / "terminos-de-encargo.md"
+LEGAL = Path(__file__).parents[2] / "docs" / "legal"
 SIGNED = ["--processor-terms", PROCESSOR_TERMS_VERSION, "--signed-on", PROCESSOR_TERMS_VERSION]
-WITHOUT_TERMS = ARGS[: ARGS.index("--processor-terms")]
 
 
 @pytest.fixture(autouse=True)
@@ -35,40 +41,31 @@ def _terms_signed_today(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gyms, "gym_today", lambda tz: SIGNED_TODAY)
 
 
-def test_the_version_is_the_terms_own() -> None:
-    found = re.search(r"\*\*Versión: (\d{4}-\d{2}-\d{2})\.\*\*", TERMS.read_text())
-    assert found is not None
-    assert found.group(1) == PROCESSOR_TERMS_VERSION
-
-
-def test_create_records_the_terms_signed() -> None:
-    gym = parse_gym([*WITHOUT_TERMS, *SIGNED])
-    assert (gym.processor_terms, gym.signed_on) == (
-        PROCESSOR_TERMS_VERSION,
-        date.fromisoformat(PROCESSOR_TERMS_VERSION),
-    )
-
-
-def test_an_instance_the_company_does_not_host_signs_none() -> None:
-    gym = parse_gym([*WITHOUT_TERMS, "--no-processor-terms"])
-    assert (gym.processor_terms, gym.signed_on) == (None, None)
-
-
 @pytest.mark.parametrize(
-    "extra",
+    ("name", "version"),
     [
-        [],
-        [*SIGNED, "--no-processor-terms"],
-        ["--processor-terms", PROCESSOR_TERMS_VERSION],
-        ["--signed-on", PROCESSOR_TERMS_VERSION],
-        ["--no-processor-terms", "--signed-on", PROCESSOR_TERMS_VERSION],
+        ("terminos-de-encargo.md", PROCESSOR_TERMS_VERSION),
+        ("terminos-de-servicio.md", SERVICE_TERMS_VERSION),
     ],
 )
-def test_create_needs_the_terms_or_to_be_told_there_are_none(
-    extra: list[str], capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_each_version_is_the_texts_own(name: str, version: str) -> None:
+    found = re.search(r"\*\*Versión: (\d{4}-\d{2}-\d{2})\.\*\*", (LEGAL / name).read_text())
+    assert found is not None
+    assert found.group(1) == version
+
+
+def test_create_makes_a_gym_pending_its_terms() -> None:
+    assert parse_gym(ARGS).terms_exempt is False
+
+
+def test_an_instance_the_company_does_not_host_is_exempt() -> None:
+    assert parse_gym([*ARGS, "--no-processor-terms"]).terms_exempt is True
+
+
+def test_create_takes_no_signature(capsys: pytest.CaptureFixture[str]) -> None:
+    """Accepted in the app (#499), or recorded with `sign-terms`: never at creation."""
     with pytest.raises(SystemExit) as exit_:
-        parse_command([*WITHOUT_TERMS, *extra])
+        parse_command([*ARGS, *SIGNED])
     assert exit_.value.code == 2
     assert "--processor-terms" in capsys.readouterr().err
 
@@ -94,6 +91,13 @@ def test_sign_terms_needs_the_version_and_the_date(
     assert missing in capsys.readouterr().err
 
 
+def test_terms_exempt_reads_its_arguments() -> None:
+    assert parse_command(["terms-exempt", "--slug", "propio"]) == Exemption("propio", True)
+    assert parse_command(["terms-exempt", "--slug", "propio", "--off"]) == Exemption(
+        "propio", False
+    )
+
+
 # --- with Postgres ----------------------------------------------------------------------
 
 
@@ -114,6 +118,40 @@ def signatures(db: Database, gym_id: uuid.UUID) -> list[tuple[str, date]]:
     return list(run(db.admin_url, query))
 
 
+def acceptances(db: Database, gym_id: uuid.UUID) -> list[tuple[str, str | None, str, date]]:
+    async def query(conn: asyncpg.Connection) -> list[tuple[str, str | None, str, date]]:
+        rows = await conn.fetch(
+            "SELECT channel, service_version, processor_version, signed_on"
+            " FROM terms_acceptance WHERE gym_id = $1",
+            gym_id,
+        )
+        return [tuple(r) for r in rows]
+
+    return list(run(db.admin_url, query))
+
+
+def exempt(db: Database, gym_id: uuid.UUID) -> bool:
+    return bool(
+        run(
+            db.admin_url,
+            lambda c: c.fetchval("SELECT exempt FROM gym_terms WHERE gym_id = $1", gym_id),
+        )
+    )
+
+
+def state(db: Database, gym_id: uuid.UUID) -> str:
+    async def query(conn: asyncpg.Connection) -> str:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
+            return str(
+                await conn.fetchval(
+                    "SELECT app_terms_state($1, $2)", SERVICE_TERMS_VERSION, PROCESSOR_TERMS_VERSION
+                )
+            )
+
+    return str(run(db.api_url, query))
+
+
 def sign(db: Database, signing: Signing) -> Any:
     async def go() -> Any:
         conn = await asyncpg.connect(to_dsn(db.owner_url))
@@ -129,24 +167,25 @@ SIGNED_ON = date.fromisoformat(PROCESSOR_TERMS_VERSION)
 
 
 @pytest.mark.postgres
-def test_a_gym_created_with_the_terms_has_them_recorded(db: Database) -> None:
-    gym = new_gym(unique_slug("meta")).model_copy(
-        update={"processor_terms": PROCESSOR_TERMS_VERSION, "signed_on": SIGNED_ON}
-    )
-    created = create(db, gym)
-    assert signatures(db, created.gym_id) == [(PROCESSOR_TERMS_VERSION, SIGNED_ON)]
+def test_a_gym_created_is_pending_its_terms(db: Database) -> None:
+    created = create(db, new_gym(unique_slug("meta")), accepted=False)
+    assert (signatures(db, created.gym_id), acceptances(db, created.gym_id)) == ([], [])
+    assert not exempt(db, created.gym_id)
+    assert state(db, created.gym_id) == "pending"
 
 
 @pytest.mark.postgres
-def test_a_gym_created_without_them_has_none(db: Database) -> None:
-    created = create(db, new_gym(unique_slug("meta")))
-    assert signatures(db, created.gym_id) == []
+def test_a_gym_on_an_instance_not_hosted_is_exempt(db: Database) -> None:
+    gym = new_gym(unique_slug("propio")).model_copy(update={"terms_exempt": True})
+    created = create(db, gym, accepted=False)
+    assert exempt(db, created.gym_id)
+    assert state(db, created.gym_id) == "current"
 
 
 @pytest.mark.postgres
 def test_a_gym_that_exists_signs_them_once(db: Database) -> None:
     gym = new_gym(unique_slug("meta"))
-    created = create(db, gym)
+    created = create(db, gym, accepted=False)
     signing = Signing(slug=gym.slug, processor_terms=PROCESSOR_TERMS_VERSION, signed_on=SIGNED_ON)
 
     first = sign(db, signing)
@@ -155,6 +194,11 @@ def test_a_gym_that_exists_signs_them_once(db: Database) -> None:
     assert (first.gym_id, first.name, first.recorded) == (created.gym_id, gym.name, True)
     assert (again.gym_id, again.recorded) == (created.gym_id, False)
     assert signatures(db, created.gym_id) == [(PROCESSOR_TERMS_VERSION, SIGNED_ON)]
+    # Both texts, signed outside the app: the gym is current.
+    assert acceptances(db, created.gym_id) == [
+        ("outside", SERVICE_TERMS_VERSION, PROCESSOR_TERMS_VERSION, SIGNED_ON)
+    ]
+    assert state(db, created.gym_id) == "current"
 
 
 @pytest.mark.postgres
@@ -169,13 +213,10 @@ def test_no_gym_with_the_slug_signs_nothing(db: Database) -> None:
 
 @pytest.mark.postgres
 def test_a_gym_sees_only_its_own_signatures(db: Database) -> None:
-    ours = create(
-        db,
-        new_gym(unique_slug("meta")).model_copy(
-            update={"processor_terms": PROCESSOR_TERMS_VERSION, "signed_on": SIGNED_ON}
-        ),
-    )
-    other = create(db, new_gym(unique_slug("otro")))
+    gym = new_gym(unique_slug("meta"))
+    ours = create(db, gym, accepted=False)
+    sign(db, Signing(slug=gym.slug, processor_terms=PROCESSOR_TERMS_VERSION, signed_on=SIGNED_ON))
+    other = create(db, new_gym(unique_slug("otro")), accepted=False)
 
     async def seen_from(conn: asyncpg.Connection, gym_id: uuid.UUID) -> int:
         async with conn.transaction():
@@ -220,20 +261,98 @@ def run_main(
     return capsys.readouterr().out
 
 
-def test_create_on_a_slug_taken_says_the_terms_were_not_recorded(
+def test_create_says_the_owner_accepts_the_terms_there(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    made = gyms.Created(uuid.uuid4(), "Meta", created=True)
+    out = run_main(ARGS, made, monkeypatch, capsys)
+    assert "accepts the terms there" in out
+    out = run_main([*ARGS, "--no-processor-terms"], made, monkeypatch, capsys)
+    assert "terms" not in out
+
+
+def test_create_on_a_slug_taken_says_nothing_changed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     taken = gyms.Created(uuid.uuid4(), "Meta", created=False)
-    out = run_main([*WITHOUT_TERMS, *SIGNED], taken, monkeypatch, capsys)
+    out = run_main(ARGS, taken, monkeypatch, capsys)
     assert "nothing changed" in out
-    assert "not recorded" in out
-    assert "sign-terms --slug meta" in out
+    assert "terms" not in out
 
 
-def test_create_on_a_slug_taken_without_terms_says_nothing_of_them(
+def exempting(db: Database, exemption: Exemption) -> Exempted | None:
+    async def go() -> Exempted | None:
+        conn = await asyncpg.connect(to_dsn(db.owner_url))
+        try:
+            return await set_exempt(conn, exemption)
+        finally:
+            await conn.close()
+
+    return asyncio.run(go())
+
+
+@pytest.mark.postgres
+def test_an_existing_gym_is_marked_exempt_and_back(db: Database) -> None:
+    """A self-hosted instance's gym from before 0081 (#499): pending after the upgrade,
+    exempt by hand, and back to accepting the terms."""
+    gym = new_gym(unique_slug("propio"))
+    created = create(db, gym, accepted=False)
+    assert state(db, created.gym_id) == "pending"
+
+    made = exempting(db, Exemption(gym.slug, True))
+    assert made == Exempted(created.gym_id, gym.name, changed=True)
+    assert state(db, created.gym_id) == "current"
+    again = exempting(db, Exemption(gym.slug, True))
+    assert again is not None and not again.changed
+
+    back = exempting(db, Exemption(gym.slug, False))
+    assert back is not None and back.changed
+    assert state(db, created.gym_id) == "pending"
+    assert not exempting(db, Exemption(gym.slug, False)).changed  # type: ignore[union-attr]
+
+
+@pytest.mark.postgres
+def test_a_gym_with_no_row_is_marked_exempt(db: Database) -> None:
+    """A gym from before 0081 has no `gym_terms` row: exempting it writes one."""
+    gym = new_gym(unique_slug("antiguo"))
+    created = create(db, gym, accepted=False)
+    run(
+        db.admin_url, lambda c: c.execute("DELETE FROM gym_terms WHERE gym_id = $1", created.gym_id)
+    )
+    assert not exempting(db, Exemption(gym.slug, False)).changed  # type: ignore[union-attr]
+    assert exempting(db, Exemption(gym.slug, True)).changed  # type: ignore[union-attr]
+    assert exempt(db, created.gym_id)
+
+
+@pytest.mark.postgres
+def test_a_gym_that_signed_or_accepted_is_never_exempt(db: Database) -> None:
+    gym = new_gym(unique_slug("alojado"))
+    created = create(db, gym, accepted=False)
+    sign(db, Signing(slug=gym.slug, processor_terms=PROCESSOR_TERMS_VERSION, signed_on=SIGNED_ON))
+    refused = exempting(db, Exemption(gym.slug, True))
+    assert refused == Exempted(created.gym_id, gym.name, changed=False, refused=True)
+    assert not exempt(db, created.gym_id)
+
+
+@pytest.mark.postgres
+def test_no_gym_with_the_slug_is_exempted(db: Database) -> None:
+    assert exempting(db, Exemption(unique_slug("nadie"), True)) is None
+
+
+def test_terms_exempt_says_what_it_did(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    taken = gyms.Created(uuid.uuid4(), "Meta", created=False)
-    out = run_main([*WITHOUT_TERMS, "--no-processor-terms"], taken, monkeypatch, capsys)
-    assert "nothing changed" in out
-    assert "sign-terms" not in out
+    gym_id = uuid.uuid4()
+    out = run_main(
+        ["terms-exempt", "--slug", "propio"], Exempted(gym_id, "Propio", True), monkeypatch, capsys
+    )
+    assert out == "Propio is exempt from the terms\n"
+    with pytest.raises(SystemExit) as exit_:
+        run_main(
+            ["terms-exempt", "--slug", "propio"],
+            Exempted(gym_id, "Propio", False, refused=True),
+            monkeypatch,
+            capsys,
+        )
+    assert exit_.value.code == 1
+    assert "never exempt" in capsys.readouterr().err

@@ -1,6 +1,6 @@
 """An operator creates a gym from the panel (#437): the same gym `app.gyms create` makes,
-through one database function, at an address that works at once, and its owner emailed
-a link that signs in there.
+through one database function, at an address that works at once, pending its terms, and
+its owner emailed an invitation to accept them whose link signs in there (#499).
 
 The app runs as in production, a base domain and gyms on their own hosts
 (`test_platform_auth`'s panel), against a real database; mail lands in an outbox.
@@ -10,7 +10,6 @@ import asyncio
 import json
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
 from typing import Any
 
 import asyncpg
@@ -24,6 +23,7 @@ from app import gyms
 from app.db_bootstrap import to_dsn
 from app.domain.grading import PRESETS
 from app.gyms import PROCESSOR_TERMS_VERSION
+from app.integrations.mailer import Email, MailDeliveryError
 from tests.ids import unique_slug
 from tests.pg import run
 from tests.test_gym_hosts import (
@@ -67,8 +67,6 @@ def body(slug: str, **changes: Any) -> dict[str, Any]:
         "timezone": "America/Santiago",
         "owner_email": f"{slug}@example.cl",
         "owner_name": "Dueña Nueva",
-        "processor_terms": PROCESSOR_TERMS_VERSION,
-        "signed_on": PROCESSOR_TERMS_VERSION,
         **changes,
     }
 
@@ -123,7 +121,7 @@ def test_an_operator_creates_a_gym_that_works_at_once(panel: Panel) -> None:
         assert tls.status_code == 200
 
     # The gym the command line makes: its programs, its activity, its practice, its
-    # owner holding the account, and the terms.
+    # owner holding the account; pending its terms, with the address it was made with.
     made = counts(panel.db, gym_id)
     assert (made["program"], made["staff"], made["gym_activity"]) == (2, 1, 1)
     assert programs(panel.db, gym_id) == ["Adultos", "Niños"]
@@ -136,9 +134,10 @@ def test_an_operator_creates_a_gym_that_works_at_once(panel: Panel) -> None:
             "  WHERE k.id = block_kind_default_id(g.id, 'sparring')) AS practice,"
             " (SELECT gp.name FROM staff s JOIN gym_person gp USING (gym_id, person_id)"
             "  WHERE s.gym_id = g.id AND s.account_holder AND s.role = 'owner') AS titular,"
-            " (SELECT array_agg(p.version || ' ' || p.signed_on) FROM processor_terms p"
-            "  WHERE p.gym_id = g.id) AS terms"
-            " FROM gym g WHERE g.id = $1",
+            " (SELECT count(*) FROM processor_terms p WHERE p.gym_id = g.id)"
+            "  + (SELECT count(*) FROM terms_acceptance a WHERE a.gym_id = g.id) AS terms,"
+            " t.invited_email, t.invited_by, t.exempt"
+            " FROM gym g JOIN gym_terms t ON t.gym_id = g.id WHERE g.id = $1",
             gym_id,
         )
 
@@ -147,19 +146,24 @@ def test_an_operator_creates_a_gym_that_works_at_once(panel: Panel) -> None:
     # The old judo-karate key is judo's now (#411).
     assert (row["activity"], row["practice"]) == ("Judo", "Randori")
     assert row["titular"] == "Dueña Nueva"
-    assert row["terms"] == [f"{PROCESSOR_TERMS_VERSION} {PROCESSOR_TERMS_VERSION}"]
+    assert row["terms"] == 0
+    assert (row["invited_email"], row["invited_by"], row["exempt"]) == (
+        f"{slug}@example.cl",
+        operator_id,
+        False,
+    )
 
     assert gym_events(panel, gym_id) == [
-        (
-            "gym_created",
-            operator_id,
-            {"slug": slug, "grading": "judo", "terms_version": PROCESSOR_TERMS_VERSION},
-        ),
-        ("owner_link_sent", operator_id, {"slug": slug}),
+        ("gym_created", operator_id, {"slug": slug, "grading": "judo", "terms_version": None}),
+        ("terms_invite_sent", operator_id, {"slug": slug}),
     ]
 
-    # The owner's link points at the new host, and signs them in to the new gym there.
+    # The owner is invited to accept the terms, by a link that points at the new host,
+    # and signs them in to the new gym there.
     owner = f"{slug}@example.cl"
+    [invite] = [e for e in panel.outbox.sent if e.to == owner]
+    assert invite.subject == "Gimnasio Nuevo ya está en Rakin: acepta los términos para empezar"
+    assert "Revisar y aceptar" in invite.text
     [link] = panel.outbox.links_to(owner)
     assert link.startswith(f"https://{slug}.{BASE}/api/auth/callback?")
     site = as_gym_site(panel)
@@ -193,14 +197,11 @@ def test_with_no_preset_the_gym_has_no_activity(panel: Panel) -> None:
         ({"slug": "Con Espacios"}, "slug", "slug_format"),
         ({"slug": "-guion"}, "slug", "slug_format"),
         ({"slug": "admin"}, "slug", "slug_reserved"),
-        ({"processor_terms": "2026-01-01"}, "processor_terms", "terms_version"),
-        (
-            {"signed_on": (SIGNED_TODAY + timedelta(days=1)).isoformat()},
-            "signed_on",
-            "signed_on_future",
-        ),
-        ({"signed_on": "2026-01-01"}, "signed_on", "signed_on_early"),
-        ({"processor_terms": None}, "processor_terms", "string_type"),
+        # The terms are accepted in the app (#499), never given at creation.
+        ({"processor_terms": PROCESSOR_TERMS_VERSION}, "processor_terms", "extra_forbidden"),
+        ({"signed_on": SIGNED_TODAY.isoformat()}, "signed_on", "extra_forbidden"),
+        # The panel never makes a gym exempt: that is the command line's.
+        ({"terms_exempt": True}, "terms_exempt", "literal_error"),
         ({"grading": "ajedrez"}, "grading", "unknown_preset"),
     ],
 )
@@ -217,18 +218,17 @@ def test_a_gym_the_panel_cannot_create_is_a_422(
     assert panel.outbox.links_to(f"{slug}@example.cl") == []
 
 
-def test_the_terms_are_required(panel: Panel) -> None:
+def test_a_new_gym_is_pending_its_terms(panel: Panel) -> None:
     _, signing_in = signed_in(panel)
-    without = {
-        k: v for k, v in body(new_slug()).items() if k not in ("processor_terms", "signed_on")
-    }
     with signing_in as client:
-        response = client.post("/api/platform/gyms", json=without)
-    assert response.status_code == 422
-    assert {tuple(e["loc"]) for e in response.json()["detail"]} == {
-        ("body", "processor_terms"),
-        ("body", "signed_on"),
-    }
+        response = client.post("/api/platform/gyms", json=body(new_slug()))
+        assert response.status_code == 201, response.text
+        gym = listed(client, uuid.UUID(response.json()["id"]))
+    assert (gym["terms_state"], gym["terms_version"], gym["terms_accepted_at"]) == (
+        "pending",
+        None,
+        None,
+    )
 
 
 def test_a_taken_slug_writes_nothing(panel: Panel) -> None:
@@ -355,17 +355,19 @@ def listed(client: TestClient, gym_id: uuid.UUID) -> dict[str, Any]:
 def test_a_link_that_did_not_go_shows_in_the_list_and_goes_again(
     panel: Panel, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """While the gym has not accepted the current terms, what goes is the invitation to
+    accept them; once it has, the plain sign-in link."""
     operator_id, signing_in = signed_in(panel)
     slug = new_slug()
     owner = f"{slug}@example.cl"
     links = panel.app.state.magic_links
 
-    async def fails(address: str, *, base_url: str | None = None) -> list[Any]:
-        raise ConnectionError("the mail server is down")
+    async def down(email: Email) -> None:
+        raise MailDeliveryError("the mail server is down")
 
     with signing_in as client:
-        with monkeypatch.context() as down:
-            down.setattr(links, "send_links", fails)
+        with monkeypatch.context() as failing:
+            failing.setattr(panel.outbox, "send", down)
             response = client.post("/api/platform/gyms", json=body(slug))
         assert response.status_code == 201, response.text
         gym_id = uuid.UUID(response.json()["id"])
@@ -374,26 +376,45 @@ def test_a_link_that_did_not_go_shows_in_the_list_and_goes_again(
 
         again = client.post(f"/api/platform/gyms/{gym_id}/owner-link")
         assert again.status_code == 200, again.text
-        assert again.json() == {"sent": True}
+        assert again.json() == {"sent": True, "invite": True}
+        [invite] = [e for e in panel.outbox.sent if e.to == owner]
+        assert "acepta los términos" in invite.subject
         [link] = panel.outbox.links_to(owner)
         assert link.startswith(f"https://{slug}.{BASE}/api/auth/callback?")
         assert listed(client, gym_id)["owner_link_failed"] is False
 
-        # A send that answers no link is a failure too, and shows again.
+        # Accepted outside the app: the plain link goes, and a send that answers no link
+        # is a failure too, and shows again.
+        signed = client.post(
+            f"/api/platform/gyms/{gym_id}/terms", json={"signed_on": str(SIGNED_TODAY)}
+        )
+        assert signed.json() == {"recorded": True}
+        panel.outbox.sent.clear()
+        assert client.post(f"/api/platform/gyms/{gym_id}/owner-link").json() == {
+            "sent": True,
+            "invite": False,
+        }
+        [plain] = [e for e in panel.outbox.sent if e.to == owner]
+        assert "acepta" not in plain.subject
         with monkeypatch.context() as empty:
 
             async def none(address: str, *, base_url: str | None = None) -> list[Any]:
                 return []
 
             empty.setattr(links, "send_links", none)
-            assert client.post(f"/api/platform/gyms/{gym_id}/owner-link").json() == {"sent": False}
+            assert client.post(f"/api/platform/gyms/{gym_id}/owner-link").json() == {
+                "sent": False,
+                "invite": False,
+            }
         assert listed(client, gym_id)["owner_link_failed"] is True
 
         assert client.post(f"/api/platform/gyms/{uuid.uuid4()}/owner-link").status_code == 404
 
     assert [action for action, _, _ in gym_events(panel, gym_id)] == [
         "gym_created",
-        "owner_link_failed",
+        "terms_invite_failed",
+        "terms_invite_sent",
+        "terms_recorded",
         "owner_link_sent",
         "owner_link_failed",
     ]
@@ -423,12 +444,13 @@ def test_the_slug_check_says_where_and_why_not(panel: Panel) -> None:
         }
 
 
-def test_the_form_gets_the_presets_the_terms_and_the_zones(panel: Panel) -> None:
+def test_the_form_gets_the_presets_and_the_zones(panel: Panel) -> None:
     _, signing_in = signed_in(panel)
     with signing_in as client:
         choices = client.get("/api/platform/presets").json()
     assert choices["grading"] == [{"key": p["key"], "label": p["label"]} for p in PRESETS]
-    assert choices["terms_version"] == PROCESSOR_TERMS_VERSION
+    # No version to show: the titular accepts the terms in the app (#499).
+    assert "terms_version" not in choices
     assert "America/Santiago" in choices["timezones"]
     assert choices["timezones"] == sorted(choices["timezones"])
 

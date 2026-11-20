@@ -1,0 +1,140 @@
+/* The terms a gym accepts (#499): the texts, the gym's details and the two boxes, one
+   under the other, as wide as a contract reads well. */
+.terms {
+  max-width: 46rem;
+}
+
+.terms__form {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.terms__lead {
+  margin: 0;
+}
+
+.terms__note {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.terms__card {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  min-width: 0;
+}
+
+.terms__legend {
+  padding: 0;
+  float: left;
+  width: 100%;
+}
+
+.terms__change + .terms__change {
+  border-top: 1px solid var(--color-divider);
+  padding-top: var(--space-4);
+}
+
+.terms__change-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-base);
+}
+
+.terms__text {
+  margin-top: var(--space-3);
+}
+
+.terms__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  cursor: pointer;
+}
+
+.terms__summary-title {
+  font-weight: var(--font-weight-semibold);
+}
+
+.terms__contact {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4) 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+  min-width: 0;
+}
+
+.terms__contact-title {
+  padding: 0;
+  float: left;
+  width: 100%;
+  font-weight: var(--font-weight-semibold);
+}
+
+.terms__checks {
+  gap: var(--space-2);
+}
+
+.terms__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* The texts as the server renders them: prose, its tables scrolling sideways on a
+   phone rather than squeezing their columns. */
+.legal {
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.legal h1 {
+  font-size: var(--text-xl);
+  margin: var(--space-4) 0 var(--space-3);
+}
+
+.legal h2 {
+  font-size: var(--text-lg);
+  margin: var(--space-5) 0 var(--space-2);
+}
+
+.legal h3 {
+  font-size: var(--text-base);
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.legal p,
+.legal ul,
+.legal ol {
+  margin: 0 0 var(--space-3);
+}
+
+.legal table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+}
+
+.legal th,
+.legal td {
+  border: 1px solid var(--color-border);
+  padding: var(--space-2);
+  text-align: left;
+  vertical-align: top;
+  min-width: 8rem;
+}
+
+.legal-blank {
+  background: var(--color-accent-soft);
+  border-radius: 3px;
+  padding: 0 2px;
+}

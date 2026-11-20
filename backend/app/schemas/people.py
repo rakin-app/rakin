@@ -438,3 +438,6 @@ class MyRole(BaseModel):
     vocabulary: Vocabulary = DEFAULT
     # What the gym calls its free practice and its open mat (#346).
     practice: PracticeNames = PracticeNames(block="Sparring", open_mat="Open mat")
+    # Whether the gym accepted the current terms (#499), and who accepts them for it.
+    terms: Literal["pending", "outdated", "current"] = "current"
+    titular_name: str | None = None

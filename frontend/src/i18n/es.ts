@@ -4196,6 +4196,72 @@ export const es = {
   // The platform's panel (#436), at /plataforma on the base host: who runs the gyms
   // Rakin hosts, apart from any gym's screens.
   // What a suspended gym's address shows on every path (#439).
+  // The terms a gym accepts in the app (#499): its titular's page, and what the rest of
+  // its team sees until it does.
+  terms: {
+    tab: 'Términos',
+    title: 'Antes de empezar',
+    lead: () =>
+      `Lee los términos y completa los datos de ${w.thePlace}. Nada entra a Rakin hasta que los aceptes.`,
+    leadOutdated: (gym: string) =>
+      `Los términos cambiaron. Revisa los cambios y acéptalos para seguir administrando ${gym}.`,
+    loading: 'Cargando los términos…',
+    failed: 'No pudimos cargar los términos.',
+    changes: 'Qué cambió',
+    changesOf: (title: string, version: string) => `${title}, versión ${version}`,
+    texts: 'Los términos completos',
+    version: (version: string) => `Versión ${version}`,
+    // Opens the texts in a page of their own, to save or print before accepting.
+    print: 'Descargar o imprimir',
+    printTitle: (gym: string) => `Términos de Rakin para ${gym}`,
+    form: () => `Datos de ${w.thePlace}`,
+    formHint: 'Aparecen en los términos tal como los escribas.',
+    legalName: 'Razón social',
+    legalNameHint: 'El nombre legal de la empresa, o tu nombre si la llevas como persona.',
+    rut: 'RUT',
+    rutHint: () => `El de ${w.thePlace}, no el tuyo, salvo que la lleves como persona.`,
+    address: 'Domicilio',
+    representative: 'Representante legal',
+    representativeHint: () => `Quien acepta en nombre de ${w.thePlace}.`,
+    contact: 'Contacto para vulneraciones de seguridad',
+    contactHint: () =>
+      `A quién avisamos, por correo y por teléfono, si hay una vulneración de seguridad con los datos de ${w.thePlace}.`,
+    contactName: 'Nombre y cargo',
+    contactEmail: 'Correo',
+    contactPhone: 'Teléfono',
+    otherContact: 'Otro contacto, con otro correo',
+    addOther: 'Agregar otro contacto',
+    removeOther: 'Quitar este contacto',
+    accept: 'Aceptar y empezar',
+    accepting: 'Aceptando…',
+    // The button stays off until both boxes are ticked and the form is complete.
+    needsBoth: 'Marca las dos casillas para aceptar.',
+    invalid: 'Revisa los campos marcados.',
+    acceptFailed: 'No pudimos guardar tu aceptación. Revisa tu conexión e inténtalo de nuevo.',
+    changed: 'Los términos cambiaron mientras los leías. Revisa la versión nueva antes de aceptar.',
+    required: 'Obligatorio.',
+    refusals: {
+      rut: 'Revisa el RUT.',
+      email: 'Revisa el correo: no parece una dirección válida.',
+      phone: 'Revisa el teléfono.',
+      same_contact_email: 'El otro contacto necesita un correo distinto.',
+    },
+    // What the rest of the team sees while the gym has never accepted any (#499).
+    pendingTitle: (gym: string) => `${gym} todavía no empieza en Rakin`,
+    pending: (titular: string | null) =>
+      `Falta que ${titular ?? 'el titular'} acepte los términos. Cuando lo haga, podrás usar Rakin.`,
+    // Ajustes: every acceptance, and a copy of each one made in the app.
+    records: 'Términos aceptados',
+    recordsHint: 'Cada vez que se aceptaron los términos, y una copia de lo aceptado.',
+    recordsLoading: 'Cargando…',
+    recordsFailed: 'No pudimos cargar las aceptaciones.',
+    noRecords: 'Todavía no hay aceptaciones.',
+    inApp: (name: string | null, date: string) => `${date}, en la app${name ? `, por ${name}` : ''}`,
+    outside: (date: string | null) => (date ? `Firmados fuera de la app el ${date}` : 'Firmados fuera de la app'),
+    versions: (service: string | null, processor: string) =>
+      service ? `Servicio ${service} · Encargo ${processor}` : `Encargo ${processor}`,
+    download: 'Descargar copia',
+  },
   suspended: {
     tab: 'Suspendido',
     notice: 'Este gimnasio está suspendido por ahora. Si eres parte del equipo, escribe a soporte.',
@@ -4244,18 +4310,19 @@ export const es = {
         address: 'Dirección',
         titular: 'Titular',
         created: 'Creado',
-        terms: 'Términos de encargo',
+        terms: 'Términos',
         members: 'Miembros',
         staff: 'Equipo',
         lastActivity: 'Última actividad',
         status: 'Estado',
       },
       noTitular: 'Sin titular',
-      noTerms: 'Sin firmar',
-      termsCurrent: 'vigente',
-      termsOutdated: 'desactualizado',
-      // The version and the date on the signed copy: `2026-11-19, firmado el 19 nov 2026`.
-      signedOn: (date: string) => `firmado el ${date}`,
+      // Whether the gym accepted the current terms (#499).
+      terms: { current: 'Vigentes', outdated: 'Términos desactualizados', pending: 'Términos pendientes' },
+      // The latest accepted: `2026-11-20, aceptados el 20 nov 2026`.
+      accepted: (version: string, date: string) => `${version}, aceptados el ${date}`,
+      withoutCurrentTerms: 'Sin los términos vigentes',
+      allCurrent: 'Todos los gimnasios aceptaron los términos vigentes.',
       noActivity: 'Sin actividad',
       status: { active: 'Activo', suspended: 'Suspendido' },
       suspendedSince: (date: string) => `desde el ${date}`,
@@ -4263,6 +4330,7 @@ export const es = {
       // The titular's sign-in link, when the latest one did not go (#437).
       linkFailed: 'Enlace no enviado',
       resend: 'Reenviar enlace',
+      resendInvite: 'Reenviar invitación',
       resending: 'Enviando…',
       resendFailed: 'No pudimos enviarlo. Inténtalo de nuevo.',
     },
@@ -4284,14 +4352,13 @@ export const es = {
       gradingHint: 'Con un sistema de grados, el gimnasio parte con esa actividad y sus palabras.',
       owner: 'Titular',
       ownerEmail: 'Correo del titular',
-      ownerEmailHint: 'Le enviamos aquí un enlace para entrar.',
+      ownerEmailHint: 'Le enviamos aquí la invitación para aceptar los términos.',
       ownerName: 'Nombre del titular',
       ownerRut: 'RUT (opcional)',
       ownerPhone: 'Teléfono (opcional)',
-      terms: 'Términos de encargo',
-      termsVersion: 'Versión',
-      signedOn: 'Fecha de la firma',
-      signedOnHint: 'La fecha que dice la copia firmada.',
+      // The terms are accepted in the app by the titular (#499), not given here.
+      termsNote:
+        'El titular acepta los Términos de servicio y de encargo en la app, la primera vez que entra. Hasta entonces el gimnasio no recibe datos.',
       submit: 'Crear gimnasio',
       working: 'Creando…',
       invalid: 'Revisa los campos marcados.',
@@ -4306,11 +4373,6 @@ export const es = {
         slug_format: 'Solo minúsculas, números y guiones, hasta 63, sin guion al inicio ni al final.',
         slug_reserved: 'Esa dirección está reservada para Rakin.',
         slug_taken: 'Otro gimnasio ya tiene esa dirección.',
-        terms_version: 'No es la versión vigente de los Términos de encargo.',
-        signed_on_future: 'La fecha no puede ser futura.',
-        signed_on_early: 'La fecha es anterior a esta versión de los términos.',
-        date_type: 'Obligatorio.',
-        date_from_datetime_parsing: 'Escribe una fecha.',
         unknown_preset: 'Elige una opción.',
         timezone: 'Elige una zona horaria.',
         owner_email: 'Revisa el correo: no parece una dirección válida.',
@@ -4321,9 +4383,9 @@ export const es = {
       createdIntro: (name: string) => `${name} ya está en su dirección:`,
       copy: 'Copiar dirección',
       copied: 'Dirección copiada.',
-      // Said once the gym is made: its owner has a link to sign in on its host.
+      // Said once the gym is made: its owner has the invitation, with its link to sign in.
       linkSent: (email: string) =>
-        `Le enviamos un enlace de ingreso a ${email}; dura 15 minutos. Si vence, puede pedir otro en la dirección.`,
+        `Le enviamos a ${email} la invitación para aceptar los términos; su enlace dura 7 días. Si vence, puedes reenviarla desde la ficha del gimnasio.`,
       another: 'Crear otro',
       toList: 'Volver a gimnasios',
     },
@@ -4362,19 +4424,28 @@ export const es = {
         slug_reserved: 'Esa dirección está reservada para Rakin.',
         slug_taken: 'Otro gimnasio ya tiene esa dirección, o redirige desde ella.',
       },
-      terms: 'Términos de encargo',
-      noTerms: 'Todavía no ha firmado los Términos de encargo.',
-      // One signature: `2026-11-19, firmado el 19 nov 2026`.
-      signature: (version: string, date: string) => `${version}, firmado el ${date}`,
+      terms: 'Términos',
+      termsState: { current: 'Vigentes', outdated: 'Desactualizados', pending: 'Pendientes' },
+      noTerms: 'El titular todavía no acepta los términos. Hasta entonces el gimnasio no recibe datos.',
+      // One acceptance (#499): `20 nov 2026, en la app, por Ana · Servicio 2026-11-20 · Encargo 2026-11-20`.
+      inApp: (date: string, name: string | null) => `${date}, en la app${name ? `, por ${name}` : ''}`,
+      outside: (date: string | null) => (date ? `Fuera de la app, firmada el ${date}` : 'Fuera de la app'),
+      versions: (service: string | null, processor: string) =>
+        service ? `Servicio ${service} · Encargo ${processor}` : `Encargo ${processor}`,
       current: 'vigente',
-      record: 'Registrar firma',
-      recordVersion: (version: string) => `Versión vigente: ${version}`,
-      signedOn: 'Fecha de la firma',
-      signedOnHint: 'La fecha que dice la copia firmada.',
+      resendInvite: 'Reenviar invitación',
+      resendLink: 'Reenviar enlace de ingreso',
+      sending: 'Enviando…',
+      sent: (email: string) => `Enviado a ${email}.`,
+      sendFailed: 'No pudimos enviarlo. Inténtalo de nuevo.',
+      record: 'Registrar',
+      recordVersion: (service: string, processor: string) =>
+        `Para unos términos firmados en papel: registra los vigentes, servicio ${service} y encargo ${processor}.`,
+      signedOn: 'Registrar una aceptación fuera de la app',
       recording: 'Registrando…',
-      recorded: 'Firma registrada.',
-      alreadySigned: 'Esa versión ya estaba firmada: se mantiene la primera fecha.',
-      recordFailed: 'No pudimos registrar la firma. Inténtalo de nuevo.',
+      recorded: 'Aceptación registrada.',
+      alreadySigned: 'Esas versiones ya estaban registradas: se mantiene la primera fecha.',
+      recordFailed: 'No pudimos registrar la aceptación. Inténtalo de nuevo.',
       address: 'Dirección',
       currentAddress: 'Dirección actual',
       // A slug the gym had, which still sends its visitors here.

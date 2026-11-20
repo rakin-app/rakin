@@ -22,6 +22,7 @@ from sqlalchemy.engine import make_url
 from alembic import command
 from app.db_bootstrap import bootstrap, to_dsn
 from app.domain.dates import gym_today
+from app.legal import PROCESSOR_TERMS_VERSION, SERVICE_TERMS_VERSION
 from app.settings import Settings
 from tests.conftest import make_settings
 
@@ -178,9 +179,26 @@ def seeded_owner(gym_id: uuid.UUID) -> uuid.UUID:
     return uuid.uuid5(gym_id, "owner")
 
 
-def seed_gym(db: Database, slug: str) -> uuid.UUID:
+async def accept_terms(conn: asyncpg.Connection, gym_id: uuid.UUID) -> None:
+    """Record that `gym_id` accepted the current terms, outside the app, so its API takes
+    data (#499). Nothing before migration 0081, which has no terms to accept. As the
+    owner, in a transaction where `app.gym_id` names the gym."""
+    if await conn.fetchval("SELECT to_regclass('terms_acceptance')") is None:
+        return
+    await conn.execute(
+        "INSERT INTO terms_acceptance"
+        " (gym_id, channel, service_version, processor_version, signed_on)"
+        " VALUES ($1, 'outside', $2, $3, current_date)",
+        gym_id,
+        SERVICE_TERMS_VERSION,
+        PROCESSOR_TERMS_VERSION,
+    )
+
+
+def seed_gym(db: Database, slug: str, *, accepted: bool = True) -> uuid.UUID:
     """A gym with one person, its owner (`seeded_owner`: a staff and a `gym_person`
-    row), and a plan, membership, period and ledger entry.
+    row), and a plan, membership, period and ledger entry; with the current terms
+    accepted unless not `accepted`, which leaves it pending them (#499).
 
     Seeded as the owner, which FORCEd RLS applies to: it sets `app.gym_id` first.
     """
@@ -190,6 +208,9 @@ def seed_gym(db: Database, slug: str) -> uuid.UUID:
         async with conn.transaction():
             await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
             await conn.execute("INSERT INTO gym (id, name, slug) VALUES ($1, $2, $2)", gym_id, slug)
+            # Its terms accepted, so its API takes data as it did before #499.
+            if accepted:
+                await accept_terms(conn, gym_id)
             # Not `RETURNING id`: until its gym_person row exists the person is not
             # visible in this gym, and RETURNING is held to the read policy (0003).
             person_id = seeded_owner(gym_id)

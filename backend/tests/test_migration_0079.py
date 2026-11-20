@@ -50,7 +50,7 @@ def gym_columns(db: Database) -> set[str]:
 def test_the_gyms_here_stay_active(db: Database) -> None:
     slug = unique_slug("norte")
     gym = seed_gym(db, slug)
-    migrate(db)
+    migrate(db, "0079")
 
     async def query(conn: asyncpg.Connection) -> asyncpg.Record:
         return await conn.fetchrow(

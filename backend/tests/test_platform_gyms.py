@@ -1,7 +1,8 @@
 """The panel's list of gyms (#436): one row per gym, counts and dates only.
 
-Two seeded gyms (`tests.pg.seed_gym`): one with a coach, three more people with plans,
-two signatures of the Términos de encargo and a class taken, and one left as seeded.
+Two seeded gyms (`tests.pg.seed_gym`), both with the current terms accepted: one with a
+coach, three more people with plans, two signatures of the Términos de encargo and a
+class taken, and one left as seeded.
 """
 
 import uuid
@@ -15,7 +16,7 @@ import pytest
 from app.gyms import PROCESSOR_TERMS_VERSION
 from tests.ids import unique_slug
 from tests.pg import Database, in_gym, make_staff, run, seed_gym, seeded_owner
-from tests.test_gym_hosts import HOSTS
+from tests.test_gym_hosts import HOSTS, create, new_gym
 from tests.test_platform_auth import Panel, grant, operator_email
 from tests.test_platform_auth import db as db
 from tests.test_platform_auth import panel as panel
@@ -126,43 +127,48 @@ def test_each_gym_has_its_titular_counts_terms_and_activity(
     )
     # The owner's plan, the active one and the frozen one; not the lapsed.
     assert (a["members"], a["staff"]) == (3, 2)
-    assert (a["terms_version"], a["terms_signed_on"], a["terms_current"]) == (
-        PROCESSOR_TERMS_VERSION,
-        "2026-11-19",
-        True,
-    )
+    assert (a["terms_version"], a["terms_state"]) == (PROCESSOR_TERMS_VERSION, "current")
+    assert a["terms_accepted_at"] is not None
     assert datetime.fromisoformat(a["last_activity"]) == MARKED_AT
     assert a["status"] == "active"
     # Seeded, not created from the panel: no link to its owner was tried.
     assert a["owner_link_failed"] is False
 
 
-def test_a_gym_as_seeded_has_no_terms_and_its_ledger_for_activity(
+def test_a_gym_as_seeded_has_its_terms_and_its_ledger_for_activity(
     listed: tuple[Panel, dict[str, Any], dict[str, Any]],
 ) -> None:
     _, _, b = listed
     assert (b["titular_name"], b["titular_email"]) == (f"owner of {b['slug']}", None)
     assert (b["members"], b["staff"]) == (1, 1)
-    assert (b["terms_version"], b["terms_signed_on"], b["terms_current"]) == (None, None, False)
+    assert (b["terms_version"], b["terms_state"]) == (PROCESSOR_TERMS_VERSION, "current")
     created = datetime.fromisoformat(b["created_at"])
     assert datetime.fromisoformat(b["last_activity"]) >= created
 
 
-def test_an_old_signature_is_not_current(panel: Panel) -> None:
+def test_an_old_signature_is_outdated_and_none_is_pending(panel: Panel) -> None:
+    """Meta's shape (#499): a signature recorded before the terms were accepted in the
+    app counts as an earlier acceptance, so the gym is `outdated`, not `pending`."""
+    old = create(panel.db, new_gym(unique_slug("meta")), accepted=False).gym_id
+    none = create(panel.db, new_gym(unique_slug("nueva")), accepted=False).gym_id
     run(
         panel.db.owner_url,
         in_gym(
-            panel.gym_a,
+            old,
             "INSERT INTO processor_terms (gym_id, version, signed_on)"
             " VALUES ($1, '2026-01-01', '2026-01-05')",
-            panel.gym_a,
+            old,
         ),
     )
     email = operator_email()
     grant(panel.db, email)
     with panel.signed_in(email) as client:
-        [a] = [g for g in client.get("/api/platform/gyms").json() if g["slug"] == panel.slug_a]
-    assert (a["terms_version"], a["terms_current"]) == ("2026-01-01", False)
+        rows = {g["id"]: g for g in client.get("/api/platform/gyms").json()}
+    assert (rows[str(old)]["terms_version"], rows[str(old)]["terms_state"]) == (
+        "2026-01-01",
+        "outdated",
+    )
+    assert (rows[str(none)]["terms_version"], rows[str(none)]["terms_state"]) == (None, "pending")
 
 
 def test_the_list_carries_no_members_data(

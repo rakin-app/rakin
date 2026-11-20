@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import gyms
-from app.gyms import PROCESSOR_TERMS_VERSION
+from app.gyms import PROCESSOR_TERMS_VERSION, SERVICE_TERMS_VERSION
 from app.magiclink.tokens import hash_token
 from app.platform.session import COOKIE_NAME as PLATFORM_COOKIE
 from tests.pg import run
@@ -244,16 +244,10 @@ def test_the_current_terms_are_recorded_once_and_keep_their_first_date(panel: Pa
     _, signing_in = signed_in(panel)
     slug = new_slug()
     with signing_in as client:
-        # Created with the terms, as the panel always does; dropped here, to sign anew.
+        # Created pending its terms, as the panel does since #499.
         gym_id = create(client, slug)
-
-        async def unsign(conn: asyncpg.Connection) -> None:
-            async with conn.transaction():
-                await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym_id))
-                await conn.execute("DELETE FROM processor_terms WHERE gym_id = $1", gym_id)
-
-        run(panel.db.owner_url, unsign)
-        assert client.get(f"/api/platform/gyms/{gym_id}").json()["terms"] == []
+        pending = client.get(f"/api/platform/gyms/{gym_id}").json()
+        assert (pending["terms"], pending["terms_state"]) == ([], "pending")
 
         first = client.post(
             f"/api/platform/gyms/{gym_id}/terms", json={"signed_on": PROCESSOR_TERMS_VERSION}
@@ -265,10 +259,20 @@ def test_the_current_terms_are_recorded_once_and_keep_their_first_date(panel: Pa
         )
         assert again.json() == {"recorded": False}
         detail = client.get(f"/api/platform/gyms/{gym_id}").json()
-    assert detail["terms"] == [
-        {"version": PROCESSOR_TERMS_VERSION, "signed_on": PROCESSOR_TERMS_VERSION}
-    ]
-    assert detail["terms_version"] == PROCESSOR_TERMS_VERSION
+    # Both texts, signed outside the app on the date of the copy: the gym is current.
+    [signature] = detail["terms"]
+    assert {k: v for k, v in signature.items() if k != "accepted_at"} == {
+        "channel": "outside",
+        "service_version": SERVICE_TERMS_VERSION,
+        "processor_version": PROCESSOR_TERMS_VERSION,
+        "accepted_by_name": None,
+        "signed_on": PROCESSOR_TERMS_VERSION,
+    }
+    assert (detail["terms_version"], detail["service_terms_version"], detail["terms_state"]) == (
+        PROCESSOR_TERMS_VERSION,
+        SERVICE_TERMS_VERSION,
+        "current",
+    )
     assert [e[2] for e in gym_events(panel, gym_id) if e[0] == "terms_recorded"] == [
         {"slug": slug, "terms_version": PROCESSOR_TERMS_VERSION}
     ]
@@ -580,9 +584,9 @@ def test_the_edits_need_a_live_operator_session(panel: Panel) -> None:
         return lambda c: c.fetch(sql, nobody, gym)
 
     for sql in (
-        "SELECT * FROM platform_gym($1, $2)",
+        "SELECT * FROM platform_gym($1, $2, 'x', 'x')",
         "SELECT * FROM platform_edit_gym($1, $2, 'x', NULL, NULL, NULL)",
-        "SELECT platform_record_terms($1, $2, 'x', '2026-11-18')",
+        "SELECT platform_record_terms($1, $2, 'x', '2026-11-18', 'x')",
         "SELECT * FROM platform_rename_gym($1, $2, 'x')",
         "SELECT platform_slug_taken($1, 'x', $2)",
     ):

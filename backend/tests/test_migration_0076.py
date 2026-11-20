@@ -100,14 +100,14 @@ def test_the_gyms_need_a_live_operator_session(db: Database) -> None:
     seed_gym(db, unique_slug("g"))
     operator(db)
     session = signed_in(db)
-    assert len(as_app(db, "SELECT * FROM platform_gyms($1, $2)", session, TERMS)) == 1
+    assert len(as_app(db, "SELECT * FROM platform_gyms($1, $2, $2)", session, TERMS)) == 1
 
     with pytest.raises(asyncpg.InsufficientPrivilegeError, match="no live operator session"):
-        as_app(db, "SELECT * FROM platform_gyms($1, $2)", digest("bogus"), TERMS)
+        as_app(db, "SELECT * FROM platform_gyms($1, $2, $2)", digest("bogus"), TERMS)
 
     as_app(db, "SELECT platform_end_session($1)", session)
     with pytest.raises(asyncpg.InsufficientPrivilegeError, match="no live operator session"):
-        as_app(db, "SELECT * FROM platform_gyms($1, $2)", session, TERMS)
+        as_app(db, "SELECT * FROM platform_gyms($1, $2, $2)", session, TERMS)
 
 
 def test_a_session_past_its_hours_or_of_a_revoked_operator_is_dead(db: Database) -> None:
@@ -132,7 +132,7 @@ def test_a_session_past_its_hours_or_of_a_revoked_operator_is_dead(db: Database)
     )
     assert as_app(db, "SELECT * FROM platform_live_session($1)", revoked) == []
     with pytest.raises(asyncpg.InsufficientPrivilegeError):
-        as_app(db, "SELECT * FROM platform_gyms($1, $2)", revoked, TERMS)
+        as_app(db, "SELECT * FROM platform_gyms($1, $2, $2)", revoked, TERMS)
 
 
 def test_a_session_lasts_eight_hours_from_sign_in(db: Database) -> None:

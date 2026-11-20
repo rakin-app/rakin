@@ -46,7 +46,7 @@ from app.seed.data import GRADING
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import random_rut, unique_slug
-from tests.pg import Database, migrate, run, seed_gym, throwaway_database
+from tests.pg import Database, accept_terms, migrate, run, seed_gym, throwaway_database
 from tests.test_email_identity import member_of
 from tests.test_people import new_phone
 from tests.test_tenancy import router as tenant_routes
@@ -298,10 +298,6 @@ ARGS = [
     "Dueño Meta",
     "--owner-phone",
     "+56 9 1234 5678",
-    "--processor-terms",
-    PROCESSOR_TERMS_VERSION,
-    "--signed-on",
-    PROCESSOR_TERMS_VERSION,
 ]
 
 
@@ -396,11 +392,21 @@ def new_gym(slug: str) -> NewGym:
     )
 
 
-def create(db: Database, gym: NewGym) -> Any:
+def create(db: Database, gym: NewGym, *, accepted: bool = True) -> Any:
+    """`gym`, as `app.gyms create` makes it; `accepted`, with its terms accepted too, so
+    its API takes data (#499), else pending them."""
+
     async def go() -> Any:
         conn = await asyncpg.connect(to_dsn(db.owner_url))
         try:
-            return await create_gym(conn, gym)
+            created = await create_gym(conn, gym)
+            if accepted and created.created:
+                async with conn.transaction():
+                    await conn.execute(
+                        "SELECT set_config('app.gym_id', $1, true)", str(created.gym_id)
+                    )
+                    await accept_terms(conn, created.gym_id)
+            return created
         finally:
             await conn.close()
 

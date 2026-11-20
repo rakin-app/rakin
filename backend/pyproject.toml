@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.162.2",
     "holidays>=0.109",
     "jinja2>=3.1.6",
+    "markdown==3.9",
     "openpyxl>=3.1.5",
     "pillow>=13.0.0",
     "pydantic>=2",
@@ -29,6 +30,7 @@ dev = [
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "ruff>=0.17.4",
+    "types-markdown>=3.11.3.20261108",
     "types-openpyxl>=3.1.5.20261017",
 ]
 

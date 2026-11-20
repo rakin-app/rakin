@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError, apiFetch, isReauth } from './client'
 import type { SignedIn } from './auth'
+import type { TermsState } from './terms'
 
 /**
  * The platform's panel (#436), at `/plataforma` on the base host: the people who run
@@ -24,10 +25,11 @@ export type PlatformGym = {
   created_at: string
   titular_name: string | null
   titular_email: string | null
-  // The Términos de encargo in force, and whether they are the current version.
+  // The Términos de encargo in force, the latest accepted, and when (#499).
   terms_version: string | null
-  terms_signed_on: string | null
-  terms_current: boolean
+  terms_accepted_at: string | null
+  // `pending`: never accepted any, and takes no data; `outdated`: earlier versions.
+  terms_state: TermsState
   members: number
   staff: number
   last_activity: string | null
@@ -73,14 +75,14 @@ export type SlugProblem = 'format' | 'reserved' | 'taken'
 /** What a slug would be: where the gym would be served, and why it cannot, if so. */
 export type SlugCheck = { address: string; problem: SlugProblem | null }
 
-/** What the new-gym form offers: grading presets, the terms' current version, time zones. */
+/** What the new-gym form offers: grading presets and time zones. */
 export type NewGymChoices = {
   grading: { key: string; label: string }[]
-  terms_version: string
   timezones: string[]
 }
 
-/** A new gym as the panel creates it (backend `PanelNewGym`): the terms are required. */
+/** A new gym as the panel creates it (backend `PanelNewGym`), pending its terms, which
+ * its titular accepts in the app (#499). */
 export type NewGym = {
   slug: string
   name: string
@@ -90,8 +92,6 @@ export type NewGym = {
   owner_rut: string | null
   owner_phone: string | null
   grading: string
-  processor_terms: string
-  signed_on: string | null
 }
 
 export type CreatedGym = { id: string; slug: string; address: string }
@@ -114,11 +114,23 @@ export function createGym(gym: NewGym): Promise<CreatedGym> {
   return apiFetch<CreatedGym>('/api/platform/gyms', { method: 'POST', body: JSON.stringify(gym) })
 }
 
-/** Emails the gym's titular a sign-in link on its host again; `sent` false if it did not go. */
-export function resendOwnerLink(gymId: string): Promise<{ sent: boolean }> {
-  return apiFetch<{ sent: boolean }>(`/api/platform/gyms/${encodeURIComponent(gymId)}/owner-link`, {
+/** Emails the gym's titular again: the invitation to accept the terms while the gym has
+ * not accepted the current ones (`invite`), else a sign-in link; `sent` false if it did not go. */
+export function resendOwnerLink(gymId: string): Promise<{ sent: boolean; invite: boolean }> {
+  return apiFetch<{ sent: boolean; invite: boolean }>(`/api/platform/gyms/${encodeURIComponent(gymId)}/owner-link`, {
     method: 'POST',
   })
+}
+
+/** One acceptance of the terms (#499): in the app, by whom, or signed outside it. */
+export type TermsSignature = {
+  accepted_at: string
+  channel: 'in_app' | 'outside'
+  // `null` for a signature from before #499, of the Términos de encargo alone.
+  service_version: string | null
+  processor_version: string
+  accepted_by_name: string | null
+  signed_on: string | null
 }
 
 /** Where one gym is edited (#438): `/plataforma/<gym id>`. */
@@ -135,9 +147,11 @@ export type PlatformGymDetail = {
   titular_phone: string | null
   // Once the titular signed in there, their email changes only through a handover (#321).
   titular_signed_in: boolean
-  // Every signature of the Términos de encargo, the latest first.
-  terms: { version: string; signed_on: string }[]
+  // Every acceptance, the latest first, the versions current today and the state.
+  terms: TermsSignature[]
   terms_version: string
+  service_terms_version: string
+  terms_state: TermsState
   // The slugs it had that still redirect to it, and until when.
   aliases: { slug: string; address: string; until: string }[]
   // Since when it is suspended (#439), and why; both `null` for an active gym.
@@ -197,7 +211,8 @@ export function editGym(gymId: string, edit: GymEdit): Promise<{ fields: string[
   })
 }
 
-/** Records a signature of the current terms; `recorded` false if that version was signed. */
+/** Records an acceptance of the current terms signed outside the app; `recorded` false if
+ * those versions were signed already. */
 export function recordTerms(gymId: string, signedOn: string): Promise<{ recorded: boolean }> {
   return apiFetch<{ recorded: boolean }>(`/api/platform/gyms/${encodeURIComponent(gymId)}/terms`, {
     method: 'POST',

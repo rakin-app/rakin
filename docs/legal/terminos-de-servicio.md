@@ -1,8 +1,10 @@
-> **BORRADOR: pendiente de revisión por abogado.** 16 de noviembre de 2026.
+> **BORRADOR: pendiente de revisión por abogado.** 20 de noviembre de 2026.
 
 # Términos de servicio de Rakin
 
-Entre quien presta Rakin y cada academia que lo usa en la versión alojada en rakin.app. Por ahora es una **beta gratuita** para academias conocidas. Lo que cambiará cuando haya precio está en la [sección 12](#12-cuando-rakin-tenga-precio).
+**Versión: 2026-11-20.** Cada academia acepta esta versión en la aplicación antes de que sus datos entren a Rakin, y vuelve a aceptarla cuando cambia. Rakin registra cada aceptación como dice la [sección 11](#11-aceptación-electrónica), y guarda una copia de lo aceptado.
+
+Entre quien presta Rakin y cada academia que lo usa en la versión alojada en rakin.app. Por ahora es una **beta gratuita** para academias conocidas. Lo que cambiará cuando haya precio está en la [sección 13](#13-cuando-rakin-tenga-precio).
 
 Entre **quien lleva Rakin**, un proyecto en etapa de prueba que todavía no se lanza oficialmente ([la Empresa, antes del lanzamiento](README.md#la-empresa-antes-del-lanzamiento)), en adelante **Rakin**, y **[Razón social del gimnasio]**, RUT [RUT del gimnasio], que opera **[Nombre del gimnasio]**, en adelante **la Academia**.
 
@@ -46,7 +48,7 @@ Rakin envía los correos de la Academia desde @rakin.app, solo avisos del servic
 
 ## 7. Cambios a estos términos
 
-Rakin avisa por correo al dueño de la Academia al menos **30 días** antes de cambiar estos términos. Si la Academia no está de acuerdo, puede terminar sin costo.
+Rakin avisa por correo al dueño de la Academia al menos **30 días** antes de cambiar estos términos. Una versión nueva rige solo desde que la Academia la acepta en la aplicación: mientras no la acepte, sigue rigiendo la anterior. Si la Academia no está de acuerdo, puede llevarse sus datos y terminar sin costo.
 
 ## 8. Término
 
@@ -68,25 +70,31 @@ La Academia sigue llevando su contabilidad: Rakin le ayuda, pero no la reemplaza
 
 El código de Rakin es software libre bajo la licencia AGPL-3.0. El nombre Rakin, el dominio rakin.app y sus logos no están cubiertos por esa licencia ([TRADEMARK.md](../../TRADEMARK.md)). Los datos, logos y textos de la Academia siguen siendo suyos.
 
-## 11. Ley y tribunales
+## 11. Aceptación electrónica
 
-Rige la ley chilena. Las partes se someten a los tribunales de [ciudad].
+Estos términos se aceptan en la aplicación de Rakin. Quien los acepta lo hace en nombre de la Academia y declara tener facultades para representarla. Ingresa con un link o código enviado a su correo, revisa el texto, que puede descargar o imprimir antes de aceptar, y marca la casilla de aceptación. Esa aceptación es una firma electrónica según la ley N° 19.799, y obliga a la Academia igual que un contrato firmado en papel. Rakin registra quién aceptó, el correo con que ingresó, la fecha y hora, la versión, una huella (SHA-256) del texto exacto que se mostró y la dirección IP y el navegador desde los que se aceptó. Rakin envía a ese correo una copia íntegra de lo aceptado, y la Academia puede descargarla en cualquier momento desde la administración de su academia.
 
-## 12. Cuando Rakin tenga precio
+## 12. Ley y tribunales
+
+Rige la ley chilena. Las partes se someten a los tribunales de Puerto Montt.
+
+## 13. Cuando Rakin tenga precio
 
 Esta sección se completa antes de cobrar. Ninguna academia pasa a pagar sin aceptar por escrito los nuevos términos, con al menos **60 días** de aviso.
 
 Quedarán aquí:
 
-- [planes y precio];
-- [forma de pago, facturación y boleta o factura];
-- [período de prueba, renovación y cancelación];
-- [disponibilidad comprometida y compensación si no se cumple];
-- [plazos de soporte];
-- [límite de responsabilidad para el servicio pagado].
+- planes y precio;
+- forma de pago, facturación y boleta o factura;
+- período de prueba, renovación y cancelación;
+- disponibilidad comprometida y compensación si no se cumple;
+- plazos de soporte;
+- límite de responsabilidad para el servicio pagado.
 
-Firmas:
+## Cambios de versión
 
-| Rakin | La Academia |
-| --- | --- |
-| [nombre, firma, fecha] | [nombre, firma, fecha] |
+### 2026-11-20
+
+- Primera versión con número. Se acepta en la aplicación de Rakin, ya no se firma en papel: la nueva [sección 11](#11-aceptación-electrónica) dice cómo y qué registra Rakin de cada aceptación.
+- Una versión nueva rige solo desde que la Academia la acepta; mientras tanto rige la anterior ([sección 7](#7-cambios-a-estos-términos)).
+- Los tribunales son los de Puerto Montt. "Ley y tribunales" pasa a ser la sección 12, y "Cuando Rakin tenga precio" la 13.

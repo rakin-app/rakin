@@ -714,6 +714,9 @@ def test_my_role_names_who_is_signed_in_and_the_gym(
         "vocabulary": {"place": "academia", "members": "alumnos", "coach": "profe"},
         # A gym with no activity: the seed's kind is still "Sparring" (#346).
         "practice": {"block": "Sparring", "open_mat": "Sparring"},
+        # Its terms accepted, and who accepts them for it (#499).
+        "terms": "current",
+        "titular_name": f"owner of {slug}",
     }
 
 

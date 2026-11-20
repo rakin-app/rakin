@@ -9,7 +9,11 @@
 # lists, so the Postgres superuser never reaches `api` or `jobs`.
 
 x-backend: &backend
-  build: ./backend
+  build:
+    context: ./backend
+    # The terms the API serves (#499), from docs/legal (backend/Dockerfile).
+    additional_contexts:
+      legal: ./docs/legal
   environment: &backend-env
     ENVIRONMENT: ${ENVIRONMENT:-local}
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -37,6 +41,8 @@ x-backend: &backend
     TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
     BLOB_STORE: ${BLOB_STORE:-local}
     BLOB_LOCAL_DIR: ${BLOB_LOCAL_DIR:-var/blobs}
+    # The terms gyms accept (#499); empty reads the image's /app/legal.
+    LEGAL_DIR: ${LEGAL_DIR:-}
     BLOB_URL_TTL_SECONDS: ${BLOB_URL_TTL_SECONDS:-900}
     # Inside the network Postgres is `postgres`, not the host's `localhost`.
     DATABASE_URL: postgresql+asyncpg://${POSTGRES_API_USER:-rakin_api}:${POSTGRES_API_PASSWORD:-rakin_api}@postgres:5432/${POSTGRES_DB:-rakin}
@@ -51,6 +57,8 @@ x-backend: &backend
     S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-af635cf10ca8d78993f886624767e63600cb52fa8e7730c15d026ace93a3f341}
   volumes:
     - ./backend:/srv
+    # The terms as edited here, over the image's copy of them.
+    - ./docs/legal:/app/legal:ro
     # The local BlobStore's files (BLOB_STORE=local), shared by api and jobs.
     - blobs:/srv/var/blobs
 

@@ -1,0 +1,15 @@
+{% extends "_layout.html" %}
+{% block title %}{{ gym }} ya está en Rakin{% endblock %}
+{% block body %}
+<p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+<p style="margin:0 0 16px;">{{ gym }} ya está en Rakin, el sistema para llevar {{ words.members }}, planes, pagos y clases.</p>
+<p style="margin:0;">Antes de cargar a {{ words.the_members }}, {{ words.the_place }} acepta los Términos de servicio y los Términos de encargo de tratamiento de datos. Los revisas y los aceptas en la aplicación, en nombre de {{ words.the_place }}.</p>
+{% endblock %}
+{% block page_link %}
+<p style="margin:24px 0 8px;"><a href="{{ page_url }}" style="display:inline-block;padding:12px 24px;background:#18181b;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">Revisar y aceptar</a></p>
+{% if page_code %}
+{% set sign_in_code = page_code %}
+{% include "_code.html" %}
+{% endif %}
+<p style="margin:0;color:#52525b;font-size:14px;">El botón y el código te dejan entrar sin contraseña. Sirven una sola vez, y usar uno gasta el otro; vencen en {{ page_link_days }} días. Después, pide uno nuevo con este correo.</p>
+{% endblock %}

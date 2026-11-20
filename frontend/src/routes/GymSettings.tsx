@@ -30,6 +30,7 @@ import { activitiesQuery } from '../api/activities'
 import { ActivitySettings } from './ActivitySettings'
 import { LogoSettings } from './LogoSettings'
 import { Field, integerOf, LoadFailed, refusal, SectionHead } from './settingsForm'
+import { TermsRecords } from './TermsRecords'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
 import { Banner, cardClass, CheckRow, SectionTitle } from '../components/Card'
@@ -129,6 +130,7 @@ export function GymSettings() {
       ) : (
         <GymForm settings={settings.data} />
       )}
+      <TermsRecords />
     </section>
   )
 }

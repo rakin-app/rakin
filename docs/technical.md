@@ -248,6 +248,18 @@ The emails of those days are not sent. A gym is never removed at once: the end o
 service follows the Términos de encargo, clause 14 (`app.platform.removal`), and
 removing is refused until #377 defines the deletion.
 
+A gym waits on its terms (#499, migration 0081). It is created pending them, and its
+titular accepts the Términos de servicio and de encargo on a page of the admin
+(`app.api.terms`), rendered server-side from `docs/legal/` (`app.legal.terms`, the
+image's `/app/legal`). The gate is in the API, never the UI alone: `tenant_session`
+reads `app_terms_state` once per write, and a `pending` gym, which never accepted any,
+refuses every write with `409 terms_pending`, whoever makes it; the gates
+(`app.permissions`) refuse the titular's writes with `409 terms_outdated` while the gym
+has accepted only an earlier version, and everyone else keeps working. Reads stay
+open. Each acceptance is an insert-only row of `terms_acceptance`, which a trigger keeps
+from any change, the table owner's included; the API reaches it only through
+`SECURITY DEFINER` functions, and its hashes are taken there, over the HTML it stores.
+
 ## Infrastructure and operations
 
 One VPS running Docker Compose carries the first 20 gyms; the only non-negotiable spend is tested backups, because losing a gym's ledger is the one unrecoverable failure.
@@ -295,7 +307,7 @@ Chile's Ley 21.719 (personal data protection) enters into force on 1 December 20
 
 | Topic | Obligation | Product response |
 | --- | --- | --- |
-| Data controller | each gym is the controller of its members' data, and whoever runs the instance its processor: the company for hosted gyms, each self-hoster for theirs | each gym's public privacy notice at `/privacidad` (#168), a template filled in with the legal name, RUT and contact email the gym sets in Ajustes, linked from the join form's consent and the student page; the join link works only once it is set. For hosted gyms, the [Términos de encargo](legal/terminos-de-encargo.md) (the DPA), which each gym signs before its data goes in: `app.gyms create` records the version and the signing date in `processor_terms` and refuses to run without them (#367, [Creating a gym](deploy.md#creating-a-gym)) |
+| Data controller | each gym is the controller of its members' data, and whoever runs the instance its processor: the company for hosted gyms, each self-hoster for theirs | each gym's public privacy notice at `/privacidad` (#168), a template filled in with the legal name, RUT and contact email the gym sets in Ajustes, linked from the join form's consent and the student page; the join link works only once it is set. For hosted gyms, the [Términos de encargo](legal/terminos-de-encargo.md) (the DPA) and the [Términos de servicio](legal/terminos-de-servicio.md), which each gym's titular accepts in the app before its data goes in, its API taking none until then; each acceptance is kept in `terms_acceptance` with what proves it, and a copy is emailed (#499, [Creating a gym](deploy.md#creating-a-gym)) |
 | Consent | explicit, informed, revocable | an adult's data rest on the membership contract, not consent; the join form's box is kept as evidence the notice was shown (`consent_event.notice_accepted`, with the time and the notice's version). Every member under 18, or a dependent with no birth date, needs their guardian's consent, an act of its own apart from the membership: given on the join form or the guardian's page, withdrawn there, with who, when and which notice version; the membership stays either way. The ficha shows the basis and the record, and the welcome asks a guardian whose consent is missing (#370) |
 | Minors | guardian consent; no direct marketing | kids never receive messages; all comms go to the guardian |
 | Sensitive data | a gym may not keep health data (injuries, conditions, treatments) even with consent (art. 16 bis, [#384](https://github.com/rakin-app/rakin/issues/384)), so no reason, chip or seeded field asks for it and marking a field sensitive warns the owner off it; other sensitive data needs explicit consent | custom fields flagged `sensitive` are encrypted at rest (app-level, AES-GCM), excluded from default exports, and visible to the roles the owner chooses per field (`visible_to`: owner only, owner and admins, or all staff), owner only by default; the API never answers a field's definition or value to a role it is not visible to, with a per-gym toggle to disable entirely |

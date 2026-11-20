@@ -23,5 +23,9 @@ RUN uv sync --locked --no-dev --no-install-project
 
 COPY . .
 
+# The Términos de servicio and de encargo a gym accepts in the app (#499), from
+# docs/legal through the `legal` build context: the image's only copy of them.
+COPY --from=legal terminos-de-servicio.md terminos-de-encargo.md /app/legal/
+
 EXPOSE 8000
 CMD ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--port", "8000"]

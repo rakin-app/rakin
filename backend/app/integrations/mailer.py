@@ -32,6 +32,22 @@ def check_recipient(to: str) -> None:
 
 
 @dataclass(frozen=True)
+class Attachment:
+    """A file sent with a message, such as the copy of the terms a gym accepted (#499)."""
+
+    filename: str
+    content: bytes
+    # The MIME type, as `text/html`.
+    mime_type: str
+
+    def __post_init__(self) -> None:
+        if any(c in self.filename for c in '\r\n"/\\') or not self.filename:
+            raise ValueError(f"not a file name: {self.filename!r}")
+        if self.mime_type.count("/") != 1:
+            raise ValueError(f"not a MIME type: {self.mime_type!r}")
+
+
+@dataclass(frozen=True)
 class Email:
     to: str
     subject: str
@@ -39,6 +55,7 @@ class Email:
     html: str | None = None
     # Extra headers, such as `List-Unsubscribe`; never `From`, `To` or `Subject`.
     headers: tuple[tuple[str, str], ...] = ()
+    attachments: tuple[Attachment, ...] = ()
 
     def __post_init__(self) -> None:
         check_recipient(self.to)
@@ -66,6 +83,7 @@ def log_unsent(email: Email, why: str) -> None:
             "mail_subject": email.subject,
             "mail_text": email.text,
             "mail_headers": dict(email.headers),
+            "mail_attachments": [a.filename for a in email.attachments],
         },
     )
 
@@ -126,6 +144,14 @@ class SmtpMailer:
         message.set_content(email.text)
         if email.html is not None:
             message.add_alternative(email.html, subtype="html")
+        for attachment in email.attachments:
+            maintype, subtype = attachment.mime_type.split("/")
+            message.add_attachment(
+                attachment.content,
+                maintype=maintype,
+                subtype=subtype,
+                filename=attachment.filename,
+            )
         try:
             await asyncio.to_thread(self._send, message)
         except (OSError, smtplib.SMTPException) as exc:

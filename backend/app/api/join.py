@@ -106,7 +106,7 @@ from app.schemas.join import (
 )
 from app.schemas.memberships import MembershipStart
 from app.schemas.people import PersonRef
-from app.tenancy import Tenant, current_tenant
+from app.tenancy import Tenant, current_tenant, terms_state
 
 public = APIRouter(prefix="/api/join", tags=["join"])
 router = APIRouter(prefix="/api", tags=["join"])
@@ -123,6 +123,8 @@ INVALID_LINK = HTTPException(status.HTTP_404_NOT_FOUND, "invalid_link")
 # The link's gym is suspended from the platform's panel (#439): the form neither shows
 # nor takes anything until it is resumed.
 GYM_SUSPENDED = HTTPException(status.HTTP_410_GONE, {"code": "gym_suspended"})
+# The link's gym has not accepted its terms yet (#499): nothing of anyone goes in.
+GYM_NOT_OPEN = HTTPException(status.HTTP_410_GONE, {"code": "gym_not_open"})
 # What `new_token` makes, give or take; anything else is no link of ours.
 TOKEN_LENGTHS = range(20, 65)
 NO_LINK = HTTPException(status.HTTP_404_NOT_FOUND, "no join link")
@@ -294,7 +296,8 @@ class _OpenLink:
 @asynccontextmanager
 async def _open(request: Request, token: str) -> AsyncIterator[_OpenLink]:
     """The link's gym, in a transaction acting there; a 404 when it does not work, and a
-    410 `gym_suspended` while its gym is suspended (#439), so nothing is written."""
+    410 `gym_suspended` while its gym is suspended (#439), or `gym_not_open` while it has
+    never accepted its terms (#499), so nothing is written."""
     if len(token) not in TOKEN_LENGTHS:
         raise INVALID_LINK
     async with request.app.state.sessionmaker() as lookup:
@@ -305,6 +308,8 @@ async def _open(request: Request, token: str) -> AsyncIterator[_OpenLink]:
         row = (await session.execute(text(FORM), {"token": token})).one_or_none()
         if row is not None and row.suspended:
             raise GYM_SUSPENDED
+        if row is not None and await terms_state(session) == "pending":
+            raise GYM_NOT_OPEN
         # Revoked or regenerated between the two, past its last day, or with no
         # privacy notice to consent to.
         if (

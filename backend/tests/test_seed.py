@@ -522,6 +522,10 @@ def test_api_user_reads_the_whole_gym(db: Database) -> None:
     # As the gym's owner, who may read the ledger (migration 0006).
     owner = next(s["person_id"] for s in seed.staff if s["role"] == "owner")
     for table, rows in seed.tables():
+        # Which gyms wait on no terms (#499), which the API reads only through
+        # `app_terms_state`.
+        if table == "gym_terms":
+            continue
         found = run(db.api_url, in_gym(GYM_ID, f"SELECT count(*) AS n FROM {table}", person=owner))
         # Every person has a membership or staff row, so RLS hides none of them.
         assert found[0]["n"] == len(rows), table

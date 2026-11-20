@@ -45,7 +45,7 @@ from app.schemas.me import (
     PersonClasses,
 )
 from app.schemas.people import MyRole
-from app.tenancy import Tenant, TenantSession, current_tenant
+from app.tenancy import Tenant, TenantSession, current_tenant, terms_state
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
@@ -129,7 +129,10 @@ WHO = """
            (SELECT s.role FROM staff s WHERE s.gym_id = g.id AND s.person_id = :me) AS role,
            (EXISTS (SELECT 1 FROM membership m WHERE m.gym_id = g.id AND m.person_id = :me)
             OR EXISTS (SELECT 1 FROM guardian_link l
-                       WHERE l.gym_id = g.id AND l.guardian_person_id = :me)) AS student_page
+                       WHERE l.gym_id = g.id AND l.guardian_person_id = :me)) AS student_page,
+           (SELECT t.name FROM staff s
+            JOIN gym_person t ON t.gym_id = s.gym_id AND t.person_id = s.person_id
+            WHERE s.gym_id = g.id AND s.account_holder LIMIT 1) AS titular_name
     FROM gym g
     LEFT JOIN gym_person gp ON gp.gym_id = g.id AND gp.person_id = :me
     WHERE g.id = :gym
@@ -193,7 +196,10 @@ async def my_role(
     for the belts and ranks every screen shows only then (#245); and what the gym calls
     itself, its members and its coach (#344), and its free practice (#346). What they
     may do here is `permissions` and `account_holder` (#308), which the screens read;
-    `role` is the name the staff row still carries until #313."""
+    `role` is the name the staff row still carries until #313. And the gym's terms
+    state (#499), with its titular's name: the admin shows its titular only the
+    acceptance page until it is `current`, and the rest of the team a notice while it
+    is `pending`."""
     who = (await session.execute(text(WHO), {"me": tenant.person_id, "gym": tenant.gym_id})).one()
     standing = await standing_in_gym(session, tenant)
     return MyRole(
@@ -210,6 +216,8 @@ async def my_role(
         uses_grades=await gym_uses_grades(session),
         vocabulary=vocabulary.read(who.vocabulary),
         practice=await practice_names(session),
+        terms=await terms_state(session),
+        titular_name=who.titular_name,
     )
 
 
