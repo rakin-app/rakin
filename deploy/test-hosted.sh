@@ -260,3 +260,26 @@ if out=$(compose run --rm -T -e BACKUP_AGE_RECIPIENT= backup python -m app.backu
 fi
 grep -q 'backups are enabled but not configured.*BACKUP_AGE_RECIPIENT: Field required' <<<"$out"
 echo "ok   - enabled without BACKUP_AGE_RECIPIENT, the job says so and refuses"
+
+# Production's shape (#495): the base host is a name under BASE_DOMAIN, and the
+# landing host is BASE_DOMAIN itself (app.rakin.app, rakin.app). The gyms'
+# on-demand wildcard then covers the base host and the landing's www., and
+# without `tls force_automate` on their sites Caddy gets neither a certificate:
+# each handshake fails. Last, as it takes the stack off http://localhost.
+sed -i.bak -e "s|^SITE_ADDRESS=.*|SITE_ADDRESS=app.$base|" \
+	-e "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://app.$base|" \
+	-e "s|^LANDING_HOST=.*|LANDING_HOST=$base|" "$dir/.env"
+rm "$dir/.env.bak"
+compose up -d --wait --wait-timeout 180 >/dev/null 2>&1
+# smoke.sh as step 4 of the switch runs it (docs/deploy.md), trusting Caddy's own CA.
+compose exec -T caddy cat /data/caddy/pki/authorities/local/root.crt >"$dir/root.crt"
+CURL_CA_BUNDLE="$dir/root.crt" "$root/deploy/smoke.sh" "https://app.$base"
+[ "$(redirect "www.$base" '/x?y=1')" = "301 https://$base/x?y=1" ]
+grep -q 'La app para llevar tu academia, gimnasio o club' <<<"$(landing "$base" /)"
+# The gyms' hosts are still on demand, and a name no gym has still gets none.
+[ "$(landing "meta-nueva.$base" /healthz -o /dev/null -w '%{http_code}')" = 200 ]
+if landing "nadie.$base" / -o /dev/null 2>/dev/null; then
+	echo "test-hosted: a host no gym has under the base domain got a certificate" >&2
+	exit 1
+fi
+echo "ok   - with the base host and the landing's www. under the gyms' wildcard, both get a certificate, and the gyms' hosts are still on demand"
