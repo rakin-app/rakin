@@ -14,6 +14,7 @@ from app.api import (
     consent,
     corrections,
     custom_fields,
+    expenses,
     extra_charges,
     freeze_requests,
     grades,
@@ -168,6 +169,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(extra_charges.router)
     app.include_router(extra_charges.people_router)
     app.include_router(groups.router)
+    app.include_router(expenses.router)
     app.include_router(unsubscribe.router)
     app.include_router(webhooks.router)
     app.include_router(join.public)

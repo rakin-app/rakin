@@ -124,6 +124,21 @@
     "coach": 200,
     "owner": 200
   },
+  "GET /api/expenses": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/expenses/categories": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/expenses/{expense_id}/receipt": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 404
+  },
   "GET /api/extra-charges": {
     "admin": 200,
     "coach": 403,
@@ -494,6 +509,16 @@
     "coach": 403,
     "owner": 422
   },
+  "PATCH /api/expenses/categories/{category_id}": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "PATCH /api/expenses/{expense_id}": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
   "PATCH /api/extra-charges/{charge_id}/lines/{line_id}": {
     "admin": 422,
     "coach": 403,
@@ -586,6 +611,41 @@
   },
   "POST /api/custom-fields": {
     "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/expenses": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/expenses/categories": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/expenses/categories/order": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/expenses/categories/{category_id}/archive": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/expenses/categories/{category_id}/restore": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 404
+  },
+  "POST /api/expenses/receipt-upload": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/expenses/{expense_id}/void": {
+    "admin": 403,
     "coach": 403,
     "owner": 422
   },

@@ -9,8 +9,9 @@ module imports nothing #308 added, so it runs there unchanged.
 Path parameters get a placeholder of their type, and no body is sent, so an operation
 the person may use answers its own 404 or 422 and one they may not a 403. An operation
 added after #308 has no recorded status and is skipped, unless it joins the recording
-with the statuses it answers, as `GET /api/summary` did (#505) once the app had grown
-past what the 90% coverage check allows; one whose access changes on purpose (#310
+with the statuses it answers, as `GET /api/summary` did (#505) and Gastos's did
+(#314: the titular alone, an admin and a coach a 403) once the app had grown past what
+the 90% coverage check allows; one whose access changes on purpose (#310
 onwards) records the module again.
 """
 

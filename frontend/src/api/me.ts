@@ -97,6 +97,17 @@ export function readsLedger(access: Access | null | undefined): boolean {
   return holds(access, 'money_read')
 }
 
+/** Who sees the gym's expenses, Gastos (#314): the backend's `expenses_read`. Its own
+ * permission, never `money_read`: an Administrador sees payments and no expenses. */
+export function readsExpenses(access: Access | null | undefined): boolean {
+  return holds(access, 'expenses_read')
+}
+
+/** Who records, corrects and voids expenses: the backend's `expenses_write`. */
+export function writesExpenses(access: Access | null | undefined): boolean {
+  return holds(access, 'expenses_write')
+}
+
 /** Who configures the gym, its settings and plans: the backend's `gym_setup` (`AdminSession`). */
 export function managesGym(access: Access | null | undefined): boolean {
   return holds(access, 'gym_setup')

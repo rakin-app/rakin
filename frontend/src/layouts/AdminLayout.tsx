@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useSignOut } from '../api/auth'
-import { managesGym, myAccessQuery, myselfQuery, readsLedger } from '../api/me'
+import { managesGym, myAccessQuery, myselfQuery, readsExpenses, readsLedger } from '../api/me'
 import { pendingCountQuery } from '../api/proofs'
 import { useTimerSync } from '../api/sessionBlocks'
 import { GymMark } from '../components/GymMark'
@@ -28,7 +28,7 @@ import { TermsPending } from '../routes/TermsPending'
 import './AdminLayout.css'
 
 type NavItem = {
-  to: '/admin' | '/admin/alumnos' | '/admin/clases' | '/admin/pagos' | '/admin/ajustes'
+  to: '/admin' | '/admin/alumnos' | '/admin/clases' | '/admin/pagos' | '/admin/pagos/gastos' | '/admin/ajustes'
   label: string
   icon: ReactNode
   exact?: boolean
@@ -48,6 +48,10 @@ const NAV_ITEMS: readonly NavItem[] = [
   { to: '/admin/pagos', label: t.nav.payments, icon: <PaymentsIcon /> },
   { to: '/admin/ajustes', label: t.nav.settings, icon: <SettingsIcon /> },
 ]
+
+// In Pagos' place, for someone who sees the gym's expenses and not its payments (#314):
+// Gastos is under Pagos for everyone else, and the bar keeps to five tabs.
+const EXPENSES_ITEM: NavItem = { to: '/admin/pagos/gastos', label: t.admin.payments.expenses, icon: <PaymentsIcon /> }
 
 /**
  * Shell for the owner and coach screens. On a phone the nav is the bottom tab
@@ -134,10 +138,12 @@ function AdminShell() {
   const rise = useRise<HTMLDivElement>()
   // Pagos is money and Ajustes the gym's configuration: each shown only once the role
   // is known to reach it, so a coach never sees either tab, not even while the role loads.
-  const navItems = NAV_ITEMS.filter(
-    (item) =>
-      (item.to !== '/admin/pagos' || readsLedger(access.data)) && (item.to !== '/admin/ajustes' || managesGym(access.data)),
-  )
+  // Someone who sees only expenses has Gastos where Pagos would be.
+  const navItems = NAV_ITEMS.flatMap((item) => {
+    if (item.to === '/admin/ajustes' && !managesGym(access.data)) return []
+    if (item.to !== '/admin/pagos' || readsLedger(access.data)) return [item]
+    return readsExpenses(access.data) ? [EXPENSES_ITEM] : []
+  })
 
   // A coach's phone has no Ajustes: "Mi página" is a tab of their bar, and signing out is
   // in the top bar's account menu. Only once the role is known, so nothing flashes in.

@@ -86,6 +86,13 @@ def default_block_kind_id(gym_id: uuid.UUID, key: str) -> uuid.UUID:
     return uuid.UUID(hashlib.md5(f"{gym_id}/block_kind/{key}".encode()).hexdigest())
 
 
+def default_expense_category_id(gym_id: uuid.UUID, key: str) -> uuid.UUID:
+    """The id of a gym's default expense category, as migration 0083's
+    `add_default_expense_categories` derives it: every gym is given them when it is
+    created."""
+    return uuid.UUID(hashlib.md5(f"{gym_id}/expense_category/{key}".encode()).hexdigest())
+
+
 @dataclass(frozen=True)
 class Seed:
     as_of: date
@@ -130,6 +137,9 @@ class Seed:
     class_tags: list[Row]
     slot_tags: list[Row]
     session_tags: list[Row]
+    # What the gym spent these three months (0083), under the categories every gym is
+    # given: rent, power, water, internet and pay, and one voided as typed twice.
+    expenses: list[Row]
 
     def tables(self) -> Iterator[tuple[str, list[Row]]]:
         """Each table's rows, in an order the foreign keys accept."""
@@ -161,6 +171,7 @@ class Seed:
         yield "class_tag", self.class_tags
         yield "schedule_slot_tag", self.slot_tags
         yield "session_tag", self.session_tags
+        yield "expense", self.expenses
 
 
 def local(day: date, hour: int = 0, minute: int = 0) -> datetime:
@@ -781,6 +792,75 @@ def _extra_charges(as_of: date) -> tuple[list[Row], list[Row], list[Row]]:
     return charges, lines, payments
 
 
+# Each month's expenses: the category's key, the day of the month it is paid, the
+# amounts of the month two before the seed's, the one before and the seed's own, the
+# payee and the method.
+MONTHLY_EXPENSES = (
+    ("sueldos", 1, (600_000, 600_000, 600_000), "Sebastián Araya", "transfer"),
+    ("arriendo", 5, (650_000, 650_000, 650_000), "Inmobiliaria Los Robles", "transfer"),
+    ("internet", 10, (32_990, 32_990, 32_990), "Movistar", "card"),
+    ("luz", 20, (78_400, 91_200, 84_000), "Enel", "transfer"),
+    ("agua", 22, (18_500, 17_900, 19_300), "Aguas Andinas", "transfer"),
+)
+
+
+def _expenses(as_of: date) -> list[Row]:
+    """`MONTHLY_EXPENSES` up to the seed date, the federation's yearly fee last month,
+    and last month's internet typed twice, the second voided."""
+    by = seed_id("person", VALIDATOR)
+    this_month = as_of.replace(day=1)
+    rows: list[Row] = []
+
+    def spent(key: str, n: str, day: date, amount: int, payee: str, method: str) -> Row:
+        recorded = local(day, 20)
+        return {
+            "id": seed_id("expense", key, n),
+            "gym_id": GYM_ID,
+            "spent_on": day,
+            "amount_clp": amount,
+            "category_id": default_expense_category_id(GYM_ID, key),
+            "payee": payee,
+            "method": method,
+            "note": None,
+            "receipt_object_key": None,
+            "created_by": by,
+            "created_at": recorded,
+            "voided_at": None,
+            "voided_by": None,
+            "void_reason": None,
+        }
+
+    for back in (2, 1, 0):
+        month = add_months(this_month, -back)
+        for key, day_of_month, amounts, payee, method in MONTHLY_EXPENSES:
+            day = month.replace(day=day_of_month)
+            if day <= as_of:
+                rows.append(spent(key, month.isoformat(), day, amounts[2 - back], payee, method))
+    last_month = add_months(this_month, -1)
+    fee = spent(
+        "federacion",
+        last_month.isoformat(),
+        last_month.replace(day=15),
+        120_000,
+        "Federación Nacional",
+        "transfer",
+    )
+    rows.append({**fee, "note": "Cuota anual de afiliación"})
+    twice = spent(
+        "internet",
+        f"{last_month.isoformat()}/twice",
+        last_month.replace(day=10),
+        32_990,
+        "Movistar",
+        "card",
+    )
+    voided = local(last_month.replace(day=12), 9)
+    rows.append(
+        {**twice, "voided_at": voided, "voided_by": by, "void_reason": "Registrado dos veces"}
+    )
+    return rows
+
+
 def build(as_of: date) -> Seed:
     """The demo gym as it stands on `as_of`, a gym-local date."""
     builder = _Builder(as_of)
@@ -918,4 +998,5 @@ def build(as_of: date) -> Seed:
         extra_charges=extra_charges,
         extra_lines=extra_lines,
         **_classes(as_of, builder.memberships),
+        expenses=_expenses(as_of),
     )

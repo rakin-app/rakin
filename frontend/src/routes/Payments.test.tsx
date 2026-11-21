@@ -570,6 +570,14 @@ describe('Pagos', () => {
     expect(document.querySelectorAll('.payments__header .button--primary')).toHaveLength(1)
   })
 
+  it('leaves Gastos out of "Más" for an Administrador, who sees no expenses (#314)', async () => {
+    stubApi({ role: 'admin' })
+    renderAt('/admin/pagos')
+    await table()
+    const more = document.querySelector('.payments__toolbar .more-menu__list')!
+    expect([...more.children].map((c) => c.textContent)).toEqual([copy.extra, copy.exportCsv, copy.exportXlsx])
+  })
+
   it('keeps Cobros extra and the exports under "Más", the header holding two actions (#357)', async () => {
     stubApi()
     renderAt('/admin/pagos')
@@ -579,7 +587,8 @@ describe('Pagos', () => {
     expect([...header.querySelectorAll('a, button, summary')].map((c) => c.textContent)).toEqual([copy.review(3), copy.record])
     // "Más" beside the period picker, holding the rest.
     const more = document.querySelector('.payments__toolbar .more-menu__list')!
-    expect([...more.children].map((c) => c.textContent)).toEqual([copy.extra, copy.exportCsv, copy.exportXlsx])
+    // Gastos too, for whoever sees expenses (#314): the titular.
+    expect([...more.children].map((c) => c.textContent)).toEqual([copy.extra, copy.expenses, copy.exportCsv, copy.exportXlsx])
   })
 
   it('draws the period picker before the book answers, so the header does not move (#357)', async () => {

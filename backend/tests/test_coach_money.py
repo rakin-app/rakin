@@ -122,6 +122,8 @@ def ids(loaded: Loaded) -> dict[str, str]:
         "import_id": unknown,
         # An acceptance of the terms (#499).
         "acceptance_id": unknown,
+        # An expense's receipt (#314), which a coach is refused.
+        "expense_id": unknown,
         # A discount quoted (#25).
         "pct": "10",
         # Clases's week or month (#426).

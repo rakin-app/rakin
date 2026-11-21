@@ -56,6 +56,7 @@ class Gym:
     empty_group: uuid.UUID
     session: uuid.UUID
     history_payment: uuid.UUID
+    expense: uuid.UUID
     newcomer: uuid.UUID  # in the gym, on no line and in no group
 
 
@@ -283,6 +284,45 @@ CASES = (
         "DELETE FROM history_payment WHERE id = $1",
         lambda gym, actor: (gym.history_payment,),
     ),
+    # Gastos (0083): read with `expenses_read`, written with `expenses_write`, an expense
+    # as recorded by the person acting.
+    Case("expense_read", Permission.EXPENSES_READ, "SELECT id FROM expense WHERE gym_id = $1"),
+    Case(
+        "expense_insert",
+        Permission.EXPENSES_WRITE,
+        "INSERT INTO expense (gym_id, spent_on, amount_clp, category_id, created_by)"
+        " SELECT $1, '2026-11-02', 32990, id, $2 FROM expense_category"
+        " WHERE gym_id = $1 AND is_other",
+        lambda gym, actor: (gym.id, actor),
+    ),
+    Case(
+        "expense_update",
+        Permission.EXPENSES_WRITE,
+        "UPDATE expense SET note = 'boleta 123' WHERE id = $1",
+        lambda gym, actor: (gym.expense,),
+    ),
+    Case(
+        "expense_category_read",
+        Permission.EXPENSES_READ,
+        "SELECT id FROM expense_category WHERE gym_id = $1",
+    ),
+    Case(
+        "expense_category_insert",
+        Permission.EXPENSES_WRITE,
+        "INSERT INTO expense_category (gym_id, name, sort) VALUES ($1, 'Publicidad', 99)",
+    ),
+    Case(
+        "expense_category_update",
+        Permission.EXPENSES_WRITE,
+        "UPDATE expense_category SET sort = sort + 1 WHERE gym_id = $1",
+    ),
+    Case(
+        "audit_event_expense",
+        Permission.EXPENSES_WRITE,
+        "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
+        " VALUES ($1, $2, 'expense_changed', jsonb_build_object('expense_id', $3::text))",
+        lambda gym, actor: (gym.id, actor, str(gym.expense)),
+    ),
     # Resumen del mes's kept months (0082): money, read as the ledger is.
     Case(
         "gym_month_figure_read",
@@ -377,12 +417,18 @@ def gym(db: Database) -> Gym:
         " VALUES ($1, $2, 'title_created', '{}')",
         owner,
     )
-    # An expense's row, which #314 adds the action for: this database lets it in early.
-    superuser(db, "ALTER TABLE audit_event DROP CONSTRAINT audit_event_action_check")
-    one(
-        "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
-        f" VALUES ($1, $2, $2, '{EXPENSE_ACTION}', '{{}}')",
+    # An expense (0083), and its row of the log, which names nobody.
+    expense = one(
+        "INSERT INTO expense (gym_id, spent_on, amount_clp, category_id, created_by)"
+        " SELECT $1, '2026-11-01', 650000, id, $2 FROM expense_category"
+        " WHERE gym_id = $1 AND name = 'Arriendo' RETURNING id",
         owner,
+    )
+    one(
+        "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
+        f" VALUES ($1, $2, '{EXPENSE_ACTION}', jsonb_build_object('expense_id', $3::text))",
+        owner,
+        str(expense),
     )
     one(
         "INSERT INTO gym_month_figure (gym_id, month, figure, value, rules_version)"
@@ -401,6 +447,7 @@ def gym(db: Database) -> Gym:
         empty_group,
         session,
         history_payment,
+        expense,
         newcomer,
     )
 
