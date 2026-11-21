@@ -20,7 +20,9 @@ both: `meta.rakin.app` for Meta's. A notice of no gym links to the base host. A 
 with a logo (#223) has it over the message, as a PNG on that host (`app.api.logos`).
 And a gym's notices call it, and its members, by its own words (#345,
 `app.domain.vocabulary`), as `words`: "habla con el club". A gym with none, and a notice
-of no gym, read today's.
+of no gym, read today's. They wear its theme, too (#515, `app.notices.colours`), as
+`colours`: its accent on the buttons and bars, its tints for the text and the page. A
+notice of no gym wears Bosque, the default.
 
 A non-essential notice (plan events, announcements) carries a one-click unsubscribe
 link, in its footer and as `List-Unsubscribe` with `List-Unsubscribe-Post` (RFC 8058),
@@ -76,6 +78,7 @@ from app.hosts import Hosts
 from app.integrations.mailer import Attachment, Email, MailDeliveryError, Mailer, check_recipient
 from app.logos import EMAIL_VARIANT, logo_path
 from app.magiclink import Link, MagicLinks, Recipient
+from app.notices.colours import mail_colours
 from app.notices.unsubscribe import UNSUBSCRIBE_PATH, UnsubscribeSigner
 
 logger = logging.getLogger(__name__)
@@ -272,6 +275,7 @@ def render(
     gym_logo_url: str | None = None,
     app_url: str | None = None,
     words: Words = DEFAULT_WORDS,
+    theme: str | None = None,
     env: Environment = ENVIRONMENT,
 ) -> Email:
     """The message `notice` is, with its unsubscribe and sign-in links when it has them,
@@ -279,7 +283,8 @@ def render(
     `logo_url` is Rakin's logo for the footer; without it the footer names Rakin in text.
     `gym_logo_url` is the gym's (#223), over the message; without it there is none.
     `app_url` is where the gym's app is, for a link into it that signs nobody in.
-    `words` are what the gym calls itself and its members (#345); today's by default."""
+    `words` are what the gym calls itself and its members (#345); today's by default.
+    `theme` is the gym's (#515), whose colours it wears; Bosque's without one."""
     name = notice.template.name
     context = {
         **notice.context,
@@ -290,6 +295,7 @@ def render(
         "gym_logo_url": gym_logo_url,
         "app_url": app_url,
         "words": words,
+        "colours": mail_colours(theme),
         "page_link_days": PAGE_LINK_TTL.days,
     }
     subject = " ".join(env.get_template(f"{name}.subject.txt").render(context).split())
@@ -352,27 +358,29 @@ class Notices:
         base = (base_url or self._base_url).rstrip("/")
         return f"{base}{UNSUBSCRIBE_PATH}/{self._signer.sign(gym_id, person_id)}"
 
-    async def gym_host(self, gym_id: uuid.UUID | None) -> tuple[str, str | None, Words]:
+    async def gym_host(self, gym_id: uuid.UUID | None) -> tuple[str, str | None, Words, str | None]:
         """Where the gym's notices link to, its own host or the base host, the URL of
-        its logo there for the header (#223), None with no logo, and its words (#345)."""
+        its logo there for the header (#223), None with no logo, its words (#345), and
+        its theme (#515), None for no gym."""
         if gym_id is None:
-            return self._base_url, None, DEFAULT_WORDS
+            return self._base_url, None, DEFAULT_WORDS, None
         async with self._in_gym(gym_id) as session:
             row = (
                 await session.execute(
                     text(
-                        "SELECT slug, logo_version, settings -> 'vocabulary' AS vocabulary"
-                        " FROM gym WHERE id = :g"
+                        "SELECT slug, logo_version, theme,"
+                        " settings -> 'vocabulary' AS vocabulary FROM gym WHERE id = :g"
                     ),
                     {"g": gym_id},
                 )
             ).one_or_none()
         slug, version = (None, None) if row is None else (row.slug, row.logo_version)
         words = DEFAULT_WORDS if row is None else Words(vocabulary.read(row.vocabulary))
+        theme = None if row is None else row.theme
         base_url = self._base_url if self._hosts is None else self._hosts.base_url(slug)
         path = logo_path(gym_id, version)
         logo_url = None if path is None else f"{base_url}{path}/{EMAIL_VARIANT}"
-        return base_url, logo_url, words
+        return base_url, logo_url, words, theme
 
     async def send(self, notice: Notice) -> Outcome:
         """Send `notice` unless its addressee unsubscribed from it or its address is
@@ -380,7 +388,7 @@ class Notices:
         unsubscribe_url = None
         extra = {"template": notice.template.name, "person_id": str(notice.person_id)}
         try:
-            base_url, gym_logo_url, words = await self.gym_host(notice.gym_id)
+            base_url, gym_logo_url, words, theme = await self.gym_host(notice.gym_id)
         # The database down, say: a link to the wrong host is no better than none.
         except Exception as exc:
             logger.exception("notice host not found", extra=extra)
@@ -440,6 +448,7 @@ class Notices:
                 gym_logo_url=gym_logo_url,
                 app_url=base_url,
                 words=words,
+                theme=theme,
                 env=self._env,
             )
             await self._mailer.send(email)

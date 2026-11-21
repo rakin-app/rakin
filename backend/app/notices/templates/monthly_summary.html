@@ -1,23 +1,23 @@
 {% extends "_layout.html" %}
 {% block title %}Resumen de {{ month | mes }} en {{ gym }}{% endblock %}
 {% block body %}
-{% from "_bar.html" import bar %}
+{% from "_bar.html" import bar with context %}
 {% set s = summary %}
 {% set mes = month | mes %}
 {% set paid = s.after_reminders %}
 {% set nudges = s.nudges %}
 {% set own = s.own_payments %}
 {% set reminders = s.reminder_emails + s.reminder_whatsapps %}
-{% set label = "margin:0;font-size:14px;line-height:1.4;color:#52525b;" %}
-{% set detail = "margin:0;font-size:14px;line-height:1.4;color:#52525b;" %}
+{% set label = "margin:0;font-size:14px;line-height:1.4;color:{{ colours.text_muted }};" %}
+{% set detail = "margin:0;font-size:14px;line-height:1.4;color:{{ colours.text_muted }};" %}
 {% set heading = "margin:28px 0 8px;font-size:16px;line-height:1.3;font-weight:700;" %}
 <p style="margin:0 0 16px;">Hola, {{ name }}:</p>
 <p style="margin:0 0 24px;">Así fue {{ mes }} en {{ gym }}: lo que pasó después de los recordatorios de Rakin y los mensajes del equipo.</p>
-<p style="margin:0 0 16px;font-size:20px;line-height:1.3;font-weight:700;">{{ mes | capitalize }} {{ month.year }}{% if s.since %} <span style="font-size:14px;font-weight:400;color:#52525b;">· desde el {{ s.since | fecha_larga }}</span>{% endif %}</p>
+<p style="margin:0 0 16px;font-size:20px;line-height:1.3;font-weight:700;color:{{ colours.heading }};">{{ mes | capitalize }} {{ month.year }}{% if s.since %} <span style="font-size:14px;font-weight:400;color:{{ colours.text_muted }};">· desde el {{ s.since | fecha_larga }}</span>{% endif %}</p>
 {% if paid.total.payments > 0 %}
 <div style="margin:0 0 20px;">
 <p style="{{ label }}">Pagos atrasados que llegaron después de un recordatorio</p>
-<p style="margin:2px 0 0;font-size:32px;line-height:1.2;font-weight:700;">{{ paid.total.amount_clp | clp }}</p>
+<p style="margin:2px 0 0;font-size:32px;line-height:1.2;font-weight:700;color:{{ colours.accent }};">{{ paid.total.amount_clp | clp }}</p>
 {{ bar(paid.total.amount_clp, s.income_clp) }}
 <p style="{{ detail }}">{% if paid.total.payments == 1 %}1 pago atrasado{% else %}{{ paid.total.payments }} pagos atrasados{% endif %} · {% if paid.income_percent is not none %}el {{ paid.income_percent | porcentaje }} {% endif %}de {{ s.income_clp | clp }} cobrado en {{ mes }}</p>
 </div>
@@ -25,7 +25,7 @@
 {% if s.whatsapp and nudges.nudged > 0 %}
 <div style="margin:0 0 20px;">
 <p style="{{ label }}">Volvieron a clases después de un WhatsApp del equipo</p>
-<p style="margin:2px 0 0;font-size:32px;line-height:1.2;font-weight:700;">{{ nudges.back }} de {{ nudges.nudged }}</p>
+<p style="margin:2px 0 0;font-size:32px;line-height:1.2;font-weight:700;color:{{ colours.accent }};">{{ nudges.back }} de {{ nudges.nudged }}</p>
 {{ bar(nudges.back, nudges.nudged) }}
 <p style="{{ detail }}">{{ words.members | capitalize }} que no venían hace 14 días o más; volvieron dentro de dos semanas{% if nudges.percent is not none %} · {{ nudges.percent | porcentaje }}{% endif %}</p>
 </div>
@@ -37,7 +37,7 @@
 <p style="{{ detail }}">{% if s.reminder_emails %}{{ s.reminder_emails }} por correo de Rakin{% endif %}{% if s.reminder_emails and s.reminder_whatsapps %} · {% endif %}{% if s.reminder_whatsapps %}{{ s.reminder_whatsapps }} por WhatsApp del equipo{% endif %}</p>
 </div>
 {% else %}
-<p style="margin:0 0 20px;color:#52525b;">Ese mes no se envió ningún recordatorio de pago.</p>
+<p style="margin:0 0 20px;color:{{ colours.text_muted }};">Ese mes no se envió ningún recordatorio de pago.</p>
 {% endif %}
 {% set split = [] %}
 {% if paid.emails_only.payments > 0 %}{% set split = split + [("Sin mensaje del equipo", paid.emails_only)] %}{% endif %}
@@ -67,13 +67,13 @@
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;line-height:1.4;">
 {% for count_label, figure in counts %}
 <tr>
-<td width="60%" style="padding:8px 0;border-top:1px solid #e4e4e7;">{{ count_label }}</td>
-<td align="right" style="padding:8px 0 8px 12px;border-top:1px solid #e4e4e7;font-weight:600;">{{ figure }}</td>
+<td width="60%" style="padding:8px 0;border-top:1px solid {{ colours.divider }};">{{ count_label }}</td>
+<td align="right" style="padding:8px 0 8px 12px;border-top:1px solid {{ colours.divider }};font-weight:600;">{{ figure }}</td>
 </tr>
 {% endfor %}
 </table>
 {% endif %}
-<p style="margin:28px 0 0;font-size:14px;line-height:1.5;color:#52525b;"><strong style="color:#18181b;">Cómo contamos esto.</strong> Un pago cuenta cuando llegó después de su vencimiento y después de al menos un recordatorio enviado tras esa fecha. Algunos habrían pagado igual: por eso decimos «después de» y no «gracias a». Son totales del mes: no se guarda ni se muestra quién está detrás de cada número.</p>
-<p style="margin:24px 0 8px;"><a href="{{ app_url }}/admin/pagos/resumen?month={{ month.isoformat() }}" style="display:inline-block;padding:12px 24px;background:#18181b;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">Ver el detalle en Rakin</a></p>
-<p style="margin:0;font-size:14px;color:#52525b;">Puedes dejar de recibir este resumen en Ajustes › Gimnasio.</p>
+<p style="margin:28px 0 0;font-size:14px;line-height:1.5;color:{{ colours.text_muted }};"><strong style="color:{{ colours.heading }};">Cómo contamos esto.</strong> Un pago cuenta cuando llegó después de su vencimiento y después de al menos un recordatorio enviado tras esa fecha. Algunos habrían pagado igual: por eso decimos «después de» y no «gracias a». Son totales del mes: no se guarda ni se muestra quién está detrás de cada número.</p>
+<p style="margin:24px 0 8px;"><a href="{{ app_url }}/admin/pagos/resumen?month={{ month.isoformat() }}" style="display:inline-block;padding:12px 24px;background:{{ colours.accent }};color:{{ colours.on_accent }};text-decoration:none;border-radius:6px;font-weight:600;">Ver el detalle en Rakin</a></p>
+<p style="margin:0;font-size:14px;color:{{ colours.text_muted }};">Puedes dejar de recibir este resumen en Ajustes › Gimnasio.</p>
 {% endblock %}

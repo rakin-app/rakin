@@ -1,4 +1,5 @@
-"""A gym's theme (#199): the colours its app, student page and sign-in pages wear.
+"""A gym's theme (#199): the colours its app, student page, sign-in pages and emails
+(#515, `app.notices.colours`) wear.
 
 `gym.theme` (0039) holds one of these; the first is the default. The frontend keeps
 the same list in `src/theme.ts`, and `tokens.css` a block of colours for each.
