@@ -305,6 +305,8 @@ What the gym spends (#314, `app.api.expenses`, migration 0083), kept apart from 
 | `GET /api/expenses/{id}/receipt` | presigns its download |
 | `GET`/`POST /api/expenses/categories`, `PATCH .../{id}`, `POST .../order`, `POST .../{id}/archive`, `POST .../{id}/restore` | the gym's list, seeded with twelve defaults: renamed, added (at most 100 live: 409 `too_many_categories`), reordered, archived (never deleted; Otros never archived) and restored (a live one stays where it is) |
 
+A new gym gets the twelve defaults from the `gym` insert trigger. Every gym already there got them by migration: 0083 reached only the gyms in `jobs_gym_ids()`, which leaves out a suspended gym, so 0084 gives them to every gym through `migration_gym_ids()` (#525). That lookup is a `SECURITY DEFINER` function owned by `rakin_auth`, as `jobs_gym_ids()` is, and only the owner may call it. It lists every gym, suspended or not, and later per-gym backfills use it, not the jobs' list.
+
 Reads need `expenses_read`, writes `expenses_write`, at the API and under RLS; no role holds either until the gym ticks it in Cargos, so they start the titular's alone. `rakin_app` has no DELETE on either table, and the log's expense rows name no person and are read with `expenses_read` alone (0067).
 
 ## Plans API
