@@ -1,7 +1,7 @@
 """Resumen del mes (#505): what happened after Rakin's reminders and nudges in a month,
 as counts with what each is out of (`app.domain.value_summary`)."""
 
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -54,6 +54,16 @@ class ProofReviews(BaseModel):
     median_minutes: int | None
 
 
+class KeptMonth(BaseModel):
+    """A closed month read from what was kept of it (`gym_month_figure`, #506), not
+    counted again: its figures as they were counted, under `rules_version`."""
+
+    computed_at: datetime
+    rules_version: int
+    # Counted under rules older than today's: "Cómo contamos esto" says so.
+    older_rules: bool
+
+
 class MonthSummary(BaseModel):
     """`GET /api/summary?month=YYYY-MM`, the gym's month in its timezone."""
 
@@ -82,3 +92,9 @@ class MonthSummary(BaseModel):
     reactivated: int
     # Trials that became a paid plan.
     trials_converted: int
+    # Owed on overdue periods of Active memberships as the month closed; `None` for the
+    # current month, and for a closed month that was not kept.
+    overdue_clp: int | None
+    # How a closed month was kept; `None` when it was counted for this request, as the
+    # current month always is.
+    kept: KeptMonth | None

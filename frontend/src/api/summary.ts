@@ -32,6 +32,11 @@ export type MonthSummary = {
   proofs: { reviewed: number; median_minutes: number | null }
   reactivated: number
   trials_converted: number
+  // Owed on overdue periods of Active memberships as the month closed; null for the
+  // current month and for a closed month that was not kept (#506).
+  overdue_clp: number | null
+  // How a closed month was kept on the 1st; null when it was counted for this request.
+  kept: { computed_at: string; rules_version: number; older_rules: boolean } | null
 }
 
 /** The month starting `month` (`2026-11-01`), or the current one. Owner and admin only: it is money. */

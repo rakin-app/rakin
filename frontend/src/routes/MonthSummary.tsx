@@ -40,6 +40,9 @@ const route = getRouteApi('/admin/pagos/resumen')
  * a percentage only from 5 up. Each line shows only when its figure exists. No names
  * behind any figure, and no comparison with other months.
  *
+ * A closed month is the one kept on the 1st (#506), with the debt it closed with; one
+ * counted under older rules says so under "Cómo contamos esto".
+ *
  * Owner and admin only, as the rest of Pagos; a coach is told so and nothing is asked
  * of the API.
  */
@@ -155,6 +158,7 @@ function Figures({ summary }: { summary: Summary }) {
       label: copy.trialsConverted,
       figure: String(summary.trials_converted),
     },
+    summary.overdue_clp !== null && { key: 'overdue', label: copy.overdue, figure: clp(summary.overdue_clp) },
   ].filter((count) => count !== false)
 
   return (
@@ -205,6 +209,8 @@ function Figures({ summary }: { summary: Summary }) {
         <p>{copy.how.anyway}</p>
         <p>{copy.how.back}</p>
         <p>{copy.how.totals}</p>
+        {summary.overdue_clp !== null && <p>{copy.how.overdue}</p>}
+        {summary.kept && <p>{summary.kept.older_rules ? copy.how.olderRules : copy.how.kept}</p>}
       </details>
     </>
   )

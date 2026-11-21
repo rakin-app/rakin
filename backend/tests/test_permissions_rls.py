@@ -283,6 +283,18 @@ CASES = (
         "DELETE FROM history_payment WHERE id = $1",
         lambda gym, actor: (gym.history_payment,),
     ),
+    # Resumen del mes's kept months (0082): money, read as the ledger is.
+    Case(
+        "gym_month_figure_read",
+        Permission.MONEY_READ,
+        "SELECT figure FROM gym_month_figure WHERE gym_id = $1",
+    ),
+    Case(
+        "gym_month_figure_insert",
+        Permission.MONEY_READ,
+        "INSERT INTO gym_month_figure (gym_id, month, figure, value, rules_version)"
+        " VALUES ($1, '2026-02-01', 'income_clp', 1, 1)",
+    ),
 )
 
 
@@ -371,6 +383,10 @@ def gym(db: Database) -> Gym:
         "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
         f" VALUES ($1, $2, $2, '{EXPENSE_ACTION}', '{{}}')",
         owner,
+    )
+    one(
+        "INSERT INTO gym_month_figure (gym_id, month, figure, value, rules_version)"
+        " VALUES ($1, '2026-01-01', 'income_clp', 30000, 1)"
     )
     newcomer = uuid.uuid4()
     superuser(db, "INSERT INTO person (id, name) VALUES ($1, 'x')", newcomer)
