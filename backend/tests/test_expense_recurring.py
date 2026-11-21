@@ -11,9 +11,10 @@ records an expense: every one is a person's request.
 import re
 import uuid
 from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import asyncpg
 import pytest
@@ -29,6 +30,7 @@ from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import unique_slug
 from tests.pg import (
+    DEFAULT_TIMEZONE,
     Database,
     in_gym,
     migrate,
@@ -109,7 +111,9 @@ def template_since(
             gym,
             day,
             seeded_owner(gym),
-            since,
+            # Midday in the gym's timezone: a bare date is midnight UTC, which in
+            # Santiago is still the day, and maybe the month, before.
+            datetime.combine(since, time(12), tzinfo=ZoneInfo(DEFAULT_TIMEZONE)),
             name,
         ),
     )
