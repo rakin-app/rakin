@@ -8,7 +8,17 @@ import { useTimerSync } from '../api/sessionBlocks'
 import { GymMark } from '../components/GymMark'
 import { InstallHint } from '../components/InstallHint'
 import { RakinLogo } from '../components/RakinLogo'
-import { ClassesIcon, MyPageIcon, PaymentsIcon, SettingsIcon, SignOutIcon, StudentsIcon, TodayIcon } from '../components/icons'
+import {
+  ClassesIcon,
+  MyPageIcon,
+  PaymentsIcon,
+  SettingsIcon,
+  SignOutIcon,
+  StatusIcon,
+  StudentsIcon,
+  TodayIcon,
+} from '../components/icons'
+import { STATUS_URL } from '../config'
 import { t } from '../i18n/es'
 import { useRise } from '../motion'
 import { useGymName } from '../pageTitle'
@@ -49,7 +59,8 @@ const NAV_ITEMS: readonly NavItem[] = [
  * Ajustes: theirs is in the account menu of the phone's top bar, never a tab one thumb-tap
  * from Clases at the mat (#358). "Mi página", the student page of staff who also train
  * (#214), sits above it in the sidebar: in Cuenta on an owner's phone, a fourth tab on a
- * coach's.
+ * coach's. "Estado del servicio", the public uptime page (#519), sits between them in the
+ * sidebar; on a phone it is in Cuenta, or a coach's account menu.
  */
 export function AdminLayout() {
   const me = useQuery(myselfQuery()).data
@@ -189,7 +200,16 @@ function AdminShell() {
               </Link>
             </li>
           )}
-          {/* The sidebar's; on a phone it is in Ajustes → Cuenta, or a coach's account menu. */}
+          {/* The sidebar's, as is Cerrar sesión; on a phone both are in Ajustes → Cuenta, or a
+              coach's account menu. */}
+          <li className="admin-nav__end">
+            <a href={STATUS_URL} target="_blank" rel="noopener noreferrer" className="admin-nav__link">
+              <span className="admin-nav__icon">
+                <StatusIcon />
+              </span>
+              <span>{t.nav.status}</span>
+            </a>
+          </li>
           <li className="admin-nav__end">
             <button
               type="button"
@@ -220,8 +240,8 @@ function AdminShell() {
   )
 }
 
-/** A coach's account on a phone (#358): who is signed in, and "Cerrar sesión", behind one
- * button of the top bar, as an owner's are in Ajustes → Cuenta. */
+/** A coach's account on a phone (#358): who is signed in, "Estado del servicio" (#519) and
+ * "Cerrar sesión", behind one button of the top bar, as an owner's are in Ajustes → Cuenta. */
 function AccountMenu() {
   const me = useQuery(myselfQuery())
   const signOut = useSignOut()
@@ -260,6 +280,16 @@ function AccountMenu() {
       </button>
       <div id={menuId} className="admin-account__menu" hidden={!open}>
         {me.data?.name && <p className="admin-account__name">{me.data.name}</p>}
+        <a
+          href={STATUS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="admin-account__item"
+          onClick={() => setOpen(false)}
+        >
+          <StatusIcon />
+          <span>{t.nav.status}</span>
+        </a>
         <button
           type="button"
           className="admin-account__item"

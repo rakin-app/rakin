@@ -8,6 +8,7 @@ import type { Program } from '../api/people'
 import type { Plan, PlanMembership } from '../api/plans'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
+import { STATUS_URL } from '../config'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { DEFAULT_VOCABULARY, wearVocabulary } from '../i18n/vocabulary'
@@ -359,6 +360,17 @@ describe('Ajustes', () => {
     await userEvent.click(await within(account).findByRole('link', { name: es.nav.myPage }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+  })
+
+  it('has "Estado del servicio" in Cuenta, the public status page in a new tab (#519)', async () => {
+    stubApi({ role: 'admin' })
+    renderAt('/admin/ajustes/cuenta')
+
+    const account = await screen.findByRole('region', { name: copy.account.title })
+    const status = await within(account).findByRole('link', { name: new RegExp(es.nav.status) })
+    expect(status).toHaveAttribute('href', STATUS_URL)
+    expect(status).toHaveAttribute('target', '_blank')
+    expect(status).toHaveTextContent(es.nav.statusLine)
   })
 
   it('has no "Mi página" in Cuenta for an owner who does not train', async () => {

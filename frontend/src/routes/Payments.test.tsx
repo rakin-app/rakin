@@ -662,7 +662,7 @@ describe('Pagos', () => {
     renderAt('/admin')
 
     const nav = await screen.findByRole('navigation', { name: es.nav.label })
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases'])
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases', 'Estado del servicio'])
   })
 
   it('is hidden from coaches, who never ask for it', async () => {
@@ -671,7 +671,7 @@ describe('Pagos', () => {
 
     expect(await screen.findByText(copy.coachesOnly)).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: es.nav.label })
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases'])
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases', 'Estado del servicio'])
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(asked).toEqual([])
   })

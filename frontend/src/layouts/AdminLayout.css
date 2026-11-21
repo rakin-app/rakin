@@ -117,6 +117,7 @@
   font-size: var(--text-md);
   font-weight: var(--font-weight-medium);
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
 }
 

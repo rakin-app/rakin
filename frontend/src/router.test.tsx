@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from './api/queryClient'
 import { App } from './App'
+import { STATUS_URL } from './config'
 import { es } from './i18n/es'
 import { createAppRouter } from './router'
 import { asRole } from './test/access'
@@ -65,13 +66,15 @@ describe('/admin route tree', () => {
     // Pagos and Ajustes join once the role is known to reach them.
     await within(nav).findByRole('link', { name: es.nav.settings })
     const links = within(nav).getAllByRole('link')
-    expect(links.map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases', 'Pagos', 'Ajustes'])
+    // Then the sidebar's "Estado del servicio" (#519), which a phone's bar leaves out.
+    expect(links.map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases', 'Pagos', 'Ajustes', 'Estado del servicio'])
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/admin',
       '/admin/alumnos',
       '/admin/clases',
       '/admin/pagos',
       '/admin/ajustes',
+      STATUS_URL,
     ])
   })
 
@@ -161,6 +164,7 @@ describe('signing in', () => {
       'Clases',
       'Pagos',
       'Ajustes',
+      'Estado del servicio',
     ])
     expect(router.state.location.pathname).toBe('/admin')
   })
@@ -319,6 +323,40 @@ describe('staff who also train (#214)', () => {
     await within(nav).findByRole('link', { name: es.nav.settings })
 
     expect(within(nav).queryByRole('link', { name: es.nav.myPage })).not.toBeInTheDocument()
+  })
+
+  it.each(['owner', 'admin', 'coach'])('gives a %s "Estado del servicio" in the sidebar, in a new tab (#519)', async (role) => {
+    signedInAs(role, false)
+    renderAt('/admin')
+    const nav = await screen.findByRole('navigation', { name: es.nav.label })
+
+    const status = await within(nav).findByRole('link', { name: es.nav.status })
+    expect(status).toHaveAttribute('href', STATUS_URL)
+    expect(status).toHaveAttribute('target', '_blank')
+    expect(status).toHaveAttribute('rel', expect.stringContaining('noopener'))
+    // The sidebar's alone, as Cerrar sesión is: on a phone it is in Cuenta or the account menu.
+    expect(status.closest('li')).toHaveClass('admin-nav__end')
+    expect(status.closest('li')).not.toHaveClass('admin-nav__end--bar')
+  })
+
+  it("puts \"Estado del servicio\" in a coach's account menu, the phone's way to it (#519)", async () => {
+    signedInAs('coach', false)
+    renderAt('/admin')
+    const account = await screen.findByRole('button', { name: es.nav.account })
+    await userEvent.click(account)
+    const menu = document.getElementById(account.getAttribute('aria-controls')!)!
+
+    const status = within(menu).getByRole('link', { name: es.nav.status })
+    expect(status).toHaveAttribute('href', STATUS_URL)
+    expect(status).toHaveAttribute('target', '_blank')
+  })
+
+  it('shows a member no "Estado del servicio" (#519)', async () => {
+    signedInAs(null, true)
+    renderAt('/me')
+
+    expect(await screen.findByRole('heading', { level: 1, name: es.me.home.title })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: es.nav.status })).not.toBeInTheDocument()
   })
 
   it('shows a member no way into the panel', async () => {

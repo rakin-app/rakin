@@ -138,6 +138,15 @@ export function SignOutIcon() {
   )
 }
 
+/** A pulse line: "Estado del servicio" (#519). */
+export function StatusIcon() {
+  return (
+    <Icon>
+      <path d="M3 12h4l3-8 4 16 3-8h4" />
+    </Icon>
+  )
+}
+
 export function WhatsAppIcon() {
   return (
     <Icon>
