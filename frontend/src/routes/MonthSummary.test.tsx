@@ -134,14 +134,52 @@ describe('Resumen del mes', () => {
     expect(document.body.textContent).not.toMatch(/33\s%/)
   })
 
-  it('says when no reminder has gone out yet, and shows no figures it does not have', async () => {
-    stubApi('owner', () => EMPTY)
+  it('says in one neutral line that a month has no figures yet, and shows none', async () => {
+    const nudgedNobodyBack = { nudged: 2, back: 0, percent: null }
+    stubApi('owner', () => ({ ...EMPTY, income_clp: 50_000, income_payments: 1, nudges: nudgedNobodyBack }))
     renderAt('/admin/pagos/resumen')
 
-    expect(await screen.findByText(copy.noReminders)).toBeInTheDocument()
+    expect(await screen.findByText(copy.nothing)).toBeInTheDocument()
     expect(screen.queryByRole('list', { name: copy.tiles })).toBeNull()
     expect(screen.queryByRole('region', { name: copy.split })).toBeNull()
     expect(screen.queryByRole('region', { name: copy.counts })).toBeNull()
+    expect(document.body.textContent).not.toMatch(/ningún/)
+  })
+
+  it('never shows a zero: no tile, row, line or part of one (#516)', async () => {
+    stubApi('owner', () => ({
+      ...EMPTY,
+      income_clp: 200_000,
+      income_payments: 4,
+      reminder_emails: 14,
+      after_reminders: {
+        total: { payments: 2, amount_clp: 60_000 },
+        emails_only: { payments: 2, amount_clp: 60_000 },
+        after_whatsapp: NONE,
+        income_percent: null,
+      },
+      nudges: { nudged: 2, back: 0, percent: null },
+      emails_sent: 0,
+      overdue_clp: 0,
+      kept: { computed_at: '2026-11-01T06:00:00Z', rules_version: 1, older_rules: false },
+    }))
+    renderAt('/admin/pagos/resumen')
+
+    const tiles = within(await screen.findByRole('list', { name: copy.tiles }))
+    // Nudges sent, nobody back yet: no "0 de 2".
+    expect(tiles.queryByText(copy.backLabel)).toBeNull()
+    expect(screen.queryByText('0 de 2')).toBeNull()
+    // Reminders by email only: no WhatsApp part.
+    expect(tiles.getByText('14 por correo de Rakin')).toBeInTheDocument()
+    // One kind in the split: one row.
+    const split = within(screen.getByRole('region', { name: copy.split }))
+    expect(split.getByText(copy.emailsOnly)).toBeInTheDocument()
+    expect(split.queryByText(copy.afterWhatsapp)).toBeNull()
+    // No zero "Otros números" line, the closing debt included.
+    expect(screen.queryByRole('region', { name: copy.counts })).toBeNull()
+    expect(screen.queryByText(copy.how.overdue)).toBeNull()
+    expect(screen.queryByText(copy.nothing)).toBeNull()
+    expect(document.body.textContent).not.toMatch(/\b0 pagos|\$0\b|ningún/)
   })
 
   it('points to Ajustes with WhatsApp off, and says when a first month began', async () => {
@@ -192,7 +230,7 @@ describe('Resumen del mes', () => {
 
     await user.selectOptions(screen.getByLabelText(copy.month), '2026-10-01')
 
-    expect(await screen.findByText(copy.noRemindersPast)).toBeInTheDocument()
+    expect(await screen.findByText(copy.nothing)).toBeInTheDocument()
     expect(calls.some((c) => c.path === '/api/summary?month=2026-10')).toBe(true)
   })
 

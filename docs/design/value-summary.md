@@ -298,11 +298,24 @@ Anexo A's Resend row already covers.
 - No trend arrows or "+40 % vs. octubre" until a gym has three full months. A
   partial first month says "desde el 12 de noviembre".
 
-**A gym with nothing to show yet.** Each line appears only when its figure exists.
-With no reminders yet: "Aún no se ha enviado ningún recordatorio este mes. Cuando
-Rakin envíe uno, aquí verás lo que se pagó después." With the WhatsApp channel off,
-the WhatsApp line is replaced by one sentence on turning it on in Ajustes. No email
-goes out for a month with nothing in it.
+**Never a zero (#516).** The summary shows what came after Rakin's reminders and
+the team's messages, so a zero says nothing and reads as a failure. A figure, a
+tile, a split row, an "Otros números" line or a part of a line is shown only when
+its number is above zero:
+
+- the headline tiles: the money after a reminder, "N de M" back (hidden while N is
+  0, even with people messaged), the reminders sent;
+- the parts of a detail line ("14 por correo de Rakin", with no "· 0 por WhatsApp"),
+  each split row, every "Otros números" line, the closing debt included;
+- no sentence that only states an absence ("no se envió ningún recordatorio").
+  A sentence that explains a setting stays: with the WhatsApp channel off, one line
+  on turning it on in Ajustes.
+
+**A gym with nothing to show yet.** With nothing above zero, the page, where any
+month can be chosen, says "Todavía no hay números para este mes." instead of an
+empty card. No email goes out for such a month (`has_news`: at least one figure the
+email would show, the closing debt aside, which is no gain). A later figure follows
+the same rule.
 
 **Any activity.** Nothing in the rules is specific to martial arts. Grades play no
 part, and "clase" is the word the app already uses for every activity. The member,

@@ -37,8 +37,10 @@ const route = getRouteApi('/admin/pagos/resumen')
  *
  * It says what came *after*, never what Rakin caused: "después de", not "gracias a";
  * every money figure as part of the month's "Cobrado", every people figure as "N de M",
- * a percentage only from 5 up. Each line shows only when its figure exists. No names
- * behind any figure, and no comparison with other months.
+ * a percentage only from 5 up. Never a zero (#516): a tile, a row, a line or a part of
+ * one shows only when its number is above zero, and no sentence says nothing happened;
+ * a month with nothing above zero says so in one neutral line. No names behind any
+ * figure, and no comparison with other months.
  *
  * A closed month is the one kept on the 1st (#506), with the debt it closed with; one
  * counted under older rules says so under "Cómo contamos esto".
@@ -98,14 +100,14 @@ function SummaryPage() {
   )
 }
 
-/** The month's figures, each only when it exists, then how they are counted. */
+/** The month's figures, each only when it is above zero, then how they are counted. */
 function Figures({ summary }: { summary: Summary }) {
-  const current = summary.months[0] === summary.month
   const paid = summary.after_reminders
   const percent = (n: number | null) => (n === null ? null : copy.percent(n))
   const reminders = summary.reminder_emails + summary.reminder_whatsapps
   const nudges = summary.nudges
   const own = summary.own_payments
+  const overdue = summary.overdue_clp ?? 0
 
   const tiles: TileProps[] = [
     paid.total.payments > 0 && {
@@ -116,7 +118,7 @@ function Figures({ summary }: { summary: Summary }) {
       share: { value: paid.total.amount_clp, of: summary.income_clp },
     },
     summary.whatsapp &&
-      nudges.nudged > 0 && {
+      nudges.back > 0 && {
         key: 'back',
         label: copy.backLabel,
         figure: copy.backFigure(nudges.back, nudges.nudged),
@@ -146,11 +148,12 @@ function Figures({ summary }: { summary: Summary }) {
 
   const counts = [
     own.by_members > 0 && { key: 'own', label: copy.ownPayments, figure: copy.ofTotal(own.by_members, own.payments) },
-    summary.proofs.median_minutes !== null && {
-      key: 'proofs',
-      label: copy.proofs,
-      figure: copy.proofsFigure(summary.proofs.reviewed, copy.duration(summary.proofs.median_minutes)),
-    },
+    summary.proofs.reviewed > 0 &&
+      summary.proofs.median_minutes !== null && {
+        key: 'proofs',
+        label: copy.proofs,
+        figure: copy.proofsFigure(summary.proofs.reviewed, copy.duration(summary.proofs.median_minutes)),
+      },
     summary.emails_sent > 0 && { key: 'emails', label: copy.emailsSent, figure: String(summary.emails_sent) },
     summary.reactivated > 0 && { key: 'reactivated', label: copy.reactivated, figure: String(summary.reactivated) },
     summary.trials_converted > 0 && {
@@ -158,8 +161,9 @@ function Figures({ summary }: { summary: Summary }) {
       label: copy.trialsConverted,
       figure: String(summary.trials_converted),
     },
-    summary.overdue_clp !== null && { key: 'overdue', label: copy.overdue, figure: clp(summary.overdue_clp) },
+    overdue > 0 && { key: 'overdue', label: copy.overdue, figure: clp(overdue) },
   ].filter((count) => count !== false)
+  const nothing = tiles.length === 0 && split.length === 0 && counts.length === 0
 
   return (
     <>
@@ -175,9 +179,7 @@ function Figures({ summary }: { summary: Summary }) {
             ))}
           </PlainList>
         )}
-        {reminders === 0 && (
-          <p className="summary__empty">{current ? copy.noReminders : copy.noRemindersPast}</p>
-        )}
+        {nothing && <p className="summary__empty">{copy.nothing}</p>}
         {!summary.whatsapp && <p className="summary__empty">{copy.whatsappOff}</p>}
         {split.length > 0 && (
           <section className="summary__section" aria-labelledby="summary-split">
@@ -209,7 +211,7 @@ function Figures({ summary }: { summary: Summary }) {
         <p>{copy.how.anyway}</p>
         <p>{copy.how.back}</p>
         <p>{copy.how.totals}</p>
-        {summary.overdue_clp !== null && <p>{copy.how.overdue}</p>}
+        {overdue > 0 && <p>{copy.how.overdue}</p>}
         {summary.kept && <p>{summary.kept.older_rules ? copy.how.olderRules : copy.how.kept}</p>}
       </details>
     </>
