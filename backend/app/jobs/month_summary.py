@@ -32,8 +32,10 @@ the figures stored, the page's own (`app.schemas.summary.month_summary`), so the
 and the page never disagree. It runs after the statements and the overdue emails, on
 the first `EMAIL_WITHIN_DAYS` days of the month: the 1st for a gym kept then, the day it
 is kept for one the 1st did not reach, and never weeks late. A gym's month is emailed
-once: one with a `monthly_summary` row in `message_log` that was sent, or suppressed
-by an unsubscribe, is left alone, and one that failed is tried again on the next run.
+once: one with a `monthly_summary` row in `message_log` to the titular's address that
+was sent, or suppressed by an unsubscribe, is left alone, and one that failed is tried
+again on the next run. An operator can send one gym's month now, to check a real inbox
+(`app.jobs.month_summary_email`).
 No email goes for a month with nothing in it (`has_news`), to a gym with it turned off
 in Ajustes (`summary_email`), or to a titular with no address. As for the statements,
 each gym is read in its savepoint and the emails go once every gym has been read.
@@ -146,14 +148,22 @@ FROM staff s JOIN gym_person gp ON gp.gym_id = s.gym_id AND gp.person_id = s.per
 WHERE s.account_holder
 LIMIT 1
 """
-# Sent, or suppressed by an unsubscribe: either way, done for the month.
+# Sent to the titular's address, or suppressed by an unsubscribe: either way, done for
+# the month. A copy an operator sent elsewhere to check it (`app.jobs.month_summary_email`)
+# does not count.
 EMAILED = """
 SELECT EXISTS (
     SELECT FROM message_log
     WHERE channel = 'email' AND template = $1 AND status IN ('sent', 'suppressed')
-      AND payload ->> 'month' = $2
+      AND payload ->> 'month' = $2 AND lower(to_address) = lower($3)
 )
 """
+
+
+# Why a month has no email (`month_notice`).
+NOT_KEPT = "the month is not kept"
+NO_NEWS = "nothing happened in the month"
+NO_TITULAR_EMAIL = "the titular has no email"
 
 
 def _json(value: str | dict[str, Any] | None) -> Any:
@@ -163,21 +173,29 @@ def _json(value: str | dict[str, Any] | None) -> Any:
     return json.loads(value) if isinstance(value, str) else value
 
 
-async def summary_notice(conn: asyncpg.Connection, day: date) -> Notice | None:
-    """The email of the month before `day`'s to the titular of the gym in `app.gym_id`,
-    from what was kept of it; `None` when there is none to send."""
-    month = closed_month(day)
+async def gym_settings(conn: asyncpg.Connection) -> Any:
+    """The `gym.settings` of the gym in `app.gym_id`."""
+    gym = await conn.fetchrow(GYM_FOR_EMAIL)
+    return _json(gym["settings"])
+
+
+async def emailed(conn: asyncpg.Connection, month: date, to: str) -> bool:
+    """Whether `month`'s email has gone to `to`, or been suppressed, in the gym in
+    `app.gym_id`."""
+    return bool(await conn.fetchval(EMAILED, MONTHLY_SUMMARY.name, month.isoformat(), to))
+
+
+async def month_notice(conn: asyncpg.Connection, month: date) -> Notice | str:
+    """The email of `month` to the titular of the gym in `app.gym_id`, from what was
+    kept of it, whether or not it went already or the gym turned it off; else why there
+    is none."""
     gym = await conn.fetchrow(GYM_FOR_EMAIL)
     settings = _json(gym["settings"])
-    if not summary_email_on(settings):
-        return None
     rows = await conn.fetch(KEPT_FIGURES, month)
     kept = {Figure(r["figure"]): r["value"] for r in rows if r["figure"] in Figure}
     # Not kept yet, or kept without a figure the page would count again for.
     if not kept.keys() >= REQUIRED_FIGURES:
-        return None
-    if await conn.fetchval(EMAILED, MONTHLY_SUMMARY.name, month.isoformat()):
-        return None
+        return NOT_KEPT
     summary = month_summary(
         kept,
         month=month,
@@ -187,11 +205,10 @@ async def summary_notice(conn: asyncpg.Connection, day: date) -> Notice | None:
         kept=None,
     )
     if not has_news(summary):
-        return None
+        return NO_NEWS
     titular = await conn.fetchrow(TITULAR)
     if titular is None or not titular["email"]:
-        logger.info("month summary: no titular email to send it to")
-        return None
+        return NO_TITULAR_EMAIL
     return Notice(
         MONTHLY_SUMMARY,
         to=titular["email"],
@@ -204,6 +221,22 @@ async def summary_notice(conn: asyncpg.Connection, day: date) -> Notice | None:
             "summary": summary.model_dump(exclude={"month", "months", "kept"}),
         },
     )
+
+
+async def summary_notice(conn: asyncpg.Connection, day: date) -> Notice | None:
+    """The email of the month before `day`'s to the titular of the gym in `app.gym_id`,
+    from what was kept of it; `None` when there is none to send."""
+    month = closed_month(day)
+    if not summary_email_on(await gym_settings(conn)):
+        return None
+    notice = await month_notice(conn, month)
+    if isinstance(notice, str):
+        if notice == NO_TITULAR_EMAIL:
+            logger.info("month summary: no titular email to send it to")
+        return None
+    if await emailed(conn, month, notice.to):
+        return None
+    return notice
 
 
 def email_job(notices: Notices) -> Job:

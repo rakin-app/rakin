@@ -377,6 +377,14 @@ docker compose exec postgres psql -U rakin rakin
 docker compose run --rm api python -m app.jobs.daily --today 2026-11-09   # re-run a day's jobs
 ```
 
+**Resumen del mes by email** (#507) goes to each gym's titular on the first 7 days of the month. To check it in a real inbox at any other time, send one gym's closed month now:
+
+```sh
+docker compose run --rm api python -m app.jobs.month_summary_email --slug sur --month 2026-10-01 --to you@example.cl
+```
+
+It is the email the job would send, from the figures kept on the 1st, through the normal mail path (so `MAIL_ALLOW` still applies), and it is recorded in `message_log`. With `--to` it is a copy: the job still sends the titular theirs. Mind that the copy carries the titular's unsubscribe link. Without `--to` it goes to the titular and counts as the month's send; it is refused if the gym turned it off in Ajustes or the month already went.
+
 Logs rotate at 5 × 20 MB per container.
 
 **Minors with no guardian** (#368). Run once on staging and on production after the release that adds "Falta apoderado", and again after any import from before it:

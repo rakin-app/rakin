@@ -21,9 +21,9 @@ from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.domain.value_summary import REQUIRED_FIGURES, Figure
 from app.domain.vocabulary import DEFAULT_WORDS, Vocabulary, Words
-from app.jobs import month_summary
+from app.jobs import month_summary, month_summary_email
 from app.main import create_app
-from app.notices import MONTHLY_SUMMARY, Notice, payload, render
+from app.notices import MONTHLY_SUMMARY, Notice, Outcome, payload, render
 from app.schemas.summary import has_news
 from app.schemas.summary import month_summary as summary_of
 from tests.auth import FakeAuth
@@ -424,3 +424,103 @@ def test_in_a_club_s_words(client: TestClient, db: Database, gym: uuid.UUID) -> 
     [sent] = outbox.to(address(gym))
     assert "Socios que no venían" in sent.text
     assert "alumnos" not in sent.text
+
+
+# --- sending one month now, to check an inbox -------------------------------------------
+
+
+def send_now(db: Database, gym: uuid.UUID, outbox: Outbox, **request: Any) -> Any:
+    """Run `app.jobs.month_summary_email` for `gym`'s `MONTH`, as the command does."""
+
+    slug = admin(db, "SELECT slug FROM gym WHERE id = $1", gym)
+
+    async def go() -> Any:
+        engine = create_engine(db.settings)
+        try:
+            sessionmaker = create_sessionmaker(engine)
+            notices = build_notices(db.settings, outbox, lambda: sessionmaker)
+            conn = await asyncpg.connect(to_dsn(db.owner_url))
+            try:
+                return await month_summary_email.send(
+                    conn, notices, month_summary_email.Request(slug=slug, month=MONTH, **request)
+                )
+            finally:
+                await conn.close()
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(go())
+
+
+CHECKER = "operator@example.cl"
+
+
+@pg
+def test_a_copy_sent_now_is_the_jobs_email_and_does_not_count(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    a_busy_month(client, db, gym)
+    assert keep(db, FIRST)
+    outbox = Outbox()
+
+    assert send_now(db, gym, outbox, to=CHECKER) is Outcome.SENT
+    assert email(db, FIRST, outbox)
+
+    [copy] = outbox.to(CHECKER)
+    [real] = outbox.to(address(gym))
+    assert (copy.subject, copy.text, copy.html) == (real.subject, real.text, real.html)
+    rows = logged(db, gym)
+    assert [r["status"] for r in rows] == ["sent", "sent"]
+    assert rows[0]["payload"] == rows[1]["payload"]
+
+
+@pg
+def test_sent_now_to_the_titular_it_counts_and_is_not_sent_twice(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    a_busy_month(client, db, gym)
+    assert keep(db, FIRST)
+    outbox = Outbox()
+
+    assert send_now(db, gym, outbox) is Outcome.SENT
+    assert email(db, FIRST, outbox)
+    assert send_now(db, gym, outbox) == month_summary_email.ALREADY_SENT
+
+    assert len(outbox.to(address(gym))) == 1
+
+
+@pg
+def test_sending_now_is_refused_without_a_kept_month_with_news(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    outbox = Outbox()
+
+    assert send_now(db, gym, outbox, to=CHECKER) == month_summary.NOT_KEPT
+    assert keep(db, FIRST)
+    assert send_now(db, gym, outbox, to=CHECKER) == month_summary.NO_NEWS
+    assert outbox.sent == [] and logged(db, gym) == []
+
+
+@pg
+def test_sending_now_to_a_titular_who_turned_it_off_is_refused_but_a_copy_goes(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    a_busy_month(client, db, gym)
+    assert keep(db, FIRST)
+    admin(
+        db,
+        "UPDATE gym SET settings = settings || '{\"summary_email\": false}' WHERE id = $1",
+        gym,
+    )
+    outbox = Outbox()
+
+    assert send_now(db, gym, outbox) == month_summary_email.TURNED_OFF
+    assert send_now(db, gym, outbox, to=CHECKER) is Outcome.SENT
+    assert outbox.to(address(gym)) == [] and len(outbox.to(CHECKER)) == 1
+
+
+def test_the_command_takes_a_months_first_day() -> None:
+    request = month_summary_email.parse(["--slug", "sur", "--month", "2026-10-01"])
+    assert request == month_summary_email.Request("sur", date(2026, 10, 1), None)
+    with pytest.raises(SystemExit):
+        month_summary_email.parse(["--slug", "sur", "--month", "2026-10-15"])

@@ -2098,7 +2098,7 @@ export const es = {
         email: 'El correo está siempre activo: lleva los avisos y los links de acceso.',
         whatsapp: 'Recordatorios por WhatsApp',
         summaryEmail: 'Resumen del mes por correo',
-        summaryEmailHint: 'El primer día de cada mes, el titular recibe lo que pasó el mes anterior después de los recordatorios.',
+        summaryEmailHint: 'Al comenzar cada mes, el titular recibe lo que pasó el mes anterior después de los recordatorios.',
         bank: 'Datos bancarios',
         get bankHint() {
           return `Es lo que ven ${w.theMembers} para pagar por transferencia. Deja todos los campos vacíos para quitarlos.`
