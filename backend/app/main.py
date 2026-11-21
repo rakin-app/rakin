@@ -47,6 +47,7 @@ from app.api import (
     session_blocks,
     sessions,
     staff,
+    summary,
     terms,
     titles,
     unsubscribe,
@@ -161,6 +162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(corrections.router)
     app.include_router(ledger_export.router)
     app.include_router(inactive.router)
+    app.include_router(summary.router)
     app.include_router(reminders.router)
     app.include_router(proof_review.router)
     app.include_router(extra_charges.router)

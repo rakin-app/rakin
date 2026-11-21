@@ -317,6 +317,7 @@ def test_money_read_alone_reads_pagos_and_records_nothing(
         ("GET", "/api/ledger/proofs"),
         ("GET", "/api/freeze-requests"),
         ("GET", "/api/inactive"),
+        ("GET", "/api/summary"),
     ]
     assert set(statuses(client, headers, reads).values()) == {200}
     # A payment, a void, a cobro, a plan started or frozen, a reminder: each a 403

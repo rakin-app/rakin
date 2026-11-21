@@ -18,6 +18,7 @@ const PLACES: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/admin\/clases\/[^/]+\/?$/, places.session],
   [/^\/admin\/pagos\/?$/, places.payments],
   [/^\/admin\/pagos\/comprobantes\/?$/, places.proofs],
+  [/^\/admin\/pagos\/resumen\/?$/, places.summary],
   [/^\/admin\/pagos\/cobros\/?$/, places.extra],
   [/^\/admin\/pagos\/cobros\/nuevo\/?$/, ''],
   [/^\/admin\/pagos\/cobros\/[^/]+\/?$/, places.charge],
