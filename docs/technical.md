@@ -247,6 +247,9 @@ jobs themselves: `platform_resume_gym` sets `gym.jobs_owed_since`, and the first
 each day, `catch_up`, runs `freezes`, `billing_periods` and `lapse` for that gym on each
 missed day, in order, before `jobs_gym_ids()` takes it back. Billing alone would
 catch up, but would bill a plan for the whole suspension that should have lapsed in it.
+Because of that, a migration that backfills every gym does not use `jobs_gym_ids()`.
+It uses `migration_gym_ids()` (0084), which lists every gym. 0083 used the jobs' list
+and left a suspended gym with no expense categories (#525).
 The emails of those days are not sent. A gym is never removed at once: the end of
 service follows the Términos de encargo, clause 14 (`app.platform.removal`), and
 removing is refused until #377 defines the deletion.
