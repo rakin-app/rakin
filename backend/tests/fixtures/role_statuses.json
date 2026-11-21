@@ -464,6 +464,11 @@
     "coach": 403,
     "owner": 200
   },
+  "GET /api/summary": {
+    "admin": 200,
+    "coach": 403,
+    "owner": 200
+  },
   "PATCH /api/activities/{activity_id}": {
     "admin": 422,
     "coach": 403,
