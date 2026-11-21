@@ -1,9 +1,16 @@
 """Resumen del mes (#505): what happened after Rakin's reminders and nudges in a month,
-as counts with what each is out of (`app.domain.value_summary`)."""
+as counts with what each is out of (`app.domain.value_summary`).
 
+`month_summary` builds it from a month's `Figure`s, counted or kept, for the page
+(`app.api.summary`) and for the monthly email (`app.jobs.month_summary`, #507), so the
+two never disagree."""
+
+from collections.abc import Mapping
 from datetime import date, datetime
 
 from pydantic import BaseModel
+
+from app.domain.value_summary import Figure, percent, share_of_income
 
 
 class Paid(BaseModel):
@@ -98,3 +105,83 @@ class MonthSummary(BaseModel):
     # How a closed month was kept; `None` when it was counted for this request, as the
     # current month always is.
     kept: KeptMonth | None
+
+
+def month_summary(
+    figures: Mapping[Figure, int],
+    *,
+    month: date,
+    months: list[date],
+    since: date | None,
+    whatsapp: bool,
+    kept: KeptMonth | None,
+) -> MonthSummary:
+    """The page's month from its `Figure`s, counted now or kept: the shares and
+    percentages are worked out here, from the counts, either way."""
+
+    def paid(payments: Figure, amount: Figure) -> Paid:
+        return Paid(payments=figures[payments], amount_clp=figures[amount])
+
+    emails_only = paid(Figure.EMAILS_ONLY_PAYMENTS, Figure.EMAILS_ONLY_CLP)
+    after_whatsapp = paid(Figure.AFTER_WHATSAPP_PAYMENTS, Figure.AFTER_WHATSAPP_CLP)
+    total = Paid(
+        payments=emails_only.payments + after_whatsapp.payments,
+        amount_clp=emails_only.amount_clp + after_whatsapp.amount_clp,
+    )
+    income_clp, income_payments = figures[Figure.INCOME_CLP], figures[Figure.INCOME_PAYMENTS]
+    nudged, back = figures[Figure.NUDGED], figures[Figure.NUDGED_BACK]
+    return MonthSummary(
+        month=month,
+        months=months,
+        since=since,
+        whatsapp=whatsapp,
+        income_clp=income_clp,
+        income_payments=income_payments,
+        reminder_emails=figures[Figure.REMINDER_EMAILS],
+        reminder_whatsapps=figures[Figure.REMINDER_WHATSAPPS],
+        after_reminders=AfterReminders(
+            total=total,
+            emails_only=emails_only,
+            after_whatsapp=after_whatsapp,
+            income_percent=share_of_income(total.amount_clp, income_clp, income_payments),
+        ),
+        nudges=Nudges(nudged=nudged, back=back, percent=percent(back, nudged)),
+        emails_sent=figures[Figure.EMAILS_SENT],
+        own_payments=OwnPayments(
+            by_members=figures[Figure.BY_MEMBERS],
+            payments=income_payments,
+            percent=percent(figures[Figure.BY_MEMBERS], income_payments),
+        ),
+        proofs=ProofReviews(
+            reviewed=figures[Figure.PROOFS_REVIEWED],
+            median_minutes=figures.get(Figure.PROOF_REVIEW_MEDIAN_MINUTES),
+        ),
+        reactivated=figures[Figure.REACTIVATED],
+        trials_converted=figures[Figure.TRIALS_CONVERTED],
+        overdue_clp=figures.get(Figure.OVERDUE_CLP),
+        kept=kept,
+    )
+
+
+def partial_since(since: date, month: date) -> date | None:
+    """The gym's first day, `since`, when `month` is its first and it began after the
+    1st: a partial month, "desde el 12 de noviembre"."""
+    return since if since.replace(day=1) == month and since.day > 1 else None
+
+
+def has_news(summary: MonthSummary) -> bool:
+    """Whether anything happened in the month: a reminder or a nudge sent, a payment,
+    a proof reviewed, an automatic email, a plan back or a trial converted. The closing
+    debt alone is not news; a month without any of these gets no email (#507)."""
+    return any(
+        (
+            summary.reminder_emails,
+            summary.reminder_whatsapps,
+            summary.nudges.nudged,
+            summary.income_payments,
+            summary.proofs.reviewed,
+            summary.emails_sent,
+            summary.reactivated,
+            summary.trials_converted,
+        )
+    )

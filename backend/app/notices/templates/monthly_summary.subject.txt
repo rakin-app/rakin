@@ -1,0 +1,1 @@
+Resumen de {{ month | mes }} en {{ gym }}

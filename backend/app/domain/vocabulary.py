@@ -223,6 +223,12 @@ class Words:
         return f"{'las' if self._member.feminine else 'los'} {self._member.many}"
 
     @property
+    def the_same_members(self) -> str:
+        """ "los mismos alumnos", "las mismas ...": the SPA's `memberIs`."""
+        same = "las mismas" if self._member.feminine else "los mismos"
+        return f"{same} {self._member.many}"
+
+    @property
     def former_member(self) -> str:
         """ "exalumno", "exsocio"."""
         return f"ex{self._member.one}"

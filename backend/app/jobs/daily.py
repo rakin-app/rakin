@@ -57,9 +57,15 @@ JOBS: tuple[Job, ...] = (
 
 
 def jobs(notices: Notices) -> tuple[Job, ...]:
-    """Every nightly job: `JOBS`, then the statements for the periods billing wrote and
-    the overdue emails for the periods still owed."""
-    return (*JOBS, statements.job(notices), overdue.job(notices))
+    """Every nightly job: `JOBS`, then the statements for the periods billing wrote,
+    the overdue emails for the periods still owed, and Resumen del mes to each titular
+    from the month `month_summary` kept."""
+    return (
+        *JOBS,
+        statements.job(notices),
+        overdue.job(notices),
+        month_summary.email_job(notices),
+    )
 
 
 @contextlib.asynccontextmanager

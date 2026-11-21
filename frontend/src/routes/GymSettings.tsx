@@ -50,6 +50,7 @@ type Drafts = {
   grace_days: string
   reminder_every_days: string
   whatsapp: boolean
+  summary_email: boolean
   bank: Record<BankField, string>
   privacy: Record<PrivacyField, string>
   vocabulary: Vocabulary
@@ -64,6 +65,7 @@ function draftsOf(settings: Settings): Drafts {
     grace_days: String(settings.grace_days),
     reminder_every_days: String(settings.reminder_every_days),
     whatsapp: settings.channels.whatsapp,
+    summary_email: settings.summary_email,
     bank: {
       bank: account?.bank ?? '',
       account_type: account?.account_type ?? '',
@@ -93,6 +95,7 @@ function changesOf(before: Drafts, after: Drafts): GymSettingsUpdate {
     changes.reminder_every_days = integerOf(after.reminder_every_days)
   }
   if (after.whatsapp !== before.whatsapp) changes.channels = { whatsapp: after.whatsapp }
+  if (after.summary_email !== before.summary_email) changes.summary_email = after.summary_email
   if (BANK_FIELDS.some((f) => after.bank[f] !== before.bank[f])) {
     // The account is replaced whole; every field emptied takes it away.
     const bank = after.bank
@@ -311,6 +314,15 @@ function GymForm({ settings }: { settings: Settings }) {
           />
           <span>{copy.whatsapp}</span>
         </CheckRow>
+        <CheckRow>
+          <input
+            type="checkbox"
+            checked={drafts.summary_email}
+            onChange={(e) => setDrafts({ ...drafts, summary_email: e.target.checked })}
+          />
+          <span>{copy.summaryEmail}</span>
+        </CheckRow>
+        <p className="settings__hint">{copy.summaryEmailHint}</p>
       </fieldset>
 
       <fieldset className={cardClass({}, 'settings__card')}>

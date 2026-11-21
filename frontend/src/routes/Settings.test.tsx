@@ -29,6 +29,7 @@ const SETTINGS: GymSettings = {
   grace_days: 5,
   reminder_every_days: 3,
   channels: { whatsapp: true },
+  summary_email: true,
   bank_account: {
     bank: 'Banco de Chile',
     account_type: 'Cuenta Corriente',
@@ -442,6 +443,10 @@ describe('Ajustes: Gimnasio', () => {
     await userEvent.clear(grace)
     await userEvent.type(grace, '7')
     await userEvent.click(within(settings).getByLabelText(gym.whatsapp))
+    // Resumen del mes by email (#507): on until the titular turns it off.
+    const summaryEmail = within(settings).getByLabelText(gym.summaryEmail)
+    expect(summaryEmail).toBeChecked()
+    await userEvent.click(summaryEmail)
     await userEvent.click(within(settings).getByRole('button', { name: gym.submit }))
 
     expect(await within(settings).findByRole('status')).toHaveTextContent(gym.saved)
@@ -449,7 +454,12 @@ describe('Ajustes: Gimnasio', () => {
       {
         method: 'PATCH',
         path: '/api/gym/settings',
-        body: { name: 'Academia Sur Ñuñoa', grace_days: 7, channels: { whatsapp: false } },
+        body: {
+          name: 'Academia Sur Ñuñoa',
+          grace_days: 7,
+          channels: { whatsapp: false },
+          summary_email: false,
+        },
       },
     ])
   })

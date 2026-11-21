@@ -15,6 +15,9 @@ them, and the join link works only once they are set. They are replaced whole an
 cannot be cleared; each save records the gym's today as `updated_on`, the notice's
 "last updated".
 
+`summary_email` (#507) is whether the titular gets Resumen del mes by email on the
+first days of each month; on until turned off.
+
 The vocabulary (#344, `app.domain.vocabulary`) is what the screens call the gym, its
 members and its coach. Saved here it is the owner's pick (`by_hand`), and no activity
 added later changes it.
@@ -128,6 +131,8 @@ class GymSettings(BaseModel):
     bank_account: BankAccount | None
     privacy: StoredPrivacy | None
     vocabulary: Vocabulary
+    # Resumen del mes by email to the titular (#507).
+    summary_email: bool
 
     @classmethod
     def from_row(
@@ -153,7 +158,14 @@ class GymSettings(BaseModel):
             bank_account=settings.get("bank_account"),
             privacy=settings.get("privacy"),
             vocabulary=vocabulary_of(settings),
+            summary_email=summary_email_on(settings),
         )
+
+
+def summary_email_on(settings: Mapping[str, Any] | None) -> bool:
+    """Whether a `gym.settings` document has Resumen del mes emailed (#507): yes unless
+    turned off."""
+    return (settings or {}).get("summary_email") is not False
 
 
 # The `gym.settings` keys this API owns; any other key there is left as it is.
@@ -164,6 +176,7 @@ SETTINGS_KEYS = (
     "bank_account",
     "privacy",
     "vocabulary",
+    "summary_email",
 )
 
 
@@ -182,6 +195,7 @@ class GymSettingsUpdate(BaseModel):
     bank_account: BankAccount | None = None
     privacy: Privacy | None = None
     vocabulary: Vocabulary | None = None
+    summary_email: StrictBool | None = None
 
     @model_validator(mode="after")
     def _only_bank_account_is_cleared(self) -> "GymSettingsUpdate":
