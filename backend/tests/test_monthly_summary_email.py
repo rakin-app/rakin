@@ -121,12 +121,13 @@ def test_the_headline_figures_as_the_page_has_them() -> None:
 def test_the_bars_are_tables_with_background_colours() -> None:
     html = rendered(notice(BUSY)).html
 
-    # The share of income (1.240.000 of 6.900.000) and the share back (5 of 12).
-    assert 'width="18%" height="8" bgcolor="#18181b"' in html
-    assert 'width="42%" height="8" bgcolor="#18181b"' in html
+    # The share of income (1.240.000 of 6.900.000) and the share back (5 of 12), in
+    # the default theme's accent.
+    assert 'width="18%" height="8" bgcolor="#23643f"' in html
+    assert 'width="42%" height="8" bgcolor="#23643f"' in html
     # The split's longest row is full, the other as a share of it.
-    assert 'width="100%" height="8" bgcolor="#18181b"' in html
-    assert 'width="38%" height="8" bgcolor="#18181b"' in html
+    assert 'width="100%" height="8" bgcolor="#23643f"' in html
+    assert 'width="38%" height="8" bgcolor="#23643f"' in html
     assert "<img" not in html.split("<body")[1].split("Academia Ejemplo, a través de")[0]
 
 

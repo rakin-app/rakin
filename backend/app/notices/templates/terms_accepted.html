@@ -4,9 +4,9 @@
 <p style="margin:0 0 16px;">Hola, {{ name }}:</p>
 <p style="margin:0 0 16px;">El {{ accepted_at }}, hora de Chile, aceptaste en Rakin, en nombre de {{ legal_name }}:</p>
 <ul style="margin:0 0 16px;padding-left:20px;">
-<li style="margin:0 0 8px;">Términos de servicio, versión {{ service_version }}.<br><span style="color:#52525b;font-size:14px;">Huella SHA-256: <code style="word-break:break-all;">{{ service_sha256 }}</code></span></li>
-<li style="margin:0;">Términos de encargo de tratamiento de datos, versión {{ processor_version }}.<br><span style="color:#52525b;font-size:14px;">Huella SHA-256: <code style="word-break:break-all;">{{ processor_sha256 }}</code></span></li>
+<li style="margin:0 0 8px;">Términos de servicio, versión {{ service_version }}.<br><span style="color:{{ colours.text_muted }};font-size:14px;">Huella SHA-256: <code style="word-break:break-all;">{{ service_sha256 }}</code></span></li>
+<li style="margin:0;">Términos de encargo de tratamiento de datos, versión {{ processor_version }}.<br><span style="color:{{ colours.text_muted }};font-size:14px;">Huella SHA-256: <code style="word-break:break-all;">{{ processor_sha256 }}</code></span></li>
 </ul>
-<p style="margin:0 0 16px;">Va adjunta una copia íntegra de los dos textos, tal como los aceptaste. También la puedes descargar en <a href="{{ app_url }}/admin/ajustes/gimnasio" style="color:#18181b;">Ajustes</a>.</p>
+<p style="margin:0 0 16px;">Va adjunta una copia íntegra de los dos textos, tal como los aceptaste. También la puedes descargar en <a href="{{ app_url }}/admin/ajustes/gimnasio" style="color:{{ colours.accent }};">Ajustes</a>.</p>
 <p style="margin:0;">Si no fuiste tú, escríbenos a soporte@rakin.app.</p>
 {% endblock %}
