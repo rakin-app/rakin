@@ -3309,6 +3309,8 @@ export const es = {
       record: 'Registrar pago',
       extra: 'Cobros extra',
       kpiExtra: (amount: string) => ` · ${amount} de cobros extra`,
+      // The way to the month's summary, beside the KPIs (#505).
+      summary: 'Ver resumen del mes',
       picker: {
         label: '¿Quién paga?',
         get results() {
@@ -3327,6 +3329,77 @@ export const es = {
           return `Cambiar ${w.member}`
         },
         cancel: 'Cancelar',
+      },
+    },
+    // Pagos › Resumen del mes (#505): what happened after Rakin's reminders and the
+    // team's nudges, as counts. "Después de", never "gracias a" or "recuperado": some
+    // would have paid, or come back, anyway. No names behind any figure.
+    summary: {
+      title: 'Resumen del mes',
+      subtitle: 'Lo que pasó después de los recordatorios de Rakin y los mensajes del equipo.',
+      loading: 'Cargando el resumen…',
+      error: 'No pudimos cargar el resumen.',
+      retry: 'Reintentar',
+      month: 'Mes',
+      // A gym's first month on Rakin is a partial one.
+      since: (day: string) => `Desde el ${day}`,
+      // A whole percentage, as Chile writes it.
+      percent: (n: number) => `${n}\u00a0%`,
+      // The headline tiles. Each label carries the honesty: "después de", never
+      // "gracias a"; money as part of the month's "Cobrado", people as "N de M".
+      tiles: 'Lo principal del mes',
+      paidLabel: 'Pagos atrasados que llegaron después de un recordatorio',
+      paidCount: (n: number) => (n === 1 ? '1 pago atrasado' : `${n} pagos atrasados`),
+      // "el 18 % de $6.900.000 cobrado en noviembre", or without a share under 5 payments.
+      ofIncome: (share: string | null, income: string, month: string) =>
+        `${share ? `el ${share} ` : ''}de ${income} cobrado en ${MONTHS[Number(month.slice(5, 7)) - 1]}`,
+      backLabel: 'Volvieron a clases después de un WhatsApp del equipo',
+      backFigure: (back: number, of: number) => `${back} de ${of}`,
+      // The percentage only from 5 people up.
+      backDetail: (share: string | null) =>
+        `${w.Members} que no venían hace 14 días o más; volvieron dentro de dos semanas${share ? ` · ${share}` : ''}`,
+      remindersLabel: 'Recordatorios de pago enviados',
+      remindersDetail: (emails: number, whatsapps: number) =>
+        [
+          emails === 0 ? null : `${emails} por correo de Rakin`,
+          whatsapps === 0 ? null : `${whatsapps} por WhatsApp del equipo`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      // The late payments, split by whether anyone on the team wrote.
+      split: 'Cómo llegaron los pagos atrasados',
+      emailsOnly: 'Sin mensaje del equipo',
+      afterWhatsapp: 'Después de un WhatsApp del equipo',
+      splitFigure: (payments: number, amount: string) => `${payments === 1 ? '1 pago' : `${payments} pagos`} · ${amount}`,
+      noReminders: 'Aún no se ha enviado ningún recordatorio este mes. Cuando Rakin envíe uno, aquí verás lo que se pagó después.',
+      noRemindersPast: 'Ese mes no se envió ningún recordatorio de pago.',
+      whatsappOff: 'Con WhatsApp activado en Ajustes › Gimnasio, el equipo puede escribir desde Hoy a quienes dejaron de venir, y aquí verás cuántos volvieron.',
+      // The smaller counts, as a label and a figure.
+      counts: 'Otros números del mes',
+      get ownPayments() {
+        return `Pagos que informaron ${w.memberIs('los mismos', 'las mismas')} ${w.members}, con su comprobante`
+      },
+      ofTotal: (n: number, of: number) => `${n} de ${of}`,
+      proofs: 'Comprobantes revisados',
+      proofsFigure: (n: number, median: string) => `${n} · la mitad en ${median} o menos`,
+      // How long the median proof waited.
+      duration: (minutes: number) => {
+        if (minutes < 60) return minutes === 1 ? '1 minuto' : `${minutes} minutos`
+        const hours = Math.round(minutes / 60)
+        if (hours < 48) return hours === 1 ? '1 hora' : `${hours} horas`
+        return `${Math.round(hours / 24)} días`
+      },
+      emailsSent: 'Avisos de cobro y recibos enviados por correo',
+      reactivated: 'Planes vencidos que volvieron a activarse',
+      trialsConverted: 'Clases de prueba que pasaron a un plan',
+      how: {
+        title: 'Cómo contamos esto',
+        paid: 'Un pago cuenta cuando llegó después de su fecha de vencimiento y después de al menos un recordatorio enviado tras esa fecha: un correo de Rakin o un WhatsApp que abrió el equipo. Se cuenta en el mes en que se validó, como en «Cobrado».',
+        anyway: 'Algunos habrían pagado igual, sin recordatorio. Por eso decimos «después de» y no «gracias a».',
+        get back() {
+          return `«Volvieron» son ${w.theMembers} que vinieron a una clase dentro de los 14 días siguientes al WhatsApp. Algunos habrían vuelto de todos modos.`
+        },
+        totals: 'Son totales del mes: no se guarda ni se muestra quién está detrás de cada número.',
       },
     },
     // Cobros extra (#195): one-off charges, fixed or split across a group.
@@ -4138,6 +4211,7 @@ export const es = {
       payments: 'Pagos',
       proofs: 'los comprobantes',
       extra: 'Cobros extra',
+      summary: 'el resumen del mes',
       charge: 'el cobro',
       settings: 'Ajustes',
       me: 'Mi página',

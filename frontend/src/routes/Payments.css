@@ -150,6 +150,17 @@
   margin: var(--space-4);
 }
 
+/* "Ver resumen del mes" under the KPIs (#505), at the start of the line. */
+.payments__summary-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
 /* Two by two on a phone, so the list starts in the first screen; four across from 960px. */
 .payments__kpis {
   display: grid;
