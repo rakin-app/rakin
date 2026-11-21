@@ -49,7 +49,17 @@ import pytest
 from freezegun import freeze_time
 
 from app.domain.dates import start_of_local_day
-from app.jobs import billing, catch_up, daily, freezes, join_requests, lapse, schedule, team
+from app.jobs import (
+    billing,
+    catch_up,
+    daily,
+    freezes,
+    join_requests,
+    lapse,
+    month_summary,
+    schedule,
+    team,
+)
 from app.jobs.runner import Outcome
 from app.seed import load
 from app.seed.build import GYM_ID, build, seed_id
@@ -65,6 +75,7 @@ DAYS = 90
 WINDOWS = [date(2026, 8, 1), date(2027, 2, 1)]
 JOBS = [
     catch_up.NAME,
+    month_summary.NAME,
     freezes.NAME,
     billing.NAME,
     lapse.NAME,

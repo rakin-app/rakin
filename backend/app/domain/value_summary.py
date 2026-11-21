@@ -1,5 +1,5 @@
 """Resumen del mes: what happened after Rakin acted, by the rules of #504's spike
-(`docs/design/value-summary.md`, section 1). Pure functions: `app.api.summary` reads
+(`docs/design/value-summary.md`, section 1). Pure functions: `app.month_figures` reads
 the rows, gym-local dates included, and these decide what each one counts as.
 
 Every figure says what happened *after* a reminder or a nudge, never that Rakin
@@ -46,6 +46,54 @@ BACK_WITHIN_DAYS = 14
 
 # Below this many people or payments a figure is "N de M", never a percentage.
 MIN_FOR_PERCENT = 5
+
+# The rules above, as a number kept with each closed month's figures (#506). Raise it
+# when a rule changes what a figure counts: a month kept under an older version is then
+# shown as it was counted, and says so, rather than silently recomputed.
+RULES_VERSION = 1
+
+
+class Figure(StrEnum):
+    """A closed month's figures, as `gym_month_figure.figure` keys them (#506). Each is
+    a count or a sum of the gym's, with no person in it; a figure that has no value in
+    a month (no proof reviewed, so no median) is left out."""
+
+    # The month's "Cobrado", and the validated payments behind it.
+    INCOME_CLP = "income_clp"
+    INCOME_PAYMENTS = "income_payments"
+    # Overdue emails sent, WhatsApp reminders opened.
+    REMINDER_EMAILS = "reminder_emails"
+    REMINDER_WHATSAPPS = "reminder_whatsapps"
+    # Late payments after a reminder, by `AfterReminder`: how many, and how much.
+    EMAILS_ONLY_PAYMENTS = "emails_only_payments"
+    EMAILS_ONLY_CLP = "emails_only_clp"
+    AFTER_WHATSAPP_PAYMENTS = "after_whatsapp_payments"
+    AFTER_WHATSAPP_CLP = "after_whatsapp_clp"
+    # People nudged, and those back within `BACK_WITHIN_DAYS`.
+    NUDGED = "nudged"
+    NUDGED_BACK = "nudged_back"
+    # Automatic emails sent: statements, overdue reminders, receipts.
+    EMAILS_SENT = "emails_sent"
+    # Validated payments the members recorded themselves, with their proof.
+    BY_MEMBERS = "by_members"
+    PROOFS_REVIEWED = "proofs_reviewed"
+    # Whole minutes; left out with no proof reviewed.
+    PROOF_REVIEW_MEDIAN_MINUTES = "proof_review_median_minutes"
+    REACTIVATED = "reactivated"
+    TRIALS_CONVERTED = "trials_converted"
+    # Owed on overdue periods of Active memberships as the month closed (`v_overdue`,
+    # read on the job's run); only a kept month has it.
+    OVERDUE_CLP = "overdue_clp"
+
+
+# The figures a month may lack, which the page reads as absent (`None`). A figure added
+# under a later `RULES_VERSION` goes here, and is nullable in `app.schemas.summary`: a
+# month kept before it has no row of it. `tests.test_month_summary` holds every figure
+# but version 1's to it.
+OPTIONAL_FIGURES = frozenset({Figure.PROOF_REVIEW_MEDIAN_MINUTES, Figure.OVERDUE_CLP})
+# Every other figure: a kept month without one of them is counted again
+# (`app.api.summary`).
+REQUIRED_FIGURES = frozenset(Figure) - OPTIONAL_FIGURES
 
 
 @dataclass(frozen=True)

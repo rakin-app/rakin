@@ -27,6 +27,7 @@ from app.jobs import (
     freezes,
     join_requests,
     lapse,
+    month_summary,
     overdue,
     schedule,
     statements,
@@ -44,6 +45,8 @@ logger = logging.getLogger(__name__)
 JOBS: tuple[Job, ...] = (
     # A resumed gym's missed days first: the others leave it out until they are run.
     catch_up.JOB,
+    # The month that closed, as it closed: before the new one bills or lapses anyone.
+    month_summary.JOB,
     freezes.JOB,
     billing.JOB,
     lapse.JOB,

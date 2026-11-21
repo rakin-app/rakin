@@ -24,6 +24,7 @@ from app.jobs import (
     freezes,
     join_requests,
     lapse,
+    month_summary,
     overdue,
     schedule,
     statements,
@@ -296,6 +297,7 @@ def test_statements_run_nightly_after_billing() -> None:
 
     assert [job.name for job in daily.jobs(notices)] == [
         catch_up.NAME,
+        month_summary.NAME,
         freezes.NAME,
         billing.NAME,
         lapse.NAME,

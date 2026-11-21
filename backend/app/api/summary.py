@@ -1,43 +1,43 @@
 """Resumen del mes (#505): what happened in a month after Rakin's reminders and the
-team's nudges, computed when it is asked for from rows that already exist.
+team's nudges.
 
-The rules are `app.domain.value_summary`'s, from #504's spike
-(`docs/design/value-summary.md`). This reads what they need, each gym-local date
-included, and counts: no person-level result is kept or returned, only totals, and
-each figure with what it is out of. A payment counts in the month it was validated in,
-as `v_monthly_income` counts it, so the money after a reminder is always a part of the
-month's "Cobrado".
+The current month is counted when it is asked for, from rows that already exist
+(`app.month_figures`). A closed month is read from what the nightly job kept of it on
+the 1st (`gym_month_figure`, #506), so it reads the same once #378 has purged the log it
+was counted from, and has the debt the month closed with. A kept month counted under
+older rules is shown as it was counted, and says so. A closed month that was not kept
+(one before #506, or a gym suspended over every run of the next month) is counted
+again, and has no closing debt.
+
+No person-level result is kept or returned, only totals, and each figure with what it
+is out of.
 
 Money, so `money_read` (`LedgerReadSession`): owner, admin, and the titles that read
 Pagos. A coach gets a 403, not even the nudges, whose inactive list is money too.
 """
 
+import logging
+from collections.abc import Mapping
 from datetime import date
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.dates import add_months
 from app.domain.value_summary import (
-    AfterReminder,
-    Channel,
-    LatePayment,
-    Nudge,
-    Reminder,
-    after_reminder,
-    came_back,
-    first_nudges,
+    REQUIRED_FIGURES,
+    RULES_VERSION,
+    Figure,
     percent,
     share_of_income,
 )
-from app.notices import PAYMENT_OVERDUE, RECEIPT, STATEMENT
-from app.notices.whatsapp import INACTIVE_NUDGE, PAYMENT_REMINDERS
+from app.month_figures import count_month, session_rows
 from app.permissions import LedgerReadSession
 from app.schemas.gym import Channels
 from app.schemas.summary import (
     AfterReminders,
+    KeptMonth,
     MonthSummary,
     Nudges,
     OwnPayments,
@@ -45,13 +45,11 @@ from app.schemas.summary import (
     ProofReviews,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/summary", tags=["ledger"])
 
 NO_SUCH_MONTH = HTTPException(status.HTTP_404_NOT_FOUND, "no summary for that month")
-
-# The emails Rakin sends on its own about money: the statement, the overdue reminder
-# and the receipt.
-AUTOMATIC_EMAILS = (STATEMENT.name, PAYMENT_OVERDUE.name, RECEIPT.name)
 
 # The gym's timezone, today and first day in it, and its settings.
 CLOCK = text(
@@ -62,120 +60,11 @@ CLOCK = text(
     """
 )
 
-# The month asked for, `:month` its first day, as the instants it runs between in the
-# gym's timezone, for `CROSS JOIN b`.
-BOUNDS = """
-    SELECT g.timezone AS tz,
-           CAST(:month AS date)::timestamp AT TIME ZONE g.timezone AS start_at,
-           (CAST(:month AS date) + interval '1 month') AT TIME ZONE g.timezone AS end_at
-    FROM gym g WHERE g.id = current_setting('app.gym_id')::uuid
-"""
-
-
-def in_month(column: str) -> str:
-    return f"{column} >= b.start_at AND {column} < b.end_at"
-
-
-# The month's validated payments on a period paid after its due date, by the member's
-# act: the proof's upload, else when staff recorded it. A payment moved from another
-# period (`purpose = 'move'`) is staff's correction, not a payment made then.
-LATE_PAYMENTS = text(
-    f"""
-    SELECT e.billing_period_id::text AS billing_period_id, e.amount_clp, bp.due_date,
-           p.paid_at, (p.paid_at AT TIME ZONE b.tz)::date AS paid_on
-    FROM ledger_entry e
-    JOIN billing_period bp ON bp.id = e.billing_period_id
-    CROSS JOIN ({BOUNDS}) b
-    CROSS JOIN LATERAL (SELECT coalesce(e.claimed_at, e.created_at) AS paid_at) p
-    WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
-      AND {in_month("e.validated_at")}
-      AND (p.paid_at AT TIME ZONE b.tz)::date > bp.due_date
+# What was kept of a closed month. RLS holds it to the gym, under `money_read`.
+KEPT = text(
     """
-)
-
-# Every payment reminder about `:periods`: an overdue email sent, or a WhatsApp reminder
-# opened. The two share the name `payment_overdue`; `channel` tells them apart.
-REMINDERS = text(
-    """
-    SELECT ml.payload ->> 'billing_period_id' AS billing_period_id, ml.channel,
-           ml.sent_at, (ml.sent_at AT TIME ZONE g.timezone)::date AS sent_on
-    FROM message_log ml
-    JOIN gym g ON g.id = ml.gym_id
-    WHERE ml.status = 'sent'
-      AND ml.payload ->> 'billing_period_id' = ANY(CAST(:periods AS text[]))
-      AND ((ml.channel = 'email' AND ml.template = :overdue_email)
-           OR (ml.channel = 'whatsapp' AND ml.template = ANY(CAST(:whatsapp AS text[]))))
-    """
-)
-
-# The month's nudges from the inactive list, each with the first class its person came
-# to after it.
-NUDGES = text(
-    f"""
-    SELECT ml.payload ->> 'about' AS about, ml.sent_at,
-           (ml.sent_at AT TIME ZONE b.tz)::date AS sent_on,
-           (c.starts_at AT TIME ZONE b.tz)::date AS first_class_on
-    FROM message_log ml
-    CROSS JOIN ({BOUNDS}) b
-    LEFT JOIN LATERAL (
-        SELECT min(s.starts_at) AS starts_at FROM attendance a
-        JOIN session s ON s.id = a.session_id
-        JOIN membership m ON m.id = a.membership_id
-        WHERE m.person_id::text = ml.payload ->> 'about' AND s.starts_at > ml.sent_at
-          AND s.cancelled_at IS NULL
-    ) c ON true
-    WHERE ml.channel = 'whatsapp' AND ml.template = :nudge AND ml.status = 'sent'
-      AND ml.payload ? 'about' AND {in_month("ml.sent_at")}
-    """
-)
-
-# The month's plain counts. The payments behind "Cobrado" leave out moves, as
-# `LATE_PAYMENTS` does: a move is staff's correction, not a member paying.
-#
-# A member's own payment, and a proof to review, is one with `proof_object_key` set.
-# `claimed_by` / `claimed_at` cannot tell them apart: `app.api.entries.INSERT_ENTRY`
-# sets both to the recording admin and `now()` for every entry staff record (#511).
-# The key is exact: the member's claim (`app.api.proofs.CLAIM`) is the one write that
-# sets it, it requires one, and nothing clears it.
-COUNTS = text(
-    f"""
-    SELECT
-        (SELECT count(*) FROM message_log ml
-         WHERE ml.channel = 'email' AND ml.status = 'sent'
-           AND ml.template = ANY(CAST(:automatic AS text[])) AND {in_month("ml.sent_at")})
-            AS emails_sent,
-        (SELECT count(*) FROM message_log ml
-         WHERE ml.channel = 'email' AND ml.status = 'sent' AND ml.template = :overdue_email
-           AND {in_month("ml.sent_at")}) AS reminder_emails,
-        (SELECT count(*) FROM message_log ml
-         WHERE ml.channel = 'whatsapp' AND ml.status = 'sent'
-           AND ml.template = ANY(CAST(:whatsapp AS text[])) AND {in_month("ml.sent_at")})
-            AS reminder_whatsapps,
-        (SELECT coalesce(sum(income_clp), 0)::bigint FROM v_monthly_income
-         WHERE month = CAST(:month AS date)) AS income_clp,
-        -- Not `v_monthly_income.payments`: moves are left out here, while `income_clp`
-        -- keeps them, harmlessly, since a move's refund and payment net to zero.
-        (SELECT count(*) FROM ledger_entry e
-         WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
-           AND {in_month("e.validated_at")}) AS income_payments,
-        (SELECT count(*) FROM ledger_entry e
-         WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
-           AND e.proof_object_key IS NOT NULL AND {in_month("e.validated_at")}) AS by_members,
-        (SELECT count(*) FROM ledger_entry e
-         WHERE e.kind = 'payment' AND e.status IN ('validated', 'rejected')
-           AND e.proof_object_key IS NOT NULL AND {in_month("e.validated_at")}) AS proofs_reviewed,
-        (SELECT percentile_cont(0.5) WITHIN GROUP (
-                    ORDER BY extract(epoch FROM e.validated_at - e.claimed_at))
-         FROM ledger_entry e
-         WHERE e.kind = 'payment' AND e.status IN ('validated', 'rejected')
-           AND e.proof_object_key IS NOT NULL AND {in_month("e.validated_at")})
-            AS review_median_seconds,
-        (SELECT count(*) FROM membership m WHERE {in_month("m.reactivated_at")})
-            AS reactivated,
-        (SELECT count(*) FROM membership m
-         WHERE m.converted_from IS NOT NULL AND {in_month("m.created_at")})
-            AS trials_converted
-    FROM ({BOUNDS}) b
+    SELECT figure, value, rules_version, computed_at FROM gym_month_figure
+    WHERE month = :month
     """
 )
 
@@ -196,56 +85,60 @@ def parse_month(month: str | None, today: date) -> date:
     return date(int(year), int(number), 1)
 
 
-async def after_reminders(session: AsyncSession, month: date, counts: Any) -> AfterReminders:
-    payments = list((await session.execute(LATE_PAYMENTS, {"month": month})).all())
-    reminders: dict[str, list[Reminder]] = {}
-    if payments:
-        rows = await session.execute(
-            REMINDERS,
-            {
-                "month": month,
-                "periods": sorted({p.billing_period_id for p in payments}),
-                "overdue_email": PAYMENT_OVERDUE.name,
-                "whatsapp": list(PAYMENT_REMINDERS),
-            },
-        )
-        for r in rows:
-            reminders.setdefault(r.billing_period_id, []).append(
-                Reminder(channel=Channel(r.channel), sent_at=r.sent_at, sent_on=r.sent_on)
-            )
-    by_kind: dict[AfterReminder, list[int]] = {kind: [] for kind in AfterReminder}
-    for p in payments:
-        kind = after_reminder(
-            LatePayment(
-                due_date=p.due_date,
-                paid_at=p.paid_at,
-                paid_on=p.paid_on,
-                reminders=reminders.get(p.billing_period_id, []),
-            )
-        )
-        if kind is not None:
-            by_kind[kind].append(p.amount_clp)
+def month_summary(
+    figures: Mapping[Figure, int],
+    *,
+    month: date,
+    months: list[date],
+    since: date | None,
+    whatsapp: bool,
+    kept: KeptMonth | None,
+) -> MonthSummary:
+    """The page's month from its `Figure`s, counted now or kept: the shares and
+    percentages are worked out here, from the counts, either way."""
 
-    def paid(amounts: list[int]) -> Paid:
-        return Paid(payments=len(amounts), amount_clp=sum(amounts))
+    def paid(payments: Figure, amount: Figure) -> Paid:
+        return Paid(payments=figures[payments], amount_clp=figures[amount])
 
-    total = paid([a for amounts in by_kind.values() for a in amounts])
-    return AfterReminders(
-        total=total,
-        emails_only=paid(by_kind[AfterReminder.EMAILS_ONLY]),
-        after_whatsapp=paid(by_kind[AfterReminder.AFTER_WHATSAPP]),
-        income_percent=share_of_income(total.amount_clp, counts.income_clp, counts.income_payments),
+    emails_only = paid(Figure.EMAILS_ONLY_PAYMENTS, Figure.EMAILS_ONLY_CLP)
+    after_whatsapp = paid(Figure.AFTER_WHATSAPP_PAYMENTS, Figure.AFTER_WHATSAPP_CLP)
+    total = Paid(
+        payments=emails_only.payments + after_whatsapp.payments,
+        amount_clp=emails_only.amount_clp + after_whatsapp.amount_clp,
     )
-
-
-async def nudges(session: AsyncSession, month: date) -> Nudges:
-    rows = await session.execute(NUDGES, {"month": month, "nudge": INACTIVE_NUDGE})
-    first = first_nudges(
-        Nudge(about=r.about, sent_at=r.sent_at, sent_on=r.sent_on, first_class_on=r.first_class_on)
-        for r in rows
+    income_clp, income_payments = figures[Figure.INCOME_CLP], figures[Figure.INCOME_PAYMENTS]
+    nudged, back = figures[Figure.NUDGED], figures[Figure.NUDGED_BACK]
+    return MonthSummary(
+        month=month,
+        months=months,
+        since=since,
+        whatsapp=whatsapp,
+        income_clp=income_clp,
+        income_payments=income_payments,
+        reminder_emails=figures[Figure.REMINDER_EMAILS],
+        reminder_whatsapps=figures[Figure.REMINDER_WHATSAPPS],
+        after_reminders=AfterReminders(
+            total=total,
+            emails_only=emails_only,
+            after_whatsapp=after_whatsapp,
+            income_percent=share_of_income(total.amount_clp, income_clp, income_payments),
+        ),
+        nudges=Nudges(nudged=nudged, back=back, percent=percent(back, nudged)),
+        emails_sent=figures[Figure.EMAILS_SENT],
+        own_payments=OwnPayments(
+            by_members=figures[Figure.BY_MEMBERS],
+            payments=income_payments,
+            percent=percent(figures[Figure.BY_MEMBERS], income_payments),
+        ),
+        proofs=ProofReviews(
+            reviewed=figures[Figure.PROOFS_REVIEWED],
+            median_minutes=figures.get(Figure.PROOF_REVIEW_MEDIAN_MINUTES),
+        ),
+        reactivated=figures[Figure.REACTIVATED],
+        trials_converted=figures[Figure.TRIALS_CONVERTED],
+        overdue_clp=figures.get(Figure.OVERDUE_CLP),
+        kept=kept,
     )
-    back = sum(came_back(n) for n in first)
-    return Nudges(nudged=len(first), back=back, percent=percent(back, len(first)))
 
 
 @router.get("")
@@ -260,39 +153,32 @@ async def summary(
     months = months_between(clock.since, clock.today)
     if shown not in months:
         raise NO_SUCH_MONTH
-    counts = (
-        await session.execute(
-            COUNTS,
-            {
-                "month": shown,
-                "automatic": list(AUTOMATIC_EMAILS),
-                "overdue_email": PAYMENT_OVERDUE.name,
-                "whatsapp": list(PAYMENT_REMINDERS),
-            },
+    kept_rows = [] if shown == months[0] else list(await session.execute(KEPT, {"month": shown}))
+    kept = None
+    figures: Mapping[Figure, int] = {
+        Figure(r.figure): r.value for r in kept_rows if r.figure in Figure
+    }
+    if kept_rows and figures.keys() >= REQUIRED_FIGURES:
+        version = min(r.rules_version for r in kept_rows)
+        kept = KeptMonth(
+            computed_at=min(r.computed_at for r in kept_rows),
+            rules_version=version,
+            older_rules=version < RULES_VERSION,
         )
-    ).one()
-    median = counts.review_median_seconds
-    return MonthSummary(
+    else:
+        if kept_rows:
+            # Not one `OPTIONAL_FIGURES` should allow: the month is counted again
+            # rather than shown with a hole.
+            logger.warning(
+                "kept month lacks a required figure; counting it again",
+                extra={"month": shown.isoformat()},
+            )
+        figures = await count_month(session_rows(session), shown)
+    return month_summary(
+        figures,
         month=shown,
         months=months,
         since=clock.since if clock.since.replace(day=1) == shown and clock.since.day > 1 else None,
         whatsapp=Channels.model_validate(clock.settings.get("channels", {})).whatsapp,
-        income_clp=counts.income_clp,
-        income_payments=counts.income_payments,
-        reminder_emails=counts.reminder_emails,
-        reminder_whatsapps=counts.reminder_whatsapps,
-        after_reminders=await after_reminders(session, shown, counts),
-        nudges=await nudges(session, shown),
-        emails_sent=counts.emails_sent,
-        own_payments=OwnPayments(
-            by_members=counts.by_members,
-            payments=counts.income_payments,
-            percent=percent(counts.by_members, counts.income_payments),
-        ),
-        proofs=ProofReviews(
-            reviewed=counts.proofs_reviewed,
-            median_minutes=None if median is None else round(median / 60),
-        ),
-        reactivated=counts.reactivated,
-        trials_converted=counts.trials_converted,
+        kept=kept,
     )

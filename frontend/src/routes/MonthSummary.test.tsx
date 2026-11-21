@@ -29,6 +29,8 @@ const EMPTY: MonthSummary = {
   proofs: { reviewed: 0, median_minutes: null },
   reactivated: 0,
   trials_converted: 0,
+  overdue_clp: null,
+  kept: null,
 }
 
 const NOVEMBER: MonthSummary = {
@@ -149,6 +151,37 @@ describe('Resumen del mes', () => {
     expect(await screen.findByText(copy.whatsappOff)).toBeInTheDocument()
     expect(screen.queryByText(copy.backLabel)).toBeNull()
     expect(screen.getByText('Desde el 12 de noviembre')).toBeInTheDocument()
+  })
+
+  it('shows a kept month with the debt it closed with, and how it was counted', async () => {
+    const kept = { computed_at: '2026-11-01T06:00:00Z', rules_version: 1, older_rules: false }
+    stubApi('owner', () => ({ ...NOVEMBER, month: '2026-10-01', overdue_clp: 420_000, kept }))
+    renderAt('/admin/pagos/resumen?month=2026-10-01')
+
+    const counts = within(await screen.findByRole('region', { name: copy.counts }))
+    expect(counts.getByText(copy.overdue).nextSibling).toHaveTextContent('$420.000')
+    expect(screen.getByText(copy.how.overdue)).toBeInTheDocument()
+    expect(screen.getByText(copy.how.kept)).toBeInTheDocument()
+    expect(screen.queryByText(copy.how.olderRules)).toBeNull()
+  })
+
+  it('says when a kept month was counted under older rules', async () => {
+    const kept = { computed_at: '2026-11-01T06:00:00Z', rules_version: 1, older_rules: true }
+    stubApi('owner', () => ({ ...NOVEMBER, month: '2026-10-01', overdue_clp: 0, kept }))
+    renderAt('/admin/pagos/resumen?month=2026-10-01')
+
+    expect(await screen.findByText(copy.how.olderRules)).toBeInTheDocument()
+    expect(screen.queryByText(copy.how.kept)).toBeNull()
+  })
+
+  it('shows no closing debt for a month counted live', async () => {
+    stubApi('owner')
+    renderAt('/admin/pagos/resumen')
+
+    await screen.findByText(copy.paidLabel)
+    expect(screen.queryByText(copy.overdue)).toBeNull()
+    expect(screen.queryByText(copy.how.overdue)).toBeNull()
+    expect(screen.queryByText(copy.how.kept)).toBeNull()
   })
 
   it('asks for the month picked', async () => {
