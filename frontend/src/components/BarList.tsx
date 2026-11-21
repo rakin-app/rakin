@@ -27,15 +27,26 @@ export function BarList({ bars, label }: { bars: Bar[]; label?: string }) {
             <span>{bar.label}</span>
             <span className="bar-list__figure">{bar.figure}</span>
           </span>
-          <span className="bar-list__bar" aria-hidden="true">
-            <span
-              className={cx('bar-list__fill', bar.muted && 'bar-list__fill--muted')}
-              style={{ width: `${(bar.value / longest) * 100}%` }}
-            />
-          </span>
+          <Meter value={bar.value} of={longest} muted={bar.muted} />
         </li>
       ))}
     </PlainList>
+  )
+}
+
+/**
+ * The bar alone: `value` as a share of `of`, as BarList draws it (#505's "N de M"). It
+ * is decoration, so the figure it stands for has to be written beside it.
+ */
+export function Meter({ value, of, muted = false }: { value: number; of: number; muted?: boolean }) {
+  const share = of > 0 ? Math.min(value / of, 1) : 0
+  return (
+    <span className="bar-list__bar" aria-hidden="true">
+      <span
+        className={cx('bar-list__fill', muted && 'bar-list__fill--muted')}
+        style={{ width: `${share * 100}%` }}
+      />
+    </span>
   )
 }
 

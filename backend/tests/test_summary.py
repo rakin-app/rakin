@@ -475,6 +475,35 @@ def test_the_plain_counts(client: TestClient, db: Database, gym: uuid.UUID) -> N
 
 
 @pg
+def test_a_payment_staff_moved_is_not_one_of_the_months_payments(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # A move is a refund off one period and a payment onto another: staff's correction,
+    # so neither "N de M" nor the 5-payment threshold counts its payment.
+    person, membership = a_member(db, gym)
+    first = a_period(db, gym, membership)
+    second = a_period(db, gym, membership, DUE + timedelta(days=30))
+    on = local(MONTH + timedelta(days=3))
+    paid(db, gym, membership, first, made=on, by=person)
+    moved = admin(db, "SELECT id FROM ledger_entry WHERE billing_period_id = $1", first)
+    for period, kind in ((first, "refund"), (second, "payment")):
+        admin(
+            db,
+            "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
+            " kind, status, method, created_at, validated_by, validated_at, purpose,"
+            " corrects, refund_of, note) VALUES ($1, $2, $3, 30000, $4, 'validated',"
+            " 'transfer', $5, $6, $5, 'move', $7, $8, 'otro período')",
+            gym, membership, period, kind, on, seeded_owner(gym), moved,
+            moved if kind == "refund" else None,
+        )  # fmt: skip
+
+    page = summary(client, gym)
+
+    assert page["income_payments"] == 1
+    assert page["own_payments"] == {"by_members": 1, "payments": 1, "percent": None}
+
+
+@pg
 def test_a_gym_with_no_reminders_has_nothing_to_show(client: TestClient, gym: uuid.UUID) -> None:
     page = summary(client, gym)
 

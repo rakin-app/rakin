@@ -96,11 +96,11 @@ LATE_PAYMENTS = text(
 # Every payment reminder about `:periods`: an overdue email sent, or a WhatsApp reminder
 # opened. The two share the name `payment_overdue`; `channel` tells them apart.
 REMINDERS = text(
-    f"""
+    """
     SELECT ml.payload ->> 'billing_period_id' AS billing_period_id, ml.channel,
-           ml.sent_at, (ml.sent_at AT TIME ZONE b.tz)::date AS sent_on
+           ml.sent_at, (ml.sent_at AT TIME ZONE g.timezone)::date AS sent_on
     FROM message_log ml
-    CROSS JOIN ({BOUNDS}) b
+    JOIN gym g ON g.id = ml.gym_id
     WHERE ml.status = 'sent'
       AND ml.payload ->> 'billing_period_id' = ANY(CAST(:periods AS text[]))
       AND ((ml.channel = 'email' AND ml.template = :overdue_email)
@@ -112,26 +112,25 @@ REMINDERS = text(
 # to after it.
 NUDGES = text(
     f"""
-    SELECT n.about, n.sent_at, (n.sent_at AT TIME ZONE b.tz)::date AS sent_on,
+    SELECT ml.payload ->> 'about' AS about, ml.sent_at,
+           (ml.sent_at AT TIME ZONE b.tz)::date AS sent_on,
            (c.starts_at AT TIME ZONE b.tz)::date AS first_class_on
-    FROM (
-        SELECT ml.payload ->> 'about' AS about, ml.sent_at FROM message_log ml
-        CROSS JOIN ({BOUNDS}) b
-        WHERE ml.channel = 'whatsapp' AND ml.template = :nudge AND ml.status = 'sent'
-          AND ml.payload ? 'about' AND {in_month("ml.sent_at")}
-    ) n
+    FROM message_log ml
     CROSS JOIN ({BOUNDS}) b
     LEFT JOIN LATERAL (
         SELECT min(s.starts_at) AS starts_at FROM attendance a
         JOIN session s ON s.id = a.session_id
         JOIN membership m ON m.id = a.membership_id
-        WHERE m.person_id::text = n.about AND s.starts_at > n.sent_at
+        WHERE m.person_id::text = ml.payload ->> 'about' AND s.starts_at > ml.sent_at
           AND s.cancelled_at IS NULL
     ) c ON true
+    WHERE ml.channel = 'whatsapp' AND ml.template = :nudge AND ml.status = 'sent'
+      AND ml.payload ? 'about' AND {in_month("ml.sent_at")}
     """
 )
 
-# The month's plain counts.
+# The month's plain counts. The payments behind "Cobrado" leave out moves, as
+# `LATE_PAYMENTS` does: a move is staff's correction, not a member paying.
 COUNTS = text(
     f"""
     SELECT
@@ -148,11 +147,12 @@ COUNTS = text(
             AS reminder_whatsapps,
         (SELECT coalesce(sum(income_clp), 0)::bigint FROM v_monthly_income
          WHERE month = CAST(:month AS date)) AS income_clp,
-        (SELECT coalesce(sum(payments), 0)::bigint FROM v_monthly_income
-         WHERE month = CAST(:month AS date)) AS income_payments,
         (SELECT count(*) FROM ledger_entry e
-         WHERE e.kind = 'payment' AND e.status = 'validated' AND e.claimed_by IS NOT NULL
-           AND {in_month("e.validated_at")}) AS by_members,
+         WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
+           AND {in_month("e.validated_at")}) AS income_payments,
+        (SELECT count(*) FROM ledger_entry e
+         WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
+           AND e.claimed_by IS NOT NULL AND {in_month("e.validated_at")}) AS by_members,
         (SELECT count(*) FROM ledger_entry e
          WHERE e.kind = 'payment' AND e.status IN ('validated', 'rejected')
            AND e.claimed_at IS NOT NULL AND {in_month("e.validated_at")}) AS proofs_reviewed,

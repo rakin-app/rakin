@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MonthSummary } from '../api/summary'
@@ -86,23 +86,32 @@ afterEach(() => {
 })
 
 describe('Resumen del mes', () => {
-  it('says what came after the reminders, as part of what was collected', async () => {
+  it('leads with what came after the reminders, as part of what was collected', async () => {
     stubApi('owner')
     renderAt('/admin/pagos/resumen')
 
-    expect(await screen.findByText(/Rakin envió 64 recordatorios de pago por correo\./)).toHaveTextContent(
-      'Después de ellos llegaron 31 pagos atrasados, por $1.240.000: el 18 % de lo cobrado en el mes. ' +
-        '23 llegaron sin que nadie del equipo escribiera. 8 llegaron después de un WhatsApp del equipo.',
-    )
-    expect(
-      screen.getByText(
-        'El equipo escribió por WhatsApp a 12 alumnos que no venían hace 14 días o más. ' +
-          '5 de 12 volvieron a clases dentro de dos semanas (42 %).',
-      ),
-    ).toBeInTheDocument()
-    expect(screen.getByText('38 de 52 pagos los informaron los mismos alumnos, con su comprobante.')).toBeInTheDocument()
-    expect(screen.getByText('El equipo revisó 38 comprobantes; la mitad, en 5 horas o menos.')).toBeInTheDocument()
-    expect(screen.getByText('3 planes vencidos volvieron a activarse.')).toBeInTheDocument()
+    const tiles = within(await screen.findByRole('list', { name: copy.tiles }))
+    const paid = within(tiles.getByText(copy.paidLabel).closest('li')!)
+    expect(paid.getByText('$1.240.000')).toBeInTheDocument()
+    expect(paid.getByText('31 pagos atrasados · el 18 % de $6.900.000 cobrado en noviembre')).toBeInTheDocument()
+    const back = within(tiles.getByText(copy.backLabel).closest('li')!)
+    expect(back.getByText('5 de 12')).toBeInTheDocument()
+    expect(back.getByText(/dentro de dos semanas · 42 %$/)).toBeInTheDocument()
+    const reminders = within(tiles.getByText(copy.remindersLabel).closest('li')!)
+    expect(reminders.getByText('64')).toBeInTheDocument()
+    expect(reminders.getByText('64 por correo de Rakin')).toBeInTheDocument()
+
+    const split = within(screen.getByRole('region', { name: copy.split }))
+    expect(split.getByText(copy.emailsOnly)).toBeInTheDocument()
+    expect(split.getByText('23 pagos · $900.000')).toBeInTheDocument()
+    expect(split.getByText('8 pagos · $340.000')).toBeInTheDocument()
+
+    const counts = within(screen.getByRole('region', { name: copy.counts }))
+    expect(counts.getByText(copy.ownPayments).nextSibling).toHaveTextContent('38 de 52')
+    expect(counts.getByText(copy.proofs).nextSibling).toHaveTextContent('38 · la mitad en 5 horas o menos')
+    expect(counts.getByText(copy.emailsSent).nextSibling).toHaveTextContent('112')
+    expect(counts.getByText(copy.reactivated).nextSibling).toHaveTextContent('3')
+    expect(counts.getByText(copy.trialsConverted).nextSibling).toHaveTextContent('4')
     expect(screen.getByText(copy.how.title)).toBeInTheDocument()
     // Never "gracias a" or "recuperado".
     expect(document.body.textContent).not.toMatch(/gracias a Rakin|recuper/i)
@@ -117,9 +126,10 @@ describe('Resumen del mes', () => {
     }))
     renderAt('/admin/pagos/resumen')
 
-    expect(await screen.findByText(/llegó 1 pago atrasado, por \$30\.000: de \$6\.900\.000 cobrados en el mes\./)).toBeInTheDocument()
-    expect(screen.getByText(/1 de 3 volvió a clases dentro de dos semanas\.$/)).toBeInTheDocument()
-    expect(document.body.textContent).not.toMatch(/33 %/)
+    expect(await screen.findByText('1 pago atrasado · de $6.900.000 cobrado en noviembre')).toBeInTheDocument()
+    expect(screen.getByText('1 de 3')).toBeInTheDocument()
+    expect(screen.getByText(/dentro de dos semanas$/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/33\s%/)
   })
 
   it('says when no reminder has gone out yet, and shows no figures it does not have', async () => {
@@ -127,7 +137,9 @@ describe('Resumen del mes', () => {
     renderAt('/admin/pagos/resumen')
 
     expect(await screen.findByText(copy.noReminders)).toBeInTheDocument()
-    expect(screen.queryByText(/volvieron|comprobantes|planes vencidos/)).toBeNull()
+    expect(screen.queryByRole('list', { name: copy.tiles })).toBeNull()
+    expect(screen.queryByRole('region', { name: copy.split })).toBeNull()
+    expect(screen.queryByRole('region', { name: copy.counts })).toBeNull()
   })
 
   it('points to Ajustes with WhatsApp off, and says when a first month began', async () => {
@@ -135,7 +147,7 @@ describe('Resumen del mes', () => {
     renderAt('/admin/pagos/resumen')
 
     expect(await screen.findByText(copy.whatsappOff)).toBeInTheDocument()
-    expect(screen.queryByText(/escribió por WhatsApp a/)).toBeNull()
+    expect(screen.queryByText(copy.backLabel)).toBeNull()
     expect(screen.getByText('Desde el 12 de noviembre')).toBeInTheDocument()
   })
 
@@ -143,7 +155,7 @@ describe('Resumen del mes', () => {
     const user = userEvent.setup()
     const calls = stubApi('owner', (month) => (month === '2026-10' ? { ...EMPTY, month: '2026-10-01' } : NOVEMBER))
     renderAt('/admin/pagos/resumen')
-    await screen.findByText(/Rakin envió 64 recordatorios/)
+    await screen.findByText(copy.paidLabel)
 
     await user.selectOptions(screen.getByLabelText(copy.month), '2026-10-01')
 

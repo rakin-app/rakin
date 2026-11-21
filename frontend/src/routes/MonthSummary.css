@@ -1,7 +1,8 @@
 @import '../styles/media.css';
 
-/* Pagos › Resumen del mes (#505): the month picker, one card of sentences, and how they
-   are counted. One column at every width; the sentences keep a readable measure. */
+/* Pagos › Resumen del mes (#505): the month picker, one card with the headline figures as
+   tiles, the late payments' split as bars and the smaller counts as a list, and how they
+   are counted. Tiles stack on a phone and sit side by side from the desktop width. */
 
 .summary {
   display: grid;
@@ -41,12 +42,12 @@
 
 .summary__card,
 .summary__how {
-  max-width: 48rem;
+  max-width: 64rem;
 }
 
 .summary__card {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
 .summary__heading {
@@ -64,25 +65,115 @@
   font-weight: var(--font-weight-medium);
 }
 
-.summary__lines {
+/* A `PlainList`: a column of tiles. */
+.summary__tiles {
+  gap: var(--space-3);
+}
+
+.summary__tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: var(--space-4);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-md);
+}
+
+.summary__tile-label {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.summary__tile-figure {
+  color: var(--color-accent);
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-weight-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-title);
+  line-height: 1;
+}
+
+/* The meter's track on the tile's sunken ground. */
+.summary__tile .bar-list__bar {
+  background: var(--color-border);
+}
+
+.summary__tile--small .summary__tile-figure {
+  color: var(--color-heading);
+  font-size: var(--text-xl);
+}
+
+.summary__tile-detail {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.summary__empty {
   margin: 0;
+  color: var(--color-text-muted);
   font-size: var(--text-md);
   line-height: 1.5;
 }
 
-.summary__empty {
-  color: var(--color-text-muted);
+.summary__section {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.summary__subheading {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
 }
 
 .summary__counts {
   display: grid;
   gap: var(--space-2);
   margin: 0;
-  padding: var(--space-3) 0 0;
-  border-top: 1px solid var(--color-border);
-  list-style: none;
-  color: var(--color-text-muted);
   font-size: var(--text-sm);
+}
+
+.summary__count {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.summary__count dt {
+  color: var(--color-text-muted);
+}
+
+.summary__count dd {
+  flex: none;
+  margin: 0;
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@media (--desktop) {
+  /* Side by side, however many there are; the reminders tile takes half a share. */
+  .summary__tiles {
+    flex-direction: row;
+  }
+
+  .summary__tile {
+    flex: 2 1 0;
+    min-width: 0;
+  }
+
+  .summary__tile--small {
+    flex: 1 1 0;
+  }
+
+  .summary__counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-6);
+  }
 }
 
 .summary__how {

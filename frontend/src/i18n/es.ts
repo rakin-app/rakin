@@ -3344,40 +3344,44 @@ export const es = {
       // A gym's first month on Rakin is a partial one.
       since: (day: string) => `Desde el ${day}`,
       // A whole percentage, as Chile writes it.
-      percent: (n: number) => `${n} %`,
-      reminders: (emails: number, whatsapps: number) => {
-        const sent =
-          emails === 0
-            ? ''
-            : `Rakin envió ${emails === 1 ? '1 recordatorio de pago' : `${emails} recordatorios de pago`} por correo.`
-        const opened =
-          whatsapps === 0
-            ? ''
-            : `El equipo abrió ${whatsapps === 1 ? '1 recordatorio' : `${whatsapps} recordatorios`} por WhatsApp.`
-        return [sent, opened].filter(Boolean).join(' ')
-      },
-      // The late payments after them, as part of the month's income: "el 18 % de lo
-      // cobrado", or with fewer than 5 payments "de $500.000 cobrados en el mes".
-      paidAfter: (payments: number, amount: string, share: string | null, income: string) =>
-        `Después de ellos ${payments === 1 ? 'llegó 1 pago atrasado' : `llegaron ${payments} pagos atrasados`}, por ${amount}: ` +
-        (share ? `el ${share} de lo cobrado en el mes.` : `de ${income} cobrados en el mes.`),
-      emailsOnly: (n: number) =>
-        n === 1 ? '1 llegó sin que nadie del equipo escribiera.' : `${n} llegaron sin que nadie del equipo escribiera.`,
-      afterWhatsapp: (n: number) =>
-        n === 1 ? '1 llegó después de un WhatsApp del equipo.' : `${n} llegaron después de un WhatsApp del equipo.`,
+      percent: (n: number) => `${n}\u00a0%`,
+      // The headline tiles. Each label carries the honesty: "después de", never
+      // "gracias a"; money as part of the month's "Cobrado", people as "N de M".
+      tiles: 'Lo principal del mes',
+      paidLabel: 'Pagos atrasados que llegaron después de un recordatorio',
+      paidCount: (n: number) => (n === 1 ? '1 pago atrasado' : `${n} pagos atrasados`),
+      // "el 18 % de $6.900.000 cobrado en noviembre", or without a share under 5 payments.
+      ofIncome: (share: string | null, income: string, month: string) =>
+        `${share ? `el ${share} ` : ''}de ${income} cobrado en ${MONTHS[Number(month.slice(5, 7)) - 1]}`,
+      backLabel: 'Volvieron a clases después de un WhatsApp del equipo',
+      backFigure: (back: number, of: number) => `${back} de ${of}`,
+      // The percentage only from 5 people up.
+      backDetail: (share: string | null) =>
+        `${w.Members} que no venían hace 14 días o más, dentro de dos semanas${share ? ` · ${share}` : ''}`,
+      remindersLabel: 'Recordatorios de pago enviados',
+      remindersDetail: (emails: number, whatsapps: number) =>
+        [
+          emails === 0 ? null : `${emails} por correo de Rakin`,
+          whatsapps === 0 ? null : `${whatsapps} por WhatsApp del equipo`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      // The late payments, split by whether anyone on the team wrote.
+      split: 'Cómo llegaron los pagos atrasados',
+      emailsOnly: 'Sin mensaje del equipo',
+      afterWhatsapp: 'Después de un WhatsApp del equipo',
+      splitFigure: (payments: number, amount: string) => `${payments === 1 ? '1 pago' : `${payments} pagos`} · ${amount}`,
       noReminders: 'Aún no se ha enviado ningún recordatorio este mes. Cuando Rakin envíe uno, aquí verás lo que se pagó después.',
       noRemindersPast: 'Ese mes no se envió ningún recordatorio de pago.',
-      nudged: (n: number) =>
-        `El equipo escribió por WhatsApp a ${w.memberCount(n)} que no venían hace 14 días o más.`,
-      // Always "N de M"; the percentage only from 5 people up.
-      back: (back: number, of: number, share: string | null) =>
-        `${back} de ${of} ${back === 1 ? 'volvió' : 'volvieron'} a clases dentro de dos semanas` +
-        (share ? ` (${share}).` : '.'),
       whatsappOff: 'Con WhatsApp activado en Ajustes › Gimnasio, el equipo puede escribir desde Hoy a quienes dejaron de venir, y aquí verás cuántos volvieron.',
-      ownPayments: (mine: number, of: number) =>
-        `${mine} de ${of} ${of === 1 ? 'pago lo informó' : 'pagos los informaron'} ${w.memberIs('los mismos', 'las mismas')} ${w.members}, con su comprobante.`,
-      proofs: (n: number, median: string) =>
-        `El equipo revisó ${n === 1 ? '1 comprobante' : `${n} comprobantes`}; la mitad, en ${median} o menos.`,
+      // The smaller counts, as a label and a figure.
+      counts: 'Otros números del mes',
+      get ownPayments() {
+        return `Pagos que informaron ${w.memberIs('los mismos', 'las mismas')} ${w.members}, con su comprobante`
+      },
+      ofTotal: (n: number, of: number) => `${n} de ${of}`,
+      proofs: 'Comprobantes revisados',
+      proofsFigure: (n: number, median: string) => `${n} · la mitad en ${median} o menos`,
       // How long the median proof waited.
       duration: (minutes: number) => {
         if (minutes < 60) return minutes === 1 ? '1 minuto' : `${minutes} minutos`
@@ -3385,12 +3389,9 @@ export const es = {
         if (hours < 48) return hours === 1 ? '1 hora' : `${hours} horas`
         return `${Math.round(hours / 24)} días`
       },
-      emailsSent: (n: number) =>
-        n === 1 ? 'Rakin envió 1 aviso de cobro o recibo por correo.' : `Rakin envió ${n} avisos de cobro y recibos por correo.`,
-      reactivated: (n: number) =>
-        n === 1 ? '1 plan vencido volvió a activarse.' : `${n} planes vencidos volvieron a activarse.`,
-      trialsConverted: (n: number) =>
-        n === 1 ? '1 clase de prueba pasó a un plan.' : `${n} clases de prueba pasaron a un plan.`,
+      emailsSent: 'Avisos de cobro y recibos enviados por correo',
+      reactivated: 'Planes vencidos que volvieron a activarse',
+      trialsConverted: 'Clases de prueba que pasaron a un plan',
       how: {
         title: 'Cómo contamos esto',
         paid: 'Un pago cuenta cuando llegó después de su fecha de vencimiento y después de al menos un recordatorio enviado tras esa fecha: un correo de Rakin o un WhatsApp que abrió el equipo. Se cuenta en el mes en que se validó, como en «Cobrado».',
