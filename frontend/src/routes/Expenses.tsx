@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { useId, useState, type FormEvent } from 'react'
-import { ApiError } from '../api/client'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { refusalCode as refusal } from '../api/client'
 import {
   addCategory,
   archiveCategory,
@@ -16,6 +16,7 @@ import {
   renameCategory,
   restoreCategory,
   voidExpense,
+  type DueRecurring,
   type Expense,
   type ExpenseCategory,
   type ExpenseDraft,
@@ -37,6 +38,7 @@ import { isoDay, shiftMonth } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { FinancesTabs } from './Finances'
+import { RecurringDue, RecurringTemplates } from './RecurringExpenses'
 import './Expenses.css'
 
 const copy = t.admin.expenses
@@ -86,7 +88,8 @@ function ExpensesPage({ writes }: { writes: boolean }) {
   const navigate = route.useNavigate()
   const month = useQuery({ ...expenseMonthQuery(search.month, search.category), placeholderData: keepPreviousData })
   const categories = useQuery(expenseCategoriesQuery())
-  const [recording, setRecording] = useState(false)
+  // The form at the top: closed, a new expense, or one from a gasto fijo (#315).
+  const [recording, setRecording] = useState<false | { from?: DueRecurring }>(false)
   const [done, setDone] = useState<string | null>(null)
   const categoryId = useId()
   const shown = month.data
@@ -106,11 +109,11 @@ function ExpensesPage({ writes }: { writes: boolean }) {
         {writes && (
           <Button
             variant="primary"
-            aria-expanded={recording}
+            aria-expanded={recording !== false && !recording.from}
             disabled={live.length === 0}
             onClick={() => {
               setDone(null)
-              setRecording(!recording)
+              setRecording(recording !== false && !recording.from ? false : {})
             }}
           >
             {copy.record}
@@ -161,8 +164,20 @@ function ExpensesPage({ writes }: { writes: boolean }) {
       </div>
 
       {done && <Banner tone="done">{done}</Banner>}
+      {writes && shownMonth && !(recording && recording.from) && (
+        <RecurringDue
+          month={shownMonth}
+          onRecorded={setDone}
+          onOpen={(from) => {
+            setDone(null)
+            setRecording({ from })
+          }}
+        />
+      )}
       {recording && shown && (
         <ExpenseForm
+          key={recording.from?.id ?? 'new'}
+          from={recording.from}
           today={shown.today}
           categories={live}
           onCancel={() => setRecording(false)}
@@ -211,6 +226,7 @@ function ExpensesPage({ writes }: { writes: boolean }) {
         )
       )}
 
+      {writes && categories.data && <RecurringTemplates categories={live} />}
       {writes && categories.data && <Categories categories={all} />}
     </PageContainer>
   )
@@ -366,31 +382,29 @@ function Detail({
   )
 }
 
-/** The API's refusal of a form, in its words: `receipt_taken`, `category_archived`. */
-function refusal(error: unknown): string | null {
-  if (!(error instanceof ApiError)) return null
-  const detail = (error.body as { detail?: unknown } | null)?.detail
-  return typeof detail === 'object' && detail !== null && 'code' in detail ? String(detail.code) : null
-}
-
 function failureOf(error: unknown): string {
   const code = refusal(error)
   if (code === 'receipt_taken') return copy.form.receiptTaken
   if (code === 'category_archived') return copy.form.categoryArchived
+  if (code === 'already_recorded') return copy.due.alreadyRecorded
   return copy.form.failed
 }
 
 const digits = (value: string) => value.replace(/\D/g, '').replace(/^0+(?=\d)/, '')
 
-/** New, at the top of the list, or a correction of `expense`, on its row. */
+/** New, at the top of the list, or a correction of `expense`, on its row. `from` is the
+ * gasto fijo it records (#315): its fields filled in, dated its day, and the amount
+ * selected for typing the bill's figure. */
 function ExpenseForm({
   expense,
+  from,
   categories,
   today,
   onCancel,
   onDone,
 }: {
   expense?: Expense
+  from?: DueRecurring
   categories: ExpenseCategory[]
   // The gym's today (`ExpenseMonth.today`): the latest day it may be paid on.
   today: string
@@ -401,12 +415,22 @@ function ExpenseForm({
   const queryClient = useQueryClient()
   // The gym's today, from the API: the browser's may already be tomorrow in UTC.
   const max = today
-  const [spentOn, setSpentOn] = useState(expense?.spent_on ?? max)
-  const [amount, setAmount] = useState(expense ? String(expense.amount_clp) : '')
-  // An expense under an archived category keeps it until it is changed.
-  const [categoryId, setCategoryId] = useState(expense?.category_id ?? '')
-  const [payee, setPayee] = useState(expense?.payee ?? '')
-  const [method, setMethod] = useState<ExpenseMethod | ''>(expense?.method ?? '')
+  const [spentOn, setSpentOn] = useState(expense?.spent_on ?? from?.due_on ?? max)
+  const [amount, setAmount] = useState(expense ? String(expense.amount_clp) : from ? String(from.amount_clp) : '')
+  // An expense under an archived category keeps it until it is changed; a gasto fijo's
+  // archived category is not offered, so one is picked.
+  const [categoryId, setCategoryId] = useState(
+    expense?.category_id ?? (from && !from.category_archived ? from.category_id : ''),
+  )
+  const [payee, setPayee] = useState(expense?.payee ?? from?.payee ?? '')
+  const [method, setMethod] = useState<ExpenseMethod | ''>(expense?.method ?? from?.method ?? '')
+  const amountRef = useRef<HTMLInputElement>(null)
+  // From a gasto fijo, the amount is last bill's: selected, so typing replaces it.
+  useEffect(() => {
+    if (!from) return
+    amountRef.current?.focus()
+    amountRef.current?.select()
+  }, [from])
   const [note, setNote] = useState(expense?.note ?? '')
   const [file, setFile] = useState<File | null>(null)
   const [removeReceipt, setRemoveReceipt] = useState(false)
@@ -435,7 +459,9 @@ function ExpenseForm({
   const save = useSubmit({
     offline: 'refuse',
     mutationFn: ({ draft, receipt }: { draft: ExpenseDraft; receipt: ReceiptChange }) =>
-      expense ? changeExpense(expense.id, changedFields(expense, draft), receipt) : recordExpense(draft, receipt && receipt !== 'remove' ? receipt.file : null),
+      expense
+        ? changeExpense(expense.id, changedFields(expense, draft), receipt)
+        : recordExpense(draft, receipt && receipt !== 'remove' ? receipt.file : null, from?.id ?? null),
     onSuccess: (saved: Expense) => {
       void queryClient.invalidateQueries({ queryKey: ['expenses'] })
       onDone(expense ? words.changed : words.saved(clp(saved.amount_clp)), saved)
@@ -450,24 +476,25 @@ function ExpenseForm({
   }
   const fileError = fileProblem && { type: words.fileType, size: words.fileSize, empty: words.fileEmpty }[fileProblem]
 
+  const title = expense ? words.editTitle : from ? copy.due.recordWhat(from.category_name) : words.newTitle
   return (
-    <form
-      className={cardClass({}, 'expenses__form')}
-      aria-label={expense ? words.editTitle : words.newTitle}
-      onSubmit={submit}
-      noValidate
-    >
-      <h2 className="expenses__form-title">{expense ? words.editTitle : words.newTitle}</h2>
+    <form className={cardClass({}, 'expenses__form')} aria-label={title} onSubmit={submit} noValidate>
+      <h2 className="expenses__form-title">{title}</h2>
       <div className="expenses__fields">
         <Field label={words.spentOn} hint={words.spentOnHint} error={checked && !dayOk && words.dayNeeded}>
           {(props) => (
             <Input {...props} type="date" max={max} value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
           )}
         </Field>
-        <Field label={words.amount} error={checked && !amountOk && words.amountNeeded}>
+        <Field
+          label={words.amount}
+          hint={from?.amount_kind === 'estimated' ? copy.due.estimateHint(clp(from.amount_clp)) : undefined}
+          error={checked && !amountOk && words.amountNeeded}
+        >
           {(props) => (
             <Input
               {...props}
+              ref={amountRef}
               inputMode="numeric"
               autoComplete="off"
               value={amount === '' ? '' : Number(amount).toLocaleString('es-CL')}
@@ -646,9 +673,11 @@ function Categories({ categories }: { categories: ExpenseCategory[] }) {
     mutationFn: runCategoryChange,
     onSuccess: (data: ExpenseCategory[]) => {
       queryClient.setQueryData(expenseCategoriesQuery().queryKey, data)
-      // A rename shows on every expense under it, and on Finanzas' categories.
+      // A rename shows on every expense under it, on Finanzas' categories and on the
+      // gastos fijos; an archive takes a gasto fijo off one tap.
       void queryClient.invalidateQueries({ queryKey: ['expenses', 'month'] })
       void queryClient.invalidateQueries({ queryKey: ['expenses', 'finances'] })
+      void queryClient.invalidateQueries({ queryKey: ['expenses', 'recurring'] })
       setRenaming(null)
     },
   })

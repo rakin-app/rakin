@@ -1,0 +1,201 @@
+@import '../styles/media.css';
+
+/* Gastos fijos (#315). The card above the month's list: a row per gasto fijo not yet
+   recorded, its name and day over its amount, and its two buttons; on a phone the
+   buttons drop under the name, from the desktop width they sit at the row's end. Below
+   the list, the templates themselves, as the categories are laid out. */
+
+.recurring-due {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 64rem;
+}
+
+.recurring-due__head {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.recurring-due__title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.recurring-due__intro,
+.recurring-due__day,
+.recurring__meta {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.recurring-due__subtitle {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.recurring-due__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding-block: var(--space-2);
+}
+
+.recurring-due__row + .recurring-due__row {
+  border-top: 1px solid var(--color-divider);
+}
+
+.recurring-due__what {
+  display: grid;
+  min-width: 0;
+}
+
+.recurring-due__name {
+  overflow-wrap: anywhere;
+  font-weight: var(--font-weight-semibold);
+}
+
+.recurring-due__amount {
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.recurring-due__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  grid-column: 1 / -1;
+}
+
+.recurring-due__row--skipped .recurring-due__name,
+.recurring-due__row--skipped .recurring-due__amount {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-regular);
+}
+
+.recurring-due__all {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.recurring-due__skipped {
+  display: grid;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-divider);
+}
+
+.recurring {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 64rem;
+}
+
+.recurring__title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.recurring__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+}
+
+.recurring__row + .recurring__row {
+  border-top: 1px solid var(--color-divider);
+}
+
+.recurring__what {
+  display: grid;
+  min-width: 0;
+}
+
+.recurring__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+  font-weight: var(--font-weight-semibold);
+}
+
+.recurring__row--paused .recurring__name {
+  color: var(--color-text-muted);
+}
+
+.recurring__badge {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+}
+
+.recurring__actions,
+.recurring__form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.recurring__form {
+  display: grid;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.recurring__form-title {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.recurring__fields {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.recurring__kind {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.recurring__form-actions {
+  justify-content: flex-end;
+}
+
+.recurring__kind legend {
+  padding: 0;
+}
+
+@media (--desktop) {
+  .recurring-due__row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  /* One width for every row's buttons, so the amounts line up whichever of Registrar or
+     Registrar… a row has. */
+  .recurring-due__actions {
+    grid-column: auto;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    min-width: 15rem;
+  }
+
+  .recurring__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .recurring__kind {
+    grid-row: span 2;
+  }
+}

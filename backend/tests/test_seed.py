@@ -572,3 +572,20 @@ def test_classes_held_carry_their_slots_tags(seed: Seed) -> None:
         held = s["slot_date"] < seed.as_of
         assert on_class.get(s["id"], set()) == (slot_tags[s["slot_id"]] if held else set())
     assert {t["tag_id"] for t in seed.session_tags} <= {t["id"] for t in seed.class_tags}
+
+
+def test_the_monthly_expenses_come_from_their_gastos_fijos(seed: Seed) -> None:
+    """Each monthly expense names its template, at most one counting per month, so the
+    seed's month has on its card only the bills whose day has not come."""
+    templates = by_id(seed.recurring_expenses)
+    assert {t["amount_kind"] for t in templates.values()} == {"fixed", "estimated"}
+    counted = Counter(
+        (e["recurring_id"], e["spent_on"].replace(day=1))
+        for e in seed.expenses
+        if e["recurring_id"] is not None and e["voided_at"] is None
+    )
+    assert set(counted.values()) == {1}
+    assert {r for r, _ in counted} == set(templates)
+    month = seed.as_of.replace(day=1)
+    unrecorded = {t for t in templates if (t, month) not in counted}
+    assert unrecorded == {t for t, row in templates.items() if row["day_of_month"] > seed.as_of.day}

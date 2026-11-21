@@ -83,6 +83,13 @@ export function isReauth(body: unknown): boolean {
   return typeof detail === 'object' && detail !== null && (detail as { code?: unknown }).code === 'reauth'
 }
 
+/** The code of an API refusal, `{"detail": {"code": "receipt_taken", …}}`, or null. */
+export function refusalCode(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null
+  const detail = (error.body as { detail?: unknown } | null)?.detail
+  return typeof detail === 'object' && detail !== null && 'code' in detail ? String(detail.code) : null
+}
+
 async function readBody(response: Response): Promise<unknown> {
   const text = await response.text()
   if (text === '') return undefined

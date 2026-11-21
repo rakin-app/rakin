@@ -298,7 +298,7 @@ What the gym spends (#314, `app.api.expenses`, migration 0083), kept apart from 
 | Endpoint | What it does |
 |---|---|
 | `GET /api/expenses?month=&category=` | a month (the current one by default), newest first, voided ones included, with `total_clp` and `count` of those that count |
-| `POST /api/expenses` | records one: `spent_on` up to today, `amount_clp` > 0, a live `category_id`, `payee`, `method` (`transfer`, `cash`, `card`, `other`), `note`, `receipt_key` |
+| `POST /api/expenses` | records one: `spent_on` up to today, `amount_clp` > 0, a live `category_id`, `payee`, `method` (`transfer`, `cash`, `card`, `other`), `note`, `receipt_key`, and `recurring_id` when it is recorded from a gasto fijo (409 `already_recorded` if one from it counts in that month) |
 | `PATCH /api/expenses/{id}` | corrects the fields sent; an edit that changes something writes `expense_changed` with those fields before and after; `remove_receipt` takes the receipt off. A voided one is a 409 |
 | `POST /api/expenses/{id}/void` | Anular, with a `reason`: `expense_voided`. Final: the row is not changed again (a trigger refuses it) |
 | `POST /api/expenses/receipt-upload` | presigns a PUT under `receipts/<gym_id>/`, the blob store's types and 10 MB; recording or editing claims the key once the file is there, and one expense holds it (409 `receipt_taken`). A receipt an edit replaces or removes is kept in storage, as the correction's history |
@@ -308,6 +308,20 @@ What the gym spends (#314, `app.api.expenses`, migration 0083), kept apart from 
 A new gym gets the twelve defaults from the `gym` insert trigger. Every gym already there got them by migration: 0083 reached only the gyms in `jobs_gym_ids()`, which leaves out a suspended gym, so 0084 gives them to every gym through `migration_gym_ids()` (#525). That lookup is a `SECURITY DEFINER` function owned by `rakin_auth`, as `jobs_gym_ids()` is, and only the owner may call it. It lists every gym, suspended or not, and later per-gym backfills use it, not the jobs' list.
 
 Reads need `expenses_read`, writes `expenses_write`, at the API and under RLS; no role holds either until the gym ticks it in Cargos, so they start the titular's alone. `rakin_app` has no DELETE on either table, and the log's expense rows name no person and are read with `expenses_read` alone (0067).
+
+### Gastos fijos
+
+Rent and bills as monthly templates (#315, `app.api.expense_recurring`, migration 0085). `expense_recurring` holds a category, payee, method, `amount_clp`, `amount_kind` (`fixed`: recorded at its amount in one tap; `estimated`: power, water, gas, where the amount is a hint and the bill's figure is typed in the form), `day_of_month` (1 to 31; a shorter month's last day) and `active`. `expense.recurring_id` names the template an expense came from, and a partial unique index (`expense_recurring_month`) lets one per template and month count, so a double tap records once and a void frees the month. `expense_skip` is "No este mes", one row per template and month, deleted to take it back.
+
+| | |
+|---|---|
+| `GET /api/expenses/recurring` | the templates, active first by day of the month, then the paused |
+| `POST /api/expenses/recurring`, `PATCH .../{id}` | add one (at most 100: 409 `too_many_recurring`) under a live category; edit the fields sent, or pause and resume it (`active`) |
+| `GET /api/expenses/recurring/month?month=` | Gastos fijos por registrar: `due`, the active templates made by the month's end with no expense from them that counts in it, and `skipped`, each with `due_on` (its day of the month, or the gym's today if earlier) |
+| `POST /api/expenses/recurring/record` | `{month, ids}`: records each fixed template named at its amount, dated `due_on`; one already recorded that month is passed over, so the answer lists only what this call recorded. An estimated or paused one, or one under an archived category, is a 422 |
+| `POST /api/expenses/recurring/{id}/skip`, `DELETE .../{id}/skip/{month}` | No este mes, and taking it back |
+
+**Nothing records an expense by itself.** No job, trigger, default or read writes one: every expense is a person's `POST`, so every expense on the books is one somebody confirmed. `tests/test_expense_recurring.py` reads every month's card and runs the nightly jobs over forty days with templates in place and finds no expense, and holds the code to it: only `app.api.expenses`, `app.api.expense_recurring` and the seed insert into `expense`, `app/jobs` never names it, and no migration does. Same permissions as expenses, at the API and under RLS (`tests/test_permissions_rls.py`).
 
 ## Finanzas
 
@@ -733,7 +747,7 @@ make seed                                      # from the repo root, inside Comp
 
 Loading again inserts nothing: every row's id is a UUIDv5 of its natural key, and rows already there are skipped, never updated, which the append-only ledger requires anyway. The first load stores its date in `gym.settings["seed"]["as_of"]`, and later loads build for that date again, ignoring `--today`. To reseed for another date, start from an empty database (`docker compose down -v`).
 
-Gastos (#314) has the gym's three months: Sebastián's pay on the 1st, the rent on the 5th, internet on the 10th, power on the 20th and water on the 22nd of each month up to the seed date, under the categories every gym is given (their ids derived as migration 0083 derives them, `default_expense_category_id`), last month's federation fee, and last month's internet typed twice, the second voided.
+Gastos (#314) has the gym's three months: Sebastián's pay on the 1st, the rent on the 5th, internet on the 10th, power on the 20th and water on the 22nd of each month up to the seed date, under the categories every gym is given (their ids derived as migration 0083 derives them, `default_expense_category_id`), last month's federation fee, and last month's internet typed twice, the second voided. Each monthly one is recorded from its gasto fijo (#315): pay, rent and internet fixed, power and water estimated, so the seed's month has on its card the bills whose day has not come.
 
 Each transfer's proof key gets a file in the configured `BLOB_STORE`: `app/seed/proof.jpg`, a made-up receipt marked as demo data, so Validar comprobante opens the seeded proofs. A key that already has a file keeps it.
 

@@ -2,7 +2,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Expense, ExpenseCategory, ExpenseMonth } from '../api/expenses'
+import type { DueRecurring, Expense, ExpenseCategory, ExpenseMonth, RecurringMonth } from '../api/expenses'
 import type { Permission } from '../api/me'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
@@ -29,6 +29,7 @@ const RENT: Expense = {
   method: 'transfer',
   note: null,
   has_receipt: true,
+  recurring_id: null,
   created_by_name: 'Ana Rojas',
   created_at: '2026-11-05T13:00:00Z',
   updated_at: null,
@@ -61,6 +62,52 @@ const NOVEMBER: ExpenseMonth = {
   items: [POWER, RENT],
 }
 
+const RENT_FIXED: DueRecurring = {
+  id: 'r-rent',
+  category_id: 'c-arriendo',
+  category_name: 'Arriendo',
+  category_archived: false,
+  payee: null,
+  method: 'transfer',
+  amount_clp: 650_000,
+  amount_kind: 'fixed',
+  day_of_month: 5,
+  active: true,
+  created_at: '2026-08-01T12:00:00Z',
+  due_on: '2026-11-05',
+}
+
+const INTERNET: DueRecurring = {
+  ...RENT_FIXED,
+  id: 'r-internet',
+  category_id: 'c-otros',
+  category_name: 'Otros',
+  payee: 'Movistar',
+  amount_clp: 32_990,
+  day_of_month: 10,
+  due_on: '2026-11-10',
+}
+
+const POWER_ESTIMATED: DueRecurring = {
+  ...RENT_FIXED,
+  id: 'r-power',
+  category_id: 'c-luz',
+  category_name: 'Luz',
+  payee: 'Enel',
+  amount_clp: 84_000,
+  amount_kind: 'estimated',
+  day_of_month: 25,
+  due_on: '2026-11-20',
+}
+
+const NOVEMBER_DUE: RecurringMonth = {
+  month: '2026-11-01',
+  current_month: '2026-11-01',
+  today: '2026-11-20',
+  due: [RENT_FIXED, INTERNET, POWER_ESTIMATED],
+  skipped: [],
+}
+
 type Call = { method: string; path: string; body: unknown }
 
 function access(role: string | Permission[]) {
@@ -68,7 +115,7 @@ function access(role: string | Permission[]) {
   return asRole(role)
 }
 
-function stubApi(role: string | Permission[] = 'owner') {
+function stubApi(role: string | Permission[] = 'owner', due: RecurringMonth = NOVEMBER_DUE) {
   const calls: Call[] = []
   vi.stubGlobal(
     'fetch',
@@ -90,6 +137,19 @@ function stubApi(role: string | Permission[] = 'owner') {
       else if (url.pathname === '/api/expenses/e-rent' && method === 'PATCH') ok({ ...RENT, amount_clp: 640_000 })
       else if (url.pathname === '/api/expenses/e-rent/void') ok({ ...RENT, voided_at: '2026-11-20T10:00:00Z' })
       else if (url.pathname === '/api/expenses/e-rent/receipt') ok({ url: 'https://blobs.example/r', content_type: 'application/pdf' })
+      else if (url.pathname === '/api/expenses/recurring/month') ok(due)
+      else if (url.pathname === '/api/expenses/recurring/record') {
+        const ids = (calls.at(-1)!.body as { ids: string[] }).ids
+        const templates = [...due.due, ...due.skipped].filter((r) => ids.includes(r.id))
+        ok(
+          templates.map((r) => ({ ...RENT, id: `e-${r.id}`, amount_clp: r.amount_clp, recurring_id: r.id })),
+          201,
+        )
+      } else if (url.pathname === '/api/expenses/recurring' && method === 'GET') ok([RENT_FIXED, { ...POWER_ESTIMATED, active: false }])
+      else if (url.pathname === '/api/expenses/recurring' && method === 'POST') ok({ ...RENT_FIXED, id: 'r-new' }, 201)
+      else if (url.pathname.startsWith('/api/expenses/recurring/') && method === 'PATCH') ok(RENT_FIXED)
+      else if (url.pathname.includes('/skip')) ok(null, 204)
+      if (status === 204) return new Response(null, { status })
       return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
     }),
   )
@@ -301,5 +361,151 @@ describe('Gastos', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/admin/finanzas/gastos'))
     expect(router.state.location.search).toEqual({ month: '2026-10-01' })
     await waitFor(() => expect(calls.some((c) => c.path === '/api/expenses?month=2026-10-01')).toBe(true))
+  })
+
+  describe('Gastos fijos por registrar', () => {
+    const due = es.admin.expenses.due
+    const card = async () => within(await screen.findByRole('region', { name: due.title('noviembre') }))
+
+    it('lists what is not yet recorded: a fixed one at its amount, an estimate as a hint', async () => {
+      stubApi()
+      renderAt('/admin/finanzas/gastos')
+      const shown = await card()
+      expect(shown.getByText('$650.000')).toBeInTheDocument()
+      expect(shown.getByText('~$84.000')).toBeInTheDocument()
+      expect(shown.getByText(due.day(5))).toBeInTheDocument()
+      expect(shown.getByRole('button', { name: due.recordWhat('Arriendo') })).toHaveTextContent(due.record)
+      expect(shown.getByRole('button', { name: due.recordWhat('Luz · Enel') })).toHaveTextContent(due.recordEstimated)
+      expect(shown.getByRole('button', { name: due.recordAll(2) })).toBeInTheDocument()
+    })
+
+    it('records a fixed one in one tap, and every fixed one at once', async () => {
+      const calls = stubApi()
+      renderAt('/admin/finanzas/gastos')
+      const user = userEvent.setup()
+      const shown = await card()
+
+      await user.click(shown.getByRole('button', { name: due.recordWhat('Arriendo') }))
+      expect(await screen.findByText(due.recorded(1, '$650.000'))).toBeInTheDocument()
+      expect(calls.find((c) => c.path === '/api/expenses/recurring/record')?.body).toEqual({
+        month: '2026-11-01',
+        ids: ['r-rent'],
+      })
+
+      await user.click((await card()).getByRole('button', { name: due.recordAll(2) }))
+      expect(await screen.findByText(due.recorded(2, '$682.990'))).toBeInTheDocument()
+      expect(calls.filter((c) => c.path === '/api/expenses/recurring/record').at(-1)?.body).toEqual({
+        month: '2026-11-01',
+        ids: ['r-rent', 'r-internet'],
+      })
+      // Nothing was posted as an expense of its own: only the taps recorded.
+      expect(calls.some((c) => c.method === 'POST' && c.path === '/api/expenses')).toBe(false)
+    })
+
+    it('opens an estimated one in the form, filled in, its amount selected for the bill', async () => {
+      const calls = stubApi()
+      renderAt('/admin/finanzas/gastos')
+      const user = userEvent.setup()
+      await user.click((await card()).getByRole('button', { name: due.recordWhat('Luz · Enel') }))
+
+      const form = within(screen.getByRole('form', { name: due.recordWhat('Luz') }))
+      const amount = form.getByLabelText(copy.form.amount)
+      expect(amount).toHaveValue('84.000')
+      expect(amount).toHaveFocus()
+      expect([(amount as HTMLInputElement).selectionStart, (amount as HTMLInputElement).selectionEnd]).toEqual([0, 6])
+      expect(form.getByLabelText(copy.form.spentOn)).toHaveValue('2026-11-20')
+      expect(form.getByLabelText(copy.form.category)).toHaveValue('c-luz')
+      expect(form.getByText(due.estimateHint('$84.000'))).toBeInTheDocument()
+      // The card steps aside while its form is open.
+      expect(screen.queryByRole('region', { name: due.title('noviembre') })).not.toBeInTheDocument()
+
+      await user.keyboard('91240')
+      await user.click(form.getByRole('button', { name: copy.form.save }))
+      await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/expenses')).toBe(true))
+      expect(calls.find((c) => c.method === 'POST' && c.path === '/api/expenses')?.body).toMatchObject({
+        amount_clp: 91_240,
+        category_id: 'c-luz',
+        payee: 'Enel',
+        spent_on: '2026-11-20',
+        recurring_id: 'r-power',
+      })
+    })
+
+    it('skips one for the month, and takes the skip back', async () => {
+      const calls = stubApi('owner', { ...NOVEMBER_DUE, due: [RENT_FIXED], skipped: [POWER_ESTIMATED] })
+      renderAt('/admin/finanzas/gastos')
+      const user = userEvent.setup()
+      const shown = await card()
+      // One fixed one: no "Registrar los 1 fijos".
+      expect(shown.queryByRole('button', { name: due.recordAll(1) })).not.toBeInTheDocument()
+
+      await user.click(shown.getByRole('button', { name: due.skipWhat('Arriendo') }))
+      await waitFor(() =>
+        expect(calls.find((c) => c.path === '/api/expenses/recurring/r-rent/skip')).toMatchObject({
+          method: 'POST',
+          body: { month: '2026-11-01' },
+        }),
+      )
+      await user.click(shown.getByRole('button', { name: due.unskipWhat('Luz · Enel') }))
+      await waitFor(() =>
+        expect(calls.find((c) => c.path === '/api/expenses/recurring/r-power/skip/2026-11-01')?.method).toBe('DELETE'),
+      )
+    })
+
+    it('is not there when every gasto fijo is recorded, nor for a reader', async () => {
+      stubApi('owner', { ...NOVEMBER_DUE, due: [] })
+      renderAt('/admin/finanzas/gastos')
+      await rows()
+      expect(screen.queryByRole('region', { name: due.title('noviembre') })).not.toBeInTheDocument()
+
+      vi.unstubAllGlobals()
+      const calls = stubApi(['expenses_read'])
+      renderAt('/admin/finanzas/gastos')
+      await rows()
+      expect(calls.some((c) => c.path.startsWith('/api/expenses/recurring'))).toBe(false)
+    })
+  })
+
+  describe('Gastos fijos', () => {
+    const words = es.admin.expenses.recurring
+
+    it('adds a gasto fijo and pauses one', async () => {
+      const calls = stubApi()
+      renderAt('/admin/finanzas/gastos')
+      const user = userEvent.setup()
+      await rows()
+      await user.click(screen.getByText(words.title))
+      const section = within(screen.getByText(words.title).closest('details')!)
+      expect(await section.findByText(words.paused)).toBeInTheDocument()
+
+      await user.click(section.getByRole('button', { name: words.add }))
+      const form = within(section.getByRole('form', { name: words.newTitle }))
+      await user.click(form.getByRole('button', { name: words.save }))
+      expect(form.getByText(words.dayNeeded)).toBeInTheDocument()
+      await user.selectOptions(form.getByLabelText(copy.form.category), 'c-luz')
+      await user.click(form.getByLabelText(words.kind.estimated))
+      await user.type(form.getByLabelText(words.amountEstimated), '84000')
+      await user.type(form.getByLabelText(words.dayOfMonth, { exact: false }), '20')
+      await user.click(form.getByRole('button', { name: words.save }))
+      await waitFor(() =>
+        expect(calls.find((c) => c.method === 'POST' && c.path === '/api/expenses/recurring')?.body).toEqual({
+          category_id: 'c-luz',
+          payee: null,
+          method: null,
+          amount_clp: 84_000,
+          amount_kind: 'estimated',
+          day_of_month: 20,
+        }),
+      )
+
+      const [rent] = section.getAllByRole('listitem')
+      await user.click(within(rent!).getByRole('button', { name: words.pause }))
+      await waitFor(() =>
+        expect(calls.find((c) => c.method === 'PATCH')).toMatchObject({
+          path: '/api/expenses/recurring/r-rent',
+          body: { active: false },
+        }),
+      )
+    })
   })
 })

@@ -10,7 +10,9 @@ billing reads: no balance, Esperado, Cobrado, overdue email or student page sees
   those that count. `POST` records one, `PATCH /{id}` edits it and writes
   `expense_changed` with the fields before and after, `POST /{id}/void` ("Anular")
   voids it with a reason and writes `expense_voided`. A voided expense stays in the
-  list and counts nowhere, and is not changed again. Nothing deletes one.
+  list and counts nowhere, and is not changed again. Nothing deletes one. An expense
+  recorded from a gasto fijo names it (`recurring_id`, #315, `app.api.expense_recurring`),
+  and one per template and month counts: a second is a 409 `already_recorded`.
 - A receipt goes from the browser straight to object storage, as a student's proof
   does (`app.api.proofs`): `POST /receipt-upload` presigns a key under the gym's
   `receipts/<gym_id>/`, of the blob store's types and at most 10 MB, and recording or
@@ -88,6 +90,20 @@ RECEIPT_TAKEN = HTTPException(
     status.HTTP_409_CONFLICT,
     {"code": "receipt_taken", "message": "this receipt belongs to another expense"},
 )
+ALREADY_RECORDED = HTTPException(
+    status.HTTP_409_CONFLICT,
+    {
+        "code": "already_recorded",
+        "message": "this gasto fijo has an expense that counts in that month already",
+    },
+)
+
+# The unique constraints a write may run into, and the refusal each one is.
+CONFLICTS = {
+    "expense_receipt_object_key_key": RECEIPT_TAKEN,
+    # One expense that counts per template and month (0085).
+    "expense_recurring_month": ALREADY_RECORDED,
+}
 
 
 def unprocessable(code: str, message: str) -> HTTPException:
@@ -110,7 +126,7 @@ def is_gym_receipt(gym_id: uuid.UUID, key: str) -> bool:
 # has for them.
 EXPENSE_COLUMNS = """
     SELECT e.id, e.spent_on, e.amount_clp, e.category_id, c.name AS category_name, e.payee,
-           e.method, e.note, e.receipt_object_key IS NOT NULL AS has_receipt,
+           e.method, e.note, e.receipt_object_key IS NOT NULL AS has_receipt, e.recurring_id,
            cb.name AS created_by_name, e.created_at, e.updated_at, e.voided_at,
            vb.name AS voided_by_name, e.void_reason
     FROM expense e
@@ -136,9 +152,9 @@ LOCK = text(
 
 INSERT = text(
     "INSERT INTO expense (gym_id, spent_on, amount_clp, category_id, payee, method, note,"
-    " receipt_object_key, created_by)"
+    " receipt_object_key, recurring_id, created_by)"
     " VALUES (current_setting('app.gym_id')::uuid, :spent_on, :amount_clp, :category_id,"
-    " :payee, :method, :note, :receipt, current_setting('app.person_id')::uuid)"
+    " :payee, :method, :note, :receipt, :recurring_id, current_setting('app.person_id')::uuid)"
     " RETURNING id"
 )
 
@@ -150,6 +166,8 @@ INSERT_AUDIT = text(
 )
 
 CATEGORY = text("SELECT id, name, archived_at FROM expense_category WHERE id = :id")
+
+RECURRING_EXISTS = text("SELECT id FROM expense_recurring WHERE id = :id")
 
 TIMEZONE = text("SELECT timezone FROM gym WHERE id = :id")
 
@@ -268,6 +286,11 @@ async def record_expense(
     receipt uploaded for it, if any."""
     _refuse_future(body.spent_on, await _today(session, tenant))
     await _live_category(session, body.category_id)
+    if (
+        body.recurring_id is not None
+        and (await session.scalar(RECURRING_EXISTS, {"id": body.recurring_id})) is None
+    ):
+        raise unprocessable("no_recurring", "no such gasto fijo in this gym")
     if body.receipt_key is not None:
         await _usable_receipt(tenant, body.receipt_key, integrations)
     try:
@@ -281,9 +304,10 @@ async def record_expense(
                 },
             )
     except IntegrityError as error:
-        if _constraint(error) != "expense_receipt_object_key_key":
+        refusal = CONFLICTS.get(_constraint(error) or "")
+        if refusal is None:
             raise
-        raise RECEIPT_TAKEN from None
+        raise refusal from None
     return await _read(session, expense_id)
 
 
@@ -348,9 +372,10 @@ async def change_expense(
                 {**{f: changed[f] for f in columns}, "id": expense_id},
             )
     except IntegrityError as error:
-        if _constraint(error) != "expense_receipt_object_key_key":
+        refusal = CONFLICTS.get(_constraint(error) or "")
+        if refusal is None:
             raise
-        raise RECEIPT_TAKEN from None
+        raise refusal from None
     detail = {
         "expense_id": str(expense_id),
         "before": {k: _shown(v) for k, v in before.items()},

@@ -140,6 +140,9 @@ class Seed:
     # What the gym spent these three months (0083), under the categories every gym is
     # given: rent, power, water, internet and pay, and one voided as typed twice.
     expenses: list[Row]
+    # The gastos fijos behind the monthly ones (0085): rent, internet and pay fixed,
+    # power and water estimated. Those whose day has not come this month are on its card.
+    recurring_expenses: list[Row]
 
     def tables(self) -> Iterator[tuple[str, list[Row]]]:
         """Each table's rows, in an order the foreign keys accept."""
@@ -171,6 +174,7 @@ class Seed:
         yield "class_tag", self.class_tags
         yield "schedule_slot_tag", self.slot_tags
         yield "session_tag", self.session_tags
+        yield "expense_recurring", self.recurring_expenses
         yield "expense", self.expenses
 
 
@@ -794,7 +798,7 @@ def _extra_charges(as_of: date) -> tuple[list[Row], list[Row], list[Row]]:
 
 # Each month's expenses: the category's key, the day of the month it is paid, the
 # amounts of the month two before the seed's, the one before and the seed's own, the
-# payee and the method.
+# payee and the method. Each is recorded from its gasto fijo (`_recurring_expenses`).
 MONTHLY_EXPENSES = (
     ("sueldos", 1, (600_000, 600_000, 600_000), "Sebastián Araya", "transfer"),
     ("arriendo", 5, (650_000, 650_000, 650_000), "Inmobiliaria Los Robles", "transfer"),
@@ -802,6 +806,30 @@ MONTHLY_EXPENSES = (
     ("luz", 20, (78_400, 91_200, 84_000), "Enel", "transfer"),
     ("agua", 22, (18_500, 17_900, 19_300), "Aguas Andinas", "transfer"),
 )
+# The bills whose amount changes month to month: their template is an estimate.
+ESTIMATED_EXPENSES = frozenset({"luz", "agua"})
+
+
+def _recurring_expenses(as_of: date) -> list[Row]:
+    """A gasto fijo for each of `MONTHLY_EXPENSES`, made before the first month the
+    seed records, at the last amount the seed's month before had."""
+    made = local(add_months(as_of.replace(day=1), -2), 9)
+    return [
+        {
+            "id": seed_id("expense_recurring", key),
+            "gym_id": GYM_ID,
+            "category_id": default_expense_category_id(GYM_ID, key),
+            "payee": payee,
+            "method": method,
+            "amount_clp": amounts[1],
+            "amount_kind": "estimated" if key in ESTIMATED_EXPENSES else "fixed",
+            "day_of_month": day_of_month,
+            "active": True,
+            "created_by": seed_id("person", VALIDATOR),
+            "created_at": made,
+        }
+        for key, day_of_month, amounts, payee, method in MONTHLY_EXPENSES
+    ]
 
 
 def _expenses(as_of: date) -> list[Row]:
@@ -811,7 +839,9 @@ def _expenses(as_of: date) -> list[Row]:
     this_month = as_of.replace(day=1)
     rows: list[Row] = []
 
-    def spent(key: str, n: str, day: date, amount: int, payee: str, method: str) -> Row:
+    def spent(
+        key: str, n: str, day: date, amount: int, payee: str, method: str, monthly: bool = True
+    ) -> Row:
         recorded = local(day, 20)
         return {
             "id": seed_id("expense", key, n),
@@ -823,6 +853,7 @@ def _expenses(as_of: date) -> list[Row]:
             "method": method,
             "note": None,
             "receipt_object_key": None,
+            "recurring_id": seed_id("expense_recurring", key) if monthly else None,
             "created_by": by,
             "created_at": recorded,
             "voided_at": None,
@@ -844,6 +875,7 @@ def _expenses(as_of: date) -> list[Row]:
         120_000,
         "Federación Nacional",
         "transfer",
+        monthly=False,
     )
     rows.append({**fee, "note": "Cuota anual de afiliación"})
     twice = spent(
@@ -999,4 +1031,5 @@ def build(as_of: date) -> Seed:
         extra_lines=extra_lines,
         **_classes(as_of, builder.memberships),
         expenses=_expenses(as_of),
+        recurring_expenses=_recurring_expenses(as_of),
     )
