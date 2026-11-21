@@ -131,6 +131,12 @@ NUDGES = text(
 
 # The month's plain counts. The payments behind "Cobrado" leave out moves, as
 # `LATE_PAYMENTS` does: a move is staff's correction, not a member paying.
+#
+# A member's own payment, and a proof to review, is one with `proof_object_key` set.
+# `claimed_by` / `claimed_at` cannot tell them apart: `app.api.entries.INSERT_ENTRY`
+# sets both to the recording admin and `now()` for every entry staff record (#511).
+# The key is exact: the member's claim (`app.api.proofs.CLAIM`) is the one write that
+# sets it, it requires one, and nothing clears it.
 COUNTS = text(
     f"""
     SELECT
@@ -154,15 +160,15 @@ COUNTS = text(
            AND {in_month("e.validated_at")}) AS income_payments,
         (SELECT count(*) FROM ledger_entry e
          WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
-           AND e.claimed_by IS NOT NULL AND {in_month("e.validated_at")}) AS by_members,
+           AND e.proof_object_key IS NOT NULL AND {in_month("e.validated_at")}) AS by_members,
         (SELECT count(*) FROM ledger_entry e
          WHERE e.kind = 'payment' AND e.status IN ('validated', 'rejected')
-           AND e.claimed_at IS NOT NULL AND {in_month("e.validated_at")}) AS proofs_reviewed,
+           AND e.proof_object_key IS NOT NULL AND {in_month("e.validated_at")}) AS proofs_reviewed,
         (SELECT percentile_cont(0.5) WITHIN GROUP (
                     ORDER BY extract(epoch FROM e.validated_at - e.claimed_at))
          FROM ledger_entry e
          WHERE e.kind = 'payment' AND e.status IN ('validated', 'rejected')
-           AND e.claimed_at IS NOT NULL AND {in_month("e.validated_at")})
+           AND e.proof_object_key IS NOT NULL AND {in_month("e.validated_at")})
             AS review_median_seconds,
         (SELECT count(*) FROM membership m WHERE {in_month("m.reactivated_at")})
             AS reactivated,
