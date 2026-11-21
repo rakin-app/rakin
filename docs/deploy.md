@@ -198,7 +198,15 @@ The contact address is `CONTACT_EMAIL` in `site/build.py`.
 
 ### Uptime
 
-Point an external monitor (UptimeRobot, Better Stack, or Cloudflare's health checks) at `https://app.rakin.app/healthz` every 5 minutes, alerting on anything but a 200. It answers 503 when the api cannot reach Postgres. A second, lower-priority one watches `https://staging.rakin.app/healthz`; staging is down for a few seconds every night at its reset.
+UptimeRobot (free plan) checks three monitors every 5 minutes, and alerts the owner when one fails:
+
+| Monitor | URL | Down when |
+| --- | --- | --- |
+| Production | `https://app.rakin.app/healthz` | anything but a 200; it answers 503 when the api cannot reach Postgres |
+| Staging | `https://staging.rakin.app/healthz` | the same; staging is down for a few seconds every night at its reset, which can trip a brief staging alert |
+| Landing page | `https://rakin.app/` | anything but a 200 |
+
+Their public status page is <https://stats.uptimerobot.com/05JvXUXDJh>. Staff open it from the app as "Estado del servicio" (the desktop sidebar, Ajustes › Cuenta, a coach's account menu), and visitors from rakin.app's footer; its URL is `STATUS_URL` in `frontend/src/config.ts` and in `site/build.py`. Staging stays off the public page (UptimeRobot › Status pages), so its nightly blip never reads as an outage.
 
 ## 6. Rollback
 

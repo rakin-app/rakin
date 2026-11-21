@@ -4,7 +4,8 @@ import { useSignOut } from '../api/auth'
 import { myselfQuery } from '../api/me'
 import { Button } from '../components/Button'
 import { Banner, Card, ListRow, listRowClass, ListRowContent } from '../components/Card'
-import { ChevronRightIcon, SignOutIcon } from '../components/icons'
+import { ChevronRightIcon, SignOutIcon, StatusIcon } from '../components/icons'
+import { STATUS_URL } from '../config'
 import { t } from '../i18n/es'
 import { SectionHead } from './settingsForm'
 
@@ -13,7 +14,8 @@ const copy = t.admin.settings.account
 /**
  * "Cuenta": who is signed in, as the gym has them, and "Cerrar sesión". On a phone this
  * is where signing out lives, so the bottom bar keeps to five tabs (#177); the desktop
- * sidebar keeps its own. So is "Mi página", for staff who also train (#214).
+ * sidebar keeps its own. So is "Mi página", for staff who also train (#214), and
+ * "Estado del servicio", the public uptime page in a new tab (#519).
  */
 export function AccountSettings() {
   const me = useQuery(myselfQuery())
@@ -30,6 +32,9 @@ export function AccountSettings() {
             <ListRowContent title={t.nav.myPage} trailing={<ChevronRightIcon />} />
           </Link>
         )}
+        <a href={STATUS_URL} target="_blank" rel="noopener noreferrer" className={listRowClass(true)}>
+          <ListRowContent title={t.nav.status} detail={t.nav.statusLine} trailing={<StatusIcon />} />
+        </a>
       </Card>
       {signOut.isError && (
         <Banner tone="error">

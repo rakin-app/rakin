@@ -63,6 +63,9 @@ export const es = {
     myPage: 'Mi página',
     // A coach's phone (#358): the top bar's menu with "Cerrar sesión".
     account: 'Cuenta',
+    // The public uptime page (#519), in a new tab: every staff role, never a member.
+    status: 'Estado del servicio',
+    statusLine: 'Revisa aquí si Rakin está funcionando.',
     pendingBadge: (n: number) => (n === 1 ? '1 comprobante por revisar' : `${n} comprobantes por revisar`),
   },
   signIn: {

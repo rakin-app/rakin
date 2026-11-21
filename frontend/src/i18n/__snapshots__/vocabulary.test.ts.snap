@@ -10,6 +10,8 @@ exports[`a gym's words > reads exactly as before with none set: nav, Hoy and Alu
     "payments": "Pagos",
     "pendingBadge": "2 comprobantes por revisar",
     "settings": "Ajustes",
+    "status": "Estado del servicio",
+    "statusLine": "Revisa aquí si Rakin está funcionando.",
     "students": "Alumnos",
     "today": "Hoy",
   },

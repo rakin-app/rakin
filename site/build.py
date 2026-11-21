@@ -9,7 +9,7 @@
 Writes, under `--out` (default `site/dist`):
 
 * `index.html`: `site/index.html`, with `site/styles.css` inlined, the dark
-  lockup drawn inline and `CONTACT_EMAIL` filled in;
+  lockup drawn inline and `CONTACT_EMAIL` and `STATUS_URL` filled in;
 * `privacidad/index.html`: Rakin's own privacy notice,
   `docs/legal/aviso-de-privacidad-rakin.md`, rendered from its policy on, with
   its drafting notes left out;
@@ -55,6 +55,10 @@ LOCKUP_DARK = ROOT / "docs" / "brand" / "lockup-dark.svg"
 # TODO(#343): the alias the owner provides; one line to change.
 CONTACT_EMAIL = "hola@rakin.app"
 
+# The public uptime status page (#519, docs/deploy.md "Uptime"); the footer's
+# "Estado del servicio". The app keeps its own copy in frontend/src/config.ts.
+STATUS_URL = "https://stats.uptimerobot.com/05JvXUXDJh"
+
 # The notice's links to its sibling documents go to the repo, where they are published.
 DOCS_URL = "https://github.com/rakin-app/rakin/blob/main/docs/legal/"
 
@@ -91,7 +95,7 @@ NOTICE_PAGE = """<!doctype html>
     <footer class="footer">
       <div class="wrap">
         <p>Rakin · Membresías y pagos para academias</p>
-        <p><a href="/">Inicio</a> · <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a></p>
+        <p><a href="/">Inicio</a> · <a href="{{STATUS_URL}}" target="_blank" rel="noopener">Estado del servicio</a> · <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a></p>
       </div>
     </footer>
   </body>
@@ -274,6 +278,7 @@ def build(out: Path, fonts: Path) -> None:
         "STYLES": styles,
         "LOCKUP_DARK": lockup(),
         "CONTACT_EMAIL": html.escape(CONTACT_EMAIL),
+        "STATUS_URL": html.escape(STATUS_URL),
     }
 
     images = fingerprint(SITE / "img", out / "img")
