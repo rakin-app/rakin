@@ -158,6 +158,19 @@ def test_every_colour_in_an_email_is_one_of_its_themes(theme: str) -> None:
     for email in emails:
         assert email.html is not None
         assert set(HEX.findall(email.html)) <= allowed, email.subject
+        # Every value made it in: none is left as a literal `{{ … }}` (#517's review).
+        assert "{{" not in email.html and "}}" not in email.html, email.subject
+    # The summary's secondary lines, which build their style in a `{% set %}`.
+    summary = emails[0].html or ""
+    assert summary.count(f"color:{THEMES[theme].text_muted};") >= 6
+
+
+def test_no_template_writes_a_value_inside_a_tag() -> None:
+    """`{{ … }}` inside `{% … %}` is a string, never rendered: every template, so a
+    colour in a `{% set %}` style cannot slip through as text again."""
+    for path in sorted(TEMPLATES_DIR.glob("*")):
+        tags = re.findall(r"\{%.*?%\}", path.read_text(), flags=re.S)
+        assert not [t for t in tags if "{{" in t or "}}" in t], path.name
 
 
 def test_a_platform_link_wears_bosque() -> None:
