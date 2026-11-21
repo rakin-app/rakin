@@ -58,6 +58,8 @@ export const es = {
     },
     classes: 'Clases',
     payments: 'Pagos',
+    // Money in and money out side by side (#316), for who holds «Ver gastos».
+    finances: 'Finanzas',
     settings: 'Ajustes',
     // Their own student page, for staff who also train at the gym (#214).
     myPage: 'Mi página',
@@ -3338,7 +3340,42 @@ export const es = {
         cancel: 'Cancelar',
       },
     },
-    // Pagos › Gastos (#314): what the gym spends, apart from billing. Nothing here
+    // Finanzas (#316): the month whole, what came in, what went out and what is left,
+    // and the year month by month. Entradas is Pagos' Cobrado; without «Ver ingresos» the
+    // page shows Salidas only.
+    finances: {
+      title: 'Finanzas',
+      subtitle: 'Lo que entró, lo que salió y lo que queda.',
+      tabs: { label: 'Secciones de Finanzas', summary: 'Resumen', expenses: 'Gastos' },
+      view: { label: 'Ver', month: 'Mes', year: 'Año' },
+      loading: 'Cargando las finanzas…',
+      error: 'No pudimos cargar las finanzas.',
+      retry: 'Reintentar',
+      month: 'Mes',
+      previous: 'Mes anterior',
+      next: 'Mes siguiente',
+      yearNav: 'Año',
+      previousYear: 'Año anterior',
+      nextYear: 'Año siguiente',
+      income: 'Entradas',
+      expenses: 'Salidas',
+      result: 'Resultado',
+      plans: 'Cuotas y planes',
+      extra: 'Cobros extra',
+      incomeNote: 'Lo cobrado, como lo muestra Pagos: neto de devoluciones.',
+      noExpenses: 'No hay gastos registrados en este mes.',
+      noExpensesYear: 'No hay gastos registrados en este año.',
+      onlyExpenses: 'Ves solo las salidas: las entradas son de quien tiene «Ver ingresos».',
+      monthLabel: (month: string) => `Finanzas de ${month}`,
+      yearLabel: (year: string) => `Finanzas de ${year}`,
+      byCategory: 'Salidas por categoría',
+      categoryMonths: (name: string) => `${name} mes a mes`,
+      total: 'Total del año',
+      none: '—',
+      // The month's row of the year: its name, and at 1280 the bars of what came in and went out.
+      columns: { month: 'Mes', income: 'Entradas', expenses: 'Salidas', result: 'Resultado' },
+    },
+    // Finanzas › Gastos (#314): what the gym spends, apart from billing. Nothing here
     // touches a student's balance; a voided expense stays listed, struck through.
     expenses: {
       title: 'Gastos',
@@ -4330,6 +4367,7 @@ export const es = {
       extra: 'Cobros extra',
       summary: 'el resumen del mes',
       expenses: 'Gastos',
+      finances: 'Finanzas',
       charge: 'el cobro',
       settings: 'Ajustes',
       me: 'Mi página',

@@ -185,9 +185,14 @@ function Book() {
             {copy.extra}
           </Link>
           {readsExpenses(access.data) && (
-            <Link to="/admin/pagos/gastos" className={moreItemClass()}>
-              {copy.expenses}
-            </Link>
+            <>
+              <Link to="/admin/finanzas" className={moreItemClass()}>
+                {t.nav.finances}
+              </Link>
+              <Link to="/admin/finanzas/gastos" className={moreItemClass()}>
+                {copy.expenses}
+              </Link>
+            </>
           )}
           {latest && (
             <>

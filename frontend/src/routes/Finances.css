@@ -1,0 +1,324 @@
+@import '../styles/media.css';
+
+/* Finanzas (#316): the tabs Resumen and Gastos, the Mes / Año switch, then the month (three
+   tiles over its lines of money in and out) or the year (twelve rows and the year's
+   categories). On a phone the year is rows of figures; from the desktop width each figure
+   of Entradas and Salidas has its bar under it, on one scale for the year. */
+
+.finances {
+  display: grid;
+  gap: var(--space-4);
+  padding-block: var(--space-5) var(--space-6);
+}
+
+.finances__subtitle,
+.finances__note,
+.finances__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.finances__note {
+  font-size: var(--text-md);
+}
+
+.finances__hint--padded {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+/* Resumen and Gastos, as Ajustes draws its sections. */
+.finances-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.finances-tabs__link {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  padding: var(--space-2-5) var(--space-3);
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.finances-tabs__link[aria-current='page'] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.finances__stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.finances__stepper-label {
+  min-width: 9rem;
+  text-align: center;
+  font-weight: var(--font-weight-semibold);
+}
+
+.finances__card {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 64rem;
+}
+
+.finances__card.card--flush {
+  gap: 0;
+}
+
+/* On a phone a row each, the label and its figure on one line; three across from the
+   desktop width, where the figures have room. */
+.finances__tiles {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.finances__tile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-md);
+}
+
+.finances__tile dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.finances__tile dd {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.finances__negative,
+.finances__tile dd.finances__negative {
+  color: var(--color-danger);
+}
+
+.finances__group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.finances__group-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-heading);
+}
+
+.finances__group-title--padded {
+  padding: var(--space-4);
+}
+
+.finances__lines {
+  display: grid;
+}
+
+.finances__line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-divider);
+  font-size: var(--text-sm);
+}
+
+.finances__line:last-child {
+  border-bottom: 0;
+}
+
+.finances__figure {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The year: a row per month. */
+.finances__year {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.finances__year th,
+.finances__year td {
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--color-divider);
+  text-align: right;
+  vertical-align: top;
+}
+
+.finances__year th[scope='row'],
+.finances__year thead th:first-child {
+  text-align: left;
+  font-weight: var(--font-weight-medium);
+}
+
+.finances__year thead th {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.finances__year tfoot th,
+.finances__year tfoot td {
+  border-bottom: 0;
+  font-weight: var(--font-weight-semibold);
+}
+
+.finances__later {
+  color: var(--color-text-subtle);
+}
+
+/* The bars are the desktop's: on a phone the row's figures are enough. */
+.finances__bar {
+  display: none;
+}
+
+.finances__bar--out .bar-list__fill {
+  background: var(--color-text-subtle);
+}
+
+.finances__categories {
+  border-top: 1px solid var(--color-divider);
+}
+
+.finances__category {
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.finances__category:last-child {
+  border-bottom: 0;
+}
+
+.finances__category-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-4);
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.finances__category-button > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.finances__chevron {
+  display: inline-flex;
+  color: var(--color-text-muted);
+}
+
+.finances__category-months {
+  padding: 0 var(--space-4) var(--space-3) var(--space-6);
+}
+
+/* On a phone with Entradas and Resultado, a month is its name over its three figures,
+   each under its column's name: four columns do not fit 390. Salidas alone fits as a table. */
+@media not (--desktop) {
+  .finances__year:not(.finances__year--expenses),
+  .finances__year:not(.finances__year--expenses) tbody,
+  .finances__year:not(.finances__year--expenses) tfoot {
+    display: block;
+  }
+
+  .finances__year:not(.finances__year--expenses) thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .finances__year:not(.finances__year--expenses) tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-2-5) 0;
+    border-bottom: 1px solid var(--color-divider);
+  }
+
+  .finances__year:not(.finances__year--expenses) tfoot tr {
+    border-bottom: 0;
+  }
+
+  .finances__year:not(.finances__year--expenses) th,
+  .finances__year:not(.finances__year--expenses) td {
+    padding: 0;
+    border-bottom: 0;
+    text-align: left;
+  }
+
+  .finances__year:not(.finances__year--expenses) th[scope='row'] {
+    grid-column: 1 / -1;
+  }
+
+  .finances__year:not(.finances__year--expenses) td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--color-text-muted);
+    font-size: var(--text-2xs);
+    font-weight: var(--font-weight-medium);
+  }
+}
+
+@media (--desktop) {
+  .finances__tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .finances__tiles--one {
+    grid-template-columns: minmax(0, 20rem);
+  }
+
+  .finances__tile {
+    display: block;
+  }
+
+  .finances__tile dd {
+    margin-top: var(--space-1);
+    font-size: var(--text-xl);
+  }
+
+  .finances__year th,
+  .finances__year td {
+    padding: var(--space-2-5) var(--space-3);
+  }
+
+  .finances__year td {
+    width: 28%;
+  }
+
+  .finances__year--expenses td {
+    width: 60%;
+  }
+
+  .finances__bar {
+    display: block;
+    margin-top: var(--space-1);
+  }
+}

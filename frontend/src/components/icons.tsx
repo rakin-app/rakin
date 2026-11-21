@@ -53,6 +53,15 @@ export function PaymentsIcon() {
   )
 }
 
+/** Finanzas (#316): bars of money in and out. */
+export function FinancesIcon() {
+  return (
+    <Icon>
+      <path d="M4 20h16M7 20v-8M12 20V6M17 20v-5" />
+    </Icon>
+  )
+}
+
 export function SettingsIcon() {
   return (
     <Icon>

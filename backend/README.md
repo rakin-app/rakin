@@ -307,6 +307,17 @@ What the gym spends (#314, `app.api.expenses`, migration 0083), kept apart from 
 
 Reads need `expenses_read`, writes `expenses_write`, at the API and under RLS; no role holds either until the gym ticks it in Cargos, so they start the titular's alone. `rakin_app` has no DELETE on either table, and the log's expense rows name no person and are read with `expenses_read` alone (0067).
 
+## Finanzas
+
+Money in and money out side by side (#316, `app.api.finances`), read-only, with `expenses_read` (`ExpensesReadSession`):
+
+| Endpoint | What |
+|---|---|
+| `GET /api/finances?month=` | a month (the current one by default; a later one or a day other than the 1st is a 422): `income` (`total_clp`, `plans_clp`, `extra_clp`), `expenses_clp`, `result_clp`, and `categories`, those with an expense that counts, in the gym's order |
+| `GET /api/finances/year?year=` | a year (the current one by default; a later one is a 422): twelve `months` (`income_clp`, `expenses_clp`, `result_clp`), the year's totals, and each category's total and twelve months |
+
+Entradas is Pagos' Cobrado: `v_monthly_income`, net of refunds, each payment in the month it was validated in, summed as `BOOK_KPIS` sums it, so Finanzas and Pagos never disagree; `extra_clp` is its `extra_income_clp`, the cobros extra, and `plans_clp` the rest. Salidas is the month's expenses not voided, by `spent_on`. Without `money_read` (`SeesMoney`), `v_monthly_income` is not read and every income and result figure is `null`: Salidas only. `tests/test_finances.py` holds Entradas to the book's KPIs, a void out of Salidas, and an `expenses_read`-only answer free of income.
+
 ## Plans API
 
 | Method | Path | Does |

@@ -22,10 +22,9 @@ import {
   type ExpenseMethod,
   type ReceiptChange,
 } from '../api/expenses'
-import { myAccessQuery, readsExpenses, readsLedger, writesExpenses } from '../api/me'
+import { myAccessQuery, readsExpenses, writesExpenses } from '../api/me'
 import { proofProblem } from '../api/proofs'
 import { useSubmit } from '../api/submit'
-import { BackLink } from '../components/BackLink'
 import { Button, buttonClass } from '../components/Button'
 import { Banner, Card, cardClass, PlainList } from '../components/Card'
 import { cx } from '../components/classNames'
@@ -37,6 +36,7 @@ import { PageHeader, PageTitle } from '../components/PageHeader'
 import { isoDay, shiftMonth } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
+import { FinancesTabs } from './Finances'
 import './Expenses.css'
 
 const copy = t.admin.expenses
@@ -55,10 +55,10 @@ export function validateExpensesSearch(search: Record<string, unknown>): Expense
   return { month, category }
 }
 
-const route = getRouteApi('/admin/pagos/gastos')
+const route = getRouteApi('/admin/finanzas/gastos')
 
 /**
- * Pagos › Gastos (#314): what the gym spends, a month at a time, newest first, apart
+ * Finanzas › Gastos (#314): what the gym spends, a month at a time, newest first, apart
  * from billing (docs/design/expenses-and-officers.md, sections 10 and 12). The form
  * opens in place, at the top for a new expense and on the row for a correction; Anular
  * asks why, and leaves the expense listed, struck through and out of the total.
@@ -71,7 +71,7 @@ export function Expenses() {
   usePageTitle(copy.title)
   const access = useQuery(myAccessQuery())
   if (readsExpenses(access.data)) {
-    return <ExpensesPage writes={writesExpenses(access.data)} fromPayments={readsLedger(access.data)} />
+    return <ExpensesPage writes={writesExpenses(access.data)} />
   }
   return (
     <PageContainer>
@@ -81,7 +81,7 @@ export function Expenses() {
   )
 }
 
-function ExpensesPage({ writes, fromPayments }: { writes: boolean; fromPayments: boolean }) {
+function ExpensesPage({ writes }: { writes: boolean }) {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const month = useQuery({ ...expenseMonthQuery(search.month, search.category), placeholderData: keepPreviousData })
@@ -99,9 +99,8 @@ function ExpensesPage({ writes, fromPayments }: { writes: boolean; fromPayments:
   return (
     <PageContainer className="expenses">
       <header className="expenses__header">
-        {fromPayments && <BackLink to="/admin/pagos" label={t.common.backTo(t.common.places.payments)} />}
         <div className="expenses__heading">
-          <PageTitle>{copy.title}</PageTitle>
+          <PageTitle>{t.admin.finances.title}</PageTitle>
           <p className="expenses__subtitle">{copy.subtitle}</p>
         </div>
         {writes && (
@@ -118,6 +117,7 @@ function ExpensesPage({ writes, fromPayments }: { writes: boolean; fromPayments:
           </Button>
         )}
       </header>
+      <FinancesTabs />
 
       <div className="expenses__toolbar">
         <div className="expenses__month" role="group" aria-label={copy.month}>
@@ -646,8 +646,9 @@ function Categories({ categories }: { categories: ExpenseCategory[] }) {
     mutationFn: runCategoryChange,
     onSuccess: (data: ExpenseCategory[]) => {
       queryClient.setQueryData(expenseCategoriesQuery().queryKey, data)
-      // A rename shows on every expense under it.
+      // A rename shows on every expense under it, and on Finanzas' categories.
       void queryClient.invalidateQueries({ queryKey: ['expenses', 'month'] })
+      void queryClient.invalidateQueries({ queryKey: ['expenses', 'finances'] })
       setRenaming(null)
     },
   })

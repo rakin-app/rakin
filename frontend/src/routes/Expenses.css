@@ -1,6 +1,6 @@
 @import '../styles/media.css';
 
-/* Pagos › Gastos (#314): the month and the category under the header, the month's total,
+/* Finanzas › Gastos (#314): the month and the category under the header, the month's total,
    then one row per expense, opening in place to its detail, its correction or Anular.
    On a phone a row is the date, the category over what else it says, and the amount;
    from the desktop width the forms lay two fields to a row. A voided row is struck

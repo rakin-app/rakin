@@ -19,10 +19,11 @@ const PLACES: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/admin\/pagos\/?$/, places.payments],
   [/^\/admin\/pagos\/comprobantes\/?$/, places.proofs],
   [/^\/admin\/pagos\/resumen\/?$/, places.summary],
-  [/^\/admin\/pagos\/gastos\/?$/, places.expenses],
   [/^\/admin\/pagos\/cobros\/?$/, places.extra],
   [/^\/admin\/pagos\/cobros\/nuevo\/?$/, ''],
   [/^\/admin\/pagos\/cobros\/[^/]+\/?$/, places.charge],
+  [/^\/admin\/finanzas\/?$/, places.finances],
+  [/^\/admin\/finanzas\/gastos\/?$/, places.expenses],
   // Ajustes and each of its sections.
   [/^\/admin\/ajustes(\/.*)?$/, places.settings],
   [/^\/me\/?$/, places.me],
