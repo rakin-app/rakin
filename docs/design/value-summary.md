@@ -55,8 +55,10 @@ has already been asked about. None of them adds a new question for the lawyer.
 **The trap in a time window.** #504 asks within how many days a payment should
 count. With the nightly cadence (days 0, 1, 4, 7, 10, 13 for a grace of 15), no
 overdue period with an email address goes more than 3 days without one. Any window
-of 3 days or more therefore counts **every** late payment made during the grace.
-Whether the window is 7 days or 14 makes no difference. The window is not what
+of 3 days or more therefore counts **nearly every** late payment made during the
+grace. The exception is a payment made on day 1 before that night's job has sent the
+day-1 email: no reminder was sent after the due date yet, so rule 3 below leaves it
+out. Whether the window is 7 days or 14 makes no difference. The window is not what
 needs deciding. What needs deciding is what to call the result.
 
 **The rule.** A payment counts as *cobrado después de un recordatorio* when:
@@ -64,9 +66,12 @@ needs deciding. What needs deciding is what to call the result.
 1. it is a validated `payment` on a billing period;
 2. the period was already late when it was paid. "When it was paid" is the
    member's act: `claimed_at` for an uploaded proof, else `created_at` for a payment
-   staff recorded. Both must be after `due_date`; the due date itself does not count;
+   staff recorded. That timestamp, as a date in the gym's timezone, must be after
+   `due_date`; a payment on the due date itself does not count;
 3. at least one reminder about that period was sent after the due date and before
-   the payment, by email (`status = 'sent'`) or by WhatsApp (link opened);
+   the payment, by email (`status = 'sent'`) or by WhatsApp (link opened). "After
+   the due date" compares `sent_at` as a date in the gym's timezone, so a day-0
+   email sent at 23:30 is not read as a day-1 one;
 4. it is counted in the month it was validated in, as `v_monthly_income` counts it.
    So the figure is always a part of that month's income, and the page shows it
    that way.
@@ -80,8 +85,10 @@ It is split in two:
 - **Después de un WhatsApp del equipo**: at least one WhatsApp reminder was opened
   before the payment. Rakin wrote the message, and a person sent it.
 
-Due-today reminders (`payment_due_today`, the email on day 0) do not make a payment
-count. A payment on the due date is on time.
+Reminders sent on the due date never make a payment count, because rule 3 asks
+for one sent after it. That covers the WhatsApp `payment_due_today` and the day-0
+email, which is a `payment_overdue` like the later ones (`is_overdue_email_day(0, …)`).
+A payment on the due date is on time.
 
 **What it over-counts.** People who would have paid a few days late anyway. Many
 gyms have regular late payers, so this is the biggest error, and nothing in the data
