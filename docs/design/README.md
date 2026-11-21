@@ -162,6 +162,14 @@ is awkward, what is missing, the martial-arts wording and logic that should be o
 needs them first. Its build tickets are #344 to #356, with #130, #25, #66 and the #307
 board tickets linked.
 
+## Resumen del mes (#504)
+
+[value-summary.md](value-summary.md) sets out what Rakin can honestly tell a gym it did
+each month: payments that came in late after a reminder, and members back after a
+WhatsApp. For each, it gives the counting rule and what the rule over- and under-counts.
+It also explains why email open tracking stays off, and how the summary is built from
+counts alone. Its build tickets are #505 to #508.
+
 ## Contrast (WCAG 2.1 AA)
 
 `frontend/src/styles/tokens.test.ts` checks every pair in every theme.

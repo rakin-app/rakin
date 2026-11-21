@@ -6,6 +6,8 @@ Drafts built on these answers (the DPA, both privacy notices and the beta terms 
 
 A second spike, #500 (2026-11-20), asks whether accepting the terms in the app is valid: [Spike #500](#spike-500-accepting-the-terms-in-the-app).
 
+A third, #504 (2026-11-20), applies these answers to email open and click tracking and to a monthly summary per gym. It recommends tracking stay off, which leaves Anexo A, the notices and #500's answers as they are, and adds no question for the lawyer: [value-summary.md, section 2](design/value-summary.md#2-email-open-rates-can-we-and-should-we).
+
 **This is research, not legal advice.** Every answer is a proposal. The owner approves the ones marked *approve it yourself*; the lawyer confirms the rest.
 
 The text quoted is Ley 19.628 as Ley 21.719 rewrites it, in the consolidated version BCN publishes for 1 December 2026 (see [sources](#sources)). Article numbers are those of Ley 19.628 unless marked "21.719 transitorio".
