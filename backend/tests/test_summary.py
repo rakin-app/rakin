@@ -143,25 +143,32 @@ def paid(
     by: uuid.UUID | None = None,
     amount: int = 30000,
     status: str = "validated",
+    method: str = "transfer",
 ) -> None:
     """A payment on `period` that staff recorded at `made`, or that `by` uploaded a
-    proof of then, validated at `validated` (`made` by default)."""
+    proof of then, validated at `validated` (`made` by default).
+
+    Written as the app writes them: staff's entry is claimed by the recording admin at
+    the moment they record it (`app.api.entries.INSERT_ENTRY`), with no proof; the
+    member's carries the proof's key (`app.api.proofs.CLAIM`)."""
+    owner = seeded_owner(gym)
     admin(
         db,
         "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
         " kind, status, method, claimed_by, claimed_at, created_at, validated_by,"
-        " validated_at) VALUES ($1, $2, $3, $4, 'payment', $5, 'transfer', $6, $7, $8, $9,"
-        " $10)",
+        " validated_at, proof_object_key) VALUES ($1, $2, $3, $4, 'payment', $5, $6, $7,"
+        " $8, $8, $9, $10, $11)",
         gym,
         membership,
         period,
         amount,
         status,
-        by,
-        made if by else None,
+        method,
+        by or owner,
         made,
-        seeded_owner(gym),
+        owner,
         validated or made,
+        f"proofs/{gym}/{by}/{uuid.uuid4()}.jpg" if by else None,
     )
 
 
@@ -472,6 +479,47 @@ def test_the_plain_counts(client: TestClient, db: Database, gym: uuid.UUID) -> N
     assert page["own_payments"] == {"by_members": 1, "payments": 2, "percent": None}
     assert page["proofs"] == {"reviewed": 2, "median_minutes": 120}
     assert (page["reactivated"], page["trials_converted"]) == (1, 1)
+
+
+@pg
+def test_a_payment_staff_recorded_is_cobrado_but_not_the_members_own_nor_a_proof_reviewed(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # Staff's entries carry a claim too, the admin's at the moment they record it
+    # (#511), so only the proof's key tells the member's own payment apart.
+    person, membership = a_member(db, gym)
+    period = a_period(db, gym, membership)
+    on = MONTH + timedelta(days=3)
+    paid(db, gym, membership, period, made=local(on, 9), by=person, validated=local(on, 10))
+    before = summary(client, gym)
+    paid(db, gym, membership, period, made=local(on, 11), method="cash")
+    paid(db, gym, membership, period, made=local(on, 12), method="transfer")
+
+    page = summary(client, gym)
+
+    assert before["own_payments"] == {"by_members": 1, "payments": 1, "percent": None}
+    assert page["income_payments"] == 3
+    assert page["income_clp"] == before["income_clp"] + 60000
+    assert page["own_payments"] == {"by_members": 1, "payments": 3, "percent": None}
+    assert page["proofs"] == before["proofs"] == {"reviewed": 1, "median_minutes": 60}
+
+
+@pg
+def test_a_late_payment_staff_recorded_after_a_reminder_counts_on_the_day_they_recorded_it(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # Staff's claim is the moment they record it, so "when it was paid" is that moment
+    # whether it is read off `claimed_at` or `created_at`.
+    person, membership = a_member(db, gym)
+    period = a_period(db, gym, membership)
+    emailed(db, gym, person, period, local(day(1), 9))
+    paid(db, gym, membership, period, made=local(day(1), 12), method="cash")
+    other_person, other_membership = a_member(db, gym)
+    other = a_period(db, gym, other_membership)
+    emailed(db, gym, other_person, other, local(day(1), 12))
+    paid(db, gym, other_membership, other, made=local(day(1), 9), method="cash")
+
+    assert after(client, gym) == (1, 1, 0)
 
 
 @pg

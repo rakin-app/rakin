@@ -42,10 +42,10 @@ has already been asked about. None of them adds a new question for the lawyer.
 | Statement sent | `message_log`, `template = 'statement'`, `payload.billing_period_id` | 7 days before the due date (`app.jobs.statements`) |
 | WhatsApp payment reminder opened | `message_log`: `channel = 'whatsapp'`, `template IN ('payment_due_today', 'payment_overdue', 'proof_rejected_followup')`, `payload.billing_period_id`, `payload.ordinal`, `payload.days_overdue` | Written when an admin **opens** the `wa.me` link (`app.api.reminders.remind`). Rakin never learns whether the message was sent or read (migration 0024). The WhatsApp template `payment_overdue` has the same name as the email template, so `channel` tells them apart |
 | Inactive nudge opened | `message_log`: `channel = 'whatsapp'`, `template = 'inactive_nudge'`, `payload.about` (the member), `payload.days_absent` | The same "opened" meaning (`app.api.inactive.nudge`). The list holds only people away 14 days or more |
-| Payment | `ledger_entry`: `kind = 'payment'`, `status = 'validated'`, `billing_period_id`, `method`, `claimed_by` / `claimed_at` (a proof the member uploaded), `created_at`, `validated_at` | A proof the member uploaded has `claimed_by` set, by `transfer` (migration 0012). A payment staff record has no claim |
+| Payment | `ledger_entry`: `kind = 'payment'`, `status = 'validated'`, `billing_period_id`, `method`, `proof_object_key`, `claimed_by` / `claimed_at`, `created_at`, `validated_at` | A proof the member uploaded has `proof_object_key` set, by `transfer` (migration 0012); the member's claim (`app.api.proofs.CLAIM`) is the only write that sets it. A payment staff record **also has a claim**: `app.api.entries.INSERT_ENTRY` sets `claimed_by` to the recording admin and `claimed_at` to the moment they record it, so `claimed_by` / `claimed_at` do not tell a member's proof from a staff entry (#511). Tell a proof by `proof_object_key IS NOT NULL` |
 | Period due | `billing_period.due_date`, `amount_due_clp` | What is still owed is settled by `app.domain.billing.SETTLING_KINDS` |
 | Attendance | `attendance` joined to `session.starts_at` | One row per membership per class (migration 0023) |
-| Proof review time | `ledger_entry.claimed_at` → `validated_at`, for both validated and rejected proofs | |
+| Proof review time | `ledger_entry.claimed_at` → `validated_at`, for both validated and rejected proofs with `proof_object_key` set | A staff entry's `claimed_at` is its `validated_at`, so counting it would add a review of 0 minutes |
 | Lapsed plan brought back | `membership.reactivated_at`, and `audit_event` `membership_reactivated` (migrations 0048, 0050) | |
 | Trial converted | `membership.converted_from` (migration 0074) | |
 | Month's income | `v_monthly_income` (migration 0014), shown in the ledger KPIs (`app.api.ledger.BOOK_KPIS`) | Grouped by the month a payment was validated in, in the gym's timezone |
@@ -66,8 +66,10 @@ needs deciding. What needs deciding is what to call the result.
 1. it is a validated `payment` on a billing period;
 2. the period was already late when it was paid. "When it was paid" is the
    member's act: `claimed_at` for an uploaded proof, else `created_at` for a payment
-   staff recorded. That timestamp, as a date in the gym's timezone, must be after
-   `due_date`; a payment on the due date itself does not count;
+   staff recorded (a staff entry's `claimed_at` is that same moment, so
+   `coalesce(claimed_at, created_at)` reads either right). That timestamp, as a
+   date in the gym's timezone, must be after `due_date`; a payment on the due date
+   itself does not count;
 3. at least one reminder about that period was sent after the due date and before
    the payment, by email (`status = 'sent'`) or by WhatsApp (link opened). "After
    the due date" compares `sent_at` as a date in the gym's timezone, so a day-0
@@ -142,8 +144,8 @@ present them as if they were.
 | Figure | How it is counted | Sample copy |
 | --- | --- | --- |
 | Automatic emails sent | `message_log` emails with `status = 'sent'` from `statement`, `payment_overdue` and `receipt` | "Rakin envió 112 avisos de cobro y recibos por ti" |
-| Payments the members recorded themselves | validated payments with `claimed_by` set, out of all validated payments | "38 de 52 pagos los informaron los mismos alumnos, con su comprobante" |
-| Proofs reviewed | validated or rejected proofs; the median time from `claimed_at` to `validated_at` | "Revisaste 38 comprobantes; la mitad en menos de 5 horas" |
+| Payments the members recorded themselves | validated payments with `proof_object_key` set, out of all validated payments | "38 de 52 pagos los informaron los mismos alumnos, con su comprobante" |
+| Proofs reviewed | validated or rejected payments with `proof_object_key` set; the median time from `claimed_at` to `validated_at` | "Revisaste 38 comprobantes; la mitad en menos de 5 horas" |
 | Plans reactivated | `membership.reactivated_at` in the month | "3 planes vencidos volvieron a activarse" |
 | Trials converted | paid plans with `converted_from`, by `created_at` in the month | "4 de 9 clases de prueba pasaron a plan" |
 | Debt at the end of the month | the sum over `v_overdue` at month close, for active memberships | Needs the snapshot (#506): `v_overdue` only knows today |
