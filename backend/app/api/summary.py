@@ -147,6 +147,8 @@ COUNTS = text(
             AS reminder_whatsapps,
         (SELECT coalesce(sum(income_clp), 0)::bigint FROM v_monthly_income
          WHERE month = CAST(:month AS date)) AS income_clp,
+        -- Not `v_monthly_income.payments`: moves are left out here, while `income_clp`
+        -- keeps them, harmlessly, since a move's refund and payment net to zero.
         (SELECT count(*) FROM ledger_entry e
          WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
            AND {in_month("e.validated_at")}) AS income_payments,

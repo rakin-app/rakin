@@ -3357,7 +3357,7 @@ export const es = {
       backFigure: (back: number, of: number) => `${back} de ${of}`,
       // The percentage only from 5 people up.
       backDetail: (share: string | null) =>
-        `${w.Members} que no venían hace 14 días o más, dentro de dos semanas${share ? ` · ${share}` : ''}`,
+        `${w.Members} que no venían hace 14 días o más; volvieron dentro de dos semanas${share ? ` · ${share}` : ''}`,
       remindersLabel: 'Recordatorios de pago enviados',
       remindersDetail: (emails: number, whatsapps: number) =>
         [
