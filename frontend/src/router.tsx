@@ -22,6 +22,7 @@ import { PlatformLayout } from './layouts/PlatformLayout'
 import { CheckIn } from './routes/CheckIn'
 import { Classes, validateClassesSearch } from './routes/Classes'
 import { Expenses, validateExpensesSearch } from './routes/Expenses'
+import { Finances, validateFinancesSearch } from './routes/Finances'
 import { ExtraChargeDetail } from './routes/ExtraChargeDetail'
 import { ExtraChargeNew, validateExtraChargeNewSearch } from './routes/ExtraChargeNew'
 import { ExtraCharges } from './routes/ExtraCharges'
@@ -259,12 +260,31 @@ const adminMonthSummaryRoute = createRoute({
   component: MonthSummary,
 })
 
-// Pagos › "Gastos" (#314): what the gym spends, apart from billing, by month.
+// Finanzas (#316): money in and money out side by side, the month and the year, for who
+// sees expenses.
+const adminFinancesRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'finanzas',
+  validateSearch: validateFinancesSearch,
+  component: Finances,
+})
+
+// Finanzas › "Gastos" (#314): what the gym spends, apart from billing, by month.
 const adminExpensesRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'finanzas/gastos',
+  validateSearch: validateExpensesSearch,
+  component: Expenses,
+})
+
+// Where Gastos was before Finanzas (#314), for a link or bookmark from then.
+const adminOldExpensesRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'pagos/gastos',
   validateSearch: validateExpensesSearch,
-  component: Expenses,
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: '/admin/finanzas/gastos', search, replace: true })
+  },
 })
 
 // Pagos › "Cobros extra" (#195): one-off charges and the groups they target, a new one
@@ -402,7 +422,9 @@ const routeTree = rootRoute.addChildren([
     adminPaymentsRoute,
     adminProofReviewRoute,
     adminMonthSummaryRoute,
+    adminFinancesRoute,
     adminExpensesRoute,
+    adminOldExpensesRoute,
     adminExtraChargesRoute,
     adminExtraChargeNewRoute,
     adminExtraChargeRoute,

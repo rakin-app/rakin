@@ -66,13 +66,23 @@ describe('/admin route tree', () => {
     // Pagos and Ajustes join once the role is known to reach them.
     await within(nav).findByRole('link', { name: es.nav.settings })
     const links = within(nav).getAllByRole('link')
-    // Then the sidebar's "Estado del servicio" (#519), which a phone's bar leaves out.
-    expect(links.map((link) => link.textContent)).toEqual(['Hoy', 'Alumnos', 'Clases', 'Pagos', 'Ajustes', 'Estado del servicio'])
+    // Finanzas (#316) beside Pagos and the sidebar's "Estado del servicio" (#519), both
+    // of which a phone's bar leaves out.
+    expect(links.map((link) => link.textContent)).toEqual([
+      'Hoy',
+      'Alumnos',
+      'Clases',
+      'Pagos',
+      'Finanzas',
+      'Ajustes',
+      'Estado del servicio',
+    ])
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/admin',
       '/admin/alumnos',
       '/admin/clases',
       '/admin/pagos',
+      '/admin/finanzas',
       '/admin/ajustes',
       STATUS_URL,
     ])
@@ -163,6 +173,7 @@ describe('signing in', () => {
       'Alumnos',
       'Clases',
       'Pagos',
+      'Finanzas',
       'Ajustes',
       'Estado del servicio',
     ])

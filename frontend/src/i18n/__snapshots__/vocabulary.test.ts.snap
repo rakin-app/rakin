@@ -5,6 +5,7 @@ exports[`a gym's words > reads exactly as before with none set: nav, Hoy and Alu
   "nav": {
     "account": "Cuenta",
     "classes": "Clases",
+    "finances": "Finanzas",
     "label": "Principal",
     "myPage": "Mi página",
     "payments": "Pagos",

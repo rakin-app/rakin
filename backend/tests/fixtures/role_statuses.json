@@ -154,6 +154,16 @@
     "coach": 403,
     "owner": 404
   },
+  "GET /api/finances": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/finances/year": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 200
+  },
   "GET /api/freeze-requests": {
     "admin": 200,
     "coach": 403,

@@ -113,7 +113,7 @@ afterEach(() => {
 describe('Gastos', () => {
   it('lists the month newest first, a voided expense struck through, with the total of the rest', async () => {
     stubApi()
-    renderAt('/admin/pagos/gastos')
+    renderAt('/admin/finanzas/gastos')
 
     const [power, rent] = await rows()
     expect(power).toHaveClass('expenses__row--voided')
@@ -129,7 +129,7 @@ describe('Gastos', () => {
 
   it('opens a row to who recorded it, its receipt and why it was voided', async () => {
     const calls = stubApi()
-    renderAt('/admin/pagos/gastos')
+    renderAt('/admin/finanzas/gastos')
     const user = userEvent.setup()
     const [power, rent] = await rows()
 
@@ -151,7 +151,7 @@ describe('Gastos', () => {
 
   it('records an expense from the form opened in place', async () => {
     const calls = stubApi()
-    renderAt('/admin/pagos/gastos')
+    renderAt('/admin/finanzas/gastos')
     const user = userEvent.setup()
     await rows()
 
@@ -184,7 +184,7 @@ describe('Gastos', () => {
 
   it('corrects an expense, and voids one only with a reason', async () => {
     const calls = stubApi()
-    renderAt('/admin/pagos/gastos')
+    renderAt('/admin/finanzas/gastos')
     const user = userEvent.setup()
     const [, rent] = await rows()
 
@@ -218,7 +218,7 @@ describe('Gastos', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-11-21T01:30:00Z'))
     stubApi()
-    renderAt('/admin/pagos/gastos')
+    renderAt('/admin/finanzas/gastos')
     const user = userEvent.setup()
     await rows()
     await user.click(screen.getByRole('button', { name: copy.record }))
@@ -229,7 +229,7 @@ describe('Gastos', () => {
 
   it('goes to the month before, keeping it in the address', async () => {
     const calls = stubApi()
-    const router = renderAt('/admin/pagos/gastos')
+    const router = renderAt('/admin/finanzas/gastos')
     const user = userEvent.setup()
     await rows()
     await user.click(screen.getByRole('button', { name: copy.previous }))
@@ -239,7 +239,7 @@ describe('Gastos', () => {
 
   it('moves a category and archives it, but never Otros', async () => {
     const calls = stubApi()
-    renderAt('/admin/pagos/gastos')
+    renderAt('/admin/finanzas/gastos')
     const user = userEvent.setup()
     await rows()
 
@@ -258,7 +258,7 @@ describe('Gastos', () => {
 
   it('shows a reader the list with nothing to record, correct or void', async () => {
     stubApi(['expenses_read'])
-    renderAt('/admin/pagos/gastos')
+    renderAt('/admin/finanzas/gastos')
     const [, rent] = await rows()
     expect(screen.queryByRole('button', { name: copy.record })).not.toBeInTheDocument()
     expect(screen.queryByText(copy.categories.title)).not.toBeInTheDocument()
@@ -269,19 +269,37 @@ describe('Gastos', () => {
 
   it('tells an Administrador it is not theirs, and asks the API nothing about expenses', async () => {
     const calls = stubApi('admin')
-    renderAt('/admin/pagos/gastos')
+    renderAt('/admin/finanzas/gastos')
     expect(await screen.findByText(copy.onlyWho)).toBeInTheDocument()
     expect(calls.some((c) => c.path.startsWith('/api/expenses'))).toBe(false)
   })
 
-  it("puts Gastos in Pagos' tab for someone who sees expenses and not payments", async () => {
+  it("puts Finanzas in Pagos' tab for someone who sees expenses and not payments", async () => {
     stubApi(['expenses_read'])
-    renderAt('/admin/pagos/gastos')
+    renderAt('/admin/finanzas/gastos')
     await rows()
     const nav = within(screen.getByRole('navigation', { name: es.nav.label }))
-    expect(nav.getByRole('link', { name: es.admin.payments.expenses })).toHaveAttribute('href', '/admin/pagos/gastos')
+    const finances = nav.getByRole('link', { name: es.nav.finances })
+    expect(finances).toHaveAttribute('href', '/admin/finanzas')
+    // In the bar, since there is no Pagos beside it.
+    expect(finances.closest('li')).not.toHaveClass('admin-nav__wide')
     expect(nav.queryByRole('link', { name: es.nav.payments })).not.toBeInTheDocument()
-    // No way back to a Pagos they cannot read.
-    expect(screen.queryByRole('link', { name: es.common.backTo(es.common.places.payments) })).not.toBeInTheDocument()
+  })
+
+  it("is Finanzas' second tab", async () => {
+    stubApi()
+    renderAt('/admin/finanzas/gastos')
+    await rows()
+    const tabs = within(screen.getByRole('navigation', { name: es.admin.finances.tabs.label }))
+    expect(tabs.getByRole('link', { name: es.admin.finances.tabs.expenses })).toHaveAttribute('aria-current', 'page')
+    expect(tabs.getByRole('link', { name: es.admin.finances.tabs.summary })).toHaveAttribute('href', '/admin/finanzas')
+  })
+
+  it('takes the path it had under Pagos to Finanzas, with its month', async () => {
+    const calls = stubApi()
+    const router = renderAt('/admin/pagos/gastos?month=2026-10-01')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/finanzas/gastos'))
+    expect(router.state.location.search).toEqual({ month: '2026-10-01' })
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/expenses?month=2026-10-01')).toBe(true))
   })
 })

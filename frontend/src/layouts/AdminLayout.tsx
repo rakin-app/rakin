@@ -10,6 +10,7 @@ import { InstallHint } from '../components/InstallHint'
 import { RakinLogo } from '../components/RakinLogo'
 import {
   ClassesIcon,
+  FinancesIcon,
   MyPageIcon,
   PaymentsIcon,
   SettingsIcon,
@@ -28,10 +29,12 @@ import { TermsPending } from '../routes/TermsPending'
 import './AdminLayout.css'
 
 type NavItem = {
-  to: '/admin' | '/admin/alumnos' | '/admin/clases' | '/admin/pagos' | '/admin/pagos/gastos' | '/admin/ajustes'
+  to: '/admin' | '/admin/alumnos' | '/admin/clases' | '/admin/pagos' | '/admin/finanzas' | '/admin/ajustes'
   label: string
   icon: ReactNode
   exact?: boolean
+  // The sidebar's only: on a phone the bar keeps to five tabs.
+  wideOnly?: boolean
 }
 
 // Each label read when the nav renders: "Alumnos" is the gym's word for its members (#344).
@@ -46,12 +49,10 @@ const NAV_ITEMS: readonly NavItem[] = [
   },
   { to: '/admin/clases', label: t.nav.classes, icon: <ClassesIcon /> },
   { to: '/admin/pagos', label: t.nav.payments, icon: <PaymentsIcon /> },
+  { to: '/admin/finanzas', label: t.nav.finances, icon: <FinancesIcon /> },
   { to: '/admin/ajustes', label: t.nav.settings, icon: <SettingsIcon /> },
 ]
 
-// In Pagos' place, for someone who sees the gym's expenses and not its payments (#314):
-// Gastos is under Pagos for everyone else, and the bar keeps to five tabs.
-const EXPENSES_ITEM: NavItem = { to: '/admin/pagos/gastos', label: t.admin.payments.expenses, icon: <PaymentsIcon /> }
 
 /**
  * Shell for the owner and coach screens. On a phone the nav is the bottom tab
@@ -136,13 +137,17 @@ function AdminShell() {
   const gym = useGymName()
   const logo = useQuery(myselfQuery()).data?.gym_logo
   const rise = useRise<HTMLDivElement>()
-  // Pagos is money and Ajustes the gym's configuration: each shown only once the role
-  // is known to reach it, so a coach never sees either tab, not even while the role loads.
-  // Someone who sees only expenses has Gastos where Pagos would be.
-  const navItems = NAV_ITEMS.flatMap((item) => {
+  // Pagos is money, Finanzas expenses (#316) and Ajustes the gym's configuration: each
+  // shown only once the role is known to reach it, so a coach never sees any of them, not
+  // even while the role loads. Finanzas sits beside Pagos in the sidebar; on a phone the
+  // bar keeps to five tabs, so whoever has Pagos reaches Finanzas from Pagos' "Más", and
+  // whoever sees expenses and not payments has Finanzas where Pagos would be.
+  const navItems = NAV_ITEMS.flatMap((item): NavItem[] => {
     if (item.to === '/admin/ajustes' && !managesGym(access.data)) return []
-    if (item.to !== '/admin/pagos' || readsLedger(access.data)) return [item]
-    return readsExpenses(access.data) ? [EXPENSES_ITEM] : []
+    if (item.to === '/admin/pagos' && !readsLedger(access.data)) return []
+    if (item.to !== '/admin/finanzas') return [item]
+    if (!readsExpenses(access.data)) return []
+    return [{ ...item, wideOnly: readsLedger(access.data) }]
   })
 
   // A coach's phone has no Ajustes: "Mi página" is a tab of their bar, and signing out is
@@ -179,7 +184,7 @@ function AdminShell() {
         </div>
         <PlainList className="admin-nav__list">
           {navItems.map((item) => (
-            <li key={item.to}>
+            <li key={item.to} className={item.wideOnly ? 'admin-nav__wide' : undefined}>
               <Link to={item.to} activeOptions={{ exact: item.exact ?? false }} className="admin-nav__link">
                 <span className="admin-nav__icon">
                   {item.icon}
