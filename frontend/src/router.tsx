@@ -21,6 +21,7 @@ import { MeLayout } from './layouts/MeLayout'
 import { PlatformLayout } from './layouts/PlatformLayout'
 import { CheckIn } from './routes/CheckIn'
 import { Classes, validateClassesSearch } from './routes/Classes'
+import { Expenses, validateExpensesSearch } from './routes/Expenses'
 import { ExtraChargeDetail } from './routes/ExtraChargeDetail'
 import { ExtraChargeNew, validateExtraChargeNewSearch } from './routes/ExtraChargeNew'
 import { ExtraCharges } from './routes/ExtraCharges'
@@ -258,6 +259,14 @@ const adminMonthSummaryRoute = createRoute({
   component: MonthSummary,
 })
 
+// Pagos › "Gastos" (#314): what the gym spends, apart from billing, by month.
+const adminExpensesRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'pagos/gastos',
+  validateSearch: validateExpensesSearch,
+  component: Expenses,
+})
+
 // Pagos › "Cobros extra" (#195): one-off charges and the groups they target, a new one
 // through its wizard, and one cobro's people. Static paths win over `$chargeId`.
 const adminExtraChargesRoute = createRoute({
@@ -393,6 +402,7 @@ const routeTree = rootRoute.addChildren([
     adminPaymentsRoute,
     adminProofReviewRoute,
     adminMonthSummaryRoute,
+    adminExpensesRoute,
     adminExtraChargesRoute,
     adminExtraChargeNewRoute,
     adminExtraChargeRoute,

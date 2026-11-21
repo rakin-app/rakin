@@ -11,7 +11,7 @@ import {
   type BookKpis,
   type PersonRef,
 } from '../api/ledger'
-import { myAccessQuery, readsLedger } from '../api/me'
+import { myAccessQuery, readsExpenses, readsLedger } from '../api/me'
 import { membershipLedgerQuery, membershipsQuery, shownMemberships } from '../api/member'
 import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
@@ -97,6 +97,7 @@ export function Payments() {
 }
 
 function Book() {
+  const access = useQuery(myAccessQuery())
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const filter = search.filter ?? 'all'
@@ -183,6 +184,11 @@ function Book() {
           <Link to="/admin/pagos/cobros" className={moreItemClass()}>
             {copy.extra}
           </Link>
+          {readsExpenses(access.data) && (
+            <Link to="/admin/pagos/gastos" className={moreItemClass()}>
+              {copy.expenses}
+            </Link>
+          )}
           {latest && (
             <>
               <a href={exportPath(latest.month, 'csv')} download className={moreItemClass()}>

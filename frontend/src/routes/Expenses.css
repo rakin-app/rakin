@@ -1,0 +1,300 @@
+@import '../styles/media.css';
+
+/* Pagos › Gastos (#314): the month and the category under the header, the month's total,
+   then one row per expense, opening in place to its detail, its correction or Anular.
+   On a phone a row is the date, the category over what else it says, and the amount;
+   from the desktop width the forms lay two fields to a row. A voided row is struck
+   through and dimmed. */
+
+.expenses {
+  display: grid;
+  gap: var(--space-4);
+  padding-block: var(--space-5) var(--space-6);
+}
+
+.expenses__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.expenses__heading {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.expenses__subtitle,
+.expenses__note,
+.expenses__meta,
+.expenses__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.expenses__note {
+  font-size: var(--text-md);
+}
+
+.expenses__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.expenses__month {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.expenses__month-label {
+  min-width: 9rem;
+  text-align: center;
+  font-weight: var(--font-weight-semibold);
+}
+
+.expenses__filter {
+  flex: 1 1 12rem;
+  max-width: 20rem;
+}
+
+.expenses__card {
+  max-width: 64rem;
+}
+
+.expenses__total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.expenses__total-label {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.expenses__total-figure {
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.expenses__total-count {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.expenses__empty {
+  padding: var(--space-4);
+}
+
+.expenses__row + .expenses__row {
+  border-top: 1px solid var(--color-divider);
+}
+
+.expenses__row-button {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 3.5rem;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: 0;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.expenses__row-button:hover {
+  background: var(--color-surface-sunken);
+}
+
+.expenses__row-button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.expenses__date {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.expenses__what {
+  display: grid;
+  min-width: 0;
+}
+
+.expenses__category {
+  font-weight: var(--font-weight-semibold);
+}
+
+.expenses__detail {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expenses__amount {
+  display: grid;
+  justify-items: end;
+}
+
+.expenses__figure {
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.expenses__voided {
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+}
+
+.expenses__chevron {
+  display: flex;
+  color: var(--color-text-subtle);
+}
+
+.expenses__row--voided .expenses__category,
+.expenses__row--voided .expenses__detail,
+.expenses__row--voided .expenses__figure {
+  color: var(--color-text-subtle);
+  text-decoration: line-through;
+}
+
+.expenses__panel {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.expenses__detail-panel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.expenses__meta--voided {
+  color: var(--color-danger);
+}
+
+.expenses__actions,
+.expenses__form-actions,
+.expenses__category-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.expenses__form {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 64rem;
+}
+
+.expenses__form-title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.expenses__fields {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.expenses__form-actions {
+  justify-content: flex-end;
+}
+
+.expenses__categories {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 64rem;
+}
+
+.expenses__categories-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.expenses__subheading {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.expenses__category-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+}
+
+.expenses__category-row + .expenses__category-row {
+  border-top: 1px solid var(--color-divider);
+}
+
+.expenses__category-name {
+  display: grid;
+  min-width: 0;
+}
+
+.expenses__rename,
+.expenses__add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.expenses__rename .control,
+.expenses__add-row .control {
+  flex: 1 1 12rem;
+}
+
+.expenses__file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.expenses__file-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+}
+
+.expenses__add {
+  display: grid;
+  gap: var(--space-1-5);
+}
+
+@media (--desktop) {
+  .expenses__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .expenses__wide {
+    grid-column: 1 / -1;
+  }
+
+  .expenses__row-button {
+    grid-template-columns: 5.5rem minmax(0, 1fr) auto auto;
+  }
+}

@@ -291,6 +291,22 @@ A group (`charge_group`, `0037`) is a named list of people a cobro can target, "
 | `PUT` | `/api/groups/{id}` | the same body: renames it and replaces who is in it |
 | `DELETE` | `/api/groups/{id}` | 204 |
 
+## Gastos
+
+What the gym spends (#314, `app.api.expenses`, migration 0083), kept apart from billing: no billing table points at `expense` or `expense_category`, and no balance, view, job, KPI, student page or export reads them (`tests/test_expenses.py` holds every reader of money, the billing job and a member's balance byte-identical with and without).
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/expenses?month=&category=` | a month (the current one by default), newest first, voided ones included, with `total_clp` and `count` of those that count |
+| `POST /api/expenses` | records one: `spent_on` up to today, `amount_clp` > 0, a live `category_id`, `payee`, `method` (`transfer`, `cash`, `card`, `other`), `note`, `receipt_key` |
+| `PATCH /api/expenses/{id}` | corrects the fields sent; an edit that changes something writes `expense_changed` with those fields before and after; `remove_receipt` takes the receipt off. A voided one is a 409 |
+| `POST /api/expenses/{id}/void` | Anular, with a `reason`: `expense_voided`. Final: the row is not changed again (a trigger refuses it) |
+| `POST /api/expenses/receipt-upload` | presigns a PUT under `receipts/<gym_id>/`, the blob store's types and 10 MB; recording or editing claims the key once the file is there, and one expense holds it (409 `receipt_taken`) |
+| `GET /api/expenses/{id}/receipt` | presigns its download |
+| `GET`/`POST /api/expenses/categories`, `PATCH .../{id}`, `POST .../order`, `POST .../{id}/archive`, `POST .../{id}/restore` | the gym's list, seeded with twelve defaults: renamed, added, reordered, archived (never deleted; Otros never archived) and restored |
+
+Reads need `expenses_read`, writes `expenses_write`, at the API and under RLS; no role holds either until the gym ticks it in Cargos, so they start the titular's alone. `rakin_app` has no DELETE on either table, and the log's expense rows name no person and are read with `expenses_read` alone (0067).
+
 ## Plans API
 
 | Method | Path | Does |
@@ -703,6 +719,8 @@ make seed                                      # from the repo root, inside Comp
 `app.seed` loads Academia Sur, the demo gym that dev, the 90-day simulation and the self-host demo start from. `app/seed/data.py` is the roster: the members the [UI design](../docs/design/ui-design.html) names, in the standing it shows them in (Felipe Díaz 9 days overdue, Diego Morales's proof waiting, Camila Ortiz paying for Mateo and Sofía), plus filler drawn from a fixed random sequence. `app/seed/build.py` turns it into rows for a seed date with no I/O, so tests check it without a database. It also holds the adults' weekly schedule, five `schedule_slot`s taught by Sebastián: Fundamentos at 07:00 on weekdays and 09:00 at the weekend, Fundamentos at 19:00 on Monday, Wednesday and Friday, Avanzado at 20:00 on Tuesday and Thursday, and an open mat at 11:00 on Saturday and Sunday. The schedule's classes of the three weeks before the seed date each ran in blocks of the default kinds, with some sparring cut a round or two short, and up to about half the adults on a monthly or prepaid plan were marked at each, so the class timer's totals have data. The classes from the seed date through the schedule's 14-day horizon are made too, as the nightly `schedule` job would have, with `generated_until` at the horizon's end, so the job carries on from there. None of them is marked, so today's morning class, started by the time anyone opens Hoy, is under Sin asistencia (#216). The design's numbers hold on any seed date: 64 active memberships and 2 frozen, 6 active members overdue for $270.000 (two lapsed members owe on top of that, and Hoy and Pagos list them too, #207), 3 proofs for $126.000 (the design's $162.000 counts Sofía Ortiz's too, but her period would fall in her freeze). Each frozen membership has a `membership_freeze` that started a week before the seed date and ends three weeks after it, and is billed as the app bills one (#216): no period starts once the freeze has, and the freeze moved the paid-through date and the anchor day past the frozen days. `gym.settings` carries the BJJ grading scheme (white to black with 4 stripes, and the grey-to-green kids ladder), the custom-field definitions, the bank account and `grace_days` (10).
 
 Loading again inserts nothing: every row's id is a UUIDv5 of its natural key, and rows already there are skipped, never updated, which the append-only ledger requires anyway. The first load stores its date in `gym.settings["seed"]["as_of"]`, and later loads build for that date again, ignoring `--today`. To reseed for another date, start from an empty database (`docker compose down -v`).
+
+Gastos (#314) has the gym's three months: Sebastián's pay on the 1st, the rent on the 5th, internet on the 10th, power on the 20th and water on the 22nd of each month up to the seed date, under the categories every gym is given (their ids derived as migration 0083 derives them, `default_expense_category_id`), last month's federation fee, and last month's internet typed twice, the second voided.
 
 Each transfer's proof key gets a file in the configured `BLOB_STORE`: `app/seed/proof.jpg`, a made-up receipt marked as demo data, so Validar comprobante opens the seeded proofs. A key that already has a file keeps it.
 

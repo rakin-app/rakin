@@ -13,8 +13,10 @@ A gym-scoped endpoint takes the session for the one permission it needs instead 
 bare `TenantSession` (#310): `StaffSession` for anyone on the team (the roster, the
 schedule, what a class is), `LedgerReadSession` to read money (`money_read`),
 `LedgerSession` to record it and to start, change, freeze or end a student's plan
-(`money_write`), `MembersSession` for the members (`members_manage`: groups, the join
-link, enrolling, Dar de baja), `MembersAddSession` to add a student without a plan and
+(`money_write`), `ExpensesReadSession` and `ExpensesSession` to read and record the
+gym's expenses (`expenses_read`, `expenses_write`, #314), `MembersSession` for the
+members (`members_manage`: groups, the join link, enrolling, Dar de baja),
+`MembersAddSession` to add a student without a plan and
 keep their record (`members_add`), `AttendanceSession` to run a class (`attendance`),
 `AdminSession` for the gym's setup (`gym_setup`), `TeamSession` for the team
 (`team_manage`), and `OwnerSession` for the titular alone (deleting a member, #157).
@@ -349,6 +351,8 @@ GATES[terms_session] = TITULAR
 StaffSession = Annotated[AsyncSession, Depends(requires())]
 LedgerReadSession = Annotated[AsyncSession, Depends(requires(Permission.MONEY_READ))]
 LedgerSession = Annotated[AsyncSession, Depends(requires(Permission.MONEY_WRITE))]
+ExpensesReadSession = Annotated[AsyncSession, Depends(requires(Permission.EXPENSES_READ))]
+ExpensesSession = Annotated[AsyncSession, Depends(requires(Permission.EXPENSES_WRITE))]
 MembersSession = Annotated[AsyncSession, Depends(requires(Permission.MEMBERS_MANAGE))]
 MembersAddSession = Annotated[AsyncSession, Depends(requires(Permission.MEMBERS_ADD))]
 AttendanceSession = Annotated[AsyncSession, Depends(requires(Permission.ATTENDANCE))]
