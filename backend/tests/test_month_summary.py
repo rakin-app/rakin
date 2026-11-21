@@ -8,7 +8,7 @@ in its `MONTH`, two before the current one: the job runs as if it were `NEXT`'s 
 
 import uuid
 from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import asyncpg
@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.domain.dates import add_months
-from app.domain.value_summary import RULES_VERSION, Figure
+from app.domain.value_summary import OPTIONAL_FIGURES, RULES_VERSION, Figure
 from app.jobs import month_summary
 from app.main import create_app
 from tests.auth import FakeAuth
@@ -71,12 +71,14 @@ def gym(db: Database) -> uuid.UUID:
     return made
 
 
-def keep(db: Database, on: date) -> bool:
-    """Run the job as the runner does, as the owner in a transaction, on `on`."""
+def keep(db: Database, on: date, now: datetime | None = None) -> bool:
+    """Run the job as the runner does, as the owner in a transaction, for the day `on`,
+    at `now`: by default 3 a.m. of `on` in Santiago, the nightly run on its own day."""
+    at = local(on, 3) if now is None else now
 
     async def go(conn: asyncpg.Connection) -> bool:
         async with conn.transaction():
-            return await month_summary.keep_months(conn, on)
+            return await month_summary.keep_months(conn, on, lambda: at)
 
     complete: bool = run(db.owner_url, go)
     return complete
@@ -192,6 +194,35 @@ def test_a_gym_the_1st_did_not_reach_is_kept_on_its_next_run_without_the_debt(
     assert Figure.OVERDUE_CLP not in figures
 
 
+def test_a_1st_run_late_keeps_the_figures_without_the_debt(db: Database, gym: uuid.UUID) -> None:
+    # The runner was down on the 1st, or the 1st's run failed: it runs the 1st on the
+    # 3rd, when `v_overdue` is the 3rd's and no longer the month's close.
+    owing(db, gym, "active", 30000)
+
+    assert keep(db, FIRST, now=local(FIRST + timedelta(days=2), 3))
+
+    figures = kept(db, gym)
+    assert Figure.INCOME_CLP in figures
+    assert Figure.OVERDUE_CLP not in figures
+
+
+def test_a_gym_whose_own_month_has_not_ended_is_kept_on_the_next_run(
+    db: Database, gym: uuid.UUID
+) -> None:
+    # 1 a.m. of the 1st in Santiago is still the last evening of the month in Honolulu.
+    admin(db, "UPDATE gym SET timezone = 'Pacific/Honolulu' WHERE id = $1", gym)
+    owing(db, gym, "active", 30000)
+
+    assert keep(db, FIRST, now=local(FIRST, 1))
+    assert kept(db, gym) == {}
+
+    assert keep(db, SECOND)
+    figures = kept(db, gym)
+    assert Figure.INCOME_CLP in figures
+    # Its 1st had passed by then: no closing debt.
+    assert Figure.OVERDUE_CLP not in figures
+
+
 def test_a_gym_newer_than_the_month_keeps_nothing_of_it(db: Database, gym: uuid.UUID) -> None:
     opened_on(db, gym, NEXT + timedelta(days=3))
 
@@ -269,6 +300,42 @@ def test_a_month_kept_under_older_rules_says_so(
 
     assert page["kept"]["rules_version"] == RULES_VERSION
     assert page["kept"]["older_rules"] is True
+
+
+# The figures rules version 1 kept. One added since must be optional, so a month kept
+# before it reads it as absent rather than failing.
+VERSION_1 = frozenset(Figure) - {Figure.PROOF_REVIEW_MEDIAN_MINUTES, Figure.OVERDUE_CLP}
+
+
+def test_every_figure_after_version_1_is_optional() -> None:
+    assert set(Figure) - VERSION_1 <= OPTIONAL_FIGURES
+
+
+def test_an_optional_figure_an_older_month_lacks_reads_as_absent(
+    client: TestClient, db: Database, gym: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owing(db, gym, "active", 30000)
+    assert keep(db, FIRST)
+    admin(db, "DELETE FROM gym_month_figure WHERE gym_id = $1 AND figure = 'overdue_clp'", gym)
+    monkeypatch.setattr("app.api.summary.RULES_VERSION", RULES_VERSION + 1)
+
+    page = summary(client, gym)
+
+    assert page["kept"]["older_rules"] is True
+    assert page["overdue_clp"] is None
+
+
+def test_a_kept_month_without_a_required_figure_is_counted_again(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    a_busy_month(client, db, gym)
+    counted = summary(client, gym)
+    assert keep(db, FIRST)
+    admin(db, "DELETE FROM gym_month_figure WHERE gym_id = $1 AND figure = 'nudged'", gym)
+
+    page = summary(client, gym)
+
+    assert page == counted
 
 
 # --- who sees it -------------------------------------------------------------------

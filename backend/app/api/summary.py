@@ -16,6 +16,7 @@ Money, so `money_read` (`LedgerReadSession`): owner, admin, and the titles that 
 Pagos. A coach gets a 403, not even the nudges, whose inactive list is money too.
 """
 
+import logging
 from collections.abc import Mapping
 from datetime import date
 from typing import Annotated
@@ -24,7 +25,13 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import text
 
 from app.domain.dates import add_months
-from app.domain.value_summary import RULES_VERSION, Figure, percent, share_of_income
+from app.domain.value_summary import (
+    REQUIRED_FIGURES,
+    RULES_VERSION,
+    Figure,
+    percent,
+    share_of_income,
+)
 from app.month_figures import count_month, session_rows
 from app.permissions import LedgerReadSession
 from app.schemas.gym import Channels
@@ -37,6 +44,8 @@ from app.schemas.summary import (
     Paid,
     ProofReviews,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/summary", tags=["ledger"])
 
@@ -146,10 +155,10 @@ async def summary(
         raise NO_SUCH_MONTH
     kept_rows = [] if shown == months[0] else list(await session.execute(KEPT, {"month": shown}))
     kept = None
-    if kept_rows:
-        figures: Mapping[Figure, int] = {
-            Figure(r.figure): r.value for r in kept_rows if r.figure in Figure
-        }
+    figures: Mapping[Figure, int] = {
+        Figure(r.figure): r.value for r in kept_rows if r.figure in Figure
+    }
+    if kept_rows and figures.keys() >= REQUIRED_FIGURES:
         version = min(r.rules_version for r in kept_rows)
         kept = KeptMonth(
             computed_at=min(r.computed_at for r in kept_rows),
@@ -157,6 +166,13 @@ async def summary(
             older_rules=version < RULES_VERSION,
         )
     else:
+        if kept_rows:
+            # Not one `OPTIONAL_FIGURES` should allow: the month is counted again
+            # rather than shown with a hole.
+            logger.warning(
+                "kept month lacks a required figure; counting it again",
+                extra={"month": shown.isoformat()},
+            )
         figures = await count_month(session_rows(session), shown)
     return month_summary(
         figures,

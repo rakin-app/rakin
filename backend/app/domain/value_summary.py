@@ -86,8 +86,14 @@ class Figure(StrEnum):
     OVERDUE_CLP = "overdue_clp"
 
 
-# The figures a month may lack.
+# The figures a month may lack, which the page reads as absent (`None`). A figure added
+# under a later `RULES_VERSION` goes here, and is nullable in `app.schemas.summary`: a
+# month kept before it has no row of it. `tests.test_month_summary` holds every figure
+# but version 1's to it.
 OPTIONAL_FIGURES = frozenset({Figure.PROOF_REVIEW_MEDIAN_MINUTES, Figure.OVERDUE_CLP})
+# Every other figure: a kept month without one of them is counted again
+# (`app.api.summary`).
+REQUIRED_FIGURES = frozenset(Figure) - OPTIONAL_FIGURES
 
 
 @dataclass(frozen=True)

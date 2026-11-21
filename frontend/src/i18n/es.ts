@@ -3404,8 +3404,8 @@ export const es = {
         totals: 'Son totales del mes: no se guarda ni se muestra quién está detrás de cada número.',
         overdue: 'La deuda al cierre es lo que debían los planes activos por cuotas vencidas, leída el primer día del mes siguiente.',
         // A closed month, read from what was kept of it (#506).
-        kept: 'Estos números se guardaron al cerrar el mes y no se vuelven a calcular.',
-        olderRules: 'Este mes se contó con reglas anteriores a las de hoy, y se muestra tal como se contó entonces.',
+        kept: 'Estos números se guardaron al cerrar el mes y no se vuelven a calcular: quien volvió después del cierre no se suma a «Volvieron».',
+        olderRules: 'Este mes se contó con reglas anteriores a las de hoy, y se muestra tal como se contó al cerrarlo: quien volvió después del cierre no se suma a «Volvieron».',
       },
     },
     // Cobros extra (#195): one-off charges, fixed or split across a group.
