@@ -1,0 +1,234 @@
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { getRouteApi } from '@tanstack/react-router'
+import { useId } from 'react'
+import { myAccessQuery, readsLedger } from '../api/me'
+import { summaryQuery, type MonthSummary as Summary } from '../api/summary'
+import { Button } from '../components/Button'
+import { type Bar, BarList, Meter } from '../components/BarList'
+import { Card, PlainList } from '../components/Card'
+import { cx } from '../components/classNames'
+import { PageContainer } from '../components/Layout'
+import { Loading } from '../components/Loading'
+import { PageHeader } from '../components/PageHeader'
+import { t } from '../i18n/es'
+import { usePageTitle } from '../pageTitle'
+import { SubHeader } from './ExtraCharges'
+import './MonthSummary.css'
+
+const copy = t.admin.summary
+const clp = t.common.clp
+
+export type MonthSummarySearch = {
+  // The first day of the month shown, `2026-10-01`; the current month when absent.
+  month?: string
+}
+
+export function validateMonthSummarySearch(search: Record<string, unknown>): MonthSummarySearch {
+  const month = typeof search.month === 'string' && /^\d{4}-\d{2}-01$/.test(search.month) ? search.month : undefined
+  return { month }
+}
+
+const route = getRouteApi('/admin/pagos/resumen')
+
+/**
+ * Pagos › Resumen del mes (#505): what happened in a month after Rakin's reminders and
+ * the team's nudges, from the counts `GET /api/summary` makes of rows already there
+ * (docs/design/value-summary.md, section 4).
+ *
+ * It says what came *after*, never what Rakin caused: "después de", not "gracias a";
+ * every money figure as part of the month's "Cobrado", every people figure as "N de M",
+ * a percentage only from 5 up. Each line shows only when its figure exists. No names
+ * behind any figure, and no comparison with other months.
+ *
+ * Owner and admin only, as the rest of Pagos; a coach is told so and nothing is asked
+ * of the API.
+ */
+export function MonthSummary() {
+  usePageTitle(copy.title)
+  const access = useQuery(myAccessQuery())
+  if (readsLedger(access.data)) return <SummaryPage />
+  return (
+    <PageContainer>
+      <PageHeader title={copy.title} />
+      {access.isSuccess && <p className="summary__note">{t.admin.payments.coachesOnly}</p>}
+    </PageContainer>
+  )
+}
+
+function SummaryPage() {
+  const search = route.useSearch()
+  const navigate = route.useNavigate()
+  const summary = useQuery({ ...summaryQuery(search.month), placeholderData: keepPreviousData })
+  const monthId = useId()
+  const shown = summary.data
+
+  return (
+    <PageContainer className="summary">
+      <SubHeader title={copy.title} subtitle={copy.subtitle} />
+      <label htmlFor={monthId} className="summary__month">
+        {copy.month}
+        <select
+          id={monthId}
+          className="summary__month-select"
+          value={shown?.month ?? search.month ?? ''}
+          disabled={!shown}
+          onChange={(event) => void navigate({ search: { month: event.target.value }, replace: true })}
+        >
+          {(shown?.months ?? []).map((month) => (
+            <option key={month} value={month}>
+              {t.common.month(month, '')}
+            </option>
+          ))}
+        </select>
+      </label>
+      {summary.isPending ? (
+        <Loading className="summary__note">{copy.loading}</Loading>
+      ) : summary.isError && !shown ? (
+        <div className="summary__note" role="alert">
+          <p>{copy.error}</p>
+          <Button onClick={() => void summary.refetch()}>{copy.retry}</Button>
+        </div>
+      ) : (
+        shown && <Figures summary={shown} />
+      )}
+    </PageContainer>
+  )
+}
+
+/** The month's figures, each only when it exists, then how they are counted. */
+function Figures({ summary }: { summary: Summary }) {
+  const current = summary.months[0] === summary.month
+  const paid = summary.after_reminders
+  const percent = (n: number | null) => (n === null ? null : copy.percent(n))
+  const reminders = summary.reminder_emails + summary.reminder_whatsapps
+  const nudges = summary.nudges
+  const own = summary.own_payments
+
+  const tiles: TileProps[] = [
+    paid.total.payments > 0 && {
+      key: 'paid',
+      label: copy.paidLabel,
+      figure: clp(paid.total.amount_clp),
+      detail: `${copy.paidCount(paid.total.payments)} · ${copy.ofIncome(percent(paid.income_percent), clp(summary.income_clp), summary.month)}`,
+      share: { value: paid.total.amount_clp, of: summary.income_clp },
+    },
+    summary.whatsapp &&
+      nudges.nudged > 0 && {
+        key: 'back',
+        label: copy.backLabel,
+        figure: copy.backFigure(nudges.back, nudges.nudged),
+        detail: copy.backDetail(percent(nudges.percent)),
+        share: { value: nudges.back, of: nudges.nudged },
+      },
+    reminders > 0 && {
+      key: 'reminders',
+      label: copy.remindersLabel,
+      figure: String(reminders),
+      detail: copy.remindersDetail(summary.reminder_emails, summary.reminder_whatsapps),
+      small: true,
+    },
+  ].filter((tile) => tile !== false)
+
+  const split: Bar[] = [
+    { key: 'emails', label: copy.emailsOnly, paid: paid.emails_only },
+    { key: 'whatsapp', label: copy.afterWhatsapp, paid: paid.after_whatsapp },
+  ]
+    .filter((row) => row.paid.payments > 0)
+    .map((row) => ({
+      key: row.key,
+      label: row.label,
+      figure: copy.splitFigure(row.paid.payments, clp(row.paid.amount_clp)),
+      value: row.paid.amount_clp,
+    }))
+
+  const counts = [
+    own.by_members > 0 && { key: 'own', label: copy.ownPayments, figure: copy.ofTotal(own.by_members, own.payments) },
+    summary.proofs.median_minutes !== null && {
+      key: 'proofs',
+      label: copy.proofs,
+      figure: copy.proofsFigure(summary.proofs.reviewed, copy.duration(summary.proofs.median_minutes)),
+    },
+    summary.emails_sent > 0 && { key: 'emails', label: copy.emailsSent, figure: String(summary.emails_sent) },
+    summary.reactivated > 0 && { key: 'reactivated', label: copy.reactivated, figure: String(summary.reactivated) },
+    summary.trials_converted > 0 && {
+      key: 'trials',
+      label: copy.trialsConverted,
+      figure: String(summary.trials_converted),
+    },
+  ].filter((count) => count !== false)
+
+  return (
+    <>
+      <Card className="summary__card" aria-labelledby="summary-month">
+        <h2 id="summary-month" className="summary__heading">
+          {t.common.month(summary.month, '')}
+          {summary.since && <span className="summary__since">{copy.since(t.common.longDay(summary.since))}</span>}
+        </h2>
+        {tiles.length > 0 && (
+          <PlainList className="summary__tiles" aria-label={copy.tiles}>
+            {tiles.map((tile) => (
+              <Tile {...tile} key={tile.key} />
+            ))}
+          </PlainList>
+        )}
+        {reminders === 0 && (
+          <p className="summary__empty">{current ? copy.noReminders : copy.noRemindersPast}</p>
+        )}
+        {!summary.whatsapp && <p className="summary__empty">{copy.whatsappOff}</p>}
+        {split.length > 0 && (
+          <section className="summary__section" aria-labelledby="summary-split">
+            <h3 id="summary-split" className="summary__subheading">
+              {copy.split}
+            </h3>
+            <BarList bars={split} />
+          </section>
+        )}
+        {counts.length > 0 && (
+          <section className="summary__section" aria-labelledby="summary-counts">
+            <h3 id="summary-counts" className="summary__subheading">
+              {copy.counts}
+            </h3>
+            <dl className="summary__counts">
+              {counts.map((count) => (
+                <div key={count.key} className="summary__count">
+                  <dt>{count.label}</dt>
+                  <dd>{count.figure}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
+      </Card>
+      <details className="summary__how">
+        <summary>{copy.how.title}</summary>
+        <p>{copy.how.paid}</p>
+        <p>{copy.how.anyway}</p>
+        <p>{copy.how.back}</p>
+        <p>{copy.how.totals}</p>
+      </details>
+    </>
+  )
+}
+
+type TileProps = {
+  key: string
+  label: string
+  figure: string
+  detail: string
+  /** The figure as part of a whole, drawn as a meter under it. */
+  share?: { value: number; of: number }
+  /** A figure that counts for less: the reminders sent. */
+  small?: boolean
+}
+
+/** A headline figure: what it is, the figure big, a meter for a share, and its detail. */
+function Tile({ label, figure, detail, share, small = false }: Omit<TileProps, 'key'>) {
+  return (
+    <li className={cx('summary__tile', small && 'summary__tile--small')}>
+      <span className="summary__tile-label">{label}</span>
+      <span className="summary__tile-figure">{figure}</span>
+      {share && <Meter value={share.value} of={share.of} />}
+      <span className="summary__tile-detail">{detail}</span>
+    </li>
+  )
+}

@@ -222,6 +222,13 @@ function Book() {
         latest && (
           <>
             <Kpis kpis={latest.kpis} />
+            <Link
+              to="/admin/pagos/resumen"
+              search={{ month: latest.month }}
+              className="payments__summary-link"
+            >
+              {copy.summary}
+            </Link>
             <Card flush aria-label={copy.title}>
               <div role="search" className="payments__search">
                 <label htmlFor={searchId} className="visually-hidden">

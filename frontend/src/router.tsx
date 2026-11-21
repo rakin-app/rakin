@@ -31,6 +31,7 @@ import { MemberDetail } from './routes/MemberDetail'
 import { MemberImport } from './routes/MemberImport'
 import { NewMember } from './routes/NewMember'
 import { NotFound, NotFoundBody } from './routes/NotFound'
+import { MonthSummary, validateMonthSummarySearch } from './routes/MonthSummary'
 import { Payments, validatePaymentsSearch } from './routes/Payments'
 import { PlatformGym } from './routes/PlatformGym'
 import { PlatformGyms } from './routes/PlatformGyms'
@@ -249,6 +250,14 @@ const adminProofReviewRoute = createRoute({
   component: ValidateProof,
 })
 
+// Pagos › "Resumen del mes" (#505): what happened after the reminders and nudges.
+const adminMonthSummaryRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'pagos/resumen',
+  validateSearch: validateMonthSummarySearch,
+  component: MonthSummary,
+})
+
 // Pagos › "Cobros extra" (#195): one-off charges and the groups they target, a new one
 // through its wizard, and one cobro's people. Static paths win over `$chargeId`.
 const adminExtraChargesRoute = createRoute({
@@ -383,6 +392,7 @@ const routeTree = rootRoute.addChildren([
     adminSessionTimerRoute,
     adminPaymentsRoute,
     adminProofReviewRoute,
+    adminMonthSummaryRoute,
     adminExtraChargesRoute,
     adminExtraChargeNewRoute,
     adminExtraChargeRoute,
