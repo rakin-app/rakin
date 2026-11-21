@@ -301,9 +301,9 @@ What the gym spends (#314, `app.api.expenses`, migration 0083), kept apart from 
 | `POST /api/expenses` | records one: `spent_on` up to today, `amount_clp` > 0, a live `category_id`, `payee`, `method` (`transfer`, `cash`, `card`, `other`), `note`, `receipt_key` |
 | `PATCH /api/expenses/{id}` | corrects the fields sent; an edit that changes something writes `expense_changed` with those fields before and after; `remove_receipt` takes the receipt off. A voided one is a 409 |
 | `POST /api/expenses/{id}/void` | Anular, with a `reason`: `expense_voided`. Final: the row is not changed again (a trigger refuses it) |
-| `POST /api/expenses/receipt-upload` | presigns a PUT under `receipts/<gym_id>/`, the blob store's types and 10 MB; recording or editing claims the key once the file is there, and one expense holds it (409 `receipt_taken`) |
+| `POST /api/expenses/receipt-upload` | presigns a PUT under `receipts/<gym_id>/`, the blob store's types and 10 MB; recording or editing claims the key once the file is there, and one expense holds it (409 `receipt_taken`). A receipt an edit replaces or removes is kept in storage, as the correction's history |
 | `GET /api/expenses/{id}/receipt` | presigns its download |
-| `GET`/`POST /api/expenses/categories`, `PATCH .../{id}`, `POST .../order`, `POST .../{id}/archive`, `POST .../{id}/restore` | the gym's list, seeded with twelve defaults: renamed, added, reordered, archived (never deleted; Otros never archived) and restored |
+| `GET`/`POST /api/expenses/categories`, `PATCH .../{id}`, `POST .../order`, `POST .../{id}/archive`, `POST .../{id}/restore` | the gym's list, seeded with twelve defaults: renamed, added (at most 100 live: 409 `too_many_categories`), reordered, archived (never deleted; Otros never archived) and restored (a live one stays where it is) |
 
 Reads need `expenses_read`, writes `expenses_write`, at the API and under RLS; no role holds either until the gym ticks it in Cargos, so they start the titular's alone. `rakin_app` has no DELETE on either table, and the log's expense rows name no person and are read with `expenses_read` alone (0067).
 

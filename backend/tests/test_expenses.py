@@ -7,6 +7,7 @@ database, and an Administrador holds neither. Nothing in billing reads them: eve
 reader of money, the billing job and a member's balance are the same with and without.
 """
 
+import asyncio
 import json
 import uuid
 from collections.abc import Iterator
@@ -22,6 +23,7 @@ from app.domain.dates import add_months
 from app.jobs import billing
 from app.main import create_app
 from app.permissions import Permission
+from app.schemas.expenses import MAX_CATEGORIES
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import unique_slug
@@ -673,3 +675,82 @@ def test_an_expense_row_of_the_log_names_nobody(db: Database, gym: uuid.UUID) ->
                 seeded_owner(gym),
             ),
         )
+
+
+# --- review of #521 ------------------------------------------------------------------
+
+
+@pg
+def test_a_category_past_the_cap_is_refused_so_the_list_still_reorders(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    headers = as_gym(gym)
+    live = len(DEFAULTS)
+    room = MAX_CATEGORIES - live
+    run(
+        db.owner_url,
+        in_gym(
+            gym,
+            "INSERT INTO expense_category (gym_id, name, sort)"
+            " SELECT $1, 'Extra ' || n, 100 + n FROM generate_series(1, $2) n",
+            gym,
+            room,
+        ),
+    )
+    refused = client.post("/api/expenses/categories", json={"name": "Una más"}, headers=headers)
+    assert refused.status_code == 409
+    assert refused.json()["detail"]["code"] == "too_many_categories"
+    # Every live one still fits in one reorder.
+    ids = [c["id"] for c in categories(client, gym) if not c["archived"]]
+    assert len(ids) == MAX_CATEGORIES
+    order = client.post("/api/expenses/categories/order", json={"ids": ids[::-1]}, headers=headers)
+    assert order.status_code == 200, order.text
+
+    # A restore is one more live category too.
+    gas = category(client, gym, "Gas")
+    assert (
+        client.post(f"/api/expenses/categories/{gas}/archive", headers=headers).status_code == 200
+    )
+    assert (
+        client.post("/api/expenses/categories", json={"name": "Otra"}, headers=headers).status_code
+        == 201
+    )
+    full = client.post(f"/api/expenses/categories/{gas}/restore", headers=headers)
+    assert full.status_code == 409 and full.json()["detail"]["code"] == "too_many_categories"
+
+
+@pg
+def test_restoring_a_live_category_leaves_it_where_it_is(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    headers = as_gym(gym)
+    luz = category(client, gym, "Luz")
+    before = categories(client, gym)
+    again = client.post(f"/api/expenses/categories/{luz}/restore", headers=headers)
+    assert again.status_code == 200
+    assert again.json() == before
+
+    archived = client.post(f"/api/expenses/categories/{luz}/archive", headers=headers)
+    assert archived.status_code == 200
+    restored = client.post(f"/api/expenses/categories/{luz}/restore", headers=headers).json()
+    twice = client.post(f"/api/expenses/categories/{luz}/restore", headers=headers).json()
+    assert restored[len(DEFAULTS) - 1]["name"] == "Luz"
+    assert twice == restored
+
+
+@pg
+def test_the_month_says_the_gyms_today(client: TestClient, gym: uuid.UUID) -> None:
+    assert month(client, gym).json()["today"] == seeded_today().isoformat()
+
+
+@pg
+def test_a_replaced_receipt_stays_in_storage(client: TestClient, gym: uuid.UUID) -> None:
+    first = upload(client, gym)
+    rent = recorded(client, gym, receipt_key=first)
+    assert change(client, gym, rent["id"], receipt_key=upload(client, gym)).status_code == 200
+    stored = client.app.state.integrations.blob_store  # type: ignore[attr-defined]
+
+    async def stat() -> Any:
+        return await stored.stat(first)
+
+    assert asyncio.run(stat()) is not None

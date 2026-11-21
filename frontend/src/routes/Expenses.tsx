@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import {
   addCategory,
   archiveCategory,
+  changedFields,
   changeExpense,
   EXPENSE_METHODS,
   expenseCategoriesQuery,
@@ -79,9 +80,6 @@ export function Expenses() {
     </PageContainer>
   )
 }
-
-/** Today, as the browser has it, for the date picker's ceiling. */
-const today = () => isoDay(new Date().toISOString())
 
 function ExpensesPage({ writes, fromPayments }: { writes: boolean; fromPayments: boolean }) {
   const search = route.useSearch()
@@ -163,8 +161,9 @@ function ExpensesPage({ writes, fromPayments }: { writes: boolean; fromPayments:
       </div>
 
       {done && <Banner tone="done">{done}</Banner>}
-      {recording && (
+      {recording && shown && (
         <ExpenseForm
+          today={shown.today}
           categories={live}
           onCancel={() => setRecording(false)}
           onDone={(message, saved) => {
@@ -201,6 +200,7 @@ function ExpensesPage({ writes, fromPayments }: { writes: boolean; fromPayments:
                     key={expense.id}
                     expense={expense}
                     categories={live}
+                    today={shown.today}
                     writes={writes}
                     onDone={setDone}
                   />
@@ -226,11 +226,13 @@ type Open = 'detail' | 'edit' | 'void' | null
 function ExpenseRow({
   expense,
   categories,
+  today,
   writes,
   onDone,
 }: {
   expense: Expense
   categories: ExpenseCategory[]
+  today: string
   writes: boolean
   onDone: (message: string) => void
 }) {
@@ -275,6 +277,7 @@ function ExpenseRow({
             <ExpenseForm
               expense={expense}
               categories={categories}
+              today={today}
               onCancel={() => setOpen('detail')}
               onDone={(message) => {
                 setOpen(null)
@@ -312,14 +315,27 @@ function Detail({
   onVoid: () => void
   onClose: () => void
 }) {
-  const receipt = useQuery({
-    queryKey: ['expenses', 'receipt', expense.id],
-    queryFn: () => receiptUrl(expense.id),
-    enabled: expense.has_receipt,
-    // A presigned URL lasts a few minutes: ask again rather than open a stale one.
-    staleTime: 60_000,
-    gcTime: 60_000,
-  })
+  // Asked for on each tap: a presigned link lasts minutes, and the page may have been
+  // open for hours. The tab opens at once, while the tap still counts as one, and goes
+  // to the receipt once the link comes back.
+  const [opening, setOpening] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const openReceipt = async () => {
+    const tab = window.open('', '_blank')
+    if (tab) tab.opener = null
+    setFailed(false)
+    setOpening(true)
+    try {
+      const { url } = await receiptUrl(expense.id)
+      if (tab) tab.location.href = url
+      else window.location.assign(url)
+    } catch {
+      tab?.close()
+      setFailed(true)
+    } finally {
+      setOpening(false)
+    }
+  }
   return (
     <div className="expenses__detail-panel">
       <p className="expenses__meta">{copy.recordedBy(expense.created_by_name, t.common.dayYear(isoDay(expense.created_at)))}</p>
@@ -329,16 +345,13 @@ function Detail({
           {copy.voidedBy(expense.voided_by_name, expense.void_reason ?? '')}
         </p>
       )}
-      {receipt.isError && <Banner tone="error">{copy.receiptFailed}</Banner>}
+      {failed && <Banner tone="error">{copy.receiptFailed}</Banner>}
       <div className="expenses__actions">
-        {expense.has_receipt &&
-          (receipt.data ? (
-            <a href={receipt.data.url} target="_blank" rel="noopener noreferrer" className="tap-link">
-              {copy.receipt}
-            </a>
-          ) : (
-            !receipt.isError && <span className="expenses__meta">{copy.receiptOpening}</span>
-          ))}
+        {expense.has_receipt && (
+          <Button busy={opening} onClick={() => void openReceipt()}>
+            {opening ? copy.receiptOpening : copy.receipt}
+          </Button>
+        )}
         {writes && <Button onClick={onEdit}>{copy.edit}</Button>}
         {writes && (
           <Button variant="danger" onClick={onVoid}>
@@ -373,17 +386,21 @@ const digits = (value: string) => value.replace(/\D/g, '').replace(/^0+(?=\d)/, 
 function ExpenseForm({
   expense,
   categories,
+  today,
   onCancel,
   onDone,
 }: {
   expense?: Expense
   categories: ExpenseCategory[]
+  // The gym's today (`ExpenseMonth.today`): the latest day it may be paid on.
+  today: string
   onCancel: () => void
   onDone: (message: string, saved: Expense) => void
 }) {
   const words = copy.form
   const queryClient = useQueryClient()
-  const max = today()
+  // The gym's today, from the API: the browser's may already be tomorrow in UTC.
+  const max = today
   const [spentOn, setSpentOn] = useState(expense?.spent_on ?? max)
   const [amount, setAmount] = useState(expense ? String(expense.amount_clp) : '')
   // An expense under an archived category keeps it until it is changed.
@@ -418,7 +435,7 @@ function ExpenseForm({
   const save = useSubmit({
     offline: 'refuse',
     mutationFn: ({ draft, receipt }: { draft: ExpenseDraft; receipt: ReceiptChange }) =>
-      expense ? changeExpense(expense.id, draft, receipt) : recordExpense(draft, receipt && receipt !== 'remove' ? receipt.file : null),
+      expense ? changeExpense(expense.id, changedFields(expense, draft), receipt) : recordExpense(draft, receipt && receipt !== 'remove' ? receipt.file : null),
     onSuccess: (saved: Expense) => {
       void queryClient.invalidateQueries({ queryKey: ['expenses'] })
       onDone(expense ? words.changed : words.saved(clp(saved.amount_clp)), saved)

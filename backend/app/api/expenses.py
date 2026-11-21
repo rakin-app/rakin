@@ -15,6 +15,8 @@ billing reads: no balance, Esperado, Cobrado, overdue email or student page sees
   does (`app.api.proofs`): `POST /receipt-upload` presigns a key under the gym's
   `receipts/<gym_id>/`, of the blob store's types and at most 10 MB, and recording or
   editing the expense claims it, once the file is there and no other expense holds it.
+  A receipt an edit replaces or removes is kept in storage, as the correction's
+  history: the `expense_changed` row keeps its key.
   `GET /{id}/receipt` presigns its download, so the key itself opens nothing.
 - `/categories`: the gym's list, renamed, added to, reordered and archived. One is
   archived, never deleted, so the expenses under it still read; Otros cannot be.
@@ -41,6 +43,7 @@ from app.integrations import Integrations, get_integrations
 from app.integrations.blobstore import ALLOWED_CONTENT_TYPES, MAX_UPLOAD_BYTES
 from app.permissions import ExpensesReadSession, ExpensesSession
 from app.schemas.expenses import (
+    MAX_CATEGORIES,
     CategoryIn,
     CategoryOrder,
     Expense,
@@ -73,6 +76,13 @@ NAME_TAKEN = HTTPException(
 )
 OTHER_KEPT = HTTPException(
     status.HTTP_409_CONFLICT, {"code": "other_kept", "message": "Otros cannot be archived"}
+)
+TOO_MANY = HTTPException(
+    status.HTTP_409_CONFLICT,
+    {
+        "code": "too_many_categories",
+        "message": f"a gym has at most {MAX_CATEGORIES} live categories: archive one first",
+    },
 )
 RECEIPT_TAKEN = HTTPException(
     status.HTTP_409_CONFLICT,
@@ -199,7 +209,8 @@ async def month_of_expenses(
 ) -> ExpenseMonth:
     """A month of expenses (the current one by default), newest first, of one category
     or all, with what those not voided add up to."""
-    current = (await _today(session, tenant)).replace(day=1)
+    today = await _today(session, tenant)
+    current = today.replace(day=1)
     shown = current if month is None else month
     if shown.day != 1:
         raise unprocessable("not_a_month", "month is the first day of a month")
@@ -218,6 +229,7 @@ async def month_of_expenses(
     return ExpenseMonth(
         month=shown,
         current_month=current,
+        today=today,
         category_id=category,
         total_clp=sum(e.amount_clp for e in counted),
         count=len(counted),
@@ -322,6 +334,8 @@ async def change_expense(
         old = (await session.execute(CATEGORY, {"id": row.category_id})).one()
         new = await _live_category(session, changed["category_id"])
         before["category_name"], changed["category_name"] = old.name, new.name
+    # A receipt replaced or taken off stays in storage: it is part of the correction's
+    # history, and the `expense_changed` row keeps its key (#314). Nothing deletes it.
     if changed.get("receipt_object_key") is not None:
         await _usable_receipt(tenant, changed["receipt_object_key"], integrations)
 
@@ -439,9 +453,25 @@ async def expense_categories(session: ExpensesReadSession) -> list[ExpenseCatego
     return await _categories(session)
 
 
+# The gym's live categories, locked to the end of the transaction, then counted in a
+# statement of its own: under READ COMMITTED it reads after the wait, so two adds at
+# once cannot both pass the cap.
+LOCK_LIVE = text("SELECT id FROM expense_category WHERE archived_at IS NULL FOR UPDATE")
+COUNT_LIVE = text("SELECT count(*) FROM expense_category WHERE archived_at IS NULL")
+
+
+async def _room_for_one(session: AsyncSession) -> None:
+    """Refuse one more live category past `MAX_CATEGORIES`, which is as many as
+    `POST /categories/order` takes: past it, the list could no longer be reordered."""
+    await session.execute(LOCK_LIVE)
+    if (await session.scalar(COUNT_LIVE) or 0) >= MAX_CATEGORIES:
+        raise TOO_MANY
+
+
 @router.post("/categories", status_code=status.HTTP_201_CREATED)
 async def add_category(body: CategoryIn, session: ExpensesSession) -> list[ExpenseCategory]:
-    """A new category, last of the live ones."""
+    """A new category, last of the live ones; a 409 past `MAX_CATEGORIES`."""
+    await _room_for_one(session)
     await _named(
         session,
         "INSERT INTO expense_category (gym_id, name, sort)"
@@ -518,17 +548,25 @@ async def restore_category(
     category_id: uuid.UUID, session: ExpensesSession
 ) -> list[ExpenseCategory]:
     """Bring an archived category back, last of the live ones; a 409 if a live one has
-    taken its name meanwhile."""
-    if (
-        await _named(
-            session,
-            "UPDATE expense_category SET archived_at = NULL,"
-            " sort = (SELECT coalesce(max(sort), 0) + 1 FROM expense_category"
-            "         WHERE archived_at IS NULL)"
-            " WHERE id = :id RETURNING id",
+    taken its name meanwhile, or past `MAX_CATEGORIES`. One already live is left where it
+    is, so a retry or a second tap does not move it to the end."""
+    archived_at = (
+        await session.execute(
+            text("SELECT archived_at FROM expense_category WHERE id = :id FOR UPDATE"),
             {"id": category_id},
         )
-        is None
-    ):
+    ).one_or_none()
+    if archived_at is None:
         raise NO_CATEGORY
+    if archived_at.archived_at is None:
+        return await _categories(session)
+    await _room_for_one(session)
+    await _named(
+        session,
+        "UPDATE expense_category SET archived_at = NULL,"
+        " sort = (SELECT coalesce(max(sort), 0) + 1 FROM expense_category"
+        "         WHERE archived_at IS NULL)"
+        " WHERE id = :id AND archived_at IS NOT NULL RETURNING id",
+        {"id": category_id},
+    )
     return await _categories(session)

@@ -54,6 +54,7 @@ const POWER: Expense = {
 const NOVEMBER: ExpenseMonth = {
   month: '2026-11-01',
   current_month: '2026-11-01',
+  today: '2026-11-20',
   category_id: null,
   total_clp: 650_000,
   count: 1,
@@ -105,6 +106,7 @@ function renderAt(path: string) {
 const rows = async () => within(await screen.findByRole('region', { name: copy.listLabel('Noviembre 2026') })).getAllByRole('listitem')
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -126,7 +128,7 @@ describe('Gastos', () => {
   })
 
   it('opens a row to who recorded it, its receipt and why it was voided', async () => {
-    stubApi()
+    const calls = stubApi()
     renderAt('/admin/pagos/gastos')
     const user = userEvent.setup()
     const [power, rent] = await rows()
@@ -137,8 +139,13 @@ describe('Gastos', () => {
     expect(within(power!).queryByRole('button', { name: copy.edit })).not.toBeInTheDocument()
 
     await user.click(within(rent!).getByRole('button', { expanded: false }))
-    const link = await within(rent!).findByRole('link', { name: copy.receipt })
-    expect(link).toHaveAttribute('href', 'https://blobs.example/r')
+    // The link is asked for on the tap, never earlier, so it is never a stale one.
+    expect(calls.some((c) => c.path.endsWith('/receipt'))).toBe(false)
+    const tab = { opener: {}, location: { href: '' }, close: vi.fn() }
+    vi.stubGlobal('open', vi.fn(() => tab))
+    await user.click(within(rent!).getByRole('button', { name: copy.receipt }))
+    await waitFor(() => expect(tab.location.href).toBe('https://blobs.example/r'))
+    expect(tab.opener).toBeNull()
     expect(within(rent!).getByRole('button', { name: copy.edit })).toBeInTheDocument()
   })
 
@@ -192,7 +199,8 @@ describe('Gastos', () => {
     expect(await screen.findByText(copy.form.changed)).toBeInTheDocument()
     const patched = calls.find((c) => c.method === 'PATCH')
     expect(patched?.path).toBe('/api/expenses/e-rent')
-    expect(patched?.body).toMatchObject({ amount_clp: 640_000, category_id: 'c-arriendo', spent_on: '2026-11-05' })
+    // Only what changed: someone else's correction of another field is left alone.
+    expect(patched?.body).toEqual({ amount_clp: 640_000 })
 
     await user.click(within(rent!).getByRole('button', { expanded: false }))
     await user.click(within(rent!).getByRole('button', { name: copy.void }))
@@ -203,6 +211,20 @@ describe('Gastos', () => {
     await user.click(voiding.getByRole('button', { name: copy.voidForm.submit }))
     expect(await screen.findByText(copy.voidForm.done)).toBeInTheDocument()
     expect(calls.find((c) => c.path === '/api/expenses/e-rent/void')?.body).toEqual({ reason: 'era del mes pasado' })
+  })
+
+  it("dates a new expense on the gym's today, not the browser's UTC day", async () => {
+    // 22:30 on 20 November in Santiago is already the 21st in UTC.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-21T01:30:00Z'))
+    stubApi()
+    renderAt('/admin/pagos/gastos')
+    const user = userEvent.setup()
+    await rows()
+    await user.click(screen.getByRole('button', { name: copy.record }))
+    const day = within(screen.getByRole('form', { name: copy.form.newTitle })).getByLabelText(copy.form.spentOn)
+    expect(day).toHaveValue('2026-11-20')
+    expect(day).toHaveAttribute('max', '2026-11-20')
   })
 
   it('goes to the month before, keeping it in the address', async () => {
@@ -242,7 +264,7 @@ describe('Gastos', () => {
     expect(screen.queryByText(copy.categories.title)).not.toBeInTheDocument()
     await userEvent.setup().click(within(rent!).getByRole('button', { expanded: false }))
     expect(within(rent!).queryByRole('button', { name: copy.edit })).not.toBeInTheDocument()
-    expect(await within(rent!).findByRole('link', { name: copy.receipt })).toBeInTheDocument()
+    expect(within(rent!).getByRole('button', { name: copy.receipt })).toBeInTheDocument()
   })
 
   it('tells an Administrador it is not theirs, and asks the API nothing about expenses', async () => {

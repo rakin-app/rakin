@@ -18,7 +18,8 @@ CategoryName = Annotated[str, StringConstraints(strip_whitespace=True, min_lengt
 Payee = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 ReceiptKey = Annotated[str, StringConstraints(min_length=1, max_length=512)]
 
-# More categories than this is a list nobody picks from.
+# More live categories than this is a list nobody picks from: an add or a restore
+# past it is refused, so every live one can still be reordered in one request.
 MAX_CATEGORIES = 100
 
 
@@ -104,6 +105,8 @@ class ExpenseMonth(BaseModel):
     month: date
     # The gym's current month: the list goes no later.
     current_month: date
+    # The gym's today, in its timezone: the latest day an expense may be paid on.
+    today: date
     category_id: uuid.UUID | None
     total_clp: int
     count: int

@@ -33,6 +33,8 @@ export type Expense = {
 export type ExpenseMonth = {
   month: string
   current_month: string
+  // The gym's today, in its timezone: the latest day an expense may be paid on.
+  today: string
   category_id: string | null
   total_clp: number
   count: number
@@ -112,15 +114,29 @@ export async function recordExpense(draft: ExpenseDraft, receipt: File | null): 
   })
 }
 
-/** Correct an expense: the form's fields as they now stand, and its receipt. Only what
- * changed is changed, and logged. */
-export async function changeExpense(id: string, draft: ExpenseDraft, receipt: ReceiptChange): Promise<Expense> {
+/** The fields of `draft` that differ from `expense` as it was loaded: a correction sends
+ * only these, so two people correcting one expense at once each change only what they
+ * touched. */
+export function changedFields(expense: Expense, draft: ExpenseDraft): Partial<ExpenseDraft> {
+  const changed: Partial<ExpenseDraft> = {}
+  for (const field of Object.keys(draft) as (keyof ExpenseDraft)[]) {
+    if (draft[field] !== expense[field]) Object.assign(changed, { [field]: draft[field] })
+  }
+  return changed
+}
+
+/** Correct an expense: the fields that changed (`changedFields`), and its receipt. */
+export async function changeExpense(
+  id: string,
+  changes: Partial<ExpenseDraft>,
+  receipt: ReceiptChange,
+): Promise<Expense> {
   const key = submissionKey()
   const receiptKey = receipt && receipt !== 'remove' ? await uploadReceipt(receipt.file, key) : null
   return apiFetch<Expense>(`${EXPENSES}/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify({
-      ...draft,
+      ...changes,
       ...(receiptKey ? { receipt_key: receiptKey } : {}),
       ...(receipt === 'remove' ? { remove_receipt: true } : {}),
     }),
