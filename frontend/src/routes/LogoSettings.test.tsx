@@ -26,6 +26,7 @@ const SETTINGS: GymSettings = {
   grace_days: 5,
   reminder_every_days: 3,
   channels: { whatsapp: true },
+  summary_email: true,
   bank_account: null,
   privacy: null,
   vocabulary: DEFAULT_VOCABULARY,

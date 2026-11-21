@@ -25,25 +25,11 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import text
 
 from app.domain.dates import add_months
-from app.domain.value_summary import (
-    REQUIRED_FIGURES,
-    RULES_VERSION,
-    Figure,
-    percent,
-    share_of_income,
-)
+from app.domain.value_summary import REQUIRED_FIGURES, RULES_VERSION, Figure
 from app.month_figures import count_month, session_rows
 from app.permissions import LedgerReadSession
 from app.schemas.gym import Channels
-from app.schemas.summary import (
-    AfterReminders,
-    KeptMonth,
-    MonthSummary,
-    Nudges,
-    OwnPayments,
-    Paid,
-    ProofReviews,
-)
+from app.schemas.summary import KeptMonth, MonthSummary, month_summary, partial_since
 
 logger = logging.getLogger(__name__)
 
@@ -85,62 +71,6 @@ def parse_month(month: str | None, today: date) -> date:
     return date(int(year), int(number), 1)
 
 
-def month_summary(
-    figures: Mapping[Figure, int],
-    *,
-    month: date,
-    months: list[date],
-    since: date | None,
-    whatsapp: bool,
-    kept: KeptMonth | None,
-) -> MonthSummary:
-    """The page's month from its `Figure`s, counted now or kept: the shares and
-    percentages are worked out here, from the counts, either way."""
-
-    def paid(payments: Figure, amount: Figure) -> Paid:
-        return Paid(payments=figures[payments], amount_clp=figures[amount])
-
-    emails_only = paid(Figure.EMAILS_ONLY_PAYMENTS, Figure.EMAILS_ONLY_CLP)
-    after_whatsapp = paid(Figure.AFTER_WHATSAPP_PAYMENTS, Figure.AFTER_WHATSAPP_CLP)
-    total = Paid(
-        payments=emails_only.payments + after_whatsapp.payments,
-        amount_clp=emails_only.amount_clp + after_whatsapp.amount_clp,
-    )
-    income_clp, income_payments = figures[Figure.INCOME_CLP], figures[Figure.INCOME_PAYMENTS]
-    nudged, back = figures[Figure.NUDGED], figures[Figure.NUDGED_BACK]
-    return MonthSummary(
-        month=month,
-        months=months,
-        since=since,
-        whatsapp=whatsapp,
-        income_clp=income_clp,
-        income_payments=income_payments,
-        reminder_emails=figures[Figure.REMINDER_EMAILS],
-        reminder_whatsapps=figures[Figure.REMINDER_WHATSAPPS],
-        after_reminders=AfterReminders(
-            total=total,
-            emails_only=emails_only,
-            after_whatsapp=after_whatsapp,
-            income_percent=share_of_income(total.amount_clp, income_clp, income_payments),
-        ),
-        nudges=Nudges(nudged=nudged, back=back, percent=percent(back, nudged)),
-        emails_sent=figures[Figure.EMAILS_SENT],
-        own_payments=OwnPayments(
-            by_members=figures[Figure.BY_MEMBERS],
-            payments=income_payments,
-            percent=percent(figures[Figure.BY_MEMBERS], income_payments),
-        ),
-        proofs=ProofReviews(
-            reviewed=figures[Figure.PROOFS_REVIEWED],
-            median_minutes=figures.get(Figure.PROOF_REVIEW_MEDIAN_MINUTES),
-        ),
-        reactivated=figures[Figure.REACTIVATED],
-        trials_converted=figures[Figure.TRIALS_CONVERTED],
-        overdue_clp=figures.get(Figure.OVERDUE_CLP),
-        kept=kept,
-    )
-
-
 @router.get("")
 async def summary(
     session: LedgerReadSession,
@@ -178,7 +108,7 @@ async def summary(
         figures,
         month=shown,
         months=months,
-        since=clock.since if clock.since.replace(day=1) == shown and clock.since.day > 1 else None,
+        since=partial_since(clock.since, shown),
         whatsapp=Channels.model_validate(clock.settings.get("channels", {})).whatsapp,
         kept=kept,
     )

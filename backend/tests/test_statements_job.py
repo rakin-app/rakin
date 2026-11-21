@@ -306,4 +306,5 @@ def test_statements_run_nightly_after_billing() -> None:
         team.NAME,
         statements.NAME,
         overdue.NAME,
+        month_summary.EMAIL_NAME,
     ]

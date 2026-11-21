@@ -1,0 +1,71 @@
+{% extends "_layout.txt" %}
+{% block body %}
+{% set s = summary %}
+{% set mes = month | mes %}
+{% set paid = s.after_reminders %}
+{% set nudges = s.nudges %}
+{% set own = s.own_payments %}
+{% set reminders = s.reminder_emails + s.reminder_whatsapps %}
+Hola, {{ name }}:
+
+Así fue {{ mes }} en {{ gym }}: lo que pasó después de los recordatorios de Rakin y los mensajes del equipo.
+
+{{ mes | upper }} {{ month.year }}{% if s.since %} · desde el {{ s.since | fecha_larga }}{% endif %}
+
+{% if paid.total.payments > 0 %}
+Pagos atrasados que llegaron después de un recordatorio: {{ paid.total.amount_clp | clp }}
+{% if paid.total.payments == 1 %}1 pago atrasado{% else %}{{ paid.total.payments }} pagos atrasados{% endif %} · {% if paid.income_percent is not none %}el {{ paid.income_percent | porcentaje }} {% endif %}de {{ s.income_clp | clp }} cobrado en {{ mes }}
+
+{% endif %}
+{% if s.whatsapp and nudges.nudged > 0 %}
+Volvieron a clases después de un WhatsApp del equipo: {{ nudges.back }} de {{ nudges.nudged }}
+{{ words.members | capitalize }} que no venían hace 14 días o más; volvieron dentro de dos semanas{% if nudges.percent is not none %} · {{ nudges.percent | porcentaje }}{% endif %}
+
+
+{% endif %}
+{% if reminders > 0 %}
+Recordatorios de pago enviados: {{ reminders }}
+{% if s.reminder_emails %}{{ s.reminder_emails }} por correo de Rakin{% endif %}{% if s.reminder_emails and s.reminder_whatsapps %} · {% endif %}{% if s.reminder_whatsapps %}{{ s.reminder_whatsapps }} por WhatsApp del equipo{% endif %}
+
+
+{% else %}
+Ese mes no se envió ningún recordatorio de pago.
+
+{% endif %}
+{% if paid.emails_only.payments > 0 or paid.after_whatsapp.payments > 0 %}
+Cómo llegaron los pagos atrasados
+{% if paid.emails_only.payments > 0 %}
+- Sin mensaje del equipo: {% if paid.emails_only.payments == 1 %}1 pago{% else %}{{ paid.emails_only.payments }} pagos{% endif %} · {{ paid.emails_only.amount_clp | clp }}
+{% endif %}
+{% if paid.after_whatsapp.payments > 0 %}
+- Después de un WhatsApp del equipo: {% if paid.after_whatsapp.payments == 1 %}1 pago{% else %}{{ paid.after_whatsapp.payments }} pagos{% endif %} · {{ paid.after_whatsapp.amount_clp | clp }}
+{% endif %}
+
+{% endif %}
+{% if own.by_members > 0 or s.proofs.median_minutes is not none or s.emails_sent > 0 or s.reactivated > 0 or s.trials_converted > 0 or s.overdue_clp is not none %}
+Otros números del mes
+{% if own.by_members > 0 %}
+- Pagos que informaron {{ words.the_same_members }}, con su comprobante: {{ own.by_members }} de {{ own.payments }}
+{% endif %}
+{% if s.proofs.median_minutes is not none %}
+- Comprobantes revisados: {{ s.proofs.reviewed }} · la mitad en {{ s.proofs.median_minutes | duracion }} o menos
+{% endif %}
+{% if s.emails_sent > 0 %}
+- Avisos de cobro y recibos enviados por correo: {{ s.emails_sent }}
+{% endif %}
+{% if s.reactivated > 0 %}
+- Planes vencidos que volvieron a activarse: {{ s.reactivated }}
+{% endif %}
+{% if s.trials_converted > 0 %}
+- Clases de prueba que pasaron a un plan: {{ s.trials_converted }}
+{% endif %}
+{% if s.overdue_clp is not none %}
+- Deuda vencida al cierre del mes: {{ s.overdue_clp | clp }}
+{% endif %}
+
+{% endif %}
+Cómo contamos esto: un pago cuenta cuando llegó después de su vencimiento y después de al menos un recordatorio enviado tras esa fecha. Algunos habrían pagado igual: por eso decimos «después de» y no «gracias a». Son totales del mes: no se guarda ni se muestra quién está detrás de cada número.
+
+El detalle, en Rakin: {{ app_url }}/admin/pagos/resumen?month={{ month.isoformat() }}
+Puedes dejar de recibir este resumen en Ajustes › Gimnasio.
+{% endblock %}

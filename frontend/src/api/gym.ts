@@ -28,6 +28,8 @@ export type GymSettings = {
   privacy: (Privacy & { updated_on: string }) | null
   // What the screens call the gym, its members and its coach (#344).
   vocabulary: Vocabulary
+  // Resumen del mes by email to the titular, on the first days of each month (#507).
+  summary_email: boolean
 }
 
 /** Only the fields sent change; `bank_account: null` clears it, and `privacy` cannot
@@ -43,6 +45,7 @@ export type GymSettingsUpdate = Partial<{
   privacy: Privacy
   // The owner's pick: no activity added later changes it.
   vocabulary: Vocabulary
+  summary_email: boolean
 }>
 
 export function gymSettingsQuery() {

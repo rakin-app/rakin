@@ -141,6 +141,13 @@ FREEZE_REJECTED = Template("freeze_rejected")
 # with a full copy of both texts attached (#500, requirement 13).
 TERMS_INVITE = Template("terms_invite", landing=None, page_code=True)
 TERMS_ACCEPTED = Template("terms_accepted", page_link=False)
+# Resumen del mes (#507): the closed month's figures, to the gym's titular on the first
+# days of the next. Not essential: it has the unsubscribe link and honours it, and
+# Ajustes turns it off. It links to the page on the gym's host (`app_url`) rather than
+# signing anyone in, and keeps no name: its payload is the figures alone.
+MONTHLY_SUMMARY = Template(
+    "monthly_summary", essential=False, redact=frozenset({"name"}), page_link=False
+)
 
 
 @dataclass(frozen=True)
@@ -196,6 +203,26 @@ def _fecha_larga(value: date) -> str:
     return f"{value.day} de {_MESES[value.month - 1]} de {value.year}"
 
 
+def _mes(value: date) -> str:
+    """A month's name, lower case: "noviembre"."""
+    return _MESES[value.month - 1]
+
+
+def _porcentaje(value: int) -> str:
+    """A whole percentage as Chile writes it, as the app does: "18 %"."""
+    return f"{value}\u00a0%"
+
+
+def _duracion(minutes: int) -> str:
+    """How long something took, as Resumen del mes writes it (`summary.duration`)."""
+    if minutes < 60:
+        return "1 minuto" if minutes == 1 else f"{minutes} minutos"
+    hours = round(minutes / 60)
+    if hours < 48:
+        return "1 hora" if hours == 1 else f"{hours} horas"
+    return f"{round(hours / 24)} días"
+
+
 def _code(value: str) -> str:
     """A sign-in code as the email shows it: "123 456"."""
     return f"{value[:3]} {value[3:]}"
@@ -226,6 +253,9 @@ def environment(directory: Path = TEMPLATES_DIR) -> Environment:
     env.filters["fecha"] = _defined(_fecha)
     env.filters["fecha_larga"] = _defined(_fecha_larga)
     env.filters["code"] = _defined(_code)
+    env.filters["mes"] = _defined(_mes)
+    env.filters["porcentaje"] = _defined(_porcentaje)
+    env.filters["duracion"] = _defined(_duracion)
     return env
 
 

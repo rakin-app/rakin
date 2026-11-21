@@ -158,6 +158,8 @@ def test_a_new_gym_reads_the_defaults(client: TestClient, db: Database) -> None:
         "bank_account": None,
         "privacy": None,
         "vocabulary": TODAYS_WORDS,
+        # Resumen del mes by email (#507): on until turned off.
+        "summary_email": True,
     }
 
 
@@ -172,6 +174,7 @@ def test_a_change_is_read_back_and_stored(client: TestClient, db: Database) -> N
         "reminder_every_days": 2,
         "channels": {"whatsapp": False},
         "bank_account": BANK,
+        "summary_email": False,
     }
     response = client.patch(URL, json=body, headers=as_gym(gym))
     assert response.status_code == 200
@@ -193,6 +196,7 @@ def test_a_change_is_read_back_and_stored(client: TestClient, db: Database) -> N
     assert row["theme"] == "oceano"
     assert "theme" not in row["settings"]
     assert row["settings"]["grace_days"] == 10
+    assert row["settings"]["summary_email"] is False
 
 
 @pg
