@@ -156,11 +156,49 @@ def test_a_figure_shows_only_when_it_exists() -> None:
     text = email.text
     assert "Pagos atrasados que llegaron" not in text
     assert "Volvieron" not in text
-    assert "Ese mes no se envió ningún recordatorio de pago." in text
+    assert "recordatorio de pago" not in text.lower()
     assert "Cómo llegaron los pagos atrasados" not in text
     assert "- Avisos de cobro y recibos enviados por correo: 2" in text
     assert "Comprobantes revisados" not in text
     assert "Deuda vencida" not in text
+
+
+def test_never_a_zero() -> None:
+    """#516: a figure, a part of a line, a split row or an "Otros números" line shows
+    only above zero, and no sentence says nothing happened."""
+    found = figures(
+        income_clp=200_000,
+        income_payments=4,
+        reminder_emails=14,
+        emails_only_payments=2,
+        emails_only_clp=60_000,
+        nudged=2,
+        nudged_back=0,
+        overdue_clp=0,
+    )
+    email = rendered(notice(found))
+
+    for body in (email.text, email.html):
+        # Nudges sent, nobody back yet: no "0 de 2".
+        assert "Volvieron" not in body and "0 de 2" not in body
+        # Reminders by email only: no WhatsApp part.
+        assert "14 por correo de Rakin" in body
+        assert "por WhatsApp del equipo" not in body
+        # One kind in the split: one row.
+        assert "Sin mensaje del equipo" in body
+        assert "Después de un WhatsApp del equipo" not in body
+        # A zero closing debt is no line; nor is any other zero.
+        assert "Deuda vencida" not in body
+        assert "Otros números del mes" not in body
+        assert "ningún" not in body
+    assert "$0" not in email.text
+
+
+def test_reminders_by_whatsapp_only_show_no_email_part() -> None:
+    text = rendered(notice(figures(reminder_whatsapps=3))).text
+
+    assert "Recordatorios de pago enviados: 3\n3 por WhatsApp del equipo\n" in text
+    assert "por correo de Rakin" not in text
 
 
 def test_no_whatsapp_line_with_the_channel_off() -> None:
@@ -205,7 +243,14 @@ def test_a_month_with_nothing_in_it_is_no_news() -> None:
     assert not news(figures())
     assert not news({**figures(), Figure.OVERDUE_CLP: 30_000})
     assert news(figures(reminder_emails=1))
-    assert news(figures(income_payments=1, income_clp=1))
+    # Only figures the email would show above zero are news (#516).
+    assert not news(figures(income_payments=1, income_clp=1))
+    assert not news(figures(nudged=3))
+    assert news(figures(nudged=3, nudged_back=1))
+    assert not news(figures(proofs_reviewed=0))
+    assert news(figures(proofs_reviewed=2, proof_review_median_minutes=30))
+    assert news(figures(by_members=1, income_payments=1))
+    assert news(figures(emails_only_payments=1, emails_only_clp=10_000))
     assert news(BUSY)
 
 

@@ -170,16 +170,19 @@ def partial_since(since: date, month: date) -> date | None:
 
 
 def has_news(summary: MonthSummary) -> bool:
-    """Whether anything happened in the month: a reminder or a nudge sent, a payment,
-    a proof reviewed, an automatic email, a plan back or a trial converted. The closing
-    debt alone is not news; a month without any of these gets no email (#507)."""
+    """Whether the month has a figure to show: one above zero, since the summary never
+    shows a zero (#516). A late payment after a reminder, someone back after a WhatsApp,
+    a reminder sent, a payment informed with its proof, a proof reviewed, an automatic
+    email, a plan back or a trial converted. The closing debt alone is no gain; a month
+    without any of these gets no email (#507), and its page one neutral line."""
     return any(
         (
+            summary.after_reminders.total.payments,
+            summary.whatsapp and summary.nudges.back,
             summary.reminder_emails,
             summary.reminder_whatsapps,
-            summary.nudges.nudged,
-            summary.income_payments,
-            summary.proofs.reviewed,
+            summary.own_payments.by_members,
+            summary.proofs.reviewed and summary.proofs.median_minutes is not None,
             summary.emails_sent,
             summary.reactivated,
             summary.trials_converted,

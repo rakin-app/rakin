@@ -3373,8 +3373,8 @@ export const es = {
       emailsOnly: 'Sin mensaje del equipo',
       afterWhatsapp: 'Después de un WhatsApp del equipo',
       splitFigure: (payments: number, amount: string) => `${payments === 1 ? '1 pago' : `${payments} pagos`} · ${amount}`,
-      noReminders: 'Aún no se ha enviado ningún recordatorio este mes. Cuando Rakin envíe uno, aquí verás lo que se pagó después.',
-      noRemindersPast: 'Ese mes no se envió ningún recordatorio de pago.',
+      // A month with no figure above zero (#516): never a zero, never "ningún".
+      nothing: 'Todavía no hay números para este mes.',
       whatsappOff: 'Con WhatsApp activado en Ajustes › Gimnasio, el equipo puede escribir desde Hoy a quienes dejaron de venir, y aquí verás cuántos volvieron.',
       // The smaller counts, as a label and a figure.
       counts: 'Otros números del mes',
