@@ -350,10 +350,15 @@ Where it shows:
 
 **Needs a confirmation step**: every correction form shows the period and the balance
 before → after as the admin types, and its button names the fix ("Restaurar cargo").
-These five ask once more, in a second step that says what else happens:
+Every one that changes what is owed or paid asks once more (#550, owner decision
+2026-11-22): a second step says what happens, and a "Sí, …" button naming the amount
+("Sí, anular $45.000") is the only one that saves; "Volver" returns to the form as it
+was. That covers Cambiar monto, Mover vencimiento (its button names the day, the notice
+the amount), Anular cargo, Restaurar cargo, Revertir ajuste, Devolver, Anular plan and
+Pagado hasta, beside the ones that said what else happens from the start:
 
 - **Anular pago (C7)**: "Se enviará a <nombre> un aviso de que el pago se anuló."
-- **Mover pago between plans (C6)**: names both plans.
+- **Mover pago (C6)**: names where it goes from and to, on every move.
 - **Reactivar plan (C10) and Deshacer baja (C11)**: lists the periods it will bill, and
   their total, or says it bills from today.
 - **Condonar deuda (C15)**: "Esta deuda no se cobrará; seguirá contando en Esperado."

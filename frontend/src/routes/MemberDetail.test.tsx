@@ -381,6 +381,57 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+/** A money correction that asks twice (#550): how to stub and open it, its form filled. */
+type TwiceCase = {
+  name: string
+  stub: () => ReturnType<typeof stubApi>
+  open: () => Promise<HTMLElement>
+  words: { cancel: string; back: string }
+  submit: string
+  confirm: string
+  path: string
+  method?: string
+}
+
+/** Every money correction confirms twice (#550): the first tap, a double tap included,
+ * only asks "Sí, …"; "Volver" is the form again and "Cancelar" closes it, sending
+ * nothing; a double tap on "Sí, …" sends it once. */
+function asksTwice(c: TwiceCase) {
+  const sent = (calls: ReturnType<typeof stubApi>) =>
+    calls.filter((call) => call.path === c.path && call.method === (c.method ?? 'POST'))
+
+  it(`${c.name}: asks "Sí, …" first; Volver and Cancelar change nothing (#550)`, async () => {
+    const calls = c.stub()
+    renderAt(PATH)
+    const form = await c.open()
+    const first = within(form).getByRole('button', { name: c.submit })
+    // A double tap on the first step stops at the second.
+    fireEvent.click(first)
+    fireEvent.click(first)
+    expect(within(form).getByRole('button', { name: c.confirm })).toBeInTheDocument()
+    expect(sent(calls)).toEqual([])
+
+    await userEvent.click(within(form).getByRole('button', { name: c.words.back }))
+    expect(within(form).getByRole('button', { name: c.submit })).toBeInTheDocument()
+    expect(within(form).queryByRole('button', { name: c.confirm })).not.toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: c.words.cancel }))
+    expect(form).not.toBeInTheDocument()
+    expect(sent(calls)).toEqual([])
+  })
+
+  it(`${c.name}: a double tap on "Sí, …" sends it once (#550)`, async () => {
+    const calls = c.stub()
+    renderAt(PATH)
+    const form = await c.open()
+    await userEvent.click(within(form).getByRole('button', { name: c.submit }))
+    const yes = within(form).getByRole('button', { name: c.confirm })
+    fireEvent.click(yes)
+    fireEvent.click(yes)
+    await waitFor(() => expect(form).not.toBeInTheDocument())
+    expect(sent(calls)).toHaveLength(1)
+  })
+}
+
 describe('Ficha de alumno', () => {
   it('shows the member, their plan and due day, and how late they are', async () => {
     stubApi()
@@ -676,6 +727,10 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByText(copy.fix.balance('$45.000', '$40.000'))).toBeInTheDocument()
     await userEvent.type(within(form).getByLabelText(copy.amountForm.reason), ' descuento hermano ')
     await userEvent.click(within(form).getByRole('button', { name: copy.amountForm.submit('$40.000') }))
+    // A second step names what it does, and nothing is sent before it.
+    expect(within(form).getByText(copy.amountForm.notice('octubre', '$45.000', '$40.000'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.amountForm.confirm('$40.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
       copy.amountForm.done('octubre', '$45.000', '$40.000') + copy.form.remainder('$40.000'),
@@ -714,6 +769,9 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByText(copy.dueDateForm.preview('30 oct', '10 nov'))).toBeInTheDocument()
     await userEvent.type(within(form).getByLabelText(copy.dueDateForm.reason), ' le doy hasta el 10 ')
     await userEvent.click(within(form).getByRole('button', { name: copy.dueDateForm.submit }))
+    expect(within(form).getByText(copy.dueDateForm.notice('octubre', '$45.000', '10 nov'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.dueDateForm.confirm('10 nov') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.dueDateForm.done('octubre', '10 nov'))
     expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
@@ -739,6 +797,7 @@ describe('Ficha de alumno', () => {
     await userEvent.type(within(form).getByLabelText(copy.dueDateForm.day), '2026-11-10')
     await userEvent.type(within(form).getByLabelText(copy.dueDateForm.reason), 'le doy hasta el 10')
     await userEvent.click(within(form).getByRole('button', { name: copy.dueDateForm.submit }))
+    await userEvent.click(within(form).getByRole('button', { name: copy.dueDateForm.confirm('10 nov') }))
 
     expect(await within(form).findByText(copy.dueDateRefused.paid)).toBeInTheDocument()
   })
@@ -784,6 +843,7 @@ describe('Ficha de alumno', () => {
     expect(within(fixes).getByText(copy.fix.balance('$0', '$5.000'))).toBeInTheDocument()
     await userEvent.type(within(fixes).getByLabelText(copy.amountForm.reason), 'matrícula')
     await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.submit('$50.000') }))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.confirm('$50.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
       copy.amountForm.done('septiembre', '$45.000', '$50.000') + copy.form.remainder('$5.000'),
@@ -844,6 +904,7 @@ describe('Ficha de alumno', () => {
     await userEvent.type(amount, '0')
     await userEvent.type(within(fixes).getByLabelText(copy.amountForm.reason), 'beca')
     await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.submit('$0') }))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.confirm('$0') }))
 
     expect(await within(fixes).findByRole('alert')).toHaveTextContent(copy.amountForm.refused.exceeds)
   })
@@ -866,6 +927,9 @@ describe('Ficha de alumno', () => {
     expect(await within(form).findByRole('alert')).toHaveTextContent(copy.voidForm.reasonNeeded)
     await userEvent.type(within(form).getByLabelText(copy.voidForm.reason), ' alumno de prueba ')
     await userEvent.click(within(form).getByRole('button', { name: copy.voidForm.submit('$45.000') }))
+    expect(within(form).getByText(copy.voidForm.notice('octubre', '$45.000'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidForm.confirm('$45.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.voidForm.done('octubre', '$45.000'))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
@@ -890,6 +954,7 @@ describe('Ficha de alumno', () => {
     await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidCharge }))
     await userEvent.type(within(fixes).getByLabelText(copy.voidForm.reason), 'error')
     await userEvent.click(within(fixes).getByRole('button', { name: copy.voidForm.submit('$45.000') }))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.voidForm.confirm('$45.000') }))
 
     expect(await within(fixes).findByRole('alert')).toHaveTextContent(copy.voidRefused.paid('$20.000'))
   })
@@ -943,6 +1008,7 @@ describe('Ficha de alumno', () => {
     expect(within(fixes).getByText(copy.fix.balance('$25.000', '$0'))).toBeInTheDocument()
     await userEvent.type(within(fixes).getByLabelText(copy.voidForm.reason), 'duplicado')
     await userEvent.click(within(fixes).getByRole('button', { name: copy.voidForm.submit('$25.000') }))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.voidForm.confirm('$25.000') }))
 
     expect(await within(debt).findByRole('status')).toHaveTextContent(copy.voidForm.done('noviembre', '$25.000'))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
@@ -1008,6 +1074,9 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByText(copy.restoreForm.reasonNeeded)).toBeInTheDocument()
     await userEvent.type(within(form).getByLabelText(copy.restoreForm.reason), 'se anuló el cargo equivocado')
     await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.submit }))
+    expect(within(form).getByText(copy.restoreForm.notice('octubre', '$45.000'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.restoreForm.confirm('$45.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.restoreForm.done('octubre', '$45.000'))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
@@ -1045,6 +1114,7 @@ describe('Ficha de alumno', () => {
     expect(within(fixes).getByText(copy.fix.owed('noviembre', '$0', '$25.000'))).toBeInTheDocument()
     await userEvent.type(within(fixes).getByLabelText(copy.restoreForm.reason), 'se anuló el cargo equivocado')
     await userEvent.click(within(within(fixes).getByRole('form')).getByRole('button', { name: copy.restoreForm.submit }))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.restoreForm.confirm('$25.000') }))
 
     expect(await within(others).findByRole('status')).toHaveTextContent(copy.restoreForm.done('noviembre', '$25.000'))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
@@ -1065,6 +1135,7 @@ describe('Ficha de alumno', () => {
 
     await userEvent.type(within(fixes).getByLabelText(copy.restoreForm.reason), 'error')
     await userEvent.click(within(within(fixes).getByRole('form')).getByRole('button', { name: copy.restoreForm.submit }))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.restoreForm.confirm('$45.000') }))
     expect(await within(fixes).findByRole('alert')).toHaveTextContent(copy.restoreRefused.restored)
   })
 
@@ -1143,6 +1214,9 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByText(copy.fix.balance('$45.000', '$0'))).toBeInTheDocument()
     await userEvent.type(within(form).getByLabelText(copy.voidPlanForm.reason), 'prueba')
     await userEvent.click(within(form).getByRole('button', { name: copy.voidPlanForm.submit }))
+    expect(within(form).getByText(copy.voidPlanForm.notice('$45.000'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidPlanForm.confirm }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.voidPlanForm.done)
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
@@ -1240,6 +1314,9 @@ describe('Ficha de alumno', () => {
     await userEvent.type(amount, '15000')
     await userEvent.type(within(form).getByLabelText(copy.refundForm.note), 'se lesionó')
     await userEvent.click(within(form).getByRole('button', { name: copy.refundForm.submit('$15.000') }))
+    expect(within(form).getByText(copy.refundForm.notice('septiembre', '$15.000'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.refundForm.confirm('$15.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
       copy.refundForm.done('$15.000') + copy.form.remainder('$45.000'),
@@ -1269,6 +1346,7 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByText(copy.fix.owed('septiembre', '$0', '$15.000'))).toBeInTheDocument()
     expect(within(form).getByText(copy.fix.balance('$45.000', '$60.000'))).toBeInTheDocument()
     await userEvent.click(within(form).getByRole('button', { name: copy.refundForm.submit('$15.000') }))
+    await userEvent.click(within(form).getByRole('button', { name: copy.refundForm.confirm('$15.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.refundForm.done('$15.000'))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
@@ -1444,7 +1522,144 @@ describe('Ficha de alumno', () => {
       },
     })
 
-  it('moves part of a payment to another month of the plan, with no second step (#280)', async () => {
+  describe('every money correction asks twice (#550)', () => {
+    const created = { status: 201, body: { period: { outstanding_clp: 0, closed: true } } }
+    const answer = (path: string, body: Answer = created, method = 'POST') =>
+      stubApi({ extra: (p, m) => (p === path && m === method ? body : undefined) })
+    const chargeForm = async (chip: string | null, title: string) => {
+      const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+      if (chip) await userEvent.click(within(fixes).getByRole('button', { name: chip }))
+      return within(fixes).getByRole('form', { name: title })
+    }
+    const typeReason = async (form: HTMLElement, label: string, reason = 'error') => {
+      await userEvent.type(within(form).getByLabelText(label), reason)
+      return form
+    }
+
+    asksTwice({
+      name: 'Cambiar monto',
+      stub: () => stubApi({ adjustment: { status: 201, body: { period: { outstanding_clp: 40000, closed: false } } } }),
+      open: async () => {
+        const form = await chargeForm(null, copy.amountForm.title)
+        const amount = within(form).getByLabelText(copy.amountForm.amount)
+        await userEvent.clear(amount)
+        await userEvent.type(amount, '40000')
+        return typeReason(form, copy.amountForm.reason)
+      },
+      words: copy.amountForm,
+      submit: copy.amountForm.submit('$40.000'),
+      confirm: copy.amountForm.confirm('$40.000'),
+      path: '/api/ledger/adjustments',
+    })
+    asksTwice({
+      name: 'Mover vencimiento',
+      stub: () =>
+        answer('/api/ledger/periods/p-oct/due-date', { body: { id: 'p-oct', due_date: '2026-11-10', due_date_was: '2026-10-30' } }, 'PATCH'),
+      open: async () => {
+        const form = await chargeForm(copy.fix.moveDueDate, copy.dueDateForm.title)
+        await userEvent.type(within(form).getByLabelText(copy.dueDateForm.day), '2026-11-10')
+        return typeReason(form, copy.dueDateForm.reason)
+      },
+      words: copy.dueDateForm,
+      submit: copy.dueDateForm.submit,
+      confirm: copy.dueDateForm.confirm('10 nov'),
+      path: '/api/ledger/periods/p-oct/due-date',
+      method: 'PATCH',
+    })
+    asksTwice({
+      name: 'Anular cargo',
+      stub: () => answer('/api/ledger/voids'),
+      open: async () => typeReason(await chargeForm(copy.fix.voidCharge, copy.voidForm.title), copy.voidForm.reason),
+      words: copy.voidForm,
+      submit: copy.voidForm.submit('$45.000'),
+      confirm: copy.voidForm.confirm('$45.000'),
+      path: '/api/ledger/voids',
+    })
+    asksTwice({
+      name: 'Condonar deuda',
+      stub: () => answer('/api/ledger/write-offs'),
+      open: async () => typeReason(await chargeForm(copy.fix.writeOff, copy.writeOffForm.title), copy.writeOffForm.reason),
+      words: copy.writeOffForm,
+      submit: copy.writeOffForm.submit('$45.000'),
+      confirm: copy.writeOffForm.confirm('$45.000'),
+      path: '/api/ledger/write-offs',
+    })
+    asksTwice({
+      name: 'Restaurar cargo',
+      stub: () =>
+        stubApi({
+          ledger: VOIDED_LEDGER,
+          extra: (p, m) =>
+            p === '/api/ledger/restores' && m === 'POST'
+              ? { status: 201, body: { period: { outstanding_clp: 45000, closed: false } } }
+              : undefined,
+        }),
+      open: async () => typeReason(await chargeForm(null, copy.restoreForm.title), copy.restoreForm.reason),
+      words: copy.restoreForm,
+      submit: copy.restoreForm.submit,
+      confirm: copy.restoreForm.confirm('$45.000'),
+      path: '/api/ledger/restores',
+    })
+    asksTwice({
+      name: 'Anular plan',
+      stub: () =>
+        answer('/api/memberships/m-felipe/void', {
+          body: { ...MONTHLY, status: 'cancelled', voided_at: '2026-11-13T12:00:00Z', void_reason: 'prueba' },
+        }),
+      open: async () => {
+        const card = await money()
+        await userEvent.click(await planAction(card, copy.fix.plan))
+        const choices = within(card).getByRole('group', { name: copy.fix.plan })
+        await userEvent.click(within(choices).getByRole('button', { name: copy.voidPlan }))
+        return typeReason(within(card).getByRole('form', { name: copy.voidPlanForm.title }), copy.voidPlanForm.reason)
+      },
+      words: copy.voidPlanForm,
+      submit: copy.voidPlanForm.submit,
+      confirm: copy.voidPlanForm.confirm,
+      path: '/api/memberships/m-felipe/void',
+    })
+    asksTwice({
+      name: 'Devolver',
+      stub: () => stubApi(),
+      open: async () => {
+        await userEvent.click(await planAction(await money(), copy.refund))
+        return screen.getByRole('form', { name: copy.refundForm.title })
+      },
+      words: copy.refundForm,
+      submit: copy.refundForm.submit('$45.000'),
+      confirm: copy.refundForm.confirm('$45.000'),
+      path: '/api/ledger/refunds',
+    })
+    asksTwice({
+      name: 'Mover pago',
+      stub: () => moveStub(),
+      open: async () => {
+        const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+        const form = within(fixes).getByRole('form', { name: copy.moveForm.title })
+        await within(form).findByLabelText(copy.moveForm.target)
+        return typeReason(form, copy.moveForm.reason)
+      },
+      words: copy.moveForm,
+      submit: copy.moveForm.submit('$45.000'),
+      confirm: copy.moveForm.confirm('$45.000'),
+      path: '/api/ledger/moves',
+    })
+    asksTwice({
+      name: 'Anular pago',
+      stub: () => answer('/api/ledger/payment-voids'),
+      open: async () => {
+        const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+        await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidPayment }))
+        return typeReason(within(fixes).getByRole('form', { name: copy.voidPaymentForm.title }), copy.voidPaymentForm.reason)
+      },
+      words: copy.voidPaymentForm,
+      submit: copy.voidPaymentForm.submit('$45.000'),
+      confirm: copy.voidPaymentForm.confirm('$45.000'),
+      path: '/api/ledger/payment-voids',
+    })
+  })
+
+  it('moves part of a payment to another month of the plan, after a second step (#280, #550)', async () => {
     const calls = moveStub()
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
@@ -1470,6 +1685,10 @@ describe('Ficha de alumno', () => {
 
     await userEvent.type(within(form).getByLabelText(copy.moveForm.reason), ' era de octubre ')
     await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.submit('$20.000') }))
+    // The same plan asks too (#550), naming both months.
+    expect(within(form).getByText(copy.moveForm.notice('$20.000', 'septiembre · Mensual adultos', 'octubre · Mensual adultos'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.confirm('$20.000') }))
     expect(
       await within(await libro()).findByText(copy.moveForm.done('$20.000', 'septiembre', 'octubre · Mensual adultos')),
     ).toBeInTheDocument()
@@ -1505,7 +1724,7 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByText(copy.moveForm.credit('$15.000'))).toBeInTheDocument()
     await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.submit('$45.000') }))
     const to = 'noviembre · Infantil · Tomás Díaz'
-    expect(within(form).getByText(copy.moveForm.confirmPlan('$45.000', 'septiembre · Mensual adultos', to))).toBeInTheDocument()
+    expect(within(form).getByText(copy.moveForm.notice('$45.000', 'septiembre · Mensual adultos', to))).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'POST')).toEqual([])
     await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.confirm('$45.000') }))
     expect(await within(await libro()).findByText(copy.moveForm.done('$45.000', 'septiembre', to))).toBeInTheDocument()
@@ -1531,6 +1750,7 @@ describe('Ficha de alumno', () => {
     expect(within(form).getByLabelText(copy.moveForm.amount)).toHaveAttribute('readonly')
     await userEvent.type(within(form).getByLabelText(copy.moveForm.reason), 'x')
     await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.submit('$45.000') }))
+    await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.confirm('$45.000') }))
     expect(await within(form).findByRole('alert')).toHaveTextContent(copy.moveRefused.pending)
   })
 
@@ -1622,6 +1842,7 @@ describe('Ficha de alumno', () => {
 
     await userEvent.click(await planAction(card, copy.refund))
     await userEvent.click(screen.getByRole('button', { name: copy.refundForm.submit('$45.000') }))
+    await userEvent.click(screen.getByRole('button', { name: copy.refundForm.confirm('$45.000') }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.refundForm.refused.exceeds)
   })
@@ -2546,6 +2767,29 @@ describe('Revertir ajuste and Condonar deuda (#282)', () => {
     periods: [{ ...LEDGER.periods[0]!, outstanding_clp: 40000, charged_clp: 40000 }, LEDGER.periods[1]!],
   }
 
+  asksTwice({
+    name: 'Revertir ajuste',
+    stub: () =>
+      stubApi({
+        ledger: DISCOUNTED,
+        extra: (p, m) =>
+          p === '/api/ledger/reverts' && m === 'POST'
+            ? { status: 201, body: { period: { outstanding_clp: 45000, closed: false } } }
+            : undefined,
+      }),
+    open: async () => {
+      const title = copy.ledger.adjustment(true, 'octubre')
+      const fixes = await fixLine(new RegExp(`^${title}`), copy.fix.adjustment(title))
+      const form = within(fixes).getByRole('form', { name: copy.revertForm.title })
+      await userEvent.type(within(form).getByLabelText(copy.revertForm.reason), 'error')
+      return form
+    },
+    words: copy.revertForm,
+    submit: copy.revertForm.submit,
+    confirm: copy.revertForm.confirm('$5.000'),
+    path: '/api/ledger/reverts',
+  })
+
   it('reverts a discount from its line: the period owes it again, with a reason', async () => {
     const calls = stubApi({
       ledger: DISCOUNTED,
@@ -2565,6 +2809,9 @@ describe('Revertir ajuste and Condonar deuda (#282)', () => {
     expect(within(form).getByText(copy.revertForm.reasonNeeded)).toBeInTheDocument()
     await userEvent.type(within(form).getByLabelText(copy.revertForm.reason), 'alumno equivocado')
     await userEvent.click(within(form).getByRole('button', { name: copy.revertForm.submit }))
+    expect(within(form).getByText(copy.revertForm.notice('octubre', '$45.000'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.revertForm.confirm('$5.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(copy.revertForm.done(title))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
@@ -2616,6 +2863,7 @@ describe('Revertir ajuste and Condonar deuda (#282)', () => {
     const fixes = await fixLine(new RegExp(`^${title}`), copy.fix.adjustment(title))
     await userEvent.type(within(fixes).getByLabelText(copy.revertForm.reason), 'error')
     await userEvent.click(within(within(fixes).getByRole('form')).getByRole('button', { name: copy.revertForm.submit }))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.revertForm.confirm('$5.000') }))
     expect(await within(fixes).findByRole('alert')).toHaveTextContent(copy.revertRefused.exceeds)
   })
 
@@ -4868,6 +5116,21 @@ describe('Pagado hasta… (#286)', () => {
     return screen.getByRole('form', { name: form.title })
   }
 
+  asksTwice({
+    name: 'Pagado hasta',
+    stub: () => stubPaidThrough(),
+    open: async () => {
+      const opened = await openPaidThrough()
+      await userEvent.type(within(opened).getByLabelText(form.through), '2026-12-29')
+      await within(opened).findByText(form.total('$90.000'))
+      return opened
+    },
+    words: form,
+    submit: form.submit('$90.000'),
+    confirm: form.confirm('$90.000'),
+    path: '/api/ledger/memberships/m-felipe/paid-through',
+  })
+
   it('quotes the months up to the date, then records them as paid before Rakin', async () => {
     const calls = stubPaidThrough()
     renderAt(PATH)
@@ -4885,6 +5148,9 @@ describe('Pagado hasta… (#286)', () => {
 
     await userEvent.selectOptions(within(opened).getByLabelText(form.method), 'transfer')
     await userEvent.click(within(opened).getByRole('button', { name: form.submit('$90.000') }))
+    expect(within(opened).getByText(form.notice(2, '29 dic'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(opened).getByRole('button', { name: form.confirm('$90.000') }))
 
     expect(await screen.findByText(form.done('$90.000', '29 dic'))).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
@@ -4906,6 +5172,7 @@ describe('Pagado hasta… (#286)', () => {
     expect(within(opened).queryByLabelText(form.method)).not.toBeInTheDocument()
     await within(opened).findByText(form.total('$90.000'))
     await userEvent.click(within(opened).getByRole('button', { name: form.submitGift }))
+    await userEvent.click(within(opened).getByRole('button', { name: form.confirmGift('$90.000') }))
 
     expect(await screen.findByText(form.doneGift('29 dic'))).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'POST')[0]?.body).toEqual({ through: '2026-12-29', mode: 'gift', total_clp: 90000 })

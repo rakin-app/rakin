@@ -1442,6 +1442,10 @@ export const es = {
         reason: 'Motivo',
         reasonNeeded: 'Escribe por qué se anula.',
         submit: (amount: string) => `Anular cargo de ${amount}`,
+        // The second step (#550).
+        notice: (month: string, amount: string) => `El cargo de ${month} deja de deberse: ${amount}.`,
+        confirm: (amount: string) => `Sí, anular ${amount}`,
+        back: 'Volver',
         cancel: 'Cancelar',
         working: 'Anulando…',
         done: (month: string, amount: string) => `Cargo de ${month} anulado: ${amount}.`,
@@ -1460,6 +1464,11 @@ export const es = {
         reasonNeeded: 'Escribe por qué se mueve.',
         preview: (before: string, after: string) => `Vence: ${before} → ${after}`,
         submit: 'Mover vencimiento',
+        // The second step (#550). The amount stays; the notice names it.
+        notice: (month: string, amount: string, day: string) =>
+          `El cargo de ${month}, ${amount}, vencerá el ${day}: el plan caduca y los recordatorios de pago se envían según esa fecha.`,
+        confirm: (day: string) => `Sí, mover al ${day}`,
+        back: 'Volver',
         cancel: 'Cancelar',
         working: 'Moviendo…',
         done: (month: string, day: string) => `Cargo de ${month}: ahora vence el ${day}.`,
@@ -1473,10 +1482,14 @@ export const es = {
       },
       restoreForm: {
         title: 'Restaurar cargo',
-        intro: 'Para un cargo anulado por error: vuelve a deberse, como si no se hubiera anulado. Quedan en el libro la anulación y la restauración.',
+        intro: 'Para un cargo anulado por error: vuelve a deberse, como si no se hubiera anulado. La anulación y la restauración quedan registradas en Correcciones.',
         reason: 'Motivo',
         reasonNeeded: 'Escribe por qué se restaura.',
         submit: 'Restaurar cargo',
+        // The second step (#550).
+        notice: (month: string, amount: string) => `El cargo de ${month} vuelve a deberse: ${amount}.`,
+        confirm: (amount: string) => `Sí, restaurar ${amount}`,
+        back: 'Volver',
         cancel: 'Cancelar',
         working: 'Restaurando…',
         done: (month: string, amount: string) => `Cargo de ${month} restaurado: vuelve a deberse ${amount}.`,
@@ -1484,10 +1497,14 @@ export const es = {
       // "Revertir" (#282): an adjustment made by mistake, undone; its period as before it.
       revertForm: {
         title: 'Revertir ajuste',
-        intro: 'Para un descuento o recargo hecho por error: se deshace y el período queda como antes del ajuste. Quedan en el libro el ajuste y su reversión.',
+        intro: 'Para un descuento o recargo hecho por error: se deshace y el período queda como antes del ajuste. El ajuste y su reversión quedan registrados en Correcciones.',
         reason: 'Motivo',
         reasonNeeded: 'Escribe por qué se revierte.',
         submit: 'Revertir ajuste',
+        // The second step (#550): what the period owes once it is undone.
+        notice: (month: string, owed: string) => `${month} queda como antes del ajuste: debe ${owed}.`,
+        confirm: (amount: string) => `Sí, revertir ${amount}`,
+        back: 'Volver',
         cancel: 'Cancelar',
         working: 'Revirtiendo…',
         done: (title: string) => `${title} revertido.`,
@@ -1580,8 +1597,8 @@ export const es = {
         // What it does to the other period as it is typed.
         credit: (amount: string) => `Quedan ${amount} a favor en el período nuevo.`,
         submit: (amount: string) => `Mover ${amount}`,
-        // The second step, when it goes to another plan or person (design, section 4).
-        confirmPlan: (amount: string, from: string, to: string) => `Se moverán ${amount} de ${from} a ${to}.`,
+        // The second step, on every move (#550; design, section 4).
+        notice: (amount: string, from: string, to: string) => `Se moverán ${amount} de ${from} a ${to}.`,
         confirm: (amount: string) => `Sí, mover ${amount}`,
         back: 'Volver',
         cancel: 'Cancelar',
@@ -1616,6 +1633,10 @@ export const es = {
         reason: 'Motivo',
         reasonNeeded: 'Escribe por qué se anula.',
         submit: 'Anular plan',
+        // The second step (#550): what its unpaid charges came to.
+        notice: (amount: string) => `Sus cargos sin pagar dejan de deberse: ${amount}. No se cobra más.`,
+        confirm: 'Sí, anular plan',
+        back: 'Volver',
         cancel: 'Cancelar',
         working: 'Anulando…',
         done: 'Plan anulado. Sus cargos sin pagar ya no se deben.',
@@ -1699,6 +1720,12 @@ export const es = {
         // Before a date is chosen, with no total yet.
         submitPaid: 'Registrar pagos',
         submitGift: 'Registrar bonificación',
+        // The second step (#550).
+        notice: (count: number, day: string) =>
+          `Se registra${count === 1 ? ' 1 mes' : `n ${count} meses`}: queda pagado hasta el ${day}.`,
+        confirm: (amount: string) => `Sí, registrar ${amount}`,
+        confirmGift: (amount: string) => `Sí, bonificar ${amount}`,
+        back: 'Volver',
         working: 'Registrando…',
         done: (amount: string, day: string) => `Registrado: ${amount} pagados antes de Rakin. Pagado hasta el ${day}.`,
         doneGift: (day: string) => `Bonificación registrada. Pagado hasta el ${day}.`,
@@ -1760,6 +1787,10 @@ export const es = {
         amount: 'Monto nuevo (CLP)',
         reason: 'Motivo',
         submit: (amount: string) => `Cambiar a ${amount}`,
+        // The second step (#550).
+        notice: (month: string, before: string, after: string) => `El cargo de ${month} pasa de ${before} a ${after}.`,
+        confirm: (amount: string) => `Sí, cambiar a ${amount}`,
+        back: 'Volver',
         cancel: 'Cancelar',
         working: 'Guardando…',
         amountNeeded: 'Escribe el monto nuevo.',
@@ -1781,6 +1812,10 @@ export const es = {
         method: 'Medio de devolución',
         note: 'Nota (opcional)',
         submit: (amount: string) => `Devolver ${amount}`,
+        // The second step (#550): what the period owes again.
+        notice: (month: string, amount: string) => `${month} vuelve a deber lo devuelto: ${amount}.`,
+        confirm: (amount: string) => `Sí, devolver ${amount}`,
+        back: 'Volver',
         cancel: 'Cancelar',
         working: 'Guardando…',
         amountNeeded: 'Escribe el monto devuelto.',
