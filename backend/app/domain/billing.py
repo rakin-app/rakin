@@ -29,6 +29,8 @@ of it, which the reports count as a correction rather than money given back, and
 credit it carried, if any, reverted (`revert_credit`). A payment recorded on the wrong
 period, plan or sibling is moved (#280): out of its period with a refund-shaped entry
 (`move_out`) and into another with a payment (`move_in`), neither income nor a refund.
+An adjustment made by mistake is reverted (`revert`, #282), and a real debt that will
+not be collected is forgiven (`write_off`), which "Esperado" still counts.
 """
 
 from collections.abc import Callable, Iterable
@@ -181,6 +183,50 @@ def restore(period: BillingPeriod, voided_clp: int, reason: str) -> Settlement:
         status=EntryStatus.VALIDATED,
         note=reason.strip(),
         purpose=Purpose.RESTORE,
+    )
+    return _resettled(period, entry, entry.amount_clp)
+
+
+def revert(period: BillingPeriod, adjusted_clp: int, reason: str) -> Settlement:
+    """Undo the adjustment of `adjusted_clp` on `period`, made by mistake (#282): an
+    adjustment of minus as much, validated as the admin makes it, with `reason` for its
+    note, so the period settles as if it never was. Reverting one in the member's favour
+    (a discount, a write-off) is owed, as any adjustment against them is; reverting one
+    owed (a Recargo) is in their favour, and settles no more than the period still owes,
+    as any such adjustment (`adjust`). The caller names the adjustment it reverts, and
+    refuses a correction's own entry or one reverted."""
+    if not reason.strip():
+        raise ValueError("a revert needs a reason")
+    if adjusted_clp == 0:
+        raise ValueError("an adjustment is not zero")
+    if -adjusted_clp > period.outstanding_clp:
+        raise InvalidTransition("reverting the adjustment exceeds what the period owes")
+    entry = LedgerEntry(
+        kind=EntryKind.ADJUSTMENT,
+        amount_clp=-adjusted_clp,
+        status=EntryStatus.VALIDATED,
+        note=reason.strip(),
+        purpose=Purpose.REVERT,
+    )
+    return _resettled(period, entry, entry.amount_clp)
+
+
+def write_off(period: BillingPeriod, reason: str) -> Settlement:
+    """Forgive what `period` still owes, a debt that was real but will not be collected
+    ("Condonar deuda", #282): an adjustment in the member's favour of all of it, as a
+    void (`void`), but the charge was no mistake, so "Esperado" keeps the period and the
+    book reports it as "Condonado". Money already paid on it stays; the caller refuses a
+    period with a proof waiting on it first."""
+    if not reason.strip():
+        raise ValueError("a write-off needs a reason")
+    if period.outstanding_clp == 0:
+        raise InvalidTransition("the period owes nothing to write off")
+    entry = LedgerEntry(
+        kind=EntryKind.ADJUSTMENT,
+        amount_clp=period.outstanding_clp,
+        status=EntryStatus.VALIDATED,
+        note=reason.strip(),
+        purpose=Purpose.WRITE_OFF,
     )
     return _resettled(period, entry, entry.amount_clp)
 

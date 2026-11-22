@@ -145,6 +145,72 @@ class RestoreConflict(BaseModel):
     message: str
 
 
+class RevertRecord(BaseModel):
+    """Revertir un ajuste made by mistake (#282): its period settles as if it never was."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The adjustment to revert.
+    adjustment_id: uuid.UUID
+    # Mandatory: why the adjustment was a mistake. The ledger reads it beside it.
+    reason: Note
+
+
+class RevertRefusal(StrEnum):
+    """Why an adjustment cannot be reverted, for the ficha to say so."""
+
+    # The entry is not an adjustment.
+    NOT_AN_ADJUSTMENT = "not_an_adjustment"
+    # A void: it is restored instead ("Restaurar cargo").
+    VOID = "void"
+    # A correction's own entry (a restore, a revert, a move, a mistake): undone by its inverse.
+    CORRECTION = "correction"
+    # A credit carried from an overpayment, on no period: it follows its payment.
+    CREDIT = "credit"
+    # Reverted already: an adjustment is reverted once.
+    REVERTED = "reverted"
+    # The period's charge is voided: restore it first.
+    VOIDED = "voided"
+    # The plan was voided by mistake (#256): it is assigned again.
+    PLAN_VOIDED = "plan_voided"
+    # A Recargo's revert is in the member's favour, and the period owes less than it:
+    # what was paid of it is refunded first.
+    EXCEEDS = "exceeds"
+
+
+class RevertConflict(BaseModel):
+    code: RevertRefusal
+    message: str
+
+
+class WriteOffRecord(BaseModel):
+    """Condonar una deuda (#282): a real charge that will not be collected. Nothing is owed
+    on the period afterwards, and "Esperado" still counts it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    membership_id: uuid.UUID
+    billing_period_id: uuid.UUID
+    # Mandatory: why the debt is forgiven. The ledger reads it beside the charge.
+    reason: Note
+
+
+class WriteOffRefusal(StrEnum):
+    """Why a period's debt cannot be written off, for the ficha to say how to clear it."""
+
+    # A proof waits for review on it: review it first.
+    PENDING = "pending"
+    # Paid, voided or written off already: nothing is left to forgive.
+    NOTHING_OWED = "nothing_owed"
+    # The plan was voided by mistake (#256).
+    PLAN_VOIDED = "plan_voided"
+
+
+class WriteOffConflict(BaseModel):
+    code: WriteOffRefusal
+    message: str
+
+
 class DueDateRecord(BaseModel):
     """Mover vencimiento (#283): "le doy hasta el 10". A period not paid in full falls due
     on another day, from its start to its end plus `MAX_DUE_DATE_DAYS_PAST_END`."""
@@ -348,6 +414,18 @@ class RecordedRestore(BaseModel):
     period: Period
 
 
+class RecordedRevert(BaseModel):
+    revert: Entry
+    # The period as the revert leaves it: as before the adjustment.
+    period: Period
+
+
+class RecordedWriteOff(BaseModel):
+    write_off: Entry
+    # The period as the write-off leaves it: owing nothing.
+    period: Period
+
+
 class RecordedPaymentVoid(BaseModel):
     # The refund, `purpose = 'mistake'`, of what was left of the payment.
     void: Entry
@@ -487,6 +565,14 @@ class Restored(BaseModel):
     void: Voided
 
 
+class Reverted(BaseModel):
+    """An adjustment reverted (#282): "Revertido: <motivo>, por <quien>, <fecha>"."""
+
+    reason: str
+    by_name: str | None
+    at: datetime
+
+
 class MovedWith(BaseModel):
     """The other half of a payment moved (#280): where it went, or came from."""
 
@@ -530,6 +616,8 @@ class TimelineEntry(BaseModel):
     # On either half of a payment moved (#280): the other half's period, "Movido a
     # diciembre" or "Movido de noviembre".
     moved: MovedWith | None = None
+    # On an adjustment reverted (#282): why, by whom and when.
+    reverted: Reverted | None = None
 
 
 class FreezeEdge(StrEnum):
@@ -749,6 +837,9 @@ class BookKpis(BaseModel):
     # `collected_clp` is net of them too, and `refunded_clp` leaves them out.
     corrected_clp: int = 0
     corrections: int = 0
+    # The month's debts forgiven (#282), "Condonado": the write-offs made in it, less
+    # those reverted in it. "Esperado" still counts their periods.
+    written_off_clp: int = 0
     # Payments waiting for review, today.
     pending_clp: int
     pending_payments: int

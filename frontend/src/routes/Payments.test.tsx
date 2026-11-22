@@ -312,6 +312,20 @@ describe('Pagos', () => {
     expect(kpis.textContent).not.toContain('Devuelto')
   })
 
+  it('labels a debt forgiven and an adjustment reverted, and shows "Condonado" beside Vencido (#282)', async () => {
+    const forgiven = entry({ id: 'wo', kind: 'adjustment', method: null, amount_clp: 45000, note: 'se fue', purpose: 'write_off' })
+    const reverted = entry({ id: 'rv', kind: 'adjustment', method: null, amount_clp: -5000, note: 'error', purpose: 'revert' })
+    stubApi({
+      book: () => ({ ...BOOK, items: [forgiven, reverted], total: 2, kpis: { ...BOOK.kpis, written_off_clp: 45000 } }),
+    })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map((row) => cells(row)[2])).toEqual([copy.writeOff, copy.reverted])
+    const kpis = screen.getByRole('region', { name: copy.kpisLabel })
+    expect(kpis.textContent).toContain(copy.kpis.writtenOff('$45.000'))
+  })
+
   it('labels both halves of a payment moved, neither income nor a refund (#280)', async () => {
     const out = entry({ id: 'out', kind: 'refund', method: null, note: 'era de diciembre', refund_of: 'pay', purpose: 'move' })
     const into = entry({ id: 'in', kind: 'payment', method: 'transfer', note: 'era de diciembre', purpose: 'move' })

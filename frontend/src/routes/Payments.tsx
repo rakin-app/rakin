@@ -537,7 +537,14 @@ function Kpis({ kpis }: { kpis: BookKpis }) {
         (kpis.collected_extra_clp ? copy.kpiExtra(clp(kpis.collected_extra_clp)) : ''),
     },
     { key: 'pending', label: words.pending, amount: kpis.pending_clp, detail: words.pendingDetail(kpis.pending_payments) },
-    { key: 'overdue', label: words.overdue, amount: kpis.overdue_clp, detail: words.overdueDetail(kpis.overdue_members, days) },
+    {
+      key: 'overdue',
+      label: words.overdue,
+      amount: kpis.overdue_clp,
+      detail:
+        words.overdueDetail(kpis.overdue_members, days) +
+        (kpis.written_off_clp ? words.writtenOff(clp(kpis.written_off_clp)) : ''),
+    },
     {
       key: 'expected',
       label: words.expected,
@@ -607,6 +614,9 @@ function kindLabel(entry: BookEntry): string {
   // A payment undone as recorded by mistake (#281), and its credit taken back.
   if (entry.purpose === 'mistake') return copy.paymentVoid
   if (entry.purpose === 'revert' && !entry.period) return copy.creditReverted
+  // An adjustment reverted, and a debt forgiven (#282).
+  if (entry.purpose === 'revert') return copy.reverted
+  if (entry.purpose === 'write_off') return copy.writeOff
   // Either half of a payment moved (#280): neither income nor a refund.
   if (entry.purpose === 'move') return copy.moved[entry.kind === 'payment' ? 'in' : 'out']
   if (entry.kind === 'adjustment' && entry.period) return copy.adjustment[entry.amount_clp > 0 ? 'favor' : 'owed']

@@ -75,6 +75,8 @@ export type BookKpis = {
   // is net of them too, and `refunded_clp` leaves them out.
   corrected_clp?: number
   corrections?: number
+  // Debts forgiven in the month (#282), "Condonado", net of the write-offs reverted in it.
+  written_off_clp?: number
   expected_clp: number
   // Today's, whichever month is shown.
   pending_clp: number

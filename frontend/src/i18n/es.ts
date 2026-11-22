@@ -1411,6 +1411,11 @@ export const es = {
         voidCharge: 'Anular cargo',
         // A charge voided by mistake, owed again (#278).
         restoreCharge: 'Restaurar cargo',
+        // A real debt forgiven; "Esperado" still counts it (#282).
+        writeOff: 'Condonar deuda',
+        // An adjustment made by mistake, undone (#282).
+        adjustment: (title: string) => `Corregir ${title.toLowerCase()}`,
+        revert: 'Revertir',
         // A payment recorded on the wrong month, plan or sibling, moved (#280).
         move: 'Mover a otro mes o plan',
         // A payment recorded by mistake, undone (#281).
@@ -1475,6 +1480,52 @@ export const es = {
         cancel: 'Cancelar',
         working: 'Restaurando…',
         done: (month: string, amount: string) => `Cargo de ${month} restaurado: vuelve a deberse ${amount}.`,
+      },
+      // "Revertir" (#282): an adjustment made by mistake, undone; its period as before it.
+      revertForm: {
+        title: 'Revertir ajuste',
+        intro: 'Para un descuento o recargo hecho por error: se deshace y el período queda como antes del ajuste. Quedan en el libro el ajuste y su reversión.',
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe por qué se revierte.',
+        submit: 'Revertir ajuste',
+        cancel: 'Cancelar',
+        working: 'Revirtiendo…',
+        done: (title: string) => `${title} revertido.`,
+      },
+      // Why "Revertir" was refused (#282).
+      revertRefused: {
+        not_an_adjustment: 'Ese movimiento no es un ajuste.',
+        void: 'Es una anulación: se deshace con «Restaurar cargo».',
+        correction: 'Es una corrección: se deshace con su inversa.',
+        credit: 'Es saldo a favor de un pago: se corrige anulando o moviendo ese pago.',
+        reverted: 'Ese ajuste ya se revirtió.',
+        voided: 'El cargo de ese mes está anulado: restáuralo primero.',
+        plan_voided: 'El plan se anuló completo.',
+        exceeds: 'Revertir ese recargo deja más a favor de lo que se debe: devuelve primero lo pagado.',
+        failed: 'No pudimos revertirlo. Inténtalo de nuevo.',
+      },
+      // "Condonar deuda" (#282): a real charge that will not be collected. Unlike "Anular
+      // cargo", the charge was no mistake, so it still counts in "Esperado".
+      writeOffForm: {
+        title: 'Condonar deuda',
+        intro: 'Para una deuda real que no se cobrará: deja de deberse, pero el cargo no fue un error, así que sigue contando en Esperado y se informa como Condonado. Lo ya pagado se mantiene.',
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe por qué se condona.',
+        submit: (amount: string) => `Condonar ${amount}`,
+        // The second step (docs/design/billing-corrections.md, section 4).
+        notice: 'Esta deuda no se cobrará; seguirá contando en Esperado.',
+        confirm: (amount: string) => `Sí, condonar ${amount}`,
+        back: 'Volver',
+        cancel: 'Cancelar',
+        working: 'Condonando…',
+        done: (month: string, amount: string) => `Deuda de ${month} condonada: ${amount}.`,
+      },
+      // Why "Condonar deuda" was refused (#282).
+      writeOffRefused: {
+        pending: 'Tiene un comprobante por validar: revísalo primero.',
+        nothing_owed: 'Ese cargo ya no se debe: nada que condonar.',
+        plan_voided: 'El plan se anuló completo.',
+        failed: 'No pudimos condonarla. Inténtalo de nuevo.',
       },
       // "Anular pago" (#281): a payment recorded by mistake, undone; then the right one is recorded.
       voidPaymentForm: {
@@ -1850,6 +1901,11 @@ export const es = {
         paymentVoid: (month: string) => `Pago anulado ${month}`,
         mistake: 'error de registro',
         creditReverted: 'Ajuste por pago anulado',
+        // An adjustment reverted, and the revert beside it; a debt forgiven (#282).
+        reverted: (reason: string, by: string | null, day: string) =>
+          `Revertido: ${reason}${by ? `, por ${by}` : ''}, ${day}`,
+        revert: (month: string) => `Ajuste revertido ${month}`,
+        writeOff: (month: string) => `Deuda condonada ${month}`,
         // A payment moved (#280): each half names the other's month, and its plan or
         // person when it is not this plan's.
         movedTo: (month: string) => `Movido a ${month}`,
@@ -1865,6 +1921,9 @@ export const es = {
         void: (month: string) => `Anuló cargo ${month}`,
         planVoid: (month: string) => `Anuló plan · cargo ${month}`,
         restore: (month: string) => `Restauró cargo ${month}`,
+        // An adjustment reverted, and a debt forgiven (#282).
+        revert: (month: string) => `Revirtió ajuste ${month}`,
+        writeOff: (month: string) => `Condonó deuda ${month}`,
         paymentVoid: (month: string) => (month ? `Anuló pago ${month}` : 'Anuló un pago'),
         // A payment moved (#280), from this person's side: out of their period, or into it.
         movedOut: (month: string, to: string) => `Movió pago ${month} → ${to}`,
@@ -3471,6 +3530,8 @@ export const es = {
         overdue: 'Vencido',
         overdueDetail: (members: number, days: string) =>
           `${w.memberCount(members)} · ${days} días promedio`,
+        // Debts forgiven in the month (#282), beside what is overdue: no longer owed, still expected.
+        writtenOff: (amount: string) => ` · Condonado ${amount}`,
         expected: 'Esperado',
         expectedDetail: (active: number, frozen: number) =>
           `${active === 1 ? '1 membresía activa' : `${active} membresías activas`}` +
@@ -3496,6 +3557,9 @@ export const es = {
       paymentVoid: 'Pago anulado',
       creditReverted: 'Ajuste por pago anulado',
       mistake: 'Error de registro',
+      // An adjustment reverted, and a debt forgiven (#282).
+      reverted: 'Ajuste revertido',
+      writeOff: 'Deuda condonada',
       // Either half of a payment moved to another period (#280): neither income nor a refund.
       moved: { out: 'Pago movido (sale)', in: 'Pago movido (entra)' },
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
@@ -4456,6 +4520,11 @@ export const es = {
       paymentVoid: 'Pago anulado: error de registro',
       voided: (when: string) => `anulado ${when}`,
       creditReverted: 'Saldo a favor anulado',
+      // An adjustment reverted, and a debt forgiven (#282): never the gym's reason.
+      reverted: 'Ajuste revertido',
+      revertedOn: (when: string) => `revertido ${when}`,
+      writtenOff: 'Deuda condonada',
+      writtenOffOn: (when: string) => `ya no se cobra · ${when}`,
       // A payment moved to another month, plan or sibling (#280): never the gym's reason.
       // Each half by the other's month; with none readable, plainly moved.
       movedOut: (from: string, to: string | null) => (to ? `Pago movido de ${from} a ${to}` : `Pago de ${from} movido`),

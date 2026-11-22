@@ -10,7 +10,9 @@ that nothing is owed on it any more (#256). A restore puts a void's amount back 
 period, as if the void had not happened (#278). A payment recorded by mistake is undone
 with a refund of what is left of it (`mistake`, #281), and the credit it carried with
 an adjustment of minus as much (`revert`). A payment moved to another period is a
-refund out of its own and a payment into the other (`move`, #280).
+refund out of its own and a payment into the other (`move`, #280). An adjustment made
+by mistake is undone with one of minus as much (`revert`, #282), and a real debt that will
+not be collected is forgiven with an adjustment of all its period owes (`write_off`).
 """
 
 from dataclasses import dataclass, replace
@@ -59,7 +61,8 @@ class LedgerEntry:
     note: str | None = None
     # Why a correction was written, its reason in `note`: a void of what its period
     # still owes (#256), a restore of a void (#278), a payment undone (#281) and the
-    # credit it carried reverted, a payment moved (#280); `None` for any other entry.
+    # credit it carried reverted, a payment moved (#280), an adjustment reverted and a
+    # debt written off (#282); `None` for any other entry.
     purpose: Purpose | None = None
 
     def __post_init__(self) -> None:
@@ -76,6 +79,10 @@ class LedgerEntry:
             self.kind is not EntryKind.ADJUSTMENT or self.amount_clp >= 0
         ):
             raise ValueError("a restore is an adjustment owed by the member")
+        if self.purpose is Purpose.WRITE_OFF and (
+            self.kind is not EntryKind.ADJUSTMENT or self.amount_clp <= 0
+        ):
+            raise ValueError("a write-off is an adjustment in the member's favour")
         if self.purpose is Purpose.MISTAKE and self.kind is not EntryKind.REFUND:
             raise ValueError("a payment undone is a refund of it")
         if self.purpose is Purpose.REVERT and self.kind is not EntryKind.ADJUSTMENT:

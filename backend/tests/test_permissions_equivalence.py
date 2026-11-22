@@ -128,10 +128,19 @@ def test_each_operation_answers_each_role_as_before(
     assert answered[operation] == before
 
 
+# The operations the app had at #308, when the recording was made: a recording with fewer
+# is cut short.
+RECORDED_AT_308 = 200
+
+
 def test_the_recording_covers_the_app_as_it_was() -> None:
-    # Most of the app was there before #308: a recording that misses much of it is stale.
+    # The recording is the app before #308: nearly all of what it holds is still there, and
+    # it holds most of that app. Compared with the app as it is now, the share would only
+    # shrink as operations are added after #308, which say nothing about the recording.
     keys = {key for key, _, _ in operations(create_app(make_settings()))}
-    assert len(keys & recorded().keys()) > 0.9 * len(keys)
+    before = recorded().keys()
+    assert len(keys & before) > 0.9 * len(before)
+    assert len(keys & before) >= RECORDED_AT_308
 
 
 if __name__ == "__main__":

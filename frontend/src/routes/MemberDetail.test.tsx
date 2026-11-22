@@ -632,7 +632,7 @@ describe('Ficha de alumno', () => {
     expect(within(ledger).getByRole('button', { name: /^Pago septiembre/ })).toBeInTheDocument()
   })
 
-  it('offers a charge that still owes "Cambiar monto", "Mover vencimiento" and "Anular cargo", opened under it (#279, #283)', async () => {
+  it('offers a charge that still owes "Cambiar monto", "Mover vencimiento", "Anular cargo" and "Condonar deuda", opened under it (#279, #283, #282)', async () => {
     stubApi()
     renderAt(PATH)
     const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
@@ -642,6 +642,7 @@ describe('Ficha de alumno', () => {
       copy.fix.changeAmount,
       copy.fix.moveDueDate,
       copy.fix.voidCharge,
+      copy.fix.writeOff,
     ])
     expect(within(fixes).getByRole('button', { name: copy.fix.changeAmount })).toHaveAttribute('aria-pressed', 'true')
     expect(within(fixes).getByRole('form', { name: copy.amountForm.title })).toBeInTheDocument()
@@ -2525,6 +2526,146 @@ const FIELDS: PersonField[] = [
   field({ key: 'ingreso', label: 'Fecha de ingreso', type: 'date', value: null }),
   field({ key: 'salud', label: 'Notas médicas', sensitive: true, value: 'Asma' }),
 ]
+
+describe('Revertir ajuste and Condonar deuda (#282)', () => {
+  const DISCOUNT = entry({
+    id: 'adj-oct',
+    kind: 'adjustment',
+    amount_clp: 5000,
+    billing_period_id: 'p-oct',
+    period_start: '2026-10-30',
+    note: 'hermano',
+    created_at: '2026-11-03T12:00:00Z',
+  })
+  const DISCOUNTED: MembershipLedger = {
+    ...LEDGER,
+    open_periods: [{ ...OCTOBER, paid_clp: 5000, outstanding_clp: 40000 }],
+    owed_clp: 40000,
+    balance_clp: 40000,
+    entries: [DISCOUNT, ...LEDGER.entries],
+    periods: [{ ...LEDGER.periods[0]!, outstanding_clp: 40000, charged_clp: 40000 }, LEDGER.periods[1]!],
+  }
+
+  it('reverts a discount from its line: the period owes it again, with a reason', async () => {
+    const calls = stubApi({
+      ledger: DISCOUNTED,
+      extra: (path, method) =>
+        path === '/api/ledger/reverts' && method === 'POST'
+          ? { status: 201, body: { period: { outstanding_clp: 45000, closed: false } } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const title = copy.ledger.adjustment(true, 'octubre')
+    const fixes = await fixLine(new RegExp(`^${title}`), copy.fix.adjustment(title))
+    expect(within(fixes).getByText(copy.fix.only(copy.fix.adjustment(title), copy.fix.revert))).toBeInTheDocument()
+    const form = within(fixes).getByRole('form', { name: copy.revertForm.title })
+    expect(within(form).getByText(copy.fix.owed('octubre', '$40.000', '$45.000'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.fix.balance('$40.000', '$45.000'))).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: copy.revertForm.submit }))
+    expect(within(form).getByText(copy.revertForm.reasonNeeded)).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.revertForm.reason), 'alumno equivocado')
+    await userEvent.click(within(form).getByRole('button', { name: copy.revertForm.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.revertForm.done(title))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/ledger/reverts', body: { adjustment_id: 'adj-oct', reason: 'alumno equivocado' } },
+    ])
+  })
+
+  it('shows a reverted adjustment and its revert, and offers no fix on either', async () => {
+    stubApi({
+      ledger: {
+        ...LEDGER,
+        entries: [
+          entry({
+            id: 'rev-oct',
+            kind: 'adjustment',
+            amount_clp: -5000,
+            purpose: 'revert',
+            billing_period_id: 'p-oct',
+            period_start: '2026-10-30',
+            note: 'alumno equivocado',
+            created_at: '2026-11-04T12:00:00Z',
+          }),
+          { ...DISCOUNT, reverted: { reason: 'alumno equivocado', by_name: 'Ana', at: '2026-11-04T12:00:00Z' } },
+          ...LEDGER.entries,
+        ],
+      },
+    })
+    renderAt(PATH)
+    const ledger = await libro()
+    const reverted = await within(ledger).findByText(copy.ledger.adjustment(true, 'octubre'))
+    expect(reverted.closest('li')).toHaveTextContent(copy.ledger.reverted('alumno equivocado', 'Ana', '4 nov'))
+    expect(within(ledger).getByText(copy.ledger.revert('octubre'))).toBeInTheDocument()
+    expect(within(ledger).queryByRole('button', { name: new RegExp(`^${copy.ledger.revert('octubre')}`) })).not.toBeInTheDocument()
+    expect(
+      within(ledger).queryByRole('button', { name: new RegExp(`^${copy.ledger.adjustment(true, 'octubre')}`) }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('says why a revert was refused', async () => {
+    stubApi({
+      ledger: DISCOUNTED,
+      extra: (path, method) =>
+        path === '/api/ledger/reverts' && method === 'POST'
+          ? { status: 409, body: { detail: { code: 'exceeds', message: 'exceeds' } } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const title = copy.ledger.adjustment(true, 'octubre')
+    const fixes = await fixLine(new RegExp(`^${title}`), copy.fix.adjustment(title))
+    await userEvent.type(within(fixes).getByLabelText(copy.revertForm.reason), 'error')
+    await userEvent.click(within(within(fixes).getByRole('form')).getByRole('button', { name: copy.revertForm.submit }))
+    expect(await within(fixes).findByRole('alert')).toHaveTextContent(copy.revertRefused.exceeds)
+  })
+
+  it('forgives a debt in two steps, saying it still counts in Esperado', async () => {
+    const calls = stubApi({
+      extra: (path, method) =>
+        path === '/api/ledger/write-offs' && method === 'POST'
+          ? { status: 201, body: { period: { outstanding_clp: 0, closed: true } } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.writeOff }))
+    const form = within(fixes).getByRole('form', { name: copy.writeOffForm.title })
+    expect(within(form).getByText(copy.fix.owed('octubre', '$45.000', '$0'))).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.writeOffForm.reason), 'se fue del país')
+    await userEvent.click(within(form).getByRole('button', { name: copy.writeOffForm.submit('$45.000') }))
+
+    // The second step says what else happens, and nothing is sent yet.
+    expect(within(form).getByText(copy.writeOffForm.notice)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.writeOffForm.confirm('$45.000') }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.writeOffForm.done('octubre', '$45.000'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/ledger/write-offs',
+        body: { membership_id: 'm-felipe', billing_period_id: 'p-oct', reason: 'se fue del país' },
+      },
+    ])
+  })
+
+  it('says why a write-off was refused', async () => {
+    stubApi({
+      extra: (path, method) =>
+        path === '/api/ledger/write-offs' && method === 'POST'
+          ? { status: 409, body: { detail: { code: 'pending', message: 'a proof waits' } } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.writeOff }))
+    const form = within(fixes).getByRole('form', { name: copy.writeOffForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.writeOffForm.reason), 'x')
+    await userEvent.click(within(form).getByRole('button', { name: copy.writeOffForm.submit('$45.000') }))
+    await userEvent.click(within(form).getByRole('button', { name: copy.writeOffForm.confirm('$45.000') }))
+    expect(await within(fixes).findByRole('alert')).toHaveTextContent(copy.writeOffRefused.pending)
+  })
+})
 
 describe('Ficha de alumno: datos', () => {
   const fields = () => screen.findByRole('region', { name: copy.fields.title })
