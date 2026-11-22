@@ -83,6 +83,9 @@ export type PendingPlanChange = { plan_id: string; plan_name: string; starts_on:
 
 export type Method = 'cash' | 'transfer' | 'other'
 
+/** Every `Method`, in the order the forms offer them. */
+export const METHODS: readonly Method[] = ['cash', 'transfer', 'other']
+
 export type OpenPeriod = {
   id: string
   period_start: string
@@ -304,6 +307,8 @@ export type Correction = {
   other_period_start?: string | null
   // On a `due_date_changed` row (#283): the period's due date before and after.
   due_date?: { before: string; after: string } | null
+  // On an entry "Pagado hasta" wrote (#286): a payment from before Rakin, or a bonificación.
+  paid_through?: PaidThroughMode | null
 }
 
 /** A discount at one moment: 0 and null with none (backend `DiscountFigures`). */
@@ -341,6 +346,61 @@ export function aheadQuery(membershipId: string) {
 
 export function recordPaymentAhead(body: PaymentAheadRecord): Promise<RecordedAhead> {
   return apiFetch<RecordedAhead>('/api/ledger/payments/ahead', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** "Pagado hasta…" (#286): the months up to a date paid before Rakin, or given. */
+export type PaidThroughMode = 'paid' | 'gift'
+
+/** A period "Pagado hasta" settles (backend `PaidThroughPeriod`): billed and still owing, or one it bills. */
+export type PaidThroughPeriod = { period_start: string; period_end: string; amount_clp: number; billed: boolean }
+
+/** What settling up to a date writes (backend `PaidThroughQuote`). */
+export type PaidThroughQuote = { periods: PaidThroughPeriod[]; total_clp: number; paid_through: string }
+
+export type PaidThroughRecord = {
+  through: string
+  mode: PaidThroughMode
+  method?: Method
+  // As the quote said; anything else is a 409.
+  total_clp: number
+}
+
+export type RecordedPaidThrough = { paid_through: string }
+
+/** Why "Pagado hasta" cannot settle up to a date (backend `PaidThroughRefusal`). */
+export const PAID_THROUGH_REFUSALS = ['cannot', 'before_plan', 'already_paid', 'too_far', 'pending', 'amount_changed'] as const
+export type PaidThroughRefusal = (typeof PAID_THROUGH_REFUSALS)[number]
+export type PaidThroughRefused = { code: PaidThroughRefusal; started_on?: string | null; paid_through?: string | null }
+
+function paidThroughUrl(membershipId: string): string {
+  return `/api/ledger/memberships/${encodeURIComponent(membershipId)}/paid-through`
+}
+
+export function paidThroughQuery(membershipId: string, through: string) {
+  return queryOptions({
+    queryKey: ['ledger', 'paid-through', membershipId, through],
+    queryFn: () => apiFetch<PaidThroughQuote>(`${paidThroughUrl(membershipId)}?through=${encodeURIComponent(through)}`),
+    // What is owed now decides it: read as the form shows it.
+    staleTime: 0,
+    retry: false,
+  })
+}
+
+export function recordPaidThrough(membershipId: string, body: PaidThroughRecord): Promise<RecordedPaidThrough> {
+  return apiFetch<RecordedPaidThrough>(paidThroughUrl(membershipId), { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** The 409's refusal of "Pagado hasta", for the form to say why. */
+export function paidThroughRefused(error: unknown): PaidThroughRefused | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const detail = (error.body as { detail?: Record<string, unknown> } | undefined)?.detail
+  const code = PAID_THROUGH_REFUSALS.find((known) => known === detail?.code)
+  if (!code) return null
+  return {
+    code,
+    started_on: typeof detail?.started_on === 'string' ? detail.started_on : null,
+    paid_through: typeof detail?.paid_through === 'string' ? detail.paid_through : null,
+  }
 }
 
 export function recordAdjustment(body: AdjustmentRecord): Promise<RecordedAdjustment> {

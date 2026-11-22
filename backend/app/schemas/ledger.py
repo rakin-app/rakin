@@ -19,9 +19,16 @@ period owes nothing afterwards, and the charge reads as voided, struck through.
 import uuid
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.domain.billing import MAX_PAID_AHEAD
 from app.domain.ledger import EntryKind, EntryStatus, Purpose
@@ -539,6 +546,9 @@ class Correction(BaseModel):
     other_period_start: date | None = None
     # On a `due_date_changed` row (#283): the period's due date before and after.
     due_date: DateShift | None = None
+    # On an entry "Pagado hasta" wrote (#286): `paid` for a payment, `gift` for a
+    # bonificación.
+    paid_through: str | None = None
 
 
 class Corrections(BaseModel):
@@ -731,6 +741,90 @@ class PaymentAheadRecord(BaseModel):
 class RecordedAhead(BaseModel):
     # One payment per period, oldest first, each for what its period costs.
     payments: list[Entry]
+    periods: list[Period]
+    paid_through: date
+
+
+class PaidThroughMode(StrEnum):
+    """How the months "Pagado hasta" settles were settled (#286)."""
+
+    # Paid before the gym used Rakin: a payment each, with its method.
+    PAID = "paid"
+    # Given ("le regalamos diciembre"): an adjustment in the member's favour each.
+    GIFT = "gift"
+
+
+class PaidThroughRefusal(StrEnum):
+    """Why "Pagado hasta" cannot settle up to a date, for the ficha to say so."""
+
+    # Not an Active monthly or prepaid plan: nothing bills up to a date.
+    CANNOT = "cannot"
+    # Before the plan started: that belongs in the Historial (#295), not in billing.
+    BEFORE_PLAN = "before_plan"
+    # Every period up to it is settled already.
+    ALREADY_PAID = "already_paid"
+    # Further ahead than `MAX_PAID_AHEAD` periods not billed yet.
+    TOO_FAR = "too_far"
+    # A proof waits for review on one of its periods: review it first.
+    PENDING = "pending"
+    # The total is not what those periods owe now, as quoted.
+    AMOUNT_CHANGED = "amount_changed"
+
+
+class PaidThroughConflict(BaseModel):
+    code: PaidThroughRefusal
+    message: str
+    # On `before_plan`: the day the plan started.
+    started_on: date | None = None
+    # On `already_paid`: the day it is paid through already.
+    paid_through: date | None = None
+
+
+class PaidThroughPeriod(BaseModel):
+    """A period "Pagado hasta" settles: one billed and still owing, or one it bills."""
+
+    period_start: date
+    period_end: date
+    # What it still owes, which is what is paid or given on it.
+    amount_clp: int
+    # False for one not billed yet, which it bills first.
+    billed: bool
+
+
+class PaidThroughQuote(BaseModel):
+    """What settling a membership up to a date writes: its periods, oldest first, their
+    total and the "Pagado hasta" it leaves."""
+
+    periods: list[PaidThroughPeriod]
+    total_clp: int
+    paid_through: date
+
+
+class PaidThroughRecord(BaseModel):
+    """ "Pagado hasta…" (#286): settle every period of the membership starting on or
+    before `through`, billing those not billed yet, each with a payment (`paid`, with
+    its method) or an adjustment in the member's favour (`gift`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    through: date
+    mode: PaidThroughMode
+    # Required when `paid`.
+    method: Method | None = None
+    # As the quote said: anything else is a 409, so a total changed since is not
+    # recorded unseen.
+    total_clp: Annotated[int, Field(ge=0)]
+
+    @model_validator(mode="after")
+    def a_payment_has_its_method(self) -> Self:
+        if self.mode is PaidThroughMode.PAID and self.method is None:
+            raise ValueError("a payment needs its method")
+        return self
+
+
+class RecordedPaidThrough(BaseModel):
+    # One payment or adjustment per period that owed something, oldest first.
+    entries: list[Entry]
     periods: list[Period]
     paid_through: date
 

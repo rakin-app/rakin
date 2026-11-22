@@ -88,7 +88,7 @@ Each real case, what it becomes, and whether it exists:
 | C11 | Undo a cancel | row change + audit | ❌ (the DB refuses) |
 | C12 | Undo a lapse | = C10 | ❌ |
 | C13 | Merge two plans of one person | **not a primitive**: C6 for each payment, then void the duplicate plan | — |
-| C14 | Set the paid-through date by hand | **not offered**: derived from the periods; a shortcut writes payments or discounts per period | — |
+| C14 | Set the paid-through date by hand | **not offered**: derived from the periods; a shortcut writes payments or discounts per period | ✅ #286, "Pagado hasta…" |
 | C15 | Write off a debt ("condonar") | `write_off` entry | ❌ (a void, misreported) |
 
 Why C9, C13 and C14 are not corrections of their own:
