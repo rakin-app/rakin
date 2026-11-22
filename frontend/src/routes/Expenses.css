@@ -286,6 +286,11 @@
 }
 
 @media (--desktop) {
+  /* The money tabs (#531) at Pagos' height, so the row stays put from tab to tab. */
+  .expenses {
+    padding-top: var(--space-8);
+  }
+
   .expenses__fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

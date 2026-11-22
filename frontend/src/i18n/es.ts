@@ -3315,8 +3315,6 @@ export const es = {
       noMatch: (q: string) => `No hay movimientos de «${q}».`,
       record: 'Registrar pago',
       extra: 'Cobros extra',
-      // What the gym spends (#314), in "Más" for who sees it.
-      expenses: 'Gastos',
       kpiExtra: (amount: string) => ` · ${amount} de cobros extra`,
       // The way to the month's summary, beside the KPIs (#505).
       summary: 'Ver resumen del mes',
@@ -3340,13 +3338,16 @@ export const es = {
         cancel: 'Cancelar',
       },
     },
+    // Pagos, Finanzas and Gastos, one money section (#531): the row of tabs over all three.
+    money: {
+      tabs: { label: 'Secciones de Pagos', payments: 'Pagos', finances: 'Finanzas', expenses: 'Gastos' },
+    },
     // Finanzas (#316): the month whole, what came in, what went out and what is left,
     // and the year month by month. Entradas is Pagos' Cobrado; without «Ver ingresos» the
     // page shows Salidas only.
     finances: {
       title: 'Finanzas',
       subtitle: 'Lo que entró, lo que salió y lo que queda.',
-      tabs: { label: 'Secciones de Finanzas', summary: 'Resumen', expenses: 'Gastos' },
       view: { label: 'Ver', month: 'Mes', year: 'Año' },
       loading: 'Cargando las finanzas…',
       error: 'No pudimos cargar las finanzas.',

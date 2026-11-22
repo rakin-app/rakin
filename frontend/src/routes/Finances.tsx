@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { getRouteApi, Link } from '@tanstack/react-router'
+import { getRouteApi } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import {
   financeMonthQuery,
@@ -16,6 +16,7 @@ import { SegmentedControl } from '../components/Chip'
 import { cx } from '../components/classNames'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon } from '../components/icons'
 import { PageContainer } from '../components/Layout'
+import { MoneyTabs } from '../components/MoneyTabs'
 import { Loading } from '../components/Loading'
 import { PageHeader, PageTitle } from '../components/PageHeader'
 import { shiftMonth } from '../format'
@@ -48,7 +49,8 @@ const route = getRouteApi('/admin/finanzas')
  * Finanzas (#316): the month whole, what came in, what went out and what is left, and the
  * year month by month (docs/design/expenses-and-officers.md, section 13). Entradas is
  * Pagos' Cobrado, the same figure, split into plans and cobros extra; Salidas the month's
- * expenses that count, by category; Resultado the difference. Gastos is its second tab.
+ * expenses that count, by category; Resultado the difference. It is the money section's
+ * second tab, between Pagos and Gastos (#531).
  *
  * Who holds "Ver gastos" sees it. Without "Ver ingresos" the API sends no income, and the
  * page shows Salidas only, saying why. Anyone else is told so, and nothing is asked.
@@ -65,20 +67,6 @@ export function Finances() {
   )
 }
 
-/** Resumen and Gastos, the two tabs of Finanzas, over either page. */
-export function FinancesTabs() {
-  return (
-    <nav className="finances-tabs" aria-label={copy.tabs.label}>
-      <Link to="/admin/finanzas" activeOptions={{ exact: true, includeSearch: false }} className="finances-tabs__link">
-        {copy.tabs.summary}
-      </Link>
-      <Link to="/admin/finanzas/gastos" activeOptions={{ includeSearch: false }} className="finances-tabs__link">
-        {copy.tabs.expenses}
-      </Link>
-    </nav>
-  )
-}
-
 function FinancesPage() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
@@ -87,11 +75,11 @@ function FinancesPage() {
 
   return (
     <PageContainer className="finances">
+      <MoneyTabs />
       <header className="finances__header">
         <PageTitle>{copy.title}</PageTitle>
         <p className="finances__subtitle">{copy.subtitle}</p>
       </header>
-      <FinancesTabs />
       <div>
         <SegmentedControl
           label={copy.view.label}

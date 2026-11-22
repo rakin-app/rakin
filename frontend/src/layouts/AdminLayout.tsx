@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, Outlet } from '@tanstack/react-router'
+import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useSignOut } from '../api/auth'
 import { managesGym, myAccessQuery, myselfQuery, readsExpenses, readsLedger } from '../api/me'
@@ -33,9 +33,11 @@ type NavItem = {
   label: string
   icon: ReactNode
   exact?: boolean
-  // The sidebar's only: on a phone the bar keeps to five tabs.
-  wideOnly?: boolean
 }
+
+// Pagos, Finanzas and Gastos are one money section (#531): the nav's Pagos is current on
+// all three, and on what opens from them.
+const MONEY_PATH = /^\/admin\/(pagos|finanzas)(\/|$)/
 
 // Each label read when the nav renders: "Alumnos" is the gym's word for its members (#344).
 const NAV_ITEMS: readonly NavItem[] = [
@@ -49,7 +51,6 @@ const NAV_ITEMS: readonly NavItem[] = [
   },
   { to: '/admin/clases', label: t.nav.classes, icon: <ClassesIcon /> },
   { to: '/admin/pagos', label: t.nav.payments, icon: <PaymentsIcon /> },
-  { to: '/admin/finanzas', label: t.nav.finances, icon: <FinancesIcon /> },
   { to: '/admin/ajustes', label: t.nav.settings, icon: <SettingsIcon /> },
 ]
 
@@ -137,17 +138,17 @@ function AdminShell() {
   const gym = useGymName()
   const logo = useQuery(myselfQuery()).data?.gym_logo
   const rise = useRise<HTMLDivElement>()
-  // Pagos is money, Finanzas expenses (#316) and Ajustes the gym's configuration: each
-  // shown only once the role is known to reach it, so a coach never sees any of them, not
-  // even while the role loads. Finanzas sits beside Pagos in the sidebar; on a phone the
-  // bar keeps to five tabs, so whoever has Pagos reaches Finanzas from Pagos' "Más", and
-  // whoever sees expenses and not payments has Finanzas where Pagos would be.
+  // Pagos is money and Ajustes the gym's configuration: each shown only once the role is
+  // known to reach it, so a coach never sees either, not even while the role loads. Pagos
+  // is the money section, Finanzas and Gastos its tabs (#531): whoever sees expenses and
+  // not payments has Finanzas in its place, landing on their first tab, as since #316.
+  const inMoney = useRouterState({ select: (state) => MONEY_PATH.test(state.location.pathname) })
   const navItems = NAV_ITEMS.flatMap((item): NavItem[] => {
     if (item.to === '/admin/ajustes' && !managesGym(access.data)) return []
-    if (item.to === '/admin/pagos' && !readsLedger(access.data)) return []
-    if (item.to !== '/admin/finanzas') return [item]
-    if (!readsExpenses(access.data)) return []
-    return [{ ...item, wideOnly: readsLedger(access.data) }]
+    if (item.to !== '/admin/pagos') return [item]
+    if (readsLedger(access.data)) return [item]
+    if (readsExpenses(access.data)) return [{ ...item, to: '/admin/finanzas', label: t.nav.finances, icon: <FinancesIcon /> }]
+    return []
   })
 
   // A coach's phone has no Ajustes: "Mi página" is a tab of their bar, and signing out is
@@ -184,8 +185,14 @@ function AdminShell() {
         </div>
         <PlainList className="admin-nav__list">
           {navItems.map((item) => (
-            <li key={item.to} className={item.wideOnly ? 'admin-nav__wide' : undefined}>
-              <Link to={item.to} activeOptions={{ exact: item.exact ?? false }} className="admin-nav__link">
+            <li key={item.to}>
+              <Link
+                to={item.to}
+                activeOptions={{ exact: item.exact ?? false }}
+                // The money section's one item, current on Pagos, Finanzas and Gastos alike.
+                inactiveProps={MONEY_PATH.test(item.to) && inMoney ? { 'aria-current': 'page' } : undefined}
+                className="admin-nav__link"
+              >
                 <span className="admin-nav__icon">
                   {item.icon}
                   {item.to === '/admin/pagos' && badge > 0 && (

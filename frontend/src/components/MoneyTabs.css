@@ -1,0 +1,25 @@
+/* Pagos, Finanzas and Gastos (#531): one row of tabs over the three money screens, as
+   Ajustes draws its sections. */
+
+.money-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.money-tabs__link {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  padding: var(--space-2-5) var(--space-3);
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.money-tabs__link[aria-current='page'] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-text);
+}

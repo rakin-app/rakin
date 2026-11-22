@@ -341,25 +341,38 @@ describe('Gastos', () => {
     expect(calls.some((c) => c.path.startsWith('/api/expenses'))).toBe(false)
   })
 
-  it("puts Finanzas in Pagos' tab for someone who sees expenses and not payments", async () => {
+  it("puts Finanzas in Pagos' place for someone who sees expenses and not payments, with two tabs", async () => {
     stubApi(['expenses_read'])
     renderAt('/admin/finanzas/gastos')
     await rows()
     const nav = within(screen.getByRole('navigation', { name: es.nav.label }))
     const finances = nav.getByRole('link', { name: es.nav.finances })
     expect(finances).toHaveAttribute('href', '/admin/finanzas')
-    // In the bar, since there is no Pagos beside it.
-    expect(finances.closest('li')).not.toHaveClass('admin-nav__wide')
+    expect(finances).toHaveAttribute('aria-current', 'page')
     expect(nav.queryByRole('link', { name: es.nav.payments })).not.toBeInTheDocument()
+    // A tesorero's row: Finanzas and Gastos, no Pagos (#531).
+    const tabs = within(screen.getByRole('navigation', { name: es.admin.money.tabs.label }))
+    expect(tabs.getAllByRole('link').map((l) => l.textContent)).toEqual([
+      es.admin.money.tabs.finances,
+      es.admin.money.tabs.expenses,
+    ])
   })
 
-  it("is Finanzas' second tab", async () => {
+  it("is the money section's third tab, the nav's Pagos current (#531)", async () => {
     stubApi()
     renderAt('/admin/finanzas/gastos')
     await rows()
-    const tabs = within(screen.getByRole('navigation', { name: es.admin.finances.tabs.label }))
-    expect(tabs.getByRole('link', { name: es.admin.finances.tabs.expenses })).toHaveAttribute('aria-current', 'page')
-    expect(tabs.getByRole('link', { name: es.admin.finances.tabs.summary })).toHaveAttribute('href', '/admin/finanzas')
+    expect(screen.getByRole('heading', { level: 1, name: copy.title })).toBeInTheDocument()
+    const tabs = within(screen.getByRole('navigation', { name: es.admin.money.tabs.label }))
+    expect(tabs.getAllByRole('link').map((l) => l.textContent)).toEqual([
+      es.admin.money.tabs.payments,
+      es.admin.money.tabs.finances,
+      es.admin.money.tabs.expenses,
+    ])
+    expect(tabs.getByRole('link', { name: es.admin.money.tabs.expenses })).toHaveAttribute('aria-current', 'page')
+    expect(tabs.getByRole('link', { name: es.admin.money.tabs.finances })).not.toHaveAttribute('aria-current')
+    const nav = within(screen.getByRole('navigation', { name: es.nav.label }))
+    expect(nav.getByRole('link', { name: es.nav.payments })).toHaveAttribute('aria-current', 'page')
   })
 
   it('takes the path it had under Pagos to Finanzas, with its month', async () => {

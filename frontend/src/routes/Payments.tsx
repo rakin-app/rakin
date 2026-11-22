@@ -11,7 +11,7 @@ import {
   type BookKpis,
   type PersonRef,
 } from '../api/ledger'
-import { myAccessQuery, readsExpenses, readsLedger } from '../api/me'
+import { myAccessQuery, readsLedger } from '../api/me'
 import { membershipLedgerQuery, membershipsQuery, shownMemberships } from '../api/member'
 import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
@@ -22,6 +22,7 @@ import { Chip, ChipGroup } from '../components/Chip'
 import { EmailReminder } from '../components/EmailReminder'
 import { SearchInput } from '../components/Field'
 import { PageContainer } from '../components/Layout'
+import { MoneyTabs } from '../components/MoneyTabs'
 import { MoreMenu, moreItemClass } from '../components/MoreMenu'
 import { PageHeader, PageTitle } from '../components/PageHeader'
 import { StatusPill, type Status } from '../components/StatusPill'
@@ -97,7 +98,6 @@ export function Payments() {
 }
 
 function Book() {
-  const access = useQuery(myAccessQuery())
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const filter = search.filter ?? 'all'
@@ -136,6 +136,7 @@ function Book() {
 
   return (
     <PageContainer className="payments">
+      <MoneyTabs />
       <header className="payments__header">
         <div className="payments__heading">
           <PageTitle>{copy.title}</PageTitle>
@@ -184,16 +185,6 @@ function Book() {
           <Link to="/admin/pagos/cobros" className={moreItemClass()}>
             {copy.extra}
           </Link>
-          {readsExpenses(access.data) && (
-            <>
-              <Link to="/admin/finanzas" className={moreItemClass()}>
-                {t.nav.finances}
-              </Link>
-              <Link to="/admin/finanzas/gastos" className={moreItemClass()}>
-                {copy.expenses}
-              </Link>
-            </>
-          )}
           {latest && (
             <>
               <a href={exportPath(latest.month, 'csv')} download className={moreItemClass()}>

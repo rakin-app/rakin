@@ -66,14 +66,13 @@ describe('/admin route tree', () => {
     // Pagos and Ajustes join once the role is known to reach them.
     await within(nav).findByRole('link', { name: es.nav.settings })
     const links = within(nav).getAllByRole('link')
-    // Finanzas (#316) beside Pagos and the sidebar's "Estado del servicio" (#519), both
-    // of which a phone's bar leaves out.
+    // Finanzas and Gastos are tabs of Pagos (#531); the sidebar's "Estado del servicio"
+    // (#519) a phone's bar leaves out.
     expect(links.map((link) => link.textContent)).toEqual([
       'Hoy',
       'Alumnos',
       'Clases',
       'Pagos',
-      'Finanzas',
       'Ajustes',
       'Estado del servicio',
     ])
@@ -82,7 +81,6 @@ describe('/admin route tree', () => {
       '/admin/alumnos',
       '/admin/clases',
       '/admin/pagos',
-      '/admin/finanzas',
       '/admin/ajustes',
       STATUS_URL,
     ])
@@ -94,6 +92,9 @@ describe('/admin route tree', () => {
     ['/admin/alumnos', es.nav.students, es.admin.students.title],
     ['/admin/clases', es.nav.classes, es.admin.classes.title],
     ['/admin/pagos', es.nav.payments, es.admin.payments.title],
+    // Finanzas and Gastos are the money section's tabs, under Pagos (#531).
+    ['/admin/finanzas', es.nav.payments, es.admin.finances.title],
+    ['/admin/finanzas/gastos', es.nav.payments, es.admin.expenses.title],
     // A phone's section page is titled by its section.
     ['/admin/ajustes/planes', es.nav.settings, es.admin.settings.sections.plans],
   ])('%s marks %s as the current page', async (path, navLabel, title) => {
@@ -173,7 +174,6 @@ describe('signing in', () => {
       'Alumnos',
       'Clases',
       'Pagos',
-      'Finanzas',
       'Ajustes',
       'Estado del servicio',
     ])

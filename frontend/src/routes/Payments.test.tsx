@@ -570,12 +570,29 @@ describe('Pagos', () => {
     expect(document.querySelectorAll('.payments__header .button--primary')).toHaveLength(1)
   })
 
-  it('leaves Finanzas and Gastos out of "Más" for an Administrador, who sees no expenses (#314)', async () => {
+  it('shows an Administrador, who sees no expenses, no row of money tabs (#531)', async () => {
     stubApi({ role: 'admin' })
     renderAt('/admin/pagos')
     await table()
+    expect(screen.queryByRole('navigation', { name: es.admin.money.tabs.label })).not.toBeInTheDocument()
     const more = document.querySelector('.payments__toolbar .more-menu__list')!
     expect([...more.children].map((c) => c.textContent)).toEqual([copy.extra, copy.exportCsv, copy.exportXlsx])
+  })
+
+  it('opens the titular\'s money section on its Pagos tab, beside Finanzas and Gastos (#531)', async () => {
+    stubApi()
+    renderAt('/admin/pagos')
+    await table()
+    const tabs = within(screen.getByRole('navigation', { name: es.admin.money.tabs.label }))
+    expect(tabs.getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
+      [es.admin.money.tabs.payments, '/admin/pagos'],
+      [es.admin.money.tabs.finances, '/admin/finanzas'],
+      [es.admin.money.tabs.expenses, '/admin/finanzas/gastos'],
+    ])
+    expect(tabs.getByRole('link', { name: es.admin.money.tabs.payments })).toHaveAttribute('aria-current', 'page')
+    const nav = within(screen.getByRole('navigation', { name: es.nav.label }))
+    // "Pagos", then its badge's proofs waiting.
+    expect(nav.getByRole('link', { name: new RegExp(`^${es.nav.payments}`) })).toHaveAttribute('aria-current', 'page')
   })
 
   it('keeps Cobros extra and the exports under "Más", the header holding two actions (#357)', async () => {
@@ -587,15 +604,8 @@ describe('Pagos', () => {
     expect([...header.querySelectorAll('a, button, summary')].map((c) => c.textContent)).toEqual([copy.review(3), copy.record])
     // "Más" beside the period picker, holding the rest.
     const more = document.querySelector('.payments__toolbar .more-menu__list')!
-    // Finanzas and Gastos too, for whoever sees expenses (#314, #316): the titular. On a
-    // phone this is the way to Finanzas, which the bar has no room for.
-    expect([...more.children].map((c) => c.textContent)).toEqual([
-      copy.extra,
-      es.nav.finances,
-      copy.expenses,
-      copy.exportCsv,
-      copy.exportXlsx,
-    ])
+    // Finanzas and Gastos are tabs above, not here, even for the titular (#531).
+    expect([...more.children].map((c) => c.textContent)).toEqual([copy.extra, copy.exportCsv, copy.exportXlsx])
   })
 
   it('draws the period picker before the book answers, so the header does not move (#357)', async () => {
