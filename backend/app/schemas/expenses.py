@@ -45,6 +45,8 @@ class ExpenseIn(BaseModel):
     method: ExpenseMethod | None = None
     note: Note | None = None
     receipt_key: ReceiptKey | None = None
+    # The gasto fijo it is recorded from (#315): an estimated one's form sends it.
+    recurring_id: uuid.UUID | None = None
 
 
 class ExpenseChange(BaseModel):
@@ -91,6 +93,8 @@ class Expense(BaseModel):
     method: ExpenseMethod | None
     note: str | None
     has_receipt: bool
+    # The gasto fijo it was recorded from, if any (#315).
+    recurring_id: uuid.UUID | None
     created_by_name: str | None
     created_at: datetime
     updated_at: datetime | None
@@ -143,3 +147,109 @@ class CategoryOrder(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ids: Annotated[list[uuid.UUID], Field(min_length=1, max_length=MAX_CATEGORIES)]
+
+
+# --- gastos fijos (#315) -------------------------------------------------------------
+
+# More templates than this is not a list of monthly bills: one more is refused.
+MAX_RECURRING = 100
+
+DayOfMonth = Annotated[int, Field(ge=1, le=31)]
+
+
+class AmountKind(StrEnum):
+    """`fixed`: rent, internet, recorded at its amount in one tap. `estimated`: power,
+    water, gas, where the amount is last bill's and only a hint (migration 0085)."""
+
+    FIXED = "fixed"
+    ESTIMATED = "estimated"
+
+
+class RecurringIn(BaseModel):
+    """A new gasto fijo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    category_id: uuid.UUID
+    payee: Payee | None = None
+    method: ExpenseMethod | None = None
+    amount_clp: Amount
+    amount_kind: AmountKind
+    day_of_month: DayOfMonth
+
+
+class RecurringChange(BaseModel):
+    """An edit of a gasto fijo, or its pause (`active`): only the fields sent change. A
+    field sent as null is cleared, except those a template always has."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    category_id: uuid.UUID | None = None
+    payee: Payee | None = None
+    method: ExpenseMethod | None = None
+    amount_clp: Amount | None = None
+    amount_kind: AmountKind | None = None
+    day_of_month: DayOfMonth | None = None
+    active: bool | None = None
+
+    @field_validator(
+        "category_id", "amount_clp", "amount_kind", "day_of_month", "active", mode="before"
+    )
+    @classmethod
+    def _always_has_one(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("a template always has one")
+        return value
+
+
+class Recurring(BaseModel):
+    """A gasto fijo, as Gastos lists it."""
+
+    id: uuid.UUID
+    category_id: uuid.UUID
+    category_name: str
+    # Its category was archived: it is recorded through the form, under another.
+    category_archived: bool
+    payee: str | None
+    method: ExpenseMethod | None
+    amount_clp: int
+    amount_kind: AmountKind
+    day_of_month: int
+    active: bool
+    created_at: datetime
+
+
+class DueRecurring(Recurring):
+    """A gasto fijo not yet recorded in the month: `due_on` is the day it would be
+    recorded on, its day of that month, or the gym's today if that is earlier."""
+
+    due_on: date
+
+
+class RecurringMonth(BaseModel):
+    """ "Gastos fijos por registrar": the active templates with no expense from them in
+    the month, and those skipped for it ("No este mes")."""
+
+    month: date
+    current_month: date
+    today: date
+    due: list[DueRecurring]
+    skipped: list[DueRecurring]
+
+
+class RecordRecurring(BaseModel):
+    """Record fixed templates in a month, each at its amount: one tap names one,
+    "Registrar los fijos" all of them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    month: date
+    ids: Annotated[list[uuid.UUID], Field(min_length=1, max_length=MAX_RECURRING)]
+
+
+class SkipRecurring(BaseModel):
+    """No este mes: the template leaves the month's card."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    month: date

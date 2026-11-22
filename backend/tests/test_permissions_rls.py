@@ -57,6 +57,7 @@ class Gym:
     session: uuid.UUID
     history_payment: uuid.UUID
     expense: uuid.UUID
+    recurring: uuid.UUID
     newcomer: uuid.UUID  # in the gym, on no line and in no group
 
 
@@ -323,6 +324,45 @@ CASES = (
         " VALUES ($1, $2, 'expense_changed', jsonb_build_object('expense_id', $3::text))",
         lambda gym, actor: (gym.id, actor, str(gym.expense)),
     ),
+    # Gastos fijos (0085): as expenses, a template as created by the person acting; a
+    # skip ("No este mes") is taken back by deleting it.
+    Case(
+        "expense_recurring_read",
+        Permission.EXPENSES_READ,
+        "SELECT id FROM expense_recurring WHERE gym_id = $1",
+    ),
+    Case(
+        "expense_recurring_insert",
+        Permission.EXPENSES_WRITE,
+        "INSERT INTO expense_recurring (gym_id, category_id, amount_clp, amount_kind,"
+        " day_of_month, created_by) SELECT $1, id, 32990, 'fixed', 10, $2"
+        " FROM expense_category WHERE gym_id = $1 AND is_other",
+        lambda gym, actor: (gym.id, actor),
+    ),
+    Case(
+        "expense_recurring_update",
+        Permission.EXPENSES_WRITE,
+        "UPDATE expense_recurring SET payee = 'Enel' WHERE id = $1",
+        lambda gym, actor: (gym.recurring,),
+    ),
+    Case(
+        "expense_skip_read",
+        Permission.EXPENSES_READ,
+        "SELECT recurring_id FROM expense_skip WHERE gym_id = $1",
+    ),
+    Case(
+        "expense_skip_insert",
+        Permission.EXPENSES_WRITE,
+        "INSERT INTO expense_skip (gym_id, recurring_id, month, created_by)"
+        " VALUES ($1, $2, '2026-12-01', $3)",
+        lambda gym, actor: (gym.id, gym.recurring, actor),
+    ),
+    Case(
+        "expense_skip_delete",
+        Permission.EXPENSES_WRITE,
+        "DELETE FROM expense_skip WHERE recurring_id = $1",
+        lambda gym, actor: (gym.recurring,),
+    ),
     # Resumen del mes's kept months (0082): money, read as the ledger is.
     Case(
         "gym_month_figure_read",
@@ -430,6 +470,19 @@ def gym(db: Database) -> Gym:
         owner,
         str(expense),
     )
+    # A gasto fijo (0085), skipped one month.
+    recurring = one(
+        "INSERT INTO expense_recurring (gym_id, category_id, amount_clp, amount_kind,"
+        " day_of_month, created_by) SELECT $1, id, 650000, 'fixed', 5, $2"
+        " FROM expense_category WHERE gym_id = $1 AND name = 'Arriendo' RETURNING id",
+        owner,
+    )
+    one(
+        "INSERT INTO expense_skip (gym_id, recurring_id, month, created_by)"
+        " VALUES ($1, $2, '2026-10-01', $3)",
+        recurring,
+        owner,
+    )
     one(
         "INSERT INTO gym_month_figure (gym_id, month, figure, value, rules_version)"
         " VALUES ($1, '2026-01-01', 'income_clp', 30000, 1)"
@@ -448,6 +501,7 @@ def gym(db: Database) -> Gym:
         session,
         history_payment,
         expense,
+        recurring,
         newcomer,
     )
 

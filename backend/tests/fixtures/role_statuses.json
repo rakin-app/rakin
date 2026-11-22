@@ -19,6 +19,11 @@
     "coach": 403,
     "owner": 422
   },
+  "DELETE /api/expenses/recurring/{recurring_id}/skip/{month}": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
   "DELETE /api/groups/{group_id}": {
     "admin": 404,
     "coach": 403,
@@ -130,6 +135,16 @@
     "owner": 200
   },
   "GET /api/expenses/categories": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/expenses/recurring": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 200
+  },
+  "GET /api/expenses/recurring/month": {
     "admin": 403,
     "coach": 403,
     "owner": 200
@@ -524,6 +539,11 @@
     "coach": 403,
     "owner": 422
   },
+  "PATCH /api/expenses/recurring/{recurring_id}": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
   "PATCH /api/expenses/{expense_id}": {
     "admin": 403,
     "coach": 403,
@@ -650,6 +670,21 @@
     "owner": 404
   },
   "POST /api/expenses/receipt-upload": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/expenses/recurring": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/expenses/recurring/record": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/expenses/recurring/{recurring_id}/skip": {
     "admin": 403,
     "coach": 403,
     "owner": 422

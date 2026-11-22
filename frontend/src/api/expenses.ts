@@ -20,6 +20,8 @@ export type Expense = {
   method: ExpenseMethod | null
   note: string | null
   has_receipt: boolean
+  // The gasto fijo it was recorded from (#315).
+  recurring_id: string | null
   created_by_name: string | null
   created_at: string
   updated_at: string | null
@@ -102,14 +104,19 @@ async function uploadReceipt(file: File, key: string | undefined): Promise<strin
   return upload.key
 }
 
-/** Record an expense, its receipt uploaded first when there is one. */
-export async function recordExpense(draft: ExpenseDraft, receipt: File | null): Promise<Expense> {
+/** Record an expense, its receipt uploaded first when there is one; `recurringId` is the
+ * gasto fijo it is recorded from, when the form opened from one. */
+export async function recordExpense(
+  draft: ExpenseDraft,
+  receipt: File | null,
+  recurringId: string | null = null,
+): Promise<Expense> {
   // Each step by its own name, so a double tap uploads to one key and records once.
   const key = submissionKey()
   const receiptKey = receipt ? await uploadReceipt(receipt, key) : null
   return apiFetch<Expense>(EXPENSES, {
     method: 'POST',
-    body: JSON.stringify({ ...draft, receipt_key: receiptKey }),
+    body: JSON.stringify({ ...draft, receipt_key: receiptKey, ...(recurringId ? { recurring_id: recurringId } : {}) }),
     idempotencyKey: key && `${key}:record`,
   })
 }
@@ -180,3 +187,97 @@ export function restoreCategory(id: string): Promise<ExpenseCategory[]> {
   return apiFetch<ExpenseCategory[]>(`${CATEGORIES}/${encodeURIComponent(id)}/restore`, { method: 'POST' })
 }
 
+
+// --- Gastos fijos (#315) --------------------------------------------------------------
+// Rent and bills as monthly templates: Gastos lists those not yet recorded in the month,
+// and a person records each. Nothing records one by itself.
+
+/** `fixed`: recorded at its amount in one tap. `estimated`: the amount is a hint, typed
+ * from the bill in the form. */
+export type AmountKind = 'fixed' | 'estimated'
+
+export type Recurring = {
+  id: string
+  category_id: string
+  category_name: string
+  // Its category was archived: it is recorded through the form, under another.
+  category_archived: boolean
+  payee: string | null
+  method: ExpenseMethod | null
+  amount_clp: number
+  amount_kind: AmountKind
+  day_of_month: number
+  active: boolean
+  created_at: string
+}
+
+/** A gasto fijo not yet recorded in the month, and the day it would be recorded on. */
+export type DueRecurring = Recurring & { due_on: string }
+
+/** Gastos fijos por registrar: the month's due templates, and those skipped for it. */
+export type RecurringMonth = {
+  month: string
+  current_month: string
+  today: string
+  due: DueRecurring[]
+  skipped: DueRecurring[]
+}
+
+export type RecurringDraft = {
+  category_id: string
+  payee: string | null
+  method: ExpenseMethod | null
+  amount_clp: number
+  amount_kind: AmountKind
+  day_of_month: number
+}
+
+const RECURRING = `${EXPENSES}/recurring`
+
+export function recurringQuery() {
+  return queryOptions({
+    queryKey: ['expenses', 'recurring', 'all'],
+    queryFn: () => apiFetch<Recurring[]>(RECURRING),
+  })
+}
+
+export function recurringMonthQuery(month: string | undefined) {
+  return queryOptions({
+    queryKey: ['expenses', 'recurring', 'month', month ?? null],
+    queryFn: () => apiFetch<RecurringMonth>(month ? `${RECURRING}/month?month=${month}` : `${RECURRING}/month`),
+  })
+}
+
+export function addRecurring(draft: RecurringDraft): Promise<Recurring> {
+  return apiFetch<Recurring>(RECURRING, { method: 'POST', body: JSON.stringify(draft) })
+}
+
+/** Edit a gasto fijo, or pause it (`active: false`) and resume it. */
+export function changeRecurring(id: string, changes: Partial<RecurringDraft> & { active?: boolean }): Promise<Recurring> {
+  return apiFetch<Recurring>(`${RECURRING}/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(changes),
+  })
+}
+
+/** Registrar, and Registrar los fijos: the fixed templates `ids` in `month`, each at its
+ * amount. Answers what it recorded; one recorded already is passed over. */
+export function recordRecurring(month: string, ids: string[]): Promise<Expense[]> {
+  return apiFetch<Expense[]>(`${RECURRING}/record`, {
+    method: 'POST',
+    body: JSON.stringify({ month, ids }),
+  })
+}
+
+/** No este mes. */
+export function skipRecurring(id: string, month: string): Promise<void> {
+  return apiFetch<void>(`${RECURRING}/${encodeURIComponent(id)}/skip`, {
+    method: 'POST',
+    body: JSON.stringify({ month }),
+  })
+}
+
+/** Take a No este mes back. */
+export function unskipRecurring(id: string, month: string): Promise<void> {
+  return apiFetch<void>(`${RECURRING}/${encodeURIComponent(id)}/skip/${month}`, { method: 'DELETE' })
+}

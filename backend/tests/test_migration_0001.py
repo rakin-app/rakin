@@ -152,7 +152,8 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
     # `processor_terms` (0075), and tests/test_platform_edit.py `gym_slug_alias` (0078),
     # and tests/test_terms_acceptance.py `gym_terms` and `terms_acceptance` (0081), and
     # tests/test_month_summary.py `gym_month_figure` (0082), and tests/test_expenses.py
-    # `expense` and `expense_category` (0083).
+    # `expense` and `expense_category` (0083), and tests/test_expense_recurring.py
+    # `expense_recurring` and `expense_skip` (0085).
     assert {r["relname"] for r in rows} == TENANT_TABLES | {
         "attendance",
         "audit_event",
@@ -166,6 +167,8 @@ def test_every_gym_scoped_table_has_forced_rls_and_a_policy(db: Database) -> Non
         "consent_event",
         "expense",
         "expense_category",
+        "expense_recurring",
+        "expense_skip",
         "extra_charge",
         "extra_line",
         "freeze_request",
