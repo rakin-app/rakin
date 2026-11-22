@@ -16,11 +16,15 @@ links; no files, no embeds, nothing fetched by the server:
   slot that takes the class over from a date on when the schedule is changed "desde"
   (`app.api.schedule`), so a material keeps showing on the classes after the change and
   on those before it. It shows on a slot's classes whose date is `starts_on` or later.
-- `study_material_reaches(...)`: whether the person acting, or one of the dependents they
-  are guardian of (0010), is in a material's audience. A recurring material reaches its
-  program or plans once its date has come in the gym's timezone; one for who attended,
-  through a class from its date on, not cancelled. `/api/me/material` asks it too, so a
-  coach who also trains reads as a student there.
+- `study_material_class_for(..., person)`: the class type through which a material
+  reaches `person`, or null when it does not. A recurring material reaches its program
+  or plans once its date has come in the gym's timezone; one for who attended, through a
+  class from its date on, not cancelled. The class is the one they attended, or the
+  newest the material is on that their plan covers, so after a change of the class
+  "desde" the student page names the class that let them in.
+- `study_material_reaches(...)`: whether it reaches the person acting or one of the
+  dependents they are guardian of (0010). `/api/me/material` asks it too, so a coach who
+  also trains reads as a student there.
 - `app_on_team()`: the person acting is the titular or holds a current appointment, as
   `app.permissions.STANDING_IN_GYM` reads it.
 - `study_material_follow(old, new)`: a change of the schedule "desde" gives the new slot
@@ -28,6 +32,9 @@ links; no files, no embeds, nothing fetched by the server:
   schedule, and may not hold `attendance`, which writing the links takes; so it is
   `SECURITY DEFINER`, owned by the table owner and held to the current gym by its
   forced RLS, and does nothing for anyone without `gym_setup`.
+- `study_material_slot_gone(slot)`: deleting a slot takes its links with it, so the live
+  material on that slot alone is removed first, by whoever deletes it, with a
+  `study_material_removed` row; the same definer, for the same reason.
 
 RLS: `rakin_app` reads a material when the person acting is on the team, or it is not
 removed and reaches them; another gym's, never. The link tables hold ids alone and are
@@ -161,29 +168,25 @@ LANGUAGE sql STABLE SET search_path = pg_catalog, public AS $$
 $$
 """
 
-# As the invoker, under the gym's RLS on every table it reads.
-REACHES = f"""
-CREATE FUNCTION study_material_reaches(
-    material uuid, on_session uuid, from_day date, audience text
-) RETURNS boolean
+# As the invoker, under the gym's RLS on every table it reads. The class type through
+# which a material reaches `person`, or null when it does not: for who attended, the
+# class they attended, the latest; for a program, the newest class it is on whose
+# program their plan covers; for plans, the newest class it is on.
+CLASS_FOR = f"""
+CREATE FUNCTION study_material_class_for(
+    material uuid, on_session uuid, from_day date, audience text, person uuid
+) RETURNS uuid
 LANGUAGE sql STABLE SET search_path = pg_catalog, public AS $$
-    WITH me AS (
-        SELECT {CURRENT_PERSON} AS person_id
-        UNION
-        SELECT l.dependent_person_id FROM guardian_link l
-        WHERE l.guardian_person_id = {CURRENT_PERSON}
-    ),
-    live AS (
+    WITH live AS (
         SELECT m.plan_id, pl.program_id FROM membership m
-        JOIN me ON me.person_id = m.person_id
         JOIN plan pl ON pl.id = m.plan_id
-        WHERE m.status IN {_in(LIVE)}
+        WHERE m.person_id = person AND m.status IN {_in(LIVE)}
     ),
-    -- The class types it is on: its session's, or its slots'.
+    -- The class types it is on, newest first: its session's, or its slots'.
     classes AS (
-        SELECT s.class_type_id FROM session s WHERE s.id = on_session
-        UNION
-        SELECT sl.class_type_id FROM study_material_slot ms
+        SELECT s.class_type_id, NULL::date AS since FROM session s WHERE s.id = on_session
+        UNION ALL
+        SELECT sl.class_type_id, sl.valid_from FROM study_material_slot ms
         JOIN schedule_slot sl ON sl.id = ms.slot_id
         WHERE ms.material_id = material
     ),
@@ -193,27 +196,75 @@ LANGUAGE sql STABLE SET search_path = pg_catalog, public AS $$
         FROM gym g WHERE g.id = {CURRENT_GYM}
     )
     SELECT CASE audience
-        WHEN 'attendees' THEN EXISTS (
-            SELECT FROM attendance a
+        WHEN 'attendees' THEN (
+            SELECT s.class_type_id FROM attendance a
             JOIN membership m ON m.id = a.membership_id
-            JOIN me ON me.person_id = m.person_id
             JOIN session s ON s.id = a.session_id
-            WHERE s.id = on_session
-               OR (s.slot_id IN (SELECT ms.slot_id FROM study_material_slot ms
-                                 WHERE ms.material_id = material)
-                   AND s.slot_date >= from_day AND s.cancelled_at IS NULL))
-        WHEN 'program' THEN (SELECT yes FROM begun) AND EXISTS (
-            SELECT FROM live
-            WHERE live.program_id IS NULL OR live.program_id IN (
-                SELECT c.program_id FROM class_type c
-                WHERE c.id IN (SELECT class_type_id FROM classes)))
-        WHEN 'plans' THEN (SELECT yes FROM begun) AND EXISTS (
-            SELECT FROM live JOIN study_material_plan p ON p.plan_id = live.plan_id
-            WHERE p.material_id = material)
-        ELSE false
+            WHERE m.person_id = person
+              AND (s.id = on_session
+                   OR (s.slot_id IN (SELECT ms.slot_id FROM study_material_slot ms
+                                     WHERE ms.material_id = material)
+                       AND s.slot_date >= from_day AND s.cancelled_at IS NULL))
+            ORDER BY s.starts_at DESC, s.id LIMIT 1)
+        WHEN 'program' THEN (
+            SELECT c.class_type_id FROM classes c
+            JOIN class_type t ON t.id = c.class_type_id
+            WHERE (SELECT yes FROM begun) AND EXISTS (
+                SELECT FROM live
+                WHERE live.program_id IS NULL OR live.program_id = t.program_id)
+            ORDER BY c.since DESC NULLS FIRST, c.class_type_id LIMIT 1)
+        WHEN 'plans' THEN (
+            SELECT c.class_type_id FROM classes c
+            WHERE (SELECT yes FROM begun) AND EXISTS (
+                SELECT FROM live JOIN study_material_plan p ON p.plan_id = live.plan_id
+                WHERE p.material_id = material)
+            ORDER BY c.since DESC NULLS FIRST, c.class_type_id LIMIT 1)
     END
 $$
 """
+CLASS_FOR_SIGNATURE = "study_material_class_for(uuid, uuid, date, text, uuid)"
+
+# Whether it reaches the person acting, or one of the dependents they are guardian of.
+REACHES = f"""
+CREATE FUNCTION study_material_reaches(
+    material uuid, on_session uuid, from_day date, audience text
+) RETURNS boolean
+LANGUAGE sql STABLE SET search_path = pg_catalog, public AS $$
+    SELECT EXISTS (
+        SELECT FROM (
+            SELECT {CURRENT_PERSON} AS person_id
+            UNION
+            SELECT l.dependent_person_id FROM guardian_link l
+            WHERE l.guardian_person_id = {CURRENT_PERSON}
+        ) me
+        WHERE study_material_class_for(material, on_session, from_day, audience, me.person_id)
+              IS NOT NULL
+    )
+$$
+"""
+
+# A slot deleted takes its links with it: the live material on that slot alone is
+# removed first, as by whoever deletes it, with its row in the log, so what the tables
+# hold matches what anyone sees. As `study_material_follow`, for `gym_setup` alone.
+SLOT_GONE = f"""
+CREATE FUNCTION study_material_slot_gone(gone_slot uuid) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+    WITH removed AS (
+        UPDATE study_material m SET removed_at = now(), removed_by = {CURRENT_PERSON}
+        WHERE m.removed_at IS NULL AND (SELECT app_can('gym_setup'))
+          AND EXISTS (SELECT FROM study_material_slot ms
+                      WHERE ms.material_id = m.id AND ms.slot_id = gone_slot)
+          AND NOT EXISTS (SELECT FROM study_material_slot ms
+                          WHERE ms.material_id = m.id AND ms.slot_id <> gone_slot)
+        RETURNING m.id, m.gym_id, m.title
+    )
+    INSERT INTO audit_event (gym_id, at, actor_id, action, detail)
+    SELECT gym_id, now(), {CURRENT_PERSON}, '{REMOVED}',
+           jsonb_build_object('material_id', id::text, 'title', title, 'slot_deleted', true)
+    FROM removed
+$$
+"""
+SLOT_GONE_SIGNATURE = "study_material_slot_gone(uuid)"
 
 # `pg_temp` last, so no temporary table stands in for one of these.
 FOLLOW = """
@@ -286,6 +337,7 @@ def upgrade() -> None:
     op.execute("CREATE INDEX study_material_slot_slot ON study_material_slot (slot_id)")
     op.execute(PLAN)
     op.execute(ON_TEAM)
+    op.execute(CLASS_FOR)
     op.execute(REACHES)
 
     _gym_isolated("study_material", READ)
@@ -308,9 +360,10 @@ def upgrade() -> None:
         )
         op.execute(f"GRANT SELECT, INSERT, DELETE ON {table} TO {APP_ROLE}")
 
-    op.execute(FOLLOW)
-    op.execute(f"REVOKE ALL ON FUNCTION {FOLLOW_SIGNATURE} FROM PUBLIC")
-    op.execute(f"GRANT EXECUTE ON FUNCTION {FOLLOW_SIGNATURE} TO {APP_ROLE}")
+    for definer, signature in ((FOLLOW, FOLLOW_SIGNATURE), (SLOT_GONE, SLOT_GONE_SIGNATURE)):
+        op.execute(definer)
+        op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC")
+        op.execute(f"GRANT EXECUTE ON FUNCTION {signature} TO {APP_ROLE}")
 
     _constraints(material=True)
     op.execute(
@@ -330,10 +383,12 @@ def downgrade() -> None:
     op.execute("ALTER TABLE audit_event FORCE ROW LEVEL SECURITY")
     _constraints(material=False)
 
+    op.execute(f"DROP FUNCTION {SLOT_GONE_SIGNATURE}")
     op.execute(f"DROP FUNCTION {FOLLOW_SIGNATURE}")
     op.execute("DROP TABLE study_material_plan")
     op.execute("DROP TABLE study_material_slot")
     op.execute("DROP TABLE study_material")
     op.execute("DROP FUNCTION study_material_reaches(uuid, uuid, date, text)")
+    op.execute(f"DROP FUNCTION {CLASS_FOR_SIGNATURE}")
     op.execute("DROP FUNCTION app_on_team()")
     op.execute("DROP FUNCTION study_material_links_valid(text[])")

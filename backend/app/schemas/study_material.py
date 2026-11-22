@@ -126,8 +126,8 @@ class Material(BaseModel):
 
 
 class MyMaterial(BaseModel):
-    """A material on the student page: what it is, on which class and day, who shared
-    it. A recurring one's day is the one it shows from."""
+    """A material on the student page: what it is, the class it reached them through and
+    its day, who shared it. A recurring one's day is the one it shows from."""
 
     id: uuid.UUID
     title: str
@@ -139,3 +139,6 @@ class MyMaterial(BaseModel):
     recurring: bool
     shared_by_name: str | None
     created_at: datetime
+    # The dependents it reaches, by name, when it does not reach the signed-in person:
+    # a guardian's "Para León".
+    for_names: list[str]

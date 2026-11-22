@@ -16,7 +16,11 @@ from members at once; nothing deletes it.
 
 A member reads theirs on the student page (`/api/me/material`), newest first: what
 reaches them or one of their dependents, which the database decides
-(`study_material_reaches`), not this module.
+(`study_material_class_for`), not this module, with the class it reached them through
+and, for a guardian it reaches only through their dependents, whom.
+
+Deleting a recurring class's slot removes the material on it alone, with its row in the
+log (`study_material_slot_gone`, `app.api.schedule`).
 """
 
 import json
@@ -105,27 +109,42 @@ INSERT_AUDIT = text(
 )
 
 # What reaches the person acting or a dependent, as the database decides, whoever they
-# are: a coach who trains reads only theirs here. The class it is on, and its day.
+# are: a coach who trains reads only theirs here. Each with the class it reached them
+# through (`study_material_class_for`), theirs first, and its day; and, when it reaches
+# only dependents of theirs, whom, by name.
 MINE = """
     SELECT m.id, m.title, m.body, m.links, c.name AS class_type_name,
            p.name AS program_name, m.starts_on IS NOT NULL AS recurring,
            coalesce(m.starts_on, (s.starts_at AT TIME ZONE g.timezone)::date) AS day,
-           gp.name AS shared_by_name, m.created_at
+           gp.name AS shared_by_name, m.created_at,
+           CASE WHEN own.class_type_id IS NULL THEN theirs.names
+                ELSE ARRAY[]::text[] END AS for_names
     FROM study_material m
     JOIN gym g ON g.id = m.gym_id
     LEFT JOIN session s ON s.id = m.session_id
     CROSS JOIN LATERAL (
-        SELECT coalesce(s.class_type_id, (
-            SELECT sl.class_type_id FROM study_material_slot ms
-            JOIN schedule_slot sl ON sl.id = ms.slot_id
-            WHERE ms.material_id = m.id ORDER BY sl.valid_from DESC, sl.id LIMIT 1
-        )) AS class_type_id
-    ) k
-    JOIN class_type c ON c.id = k.class_type_id
+        SELECT study_material_class_for(m.id, m.session_id, m.starts_on, m.audience, :me)
+            AS class_type_id
+    ) own
+    CROSS JOIN LATERAL (
+        SELECT array_agg(d.name ORDER BY lower(d.name), d.person_id) AS names,
+               (array_agg(d.class_type_id ORDER BY lower(d.name), d.person_id))[1]
+                   AS class_type_id
+        FROM (
+            SELECT dp.person_id, dp.name,
+                   study_material_class_for(m.id, m.session_id, m.starts_on, m.audience,
+                                            dp.person_id) AS class_type_id
+            FROM guardian_link l
+            JOIN gym_person dp ON dp.gym_id = l.gym_id
+                              AND dp.person_id = l.dependent_person_id
+            WHERE l.guardian_person_id = :me
+        ) d
+        WHERE d.class_type_id IS NOT NULL
+    ) theirs
+    JOIN class_type c ON c.id = coalesce(own.class_type_id, theirs.class_type_id)
     JOIN program p ON p.id = c.program_id
     LEFT JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.created_by
     WHERE m.removed_at IS NULL
-      AND study_material_reaches(m.id, m.session_id, m.starts_on, m.audience)
     ORDER BY m.created_at DESC, m.id
     LIMIT :limit
 """
@@ -391,7 +410,8 @@ async def remove_material(
 
 
 @mine.get("/material")
-async def my_material(session: TenantSession) -> list[MyMaterial]:
-    """The material that reaches the signed-in person or a dependent, newest first."""
-    result = await session.execute(text(MINE), {"limit": MINE_SHOWN})
+async def my_material(tenant: CurrentTenant, session: TenantSession) -> list[MyMaterial]:
+    """The material that reaches the signed-in person or a dependent, newest first; one
+    that reaches only dependents names them (`for_names`)."""
+    result = await session.execute(text(MINE), {"me": tenant.person_id, "limit": MINE_SHOWN})
     return [MyMaterial.model_validate(row, from_attributes=True) for row in result]

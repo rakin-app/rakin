@@ -160,6 +160,7 @@ describe('Material de estudio (#537)', () => {
     recurring: false,
     shared_by_name: 'Profe Prueba',
     created_at: `${YEAR}-11-18T22:00:00Z`,
+    for_names: [],
   }
 
   it('lists what was shared, newest first, and opens its text and links on a tap', async () => {
@@ -185,6 +186,19 @@ describe('Material de estudio (#537)', () => {
     expect(rows[0]).toHaveAttribute('aria-expanded', 'true')
     expect(section.getByRole('link', { name: /youtube\.com/ })).toHaveAttribute('href', guard.links[0])
     expect(section.getByText(/Repasen/)).toBeVisible()
+  })
+
+  it("says whom a guardian's material is for when it reaches only their dependents", async () => {
+    material = [guard, { ...guard, id: 'mat-kids', title: 'Juegos de suelo', for_names: ['León Prueba', 'Ema Prueba'] }]
+    stubPage(diego())
+    renderMe()
+
+    const section = within(await screen.findByRole('region', { name: copy.material.title }))
+    expect(section.getByText('Para León Prueba y Ema Prueba')).toBeInTheDocument()
+    // Their own names no one.
+    expect(section.getAllByText(/^Para /)).toHaveLength(1)
+    expect(copy.material.forWhom(['León'])).toBe('Para León')
+    expect(copy.material.forWhom(['A', 'B', 'C'])).toBe('Para A, B y C')
   })
 
   it('shows no section when nothing was shared', async () => {

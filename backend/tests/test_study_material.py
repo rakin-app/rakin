@@ -20,7 +20,15 @@ from app.schemas.study_material import MaterialChange, MaterialIn
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import unique_slug
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import (
+    Database,
+    in_gym,
+    migrate,
+    run,
+    seed_gym,
+    seeded_owner,
+    throwaway_database,
+)
 from tests.test_attendance import changed, class_type, created, join, plan, program
 from tests.test_guardians import add_person, new_kid
 from tests.test_plans import MONTHLY, add_staff
@@ -138,10 +146,15 @@ def shared(client: TestClient, g: Gym, session: str, **body: Any) -> Any:
     return created(share(client, g, session, **body))
 
 
-def mine(client: TestClient, g: Gym, person: str | uuid.UUID) -> list[str]:
+def mine_rows(client: TestClient, g: Gym, person: str | uuid.UUID) -> list[Any]:
     response = client.get("/api/me/material", headers=as_gym(g.id, uuid.UUID(str(person))))
     assert response.status_code == 200, response.text
-    return [m["title"] for m in response.json()]
+    rows: list[Any] = response.json()
+    return rows
+
+
+def mine(client: TestClient, g: Gym, person: str | uuid.UUID) -> list[str]:
+    return [m["title"] for m in mine_rows(client, g, person)]
 
 
 def in_sql(db: Database, g: Gym, person: str | uuid.UUID, gym_id: uuid.UUID | None = None) -> Any:
@@ -219,7 +232,19 @@ def test_a_guardian_sees_what_reaches_their_dependent(client: TestClient, gym: G
     session = one_off(client, gym)
     shared(client, gym, session, audience="plans", plan_ids=[gym.kids_plan])
 
-    assert mine(client, gym, guardian) == ["Pasaje de guardia"]
+    (row,) = mine_rows(client, gym, guardian)
+    # It reaches the guardian through the child alone, so it says whom.
+    assert (row["title"], row["for_names"]) == ("Pasaje de guardia", ["Eli Prueba"])
+
+
+@pg
+def test_a_guardian_reached_themself_is_named_no_one(client: TestClient, gym: Gym) -> None:
+    kid = new_kid(client, gym.id, gym.ana, "Eli Prueba")
+    join(client, gym.id, kid, gym.adults_plan)
+    shared(client, gym, one_off(client, gym))
+
+    (row,) = mine_rows(client, gym, gym.ana)
+    assert row["for_names"] == []
 
 
 @pg
@@ -455,3 +480,88 @@ def test_a_recurring_material_follows_its_class_when_the_schedule_changes(
     assert on_session(client, gym, days[split + timedelta(days=1)]) == ["Ciclo de fuerza"]
     new = client.get(f"/api/schedule/{response.json()['id']}/material", headers=as_gym(gym.id))
     assert [m["title"] for m in new.json()] == ["Ciclo de fuerza"]
+
+
+@pg
+def test_the_student_page_names_the_class_that_let_them_in_after_a_change_of_type(
+    client: TestClient, db: Database, gym: Gym
+) -> None:
+    slot = backfilled_slot(client, db, gym.id, gym.fundamentals)
+    days = slot_sessions(db, gym)
+    shared(client, gym, days[today() - timedelta(days=6)], title="Ciclo de fuerza", recurring=True)
+    kids_class = class_type(client, gym.id, gym.kids, name="Kids BJJ")
+    split = today() + timedelta(days=2)
+    response = change_slot(
+        client, gym.id, slot["id"], {"from_date": split.isoformat(), "class_type_id": kids_class}
+    )
+    assert response.status_code == 200, response.text
+
+    # The material is on both classes now: each program reads its own.
+    [ana] = mine_rows(client, gym, gym.ana)
+    [beto] = mine_rows(client, gym, gym.beto)
+    assert (ana["class_type_name"], ana["program_name"]) == ("Fundamentos", "Adultos")
+    assert (beto["class_type_name"], beto["program_name"]) == ("Kids BJJ", "Niños")
+
+
+def material_row(db: Database, g: Gym, material: str) -> Any:
+    (row,) = run(
+        db.owner_url,
+        in_gym(
+            g.id,
+            "SELECT removed_at, removed_by FROM study_material WHERE id = $1",
+            uuid.UUID(material),
+        ),
+    )
+    return row
+
+
+@pg
+def test_deleting_a_slot_removes_the_material_on_it_alone_with_an_audit_row(
+    client: TestClient, db: Database, gym: Gym
+) -> None:
+    slot = backfilled_slot(client, db, gym.id, gym.fundamentals)
+    days = slot_sessions(db, gym)
+    made = shared(
+        client, gym, days[today() - timedelta(days=3)], title="Ciclo de fuerza", recurring=True
+    )
+    assert mine(client, gym, gym.ana) == ["Ciclo de fuerza"]
+
+    response = client.delete(f"/api/schedule/{slot['id']}", headers=as_gym(gym.id))
+    assert response.status_code == 204, response.text
+
+    row = material_row(db, gym, made["id"])
+    assert row["removed_at"] is not None
+    assert row["removed_by"] == seeded_owner(gym.id)
+    assert mine(client, gym, gym.ana) == []
+    [logged] = audit(db, gym)
+    assert (logged["action"], logged["actor_id"]) == (
+        "study_material_removed",
+        seeded_owner(gym.id),
+    )
+    assert json.loads(logged["detail"]) == {
+        "material_id": made["id"],
+        "title": "Ciclo de fuerza",
+        "slot_deleted": True,
+    }
+
+
+@pg
+def test_deleting_a_slot_keeps_material_still_on_another(
+    client: TestClient, db: Database, gym: Gym
+) -> None:
+    slot = backfilled_slot(client, db, gym.id, gym.fundamentals)
+    days = slot_sessions(db, gym)
+    made = shared(
+        client, gym, days[today() - timedelta(days=6)], title="Ciclo de fuerza", recurring=True
+    )
+    split = today() + timedelta(days=2)
+    new = change_slot(
+        client, gym.id, slot["id"], {"from_date": split.isoformat(), "start_time": "20:00"}
+    ).json()
+
+    response = client.delete(f"/api/schedule/{new['id']}", headers=as_gym(gym.id))
+    assert response.status_code == 204, response.text
+
+    assert material_row(db, gym, made["id"])["removed_at"] is None
+    assert audit(db, gym) == []
+    assert mine(client, gym, gym.ana) == ["Ciclo de fuerza"]

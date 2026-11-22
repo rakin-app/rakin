@@ -31,7 +31,7 @@ export type Material = {
   updated_at: string | null
 }
 
-/** A material on the student page, with the class it is on and its day. */
+/** A material on the student page, with the class it reached them through and its day. */
 export type MyMaterial = {
   id: string
   title: string
@@ -43,6 +43,8 @@ export type MyMaterial = {
   recurring: boolean
   shared_by_name: string | null
   created_at: string
+  /** The dependents it reaches, when it does not reach the signed-in person. */
+  for_names: string[]
 }
 
 export type MaterialFields = {

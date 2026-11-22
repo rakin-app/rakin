@@ -4317,6 +4317,9 @@ export const es = {
       when: (classType: string, day: string) => `${classType} · ${day}`,
       since: (classType: string, day: string) => `${classType} · desde el ${day}`,
       sharedBy: (name: string) => `Compartido por ${name}`,
+      // A guardian's row reached through their dependents alone: "Para León", "Para León y Ema".
+      forWhom: (names: string[]) =>
+        `Para ${names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0]}`,
       links: 'Enlaces',
       more: (n: number) => `Ver ${n} más`,
     },

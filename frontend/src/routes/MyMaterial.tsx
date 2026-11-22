@@ -14,8 +14,9 @@ const FIRST = 5
 
 /**
  * "Material de estudio" on the student page (#537): what the gym's coaches shared with
- * the student or a dependent, newest first, each with its class, its day and who shared
- * it; tapping one opens its text and links. The database decides what reaches them. A
+ * the student or a dependent, newest first, each with the class it reached them through,
+ * its day, whom it is for when only a dependent (a guardian's "Para León"), and who
+ * shared it; tapping one opens its text and links. The database decides what reaches them. A
  * page with none shows no section: most gyms may never share any.
  */
 export function MyMaterial() {
@@ -62,6 +63,9 @@ function MaterialItem({ material }: { material: Material }) {
               ? copy.since(material.class_type_name, day)
               : copy.when(material.class_type_name, day)}
           </span>
+          {material.for_names.length > 0 && (
+            <span className="history__detail">{copy.forWhom(material.for_names)}</span>
+          )}
           {material.shared_by_name && (
             <span className="history__detail">{copy.sharedBy(material.shared_by_name)}</span>
           )}
