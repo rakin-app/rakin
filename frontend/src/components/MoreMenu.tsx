@@ -29,27 +29,37 @@ export function MoreMenu({
   useEffect(() => {
     const menu = ref.current
     if (!menu) return
+    // Whether the last press landed inside the menu. WebKit (iPhone Safari, the installed app) does
+    // not focus a link or button that is tapped: the summary blurs with no relatedTarget, before
+    // the click. Closing then hid the list under the finger and the tap did nothing (#529).
+    let pressedInside = false
     const close = () => {
       menu.open = false
+      pressedInside = false
     }
-    const outside = (event: PointerEvent) => {
-      if (menu.open && !menu.contains(event.target as Node)) close()
+    const press = (event: PointerEvent) => {
+      pressedInside = menu.contains(event.target as Node)
+      if (menu.open && !pressedInside) close()
     }
-    const escape = (event: KeyboardEvent) => {
+    const key = (event: KeyboardEvent) => {
+      pressedInside = false
       if (event.key !== 'Escape' || !menu.open) return
       close()
       menu.querySelector('summary')?.focus()
     }
-    // Tab out of it, and it closes behind the focus rather than over the next row.
+    // Tab out of it, and it closes behind the focus rather than over the next row. A blur that a
+    // press inside it caused, with nowhere for the focus to go, is a tap on it: that one stays.
     const leave = (event: FocusEvent) => {
-      if (menu.open && !menu.contains(event.relatedTarget as Node | null)) close()
+      const next = event.relatedTarget as Node | null
+      if (!menu.open || menu.contains(next) || (next === null && pressedInside)) return
+      close()
     }
-    document.addEventListener('pointerdown', outside)
-    menu.addEventListener('keydown', escape)
+    document.addEventListener('pointerdown', press)
+    menu.addEventListener('keydown', key)
     menu.addEventListener('focusout', leave)
     return () => {
-      document.removeEventListener('pointerdown', outside)
-      menu.removeEventListener('keydown', escape)
+      document.removeEventListener('pointerdown', press)
+      menu.removeEventListener('keydown', key)
       menu.removeEventListener('focusout', leave)
     }
   }, [])
