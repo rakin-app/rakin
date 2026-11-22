@@ -10,12 +10,12 @@ import {
   type PaidThroughMode,
 } from '../api/member'
 import { useSubmit } from '../api/submit'
-import { Button } from '../components/Button'
 import { Banner, cardClass, CheckRow, PlainList } from '../components/Card'
 import { Input, Select } from '../components/Field'
 import { Loading } from '../components/Loading'
 import { monthName, shortDay } from '../format'
 import { t } from '../i18n/es'
+import { FixActions, useConfirmStep } from './ConfirmStep'
 
 const copy = t.admin.member
 const clp = t.common.clp
@@ -37,7 +37,8 @@ export function paysThrough(membership: Membership): boolean {
  * to the date gets a payment ("Pagado antes de Rakin", no receipt) or a bonificación, so
  * the ledger says what the date says. The quote shows the months, their total and the
  * "Pagado hasta" they leave before anything is saved. A date before the plan started
- * belongs in the Historial (#295), which it links to.
+ * belongs in the Historial (#295), which it links to. A second step names the total
+ * before it is saved (#550).
  */
 export function PaidThroughForm({
   membership,
@@ -56,6 +57,7 @@ export function PaidThroughForm({
   const [mode, setMode] = useState<PaidThroughMode>('paid')
   const [method, setMethod] = useState<Method>('cash')
   const [checked, setChecked] = useState(false)
+  const step = useConfirmStep()
   const quote = useQuery({ ...paidThroughQuery(membership.id, through), enabled: through !== '' })
   const total = quote.data?.total_clp ?? 0
 
@@ -84,7 +86,9 @@ export function PaidThroughForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (quote.data) record.mutate()
+    if (!quote.data) return
+    if (step.confirming) record.mutate()
+    else step.ask()
   }
 
   /** What a refusal says; a date before the plan links to the Historial. */
@@ -117,6 +121,7 @@ export function PaidThroughForm({
         id={ids.through}
         type="date"
         value={through}
+        readOnly={step.confirming}
         aria-invalid={checked && through === ''}
         onChange={(e) => {
           setThrough(e.target.value)
@@ -129,7 +134,13 @@ export function PaidThroughForm({
         <legend className="member__label">{form.how}</legend>
         {MODES.map((value) => (
           <CheckRow start key={value} className="member__choice">
-            <input type="radio" name={ids.mode} checked={mode === value} onChange={() => setMode(value)} />
+            <input
+              type="radio"
+              name={ids.mode}
+              checked={mode === value}
+              disabled={step.confirming}
+              onChange={() => setMode(value)}
+            />
             <span>
               <span className="member__choice-title">{form[value]}</span>
               <span className="member__detail">{value === 'paid' ? form.paidHint : form.giftHint}</span>
@@ -143,7 +154,12 @@ export function PaidThroughForm({
           <label htmlFor={ids.method} className="member__label">
             {form.method}
           </label>
-          <Select id={ids.method} value={method} onChange={(e) => setMethod(e.target.value as Method)}>
+          <Select
+            id={ids.method}
+            value={method}
+            disabled={step.confirming}
+            onChange={(e) => setMethod(e.target.value as Method)}
+          >
             {METHODS.map((m) => (
               <option key={m} value={m}>
                 {copy.form.methods[m]}
@@ -173,21 +189,20 @@ export function PaidThroughForm({
           </p>
         </>
       )}
+      {step.confirming && quote.data && (
+        <Banner tone="info">{form.notice(quote.data.periods.length, shortDay(quote.data.paid_through))}</Banner>
+      )}
       {record.error && refusal(record.error, refusedCopy.failed)}
 
-      <div className="member__form-actions">
-        <Button disabled={record.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={record.isPending || (through !== '' && !quote.data)}
-          busy={record.isPending}
-        >
-          {record.isPending ? form.working : mode === 'gift' ? form.submitGift : quote.data ? form.submit(clp(total)) : form.submitPaid}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={record.isPending}
+        words={form}
+        submit={mode === 'gift' ? form.submitGift : quote.data ? form.submit(clp(total)) : form.submitPaid}
+        confirm={mode === 'gift' ? form.confirmGift(clp(total)) : form.confirm(clp(total))}
+        disabled={through !== '' && !quote.data}
+        onCancel={onCancel}
+      />
     </form>
   )
 }

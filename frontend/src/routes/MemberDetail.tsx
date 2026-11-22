@@ -96,6 +96,7 @@ import { GradeForm } from './GradeForm'
 import { PersonExtraLines } from './PersonExtraLines'
 import { PaidThroughForm, paysThrough } from './PaidThroughForm'
 import { PersonHistory } from './PersonHistory'
+import { FixActions, useConfirmStep } from './ConfirmStep'
 import { PersonData } from './PersonData'
 import { PersonConsent } from './PersonConsent'
 import { PersonRequirements } from './PersonRequirements'
@@ -999,6 +1000,7 @@ function MoveDueDateForm({
   const [day, setDay] = useState('')
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const step = useConfirmStep()
   const dayOk = day >= earliest && day <= latest && day !== period.due_date
   const reasonOk = reason.trim() !== ''
 
@@ -1014,7 +1016,9 @@ function MoveDueDateForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (dayOk && reasonOk) moved.mutate()
+    if (!dayOk || !reasonOk) return
+    if (step.confirming) moved.mutate()
+    else step.ask()
   }
 
   return (
@@ -1029,6 +1033,7 @@ function MoveDueDateForm({
         min={earliest}
         max={latest}
         value={day}
+        readOnly={step.confirming}
         aria-describedby={ids.hint}
         aria-invalid={checked && !dayOk}
         onChange={(e) => setDay(e.target.value)}
@@ -1049,6 +1054,7 @@ function MoveDueDateForm({
         type="text"
         maxLength={500}
         value={reason}
+        readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -1062,20 +1068,23 @@ function MoveDueDateForm({
           <span className="member__detail">{form.preview(shortDay(period.due_date), shortDay(day))}</span>
         </div>
       )}
+      {step.confirming && (
+        <Banner tone="info">{form.notice(month, clp(period.outstanding_clp), shortDay(day))}</Banner>
+      )}
       {moved.error && (
         <Banner tone="error">
           {dueDateRefusal(moved.error)}
         </Banner>
       )}
 
-      <div className="member__form-actions">
-        <Button disabled={moved.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={moved.isPending} busy={moved.isPending}>
-          {moved.isPending ? form.working : form.submit}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={moved.isPending}
+        words={form}
+        submit={form.submit}
+        confirm={form.confirm(shortDay(day))}
+        onCancel={onCancel}
+      />
     </form>
   )
 }
@@ -1102,6 +1111,7 @@ function RestoreChargeForm({
   const month = monthName(period.period_start)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
 
   const restored = useSubmit({
@@ -1116,7 +1126,9 @@ function RestoreChargeForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (reasonOk && period.void_id) restored.mutate()
+    if (!reasonOk || !period.void_id) return
+    if (step.confirming) restored.mutate()
+    else step.ask()
   }
 
   return (
@@ -1130,6 +1142,7 @@ function RestoreChargeForm({
         type="text"
         maxLength={500}
         value={reason}
+        readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -1143,20 +1156,21 @@ function RestoreChargeForm({
         owed={[period.outstanding_clp, period.outstanding_clp + period.voided_clp]}
         balance={[balance, balance + period.voided_clp]}
       />
+      {step.confirming && <Banner tone="info">{form.notice(month, clp(period.voided_clp))}</Banner>}
       {restored.error && (
         <Banner tone="error">
           {restoreRefusal(restored.error)}
         </Banner>
       )}
 
-      <div className="member__form-actions">
-        <Button disabled={restored.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={restored.isPending} busy={restored.isPending}>
-          {restored.isPending ? form.working : form.submit}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={restored.isPending}
+        words={form}
+        submit={form.submit}
+        confirm={form.confirm(clp(period.voided_clp))}
+        onCancel={onCancel}
+      />
     </form>
   )
 }
@@ -1178,6 +1192,7 @@ function VoidChargeForm({
   const month = monthName(period.period_start)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
 
   const voided = useSubmit({
@@ -1192,7 +1207,9 @@ function VoidChargeForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (reasonOk) voided.mutate()
+    if (!reasonOk) return
+    if (step.confirming) voided.mutate()
+    else step.ask()
   }
 
   return (
@@ -1206,6 +1223,7 @@ function VoidChargeForm({
         type="text"
         maxLength={500}
         value={reason}
+        readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -1215,20 +1233,22 @@ function VoidChargeForm({
         </Banner>
       )}
       <FixPreview month={month} owed={[period.outstanding_clp, 0]} balance={[balance, balance - period.outstanding_clp]} />
+      {step.confirming && <Banner tone="info">{form.notice(month, clp(period.outstanding_clp))}</Banner>}
       {voided.error && (
         <Banner tone="error">
           {voidRefusal(voided.error)}
         </Banner>
       )}
 
-      <div className="member__form-actions">
-        <Button disabled={voided.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="danger" disabled={voided.isPending} busy={voided.isPending}>
-          {voided.isPending ? form.working : form.submit(clp(period.outstanding_clp))}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={voided.isPending}
+        words={form}
+        submit={form.submit(clp(period.outstanding_clp))}
+        confirm={form.confirm(clp(period.outstanding_clp))}
+        variant="danger"
+        onCancel={onCancel}
+      />
     </form>
   )
 }
@@ -1258,7 +1278,7 @@ function WriteOffForm({
   const owed = clp(period.outstanding_clp)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+  const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
 
   const forgiven = useSubmit({
@@ -1274,8 +1294,8 @@ function WriteOffForm({
     event.preventDefault()
     setChecked(true)
     if (!reasonOk) return
-    if (confirming) forgiven.mutate()
-    else setConfirming(true)
+    if (step.confirming) forgiven.mutate()
+    else step.ask()
   }
 
   return (
@@ -1289,7 +1309,7 @@ function WriteOffForm({
         type="text"
         maxLength={500}
         value={reason}
-        readOnly={confirming}
+        readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -1299,21 +1319,21 @@ function WriteOffForm({
         </Banner>
       )}
       <FixPreview month={month} owed={[period.outstanding_clp, 0]} balance={[balance, balance - period.outstanding_clp]} />
-      {confirming && <Banner tone="info">{form.notice}</Banner>}
+      {step.confirming && <Banner tone="info">{form.notice}</Banner>}
       {forgiven.error && (
         <Banner tone="error">
           {writeOffRefusal(forgiven.error)}
         </Banner>
       )}
 
-      <div className="member__form-actions">
-        <Button disabled={forgiven.isPending} onClick={confirming ? () => setConfirming(false) : onCancel}>
-          {confirming ? form.back : form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={forgiven.isPending} busy={forgiven.isPending}>
-          {forgiven.isPending ? form.working : confirming ? form.confirm(owed) : form.submit(owed)}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={forgiven.isPending}
+        words={form}
+        submit={form.submit(owed)}
+        confirm={form.confirm(owed)}
+        onCancel={onCancel}
+      />
     </form>
   )
 }
@@ -1347,6 +1367,7 @@ function RevertForm({
   const month = monthName(period.period_start)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
   // An adjustment in the member's favour (positive) is owed once reverted, and the other way round.
   const owedAfter = Math.max(period.outstanding_clp + entry.amount_clp, 0)
@@ -1363,7 +1384,9 @@ function RevertForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (reasonOk) reverted.mutate()
+    if (!reasonOk) return
+    if (step.confirming) reverted.mutate()
+    else step.ask()
   }
 
   return (
@@ -1377,6 +1400,7 @@ function RevertForm({
         type="text"
         maxLength={500}
         value={reason}
+        readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -1390,20 +1414,21 @@ function RevertForm({
         owed={[period.outstanding_clp, owedAfter]}
         balance={[balance, balance + owedAfter - period.outstanding_clp]}
       />
+      {step.confirming && <Banner tone="info">{form.notice(month, clp(owedAfter))}</Banner>}
       {reverted.error && (
         <Banner tone="error">
           {revertRefusal(reverted.error)}
         </Banner>
       )}
 
-      <div className="member__form-actions">
-        <Button disabled={reverted.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={reverted.isPending} busy={reverted.isPending}>
-          {reverted.isPending ? form.working : form.submit}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={reverted.isPending}
+        words={form}
+        submit={form.submit}
+        confirm={form.confirm(clp(Math.abs(entry.amount_clp)))}
+        onCancel={onCancel}
+      />
     </form>
   )
 }
@@ -1430,6 +1455,7 @@ function VoidPlanForm({
   const id = useId()
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
 
   const voided = useSubmit({
@@ -1448,7 +1474,9 @@ function VoidPlanForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (reasonOk) voided.mutate()
+    if (!reasonOk) return
+    if (step.confirming) voided.mutate()
+    else step.ask()
   }
 
   return (
@@ -1462,6 +1490,7 @@ function VoidPlanForm({
         type="text"
         maxLength={500}
         value={reason}
+        readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -1471,19 +1500,21 @@ function VoidPlanForm({
         </Banner>
       )}
       <FixPreview balance={[balance, balance - owed]} />
+      {step.confirming && <Banner tone="info">{form.notice(clp(owed))}</Banner>}
       {voided.error && (
         <Banner tone="error">
           {voidRefusal(voided.error)}
         </Banner>
       )}
-      <div className="member__form-actions">
-        <Button disabled={voided.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="danger" disabled={voided.isPending} busy={voided.isPending}>
-          {voided.isPending ? form.working : form.submit}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={voided.isPending}
+        words={form}
+        submit={form.submit}
+        confirm={form.confirm}
+        variant="danger"
+        onCancel={onCancel}
+      />
     </form>
   )
 }
@@ -2406,6 +2437,7 @@ function ChangeAmountForm({
   const [amount, setAmount] = useState(String(current))
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const step = useConfirmStep()
   const digits = amount.replace(/\D/g, '')
   const value = Number(digits)
   // Owed on top when higher, taken off when lower.
@@ -2437,7 +2469,9 @@ function ChangeAmountForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (amountOk && reasonOk) adjust.mutate()
+    if (!amountOk || !reasonOk) return
+    if (step.confirming) adjust.mutate()
+    else step.ask()
   }
 
   const amountError =
@@ -2453,6 +2487,7 @@ function ChangeAmountForm({
         id={ids.amount}
         inputMode="numeric"
         value={amount}
+        readOnly={step.confirming}
         aria-invalid={amountError !== null}
         onChange={(e) => setAmount(e.target.value)}
       />
@@ -2470,6 +2505,7 @@ function ChangeAmountForm({
         type="text"
         maxLength={500}
         value={reason}
+        readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -2484,20 +2520,21 @@ function ChangeAmountForm({
         balance={[balance, owedAfter < 0 ? balance : balance + change]}
       />
 
+      {step.confirming && <Banner tone="info">{form.notice(month, clp(current), clp(value))}</Banner>}
       {adjust.error && (
         <Banner tone="error">
           {adjust.error instanceof ApiError && adjust.error.status === 409 ? form.refused.exceeds : form.refused.failed}
         </Banner>
       )}
 
-      <div className="member__form-actions">
-        <Button disabled={adjust.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={adjust.isPending} busy={adjust.isPending}>
-          {adjust.isPending ? form.working : form.submit(clp(value))}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={adjust.isPending}
+        words={form}
+        submit={form.submit(clp(value))}
+        confirm={form.confirm(clp(value))}
+        onCancel={onCancel}
+      />
     </form>
   )
 }
@@ -2529,7 +2566,7 @@ function targetLabel(target: MoveTarget, personId: string): string {
 
 /** "Mover a otro mes o plan" (#280): all or part of a payment recorded on the wrong month,
  * plan or sibling, moved to a period that still owes. Neither income nor a refund, and no
- * email. A second step names both plans when it leaves this one; a payment that carried
+ * email. A second step names where it goes from and to (#550); a payment that carried
  * credit moves only as a whole. */
 function MoveForm({
   personId,
@@ -2554,7 +2591,7 @@ function MoveForm({
   const [amount, setAmount] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+  const step = useConfirmStep()
 
   const movable = offered.data?.movable_clp ?? payment.refundable_clp
   const wholeOnly = offered.data?.whole_only ?? false
@@ -2607,8 +2644,8 @@ function MoveForm({
     event.preventDefault()
     setChecked(true)
     if (!amountOk || !reasonOk || !target || target.pending) return
-    if (leaves && !confirming) setConfirming(true)
-    else moved.mutate()
+    if (step.confirming) moved.mutate()
+    else step.ask()
   }
 
   const landing = target ? Math.max(target.outstanding_clp - value, 0) : 0
@@ -2623,7 +2660,7 @@ function MoveForm({
       <Select
         id={ids.target}
         value={target?.billing_period_id ?? ''}
-        disabled={confirming}
+        disabled={step.confirming}
         onChange={(e) => setTargetId(e.target.value)}
       >
         {targets.map((t) => (
@@ -2640,7 +2677,7 @@ function MoveForm({
         id={ids.amount}
         inputMode="numeric"
         value={wholeOnly ? String(movable) : (amount ?? String(movable))}
-        readOnly={wholeOnly || confirming}
+        readOnly={wholeOnly || step.confirming}
         aria-describedby={ids.amountHint}
         aria-invalid={checked && !amountOk}
         onChange={(e) => setAmount(e.target.value)}
@@ -2662,7 +2699,7 @@ function MoveForm({
         type="text"
         maxLength={500}
         value={reason}
-        readOnly={confirming}
+        readOnly={step.confirming}
         aria-describedby={ids.reasonHint}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
@@ -2689,21 +2726,21 @@ function MoveForm({
           {credit > 0 && <span className="member__detail">{form.credit(clp(credit))}</span>}
         </div>
       )}
-      {confirming && <Banner tone="info">{form.confirmPlan(clp(value), from, to)}</Banner>}
+      {step.confirming && <Banner tone="info">{form.notice(clp(value), from, to)}</Banner>}
       {moved.error && (
         <Banner tone="error">
           {moveRefusal(moved.error)}
         </Banner>
       )}
 
-      <div className="member__form-actions">
-        <Button disabled={moved.isPending} onClick={confirming ? () => setConfirming(false) : onCancel}>
-          {confirming ? form.back : form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={moved.isPending} busy={moved.isPending}>
-          {moved.isPending ? form.working : confirming ? form.confirm(clp(value)) : form.submit(clp(value))}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={moved.isPending}
+        words={form}
+        submit={form.submit(clp(value))}
+        confirm={form.confirm(clp(value))}
+        onCancel={onCancel}
+      />
     </form>
   )
 }
@@ -2735,7 +2772,7 @@ function VoidPaymentForm({
   const hint = useId()
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+  const step = useConfirmStep()
   const person = useQuery(personQuery(personId))
   const welcome = useQuery(welcomeQuery(personId))
   const reasonOk = reason.trim() !== ''
@@ -2759,8 +2796,8 @@ function VoidPaymentForm({
     event.preventDefault()
     setChecked(true)
     if (!reasonOk) return
-    if (confirming) undone.mutate()
-    else setConfirming(true)
+    if (step.confirming) undone.mutate()
+    else step.ask()
   }
 
   return (
@@ -2774,7 +2811,7 @@ function VoidPaymentForm({
         type="text"
         maxLength={500}
         value={reason}
-        readOnly={confirming}
+        readOnly={step.confirming}
         aria-describedby={hint}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
@@ -2788,21 +2825,21 @@ function VoidPaymentForm({
         </Banner>
       )}
       <FixPreview month={month} owed={[owed, owed + back]} balance={[ledger.balance_clp, ledger.balance_clp + back]} />
-      {confirming && <Banner tone="info">{notice}</Banner>}
+      {step.confirming && <Banner tone="info">{notice}</Banner>}
       {undone.error && (
         <Banner tone="error">
           {paymentVoidRefusal(undone.error)}
         </Banner>
       )}
 
-      <div className="member__form-actions">
-        <Button disabled={undone.isPending} onClick={confirming ? () => setConfirming(false) : onCancel}>
-          {confirming ? form.back : form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={undone.isPending} busy={undone.isPending}>
-          {undone.isPending ? form.working : confirming ? form.confirm(clp(back)) : form.submit(clp(back))}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={undone.isPending}
+        words={form}
+        submit={form.submit(clp(back))}
+        confirm={form.confirm(clp(back))}
+        onCancel={onCancel}
+      />
     </form>
   )
 }
@@ -2829,6 +2866,7 @@ function RefundForm({
   const [method, setMethod] = useState<Method>(payment.method ?? 'transfer')
   const [note, setNote] = useState('')
   const [amountNeeded, setAmountNeeded] = useState(false)
+  const step = useConfirmStep()
   const value = Number(amount.replace(/\D/g, ''))
   // A refund opens its payment's period again for what it gives back: no more than the
   // payment has left, which is all the server takes.
@@ -2857,7 +2895,8 @@ function RefundForm({
       setAmountNeeded(true)
       return
     }
-    refund.mutate()
+    if (step.confirming) refund.mutate()
+    else step.ask()
   }
 
   return (
@@ -2868,6 +2907,7 @@ function RefundForm({
       <Select
         id={ids.payment}
         value={payment.id}
+        disabled={step.confirming}
         onChange={(e) => {
           setPaymentId(e.target.value)
           const chosen = payments.find((p) => p.id === e.target.value)
@@ -2892,6 +2932,7 @@ function RefundForm({
         id={ids.amount}
         inputMode="numeric"
         value={amount}
+        readOnly={step.confirming}
         aria-invalid={amountNeeded && !value}
         onChange={(e) => setAmount(e.target.value)}
       />
@@ -2904,7 +2945,12 @@ function RefundForm({
       <label htmlFor={ids.method} className="member__label">
         {form.method}
       </label>
-      <Select id={ids.method} value={method} onChange={(e) => setMethod(e.target.value as Method)}>
+      <Select
+        id={ids.method}
+        value={method}
+        disabled={step.confirming}
+        onChange={(e) => setMethod(e.target.value as Method)}
+      >
         {METHODS.map((m) => (
           <option key={m} value={m}>
             {copy.form.methods[m]}
@@ -2920,6 +2966,7 @@ function RefundForm({
         type="text"
         maxLength={500}
         value={note}
+        readOnly={step.confirming}
         onChange={(e) => setNote(e.target.value)}
       />
       <FixPreview
@@ -2928,20 +2975,21 @@ function RefundForm({
         balance={[ledger.balance_clp, ledger.balance_clp + back]}
       />
 
+      {step.confirming && <Banner tone="info">{form.notice(monthName(payment.period_start), clp(back))}</Banner>}
       {refund.error && (
         <Banner tone="error">
           {refund.error instanceof ApiError && refund.error.status === 409 ? form.refused.exceeds : form.refused.failed}
         </Banner>
       )}
 
-      <div className="member__form-actions">
-        <Button disabled={refund.isPending} onClick={onCancel}>
-          {form.cancel}
-        </Button>
-        <Button type="submit" variant="primary" disabled={refund.isPending} busy={refund.isPending}>
-          {refund.isPending ? form.working : form.submit(clp(value))}
-        </Button>
-      </div>
+      <FixActions
+        step={step}
+        pending={refund.isPending}
+        words={form}
+        submit={form.submit(clp(value))}
+        confirm={form.confirm(clp(value))}
+        onCancel={onCancel}
+      />
     </form>
   )
 }
