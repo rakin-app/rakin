@@ -419,7 +419,8 @@ def test_a_recurring_material_reaches_who_attended_a_class_from_its_date_on(
     assert mine(client, gym, carla) == ["Ciclo de fuerza"]
     assert mine(client, gym, gym.ana) == []
     assert in_sql(db, gym, gym.ana) == []
-    assert on_session(client, gym, days[today()]) == ["Ciclo de fuerza"]
+    # Tomorrow's class: today's is not made once it has begun (`first_made`).
+    assert on_session(client, gym, days[today() + timedelta(days=1)]) == ["Ciclo de fuerza"]
     assert slot["id"]
 
 
