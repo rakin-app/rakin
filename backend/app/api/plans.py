@@ -9,6 +9,13 @@ Any staff role may read the plans, coaches included, though a coach reads them w
 their prices (#205); only an owner or admin may create or change one. Members may not
 use it at all.
 
+A monthly plan's anchor changed reaches only the members who join after, unless the
+owner moves the members on it too (#547): `PATCH` with `move_members` moves each to the
+day the new anchor gives it (the 1st, or the day it started) from its first period not
+billed, which runs to the day before the new day at its prorated share of the price, and
+records each move in the log. `GET /{id}/anchor-moves?anchor=` quotes the moves first.
+No period already billed changes.
+
 A fixed-period plan does not renew itself (#351). The owner copies it for the next
 period, `POST /{id}/next-period`, and moves the members on its list
 (`GET /{id}/memberships`) across in the same request: each gets a plan change to the
@@ -18,24 +25,39 @@ falls due and the old plan bills nothing more.
 
 import uuid
 from datetime import date
-from typing import Any, overload
+from typing import Annotated, Any, overload
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.corrections import record_audit
 from app.api.memberships import change_starts, locked_membership
 from app.api.programs import require_program
+from app.db import driver_connection
+from app.domain import billing
+from app.domain import membership as memberships
 from app.domain.membership import MembershipStatus, PlanKind, PlanTerms
-from app.permissions import AdminSession, SeesMoney, StaffSession
+from app.jobs.billing import billables_on_plan
+from app.permissions import (
+    AdminSession,
+    LedgerReadSession,
+    Permission,
+    SeesMoney,
+    StaffSession,
+    holds,
+)
 from app.schemas.plans import (
     COLUMNS,
     PLAN,
     PLAN_CREATE,
+    Anchor,
+    AnchorMove,
     FixedPeriodPlan,
     FixedPeriodPlanCreate,
+    MonthlyPlan,
     NextPeriod,
     NextPeriodResult,
     Plan,
@@ -47,6 +69,7 @@ from app.schemas.plans import (
     from_row,
     to_columns,
 )
+from app.tenancy import Tenant, current_tenant
 
 router = APIRouter(prefix="/api/plans", tags=["plans"])
 
@@ -115,12 +138,27 @@ async def get_plan(
     return plan if money else for_coach(plan)
 
 
+# Moving the members is a change of their billing (`money_write`), as a plan change is.
+MOVE_IS_MONEY = HTTPException(status.HTTP_403_FORBIDDEN, "moving members needs money_write")
+NOT_MONTHLY = HTTPException(status.HTTP_409_CONFLICT, "only a monthly plan bills on an anchor")
+
+
 @router.patch("/{plan_id}")
-async def update_plan(plan_id: uuid.UUID, body: PlanUpdate, session: AdminSession) -> Plan:
+async def update_plan(
+    plan_id: uuid.UUID,
+    body: PlanUpdate,
+    session: AdminSession,
+    tenant: Annotated[Tenant, Depends(current_tenant)],
+) -> Plan:
     # Locked, so a concurrent edit waits and then merges into this one's result
     # instead of both writing every column from the same read.
     current = await _get(session, plan_id, lock=True)
     changes = body.model_dump(exclude_unset=True)
+    move = changes.pop("move_members", False)
+    if move and not isinstance(current, MonthlyPlan):
+        raise NOT_MONTHLY
+    if move and not await holds(session, tenant, Permission.MONEY_WRITE):
+        raise MOVE_IS_MONEY
     active = changes.pop("active", current.active)
     if not changes and active == current.active:
         return current
@@ -142,7 +180,92 @@ async def update_plan(plan_id: uuid.UUID, body: PlanUpdate, session: AdminSessio
     await session.execute(
         text(f"UPDATE plan SET {assignments} WHERE id = :id"), {**columns, "id": plan_id}
     )
+    if move:
+        await _move_members(session, plan_id, columns["anchor"])
     return await _get(session, plan_id)
+
+
+def _moves(
+    on_plan: list[tuple[uuid.UUID, billing.Billable]], anchor: str
+) -> list[tuple[uuid.UUID, billing.Billable, billing.AnchorMove | None]]:
+    """Each membership on the plan, with what moving it to the day `anchor` gives it
+    would bill: `None` when it is on that day already, or leaving the plan."""
+    terms = PlanTerms(PlanKind.MONTHLY, anchor=anchor)
+    moves = []
+    for membership_id, billable in on_plan:
+        to_day = memberships.anchor_day(terms, billable.started_on)
+        assert to_day is not None  # a monthly plan's
+        moves.append((membership_id, billable, billing.anchor_move(billable, to_day)))
+    return moves
+
+
+ANCHOR_CHANGED = "anchor_changed"
+
+
+async def _move_members(session: AsyncSession, plan_id: uuid.UUID, anchor: str) -> None:
+    """Move each membership on the plan to the day `anchor` gives it, from its first
+    period not billed, with a row in the log for each. One that bills on that day already
+    stays on it, and a move to another day it had pending is withdrawn and logged too."""
+    on_plan = await billables_on_plan(await driver_connection(session), plan_id, lock=True)
+    for membership_id, billable, move in _moves(on_plan, anchor):
+        if move is None and (billable.next_anchor_day is None or billable.next_plan is not None):
+            continue
+        before = billable.next_anchor_day or billable.anchor_day
+        if move is None:
+            after, starts_on = billable.anchor_day, billing.first_unbilled(billable)
+        else:
+            after, starts_on = move.to_day, move.transition.period_start
+        if before == after:
+            continue
+        await session.execute(
+            text("UPDATE membership SET next_anchor_day = :day WHERE id = :id"),
+            {"day": None if move is None else move.to_day, "id": membership_id},
+        )
+        await record_audit(
+            session,
+            action=ANCHOR_CHANGED,
+            membership_id=membership_id,
+            reason=None,
+            anchor={"before": before, "after": after, "starts_on": str(starts_on)},
+        )
+
+
+@router.get("/{plan_id}/anchor-moves")
+async def anchor_moves(
+    plan_id: uuid.UUID, anchor: Anchor, session: LedgerReadSession
+) -> list[AnchorMove]:
+    """What `PATCH` with `anchor` and `move_members` would do to the memberships on the
+    monthly plan now, saving nothing (#547): each one it moves, by name, with the
+    transition period to its new day, prorated, and the first whole period on it, as
+    the nightly job will bill them. One on that day already, or leaving the plan by a
+    plan change, is not listed."""
+    current = await _get(session, plan_id)
+    if not isinstance(current, MonthlyPlan):
+        raise NOT_MONTHLY
+    on_plan = await billables_on_plan(await driver_connection(session), plan_id)
+    moves = {membership_id: move for membership_id, _, move in _moves(on_plan, anchor)}
+    listed = []
+    # By name, as the plan's list.
+    for person in await session.execute(SELECT_ON_PLAN, {"id": plan_id}):
+        move = moves.get(person.membership_id)
+        if move is None:
+            continue
+        listed.append(
+            AnchorMove(
+                membership_id=person.membership_id,
+                person_id=person.person_id,
+                name=person.name,
+                status=person.status,
+                from_day=move.from_day,
+                to_day=move.to_day,
+                starts_on=move.transition.period_start,
+                ends_on=move.transition.period_end,
+                amount_due_clp=move.transition.amount_due_clp,
+                next_starts_on=move.next_period.period_start,
+                next_amount_clp=move.next_period.amount_due_clp,
+            )
+        )
+    return listed
 
 
 # The memberships on a plan now, by their person's name. RLS keeps both to the gym.

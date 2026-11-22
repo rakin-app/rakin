@@ -579,6 +579,9 @@ function planOf(membership: Membership): string {
 }
 
 function planLine(membership: Membership): string {
+  if (membership.anchor_day !== null && membership.next_anchor_day) {
+    return copy.dueDayMoving(membership.plan_name, membership.anchor_day, membership.next_anchor_day)
+  }
   if (membership.anchor_day !== null) return copy.dueDay(membership.plan_name, membership.anchor_day)
   if (membership.current_period_end) return copy.until(membership.plan_name, t.common.day(membership.current_period_end))
   return membership.plan_name
@@ -3162,10 +3165,11 @@ function Corrections({ personId }: { personId: string }) {
  * a discount's `Cambió el descuento` · `50% → 30%` · `Beca · desde el cobro del 15 dic · …` (#25). */
 function CorrectionLine({ correction: c }: { correction: Correction }) {
   const words = copy.corrections
-  const { before, after, discount } = c
+  const { before, after, discount, anchor } = c
   const detail = [
     c.reason,
     discount ? words.discountFrom(shortDay(discount.starts_on)) : null,
+    anchor ? words.anchorFrom(shortDay(anchor.starts_on)) : null,
     c.plan_name,
     c.actor_name ? words.by(c.actor_name) : null,
     shortDay(c.at),
@@ -3188,6 +3192,7 @@ function CorrectionLine({ correction: c }: { correction: Correction }) {
       {discount && (
         <span className="member__entry-amount">{words.discountPct(discount.before.pct, discount.after.pct)}</span>
       )}
+      {anchor && <span className="member__entry-amount">{words.anchorDays(anchor.before, anchor.after)}</span>}
       {c.due_date && (
         <span className="member__entry-amount">{words.dates(shortDay(c.due_date.before), shortDay(c.due_date.after))}</span>
       )}
@@ -3205,6 +3210,8 @@ function correctionTitle(c: Correction): string {
       return words.reactivated
     case 'cancel_undone':
       return words.cancelUndone
+    case 'anchor_changed':
+      return words.anchorChanged
     case 'discount_changed':
       if (!c.discount?.before.pct) return words.discountSet
       return c.discount.after.pct ? words.discountChanged : words.discountRemoved

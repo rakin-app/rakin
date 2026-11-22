@@ -208,6 +208,13 @@ CASES = (
         lambda gym, actor: (gym.id, actor, gym.owner),
     ),
     Case(
+        "audit_event_anchor",
+        Permission.MONEY_WRITE,
+        "INSERT INTO audit_event (gym_id, actor_id, person_id, action, detail)"
+        " VALUES ($1, $2, $3, 'anchor_changed', '{}')",
+        lambda gym, actor: (gym.id, actor, gym.owner),
+    ),
+    Case(
         "audit_event_team",
         Permission.TEAM_MANAGE,
         "INSERT INTO audit_event (gym_id, actor_id, action, detail)"

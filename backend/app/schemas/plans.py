@@ -172,12 +172,18 @@ class PlanUpdate(BaseModel):
     # `null` takes the plan out of its program.
     program_id: uuid.UUID | None = None
     active: bool | None = None
+    # With a changed `anchor`, move the memberships on the plan to the day it gives them
+    # from their next period not billed (#547), as `GET /{id}/anchor-moves` quotes it.
+    # Without, they keep the day they bill on and only new members take the new one.
+    move_members: bool = False
 
     @model_validator(mode="after")
     def _never_null(self) -> "PlanUpdate":
         for field in ("name", "active"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be null")
+        if self.move_members and self.anchor is None:
+            raise PydanticCustomError("move_needs_anchor", "move_members needs an anchor")
         return self
 
 
@@ -341,3 +347,23 @@ class PlanMembership(BaseModel):
     status: Literal["active", "frozen"]
     # A change to another plan already pending, which a move replaces.
     next_plan_name: str | None
+
+
+class AnchorMove(BaseModel):
+    """A membership on a monthly plan as a change of the plan's anchor would move it
+    (#547), from its first period not billed: the day it bills on and the one it would,
+    the transition period to the new day, prorated (`starts_on` to `ends_on`, for
+    `amount_due_clp`), and the first whole period on the new day (`next_starts_on`, for
+    `next_amount_clp`). Both after its discount."""
+
+    membership_id: uuid.UUID
+    person_id: uuid.UUID
+    name: str
+    status: Literal["active", "frozen"]
+    from_day: int
+    to_day: int
+    starts_on: date
+    ends_on: date
+    amount_due_clp: int
+    next_starts_on: date
+    next_amount_clp: int

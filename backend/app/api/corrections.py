@@ -11,7 +11,9 @@ the line's: what it owes, as both), a payment moved one on its membership and, w
 went to a sibling, one on theirs (`app.api.moves`, #280), a due date moved one with the
 date before and after (`app.api.due_dates`, #283), a lapsed plan reactivated one with its
 status before and after, and a discount set, changed or taken off one with the
-percentage and reason before and after (`app.api.memberships`, #25).
+percentage and reason before and after (`app.api.memberships`, #25), and a monthly plan
+moved to the anchor day its plan's changed to one with the day before and after
+(`app.api.plans`, #547).
 
 `GET /api/ledger/people/{id}/corrections` reads a person's rows, newest first, for the
 ficha's "Correcciones". Owner and admin only (`LedgerSession`); RLS holds a coach to it
@@ -27,7 +29,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.permissions import LedgerReadSession
-from app.schemas.ledger import Correction, Corrections, DateShift, DiscountShift, Figures
+from app.schemas.ledger import (
+    AnchorShift,
+    Correction,
+    Corrections,
+    DateShift,
+    DiscountShift,
+    Figures,
+)
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 
@@ -201,6 +210,7 @@ def correction(row: Any) -> Correction:
         before=figures(detail.get("before")),
         after=figures(detail.get("after")),
         discount=DiscountShift.model_validate(detail["discount"]) if "discount" in detail else None,
+        anchor=AnchorShift.model_validate(detail["anchor"]) if "anchor" in detail else None,
         moved=detail.get("moved"),
         other_period_start=row.other_period_start,
         due_date=DateShift.model_validate(detail["due_date"]) if "due_date" in detail else None,

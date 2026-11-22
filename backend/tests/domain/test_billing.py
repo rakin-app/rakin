@@ -550,3 +550,169 @@ def test_due_periods_stops_at_its_limit() -> None:
         (date(2026, 11, 15), date(2026, 12, 14), 45_000),
         (date(2026, 12, 15), date(2027, 1, 14), 45_000),
     ]
+
+
+# --- a plan's anchor changed, applied to its members (#547) -----------------------
+
+
+def test_moving_a_mid_month_member_from_the_1st_to_their_start_day_prorates_the_gap() -> None:
+    # On the 1st since Nov 12, billed through Nov 30, moving to the 12th.
+    member = billable(
+        FIRST,
+        started_on=date(2026, 11, 12),
+        anchor_day=1,
+        billed_through=date(2026, 11, 30),
+        next_anchor_day=12,
+    )
+
+    owed = billing.due_periods(member, date(2026, 12, 5))
+
+    # Dec 1 to 11 is 11 of the 31 days Dec 1 would have billed: 40.000 * 11 / 31.
+    assert spans(owed) == [
+        (date(2026, 12, 1), date(2026, 12, 11), 14_193),
+        (date(2026, 12, 12), date(2027, 1, 11), 40_000),
+    ]
+    assert owed.anchor_moved
+    assert owed.anchor_day == 12
+    assert not owed.plan_changed
+
+
+def test_moving_a_member_from_their_start_day_to_the_1st_prorates_the_gap() -> None:
+    # On the 12th since Oct 12, billed through Dec 11, moving to the 1st.
+    member = billable(
+        MONTHLY,
+        started_on=date(2026, 10, 12),
+        billed_through=date(2026, 12, 11),
+        next_anchor_day=1,
+    )
+
+    owed = billing.due_periods(member, date(2026, 12, 26))
+
+    # Dec 12 to 31 is 20 of the 31 days Dec 12 would have billed: 45.000 * 20 / 31.
+    assert spans(owed) == [
+        (date(2026, 12, 12), date(2026, 12, 31), 29_032),
+        (date(2027, 1, 1), date(2027, 1, 31), 45_000),
+    ]
+    assert owed.anchor_moved
+    assert owed.anchor_day == 1
+
+
+def test_a_move_leaves_no_day_unbilled_and_none_billed_twice() -> None:
+    member = billable(
+        FIRST, started_on=date(2026, 11, 12), anchor_day=1, billed_through=date(2026, 11, 30)
+    )
+    owed = billing.periods_ahead(replace(member, next_anchor_day=12), 3)
+
+    days = [p.period_start for p in owed.periods] + [owed.periods[-1].period_end]
+    assert days[0] == date(2026, 12, 1)
+    for before, after in zip(owed.periods, owed.periods[1:], strict=False):
+        assert after.period_start == before.period_end + timedelta(days=1)
+
+
+def test_a_move_waits_for_the_first_period_not_billed() -> None:
+    member = billable(
+        FIRST,
+        started_on=date(2026, 11, 12),
+        anchor_day=1,
+        billed_through=date(2026, 12, 31),
+        next_anchor_day=12,
+    )
+
+    assert billing.due_periods(member, date(2026, 12, 20)).periods == ()
+    (transition,) = billing.due_periods(member, date(2026, 12, 25)).periods
+
+    assert (transition.period_start, transition.period_end) == (date(2027, 1, 1), date(2027, 1, 11))
+
+
+def test_a_move_takes_the_discount_off_before_prorating() -> None:
+    member = billable(
+        FIRST,
+        started_on=date(2026, 11, 12),
+        anchor_day=1,
+        billed_through=date(2026, 11, 30),
+        discount_pct=50,
+    )
+
+    move = billing.anchor_move(member, 12)
+
+    assert move is not None
+    assert move.transition.amount_due_clp == 20_000 * 11 // 31
+    assert move.next_period.amount_due_clp == 20_000
+
+
+def test_a_move_quotes_the_transition_and_the_first_whole_period() -> None:
+    member = billable(
+        FIRST, started_on=date(2026, 11, 12), anchor_day=1, billed_through=date(2026, 11, 30)
+    )
+
+    move = billing.anchor_move(member, 12)
+
+    assert move == billing.AnchorMove(
+        from_day=1,
+        to_day=12,
+        transition=BillingPeriod(date(2026, 12, 1), date(2026, 12, 11), 14_193, date(2026, 12, 1)),
+        next_period=BillingPeriod(
+            date(2026, 12, 12), date(2027, 1, 11), 40_000, date(2026, 12, 12)
+        ),
+    )
+
+
+def test_a_frozen_member_is_quoted_from_the_day_they_bill_again() -> None:
+    member = billable(
+        FIRST,
+        status=MembershipStatus.FROZEN,
+        started_on=date(2026, 11, 12),
+        anchor_day=1,
+        current_period_end=date(2026, 12, 20),
+        billed_through=date(2026, 11, 30),
+    )
+
+    move = billing.anchor_move(member, 12)
+
+    assert move is not None
+    assert (move.transition.period_start, move.transition.period_end) == (
+        date(2026, 12, 21),
+        date(2027, 1, 11),
+    )
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        billable(FIRST, anchor_day=1, billed_through=date(2026, 11, 30)),
+        billable(PREPAID, billed_through=date(2026, 11, 30)),
+        billable(MONTHLY, next_plan=PREPAID, next_plan_from=date(2026, 12, 15)),
+    ],
+    ids=["already-on-the-day", "not-monthly", "leaving-the-plan"],
+)
+def test_nothing_moves(member: billing.Billable) -> None:
+    assert billing.anchor_move(member, 1) is None
+
+
+def test_a_move_on_a_day_the_period_starts_on_is_a_whole_period() -> None:
+    period = billing.transition_period(FIRST, date(2026, 12, 12), 1, 12, 0)
+
+    assert (period.period_start, period.period_end, period.amount_due_clp) == (
+        date(2026, 12, 12),
+        date(2027, 1, 11),
+        40_000,
+    )
+
+
+def test_a_plan_change_replaces_a_pending_move() -> None:
+    member = billable(
+        FIRST,
+        started_on=date(2026, 11, 12),
+        anchor_day=1,
+        billed_through=date(2026, 11, 30),
+        next_anchor_day=12,
+        next_plan=PREPAID,
+        next_plan_from=date(2026, 12, 1),
+    )
+
+    owed = billing.due_periods(member, NOV_8 + timedelta(days=20))
+
+    assert spans(owed) == [(date(2026, 12, 1), date(2027, 5, 31), 240_000)]
+    assert owed.plan_changed
+    assert owed.anchor_moved
+    assert owed.anchor_day is None
