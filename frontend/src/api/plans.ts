@@ -124,11 +124,24 @@ export type AnchorMove = {
   next_amount_clp: number
 }
 
+/** A member whose move pending to `pending_day` changing the anchor withdraws (#547): they stay on `stays_on`. */
+export type AnchorWithdrawal = {
+  membership_id: string
+  person_id: string
+  name: string
+  status: 'active' | 'frozen'
+  pending_day: number
+  stays_on: number
+}
+
+/** A change of a monthly plan's anchor quoted: who `move_members` moves, and whose pending move goes without it. */
+export type AnchorMoves = { moves: AnchorMove[]; withdrawn: AnchorWithdrawal[] }
+
 export const anchorMovesQuery = (planId: string, anchor: Anchor) =>
   queryOptions({
     queryKey: ['plans', planId, 'anchor-moves', anchor],
     queryFn: () =>
-      apiFetch<AnchorMove[]>(
+      apiFetch<AnchorMoves>(
         `/api/plans/${encodeURIComponent(planId)}/anchor-moves?anchor=${encodeURIComponent(anchor)}`,
       ),
   })

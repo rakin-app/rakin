@@ -2484,6 +2484,8 @@ export const es = {
             line: (start: string, end: string, amount: string, next: string, nextAmount: string) =>
               `del ${start} al ${end}: ${amount}; desde el ${next}: ${nextAmount} al mes`,
             frozen: 'plan congelado',
+            // A move pending to another day, which this change withdraws.
+            withdrawn: (pending: number, day: number) => `se cancela el cambio al día ${pending}: sigue pagando el día ${day}`,
             declined: (anchor: 'signup' | 'first') =>
               `${w.TheMembers} que ya tienen este plan siguen pagando el día de siempre; solo ${w.memberIs('los nuevos', 'las nuevas')} ${anchor === 'signup' ? 'pagan desde su inicio' : 'pagan el día 1'}.`,
             get none() {

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Activity } from '../api/activities'
 import type { GymSettings } from '../api/gym'
 import type { Program } from '../api/people'
-import type { AnchorMove, Plan, PlanMembership } from '../api/plans'
+import type { AnchorMoves, Plan, PlanMembership } from '../api/plans'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { STATUS_URL } from '../config'
@@ -50,7 +50,8 @@ const OLD: Program = { id: 'old', name: 'Competición', active: false }
 const at = { active: true, created_at: '2026-10-01T12:00:00Z' }
 const MONTHLY: Plan = { ...at, id: 'mensual', kind: 'monthly', name: 'Mensual adultos', program_id: 'adultos', price_clp: 35000, anchor: 'signup' }
 // The member on it a change to the 1st would move (#547), as `GET .../anchor-moves` quotes it.
-const ON_MONTHLY: AnchorMove[] = [
+const ON_MONTHLY: AnchorMoves = {
+  moves: [
   {
     membership_id: 'm-ana',
     person_id: 'p-ana',
@@ -64,7 +65,9 @@ const ON_MONTHLY: AnchorMove[] = [
     next_starts_on: '2027-01-01',
     next_amount_clp: 35000,
   },
-]
+  ],
+  withdrawn: [],
+}
 const TRIAL: Plan = { ...at, id: 'prueba', kind: 'trial', name: 'Clase de prueba', program_id: null, free_classes: 2, free_days: 7 }
 const SEASON: Plan = {
   ...at,
@@ -107,6 +110,8 @@ type Stub = {
   activities?: Activity[]
   // An answer to every change of an activity, in place of the stub's own.
   changeActivity?: Answer
+  // A monthly plan's anchor change quoted (#547); by default one member it would move.
+  anchorQuote?: AnchorMoves
 }
 
 const BJJ: Activity = {
@@ -131,6 +136,7 @@ function stubApi({
   plans: listed = [MONTHLY, TRIAL, OLD_CREDITS],
   activities = [BJJ],
   changeActivity,
+  anchorQuote = ON_MONTHLY,
 }: Stub = {}) {
   const calls: Call[] = []
   let current = SETTINGS
@@ -202,7 +208,7 @@ function stubApi({
       return { status: 201, body: created }
     }
     if (path === `/api/plans/${SEASON.id}/memberships`) return { body: ON_SEASON }
-    if (path === `/api/plans/${MONTHLY.id}/anchor-moves`) return { body: ON_MONTHLY }
+    if (path === `/api/plans/${MONTHLY.id}/anchor-moves`) return { body: anchorQuote }
     if (path === `/api/plans/${SEASON.id}/next-period` && method === 'POST') {
       if (savePlan) return savePlan
       const { membership_ids: moved, ...fields } = body as { membership_ids: string[] }
@@ -953,6 +959,35 @@ describe('Ajustes: Planes', () => {
     const edit = within(section).getByRole('form', { name: form.edit('Mensual adultos') })
     await userEvent.selectOptions(within(edit).getByLabelText(form.anchor), plans.anchors.first)
     await within(edit).findByRole('checkbox', { name: form.anchorMove.offer(1, 'first') })
+    await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
+
+    expect(await within(section).findByRole('status')).toHaveTextContent(plans.saved('Mensual adultos'))
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ anchor: 'first' }])
+  })
+
+  it('says a pending move is withdrawn when the anchor changes back, ticked or not (#547)', async () => {
+    const calls = stubApi({
+      anchorQuote: {
+        moves: [],
+        withdrawn: [
+          { membership_id: 'm-ana', person_id: 'p-ana', name: 'Ana Rojas', status: 'active', pending_day: 1, stays_on: 12 },
+        ],
+      },
+    })
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    const rows = await within(section).findAllByRole('listitem')
+    await userEvent.click(within(rows[0]!).getByRole('button'))
+    const edit = within(section).getByRole('form', { name: form.edit('Mensual adultos') })
+    await userEvent.selectOptions(within(edit).getByLabelText(form.anchor), plans.anchors.first)
+
+    expect(await within(edit).findByText(/Ana Rojas/)).toHaveTextContent(
+      `Ana Rojas · ${form.anchorMove.withdrawn(1, 12)}`,
+    )
+    // Nobody to move, so no offer, and no "nadie cambia" beside the withdrawal.
+    expect(within(edit).queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(within(edit).queryByText(form.anchorMove.none)).not.toBeInTheDocument()
     await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
 
     expect(await within(section).findByRole('status')).toHaveTextContent(plans.saved('Mensual adultos'))

@@ -172,9 +172,11 @@ class PlanUpdate(BaseModel):
     # `null` takes the plan out of its program.
     program_id: uuid.UUID | None = None
     active: bool | None = None
-    # With a changed `anchor`, move the memberships on the plan to the day it gives them
-    # from their next period not billed (#547), as `GET /{id}/anchor-moves` quotes it.
-    # Without, they keep the day they bill on and only new members take the new one.
+    # With `anchor`, move the memberships on the plan to the day it gives them from their
+    # next period not billed (#547), as `GET /{id}/anchor-moves` quotes it; with the
+    # anchor the plan has, those still on another day. Without, they keep the day they
+    # bill on and only new members take the new one, and a change of the anchor
+    # withdraws a move pending to a day it no longer gives.
     move_members: bool = False
 
     @model_validator(mode="after")
@@ -367,3 +369,23 @@ class AnchorMove(BaseModel):
     amount_due_clp: int
     next_starts_on: date
     next_amount_clp: int
+
+
+class AnchorWithdrawal(BaseModel):
+    """A membership whose move pending to `pending_day` a change of its plan's anchor
+    withdraws (#547): it stays on `stays_on`, the day it bills on."""
+
+    membership_id: uuid.UUID
+    person_id: uuid.UUID
+    name: str
+    status: Literal["active", "frozen"]
+    pending_day: int
+    stays_on: int
+
+
+class AnchorMoves(BaseModel):
+    """A change of a monthly plan's anchor quoted (#547): who `move_members` moves, and
+    whose pending move it withdraws without it."""
+
+    moves: list[AnchorMove]
+    withdrawn: list[AnchorWithdrawal]

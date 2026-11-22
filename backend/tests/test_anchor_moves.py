@@ -108,7 +108,7 @@ def test_a_mid_month_member_moves_from_the_1st_to_the_day_they_started(
     assert quoted.status_code == 200, quoted.text
     assert [
         {k: v for k, v in m.items() if k not in ("person_id", "name", "status")}
-        for m in quoted.json()
+        for m in quoted.json()["moves"]
     ] == [
         {
             "membership_id": ana["id"],
@@ -151,7 +151,7 @@ def test_a_member_moves_from_the_day_they_started_to_the_1st(
     ana = member(client, sur, plan_id, NOV_12)
     assert periods(db, sur, ana["id"]) == [(NOV_12, date(2026, 12, 11), 45_000)]
 
-    (quoted,) = quote(client, sur, plan_id, "first").json()
+    (quoted,) = quote(client, sur, plan_id, "first").json()["moves"]
     assert (quoted["starts_on"], quoted["ends_on"], quoted["amount_due_clp"]) == (
         "2026-12-12",
         "2026-12-31",
@@ -198,7 +198,7 @@ def test_only_members_who_would_move_are_quoted_and_moved(
     )
     assert response.status_code == 200, response.text
 
-    assert quote(client, sur, plan_id, "signup").json() == []
+    assert quote(client, sur, plan_id, "signup").json() == {"moves": [], "withdrawn": []}
     assert edit(client, sur, plan_id, anchor="signup", move_members=True).status_code == 200
 
     for m in (on_the_1st, leaving):
@@ -219,6 +219,46 @@ def test_changing_back_before_the_move_is_billed_withdraws_it(
     withdrawn, moved = anchor_corrections(client, sur, ana["person_id"])
     assert withdrawn["anchor"] == {"before": 12, "after": 1, "starts_on": "2026-12-01"}
     assert moved["anchor"]["after"] == 12
+
+
+def test_changing_back_unticked_withdraws_the_move_pending(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    plan_id = plan(client, sur, "first")
+    ana = member(client, sur, plan_id, NOV_12)
+    assert edit(client, sur, plan_id, anchor="signup", move_members=True).status_code == 200
+
+    quoted = quote(client, sur, plan_id, "first").json()
+    assert quoted["moves"] == []
+    assert [(w["membership_id"], w["pending_day"], w["stays_on"]) for w in quoted["withdrawn"]] == [
+        (ana["id"], 12, 1)
+    ]
+    assert edit(client, sur, plan_id, anchor="first").status_code == 200
+
+    assert membership(client, sur, ana["id"])["next_anchor_day"] is None
+    withdrawn, _ = anchor_corrections(client, sur, ana["person_id"])
+    assert withdrawn["anchor"] == {"before": 12, "after": 1, "starts_on": "2026-12-01"}
+    generate(db, date(2026, 12, 5))
+    assert periods(db, sur, ana["id"])[1] == (date(2026, 12, 1), date(2026, 12, 31), 45_000)
+
+
+def test_moving_with_the_anchor_the_plan_has_moves_those_still_on_another_day(
+    client: TestClient, sur: uuid.UUID
+) -> None:
+    plan_id = plan(client, sur, "first")
+    straggler = member(client, sur, plan_id, NOV_12)
+    # The plan changed earlier, its members left on the 1st.
+    assert edit(client, sur, plan_id, anchor="signup").status_code == 200
+    newcomer = member(client, sur, plan_id, NOV_12)
+
+    (quoted,) = quote(client, sur, plan_id, "signup").json()["moves"]
+    assert quoted["membership_id"] == straggler["id"]
+    assert edit(client, sur, plan_id, anchor="signup", move_members=True).status_code == 200
+
+    assert membership(client, sur, straggler["id"])["next_anchor_day"] == 12
+    assert membership(client, sur, newcomer["id"])["next_anchor_day"] is None
+    (row,) = anchor_corrections(client, sur, straggler["person_id"])
+    assert row["anchor"] == {"before": 1, "after": 12, "starts_on": "2026-12-01"}
 
 
 def test_refusals(client: TestClient, sur: uuid.UUID) -> None:
@@ -259,7 +299,7 @@ def test_a_frozen_member_on_the_plan_is_moved_too(
         ),
     )
 
-    (quoted,) = quote(client, sur, plan_id, "signup").json()
+    (quoted,) = quote(client, sur, plan_id, "signup").json()["moves"]
 
     assert (quoted["membership_id"], quoted["status"]) == (ana["id"], "frozen")
     assert edit(client, sur, plan_id, anchor="signup", move_members=True).status_code == 200

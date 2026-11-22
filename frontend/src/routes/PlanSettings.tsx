@@ -12,7 +12,8 @@ import {
   plansQuery,
   updatePlan,
   type Anchor,
-  type AnchorMove,
+  type AnchorMoves as Quote,
+  type AnchorWithdrawal,
   type Plan,
   type PlanFields,
   type PlanKind,
@@ -247,7 +248,7 @@ function PlanForm({
   const anchorChanged = plan?.kind === 'monthly' && drafts.anchor !== initial.anchor
   const [moveMembers, setMoveMembers] = useState(false)
   const moves = useQuery({ ...anchorMovesQuery(plan?.id ?? '', drafts.anchor as Anchor), enabled: anchorChanged })
-  const moving = anchorChanged && moveMembers && moves.isSuccess && moves.data.length > 0 ? moves.data.length : 0
+  const moving = anchorChanged && moveMembers && moves.isSuccess ? moves.data.moves.length : 0
 
   const save = useSubmit({
     offline: 'refuse',
@@ -439,29 +440,45 @@ function PlanForm({
  */
 function AnchorMoves({
   anchor,
-  moves,
+  moves: quote,
   pending,
   failed,
   checked,
   onChange,
 }: {
   anchor: Anchor
-  moves: AnchorMove[] | undefined
+  moves: Quote | undefined
   pending: boolean
   failed: boolean
   checked: boolean
   onChange: (checked: boolean) => void
 }) {
   const words = form.anchorMove
+  if (pending) {
+    return (
+      <fieldset className="settings__moves">
+        <legend className="settings__label">{words.legend}</legend>
+        <Loading className="settings__note">{words.loading}</Loading>
+      </fieldset>
+    )
+  }
+  if (failed || quote === undefined) {
+    return (
+      <fieldset className="settings__moves">
+        <legend className="settings__label">{words.legend}</legend>
+        <Banner tone="error">{words.error}</Banner>
+      </fieldset>
+    )
+  }
+  const { moves } = quote
+  // A pending move withdrawn: always without the offer ticked; ticked, only one that does not move again.
+  const moving = new Set(checked ? moves.map((m) => m.membership_id) : [])
+  const withdrawn = quote.withdrawn.filter((w) => !moving.has(w.membership_id))
   return (
     <fieldset className="settings__moves">
       <legend className="settings__label">{words.legend}</legend>
-      {pending ? (
-        <Loading className="settings__note">{words.loading}</Loading>
-      ) : failed || moves === undefined ? (
-        <Banner tone="error">{words.error}</Banner>
-      ) : moves.length === 0 ? (
-        <p className="settings__note">{words.none}</p>
+      {moves.length === 0 ? (
+        withdrawn.length === 0 && <p className="settings__note">{words.none}</p>
       ) : (
         <>
           <CheckRow>
@@ -496,7 +513,20 @@ function AnchorMoves({
           )}
         </>
       )}
+      {withdrawn.length > 0 && <Withdrawn withdrawn={withdrawn} />}
     </fieldset>
+  )
+}
+
+/** "Ana Rojas · se cancela el cambio al día 12: sigue pagando el día 1" (#547). */
+function Withdrawn({ withdrawn }: { withdrawn: AnchorWithdrawal[] }) {
+  const words = form.anchorMove
+  return (
+    <ul className="settings__note">
+      {withdrawn.map((w) => (
+        <li key={w.membership_id}>{[w.name, words.withdrawn(w.pending_day, w.stays_on)].join(' · ')}</li>
+      ))}
+    </ul>
   )
 }
 
