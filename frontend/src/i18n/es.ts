@@ -1766,7 +1766,7 @@ export const es = {
         // A payment undone as recorded by mistake (#281), and the credit it carried, taken back.
         paymentVoid: (month: string) => `Pago anulado ${month}`,
         mistake: 'error de registro',
-        creditReverted: 'Saldo a favor anulado',
+        creditReverted: 'Ajuste por pago anulado',
         all: (n: number) => `Ver todo el libro (${n})`,
         fewer: 'Ver menos',
       },
@@ -3324,7 +3324,7 @@ export const es = {
       restore: 'Restauración',
       // A payment undone as recorded by mistake (#281), and the credit it carried, taken back.
       paymentVoid: 'Pago anulado',
-      creditReverted: 'Saldo a favor anulado',
+      creditReverted: 'Ajuste por pago anulado',
       mistake: 'Error de registro',
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
       // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.

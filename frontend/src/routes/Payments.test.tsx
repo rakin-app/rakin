@@ -312,6 +312,16 @@ describe('Pagos', () => {
     expect(kpis.textContent).not.toContain('Devuelto')
   })
 
+  it('names the credit reverted with a payment undone, not a plain adjustment (#281)', async () => {
+    const reverted = entry({ id: 'rev', kind: 'adjustment', amount_clp: -5000, period: null, purpose: 'revert', note: 'x' })
+    stubApi({ book: () => ({ ...BOOK, items: [reverted], total: 1 }) })
+    renderAt('/admin/pagos')
+
+    const [row] = within(await table()).getAllByRole('row').slice(1)
+    expect(cells(row!)[2]).toBe(copy.creditReverted)
+    expect(cells(row!)[6]).toBe('−$5.000')
+  })
+
   it('lists each entry with its date, student, kind, period, medium, status and amount', async () => {
     stubApi()
     renderAt('/admin/pagos')

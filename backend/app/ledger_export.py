@@ -71,8 +71,11 @@ KINDS = {
     "refund": "Devolución",
 }
 VOID = "Anulación"
-# A payment undone as recorded by mistake (#281): not money given back.
+# A payment undone as recorded by mistake (#281): not money given back. The credit it
+# carried, taken back with it, is an adjustment, and counts in "Total ajustado" as the
+# credit it cancels did.
 PAYMENT_VOID = "Pago anulado"
+CREDIT_REVERTED = "Ajuste por pago anulado"
 STATUSES = {"validated": "Validado", "pending": "Por validar", "rejected": "Rechazado"}
 METHODS = {"cash": "Efectivo", "transfer": "Transferencia", "other": "Otro"}
 # app.domain.extra_charges.Category, as the cobros screen names them.
@@ -203,9 +206,12 @@ class MonthExpenses:
     income_clp: int | None = None
 
 
-def kind_label(kind: str, voids: bool, purpose: str | None = None) -> str:
+def kind_label(kind: str, voids: bool, purpose: str | None = None, on_period: bool = True) -> str:
+    """The row's Tipo; a revert on no period is a carried credit's, with its payment undone."""
     if purpose == "mistake":
         return PAYMENT_VOID
+    if purpose == "revert" and kind == "adjustment" and not on_period:
+        return CREDIT_REVERTED
     return VOID if voids else KINDS[kind]
 
 
@@ -230,7 +236,7 @@ def totals(entries: Iterable[Row], outstanding_clp: int) -> Totals:
         charged_clp=sums.get(KINDS["charge"], 0),
         paid_clp=sums.get(KINDS["payment"], 0),
         paid_extra_clp=extra,
-        adjusted_clp=sums.get(KINDS["adjustment"], 0),
+        adjusted_clp=sums.get(KINDS["adjustment"], 0) + sums.get(CREDIT_REVERTED, 0),
         voided_clp=sums.get(VOID, 0),
         refunded_clp=sums.get(KINDS["refund"], 0),
         outstanding_clp=outstanding_clp,

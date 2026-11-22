@@ -321,7 +321,13 @@ async def settled(
     payment: Entry,
     settlement: Settlement,
 ) -> RecordedPayment:
-    """Record the credit `settlement` leaves, if any, and the period as `payment` leaves it."""
+    """Record the credit `settlement` leaves, if any, and the period as `payment` leaves it.
+
+    The one writer of a carried credit, for a payment recorded and a proof validated
+    alike. The credit is linked to `payment` only by being written in the transaction
+    that validated it (`CARRIED_CREDIT`, #281), so a transaction that writes one validates
+    no other payment of the membership; paying ahead, which validates several, carries
+    no credit (each period is paid exactly)."""
     credit = None
     if settlement.credit is not None:
         credit = await insert_entry(
@@ -600,9 +606,14 @@ PAYMENT_TO_UNDO = text(
     " FROM ledger_entry p JOIN gym g ON g.id = p.gym_id WHERE p.id = :id AND p.kind = :payment"
 )
 
-# The credit the payment carried (`settled`, and a proof's validation alike): the
-# period-less adjustment written beside it, in the transaction that validated it, so at
-# its `validated_at`, by whoever validated it; not reverted already.
+# The credit the payment carried, not reverted already. Nothing links a credit to its
+# payment but the transaction that wrote both (`settled`, the one writer): the credit is
+# the period-less adjustment of the membership made at the payment's `validated_at` (one
+# `now()`) by whoever validated it. That names one payment only while no transaction
+# validates two payments of a membership and writes a credit (`settled` says so), so a
+# payment that shares its instant with another of the membership's is matched to none:
+# its credit, display only (`v_balance` leaves it out), stays rather than the wrong one
+# going. A column would need every existing credit backfilled by this same match.
 CARRIED_CREDIT = text(
     "SELECT c.id, c.amount_clp FROM ledger_entry p JOIN ledger_entry c"
     " ON c.membership_id = p.membership_id AND c.created_at = p.validated_at"
@@ -611,6 +622,8 @@ CARRIED_CREDIT = text(
     " AND c.billing_period_id IS NULL AND c.extra_line_id IS NULL AND c.purpose IS NULL"
     " AND c.amount_clp > 0 AND NOT EXISTS ("
     "SELECT FROM ledger_entry r WHERE r.corrects = c.id AND r.purpose = 'revert')"
+    " AND NOT EXISTS (SELECT FROM ledger_entry o WHERE o.membership_id = p.membership_id"
+    " AND o.kind = 'payment' AND o.validated_at = p.validated_at AND o.id <> p.id)"
     " ORDER BY c.id LIMIT 1"
 )
 

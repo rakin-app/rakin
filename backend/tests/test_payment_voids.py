@@ -423,6 +423,61 @@ def test_a_person_whose_only_payment_was_undone_can_be_deleted(
 
 
 @pg
+def test_a_payment_validated_with_another_of_its_membership_takes_no_credit(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """The credit is found by the transaction that wrote it (`CARRIED_CREDIT`): paying
+    ahead validates several payments in one, and carries none, and a credit beside two
+    payments of one instant is matched to neither."""
+    _, membership = member(client, gym, days_ago=0)
+    ledger_now = ledger(client, gym, membership)
+    for period in ledger_now["open_periods"]:
+        pay(client, gym, membership, period["id"], period["outstanding_clp"])
+    quote = ok(client.get(f"/api/ledger/memberships/{membership}/ahead", headers=as_gym(gym)))
+    two = quote["periods"][:2]
+    ahead = ok(
+        client.post(
+            "/api/ledger/payments/ahead",
+            json={
+                "membership_id": membership,
+                "periods": 2,
+                "amount_clp": sum(p["amount_due_clp"] for p in two),
+                "method": "cash",
+            },
+            headers=as_gym(gym),
+        ),
+        201,
+    )
+    payments = ahead["payments"]
+    assert len(payments) == 2 and payments[0]["validated_at"] == payments[1]["validated_at"]
+    credits = run(
+        db.admin_url,
+        lambda c: c.fetchval(
+            "SELECT count(*) FROM ledger_entry WHERE membership_id = $1 AND kind = 'adjustment'"
+            " AND billing_period_id IS NULL"
+            " AND created_at = (SELECT validated_at FROM ledger_entry WHERE id = $2)",
+            uuid.UUID(membership),
+            uuid.UUID(payments[0]["id"]),
+        ),
+    )
+    assert credits == 0
+
+    # A credit written beside both (no path does) is reverted with neither.
+    run(
+        db.admin_url,
+        lambda c: c.execute(
+            "INSERT INTO ledger_entry (gym_id, membership_id, amount_clp, kind, status,"
+            " validated_by, validated_at, created_at, note)"
+            " SELECT gym_id, membership_id, 1000, 'adjustment', 'validated', validated_by,"
+            " validated_at, validated_at, 'x' FROM ledger_entry WHERE id = $1",
+            uuid.UUID(payments[0]["id"]),
+        ),
+    )
+    recorded = ok(undo(client, gym, payments[0]["id"]), 201)
+    assert recorded["reverted"] is None
+
+
+@pg
 def test_the_database_holds_a_mistake_to_its_payment_and_to_once(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
@@ -481,10 +536,23 @@ def test_the_export_lists_a_payment_undone_apart_from_refunds() -> None:
         )
 
     label = ledger_export.kind_label("refund", voids=False, purpose="mistake")
+    reverted = ledger_export.kind_label("adjustment", False, "revert", on_period=False)
+    assert reverted == "Ajuste por pago anulado"
+    # A revert on a period is not a credit's (#282): a plain adjustment here.
+    assert ledger_export.kind_label("adjustment", False, "revert", on_period=True) == "Ajuste"
     totals = ledger_export.totals(
-        [row("Pago", 45_000), row("Devolución", 5_000), row(label, 40_000)], 0
+        [
+            row("Pago", 45_000),
+            row("Devolución", 5_000),
+            row(label, 40_000),
+            row("Ajuste", 3_000),
+            row(reverted, -3_000),
+        ],
+        0,
     )
     lines = dict(ledger_export.total_lines(totals))
+    # The revert cancels the credit it reverts in "Total ajustado".
+    assert lines["Total ajustado (a favor +, en contra -)"] == 0
     assert lines["Total devuelto"] == 5_000
     assert lines["Total pagos anulados (error de registro)"] == 40_000
     assert lines["Cobrado neto (pagado menos devuelto y anulado)"] == 0

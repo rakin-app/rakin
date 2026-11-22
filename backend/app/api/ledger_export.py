@@ -130,7 +130,7 @@ def export_row(row: Any, values: tuple[str | int | float | date | None, ...]) ->
         rut=row.person_rut,
         concept=export.concept(row.plan_name, row.charge_category, row.charge_title),
         period=None if row.period_start is None else (row.period_start, row.period_end),
-        kind=export.kind_label(row.kind, row.voids, row.purpose),
+        kind=export.kind_label(row.kind, row.voids, row.purpose, row.period_start is not None),
         method=None if row.method is None else export.METHODS[row.method],
         amount_clp=row.amount_clp,
         status=export.STATUSES[row.status],
