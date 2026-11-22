@@ -198,15 +198,16 @@ The contact address is `CONTACT_EMAIL` in `site/build.py`.
 
 ### Uptime
 
-UptimeRobot (free plan) checks three monitors every 5 minutes, and alerts the owner when one fails:
+UptimeRobot (free plan) checks two monitors every 5 minutes, and alerts the owner when one fails:
 
 | Monitor | URL | Down when |
 | --- | --- | --- |
 | Production | `https://app.rakin.app/healthz` | anything but a 200; it answers 503 when the api cannot reach Postgres |
-| Staging | `https://staging.rakin.app/healthz` | the same; staging is down for a few seconds every night at its reset, which can trip a brief staging alert |
 | Landing page | `https://rakin.app/` | anything but a 200 |
 
-Their public status page is <https://stats.uptimerobot.com/05JvXUXDJh>. Staff open it from the app as "Estado del servicio" (the desktop sidebar, Ajustes › Cuenta, a coach's account menu), and visitors from rakin.app's footer; its URL is `STATUS_URL` in `frontend/src/config.ts` and in `site/build.py`. Staging stays off the public page (UptimeRobot › Status pages), so its nightly blip never reads as an outage.
+Their public status page is <https://stats.uptimerobot.com/05JvXUXDJh>. Staff open it from the app as "Estado del servicio" (the desktop sidebar, Ajustes › Cuenta, a coach's account menu), and visitors from rakin.app's footer; its URL is `STATUS_URL` in `frontend/src/config.ts` and in `site/build.py`. Both monitors are on the public page.
+
+Staging is not monitored. Its nightly reset takes it down for a few seconds, which the public page would show gyms as an outage, and the free plan cannot keep one monitor off the page. It is checked by hand at each release instead ([RELEASING.md](../RELEASING.md#what-the-pm-checks-on-staging)).
 
 ## 6. Rollback
 
