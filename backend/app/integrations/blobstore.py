@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import os
 import re
+import shutil
 import tempfile
 import time
 from collections.abc import AsyncIterable, AsyncIterator, Callable
@@ -125,6 +126,11 @@ class BlobStore(Protocol):
         offboarding exports and deletes (`app.offboarding`): never for a request."""
         ...
 
+    async def delete_under(self, prefix: str) -> int:
+        """Remove every file under `prefix`, uploads left half-written included; how many
+        of them `keys_under` listed. For a gym's deletion (`app.offboarding`)."""
+        ...
+
 
 def s3_client(
     endpoint_url: str, region: str, access_key_id: str, secret_access_key: str
@@ -232,6 +238,13 @@ class S3BlobStore:
 
         return sorted(await asyncio.to_thread(keys))
 
+    async def delete_under(self, prefix: str) -> int:
+        # The store holds no half-written upload: a PUT lands whole or not at all.
+        stored = await self.keys_under(prefix)
+        for key in stored:
+            await asyncio.to_thread(self._client.delete_object, Bucket=self.bucket, Key=key)
+        return len(stored)
+
 
 Operation = Literal["put", "get"]
 
@@ -321,6 +334,13 @@ class LocalBlobStore:
             ]
 
         return sorted(await asyncio.to_thread(keys))
+
+    async def delete_under(self, prefix: str) -> int:
+        stored = await self.keys_under(prefix)
+        for tree in (self.root / "data" / prefix, self.root / "meta" / prefix):
+            # With whatever an interrupted upload left beside its target (`.up-…`).
+            await asyncio.to_thread(shutil.rmtree, tree, ignore_errors=True)
+        return len(stored)
 
     def verify(
         self,

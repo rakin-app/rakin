@@ -528,17 +528,16 @@ async def resume_gym(gym_id: uuid.UUID, operator: OperatorSession, request: Requ
     """Resume the gym, with a session proved in the last 10 minutes: its people sign in
     again, and the next nightly run catches up the days it missed (`app.jobs.catch_up`).
     An active gym stays as it is; one being removed is refused, `removal_started`."""
-    try:
-        return await change_suspension(
-            request,
-            operator,
-            "SELECT slug, changed FROM platform_resume_gym(:h, :g)",
-            {"g": gym_id},
-        )
-    except DBAPIError as error:
-        if "has a removal started" in str(getattr(error.orig, "__cause__", None) or error.orig):
-            raise HTTPException(status.HTTP_409_CONFLICT, {"code": "removal_started"}) from None
-        raise
+    row = await fresh_call(
+        operator,
+        "SELECT slug, changed, removal_started FROM platform_resume_gym(:h, :g)",
+        {"g": gym_id},
+    )
+    if row.removal_started:
+        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "removal_started"})
+    lookup: GymLookup = request.app.state.gym_lookup
+    lookup.forget(row.slug)
+    return Suspended(changed=row.changed)
 
 
 @router.post(

@@ -289,3 +289,16 @@ def test_keys_under_lists_every_key_below_a_prefix_and_no_other(harness: Harness
 def test_keys_under_refuses_what_is_not_a_prefix(harness: Harness, bad_prefix: str) -> None:
     with pytest.raises(ValueError):
         asyncio.run(harness.store.keys_under(bad_prefix))
+
+
+def test_delete_under_removes_every_file_below_a_prefix_and_no_other(harness: Harness) -> None:
+    root = f"t-{uuid.uuid4().hex}"
+    inside = [f"{root}/a/1", f"{root}/a/deep/2"]
+    for name in [*inside, f"{root}/ab/3"]:
+        asyncio.run(harness.store.put(name, "image/png", PNG))
+
+    assert asyncio.run(harness.store.delete_under(f"{root}/a/")) == len(inside)
+
+    assert asyncio.run(harness.store.keys_under(f"{root}/a/")) == []
+    assert asyncio.run(harness.store.keys_under(f"{root}/ab/")) == [f"{root}/ab/3"]
+    assert asyncio.run(harness.store.delete_under(f"{root}/none/")) == 0

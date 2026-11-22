@@ -517,3 +517,43 @@ def test_the_command_asks_for_the_slug_twice(capsys: pytest.CaptureFixture[str])
         "meta", "meta", "ana"
     )
     assert gyms.parse(["export", "meta", "--to", "out"]) == gyms.Export("meta", Path("out"))
+
+
+class Watching(LocalBlobStore):
+    """A store that, as each prefix's files go, tries to lock the gym's row from
+    another connection, as a cancel from the panel would."""
+
+    def __init__(self, inner: LocalBlobStore, admin_url: str, gym_id: uuid.UUID) -> None:
+        self.__dict__.update(inner.__dict__)
+        self.admin_url = admin_url
+        self.gym_id = gym_id
+        self.locked: list[bool] = []
+
+    async def delete_under(self, prefix: str) -> int:
+        conn = await asyncpg.connect(to_dsn(self.admin_url))
+        try:
+            await conn.fetch("SELECT 1 FROM gym WHERE id = $1 FOR UPDATE NOWAIT", self.gym_id)
+            self.locked.append(False)
+        except asyncpg.LockNotAvailableError:
+            self.locked.append(True)
+        finally:
+            await conn.close()
+        return await super().delete_under(prefix)
+
+
+def test_the_gym_stays_locked_while_its_files_go(
+    fresh: Database, store: LocalBlobStore, two: tuple[uuid.UUID, uuid.UUID, uuid.UUID]
+) -> None:
+    gym_a = two[0]
+    started = removing(fresh, gym_a, days_ago=removal.EXPORT_DAYS + 1)
+    watching = Watching(store, fresh.admin_url, gym_a)
+    # An upload left half-written in the gym's prefix goes with it.
+    partial = store.root / "data" / "proofs" / str(gym_a) / ".up-left"
+    partial.parent.mkdir(parents=True, exist_ok=True)
+    partial.write_bytes(b"half")
+
+    done = delete(fresh, watching, slug_of(fresh, gym_a), started + timedelta(days=40))
+
+    assert isinstance(done, Deleted)
+    assert watching.locked == [True] * len(file_prefixes(gym_a))
+    assert not partial.exists()

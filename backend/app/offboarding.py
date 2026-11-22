@@ -18,8 +18,9 @@ and `delete` (`app.gyms`) call this.
   expense receipts and its logo).
 
 `delete_gym` refuses a gym whose removal has not started, or whose export window is
-still open with no early deletion recorded. Otherwise it deletes the gym's files, then
-calls migration 0094's `delete_gym`, which deletes every row with its id, the gym,
+still open with no early deletion recorded. Otherwise, holding the gym's row locked so
+that a cancel from the panel waits for it, it deletes the gym's files, then calls
+migration 0094's `delete_gym`, which deletes every row with its id, the gym,
 and each of its people no other gym knows, in one transaction, and logs it in
 `platform_event`. The files go first: a failure in between leaves rows that name
 files no longer there, and running it again finishes the job, where the other order
@@ -64,16 +65,16 @@ class Found:
     early_deletion_on: date | None
 
 
-async def find_gym(conn: asyncpg.Connection, slug: str) -> Found | None:
+async def find_gym(conn: asyncpg.Connection, slug: str, *, lock: bool = False) -> Found | None:
     """The gym with `slug`, read as the owner, with `app.gym_id` naming it for the rest
-    of the transaction the caller holds."""
+    of the transaction the caller holds; with `lock`, its row locked until it ends."""
     found = await conn.fetchrow("SELECT id FROM auth_gym_by_slug($1)", slug)
     if found is None:
         return None
     await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(found["id"]))
     row = await conn.fetchrow(
         "SELECT id, slug, name, suspended_at, removal_started_at, early_deletion_on"
-        " FROM gym WHERE id = $1",
+        " FROM gym WHERE id = $1" + (" FOR UPDATE" if lock else ""),
         found["id"],
     )
     assert row is not None
@@ -213,19 +214,19 @@ async def delete_gym(
 ) -> Deleted | Refused | None:
     """Delete the gym with `slug`, its files and its people no other gym knows; None if
     no gym has the slug. `by` is who ran it, for the log."""
+    # One transaction, the gym's row locked from the check to the last row: a cancel
+    # from the panel meanwhile waits for it, and so never lands between the files
+    # going and the rows.
     async with conn.transaction():
-        found = await find_gym(conn, slug)
+        found = await find_gym(conn, slug, lock=True)
         if found is None:
             return None
         refusal = deletion_refusal(found, timezone, today)
-    if refusal is not None:
-        return Refused(refusal)
-    files = 0
-    for prefix in file_prefixes(found.id):
-        for key in await store.keys_under(prefix):
-            await store.delete(key)
-            files += 1
-    async with conn.transaction():
+        if refusal is not None:
+            return Refused(refusal)
+        files = 0
+        for prefix in file_prefixes(found.id):
+            files += await store.delete_under(prefix)
         detail = json.loads(
             await conn.fetchval("SELECT delete_gym($1, $2, $3)", found.id, by, files)
         )

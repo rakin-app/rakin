@@ -11,7 +11,8 @@ live in `app.platform.removal`:
   suspending asks (0079). Each logs `gym_removal_started`, `gym_removal_cancelled` or
   `gym_early_deletion`, naming the gym by its slug; a call that changes nothing logs
   nothing. Starting one takes the gym's slug, typed again, and refuses an active gym.
-- `platform_resume_gym` (0079) refuses a gym with a removal: it is cancelled first.
+- `platform_resume_gym` (0079) leaves a gym with a removal suspended, and says so
+  (`removal_started`): the removal is cancelled first.
 - `platform_gym` (0081) says when the removal started and the early date.
 - `delete_gym(gym, by, files)`: every row with the gym's id, in `TABLES`' order (each before
   any it references), then the gym, then each of its people no other gym knows, and
@@ -422,13 +423,14 @@ def resume(*, removal: bool) -> str:
                 "    INTO found_slug, since, removing\n",
             ),
             (
-                "    slug := found_slug;\n",
-                "    IF removing IS NOT NULL THEN\n"
-                "        RAISE EXCEPTION 'gym % has a removal started: cancel it first',"
-                " found_slug\n"
-                "            USING ERRCODE = 'object_not_in_prerequisite_state';\n"
-                "    END IF;\n"
-                "    slug := found_slug;\n",
+                "RETURNS TABLE (slug text, changed boolean)\n",
+                "RETURNS TABLE (slug text, changed boolean, removal_started boolean)\n",
+            ),
+            (
+                "    changed := since IS NOT NULL;\n",
+                "    -- One being removed stays suspended: its removal is cancelled first.\n"
+                "    removal_started := removing IS NOT NULL;\n"
+                "    changed := since IS NOT NULL AND NOT removal_started;\n",
             ),
         ],
     )
