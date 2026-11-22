@@ -7,15 +7,25 @@ export type ConfirmStep = { confirming: boolean; ask: () => void; back: () => vo
 
 export function useConfirmStep(): ConfirmStep {
   const [confirming, setConfirming] = useState(false)
-  return { confirming, ask: () => setConfirming(true), back: () => setConfirming(false) }
+  return {
+    confirming,
+    ask: () => {
+      // A field keeps submitting its form on Enter, read-only or not: out of it, a second
+      // Enter (a phone keyboard's Go pressed twice) cannot pass "Sí, …" unseen.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      setConfirming(true)
+    },
+    back: () => setConfirming(false),
+  }
 }
 
 /**
  * A money correction's buttons, on either step (#550). First "Cancelar" and the action;
  * then "Volver", which returns to the form as it was, and "Sí, …", the only one that
  * saves. The two submits are separate buttons (`key`), so the second tap of a double tap
- * on the first lands on the one that is gone, not on "Sí, …"; a double tap on "Sí, …"
- * is sent once by `useSubmit`.
+ * on the first lands on the one that is gone, not on "Sí, …", and on "Volver" not on
+ * "Cancelar"; a double tap on "Sí, …" is sent once by `useSubmit`. A double Enter in a
+ * field stops there too: `ask` takes the focus out of it.
  */
 export function FixActions({
   step,
@@ -41,9 +51,15 @@ export function FixActions({
   const { confirming } = step
   return (
     <div className="member__form-actions">
-      <Button disabled={pending} onClick={confirming ? step.back : onCancel}>
-        {confirming ? words.back : words.cancel}
-      </Button>
+      {confirming ? (
+        <Button key="back" disabled={pending} onClick={step.back}>
+          {words.back}
+        </Button>
+      ) : (
+        <Button key="cancel" disabled={pending} onClick={onCancel}>
+          {words.cancel}
+        </Button>
+      )}
       {confirming ? (
         <Button key="confirm" type="submit" variant={variant} disabled={pending} busy={pending}>
           {pending ? words.working : confirm}

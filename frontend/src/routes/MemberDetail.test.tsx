@@ -419,6 +419,31 @@ function asksTwice(c: TwiceCase) {
     expect(sent(calls)).toEqual([])
   })
 
+  it(`${c.name}: a double Enter in a field stops at "Sí, …" (#550)`, async () => {
+    const calls = c.stub()
+    renderAt(PATH)
+    const form = await c.open()
+    // The first field that submits on Enter: text, a number or a date.
+    form.querySelector<HTMLInputElement>('input:not([type=radio]):not([type=checkbox])')!.focus()
+    // A phone keyboard's Go pressed twice, or a held Enter.
+    await userEvent.keyboard('{Enter}{Enter}')
+    expect(within(form).getByRole('button', { name: c.confirm })).toBeInTheDocument()
+    expect(sent(calls)).toEqual([])
+  })
+
+  it(`${c.name}: a double tap on Volver stays on the form (#550)`, async () => {
+    const calls = c.stub()
+    renderAt(PATH)
+    const form = await c.open()
+    await userEvent.click(within(form).getByRole('button', { name: c.submit }))
+    const back = within(form).getByRole('button', { name: c.words.back })
+    fireEvent.click(back)
+    fireEvent.click(back)
+    expect(form).toBeInTheDocument()
+    expect(within(form).getByRole('button', { name: c.submit })).toBeInTheDocument()
+    expect(sent(calls)).toEqual([])
+  })
+
   it(`${c.name}: a double tap on "Sí, …" sends it once (#550)`, async () => {
     const calls = c.stub()
     renderAt(PATH)
