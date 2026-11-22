@@ -77,7 +77,14 @@ from app.domain.membership import (
 from app.jobs import lapse
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
-from app.permissions import LedgerReadSession, LedgerSession, SeesMoney, StaffSession
+from app.permissions import (
+    LedgerReadSession,
+    LedgerSession,
+    Permission,
+    SeesMoney,
+    StaffSession,
+    holds,
+)
 from app.schemas.ledger import DiscountFigures, DiscountShift, VoidConflict
 from app.schemas.memberships import (
     Cancellation,
@@ -119,6 +126,11 @@ NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "membership not found")
 # Starting a plan is money (`money_write`), wherever it is given: by hand, on an
 # enrolment or a return, or approving a join request (#310).
 PLAN_IS_MONEY = HTTPException(status.HTTP_403_FORBIDDEN, "giving a plan needs money_write")
+
+# Bringing someone back on the member list is "Reactivar"'s, `members_manage` (#549).
+RETURN_IS_MEMBERS = HTTPException(
+    status.HTTP_403_FORBIDDEN, "bringing the person back on the list needs members_manage"
+)
 
 # RLS keeps every table to the current gym.
 SELECT_MEMBERSHIP = """
@@ -1515,8 +1527,9 @@ async def _uncancellable(
     person who comes back on the list with it when it was their Dar de baja that ended
     it (#549); locked with its person with `lock`. A 409 for one not cancelled, a voided
     one, a pack or a trial, a person who has left the gym by another way or since, and
-    beside another live plan of theirs. Back to Lapsed when a period past due plus grace
-    is unpaid by tomorrow."""
+    beside another live plan of theirs; a 403 when the person would come back and the
+    one acting lacks `members_manage`, which "Reactivar" needs. Back to Lapsed when a
+    period past due plus grace is unpaid by tomorrow."""
     current, row, today, tomorrow = await _come_back(session, tenant, membership_id, lock=lock)
     if current.status is not MembershipStatus.CANCELLED:
         raise _refused(ReactivationRefusal.NOT_CANCELLED, "only a cancelled plan is undone")
@@ -1529,6 +1542,8 @@ async def _uncancellable(
                 ReactivationRefusal.HAS_LEFT,
                 "the person has left the gym: reactivate them first",
             )
+        if not await holds(session, tenant, Permission.MEMBERS_MANAGE):
+            raise RETURN_IS_MEMBERS
         returning = row.person_id
     terms = await _back_on_terms(session, membership_id, current, row, today, verb="undone")
     lapses = _lapses_again(row, tomorrow)
@@ -1593,7 +1608,8 @@ async def uncancel_membership(
     The `cancel_undone` audit row is written first: the database lets a cancelled row
     change only with it (migration 0092). Refused, writing nothing, for a voided plan,
     a pack or a trial, a person who has left the gym by another way or since, and beside
-    another live plan of the person for the same program (`LIVE_PLAN`)."""
+    another live plan of the person for the same program (`LIVE_PLAN`); a 403 bringing
+    the person back without `members_manage`."""
     back, today, returning = await _uncancellable(session, tenant, membership_id, lock=True)
     undone, bills_from, owed = await _reactivation(
         session, membership_id, back, today, body.bill_from

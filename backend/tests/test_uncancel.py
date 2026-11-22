@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from app.domain.dates import add_months
 from app.main import create_app
+from app.permissions import Permission
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import unique_slug
@@ -34,6 +35,7 @@ from tests.pg import (
     seeded_today,
     throwaway_database,
 )
+from tests.test_expenses import holding
 from tests.test_lapsed_reassign import ledger, ok, run_lapse, start, status
 from tests.test_member_roll import enrolled, leave, memberships, plan
 from tests.test_memberships import add_staff
@@ -523,3 +525,37 @@ def test_reactivar_with_a_plan_still_starts_a_new_one(
     assert len(plans) == 2
     assert {m["id"]: m["status"] for m in plans}[old["id"]] == "cancelled"
     assert person_of(client, gym, person)["left_with"] is None
+
+
+def test_bringing_the_person_back_needs_members_manage(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """A tesorero (money, not members) cannot return someone to the list this way, which
+    "Reactivar" would not let them do either: refused, writing nothing."""
+    plan_id = plan(client, gym, "signup")
+    person = enrolled(client, gym, membership={"plan_id": plan_id})["id"]
+    [membership] = memberships(client, gym, person)
+    ok(leave(client, gym, person, left_reason="viaje"))
+    tesorero = holding(db, gym, Permission.MONEY_READ, Permission.MONEY_WRITE)
+    assert quote(client, gym, membership["id"], person_id=tesorero).status_code == 403
+    assert uncancel(client, gym, membership["id"], person_id=tesorero).status_code == 403
+    assert status(client, gym, membership["id"]) == "cancelled"
+    still = person_of(client, gym, person)
+    assert (still["left_reason"], still["left_with"]) == ("viaje", membership["id"])
+    rows = run(
+        db.owner_url,
+        in_gym(gym, "SELECT action FROM audit_event WHERE person_id = $1", uuid.UUID(person)),
+    )
+    assert "cancel_undone" not in {row["action"] for row in rows}
+
+    # With members_manage too, it goes through.
+    both = holding(
+        db,
+        gym,
+        Permission.MONEY_READ,
+        Permission.MONEY_WRITE,
+        Permission.MEMBERS_MANAGE,
+        Permission.MEMBERS_ADD,
+    )
+    assert ok(uncancel(client, gym, membership["id"], person_id=both))["status"] == "active"
+    assert person_of(client, gym, person)["left_on"] is None

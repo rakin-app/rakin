@@ -4847,11 +4847,14 @@ describe('Deshacer la baja, in one step (#549)', () => {
   const LEFT: Person = { ...FELIPE, left_on: '2026-11-10', left_with: 'm-felipe' }
   const actions = () => screen.findByRole('region', { name: copy.exitLabel })
 
-  function stubLeft(left: Person = LEFT) {
+  function stubLeft(left: Person = LEFT, permissions?: string[]) {
     let person = left
     return stubApi({
       memberships: [CANCELLED],
       extra: (path, method) => {
+        if (path === '/api/me/role' && permissions) {
+          return { body: { role: 'admin', permissions, account_holder: false, uses_grades: true } }
+        }
         if (path === '/api/people/felipe' && method === 'GET') return { body: person }
         if (path !== '/api/memberships/m-felipe/uncancel') return undefined
         if (method === 'GET') return { body: { status: 'active', returns: true, last: NOTHING, today: NOTHING } }
@@ -4886,6 +4889,14 @@ describe('Deshacer la baja, in one step (#549)', () => {
     // Back on the list: "Dar de baja" again, and no new plan was started.
     expect(await within(await actions()).findByRole('button', { name: copy.leave })).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1)
+  })
+
+  it('is not offered to someone who records money but does not manage members', async () => {
+    stubLeft(LEFT, ['money_read', 'money_write', 'gym_setup'])
+    renderAt(PATH)
+    const exit = await actions()
+    expect(within(exit).getByRole('button', { name: copy.reactivate })).toBeInTheDocument()
+    expect(within(exit).queryByRole('button', { name: copy.undoLeave })).not.toBeInTheDocument()
   })
 
   it('is not offered when their Dar de baja ended no plan it can bring back', async () => {

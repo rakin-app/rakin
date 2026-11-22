@@ -69,7 +69,7 @@ import {
   type RefundablePayment,
   type TimelineEntry,
 } from '../api/member'
-import { myAccessQuery, readsLedger, type Access } from '../api/me'
+import { holds, myAccessQuery, readsLedger, type Access } from '../api/me'
 import { welcomeQuery } from '../api/people'
 import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
@@ -254,7 +254,8 @@ export function MemberDetail() {
             access={access.data}
             // A mistaken Dar de baja undone in one step, their plan with them (#549).
             undoLeave={
-              money && person.data.left_with
+              // It writes money and returns them to the list: both permissions, as the API asks.
+              holds(access.data, 'money_write') && holds(access.data, 'members_manage') && person.data.left_with
                 ? (close) => <ReactivateForm mode="uncancel" membership={{ id: person.data.left_with ?? '' }} onCancel={() => close(null)} onDone={close} />
                 : undefined
             }
