@@ -156,7 +156,8 @@ class Cancellation(BaseModel):
 
 class Reactivation(BaseModel):
     """ "Reactivar plan" (#284): a lapsed plan Active again, with why, billing on after
-    its last period (`last`, catching up the periods since the lapse) or from today."""
+    its last period (`last`, catching up the periods since the lapse) or from today.
+    "Deshacer baja" (#285) takes the same, the periods since the cancel caught up."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -187,11 +188,28 @@ class ReactivationQuote(BaseModel):
     today: ReactivationBill
 
 
+class UncancelQuote(BaseModel):
+    """What `POST .../uncancel` would do with each `bill_from`, saving nothing (#285): the
+    status the plan returns to, `lapsed` when a period past due plus grace is unpaid,
+    which then bills nothing."""
+
+    status: MembershipStatus
+    last: ReactivationBill
+    today: ReactivationBill
+
+
 class ReactivationRefusal(StrEnum):
-    """Why a plan cannot be reactivated, for the ficha to say what to do first."""
+    """Why a plan cannot be reactivated, or its cancel undone (#285), for the ficha to
+    say what to do first."""
 
     # Only a lapsed plan is reactivated.
     NOT_LAPSED = "not_lapsed"
+    # Only a cancelled plan's cancel is undone.
+    NOT_CANCELLED = "not_cancelled"
+    # A plan voided (started by mistake) stays voided.
+    VOIDED = "voided"
+    # The person has left the gym (dado de baja, #157): reactivate them first.
+    HAS_LEFT = "has_left"
     # A pack or a trial ends: the member starts a new one.
     NOT_RECURRING = "not_recurring"
     # A fixed-period plan whose period has ended: the member moves to the next one's plan.

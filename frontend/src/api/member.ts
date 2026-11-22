@@ -542,7 +542,27 @@ export type ReactivationBill = { bills_from: string; periods: QuotedPeriod[]; to
 
 export type ReactivationQuote = Record<BillFrom, ReactivationBill>
 
-export type ReactivationRefusal = 'not_lapsed' | 'not_recurring' | 'period_ended' | 'unpaid' | 'live_plan'
+/** Why a plan cannot be reactivated, or its cancel undone (#285). */
+export type ReactivationRefusal =
+  | 'not_lapsed'
+  | 'not_cancelled'
+  | 'voided'
+  | 'has_left'
+  | 'not_recurring'
+  | 'period_ended'
+  | 'unpaid'
+  | 'live_plan'
+
+const REACTIVATION_REFUSALS: readonly ReactivationRefusal[] = [
+  'not_lapsed',
+  'not_cancelled',
+  'voided',
+  'has_left',
+  'not_recurring',
+  'period_ended',
+  'unpaid',
+  'live_plan',
+]
 
 /** The refusal of a reactivation (backend `ReactivationConflict`), with what it is about. */
 export type ReactivationRefused = {
@@ -552,10 +572,19 @@ export type ReactivationRefused = {
   plan_name: string | null
 }
 
-export function reactivationQuery(membershipId: string) {
+/** A plan brought back by hand: a lapsed one reactivated (#284), or one dado de baja by
+ * mistake, its cancel undone (#285). Each is its own endpoint, named so. */
+export type BringBack = 'reactivate' | 'uncancel'
+
+/** What "Deshacer baja" would do (backend `UncancelQuote`, #285): the status the plan returns
+ * to, `lapsed` when a period past grace is unpaid, which bills nothing; and what it bills
+ * with each `bill_from`. A reactivation's quote has no status: it is always Active. */
+export type BringBackQuote = ReactivationQuote & { status?: 'active' | 'lapsed' }
+
+export function bringBackQuery(membershipId: string, mode: BringBack) {
   return queryOptions({
-    queryKey: ['memberships', 'reactivate', membershipId],
-    queryFn: () => apiFetch<ReactivationQuote>(`/api/memberships/${encodeURIComponent(membershipId)}/reactivate`),
+    queryKey: ['memberships', mode, membershipId],
+    queryFn: () => apiFetch<BringBackQuote>(`/api/memberships/${encodeURIComponent(membershipId)}/${mode}`),
     // Read as the form shows it: what has been paid since decides it. Dropped once the
     // form closes, so reopening it never shows the last quote while the new one loads.
     staleTime: 0,
@@ -564,26 +593,19 @@ export function reactivationQuery(membershipId: string) {
   })
 }
 
-export function reactivateMembership(membershipId: string, reason: string, billFrom: BillFrom): Promise<Membership> {
-  return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/reactivate`, {
+export function bringBack(membershipId: string, mode: BringBack, reason: string, billFrom: BillFrom): Promise<Membership> {
+  return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/${mode}`, {
     method: 'POST',
     body: JSON.stringify({ reason, bill_from: billFrom }),
   })
 }
 
-/** The 409's refusal of a reactivation, for the form to say what to do first. */
+/** The 409's refusal of a reactivation or an undone cancel, for the form to say what to do first. */
 export function reactivationRefused(error: unknown): ReactivationRefused | null {
   if (!(error instanceof ApiError) || error.status !== 409) return null
   const detail = (error.body as { detail?: Record<string, unknown> } | undefined)?.detail
-  const code = detail?.code
-  if (
-    code !== 'not_lapsed' &&
-    code !== 'not_recurring' &&
-    code !== 'period_ended' &&
-    code !== 'unpaid' &&
-    code !== 'live_plan'
-  )
-    return null
+  const code = REACTIVATION_REFUSALS.find((known) => known === detail?.code)
+  if (!code) return null
   const text = (value: unknown) => (typeof value === 'string' ? value : null)
   return {
     code,

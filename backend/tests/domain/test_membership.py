@@ -109,6 +109,49 @@ def test_active_and_lapsed_can_be_cancelled(source: MembershipStatus) -> None:
     assert cancelled.cancel_reason == "se mudó"
 
 
+MONTHLY_TERMS = m.PlanTerms(PlanKind.MONTHLY, "signup")
+
+
+def test_an_undone_cancel_bills_on_from_where_it_left_off() -> None:
+    cancelled = m.cancel(monthly(anchor_day=1), "por error")
+    undone = m.undo_cancel(
+        cancelled, today=DEC_10, terms=MONTHLY_TERMS, lapses=False, from_today=False
+    )
+    assert (undone.status, undone.cancel_reason) == (S.ACTIVE, None)
+    assert (undone.current_period_end, undone.anchor_day) == (NOV_30, 1)
+
+
+def test_an_undone_cancel_from_today_skips_the_gap() -> None:
+    cancelled = m.cancel(monthly(anchor_day=1), "por error")
+    undone = m.undo_cancel(
+        cancelled, today=DEC_10, terms=MONTHLY_TERMS, lapses=False, from_today=True
+    )
+    assert undone.status is S.ACTIVE
+    assert (undone.current_period_end, undone.anchor_day) == (DEC_10 - timedelta(days=1), 10)
+
+
+@pytest.mark.parametrize("from_today", [False, True])
+def test_an_undone_cancel_that_would_lapse_tonight_is_lapsed_billing_nothing(
+    from_today: bool,
+) -> None:
+    cancelled = m.cancel(monthly(anchor_day=1), "por error")
+    undone = m.undo_cancel(
+        cancelled, today=DEC_10, terms=MONTHLY_TERMS, lapses=True, from_today=from_today
+    )
+    assert (undone.status, undone.cancel_reason) == (S.LAPSED, None)
+    assert (undone.current_period_end, undone.anchor_day) == (NOV_30, 1)
+
+
+def test_only_a_cancelled_recurring_membership_is_undone() -> None:
+    with pytest.raises(InvalidTransition):
+        m.undo_cancel(monthly(), today=DEC_10, terms=MONTHLY_TERMS, lapses=False, from_today=False)
+    pack = m.cancel(Membership(PlanKind.CREDITS, S.ACTIVE, NOV_30, 4), "por error")
+    with pytest.raises(ValueError, match="not undone"):
+        m.undo_cancel(
+            pack, today=DEC_10, terms=m.PlanTerms(PlanKind.CREDITS), lapses=False, from_today=False
+        )
+
+
 @pytest.mark.parametrize("reason", ["", "   "])
 def test_a_cancellation_needs_a_reason(reason: str) -> None:
     with pytest.raises(ValueError, match="reason"):
