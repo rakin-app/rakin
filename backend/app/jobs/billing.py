@@ -7,7 +7,7 @@ charge: a ledger entry's amount is positive. A pending plan change that a new pe
 reaches is applied with it: `plan_id` takes `next_plan_id`, and `anchor_day` is
 recomputed from the day it starts (migration 0009). A pending move to another anchor
 day (#547) is applied with the first period, prorated: `anchor_day` takes
-`next_anchor_day`, which a plan change clears as well (migration 0095).
+`next_anchor_day`, which a plan change clears as well (migration 0096).
 
 It picks up from the latest period each membership has (or the day it was paid
 through, if later), so a second run on the same date finds nothing owed. The
