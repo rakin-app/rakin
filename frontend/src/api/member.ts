@@ -25,6 +25,9 @@ export type Person = {
   // Why they left (#294), as the gym wrote it. Owner and admin only: a coach always
   // reads null, since it is personal. Never health data (#384), though the text is the gym's.
   left_reason?: string | null
+  // The plan their Dar de baja ended, which "Deshacer la baja" brings back with them in one
+  // step (#549); null while they are here, or when that leave ended none it can.
+  left_with?: string | null
   // History from before Rakin (#293): the day they first trained here, and how many
   // classes they had. Shown on the ficha, never read by billing.
   member_since: string | null
@@ -639,7 +642,11 @@ export type BringBack = 'reactivate' | 'uncancel'
 /** What "Deshacer baja" would do (backend `UncancelQuote`, #285): the status the plan returns
  * to, `lapsed` when a period past grace is unpaid, which bills nothing; and what it bills
  * with each `bill_from`. A reactivation's quote has no status: it is always Active. */
-export type BringBackQuote = ReactivationQuote & { status?: 'active' | 'lapsed' }
+export type BringBackQuote = ReactivationQuote & {
+  status?: 'active' | 'lapsed'
+  // The person's Dar de baja ended this plan: they come back on the list with it (#549).
+  returns?: boolean
+}
 
 export function bringBackQuery(membershipId: string, mode: BringBack) {
   return queryOptions({

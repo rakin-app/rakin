@@ -21,7 +21,9 @@ member list leaves them out by `gym_person.left_on` (migration 0032). Whatever t
 owe stays owed. The day may be as far back as history goes (`HISTORY_WINDOW_YEARS`),
 and the gym may say why (`left_reason`, 0052), which a `history_set` row records.
 `POST .../return` (reactivar) brings them back, on a plan again if given one, and
-clears the reason they had left with.
+clears the reason they had left with. A plan their Dar de baja ended can instead be
+brought back with them in one step, "Deshacer baja" (`POST
+/api/memberships/{id}/uncancel`, #549): `gym_person.left_at` (0095) names that leave.
 
 `POST /api/people/former` is "Agregar exalumno" (#294): someone who trained here
 before Rakin and already left, added with the day they left, the day they started and
@@ -52,7 +54,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.custom_fields import field_cipher, write_person_fields
 from app.api.guardians import link
 from app.api.history import changes, record_history_set, refuse_outside_history
-from app.api.memberships import CALL_OFF_BOOKED, PLAN_IS_MONEY, start_membership, welcome_to
+from app.api.memberships import (
+    CALL_OFF_BOOKED,
+    PLAN_IS_MONEY,
+    back_on_roll,
+    start_membership,
+    welcome_to,
+)
 from app.api.people import (
     NOT_FOUND,
     add_to_gym,
@@ -139,9 +147,11 @@ SUPPRESSION = text(
     "SELECT reason, detail, created_at FROM mail_suppression WHERE address = :address"
 )
 
+# `left_at` is the leave's `now()`, which its plans' `cancelled_at` share: what tells
+# "Deshacer baja" a plan was ended by this Dar de baja (0095). A return clears it.
 SET_LEFT = text(
-    "UPDATE gym_person SET left_on = :left_on, left_reason = :left_reason, updated_at = now()"
-    " WHERE person_id = :id"
+    "UPDATE gym_person SET left_on = :left_on, left_reason = :left_reason, left_at = now(),"
+    " updated_at = now() WHERE person_id = :id"
 )
 
 SET_FORMER = text(
@@ -294,8 +304,7 @@ async def return_to_gym(
         raise NOT_FOUND
     if record.left_on is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "has not left the gym")
-    await session.execute(SET_LEFT, {"id": person_id, "left_on": None, "left_reason": None})
-    await record_history_set(session, person_id, changes(record._asdict(), {"left_reason": None}))
+    await back_on_roll(session, person_id, record, ("left_reason",))
     if body.membership is not None:
         # They paid their matrícula when they first joined.
         await start_membership(session, tenant, person_id, body.membership, enrolment=False)

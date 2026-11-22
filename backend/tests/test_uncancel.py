@@ -441,3 +441,85 @@ def test_unknown_or_another_gyms_membership_is_a_404(
     assert quote(client, elsewhere, membership).status_code == 404
     assert uncancel(client, elsewhere, membership).status_code == 404
     assert uncancel(client, gym, str(uuid.uuid4())).status_code == 404
+
+
+# --- a mistaken Dar de baja, undone in one step (#549) ---------------------------------
+
+
+def person_of(client: TestClient, gym: uuid.UUID, person: str) -> Any:
+    return ok(client.get(f"/api/people/{person}", headers=as_gym(gym)))
+
+
+def test_undoing_a_dar_de_baja_brings_the_person_and_the_plan_back_in_one_step(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    plan_id = plan(client, gym, "signup")
+    person = enrolled(client, gym, membership={"plan_id": plan_id})["id"]
+    [before] = memberships(client, gym, person)
+    left = ok(leave(client, gym, person, left_reason="viaje"))
+    assert left["left_with"] == before["id"]
+
+    quoted = ok(quote(client, gym, before["id"]))
+    assert (quoted["status"], quoted["returns"]) == ("active", True)
+
+    undone = ok(uncancel(client, gym, before["id"]))
+    assert (undone["status"], undone["cancel_reason"]) == ("active", None)
+    assert (undone["current_period_end"], undone["anchor_day"]) == (
+        before["current_period_end"],
+        before["anchor_day"],
+    )
+    back = person_of(client, gym, person)
+    assert (back["left_on"], back["left_reason"], back["left_with"]) == (None, None, None)
+    # The old plan back, and no new one.
+    assert [m["id"] for m in memberships(client, gym, person)] == [before["id"]]
+    assert len(ledger(client, gym, before["id"])["periods"]) == 1
+
+    rows = run(
+        db.owner_url,
+        in_gym(
+            gym,
+            "SELECT action, detail FROM audit_event WHERE person_id = $1 ORDER BY at, action",
+            uuid.UUID(person),
+        ),
+    )
+    actions = {row["action"]: json.loads(row["detail"]) for row in rows}
+    assert actions["cancel_undone"]["returned"] is True
+    returned = actions["history_set"]
+    assert returned["left_on"]["after"] is None
+    assert returned["left_reason"] == {"before": "viaje", "after": None}
+
+
+def test_the_one_step_undo_is_only_for_a_plan_that_same_dar_de_baja_ended(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """Cancelled before they left (`cancelled_plan`): not this leave's, so "Reactivar"
+    first. Left, back with Reactivar and left again: the first leave's plan is not the
+    second's either."""
+    person, membership, _ = cancelled_plan(client, db, gym)
+    assert ok(leave(client, gym, person))["left_with"] is None
+    assert refusal(quote(client, gym, membership))["code"] == "has_left"
+
+    plan_id = plan(client, gym, "signup")
+    again = enrolled(client, gym, name="Luis Mora", membership={"plan_id": plan_id})["id"]
+    [first] = memberships(client, gym, again)
+    ok(leave(client, gym, again))
+    ok(client.post(f"/api/people/{again}/return", json={}, headers=as_gym(gym)))
+    assert person_of(client, gym, again)["left_with"] is None
+    ok(leave(client, gym, again))
+    assert person_of(client, gym, again)["left_with"] is None
+    assert refusal(uncancel(client, gym, first["id"]))["code"] == "has_left"
+
+
+def test_reactivar_with_a_plan_still_starts_a_new_one(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    plan_id = plan(client, gym, "signup")
+    person = enrolled(client, gym, membership={"plan_id": plan_id})["id"]
+    [old] = memberships(client, gym, person)
+    ok(leave(client, gym, person))
+    body = {"membership": {"plan_id": plan_id, "started_on": seeded_today().isoformat()}}
+    ok(client.post(f"/api/people/{person}/return", json=body, headers=as_gym(gym)))
+    plans = memberships(client, gym, person)
+    assert len(plans) == 2
+    assert {m["id"]: m["status"] for m in plans}[old["id"]] == "cancelled"
+    assert person_of(client, gym, person)["left_with"] is None
