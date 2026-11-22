@@ -147,20 +147,20 @@ def paid(
     amount: int = 30000,
     status: str = "validated",
     method: str = "transfer",
-) -> None:
+) -> uuid.UUID:
     """A payment on `period` that staff recorded at `made`, or that `by` uploaded a
-    proof of then, validated at `validated` (`made` by default).
+    proof of then, validated at `validated` (`made` by default): its id.
 
     Written as the app writes them: staff's entry is claimed by the recording admin at
     the moment they record it (`app.api.entries.INSERT_ENTRY`), with no proof; the
     member's carries the proof's key (`app.api.proofs.CLAIM`)."""
     owner = seeded_owner(gym)
-    admin(
+    entry: uuid.UUID = admin(
         db,
         "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
         " kind, status, method, claimed_by, claimed_at, created_at, validated_by,"
         " validated_at, proof_object_key) VALUES ($1, $2, $3, $4, 'payment', $5, $6, $7,"
-        " $8, $8, $9, $10, $11)",
+        " $8, $8, $9, $10, $11) RETURNING id",
         gym,
         membership,
         period,
@@ -173,6 +173,68 @@ def paid(
         validated or made,
         f"proofs/{gym}/{by}/{uuid.uuid4()}.jpg" if by else None,
     )
+    return entry
+
+
+def undone(
+    db: Database,
+    gym: uuid.UUID,
+    membership: uuid.UUID,
+    period: uuid.UUID,
+    payment: uuid.UUID,
+    *,
+    at: datetime,
+    amount: int = 30000,
+) -> None:
+    """Anular pago (#281), as `app.api.ledger.record_payment_void` writes it: the payment
+    stays as it was, and a refund of what is left of it, `purpose = 'mistake'`, names it
+    in `corrects` and `refund_of`."""
+    admin(
+        db,
+        "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
+        " kind, status, created_at, validated_by, validated_at, purpose, corrects,"
+        " refund_of, note) VALUES ($1, $2, $3, $4, 'refund', 'validated', $5, $6, $5,"
+        " 'mistake', $7, $7, 'monto equivocado')",
+        gym,
+        membership,
+        period,
+        amount,
+        at,
+        seeded_owner(gym),
+        payment,
+    )
+
+
+def moved(
+    db: Database,
+    gym: uuid.UUID,
+    membership: uuid.UUID,
+    payment: uuid.UUID,
+    *,
+    out_of: uuid.UUID,
+    into: uuid.UUID,
+    at: datetime,
+    amount: int = 30000,
+) -> None:
+    """Mover pago (#280): `amount` of `payment` off `out_of` and onto `into`, a refund
+    half and a payment half, both `purpose = 'move'` naming it in `corrects`."""
+    half = (
+        "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
+        " kind, status, method, created_at, validated_by, validated_at, purpose,"
+        " corrects, refund_of, note) VALUES ($1, $2, $3, $4, $5, 'validated',"
+        " 'transfer', $6, $7, $6, 'move', $8, $9, 'otro período')"
+    )
+
+    # Both halves in one transaction: the database holds a move to its pair (0089).
+    async def pair(conn: Any) -> None:
+        async with conn.transaction():
+            for period, kind in ((out_of, "refund"), (into, "payment")):
+                await conn.execute(
+                    half, gym, membership, period, amount, kind, at, seeded_owner(gym),
+                    payment, payment if kind == "refund" else None,
+                )  # fmt: skip
+
+    run(db.admin_url, pair)
 
 
 def logged(
@@ -535,30 +597,176 @@ def test_a_payment_staff_moved_is_not_one_of_the_months_payments(
     first = a_period(db, gym, membership)
     second = a_period(db, gym, membership, DUE + timedelta(days=30))
     on = local(MONTH + timedelta(days=3))
-    paid(db, gym, membership, first, made=on, by=person)
-    moved = admin(db, "SELECT id FROM ledger_entry WHERE billing_period_id = $1", first)
-    half = (
-        "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
-        " kind, status, method, created_at, validated_by, validated_at, purpose,"
-        " corrects, refund_of, note) VALUES ($1, $2, $3, 30000, $4, 'validated',"
-        " 'transfer', $5, $6, $5, 'move', $7, $8, 'otro período')"
-    )
-
-    # Both halves in one transaction: the database holds a move to its pair (0089).
-    async def pair(conn: Any) -> None:
-        async with conn.transaction():
-            for period, kind in ((first, "refund"), (second, "payment")):
-                await conn.execute(
-                    half, gym, membership, period, kind, on, seeded_owner(gym), moved,
-                    moved if kind == "refund" else None,
-                )  # fmt: skip
-
-    run(db.admin_url, pair)
+    payment = paid(db, gym, membership, first, made=on, by=person)
+    moved(db, gym, membership, payment, out_of=first, into=second, at=on)
 
     page = summary(client, gym)
 
     assert page["income_payments"] == 1
     assert page["own_payments"] == {"by_members": 1, "payments": 1, "percent": None}
+
+
+# --- corrections: a payment undone, a payment moved (#543) -------------------------
+
+
+def a_late_proof_after_an_email(
+    db: Database, gym: uuid.UUID
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """A member reminded by email on day 1 who uploads a proof of $30.000 on day 2,
+    validated an hour later: their membership, its period, and the payment."""
+    person, membership = a_member(db, gym)
+    period = a_period(db, gym, membership)
+    emailed(db, gym, person, period, local(day(1), 9))
+    payment = paid(
+        db, gym, membership, period, made=local(day(2), 9), by=person,
+        validated=local(day(2), 10),
+    )  # fmt: skip
+    return membership, period, payment
+
+
+def figures(page: Any) -> dict[str, Any]:
+    """Every figure of the page that counts or sums payments."""
+    return {
+        "income_clp": page["income_clp"],
+        "income_payments": page["income_payments"],
+        "after_reminders": page["after_reminders"],
+        "own_payments": page["own_payments"],
+        "proofs": page["proofs"],
+    }
+
+
+@pg
+def test_a_payment_undone_as_recorded_by_mistake_is_in_no_figure(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # The staging test of v0.1.67: one payment already in the month, then a reminded
+    # member pays late and the payment is undone (Anular pago). The month reads as it
+    # did before that payment, "Cobrado" included.
+    _, membership = a_member(db, gym)
+    paid(db, gym, membership, a_period(db, gym, membership), made=local(day(-3)), amount=42000)
+    before = figures(summary(client, gym))
+    membership, period, payment = a_late_proof_after_an_email(db, gym)
+    assert after(client, gym) == (1, 1, 0)
+
+    undone(db, gym, membership, period, payment, at=local(day(3)))
+
+    page = figures(summary(client, gym))
+    assert page == before
+    assert page["after_reminders"]["total"] == {"payments": 0, "amount_clp": 0}
+    assert page["income_payments"] == 1
+    assert page["own_payments"]["by_members"] == 0
+    assert page["proofs"] == {"reviewed": 0, "median_minutes": None}
+
+
+@pg
+def test_a_payment_undone_the_month_after_is_not_one_of_its_months_payments(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # The undoing nets "Cobrado" in the month it is made (`v_monthly_income`), so the
+    # month paid keeps its income as reported; but no figure there counts the payment.
+    membership, period, payment = a_late_proof_after_an_email(db, gym)
+
+    undone(db, gym, membership, period, payment, at=local(NEXT + timedelta(days=2)))
+
+    page = summary(client, gym)
+    assert page["income_clp"] == 30000
+    assert page["income_payments"] == 0
+    assert page["after_reminders"]["total"] == {"payments": 0, "amount_clp": 0}
+    assert page["own_payments"]["by_members"] == 0
+    assert page["proofs"]["reviewed"] == 0
+
+
+@pg
+def test_a_rejected_proof_is_still_a_proof_reviewed_beside_an_undone_one(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    person, membership = a_member(db, gym)
+    period = a_period(db, gym, membership)
+    on = MONTH + timedelta(days=3)
+    paid(
+        db, gym, membership, period, made=local(on, 9), by=person, validated=local(on, 10),
+        status="rejected",
+    )  # fmt: skip
+    payment = paid(
+        db, gym, membership, period, made=local(on, 9), by=person, validated=local(on, 12)
+    )
+    undone(db, gym, membership, period, payment, at=local(on, 13))
+
+    assert summary(client, gym)["proofs"] == {"reviewed": 1, "median_minutes": 60}
+
+
+@pg
+def test_a_payment_moved_away_from_the_period_it_was_late_on_is_not_after_its_reminder(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # Moved whole onto next month's period: it was not that period's payment after
+    # that period's reminder, nor is it one on the period it lands on. It still counts
+    # once among the month's payments, where its money came in.
+    membership, period, payment = a_late_proof_after_an_email(db, gym)
+    later = a_period(db, gym, membership, DUE + timedelta(days=30))
+
+    moved(db, gym, membership, payment, out_of=period, into=later, at=local(day(5)))
+
+    page = summary(client, gym)
+    assert page["after_reminders"]["total"] == {"payments": 0, "amount_clp": 0}
+    assert page["income_payments"] == 1
+    assert page["own_payments"]["by_members"] == 1
+    assert page["income_clp"] == 30000
+
+
+@pg
+def test_a_payment_moved_out_the_month_after_a_reminder_leaves_that_month_too(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # The move is made the month after: the month paid stops counting it after a
+    # reminder, and the month of the move never did.
+    membership, period, payment = a_late_proof_after_an_email(db, gym)
+    later = a_period(db, gym, membership, DUE + timedelta(days=30))
+
+    moved(
+        db, gym, membership, payment, out_of=period, into=later,
+        at=local(NEXT + timedelta(days=2)),
+    )  # fmt: skip
+
+    assert after(client, gym) == (0, 0, 0)
+    assert after(client, gym, NEXT) == (0, 0, 0)
+    assert summary(client, gym, NEXT)["income_payments"] == 0
+
+
+@pg
+def test_a_payment_moved_in_part_counts_after_a_reminder_for_what_stayed(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    membership, period, payment = a_late_proof_after_an_email(db, gym)
+    later = a_period(db, gym, membership, DUE + timedelta(days=30))
+
+    moved(
+        db, gym, membership, payment, out_of=period, into=later, at=local(day(5)),
+        amount=10000,
+    )  # fmt: skip
+
+    page = summary(client, gym)
+    assert page["after_reminders"]["total"] == {"payments": 1, "amount_clp": 20000}
+    assert page["income_payments"] == 1
+
+
+@pg
+def test_what_is_left_of_a_payment_moved_in_part_then_undone_is_in_no_figure(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    membership, period, payment = a_late_proof_after_an_email(db, gym)
+    later = a_period(db, gym, membership, DUE + timedelta(days=30))
+    moved(
+        db, gym, membership, payment, out_of=period, into=later, at=local(day(5)),
+        amount=10000,
+    )  # fmt: skip
+
+    undone(db, gym, membership, period, payment, at=local(day(6)), amount=20000)
+
+    page = summary(client, gym)
+    assert page["after_reminders"]["total"] == {"payments": 0, "amount_clp": 0}
+    assert page["income_payments"] == 0
+    assert page["own_payments"]["by_members"] == 0
 
 
 @pg

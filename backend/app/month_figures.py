@@ -6,7 +6,9 @@ The rules are `app.domain.value_summary`'s, from #504's spike
 (`docs/design/value-summary.md`). This reads what they need, each gym-local date
 included, and counts: no person-level result is kept or returned, only totals, keyed
 by `Figure`. A payment counts in the month it was validated in, as `v_monthly_income`
-counts it, so the money after a reminder is always a part of the month's "Cobrado".
+counts it, so the money after a reminder is always a part of the month's "Cobrado";
+and only a payment that stands (`stands`), so one undone as recorded by mistake, or the
+payment half of a move, is in no figure.
 
 Every query runs in the gym `app.gym_id` names, and takes its parameters by name. The
 caller runs them through a `Rows`: the API's SQLAlchemy session, or the job's asyncpg
@@ -82,20 +84,46 @@ def in_month(column: str) -> str:
     return f"{column} >= b.start_at AND {column} < b.end_at"
 
 
-# The month's validated payments on a period paid after its due date, by the member's
-# act: the proof's upload, else when staff recorded it. A payment moved from another
-# period (`purpose = 'move'`) is staff's correction, not a payment made then.
+def stands(entry: str) -> str:
+    """`entry`, a `ledger_entry`, is a payment that stands (#543): validated, a member
+    paying rather than staff's correction (the payment half of a move, `purpose =
+    'move'`, is not one), and not undone as recorded by mistake (Anular pago, #281,
+    which leaves the payment as it was and adds a `mistake` refund that `corrects` it).
+    Every figure that counts or sums payments reads it, so a correction left out of one
+    is left out of all; a new kind that undoes a payment belongs here."""
+    return f"""(
+        {entry}.kind = 'payment' AND {entry}.status = 'validated' AND {entry}.purpose IS NULL
+        AND NOT EXISTS (SELECT FROM ledger_entry u
+                        WHERE u.corrects = {entry}.id AND u.purpose = 'mistake'))"""
+
+
+# What is left on its period of `e`, a payment, after the moves out of it (#280): the
+# refund halves, `purpose = 'move'`, that name it in `corrects`. A payment moved away
+# whole is left nowhere on the period it was late on.
+LEFT_ON_PERIOD = """
+    CROSS JOIN LATERAL (
+        SELECT e.amount_clp - coalesce(sum(o.amount_clp), 0) AS amount_clp FROM ledger_entry o
+        WHERE o.corrects = e.id AND o.purpose = 'move' AND o.kind = 'refund'
+          AND o.status = 'validated'
+    ) l
+"""
+
+# The month's payments that stand, on a period paid after its due date, by the member's
+# act: the proof's upload, else when staff recorded it, with what is left of each on
+# that period. A payment moved there from another period is staff's correction, not a
+# payment made then, and is not one that stands; one moved away counts only for what
+# stayed. So a payment moved counts once at most, on the period it was paid on.
 LATE_PAYMENTS = text(
     f"""
-    SELECT e.billing_period_id::text AS billing_period_id, e.amount_clp, bp.due_date,
+    SELECT e.billing_period_id::text AS billing_period_id, l.amount_clp, bp.due_date,
            p.paid_at, (p.paid_at AT TIME ZONE b.tz)::date AS paid_on
     FROM ledger_entry e
     JOIN billing_period bp ON bp.id = e.billing_period_id
     CROSS JOIN ({BOUNDS}) b
     CROSS JOIN LATERAL (SELECT coalesce(e.claimed_at, e.created_at) AS paid_at) p
-    WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
-      AND {in_month("e.validated_at")}
-      AND (p.paid_at AT TIME ZONE b.tz)::date > bp.due_date
+    {LEFT_ON_PERIOD}
+    WHERE {stands("e")} AND {in_month("e.validated_at")}
+      AND (p.paid_at AT TIME ZONE b.tz)::date > bp.due_date AND l.amount_clp > 0
     """
 )
 
@@ -135,8 +163,14 @@ NUDGES = text(
     """
 )
 
-# The month's plain counts. The payments behind "Cobrado" leave out moves, as
-# `LATE_PAYMENTS` does: a move is staff's correction, not a member paying.
+# A member's proof reviewed: rejected, or validated into a payment that stands.
+REVIEWED = f"""e.kind = 'payment' AND e.proof_object_key IS NOT NULL
+    AND (e.status = 'rejected' OR {stands("e")})"""
+
+# The month's plain counts. The payments behind "Cobrado" are those that stand, as
+# `LATE_PAYMENTS` reads them: a move is staff's correction, not a member paying, and an
+# undone payment was never paid. A payment moved away still counts here, once, in the
+# month it was paid: its money came in then, as `v_monthly_income` counts it.
 #
 # A member's own payment, and a proof to review, is one with `proof_object_key` set.
 # `claimed_by` / `claimed_at` cannot tell them apart: `app.api.entries.INSERT_ENTRY`
@@ -159,23 +193,21 @@ COUNTS = text(
             AS reminder_whatsapps,
         (SELECT coalesce(sum(income_clp), 0)::bigint FROM v_monthly_income
          WHERE month = CAST(:month AS date)) AS income_clp,
-        -- Plain payments, moves left out: since 0089 the same as
-        -- `v_monthly_income.payments`, which leaves them out too.
+        -- Moves left out, as `v_monthly_income.payments` leaves them out (0089). Unlike
+        -- that count, an undone payment is left out too, whenever it was undone: the
+        -- view keeps it in the month it was paid and nets "Cobrado" in the month of
+        -- the undoing, but it was never one of anyone's payments.
         (SELECT count(*) FROM ledger_entry e
-         WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
-           AND {in_month("e.validated_at")}) AS income_payments,
+         WHERE {stands("e")} AND {in_month("e.validated_at")}) AS income_payments,
         (SELECT count(*) FROM ledger_entry e
-         WHERE e.kind = 'payment' AND e.status = 'validated' AND e.purpose IS NULL
-           AND e.proof_object_key IS NOT NULL AND {in_month("e.validated_at")}) AS by_members,
+         WHERE {stands("e")} AND e.proof_object_key IS NOT NULL
+           AND {in_month("e.validated_at")}) AS by_members,
         (SELECT count(*) FROM ledger_entry e
-         WHERE e.kind = 'payment' AND e.status IN ('validated', 'rejected')
-           AND e.proof_object_key IS NOT NULL AND {in_month("e.validated_at")}) AS proofs_reviewed,
+         WHERE {REVIEWED} AND {in_month("e.validated_at")}) AS proofs_reviewed,
         (SELECT percentile_cont(0.5) WITHIN GROUP (
                     ORDER BY extract(epoch FROM e.validated_at - e.claimed_at))
          FROM ledger_entry e
-         WHERE e.kind = 'payment' AND e.status IN ('validated', 'rejected')
-           AND e.proof_object_key IS NOT NULL AND {in_month("e.validated_at")})
-            AS review_median_seconds,
+         WHERE {REVIEWED} AND {in_month("e.validated_at")}) AS review_median_seconds,
         (SELECT count(*) FROM membership m WHERE {in_month("m.reactivated_at")})
             AS reactivated,
         (SELECT count(*) FROM membership m
