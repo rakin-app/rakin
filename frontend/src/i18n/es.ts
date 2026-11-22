@@ -1696,6 +1696,8 @@ export const es = {
         history: 'Ir al historial',
         cancel: 'Cancelar',
         submit: (amount: string) => `Registrar ${amount}`,
+        // Before a date is chosen, with no total yet.
+        submitPaid: 'Registrar pagos',
         submitGift: 'Registrar bonificación',
         working: 'Registrando…',
         done: (amount: string, day: string) => `Registrado: ${amount} pagados antes de Rakin. Pagado hasta el ${day}.`,
@@ -1710,6 +1712,8 @@ export const es = {
         pending: 'Tiene un comprobante por validar en esos meses: revísalo primero.',
         amount_changed: 'Lo que se debe cambió. Revisa el total y vuelve a intentarlo.',
         failed: 'No pudimos registrarlo. Inténtalo de nuevo.',
+        // The quote itself failed: a date out of range, say.
+        quoteFailed: 'No pudimos calcular los meses. Revisa la fecha.',
       },
       // "Deshacer baja" (#285): a plan dado de baja by mistake, back as it was.
       uncancelPlan: 'Deshacer baja',

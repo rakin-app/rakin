@@ -4873,7 +4873,7 @@ describe('Pagado hasta… (#286)', () => {
     renderAt(PATH)
     const opened = await openPaidThrough()
 
-    await userEvent.click(within(opened).getByRole('button', { name: form.submit('$0') }))
+    await userEvent.click(within(opened).getByRole('button', { name: form.submitPaid }))
     expect(within(opened).getByText(form.dayNeeded)).toBeInTheDocument()
 
     await userEvent.type(within(opened).getByLabelText(form.through), '2026-12-29')
@@ -4920,7 +4920,7 @@ describe('Pagado hasta… (#286)', () => {
 
     expect(await within(opened).findByText(refused.before_plan('30 mar'))).toBeInTheDocument()
     expect(within(opened).getByRole('link', { name: form.history })).toHaveAttribute('href', '#member-history')
-    expect(within(opened).getByRole('button', { name: form.submit('$0') })).toBeDisabled()
+    expect(within(opened).getByRole('button', { name: form.submitPaid })).toBeDisabled()
   })
 
   it('says when it is paid through the date already', async () => {

@@ -88,9 +88,9 @@ export function PaidThroughForm({
   }
 
   /** What a refusal says; a date before the plan links to the Historial. */
-  const refusal = (error: unknown) => {
+  const refusal = (error: unknown, failed: string) => {
     const refused = paidThroughRefused(error)
-    if (!refused) return <Banner tone="error">{refusedCopy.failed}</Banner>
+    if (!refused) return <Banner tone="error">{failed}</Banner>
     if (refused.code === 'before_plan') {
       return (
         <Banner tone="error" as="div">
@@ -158,9 +158,9 @@ export function PaidThroughForm({
           {form.loading}
         </Loading>
       )}
-      {quote.isError && refusal(quote.error)}
+      {quote.isError && refusal(quote.error, refusedCopy.quoteFailed)}
       {quote.data && (
-        <div role="status">
+        <>
           <p className="member__label">{form.quoteTitle}</p>
           <PlainList className="member__bill">
             {quote.data.periods.map((p) => (
@@ -168,10 +168,12 @@ export function PaidThroughForm({
             ))}
             <li className="member__bill-total">{form.total(clp(total))}</li>
           </PlainList>
-          <p className="member__detail">{form.result(shortDay(quote.data.paid_through))}</p>
-        </div>
+          <p className="member__detail" role="status">
+            {form.result(shortDay(quote.data.paid_through))}
+          </p>
+        </>
       )}
-      {record.error && refusal(record.error)}
+      {record.error && refusal(record.error, refusedCopy.failed)}
 
       <div className="member__form-actions">
         <Button disabled={record.isPending} onClick={onCancel}>
@@ -183,7 +185,7 @@ export function PaidThroughForm({
           disabled={record.isPending || (through !== '' && !quote.data)}
           busy={record.isPending}
         >
-          {record.isPending ? form.working : mode === 'paid' ? form.submit(clp(total)) : form.submitGift}
+          {record.isPending ? form.working : mode === 'gift' ? form.submitGift : quote.data ? form.submit(clp(total)) : form.submitPaid}
         </Button>
       </div>
     </form>
