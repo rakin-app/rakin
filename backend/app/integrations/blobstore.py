@@ -52,6 +52,14 @@ def validate_key(key: str) -> str:
     return key
 
 
+def validate_prefix(prefix: str) -> str:
+    """A key's leading segments and their `/`, as `keys_under` takes them."""
+    if not prefix.endswith("/"):
+        raise ValueError(f"not a prefix: {prefix!r}")
+    validate_key(prefix[:-1])
+    return prefix
+
+
 def validate_content_type(content_type: str) -> str:
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise ValueError(f"content type not allowed: {content_type!r}")
@@ -110,6 +118,11 @@ class BlobStore(Protocol):
 
     async def delete(self, key: str) -> None:
         """Remove the file; a key with no file is not an error."""
+        ...
+
+    async def keys_under(self, prefix: str) -> list[str]:
+        """Every stored key under `prefix`, which ends in `/`, sorted. For what a gym's
+        offboarding exports and deletes (`app.offboarding`): never for a request."""
         ...
 
 
@@ -208,6 +221,17 @@ class S3BlobStore:
         validate_key(key)
         await asyncio.to_thread(self._client.delete_object, Bucket=self.bucket, Key=key)
 
+    async def keys_under(self, prefix: str) -> list[str]:
+        validate_prefix(prefix)
+
+        def keys() -> list[str]:
+            pages = self._client.get_paginator("list_objects_v2").paginate(
+                Bucket=self.bucket, Prefix=prefix
+            )
+            return [item["Key"] for page in pages for item in page.get("Contents", [])]
+
+        return sorted(await asyncio.to_thread(keys))
+
 
 Operation = Literal["put", "get"]
 
@@ -280,6 +304,23 @@ class LocalBlobStore:
             # A directory is other keys nested under this one, not this blob.
             if await asyncio.to_thread(path.is_file):
                 await asyncio.to_thread(path.unlink, missing_ok=True)
+
+    async def keys_under(self, prefix: str) -> list[str]:
+        validate_prefix(prefix)
+        data = self.root / "data"
+
+        def keys() -> list[str]:
+            under = data / prefix
+            if not under.is_dir():
+                return []
+            # Not an upload still being written beside its target (`.up-…`).
+            return [
+                path.relative_to(data).as_posix()
+                for path in under.rglob("*")
+                if path.is_file() and not path.name.startswith(".")
+            ]
+
+        return sorted(await asyncio.to_thread(keys))
 
     def verify(
         self,

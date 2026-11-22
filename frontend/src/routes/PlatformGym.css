@@ -53,3 +53,15 @@
 .platform-gym__confirm p {
   margin: 0;
 }
+
+/* A removal under way (#377): its dates, the commands and the early date. */
+.platform-gym__removal {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.platform-gym__removal code {
+  overflow-wrap: anywhere;
+}

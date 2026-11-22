@@ -7,6 +7,8 @@
     uv run python -m app.gyms sign-terms --slug meta \\
         --processor-terms <version> --signed-on <date>
     uv run python -m app.gyms terms-exempt --slug meta [--off]
+    uv run python -m app.gyms export meta [--to <dir>]
+    uv run python -m app.gyms delete meta --confirm meta
 
 The gym gets what the demo seed's has before anyone trains there (`app.seed.data`):
 its programs and the block kinds every gym is given (0028); a grading scheme only when
@@ -48,6 +50,15 @@ is given, and says so. A `sign-terms` with a version the gym already signed chan
 nothing either: the first date stays. It connects as the table owner, as the seed
 does: RLS holds it to the new gym once `app.gym_id` names it.
 
+`export` and `delete` are a gym's offboarding (#377, `app.offboarding`): `export`
+writes everything the gym holds, its rows as JSON and its files, to a new directory
+under `--to` (the current one by default), for the gym to have back; `delete`
+deletes its rows and files and its people no other gym knows, once its removal,
+started from the panel, is past its export window (`app.platform.removal`), or the
+gym asked in writing for an earlier deletion. It asks for the slug twice, and logs
+who ran it (`--by`, else the host's user) in `platform_event`. Both use the `BLOB_STORE` the API
+uses.
+
 `create` writes through `gym_create` (0077), which the platform's panel calls too
 (`app.api.platform`, #437): what the presets make of the gym is computed here
 (`gym_create_values`), and the function only writes it, so the two cannot drift.
@@ -56,23 +67,28 @@ does: RLS holds it to the new gym once `app.gym_id` names it.
 import argparse
 import asyncio
 import copy
+import getpass
 import json
 import sys
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 import asyncpg
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
 
 from app.db_bootstrap import to_dsn
 from app.domain import practice, vocabulary
+from app.domain.custom_fields import FieldCipher
 from app.domain.dates import gym_today
 from app.domain.grading import PRESETS, resolve
 from app.hosts import Hosts, slug_problem
+from app.integrations import build_blob_store
 from app.legal import PROCESSOR_TERMS_VERSION as PROCESSOR_TERMS_VERSION
 from app.legal import SERVICE_TERMS_VERSION as SERVICE_TERMS_VERSION
+from app.offboarding import Deleted, Exported, Refused, delete_gym, export_gym
 from app.schemas.gym import Timezone
 from app.schemas.people import Email, Name, Phone, Rut
 from app.settings import get_settings
@@ -333,16 +349,53 @@ async def set_exempt(conn: asyncpg.Connection, exemption: Exemption) -> Exempted
     return Exempted(gym_id, found["name"], changed=bool(changed))
 
 
-Command = NewGym | Signing | Exemption
+@dataclass(frozen=True)
+class Export:
+    """Write everything the gym with `slug` holds under `into`."""
+
+    slug: str
+    into: Path
 
 
-async def run(command: Command) -> Created | Signed | Exempted | None:
-    conn = await asyncpg.connect(to_dsn(get_settings().migration_database_url))
+@dataclass(frozen=True)
+class Deletion:
+    """Delete the gym with `slug`: `confirm` is the slug, typed again."""
+
+    slug: str
+    confirm: str
+    # Who ran it, for the log: the host's user by default.
+    by: str
+
+
+Command = NewGym | Signing | Exemption | Export | Deletion
+Done = Created | Signed | Exempted | Exported | Deleted | Refused | None
+
+
+async def run(command: Command) -> Done:
+    settings = get_settings()
+    conn = await asyncpg.connect(to_dsn(settings.migration_database_url))
     try:
         if isinstance(command, Signing):
             return await sign_terms(conn, command)
         if isinstance(command, Exemption):
             return await set_exempt(conn, command)
+        if isinstance(command, Export):
+            return await export_gym(
+                conn,
+                build_blob_store(settings),
+                FieldCipher(settings.field_encryption_key),
+                command.slug,
+                command.into,
+            )
+        if isinstance(command, Deletion):
+            return await delete_gym(
+                conn,
+                build_blob_store(settings),
+                command.slug,
+                timezone=settings.jobs_timezone,
+                today=gym_today(settings.jobs_timezone),
+                by=command.by,
+            )
         return await create_gym(conn, command)
     finally:
         await conn.close()
@@ -395,7 +448,32 @@ def parse(argv: Sequence[str] | None = None) -> Command:
     )
     exempt.add_argument("--slug", required=True)
     exempt.add_argument("--off", action="store_true", help="no longer exempt: it accepts them")
+    export = commands.add_parser(
+        "export", help="write everything a gym holds, its rows and files, for it to have back"
+    )
+    export.add_argument("slug")
+    export.add_argument(
+        "--to", default=".", type=Path, help="the directory to write it under (default: here)"
+    )
+    delete = commands.add_parser(
+        "delete",
+        help="delete a gym's rows and files, once its removal is past its export window",
+    )
+    delete.add_argument("slug")
+    delete.add_argument("--confirm", required=True, metavar="SLUG", help="the slug, again")
+    delete.add_argument(
+        "--by",
+        default=getpass.getuser(),
+        help="who runs it, for the log (default: this user; in a container, pass yours)",
+    )
     args = parser.parse_args(argv)
+    if args.command == "export":
+        return Export(slug=args.slug, into=args.to)
+    if args.command == "delete":
+        if args.confirm != args.slug:
+            print("--confirm: not the slug: type the gym's slug again", file=sys.stderr)
+            raise SystemExit(2)
+        return Deletion(slug=args.slug, confirm=args.confirm, by=args.by)
     if args.command == "terms-exempt":
         return Exemption(slug=args.slug, exempt=not args.off)
     try:
@@ -426,6 +504,28 @@ def parse(argv: Sequence[str] | None = None) -> Command:
 def main(argv: Sequence[str] | None = None) -> None:
     gym = parse(argv)
     done = asyncio.run(run(gym))
+    if isinstance(gym, Export | Deletion) and done is None:
+        print(f"no gym has the slug {gym.slug}", file=sys.stderr)
+        raise SystemExit(1)
+    if isinstance(gym, Export):
+        assert isinstance(done, Exported)
+        print(f"{done.slug} ({done.gym_id}) exported to {done.path}")
+        print(f"{sum(done.rows.values())} rows in {len(done.rows)} tables, {done.files} files")
+        return
+    if isinstance(gym, Deletion):
+        if isinstance(done, Refused):
+            print(f"{gym.slug} cannot be deleted: {done.reason}", file=sys.stderr)
+            raise SystemExit(1)
+        assert isinstance(done, Deleted)
+        print(f"{done.slug} ({done.gym_id}) deleted:")
+        for table, count in sorted(done.tables.items()):
+            print(f"  {table}: {count}")
+        print(f"{done.rows} rows, {done.files} files")
+        print(
+            f"{done.people_deleted} people deleted; {done.people_kept} kept, known to another gym"
+        )
+        print(f"no backup holds it after {done.backups_gone_by}")
+        return
     if isinstance(gym, Exemption):
         if done is None:
             print(f"no gym has the slug {gym.slug}", file=sys.stderr)

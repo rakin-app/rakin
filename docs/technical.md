@@ -258,8 +258,18 @@ Because of that, a migration that backfills every gym does not use `jobs_gym_ids
 It uses `migration_gym_ids()` (0084), which lists every gym. 0083 used the jobs' list
 and left a suspended gym with no expense categories (#525).
 The emails of those days are not sent. A gym is never removed at once: the end of
-service follows the Términos de encargo, clause 14 (`app.platform.removal`), and
-removing is refused until #377 defines the deletion.
+service follows the Términos de encargo, clause 14 (`app.platform.removal`, #377,
+migration 0094). The panel starts a suspended gym's removal (`gym.removal_started_at`),
+records the day it asked in writing for an early deletion (`gym.early_deletion_on`) and
+cancels it, and refuses to resume it meanwhile. The deletion itself runs on the host
+(`python -m app.gyms delete`, `app.offboarding`) once the export window is over or the
+early date has come: the gym's files first, then the owner-only `delete_gym`, which
+deletes every row with its id in dependency order, the gym, and each of its people no
+other gym knows (`gym_people_elsewhere`, owned by `rakin_auth`). The append-only tables
+let a row go only while `app.forget_gym` names its gym and that gym's removal has
+started, as `app.forget_person` does for one person; the API's role has no DELETE on
+them. `platform_event` keeps `gym_deleted` with the gym's id and slug and counts only.
+A new table with a `gym_id` must join 0094's `TABLES`, which a test checks.
 
 A gym waits on its terms (#499, migration 0081). It is created pending them, and its
 titular accepts the Términos de servicio and de encargo on a page of the admin

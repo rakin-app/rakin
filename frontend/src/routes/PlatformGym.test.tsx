@@ -320,10 +320,18 @@ describe('/plataforma/$gymId', () => {
         export_days: 30,
         deletion_days: 30,
         backup_days: 60,
+        started_on: null,
+        early_deletion_on: null,
         export_until: '2026-12-18',
+        deletion_from: '2026-12-19',
         deleted_by: '2027-01-17',
         backups_gone_by: '2027-03-18',
       },
+    })
+    const REMOVAL = `/api/platform/gyms/${GYM_ID}/removal`
+    const REMOVING = detail({
+      ...SUSPENDED,
+      removal: { ...SUSPENDED.removal!, started_on: '2026-11-18', deletion_from: '2026-12-19' },
     })
 
     it('suspends only with a reason, after a confirm, and shows it suspended', async () => {
@@ -393,12 +401,18 @@ describe('/plataforma/$gymId', () => {
       expect(calls.filter((c) => c.path === RESUME)).toHaveLength(2)
     })
 
-    it('explains removing a suspended gym, with its dates, and never asks the API to', async () => {
-      const calls = stubApi((call) =>
-        call.path === `/api/platform/gyms/${GYM_ID}` && call.method === 'GET'
-          ? { status: 200, body: SUSPENDED }
-          : undefined,
-      )
+    it('starts a removal only with the slug typed again, and shows its dates', async () => {
+      let removing = false
+      const calls = stubApi((call) => {
+        if (call.path === REMOVAL && call.method === 'POST') {
+          removing = true
+          return { status: 200, body: { changed: true } }
+        }
+        if (call.path === `/api/platform/gyms/${GYM_ID}` && call.method === 'GET') {
+          return { status: 200, body: removing ? REMOVING : SUSPENDED }
+        }
+        return undefined
+      })
       renderAt(`/plataforma/${GYM_ID}`)
 
       await userEvent.click(await screen.findByRole('button', { name: copy.remove }))
@@ -406,11 +420,84 @@ describe('/plataforma/$gymId', () => {
       expect(within(dialog).getByText(copy.removeExport(30, shortDate('2026-12-18')))).toBeInTheDocument()
       expect(within(dialog).getByText(copy.removeDelete(30, shortDate('2027-01-17')))).toBeInTheDocument()
       expect(within(dialog).getByText(copy.removeBackups(60, shortDate('2027-03-18')))).toBeInTheDocument()
-      expect(within(dialog).getByText(copy.removeUnavailable)).toBeInTheDocument()
-      await userEvent.click(within(dialog).getByRole('button', { name: copy.close }))
+      const start = within(dialog).getByRole('button', { name: copy.removeStart })
+      await userEvent.type(within(dialog).getByLabelText(copy.removeType('norte')), 'nort')
+      expect(start).toBeDisabled()
+      await userEvent.type(within(dialog).getByLabelText(copy.removeType('norte')), 'e')
+      await userEvent.click(start)
 
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(0)
+      expect(await screen.findByText(copy.removeStarted)).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: copy.removalScheduled })).toBeInTheDocument()
+      expect(screen.getByText(copy.removalStartedOn(shortDate('2026-11-18')))).toBeInTheDocument()
+      expect(
+        screen.getByText(copy.removalDeletion(shortDate('2026-12-19'), shortDate('2027-01-17'))),
+      ).toBeInTheDocument()
+      expect(screen.getByText(copy.removalBackups(shortDate('2027-03-18')))).toBeInTheDocument()
+      expect(screen.getByText('python -m app.gyms delete norte --confirm norte')).toBeInTheDocument()
+      // Being removed, it is not resumed: the removal is cancelled first.
+      expect(screen.queryByRole('button', { name: copy.resume })).not.toBeInTheDocument()
+      expect(calls.filter((c) => c.path === REMOVAL).map((c) => c.body)).toEqual([{ slug: 'norte' }])
+    })
+
+    it('records an early deletion, and cancels the removal after a confirm', async () => {
+      let state: 'removing' | 'early' | 'suspended' = 'removing'
+      const calls = stubApi((call) => {
+        if (call.path === `${REMOVAL}/early`) {
+          state = 'early'
+          return { status: 200, body: { changed: true } }
+        }
+        if (call.path === REMOVAL && call.method === 'DELETE') {
+          state = 'suspended'
+          return { status: 200, body: { changed: true } }
+        }
+        if (call.path === `/api/platform/gyms/${GYM_ID}` && call.method === 'GET') {
+          const early = detail({
+            ...REMOVING,
+            removal: { ...REMOVING.removal!, early_deletion_on: '2026-11-20', deletion_from: '2026-11-20' },
+          })
+          return { status: 200, body: { removing: REMOVING, early, suspended: SUSPENDED }[state] }
+        }
+        return undefined
+      })
+      renderAt(`/plataforma/${GYM_ID}`)
+
+      const asked = await screen.findByLabelText(copy.earlyLabel)
+      await userEvent.type(asked, '2026-11-20')
+      await userEvent.click(screen.getByRole('button', { name: copy.earlyRecord }))
+      expect(await screen.findByText(copy.earlyRecorded)).toBeInTheDocument()
+      expect(await screen.findByText(copy.removalEarly(shortDate('2026-11-20')))).toBeInTheDocument()
+      expect(calls.filter((c) => c.path === `${REMOVAL}/early`).map((c) => c.body)).toEqual([
+        { asked_on: '2026-11-20' },
+      ])
+
+      await userEvent.click(screen.getByRole('button', { name: copy.cancelRemoval }))
+      const dialog = screen.getByRole('dialog', { name: copy.cancelRemovalTitle })
+      expect(within(dialog).getByText(copy.confirmCancelRemoval)).toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: copy.cancelRemoval }))
+
+      expect(await screen.findByText(copy.removalCancelled)).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: copy.resume })).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: copy.removalScheduled })).not.toBeInTheDocument()
+    })
+
+    it('says why a day to come is refused as the early date', async () => {
+      stubApi((call) => {
+        if (call.path === `${REMOVAL}/early`) {
+          return {
+            status: 422,
+            body: { detail: [{ type: 'early_deletion_future', loc: ['body', 'asked_on'], msg: 'x' }] },
+          }
+        }
+        if (call.path === `/api/platform/gyms/${GYM_ID}` && call.method === 'GET') {
+          return { status: 200, body: REMOVING }
+        }
+        return undefined
+      })
+      renderAt(`/plataforma/${GYM_ID}`)
+
+      await userEvent.type(await screen.findByLabelText(copy.earlyLabel), '2030-01-01')
+      await userEvent.click(screen.getByRole('button', { name: copy.earlyRecord }))
+      expect(await screen.findByText(copy.refusals.early_deletion_future)).toBeInTheDocument()
     })
   })
 })
