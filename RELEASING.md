@@ -32,13 +32,18 @@ A short file, in plain words, saying what changes for a gym: new screens, fixes 
 
 ## What the PM checks on staging
 
+If the release has migrations, first run `./reset-staging.sh` on the staging host (`/srv/rakin`): a deploy migrates staging but does not reseed it, so the seed gym stays in the old shape until the next nightly reset.
+
 On `https://staging.rakin.app`, signed in with the PM's own address (staging only sends mail to the team's addresses), in a phone-sized window and a desktop one:
 
 - the sign-in works, and `/plataforma` opens;
 - the seed gym, `https://academia-sur.staging.rakin.app`, opens;
 - every screen the release changed does what its PR says;
-- uploading a transfer proof still works (from a phone-sized window);
+- uploading a transfer proof still works (from a phone-sized window): sign in to the seed gym with the **first** address in `STAGING_OPERATORS`, which the nightly reset gives to the student Felipe Díaz, whose payment is past due (Vencido, with Subir comprobante);
+- that proof reaches **Validar comprobante**: sign in with the **second** address, which the reset gives to the owner, Martín Fuentes;
 - the browser console shows no errors.
+
+Sign in with the **code** in the email, never its link: opening the link spends the code. Both addresses must be in the host's `MAIL_ALLOW`, or no code arrives (`reset.log` warns of it). See [docs/deploy.md](docs/deploy.md#the-nightly-reset).
 
 Then the PM tells the owner the release is ready to approve, or that it is not and why.
 

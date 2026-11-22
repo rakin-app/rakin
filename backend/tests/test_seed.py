@@ -36,6 +36,7 @@ from app.seed.build import (
     default_block_kind_id,
     local,
     seed_id,
+    sign_in_addresses,
 )
 from app.seed.data import (
     GRACE_DAYS,
@@ -43,7 +44,10 @@ from app.seed.data import (
     KIDS_LADDER,
     MEMBERS,
     RANKS,
+    SIGN_IN_PEOPLE,
+    STAFF,
     STRIPES,
+    Standing,
 )
 from tests.conftest import require_test_database_url
 from tests.pg import Database, in_gym, migrate, run, throwaway_database
@@ -296,6 +300,58 @@ def test_design_pending_proofs(seed: Seed) -> None:
     assert camila == {"Mateo Ortiz"}
 
 
+def emails(seed: Seed) -> dict[object, object]:
+    return {p["name"]: p["email"] for p in seed.gym_people}
+
+
+def test_the_sign_in_people(seed: Seed) -> None:
+    """#503: a student whose page shows Vencido with Subir comprobante, then the owner."""
+    (student, _), (owner, _) = SIGN_IN_PEOPLE
+    spec = next(m for m in MEMBERS if m.key == student)
+    assert spec.standing is Standing.OVERDUE and not spec.is_kid
+    assert spec.name in overdue(seed)
+    linked = {seed_id("person", student)} & {
+        id
+        for g in seed.guardian_links
+        for id in (g["guardian_person_id"], g["dependent_person_id"])
+    }
+    assert not linked
+    assert not any(s["person_id"] == seed_id("person", student) for s in seed.staff)
+    assert next(s for s in STAFF if s.key == owner).role == "owner"
+
+
+def test_without_sign_in_addresses_the_seed_is_as_it_was(seed: Seed) -> None:
+    assert build(seed.as_of, ()) == build(seed.as_of, ["", " "]) == seed
+    assert all(e is None or str(e).endswith("@example.com") for e in emails(seed).values())
+
+
+def test_sign_in_addresses_replace_the_people_own(seed: Seed) -> None:
+    (student, _), (owner, _) = SIGN_IN_PEOPLE
+    staged = build(
+        seed.as_of, [" PM@Rakin.app", "pm@rakin.app", "owner@team.example", "more@team.example"]
+    )
+    changed = {
+        p["person_id"]: p["email"]
+        for p, before in zip(staged.gym_people, seed.gym_people, strict=True)
+        if p != before
+    }
+    assert changed == {
+        seed_id("person", student): "pm@rakin.app",
+        seed_id("person", owner): "owner@team.example",
+    }
+    # `person` keeps the same address as the gym's record of them.
+    assert {p["id"]: p["email"] for p in staged.people if p["id"] in changed} == changed
+    # Every other table is as it was.
+    rest = [t for t in staged.tables() if t[0] not in {"person", "gym_person"}]
+    assert rest == [t for t in seed.tables() if t[0] not in {"person", "gym_person"}]
+
+
+def test_one_address_goes_to_the_student_only() -> None:
+    (student, _), _ = SIGN_IN_PEOPLE
+    assert sign_in_addresses(["pm@rakin.app"]) == {student: "pm@rakin.app"}
+    assert sign_in_addresses([]) == {}
+
+
 def test_frozen_members_are_not_billed_while_frozen(seed: Seed) -> None:
     """#216: a frozen membership waits (`app.domain.billing.due_periods`), and the freeze
     moved its due date by the frozen days (`app.domain.membership.freeze`)."""
@@ -514,6 +570,22 @@ def test_load_is_idempotent(db: Database) -> None:
     assert later.seed.as_of == DESIGN_DAY
     assert later.ignored_today == DESIGN_DAY + timedelta(days=30)
     assert set(later.inserted.values()) == {0}
+
+
+@pytest.mark.postgres
+def test_a_load_with_sign_in_addresses_signs_them_in_as_those_people() -> None:
+    (student, _), (owner, _) = SIGN_IN_PEOPLE
+    lookup = "SELECT person_id FROM auth_people_by_email($1)"
+    with throwaway_database(require_test_database_url()) as database:
+        migrate(database)
+
+        async def go(conn: asyncpg.Connection) -> Loaded:
+            return await load(conn, DESIGN_DAY, ["pm@rakin.app", "owner@team.example"])
+
+        run(database.owner_url, go)
+        for address, key in (("PM@rakin.app", student), ("owner@team.example", owner)):
+            found = run(database.api_url, in_gym(None, lookup, address))
+            assert [r[0] for r in found] == [seed_id("person", key)]
 
 
 @pytest.mark.postgres
