@@ -3501,6 +3501,14 @@ export const es = {
           n === 1 ? `Gasto de ${amount} registrado.` : `${n} gastos registrados, ${amount} en total.`,
         nothingNew: 'Ya estaba registrado.',
         failed: 'No pudimos registrarlo. Inténtalo de nuevo.',
+        // A batch is all or nothing: a refusal says which one stopped it.
+        noneRecorded: (why: string) => `No se registró ninguno: ${why}. La lista ya está al día.`,
+        refused: {
+          paused: (what: string) => `${what} fue pausado`,
+          category_archived: (what: string) => `la categoría de ${what} fue archivada; regístralo con el formulario`,
+          estimated: (what: string) => `${what} tiene monto estimado; regístralo con «Registrar…»`,
+          no_recurring: (what: string) => `${what} ya no existe`,
+        } as Record<string, ((what: string) => string) | undefined>,
         alreadyRecorded: 'Ese gasto fijo ya está registrado en este mes.',
       },
       recurring: {

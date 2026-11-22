@@ -445,6 +445,50 @@ def test_a_later_month_or_not_a_month_is_refused(client: TestClient, gym: uuid.U
         assert response.status_code == 422
         assert record(client, gym, rent["id"], month=month).status_code == 422
         assert skip(client, gym, rent["id"], month).status_code == 422
+        unskip = client.delete(
+            f"/api/expenses/recurring/{rent['id']}/skip/{month.isoformat()}",
+            headers=as_gym(gym),
+        )
+        assert unskip.status_code == 422
+        assert unskip.json()["detail"]["code"] in {"future", "not_a_month"}
+
+
+@pg
+def test_a_batch_is_all_or_nothing_and_names_the_template_that_stopped_it(
+    client: TestClient, gym: uuid.UUID
+) -> None:
+    """Registrar los fijos from a card loaded before another tab paused one, or archived
+    its category: nothing is recorded, and the refusal says which template it was."""
+    rent = template(client, gym)
+    internet = template(
+        client,
+        gym,
+        category_id=category(client, gym, "Internet y teléfono"),
+        amount_clp=32_990,
+        day_of_month=1,
+    )
+    client.patch(
+        f"/api/expenses/recurring/{internet['id']}", json={"active": False}, headers=as_gym(gym)
+    )
+    refused = record(client, gym, rent["id"], internet["id"])
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["code"] == "paused"
+    assert refused.json()["detail"]["recurring_id"] == internet["id"]
+    assert client.get("/api/expenses", headers=as_gym(gym)).json()["items"] == []
+
+    client.patch(
+        f"/api/expenses/recurring/{internet['id']}", json={"active": True}, headers=as_gym(gym)
+    )
+    client.post(f"/api/expenses/categories/{internet['category_id']}/archive", headers=as_gym(gym))
+    refused = record(client, gym, rent["id"], internet["id"])
+    assert refused.json()["detail"] == {
+        "code": "category_archived",
+        "message": "the category is archived",
+        "recurring_id": internet["id"],
+    }
+    assert client.get("/api/expenses", headers=as_gym(gym)).json()["items"] == []
+    # What can be recorded, on its own, still is.
+    assert len(record(client, gym, rent["id"]).json()) == 1
 
 
 @pg

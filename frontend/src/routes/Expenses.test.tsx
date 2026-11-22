@@ -115,7 +115,12 @@ function access(role: string | Permission[]) {
   return asRole(role)
 }
 
-function stubApi(role: string | Permission[] = 'owner', due: RecurringMonth = NOVEMBER_DUE) {
+function stubApi(
+  role: string | Permission[] = 'owner',
+  due: RecurringMonth = NOVEMBER_DUE,
+  // How `/record` refuses, if it does: the API's 422 for the template that stops a batch.
+  refuseRecord: { code: string; recurring_id: string } | null = null,
+) {
   const calls: Call[] = []
   vi.stubGlobal(
     'fetch',
@@ -138,7 +143,9 @@ function stubApi(role: string | Permission[] = 'owner', due: RecurringMonth = NO
       else if (url.pathname === '/api/expenses/e-rent/void') ok({ ...RENT, voided_at: '2026-11-20T10:00:00Z' })
       else if (url.pathname === '/api/expenses/e-rent/receipt') ok({ url: 'https://blobs.example/r', content_type: 'application/pdf' })
       else if (url.pathname === '/api/expenses/recurring/month') ok(due)
-      else if (url.pathname === '/api/expenses/recurring/record') {
+      else if (url.pathname === '/api/expenses/recurring/record' && refuseRecord) {
+        ok({ detail: { ...refuseRecord, message: 'refused' } }, 422)
+      } else if (url.pathname === '/api/expenses/recurring/record') {
         const ids = (calls.at(-1)!.body as { ids: string[] }).ids
         const templates = [...due.due, ...due.skipped].filter((r) => ids.includes(r.id))
         ok(
@@ -400,6 +407,19 @@ describe('Gastos', () => {
       })
       // Nothing was posted as an expense of its own: only the taps recorded.
       expect(calls.some((c) => c.method === 'POST' && c.path === '/api/expenses')).toBe(false)
+    })
+
+    it('says which gasto fijo stopped a batch, that none was recorded, and reads the card again', async () => {
+      const calls = stubApi('owner', NOVEMBER_DUE, { code: 'paused', recurring_id: 'r-internet' })
+      renderAt('/admin/finanzas/gastos')
+      const user = userEvent.setup()
+      const reads = () => calls.filter((c) => c.path.startsWith('/api/expenses/recurring/month')).length
+      await card()
+      const before = reads()
+
+      await user.click((await card()).getByRole('button', { name: due.recordAll(2) }))
+      expect(await screen.findByText(due.noneRecorded(due.refused.paused!('Otros · Movistar')))).toBeInTheDocument()
+      await waitFor(() => expect(reads()).toBeGreaterThan(before))
     })
 
     it('opens an estimated one in the form, filled in, its amount selected for the bill', async () => {

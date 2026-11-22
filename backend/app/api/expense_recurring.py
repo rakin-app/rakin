@@ -126,6 +126,7 @@ SKIP = text(
     " VALUES (current_setting('app.gym_id')::uuid, :id, :month,"
     " current_setting('app.person_id')::uuid) ON CONFLICT DO NOTHING"
 )
+CATEGORY_ARCHIVED = text("SELECT archived_at IS NOT NULL FROM expense_category WHERE id = :id")
 UNSKIP = text("DELETE FROM expense_skip WHERE recurring_id = :id AND month = :month")
 
 
@@ -249,21 +250,33 @@ async def record_recurring(
 ) -> list[Expense]:
     """Registrar, and Registrar los fijos: each fixed template named, at its amount, in
     `month`, dated `due_on`. One that has an expense counting in the month already is
-    passed over, so the answer lists only what this request recorded. An estimated or
-    paused template, or one under an archived category, is refused (422): the first is
-    typed through the form at the bill's figure, the others are not on the card."""
+    passed over, so the answer lists only what this request recorded.
+
+    All or nothing: every template is checked, locked, before any is recorded, and the
+    first that cannot be is refused (422) with its `recurring_id`, recording none. An
+    estimated one is typed through the form at the bill's figure; a paused one, or one
+    under an archived category, left the card since it was loaded. So a batch is never
+    half recorded behind a refusal, and the card, read again, shows what is left."""
     month, today = await _shown_month(session, tenant, body.month)
     ids = list(dict.fromkeys(body.ids))
-    templates = {}
+    templates: dict[uuid.UUID, Any] = {}
     for recurring_id in ids:
         row = (await session.execute(LOCK, {"id": recurring_id})).one_or_none()
+        refusal = None
         if row is None:
-            raise unprocessable("no_recurring", "no such gasto fijo in this gym")
-        if row.amount_kind != AmountKind.FIXED:
-            raise unprocessable("estimated", "an estimated gasto fijo is recorded through the form")
-        if not row.active:
-            raise unprocessable("paused", "the gasto fijo is paused")
-        await _live_category(session, row.category_id)
+            refusal = ("no_recurring", "no such gasto fijo in this gym")
+        elif row.amount_kind != AmountKind.FIXED:
+            refusal = ("estimated", "an estimated gasto fijo is recorded through the form")
+        elif not row.active:
+            refusal = ("paused", "the gasto fijo is paused")
+        elif (await session.scalar(CATEGORY_ARCHIVED, {"id": row.category_id})) is not False:
+            refusal = ("category_archived", "the category is archived")
+        if refusal is not None:
+            code, message = refusal
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                {"code": code, "message": message, "recurring_id": str(recurring_id)},
+            )
         templates[recurring_id] = row
     recorded: list[Expense] = []
     for recurring_id, row in templates.items():
@@ -288,8 +301,12 @@ async def skip_recurring(
 
 
 @router.delete("/{recurring_id}/skip/{month}", status_code=status.HTTP_204_NO_CONTENT)
-async def unskip_recurring(recurring_id: uuid.UUID, month: date, session: ExpensesSession) -> None:
-    """Take back a No este mes: the template is on `month`'s card again."""
+async def unskip_recurring(
+    recurring_id: uuid.UUID, month: date, tenant: Acting, session: ExpensesSession
+) -> None:
+    """Take back a No este mes: the template is on `month`'s card again. `month` is held
+    as skip holds it: the first of a month up to the current one."""
+    month, _ = await _shown_month(session, tenant, month)
     if (await session.execute(LOCK, {"id": recurring_id})).one_or_none() is None:
         raise NO_RECURRING
     await session.execute(UNSKIP, {"id": recurring_id, "month": month})

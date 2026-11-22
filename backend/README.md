@@ -318,8 +318,8 @@ Rent and bills as monthly templates (#315, `app.api.expense_recurring`, migratio
 | `GET /api/expenses/recurring` | the templates, active first by day of the month, then the paused |
 | `POST /api/expenses/recurring`, `PATCH .../{id}` | add one (at most 100: 409 `too_many_recurring`) under a live category; edit the fields sent, or pause and resume it (`active`) |
 | `GET /api/expenses/recurring/month?month=` | Gastos fijos por registrar: `due`, the active templates made by the month's end with no expense from them that counts in it, and `skipped`, each with `due_on` (its day of the month, or the gym's today if earlier) |
-| `POST /api/expenses/recurring/record` | `{month, ids}`: records each fixed template named at its amount, dated `due_on`; one already recorded that month is passed over, so the answer lists only what this call recorded. An estimated or paused one, or one under an archived category, is a 422 |
-| `POST /api/expenses/recurring/{id}/skip`, `DELETE .../{id}/skip/{month}` | No este mes, and taking it back |
+| `POST /api/expenses/recurring/record` | `{month, ids}`: records each fixed template named at its amount, dated `due_on`; one already recorded that month is passed over, so the answer lists only what this call recorded. All or nothing: an estimated or paused one, or one under an archived category, is a 422 naming it (`recurring_id`), and none is recorded |
+| `POST /api/expenses/recurring/{id}/skip`, `DELETE .../{id}/skip/{month}` | No este mes, and taking it back; both take the first of a month up to the current one (422 otherwise) |
 
 **Nothing records an expense by itself.** No job, trigger, default or read writes one: every expense is a person's `POST`, so every expense on the books is one somebody confirmed. `tests/test_expense_recurring.py` reads every month's card and runs the nightly jobs over forty days with templates in place and finds no expense, and holds the code to it: only `app.api.expenses`, `app.api.expense_recurring` and the seed insert into `expense`, `app/jobs` never names it, and no migration does. Same permissions as expenses, at the API and under RLS (`tests/test_permissions_rls.py`).
 

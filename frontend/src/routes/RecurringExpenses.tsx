@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type FormEvent } from 'react'
-import { refusalCode } from '../api/client'
+import { refusal, refusalCode } from '../api/client'
 import {
   addRecurring,
   changeRecurring,
@@ -45,6 +45,17 @@ function oneTap(template: DueRecurring): boolean {
   return template.amount_kind === 'fixed' && !template.category_archived
 }
 
+/** Why a tap recorded nothing. A batch is all or nothing: a refusal names the template
+ * that stopped it (`recurring_id`), and none of the others was recorded. */
+function failureOf(error: unknown, names: Record<string, string>): string {
+  const words = copy.due
+  const detail = refusal(error)
+  if (detail?.code === 'already_recorded') return words.alreadyRecorded
+  const what = typeof detail?.recurring_id === 'string' ? names[detail.recurring_id] : undefined
+  const why = what && words.refused[String(detail?.code)]
+  return why ? words.noneRecorded(why(what)) : words.failed
+}
+
 /**
  * "Gastos fijos por registrar" (#315), above the month's list: the active gastos fijos
  * with no expense from them in `month`, and not skipped. A fixed one records in one tap at
@@ -65,9 +76,13 @@ export function RecurringDue({
   const words = copy.due
   const queryClient = useQueryClient()
   const card = useQuery(recurringMonthQuery(month))
+  // A refusal leaves the card stale (a template paused, or its category archived, in
+  // another tab): it is read again, so it shows what is really left.
+  const reread = () => void queryClient.invalidateQueries({ queryKey: ['expenses', 'recurring', 'month'] })
   const record = useSubmit({
     offline: 'refuse',
     mutationFn: (ids: string[]) => recordRecurring(month, ids),
+    onError: reread,
     onSuccess: (saved: Expense[]) => {
       void queryClient.invalidateQueries({ queryKey: ['expenses'] })
       const total = saved.reduce((sum, e) => sum + e.amount_clp, 0)
@@ -77,14 +92,23 @@ export function RecurringDue({
   const skip = useSubmit({
     offline: 'refuse',
     mutationFn: ({ id, undo }: { id: string; undo: boolean }) => (undo ? unskipRecurring(id, month) : skipRecurring(id, month)),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['expenses', 'recurring', 'month'] }),
+    onError: reread,
+    onSuccess: reread,
   })
+  // Names, kept from the card as it was when the tap was made: after the reread, the
+  // template that stopped a batch may no longer be on it.
+  const [names, setNames] = useState<Record<string, string>>({})
   const data = card.data
-  if (!data || data.month !== month || (data.due.length === 0 && data.skipped.length === 0)) return null
+  const failure = record.error ?? skip.error
+  // Empty, the card is not there, unless it has a refusal to explain.
+  if (!data || data.month !== month || (data.due.length === 0 && data.skipped.length === 0 && !failure)) return null
 
   const fixed = data.due.filter(oneTap)
   const busy = record.isPending || skip.isPending
-  const failure = record.error ?? skip.error
+  const recordAll = (ids: string[]) => {
+    setNames(Object.fromEntries(data.due.map((d) => [d.id, nameOf(d)])))
+    record.mutate(ids)
+  }
   const title = words.title(t.common.month(month, month.slice(0, 4)).toLowerCase())
   return (
     <Card className="recurring-due" aria-label={title}>
@@ -92,7 +116,7 @@ export function RecurringDue({
         <h2 className="recurring-due__title">{title}</h2>
         <p className="recurring-due__intro">{words.intro}</p>
       </div>
-      {failure && <Banner tone="error">{refusalCode(failure) === 'already_recorded' ? words.alreadyRecorded : words.failed}</Banner>}
+      {failure && <Banner tone="error">{failureOf(failure, names)}</Banner>}
       {data.due.length > 0 && (
         <PlainList className="recurring-due__list">
           {data.due.map((template) => {
@@ -110,7 +134,7 @@ export function RecurringDue({
                       variant="primary"
                       aria-label={words.recordWhat(what)}
                       disabled={busy}
-                      onClick={() => record.mutate([template.id])}
+                      onClick={() => recordAll([template.id])}
                     >
                       {words.record}
                     </Button>
@@ -140,7 +164,7 @@ export function RecurringDue({
       )}
       {fixed.length > 1 && (
         <div className="recurring-due__all">
-          <Button busy={record.isPending} disabled={busy} onClick={() => record.mutate(fixed.map((f) => f.id))}>
+          <Button busy={record.isPending} disabled={busy} onClick={() => recordAll(fixed.map((f) => f.id))}>
             {record.isPending ? words.working : words.recordAll(fixed.length)}
           </Button>
         </div>
