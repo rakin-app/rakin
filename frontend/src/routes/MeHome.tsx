@@ -545,6 +545,7 @@ function detail(payment: MyPayment, timeZone: string): string {
     if (!payment.period_start) return [payment.note, made].filter(Boolean).join(' · ')
     return payment.amount_clp > 0 ? words.discounted(made) : words.surcharged(made)
   }
+  if (payment.purpose === 'paid_before') return words.paidBefore(made)
   if (payment.status === 'pending') return copy.history.sent(when(payment.claimed_at ?? payment.created_at, timeZone))
   const reviewed = when(payment.validated_at ?? payment.created_at, timeZone)
   return payment.status === 'validated' ? copy.history.validated(reviewed) : copy.history.rejected(reviewed, payment.note)

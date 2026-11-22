@@ -674,7 +674,9 @@ async def record_payment_void(
         raise payment_void_refused(
             PaymentVoidRefusal.NOT_VALIDATED, "only a validated payment is undone"
         )
-    if found.purpose is not None:
+    # A month paid before Rakin (#286) is a payment like any other here: typed by mistake,
+    # it is undone, and the view leaves its undoing out of income as it left it out.
+    if found.purpose not in (None, Purpose.PAID_BEFORE):
         raise payment_void_refused(
             PaymentVoidRefusal.A_CORRECTION, "the payment is a correction: undo it by its inverse"
         )

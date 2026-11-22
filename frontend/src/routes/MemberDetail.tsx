@@ -3345,6 +3345,10 @@ function describeEntry(
           tone,
         }
       }
+      // A month paid before Rakin (#286): it settles the period, and is no income of the month.
+      if (entry.purpose === 'paid_before') {
+        return { title: `${words.payment(month)} · ${words.paidBefore}`, detail: join(method, review, day), tone }
+      }
       return { title: words.payment(month), detail: join(method, review, day), tone }
     }
     case 'adjustment': {

@@ -4945,6 +4945,24 @@ describe('Pagado hasta… (#286)', () => {
     expect(within(card).queryByRole('button', { name: copy.paidThroughPlan })).not.toBeInTheDocument()
   })
 
+  it('names a month paid before Rakin in the Libro', async () => {
+    const paidBefore = entry({
+      id: 'pb',
+      kind: 'payment',
+      method: 'cash',
+      billing_period_id: 'p-sep',
+      period_start: '2026-09-30',
+      note: 'Pagado antes de Rakin',
+      purpose: 'paid_before',
+    })
+    stubApi({ ledger: { ...LEDGER, entries: [paidBefore] } })
+    renderAt(PATH)
+    const ledger = await libro()
+    expect(
+      await within(ledger).findByText(`${copy.ledger.payment('septiembre')} · ${copy.ledger.paidBefore}`),
+    ).toBeInTheDocument()
+  })
+
   it('names its entries in "Correcciones"', async () => {
     stubApi({
       corrections: [

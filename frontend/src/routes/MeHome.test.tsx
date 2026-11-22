@@ -634,6 +634,21 @@ describe('Mi página', () => {
     ])
   })
 
+  it('lists a month paid before Rakin as paid, saying when it was noted down (#286)', async () => {
+    const at = { claimed_at: null, validated_at: `${YEAR}-11-04T15:00:00Z`, created_at: `${YEAR}-11-04T15:00:00Z` }
+    stubPage(
+      diego({
+        payments: [payment({ id: 'pb', kind: 'payment', amount_clp: 45000, period_start: `${YEAR}-09-10`, purpose: 'paid_before', ...at })],
+      }),
+    )
+    renderMe()
+
+    const history = within(await screen.findByRole('region', { name: copy.history.title }))
+    expect(history.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      `Septiembre${copy.history.paidBefore('4 nov')}$45.000`,
+    ])
+  })
+
   it('lists a payment moved to another month by both months, never with the reason (#280)', async () => {
     const at = { claimed_at: null, validated_at: `${YEAR}-11-04T15:00:00Z`, created_at: `${YEAR}-11-04T15:00:00Z` }
     stubPage(

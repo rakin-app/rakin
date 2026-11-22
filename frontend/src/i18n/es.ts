@@ -1683,7 +1683,7 @@ export const es = {
         through: 'Pagado hasta el',
         how: '¿Cómo quedan esos meses?',
         paid: 'Los pagó',
-        paidHint: 'Un pago por mes, con la nota «Pagado antes de Rakin». Cuenta en lo cobrado de este mes; no se envía recibo.',
+        paidHint: 'Un pago por mes, «Pagado antes de Rakin»: el mes queda pagado, pero no cuenta como ingreso de este mes. No se envía recibo.',
         gift: 'Se los regalamos',
         giftHint: 'Una bonificación por mes: no cuenta como ingreso.',
         method: 'Medio de pago',
@@ -1992,6 +1992,8 @@ export const es = {
         // person when it is not this plan's.
         movedTo: (month: string) => `Movido a ${month}`,
         movedFrom: (month: string) => `Movido de ${month}`,
+        // A month paid before Rakin (#286): settled, but no income of the month it was recorded.
+        paidBefore: 'Pagado antes de Rakin',
         movedElsewhere: (plan: string, person: string | null) => (person ? `${plan} · ${person}` : plan),
         all: (n: number) => `Ver todo el libro (${n})`,
         fewer: 'Ver menos',
@@ -3647,6 +3649,8 @@ export const es = {
       writeOff: 'Deuda condonada',
       // Either half of a payment moved to another period (#280): neither income nor a refund.
       moved: { out: 'Pago movido (sale)', in: 'Pago movido (entra)' },
+      // A month paid before Rakin (#286): it settles its period, and is in no income total.
+      paidBefore: 'Pagado antes de Rakin',
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
       // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.
       adjustment: { favor: 'Descuento', owed: 'Recargo' },
@@ -4615,6 +4619,8 @@ export const es = {
       movedOut: (from: string, to: string | null) => (to ? `Pago movido de ${from} a ${to}` : `Pago de ${from} movido`),
       movedFrom: (from: string) => `movido de ${from}`,
       movedOn: (when: string) => `movido ${when}`,
+      // A month paid before the gym used Rakin (#286), recorded later.
+      paidBefore: (when: string) => `pagado antes de Rakin · anotado ${when}`,
     },
     proof: {
       title: 'Subir comprobante',

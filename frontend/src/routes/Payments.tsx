@@ -619,6 +619,8 @@ function kindLabel(entry: BookEntry): string {
   if (entry.purpose === 'write_off') return copy.writeOff
   // Either half of a payment moved (#280): neither income nor a refund.
   if (entry.purpose === 'move') return copy.moved[entry.kind === 'payment' ? 'in' : 'out']
+  // A month paid before Rakin (#286): no income of the month it was recorded in.
+  if (entry.purpose === 'paid_before') return copy.paidBefore
   if (entry.kind === 'adjustment' && entry.period) return copy.adjustment[entry.amount_clp > 0 ? 'favor' : 'owed']
   return copy.kind[entry.kind]
 }

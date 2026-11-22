@@ -110,7 +110,13 @@ Why C9, C13 and C14 are not corrections of their own:
   member who paid before the gym used Rakin (record those payments, or pay ahead,
   #196) and a gift ("le regalamos diciembre", a discount adjustment, or C15). A
   "Pagado hasta…" shortcut may write those entries period by period; that is a
-  convenience on top, listed last in the tickets.
+  convenience on top, listed last in the tickets. Built in #286: a payment of a month
+  paid before Rakin is marked `purpose = 'paid_before'` (0093). It settles its period as
+  any payment, but that money was not received in the month it is recorded, so it is no
+  income of it: `v_monthly_income` leaves it out (Cobrado, Finanzas, the export's
+  totals), and every entry correcting it, and Resumen del mes counts it neither as a
+  payment of the month nor as one paid after a reminder (`stands`). A gift is a plain
+  adjustment in the member's favour, "Bonificación".
 
 ## 2. The model: append-only with correcting entries
 

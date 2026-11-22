@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from app import ledger_export
 from app.domain.billing import (
     Billable,
     Plan,
@@ -146,6 +147,11 @@ def settle(
     return client.post(url(membership), json=payload, headers=as_gym(gym))
 
 
+def this_month(client: TestClient, gym: uuid.UUID) -> Any:
+    """Resumen del mes for the current month."""
+    return ok(client.get("/api/summary", headers=as_gym(gym)))
+
+
 def refused(response: Any, code: str) -> Any:
     assert response.status_code == 409, response.text
     detail = response.json()["detail"]
@@ -162,7 +168,7 @@ def back_dated(client: TestClient, gym: uuid.UUID, months: int = 3) -> tuple[str
 
 
 @pg
-def test_paid_up_to_a_date_reads_that_date_and_counts_in_cobrado(
+def test_paid_up_to_a_date_reads_that_date_and_is_no_income_of_the_month(
     client: TestClient, sur: uuid.UUID, mailer: RecordingMailer
 ) -> None:
     person, membership, start = back_dated(client, sur)
@@ -170,7 +176,8 @@ def test_paid_up_to_a_date_reads_that_date_and_counts_in_cobrado(
     assert len(billed) >= 3
     # Every period billed, and two more not billed yet.
     through = month_span(start, len(billed) + 1)[1]
-    before = cobrado(client, sur)["collected_clp"]
+    before = cobrado(client, sur)
+    month_before = this_month(client, sur)
     sent = len(mailer.sent)
 
     found = ok(quote(client, sur, membership, through))
@@ -181,21 +188,57 @@ def test_paid_up_to_a_date_reads_that_date_and_counts_in_cobrado(
     recorded = ok(settle(client, sur, membership, through, method="cash"), 201)
 
     assert recorded["paid_through"] == through
-    assert {(e["kind"], e["amount_clp"], e["note"]) for e in recorded["entries"]} == {
-        ("payment", 45_000, "Pagado antes de Rakin")
+    assert {(e["kind"], e["amount_clp"], e["note"], e["purpose"]) for e in recorded["entries"]} == {
+        ("payment", 45_000, "Pagado antes de Rakin", "paid_before")
     }
     after = ledger(client, sur, membership)
     assert after["paid_through"] == through
     assert after["open_periods"] == []
-    assert cobrado(client, sur)["collected_clp"] == before + found["total_clp"]
+    # The period reads paid, but that money was not received this month (0093).
+    assert all(p["outstanding_clp"] == 0 and p["closed"] for p in recorded["periods"])
+    assert after["balance_clp"] == 0
+    kpis = cobrado(client, sur)
+    assert (kpis["collected_clp"], kpis["collected_payments"]) == (
+        before["collected_clp"],
+        before["collected_payments"],
+    )
+    month = this_month(client, sur)
+    assert (month["income_clp"], month["income_payments"]) == (
+        month_before["income_clp"],
+        month_before["income_payments"],
+    )
     # The money arrived long ago: no receipt.
     assert len(mailer.sent) == sent
     rows = ok(corrections(client, sur, person))["items"]
     assert len(rows) == len(billed) + 2
     assert {(r["action"], r["purpose"], r["paid_through"], r["reason"]) for r in rows} == {
-        ("ledger_corrected", None, "paid", "Pagado antes de Rakin")
+        ("ledger_corrected", "paid_before", "paid", "Pagado antes de Rakin")
     }
     assert all(r["after"]["outstanding_clp"] == 0 for r in rows)
+
+
+@pg
+def test_a_month_paid_before_rakin_undone_is_still_no_income(
+    client: TestClient, sur: uuid.UUID
+) -> None:
+    _, membership, start = back_dated(client, sur, months=1)
+    recorded = ok(settle(client, sur, membership, month_span(start, 0)[1]), 201)
+    before = cobrado(client, sur)
+
+    undone = client.post(
+        "/api/ledger/payment-voids",
+        json={"payment_id": recorded["entries"][0]["id"], "reason": "no era de este alumno"},
+        headers=as_gym(sur),
+    )
+
+    ok(undone, 201)
+    kpis = cobrado(client, sur)
+    assert (kpis["collected_clp"], kpis["corrected_clp"], kpis["refunded_clp"]) == (
+        before["collected_clp"],
+        before["corrected_clp"],
+        before["refunded_clp"],
+    )
+    assert ledger(client, sur, membership)["open_periods"] != []
 
 
 @pg
@@ -333,3 +376,23 @@ def test_a_coach_cannot_settle_up_to_a_date(
     response = client.post(url(membership), json=body, headers=as_gym(sur, coach))
 
     assert response.status_code == 403
+
+
+def test_the_export_labels_a_month_paid_before_rakin_apart_from_the_payments() -> None:
+    label = ledger_export.kind_label("payment", False, "paid_before")
+    assert label == "Pagado antes de Rakin"
+    row = ledger_export.Row(
+        day=date(2026, 11, 22),
+        member="Socia Ejemplo",
+        rut=None,
+        concept="Mensual",
+        period=(date(2026, 9, 1), date(2026, 9, 30)),
+        kind=label,
+        method="Efectivo",
+        amount_clp=45_000,
+        status="Validado",
+        bank_ref=None,
+        note="Pagado antes de Rakin",
+    )
+    # Not money received in the month: in no total, as a payment moved is in none.
+    assert ledger_export.totals([row], 0).paid_clp == 0

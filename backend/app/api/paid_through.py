@@ -9,9 +9,11 @@ and still owing, then those not billed yet, which it bills first as paying ahead
 (`billing.periods_through`, #196), at most `MAX_PAID_AHEAD` of them. Each is settled with
 what it still owes, in one transaction:
 
-- `paid`: a validated payment with the method given and the note "Pagado antes de
-  Rakin". It counts in "Cobrado" in the month it is recorded in, as any payment does. No
-  receipt is emailed: the money arrived long ago.
+- `paid`: a validated payment with the method given, `purpose = 'paid_before'` and the
+  note "Pagado antes de Rakin". It settles its period as any payment, but the money
+  arrived long ago, so it is no income of the month it is recorded in (migration 0093):
+  not in Cobrado, Finanzas or the export's totals, nor in Resumen del mes as a payment
+  or as one "paid after a reminder" (`app.month_figures.stands`). No receipt is emailed.
 - `gift`: a validated adjustment in the member's favour, the note "Bonificación"
   ("le regalamos diciembre"), as "Cambiar monto" writes one.
 
@@ -48,7 +50,7 @@ from app.api.ledger import (
 from app.db import driver_connection
 from app.domain import billing
 from app.domain.billing import SETTLING_KINDS, Billing, BillingPeriod, settled_amount
-from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry
+from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry, Purpose
 from app.domain.membership import MembershipStatus
 from app.jobs.billing import billable_membership, write_billing
 from app.permissions import LedgerReadSession, LedgerSession
@@ -252,7 +254,11 @@ async def settle(
     owed = period.outstanding_clp
     if body.mode is PaidThroughMode.PAID:
         payment = LedgerEntry(
-            kind=EntryKind.PAYMENT, amount_clp=owed, status=EntryStatus.VALIDATED, note=PAID_NOTE
+            kind=EntryKind.PAYMENT,
+            amount_clp=owed,
+            status=EntryStatus.VALIDATED,
+            note=PAID_NOTE,
+            purpose=Purpose.PAID_BEFORE,
         )
         settlement = billing.apply(period, payment)
         method: Method | None = body.method
@@ -272,7 +278,7 @@ async def settle(
         membership_id=membership_id,
         billing_period_id=period_id,
         entry_ids=[entry.id],
-        purpose=None,
+        purpose=entry.purpose.value if entry.purpose else None,
         reason=entry.note,
         before=before,
         after=await figures(session, membership_id, settlement.period),

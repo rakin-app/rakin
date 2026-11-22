@@ -143,7 +143,7 @@ export type MovedWith = {
 }
 
 /** What a correcting entry is for (backend `Purpose`, #278). */
-export type Purpose = 'void' | 'restore' | 'revert' | 'write_off' | 'move' | 'mistake'
+export type Purpose = 'void' | 'restore' | 'revert' | 'write_off' | 'move' | 'mistake' | 'paid_before'
 
 /** A charge's void (backend `Voided`, #256): "Anulado: <motivo>, por <quien>, <fecha>". */
 export type Voided = { reason: string; by_name: string | null; at: string }
